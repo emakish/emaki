@@ -1,0 +1,239 @@
+#!/usr/bin/env python3
+"""Provision fixed greeter directories; never inspect a user's home or wallpaper.
+
+Invoked by explicit make enable-greeter or make uninstall steps. --root supports an
+offline installation; account IDs then come from that root's passwd/group files.
+"""
+import argparse
+import grp
+import os
+from pathlib import Path
+import pwd
+import re
+import secrets
+import stat
+import sys
+import time
+
+USER_NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_.-]{0,63}\$?\Z')
+QUARANTINE_NAME = re.compile(r'\.purge-published-[0-9a-f]{32}\Z')
+
+
+def open_directory(path):
+    path = Path(path)
+    if not path.is_absolute() or '..' in path.parts:
+        raise ValueError('invalid installation root')
+    descriptor = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        for name in path.parts[1:]:
+            child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                            dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def account_ids(root, user):
+    if root == Path('/'):
+        account = pwd.getpwnam(user) if user else None
+        greeter = pwd.getpwnam('greeter')
+        return account.pw_uid if account else None, greeter.pw_uid, grp.getgrnam('greeter').gr_gid
+    # Only system account databases are read, with the same no-symlink traversal.
+    def rows(name):
+        parent = open_directory(root / 'etc')
+        try:
+            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                         dir_fd=parent)
+            with os.fdopen(fd, 'r') as stream:
+                info = os.fstat(stream.fileno())
+                if not stat.S_ISREG(info.st_mode) or info.st_size > 1024 * 1024:
+                    raise ValueError('invalid account database')
+                return {row.split(':')[0]: row.split(':') for row in stream.read(1024 * 1024 + 1).splitlines()}
+        finally:
+            os.close(parent)
+    users, groups = rows('passwd'), rows('group')
+    return int(users[user][2]) if user else None, int(users['greeter'][2]), int(groups['greeter'][2])
+
+
+def ensure_directory(parent, name, mode, uid, gid):
+    try:
+        os.mkdir(name, 0o700, dir_fd=parent)
+    except FileExistsError:
+        pass
+    descriptor = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                         dir_fd=parent)
+    try:
+        info = os.fstat(descriptor)
+        if info.st_uid not in (0, uid):
+            raise ValueError('unexpected directory owner')
+        os.fchown(descriptor, uid, gid)
+        os.fchmod(descriptor, mode)
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def provision(root, user):
+    if os.getuid() != 0 or os.geteuid() != 0:
+        raise ValueError('run this explicit provisioning step as root')
+    # Installers and a real root shell have no SUDO_USER. Wallpaper publishing is
+    # optional; fixed greeter directories and login enablement must still succeed.
+    user = None if user in (None, '', 'root') else user
+    if user and (not USER_NAME.fullmatch(user) or user == 'greeter'):
+        raise ValueError('invalid publishing account')
+    uid, greeter_uid, greeter_gid = account_ids(root, user)
+    if uid == 0 or greeter_uid == 0:
+        raise ValueError('root accounts cannot publish wallpaper')
+    descriptors = []
+    try:
+        parent = open_directory(root / 'var/lib')
+        descriptors.append(parent)
+        base = ensure_directory(parent, 'emaki-greeter', 0o755, 0, 0)
+        descriptors.append(base)
+        descriptors.append(ensure_directory(base, 'handoff', 0o711, greeter_uid, greeter_gid))
+        users = ensure_directory(base, 'users', 0o711, 0, 0)
+        descriptors.append(users)
+        if user:
+            descriptors.append(ensure_directory(users, user, 0o2750, uid, greeter_gid))
+        for name in ('home', 'state', 'cache', 'config', 'data'):
+            descriptors.append(ensure_directory(base, name, 0o700, greeter_uid, greeter_gid))
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+    return user
+
+
+def require_root_directory(descriptor):
+    metadata = os.fstat(descriptor)
+    if metadata.st_uid != 0 or metadata.st_mode & 0o022:
+        raise ValueError('unsafe system directory')
+
+
+def purge_tree(parent, name, device, budget, depth=0):
+    """Unlink a quarantined tree through pinned descriptors, never reading files."""
+    budget['entries'] += 1
+    if depth > 32 or budget['entries'] > 4096 or time.monotonic() > budget['deadline']:
+        raise ValueError('purge limit')
+    metadata = os.stat(name, dir_fd=parent, follow_symlinks=False)
+    if not stat.S_ISDIR(metadata.st_mode):
+        # A link is removed as an entry; its target is never opened or inspected.
+        os.unlink(name, dir_fd=parent)
+        return
+    descriptor = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                         dir_fd=parent)
+    try:
+        opened = os.fstat(descriptor)
+        if (opened.st_dev != device or opened.st_ino != metadata.st_ino
+                or opened.st_dev != metadata.st_dev):
+            raise ValueError('purge mount or replacement refused')
+        # Stop writers that already hold directory fds from before the rename.
+        # File fds may finish writes after unlink, but cannot recreate any entry.
+        os.fchown(descriptor, 0, 0)
+        os.fchmod(descriptor, 0o700)
+        with os.scandir(descriptor) as children:
+            for child in children:
+                purge_tree(descriptor, child.name, device, budget, depth + 1)
+    finally:
+        os.close(descriptor)
+    os.rmdir(name, dir_fd=parent)
+
+
+def purge_published(root):
+    """Detach only the fixed users tree; preserve greeter state and private dirs.
+
+    A root-only quarantine closes pathname access before deletion. Chown/chmod
+    on each directory also blocks existing user writer fds. Bounded failures keep
+    any remainder quarantined and return failure; a later uninstall retries it.
+    """
+    try:
+        base = open_directory(Path(root) / 'var/lib/emaki-greeter')
+    except FileNotFoundError:
+        return  # Old installations or unprivileged staging roots have no copies.
+    try:
+        if os.getuid() != 0 or os.geteuid() != 0:
+            raise ValueError('purging published copies requires root')
+        require_root_directory(base)
+        quarantines = [name for name in os.listdir(base) if QUARANTINE_NAME.fullmatch(name)]
+        try:
+            users_metadata = os.stat('users', dir_fd=base, follow_symlinks=False)
+        except FileNotFoundError:
+            users_metadata = None
+        if users_metadata is not None:
+            if stat.S_ISLNK(users_metadata.st_mode):
+                os.unlink('users', dir_fd=base)
+            elif not stat.S_ISDIR(users_metadata.st_mode):
+                raise ValueError('unsafe users directory')
+            else:
+                users = os.open('users', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                                dir_fd=base)
+                try:
+                    require_root_directory(users)
+                finally:
+                    os.close(users)
+                name = '.purge-published-' + secrets.token_hex(16)
+                os.mkdir(name, 0o700, dir_fd=base)
+                quarantines.append(name)
+                quarantine = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                                     dir_fd=base)
+                try:
+                    os.fchmod(quarantine, 0o700)
+                    os.rename('users', 'users', src_dir_fd=base, dst_dir_fd=quarantine)
+                    os.fsync(quarantine)
+                    os.fsync(base)
+                finally:
+                    os.close(quarantine)
+        budget = {'entries': 0, 'deadline': time.monotonic() + 10}
+        for name in quarantines:
+            quarantine = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                                 dir_fd=base)
+            try:
+                require_root_directory(quarantine)
+            finally:
+                os.close(quarantine)
+            purge_tree(base, name, os.fstat(base).st_dev, budget)
+        os.fsync(base)
+    finally:
+        os.close(base)
+
+
+def publication_hint(user):
+    print('To publish before the next login, run these in the ' + user + ' account session (without sudo):')
+    print('  systemctl --user daemon-reload')
+    print('  systemctl --user start emaki-greeter-wallpaper.service emaki-greeter-wallpaper.path emaki-greeter-wallpaper-watch.service')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--root', type=Path, default=Path('/'))
+    operation = parser.add_mutually_exclusive_group()
+    operation.add_argument('--user', default=os.environ.get('SUDO_USER', ''))
+    operation.add_argument('--purge-published', action='store_true', help='remove only published copies during uninstall')
+    options = parser.parse_args()
+    if options.purge_published:
+        try:
+            purge_published(options.root)
+        except (OSError, ValueError):
+            print(f'emaki-greeter-provision: WARNING: published-copy purge incomplete at {options.root / "var/lib/emaki-greeter"}; unsafe paths, mounts, permissions or the bounded cleanup limit prevented removal. Inspect users and .purge-published-* there; any detached remainder stays root-only. Resolve the cause before retrying cleanup.', file=sys.stderr)
+            return 1
+        print('Published wallpaper copies removed; greeter selection state and private directories retained.')
+        return 0
+    try:
+        publishing_user = provision(options.root, options.user)
+    except (OSError, ValueError, KeyError, IndexError):
+        print('emaki-greeter-provision: refused; root, greeter account, safe system directories and any explicitly selected user must be valid', file=sys.stderr)
+        return 1
+    print('Emaki greeter directories provisioned; no user files were read.')
+    if not publishing_user:
+        print('Wallpaper publishing skipped: no ordinary account selected. The greeter can use its flat background.')
+        print('To provision an account later: sudo make enable-greeter GREETER_USER=YOUR_ACCOUNT')
+    else:
+        publication_hint(publishing_user)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

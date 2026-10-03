@@ -1,0 +1,13 @@
+niri/local.kdl
+*.pkg.tar.zst
+*.iso
+work/
+out/
+/.cache/
+/target/
+__pycache__/
+*.pyc
+# makepkg leftovers in the package directories
+packaging/*/src/
+packaging/*/pkg/
+packaging/*/*.tar.gz

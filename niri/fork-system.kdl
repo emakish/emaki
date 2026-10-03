@@ -1,0 +1,12 @@
+// Config for “niri (Emaki)” when the user has no ~/.config/niri/config.kdl
+// (a clean machine). Same choice as stock niri: system /etc/niri/config.kdl
+// (which includes Emaki defaults), then the fork rule. Writes nothing to the home directory.
+//
+// Why not a single file with `include optional=true "~/.config/niri/config.kdl"`: niri 26.04
+// supports it, but without a personal config only the fork rule would remain, with no defaults.
+// Including defaults alongside it is not possible — the personal config already includes them,
+// and include accumulates autostart entries (GOTCHAS: “include accumulates, rather than replaces”).
+include "/etc/niri/config.kdl"
+include "fork-rules.kdl"
+// The user's own niri-emaki settings, as in fork.kdl (optional: absent on a clean machine).
+include optional=true "~/.config/emaki/niri-emaki.kdl"

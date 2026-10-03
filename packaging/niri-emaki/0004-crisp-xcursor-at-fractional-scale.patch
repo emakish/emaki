@@ -1,0 +1,913 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Emaki contributors <emaki@localhost>
+Date: Thu, 1 Oct 2026 21:00:00 -0500
+Subject: [PATCH 4/4] Render named xcursor images at native physical resolution
+
+Choose the nearest theme image to round(logical cursor size * output scale).
+Upload at buffer scale 1 and render with physical geometry, rounding the
+pointer-minus-hotspot origin once. Share this path with output and capture
+rendering; retain client cursors, DnD and built-in fallback behaviour.
+Bound decoded and texture caches by requested nominal size and keep animation
+redraw selection in sync with the fractional size used for rendering.
+
+Add size/cache tests and software-GLES pixel checks, including fractional
+scales, clipping, non-nominal image dimensions and legacy fallback equivalence.
+
+Generated with git diff b2aa8253; no commit or index mutation.
+---
+diff --git a/src/cursor.rs b/src/cursor.rs
+index a856de94..c0c4eef6 100644
+--- a/src/cursor.rs
++++ b/src/cursor.rs
+@@ -1,5 +1,5 @@
+ use std::cell::RefCell;
+-use std::collections::HashMap;
++use std::collections::VecDeque;
+ use std::env;
+ use std::fs::File;
+ use std::io::Read;
+@@ -7,10 +7,18 @@ use std::rc::Rc;
+ 
+ use anyhow::{anyhow, Context};
+ use smithay::backend::allocator::Fourcc;
+-use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
++use smithay::backend::renderer::element::memory::{
++    MemoryRenderBuffer, MemoryRenderBufferRenderElement,
++};
++use smithay::backend::renderer::element::{Element, Id, Kind, RenderElement, UnderlyingStorage};
++use smithay::backend::renderer::utils::{CommitCounter, DamageSet, OpaqueRegions};
++use smithay::backend::renderer::{ImportMem, Renderer};
+ use smithay::input::pointer::{CursorIcon, CursorImageStatus, CursorImageSurfaceData};
+ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+-use smithay::utils::{IsAlive, Logical, Physical, Point, Transform};
++use smithay::utils::user_data::UserDataMap;
++use smithay::utils::{
++    Buffer, IsAlive, Logical, Physical, Point, Rectangle, Scale, Size, Transform,
++};
+ use smithay::wayland::compositor::with_states;
+ use xcursor::parser::{parse_xcursor, Image};
+ use xcursor::CursorTheme;
+@@ -18,7 +26,43 @@ use xcursor::CursorTheme;
+ /// Some default looking `left_ptr` icon.
+ static FALLBACK_CURSOR_DATA: &[u8] = include_bytes!("../resources/cursor.rgba");
+ 
+-type XCursorCache = HashMap<(CursorIcon, i32), Option<Rc<XCursor>>>;
++// Bound both decoded images and uploaded frame buffers across output scale changes.
++const MAX_CURSOR_CACHE_ENTRIES: usize = 128;
++
++type CursorKey = (CursorIcon, i32);
++
++struct CursorCache<V>(VecDeque<(CursorKey, V)>);
++
++impl<V> Default for CursorCache<V> {
++    fn default() -> Self {
++        Self(VecDeque::new())
++    }
++}
++
++impl<V> CursorCache<V> {
++    fn clear(&mut self) {
++        self.0.clear();
++    }
++
++    fn get_or_insert_with(&mut self, key: CursorKey, make: impl FnOnce() -> V) -> &mut V {
++        if let Some(index) = self.0.iter().position(|(k, _)| *k == key) {
++            let entry = self.0.remove(index).unwrap();
++            self.0.push_back(entry);
++        } else {
++            if self.0.len() == MAX_CURSOR_CACHE_ENTRIES {
++                self.0.pop_front();
++            }
++            self.0.push_back((key, make()));
++        }
++        &mut self.0.back_mut().unwrap().1
++    }
++}
++
++type XCursorCache = CursorCache<Option<Rc<XCursor>>>;
++
++fn nominal_size(size: u8, scale: f64) -> i32 {
++    (f64::from(size) * scale).round().max(1.) as i32
++}
+ 
+ pub struct CursorManager {
+     theme: CursorTheme,
+@@ -59,7 +103,7 @@ impl CursorManager {
+     }
+ 
+     /// Get the current rendering cursor.
+-    pub fn get_render_cursor(&self, scale: i32) -> RenderCursor {
++    pub fn get_render_cursor(&self, scale: f64) -> RenderCursor {
+         match self.current_cursor.clone() {
+             CursorImageStatus::Hidden => RenderCursor::Hidden,
+             CursorImageStatus::Surface(surface) => {
+@@ -79,21 +123,18 @@ impl CursorManager {
+         }
+     }
+ 
+-    fn get_render_cursor_named(&self, icon: CursorIcon, scale: i32) -> RenderCursor {
++    fn get_render_cursor_named(&self, icon: CursorIcon, scale: f64) -> RenderCursor {
++        let size = nominal_size(self.size, scale);
+         self.get_cursor_with_name(icon, scale)
+-            .map(|cursor| RenderCursor::Named {
+-                icon,
+-                scale,
+-                cursor,
+-            })
++            .map(|cursor| RenderCursor::Named { icon, size, cursor })
+             .unwrap_or_else(|| RenderCursor::Named {
+                 icon: Default::default(),
+-                scale,
++                size,
+                 cursor: self.get_default_cursor(scale),
+             })
+     }
+ 
+-    pub fn is_current_cursor_animated(&self, scale: i32) -> bool {
++    pub fn is_current_cursor_animated(&self, scale: f64) -> bool {
+         match &self.current_cursor {
+             CursorImageStatus::Hidden => false,
+             CursorImageStatus::Surface(_) => false,
+@@ -105,12 +146,11 @@ impl CursorManager {
+     }
+ 
+     /// Get named cursor for the given `icon` and `scale`.
+-    pub fn get_cursor_with_name(&self, icon: CursorIcon, scale: i32) -> Option<Rc<XCursor>> {
++    pub fn get_cursor_with_name(&self, icon: CursorIcon, scale: f64) -> Option<Rc<XCursor>> {
++        let size = nominal_size(self.size, scale);
+         self.named_cursor_cache
+             .borrow_mut()
+-            .entry((icon, scale))
+-            .or_insert_with_key(|(icon, scale)| {
+-                let size = self.size as i32 * scale;
++            .get_or_insert_with((icon, size), || {
+                 let mut cursor = Self::load_xcursor(&self.theme, icon.name(), size);
+ 
+                 // Check alternative names to account for non-compliant themes.
+@@ -128,7 +168,7 @@ impl CursorManager {
+                 }
+ 
+                 // The default cursor must always have a fallback.
+-                if *icon == CursorIcon::Default && cursor.is_err() {
++                if icon == CursorIcon::Default && cursor.is_err() {
+                     cursor = Ok(Self::fallback_cursor());
+                 }
+ 
+@@ -138,7 +178,7 @@ impl CursorManager {
+     }
+ 
+     /// Get default cursor.
+-    pub fn get_default_cursor(&self, scale: i32) -> Rc<XCursor> {
++    pub fn get_default_cursor(&self, scale: f64) -> Rc<XCursor> {
+         // The default cursor always has a fallback.
+         self.get_cursor_with_name(CursorIcon::Default, scale)
+             .unwrap()
+@@ -183,6 +223,7 @@ impl CursorManager {
+         Ok(XCursor {
+             images,
+             animation_duration,
++            fallback: false,
+         })
+     }
+ 
+@@ -207,6 +248,7 @@ impl CursorManager {
+         XCursor {
+             images,
+             animation_duration: 0,
++            fallback: true,
+         }
+     }
+ }
+@@ -220,12 +262,14 @@ pub enum RenderCursor {
+     },
+     Named {
+         icon: CursorIcon,
+-        scale: i32,
++        size: i32,
+         cursor: Rc<XCursor>,
+     },
+ }
+ 
+-type TextureCache = HashMap<(CursorIcon, i32), Vec<MemoryRenderBuffer>>;
++// Retain the decoded cursor identity with its textures: the two LRUs can evict
++// in different orders, and a subsequent theme load can have different frames.
++type TextureCache = CursorCache<(Rc<XCursor>, Vec<MemoryRenderBuffer>)>;
+ 
+ #[derive(Default)]
+ pub struct CursorTextureCache {
+@@ -240,30 +284,153 @@ impl CursorTextureCache {
+     pub fn get(
+         &self,
+         icon: CursorIcon,
+-        scale: i32,
+-        cursor: &XCursor,
++        size: i32,
++        cursor: &Rc<XCursor>,
+         idx: usize,
+     ) -> MemoryRenderBuffer {
+-        self.cache
+-            .borrow_mut()
+-            .entry((icon, scale))
+-            .or_insert_with(|| {
+-                cursor
+-                    .frames()
+-                    .iter()
+-                    .map(|frame| {
+-                        MemoryRenderBuffer::from_slice(
+-                            &frame.pixels_rgba,
+-                            Fourcc::Argb8888,
+-                            (frame.width as i32, frame.height as i32),
+-                            scale,
+-                            Transform::Normal,
+-                            None,
+-                        )
+-                    })
+-                    .collect()
+-            })[idx]
+-            .clone()
++        let mut cache = self.cache.borrow_mut();
++        let entry = cache.get_or_insert_with((icon, size), || (cursor.clone(), Vec::new()));
++        if !Rc::ptr_eq(&entry.0, cursor) {
++            *entry = (cursor.clone(), Vec::new());
++        }
++        if entry.1.is_empty() {
++            entry.1 = cursor
++                .frames()
++                .iter()
++                .map(|frame| {
++                    MemoryRenderBuffer::from_slice(
++                        &frame.pixels_rgba,
++                        Fourcc::Argb8888,
++                        (frame.width as i32, frame.height as i32),
++                        1,
++                        Transform::Normal,
++                        None,
++                    )
++                })
++                .collect();
++        }
++        // idx comes from this exact decoded cursor's frame(), not a reloaded one.
++        entry.1[idx].clone()
++    }
++}
++
++/// A named cursor whose geometry and damage are measured in physical pixels.
++///
++/// Upload at buffer scale 1 and ask the inner element for scale-1 geometry. This
++/// avoids both filtering and integer logical-size truncation, including odd image
++/// dimensions. The built-in fallback alone retains its legacy geometry.
++#[derive(Debug)]
++pub struct CursorRenderElement<R: Renderer> {
++    inner: MemoryRenderBufferRenderElement<R>,
++    scale: Scale<f64>,
++    output_scale: Scale<f64>,
++}
++
++impl<R: Renderer + ImportMem> CursorRenderElement<R>
++where
++    R::TextureId: Send + Clone + 'static,
++{
++    pub fn new(
++        renderer: &mut R,
++        pointer: Point<f64, Logical>,
++        output_scale: f64,
++        buffer: &MemoryRenderBuffer,
++        cursor: &XCursor,
++        frame: &Image,
++    ) -> Result<Self, R::Error> {
++        let position = cursor.physical_position(frame, pointer, output_scale);
++        let (src, size, scale) = if cursor.fallback {
++            // Match the old buffer-scale = ceil(output_scale) path, including
++            // its integer hotspot and image-size division.
++            let integer_scale = output_scale.ceil() as i32;
++            let size = Size::<i32, Buffer>::from((frame.width as i32, frame.height as i32))
++                .to_logical(integer_scale, Transform::Normal);
++            let src = Rectangle::from_size(size.to_f64().upscale(integer_scale as f64));
++            (Some(src), Some(size), output_scale)
++        } else {
++            (None, None, 1.)
++        };
++        let inner = MemoryRenderBufferRenderElement::from_buffer(
++            renderer,
++            position.to_f64(),
++            buffer,
++            None,
++            src,
++            size,
++            Kind::Cursor,
++        )?;
++        Ok(Self {
++            inner,
++            scale: scale.into(),
++            output_scale: output_scale.into(),
++        })
++    }
++}
++
++impl<R: Renderer> Element for CursorRenderElement<R> {
++    fn id(&self) -> &Id {
++        self.inner.id()
++    }
++
++    fn current_commit(&self) -> CommitCounter {
++        self.inner.current_commit()
++    }
++
++    fn src(&self) -> Rectangle<f64, Buffer> {
++        self.inner.src()
++    }
++
++    fn geometry(&self, scale: Scale<f64>) -> Rectangle<i32, Physical> {
++        debug_assert_eq!(scale, self.output_scale);
++        self.inner.geometry(self.scale)
++    }
++
++    fn damage_since(
++        &self,
++        scale: Scale<f64>,
++        commit: Option<CommitCounter>,
++    ) -> DamageSet<i32, Physical> {
++        debug_assert_eq!(scale, self.output_scale);
++        self.inner.damage_since(self.scale, commit)
++    }
++
++    fn opaque_regions(&self, scale: Scale<f64>) -> OpaqueRegions<i32, Physical> {
++        debug_assert_eq!(scale, self.output_scale);
++        self.inner.opaque_regions(self.scale)
++    }
++
++    fn transform(&self) -> Transform {
++        self.inner.transform()
++    }
++
++    fn alpha(&self) -> f32 {
++        self.inner.alpha()
++    }
++
++    fn kind(&self) -> Kind {
++        self.inner.kind()
++    }
++}
++
++impl<R: Renderer + ImportMem> RenderElement<R> for CursorRenderElement<R>
++where
++    R::TextureId: 'static,
++{
++    fn draw(
++        &self,
++        frame: &mut R::Frame<'_, '_>,
++        src: Rectangle<f64, Buffer>,
++        dst: Rectangle<i32, Physical>,
++        damage: &[Rectangle<i32, Physical>],
++        opaque_regions: &[Rectangle<i32, Physical>],
++        cache: Option<&UserDataMap>,
++    ) -> Result<(), R::Error> {
++        self.inner
++            .draw(frame, src, dst, damage, opaque_regions, cache)
++    }
++
++    fn underlying_storage(&self, renderer: &mut R) -> Option<UnderlyingStorage<'_>> {
++        self.inner.underlying_storage(renderer)
+     }
+ }
+ 
+@@ -275,9 +442,26 @@ pub struct XCursor {
+     images: Vec<Image>,
+     /// The total duration of the animation.
+     animation_duration: u32,
++    /// Keep the built-in emergency cursor's legacy sizing.
++    fallback: bool,
+ }
+ 
+ impl XCursor {
++    /// Use the same physical hotspot and rounding for drawing and output overlap.
++    pub fn physical_position(
++        &self,
++        frame: &Image,
++        pointer: Point<f64, Logical>,
++        output_scale: f64,
++    ) -> Point<i32, Physical> {
++        if self.fallback {
++            let hotspot = Self::hotspot(frame).to_logical(output_scale.ceil() as i32);
++            (pointer - hotspot.to_f64()).to_physical_precise_round(output_scale)
++        } else {
++            (pointer.to_physical(output_scale) - Self::hotspot(frame).to_f64()).to_i32_round()
++        }
++    }
++
+     /// Given a time, calculate which frame to show, and how much time remains until the next frame.
+     ///
+     /// Time will wrap, so if for instance the cursor has an animation lasting 100ms,
+@@ -316,3 +500,409 @@ impl XCursor {
+         (image.xhot as i32, image.yhot as i32).into()
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::render_helpers::render_to_vec;
++    use smithay::backend::egl::native::EGLSurfacelessDisplay;
++    use smithay::backend::egl::{EGLContext, EGLDisplay};
++    use smithay::backend::renderer::gles::GlesRenderer;
++
++    fn synthetic_cursor(size: i32, width: u32, height: u32) -> XCursor {
++        // BGRA (Argb8888), with one-pixel stripes and an asymmetric corner.
++        let pixels = (0..height)
++            .flat_map(|y| {
++                (0..width).flat_map(move |x| {
++                    if (x + y) % 2 == 0 || (x == 0 && y < 3) {
++                        [19, 53, 231, 255]
++                    } else {
++                        [211, 173, 37, 255]
++                    }
++                })
++            })
++            .collect();
++        XCursor {
++            images: vec![Image {
++                size: size as u32,
++                width,
++                height,
++                xhot: 4,
++                yhot: 6,
++                delay: 0,
++                pixels_rgba: pixels,
++                pixels_argb: vec![],
++            }],
++            animation_duration: 0,
++            fallback: false,
++        }
++    }
++
++    fn renderer() -> GlesRenderer {
++        unsafe {
++            let display = EGLDisplay::new(EGLSurfacelessDisplay).unwrap();
++            let context = EGLContext::new(&display).unwrap();
++            GlesRenderer::new(context).unwrap()
++        }
++    }
++
++    #[test]
++    fn nominal_sizes_and_decoded_cache_keys() {
++        let manager = CursorManager {
++            theme: CursorTheme::load("default"),
++            size: 24,
++            current_cursor: CursorImageStatus::default_named(),
++            named_cursor_cache: Default::default(),
++        };
++        for (scale, size) in [
++            (1., 24),
++            (1.25, 30),
++            (1.5, 36),
++            (1.75, 42),
++            (2., 48),
++            (3., 72),
++        ] {
++            assert_eq!(nominal_size(24, scale), size);
++            let cursor = Rc::new(synthetic_cursor(size, size as u32, size as u32));
++            manager
++                .named_cursor_cache
++                .borrow_mut()
++                .get_or_insert_with((CursorIcon::Default, size), || Some(cursor.clone()));
++            let RenderCursor::Named {
++                size: actual,
++                cursor: loaded,
++                ..
++            } = manager.get_render_cursor(scale)
++            else {
++                panic!("expected named cursor");
++            };
++            assert_eq!(actual, size);
++            assert!(Rc::ptr_eq(&loaded, &cursor));
++        }
++        // Nearby scales requesting the same nominal size share the decoded entry.
++        assert!(Rc::ptr_eq(
++            &manager.get_default_cursor(1.25),
++            &manager.get_default_cursor(1.251)
++        ));
++        assert_eq!(manager.named_cursor_cache.borrow().0.len(), 6);
++        assert_eq!(nominal_size(25, 1.5), 38);
++        assert_eq!(nominal_size(0, 1.), 1);
++    }
++
++    #[test]
++    fn cursor_cache_lru_is_bounded_and_clearable() {
++        let mut cache = CursorCache::default();
++        for size in 1..=MAX_CURSOR_CACHE_ENTRIES as i32 {
++            cache.get_or_insert_with((CursorIcon::Default, size), || size);
++        }
++        cache.get_or_insert_with((CursorIcon::Default, 1), || panic!("cache miss"));
++        cache.get_or_insert_with((CursorIcon::Default, 999), || 999);
++        assert_eq!(cache.0.len(), MAX_CURSOR_CACHE_ENTRIES);
++        assert!(cache.0.iter().any(|(key, _)| key.1 == 1));
++        assert!(!cache.0.iter().any(|(key, _)| key.1 == 2));
++        cache.clear();
++        assert!(cache.0.is_empty());
++    }
++
++    #[test]
++    fn texture_cache_keys_and_clear() {
++        let mut renderer = renderer();
++        let mut cache = CursorTextureCache::default();
++        let cursor = Rc::new(synthetic_cursor(24, 24, 24));
++        let mut ids = vec![];
++        for size in [24, 30, 36, 42, 48, 72] {
++            let buffer = cache.get(CursorIcon::Default, size, &cursor, 0);
++            let element = MemoryRenderBufferRenderElement::from_buffer(
++                &mut renderer,
++                (0., 0.),
++                &buffer,
++                None,
++                None,
++                None,
++                Kind::Cursor,
++            )
++            .unwrap();
++            assert!(!ids.contains(element.id()));
++            ids.push(element.id().clone());
++        }
++        let buffer = cache.get(CursorIcon::Default, 30, &cursor, 0);
++        let element = MemoryRenderBufferRenderElement::from_buffer(
++            &mut renderer,
++            (0., 0.),
++            &buffer,
++            None,
++            None,
++            None,
++            Kind::Cursor,
++        )
++        .unwrap();
++        assert_eq!(element.id(), &ids[1]);
++        assert_eq!(cache.cache.borrow().0.len(), 6);
++        cache.clear();
++        assert!(cache.cache.borrow().0.is_empty());
++        let buffer = cache.get(CursorIcon::Default, 30, &cursor, 0);
++        let element = MemoryRenderBufferRenderElement::from_buffer(
++            &mut renderer,
++            (0., 0.),
++            &buffer,
++            None,
++            None,
++            None,
++            Kind::Cursor,
++        )
++        .unwrap();
++        assert_ne!(element.id(), &ids[1]);
++    }
++
++    #[test]
++    fn texture_cache_survives_decoded_eviction_and_changed_frame_count() {
++        let mut decoded = CursorCache::default();
++        let textures = CursorTextureCache::default();
++        let mut animated = synthetic_cursor(30, 30, 30);
++        animated.images.push(animated.images[0].clone());
++        let old = Rc::new(animated);
++        decoded.get_or_insert_with((CursorIcon::Default, 30), || old.clone());
++        textures.get(CursorIcon::Default, 30, &old, 1);
++        for size in 100..100 + MAX_CURSOR_CACHE_ENTRIES as i32 {
++            decoded.get_or_insert_with((CursorIcon::Default, size), || {
++                Rc::new(synthetic_cursor(size, 1, 1))
++            });
++        }
++        assert!(!decoded.0.iter().any(|(key, _)| key.1 == 30));
++        let new = decoded
++            .get_or_insert_with((CursorIcon::Default, 30), || {
++                Rc::new(synthetic_cursor(30, 25, 25))
++            })
++            .clone();
++        textures.get(CursorIcon::Default, 30, &new, 0);
++        assert_eq!(textures.cache.borrow().0.back().unwrap().1 .1.len(), 1);
++        // Rendering a retained old cursor must rebuild its two-frame texture set.
++        textures.get(CursorIcon::Default, 30, &old, 1);
++        assert_eq!(textures.cache.borrow().0.back().unwrap().1 .1.len(), 2);
++        assert!(Rc::ptr_eq(
++            &textures.cache.borrow().0.back().unwrap().1 .0,
++            &old
++        ));
++    }
++
++    #[test]
++    fn fractional_overlap_position_uses_physical_hotspot() {
++        let cursor = synthetic_cursor(30, 30, 30);
++        let position = cursor.physical_position(&cursor.images[0], (20., 20.).into(), 1.25);
++        assert_eq!(position, (21, 19).into());
++        assert_eq!(position.to_f64().to_logical(1.25), (16.8, 15.2).into());
++    }
++
++    #[test]
++    #[cfg(debug_assertions)]
++    fn cursor_element_rejects_a_different_output_scale() {
++        let mut renderer = renderer();
++        let cache = CursorTextureCache::default();
++        let cursor = Rc::new(synthetic_cursor(30, 30, 30));
++        let buffer = cache.get(CursorIcon::Default, 30, &cursor, 0);
++        let element = CursorRenderElement::new(
++            &mut renderer,
++            (20., 20.).into(),
++            1.25,
++            &buffer,
++            &cursor,
++            &cursor.images[0],
++        )
++        .unwrap();
++        for check in [0, 1, 2] {
++            assert!(
++                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match check {
++                    0 => {
++                        element.geometry(1.5.into());
++                    }
++                    1 => {
++                        element.damage_since(1.5.into(), None);
++                    }
++                    _ => {
++                        element.opaque_regions(1.5.into());
++                    }
++                }))
++                .is_err()
++            );
++        }
++    }
++
++    fn legacy_element(
++        renderer: &mut GlesRenderer,
++        cursor: &XCursor,
++        pointer: Point<f64, Logical>,
++        scale: f64,
++    ) -> MemoryRenderBufferRenderElement<GlesRenderer> {
++        let frame = &cursor.images[0];
++        let integer_scale = scale.ceil() as i32;
++        let buffer = MemoryRenderBuffer::from_slice(
++            &frame.pixels_rgba,
++            Fourcc::Argb8888,
++            (frame.width as i32, frame.height as i32),
++            integer_scale,
++            Transform::Normal,
++            None,
++        );
++        let hotspot = XCursor::hotspot(frame).to_logical(integer_scale);
++        let position = (pointer - hotspot.to_f64()).to_physical_precise_round(scale);
++        MemoryRenderBufferRenderElement::from_buffer(
++            renderer,
++            position,
++            &buffer,
++            None,
++            None,
++            None,
++            Kind::Cursor,
++        )
++        .unwrap()
++    }
++
++    #[test]
++    fn named_cursor_gles_pixels_are_one_to_one() {
++        let mut renderer = renderer();
++        let cache = CursorTextureCache::default();
++        for scale in [1., 1.25, 1.5, 1.75, 2., 3.] {
++            let size = nominal_size(24, scale);
++            // At fractional scales the actual image is deliberately not nominal,
++            // and not divisible by ceil(scale). Do not crop or stretch it.
++            let width = size as u32 + u32::from(scale.fract() != 0.);
++            let mut cursor = synthetic_cursor(size, width, width - 4);
++            if scale.fract() != 0. {
++                cursor.images[0].xhot = 3;
++                cursor.images[0].yhot = 5;
++            }
++            let cursor = Rc::new(cursor);
++            let frame = &cursor.images[0];
++            for pointer in [(20.3, 17.7), (0.3, 1.7)] {
++                let pointer: Point<f64, Logical> = pointer.into();
++                let buffer = cache.get(CursorIcon::Default, size, &cursor, 0);
++                let element = CursorRenderElement::new(
++                    &mut renderer,
++                    pointer,
++                    scale,
++                    &buffer,
++                    &cursor,
++                    frame,
++                )
++                .unwrap();
++                let x0 = (pointer.x * scale - frame.xhot as f64).round() as i32;
++                let y0 = (pointer.y * scale - frame.yhot as f64).round() as i32;
++                assert_eq!(
++                    element.geometry(scale.into()),
++                    Rectangle::new(
++                        (x0, y0).into(),
++                        (frame.width as i32, frame.height as i32).into()
++                    )
++                );
++                assert_eq!(
++                    element.src().size,
++                    (frame.width as f64, frame.height as f64).into()
++                );
++                assert_eq!(
++                    element.damage_since(scale.into(), None).as_ref(),
++                    &[Rectangle::from_size(
++                        (frame.width as i32, frame.height as i32).into()
++                    )]
++                );
++                let actual = render_to_vec(
++                    &mut renderer,
++                    (160, 160).into(),
++                    scale.into(),
++                    Transform::Normal,
++                    Fourcc::Abgr8888,
++                    [element].into_iter(),
++                )
++                .unwrap();
++                for y in 0..160i32 {
++                    for x in 0..160i32 {
++                        let (sx, sy) = (x - x0, y - y0);
++                        let expected = if (0..frame.width as i32).contains(&sx)
++                            && (0..frame.height as i32).contains(&sy)
++                        {
++                            let offset = (sy as usize * frame.width as usize + sx as usize) * 4;
++                            let bgra = &frame.pixels_rgba[offset..offset + 4];
++                            [bgra[2], bgra[1], bgra[0], bgra[3]]
++                        } else {
++                            [0; 4]
++                        };
++                        let offset = (y as usize * 160 + x as usize) * 4;
++                        assert_eq!(
++                            &actual[offset..offset + 4],
++                            &expected,
++                            "scale {scale}, pointer {pointer:?}, pixel {x},{y}"
++                        );
++                    }
++                }
++                if scale == 2. {
++                    let old = legacy_element(&mut renderer, &cursor, pointer, scale);
++                    let expected = render_to_vec(
++                        &mut renderer,
++                        (160, 160).into(),
++                        scale.into(),
++                        Transform::Normal,
++                        Fourcc::Abgr8888,
++                        [old].into_iter(),
++                    )
++                    .unwrap();
++                    assert_eq!(actual, expected);
++                }
++            }
++        }
++    }
++
++    #[test]
++    fn fallback_pixels_match_legacy_path() {
++        let mut renderer = renderer();
++        let cache = CursorTextureCache::default();
++        let cursor = Rc::new(CursorManager::fallback_cursor());
++        let pointer = (17.3, 19.7).into();
++        for scale in [1., 1.25, 1.5, 2., 3.] {
++            let buffer = cache.get(CursorIcon::Default, nominal_size(24, scale), &cursor, 0);
++            let new = CursorRenderElement::new(
++                &mut renderer,
++                pointer,
++                scale,
++                &buffer,
++                &cursor,
++                &cursor.images[0],
++            )
++            .unwrap();
++            let old = legacy_element(&mut renderer, &cursor, pointer, scale);
++            assert_eq!(new.geometry(scale.into()), old.geometry(scale.into()));
++            assert_eq!(new.src(), old.src());
++            let new = render_to_vec(
++                &mut renderer,
++                (160, 160).into(),
++                scale.into(),
++                Transform::Normal,
++                Fourcc::Abgr8888,
++                [new].into_iter(),
++            )
++            .unwrap();
++            let old = render_to_vec(
++                &mut renderer,
++                (160, 160).into(),
++                scale.into(),
++                Transform::Normal,
++                Fourcc::Abgr8888,
++                [old].into_iter(),
++            )
++            .unwrap();
++            assert_eq!(new, old, "scale {scale}");
++        }
++    }
++
++    #[test]
++    fn animation_frame_timing_is_unchanged() {
++        let mut cursor = synthetic_cursor(30, 30, 30);
++        cursor.images[0].delay = 20;
++        let mut second = cursor.images[0].clone();
++        second.delay = 30;
++        cursor.images.push(second);
++        cursor.animation_duration = 50;
++        assert!(cursor.is_animated_cursor());
++        for (time, index) in [(0, 0), (19, 0), (20, 1), (49, 1), (50, 0), (70, 1)] {
++            assert_eq!(cursor.frame(time).0, index);
++        }
++    }
++}
+diff --git a/src/niri.rs b/src/niri.rs
+index 8860232e..d7d4b710 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -117,7 +117,7 @@ use crate::a11y::A11y;
+ use crate::animation::Clock;
+ use crate::backend::tty::SurfaceDmabufFeedback;
+ use crate::backend::{Backend, Headless, RenderResult, Tty, Winit};
+-use crate::cursor::{CursorManager, CursorTextureCache, RenderCursor, XCursor};
++use crate::cursor::{CursorManager, CursorRenderElement, CursorTextureCache, RenderCursor};
+ #[cfg(feature = "dbus")]
+ use crate::dbus::freedesktop_locale1::Locale1ToNiri;
+ #[cfg(feature = "dbus")]
+@@ -3708,7 +3708,7 @@ impl Niri {
+         let pointer_pos = pointer_pos - output_pos.to_f64();
+ 
+         // Get the render cursor to draw.
+-        let cursor_scale = output_scale.integer_scale();
++        let cursor_scale = output_scale.fractional_scale();
+         let render_cursor = self.cursor_manager.get_render_cursor(cursor_scale);
+ 
+         let output_scale = Scale::from(output.current_scale().fractional_scale());
+@@ -3729,25 +3729,16 @@ impl Niri {
+                     &mut |elem| push(elem.into()),
+                 );
+             }
+-            RenderCursor::Named {
+-                icon,
+-                scale,
+-                cursor,
+-            } => {
++            RenderCursor::Named { icon, size, cursor } => {
+                 let (idx, frame) = cursor.frame(self.start_time.elapsed().as_millis() as u32);
+-                let hotspot = XCursor::hotspot(frame).to_logical(scale);
+-                let pointer_pos =
+-                    (pointer_pos - hotspot.to_f64()).to_physical_precise_round(output_scale);
+-
+-                let texture = self.cursor_texture_cache.get(icon, scale, &cursor, idx);
+-                match MemoryRenderBufferRenderElement::from_buffer(
++                let texture = self.cursor_texture_cache.get(icon, size, &cursor, idx);
++                match CursorRenderElement::new(
+                     renderer,
+                     pointer_pos,
++                    cursor_scale,
+                     &texture,
+-                    None,
+-                    None,
+-                    None,
+-                    Kind::Cursor,
++                    &cursor,
++                    frame,
+                 ) {
+                     Ok(element) => push(element.into()),
+                     Err(err) => {
+@@ -3941,17 +3932,24 @@ impl Niri {
+ 
+                     // The default cursor is rendered at the right scale for each output, which
+                     // means that it may have a different hotspot for each output.
+-                    let output_scale = output.current_scale().integer_scale();
++                    let output_scale = output.current_scale().fractional_scale();
+                     let cursor = self
+                         .cursor_manager
+                         .get_cursor_with_name(icon, output_scale)
+                         .unwrap_or_else(|| self.cursor_manager.get_default_cursor(output_scale));
+ 
+-                    // For simplicity, we always use frame 0 for this computation. Let's hope the
+-                    // hotspot doesn't change between frames.
+-                    let hotspot = XCursor::hotspot(&cursor.frames()[0]).to_logical(output_scale);
+-
+-                    let surface_pos = pointer_pos.to_i32_round() - hotspot;
++                    // For simplicity, use frame 0, as before. Share rendering's
++                    // physical hotspot and rounding before converting to bbox coordinates.
++                    let surface_pos = cursor
++                        .physical_position(
++                            &cursor.frames()[0],
++                            pointer_pos - geo.loc.to_f64(),
++                            output_scale,
++                        )
++                        .to_f64()
++                        .to_logical(output_scale)
++                        .to_i32_round()
++                        + geo.loc;
+                     let bbox = bbox_from_surface_tree(surface, surface_pos);
+ 
+                     if let Some(mut overlap) = geo.intersection(bbox) {
+@@ -4715,7 +4713,7 @@ impl Niri {
+             // Also keep redrawing if the current cursor is animated.
+             state.unfinished_animations_remain |= self
+                 .cursor_manager
+-                .is_current_cursor_animated(output.current_scale().integer_scale());
++                .is_current_cursor_animated(output.current_scale().fractional_scale());
+ 
+             // Also check layer surfaces.
+             if !state.unfinished_animations_remain {
+@@ -6705,7 +6703,7 @@ fn scale_relocate_crop<E: Element>(
+ niri_render_elements! {
+     PointerRenderElements<R> => {
+         Wayland = WaylandSurfaceRenderElement<R>,
+-        NamedPointer = MemoryRenderBufferRenderElement<R>,
++        NamedPointer = CursorRenderElement<R>,
+     }
+ }
+ 

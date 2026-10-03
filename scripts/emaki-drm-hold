@@ -1,0 +1,188 @@
+#!/usr/bin/python3 -I
+"""Keep primary DRM files open across login sessions without retaining master.
+
+No modesetting, render nodes, or session ownership. Failure to prove a descriptor
+is non-master closes it immediately; greetd must remain usable without this aid.
+"""
+import ctypes
+import errno
+import fcntl
+import logging
+import os
+from pathlib import Path
+import re
+import select
+import signal
+import socket
+import stat
+import struct
+import time
+
+# Linux DRM UAPI: drm_auth is one u32. AUTH_MAGIC(0) is libdrm's drmIsMaster
+# probe: EINVAL means master, EACCES means non-master. Other errors are unsafe.
+DRM_IOCTL_AUTH_MAGIC = 0x40046411
+DRM_IOCTL_DROP_MASTER = 0x641f
+LOG = logging.getLogger('emaki-drm-hold')
+
+
+def is_master(fd):
+    try:
+        fcntl.ioctl(fd, DRM_IOCTL_AUTH_MAGIC, struct.pack('=I', 0))
+        return True
+    except OSError as error:
+        if error.errno == errno.EINVAL:
+            return True
+        if error.errno == errno.EACCES:
+            return False
+        raise
+
+
+def open_nonmaster(path):
+    fd = os.open(path, os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISCHR(info.st_mode) or os.major(info.st_rdev) != 226:
+            raise ValueError('not a DRM character device')
+        if is_master(fd):
+            fcntl.ioctl(fd, DRM_IOCTL_DROP_MASTER)
+        # Verify even if the first probe was non-master; never keep an uncertain fd.
+        if is_master(fd):
+            raise RuntimeError('DRM master retained after drop')
+        return fd, (info.st_ino, info.st_rdev)
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+class Holder:
+    def __init__(self, directory=Path('/dev/dri')):
+        self.directory = directory
+        self.held = {}
+        self.failures = {}
+
+    def scan(self):
+        now = time.monotonic()
+        cards = set(self.directory.glob('card[0-9]*'))
+        cards = {p for p in cards if re.fullmatch(r'card[0-9]+', p.name)}
+        for path, (fd, identity) in list(self.held.items()):
+            try:
+                info = path.lstat()
+                same = path in cards and (info.st_ino, info.st_rdev) == identity
+            except OSError:
+                same = False
+            if not same:
+                os.close(fd)
+                del self.held[path]
+        for path in sorted(cards - self.held.keys()):
+            previous = self.failures.get(path)
+            if previous and now < previous[0]:
+                continue
+            try:
+                self.held[path] = open_nonmaster(path)
+                self.failures.pop(path, None)
+                LOG.info('holding %s without DRM master', path)
+            except (OSError, ValueError, RuntimeError) as error:
+                message = str(error)
+                if not previous or previous[2] != message:
+                    LOG.warning('cannot hold %s; continuing without it: %s', path, error)
+                delay = min(previous[1] * 2, 300) if previous else 5
+                self.failures[path] = (now + delay, delay, message)
+        for path in self.failures.keys() - cards:
+            del self.failures[path]
+
+    def retry_timeout(self):
+        if not self.failures:
+            return None
+        return max(0, min(value[0] for value in self.failures.values()) - time.monotonic())
+
+    def close(self):
+        for fd, _ in self.held.values():
+            os.close(fd)
+        self.held.clear()
+
+
+class CardWatch:
+    """Watch the parent too: /dev/dri may not exist yet, or be replaced."""
+    MASK = 0x100 | 0x200 | 0x40 | 0x80 | 0x400 | 0x800  # create/delete/move/self
+
+    def __init__(self, directory=Path('/dev/dri')):
+        self.directory = directory
+        self.libc = ctypes.CDLL(None, use_errno=True)
+        self.libc.inotify_init1.argtypes = [ctypes.c_int]
+        self.libc.inotify_add_watch.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
+        self.fd = self.libc.inotify_init1(os.O_CLOEXEC | os.O_NONBLOCK)
+        if self.fd < 0:
+            raise OSError(ctypes.get_errno(), 'inotify_init1')
+        try:
+            self.add(directory.parent)
+            self.refresh()
+        except BaseException:
+            self.close()
+            raise
+
+    def add(self, path):
+        if self.libc.inotify_add_watch(self.fd, os.fsencode(path), self.MASK) < 0:
+            raise OSError(ctypes.get_errno(), 'inotify_add_watch', str(path))
+
+    def refresh(self):
+        try:
+            self.add(self.directory)
+        except FileNotFoundError:
+            pass
+
+    def changed(self, timeout):
+        if not select.select([self.fd], [], [], timeout)[0]:
+            return False
+        while True:
+            try:
+                os.read(self.fd, 65536)
+            except BlockingIOError:
+                break
+        self.refresh()
+        return True
+
+    def close(self):
+        os.close(self.fd)
+
+
+def notify_ready():
+    address = os.environ.get('NOTIFY_SOCKET')
+    if address:
+        if address.startswith('@'):
+            address = '\0' + address[1:]
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as peer:
+            peer.connect(address)
+            peer.sendall(b'READY=1')
+
+
+def main():
+    logging.basicConfig(level=logging.INFO, format='%(name)s: %(message)s')
+    stopping = False
+
+    def stop(_signum, _frame):
+        nonlocal stopping
+        stopping = True
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    holder = Holder()
+    watch = None
+    try:
+        watch = CardWatch()  # Subscribe before scanning so hotplug cannot be missed.
+        holder.scan()
+        # Failed cards are logged and retried, never a dependency failure for greetd.
+        notify_ready()
+        while not stopping:
+            retry = holder.retry_timeout()
+            # A short select bound only services stop signals; it does not scan/open.
+            changed = watch.changed(1 if retry is None else min(1, retry))
+            if changed or holder.retry_timeout() == 0:
+                holder.scan()
+    finally:
+        if watch is not None:
+            watch.close()
+        holder.close()
+
+
+if __name__ == '__main__':
+    main()

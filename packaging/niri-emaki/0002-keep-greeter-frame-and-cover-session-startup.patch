@@ -1,0 +1,1661 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Emaki contributors <emaki@localhost>
+Date: Thu, 1 Oct 2026 15:00:00 -0500
+Subject: [PATCH 2/2] Retain greeter scanout and cover fresh session startup
+
+Consume a final-frame PNG before the first output render, exclude it from
+all captures, and expose an idempotent release and remaining-budget IPC.
+Bound coverage to eight seconds, keep critical UI above it, and release
+immediately for a session lock. Retain greeter scanout using CLOSEFB and
+pause; suppress stale saved-framebuffer restoration in the next session.
+
+Generated from the worktree with git diff; no commit or index mutation.
+---
+diff --git a/niri-config/src/binds.rs b/niri-config/src/binds.rs
+index 0be7596f..9bc401d4 100644
+--- a/niri-config/src/binds.rs
++++ b/niri-config/src/binds.rs
+@@ -112,6 +112,7 @@ pub enum Action {
+     Spawn(#[knuffel(arguments)] Vec<String>),
+     SpawnSh(#[knuffel(argument)] String),
+     DoScreenTransition(#[knuffel(property(name = "delay-ms"))] Option<u16>),
++    EmakiStartupCoverRelease(#[knuffel(property(name = "fade-ms"))] Option<u16>),
+     #[knuffel(skip)]
+     ConfirmScreenshot {
+         write_to_disk: bool,
+@@ -401,6 +402,9 @@ impl From<niri_ipc::Action> for Action {
+             niri_ipc::Action::Spawn { command } => Self::Spawn(command),
+             niri_ipc::Action::SpawnSh { command } => Self::SpawnSh(command),
+             niri_ipc::Action::DoScreenTransition { delay_ms } => Self::DoScreenTransition(delay_ms),
++            niri_ipc::Action::EmakiStartupCoverRelease { fade_ms } => {
++                Self::EmakiStartupCoverRelease(fade_ms)
++            }
+             niri_ipc::Action::Screenshot { show_pointer, path } => {
+                 Self::Screenshot(show_pointer, path)
+             }
+diff --git a/niri-ipc/src/lib.rs b/niri-ipc/src/lib.rs
+index 0aa3cb4f..32e31bfd 100644
+--- a/niri-ipc/src/lib.rs
++++ b/niri-ipc/src/lib.rs
+@@ -75,6 +75,8 @@ pub enum Request {
+     Windows,
+     /// Request information about layer-shell surfaces.
+     Layers,
++    /// Request the remaining lifetime and matching outputs of Emaki's startup cover.
++    EmakiStartupCover,
+     /// Request information about the configured keyboard layouts.
+     KeyboardLayouts,
+     /// Request information about the focused output.
+@@ -149,6 +151,8 @@ pub enum Response {
+     Windows(Vec<Window>),
+     /// Information about layer-shell surfaces.
+     Layers(Vec<LayerSurface>),
++    /// Information about Emaki's startup cover.
++    EmakiStartupCover(StartupCoverStatus),
+     /// Information about the keyboard layout.
+     KeyboardLayouts(KeyboardLayouts),
+     /// Information about the focused output.
+@@ -167,6 +171,18 @@ pub enum Response {
+     Casts(Vec<Cast>),
+ }
+
++/// Current compositor startup cover, for a shell taking over the same image.
++#[derive(Serialize, Deserialize, Debug, Clone, Default)]
++#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
++pub struct StartupCoverStatus {
++    /// True only while the cover is fully opaque and has at least one matching output.
++    pub active: bool,
++    /// Milliseconds remaining until the compositor's hard deadline; zero when inactive.
++    pub remaining_ms: u64,
++    /// Names of outputs whose transformed physical size matches the image.
++    pub outputs: Vec<String>,
++}
++
+ /// Overview information.
+ #[derive(Serialize, Deserialize, Debug, Clone)]
+ #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+@@ -220,6 +236,12 @@ pub enum Action {
+         #[cfg_attr(feature = "clap", arg(short, long))]
+         delay_ms: Option<u16>,
+     },
++    /// Release Emaki's compositor startup cover. Repeated calls do nothing.
++    EmakiStartupCoverRelease {
++        /// Fade duration in milliseconds. Omitted means immediate release.
++        #[cfg_attr(feature = "clap", arg(long))]
++        fade_ms: Option<u16>,
++    },
+     /// Open the screenshot UI.
+     Screenshot {
+         ///  Whether to show the mouse pointer by default in the screenshot UI.
+diff --git a/src/backend/tty.rs b/src/backend/tty.rs
+index be4a0c41..21a78596 100644
+--- a/src/backend/tty.rs
++++ b/src/backend/tty.rs
+@@ -70,6 +70,8 @@ use crate::render_helpers::renderer::AsGlesRenderer;
+ use crate::render_helpers::{resources, shaders, RenderCtx, RenderTarget};
+ use crate::utils::{get_monotonic_time, is_laptop_panel, logical_output, PanelOrientation};
+
++mod keep_frame;
++
+ const SUPPORTED_COLOR_FORMATS: [Fourcc; 4] = [
+     Fourcc::Xrgb8888,
+     Fourcc::Xbgr8888,
+@@ -100,6 +102,9 @@ pub struct Tty {
+     // Whether the debug tinting is enabled.
+     debug_tint: bool,
+     ipc_outputs: Arc<Mutex<IpcOutputMap>>,
++    // Only the dedicated Emaki greeter opts into retaining its final KMS frame.
++    keep_frame_on_exit: bool,
++    discard_previous_drm_state: bool,
+ }
+
+ pub type TtyRenderer<'render> = MultiRenderer<
+@@ -128,6 +133,7 @@ type GbmDrmCompositor = DrmCompositor<
+ >;
+
+ pub struct OutputDevice {
++    discard_previous_drm_state: bool,
+     token: RegistrationToken,
+     // Can be None for display-only devices such as DisplayLink.
+     render_node: Option<DrmNode>,
+@@ -414,6 +420,16 @@ impl Tty {
+     ) -> anyhow::Result<Self> {
+         let _span = tracy_client::span!("Tty::new");
+
++        let keep_frame_on_exit =
++            std::env::var_os("EMAKI_GREETER_KEEP_FRAME").is_some_and(|value| value == "1");
++        // Never pass the greeter-only shutdown mode to clients or another compositor.
++        std::env::remove_var("EMAKI_GREETER_KEEP_FRAME");
++
++        let discard_previous_drm_state = std::env::var_os("EMAKI_SESSION_TAKEOVER")
++            .is_some_and(|value| value == "1")
++            || std::env::var_os("EMAKI_LOGIN_HANDOFF").is_some();
++        std::env::remove_var("EMAKI_SESSION_TAKEOVER");
++
+         let (session, notifier) = LibSeatSession::new().context(
+             "Error creating a session. This might mean that you're trying to run niri on a TTY \
+              that is already busy, for example if you're running this inside tmux that had been \
+@@ -506,9 +522,77 @@ impl Tty {
+             update_output_config_on_resume: false,
+             debug_tint: false,
+             ipc_outputs: Arc::new(Mutex::new(HashMap::new())),
++            keep_frame_on_exit,
++            discard_previous_drm_state,
+         })
+     }
+
++    /// The saved Smithay state refers to the previous compositor's freed framebuffer.
++    pub fn discard_previous_drm_state(&mut self) {
++        self.discard_previous_drm_state = true;
++        for device in self.devices.values_mut() {
++            device.discard_previous_drm_state = true;
++        }
++    }
++
++    fn keep_last_frame(&mut self) -> anyhow::Result<()> {
++        ensure!(self.session.is_active(), "greeter session is inactive");
++
++        // Read the kernel's plane state, rather than the compositor's last rendered
++        // texture: direct scanout, overlay planes and the hardware cursor can all
++        // reference different framebuffers. Collect everything before closing any.
++        let mut frames = Vec::new();
++        for (node, device) in &self.devices {
++            if device.surfaces.is_empty() {
++                continue;
++            }
++            ensure!(device.drm.is_active(), "DRM device {node} is inactive");
++            let mut framebuffers = HashSet::new();
++            for crtc in device.surfaces.keys() {
++                let crtc = device.drm.get_crtc(*crtc)?;
++                if let Some(framebuffer) = crtc.framebuffer() {
++                    framebuffers.insert(u32::from(framebuffer));
++                }
++            }
++            for plane in device.drm.plane_handles()? {
++                let plane = device.drm.get_plane(plane)?;
++                if !plane
++                    .crtc()
++                    .is_some_and(|crtc| device.surfaces.contains_key(&crtc))
++                {
++                    continue;
++                }
++                if let Some(framebuffer) = plane.framebuffer() {
++                    framebuffers.insert(u32::from(framebuffer));
++                }
++            }
++            frames.extend(
++                framebuffers
++                    .into_iter()
++                    .map(|framebuffer| (*node, framebuffer)),
++            );
++        }
++        ensure!(!frames.is_empty(), "no displayed greeter framebuffers");
++
++        // CLOSEFB removes our ownership without detaching the plane. Smithay's
++        // later RMFB for these IDs then fails harmlessly instead of blanking them.
++        // On any failure leave every device active: ordinary CRTC disable/restore
++        // remains valid even if an earlier CLOSEFB already succeeded.
++        for (node, framebuffer) in frames {
++            let device = &self.devices[&node];
++            keep_frame::close_framebuffer(device.drm.device_fd().as_fd(), framebuffer)
++                .with_context(|| format!("CLOSEFB {framebuffer} on {node}"))?;
++        }
++
++        // Pause only after all CLOSEFBs succeed. Both DrmSurface and DrmDevice use
++        // this shared state to skip their normal CRTC disable/console restoration.
++        for device in self.devices.values_mut() {
++            device.drm.pause();
++        }
++        info!("retaining the greeter's final DRM frame for session handoff");
++        Ok(())
++    }
++
+     pub fn init(&mut self, niri: &mut Niri) {
+         // If the session is inactive, skip initialization because we won't be able to do much with
+         // the devices anyway. We'll get ActivateSession and add the devices there instead.
+@@ -911,6 +995,7 @@ impl Tty {
+             .ok();
+
+         let device = OutputDevice {
++            discard_previous_drm_state: self.discard_previous_drm_state,
+             token,
+             render_node,
+             drm,
+@@ -2585,6 +2670,27 @@ impl Tty {
+     }
+ }
+
++impl Drop for OutputDevice {
++    fn drop(&mut self) {
++        if self.discard_previous_drm_state {
++            // Disable our own scanout normally, then suppress Smithay's device restore.
++            // This also applies to hot-unplug and avoids resurrecting the greeter FB.
++            self.surfaces.clear();
++            self.drm.pause();
++        }
++    }
++}
++
++impl Drop for Tty {
++    fn drop(&mut self) {
++        if self.keep_frame_on_exit && !std::thread::panicking() {
++            if let Err(err) = self.keep_last_frame() {
++                warn!("cannot retain greeter frame; using normal DRM teardown: {err:#}");
++            }
++        }
++    }
++}
++
+ impl GammaProps {
+     fn new(device: &DrmDevice, crtc: crtc::Handle) -> anyhow::Result<Self> {
+         let mut gamma_lut = None;
+diff --git a/src/backend/tty/keep_frame.rs b/src/backend/tty/keep_frame.rs
+new file mode 100644
+index 00000000..22e49e2a
+--- /dev/null
++++ b/src/backend/tty/keep_frame.rs
+@@ -0,0 +1,61 @@
++//! The greeter's final DRM framebuffer must outlive its creating process.
++//!
++//! CLOSEFB (Linux 6.8) drops file ownership without removing a displayed buffer.
++//! The drm 0.14 API has no wrapper yet. This ioctl does not suppress the kernel's
++//! last-DRM-close fbdev restoration; the system handoff setup must do that too.
++
++use std::io;
++use std::os::fd::{AsRawFd, BorrowedFd};
++
++use smithay::reexports::rustix::ioctl::{opcode, Opcode};
++
++#[repr(C)]
++struct DrmModeCloseFb {
++    fb_id: u32,
++    pad: u32,
++}
++
++// DRM_IOWR(0xD0, struct drm_mode_closefb), from drm.h/drm_mode.h. Use
++// rustix's architecture-aware encoding instead of an x86-specific ioctl number.
++const DRM_IOCTL_MODE_CLOSEFB: Opcode = opcode::read_write::<DrmModeCloseFb>(b'd', 0xd0);
++
++pub(super) fn close_framebuffer(fd: BorrowedFd<'_>, framebuffer: u32) -> io::Result<()> {
++    let mut arg = DrmModeCloseFb {
++        fb_id: framebuffer,
++        pad: 0,
++    };
++    // SAFETY: the DRM UAPI expects a pointer to this initialized repr(C), two-u32
++    // structure. The borrowed fd and argument remain alive throughout the call.
++    let result = unsafe { libc::ioctl(fd.as_raw_fd(), DRM_IOCTL_MODE_CLOSEFB as _, &mut arg) };
++    if result < 0 {
++        Err(io::Error::last_os_error())
++    } else {
++        Ok(())
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use std::fs::File;
++    use std::os::fd::AsFd;
++
++    use super::*;
++
++    #[test]
++    fn closefb_matches_kernel_abi() {
++        assert_eq!(std::mem::size_of::<DrmModeCloseFb>(), 8);
++        assert_eq!(std::mem::align_of::<DrmModeCloseFb>(), 4);
++        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
++        assert_eq!(DRM_IOCTL_MODE_CLOSEFB, 0xc00864d0);
++    }
++
++    #[test]
++    fn unsupported_closefb_is_an_error() {
++        // Exercise the actual syscall/error boundary without touching a DRM node.
++        // The caller must preserve normal teardown on this error, including on
++        // kernels predating CLOSEFB.
++        let fd = File::open("/dev/null").unwrap();
++        let error = close_framebuffer(fd.as_fd(), 1).unwrap_err();
++        assert_eq!(error.raw_os_error(), Some(libc::ENOTTY));
++    }
++}
+diff --git a/src/cli.rs b/src/cli.rs
+index 308b3127..85c2d4b6 100644
+--- a/src/cli.rs
++++ b/src/cli.rs
+@@ -69,6 +69,8 @@ pub enum Msg {
+     Windows,
+     /// List open layer-shell surfaces.
+     Layers,
++    /// Show Emaki's compositor startup cover and its remaining deadline.
++    EmakiStartupCover,
+     /// Get the configured keyboard layouts.
+     KeyboardLayouts,
+     /// Print information about the focused output.
+diff --git a/src/input/mod.rs b/src/input/mod.rs
+index f1ad4932..6ddae4dd 100644
+--- a/src/input/mod.rs
++++ b/src/input/mod.rs
+@@ -706,6 +706,9 @@ impl State {
+                     self.niri.do_screen_transition(renderer, delay_ms);
+                 });
+             }
++            Action::EmakiStartupCoverRelease(fade_ms) => {
++                self.niri.release_startup_cover(fade_ms);
++            }
+             Action::ScreenshotScreen(write_to_disk, show_pointer, path) => {
+                 let active = self.niri.layout.active_output().cloned();
+                 if let Some(active) = active {
+@@ -4590,6 +4593,7 @@ fn allowed_when_locked(action: &Action) -> bool {
+     matches!(
+         action,
+         Action::Quit(_)
++            | Action::EmakiStartupCoverRelease(_)
+             | Action::ChangeVt(_)
+             | Action::Suspend
+             | Action::PowerOffMonitors
+@@ -4603,6 +4607,7 @@ fn allowed_during_screenshot(action: &Action) -> bool {
+     matches!(
+         action,
+         Action::Quit(_)
++            | Action::EmakiStartupCoverRelease(_)
+             | Action::ChangeVt(_)
+             | Action::Suspend
+             | Action::PowerOffMonitors
+diff --git a/src/input/pick_color_grab.rs b/src/input/pick_color_grab.rs
+index 222abbde..dbc1a301 100644
+--- a/src/input/pick_color_grab.rs
++++ b/src/input/pick_color_grab.rs
+@@ -35,7 +35,10 @@ impl PickColorGrab {
+         state.niri.queue_redraw_all();
+     }
+
+-    fn pick_color_at_point(location: Point<f64, Logical>, data: &mut State) -> Option<PickedColor> {
++    pub(crate) fn pick_color_at_point(
++        location: Point<f64, Logical>,
++        data: &mut State,
++    ) -> Option<PickedColor> {
+         let (output, pos_within_output) = data.niri.output_under(location)?;
+         let output = output.clone();
+
+@@ -56,7 +59,7 @@ impl PickColorGrab {
+                     xray: None,
+                     capture_client: None,
+                 };
+-                let elements = data.niri.render_to_vec(ctx, &output, false);
++                let elements = data.niri.render_capture_to_vec(ctx, &output, false);
+
+                 let mapping = match render_and_download(
+                     renderer,
+diff --git a/src/ipc/client.rs b/src/ipc/client.rs
+index 40a58efa..d2f86b10 100644
+--- a/src/ipc/client.rs
++++ b/src/ipc/client.rs
+@@ -44,6 +44,7 @@ pub fn handle_msg(mut msg: Msg, json: bool) -> anyhow::Result<()> {
+         Msg::Workspaces => Request::Workspaces,
+         Msg::Windows => Request::Windows,
+         Msg::Layers => Request::Layers,
++        Msg::EmakiStartupCover => Request::EmakiStartupCover,
+         Msg::KeyboardLayouts => Request::KeyboardLayouts,
+         Msg::EventStream => Request::EventStream,
+         Msg::RequestError => Request::ReturnError,
+@@ -509,6 +510,18 @@ pub fn handle_msg(mut msg: Msg, json: bool) -> anyhow::Result<()> {
+                 }
+             }
+         }
++        Msg::EmakiStartupCover => {
++            let Response::EmakiStartupCover(status) = response else {
++                bail!("unexpected response: expected EmakiStartupCover, got {response:?}");
++            };
++            if json {
++                println!("{}", serde_json::to_string(&status)?);
++            } else {
++                println!("Startup cover active: {}", status.active);
++                println!("Remaining: {} ms", status.remaining_ms);
++                println!("Outputs: {}", status.outputs.join(", "));
++            }
++        }
+         Msg::OverviewState => {
+             let Response::OverviewState(response) = response else {
+                 bail!("unexpected response: expected Overview, got {response:?}");
+diff --git a/src/ipc/server.rs b/src/ipc/server.rs
+index db71da6d..486f8f0e 100644
+--- a/src/ipc/server.rs
++++ b/src/ipc/server.rs
+@@ -378,6 +378,17 @@ async fn process(ctx: &ClientCtx, request: Request) -> Reply {
+             let color = result.map_err(|_| String::from("error getting picked color"))?;
+             Response::PickedColor(color)
+         }
++        Request::EmakiStartupCover => {
++            let (tx, rx) = async_channel::bounded(1);
++            ctx.event_loop.insert_idle(move |state| {
++                let _ = tx.send_blocking(state.niri.startup_cover_status());
++            });
++            let status = rx
++                .recv()
++                .await
++                .map_err(|_| String::from("error querying startup cover"))?;
++            Response::EmakiStartupCover(status)
++        }
+         Request::Action(action) => {
+             validate_action(&action)?;
+
+diff --git a/src/main.rs b/src/main.rs
+index e80992ee..aac65fa2 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -8,6 +8,7 @@ use std::os::fd::FromRawFd;
+ use std::path::PathBuf;
+ use std::process::Command;
+ use std::sync::atomic::Ordering;
++use std::time::Instant;
+ use std::{env, mem};
+
+ use calloop::EventLoop;
+@@ -20,6 +21,7 @@ use niri::cli::{Cli, CompletionShell, Sub};
+ use niri::dbus;
+ use niri::ipc::client::handle_msg;
+ use niri::niri::State;
++use niri::ui::startup_cover::StartupCoverLoader;
+ use niri::utils::spawning::{
+     spawn, spawn_sh, store_and_increase_nofile_rlimit, CHILD_DISPLAY, CHILD_ENV,
+     REMOVE_ENV_RUST_BACKTRACE, REMOVE_ENV_RUST_LIB_BACKTRACE,
+@@ -39,6 +41,10 @@ static GLOBAL: tracy_client::ProfiledAllocator<std::alloc::System> =
+     tracy_client::ProfiledAllocator::new(std::alloc::System, 100);
+
+ fn main() -> Result<(), Box<dyn std::error::Error>> {
++    let started_at = Instant::now();
++    let startup_cover_path = env::var_os("EMAKI_STARTUP_COVER");
++    env::remove_var("EMAKI_STARTUP_COVER");
++
+     // Set backtrace defaults if not set.
+     if env::var_os("RUST_BACKTRACE").is_none() {
+         env::set_var("RUST_BACKTRACE", "1");
+@@ -139,6 +145,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
+     // Needs to be done before starting Tracy, so that it applies to Tracy's threads.
+     niri::utils::signals::block_early().unwrap();
+
++    let took_over_greeter = startup_cover_path.is_some();
++    let startup_cover = StartupCoverLoader::start(startup_cover_path, started_at);
++
+     // Avoid starting Tracy for the `niri msg` code path since starting/stopping Tracy is a bit
+     // slow.
+     tracy_client::Client::start();
+@@ -185,6 +194,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
+     )
+     .unwrap();
+
++    if took_over_greeter {
++        if let niri::backend::Backend::Tty(tty) = &mut state.backend {
++            tty.discard_previous_drm_state();
++        }
++    }
++
++    if let Some(loader) = startup_cover {
++        let cover = state
++            .backend
++            .with_primary_renderer(|renderer| loader.finish(renderer));
++        if let Some(Some(cover)) = cover {
++            state.niri.install_startup_cover(cover);
++        }
++    }
++
+     // Set WAYLAND_DISPLAY for children.
+     let socket_name = state.niri.socket_name.as_deref().unwrap();
+     env::set_var("WAYLAND_DISPLAY", socket_name);
+diff --git a/src/niri.rs b/src/niri.rs
+index 1d5574ea..58367496 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -171,6 +171,7 @@ use crate::ui::hotkey_overlay::HotkeyOverlay;
+ use crate::ui::mru::{MruCloseRequest, WindowMruUi, WindowMruUiRenderElement};
+ use crate::ui::screen_transition::{self, ScreenTransition};
+ use crate::ui::screenshot_ui::{OutputScreenshot, ScreenshotUi, ScreenshotUiRenderElement};
++use crate::ui::startup_cover::{self, StartupCover};
+ use crate::utils::scale::{closest_representable_scale, guess_monitor_scale};
+ use crate::utils::spawning::{CHILD_DISPLAY, CHILD_ENV};
+ use crate::utils::vblank_throttle::VBlankThrottle;
+@@ -381,6 +382,10 @@ pub struct Niri {
+
+     pub lock_state: LockState,
+
++    startup_cover: Option<StartupCover>,
++    // Survives texture release: a frozen shell replacement must also stop covering windows.
++    startup_cover_deadline: Option<Instant>,
++
+     // State that we last sent to the logind LockedHint.
+     pub locked_hint: Option<bool>,
+
+@@ -2594,6 +2599,8 @@ impl Niri {
+             mods_with_finger_scroll_binds,
+
+             lock_state: LockState::Unlocked,
++            startup_cover: None,
++            startup_cover_deadline: None,
+             locked_hint: None,
+
+             screenshot_ui,
+@@ -4059,6 +4066,15 @@ impl Niri {
+         self.screenshot_ui.advance_animations();
+         self.window_mru_ui.advance_animations();
+
++        if self
++            .startup_cover
++            .as_ref()
++            .is_some_and(StartupCover::is_done)
++        {
++            self.startup_cover = None;
++            self.queue_redraw_all();
++        }
++
+         for state in self.output_state.values_mut() {
+             if let Some(transition) = &mut state.screen_transition {
+                 if transition.is_done() {
+@@ -4160,11 +4176,36 @@ impl Niri {
+         elements
+     }
+
++    /// Interactive captures keep output privacy semantics but omit the login decoration.
++    pub fn render_capture_to_vec<R: NiriRenderer>(
++        &self,
++        ctx: RenderCtx<R>,
++        output: &Output,
++        include_pointer: bool,
++    ) -> Vec<OutputRenderElements<R>> {
++        let mut elements = Vec::new();
++        self.render_with_startup_cover(ctx, output, include_pointer, false, &mut |elem| {
++            elements.push(elem)
++        });
++        elements
++    }
++
+     pub fn render<R: NiriRenderer>(
++        &self,
++        ctx: RenderCtx<R>,
++        output: &Output,
++        include_pointer: bool,
++        push: &mut dyn FnMut(OutputRenderElements<R>),
++    ) {
++        self.render_with_startup_cover(ctx, output, include_pointer, true, push);
++    }
++
++    fn render_with_startup_cover<R: NiriRenderer>(
+         &self,
+         mut ctx: RenderCtx<R>,
+         output: &Output,
+         include_pointer: bool,
++        include_startup_cover: bool,
+         push: &mut dyn FnMut(OutputRenderElements<R>),
+     ) {
+         let _span = tracy_client::span!("Niri::render");
+@@ -4178,14 +4219,14 @@ impl Niri {
+             }
+         }
+
+-        self.fill_xray_elements(ctx.as_gles(), output);
++        self.fill_xray_elements_with_startup_cover(ctx.as_gles(), output, include_startup_cover);
+
+         // Reborrow to shorten lifetime to be able to put in xray.
+         let mut ctx = ctx.r();
+         let state = self.output_state.get(output).unwrap();
+         ctx.xray = Some(&state.xray);
+
+-        self.render_inner(ctx, output, include_pointer, push);
++        self.render_inner(ctx, output, include_pointer, include_startup_cover, push);
+
+         self.clear_xray_elements(output);
+     }
+@@ -4195,6 +4236,7 @@ impl Niri {
+         mut ctx: RenderCtx<R>,
+         output: &Output,
+         include_pointer: bool,
++        include_startup_cover: bool,
+         push: &mut dyn FnMut(OutputRenderElements<R>),
+     ) {
+         let state = self.output_state.get(output).unwrap();
+@@ -4214,13 +4256,6 @@ impl Niri {
+             self.render_pointer(ctx.renderer, output, &mut |elem| push(elem.into()));
+         }
+
+-        // Next, the screen transition texture.
+-        {
+-            if let Some(transition) = &state.screen_transition {
+-                push(transition.render(ctx.target).into());
+-            }
+-        }
+-
+         // Next, the exit confirm dialog.
+         self.exit_confirm_dialog
+             .render(ctx.renderer, output, &mut |elem| push(elem.into()));
+@@ -4230,6 +4265,27 @@ impl Niri {
+             push(element.into());
+         }
+
++        // This decoration must never enter screencopy or screencasts: the shell prepares
++        // its glass from the real desktop underneath. Locks and screenshot UI take priority.
++        if include_startup_cover
++            && ctx.target == RenderTarget::Output
++            && !self.is_locked()
++            && !self.screenshot_ui.is_open()
++        {
++            if let Some(cover) = &self.startup_cover {
++                if let Some(element) = cover.render(output) {
++                    push(element.into());
++                }
++            }
++        }
++
++        // Next, the screen transition texture.
++        {
++            if let Some(transition) = &state.screen_transition {
++                push(transition.render(ctx.target).into());
++            }
++        }
++
+         // If the session is locked, draw the lock surface.
+         if self.is_locked() {
+             if let Some(surface) = state.lock_surface.as_ref() {
+@@ -4309,6 +4365,7 @@ impl Niri {
+                     $layer,
+                     $xray_pos,
+                     $backdrop,
++                    include_startup_cover,
+                     $push,
+                 );
+             }};
+@@ -4335,6 +4392,7 @@ impl Niri {
+                     $layer,
+                     $xray_pos,
+                     $backdrop,
++                    include_startup_cover,
+                     $push,
+                 );
+             }};
+@@ -4435,7 +4493,16 @@ impl Niri {
+         push(backdrop);
+     }
+
+-    pub fn fill_xray_elements(&self, mut ctx: RenderCtx<GlesRenderer>, output: &Output) {
++    pub fn fill_xray_elements(&self, ctx: RenderCtx<GlesRenderer>, output: &Output) {
++        self.fill_xray_elements_with_startup_cover(ctx, output, true);
++    }
++
++    fn fill_xray_elements_with_startup_cover(
++        &self,
++        mut ctx: RenderCtx<GlesRenderer>,
++        output: &Output,
++        include_startup_cover: bool,
++    ) {
+         let _span = tracy_client::span!("Niri::fill_xray_elements");
+
+         // Make sure the xrayed elements themselves cannot use xray by mistake.
+@@ -4468,6 +4535,7 @@ impl Niri {
+                 Layer::Background,
+                 XrayPos::default(),
+                 false,
++                include_startup_cover,
+                 &mut |elem| elements.push(elem.into()),
+             );
+             // Avoid unused capacity remaining forever.
+@@ -4485,6 +4553,7 @@ impl Niri {
+                 Layer::Background,
+                 XrayPos::default(),
+                 true,
++                include_startup_cover,
+                 &mut |elem| elements.push(elem.into()),
+             );
+             // Avoid unused capacity remaining forever.
+@@ -4511,7 +4580,7 @@ impl Niri {
+         let layer_map = layer_map_for_output(output);
+         for for_backdrop in [false, true] {
+             for (mapped, _geo) in
+-                self.layers_in_render_order(&layer_map, Layer::Background, for_backdrop)
++                self.layers_in_render_order(&layer_map, Layer::Background, for_backdrop, true)
+             {
+                 if mapped.rules().block_out_from.is_some() {
+                     return true;
+@@ -4526,9 +4595,18 @@ impl Niri {
+         layer_map: &'a LayerMap,
+         layer: Layer,
+         for_backdrop: bool,
++        include_startup_cover: bool,
+     ) -> impl Iterator<Item = (&'a MappedLayer, Rectangle<i32, Logical>)> {
+         // LayerMap returns layers in reverse stacking order.
+         layer_map.layers_on(layer).rev().filter_map(move |surface| {
++            if startup_cover::client_cover_hidden(
++                surface.namespace(),
++                self.startup_cover_deadline,
++                Instant::now(),
++                include_startup_cover,
++            ) {
++                return None;
++            }
+             let mapped = self.mapped_layer_surfaces.get(surface)?;
+
+             if for_backdrop != mapped.place_within_backdrop() {
+@@ -4549,9 +4627,15 @@ impl Niri {
+         layer: Layer,
+         xray_pos: XrayPos,
+         for_backdrop: bool,
++        include_startup_cover: bool,
+         push: &mut dyn FnMut(LayerSurfaceRenderElement<R>),
+     ) {
+-        for (mapped, geo) in self.layers_in_render_order(layer_map, layer, for_backdrop) {
++        for (mapped, geo) in self.layers_in_render_order(
++            layer_map,
++            layer,
++            for_backdrop,
++            include_startup_cover && ctx.target == RenderTarget::Output,
++        ) {
+             let loc = geo.loc.to_f64();
+             let xray_pos = xray_pos.offset(loc);
+             mapped.render_normal(ctx.r(), ns, loc, xray_pos, push);
+@@ -4567,9 +4651,15 @@ impl Niri {
+         layer: Layer,
+         xray_pos: XrayPos,
+         for_backdrop: bool,
++        include_startup_cover: bool,
+         push: &mut dyn FnMut(LayerSurfaceRenderElement<R>),
+     ) {
+-        for (mapped, geo) in self.layers_in_render_order(layer_map, layer, for_backdrop) {
++        for (mapped, geo) in self.layers_in_render_order(
++            layer_map,
++            layer,
++            for_backdrop,
++            include_startup_cover && ctx.target == RenderTarget::Output,
++        ) {
+             let loc = geo.loc.to_f64();
+             let xray_pos = xray_pos.offset(loc);
+             mapped.render_popups(ctx.r(), ns, loc, xray_pos, push);
+@@ -4603,6 +4693,10 @@ impl Niri {
+             state.unfinished_animations_remain |= self.screenshot_ui.are_animations_ongoing();
+             state.unfinished_animations_remain |= self.window_mru_ui.are_animations_ongoing();
+             state.unfinished_animations_remain |= state.screen_transition.is_some();
++            state.unfinished_animations_remain |= self
++                .startup_cover
++                .as_ref()
++                .is_some_and(StartupCover::is_fading);
+
+             // Also keep redrawing if the current cursor is animated.
+             state.unfinished_animations_remain |= self
+@@ -5481,7 +5575,7 @@ impl Niri {
+                     xray: None,
+                     capture_client: None,
+                 };
+-                let elements = self.render_to_vec(ctx, &output, false);
++                let elements = self.render_capture_to_vec(ctx, &output, false);
+                 let elements = elements.iter().rev();
+
+                 let res = render_to_texture(
+@@ -5837,6 +5931,16 @@ impl Niri {
+     }
+
+     pub fn lock(&mut self, confirmation: SessionLocker) {
++        if self.startup_cover_deadline.is_some() {
++            self.startup_cover_deadline = Some(Instant::now());
++            self.queue_redraw_all();
++        }
++        if let Some(cover) = &mut self.startup_cover {
++            cover.lock();
++            self.startup_cover = None;
++            self.queue_redraw_all();
++        }
++
+         // Check if another client is in the process of locking.
+         if matches!(
+             self.lock_state,
+@@ -6240,11 +6344,87 @@ impl Niri {
+         }
+     }
+
++    #[cfg(test)]
++    pub(crate) fn startup_cover_timer_finished(&self) -> bool {
++        self.startup_cover.is_none() && self.startup_cover_layer_expired("emaki-session-cover")
++    }
++
++    pub fn install_startup_cover(&mut self, cover: StartupCover) {
++        self.startup_cover_deadline = Some(cover.deadline());
++        let timer = Timer::from_deadline(cover.deadline());
++        self.event_loop
++            .insert_source(timer, |_, _, state| {
++                if state.niri.startup_cover.take().is_some() {
++                    info!("startup cover released by deadline");
++                }
++                // The texture may already have been released into the client's drain.
++                // Redraw regardless so a frozen replacement surface disappears too.
++                state.niri.queue_redraw_all();
++                TimeoutAction::Drop
++            })
++            .unwrap();
++        self.startup_cover = Some(cover);
++        self.queue_redraw_all();
++    }
++
++    pub fn release_startup_cover(&mut self, fade_ms: Option<u16>) {
++        if let Some(cover) = &mut self.startup_cover {
++            cover.release(fade_ms);
++            if cover.is_done() {
++                self.startup_cover = None;
++            }
++            self.queue_redraw_all();
++        }
++    }
++
++    #[cfg(test)]
++    pub(crate) fn startup_cover_layer_expired(&self, namespace: &str) -> bool {
++        startup_cover::client_cover_expired(namespace, self.startup_cover_deadline, Instant::now())
++    }
++
++    pub fn startup_cover_status(&self) -> niri_ipc::StartupCoverStatus {
++        if self.is_locked() || self.screenshot_ui.is_open() {
++            return niri_ipc::StartupCoverStatus::default();
++        }
++        let Some(cover) = self
++            .startup_cover
++            .as_ref()
++            .filter(|cover| cover.is_active())
++        else {
++            return niri_ipc::StartupCoverStatus::default();
++        };
++        let mut outputs: Vec<_> = self
++            .output_state
++            .keys()
++            .filter(|output| cover.matches_output(output))
++            .map(Output::name)
++            .collect();
++        outputs.sort();
++        if outputs.is_empty() {
++            return niri_ipc::StartupCoverStatus::default();
++        }
++        niri_ipc::StartupCoverStatus {
++            active: true,
++            remaining_ms: cover
++                .deadline()
++                .saturating_duration_since(Instant::now())
++                .as_millis() as u64,
++            outputs,
++        }
++    }
++
+     pub fn do_screen_transition(&mut self, renderer: &mut GlesRenderer, delay_ms: Option<u16>) {
+         let _span = tracy_client::span!("Niri::do_screen_transition");
+
+         self.update_render_elements(None);
+
++        // Never bake the startup image into a second, independently timed decoration.
++        let startup_cover = self.startup_cover.take();
++        let client_deadline = self.startup_cover_deadline;
++        if client_deadline.is_some() {
++            self.startup_cover_deadline = Some(Instant::now());
++        }
++
+         let textures: Vec<_> = self
+             .output_state
+             .keys()
+@@ -6304,6 +6484,9 @@ impl Niri {
+             })
+             .collect();
+
++        self.startup_cover = startup_cover;
++        self.startup_cover_deadline = client_deadline;
++
+         let delay = delay_ms.map_or(screen_transition::DELAY, |d| {
+             Duration::from_millis(u64::from(d))
+         });
+diff --git a/src/tests/mod.rs b/src/tests/mod.rs
+index ce073481..d7b28d8a 100644
+--- a/src/tests/mod.rs
++++ b/src/tests/mod.rs
+@@ -10,5 +10,6 @@ mod fullscreen;
+ mod layer_shell;
+ mod remove_output;
+ mod screencopy;
++mod startup_cover;
+ mod transactions;
+ mod window_opening;
+diff --git a/src/tests/startup_cover.rs b/src/tests/startup_cover.rs
+new file mode 100644
+index 00000000..a7da9c0d
+--- /dev/null
++++ b/src/tests/startup_cover.rs
+@@ -0,0 +1,376 @@
++//! Rendering and action integration for the compositor's bounded login cover.
++
++use std::fs::File;
++use std::time::Instant;
++
++use niri_config::{Action, Config};
++use smithay::backend::allocator::Fourcc;
++use smithay::backend::renderer::element::Element;
++use smithay::utils::{Scale, Transform};
++
++use super::Fixture;
++use crate::render_helpers::{render_to_vec, RenderCtx, RenderTarget};
++use crate::ui::startup_cover::StartupCoverLoader;
++
++const COVER_PIXEL: [u8; 4] = [173, 91, 37, 255];
++const BACKGROUND_PIXEL: [u8; 4] = [64, 64, 64, 255];
++
++fn fixture() -> Fixture {
++    fixture_with_deadline(None)
++}
++
++fn fixture_with_deadline(deadline: Option<std::time::Duration>) -> Fixture {
++    let config = Config::parse_mem("hotkey-overlay { skip-at-startup; }").unwrap();
++    let mut fixture = Fixture::with_config(config);
++    fixture
++        .niri_state()
++        .backend
++        .headless()
++        .add_renderer()
++        .unwrap();
++    fixture.add_output(1, (32, 24));
++    fixture.add_output(2, (40, 30));
++
++    let shell = xshell::Shell::new().unwrap();
++    let directory = shell.create_temp_dir().unwrap();
++    let path = directory.path().join("cover.png");
++    let mut encoder = png::Encoder::new(File::create(&path).unwrap(), 32, 24);
++    encoder.set_color(png::ColorType::Rgba);
++    let mut writer = encoder.write_header().unwrap();
++    writer
++        .write_image_data(&COVER_PIXEL.repeat(32 * 24))
++        .unwrap();
++    writer.finish().unwrap();
++
++    let loader = StartupCoverLoader::start(Some(path.into_os_string()), Instant::now()).unwrap();
++    let state = fixture.niri_state();
++    let mut cover = state
++        .backend
++        .with_primary_renderer(|renderer| loader.finish(renderer))
++        .flatten()
++        .unwrap();
++    if let Some(duration) = deadline {
++        cover.set_deadline(Instant::now() + duration);
++    }
++    state.niri.install_startup_cover(cover);
++    fixture
++}
++
++fn pixels(fixture: &mut Fixture, output_index: u8, target: RenderTarget) -> Vec<u8> {
++    let output = fixture.niri_output(output_index);
++    let state = fixture.niri_state();
++    state
++        .backend
++        .with_primary_renderer(|renderer| {
++            let ctx = RenderCtx {
++                renderer,
++                target,
++                xray: None,
++                capture_client: None,
++            };
++            let elements = state.niri.render_to_vec(ctx, &output, false);
++            if target == RenderTarget::Output
++                && output_index == 1
++                && state.niri.startup_cover_status().active
++            {
++                assert!(elements[0].opaque_regions(Scale::from(1.)).is_empty());
++            }
++            render_to_vec(
++                renderer,
++                output.current_mode().unwrap().size,
++                Scale::from(1.),
++                Transform::Normal,
++                Fourcc::Abgr8888,
++                elements.iter().rev(),
++            )
++            .unwrap()
++        })
++        .unwrap()
++}
++
++#[test]
++fn egl_startup_cover_is_output_only_and_size_checked() {
++    let mut fixture = fixture();
++    let status = fixture.niri().startup_cover_status();
++    assert!(status.active);
++    assert!(status.remaining_ms > 0 && status.remaining_ms <= 8000);
++    assert_eq!(status.outputs, ["headless-1"]);
++    assert_eq!(
++        pixels(&mut fixture, 1, RenderTarget::Output),
++        COVER_PIXEL.repeat(32 * 24)
++    );
++    for target in [RenderTarget::ScreenCapture, RenderTarget::Screencast] {
++        assert_eq!(
++            pixels(&mut fixture, 1, target),
++            BACKGROUND_PIXEL.repeat(32 * 24)
++        );
++    }
++    assert_eq!(
++        pixels(&mut fixture, 2, RenderTarget::Output),
++        BACKGROUND_PIXEL.repeat(40 * 30)
++    );
++
++    // A screen transition must not preserve the startup PNG beyond its lifetime.
++    let state = fixture.niri_state();
++    state
++        .backend
++        .with_primary_renderer(|renderer| state.niri.do_screen_transition(renderer, Some(0)));
++    fixture
++        .niri_state()
++        .do_action(Action::EmakiStartupCoverRelease(None), false);
++    fixture
++        .niri_state()
++        .do_action(Action::EmakiStartupCoverRelease(Some(1000)), false);
++    assert!(!fixture.niri().startup_cover_status().active);
++    // Releasing the compositor texture does not disable the client-layer deadline.
++    assert!(!fixture
++        .niri()
++        .startup_cover_layer_expired("emaki-session-cover"));
++    assert_eq!(
++        pixels(&mut fixture, 1, RenderTarget::Output),
++        BACKGROUND_PIXEL.repeat(32 * 24)
++    );
++}
++
++#[test]
++fn startup_cover_action_parses_from_config_and_ipc() {
++    let config = Config::parse_mem(
++        r#"binds {
++            Mod+A { emaki-startup-cover-release; }
++            Mod+B { emaki-startup-cover-release fade-ms=150; }
++        }"#,
++    )
++    .unwrap();
++    assert_eq!(
++        config.binds.0[0].action,
++        Action::EmakiStartupCoverRelease(None)
++    );
++    assert_eq!(
++        config.binds.0[1].action,
++        Action::EmakiStartupCoverRelease(Some(150))
++    );
++    let action: niri_ipc::Action =
++        serde_json::from_str(r#"{"EmakiStartupCoverRelease":{"fade_ms":150}}"#).unwrap();
++    assert_eq!(
++        Action::from(action),
++        Action::EmakiStartupCoverRelease(Some(150))
++    );
++    let action: niri_ipc::Action =
++        serde_json::from_str(r#"{"EmakiStartupCoverRelease":{}}"#).unwrap();
++    assert_eq!(Action::from(action), Action::EmakiStartupCoverRelease(None));
++}
++
++#[test]
++fn egl_interactive_captures_omit_the_cover() {
++    use crate::input::pick_color_grab::PickColorGrab;
++
++    let mut fixture = fixture();
++    let output = fixture.niri_output(1);
++    let state = fixture.niri_state();
++    state.backend.with_primary_renderer(|renderer| {
++        let screenshots = state.niri.capture_screenshots(renderer).collect();
++        assert!(state
++            .niri
++            .screenshot_ui
++            .open(renderer, screenshots, output, false, None,));
++        let (size, pixels) = state.niri.screenshot_ui.capture(renderer).unwrap();
++        assert_eq!(pixels, BACKGROUND_PIXEL.repeat((size.w * size.h) as usize));
++        state.niri.screenshot_ui.close();
++    });
++    let color = PickColorGrab::pick_color_at_point((10., 10.).into(), fixture.niri_state())
++        .expect("color under cover");
++    assert_eq!(color.rgb, [64. / 255.; 3]);
++    assert!(fixture.niri().startup_cover_status().active);
++}
++
++#[test]
++fn egl_critical_ui_is_above_the_cover() {
++    let mut fixture = fixture();
++    fixture.niri().config_error_notification.show();
++    fixture.niri_complete_animations();
++    let output = fixture.niri_output(1);
++    let state = fixture.niri_state();
++    state.backend.with_primary_renderer(|renderer| {
++        let notification = state
++            .niri
++            .config_error_notification
++            .render(renderer, &output)
++            .unwrap();
++        let elements = state.niri.render_to_vec(
++            RenderCtx {
++                renderer,
++                target: RenderTarget::Output,
++                xray: None,
++                capture_client: None,
++            },
++            &output,
++            false,
++        );
++        assert_eq!(elements[0].id(), notification.id());
++    });
++    assert!(fixture.niri().exit_confirm_dialog.show());
++    fixture.niri_complete_animations();
++    let state = fixture.niri_state();
++    state.backend.with_primary_renderer(|renderer| {
++        let mut dialog_ids = Vec::new();
++        state
++            .niri
++            .exit_confirm_dialog
++            .render(renderer, &output, &mut |elem| {
++                dialog_ids.push(elem.id().clone());
++            });
++        assert!(!dialog_ids.is_empty());
++        let elements = state.niri.render_to_vec(
++            RenderCtx {
++                renderer,
++                target: RenderTarget::Output,
++                xray: None,
++                capture_client: None,
++            },
++            &output,
++            false,
++        );
++        // The dialog texture is uploaded anew on each render; its backdrop has a stable ID.
++        assert_eq!(elements[1].id(), &dialog_ids[1]);
++    });
++}
++
++#[test]
++fn egl_calloop_deadline_removes_texture_and_redraws_after_client_takeover() {
++    for release_first in [false, true] {
++        let mut fixture = fixture_with_deadline(Some(std::time::Duration::from_millis(30)));
++        // Clear initial redraw flags so this also checks the actual callback queues damage.
++        for state in fixture.niri().output_state.values_mut() {
++            state.redraw_state = crate::niri::RedrawState::Idle;
++        }
++        if release_first {
++            fixture.niri().release_startup_cover(None);
++            for state in fixture.niri().output_state.values_mut() {
++                state.redraw_state = crate::niri::RedrawState::Idle;
++            }
++        }
++        let server = &mut fixture.state.server;
++        let limit = Instant::now() + std::time::Duration::from_secs(2);
++        while !server.state.niri.startup_cover_timer_finished() {
++            assert!(
++                Instant::now() < limit,
++                "calloop startup-cover timer did not fire"
++            );
++            server
++                .event_loop
++                .dispatch(std::time::Duration::from_millis(50), &mut server.state)
++                .unwrap();
++        }
++        assert!(fixture
++            .niri()
++            .startup_cover_layer_expired("emaki-session-cover"));
++        assert!(!fixture.niri().startup_cover_status().active);
++        assert!(fixture
++            .niri()
++            .output_state
++            .values()
++            .all(|state| { !matches!(state.redraw_state, crate::niri::RedrawState::Idle) }));
++        assert_eq!(
++            pixels(&mut fixture, 1, RenderTarget::Output),
++            BACKGROUND_PIXEL.repeat(32 * 24)
++        );
++    }
++}
++
++#[test]
++fn egl_session_lock_request_releases_cover_immediately() {
++    use smithay::reexports::wayland_protocols::ext::session_lock::v1::client::{
++        ext_session_lock_manager_v1::ExtSessionLockManagerV1, ext_session_lock_v1::ExtSessionLockV1,
++    };
++    use std::os::unix::net::UnixStream;
++    use wayland_client::protocol::wl_registry::{self, WlRegistry};
++    use wayland_client::{Connection, Dispatch, QueueHandle};
++
++    #[derive(Default)]
++    struct LockClient {
++        manager: Option<ExtSessionLockManagerV1>,
++    }
++    impl Dispatch<WlRegistry, ()> for LockClient {
++        fn event(
++            state: &mut Self,
++            registry: &WlRegistry,
++            event: wl_registry::Event,
++            _: &(),
++            _: &Connection,
++            qh: &QueueHandle<Self>,
++        ) {
++            if let wl_registry::Event::Global {
++                name,
++                interface,
++                version,
++            } = event
++            {
++                if interface == "ext_session_lock_manager_v1" {
++                    state.manager = Some(registry.bind(name, version.min(1), qh, ()));
++                }
++            }
++        }
++    }
++    wayland_client::delegate_noop!(LockClient: ignore ExtSessionLockManagerV1);
++    wayland_client::delegate_noop!(LockClient: ignore ExtSessionLockV1);
++
++    let mut fixture = fixture();
++    // A socket pair exercises the real lock protocol without a listening socket.
++    let (server, client) = UnixStream::pair().unwrap();
++    fixture
++        .niri()
++        .display_handle
++        .insert_client(
++            server,
++            std::sync::Arc::new(crate::niri::ClientState {
++                compositor_state: Default::default(),
++                can_view_decoration_globals: false,
++                primary_selection_disabled: false,
++                restricted: false,
++                credentials_unknown: false,
++            }),
++        )
++        .expect(
++            "Wayland client insertion requires socket access (denied in the restricted sandbox)",
++        );
++    let connection = Connection::from_socket(client).unwrap();
++    let mut queue = connection.new_event_queue::<LockClient>();
++    let qh = queue.handle();
++    let _registry = connection.display().get_registry(&qh, ());
++    let mut client = LockClient::default();
++    let limit = Instant::now() + std::time::Duration::from_secs(2);
++    while client.manager.is_none() {
++        assert!(Instant::now() < limit, "lock global was not delivered");
++        connection.flush().unwrap();
++        fixture.state.server.dispatch();
++        if let Some(guard) = queue.prepare_read() {
++            match guard.read() {
++                Ok(_) => (),
++                Err(wayland_client::backend::WaylandError::Io(err))
++                    if err.kind() == std::io::ErrorKind::WouldBlock =>
++                {
++                    ()
++                }
++                Err(err) => panic!("Wayland read failed: {err}"),
++            }
++        }
++        queue.dispatch_pending(&mut client).unwrap();
++    }
++    let _lock = client.manager.unwrap().lock(&qh, ());
++    connection.flush().unwrap();
++    while fixture.niri().startup_cover_status().active {
++        assert!(
++            Instant::now() < limit,
++            "Niri::lock did not release the cover"
++        );
++        fixture.state.server.dispatch();
++    }
++    assert!(fixture
++        .niri()
++        .startup_cover_layer_expired("emaki-session-cover"));
++    assert!(fixture.niri().startup_cover_timer_finished());
++    assert_eq!(
++        pixels(&mut fixture, 1, RenderTarget::Output),
++        BACKGROUND_PIXEL.repeat(32 * 24)
++    );
++}
+diff --git a/src/ui/mod.rs b/src/ui/mod.rs
+index c194a247..2661917e 100644
+--- a/src/ui/mod.rs
++++ b/src/ui/mod.rs
+@@ -4,3 +4,4 @@ pub mod hotkey_overlay;
+ pub mod mru;
+ pub mod screen_transition;
+ pub mod screenshot_ui;
++pub mod startup_cover;
+diff --git a/src/ui/startup_cover.rs b/src/ui/startup_cover.rs
+new file mode 100644
+index 00000000..c512ec8e
+--- /dev/null
++++ b/src/ui/startup_cover.rs
+@@ -0,0 +1,352 @@
++//! A bounded, output-only copy of the greeter's final frame.
++
++use std::ffi::OsString;
++use std::fs::File;
++use std::io::BufReader;
++use std::path::Path;
++use std::sync::mpsc::{self, Receiver};
++use std::time::{Duration, Instant};
++
++use anyhow::{ensure, Context};
++use smithay::backend::allocator::Fourcc;
++use smithay::backend::renderer::element::Kind;
++use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
++use smithay::backend::renderer::Texture;
++use smithay::output::Output;
++use smithay::utils::{Scale, Transform};
++
++use crate::render_helpers::primary_gpu_texture::PrimaryGpuTextureRenderElement;
++use crate::render_helpers::texture::{TextureBuffer, TextureRenderElement};
++
++// Eight seconds leaves slow shell startup time while keeping a crashed login bounded.
++// Clients query the remaining duration; they must not restart this budget.
++pub const DEADLINE: Duration = Duration::from_secs(8);
++const MAX_IMAGE_BYTES: usize = 128 * 1024 * 1024;
++
++/// A frozen client cannot retain the replacement PNG after the compositor's deadline.
++/// No guard exists on ordinary starts; the exact namespace is reserved for this handoff.
++#[cfg(test)]
++pub fn client_cover_expired(namespace: &str, deadline: Option<Instant>, now: Instant) -> bool {
++    client_cover_hidden(namespace, deadline, now, true)
++}
++
++/// The reserved replacement surface follows the compositor PNG's capture exclusion,
++/// including interactive captures which otherwise retain Output rendering semantics.
++pub fn client_cover_hidden(
++    namespace: &str,
++    deadline: Option<Instant>,
++    now: Instant,
++    include_startup_cover: bool,
++) -> bool {
++    namespace == "emaki-session-cover"
++        && (!include_startup_cover || deadline.is_some_and(|deadline| now >= deadline))
++}
++
++pub struct StartupCoverLoader {
++    decoded: Receiver<anyhow::Result<DecodedImage>>,
++    deadline: Instant,
++}
++
++struct DecodedImage {
++    rgba: Vec<u8>,
++    size: (i32, i32),
++}
++
++impl StartupCoverLoader {
++    /// `path` is taken out of the environment by main before any children start.
++    pub fn start(path: Option<OsString>, started_at: Instant) -> Option<Self> {
++        let path = path?;
++        let (tx, decoded) = mpsc::sync_channel(1);
++        std::thread::Builder::new()
++            .name("startup-cover".into())
++            .spawn(move || {
++                let _ = tx.send(decode(Path::new(&path)));
++            })
++            .ok()?;
++        Some(Self {
++            decoded,
++            deadline: started_at + DEADLINE,
++        })
++    }
++
++    /// Called before dispatching the event loop, so no output frame can precede the cover.
++    /// Decode and file I/O happen on the worker; even a stuck read cannot delay startup past
++    /// the original deadline. No renderer is sent to the worker thread.
++    pub fn finish(self, renderer: &mut GlesRenderer) -> Option<StartupCover> {
++        let image = match self
++            .decoded
++            .recv_timeout(self.deadline.saturating_duration_since(Instant::now()))
++        {
++            Ok(Ok(image)) if Instant::now() < self.deadline => image,
++            Ok(Err(err)) => {
++                warn!("ignoring invalid startup cover: {err:#}");
++                return None;
++            }
++            _ => return None,
++        };
++        let texture = TextureBuffer::from_memory(
++            renderer,
++            &image.rgba,
++            Fourcc::Abgr8888,
++            image.size,
++            false,
++            1.,
++            Transform::Normal,
++            Vec::new(), // Keep frame callbacks flowing to clients underneath.
++        )
++        .map_err(|err| warn!("error uploading startup cover: {err:?}"))
++        .ok()?;
++        Some(StartupCover {
++            texture,
++            lifetime: Lifetime::new(self.deadline),
++        })
++    }
++}
++
++fn decode(path: &Path) -> anyhow::Result<DecodedImage> {
++    // Checking first also avoids blocking open() on a FIFO. A replacement race is harmless:
++    // the receiver still abandons this worker at the fixed deadline.
++    let metadata = path.metadata()?;
++    ensure!(metadata.is_file(), "startup cover is not a regular file");
++    ensure!(metadata.len() <= MAX_IMAGE_BYTES as u64, "PNG is too large");
++    let file = File::open(path)?;
++    let mut decoder = png::Decoder::new(BufReader::new(file));
++    decoder.set_limits(png::Limits {
++        bytes: MAX_IMAGE_BYTES,
++    });
++    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
++    let mut reader = decoder.read_info().context("reading PNG header")?;
++    let info = reader.info();
++    let pixels = u64::from(info.width) * u64::from(info.height);
++    ensure!(
++        pixels > 0 && pixels <= (MAX_IMAGE_BYTES / 4) as u64,
++        "PNG dimensions too large"
++    );
++    let size = (i32::try_from(info.width)?, i32::try_from(info.height)?);
++    let mut bytes = vec![
++        0;
++        reader
++            .output_buffer_size()
++            .context("PNG buffer size overflow")?
++    ];
++    let info = reader.next_frame(&mut bytes).context("decoding PNG")?;
++    let mut rgba = Vec::with_capacity(pixels as usize * 4);
++    let channels = info.color_type.samples();
++    for pixel in bytes[..info.buffer_size()].chunks_exact(channels) {
++        let [r, g, b, a] = match info.color_type {
++            png::ColorType::Rgba => [pixel[0], pixel[1], pixel[2], pixel[3]],
++            png::ColorType::Rgb => [pixel[0], pixel[1], pixel[2], 255],
++            png::ColorType::Grayscale => [pixel[0], pixel[0], pixel[0], 255],
++            png::ColorType::GrayscaleAlpha => [pixel[0], pixel[0], pixel[0], pixel[1]],
++            png::ColorType::Indexed => unreachable!("EXPAND removes indexed color"),
++        };
++        let premultiply = |v| ((u16::from(v) * u16::from(a) + 127) / 255) as u8;
++        rgba.extend_from_slice(&[premultiply(r), premultiply(g), premultiply(b), a]);
++    }
++    Ok(DecodedImage { rgba, size })
++}
++
++#[derive(Debug)]
++struct Lifetime {
++    deadline: Instant,
++    release: Option<(Instant, Duration)>,
++}
++
++impl Lifetime {
++    fn new(deadline: Instant) -> Self {
++        Self {
++            deadline,
++            release: None,
++        }
++    }
++
++    fn release(&mut self, now: Instant, fade: Duration) {
++        // Repeated requests never extend or restart the fade.
++        self.release.get_or_insert((now, fade));
++    }
++
++    fn lock(&mut self, now: Instant) {
++        // A lock overrides even a previously requested fade.
++        self.release = Some((now, Duration::ZERO));
++    }
++
++    fn alpha(&self, now: Instant) -> f32 {
++        if now >= self.deadline {
++            return 0.;
++        }
++        match self.release {
++            Some((start, fade)) if now >= start + fade => 0.,
++            Some((start, fade)) => {
++                1. - now.saturating_duration_since(start).as_secs_f32() / fade.as_secs_f32()
++            }
++            None => 1.,
++        }
++    }
++}
++
++#[derive(Debug)]
++pub struct StartupCover {
++    texture: TextureBuffer<GlesTexture>,
++    lifetime: Lifetime,
++}
++
++impl StartupCover {
++    #[cfg(test)]
++    pub(crate) fn set_deadline(&mut self, deadline: Instant) {
++        self.lifetime.deadline = deadline;
++    }
++
++    pub fn deadline(&self) -> Instant {
++        self.lifetime.deadline
++    }
++
++    pub fn release(&mut self, fade_ms: Option<u16>) {
++        self.lifetime.release(
++            Instant::now(),
++            Duration::from_millis(u64::from(fade_ms.unwrap_or(0))),
++        );
++    }
++
++    pub fn lock(&mut self) {
++        self.lifetime.lock(Instant::now());
++    }
++
++    pub fn is_done(&self) -> bool {
++        self.lifetime.alpha(Instant::now()) <= 0.
++    }
++
++    pub fn is_fading(&self) -> bool {
++        self.lifetime.release.is_some() && !self.is_done()
++    }
++
++    pub fn is_active(&self) -> bool {
++        self.lifetime.release.is_none() && !self.is_done()
++    }
++
++    pub fn matches_output(&self, output: &Output) -> bool {
++        let Some(mode) = output.current_mode() else {
++            return false;
++        };
++        let size = output.current_transform().transform_size(mode.size);
++        let image_size = self.texture.texture().size();
++        image_size.w == size.w && image_size.h == size.h
++    }
++
++    pub fn render(&self, output: &Output) -> Option<PrimaryGpuTextureRenderElement> {
++        let alpha = self.lifetime.alpha(Instant::now());
++        if alpha <= 0. || !self.matches_output(output) {
++            return None;
++        }
++        let mut texture = self.texture.clone();
++        texture.set_texture_scale(Scale::from(output.current_scale().fractional_scale()));
++        // The PNG is already in display orientation; output rendering applies its transform.
++        Some(PrimaryGpuTextureRenderElement(
++            TextureRenderElement::from_texture_buffer(
++                texture,
++                (0., 0.),
++                alpha,
++                None,
++                None,
++                Kind::Unspecified,
++            ),
++        ))
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn frozen_client_cover_expires_without_affecting_normal_layers() {
++        let now = Instant::now();
++        let deadline = now + DEADLINE;
++        assert!(!client_cover_expired("emaki-session-cover", None, deadline));
++        assert!(!client_cover_expired(
++            "emaki-session-cover",
++            Some(deadline),
++            now
++        ));
++        assert!(client_cover_expired(
++            "emaki-session-cover",
++            Some(deadline),
++            deadline
++        ));
++        assert!(!client_cover_expired(
++            "emaki-test-bar",
++            Some(deadline),
++            deadline
++        ));
++    }
++
++    #[test]
++    fn replacement_cover_is_hidden_from_captures_before_and_after_release() {
++        let now = Instant::now();
++        // Texture release leaves the deadline intact; captures must not depend on
++        // texture presence, capture-client identity or hide-from-own-screencopy.
++        for deadline in [None, Some(now + DEADLINE), Some(now)] {
++            assert!(client_cover_hidden(
++                "emaki-session-cover",
++                deadline,
++                now,
++                false
++            ));
++            assert!(!client_cover_hidden("emaki-bar", deadline, now, false));
++        }
++        assert!(!client_cover_hidden(
++            "emaki-session-cover",
++            Some(now + DEADLINE),
++            now,
++            true
++        ));
++        assert!(client_cover_hidden(
++            "emaki-session-cover",
++            Some(now),
++            now,
++            true
++        ));
++    }
++
++    #[test]
++    fn no_environment_means_no_cover() {
++        assert!(StartupCoverLoader::start(None, Instant::now()).is_none());
++    }
++
++    #[test]
++    fn release_is_idempotent() {
++        let now = Instant::now();
++        let mut lifetime = Lifetime::new(now + DEADLINE);
++        lifetime.release(now, Duration::from_millis(100));
++        lifetime.release(now + Duration::from_millis(50), Duration::from_secs(3));
++        assert_eq!(lifetime.alpha(now + Duration::from_millis(50)), 0.5);
++        assert_eq!(lifetime.alpha(now + Duration::from_millis(100)), 0.);
++        lifetime.release(now + Duration::from_secs(1), Duration::from_secs(3));
++        assert_eq!(lifetime.alpha(now + Duration::from_secs(1)), 0.);
++    }
++
++    #[test]
++    fn deadline_fires_even_during_fade() {
++        let now = Instant::now();
++        let mut lifetime = Lifetime::new(now + DEADLINE);
++        assert_eq!(lifetime.alpha(now + DEADLINE - Duration::from_nanos(1)), 1.);
++        assert_eq!(lifetime.alpha(now + DEADLINE), 0.);
++        lifetime.release(now + Duration::from_secs(3), Duration::from_secs(3));
++        assert!(lifetime.alpha(now + Duration::from_millis(3500)) > 0.);
++        assert_eq!(lifetime.alpha(now + DEADLINE), 0.);
++    }
++
++    #[test]
++    fn lock_releases_immediately() {
++        let now = Instant::now();
++        let mut lifetime = Lifetime::new(now + DEADLINE);
++        lifetime.release(now, Duration::from_secs(2));
++        lifetime.lock(now + Duration::from_millis(10));
++        assert_eq!(lifetime.alpha(now + Duration::from_millis(10)), 0.);
++    }
++
++    #[test]
++    fn missing_or_invalid_png_is_ignored() {
++        assert!(decode(Path::new("/nonexistent-emaki-startup-cover.png")).is_err());
++        assert!(decode(Path::new("/dev/null")).is_err());
++    }
++}

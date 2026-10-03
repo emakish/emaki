@@ -1,0 +1,276 @@
+#!/usr/bin/env python3
+"""Apply Emaki design tokens to component configs.
+
+Read tokens.toml and rewrite the files designated as generated:
+  niri/theme.kdl        window appearance, blur, shadows
+  fuzzel/fuzzel.ini     launcher appearance
+  hypr/hyprlock.conf    lock screen
+  kitty/theme.conf      terminal colors
+  qt6ct/emaki.conf      Qt application palette (also works with qt5ct)
+
+Manual edits to these files are overwritten. Change all values
+in tokens.toml, then run this script.
+
+Directive 1: each setting lives in one place.
+Directive 2: generated files are kept separate and labeled.
+"""
+import tomllib
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+T = tomllib.load((ROOT / "tokens.toml").open("rb"))
+
+C, O, G, F, E, M = (T[k] for k in ("color", "opacity", "geometry", "font", "effect", "motion"))
+A = T["ansi"]
+
+WARNING = "GENERATED from tokens.toml — manual edits will be overwritten"
+
+
+def a(fraction: float) -> str:
+    """Opacity fraction → two hex digits for the alpha channel."""
+    return f"{round(fraction * 255):02x}"
+
+
+def rgba(name: str, fraction: float = 1.0) -> str:
+    return C[name] + a(fraction)
+
+
+niri = f"""// {WARNING}.
+// Source: tokens.toml, generator: scripts/render-theme
+
+layout {{
+    gaps {G["gaps"]}
+
+    focus-ring {{
+        off
+    }}
+
+    // `on` is required: this file is included, and a border block without `on`
+    // does not enable borders in an included file (it would in the main config).
+    border {{
+        on
+        width {G["border_width"]}
+        active-color "#{rgba("accent")}"
+        inactive-color "#{rgba("border_inactive")}"
+    }}
+
+    shadow {{
+        on
+        softness {E["shadow_softness"]}
+        spread 0
+        offset x=0 y=0
+        color "#{rgba("shadow", O["shadow"])}"
+    }}
+}}
+
+blur {{
+    passes {E["blur_passes"]}
+    offset {E["blur_offset"]}
+    noise 0.02
+    saturation 1.5
+}}
+
+window-rule {{
+    geometry-corner-radius {G["radius"]}
+    clip-to-geometry true
+}}
+
+animations {{
+    window-open {{
+        duration-ms {M["duration_ms"]}
+        curve "ease-out-expo"
+    }}
+    window-close {{
+        duration-ms {M["duration_ms"]}
+        curve "ease-out-quad"
+    }}
+}}
+"""
+
+fuzzel = f"""# {WARNING}.
+# Source: tokens.toml, generator: scripts/render-theme
+#
+# Installed to /usr/share/emaki/fuzzel/fuzzel.ini; emaki-power passes it via --config
+# (/etc/xdg/fuzzel/fuzzel.ini belongs to the fuzzel package and is left alone).
+# Your ~/.config/fuzzel/fuzzel.ini overrides this entire file; to use ours as a base,
+# put this on its first line: include=/usr/share/emaki/fuzzel/fuzzel.ini
+
+font={F["ui"]}:size={F["size"]}
+prompt=">  "
+layer=overlay
+width=40
+lines=12
+horizontal-pad=24
+vertical-pad=18
+inner-pad=10
+icon-theme=Adwaita
+terminal=kitty -e
+
+[colors]
+background={rgba("background", O["panel"])}
+text={rgba("text")}
+prompt={rgba("text_muted")}
+placeholder={rgba("text_muted")}
+input={rgba("text")}
+match={rgba("accent")}
+selection={rgba("surface_high")}
+selection-text={rgba("text")}
+selection-match={rgba("accent")}
+border={rgba("accent")}
+
+[border]
+width={G["border_width"]}
+radius={G["radius"]}
+"""
+
+hyprlock = f"""# {WARNING}.
+# Source: tokens.toml, generator: scripts/render-theme
+#
+# Installed to /etc/xdg/hypr/hyprlock.conf. Hyprlock looks in XDG_CONFIG_DIRS
+# and /etc/xdg itself, so no wrapper is needed: your ~/.config/hypr/hyprlock.conf overrides it.
+#
+# Currently minimal — a solid background and an input field. This is a canvas for
+# pixel art once we reach the visual design stage (see DESIGN.md).
+
+general {{
+    hide_cursor = true
+}}
+
+background {{
+    monitor =
+    color = rgb({C["background"]})
+}}
+
+input-field {{
+    monitor =
+    size = 320, 52
+    outline_thickness = {G["border_width"]}
+    rounding = {G["radius"]}
+
+    outer_color = rgb({C["accent"]})
+    inner_color = rgb({C["surface"]})
+    font_color = rgb({C["text"]})
+    check_color = rgb({C["accent"]})
+    fail_color = rgb({C["critical"]})
+
+    dots_size = 0.28
+    dots_spacing = 0.3
+    dots_center = true
+
+    # Always show the field. By default, hyprlock hides an empty field, leaving users
+    # with a black screen and a clock, unsure where to type their password.
+    fade_on_empty = false
+
+    placeholder_text = <span foreground="##{C["text_muted"]}">password</span>
+    fail_text = <span foreground="##{C["critical"]}">wrong password</span>
+
+    position = 0, -60
+    halign = center
+    valign = center
+}}
+
+label {{
+    monitor =
+    text = $TIME
+    color = rgb({C["text"]})
+    font_size = 72
+    font_family = {F["ui"]}
+    position = 0, 100
+    halign = center
+    valign = center
+}}
+"""
+kitty = f"""# {WARNING}.
+# Source: tokens.toml, generator: scripts/render-theme
+#
+# Installed to /usr/share/emaki/kitty/theme.conf. Kitty has no system config layer,
+# so include this file from your personal ~/.config/kitty/kitty.conf:
+#   include /usr/share/emaki/kitty/theme.conf
+# Put your own settings AFTER this line to override it.
+
+foreground #{C["text"]}
+background #{C["background"]}
+cursor #{C["text"]}
+cursor_text_color #{C["background"]}
+selection_foreground #{C["on_accent"]}
+selection_background #{C["accent"]}
+url_color #{C["accent"]}
+active_border_color #{C["accent"]}
+inactive_border_color #{C["border_inactive"]}
+
+color0 #{A["black"]}
+color8 #{A["bright_black"]}
+color1 #{A["red"]}
+color9 #{A["bright_red"]}
+color2 #{A["green"]}
+color10 #{A["bright_green"]}
+color3 #{A["yellow"]}
+color11 #{A["bright_yellow"]}
+color4 #{A["blue"]}
+color12 #{A["bright_blue"]}
+color5 #{A["magenta"]}
+color13 #{A["bright_magenta"]}
+color6 #{A["cyan"]}
+color14 #{A["bright_cyan"]}
+color7 #{A["white"]}
+color15 #{A["bright_white"]}
+"""
+
+
+def argb(hexcolor: str, alpha: str = "ff") -> str:
+    """qt6ct stores colors as #AARRGGBB."""
+    return "#" + alpha + hexcolor
+
+
+# Role order: QPalette::ColorRole 0..20, exactly 21 colors as required by qt6ct.
+_qt_active = [
+    argb(C["text"]),             # 0  WindowText
+    argb(C["surface"]),          # 1  Button
+    argb(C["surface_high"]),     # 2  Light
+    argb(C["surface_high"]),     # 3  Midlight
+    argb(C["background"]),       # 4  Dark
+    argb(C["border_inactive"]),  # 5  Mid
+    argb(C["text"]),             # 6  Text
+    argb(C["accent"]),           # 7  BrightText
+    argb(C["text"]),             # 8  ButtonText
+    argb(C["background"]),       # 9  Base
+    argb(C["background"]),       # 10 Window
+    argb(C["shadow"]),           # 11 Shadow
+    argb(C["accent"]),           # 12 Highlight
+    argb(C["on_accent"]),        # 13 HighlightedText
+    argb(C["accent"]),           # 14 Link
+    argb(A["magenta"]),          # 15 LinkVisited
+    argb(C["surface"]),          # 16 AlternateBase
+    argb(C["background"]),       # 17 NoRole
+    argb(C["surface"]),          # 18 ToolTipBase
+    argb(C["text"]),             # 19 ToolTipText
+    argb(C["text_muted"], "80"), # 20 PlaceholderText
+]
+# Disabled elements: same background, all text muted.
+_qt_disabled = list(_qt_active)
+for _i in (0, 6, 7, 8, 13, 19):
+    _qt_disabled[_i] = argb(C["text_muted"])
+_qt_disabled[12] = argb(C["surface_high"])
+
+qt6ct = f"""# {WARNING}.
+# Source: tokens.toml, generator: scripts/render-theme
+#
+# Installed to /usr/share/emaki/qt6ct/emaki.conf. Enable in your personal
+# ~/.config/qt6ct/qt6ct.conf: color_scheme_path=/usr/share/emaki/qt6ct/emaki.conf
+# with custom_palette=true. The same file works with qt5ct.
+[ColorScheme]
+active_colors={", ".join(_qt_active)}
+disabled_colors={", ".join(_qt_disabled)}
+inactive_colors={", ".join(_qt_active)}
+"""
+
+for path, content in (
+    ("niri/theme.kdl", niri),
+    ("fuzzel/fuzzel.ini", fuzzel),
+    ("hypr/hyprlock.conf", hyprlock),
+    ("kitty/theme.conf", kitty),
+    ("qt6ct/emaki.conf", qt6ct),
+):
+    (ROOT / path).parent.mkdir(parents=True, exist_ok=True)
+    (ROOT / path).write_text(content)
+    print(f"generated {path}")

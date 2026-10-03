@@ -1,0 +1,19 @@
+[package]
+name = "emaki-cli"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "emaki"
+path = "src/main.rs"
+
+[features]
+test-hooks = ["emaki-core/test-hooks"]
+
+[dependencies]
+emaki-core = { path = "../emaki-core" }
+serde_json = "1"
+
+[lints]
+workspace = true

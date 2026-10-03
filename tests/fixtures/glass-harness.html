@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Emaki glass harness</title>
+<style>html,body{margin:0;background:#000}canvas{display:block}</style>
+</head>
+<body>
+<canvas id="glass"></canvas>
+<script>
+/* Run only through tests/glass-shots.py (headless Firefox, Marionette). Renders what the shell's
+   GPU would draw for one state dumped by tests/fixtures/GlassShots.qml: the wallpaper, the
+   backdrop passes of DockBackdrop.qml (shaders/gauss.frag), every glass draw through
+   shaders/dock.frag (both translated by qsb to GLSL ES 300, byte for byte the production
+   source), and the layers drawn on the glass. Pixels in, pixels out; no shell logic here. */
+(() => {
+  'use strict';
+  const canvas = document.getElementById('glass');
+  let gl, dockProgram, gaussProgram, blitProgram, quad, dockStruct = '', gaussStruct = '';
+  const vertex = `#version 300 es
+precision highp float;
+in vec2 aUnit;
+uniform vec4 uDrawRect;   // logical x, y, width, height on the target
+uniform vec2 uTargetSize; // logical size of the target
+uniform float uTopDown;   // 1: the canvas (top-left origin); 0: a full-texture pass
+out vec2 qt_TexCoord0;
+void main() {
+  qt_TexCoord0 = aUnit;
+  if (uTopDown > .5) {
+    vec2 p = uDrawRect.xy + aUnit * uDrawRect.zw;
+    gl_Position = vec4(p.x / uTargetSize.x * 2.0 - 1.0, 1.0 - p.y / uTargetSize.y * 2.0, 0, 1);
+  } else gl_Position = vec4(aUnit * 2.0 - 1.0, 0, 1);
+}`;
+  const blitFragment = `#version 300 es
+precision highp float;
+in vec2 qt_TexCoord0;
+out vec4 fragColor;
+uniform sampler2D uImage;
+uniform vec4 uSource; // uv offset.xy + size.zw inside the image
+void main() { fragColor = texture(uImage, uSource.xy + qt_TexCoord0 * uSource.zw); }`;
+  function compile(type, source) {
+    const s = gl.createShader(type); gl.shaderSource(s, source); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) + '\n' + source.slice(0, 400));
+    return s;
+  }
+  function program(fragment) {
+    const p = gl.createProgram();
+    gl.attachShader(p, compile(gl.VERTEX_SHADER, vertex)); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fragment));
+    gl.bindAttribLocation(p, 0, 'aUnit'); gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    return p;
+  }
+  function texture(w, h, source, premultiply) {
+    const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !!premultiply);
+    if (source) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+    else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    return t;
+  }
+  function target(w, h) {
+    const t = texture(w, h), fb = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('framebuffer incomplete');
+    return {texture: t, fb, w, h};
+  }
+  function set(prog, name, value) {
+    const loc = gl.getUniformLocation(prog, name); if (loc === null) return false;
+    if (Array.isArray(value)) ({2: gl.uniform2fv, 3: gl.uniform3fv, 4: gl.uniform4fv, 16: gl.uniformMatrix4fv})[value.length].call(gl, ...(value.length === 16 ? [loc, false, value] : [loc, value]));
+    else gl.uniform1f(loc, value);
+    return true;
+  }
+  function draw(prog, rect, targetSize, topDown) {
+    set(prog, 'uDrawRect', rect); set(prog, 'uTargetSize', targetSize); set(prog, 'uTopDown', topDown ? 1 : 0);
+    gl.bindVertexArray(quad); gl.drawArrays(gl.TRIANGLES, 0, 6);
+  }
+  function image(url) { return new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => reject(new Error('image ' + url.slice(0, 40))); i.src = url; }); }
+  function structName(source) { const m = source.match(/uniform buf (_\d+);/); if (!m) throw new Error('no buf'); return m[1]; }
+  const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  // DockBackdrop.qml: the region of the wallpaper, a Clear blur at half and a Regular blur at
+  // quarter resolution, both through gauss.frag with the same axis and sigma.
+  function backdrop(wall, viewport, scale, region) {
+    const [rx, ry, rw, rh] = region, W = viewport[0], H = viewport[1];
+    const sharp = target(Math.round(rw * scale), Math.round(rh * scale));
+    gl.bindFramebuffer(gl.FRAMEBUFFER, sharp.fb); gl.viewport(0, 0, sharp.w, sharp.h); gl.disable(gl.BLEND);
+    gl.useProgram(blitProgram); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, wall); gl.uniform1i(gl.getUniformLocation(blitProgram, 'uImage'), 0);
+    set(blitProgram, 'uSource', [rx / W, ry / H, rw / W, rh / H]); draw(blitProgram, [0, 0, 1, 1], [1, 1], false);
+    const pass = (source, factor, axisX, sigma) => {
+      const out = target(Math.max(1, Math.round(rw * scale / factor)), Math.max(1, Math.round(rh * scale / factor)));
+      gl.bindFramebuffer(gl.FRAMEBUFFER, out.fb); gl.viewport(0, 0, out.w, out.h); gl.useProgram(gaussProgram);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, source.texture); gl.uniform1i(gl.getUniformLocation(gaussProgram, 'source'), 0);
+      set(gaussProgram, gaussStruct + '.qt_Matrix', IDENTITY); set(gaussProgram, gaussStruct + '.qt_Opacity', 1);
+      set(gaussProgram, gaussStruct + '.axis', axisX ? [1 / out.w, 0] : [0, 1 / out.h]); set(gaussProgram, gaussStruct + '.sigma', sigma);
+      draw(gaussProgram, [0, 0, 1, 1], [1, 1], false);
+      return out;
+    };
+    // down.frag: one linear tap on the corner of four texels, a 2×2 box (capture → half → quarter).
+    const down = (source, factor) => {
+      const out = target(Math.max(1, Math.round(rw * scale / factor)), Math.max(1, Math.round(rh * scale / factor)));
+      gl.bindFramebuffer(gl.FRAMEBUFFER, out.fb); gl.viewport(0, 0, out.w, out.h);
+      gl.useProgram(blitProgram); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, source.texture); gl.uniform1i(gl.getUniformLocation(blitProgram, 'uImage'), 0);
+      set(blitProgram, 'uSource', [0, 0, 1, 1]); draw(blitProgram, [0, 0, 1, 1], [1, 1], false);
+      return out;
+    };
+    const half = down(sharp, 2), quarter = down(half, 4);
+    const clearSigma = 9 * W / 1280 * scale / 2, regularSigma = 30 * scale / 4;
+    const clear = pass(pass(half, 2, true, clearSigma), 2, false, clearSigma);
+    const regular = pass(pass(quarter, 4, true, regularSigma), 4, false, regularSigma);
+    return {sharp: sharp.texture, clear: clear.texture, regular: regular.texture, region, targets: {sharp, clear, regular}};
+  }
+  function blit(tex, rect, viewport) {
+    gl.useProgram(blitProgram); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(gl.getUniformLocation(blitProgram, 'uImage'), 0);
+    set(blitProgram, 'uSource', [0, 0, 1, 1]); draw(blitProgram, rect, viewport, true);
+  }
+  window.glassHarness = {
+    init(dockSource, gaussSource) {
+      gl = canvas.getContext('webgl2', {alpha: false, antialias: false, preserveDrawingBuffer: true, premultipliedAlpha: true});
+      if (!gl) throw new Error('WebGL2 unavailable');
+      dockStruct = structName(dockSource); gaussStruct = structName(gaussSource);
+      dockProgram = program(dockSource); gaussProgram = program(gaussSource); blitProgram = program(blitFragment);
+      quad = gl.createVertexArray(); gl.bindVertexArray(quad);
+      const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]), gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+      return gl.getParameter(gl.VERSION) + ' / ' + gl.getParameter(gl.RENDERER);
+    },
+    // state: the GlassShots JSON; images: {name: dataURL}; wallpaper: dataURL of the output.
+    async render(state, images, wallpaper) {
+      const [W, H] = state.viewport, s = state.scale;
+      canvas.width = Math.round(W * s); canvas.height = Math.round(H * s); canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+      const wall = texture(0, 0, await image(wallpaper), false);
+      // One backdrop per region of Surfaces.qml (bar band, launcher corner, clock middle).
+      const backdrops = Object.fromEntries(Object.entries(state.regions).map(([k, r]) => [k, backdrop(wall, state.viewport, s, r)]));
+      const tex = {};
+      for (const g of state.grabs) tex[g.name] = texture(0, 0, await image(images[g.name]), true);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.disable(gl.BLEND); blit(wall, [0, 0, W, H], [W, H]);
+      gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      // The layer under a draw's glass: its own (d.ink), else the one named after its surface.
+      const ink = d => state.grabs.find(g => g.name.endsWith('-' + (d.ink || d.layer + '-ink')));
+      const glass = d => {
+        const b = backdrops[d.region || d.layer], [rx, ry, rw, rh] = b.region, icons = tex[ink(d).name];
+        gl.useProgram(dockProgram);
+        const units = {uSharp: b.sharp, uBlurred: b.clear, uRegularLow: b.regular, uRegularHigh: b.regular, uIcons: icons, uWallSharp: b.sharp, uWallBlurred: b.clear, uMenu: icons};
+        Object.entries(units).forEach(([name, t], i) => { gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, t); gl.uniform1i(gl.getUniformLocation(dockProgram, name), i); });
+        set(dockProgram, dockStruct + '.qt_Matrix', IDENTITY); set(dockProgram, dockStruct + '.qt_Opacity', 1);
+        for (const [name, value] of Object.entries(d.uniforms)) set(dockProgram, dockStruct + '.' + name, value);
+        // DockBackdrop.coverFor(scene origin): the scene maps onto the region's textures. The
+        // scene origin is the screen's for most glass, the item's own for the OSD.
+        const [ox, oy] = d.origin || [0, 0];
+        set(dockProgram, dockStruct + '.uCover', [(ox - rx) / rw, (oy - ry) / rh, 1 / rw, 1 / rh]);
+        draw(dockProgram, d.rect, [W, H], true);
+      };
+      const layerOn = kind => state.grabs.filter(g => g.kind === kind).forEach(g => blit(tex[g.name], g.rect, [W, H]));
+      // The top surface: the islands' glass (launcher button, workspaces, clock, system) and
+      // what lies on it.
+      state.draws.filter(d => d.layer === 'bar').forEach(glass);
+      layerOn('on-bar');
+      // The overlay: the launcher's glass and what lies on it, the clock panel's, then the
+      // system panel's and the OSD's.
+      state.draws.filter(d => d.layer === 'launcher').forEach(glass);
+      layerOn('on-launcher');
+      state.draws.filter(d => d.layer === 'clock').forEach(glass);
+      layerOn('on-clock');
+      state.draws.filter(d => d.layer === 'system').forEach(glass);
+      layerOn('on-system');
+      state.draws.filter(d => d.layer === 'lock').forEach(glass);
+      layerOn('on-lock');
+      const e = gl.getError(); if (e) throw new Error('GL error ' + e);
+      // Centre texel of every backdrop texture (for a quick look when a plate is black).
+      this.probe = Object.fromEntries(Object.entries(backdrops).map(([k, b]) => [k, Object.fromEntries(Object.entries(b.targets).map(([n, t]) => {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, t.fb); const px = new Uint8Array(4); gl.readPixels(t.w >> 1, t.h >> 1, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); return [n, [...px]];
+      }))]));
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      return true;
+    }
+  };
+})();
+</script>
+</body>
+</html>

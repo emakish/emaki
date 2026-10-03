@@ -1,0 +1,9 @@
+# The live overlay has no persistent root snapshot configuration.
+disable grub-btrfsd.service
+disable snapper-timeline.timer
+disable snapper-cleanup.timer
+disable sshd.service
+disable sshd.socket
+disable systemd-networkd.service
+disable systemd-networkd.socket
+disable iwd.service

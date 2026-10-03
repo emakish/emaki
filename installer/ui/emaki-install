@@ -1,0 +1,20 @@
+#!/bin/bash
+# One process keeps its in-memory plan while the window is hidden.
+set -eu
+umask 077
+ulimit -c 0
+: "${XDG_RUNTIME_DIR:?The installer needs a user runtime directory}"
+exec 9>"$XDG_RUNTIME_DIR/emaki-install.lock"
+if ! flock -n 9; then
+    # The first process may still be loading its QML; never launch a second one.
+    for _ in {1..20}; do
+        if qs ipc -p /usr/share/emaki-installer/ui/shell.qml call installer show >/dev/null 2>&1; then
+            exit 0
+        fi
+        sleep 0.1
+    done
+    printf '%s\n' 'The Emaki installer is already starting.' >&2
+    exit 0
+fi
+export EMAKI_SHELL_SHADER_DIR=/usr/share/emaki/shell/shaders
+exec qs -p /usr/share/emaki-installer/ui/shell.qml

@@ -1,0 +1,137 @@
+#!/usr/bin/python3 -I
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Hold logind's sleep delay until this graphical session's locker is ready."""
+import os
+import signal
+import subprocess
+import sys
+
+import gi
+
+gi.require_version('Gio', '2.0')
+from gi.repository import Gio, GLib
+
+LOGIN_NAME = 'org.freedesktop.login1'
+LOGIN_PATH = '/org/freedesktop/login1'
+LOGIN_INTERFACE = 'org.freedesktop.login1.Manager'
+LOCK_TIMEOUT = 18
+
+
+def log(message):
+    print('emaki-sleep-guard: ' + message, file=sys.stderr, flush=True)
+
+
+class SleepGuard:
+    def __init__(self, proxy):
+        self.proxy = proxy
+        self.inhibitor = None
+        self.sleeping = False
+
+    def acquire(self):
+        if self.inhibitor is not None:
+            return
+        reply, fd_list = self.proxy.call_with_unix_fd_list_sync(
+            'Inhibit', GLib.Variant('(ssss)', (
+                'sleep', 'Emaki session', 'Lock the session before sleep', 'delay')),
+            Gio.DBusCallFlags.NONE, 5000, None, None)
+        # The reply contains an index, not a descriptor. Steal the received fds:
+        # leaving a second copy in Gio's list would keep the inhibitor alive.
+        descriptors = fd_list.steal_fds()
+        try:
+            index, = reply.unpack()
+            if not 0 <= index < len(descriptors):
+                raise ValueError('invalid inhibitor descriptor index')
+            descriptor = descriptors[index]
+            os.set_inheritable(descriptor, False)
+            self.inhibitor = descriptors.pop(index)
+        finally:
+            for descriptor in descriptors:
+                os.close(descriptor)
+
+    def release(self):
+        if self.inhibitor is not None:
+            descriptor, self.inhibitor = self.inhibitor, None
+            os.close(descriptor)
+
+    def prepare_for_sleep(self, sleeping):
+        if not sleeping:
+            self.sleeping = False
+            self.acquire()
+            return
+        if self.sleeping:
+            return
+        self.sleeping = True
+        try:
+            # emaki-lock puts the supervisor/locker in their own scope. Only the
+            # short-lived readiness client belongs to this service's cgroup.
+            result = subprocess.run(['/usr/bin/emaki-lock', '--wait'],
+                                    stdin=subprocess.DEVNULL, close_fds=True,
+                                    timeout=LOCK_TIMEOUT, check=False)
+            if result.returncode:
+                log(f'lock readiness failed (exit {result.returncode})')
+        except subprocess.TimeoutExpired:
+            log(f'lock readiness timed out after {LOCK_TIMEOUT} seconds')
+        except OSError as error:
+            log(f'could not start the lock client: {error}')
+        finally:
+            # Delay inhibitors are bounded by logind's InhibitDelayMaxSec=20.
+            # Failure is logged, not misreported as a confirmed lock.
+            self.release()
+
+
+def main():
+    loop = GLib.MainLoop()
+    guard = None
+    failed = False
+
+    def fail(message):
+        nonlocal failed
+        failed = True
+        log(message)
+        loop.quit()
+
+    def on_signal(_proxy, _sender, name, parameters):
+        if name == 'PrepareForSleep':
+            try:
+                sleeping, = parameters.unpack()
+                guard.prepare_for_sleep(sleeping)
+            except (GLib.Error, OSError, ValueError) as error:
+                fail(f'sleep inhibitor failed: {error}')
+
+    def on_owner_changed(proxy, _property):
+        if not proxy.get_name_owner():
+            # All logind locks are lost on daemon restart. Let systemd restart
+            # this service and obtain a new proxy and descriptor.
+            fail('logind disappeared; restarting the guard')
+
+    def stop():
+        loop.quit()
+        return GLib.SOURCE_REMOVE
+
+    try:
+        proxy = Gio.DBusProxy.new_for_bus_sync(
+            Gio.BusType.SYSTEM, Gio.DBusProxyFlags.NONE, None,
+            LOGIN_NAME, LOGIN_PATH, LOGIN_INTERFACE, None)
+        guard = SleepGuard(proxy)
+        proxy.connect('g-signal', on_signal)
+        proxy.connect('notify::g-name-owner', on_owner_changed)
+        guard.acquire()
+        # Cover startup during an already-announced sleep, as well as future signals.
+        preparing = proxy.get_cached_property('PreparingForSleep')
+        if preparing is not None and preparing.unpack():
+            guard.prepare_for_sleep(True)
+        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, stop)
+        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, stop)
+        loop.run()
+    except (GLib.Error, OSError, ValueError) as error:
+        log(f'startup failed: {error}')
+        return 1
+    finally:
+        if guard is not None:
+            guard.release()
+    return int(failed)
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

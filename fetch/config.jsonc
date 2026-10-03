@@ -1,0 +1,13 @@
+// Emaki fetch default. User fastfetch configs retain normal search precedence.
+// Fastfetch 2.68 has no conditional logo type/fallback; the command module selects it.
+{
+  "logo": { "type": "none" },
+  "display": { "pipe": true, "key": { "type": "none" } },
+  "modules": [
+    {
+      "type": "command",
+      "text": "exec python3 \"${EMAKI_FETCH_DIR:-/usr/share/emaki/fetch}/render.py\"",
+      "format": "{result}"
+    }
+  ]
+}

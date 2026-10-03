@@ -1,0 +1,35 @@
+{
+ "width": 372,
+ "height": 36,
+ "frames": 16,
+ "wheelRadius": 6.0,
+ "chimney": [
+  353,
+  0
+ ],
+ "cylinder": [
+  358,
+  30
+ ],
+ "vehicles": [
+  [
+   0,
+   87
+  ],
+  [
+   87,
+   171
+  ],
+  [
+   171,
+   250
+  ],
+  [
+   250,
+   372
+  ]
+ ],
+ "clear": 64,
+ "wheelBottomRow": 818,
+ "speed": 60
+}

@@ -1,0 +1,29 @@
+#!/usr/bin/python3 -I
+"""Import valid login exports without letting one invalid value reject the batch."""
+import os
+import re
+import subprocess
+
+EXCLUDED = {'_', 'PWD', 'OLDPWD', 'SHLVL', 'TERM', 'MAIL', 'MOTD_SHOWN'}
+
+
+def valid_names(environment):
+    # Match systemd's variable-name, UTF-8 and ARG_MAX assignment limits.
+    maximum = os.sysconf('SC_ARG_MAX')
+    names = []
+    for name, value in environment.items():
+        if name in EXCLUDED or re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', name) is None:
+            continue
+        try:
+            assignment = (name + '=' + value).encode('utf-8', errors='strict')
+        except UnicodeError:
+            continue
+        if b'\0' not in assignment and len(assignment) < maximum:
+            names.append(name)
+    return names
+
+
+if __name__ == '__main__':
+    names = valid_names(os.environ)
+    if names:
+        raise SystemExit(subprocess.call(['systemctl', '--user', 'import-environment', *names]))

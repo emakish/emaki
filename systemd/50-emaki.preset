@@ -1,0 +1,19 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+enable greetd.service
+enable NetworkManager.service
+enable bluetooth.service
+enable grub-btrfsd.service
+enable snapper-timeline.timer
+enable snapper-cleanup.timer
+enable fstrim.timer
+# NetworkManager owns networking and resolv.conf; the installed bootloader is GRUB.
+disable systemd-networkd.service
+disable systemd-networkd.socket
+disable systemd-networkd-wait-online.service
+disable systemd-network-generator.service
+disable systemd-resolved.service
+disable systemd-homed.service
+disable systemd-homed-activate.service
+disable systemd-boot-update.service
+disable iwd.service

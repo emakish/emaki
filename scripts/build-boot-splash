@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+"""Build the systemd-stub BMP from the lock's canonical pixel wordmark (stdlib only)."""
+import argparse
+from pathlib import Path
+import runpy
+import struct
+import sys
+
+sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parent.parent
+TARGET = ROOT / 'boot/emaki-splash.bmp'
+SCALE = 3
+MARGIN_Y = 12
+
+
+def generate():
+    source = runpy.run_path(str(ROOT / 'scripts/build-lock-wordmark'))
+    _, w, h, pixels = source['generate_pixels']()
+    colors = [bytes.fromhex(color[1:])[::-1] for color in source['HOT']]
+    width, height = w * SCALE, h * SCALE + 2 * MARGIN_Y
+    stride = (width * 3 + 3) & ~3
+    raster = bytearray(stride * height)
+    for x, y, _letter, _neighbours, color in pixels:
+        for dy in range(SCALE):
+            # Positive BMP height: rows are bottom-up, pixels are BGR, rows padded to 4 bytes.
+            offset = (height - 1 - (MARGIN_Y + y * SCALE + dy)) * stride + x * SCALE * 3
+            raster[offset:offset + SCALE * 3] = colors[color] * SCALE
+    # BITMAPFILEHEADER + BITMAPINFOHEADER, BI_RGB (uncompressed), 24 bits, no alpha/palette.
+    header = struct.pack('<2sIHHI', b'BM', 54 + len(raster), 0, 0, 54)
+    dib = struct.pack('<IiiHHIIiiII', 40, width, height, 1, 24, 0, len(raster), 0, 0, 0, 0)
+    return header + dib + raster
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--check', action='store_true', help='fail if the checked-in BMP is stale')
+    args = parser.parse_args()
+    output = generate()
+    if args.check:
+        if not TARGET.is_file() or TARGET.read_bytes() != output:
+            parser.exit(1, 'boot/emaki-splash.bmp is stale; run python3 scripts/build-boot-splash\n')
+        print('PASS: checked-in boot splash matches canonical wordmark pixels and Hot colours')
+    else:
+        TARGET.parent.mkdir(exist_ok=True)
+        TARGET.write_bytes(output)
+        print('Generated boot/emaki-splash.bmp')
+
+
+if __name__ == '__main__':
+    main()

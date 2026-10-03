@@ -1,0 +1,2480 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Emaki contributors <emaki@localhost>
+Date: Thu, 1 Oct 2026 20:00:00 -0500
+Subject: [PATCH 3/3] Add the Emaki animated overview backdrop
+
+Draw smooth eight-piece chaos rings behind workspace backgrounds, replacing
+rings with pixel chevrons during held navigation and for 140 ms after input.
+Count camera-moving actions and boundary attempts; keep rings at the fixed
+resting slot through zoom. Use monotonic effect time, stable ring colours,
+portable GLES selectors, retained uniforms, and no effect redraws when closed.
+Compile the Emaki defaults; allow overrides/off only in fork configurations.
+Keep lock, capture exclusion, screenshot UI and startup-cover ordering.
+
+Generated with git diff d7d6fac6; no commit or index mutation.
+---
+diff --git a/niri-config/src/lib.rs b/niri-config/src/lib.rs
+index 9bd21800..2fe02bfa 100644
+--- a/niri-config/src/lib.rs
++++ b/niri-config/src/lib.rs
+@@ -1690,6 +1690,18 @@ mod tests {
+                         a: 0.3137255,
+                     },
+                 },
++                emaki_backdrop: EmakiBackdrop {
++                    off: false,
++                    px: 8.0,
++                    speed: 4.0,
++                    spacing: 7.0,
++                    thick: 2.0,
++                    gap: 8.0,
++                    arm: 40.0,
++                    fade: 54.0,
++                    aspeed: 120.0,
++                    adense: 14.0,
++                },
+             },
+             environment: Environment(
+                 [
+diff --git a/niri-config/src/misc.rs b/niri-config/src/misc.rs
+index 66a200ca..a550637c 100644
+--- a/niri-config/src/misc.rs
++++ b/niri-config/src/misc.rs
+@@ -123,6 +123,7 @@ pub struct Overview {
+     pub zoom: f64,
+     pub backdrop_color: Color,
+     pub workspace_shadow: WorkspaceShadow,
++    pub emaki_backdrop: EmakiBackdrop,
+ }
+ 
+ impl Default for Overview {
+@@ -131,6 +132,7 @@ impl Default for Overview {
+             zoom: 0.5,
+             backdrop_color: DEFAULT_BACKDROP_COLOR,
+             workspace_shadow: WorkspaceShadow::default(),
++            emaki_backdrop: EmakiBackdrop::default(),
+         }
+     }
+ }
+@@ -143,15 +145,92 @@ pub struct OverviewPart {
+     pub backdrop_color: Option<Color>,
+     #[knuffel(child)]
+     pub workspace_shadow: Option<WorkspaceShadowPart>,
++    #[knuffel(child)]
++    pub emaki_backdrop: Option<EmakiBackdropPart>,
+ }
+ 
+ impl MergeWith<OverviewPart> for Overview {
+     fn merge_with(&mut self, part: &OverviewPart) {
+-        merge!((self, part), zoom, workspace_shadow);
++        merge!((self, part), zoom, workspace_shadow, emaki_backdrop);
+         merge_clone!((self, part), backdrop_color);
+     }
+ }
+ 
++/// Emaki's overview animation settings, in the reference mockup's grid units.
++#[derive(Debug, Clone, Copy, PartialEq)]
++pub struct EmakiBackdrop {
++    pub off: bool,
++    pub px: f64,
++    pub speed: f64,
++    pub spacing: f64,
++    pub thick: f64,
++    pub gap: f64,
++    pub arm: f64,
++    pub fade: f64,
++    pub aspeed: f64,
++    pub adense: f64,
++}
++
++impl Default for EmakiBackdrop {
++    fn default() -> Self {
++        Self {
++            off: false,
++            px: 8.0,
++            speed: 4.0,
++            spacing: 7.0,
++            thick: 2.0,
++            gap: 8.0,
++            arm: 40.0,
++            fade: 54.0,
++            aspeed: 120.0,
++            adense: 14.0,
++        }
++    }
++}
++
++/// Bounds match the mockup controls and keep shader work bounded.
++#[derive(knuffel::Decode, Debug, Clone, Copy, PartialEq)]
++pub struct EmakiBackdropPart {
++    #[knuffel(child)]
++    pub off: Option<Flag>,
++    #[knuffel(child, unwrap(argument))]
++    pub px: Option<FloatOrInt<2, 8>>,
++    #[knuffel(child, unwrap(argument))]
++    pub speed: Option<FloatOrInt<2, 40>>,
++    #[knuffel(child, unwrap(argument))]
++    pub spacing: Option<FloatOrInt<3, 16>>,
++    #[knuffel(child, unwrap(argument))]
++    pub thick: Option<FloatOrInt<1, 4>>,
++    #[knuffel(child, unwrap(argument))]
++    pub gap: Option<FloatOrInt<0, 40>>,
++    #[knuffel(child, unwrap(argument))]
++    pub arm: Option<FloatOrInt<6, 120>>,
++    #[knuffel(child, unwrap(argument))]
++    pub fade: Option<FloatOrInt<20, 160>>,
++    #[knuffel(child, unwrap(argument))]
++    pub aspeed: Option<FloatOrInt<10, 120>>,
++    #[knuffel(child, unwrap(argument))]
++    pub adense: Option<FloatOrInt<10, 40>>,
++}
++
++impl MergeWith<EmakiBackdropPart> for EmakiBackdrop {
++    fn merge_with(&mut self, part: &EmakiBackdropPart) {
++        merge!(
++            (self, part),
++            off,
++            px,
++            speed,
++            spacing,
++            thick,
++            gap,
++            arm,
++            fade,
++            aspeed,
++            adense
++        );
++    }
++}
++
+ #[derive(knuffel::Decode, Debug, Default, Clone, PartialEq, Eq)]
+ pub struct Environment(#[knuffel(children)] pub Vec<EnvironmentVariable>);
+ 
+@@ -198,3 +277,124 @@ impl MergeWith<XwaylandSatellitePart> for XwaylandSatellite {
+         merge_clone!((self, part), path);
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::Config;
++
++    #[test]
++    fn emaki_backdrop_defaults() {
++        let expected = EmakiBackdrop {
++            off: false,
++            px: 8.0,
++            speed: 4.0,
++            spacing: 7.0,
++            thick: 2.0,
++            gap: 8.0,
++            arm: 40.0,
++            fade: 54.0,
++            aspeed: 120.0,
++            adense: 14.0,
++        };
++        for text in ["", "overview {}", "overview { emaki-backdrop {}; }"] {
++            assert_eq!(
++                Config::parse_mem(text).unwrap().overview.emaki_backdrop,
++                expected
++            );
++        }
++    }
++
++    #[test]
++    fn emaki_backdrop_overrides_and_off() {
++        let config = Config::parse_mem(
++            r##"
++            overview {
++                backdrop-color "#123456"
++                emaki-backdrop {
++                    off
++                    px 4
++                    speed 5.5
++                    spacing 9
++                    thick 3
++                    gap 0
++                    arm 30
++                    fade 100
++                    aspeed 60
++                    adense 20
++                }
++            }
++            "##,
++        )
++        .unwrap();
++        assert_eq!(
++            config.overview.emaki_backdrop,
++            EmakiBackdrop {
++                off: true,
++                px: 4.0,
++                speed: 5.5,
++                spacing: 9.0,
++                thick: 3.0,
++                gap: 0.0,
++                arm: 30.0,
++                fade: 100.0,
++                aspeed: 60.0,
++                adense: 20.0,
++            }
++        );
++        assert_ne!(config.overview.backdrop_color, DEFAULT_BACKDROP_COLOR);
++        assert_eq!(config.overview.zoom, Overview::default().zoom);
++    }
++
++    #[test]
++    fn emaki_backdrop_parts_preserve_omitted_settings() {
++        let mut overview = Overview::default();
++        let parts: Vec<OverviewPart> = knuffel::parse(
++            "test.kdl",
++            r#"
++            overview { emaki-backdrop { off; speed 12; }; }
++            overview { emaki-backdrop { px 4; }; }
++            overview { emaki-backdrop { off false; }; }
++        "#,
++        )
++        .unwrap();
++        overview.merge_with(&parts[0]);
++        overview.merge_with(&parts[1]);
++        assert!(overview.emaki_backdrop.off);
++        assert_eq!(overview.emaki_backdrop.speed, 12.0);
++        assert_eq!(overview.emaki_backdrop.px, 4.0);
++        assert_eq!(overview.emaki_backdrop.fade, 54.0);
++        overview.merge_with(&parts[2]);
++        assert!(!overview.emaki_backdrop.off);
++    }
++
++    #[test]
++    fn emaki_backdrop_rejects_invalid_values() {
++        for (name, min, max) in [
++            ("px", 2, 8),
++            ("speed", 2, 40),
++            ("spacing", 3, 16),
++            ("thick", 1, 4),
++            ("gap", 0, 40),
++            ("arm", 6, 120),
++            ("fade", 20, 160),
++            ("aspeed", 10, 120),
++            ("adense", 10, 40),
++        ] {
++            for value in [
++                (min - 1).to_string(),
++                (max + 1).to_string(),
++                "1.0e999".into(),
++                "NaN".into(),
++                "\"8\"".into(),
++            ] {
++                let text = format!("overview {{ emaki-backdrop {{ {name} {value}; }}; }}");
++                assert!(Config::parse_mem(&text).is_err(), "accepted {text}");
++            }
++            for value in [min, max] {
++                let text = format!("overview {{ emaki-backdrop {{ {name} {value}; }}; }}");
++                assert!(Config::parse_mem(&text).is_ok(), "rejected {text}");
++            }
++        }
++    }
++}
+diff --git a/src/input/mod.rs b/src/input/mod.rs
+index 6ddae4dd..c524c530 100644
+--- a/src/input/mod.rs
++++ b/src/input/mod.rs
+@@ -112,6 +112,114 @@ impl<D: SeatHandler> PointerOrTouchStartData<D> {
+     }
+ }
+ 
++/// Count explicit camera navigation. A direction also records attempts at a boundary;
++/// target-based actions use their actual camera delta instead.
++fn emaki_navigation(
++    action: &Action,
++) -> Option<Option<crate::render_helpers::emaki_backdrop::Direction>> {
++    use crate::render_helpers::emaki_backdrop::Direction::*;
++    use Action::*;
++    let direction = match action {
++        FocusColumnLeft
++        | FocusColumnLeftUnderMouse
++        | FocusColumnFirst
++        | FocusColumnLeftOrLast
++        | FocusColumnOrMonitorLeft
++        | FocusWindowDownOrColumnLeft
++        | FocusWindowUpOrColumnLeft
++        | MoveColumnLeft
++        | MoveColumnToFirst
++        | MoveColumnLeftOrToMonitorLeft
++        | MoveWindowToMonitorLeft
++        | MoveColumnToMonitorLeft
++        | MoveWorkspaceToMonitorLeft => Left,
++        FocusColumnRight
++        | FocusColumnRightUnderMouse
++        | FocusColumnLast
++        | FocusColumnRightOrFirst
++        | FocusColumnOrMonitorRight
++        | FocusWindowDownOrColumnRight
++        | FocusWindowUpOrColumnRight
++        | MoveColumnRight
++        | MoveColumnToLast
++        | MoveColumnRightOrToMonitorRight
++        | MoveWindowToMonitorRight
++        | MoveColumnToMonitorRight
++        | MoveWorkspaceToMonitorRight => Right,
++        FocusWorkspaceDown
++        | FocusWorkspaceDownUnderMouse
++        | FocusWindowOrWorkspaceDown
++        | MoveWindowDownOrToWorkspaceDown
++        | MoveWorkspaceDown
++        | MoveWindowToWorkspaceDown(true)
++        | MoveColumnToWorkspaceDown(true)
++        | MoveWindowToMonitorDown
++        | MoveColumnToMonitorDown
++        | MoveWorkspaceToMonitorDown => Down,
++        FocusWorkspaceUp
++        | FocusWorkspaceUpUnderMouse
++        | FocusWindowOrWorkspaceUp
++        | MoveWindowUpOrToWorkspaceUp
++        | MoveWorkspaceUp
++        | MoveWindowToWorkspaceUp(true)
++        | MoveColumnToWorkspaceUp(true)
++        | MoveWindowToMonitorUp
++        | MoveColumnToMonitorUp
++        | MoveWorkspaceToMonitorUp => Up,
++        SwapWindowLeft
++        | SwapWindowRight
++        | ConsumeOrExpelWindowLeft
++        | ConsumeOrExpelWindowRight
++        | ConsumeOrExpelWindowLeftById(_)
++        | ConsumeOrExpelWindowRightById(_)
++        | ConsumeWindowIntoColumn
++        | ExpelWindowFromColumn
++        | FocusColumn(_)
++        | FocusWindow(_)
++        | FocusWindowPrevious
++        | FocusWorkspace(_)
++        | FocusWorkspacePrevious
++        | CenterColumn
++        | CenterWindow
++        | CenterWindowById(_)
++        | CenterVisibleColumns
++        | MoveWindowDown
++        | MoveWindowUp
++        | MoveColumnToIndex(_)
++        | MoveWindowToWorkspace(_, _)
++        | MoveWindowToWorkspaceById { .. }
++        | MoveColumnToWorkspace(_, _)
++        | MoveWorkspaceToIndex(_)
++        | MoveWorkspaceToIndexByRef { .. }
++        | MoveWindowToWorkspaceDown(false)
++        | MoveWindowToWorkspaceUp(false)
++        | MoveColumnToWorkspaceDown(false)
++        | MoveColumnToWorkspaceUp(false)
++        | MoveWorkspaceToMonitorByRef { .. }
++        | MoveWorkspaceToMonitor(_)
++        | MoveWindowToMonitor(_)
++        | MoveWindowToMonitorById { .. }
++        | MoveColumnToMonitor(_)
++        | MoveWindowToMonitorPrevious
++        | MoveWindowToMonitorNext
++        | MoveColumnToMonitorPrevious
++        | MoveColumnToMonitorNext
++        | MoveWorkspaceToMonitorPrevious
++        | MoveWorkspaceToMonitorNext
++        | MoveWindowToFloating
++        | MoveWindowToFloatingById(_)
++        | MoveWindowToTiling
++        | MoveWindowToTilingById(_) => return Some(None),
++        _ => return None,
++    };
++    Some(Some(direction))
++}
++
++// Only a binding that can actually repeat may outlive the ordinary input tail.
++fn emaki_repeat_key(bind: &Bind, repeat_rate: u8, key: Option<Keycode>) -> Option<Keycode> {
++    key.filter(|_| bind.repeat && repeat_rate != 0)
++}
++
+ impl State {
+     pub fn process_input_event<I: InputBackend + 'static>(&mut self, event: InputEvent<I>)
+     where
+@@ -254,6 +362,11 @@ impl State {
+     }
+ 
+     fn on_device_removed(&mut self, device: impl Device) {
++        if device.has_capability(DeviceCapability::Keyboard) {
++            for mon in self.niri.layout.monitors_mut() {
++                mon.emaki_clear_keys();
++            }
++        }
+         if device.has_capability(DeviceCapability::TabletTool) {
+             let tablet_seat = self.niri.seat.tablet_seat();
+ 
+@@ -373,7 +486,6 @@ impl State {
+         let serial = SERIAL_COUNTER.next_serial();
+         let time = Event::time_msec(&event);
+         let pressed = event.state() == KeyState::Pressed;
+-
+         // Stop bind key repeat on any release. This won't work 100% correctly in cases like:
+         // 1. Press Mod
+         // 2. Press Left (repeat starts)
+@@ -382,9 +494,7 @@ impl State {
+         // But it's good enough for now.
+         // FIXME: handle this properly.
+         if !pressed {
+-            if let Some(token) = self.niri.bind_repeat_timer.take() {
+-                self.niri.event_loop.remove(token);
+-            }
++            self.stop_key_repeat();
+         }
+ 
+         if pressed {
+@@ -553,20 +663,28 @@ impl State {
+             return;
+         }
+ 
+-        self.handle_bind(bind.clone());
++        // Cancel the old activity before recording the new action.
++        self.start_key_repeat(bind.clone(), event.key_code());
++        self.handle_bind_with_key(bind, Some(event.key_code()));
++    }
+ 
+-        self.start_key_repeat(bind);
++    fn stop_key_repeat(&mut self) {
++        if let Some(token) = self.niri.bind_repeat_timer.take() {
++            self.niri.event_loop.remove(token);
++        }
++        // Repeat ends on any release, including a modifier or an unrelated key.
++        for mon in self.niri.layout.monitors_mut() {
++            mon.emaki_stop_key_repeat();
++        }
+     }
+ 
+-    fn start_key_repeat(&mut self, bind: Bind) {
++    fn start_key_repeat(&mut self, bind: Bind, key: Keycode) {
+         if !bind.repeat {
+             return;
+         }
+ 
+         // Stop the previous key repeat if any.
+-        if let Some(token) = self.niri.bind_repeat_timer.take() {
+-            self.niri.event_loop.remove(token);
+-        }
++        self.stop_key_repeat();
+ 
+         let config = self.niri.config.borrow();
+         let config = &config.input.keyboard;
+@@ -584,7 +702,7 @@ impl State {
+             .niri
+             .event_loop
+             .insert_source(repeat_timer, move |_, _, state| {
+-                state.handle_bind(bind.clone());
++                state.handle_bind_with_key(bind.clone(), Some(key));
+                 TimeoutAction::ToDuration(repeat_duration)
+             })
+             .unwrap();
+@@ -615,8 +733,17 @@ impl State {
+     }
+ 
+     pub fn handle_bind(&mut self, bind: Bind) {
++        self.handle_bind_with_key(bind, None);
++    }
++
++    fn handle_bind_with_key(&mut self, bind: Bind, key: Option<Keycode>) {
++        let key = emaki_repeat_key(
++            &bind,
++            self.niri.config.borrow().input.keyboard.repeat_rate,
++            key,
++        );
+         let Some(cooldown) = bind.cooldown else {
+-            self.do_action(bind.action, bind.allow_when_locked);
++            self.do_action_with_key(bind.action, bind.allow_when_locked, key);
+             return;
+         };
+ 
+@@ -642,12 +769,21 @@ impl State {
+                     .unwrap();
+                 entry.insert(token);
+ 
+-                self.do_action(bind.action, bind.allow_when_locked);
++                self.do_action_with_key(bind.action, bind.allow_when_locked, key);
+             }
+         }
+     }
+ 
+     pub fn do_action(&mut self, action: Action, allow_when_locked: bool) {
++        self.do_action_with_key(action, allow_when_locked, None);
++    }
++
++    fn do_action_with_key(
++        &mut self,
++        action: Action,
++        allow_when_locked: bool,
++        key: Option<Keycode>,
++    ) {
+         if self.niri.is_locked() && !(allow_when_locked || allowed_when_locked(&action)) {
+             return;
+         }
+@@ -656,6 +792,36 @@ impl State {
+             touch.cancel(self);
+         }
+ 
++        let navigation = self
++            .niri
++            .layout
++            .is_overview_open()
++            .then(|| emaki_navigation(&action))
++            .flatten();
++        // Only under-mouse actions need a pointer hit-test. Other actions use the
++        // active output after dispatch, since navigation may cross a monitor edge.
++        let input_output = navigation.and_then(|_| match &action {
++            Action::FocusColumnLeftUnderMouse | Action::FocusColumnRightUnderMouse => Some(
++                self.niri
++                    .workspace_under_cursor(true)
++                    .map(|(output, _)| output),
++            ),
++            Action::FocusWorkspaceDownUnderMouse | Action::FocusWorkspaceUpUnderMouse => {
++                Some(self.niri.output_under_cursor())
++            }
++            _ => None,
++        });
++        let camera_before = if navigation.is_some() {
++            self.niri
++                .layout
++                .monitors()
++                .filter(|mon| mon.emaki_backdrop_active())
++                .map(|mon| (mon.output().clone(), mon.emaki_camera_snapshot()))
++                .collect::<Vec<_>>()
++        } else {
++            Vec::new()
++        };
++
+         match action {
+             Action::Quit(skip_confirmation) => {
+                 if !skip_confirmation && self.niri.exit_confirm_dialog.show() {
+@@ -670,11 +836,17 @@ impl State {
+                 self.backend.change_vt(vt);
+                 // Changing VT may not deliver the key releases, so clear the state.
+                 self.niri.suppressed_keys.clear();
++                for mon in self.niri.layout.monitors_mut() {
++                    mon.emaki_clear_keys();
++                }
+             }
+             Action::Suspend => {
+                 self.backend.suspend();
+                 // Suspend may not deliver the key releases, so clear the state.
+                 self.niri.suppressed_keys.clear();
++                for mon in self.niri.layout.monitors_mut() {
++                    mon.emaki_clear_keys();
++                }
+             }
+             Action::PowerOffMonitors => {
+                 self.niri.deactivate_monitors(&mut self.backend);
+@@ -2386,6 +2558,12 @@ impl State {
+                 }
+             }
+         }
++        self.niri.layout.emaki_note_navigation(
++            camera_before,
++            input_output.as_ref().map(Option::as_ref),
++            navigation.flatten(),
++            key,
++        );
+     }
+ 
+     fn on_pointer_motion<I: InputBackend>(&mut self, event: I::PointerMotionEvent) {
+@@ -5080,6 +5258,129 @@ mod tests {
+     use super::*;
+     use crate::animation::Clock;
+ 
++    #[test]
++    fn emaki_non_repeating_binds_only_get_a_tail() {
++        let mut bind = hardcoded_overview_bind(Keysym::Right, ModifiersState::default()).unwrap();
++        let key = Some(42u32.into());
++        assert_eq!(emaki_repeat_key(&bind, 25, key), key);
++        assert_eq!(emaki_repeat_key(&bind, 0, key), None);
++        bind.repeat = false;
++        assert_eq!(emaki_repeat_key(&bind, 25, key), None);
++    }
++
++    #[test]
++    fn emaki_counted_navigation_actions() {
++        use crate::render_helpers::emaki_backdrop::Direction::*;
++        use Action::*;
++        for (actions, direction) in [
++            (
++                vec![
++                    FocusColumnLeft,
++                    FocusColumnLeftUnderMouse,
++                    FocusColumnFirst,
++                    FocusColumnLeftOrLast,
++                    FocusColumnOrMonitorLeft,
++                    FocusWindowDownOrColumnLeft,
++                    FocusWindowUpOrColumnLeft,
++                    MoveColumnLeft,
++                    MoveColumnToFirst,
++                    MoveColumnLeftOrToMonitorLeft,
++                    MoveWindowToMonitorLeft,
++                    MoveColumnToMonitorLeft,
++                    MoveWorkspaceToMonitorLeft,
++                ],
++                Left,
++            ),
++            (
++                vec![
++                    FocusColumnRight,
++                    FocusColumnRightUnderMouse,
++                    FocusColumnLast,
++                    FocusColumnRightOrFirst,
++                    FocusColumnOrMonitorRight,
++                    FocusWindowDownOrColumnRight,
++                    FocusWindowUpOrColumnRight,
++                    MoveColumnRight,
++                    MoveColumnToLast,
++                    MoveColumnRightOrToMonitorRight,
++                    MoveWindowToMonitorRight,
++                    MoveColumnToMonitorRight,
++                    MoveWorkspaceToMonitorRight,
++                ],
++                Right,
++            ),
++            (
++                vec![
++                    FocusWorkspaceDown,
++                    FocusWorkspaceDownUnderMouse,
++                    FocusWindowOrWorkspaceDown,
++                    MoveWindowDownOrToWorkspaceDown,
++                    MoveWorkspaceDown,
++                    MoveWindowToWorkspaceDown(true),
++                    MoveColumnToWorkspaceDown(true),
++                    MoveWindowToMonitorDown,
++                    MoveColumnToMonitorDown,
++                    MoveWorkspaceToMonitorDown,
++                ],
++                Down,
++            ),
++            (
++                vec![
++                    FocusWorkspaceUp,
++                    FocusWorkspaceUpUnderMouse,
++                    FocusWindowOrWorkspaceUp,
++                    MoveWindowUpOrToWorkspaceUp,
++                    MoveWorkspaceUp,
++                    MoveWindowToWorkspaceUp(true),
++                    MoveColumnToWorkspaceUp(true),
++                    MoveWindowToMonitorUp,
++                    MoveColumnToMonitorUp,
++                    MoveWorkspaceToMonitorUp,
++                ],
++                Up,
++            ),
++        ] {
++            for action in actions {
++                assert_eq!(
++                    emaki_navigation(&action),
++                    Some(Some(direction)),
++                    "{action:?}"
++                );
++            }
++        }
++        for action in [
++            SwapWindowLeft,
++            SwapWindowRight,
++            ConsumeOrExpelWindowLeft,
++            ConsumeOrExpelWindowRight,
++            ConsumeOrExpelWindowLeftById(1),
++            ConsumeOrExpelWindowRightById(1),
++            ConsumeWindowIntoColumn,
++            ExpelWindowFromColumn,
++            MoveColumnToIndex(1),
++            MoveWorkspaceToIndex(1),
++            MoveWindowToWorkspaceDown(false),
++            MoveColumnToWorkspaceUp(false),
++            FocusWindow(1),
++            FocusWorkspacePrevious,
++            CenterWindow,
++            MoveWindowDown,
++            MoveWindowUp,
++            MoveWindowToTiling,
++        ] {
++            assert_eq!(emaki_navigation(&action), Some(None));
++        }
++        for action in [
++            CloseWindow,
++            ToggleOverview,
++            FocusWindowDown,
++            FocusWindowUp,
++            ToggleWindowFloating,
++        ] {
++            assert_eq!(emaki_navigation(&action), None);
++        }
++    }
++
+     #[test]
+     fn bindings_suppress_keys() {
+         let close_keysym = Keysym::q;
+diff --git a/src/layout/mod.rs b/src/layout/mod.rs
+index 5c4dd639..596feb8f 100644
+--- a/src/layout/mod.rs
++++ b/src/layout/mod.rs
+@@ -3264,6 +3264,36 @@ impl<W: LayoutElement> Layout<W> {
+         workspace.move_floating_window(id, x, y, animate);
+     }
+ 
++    /// Finish explicit navigation using camera targets and the destination output.
++    pub fn emaki_note_navigation(
++        &mut self,
++        before: Vec<(Output, monitor::EmakiCameraSnapshot)>,
++        input_output: Option<Option<&Output>>,
++        direction: Option<crate::render_helpers::emaki_backdrop::Direction>,
++        key: Option<smithay::backend::input::Keycode>,
++    ) {
++        if before.is_empty() {
++            return;
++        }
++        // Some(None) means an under-mouse action found no target (for example
++        // beneath a shell layer). Only ordinary navigation uses the active output.
++        let input_output = input_output
++            .map(|output| output.cloned())
++            .unwrap_or_else(|| self.active_output().cloned());
++        for (output, before) in before {
++            if let Some(mon) = self.monitor_for_output_mut(&output) {
++                // A repeating action may have left this monitor since its last tick.
++                if let Some(key) = key {
++                    mon.emaki_key_release(key);
++                }
++                let fallback = (input_output.as_ref() == Some(&output))
++                    .then_some(direction)
++                    .flatten();
++                mon.emaki_note_camera_change(before, fallback, key);
++            }
++        }
++    }
++
+     pub fn focus_output(&mut self, output: &Output) {
+         if let MonitorSet::Normal {
+             monitors,
+@@ -3619,6 +3649,7 @@ impl<W: LayoutElement> Layout<W> {
+             if let Some(refresh) =
+                 monitor.workspace_switch_gesture_update(delta_y, timestamp, is_touchpad)
+             {
++                monitor.emaki_scroll_input(0., delta_y);
+                 if refresh {
+                     return Some(Some(monitor.output.clone()));
+                 } else {
+@@ -3690,6 +3721,7 @@ impl<W: LayoutElement> Layout<W> {
+                 if let Some(refresh) =
+                     ws.view_offset_gesture_update(delta_x, timestamp, is_touchpad)
+                 {
++                    monitor.emaki_scroll_input(delta_x, 0.);
+                     if refresh {
+                         return Some(Some(monitor.output.clone()));
+                     } else {
+@@ -4588,6 +4620,9 @@ impl<W: LayoutElement> Layout<W> {
+         };
+ 
+         for mon in monitors {
++            if !self.overview_open {
++                mon.emaki_clear_keys();
++            }
+             mon.overview_open = self.overview_open;
+             mon.set_overview_progress(self.overview_progress.as_ref());
+         }
+diff --git a/src/layout/monitor.rs b/src/layout/monitor.rs
+index 53c06069..c66c6c7b 100644
+--- a/src/layout/monitor.rs
++++ b/src/layout/monitor.rs
+@@ -4,6 +4,7 @@ use std::rc::Rc;
+ use std::time::Duration;
+ 
+ use niri_config::{CornerRadius, LayoutPart};
++use smithay::backend::input::Keycode;
+ use smithay::backend::renderer::element::utils::{
+     CropRenderElement, Relocate, RelocateRenderElement, RescaleRenderElement,
+ };
+@@ -21,7 +22,9 @@ use super::{compute_overview_zoom, ActivateWindow, HitType, LayoutElement, Optio
+ use crate::animation::{Animation, Clock};
+ use crate::input::swipe_tracker::SwipeTracker;
+ use crate::niri_render_elements;
++use crate::render_helpers::emaki_backdrop::{self, Backdrop, Direction, ScrollActivity};
+ use crate::render_helpers::renderer::NiriRenderer;
++use crate::render_helpers::shader_element::ShaderRenderElement;
+ use crate::render_helpers::shadow::ShadowRenderElement;
+ use crate::render_helpers::solid_color::SolidColorRenderElement;
+ use crate::render_helpers::xray::XrayPos;
+@@ -45,6 +48,8 @@ const WORKSPACE_GESTURE_RUBBER_BAND: RubberBand = RubberBand {
+ /// This constant is tied to the default dnd-edge-workspace-switch max-speed setting.
+ const WORKSPACE_DND_EDGE_SCROLL_MOVEMENT: f64 = 1500.;
+ 
++pub type EmakiCameraSnapshot = (usize, Vec<(WorkspaceId, f64)>);
++
+ #[derive(Debug)]
+ pub struct Monitor<W: LayoutElement> {
+     /// Output for this monitor.
+@@ -80,6 +85,8 @@ pub struct Monitor<W: LayoutElement> {
+     pub(super) overview_open: bool,
+     /// Progress of the overview zoom animation, 1 is fully in overview.
+     overview_progress: Option<OverviewProgress>,
++    emaki_backdrop: Backdrop,
++    emaki_scroll: ScrollActivity,
+     /// Clock for driving animations.
+     pub(super) clock: Clock,
+     /// Configurable properties of the layout as received from the parent layout.
+@@ -341,6 +348,8 @@ impl<W: LayoutElement> Monitor<W> {
+             insert_hint_render_loc: None,
+             overview_open: false,
+             overview_progress: None,
++            emaki_backdrop: Backdrop::default(),
++            emaki_scroll: ScrollActivity::default(),
+             workspace_switch: None,
+             clock,
+             base_options,
+@@ -1090,6 +1099,24 @@ impl<W: LayoutElement> Monitor<W> {
+     }
+ 
+     pub fn update_render_elements(&mut self, is_active: bool) {
++        if self.emaki_backdrop_active() {
++            let table = self.emaki_center_slot();
++            let now = self
++                .emaki_backdrop
++                .advance_time(self.clock.now_unadjusted());
++            self.emaki_backdrop.update(
++                self.options.overview.emaki_backdrop,
++                now,
++                table,
++                self.view_size,
++                self.scale.fractional_scale(),
++                self.emaki_scroll.direction(now),
++            );
++        } else {
++            self.emaki_backdrop.clear();
++            self.emaki_scroll = ScrollActivity::default();
++        }
++
+         let mut insert_hint_ws_geo = None;
+         let insert_hint_ws_id = self
+             .insert_hint
+@@ -1370,6 +1397,114 @@ impl<W: LayoutElement> Monitor<W> {
+         self.workspace_size(zoom) + Size::from((0., gap))
+     }
+ 
++    /// The resting workspace slot, following only the overview zoom.
++    pub(super) fn emaki_center_slot(&self) -> Rectangle<f64, Logical> {
++        let size = self.workspace_size(self.overview_zoom());
++        let scale = self.scale.fractional_scale();
++        let loc = (self.view_size.to_point() - size.to_point())
++            .downscale(2.)
++            .to_physical_precise_round(scale)
++            .to_logical(scale);
++        Rectangle::new(loc, size)
++    }
++
++    pub fn emaki_key_release(&mut self, key: Keycode) {
++        self.emaki_scroll.release(self.clock.now_unadjusted(), key);
++    }
++
++    pub fn emaki_stop_key_repeat(&mut self) {
++        self.emaki_scroll.stop_repeat(self.clock.now_unadjusted());
++    }
++
++    pub fn emaki_clear_keys(&mut self) {
++        self.emaki_scroll = ScrollActivity::default();
++    }
++
++    pub fn emaki_backdrop_active(&self) -> bool {
++        emaki_backdrop::needs_redraw(
++            self.options.overview.emaki_backdrop.off,
++            self.overview_open,
++            self.overview_progress.is_some(),
++        )
++    }
++
++    pub fn emaki_backdrop_element(&self) -> Option<ShaderRenderElement> {
++        self.emaki_backdrop_active()
++            .then(|| self.emaki_backdrop.element())
++            .flatten()
++    }
++
++    #[cfg(test)]
++    pub(super) fn emaki_scroll_direction(&self) -> Option<emaki_backdrop::Direction> {
++        self.emaki_scroll.direction(self.clock.now_unadjusted())
++    }
++
++    pub fn emaki_scroll_input(&mut self, dx: f64, dy: f64) {
++        if self.overview_open && !self.options.overview.emaki_backdrop.off {
++            self.emaki_scroll.input(self.clock.now_unadjusted(), dx, dy);
++        }
++    }
++
++    /// Snapshot targets around input dispatch, not interpolated animation positions.
++    /// Include all workspaces because wheel navigation can target one under the pointer.
++    pub fn emaki_camera_snapshot(&self) -> EmakiCameraSnapshot {
++        (
++            self.active_workspace_idx,
++            self.workspaces
++                .iter()
++                .map(|ws| (ws.id(), ws.camera_target_x()))
++                .collect(),
++        )
++    }
++
++    pub fn emaki_note_camera_change(
++        &mut self,
++        before: EmakiCameraSnapshot,
++        fallback: Option<Direction>,
++        key: Option<Keycode>,
++    ) {
++        if !self.overview_open || self.options.overview.emaki_backdrop.off {
++            return;
++        }
++        let dy = self.active_workspace_idx as f64 - before.0 as f64;
++        let dx = if dy == 0. {
++            self.workspaces
++                .iter()
++                .find_map(|ws| {
++                    let (_, old) = before.1.iter().find(|(id, _)| *id == ws.id())?;
++                    let delta = ws.camera_target_x() - old;
++                    (delta.abs() > 1e-6).then_some(delta)
++                })
++                .unwrap_or(0.)
++        } else {
++            0.
++        };
++        let (dx, dy) = if dx == 0. && dy == 0. {
++            match fallback {
++                Some(Direction::Right) => (1., 0.),
++                Some(Direction::Left) => (-1., 0.),
++                Some(Direction::Down) => (0., 1.),
++                Some(Direction::Up) => (0., -1.),
++                None => return,
++            }
++        } else {
++            (dx, dy)
++        };
++        self.emaki_scroll_input(dx, dy);
++        if let Some(key) = key {
++            let direction = if dy > 0. {
++                Direction::Down
++            } else if dy < 0. {
++                Direction::Up
++            } else if dx > 0. {
++                Direction::Right
++            } else {
++                Direction::Left
++            };
++            self.emaki_scroll.press(key, direction);
++        }
++    }
++
+     pub fn overview_zoom(&self) -> f64 {
+         let progress = self.overview_progress.as_ref().map(|p| p.value());
+         compute_overview_zoom(&self.options, progress)
+diff --git a/src/layout/tests.rs b/src/layout/tests.rs
+index 31265dd9..11a24a41 100644
+--- a/src/layout/tests.rs
++++ b/src/layout/tests.rs
+@@ -14,6 +14,7 @@ use smithay::utils::Rectangle;
+ use super::*;
+ 
+ mod animations;
++mod emaki_backdrop;
+ mod fullscreen;
+ 
+ impl<W: LayoutElement> Default for Layout<W> {
+diff --git a/src/layout/tests/emaki_backdrop.rs b/src/layout/tests/emaki_backdrop.rs
+new file mode 100644
+index 00000000..d2ac0376
+--- /dev/null
++++ b/src/layout/tests/emaki_backdrop.rs
+@@ -0,0 +1,406 @@
++use super::*;
++use crate::render_helpers::emaki_backdrop::Direction;
++
++fn setup() -> Layout<TestWindow> {
++    check_ops_with_options(
++        Options::default(),
++        [
++            Op::AddOutput(1),
++            Op::AddOutput(2),
++            Op::AddWindow {
++                params: TestWindowParams::new(1),
++            },
++            Op::AddWindow {
++                params: TestWindowParams::new(2),
++            },
++            Op::CompleteAnimations,
++        ],
++    )
++}
++
++#[test]
++fn emaki_lifecycle_redraw_and_element_gate() {
++    let mut layout = setup();
++    assert!(layout.monitors().all(|m| !m.emaki_backdrop_active()));
++    layout.update_render_elements(None);
++    assert!(layout
++        .monitors()
++        .all(|m| m.emaki_backdrop_element().is_none()));
++    layout.open_overview();
++    assert!(layout.monitors().all(|m| m.emaki_backdrop_active()));
++    Op::CompleteAnimations.apply(&mut layout);
++    layout.update_render_elements(None);
++    assert!(layout
++        .monitors()
++        .all(|m| m.emaki_backdrop_element().is_some()));
++    layout.close_overview();
++    // Keep animating through the closing zoom, then drop the effect completely.
++    assert!(layout.monitors().all(|m| m.emaki_backdrop_active()));
++    Op::CompleteAnimations.apply(&mut layout);
++    layout.update_render_elements(None);
++    assert!(layout
++        .monitors()
++        .all(|m| !m.emaki_backdrop_active() && m.emaki_backdrop_element().is_none()));
++    let mut config = niri_config::Config::default();
++    config.overview.emaki_backdrop.off = true;
++    layout.update_config(&config);
++    layout.open_overview();
++    layout.update_render_elements(None);
++    assert!(layout
++        .monitors()
++        .all(|m| !m.emaki_backdrop_active() && m.emaki_backdrop_element().is_none()));
++}
++
++#[test]
++fn emaki_gestures_only_update_the_affected_output_and_expire_during_settle() {
++    let mut layout = setup();
++    layout.open_overview();
++    Op::CompleteAnimations.apply(&mut layout);
++    let output = layout.active_output().unwrap().clone();
++    layout.workspace_switch_gesture_begin(&output, true);
++    layout.workspace_switch_gesture_update(30., Duration::ZERO, true);
++    assert_eq!(
++        layout
++            .monitor_for_output(&output)
++            .unwrap()
++            .emaki_scroll_direction(),
++        Some(Direction::Down)
++    );
++    assert!(layout
++        .monitors()
++        .filter(|m| m.output() != &output)
++        .all(|m| m.emaki_scroll_direction().is_none()));
++    layout.workspace_switch_gesture_update(-10., Duration::from_millis(1), true);
++    assert_eq!(
++        layout
++            .monitor_for_output(&output)
++            .unwrap()
++            .emaki_scroll_direction(),
++        Some(Direction::Up)
++    );
++    layout.workspace_switch_gesture_end(Some(true));
++    Op::AdvanceAnimations { msec_delta: 140 }.apply(&mut layout);
++    assert_eq!(
++        layout
++            .monitor_for_output(&output)
++            .unwrap()
++            .emaki_scroll_direction(),
++        None
++    );
++    layout.view_offset_gesture_begin(&output, Some(0), true);
++    layout.view_offset_gesture_update(10., Duration::from_millis(141), true);
++    assert_eq!(
++        layout
++            .monitor_for_output(&output)
++            .unwrap()
++            .emaki_scroll_direction(),
++        Some(Direction::Right)
++    );
++    layout.view_offset_gesture_update(-10., Duration::from_millis(142), true);
++    assert_eq!(
++        layout
++            .monitor_for_output(&output)
++            .unwrap()
++            .emaki_scroll_direction(),
++        Some(Direction::Left)
++    );
++    layout.view_offset_gesture_end(Some(true));
++    Op::AdvanceAnimations { msec_delta: 140 }.apply(&mut layout);
++    assert_eq!(
++        layout
++            .monitor_for_output(&output)
++            .unwrap()
++            .emaki_scroll_direction(),
++        None
++    );
++}
++
++#[test]
++fn emaki_navigation_targets_not_automatic_workspace_switches() {
++    let mut layout = setup();
++    layout.open_overview();
++    Op::CompleteAnimations.apply(&mut layout);
++    let output = layout.active_output().unwrap().clone();
++    // Automatic layout changes do not opt in to input tracking.
++    layout.switch_workspace_down();
++    assert_eq!(
++        layout
++            .monitor_for_output(&output)
++            .unwrap()
++            .emaki_scroll_direction(),
++        None
++    );
++    let before = layout
++        .monitor_for_output(&output)
++        .unwrap()
++        .emaki_camera_snapshot();
++    layout.switch_workspace_up();
++    layout
++        .monitor_for_output_mut(&output)
++        .unwrap()
++        .emaki_note_camera_change(before, None, None);
++    assert_eq!(
++        layout
++            .monitor_for_output(&output)
++            .unwrap()
++            .emaki_scroll_direction(),
++        Some(Direction::Up)
++    );
++    Op::AdvanceAnimations { msec_delta: 140 }.apply(&mut layout);
++    // Target-based actions without a direction or camera change do not restart arrows.
++    let before = layout
++        .monitor_for_output(&output)
++        .unwrap()
++        .emaki_camera_snapshot();
++    layout
++        .monitor_for_output_mut(&output)
++        .unwrap()
++        .emaki_note_camera_change(before, None, None);
++    assert_eq!(
++        layout
++            .monitor_for_output(&output)
++            .unwrap()
++            .emaki_scroll_direction(),
++        None
++    );
++}
++
++#[test]
++fn emaki_held_boundary_input_and_release() {
++    let mut layout = setup();
++    layout.open_overview();
++    Op::CompleteAnimations.apply(&mut layout);
++    let output = layout.active_output().unwrap().clone();
++    // At the top boundary, the real action dispatch supplies its intended direction.
++    for direction in [
++        Direction::Up,
++        Direction::Down,
++        Direction::Left,
++        Direction::Right,
++    ] {
++        let mon = layout.monitor_for_output_mut(&output).unwrap();
++        mon.emaki_note_camera_change(
++            mon.emaki_camera_snapshot(),
++            Some(direction),
++            Some(42u32.into()),
++        );
++        for _ in 0..70 {
++            Op::AdvanceAnimations { msec_delta: 10 }.apply(&mut layout);
++            assert_eq!(
++                layout
++                    .monitor_for_output(&output)
++                    .unwrap()
++                    .emaki_scroll_direction(),
++                Some(direction)
++            );
++        }
++        layout
++            .monitor_for_output_mut(&output)
++            .unwrap()
++            .emaki_key_release(42u32.into());
++        Op::AdvanceAnimations { msec_delta: 139 }.apply(&mut layout);
++        assert_eq!(
++            layout
++                .monitor_for_output(&output)
++                .unwrap()
++                .emaki_scroll_direction(),
++            Some(direction)
++        );
++        Op::AdvanceAnimations { msec_delta: 1 }.apply(&mut layout);
++        assert_eq!(
++            layout
++                .monitor_for_output(&output)
++                .unwrap()
++                .emaki_scroll_direction(),
++            None
++        );
++    }
++    let mon = layout.monitor_for_output_mut(&output).unwrap();
++    mon.emaki_note_camera_change(
++        mon.emaki_camera_snapshot(),
++        Some(Direction::Left),
++        Some(42u32.into()),
++    );
++    layout.close_overview();
++    layout.open_overview();
++    assert_eq!(
++        layout
++            .monitor_for_output(&output)
++            .unwrap()
++            .emaki_scroll_direction(),
++        None
++    );
++}
++
++#[test]
++fn emaki_fixed_slot_during_gesture_pause_switch_and_zoom() {
++    let mut layout = setup();
++    layout.open_overview();
++    Op::CompleteAnimations.apply(&mut layout);
++    let output = layout.active_output().unwrap().clone();
++    let mon = layout.monitor_for_output(&output).unwrap();
++    let slot = mon.emaki_center_slot();
++    assert_eq!(
++        slot,
++        mon.workspaces_render_geo()
++            .nth(mon.active_workspace_idx)
++            .unwrap()
++    );
++    layout.workspace_switch_gesture_begin(&output, true);
++    layout.workspace_switch_gesture_update(150., Duration::ZERO, true);
++    let mon = layout.monitor_for_output(&output).unwrap();
++    assert_ne!(
++        slot,
++        mon.workspaces_render_geo()
++            .nth(mon.active_workspace_idx)
++            .unwrap()
++    );
++    assert_eq!(slot, mon.emaki_center_slot());
++    Op::AdvanceAnimations { msec_delta: 200 }.apply(&mut layout);
++    assert_eq!(
++        slot,
++        layout
++            .monitor_for_output(&output)
++            .unwrap()
++            .emaki_center_slot()
++    );
++    layout.workspace_switch_gesture_end(Some(true));
++    layout.switch_workspace_down();
++    assert_eq!(
++        slot,
++        layout
++            .monitor_for_output(&output)
++            .unwrap()
++            .emaki_center_slot()
++    );
++    Op::CompleteAnimations.apply(&mut layout);
++    assert_eq!(
++        slot,
++        layout
++            .monitor_for_output(&output)
++            .unwrap()
++            .emaki_center_slot()
++    );
++    layout.close_overview();
++    Op::AdvanceAnimations { msec_delta: 100 }.apply(&mut layout);
++    let mon = layout.monitor_for_output(&output).unwrap();
++    let zoomed = mon.emaki_center_slot();
++    assert!(zoomed.size.w > slot.size.w);
++    assert_eq!(
++        zoomed.size,
++        mon.workspaces_render_geo().next().unwrap().size
++    );
++}
++
++#[test]
++fn emaki_repeat_cancellation_and_monitor_crossing() {
++    let mut layout = setup();
++    layout.open_overview();
++    Op::CompleteAnimations.apply(&mut layout);
++    let source = layout.active_output().unwrap().clone();
++    let destination = layout
++        .monitors()
++        .find(|m| m.output() != &source)
++        .unwrap()
++        .output()
++        .clone();
++    let snapshot = |layout: &Layout<TestWindow>| {
++        layout
++            .monitors()
++            .map(|m| (m.output().clone(), m.emaki_camera_snapshot()))
++            .collect()
++    };
++    let key = Some(42u32.into());
++    layout.emaki_note_navigation(snapshot(&layout), None, Some(Direction::Right), key);
++    Op::AdvanceAnimations { msec_delta: 700 }.apply(&mut layout);
++    assert_eq!(
++        layout
++            .monitor_for_output(&source)
++            .unwrap()
++            .emaki_scroll_direction(),
++        Some(Direction::Right)
++    );
++
++    let before = snapshot(&layout);
++    layout.focus_output(&destination);
++    layout.emaki_note_navigation(before, None, Some(Direction::Right), key);
++    Op::AdvanceAnimations { msec_delta: 140 }.apply(&mut layout);
++    assert_eq!(
++        layout
++            .monitor_for_output(&source)
++            .unwrap()
++            .emaki_scroll_direction(),
++        None
++    );
++    assert_eq!(
++        layout
++            .monitor_for_output(&destination)
++            .unwrap()
++            .emaki_scroll_direction(),
++        Some(Direction::Right)
++    );
++
++    // This is the cancellation path for modifier-first and unrelated-key release,
++    // and for replacing the bind repeat timer. It needs no matching keycode.
++    for mon in layout.monitors_mut() {
++        mon.emaki_stop_key_repeat();
++    }
++    Op::AdvanceAnimations { msec_delta: 139 }.apply(&mut layout);
++    assert_eq!(
++        layout
++            .monitor_for_output(&destination)
++            .unwrap()
++            .emaki_scroll_direction(),
++        Some(Direction::Right)
++    );
++    Op::AdvanceAnimations { msec_delta: 1 }.apply(&mut layout);
++    assert!(layout
++        .monitors()
++        .all(|m| m.emaki_scroll_direction().is_none()));
++
++    // Under-mouse bindings retain their explicit target instead of the active one.
++    layout.emaki_note_navigation(
++        snapshot(&layout),
++        Some(Some(&source)),
++        Some(Direction::Left),
++        None,
++    );
++    assert_eq!(
++        layout
++            .monitor_for_output(&source)
++            .unwrap()
++            .emaki_scroll_direction(),
++        Some(Direction::Left)
++    );
++    assert_eq!(
++        layout
++            .monitor_for_output(&destination)
++            .unwrap()
++            .emaki_scroll_direction(),
++        None
++    );
++    Op::AdvanceAnimations { msec_delta: 140 }.apply(&mut layout);
++    assert!(layout
++        .monitors()
++        .all(|m| m.emaki_scroll_direction().is_none()));
++}
++
++#[test]
++fn emaki_under_mouse_without_a_target_does_not_use_active_output() {
++    let mut layout = setup();
++    layout.open_overview();
++    Op::CompleteAnimations.apply(&mut layout);
++    let before = layout
++        .monitors()
++        .map(|m| (m.output().clone(), m.emaki_camera_snapshot()))
++        .collect();
++    layout.emaki_note_navigation(
++        before,
++        Some(None),
++        Some(Direction::Right),
++        Some(42u32.into()),
++    );
++    assert!(layout
++        .monitors()
++        .all(|m| m.emaki_scroll_direction().is_none()));
++}
+diff --git a/src/layout/workspace.rs b/src/layout/workspace.rs
+index 49548a83..26f8659a 100644
+--- a/src/layout/workspace.rs
++++ b/src/layout/workspace.rs
+@@ -1977,6 +1977,10 @@ impl<W: LayoutElement> Workspace<W> {
+         self.layout_config.as_ref()
+     }
+ 
++    pub(super) fn camera_target_x(&self) -> f64 {
++        self.scrolling.target_view_pos()
++    }
++
+     #[cfg(test)]
+     pub fn scrolling(&self) -> &ScrollingSpace<W> {
+         &self.scrolling
+diff --git a/src/niri.rs b/src/niri.rs
+index 58367496..8860232e 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -4486,6 +4486,12 @@ impl Niri {
+ 
+         mon.render_workspace_shadows(ctx.renderer, &mut |elem| push(elem.into()));
+ 
++        // Front-to-back render order: the effect is below every workspace background
++        // and shadow. Lock and screenshot UI have already returned above this point.
++        if let Some(element) = mon.emaki_backdrop_element() {
++            push(element.into());
++        }
++
+         // Then the backdrop.
+         push_popups_from_layer!(Layer::Background, true);
+         push_normal_from_layer!(Layer::Background, true);
+@@ -4683,10 +4689,18 @@ impl Niri {
+ 
+         self.update_render_elements(Some(output));
+ 
++        let emaki_redraw = emaki_redraw_requested(
++            self.is_locked(),
++            self.screenshot_ui.is_open(),
++            self.layout
++                .monitor_for_output(output)
++                .is_some_and(|mon| mon.emaki_backdrop_active()),
++        );
+         let mut res = RenderResult::Skipped;
+         if self.monitors_active {
+             let state = self.output_state.get_mut(output).unwrap();
+-            state.unfinished_animations_remain = self.layout.are_animations_ongoing(Some(output));
++            state.unfinished_animations_remain =
++                emaki_redraw || self.layout.are_animations_ongoing(Some(output));
+             state.unfinished_animations_remain |=
+                 self.config_error_notification.are_animations_ongoing();
+             state.unfinished_animations_remain |= self.exit_confirm_dialog.are_animations_ongoing();
+@@ -5931,6 +5945,9 @@ impl Niri {
+     }
+ 
+     pub fn lock(&mut self, confirmation: SessionLocker) {
++        for mon in self.layout.monitors_mut() {
++            mon.emaki_clear_keys();
++        }
+         if self.startup_cover_deadline.is_some() {
+             self.startup_cover_deadline = Some(Instant::now());
+             self.queue_redraw_all();
+@@ -6702,6 +6719,7 @@ niri_render_elements! {
+ niri_render_elements! {
+     OutputRenderElements<R> => {
+         Monitor = MonitorRenderElement<R>,
++        EmakiBackdrop = crate::render_helpers::shader_element::ShaderRenderElement,
+         RescaledTile = RescaleRenderElement<TileRenderElement<R>>,
+         LayerSurface = LayerSurfaceRenderElement<R>,
+         RelocatedLayerSurface = CropRenderElement<RelocateRenderElement<RescaleRenderElement<
+@@ -6721,3 +6739,25 @@ niri_render_elements! {
+         RelocatedMemoryBuffer = RelocateRenderElement<MemoryRenderBufferRenderElement<R>>,
+     }
+ }
++
++/// The backdrop contribution to the real output redraw gate.
++fn emaki_redraw_requested(locked: bool, screenshot_open: bool, backdrop_active: bool) -> bool {
++    !locked && !screenshot_open && backdrop_active
++}
++
++#[cfg(test)]
++mod emaki_redraw_tests {
++    #[test]
++    fn emaki_real_redraw_gate() {
++        for locked in [false, true] {
++            for screenshot in [false, true] {
++                for active in [false, true] {
++                    assert_eq!(
++                        super::emaki_redraw_requested(locked, screenshot, active),
++                        active && !locked && !screenshot
++                    );
++                }
++            }
++        }
++    }
++}
+diff --git a/src/render_helpers/emaki_backdrop.rs b/src/render_helpers/emaki_backdrop.rs
+new file mode 100644
+index 00000000..0622a456
+--- /dev/null
++++ b/src/render_helpers/emaki_backdrop.rs
+@@ -0,0 +1,759 @@
++//! Emaki overview: one output-sized shader, with bounded, persistent ring colours.
++use std::collections::{HashMap, VecDeque};
++use std::rc::Rc;
++use std::time::Duration;
++
++use niri_config::EmakiBackdrop;
++use smithay::backend::input::Keycode;
++use smithay::backend::renderer::element::Kind;
++use smithay::backend::renderer::gles::{Uniform, UniformValue};
++use smithay::utils::{Logical, Rectangle, Size};
++
++use super::shader_element::ShaderRenderElement;
++use super::shaders::ProgramType;
++
++const MAX_RINGS: usize = 64;
++const ORDER: [usize; 8] = [0, 4, 1, 7, 3, 5, 2, 6];
++const INPUT_LIFETIME: Duration = Duration::from_millis(140);
++
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum Direction {
++    Right = 1,
++    Down = 2,
++    Left = 3,
++    Up = 4,
++}
++
++/// Records navigation input, including held keys and attempts at boundaries.
++#[derive(Debug, Default)]
++pub struct ScrollActivity {
++    last: Option<(Duration, Direction)>,
++    held: Vec<(Keycode, Direction)>,
++}
++
++impl ScrollActivity {
++    pub fn input(&mut self, now: Duration, dx: f64, dy: f64) {
++        let direction = if dy != 0. {
++            if dy > 0. {
++                Direction::Down
++            } else {
++                Direction::Up
++            }
++        } else if dx != 0. {
++            if dx > 0. {
++                Direction::Right
++            } else {
++                Direction::Left
++            }
++        } else {
++            return;
++        };
++        self.last = Some((now, direction));
++    }
++
++    pub fn press(&mut self, key: Keycode, direction: Direction) {
++        self.held.retain(|(k, _)| *k != key);
++        self.held.push((key, direction));
++    }
++
++    pub fn release(&mut self, now: Duration, key: Keycode) {
++        if let Some(i) = self.held.iter().position(|(k, _)| *k == key) {
++            let (_, direction) = self.held.remove(i);
++            self.last = Some((now, direction));
++        }
++    }
++
++    pub fn stop_repeat(&mut self, now: Duration) {
++        if let Some((_, direction)) = self.held.last() {
++            self.last = Some((now, *direction));
++        }
++        self.held.clear();
++    }
++
++    pub fn direction(&self, now: Duration) -> Option<Direction> {
++        self.held.last().map(|(_, d)| *d).or_else(|| {
++            self.last
++                .and_then(|(last, dir)| (now.saturating_sub(last) < INPUT_LIFETIME).then_some(dir))
++        })
++    }
++}
++
++pub fn needs_redraw(off: bool, open: bool, animating: bool) -> bool {
++    !off && (open || animating)
++}
++
++#[derive(Debug, Clone, Copy)]
++struct RingStyle {
++    thick: f64,
++    gap: f64,
++    arm: f64,
++}
++
++impl RingStyle {
++    fn new(table: Size<f64, Logical>, s: EmakiBackdrop) -> Self {
++        // Match the mockup. Only degenerate tables need a geometry guard.
++        let short = table.w.min(table.h).max(0.);
++        let (thick, gap, arm) = if short > 2. * s.thick {
++            (s.thick, s.gap, s.arm.min((short - 2. * s.gap) / 3.).max(2.))
++        } else {
++            // A table smaller than its birth stroke is degenerate at near-zero zoom.
++            (
++                s.thick.min(short / 8.),
++                s.gap.min(short / 8.),
++                s.arm.min(short / 8.),
++            )
++        };
++        Self { thick, gap, arm }
++    }
++}
++
++fn distance(k: usize, offset: f64, spacing: f64, thick: f64) -> f64 {
++    k as f64 * spacing + offset - thick
++}
++
++#[cfg(test)]
++fn fade(distance: f64, limit: f64) -> f64 {
++    (1. - distance / limit).clamp(0., 1.)
++}
++
++fn hash(mut n: u32) -> u32 {
++    n = (n ^ 61) ^ (n >> 16);
++    n = n.wrapping_mul(9);
++    n ^= n >> 4;
++    n = n.wrapping_mul(0x27d4eb2d);
++    n ^ (n >> 15)
++}
++
++fn ring_colors(index: i64, previous: Option<[u8; 8]>) -> [u8; 8] {
++    let mut seed = hash((index as u32).wrapping_mul(7919).wrapping_add(4)).max(1);
++    let mut result = [0; 8];
++    for (j, &piece) in ORDER.iter().enumerate() {
++        let mut choices = [0; 4];
++        let mut len = 0;
++        for color in 0..4 {
++            if (j > 0 && result[ORDER[j - 1]] == color)
++                || (j == 7 && result[ORDER[0]] == color)
++                || previous.is_some_and(|prev| prev[piece] == color)
++            {
++                continue;
++            }
++            choices[len] = color;
++            len += 1;
++        }
++        // At most three exclusions; four colours always leave a valid choice.
++        seed = hash(seed);
++        result[piece] = choices[seed as usize % len];
++    }
++    result
++}
++
++fn packed(colors: [u8; 8]) -> f32 {
++    colors
++        .iter()
++        .enumerate()
++        .fold(0u32, |v, (i, c)| v | ((*c as u32) << (2 * i))) as f32
++}
++
++#[derive(Debug, Default)]
++pub struct Backdrop {
++    settings: Option<EmakiBackdrop>,
++    epoch: Option<Duration>,
++    latest: Duration,
++    colors: VecDeque<(i64, [u8; 8])>,
++    element: Option<ShaderRenderElement>,
++}
++
++impl Backdrop {
++    pub fn clear(&mut self) {
++        // No allocations, timers, colour generation or uniform updates while closed.
++        if self.epoch.is_some() {
++            *self = Self::default();
++        }
++    }
++
++    fn colors(&mut self, first: i64) -> [[f32; 16]; 4] {
++        if self
++            .colors
++            .back()
++            .is_none_or(|&(last, _)| first - last >= MAX_RINGS as i64)
++        {
++            self.colors.clear();
++        }
++        let start = self
++            .colors
++            .back()
++            .map_or(first - MAX_RINGS as i64 + 1, |&(i, _)| i + 1);
++        for i in start..=first {
++            let next = ring_colors(i, self.colors.back().map(|&(_, c)| c));
++            if self.colors.len() == MAX_RINGS {
++                self.colors.pop_front();
++            }
++            self.colors.push_back((i, next));
++        }
++        let mut matrices = [[0.; 16]; 4];
++        for &(index, colors) in &self.colors {
++            let k = first - index;
++            if !(0..MAX_RINGS as i64).contains(&k) {
++                continue;
++            }
++            let k = k as usize;
++            matrices[k / 16][k % 16] = packed(colors);
++        }
++        matrices
++    }
++
++    pub fn advance_time(&mut self, now: Duration) -> Duration {
++        self.latest = self.latest.max(now);
++        self.latest
++    }
++
++    pub fn element(&self) -> Option<ShaderRenderElement> {
++        self.element.clone()
++    }
++
++    pub fn update(
++        &mut self,
++        settings: EmakiBackdrop,
++        now: Duration,
++        table: Rectangle<f64, Logical>,
++        output: Size<f64, Logical>,
++        scale: f64,
++        direction: Option<Direction>,
++    ) {
++        if self.settings != Some(settings) {
++            *self = Self::default();
++            self.settings = Some(settings);
++        }
++        let now = self.advance_time(now);
++        let epoch = *self.epoch.get_or_insert(now);
++        // Keep high-precision time on the CPU. Only bounded phases reach GLES floats.
++        let t = now.saturating_sub(epoch).as_secs_f64();
++        let s = settings;
++        let table = Rectangle::new(table.loc.downscale(s.px), table.size.downscale(s.px));
++        let style = RingStyle::new(table.size, s);
++        let travel = t * s.speed;
++        let first = (travel / s.spacing).floor() as i64;
++        let offset = travel.rem_euclid(s.spacing);
++        let colors = self.colors(first);
++        let element = self.element.get_or_insert_with(|| {
++            let mut element =
++                ShaderRenderElement::empty(ProgramType::EmakiBackdrop, Kind::Unspecified);
++            element.update(
++                output,
++                None,
++                scale as f32,
++                1.,
++                Rc::from(vec![
++                    Uniform::new("canvas_size", [0f32; 2]),
++                    Uniform::new("table", [0f32; 4]),
++                    Uniform::new("ring_style", [0f32; 4]),
++                    Uniform::new("ring_phase", [0f32; 2]),
++                    Uniform::new("arrows", [0f32; 4]),
++                    Uniform::new(
++                        "ring_colors",
++                        UniformValue::Matrix4x4 {
++                            matrices: vec![[0.; 16]; 4],
++                            transpose: false,
++                        },
++                    ),
++                    Uniform::new(
++                        "palette",
++                        UniformValue::Matrix4x4 {
++                            matrices: vec![[
++                                176. / 255.,
++                                30. / 255.,
++                                120. / 255.,
++                                1.,
++                                236. / 255.,
++                                42. / 255.,
++                                85. / 255.,
++                                1.,
++                                1.,
++                                106. / 255.,
++                                42. / 255.,
++                                1.,
++                                1.,
++                                182. / 255.,
++                                46. / 255.,
++                                1.,
++                            ]],
++                            transpose: false,
++                        },
++                    ),
++                ]),
++                HashMap::new(),
++            );
++            element
++        });
++        element.update_uniforms(output, scale as f32, |uniforms| {
++            uniforms[0].value = [output.w as f32, output.h as f32].into();
++            uniforms[1].value = [
++                table.loc.x as f32,
++                table.loc.y as f32,
++                table.size.w as f32,
++                table.size.h as f32,
++            ]
++            .into();
++            uniforms[2].value = [
++                s.spacing as f32,
++                style.thick as f32,
++                style.gap as f32,
++                style.arm as f32,
++            ]
++            .into();
++            uniforms[3].value = [
++                distance(0, offset, s.spacing, style.thick) as f32,
++                s.fade as f32,
++            ]
++            .into();
++            uniforms[4].value = [
++                s.px as f32,
++                (t * s.aspeed).rem_euclid(s.adense) as f32,
++                s.adense as f32,
++                direction.map_or(0., |d| d as u8 as f32),
++            ]
++            .into();
++            if let UniformValue::Matrix4x4 { matrices, .. } = &mut uniforms[5].value {
++                matrices.copy_from_slice(&colors);
++            }
++        });
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    // The same twelve rectangles used by the shader: eight pieces, corners have two arms.
++    fn segments(w: f64, h: f64, s: RingStyle) -> [(usize, f64, f64); 12] {
++        let a = s.arm;
++        [
++            (0, a, s.thick),
++            (0, s.thick, a),
++            (1, a, s.thick),
++            (1, s.thick, a),
++            (2, a, s.thick),
++            (2, s.thick, a),
++            (3, a, s.thick),
++            (3, s.thick, a),
++            (4, w - 2. * a - 2. * s.gap, s.thick),
++            (5, w - 2. * a - 2. * s.gap, s.thick),
++            (6, s.thick, h - 2. * a - 2. * s.gap),
++            (7, s.thick, h - 2. * a - 2. * s.gap),
++        ]
++    }
++
++    #[test]
++    fn emaki_monotonic_time_and_persistent_colors() {
++        let mut backdrop = Backdrop::default();
++        let settings = EmakiBackdrop::default();
++        let table = Rectangle::new((320., 200.).into(), (640., 400.).into());
++        let output = (1280., 800.).into();
++        let ms = Duration::from_millis;
++        for t in [0, 1740, 1751] {
++            backdrop.update(settings, ms(t), table, output, 1., None);
++        }
++        let colors = backdrop.colors.clone();
++        let uniforms = backdrop.colors(1);
++        // A capture just before the 1750 ms birth follows a future-vblank redraw.
++        backdrop.update(settings, ms(1745), table, output, 1., None);
++        assert_eq!(backdrop.latest, ms(1751));
++        assert_eq!(backdrop.colors, colors);
++        assert_eq!(backdrop.colors(1), uniforms);
++        // Even a direct cache lookup behind its newest ring must preserve identities.
++        backdrop.colors(0);
++        assert_eq!(backdrop.colors, colors);
++        backdrop.update(settings, ms(1760), table, output, 1., None);
++        assert_eq!(backdrop.colors, colors);
++    }
++
++    #[test]
++    fn emaki_mockup_gap_on_small_outputs() {
++        let settings = EmakiBackdrop::default();
++        for (w, h) in [(1280., 800.), (1366., 768.)] {
++            let size = Size::from((w * 0.5 / settings.px, h * 0.5 / settings.px));
++            let style = RingStyle::new(size, settings);
++            assert_eq!(style.gap, 8.);
++            assert_eq!(style.thick, 2.);
++            assert_eq!(
++                style.arm,
++                settings.arm.min((size.w.min(size.h) - 16.) / 3.).max(2.)
++            );
++        }
++    }
++
++    #[test]
++    fn emaki_large_gap_is_not_clamped_on_nondegenerate_tables() {
++        let settings = EmakiBackdrop {
++            gap: 40.,
++            ..EmakiBackdrop::default()
++        };
++        let style = RingStyle::new((80., 50.).into(), settings);
++        assert_eq!(style.thick, 2.);
++        assert_eq!(style.gap, 40.);
++        assert_eq!(style.arm, 2.);
++    }
++
++    #[test]
++    fn emaki_held_keys_ignore_unrelated_release_and_resume_previous() {
++        let mut activity = ScrollActivity::default();
++        activity.press(42u32.into(), Direction::Right);
++        activity.press(43u32.into(), Direction::Down);
++        activity.release(Duration::from_secs(1), 44u32.into());
++        assert_eq!(
++            activity.direction(Duration::from_secs(2)),
++            Some(Direction::Down)
++        );
++        activity.release(Duration::from_secs(2), 43u32.into());
++        assert_eq!(
++            activity.direction(Duration::from_secs(3)),
++            Some(Direction::Right)
++        );
++        activity.release(Duration::from_secs(3), 42u32.into());
++        assert_eq!(
++            activity.direction(Duration::from_millis(3139)),
++            Some(Direction::Right)
++        );
++        assert_eq!(activity.direction(Duration::from_millis(3140)), None);
++    }
++
++    #[test]
++    fn emaki_geometry_eight_pieces_fixed_equal_arms_and_middles() {
++        let settings = EmakiBackdrop::default();
++        for size in [(120., 67.5), (40., 80.), (2., 1.)] {
++            let style = RingStyle::new(size.into(), settings);
++            for d in [-style.thick, 0., 14., 54.] {
++                let w = size.0 + 2. * d;
++                let h = size.1 + 2. * d;
++                let segs = segments(w, h, style);
++                assert_eq!(
++                    segs.iter()
++                        .map(|s| s.0)
++                        .collect::<std::collections::HashSet<_>>()
++                        .len(),
++                    8
++                );
++                for pair in segs[..8].chunks_exact(2) {
++                    assert_eq!(pair[0].1, pair[1].2);
++                    assert_eq!(pair[0].1, style.arm);
++                }
++                assert!(segs[8].1 > 0. && segs[10].2 > 0.);
++                assert!((2. * style.arm + 2. * style.gap + segs[8].1 - w).abs() < 1e-9);
++                assert!((2. * style.arm + 2. * style.gap + segs[10].2 - h).abs() < 1e-9);
++            }
++        }
++    }
++
++    #[test]
++    fn emaki_colors_neighbours_previous_ring_and_lifetime() {
++        let mut prev = None;
++        for i in -64..10000 {
++            let colors = ring_colors(i, prev);
++            for j in 0..8 {
++                assert_ne!(colors[ORDER[j]], colors[ORDER[(j + 1) % 8]]);
++                if let Some(prev) = prev {
++                    assert_ne!(colors[j], prev[j]);
++                }
++            }
++            prev = Some(colors);
++        }
++        let mut backdrop = Backdrop::default();
++        backdrop.colors(0);
++        let previous = backdrop.colors.clone();
++        backdrop.colors(1);
++        for (i, colors) in &backdrop.colors {
++            if let Some((_, old)) = previous.iter().find(|(j, _)| i == j) {
++                assert_eq!(colors, old);
++            }
++        }
++        assert_eq!(backdrop.colors.len(), MAX_RINGS);
++    }
++
++    #[test]
++    fn emaki_slide_birth_continuity_and_fade() {
++        assert_eq!(distance(0, 0., 7., 2.), -2.);
++        assert_eq!(distance(0, 0.25, 7., 2.), -1.75);
++        assert!((distance(0, 7. - 1e-8, 7., 2.) - distance(1, 0., 7., 2.)).abs() < 1e-7);
++        assert_eq!(fade(-2., 54.), 1.);
++        assert_eq!(fade(27., 54.), 0.5);
++        assert_eq!(fade(54., 54.), 0.);
++        assert_eq!(fade(60., 54.), 0.);
++    }
++
++    #[test]
++    fn emaki_scroll_input_timeout_flip_and_noop() {
++        let mut activity = ScrollActivity::default();
++        let ms = Duration::from_millis;
++        assert_eq!(activity.direction(ms(0)), None);
++        activity.input(ms(0), 2., 0.);
++        assert_eq!(activity.direction(ms(139)), Some(Direction::Right));
++        activity.input(ms(100), -1., 0.);
++        assert_eq!(activity.direction(ms(100)), Some(Direction::Left));
++        activity.input(ms(200), 0., 0.);
++        assert_eq!(activity.direction(ms(240)), None);
++        activity.input(ms(250), 0., 1.);
++        assert_eq!(activity.direction(ms(250)), Some(Direction::Down));
++        activity.input(ms(251), 0., -1.);
++        assert_eq!(activity.direction(ms(251)), Some(Direction::Up));
++    }
++
++    #[test]
++    fn emaki_closed_and_off_never_request_redraws() {
++        assert!(!needs_redraw(false, false, false));
++        assert!(!needs_redraw(true, true, true));
++        assert!(needs_redraw(false, true, false));
++        assert!(needs_redraw(false, false, true));
++    }
++    #[test]
++    fn emaki_shader_pixels_match_reference_chevrons() {
++        use crate::render_helpers::{render_to_vec, resources, shaders};
++        use smithay::backend::allocator::Fourcc;
++        use smithay::backend::egl::native::EGLSurfacelessDisplay;
++        use smithay::backend::egl::{EGLContext, EGLDisplay};
++        use smithay::backend::renderer::gles::GlesRenderer;
++        use smithay::utils::Transform;
++
++        let mut renderer = unsafe {
++            let display = EGLDisplay::new(EGLSurfacelessDisplay).unwrap();
++            let context = EGLContext::new(&display).unwrap();
++            GlesRenderer::new(context).unwrap()
++        };
++        resources::init(&mut renderer);
++        shaders::init(&mut renderer);
++        assert!(shaders::Shaders::get(&mut renderer)
++            .emaki_backdrop
++            .is_some());
++        let mut backdrop = Backdrop::default();
++        let settings = EmakiBackdrop {
++            px: 2.,
++            ..EmakiBackdrop::default()
++        };
++        let table = Rectangle::new((64., 48.).into(), (128., 96.).into());
++        let output = (256., 192.).into();
++        let palette = [
++            [176, 30, 120, 255],
++            [236, 42, 85, 255],
++            [255, 106, 42, 255],
++            [255, 182, 46, 255],
++        ];
++        for scale in [1., 1.25, 2.] {
++            for dir in [
++                Direction::Right,
++                Direction::Down,
++                Direction::Left,
++                Direction::Up,
++            ] {
++                for millis in [0, 27, 139] {
++                    backdrop.clear();
++                    backdrop.update(settings, Duration::ZERO, table, output, scale, Some(dir));
++                    backdrop.update(
++                        settings,
++                        Duration::from_millis(millis),
++                        table,
++                        output,
++                        scale,
++                        Some(dir),
++                    );
++                    let w = (256. * scale) as usize;
++                    let h = (192. * scale) as usize;
++                    let actual = render_to_vec(
++                        &mut renderer,
++                        (w as i32, h as i32).into(),
++                        scale.into(),
++                        Transform::Normal,
++                        Fourcc::Abgr8888,
++                        backdrop.element().into_iter(),
++                    )
++                    .unwrap();
++                    // Direct port of the mockup's nested lane / row / chevron block loops.
++                    let mut grid = vec![[0u8; 4]; 128 * 96];
++                    let vertical = matches!(dir, Direction::Up | Direction::Down);
++                    let sign = if matches!(dir, Direction::Down | Direction::Right) {
++                        1.
++                    } else {
++                        -1.
++                    };
++                    let flow = (millis as f64 / 1000. * 120.) % 14.;
++                    for (lane, a) in (-14..(if vertical { 128 } else { 96 }) + 14)
++                        .step_by(14)
++                        .enumerate()
++                    {
++                        let stagger = (lane % 2) as i32 * 7;
++                        for b in (-14..(if vertical { 96 } else { 128 }) + 14).step_by(14) {
++                            let along = (b as f64 + stagger as f64 + sign * flow).round() as i32;
++                            let ci =
++                                ((b + stagger).div_euclid(14) + lane as i32).rem_euclid(4) as usize;
++                            for i in 0..4 {
++                                for thick in 0..2 {
++                                    for side in [-1, 1] {
++                                        let across = a + side * (4 - i);
++                                        let along = along + (sign as i32) * (-4 + i + thick);
++                                        let (x, y) = if vertical {
++                                            (across, along)
++                                        } else {
++                                            (along, across)
++                                        };
++                                        if (0..128).contains(&x) && (0..96).contains(&y) {
++                                            grid[y as usize * 128 + x as usize] = palette[ci];
++                                        }
++                                    }
++                                }
++                            }
++                        }
++                    }
++                    for y in 0..h {
++                        for x in 0..w {
++                            let gx = ((x as f64 + 0.5) / (2. * scale)).floor() as usize;
++                            let gy = ((y as f64 + 0.5) / (2. * scale)).floor() as usize;
++                            let pixel = &actual[(y * w + x) * 4..(y * w + x + 1) * 4];
++                            assert_eq!(
++                                pixel,
++                                grid[gy * 128 + gx],
++                                "{dir:?} at {millis}ms scale {scale}, pixel {x},{y}"
++                            );
++                        }
++                    }
++                }
++            }
++        }
++
++        // Inspect all eight ring pieces, gaps, subpixel motion and premultiplied fade.
++        let table = Rectangle::new((96., 64.).into(), (192., 128.).into());
++        let output = (384., 256.).into();
++        backdrop.clear();
++        for millis in [0, 62, 125] {
++            backdrop.update(
++                settings,
++                Duration::from_millis(millis),
++                table,
++                output,
++                1.,
++                None,
++            );
++            let pixels = render_to_vec(
++                &mut renderer,
++                (384, 256).into(),
++                1.0.into(),
++                Transform::Normal,
++                Fourcc::Abgr8888,
++                backdrop.element().into_iter(),
++            )
++            .unwrap();
++            let colors = backdrop.colors.iter().rev().nth(1).unwrap().1;
++            let d = 5. + millis as f64 / 1000. * 4.;
++            let alpha = fade(d, 54.);
++            for (x, y, piece) in [
++                (87, 55, 0),
++                (295, 55, 1),
++                (87, 200, 2),
++                (295, 200, 3),
++                (192, 55, 4),
++                (192, 200, 5),
++                (87, 128, 6),
++                (295, 128, 7),
++            ] {
++                let actual = &pixels[(y * 384 + x) * 4..(y * 384 + x + 1) * 4];
++                let col = palette[colors[piece] as usize];
++                for channel in 0..4 {
++                    let expected = col[channel] as f64 * alpha;
++                    assert!(
++                        (actual[channel] as f64 - expected).abs() <= 1.,
++                        "piece {piece}, {millis}ms: {actual:?}, expected {col:?} * {alpha}"
++                    );
++                }
++            }
++            assert_eq!(
++                &pixels[(55 * 384 + 125) * 4..(55 * 384 + 126) * 4],
++                [0, 0, 0, 0]
++            );
++        }
++        // The existing front-to-back compositor ordering must hide even a newborn
++        // ring behind the table and let a neighbouring table cover older rings.
++        use crate::niri::OutputRenderElements;
++        use crate::render_helpers::solid_color::{SolidColorBuffer, SolidColorRenderElement};
++        let table_buffer = SolidColorBuffer::new(table.size, [0., 0., 0., 1.]);
++        let neighbour_buffer = SolidColorBuffer::new((384., 32.), [0., 0., 0., 1.]);
++        let elements: Vec<OutputRenderElements<GlesRenderer>> = vec![
++            SolidColorRenderElement::from_buffer(&table_buffer, table.loc, 1., Kind::Unspecified)
++                .into(),
++            SolidColorRenderElement::from_buffer(
++                &neighbour_buffer,
++                (0., 0.),
++                1.,
++                Kind::Unspecified,
++            )
++            .into(),
++            backdrop.element().unwrap().into(),
++        ];
++        let pixels = render_to_vec(
++            &mut renderer,
++            (384, 256).into(),
++            1.0.into(),
++            Transform::Normal,
++            Fourcc::Abgr8888,
++            elements.into_iter().rev(),
++        )
++        .unwrap();
++        for (x, y) in [(98, 65), (192, 14), (192, 128)] {
++            assert_eq!(
++                &pixels[(y * 384 + x) * 4..(y * 384 + x + 1) * 4],
++                [0, 0, 0, 255]
++            );
++        }
++
++        // Exercise every constant matrix selector and every base-four digit on GLES.
++        backdrop.clear();
++        let settings = EmakiBackdrop {
++            px: 1.,
++            spacing: 4.,
++            thick: 1.,
++            fade: 300.,
++            ..settings
++        };
++        backdrop.update(
++            settings,
++            Duration::ZERO,
++            Rectangle::new((450., 450.).into(), (300., 300.).into()),
++            (1200., 1200.).into(),
++            1.,
++            None,
++        );
++        let pixels = render_to_vec(
++            &mut renderer,
++            (1200, 1200).into(),
++            1.0.into(),
++            Transform::Normal,
++            Fourcc::Abgr8888,
++            backdrop.element().into_iter(),
++        )
++        .unwrap();
++        for (k, (_, colors)) in backdrop.colors.iter().rev().enumerate() {
++            let d = k as i32 * 4 - 1;
++            let lo = (450 - d) as usize;
++            let hi = (750 + d - 1) as usize;
++            let alpha = fade(d as f64, 300.);
++            for (piece, (x, y)) in [
++                (lo, lo),
++                (hi, lo),
++                (lo, hi),
++                (hi, hi),
++                (600, lo),
++                (600, hi),
++                (lo, 600),
++                (hi, 600),
++            ]
++            .into_iter()
++            .enumerate()
++            {
++                let actual = &pixels[(y * 1200 + x) * 4..(y * 1200 + x + 1) * 4];
++                let col = palette[colors[piece] as usize];
++                for channel in 0..4 {
++                    assert!(
++                        (actual[channel] as f64 - col[channel] as f64 * alpha).abs() <= 1.,
++                        "ring {k} piece {piece}: {actual:?}, expected {col:?} * {alpha}"
++                    );
++                }
++            }
++        }
++    }
++}
+diff --git a/src/render_helpers/mod.rs b/src/render_helpers/mod.rs
+index 05639a30..25b82086 100644
+--- a/src/render_helpers/mod.rs
++++ b/src/render_helpers/mod.rs
+@@ -34,6 +34,7 @@ pub mod clipped_surface;
+ pub mod damage;
+ pub mod debug;
+ pub mod effect_buffer;
++pub mod emaki_backdrop;
+ pub mod framebuffer_effect;
+ pub mod gradient_fade_texture;
+ pub mod memory;
+diff --git a/src/render_helpers/shader_element.rs b/src/render_helpers/shader_element.rs
+index f1bf978b..a7ab6016 100644
+--- a/src/render_helpers/shader_element.rs
++++ b/src/render_helpers/shader_element.rs
+@@ -242,6 +242,19 @@ impl ShaderRenderElement {
+         self.commit_counter.increment();
+     }
+ 
++    /// Mutate retained uniforms; an outstanding render snapshot gets its own copy.
++    pub fn update_uniforms(
++        &mut self,
++        size: Size<f64, Logical>,
++        scale: f32,
++        update: impl FnOnce(&mut [Uniform<'static>]),
++    ) {
++        self.area.size = size;
++        self.scale = scale;
++        update(Rc::make_mut(&mut self.additional_uniforms));
++        self.commit_counter.increment();
++    }
++
+     pub fn with_location(mut self, location: Point<f64, Logical>) -> Self {
+         self.area.loc = location;
+         self
+diff --git a/src/render_helpers/shaders/emaki_backdrop.frag b/src/render_helpers/shaders/emaki_backdrop.frag
+new file mode 100644
+index 00000000..3a831fd0
+--- /dev/null
++++ b/src/render_helpers/shaders/emaki_backdrop.frag
+@@ -0,0 +1,126 @@
++precision highp float;
++uniform float niri_alpha;
++uniform float niri_scale;
++uniform vec2 canvas_size; // logical output size, independent of capture/render scale
++varying vec2 niri_v_coords;
++#if defined(DEBUG_FLAGS)
++uniform float niri_tint;
++#endif
++
++// All coordinates below are mockup grid units, except the output size.
++uniform vec4 table;
++uniform vec4 ring_style; // spacing, thickness, gap, fixed arm
++uniform vec2 ring_phase; // birth distance, fade distance
++uniform vec4 arrows; // logical pixel size, bounded flow, pitch, direction (0 = rings)
++uniform mat4 ring_colors[4]; // 64 rings, eight base-four colour indices per float
++uniform mat4 palette;
++
++float box(vec2 p, vec2 lo, vec2 hi) {
++    // Analytic pixel coverage keeps moving rings smooth without snapping to the grid.
++    if (any(lessThanEqual(hi, lo))) return 0.0;
++    float aa = 0.5 / (niri_scale * arrows.x);
++    vec2 coverage = clamp((min(p - lo, hi - p) + aa) / (2.0 * aa), 0.0, 1.0);
++    return coverage.x * coverage.y;
++}
++
++vec4 hot(float color) {
++    if (color < 0.5) return palette[0];
++    if (color < 1.5) return palette[1];
++    if (color < 2.5) return palette[2];
++    return palette[3];
++}
++
++// All selectors use literal uniform indices (GLSL ES 1.00 fragment portability).
++float component(vec4 v, float i) {
++    if (i < 0.5) return v.x;
++    if (i < 1.5) return v.y;
++    if (i < 2.5) return v.z;
++    return v.w;
++}
++
++float ringCode(float k) {
++    mat4 m;
++    if (k < 16.0) m = ring_colors[0];
++    else if (k < 32.0) m = ring_colors[1];
++    else if (k < 48.0) m = ring_colors[2];
++    else m = ring_colors[3];
++    float column = mod(floor(k / 4.0), 4.0);
++    vec4 v;
++    if (column < 0.5) v = m[0];
++    else if (column < 1.5) v = m[1];
++    else if (column < 2.5) v = m[2];
++    else v = m[3];
++    return component(v, mod(k, 4.0));
++}
++
++vec4 piece(float code, float divisor, float coverage) {
++    // Powers of two and packed 16-bit integers are exact in highp floats.
++    return hot(mod(floor(code / divisor), 4.0)) * coverage;
++}
++
++vec4 ring(vec2 p, float k) {
++    float d = k * ring_style.x + ring_phase.x;
++    if (k < 0.0 || k >= 64.0 || d > ring_phase.y) return vec4(0.0);
++    vec2 lo = table.xy - d;
++    vec2 hi = table.xy + table.zw + d;
++    float th = ring_style.y, gap = ring_style.z, arm = ring_style.w;
++    float code = ringCode(k);
++    vec4 c = vec4(0.0);
++    c += piece(code, 1.0, max(box(p, lo, lo + vec2(arm, th)), box(p, lo, lo + vec2(th, arm))));
++    c += piece(code, 4.0, max(box(p, vec2(hi.x-arm, lo.y), vec2(hi.x, lo.y+th)), box(p, vec2(hi.x-th, lo.y), vec2(hi.x, lo.y+arm))));
++    c += piece(code, 16.0, max(box(p, vec2(lo.x, hi.y-th), vec2(lo.x+arm, hi.y)), box(p, vec2(lo.x, hi.y-arm), vec2(lo.x+th, hi.y))));
++    c += piece(code, 64.0, max(box(p, hi-vec2(arm, th), hi), box(p, hi-vec2(th, arm), hi)));
++    c += piece(code, 256.0, box(p, vec2(lo.x+arm+gap, lo.y), vec2(hi.x-arm-gap, lo.y+th)));
++    c += piece(code, 1024.0, box(p, vec2(lo.x+arm+gap, hi.y-th), vec2(hi.x-arm-gap, hi.y)));
++    c += piece(code, 4096.0, box(p, vec2(lo.x, lo.y+arm+gap), vec2(lo.x+th, hi.y-arm-gap)));
++    c += piece(code, 16384.0, box(p, vec2(hi.x-th, lo.y+arm+gap), vec2(hi.x, hi.y-arm-gap)));
++    return c * clamp(1.0 - d / ring_phase.y, 0.0, 1.0);
++}
++
++vec4 chevrons(vec2 p) {
++    // The mockup rasterizes arrows in a low-resolution canvas, with no interpolation.
++    p = floor(p + 0.0001); // deterministic ties at physical pixel centres
++    bool vertical = arrows.w == 2.0 || arrows.w == 4.0;
++    bool positive = arrows.w == 1.0 || arrows.w == 2.0;
++    float sign = positive ? 1.0 : -1.0;
++    vec2 q = vertical ? p : p.yx; // across, along
++    float pitch = arrows.z;
++    float lane = floor((q.x + pitch * 0.5) / pitch);
++    float across = floor(lane * pitch);
++    // The reference starts its lane counter at -pitch, hence lane + 1.
++    float stagger = mod(lane + 1.0, 2.0) * floor(pitch / 2.0);
++    float row = floor((q.y - stagger - sign * arrows.y + pitch * 0.5) / pitch);
++    float center = floor(row * pitch + stagger + sign * arrows.y + 0.5);
++    float x = abs(q.x - across);
++    float y = q.y - center;
++    // s=4; two blocks thick, with the reference's open tip (x=1..4).
++    float step = -sign * x;
++    bool hit = x >= 1.0 && x <= 4.0 && (y == step || y == step + sign);
++    float color = mod(row + floor(stagger / pitch) + lane + 1.0, 4.0);
++    return hit ? hot(color) : vec4(0.0);
++}
++
++void main() {
++    vec2 p = niri_v_coords * canvas_size / arrows.x;
++    vec4 color;
++    if (arrows.w != 0.0) {
++        color = chevrons(p);
++    } else {
++        vec2 edge = max(table.xy - p, p - table.xy - table.zw);
++        float distance = max(edge.x, edge.y);
++        float aa = 0.5 / (niri_scale * arrows.x);
++        float k = ceil((distance - ring_phase.x - aa) / ring_style.x);
++        color = vec4(0.0);
++        // Bounds in config allow at most two overlapping rings, plus AA coverage.
++        // Constant work per fragment, independent of the number of living rings.
++        for (int i = 0; i < 3; i++) {
++            vec4 next = ring(p, k + float(i));
++            color = next + color * (1.0 - next.a);
++        }
++    }
++    color *= niri_alpha;
++#if defined(DEBUG_FLAGS)
++    if (niri_tint == 1.0) color = vec4(0.0, 0.2, 0.0, 0.2) + color * 0.8;
++#endif
++    gl_FragColor = color;
++}
+diff --git a/src/render_helpers/shaders/mod.rs b/src/render_helpers/shaders/mod.rs
+index 7be9b159..7d4c9629 100644
+--- a/src/render_helpers/shaders/mod.rs
++++ b/src/render_helpers/shaders/mod.rs
+@@ -11,6 +11,7 @@ use super::shader_element::ShaderProgram;
+ use crate::render_helpers::blur::BlurProgram;
+ 
+ pub struct Shaders {
++    pub emaki_backdrop: Option<ShaderProgram>,
+     pub border: Option<ShaderProgram>,
+     pub shadow: Option<ShaderProgram>,
+     pub clipped_surface: Option<GlesTexProgram>,
+@@ -25,6 +26,7 @@ pub struct Shaders {
+ 
+ #[derive(Debug, Clone, Copy)]
+ pub enum ProgramType {
++    EmakiBackdrop,
+     Border,
+     Shadow,
+     Resize,
+@@ -36,6 +38,23 @@ impl Shaders {
+     fn compile(renderer: &mut GlesRenderer) -> Self {
+         let _span = tracy_client::span!("Shaders::compile");
+ 
++        let emaki_backdrop = ShaderProgram::compile(
++            renderer,
++            include_str!("emaki_backdrop.frag"),
++            &[
++                UniformName::new("canvas_size", UniformType::_2f),
++                UniformName::new("table", UniformType::_4f),
++                UniformName::new("ring_style", UniformType::_4f),
++                UniformName::new("ring_phase", UniformType::_2f),
++                UniformName::new("arrows", UniformType::_4f),
++                UniformName::new("ring_colors", UniformType::Matrix4x4),
++                UniformName::new("palette", UniformType::Matrix4x4),
++            ],
++            &[],
++        )
++        .map_err(|err| warn!("error compiling Emaki backdrop shader: {err:?}"))
++        .ok();
++
+         let border = ShaderProgram::compile(
+             renderer,
+             concat!(
+@@ -149,6 +168,7 @@ impl Shaders {
+             .ok();
+ 
+         Self {
++            emaki_backdrop,
+             border,
+             shadow,
+             clipped_surface,
+@@ -198,6 +218,7 @@ impl Shaders {
+ 
+     pub fn program(&self, program: ProgramType) -> Option<ShaderProgram> {
+         match program {
++            ProgramType::EmakiBackdrop => self.emaki_backdrop.clone(),
+             ProgramType::Border => self.border.clone(),
+             ProgramType::Shadow => self.shadow.clone(),
+             ProgramType::Resize => self

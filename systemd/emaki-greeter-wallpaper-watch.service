@@ -1,0 +1,20 @@
+[Unit]
+Description=Watch the selected wallpaper image for Emaki login publishing
+PartOf=graphical-session.target
+# No display connection is needed; start as the graphical target is reached.
+ConditionUser=!root
+ConditionPathIsDirectory=/var/lib/emaki-greeter/users/%u
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -B /usr/share/emaki/shell/helpers/publish-wallpaper.py --watch
+UMask=0027
+NoNewPrivileges=yes
+Restart=on-failure
+RestartSec=5
+Slice=session.slice
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Publish a private wallpaper copy for the Emaki login screen
+PartOf=graphical-session.target
+ConditionUser=!root
+ConditionPathIsDirectory=/var/lib/emaki-greeter/users/%u
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -B /usr/share/emaki/shell/helpers/publish-wallpaper.py
+UMask=0027
+NoNewPrivileges=yes
+TimeoutStartSec=20
+Slice=session.slice

@@ -1,0 +1,21 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# shellcheck shell=bash disable=SC2034,SC2154
+pkgname=emaki-keyring
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Emaki package signing keyring'
+arch=('any')
+url='https://github.com/emakish/packages'
+license=('GPL-3.0-or-later')
+depends=('pacman')
+install=emaki-keyring.install
+source=('emaki.gpg' 'emaki-trusted' 'emaki-revoked')
+sha256sums=('2ee7fdcd0fe1aac198d59b1bc444d1181559abf4b3810b70e12def2efee9c2e8'
+            'ad478a4214d934a7b4af77fdba163e6fbf92a9fb54d2eabbc9d262d7f41da811'
+            'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
+
+package() {
+    install -Dm644 -t "$pkgdir/usr/share/pacman/keyrings" \
+        "$srcdir/emaki.gpg" "$srcdir/emaki-trusted" "$srcdir/emaki-revoked"
+}

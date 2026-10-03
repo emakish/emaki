@@ -1,0 +1,19 @@
+// ═══════════════════════════════════════════════════════════════════════
+//  Emaki — системный конфиг niri. Installed to /etc/niri/config.kdl (make install).
+//
+//  Purpose: on a clean machine the user has no ~/.config/niri/config.kdl.
+//  niri 26.04 looks for its config as follows (src/main.rs, niri-config/src/lib.rs):
+//    1. `niri -c <file>` or NIRI_CONFIG — only that file; creates nothing;
+//    2. ~/.config/niri/config.kdl, if it exists;
+//    3. otherwise /etc/niri/config.kdl — this file; niri then leaves the home directory alone;
+//    4. otherwise creates ~/.config/niri/config.kdl from its stock config.
+//  The first login therefore uses Emaki, without Emaki creating or editing the user's config.
+//  The niri package does not own /etc/niri (pacman -Ql niri).
+//
+//  Put your changes in ~/.config/niri/config.kdl. Once it exists,
+//  niri reads it instead of this file (switching immediately), so include
+//  the Emaki defaults as the first line in your personal config:
+//    include "/usr/share/emaki/niri/default.kdl"
+// ═══════════════════════════════════════════════════════════════════════
+
+include "/usr/share/emaki/niri/default.kdl"

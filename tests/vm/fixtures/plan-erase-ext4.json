@@ -1,0 +1,17 @@
+{
+  "mode": "erase",
+  "disk_id": "/dev/disk/by-id/virtio-emaki-target",
+  "fs": "ext4",
+  "hostname": "emaki",
+  "timezone": "UTC",
+  "layouts": [
+    "us"
+  ],
+  "user": {
+    "name": "Emaki Test",
+    "login": "emaki",
+    "password": "emaki-vm-test-only"
+  },
+  "repo_server": "http://10.0.2.2:8765/testing",
+  "online_update": false
+}

@@ -1,0 +1,11 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = grub
+Target = emaki-config
+
+[Action]
+Description = Applying Emaki GRUB menu title
+When = PostTransaction
+Exec = /usr/share/libalpm/scripts/emaki-grub-title

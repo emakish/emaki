@@ -1,0 +1,45 @@
+#!/bin/sh
+# Emaki idle policy.
+#
+#   2.5 min   dim screen        (any activity restores it)
+#   5 min     lock
+#   5.5 min   turn screen off
+#
+# Also lock before manually initiated suspend.
+#
+# NO AUTOMATIC SUSPEND — BY DESIGN.
+#
+# 2026-09-15: the “hibernate after 30 minutes” step killed the running desktop on
+# the test machine. The system entered hibernation, allocated a 22 GB image, and failed,
+# then kept retrying unsuccessfully, leaving the graphics card in a broken
+# state — a black screen and corrupted output.
+#
+# Hardware-specific cause: ACPI reports "supports S0 S4 S5", so S3 is absent,
+# and S4 does not complete on this configuration.
+#
+# Distribution policy: never automatically suspend someone else's machine. How many
+# laptops have broken suspend is unknown, and a failure costs the user
+# their running desktop. Suspend remains a manual action
+# until the user verifies that it works.
+#
+# Brightness: `brightnessctl -s` saves the CURRENT brightness. If the timer
+# fires again while the screen is already dimmed, it saves 10 %, and “restore”
+# keeps restoring 10 %. Save only when not already dimmed:
+# track this with a flag file in the runtime directory.
+set -eu
+
+FLAG="${XDG_RUNTIME_DIR:-/tmp}/emaki-idle-dimmed"
+
+dim='[ -e "'"$FLAG"'" ] || { brightnessctl -s set 10% && : > "'"$FLAG"'"; }'
+undim='[ -e "'"$FLAG"'" ] && { brightnessctl -r; rm -f "'"$FLAG"'"; } || true'
+
+rm -f "$FLAG"
+
+exec swayidle -w \
+    timeout 150 "$dim" \
+        resume "$undim" \
+    timeout 300 'emaki-lock' \
+    timeout 330 'niri msg action power-off-monitors' \
+        resume 'niri msg action power-on-monitors' \
+    lock 'emaki-lock' \
+    before-sleep 'emaki-lock --wait'

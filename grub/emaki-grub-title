@@ -1,0 +1,26 @@
+#!/bin/bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Match shell source literally; GRUB expands these variables later.
+# shellcheck disable=SC2016
+set -euo pipefail
+
+# An optional file argument allows testing without touching the host's GRUB.
+target=${1:-/etc/grub.d/10_linux}
+[[ -f "$target" ]] || exit 0
+original='  OS="${GRUB_DISTRIBUTOR} Linux"'
+patched='  OS="${GRUB_DISTRIBUTOR}"'
+if ! grep -Fxq -- "$original" "$target"; then
+    if ! grep -Fxq -- "$patched" "$target"; then
+        printf 'emaki-grub-title: WARNING: expected OS line absent in %s; left unchanged.\n' "$target" >&2
+    fi
+    exit 0
+fi
+
+# Keep the temporary file beside the target so rename is atomic.
+temporary=$(mktemp "${target}.emaki.XXXXXX")
+trap 'rm -f -- "$temporary"' EXIT
+trap 'exit 1' HUP INT TERM
+sed 's/^  OS="${GRUB_DISTRIBUTOR} Linux"$/  OS="${GRUB_DISTRIBUTOR}"/' "$target" > "$temporary"
+chmod 0755 "$temporary"
+mv -f -- "$temporary" "$target"

@@ -1,0 +1,46 @@
+// Emaki's dedicated login compositor. The session compositor has its own config.
+// ReGreet runs only on a QS failure before an accepted greetd launch.
+// The wrapper records success before quit and tolerates Qt's Wayland-disconnect exit.
+// It disables core dumps before starting either greeter.
+spawn-at-startup "emaki-greeter-run"
+
+// The greeter account's passwd home can be '/'. All writable application roots
+// are private, greeter-owned directories provisioned by emaki-greeter.conf.
+environment {
+    // QS 0.3.1 otherwise respawns itself and a crash reporter, bypassing ReGreet.
+    QS_DISABLE_CRASH_HANDLER "1"
+    HOME "/var/lib/emaki-greeter/home"
+    XDG_CONFIG_HOME "/var/lib/emaki-greeter/config"
+    XDG_CACHE_HOME "/var/lib/emaki-greeter/cache"
+    XDG_STATE_HOME "/var/lib/emaki-greeter/state"
+    XDG_DATA_HOME "/var/lib/emaki-greeter/data"
+}
+
+// The greeter retains its plate; the authenticated session owns the final drain.
+// Black remains the safe backing before the initial greeter pour.
+layout {
+    background-color "#000000"
+}
+
+hotkey-overlay {
+    skip-at-startup
+}
+
+prefer-no-csd
+
+input {
+    // No xkb override: niri uses the system layout configured through localed.
+    touchpad {
+        tap
+    }
+}
+
+cursor {
+    xcursor-theme "Emaki"
+    xcursor-size 24
+}
+
+// No application-launching bindings on the login screen. Ctrl+Alt+F2 is the
+// compositor's standard VT switch and remains the getty recovery route.
+binds {
+}

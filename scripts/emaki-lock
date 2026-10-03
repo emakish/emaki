@@ -1,0 +1,617 @@
+#!/usr/bin/env python3
+"""Own the locker lifetime; only authenticated child protocol events prove readiness.
+
+The compositor protects a dead lock client's surfaces until a replacement locks. The
+supervisor kills/reaps an unresponsive child before starting hyprlock. No public unlock.
+"""
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import resource
+import selectors
+import signal
+import socket
+import stat
+import struct
+import subprocess
+import sys
+import time
+
+# confirm is additive; existing version-1 lock/wait/status clients keep their semantics.
+VERSION = 1
+WAIT_SECONDS = 15.0
+START_SECONDS = 6.0
+HEARTBEAT_SECONDS = 3.0
+# Hyprlock's normal (non-verbose) onLockLocked callback emits this exact line.
+# Do not enable WAYLAND_DEBUG: keyboard events would cross the secret boundary.
+LOCKED_EVENT = re.compile(rb'^(?:DEBUG(?: from [A-Za-z0-9_.-]+)? \]: |\[LOG\] )?onLockLocked called\s*$')
+ANSI_COLOR = re.compile(rb'\x1b\[[0-9;]*m')
+# exec keeps the recorded PID/start time. EOF before the release byte means the
+# supervisor died before persisting ownership: exit without creating a locker.
+CHILD_GATE = ('import os,sys; fd=int(sys.argv[1]); go=os.read(fd,1); os.close(fd); '
+              'os.execvpe(sys.argv[2],sys.argv[2:],os.environ) if go==b"1" else sys.exit(1)')
+
+
+
+def runtime_directory():
+    value = os.environ.get('XDG_RUNTIME_DIR')
+    if not value:
+        raise OSError('XDG_RUNTIME_DIR is required')
+    base = Path(value)
+    info = base.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise OSError('private runtime directory required')
+    # The same uid can run several compositor sessions. Readiness belongs only
+    # to the Wayland socket targeted by this caller, never another desktop.
+    display = Path(os.environ.get('WAYLAND_DISPLAY', 'wayland-0'))
+    display = display if display.is_absolute() else base / display
+    namespace = hashlib.sha256(os.fsencode(str(display.resolve()))).hexdigest()[:16]
+    directory = base / ('emaki-lock-' + namespace)
+    directory.mkdir(mode=0o700, exist_ok=True)
+    info = directory.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+        raise OSError('unsafe locker runtime directory')
+    return directory
+
+
+def wire(value):
+    return (json.dumps(dict(version=VERSION, **value), separators=(',', ':')) + '\n').encode()
+
+
+def process_identity(pid):
+    try:
+        proc = Path('/proc') / str(pid)
+        if proc.stat().st_uid != os.getuid():
+            return None
+        fields = (proc / 'stat').read_text().rsplit(')', 1)[1].split()
+        if fields[0] == 'Z':
+            return None
+        return dict(start=fields[19], boot=Path('/proc/sys/kernel/random/boot_id').read_text().strip())
+    except (OSError, IndexError):
+        return None
+
+
+class Supervisor:
+    def __init__(self, directory, start_seconds=START_SECONDS, heartbeat_seconds=HEARTBEAT_SECONDS):
+        self.directory = directory
+        self.socket_path = directory / 'control.sock'
+        self.start_seconds = start_seconds
+        self.heartbeat_seconds = heartbeat_seconds
+        self.selector = selectors.DefaultSelector()
+        self.connections = {}
+        self.child = None
+        self.child_socket = None
+        self.backend = 'quickshell'
+        self.phase = 'starting'
+        self.secure = self.poured = self.authenticated_exit = False
+        self.established = False
+        self.outputs_active = True
+        self.last_heartbeat = self.started = time.monotonic()
+        self.fallback_buffer = b''
+        self.readiness_since = self.started
+        self.sequence = 0
+        self.sleep_pending = False
+        self.sleep_generation = 0
+        self.prepared_generation = 0
+        self.fallback_attempts = 0
+        self.last_error_log = 0.0
+        self.finished = False
+        self.stopping = False
+
+    def stop(self, _signum=None, _frame=None):
+        # A scope stop terminates the whole cgroup. Starting a replacement there
+        # would leave it subject to the same stop deadline.
+        self.stopping = self.finished = True
+        self.phase = 'stopping'
+
+    def spawn(self, fallback=False):
+        if self.stopping:
+            return
+        if fallback:
+            if self.fallback_attempts >= 1:
+                self.fail()
+                return
+            self.fallback_attempts += 1
+        self.backend = 'hyprlock' if fallback else 'quickshell'
+        if not fallback:
+            self.established = False
+            self.prepared_generation = 0
+            self.sleep_pending = self.sleep_generation > 0
+        self.secure = self.poured = self.authenticated_exit = False
+        self.phase = 'starting'
+        self.started = self.last_heartbeat = self.readiness_since = time.monotonic()
+        env = dict(os.environ, LC_MESSAGES='C')
+        env.pop('LC_ALL', None)  # Keep LANG/LC_CTYPE for Unicode; stabilize PAM prompt language.
+        # Never allow debug logs to record typed key events from the production locker.
+        env.pop('WAYLAND_DEBUG', None)
+        env.pop('QT_LOGGING_RULES', None)
+        # Scope processes inherit the caller's environment, including this supported option.
+        env['EMAKI_LOCK_REDUCED_MOTION'] = '1' if env.get('EMAKI_LOCK_REDUCED_MOTION') == '1' else '0'
+        if fallback:
+            argv = ['hyprlock', '--grace', '0']
+        else:
+            source = Path(__file__).resolve().parent.parent
+            entry = source / ('shell/lock.qml' if (source / 'shell/lock.qml').is_file() else 'share/emaki/shell/lock.qml')
+            # Match emaki-shell's default, without overriding user allocator tuning.
+            env['MALLOC_CONF'] = env.get('MALLOC_CONF') or 'thp:never'
+            env['EMAKI_LOCK_SOCKET'] = str(self.socket_path)
+            argv = ['qs', '-p', str(entry), '--no-color']
+        gate_read, gate_write = os.pipe()
+        try:
+            self.child = subprocess.Popen([sys.executable, '-c', CHILD_GATE, str(gate_read), *argv],
+                                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE if fallback else subprocess.DEVNULL,
+                                          stderr=subprocess.STDOUT if fallback else subprocess.DEVNULL,
+                                          env=env, close_fds=True, pass_fds=(gate_read,))
+            self.record_child()
+            if self.stopping:
+                return  # Closing the gate without a byte prevents locker exec.
+            os.write(gate_write, b'1')
+        except OSError:
+            if self.child is not None:
+                self.retire(kill=True)
+            if fallback:
+                self.fail()
+            else:
+                self.spawn(True)
+            return
+        finally:
+            os.close(gate_read)
+            os.close(gate_write)
+        if fallback:
+            os.set_blocking(self.child.stdout.fileno(), False)
+            self.selector.register(self.child.stdout, selectors.EVENT_READ, 'fallback')
+
+    def fail(self):
+        # A refusal can mean another locker owns the session. Never retry later
+        # and unexpectedly re-lock the desktop after that owner authenticates.
+        self.secure = self.poured = False
+        self.phase = 'failed'
+        self.finished = True
+
+    def record_child(self):
+        identity = process_identity(self.child.pid)
+        if identity is None:
+            # A child can exit between Popen and the proc read; tick reaps it.
+            if self.child.poll() is not None:
+                return
+            raise OSError('cannot identify locker child')
+        data = dict(pid=self.child.pid, identity=identity, backend=self.backend)
+        temporary = self.directory / 'child.json.new'
+        descriptor = os.open(temporary, os.O_CREAT | os.O_TRUNC | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(descriptor, 'w') as stream:
+            json.dump(data, stream)
+        os.replace(temporary, self.directory / 'child.json')
+
+    def recover_orphan(self):
+        """Retire only our recorded child; pidfd protects against PID reuse."""
+        path = self.directory / 'child.json'
+        try:
+            record = json.loads(path.read_text())
+        except FileNotFoundError:
+            return False
+        except (OSError, ValueError):
+            record = None
+        pid = record.get('pid') if isinstance(record, dict) else None
+        identity = record.get('identity') if isinstance(record, dict) else None
+        if (type(pid) is not int or pid <= 1 or record.get('backend') not in ('quickshell', 'hyprlock') or
+                not isinstance(identity, dict) or set(identity) != {'start', 'boot'} or
+                any(not isinstance(identity[key], str) or not identity[key] for key in ('start', 'boot'))):
+            print('emaki-lock: discarded invalid child identity; no process was signalled', file=sys.stderr)
+            path.unlink(missing_ok=True)
+            return False
+        if process_identity(pid) != identity:
+            path.unlink(missing_ok=True)
+            return False
+        try:
+            descriptor = os.pidfd_open(pid)
+        except ProcessLookupError:
+            path.unlink(missing_ok=True)
+            return False
+        try:
+            if process_identity(pid) != identity:
+                path.unlink(missing_ok=True)
+                return False
+            try:
+                signal.pidfd_send_signal(descriptor, signal.SIGKILL)
+            except ProcessLookupError:
+                path.unlink(missing_ok=True)
+                return False
+            # pidfd readability is process death, including a zombie whose parent
+            # has not reaped it. Do not start the replacement before it is dead.
+            with selectors.DefaultSelector() as death:
+                death.register(descriptor, selectors.EVENT_READ)
+                if not death.select(2):
+                    raise OSError('recorded locker did not exit')
+        finally:
+            os.close(descriptor)
+        path.unlink(missing_ok=True)
+        return True
+
+    def snapshot(self):
+        fresh = (self.child is not None and self.child.poll() is None and
+                 (self.backend == 'hyprlock' or time.monotonic() - self.last_heartbeat < self.heartbeat_seconds))
+        ready = self.secure and self.poured and fresh and self.phase == 'locked'
+        state = ('locked' if ready else 'locking' if self.phase == 'locked' else
+                 'recovering' if self.phase == 'lost' or self.phase == 'starting' and self.backend == 'hyprlock' else self.phase)
+        return dict(state=state,
+                    backend=self.backend, secure=self.secure and fresh, poured=self.poured and fresh)
+
+    def close_connection(self, conn):
+        self.connections.pop(conn, None)
+        try:
+            self.selector.unregister(conn)
+        except (KeyError, ValueError):
+            pass
+        conn.close()
+        if conn is self.child_socket:
+            self.child_socket = None
+
+    def respond(self, conn, value):
+        try:
+            conn.sendall(wire(value))
+        except OSError:
+            pass
+        self.close_connection(conn)
+
+    def handle(self, conn, value):
+        row = self.connections[conn]
+        if row['trusted']:
+            if value.get('version') != VERSION:
+                return
+            event = value.get('event')
+            if event == 'state' and type(value.get('secure')) is bool and type(value.get('poured')) is bool:
+                phase = value.get('phase')
+                if phase not in ('pour', 'locked', 'melt', 'drain', 'finished', 'lost'):
+                    return
+                self.last_heartbeat = time.monotonic()
+                self.sequence += 1
+                generation = value.get('sleepGeneration', 0)
+                if type(generation) is int and 0 <= generation <= self.sleep_generation:
+                    self.prepared_generation = max(self.prepared_generation, generation)
+                if self.poured and not (value['secure'] and value['poured']):
+                    self.readiness_since = self.last_heartbeat
+                self.secure = value['secure']
+                active = value.get('outputsActive', True)
+                if isinstance(active, (bool, int)):
+                    self.outputs_active = bool(active)
+                self.poured = self.secure and value['poured']
+                if self.poured:
+                    self.established = True
+                self.phase = phase
+            elif event == 'authenticated-exit' and self.phase == 'finished':
+                self.authenticated_exit = True
+            return
+        command = value.get('command')
+        if value.get('version') != VERSION or command not in ('lock', 'confirm', 'wait', 'status'):
+            self.respond(conn, dict(state='invalid_request'))
+        elif self.finished and command != 'status':
+            terminal = self.phase if self.phase in ('refused', 'failed', 'stopping') else 'finished'
+            self.respond(conn, dict(state=terminal, secure=False, poured=False))
+        elif command in ('confirm', 'wait'):
+            row['wait'] = True
+            row['deadline'] = time.monotonic() + WAIT_SECONDS
+            # Confirmation alone retains the desktop capture. Only a sleep
+            # barrier requires a fresh acknowledgement after prepare-sleep.
+            row['generation'] = 0
+            if command == 'wait':
+                self.sleep_generation += 1
+                row['generation'] = self.sleep_generation
+                self.sleep_pending = True
+                self.prepare_sleep()
+        else:
+            if command == 'lock' and self.phase in ('melt', 'drain', 'finished'):
+                self.sleep_generation += 1
+                self.sleep_pending = True
+                self.prepare_sleep()
+            self.respond(conn, self.snapshot())
+
+    def prepare_sleep(self):
+        if self.sleep_pending and self.child_socket:
+            try:
+                self.child_socket.sendall(wire(dict(event='prepare-sleep', generation=self.sleep_generation)))
+                self.sleep_pending = False
+            except OSError:
+                pass
+
+    def accept(self):
+        conn, _ = self.server.accept()
+        pid, uid, _ = struct.unpack('3i', conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+        if uid != os.getuid():
+            conn.close()
+            return
+        trusted = self.backend == 'quickshell' and self.child is not None and pid == self.child.pid
+        if trusted and self.child_socket:
+            self.close_connection(self.child_socket)
+        conn.setblocking(False)
+        self.connections[conn] = dict(buffer=b'', trusted=trusted, wait=False, deadline=time.monotonic() + 2)
+        if trusted:
+            self.child_socket = conn
+        self.selector.register(conn, selectors.EVENT_READ, 'connection')
+        if trusted:
+            self.prepare_sleep()
+
+    def read_connection(self, conn):
+        try:
+            chunk = conn.recv(4096)
+        except (BlockingIOError, ConnectionResetError):
+            return
+        if not chunk:
+            self.close_connection(conn)
+            return
+        row = self.connections[conn]
+        row['buffer'] += chunk
+        if len(row['buffer']) > 8192:
+            self.close_connection(conn)
+            return
+        while b'\n' in row['buffer'] and conn in self.connections:
+            line, row['buffer'] = row['buffer'].split(b'\n', 1)
+            try:
+                value = json.loads(line)
+                if isinstance(value, dict):
+                    self.handle(conn, value)
+            except (ValueError, UnicodeDecodeError):
+                self.close_connection(conn)
+
+    def read_fallback(self, stream):
+        try:
+            chunk = os.read(stream.fileno(), 16384)
+        except BlockingIOError:
+            return
+        if not chunk:
+            self.selector.unregister(stream)
+            return
+        # Normal locker logs never reach a file or terminal. Keep only the exact
+        # compositor-locked callback marker. Verbose/protocol tracing is disabled.
+        self.fallback_buffer += chunk
+        while b'\n' in self.fallback_buffer:
+            line, self.fallback_buffer = self.fallback_buffer.split(b'\n', 1)
+            if LOCKED_EVENT.fullmatch(ANSI_COLOR.sub(b'', line)):
+                self.secure = self.poured = True
+                self.phase = 'locked'
+        if len(self.fallback_buffer) > 4096:
+            self.fallback_buffer = b''
+
+    def retire(self, kill=False):
+        if self.child:
+            if kill and self.child.poll() is None:
+                self.child.kill()  # Only our direct child, never a process-name match.
+            self.child.wait()
+            if self.child.stdout:
+                try:
+                    self.selector.unregister(self.child.stdout)
+                except KeyError:
+                    pass
+                self.child.stdout.close()
+        if self.child_socket:
+            self.close_connection(self.child_socket)
+        self.child = None
+        (self.directory / 'child.json').unlink(missing_ok=True)
+        self.fallback_buffer = b''
+
+    def tick(self):
+        if self.stopping:
+            return
+        now = time.monotonic()
+        if self.child is None:
+            self.fail()
+        elif self.child.poll() is not None:
+            normal = self.child.returncode == 0 and (self.authenticated_exit if self.backend == 'quickshell' else True)
+            backend = self.backend
+            confirmed = self.secure
+            self.retire()
+            pending = self.prepared_generation < self.sleep_generation or any(row['wait'] for row in self.connections.values())
+            if normal and backend == 'quickshell' and pending:
+                # A new request can arrive after authenticated release was sent.
+                # Reap first, then acquire a new lock; never lose the pending waiter.
+                self.spawn(False)
+            elif normal:
+                self.phase = 'refused' if backend == 'hyprlock' and not confirmed else 'unlocked'
+                self.secure = self.poured = False
+                self.finished = True
+            elif backend == 'hyprlock':
+                self.fail()
+            else:
+                self.spawn(True)
+        elif self.backend == 'quickshell' and ((self.phase == 'starting' and now - self.started > self.start_seconds) or
+                 (self.phase != 'starting' and now - self.last_heartbeat > self.heartbeat_seconds) or
+                 (not self.established and not self.poured and (not self.secure or self.outputs_active) and self.phase in ('pour', 'starting', 'locked') and now - self.readiness_since > self.start_seconds and not self.authenticated_exit)):
+            self.retire(kill=True)
+            self.spawn(True)
+        elif self.backend == 'hyprlock' and not self.secure and now - self.started > self.start_seconds:
+            self.phase = 'failed'
+            # A live fallback may be waiting for the compositor. Keep its surface; a
+            # deadline fails waiting callers, never exposes the desktop to force recovery.
+        for conn, row in list(self.connections.items()):
+            if row['trusted']:
+                continue
+            state = self.snapshot()
+            if row['wait'] and state['state'] == 'locked' and (self.backend == 'hyprlock' or self.prepared_generation >= row.get('generation', 0)):
+                self.respond(conn, state)
+            elif row['wait'] and (self.finished or self.phase == 'failed' or now >= row['deadline']):
+                self.respond(conn, dict(state='lock_failed', backend=self.backend, secure=False, poured=False))
+            elif not row['wait'] and now >= row['deadline']:
+                self.close_connection(conn)
+
+    def log_error(self, error):
+        now = time.monotonic()
+        if now - self.last_error_log >= 5:
+            # Neither exception text nor child output is safe to copy to logs.
+            print('emaki-lock: supervisor operation failed (' + type(error).__name__ + ')', file=sys.stderr)
+            self.last_error_log = now
+
+    def run(self):
+        # Keep the flock descriptor for this supervisor's entire lifetime. Children
+        # cannot inherit it and a second supervisor never starts another locker.
+        descriptor = os.open(self.directory / 'supervisor.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(descriptor)
+            return
+        self.server = socket.socket(socket.AF_UNIX)
+        self.socket_path.unlink(missing_ok=True)
+        self.server.bind(str(self.socket_path))
+        os.chmod(self.socket_path, 0o600)
+        self.server.listen(32)
+        self.server.setblocking(False)
+        self.selector.register(self.server, selectors.EVENT_READ, 'server')
+        try:
+            self.spawn(fallback=self.recover_orphan())
+            while not self.finished:
+                try:
+                    events = self.selector.select(.1)
+                except Exception as error:
+                    self.log_error(error)
+                    time.sleep(.1)
+                    events = []
+                for key, _ in events:
+                    try:
+                        if key.data == 'server':
+                            self.accept()
+                        elif key.data == 'fallback':
+                            self.read_fallback(key.fileobj)
+                        else:
+                            self.read_connection(key.fileobj)
+                    except Exception as error:
+                        self.log_error(error)
+                try:
+                    self.tick()
+                except Exception as error:
+                    self.log_error(error)
+        finally:
+            # Do not terminate a lock child on a supervisor exception. The compositor
+            # remains locked; the next owner recovers the recorded exact child via pidfd.
+            for conn in list(self.connections):
+                if self.stopping and not self.connections[conn]['trusted']:
+                    self.respond(conn, dict(state='stopping', secure=False, poured=False))
+                else:
+                    self.close_connection(conn)
+            self.server.close()
+            self.socket_path.unlink(missing_ok=True)
+            os.close(descriptor)
+            if self.stopping:
+                print('emaki-lock: supervision stopped by SIGTERM; no fallback started in the stopping scope; '
+                      'a remaining lock requires a new emaki-lock request or authenticated TTY recovery', file=sys.stderr)
+
+
+def connect(directory):
+    conn = socket.socket(socket.AF_UNIX)
+    conn.settimeout(.4)
+    try:
+        conn.connect(str(directory / 'control.sock'))
+    except OSError:
+        conn.close()
+        return None
+    return conn
+
+
+def launch_supervisor(directory, scoped=True):
+    # A new session alone does not escape emaki-shell.service's control group.
+    # systemd-run moves this process tree into an independent user scope before
+    # executing the supervisor. Without a user manager, a logged setsid fallback
+    # still locks, but cannot survive termination of its caller's entire cgroup.
+    unit = directory.name + '-' + str(os.getpid()) + '-' + str(time.monotonic_ns())
+    argv = [sys.executable, str(Path(__file__).resolve()), '--supervise']
+    if scoped:
+        argv = ['systemd-run', '--user', '--scope', '--quiet', '--collect',
+                '--slice=app.slice', '--property=TimeoutStopSec=5s', '--unit=' + unit, *argv]
+    else:
+        print('emaki-lock: systemd user scope unavailable; using setsid fallback without cgroup isolation', file=sys.stderr)
+    try:
+        # A captured client must reach EOF when it returns, not when the lock ends.
+        process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                   stderr=subprocess.DEVNULL, start_new_session=True,
+                                   close_fds=True, env=dict(os.environ))
+    except OSError:
+        if scoped:
+            return launch_supervisor(directory, scoped=False)
+        raise
+    return process, scoped
+
+
+def client(directory, command):
+    # One overall bound includes startup and a possible finished/socket-close race.
+    deadline = time.monotonic() + WAIT_SECONDS + 4
+    for attempt in range(2):
+        conn = connect(directory)
+        if not conn and command != 'status':
+            launcher, scoped = launch_supervisor(directory)
+            startup = min(deadline, time.monotonic() + 3)
+            while not conn and time.monotonic() < startup:
+                result = launcher.poll()
+                if result is not None:
+                    conn = connect(directory)
+                    if conn or result == 0 or not scoped:
+                        break
+                    launcher, scoped = launch_supervisor(directory, scoped=False)
+                time.sleep(.025)
+                conn = connect(directory)
+        if not conn:
+            # The previous owner may have removed its socket while still holding
+            # flock. Our launcher then exits successfully without becoming owner.
+            if command != 'status' and not attempt and time.monotonic() < deadline:
+                time.sleep(.1)
+                continue
+            return dict(state='unavailable' if command == 'status' else 'lock_failed', secure=False, poured=False)
+        try:
+            with conn:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                conn.settimeout(min(WAIT_SECONDS + 1, remaining))
+                conn.sendall(wire(dict(command=command)))
+                response = b''
+                while b'\n' not in response and len(response) < 8192:
+                    chunk = conn.recv(4096)
+                    if not chunk:
+                        break
+                    response += chunk
+                if response:
+                    result = json.loads(response.split(b'\n', 1)[0])
+                    if command == 'status' or result.get('state') not in ('finished', 'unlocked'):
+                        return result
+        except (ConnectionResetError, BrokenPipeError):
+            pass
+        # A just-finished supervisor can accept and close before replying. Its
+        # socket disappears shortly; retry this explicit new request once only.
+        if command == 'status' or attempt or time.monotonic() >= deadline:
+            break
+        time.sleep(.1)
+    return dict(state='unavailable' if command == 'status' else 'lock_failed', secure=False, poured=False)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('command', nargs='?', choices=('lock', 'status'), default='lock')
+    confirmation = parser.add_mutually_exclusive_group()
+    confirmation.add_argument('--wait', action='store_true', help='prepare for sleep and wait for confirmation and full pour (15 s deadline)')
+    confirmation.add_argument('--confirm', action='store_true', help='wait for confirmation and full pour, retaining the capture (15 s deadline)')
+    parser.add_argument('--supervise', action='store_true', help=argparse.SUPPRESS)
+    args = parser.parse_args()
+    # Includes supervisor, qs, its PAM workers and hyprlock; secrets must not enter cores.
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    os.umask(0o077)
+    try:
+        directory = runtime_directory()
+        if args.supervise:
+            supervisor = Supervisor(directory)
+            signal.signal(signal.SIGTERM, supervisor.stop)
+            supervisor.run()
+            return 0
+        result = client(directory, 'status' if args.command == 'status' else 'wait' if args.wait else 'confirm' if args.confirm else 'lock')
+    except (OSError, ValueError):
+        result = dict(state='lock_failed', secure=False, poured=False)
+    if args.command == 'status':
+        print(json.dumps(result, separators=(',', ':')))
+        return 0 if result['state'] == 'locked' else 1
+    if args.wait or args.confirm:
+        return 0 if result['state'] == 'locked' and result.get('secure') and result.get('poured') else 1
+    return 1 if result['state'] in ('lock_failed', 'failed', 'invalid_request', 'refused', 'recovering', 'stopping') else 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

@@ -1,0 +1,34 @@
+Usage: emaki <command> [options]
+
+Commands:
+  settings list|get|set          Isolated managed settings; see settings --help
+  version                       Print the Emaki build version
+  map [--json]                  Expected paths and ownership; no filesystem writes
+  state [--json] [--timeout-ms N]
+                                Read session state; default 1000 ms per component
+  niri snapshot [--json] [--timeout-ms N]
+                                Initial window/workspace/output model (niri 26.04)
+  niri watch [--json] [--timeout-ms N]
+                                Observe changes; reconnect with a fresh model
+  niri focus-window --id N       Focus a window by niri ID
+  niri focus-workspace --id N    Focus a workspace by niri ID, never index
+  niri move-window-to-workspace --id N --workspace-id M
+                                Move explicit window; do not follow focus
+  niri close-window --id N       Request closing an explicit window
+
+Options:
+  -h, --help                    Print help
+  -V, --version                 Print the Emaki build version
+  --timeout-ms N                State/niri: 10..10000 ms; default 1000
+
+Exit codes:
+  0  Success; all state components available / all map paths resolved
+  1  Partial observation, unresolved paths or rejected niri command; valid JSON
+  2  Invalid arguments, serialization failure or output error
+  3  Niri command sent/possibly sent, but result not confirmed; never auto-retried
+
+State statuses: available, absent, denied, incomplete, timeout, error.
+Available means the documented probe succeeded, not full service health.
+Read-only queries never create directories or activate D-Bus services.
+State omits window titles, app IDs, SSIDs, credentials and personal paths.
+Map intentionally shows resolved paths; planned entries need not exist.

@@ -1,0 +1,16 @@
+#!/bin/bash
+# Keep the login VT silent, including dbus-run-session diagnostics.
+# Drain the pipe if journald is unavailable so children can continue writing.
+if command -v systemd-cat >/dev/null 2>&1; then
+    exec > >(systemd-cat -t emaki-greeter-compositor >/dev/null 2>&1 || cat >/dev/null 2>&1) 2>&1
+else
+    exec >/dev/null 2>&1
+fi
+# Keep stock niri usable before the fork is installed and after its removal.
+if command -v niri-emaki >/dev/null 2>&1; then
+    export EMAKI_GREETER_COMPOSITOR=niri-emaki EMAKI_GREETER_KEEP_FRAME=1
+else
+    export EMAKI_GREETER_COMPOSITOR=niri
+    unset EMAKI_GREETER_KEEP_FRAME
+fi
+exec dbus-run-session "$EMAKI_GREETER_COMPOSITOR" --config /usr/share/emaki/greetd/niri.kdl

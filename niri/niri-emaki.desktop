@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=niri (Emaki)
+Comment=niri with Emaki's liquid glass: the dock refracts the windows under it
+Exec=niri-emaki-session
+Type=Application
+DesktopNames=niri

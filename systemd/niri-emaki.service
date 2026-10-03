@@ -1,0 +1,18 @@
+# niri with the Emaki patch; started by niri-emaki-session (“niri (Emaki)”).
+# Copy of niri.service from the niri 26.04 package, changing only ExecStart. The script selects
+# the fork config (fork.kdl if ~/.config/niri/config.kdl exists, otherwise fork-system.kdl)
+# and becomes niri-emaki via exec — the PID stays the same, so Type=notify works.
+[Unit]
+Description=A scrollable-tiling Wayland compositor (Emaki build)
+BindsTo=graphical-session.target
+Before=graphical-session.target
+Wants=graphical-session-pre.target
+After=graphical-session-pre.target
+
+Wants=xdg-desktop-autostart.target
+Before=xdg-desktop-autostart.target
+
+[Service]
+Slice=session.slice
+Type=notify
+ExecStart=/usr/bin/niri-emaki-session --compositor

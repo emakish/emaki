@@ -1,0 +1,73 @@
+#!/usr/bin/python3 -I
+"""Start the default wallpaper once per compositor, without waiting for login decoration."""
+import fcntl
+import hashlib
+import os
+from pathlib import Path
+import stat
+import sys
+
+
+
+def claim_file(environment):
+    runtime = Path(environment.get('XDG_RUNTIME_DIR', ''))
+    if not runtime.is_absolute() or '..' in runtime.parts or os.geteuid() == 0:
+        raise ValueError('private runtime required')
+    directory = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        for name in runtime.parts[1:]:
+            child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                            dir_fd=directory)
+            os.close(directory)
+            directory = child
+        info = os.fstat(directory)
+        if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o700:
+            raise ValueError('unsafe runtime')
+        # Values identify the compositor without connecting to either socket.
+        identity = (environment.get('NIRI_SOCKET', '') + '\0'
+                    + environment.get('WAYLAND_DISPLAY', '')).encode()
+        name = 'emaki-wallpaper-' + hashlib.sha256(identity).hexdigest() + '.lock'
+        descriptor = os.open(name, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                             0o600, dir_fd=directory)
+        info = os.fstat(descriptor)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1 or info.st_size > 1):
+            os.close(descriptor)
+            raise ValueError('unsafe wallpaper claim')
+        return descriptor
+    finally:
+        os.close(directory)
+
+
+def main():
+    environment = dict(os.environ)
+    descriptor = None
+    try:
+        descriptor = claim_file(environment)
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return 0
+        if os.read(descriptor, 1):
+            return 0
+        # Keep both the persistent once-only claim and the live advisory lock.
+        # Explicit manual wpaperd remains available outside this default wrapper.
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        os.write(descriptor, b'1')
+        os.set_inheritable(descriptor, True)
+        try:
+            os.execvpe('wpaperd', ['wpaperd'], environment)
+        except OSError:
+            os.ftruncate(descriptor, 0)  # A failed exec may be retried.
+            raise
+    except (OSError, ValueError):
+        print('emaki-session-wallpaper: startup unavailable', file=sys.stderr)
+        return 1
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

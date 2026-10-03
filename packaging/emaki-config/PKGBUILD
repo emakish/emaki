@@ -1,0 +1,86 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# shellcheck shell=bash
+# makepkg supplies build paths and consumes package metadata.
+# shellcheck disable=SC2034,SC2154
+pkgname=emaki-config
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Emaki shell, CLI, system defaults, session, greeter and themes'
+arch=('x86_64')
+url='https://github.com/emakish/emaki'
+license=('GPL-3.0-or-later')
+depends=(
+    'glibc' 'libgcc' 'bash' 'coreutils' 'dbus' 'procps-ng' 'systemd' 'util-linux'
+    'niri-emaki>=26.04-6' 'quickshell-emaki'
+    'python' 'python-gobject' 'python-pillow' 'gtk3'
+    'wpaperd' 'wl-clipboard' 'cliphist' 'polkit-gnome' 'udiskie'
+    'kitty' 'fastfetch>=2.68.1' 'imagemagick' 'hyprlock' 'playerctl' 'fuzzel' 'qt6ct'
+    'adwaita-cursors' 'adwaita-fonts' 'adwaita-icon-theme'
+    'xdg-desktop-portal-gnome' 'xdg-desktop-portal-gtk'
+    'brightnessctl' 'power-profiles-daemon' 'networkmanager' 'upower' 'bluez'
+    'pipewire' 'wireplumber' 'pipewire-pulse' 'wlsunset'
+    'greetd' 'greetd-regreet' 'gnome-keyring'
+)
+makedepends=('git' 'make' 'python' 'rust' 'qt6-shadertools')
+checkdepends=('niri')
+optdepends=('swayidle: optional emaki-idle policy')
+conflicts=('emaki-core')
+backup=('etc/niri/config.kdl' 'etc/xdg/hypr/hyprlock.conf' 'etc/xdg/fastfetch/config.jsonc')
+options=('!debug' '!lto')
+source=()
+
+# Recompute on each invocation; ignore stale exported private variables. Use
+# EMAKI_SOURCE_COMMIT explicitly to rebuild a chosen commit (detached HEAD works).
+_emaki_commit=$(git -C "$startdir/../.." rev-parse --verify "${EMAKI_SOURCE_COMMIT:-HEAD}^{commit}")
+export _emaki_commit
+
+_emaki_source() {
+    cd "$srcdir/emaki" || return
+    _emaki_commit=$(<"$srcdir/emaki-source-commit")
+    export CARGO_HOME="$srcdir/cargo-home"
+    export CARGO_TARGET_DIR="$PWD/.cache/target"
+    export TMPDIR="$PWD/.cache/tmp"
+    mkdir -p "$CARGO_HOME" "$TMPDIR"
+}
+
+_emaki_make() {
+    make "$@" PREFIX=/usr EMAKI_COMMIT="$_emaki_commit" \
+        EMAKI_PREFIX=/usr EMAKI_DATADIR=/usr/share/emaki \
+        EMAKI_LIBEXECDIR=/usr/libexec/emaki EMAKI_SYSCONFDIR=/etc \
+        EMAKI_BUSCTL=busctl EMAKI_PW_CLI=pw-cli EMAKI_NIRI=niri
+}
+
+prepare() {
+    rm -rf "$srcdir/emaki"
+    mkdir -p "$srcdir/emaki"
+    git -C "$startdir/../.." archive --format=tar \
+        --output="$srcdir/emaki.tar" "$_emaki_commit"
+    tar -xf "$srcdir/emaki.tar" -C "$srcdir/emaki"
+    printf '%s\n' "$_emaki_commit" > "$srcdir/emaki-source-commit"
+    _emaki_source
+    # Refuse an old commit with new recipe metadata, before fetching anything.
+    python -c 'import sys,tomllib; assert tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"] == sys.argv[1], "archive version differs from pkgver"' "$pkgver"
+    test -f packaging/emaki-config/expected-files.list || return 1
+    cargo fetch --locked --target "$(rustc --print host-tuple)"
+}
+
+build() {
+    _emaki_source
+    _emaki_make build
+}
+
+check() {
+    _emaki_source
+    _emaki_make check
+}
+
+package() {
+    _emaki_source
+    _emaki_make install install-niri-emaki DESTDIR="$pkgdir"
+    python scripts/core-package.py verify-build-paths --binary "$pkgdir/usr/bin/emaki"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    # Review changes to the committed contract; never generate it in package().
+    find "$pkgdir" \( -type f -o -type l \) -printf '/%P\n' | LC_ALL=C sort > "$srcdir/actual-files.list"
+    diff -u packaging/emaki-config/expected-files.list "$srcdir/actual-files.list"
+}

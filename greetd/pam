@@ -1,0 +1,16 @@
+#%PAM-1.0
+# Emaki's password-only login stack, installed at /usr/lib/pam.d/emaki-greetd.
+# greetd/config.toml selects this service. /etc/pam.d/greetd stays package-owned;
+# an administrator's /etc/pam.d/emaki-greetd overrides this vendor file.
+# Fingerprint login was deferred on 2026-10-01. The password from this
+# conversation also unlocks gnome-keyring through its optional PAM module.
+auth       include     system-local-login
+auth       optional    pam_gnome_keyring.so
+
+account    include     system-local-login
+
+password   include     system-local-login
+password   optional    pam_gnome_keyring.so use_authtok
+
+session    include     system-local-login
+session    optional    pam_gnome_keyring.so auto_start

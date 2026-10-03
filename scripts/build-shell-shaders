@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+"""Offline Qt 6 shader build; output confined to the project cache by default."""
+import os
+from pathlib import Path
+import shutil
+import subprocess
+
+root = Path(__file__).resolve().parent.parent
+qsb = os.environ.get('QSB') or shutil.which('qsb') or '/usr/lib/qt6/bin/qsb'
+destination = Path(os.environ.get('EMAKI_SHELL_SHADER_DIR', root / '.cache/shell-shaders')).resolve()
+if not destination.is_relative_to(root) or destination == root:
+    raise SystemExit('Shader output must stay inside the repository')
+destination.mkdir(parents=True, exist_ok=True)
+for source in sorted((root / 'shell/shaders').glob('*.frag')):
+    subprocess.run([qsb, '--glsl', '100 es,120,150', '--hlsl', '50', '--msl', '12', '-o',
+                    str(destination / (source.name + '.qsb')), str(source)], check=True, timeout=30)
+print('Shaders compiled:', destination.relative_to(root))

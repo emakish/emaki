@@ -1,0 +1,52 @@
+#!/bin/sh
+# Emaki shell: bar, launcher, clock shade with notifications, right island, dock.
+# Quickshell (QML from /usr/share/emaki/shell) on top of the `emaki` core.
+#
+#   emaki-shell                     start (used by niri autostart)
+#   emaki-shell call <target> <…>   tell the running shell: launcher toggle,
+#                                   launcher mode Clipboard, drawer toggle, dock status …
+#   emaki-shell restart             restart the service (after make install)
+#
+# Environment variables can override these distribution defaults.
+# The shell writes nothing to ~/.config; its state lives in ~/.local/state/emaki/*.json.
+set -eu
+shell="${EMAKI_SHELL_DIR:-/usr/share/emaki/shell}"
+
+if [ "${1:-}" = "call" ]; then
+    shift
+    exec qs -p "$shell" ipc call "$@"
+fi
+if [ "${1:-}" = "restart" ]; then
+    exec systemctl --user restart emaki-shell.service
+fi
+
+# Keep the session value for application launches: 0 means absent, 1 prefixes
+# the original value (including empty). Never accept an inherited stale marker.
+if [ "${MALLOC_CONF+x}" = x ]; then
+    export EMAKI_SHELL_ORIGINAL_MALLOC_CONF="1$MALLOC_CONF"
+else
+    export EMAKI_SHELL_ORIGINAL_MALLOC_CONF=0
+fi
+# qs links jemalloc. Honor user tuning; default only this shell, not its apps.
+export MALLOC_CONF="${MALLOC_CONF:-thp:never}"
+
+export EMAKI_BIN="${EMAKI_BIN:-/usr/bin/emaki}"
+export EMAKI_SHELL_BORDER="${EMAKI_SHELL_BORDER:-soft}"
+# The shell owns the notification server and tray (mako and waybar are no longer autostarted).
+export EMAKI_SHELL_NOTIFICATIONS="${EMAKI_SHELL_NOTIFICATIONS:-1}"
+export EMAKI_SHELL_TRAY="${EMAKI_SHELL_TRAY:-1}"
+# -n: do not start a second instance of the same configuration.
+# Optional decoration cannot prevent qs starting, even with a broken helper file.
+unset EMAKI_SESSION_START EMAKI_SESSION_SKIP_INTRO
+startup_token=
+if [ -n "${EMAKI_LOGIN_HANDOFF:-}" ]; then
+    startup_token=$(/usr/bin/timeout --kill-after=.2s 1s /usr/bin/python3 -I -B "$shell/helpers/session-start.py" shell-token 2>/dev/null) || startup_token=
+fi
+case "$startup_token" in
+    ''|*[!0-9a-f]*) ;;
+    *) if [ "${#startup_token}" -eq 32 ]; then
+        export EMAKI_SESSION_START="$startup_token" EMAKI_SESSION_SKIP_INTRO=1
+    fi ;;
+esac
+unset EMAKI_LOGIN_HANDOFF startup_token
+exec qs -n -p "$shell"

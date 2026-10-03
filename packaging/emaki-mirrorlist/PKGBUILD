@@ -1,0 +1,17 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# shellcheck shell=bash disable=SC2034,SC2154
+pkgname=emaki-mirrorlist
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Emaki package repository channels'
+arch=('any')
+url='https://github.com/emakish/packages'
+license=('GPL-3.0-or-later')
+backup=('etc/pacman.d/emaki-mirrorlist')
+source=('emaki-mirrorlist')
+sha256sums=('3b4088ecab88c89285437c2840b7084561cc61468d29a687ec59cbdc6aaac18b')
+
+package() {
+    install -Dm644 "$srcdir/emaki-mirrorlist" "$pkgdir/etc/pacman.d/emaki-mirrorlist"
+}

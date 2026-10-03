@@ -1,0 +1,63 @@
+# Emaki design tokens.
+#
+# The single source of values for all components. None of these values should
+# be entered manually in a component config — only here.
+#
+# Regenerate configs after editing:  ./scripts/render-theme
+#
+# Later, matugen will extract the color palette from the wallpaper.
+# The file structure will stay the same; only the source of the values will change.
+
+[color]
+background      = "14100d"  # desktop and window background
+surface         = "1c1612"  # panel and menu background
+surface_high    = "2a211a"  # selected row, active element
+text            = "f2e6d8"  # main text
+text_muted      = "a39483"  # labels, input prompts, inactive elements
+accent          = "e2733f"  # accent: active border, match, focus
+on_accent       = "2a0f05"  # text on accent
+border_inactive = "2c241e"  # inactive window border
+shadow          = "000000"  # shadow color
+critical        = "f0435a"  # urgent: important notifications, errors
+
+# Sixteen terminal colors. The same source as the interface: the terminal,
+# where half the work happens, should fit the palette.
+[ansi]
+black          = "221b16"
+red            = "e05a4f"
+green          = "a8b86a"
+yellow         = "e8b55a"
+blue           = "7d9ab8"
+magenta        = "d2809a"
+cyan           = "8ab8a8"
+white          = "a39483"
+bright_black   = "42372e"
+bright_red     = "f07d6e"
+bright_green   = "c2cf8a"
+bright_yellow  = "f2cc7e"
+bright_blue    = "9db6d0"
+bright_magenta = "e3a0b6"
+bright_cyan    = "a8cfc0"
+bright_white   = "f2e6d8"
+
+[opacity]
+panel  = 0.93  # panel and menu opacity
+shadow = 0.50  # shadow opacity
+
+[geometry]
+radius       = 16  # corner radius, consistent everywhere
+border_width = 2   # border thickness
+gaps         = 2   # gaps between windows
+
+[font]
+ui   = "Adwaita Sans"
+mono = "Iosevka Nerd Font Mono"
+size = 12
+
+[effect]
+blur_passes     = 3
+blur_offset     = 5.0
+shadow_softness = 8
+
+[motion]
+duration_ms = 150

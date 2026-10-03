@@ -1,0 +1,4 @@
+#!/usr/bin/python
+from emaki_installer.daemon import main
+
+raise SystemExit(main())

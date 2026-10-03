@@ -1,0 +1,6 @@
+# Excerpt from Arch grub 2:2.16-1, etc/grub.d/10_linux.
+# Copyright (C) 2006,2007,2008,2009,2010,2026 Free Software Foundation, Inc.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Upstream: https://git.savannah.gnu.org/cgit/grub.git/tree/util/grub.d/10_linux.in?h=grub-2.16
+  OS="${GRUB_DISTRIBUTOR} Linux"
+  CLASS="--class $(echo ${GRUB_DISTRIBUTOR} | tr 'A-Z' 'a-z' | cut -d' ' -f1|LC_ALL=C sed 's,[^[:alnum:]_],_,g') ${CLASS}"

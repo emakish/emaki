@@ -1,0 +1,98 @@
+#!/bin/bash
+# Keep the cleared login VT silent, including login-shell and compositor output.
+# Drain the pipe if journald is unavailable so children can continue writing.
+if command -v systemd-cat >/dev/null 2>&1; then
+    exec > >(systemd-cat -t niri-emaki-session >/dev/null 2>&1 || cat >/dev/null 2>&1) 2>&1
+else
+    exec >/dev/null 2>&1
+fi
+# “niri (Emaki)”: niri with the Emaki patch (github: niri-wm/niri v26.04 + commit
+# hide-from-own-screencopy; the patches are in packaging/niri-emaki/).
+# Copy of niri-session from the niri 26.04 package (systemd branch), with these changes:
+#   - starts niri-emaki.service instead of niri.service;
+#   - selects its config (fork_config below) — the service calls this script with --compositor;
+#   - tells the shell that glass can use live screen capture
+#     (EMAKI_SHELL_DOCK_BACKDROP=capture): this niri excludes the shell from its own capture;
+#   - unsets this variable on exit so stock niri does not inherit it.
+# Stock Niri remains available: Emaki login automatically selects it after an
+# Emaki session returns within 30 seconds, for one login only; the next returns to Emaki.
+# ReGreet fallback also has a session picker;
+# Ctrl+Alt+F2, log in and run niri-session is the independent recovery path.
+
+# Config selection. Same order as stock niri 26.04 (src/main.rs):
+# if a personal ~/.config/niri/config.kdl exists, use fork.kdl (includes it entirely); otherwise,
+# use fork-system.kdl (includes /etc/niri/config.kdl). This script never creates or
+# edits the user's file. It checks the exact path included by fork.kdl.
+fork_config() {
+    if [ -e "$HOME/.config/niri/config.kdl" ]; then
+        echo /usr/share/emaki/niri/fork.kdl
+    else
+        echo /usr/share/emaki/niri/fork-system.kdl
+    fi
+}
+
+start_compositor() {
+    unset EMAKI_STARTUP_COVER EMAKI_SESSION_TAKEOVER
+    cover_png=
+    if [ -n "${EMAKI_LOGIN_HANDOFF:-}" ]; then
+        cover_png=$(/usr/bin/timeout --kill-after=.2s 1s /usr/bin/python3 -I -B \
+        /usr/share/emaki/shell/helpers/session-start.py prepare 2>/dev/null) || cover_png=
+    fi
+    if [ -n "$cover_png" ]; then
+        export EMAKI_STARTUP_COVER="$cover_png"
+        export EMAKI_SESSION_TAKEOVER=1
+    fi
+    exec niri-emaki --session -c "$(fork_config)"
+}
+
+# How niri-emaki.service starts the compositor (ExecStart): exec preserves the PID,
+# so the readiness notification (Type=notify) comes from the service's main process.
+if [ "${1:-}" = "--compositor" ]; then
+    start_compositor
+fi
+
+if [ -n "${MANAGERPID:-}" ] && [ "${SYSTEMD_EXEC_PID:-}" = "$$" ]; then
+    case "$(ps -p "$MANAGERPID" -o cmd=)" in
+    *systemd*--user*)
+        start_compositor
+        ;;
+    esac
+fi
+
+if [ -n "$SHELL" ] &&
+   grep -q "$SHELL" /etc/shells &&
+   ! (echo "$SHELL" | grep -q "false") &&
+   ! (echo "$SHELL" | grep -q "nologin"); then
+  if [ "$1" != '-l' ]; then
+    exec bash -c "exec -l '$SHELL' -c '$0 -l $*'"
+  else
+    shift
+  fi
+fi
+
+if ! hash systemctl >/dev/null 2>&1; then
+    echo "niri-emaki-session needs systemd."
+    exit 1
+fi
+
+# Make sure there's no already running session, ours or the stock one.
+if systemctl --user -q is-active niri-emaki.service || systemctl --user -q is-active niri.service; then
+  echo 'A niri session is already running.'
+  exit 1
+fi
+
+systemctl --user reset-failed
+# Preserve every login-profile export without systemctl's nameless-import warning.
+# Values never pass through shell parsing (including newlines and metacharacters).
+emaki-session-import-environment
+systemctl --user set-environment EMAKI_SHELL_DOCK_BACKDROP=capture
+if hash dbus-update-activation-environment 2>/dev/null; then
+    dbus-update-activation-environment --all
+fi
+
+systemctl --user --wait start niri-emaki.service
+
+# Force stop of graphical-session.target (niri-shutdown.target comes with the niri package).
+systemctl --user start --job-mode=replace-irreversibly niri-shutdown.target
+
+systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP NIRI_SOCKET EMAKI_SHELL_DOCK_BACKDROP EMAKI_LOGIN_HANDOFF

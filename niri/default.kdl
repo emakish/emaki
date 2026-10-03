@@ -1,0 +1,266 @@
+// ═══════════════════════════════════════════════════════════════════════
+//  Emaki — niri desktop defaults.
+//
+//  This file belongs to the project. It is included by the user's personal
+//  config, or by /etc/niri/config.kdl (niri/system.kdl) until a personal config exists.
+//  Updates replace this file entirely. Put your changes in
+//  ~/.config/niri/config.kdl below the include line.
+//
+//  Rule: nothing here may depend on a specific machine —
+//  no scale, monitor names, keyboard layouts, or home directory paths.
+//  Those belong in the installer. See DIRECTIVES.md, item 7.
+// ═══════════════════════════════════════════════════════════════════════
+
+// Appearance: colors, borders, shadows, rounded corners, blur, animations.
+// Generated from tokens.toml — do not edit by hand.
+include "theme.kdl"
+
+// Ask applications not to draw their own title bars: kitty and other clients
+// supporting xdg-decoration leave decorations to the compositor. Without this,
+// the terminal gets a title bar with a close button.
+prefer-no-csd
+
+// ── Autostart ──────────────────────────────────────────────────────────
+// niri starts children asynchronously underneath its own fresh-login cover.
+// The wallpaper wrapper starts immediately and claims one instance per compositor.
+// niri always uses its normal configuration; no startup opacity rules are added.
+// Wallpaper paths live in ~/.config/wpaperd/config.toml; the login-screen copy
+// follows that file. wpaperctl set changes only the running session's wallpaper.
+//   wpaperctl get <output>   show the current wallpaper
+//   wpaperctl set <file>     change it in memory; update the config to publish it
+spawn-at-startup "emaki-session-wallpaper"
+
+// The Emaki shell shows notifications (see “Panel” below). mako is not autostarted:
+// two notification servers cannot share a bus name — the first one takes it.
+
+// Clipboard history. No separate password filter is needed: wl-paste in
+// --watch mode passes CLIPBOARD_STATE=sensitive for entries marked by
+// a password manager, and cliphist store skips those entries.
+spawn-at-startup "wl-paste" "--watch" "cliphist" "store"
+
+// polkit authentication service. Without it, graphical applications cannot request
+// an administrator password: requests are silently denied.
+spawn-at-startup "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"
+
+// Automatically mount USB drives and disks.
+spawn-at-startup "udiskie"
+
+// Panel, launcher, clock shade with notifications, right island, dock, tray —
+// the Emaki shell (Quickshell on top of the emaki core). It runs as the
+// emaki-shell.service user service: restarts after a crash; after make install, run
+// `emaki-shell restart`; view logs with `journalctl --user -u emaki-shell`.
+// The wrapper sets distribution environment variables; set your own with
+// `systemctl --user set-environment` or a service drop-in.
+//   emaki-shell call launcher status     current shell state
+//   emaki-shell call dock status         pinned and running dock apps
+// Without systemd (niri started without niri-session), use spawn-at-startup "emaki-shell".
+spawn-at-startup "systemctl" "--user" "start" "--no-block" "emaki-shell.service" "emaki-sleep-guard.service"
+
+// The idle policy (emaki-idle) is NOT started yet: each step —
+// dimming, locking, screen blanking — must first be tested individually on a running
+// desktop. It does not and will not suspend or hibernate. See ROADMAP.md, milestone D1.
+
+// ── Layout behavior ────────────────────────────────────────────────────
+layout {
+    // Initial plain plate: niri can render before any cover client has mapped.
+    background-color "#fff8f3"
+    // Widths cycled by Super+R. niri picks the nearest width GREATER than the current
+    // width, or the smallest if none is greater. Full width must therefore be
+    // in the list: new windows open at full width, and without this entry the cycle
+    // was incomplete — after leaving full width, the same key could not return to it.
+    //   full width → one third → one half → two thirds → full width
+    preset-column-widths {
+        proportion 0.33333
+        proportion 0.5
+        proportion 0.66667
+        proportion 1.0
+    }
+
+    // New windows use the full screen width: on a laptop display, this is the only
+    // comfortable size for working in a single window. Neighboring columns sit
+    // offscreen; Super+arrow keys navigate them, and Super+R cycles the current
+    // column's width when you need two windows side by side.
+    default-column-width { proportion 1.0; }
+}
+
+// ── Workspaces ─────────────────────────────────────────────────────────
+// Ten persistent workspaces instead of niri's dynamic defaults: named workspaces
+// remain when empty and keep their config order, so Super+1…0 always
+// goes to the same place. The bindings below address them by index — with
+// persistent workspaces, the index matches the number and stays fixed.
+workspace "1"
+workspace "2"
+workspace "3"
+workspace "4"
+workspace "5"
+workspace "6"
+workspace "7"
+workspace "8"
+workspace "9"
+workspace "10"
+
+
+// ── Environment ────────────────────────────────────────────────────────
+// Without this, Qt applications cannot find qt6ct and lose the shared palette.
+environment {
+    QT_QPA_PLATFORMTHEME "qt6ct"
+}
+
+cursor {
+    xcursor-theme "Emaki"
+    xcursor-size 24
+}
+
+// ── Input ──────────────────────────────────────────────────────────────
+// Users set keyboard layouts in their own config. The xkb options must not contain
+// grp:win_space_toggle: Super+Space switches layouts through
+// switch-layout. Enabling both mechanisms makes them interfere — the shortcut
+// fires twice and switches back to the original layout.
+input {
+    mod-key "Super"
+
+    // The power button shuts down the machine. By default, niri intercepts it and
+    // silently suspends the laptop; this line leaves it to the standard
+    // systemd-logind behavior: a short press shuts down.
+    disable-power-key-handling
+
+    touchpad {
+        tap
+        natural-scroll
+    }
+}
+
+// The terminal is already translucent by default, so only add blur underneath it.
+// Applying opacity again would multiply the two values and make it look muddy.
+window-rule {
+    match app-id="^kitty$"
+    background-effect {
+        blur true
+    }
+}
+
+// ── Miscellaneous ──────────────────────────────────────────────────────
+screenshot-path "~/Pictures/Screenshots/Screenshot from %Y-%m-%d %H-%M-%S.png"
+
+hotkey-overlay {
+    skip-at-startup
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  KEY BINDINGS
+//  The personal config includes this file and adds settings after it, so personal
+//  bindings take precedence when keys overlap.
+// ═══════════════════════════════════════════════════════════════════════
+binds {
+    // Deliberately small: each binding has a clear purpose. Add missing ones as needed
+    // while using the system, rather than inheriting them from old configs.
+    //
+    // MAIN RULE. Arrow keys follow niri's spatial layout: columns run
+    // horizontally, workspaces stack vertically.
+    //   Super + arrow          move focus
+    //   Super + Shift + arrow  move focus and take the window along
+    // Shift always means “with the window”, including number keys.
+
+    // ── Navigation ────────────────────────────────────────────────────────
+    Mod+Left  { focus-column-left; }
+    Mod+Right { focus-column-right; }
+    // Up and down: first move through windows in a column, then switch to
+    // the next workspace. One key, no extra thought: just “down”.
+    Mod+Up    { focus-window-or-workspace-up; }
+    Mod+Down  { focus-window-or-workspace-down; }
+
+    Mod+Shift+Left  { move-column-left; }
+    Mod+Shift+Right { move-column-right; }
+    Mod+Shift+Up    { move-window-up-or-to-workspace-up; }
+    Mod+Shift+Down  { move-window-down-or-to-workspace-down; }
+
+    // ── Workspaces by number ───────────────────────────────────────────────
+    Mod+1 { focus-workspace 1; }
+    Mod+2 { focus-workspace 2; }
+    Mod+3 { focus-workspace 3; }
+    Mod+4 { focus-workspace 4; }
+    Mod+5 { focus-workspace 5; }
+    Mod+6 { focus-workspace 6; }
+    Mod+7 { focus-workspace 7; }
+    Mod+8 { focus-workspace 8; }
+    Mod+9 { focus-workspace 9; }
+    Mod+0 { focus-workspace 10; }
+
+    Mod+Shift+1 { move-column-to-workspace 1; }
+    Mod+Shift+2 { move-column-to-workspace 2; }
+    Mod+Shift+3 { move-column-to-workspace 3; }
+    Mod+Shift+4 { move-column-to-workspace 4; }
+    Mod+Shift+5 { move-column-to-workspace 5; }
+    Mod+Shift+6 { move-column-to-workspace 6; }
+    Mod+Shift+7 { move-column-to-workspace 7; }
+    Mod+Shift+8 { move-column-to-workspace 8; }
+    Mod+Shift+9 { move-column-to-workspace 9; }
+    Mod+Shift+0 { move-column-to-workspace 10; }
+
+    // ── Launching ──────────────────────────────────────────────────────────
+    Mod+T { spawn "kitty"; }
+
+    // Launcher. Do not bind Super alone: niri triggers that binding on ANY
+    // combination with Super — open niri bug #605. Mod+D is niri's own default
+    // and the common i3/sway/bspwm convention.
+    Mod+D { spawn "emaki-shell" "call" "launcher" "toggle"; }
+    // Clock shade: notifications, calendar, music.
+    Mod+N { spawn "emaki-shell" "call" "drawer" "toggle"; }
+    // Settings pages in the launcher.
+    Mod+Comma { spawn-sh "emaki-shell call launcher open && emaki-shell call launcher mode Settings"; }
+
+    // Emergency terminal WITHOUT Super: if something intercepts Super,
+    // this binding still works. The path is absolute because spawn does not
+    // start a shell or expand PATH the way bash does.
+    Ctrl+Alt+T { spawn "/usr/bin/kitty"; }
+
+    // ── Windows and columns ────────────────────────────────────────────────
+    Mod+C { close-window; }
+    Mod+F { fullscreen-window; }
+    Mod+R { switch-preset-column-width; }   // one third → one half → two thirds
+    Mod+M { maximize-column; }
+    Mod+O repeat=false { toggle-overview; }
+
+    // ── System ─────────────────────────────────────────────────────────────
+    // Switch keyboard layouts with niri's native action.
+    Mod+Space { switch-layout "next"; }
+
+    // Clipboard history — the launcher's Clipboard mode (reads the cliphist database).
+    Mod+V { spawn-sh "emaki-shell call launcher open && emaki-shell call launcher mode Clipboard"; }
+
+    // The lock supervisor serializes requests and confirms compositor coverage.
+    // It runs independently of the shell and optional idle policy.
+    Mod+L { spawn "emaki-lock"; }
+
+    // Power menu: lock, suspend, hibernate, log out, reboot, shut down.
+    // Uses the same fuzzel in menu mode; irreversible actions require confirmation.
+    // No direct logout binding: it used to end the desktop without asking.
+    Mod+Escape { spawn "emaki-power"; }
+
+    Print { screenshot; }
+
+    // Show all key bindings on screen instead of digging through the config.
+    Mod+Shift+Slash { show-hotkey-overlay; }
+
+    // ── Laptop keys ────────────────────────────────────────────────────────
+    XF86AudioPlay  { spawn "playerctl" "play-pause"; }
+    XF86AudioPrev  { spawn "playerctl" "previous"; }
+    XF86AudioNext  { spawn "playerctl" "next"; }
+    XF86AudioMedia repeat=false { spawn "playerctl" "play-pause"; }
+    XF86AudioStop  repeat=false { spawn "playerctl" "stop"; }
+    // Keys change volume and brightness directly; the shell shows the on-screen indicator:
+    // it detects any change itself (SystemService.qml). Steps of 5 %, maximum 100 %,
+    // holding a key repeats the step. Brightness uses the same device as the shell slider.
+    XF86AudioRaiseVolume { spawn "wpctl" "set-volume" "-l" "1.0" "@DEFAULT_AUDIO_SINK@" "5%+"; }
+    XF86AudioLowerVolume { spawn "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "5%-"; }
+    XF86AudioMute        repeat=false { spawn "wpctl" "set-mute" "@DEFAULT_AUDIO_SINK@" "toggle"; }
+
+    XF86MonBrightnessUp   { spawn "brightnessctl" "--class=backlight" "set" "5%+"; }
+    XF86MonBrightnessDown { spawn "brightnessctl" "--class=backlight" "set" "5%-"; }
+}
+
+// ── Shell ──────────────────────────────────────────────────────────────
+// Reserve space for the bar and blur behind islands/launcher. Included last:
+// struts here assume scale 1; for fractional scale, add a layout to your personal config
+// (calculation in docs/shell.md, “Exclusive zone and gaps”).
+include "shell.kdl"

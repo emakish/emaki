@@ -1,0 +1,50 @@
+// GENERATED from tokens.toml — manual edits will be overwritten.
+// Source: tokens.toml, generator: scripts/render-theme
+
+layout {
+    gaps 2
+
+    focus-ring {
+        off
+    }
+
+    // `on` is required: this file is included, and a border block without `on`
+    // does not enable borders in an included file (it would in the main config).
+    border {
+        on
+        width 2
+        active-color "#e2733fff"
+        inactive-color "#2c241eff"
+    }
+
+    shadow {
+        on
+        softness 8
+        spread 0
+        offset x=0 y=0
+        color "#00000080"
+    }
+}
+
+blur {
+    passes 3
+    offset 5.0
+    noise 0.02
+    saturation 1.5
+}
+
+window-rule {
+    geometry-corner-radius 16
+    clip-to-geometry true
+}
+
+animations {
+    window-open {
+        duration-ms 150
+        curve "ease-out-expo"
+    }
+    window-close {
+        duration-ms 150
+        curve "ease-out-quad"
+    }
+}

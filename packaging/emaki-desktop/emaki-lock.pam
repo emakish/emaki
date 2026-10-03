@@ -1,0 +1,3 @@
+#%PAM-1.0
+# Password-only authentication, matching the distribution's hyprlock stack.
+auth include login

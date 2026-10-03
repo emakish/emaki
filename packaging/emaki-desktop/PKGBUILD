@@ -1,0 +1,39 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# shellcheck shell=bash
+# makepkg consumes the metadata and supplies srcdir/pkgdir.
+# shellcheck disable=SC2034,SC2154
+# Desktop applications and the password-only lock PAM service. Runtime helpers
+# and their dependencies are also declared by emaki-config for standalone use.
+pkgname=emaki-desktop
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Emaki desktop applications, dependencies and lock PAM configuration'
+arch=('any')
+url='https://github.com/emakish/emaki'
+license=('GPL-3.0-or-later')
+backup=('etc/pam.d/emaki-lock')
+source=('emaki-lock.pam')
+sha256sums=('534a4fcb1caf903c9b676b6fef8796d8a0eceef5c0b79491eae95ea5cb77067c')
+depends=(
+    'emaki-config' 'niri-emaki>=26.04-6' 'quickshell-emaki' 'niri'
+    'python' 'python-gobject' 'python-pillow' 'gtk3'
+    'wpaperd' 'wl-clipboard' 'cliphist' 'polkit-gnome' 'udiskie'
+    'kitty' 'fastfetch>=2.68.1' 'imagemagick'
+    'hyprlock'                  # Recovery fallback for the Emaki locker.
+    'playerctl' 'fuzzel' 'qt6ct'
+    'adwaita-cursors' 'adwaita-fonts' 'adwaita-icon-theme'
+    'xdg-desktop-portal-gnome' 'xdg-desktop-portal-gtk'
+    'brightnessctl' 'power-profiles-daemon' 'networkmanager' 'upower' 'bluez'
+    'pipewire' 'wireplumber' 'pipewire-pulse' 'wlsunset'
+    'greetd' 'greetd-regreet' 'gnome-keyring'
+    'nautilus' 'loupe' 'file-roller' '7zip' 'unrar' 'papers'
+)
+optdepends=(
+    'swayidle: optional emaki-idle policy'
+    'greetd-tuigreet: optional text-mode login recovery'
+)
+
+package() {
+    install -Dm644 "$srcdir/emaki-lock.pam" "$pkgdir/etc/pam.d/emaki-lock"
+}

@@ -1,0 +1,8 @@
+emaki
+emaki-config
+emaki-desktop
+emaki-installer
+emaki-keyring
+emaki-mirrorlist
+niri-emaki
+quickshell-emaki

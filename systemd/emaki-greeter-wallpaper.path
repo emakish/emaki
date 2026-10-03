@@ -1,0 +1,13 @@
+[Unit]
+Description=Publish wallpaper changes for the Emaki login screen
+PartOf=graphical-session.target
+# The target wants this unit; ordering after it would create a dependency cycle.
+ConditionUser=!root
+ConditionPathIsDirectory=/var/lib/emaki-greeter/users/%u
+
+[Path]
+PathChanged=%h/.config/wpaperd/config.toml
+Unit=emaki-greeter-wallpaper.service
+
+[Install]
+WantedBy=graphical-session.target

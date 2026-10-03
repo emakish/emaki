@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Install Emaki
+Comment=Install Emaki on this computer
+Exec=emaki-install
+Icon=system-software-install
+Terminal=false
+Categories=System;
+Keywords=install;installer;Emaki;
+StartupWMClass=emaki-install

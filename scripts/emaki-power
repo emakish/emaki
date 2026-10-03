@@ -1,0 +1,44 @@
+#!/bin/sh
+# Emaki power menu. Uses the same fuzzel as the launcher: no extra programs,
+# shared appearance. Invoked by a shortcut in niri/default.kdl.
+#
+# Immediate, no prompt: Lock, Suspend        — easily reversible
+# With confirmation:    Hibernate, Log out,  — ends the desktop or loses unsaved work
+#                       Reboot, Shut down
+#
+# Lock before suspend and hibernation; otherwise the system is unlocked on wake.
+# Esc in any menu exits without taking action.
+#
+# This is a manual action. The machine never suspends automatically: the idle
+# policy (emaki-idle) deliberately excludes suspend; see DECISIONS.md.
+set -eu
+
+# fuzzel appearance: our file in /usr/share/emaki (system /etc/xdg/fuzzel belongs to the
+# fuzzel package); your ~/.config/fuzzel/fuzzel.ini takes precedence: see emaki-config-path.
+config="$(emaki-config-path fuzzel fuzzel.ini)"
+
+menu() {    # menu "<prompt>" item...
+    prompt="$1"; shift
+    printf '%s\n' "$@" | fuzzel --config "$config" --dmenu --lines "$#" --width 22 --prompt "$prompt"
+}
+
+confirm() {
+    [ "$(menu "$1?  " "No" "Yes")" = "Yes" ]
+}
+
+lock() {
+    # Return success only after compositor confirmation and the complete pour.
+    emaki-lock --wait
+}
+
+choice="$(menu "power  " "Lock" "Suspend" "Hibernate" "Log out" "Reboot" "Shut down")" || exit 0
+
+case "$choice" in
+    "Lock")      lock ;;
+    "Suspend")   lock; systemctl suspend ;;
+    "Hibernate") confirm "Hibernate" && { lock && systemctl hibernate; } ;;
+    "Log out")   confirm "Log out"   && niri msg action quit --skip-confirmation ;;
+    "Reboot")    confirm "Reboot"    && systemctl reboot ;;
+    "Shut down") confirm "Shut down" && systemctl poweroff ;;
+    *)           exit 0 ;;
+esac

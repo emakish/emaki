@@ -1,0 +1,3 @@
+# Emaki repository channels. Enable exactly one server.
+Server = https://github.com/emakish/packages/releases/download/stable
+# Server = https://github.com/emakish/packages/releases/download/testing

@@ -1,0 +1,28 @@
+# Emaki login. Installed at /usr/share/emaki/greetd/config.toml; the package-owned
+# /etc/greetd/config.toml and /etc/pam.d/greetd stay untouched. Our service drop-in
+# supplies this path to greetd. The general.service key exists in greetd 0.10.3
+# although its man page does not document it. libpam also searches /usr/lib/pam.d.
+#
+# The greeter runs under its own account and dedicated compositor (niri-emaki when installed, otherwise stock niri).
+# niri.kdl launches our Quickshell screen, then ReGreet on a nonzero exit. It sets
+# private HOME/XDG roots; Quickshell uses only the published wallpaper copy.
+# QS's built-in crash restart/reporter is disabled so signal crashes reach ReGreet.
+# Password-only emaki-greetd PAM also supplies account/session and keyring setup.
+# greetd uses greetd-greeter for its own process, falling back to emaki-greetd if
+# that separate service is absent.
+#
+# If graphics fail, an administrator can replace the command below with:
+#   command = "tuigreet --cmd niri-session"
+# Install the optional greetd-tuigreet package first. Without any graphical
+# greeter, Ctrl+Alt+F2 reaches the getty: log in there and run `niri-session`.
+# Never restart greetd on a live desktop: doing so terminates that session.
+
+[general]
+service = "emaki-greetd"
+
+[terminal]
+vt = 1
+
+[default_session]
+command = "emaki-greeter-compositor"
+user = "greeter"

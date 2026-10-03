@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+"""Build the Emaki xcursor theme (cursors/Emaki) from art/cursor/haze.py (stdlib only).
+
+One art cell is drawn as k×k image pixels with k = round(nominal size / 15), so the 30 px image
+niri-emaki asks for at scale 1.25 (24 × 1.25) has 2-pixel cells: the size picked in the mockup.
+Every name an app may ask for (CSS and legacy X names) points at one of the 14 drawn cursors."""
+import argparse
+import os
+from pathlib import Path
+import runpy
+import struct
+import sys
+
+sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parent.parent
+THEME = ROOT / 'cursors/Emaki'
+# One nominal size per distinct image: niri keeps every image with the dimensions of the nearest
+# nominal size, so two sizes sharing one image would make a static cursor "animated" and niri
+# would redraw every frame. Nominal 15k holds k-pixel cells; the nearest-size rule then gives
+# 24 → 30 (k 2, scale 1), 30 (1.25), 36 → 30 (1.5), 42/48 → 45 (k 3), 60 (k 4), 72 → 75 (k 5).
+SIZES = (30, 45, 60, 75)
+STATIC_DELAY = 50
+
+ALIASES = {
+    'default': 'left_ptr arrow top_left_arrow left_arrow context-menu help question_arrow whats_this '
+               'alias link copy dnd-ask dnd-copy dnd-link zoom-in zoom-out',
+    'pointer': 'hand2 hand1 hand pointing_hand',
+    'text': 'xterm ibeam vertical-text',
+    'wait': 'watch',
+    'progress': 'left_ptr_watch half-busy',
+    'not-allowed': 'no-drop crossed_circle forbidden circle dnd-no-drop dnd-none',
+    'crosshair': 'cell cross plus tcross cross_reverse diamond_cross',
+    'move': 'all-scroll all-resize fleur size_all dnd-move',
+    'grab': 'openhand',
+    'grabbing': 'closedhand',
+    'ew-resize': 'col-resize e-resize w-resize right_side left_side h_double_arrow sb_h_double_arrow size_hor split_h',
+    'ns-resize': 'row-resize n-resize s-resize top_side bottom_side v_double_arrow sb_v_double_arrow size_ver split_v',
+    'nwse-resize': 'nw-resize se-resize top_left_corner bottom_right_corner bd_double_arrow size_fdiag',
+    'nesw-resize': 'ne-resize sw-resize top_right_corner bottom_left_corner fd_double_arrow size_bdiag',
+}
+
+INDEX = """[Icon Theme]
+Name=Emaki
+Comment=Emaki pixel cursors (Haze)
+Inherits=Adwaita
+"""
+
+
+def cell_size(nominal):
+    return max(1, int(nominal / 15 + 0.5))
+
+
+def image(cells, k):
+    """Premultiplied ARGB32 pixels of one frame at k pixels per cell, plus size and hotspot."""
+    xs, ys = [c[0] for c in cells], [c[1] for c in cells]
+    x0, y0 = min(xs), min(ys)
+    w, h = (max(xs) - x0 + 1) * k, (max(ys) - y0 + 1) * k
+    px = [0] * (w * h)
+    for x, y, (r, g, b, a) in cells:
+        argb = (a << 24) | ((r * a + 127) // 255 << 16) | ((g * a + 127) // 255 << 8) | (b * a + 127) // 255
+        for dy in range(k):
+            row = ((y - y0) * k + dy) * w + (x - x0) * k
+            px[row:row + k] = [argb] * k
+    return w, h, -x0 * k, -y0 * k, struct.pack(f'<{w * h}I', *px)
+
+
+def xcursor(art, name):
+    """Xcursor file: header, table of contents, then one image chunk per size and frame."""
+    count = art['frames'](name)
+    delay = art['FRAME_MS'] if count > 1 else STATIC_DELAY
+    frames = [art['cursor'](name, f) for f in range(count)]
+    chunks = []
+    for nominal in SIZES:
+        k = cell_size(nominal)
+        for cells in frames:
+            w, h, xhot, yhot, pixels = image(cells, k)
+            chunks.append((nominal, struct.pack('<9I', 36, 0xFFFD0002, nominal, 1, w, h, xhot, yhot, delay) + pixels))
+    position = 16 + 12 * len(chunks)
+    toc, body = b'', b''
+    for nominal, chunk in chunks:
+        toc += struct.pack('<3I', 0xFFFD0002, nominal, position + len(body))
+        body += chunk
+    return struct.pack('<4s3I', b'Xcur', 16, 0x10000, len(chunks)) + toc + body
+
+
+def generate():
+    """{relative path: bytes} for files, {relative path: target} for symlinks."""
+    art = runpy.run_path(str(ROOT / 'art/cursor/haze.py'))
+    files = {'index.theme': INDEX.encode()}
+    links = {}
+    for name, others in ALIASES.items():
+        files[f'cursors/{name}'] = xcursor(art, name)
+        for other in others.split():
+            links[f'cursors/{other}'] = name
+    assert set(ALIASES) == set(art['SET']), 'every drawn cursor needs an ALIASES entry'
+    assert not set(links) & set(files), 'an alias shadows a drawn cursor'
+    return files, links
+
+
+def on_disk():
+    files, links = {}, {}
+    for path in sorted(THEME.rglob('*')):
+        rel = path.relative_to(THEME).as_posix()
+        if path.is_symlink():
+            links[rel] = os.readlink(path)
+        elif path.is_file():
+            files[rel] = path.read_bytes()
+    return files, links
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--check', action='store_true', help='fail if the checked-in theme is stale')
+    args = parser.parse_args()
+    files, links = generate()
+    if args.check:
+        if on_disk() != (files, links):
+            sys.exit('cursors/Emaki is stale: run python3 scripts/build-cursors')
+        print(f'cursors/Emaki is current ({len(files) - 1} cursors, {len(links)} aliases)')
+        return
+    if THEME.exists():
+        for path in sorted(THEME.rglob('*'), reverse=True):
+            path.unlink() if path.is_symlink() or path.is_file() else path.rmdir()
+    for rel, data in files.items():
+        (THEME / rel).parent.mkdir(parents=True, exist_ok=True)
+        (THEME / rel).write_bytes(data)
+    for rel, target in links.items():
+        (THEME / rel).symlink_to(target)
+    print(f'wrote {THEME.relative_to(ROOT)}: {len(files) - 1} cursors, {len(links)} aliases')
+
+
+if __name__ == '__main__':
+    main()

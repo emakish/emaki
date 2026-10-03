@@ -1,0 +1,33 @@
+#!/bin/bash
+# A successful greetd acknowledgement is recorded before compositor teardown.
+# Qt may _exit(255) on Wayland disconnect; that is not a greeter failure.
+if [[ ${1:-} == --success ]]; then
+    if [[ -n ${EMAKI_GREETER_SUCCESS_FILE:-} ]]; then
+        printf 'accepted\n' > "$EMAKI_GREETER_SUCCESS_FILE" || true
+    fi
+    exec "${EMAKI_GREETER_COMPOSITOR:-niri}" msg action quit --skip-confirmation
+fi
+if command -v systemd-cat >/dev/null 2>&1; then
+    exec > >(systemd-cat -t emaki-greeter >/dev/null 2>&1 || cat >/dev/null 2>&1) 2>&1
+else
+    exec >/dev/null 2>&1
+fi
+ulimit -c 0
+umask 077
+if ! EMAKI_GREETER_SUCCESS_FILE=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/emaki-greeter-success.XXXXXXXX"); then
+    unset EMAKI_GREETER_SUCCESS_FILE
+    qs -p /usr/share/emaki/shell/greeter.qml || regreet
+    "${EMAKI_GREETER_COMPOSITOR:-niri}" msg action quit --skip-confirmation
+    exit $?
+fi
+export EMAKI_GREETER_SUCCESS_FILE
+trap 'rm -f "$EMAKI_GREETER_SUCCESS_FILE"' EXIT
+qs -p /usr/share/emaki/shell/greeter.qml
+result=$?
+if [[ -s $EMAKI_GREETER_SUCCESS_FILE ]]; then
+    exit 0
+fi
+if ((result != 0)); then
+    regreet
+fi
+"${EMAKI_GREETER_COMPOSITOR:-niri}" msg action quit --skip-confirmation

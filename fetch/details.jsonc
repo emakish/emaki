@@ -1,0 +1,91 @@
+{
+  "logo": {
+    "type": "none",
+    "padding": {
+      "top": 3,
+      "right": 3
+    }
+  },
+  "display": {
+    "color": {
+      "output": "#f2e6d8"
+    },
+    "percent": {
+      "type": 1
+    }
+  },
+  "modules": [
+    {
+      "type": "os",
+      "key": "OS",
+      "keyColor": "#e05a4f",
+      "format": "Emaki (Arch Linux)"
+    },
+    {
+      "type": "host",
+      "key": "Host",
+      "keyColor": "#e2733f"
+    },
+    {
+      "type": "kernel",
+      "key": "Kernel",
+      "keyColor": "#e8b55a"
+    },
+    {
+      "type": "uptime",
+      "key": "Uptime",
+      "keyColor": "#e05a4f"
+    },
+    {
+      "type": "packages",
+      "key": "Packages",
+      "keyColor": "#e2733f"
+    },
+    {
+      "type": "shell",
+      "key": "Shell",
+      "keyColor": "#e8b55a"
+    },
+    {
+      "type": "wm",
+      "key": "WM",
+      "keyColor": "#e05a4f"
+    },
+    {
+      "type": "terminal",
+      "key": "Terminal",
+      "keyColor": "#e2733f"
+    },
+    {
+      "type": "cpu",
+      "key": "CPU",
+      "keyColor": "#e8b55a"
+    },
+    {
+      "type": "gpu",
+      "key": "GPU",
+      "keyColor": "#e05a4f"
+    },
+    {
+      "type": "memory",
+      "key": "Memory",
+      "keyColor": "#e2733f"
+    },
+    {
+      "type": "disk",
+      "key": "Disk",
+      "keyColor": "#e8b55a",
+      "folders": "/"
+    },
+    {
+      "type": "battery",
+      "key": "Battery",
+      "keyColor": "#e05a4f"
+    },
+    {
+      "type": "locale",
+      "key": "Locale",
+      "keyColor": "#e2733f"
+    }
+  ]
+}

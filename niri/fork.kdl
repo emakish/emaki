@@ -1,0 +1,12 @@
+// Config for “niri (Emaki)” when the user has their own ~/.config/niri/config.kdl.
+// Only niri-emaki reads it (the fork with hide-from-own-screencopy). The
+// niri-emaki-session script chooses between the two entry points just like stock niri 26.04:
+//   personal config exists — this file (fork.kdl); otherwise — fork-system.kdl.
+//
+// First include the entire personal config (which also includes Emaki defaults),
+// then the fork rule.
+include "~/.config/niri/config.kdl"
+include "fork-rules.kdl"
+// The user's own niri-emaki settings (fork-only keys such as emaki-wallpaper, which stock niri
+// would reject in config.kdl). Last, so they override Emaki's session defaults.
+include optional=true "~/.config/emaki/niri-emaki.kdl"

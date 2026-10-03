@@ -1,0 +1,17 @@
+{
+  "blockdevices": [
+    {
+      "name": "/dev/vda", "kname": "/dev/vda", "path": "/dev/vda", "type": "disk",
+      "size": 42949672960, "log-sec": 512, "start": null, "partn": null,
+      "pttype": null, "ptuuid": null, "fstype": null, "uuid": null,
+      "mountpoints": [null], "model": "Virtio Block Device", "serial": "",
+      "wwn": null, "tran": null, "rm": false, "ro": false, "maj:min": "254:0", "disk-seq": 1
+    },
+    {
+      "name": "/dev/sr0", "kname": "/dev/sr0", "path": "/dev/sr0", "type": "rom",
+      "size": 4294967296, "log-sec": 2048, "fstype": "iso9660", "uuid": "2026-10-02-00-00-00-00",
+      "mountpoints": ["/run/archiso/bootmnt"], "model": "QEMU DVD-ROM", "rm": true,
+      "ro": true, "maj:min": "11:0"
+    }
+  ]
+}

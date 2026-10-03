@@ -1,0 +1,23 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Started explicitly by niri/default.kdl after the session environment is imported,
+# just like emaki-shell.service. No global wants link into other desktops.
+[Unit]
+Description=Lock the Emaki session before sleep
+PartOf=graphical-session.target
+After=graphical-session.target
+Requisite=graphical-session.target
+ConditionUser=!root
+StartLimitIntervalSec=30
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -I /usr/bin/emaki-sleep-guard
+Restart=on-failure
+RestartSec=1
+TimeoutStopSec=20
+Slice=session.slice
+
+[Install]
+WantedBy=graphical-session.target

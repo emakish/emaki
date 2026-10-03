@@ -1,0 +1,18 @@
+// Rule for “niri (Emaki)”. Included by fork.kdl and fork-system.kdl.
+// Stock niri 26.04 does not recognize this key and would reject the entire config,
+// so the rule lives here instead of default.kdl.
+//
+// The shell's own screen capture excludes shell surfaces: the dock glass
+// refracts what is underneath it, not itself. Other applications
+// (screenshots, screen recording) see the shell as usual.
+layer-rule {
+    match namespace="^emaki-"
+    hide-from-own-screencopy true
+}
+
+// Living wallpaper (2026-10-02): niri-emaki draws the pixel ring per workspace above
+// wpaperd, each workspace from its own random start, 1:1 with the camera, with trains.
+// "image" leaves the plain wpaperd wallpaper. The files come from make install.
+emaki-wallpaper {
+    mode "ring"
+}

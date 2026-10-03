@@ -1,0 +1,108 @@
+# Maintainer: Yakyman <246958375+Yakyman@users.noreply.github.com>
+#
+# Upstream v26.04 plus Emaki's capture, login handoff, overview, cursor and wallpaper patches.
+# Installs only /usr/bin/niri-emaki alongside stock niri; install the session
+# files through make install-niri-emaki after make install. The dedicated greeter
+# prefers this fork, with stock niri as a recovery fallback. Rebase all five patches on updates.
+
+pkgname=niri-emaki
+_pkgname=niri
+pkgver=26.04
+pkgrel=7
+pkgdesc="niri with Emaki glass capture, login handoff, overview backdrop, crisp cursors and living wallpaper"
+arch=(x86_64)
+url="https://github.com/niri-wm/niri"
+license=(GPL-3.0-or-later)
+depends=(
+  cairo
+  glib2
+  glibc
+  libdisplay-info
+  libgcc
+  libinput
+  libpipewire
+  libxkbcommon
+  mesa
+  pango
+  pixman
+  seatd
+  systemd-libs
+  xdg-desktop-portal-impl
+  'niri=26.04'  # The stock package supplies niri-shutdown.target and portal configuration.
+  'libdisplay-info.so=3-64'
+  'libinput.so=10-64'
+  'libseat.so=1-64'
+  # libgbm comes from mesa (listed above); Arch's mesa has no libgbm.so provides entry.
+  'libxkbcommon.so=0-64'
+  'libpipewire-0.3.so=0-64'
+)
+makedepends=(
+  clang
+  git
+  rust
+)
+source=("$_pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
+        0001-layer-Add-hide-from-own-screencopy-layer-rule.patch
+        0002-keep-greeter-frame-and-cover-session-startup.patch
+        0003-emaki-overview-backdrop.patch
+        0004-crisp-xcursor-at-fractional-scale.patch
+        0005-emaki-wallpaper.patch)
+sha512sums=('ae30446fbf529155907726cf2cba7402bcfc5be2032370d66f9f980efb257f29353b47d495f1218b81ac32c643f15bbb74834dc35882849a4479021b4b9fa97f'
+        '6b9033237c53967fff478210be0639a1859357d7db3b723d002ee537a3b44baea18634452bc4e05a5146d87d17eca4a71d28ffe21ae493f3e34a420f280a114a'
+        'a6f765e783bd6c5be598bbe2491ec355bbd76307b3ed9c754094c8be66ec365194a2dad27e06fb4956d1ed1b1a28f6d93afac64b2f74cafeba5e3ba3880c8e7f'
+        '2340cdc9028698c1fad6c56cd18ad0a95cbeb29219a04ea5365042aeda115c47d529d661a4f6170221ccf95540350784f309c526c08c1b8370d20a40ac8dfaee'
+        '7e06e8b28bee4d52ca79abc47f9196451717e70afc04078098287a813d556770e2a899a17070d9371b6be4744b1920d7a4b781f9cf78e6ff435d5b6f78cb69df'
+        'ed3c4f80452cdee47e51fa5520e49fa88c6e8723fe65d9857c58deed7ff5e783f1272be1a564785a2a58693a2c777fba306a5e876046f855980f312e01e09c9a')
+b2sums=('65fc4df85ab40c1a7a82900a9812c542a8a00467a0f1742f2dede50c0e323bd8957149e91b181a6c71ad077735f6a4db53451bbad0deb768f7d4840ebe798a20'
+        'a52aa75550807818933afd5ec908f07a42038abb83148962da724df52146034c89f26bb6a2e6565216c5c5b8801d392312d6e771220b5bf81768fd20803856eb'
+        '507ba90d7019d606c1d8bffa886ab480480c6351e1a248aba2acc1cac6c19b8e1302a95b63ac785ee8cf300949f25092c18760cf2817465c7d9aaa21c5933a32'
+        '50f4f0063b33ad90aa348e2158684152cab75205db93475bfabf592147c88f63cff60e1e5cc8e6748f82064c72b14f99b800c6565250b8b75c31404d1fc8a796'
+        'b9de259d4f5ec8d6ef101d168b147f5cd1e79f77c55492d7bd95c537c2fd5ccd9fcfbcfcdd9b13440d3cf3f81412c29e91cdc6899e4115a9ac25ecf55d06833f'
+        'd9a79832c4b4df2b4b82ebd4c10b6d7484803c374d52b9a21c5eef50e8873b5c336c530602c14ebb11331921320d96294101153dc67e599298554910be840eab')
+
+# Keep the cargo cache inside $srcdir: makepkg remaps $srcdir paths in the binary
+# (--remap-path-prefix); otherwise the builder's ~/.cargo leaks into panic messages —
+# 900+ lines of /home/<builder>/.cargo (GOTCHAS rule “builder paths in binaries”).
+# Set inside functions: $srcdir is still empty when PKGBUILD is read.
+_cargo_home() { export CARGO_HOME="$srcdir/cargo-home"; }
+
+prepare() {
+  _cargo_home
+  cd $_pkgname-$pkgver
+  patch -Np1 -i ../0001-layer-Add-hide-from-own-screencopy-layer-rule.patch
+  patch -Np1 -i ../0002-keep-greeter-frame-and-cover-session-startup.patch
+  patch -Np1 -i ../0003-emaki-overview-backdrop.patch
+  patch -Np1 -i ../0004-crisp-xcursor-at-fractional-scale.patch
+  patch -Np1 -i ../0005-emaki-wallpaper.patch
+  cargo fetch --locked --target "$(rustc --print host-tuple)"
+}
+
+build() {
+  _cargo_home
+  cd $_pkgname-$pkgver
+  export NIRI_BUILD_COMMIT="v$pkgver+emaki"
+  CFLAGS+=(' -ffat-lto-objects')
+  cargo build --frozen --release --features default
+}
+
+check() {
+  _cargo_home
+  cd $_pkgname-$pkgver
+  export XDG_RUNTIME_DIR="$(mktemp -d)"
+  export RAYON_NUM_THREADS=1
+  # Only test the patch: the official package runs the full niri suite.
+  cargo test --frozen --release --lib screencopy
+  cargo test --frozen --release --lib startup_cover
+  cargo test --frozen --release --lib keep_frame
+  # Includes wallpaper GL/asset/scheduler and workspace camera regressions.
+  LIBGL_ALWAYS_SOFTWARE=1 cargo test --frozen --release --lib emaki_
+  LIBGL_ALWAYS_SOFTWARE=1 cargo test --frozen --release --lib cursor::
+  cargo test --frozen --release -p niri-config emaki_backdrop
+  cargo test --frozen --release -p niri-config emaki_wallpaper
+  cargo test --frozen --release -p niri-ipc emaki_wallpaper
+}
+
+package() {
+  cd $_pkgname-$pkgver
+  install -vDm 755 target/release/$_pkgname "$pkgdir/usr/bin/niri-emaki"
+}

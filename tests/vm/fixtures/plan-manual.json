@@ -1,0 +1,33 @@
+{
+  "mode": "manual",
+  "disk_id": "/dev/disk/by-id/virtio-emaki-target",
+  "fs": "ext4",
+  "hostname": "emaki",
+  "timezone": "UTC",
+  "layouts": [
+    "us"
+  ],
+  "user": {
+    "name": "Emaki Test",
+    "login": "emaki",
+    "password": "emaki-vm-test-only"
+  },
+  "repo_server": "http://10.0.2.2:8765/testing",
+  "online_update": false,
+  "mounts": [
+    {
+      "partition_id": "/dev/disk/by-id/virtio-emaki-target-part1",
+      "mountpoint": "/efi",
+      "fs": "vfat",
+      "format": true,
+      "subvolume": null
+    },
+    {
+      "partition_id": "/dev/disk/by-id/virtio-emaki-target-part2",
+      "mountpoint": "/",
+      "fs": "ext4",
+      "format": true,
+      "subvolume": null
+    }
+  ]
+}

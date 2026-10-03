@@ -1,0 +1,891 @@
+From 132ab9013c31d45926a37cefc26b43d05c8e3875 Mon Sep 17 00:00:00 2001
+From: Yakyman <246958375+Yakyman@users.noreply.github.com>
+Date: Fri, 25 Sep 2026 17:59:05 -0500
+Subject: [PATCH] layer: Add hide-from-own-screencopy layer rule
+
+Add a boolean layer rule property that omits matching layer surfaces
+from wlr-screencopy captures requested by the same Wayland client that
+owns the surface. The surface, its pop-ups, shadow and background
+effect are simply not rendered into such captures (unlike
+block-out-from, which draws a black rectangle), so the capture shows
+what lies underneath.
+
+This lets a desktop shell capture the screen to draw a refracting
+backdrop behind its own panels without a feedback loop. Captures by
+other clients, niri's own screenshots, xdg-desktop-portal screencasts
+and normal output rendering are unchanged.
+
+The requesting client is threaded through a new RenderCtx field,
+capture_client, set only by the two screencopy render paths; MappedLayer
+skips rendering when its rule is set and the client matches. Since the
+elements are never produced, hidden surfaces also cause no damage for
+that client's copy_with_damage requests.
+---
+ docs/wiki/Configuration:-Layer-Rules.md |  21 ++
+ niri-config/src/layer_rule.rs           |   2 +
+ niri-config/src/lib.rs                  |   4 +
+ niri-visual-tests/src/cases/layout.rs   |   1 +
+ niri-visual-tests/src/cases/tile.rs     |   1 +
+ niri-visual-tests/src/cases/window.rs   |   1 +
+ src/backend/tty.rs                      |   1 +
+ src/backend/winit.rs                    |   1 +
+ src/input/pick_color_grab.rs            |   1 +
+ src/layer/mapped.rs                     |  20 +-
+ src/layer/mod.rs                        |   6 +
+ src/layout/tile.rs                      |   3 +
+ src/niri.rs                             |  10 +
+ src/protocols/screencopy.rs             |   5 +
+ src/render_helpers/mod.rs               |   7 +
+ src/screencasting/mod.rs                |   1 +
+ src/tests/mod.rs                        |   1 +
+ src/tests/screencopy.rs                 | 419 ++++++++++++++++++++++++
+ src/window/mapped.rs                    |   1 +
+ 19 files changed, 505 insertions(+), 1 deletion(-)
+ create mode 100644 src/tests/screencopy.rs
+
+diff --git a/docs/wiki/Configuration:-Layer-Rules.md b/docs/wiki/Configuration:-Layer-Rules.md
+index 0b2ccf34..414b6ab7 100644
+--- a/docs/wiki/Configuration:-Layer-Rules.md
++++ b/docs/wiki/Configuration:-Layer-Rules.md
+@@ -20,6 +20,7 @@ layer-rule {
+     opacity 0.5
+     block-out-from "screencast"
+     // block-out-from "screen-capture"
++    hide-from-own-screencopy true
+ 
+     shadow {
+         on
+@@ -129,6 +130,26 @@ layer-rule {
+ }
+ ```
+ 
++#### `hide-from-own-screencopy`
++
++<sup>Emaki fork</sup>
++
++Set to `true` to omit the surface from wlr-screencopy captures requested by the same Wayland client that owns the surface.
++
++The surface, its pop-ups, its shadow and its background effect are not drawn into such captures at all (unlike `block-out-from`, which draws a black rectangle), so the capture shows whatever is underneath the surface.
++Captures requested by other clients (e.g. grim or OBS), niri's own screenshots, xdg-desktop-portal screencasts and the normal output rendering are not affected.
++
++This is useful for desktop shells that capture the screen to draw a refracting or blurred backdrop behind their own panels, and must not see those panels in the capture.
++
++```kdl
++// Let the Emaki shell capture what is underneath its own panels.
++layer-rule {
++    match namespace="^emaki-"
++
++    hide-from-own-screencopy true
++}
++```
++
+ #### `opacity`
+ 
+ Set the opacity of the surface.
+diff --git a/niri-config/src/layer_rule.rs b/niri-config/src/layer_rule.rs
+index cf099b3a..fafd4dc4 100644
+--- a/niri-config/src/layer_rule.rs
++++ b/niri-config/src/layer_rule.rs
+@@ -13,6 +13,8 @@ pub struct LayerRule {
+     pub opacity: Option<f32>,
+     #[knuffel(child, unwrap(argument))]
+     pub block_out_from: Option<BlockOutFrom>,
++    #[knuffel(child, unwrap(argument))]
++    pub hide_from_own_screencopy: Option<bool>,
+     #[knuffel(child, default)]
+     pub shadow: ShadowRule,
+     #[knuffel(child)]
+diff --git a/niri-config/src/lib.rs b/niri-config/src/lib.rs
+index 329b7669..9bd21800 100644
+--- a/niri-config/src/lib.rs
++++ b/niri-config/src/lib.rs
+@@ -908,6 +908,7 @@ mod tests {
+             layer-rule {
+                 match namespace="^notifications$"
+                 block-out-from "screencast"
++                hide-from-own-screencopy true
+             }
+ 
+             binds {
+@@ -1910,6 +1911,9 @@ mod tests {
+                     block_out_from: Some(
+                         Screencast,
+                     ),
++                    hide_from_own_screencopy: Some(
++                        true,
++                    ),
+                     shadow: ShadowRule {
+                         off: false,
+                         on: false,
+diff --git a/niri-visual-tests/src/cases/layout.rs b/niri-visual-tests/src/cases/layout.rs
+index 81a936d1..1c338306 100644
+--- a/niri-visual-tests/src/cases/layout.rs
++++ b/niri-visual-tests/src/cases/layout.rs
+@@ -274,6 +274,7 @@ impl TestCase for Layout {
+             renderer,
+             target: RenderTarget::Output,
+             xray: None,
++            capture_client: None,
+         };
+         self.layout
+             .monitor_for_output(&self.output)
+diff --git a/niri-visual-tests/src/cases/tile.rs b/niri-visual-tests/src/cases/tile.rs
+index d023ff8c..f9e15207 100644
+--- a/niri-visual-tests/src/cases/tile.rs
++++ b/niri-visual-tests/src/cases/tile.rs
+@@ -126,6 +126,7 @@ impl TestCase for Tile {
+             renderer,
+             target: RenderTarget::Output,
+             xray: None,
++            capture_client: None,
+         };
+         let xray_pos = XrayPos::new(location, 1.);
+         self.tile
+diff --git a/niri-visual-tests/src/cases/window.rs b/niri-visual-tests/src/cases/window.rs
+index b9e141d9..7e0eebbe 100644
+--- a/niri-visual-tests/src/cases/window.rs
++++ b/niri-visual-tests/src/cases/window.rs
+@@ -57,6 +57,7 @@ impl TestCase for Window {
+             renderer,
+             target: RenderTarget::Output,
+             xray: None,
++            capture_client: None,
+         };
+         self.window
+             .render_normal(ctx, location, Scale::from(1.), 1., &mut |elem| {
+diff --git a/src/backend/tty.rs b/src/backend/tty.rs
+index 5368c7ec..be4a0c41 100644
+--- a/src/backend/tty.rs
++++ b/src/backend/tty.rs
+@@ -1886,6 +1886,7 @@ impl Tty {
+             renderer: &mut renderer,
+             target: RenderTarget::Output,
+             xray: None,
++            capture_client: None,
+         };
+         let mut elements = niri.render_to_vec(ctx, output, true);
+ 
+diff --git a/src/backend/winit.rs b/src/backend/winit.rs
+index a9bcc515..b287da62 100644
+--- a/src/backend/winit.rs
++++ b/src/backend/winit.rs
+@@ -229,6 +229,7 @@ impl Winit {
+             renderer: self.backend.renderer(),
+             target: RenderTarget::Output,
+             xray: None,
++            capture_client: None,
+         };
+         let mut elements = niri.render_to_vec(ctx, output, true);
+ 
+diff --git a/src/input/pick_color_grab.rs b/src/input/pick_color_grab.rs
+index 32132358..222abbde 100644
+--- a/src/input/pick_color_grab.rs
++++ b/src/input/pick_color_grab.rs
+@@ -54,6 +54,7 @@ impl PickColorGrab {
+                     // This is an interactive operation so we can render without blocking out.
+                     target: RenderTarget::Output,
+                     xray: None,
++                    capture_client: None,
+                 };
+                 let elements = data.niri.render_to_vec(ctx, &output, false);
+ 
+diff --git a/src/layer/mapped.rs b/src/layer/mapped.rs
+index fbaa6fc6..1aaccec4 100644
+--- a/src/layer/mapped.rs
++++ b/src/layer/mapped.rs
+@@ -3,6 +3,7 @@ use niri_config::{Config, LayerRule};
+ use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+ use smithay::backend::renderer::element::Kind;
+ use smithay::desktop::{LayerSurface, PopupKind, PopupManager};
++use smithay::reexports::wayland_server::Resource as _;
+ use smithay::utils::{Logical, Point, Rectangle, Scale, Size};
+ use smithay::wayland::compositor::{remove_pre_commit_hook, HookId};
+ use smithay::wayland::shell::wlr_layer::{ExclusiveZone, Layer};
+@@ -184,6 +185,17 @@ impl MappedLayer {
+         Point::from((0., y))
+     }
+ 
++    /// Returns whether this surface must be omitted entirely from this render.
++    ///
++    /// This is the case for screen captures requested by the surface's own client when the
++    /// surface has `hide-from-own-screencopy` set.
++    fn is_hidden_from_capture<R>(&self, ctx: &RenderCtx<R>) -> bool {
++        self.rules.hide_from_own_screencopy
++            && ctx
++                .capture_client
++                .is_some_and(|client| self.surface.wl_surface().client().as_ref() == Some(client))
++    }
++
+     pub fn render_normal<R: NiriRenderer>(
+         &self,
+         mut ctx: RenderCtx<R>,
+@@ -192,6 +204,10 @@ impl MappedLayer {
+         xray_pos: XrayPos,
+         push: &mut dyn FnMut(LayerSurfaceRenderElement<R>),
+     ) {
++        if self.is_hidden_from_capture(&ctx) {
++            return;
++        }
++
+         let scale = Scale::from(self.scale);
+         let alpha = self.rules.opacity.unwrap_or(1.).clamp(0., 1.);
+ 
+@@ -263,7 +279,9 @@ impl MappedLayer {
+         xray_pos: XrayPos,
+         push: &mut dyn FnMut(LayerSurfaceRenderElement<R>),
+     ) {
+-        if ctx.target.should_block_out(self.rules.block_out_from) {
++        if ctx.target.should_block_out(self.rules.block_out_from)
++            || self.is_hidden_from_capture(&ctx)
++        {
+             return;
+         }
+ 
+diff --git a/src/layer/mod.rs b/src/layer/mod.rs
+index 767a6b0e..d2f6cc5a 100644
+--- a/src/layer/mod.rs
++++ b/src/layer/mod.rs
+@@ -16,6 +16,9 @@ pub struct ResolvedLayerRules {
+     /// Whether to block out this layer surface from certain render targets.
+     pub block_out_from: Option<BlockOutFrom>,
+ 
++    /// Whether to omit this layer surface from screencopies requested by its own client.
++    pub hide_from_own_screencopy: bool,
++
+     /// Shadow overrides.
+     pub shadow: ShadowRule,
+ 
+@@ -66,6 +69,9 @@ impl ResolvedLayerRules {
+             if let Some(x) = rule.block_out_from {
+                 resolved.block_out_from = Some(x);
+             }
++            if let Some(x) = rule.hide_from_own_screencopy {
++                resolved.hide_from_own_screencopy = x;
++            }
+             if let Some(x) = rule.geometry_corner_radius {
+                 resolved.geometry_corner_radius = Some(x);
+             }
+diff --git a/src/layout/tile.rs b/src/layout/tile.rs
+index 86c7ebad..b92fa7a9 100644
+--- a/src/layout/tile.rs
++++ b/src/layout/tile.rs
+@@ -1421,6 +1421,7 @@ impl<W: LayoutElement> Tile<W> {
+                 target: RenderTarget::Output,
+                 renderer,
+                 xray: xray.as_deref(),
++                capture_client: None,
+             },
+             Point::from((0., 0.)),
+             xray_pos,
+@@ -1472,6 +1473,7 @@ impl<W: LayoutElement> Tile<W> {
+                         target: RenderTarget::Output,
+                         renderer,
+                         xray: Some(xray),
++                        capture_client: None,
+                     },
+                     Point::from((0., 0.)),
+                     xray_pos,
+@@ -1492,6 +1494,7 @@ impl<W: LayoutElement> Tile<W> {
+                 target: RenderTarget::Screencast,
+                 renderer,
+                 xray: xray.as_deref(),
++                capture_client: None,
+             },
+             Point::from((0., 0.)),
+             xray_pos,
+diff --git a/src/niri.rs b/src/niri.rs
+index ec40e01c..1d5574ea 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -2052,6 +2052,7 @@ impl State {
+                     target: RenderTarget::Output,
+                     renderer,
+                     xray: None,
++                    capture_client: None,
+                 };
+ 
+                 self.niri.fill_xray_elements(ctx.r(), output);
+@@ -5267,10 +5268,12 @@ impl Niri {
+             let (damage_tracker, screencopy) = queue.split();
+             if let Some(screencopy) = screencopy {
+                 if screencopy.output() == output {
++                    let client = screencopy.client();
+                     let ctx = RenderCtx {
+                         renderer,
+                         target: RenderTarget::ScreenCapture,
+                         xray: None,
++                        capture_client: client.as_ref(),
+                     };
+                     let offset = screencopy.region_loc().upscale(-1);
+                     let mut elements = Vec::new();
+@@ -5345,10 +5348,12 @@ impl Niri {
+ 
+         self.update_render_elements(Some(output));
+ 
++        let client = screencopy.client();
+         let ctx = RenderCtx {
+             renderer,
+             target: RenderTarget::ScreenCapture,
+             xray: None,
++            capture_client: client.as_ref(),
+         };
+         let offset = screencopy.region_loc().upscale(-1);
+         let mut elements = Vec::new();
+@@ -5474,6 +5479,7 @@ impl Niri {
+                     renderer,
+                     target,
+                     xray: None,
++                    capture_client: None,
+                 };
+                 let elements = self.render_to_vec(ctx, &output, false);
+                 let elements = elements.iter().rev();
+@@ -5556,6 +5562,7 @@ impl Niri {
+             renderer,
+             target: RenderTarget::ScreenCapture,
+             xray: None,
++            capture_client: None,
+         };
+         let elements = self.render_to_vec(ctx, output, include_pointer);
+         let elements = elements.iter().rev();
+@@ -5611,6 +5618,7 @@ impl Niri {
+             renderer,
+             target: RenderTarget::ScreenCapture,
+             xray: None,
++            capture_client: None,
+         };
+         mapped.render(
+             ctx,
+@@ -5777,6 +5785,7 @@ impl Niri {
+             renderer,
+             target: RenderTarget::ScreenCapture,
+             xray: None,
++            capture_client: None,
+         };
+         let elements = self.render_to_vec(ctx, &output, include_pointer);
+         let elements = elements.iter().rev();
+@@ -6255,6 +6264,7 @@ impl Niri {
+                         renderer,
+                         target,
+                         xray: None,
++                        capture_client: None,
+                     };
+                     let elements = self.render_to_vec(ctx, &output, false);
+                     let elements = elements.iter().rev();
+diff --git a/src/protocols/screencopy.rs b/src/protocols/screencopy.rs
+index c7600433..130ac042 100644
+--- a/src/protocols/screencopy.rs
++++ b/src/protocols/screencopy.rs
+@@ -692,6 +692,11 @@ impl Screencopy {
+         self.with_damage
+     }
+ 
++    /// Get the client that requested this screencopy, if it is still alive.
++    pub fn client(&self) -> Option<Client> {
++        self.frame.client()
++    }
++
+     pub fn damage(&self, damages: impl Iterator<Item = Rectangle<i32, smithay::utils::Buffer>>) {
+         for Rectangle { loc, size } in damages {
+             self.frame
+diff --git a/src/render_helpers/mod.rs b/src/render_helpers/mod.rs
+index 474437af..05639a30 100644
+--- a/src/render_helpers/mod.rs
++++ b/src/render_helpers/mod.rs
+@@ -16,6 +16,7 @@ use smithay::backend::renderer::{
+ };
+ use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
+ use smithay::reexports::wayland_server::protocol::wl_shm;
++use smithay::reexports::wayland_server::Client;
+ use smithay::utils::user_data::UserDataMap;
+ use smithay::utils::{Logical, Physical, Point, Rectangle, Scale, Size, Transform};
+ use smithay::wayland::shm;
+@@ -58,6 +59,10 @@ pub struct RenderCtx<'a, R> {
+     pub renderer: &'a mut R,
+     pub target: RenderTarget,
+     pub xray: Option<&'a Xray>,
++    /// Client that requested this screen capture, if any.
++    ///
++    /// Layer surfaces of this client with `hide-from-own-screencopy` are omitted from the render.
++    pub capture_client: Option<&'a Client>,
+ }
+ 
+ impl<'a, R> RenderCtx<'a, R> {
+@@ -68,6 +73,7 @@ impl<'a, R> RenderCtx<'a, R> {
+             renderer: self.renderer,
+             target: self.target,
+             xray: self.xray,
++            capture_client: self.capture_client,
+         }
+     }
+ }
+@@ -78,6 +84,7 @@ impl<'a, R: AsGlesRenderer> RenderCtx<'a, R> {
+             renderer: self.renderer.as_gles_renderer(),
+             target: self.target,
+             xray: self.xray,
++            capture_client: self.capture_client,
+         }
+     }
+ }
+diff --git a/src/screencasting/mod.rs b/src/screencasting/mod.rs
+index 85b3180b..df7deb6e 100644
+--- a/src/screencasting/mod.rs
++++ b/src/screencasting/mod.rs
+@@ -597,6 +597,7 @@ impl Niri {
+                     renderer,
+                     target: RenderTarget::Screencast,
+                     xray: None,
++                    capture_client: None,
+                 };
+                 self.render(ctx, output, false, &mut |elem| elements.push(elem.into()));
+ 
+diff --git a/src/tests/mod.rs b/src/tests/mod.rs
+index 92a40569..ce073481 100644
+--- a/src/tests/mod.rs
++++ b/src/tests/mod.rs
+@@ -9,5 +9,6 @@ mod floating;
+ mod fullscreen;
+ mod layer_shell;
+ mod remove_output;
++mod screencopy;
+ mod transactions;
+ mod window_opening;
+diff --git a/src/tests/screencopy.rs b/src/tests/screencopy.rs
+new file mode 100644
+index 00000000..573410bd
+--- /dev/null
++++ b/src/tests/screencopy.rs
+@@ -0,0 +1,419 @@
++//! Tests for the `hide-from-own-screencopy` layer rule.
++
++use std::fs::File;
++use std::os::fd::{AsFd as _, FromRawFd as _, OwnedFd};
++use std::os::unix::fs::FileExt as _;
++use std::sync::{Arc, Mutex};
++
++use niri_config::Config;
++use smithay::backend::allocator::Fourcc;
++use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
++use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::Anchor;
++use smithay::reexports::wayland_protocols_wlr::screencopy::v1::client::zwlr_screencopy_frame_v1::{
++    self, ZwlrScreencopyFrameV1,
++};
++use smithay::reexports::wayland_protocols_wlr::screencopy::v1::client::zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1;
++use smithay::utils::{Scale, Transform};
++use wayland_client::protocol::wl_registry::WlRegistry;
++use wayland_client::protocol::wl_shm::{self, WlShm};
++use wayland_client::protocol::wl_shm_pool::WlShmPool;
++use wayland_client::protocol::wl_surface::WlSurface;
++use wayland_client::{Connection, Dispatch, Proxy as _, QueueHandle};
++
++use super::client::{self, ClientId, LayerConfigureProps};
++use super::*;
++use crate::render_helpers::{render_to_vec, RenderCtx, RenderTarget};
++
++const RED: [u8; 3] = [255, 0, 0];
++const GREEN: [u8; 3] = [0, 255, 0];
++const BLUE: [u8; 3] = [0, 0, 255];
++// DEFAULT_BACKGROUND_COLOR (0.25 gray) as 8-bit values.
++const BACKGROUND: [u8; 3] = [64, 64, 64];
++
++// Inside the hidden layer (top-left, 100 × 100).
++const HIDDEN_PX: (u32, u32) = (50, 50);
++// Inside the visible layer (top-right, 50 × 50).
++const VISIBLE_PX: (u32, u32) = (295, 25);
++
++/// Registry user data for binding extra globals without disturbing the main test registry.
++struct ExtraRegistry;
++
++#[derive(Default)]
++struct FrameData {
++    buffer: Option<(u32, u32, u32)>,
++    ready: bool,
++    failed: bool,
++}
++
++struct Screencopier {
++    shm: WlShm,
++    manager: ZwlrScreencopyManagerV1,
++}
++
++struct Capture {
++    data: Arc<Mutex<FrameData>>,
++    file: File,
++    stride: u32,
++}
++
++impl Capture {
++    fn is_ready(&self) -> bool {
++        let data = self.data.lock().unwrap();
++        assert!(!data.failed, "screencopy failed");
++        data.ready
++    }
++
++    fn pixel(&self, (x, y): (u32, u32)) -> [u8; 3] {
++        // Xrgb8888 is stored as little-endian B, G, R, X.
++        let mut buf = [0; 4];
++        let offset = u64::from(y * self.stride + x * 4);
++        self.file.read_exact_at(&mut buf, offset).unwrap();
++        [buf[2], buf[1], buf[0]]
++    }
++}
++
++fn set_up() -> (Fixture, ClientId, WlSurface, WlSurface) {
++    let config = Config::parse_mem(
++        r#"
++hotkey-overlay {
++    skip-at-startup
++}
++
++layer-rule {
++    match namespace="^emaki-"
++    hide-from-own-screencopy true
++}
++"#,
++    )
++    .unwrap();
++
++    let mut f = Fixture::with_config(config);
++    f.niri_state().backend.headless().add_renderer().unwrap();
++    f.add_output(1, (320, 240));
++
++    let shell = f.add_client();
++    // Matches the rule.
++    let hidden = create_layer(
++        &mut f,
++        shell,
++        "emaki-panel",
++        Anchor::Top | Anchor::Left,
++        100,
++        RED,
++    );
++    // Same client, but doesn't match the rule.
++    let visible = create_layer(
++        &mut f,
++        shell,
++        "dock",
++        Anchor::Top | Anchor::Right,
++        50,
++        GREEN,
++    );
++
++    (f, shell, hidden, visible)
++}
++
++fn create_layer(
++    f: &mut Fixture,
++    id: ClientId,
++    namespace: &str,
++    anchor: Anchor,
++    size: u16,
++    color: [u8; 3],
++) -> WlSurface {
++    let layer = f.client(id).create_layer(None, Layer::Top, namespace);
++    let surface = layer.surface.clone();
++    layer.set_configure_props(LayerConfigureProps {
++        anchor: Some(anchor),
++        size: Some((u32::from(size), u32::from(size))),
++        ..Default::default()
++    });
++    layer.commit();
++    f.roundtrip(id);
++
++    let layer = f.client(id).layer(&surface);
++    attach_color(layer, color);
++    layer.set_size(size, size);
++    layer.ack_last_and_commit();
++    f.double_roundtrip(id);
++
++    surface
++}
++
++fn attach_color(layer: &client::LayerSurface, color: [u8; 3]) {
++    let c = |x: u8| u32::from(x) * 0x01010101;
++    let buffer = layer.spbm.create_u32_rgba_buffer(
++        c(color[0]),
++        c(color[1]),
++        c(color[2]),
++        u32::MAX,
++        &layer.qh,
++        (),
++    );
++    layer.surface.attach(Some(&buffer), 0, 0);
++}
++
++fn recolor(f: &mut Fixture, id: ClientId, surface: &WlSurface, color: [u8; 3]) {
++    let layer = f.client(id).layer(surface);
++    attach_color(layer, color);
++    layer.surface.damage_buffer(0, 0, 1, 1);
++    layer.commit();
++    f.roundtrip(id);
++}
++
++fn bind_screencopy(f: &mut Fixture, id: ClientId) -> Screencopier {
++    let client = f.client(id);
++    let registry = client.display.get_registry(&client.qh, ExtraRegistry);
++    let global = |interface: &str| {
++        let global = client
++            .state
++            .globals
++            .iter()
++            .find(|g| g.interface == interface);
++        let global = global.unwrap();
++        (global.name, global.version)
++    };
++
++    let (name, _) = global(WlShm::interface().name);
++    let shm = registry.bind(name, 1, &client.qh, ());
++    let (name, version) = global(ZwlrScreencopyManagerV1::interface().name);
++    let manager = registry.bind(name, version.min(3), &client.qh, ());
++
++    f.roundtrip(id);
++    Screencopier { shm, manager }
++}
++
++fn start_capture(
++    f: &mut Fixture,
++    id: ClientId,
++    screencopier: &Screencopier,
++    with_damage: bool,
++) -> Capture {
++    let client = f.client(id);
++    let output = client.output("headless-1");
++    let data = Arc::new(Mutex::new(FrameData::default()));
++    let frame = screencopier
++        .manager
++        .capture_output(0, &output, &client.qh, data.clone());
++    f.roundtrip(id);
++
++    let (width, height, stride) = data.lock().unwrap().buffer.unwrap();
++    let len = stride * height;
++
++    let fd = unsafe { libc::memfd_create(c"niri-screencopy-test".as_ptr(), libc::MFD_CLOEXEC) };
++    assert!(fd >= 0);
++    let file = File::from(unsafe { OwnedFd::from_raw_fd(fd) });
++    file.set_len(u64::from(len)).unwrap();
++
++    let client = f.client(id);
++    let pool = screencopier
++        .shm
++        .create_pool(file.as_fd(), len as i32, &client.qh, ());
++    let buffer = pool.create_buffer(
++        0,
++        width as i32,
++        height as i32,
++        stride as i32,
++        wl_shm::Format::Xrgb8888,
++        &client.qh,
++        (),
++    );
++    pool.destroy();
++
++    if with_damage {
++        frame.copy_with_damage(&buffer);
++    } else {
++        frame.copy(&buffer);
++    }
++
++    Capture { data, file, stride }
++}
++
++/// Dispatches with output redraws until the capture completes or `max_redraws` is reached.
++fn redraw_until_ready(f: &mut Fixture, id: ClientId, capture: &Capture, max_redraws: usize) {
++    for _ in 0..max_redraws {
++        f.niri().queue_redraw_all();
++        f.double_roundtrip(id);
++        if capture.is_ready() {
++            return;
++        }
++    }
++}
++
++fn copy_output(
++    f: &mut Fixture,
++    id: ClientId,
++    screencopier: &Screencopier,
++    with_damage: bool,
++) -> Capture {
++    let capture = start_capture(f, id, screencopier, with_damage);
++    redraw_until_ready(f, id, &capture, 5);
++    assert!(capture.is_ready(), "screencopy did not complete");
++    capture
++}
++
++/// Renders the output the way niri itself does (no screencopy client) and returns two pixels.
++fn render_pixels(f: &mut Fixture, target: RenderTarget) -> [[u8; 3]; 2] {
++    let output = f.niri_output(1);
++    let state = f.niri_state();
++    let niri = &state.niri;
++    state
++        .backend
++        .with_primary_renderer(|renderer| {
++            let ctx = RenderCtx {
++                renderer,
++                target,
++                xray: None,
++                capture_client: None,
++            };
++            let elements = niri.render_to_vec(ctx, &output, false);
++            let size = output.current_mode().unwrap().size;
++            let pixels = render_to_vec(
++                renderer,
++                size,
++                Scale::from(1.),
++                Transform::Normal,
++                Fourcc::Abgr8888,
++                elements.iter().rev(),
++            )
++            .unwrap();
++
++            // Abgr8888 is stored as little-endian R, G, B, A.
++            let px = |(x, y): (u32, u32)| {
++                let i = ((y * size.w as u32 + x) * 4) as usize;
++                [pixels[i], pixels[i + 1], pixels[i + 2]]
++            };
++            [px(HIDDEN_PX), px(VISIBLE_PX)]
++        })
++        .unwrap()
++}
++
++#[test]
++fn egl_hide_from_own_screencopy() {
++    let (mut f, shell, _hidden, _visible) = set_up();
++    let other = f.add_client();
++
++    // Normal output rendering and niri's own screen captures are unaffected.
++    assert_eq!(render_pixels(&mut f, RenderTarget::Output), [RED, GREEN]);
++    assert_eq!(
++        render_pixels(&mut f, RenderTarget::ScreenCapture),
++        [RED, GREEN]
++    );
++
++    // Separate managers, since each has its own damage tracker, and a copy without damage would
++    // leave nothing to report for the following copy with damage.
++    for with_damage in [false, true] {
++        // Another client sees the shell as usual.
++        let screencopier = bind_screencopy(&mut f, other);
++        let capture = copy_output(&mut f, other, &screencopier, with_damage);
++        assert_eq!(capture.pixel(HIDDEN_PX), RED);
++        assert_eq!(capture.pixel(VISIBLE_PX), GREEN);
++
++        // The shell itself sees what's underneath its matching layer, but still sees its other
++        // layer.
++        let screencopier = bind_screencopy(&mut f, shell);
++        let capture = copy_output(&mut f, shell, &screencopier, with_damage);
++        assert_eq!(capture.pixel(HIDDEN_PX), BACKGROUND);
++        assert_eq!(capture.pixel(VISIBLE_PX), GREEN);
++    }
++}
++
++#[test]
++fn egl_hidden_layer_does_not_damage_own_screencopy() {
++    let (mut f, shell, hidden, visible) = set_up();
++    let screencopier = bind_screencopy(&mut f, shell);
++
++    // The first with_damage frame is always fully damaged.
++    let capture = copy_output(&mut f, shell, &screencopier, true);
++    assert_eq!(capture.pixel(HIDDEN_PX), BACKGROUND);
++
++    // Changing the hidden layer redraws the output but produces no damage for the shell.
++    let pending = start_capture(&mut f, shell, &screencopier, true);
++    recolor(&mut f, shell, &hidden, BLUE);
++    redraw_until_ready(&mut f, shell, &pending, 5);
++    assert!(
++        !pending.is_ready(),
++        "hidden layer must not damage its own screencopy"
++    );
++    assert_eq!(render_pixels(&mut f, RenderTarget::Output), [BLUE, GREEN]);
++
++    // Changing a non-hidden layer completes the frame.
++    recolor(&mut f, shell, &visible, RED);
++    redraw_until_ready(&mut f, shell, &pending, 5);
++    assert!(pending.is_ready());
++    assert_eq!(pending.pixel(HIDDEN_PX), BACKGROUND);
++    assert_eq!(pending.pixel(VISIBLE_PX), RED);
++}
++
++impl Dispatch<WlRegistry, ExtraRegistry> for client::State {
++    fn event(
++        _state: &mut Self,
++        _proxy: &WlRegistry,
++        _event: <WlRegistry as wayland_client::Proxy>::Event,
++        _data: &ExtraRegistry,
++        _conn: &Connection,
++        _qhandle: &QueueHandle<Self>,
++    ) {
++    }
++}
++
++impl Dispatch<WlShm, ()> for client::State {
++    fn event(
++        _state: &mut Self,
++        _proxy: &WlShm,
++        _event: <WlShm as wayland_client::Proxy>::Event,
++        _data: &(),
++        _conn: &Connection,
++        _qhandle: &QueueHandle<Self>,
++    ) {
++    }
++}
++
++impl Dispatch<WlShmPool, ()> for client::State {
++    fn event(
++        _state: &mut Self,
++        _proxy: &WlShmPool,
++        _event: <WlShmPool as wayland_client::Proxy>::Event,
++        _data: &(),
++        _conn: &Connection,
++        _qhandle: &QueueHandle<Self>,
++    ) {
++    }
++}
++
++impl Dispatch<ZwlrScreencopyManagerV1, ()> for client::State {
++    fn event(
++        _state: &mut Self,
++        _proxy: &ZwlrScreencopyManagerV1,
++        _event: <ZwlrScreencopyManagerV1 as wayland_client::Proxy>::Event,
++        _data: &(),
++        _conn: &Connection,
++        _qhandle: &QueueHandle<Self>,
++    ) {
++    }
++}
++
++impl Dispatch<ZwlrScreencopyFrameV1, Arc<Mutex<FrameData>>> for client::State {
++    fn event(
++        _state: &mut Self,
++        _proxy: &ZwlrScreencopyFrameV1,
++        event: <ZwlrScreencopyFrameV1 as wayland_client::Proxy>::Event,
++        data: &Arc<Mutex<FrameData>>,
++        _conn: &Connection,
++        _qhandle: &QueueHandle<Self>,
++    ) {
++        let mut data = data.lock().unwrap();
++        match event {
++            zwlr_screencopy_frame_v1::Event::Buffer {
++                width,
++                height,
++                stride,
++                ..
++            } => data.buffer = Some((width, height, stride)),
++            zwlr_screencopy_frame_v1::Event::Ready { .. } => data.ready = true,
++            zwlr_screencopy_frame_v1::Event::Failed => data.failed = true,
++            _ => (),
++        }
++    }
++}
+diff --git a/src/window/mapped.rs b/src/window/mapped.rs
+index 3db1f66c..789c65dd 100644
+--- a/src/window/mapped.rs
++++ b/src/window/mapped.rs
+@@ -548,6 +548,7 @@ impl Mapped {
+                 renderer,
+                 target: RenderTarget::Screencast,
+                 xray: None,
++                capture_client: None,
+             },
+             location,
+             scale,
+-- 
+2.55.0
+

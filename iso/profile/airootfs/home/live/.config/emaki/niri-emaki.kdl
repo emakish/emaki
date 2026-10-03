@@ -1,0 +1,14 @@
+spawn-at-startup "emaki-install"
+
+// Installer window: later keyboard input overrides only the live user's installer trial.
+include "installer-input.kdl" optional=true
+
+// Floating windows without an explicit position are centred by niri.
+window-rule {
+    match app-id="^emaki-install$"
+    open-floating true
+    default-column-width { proportion 0.80; }
+    // 0.88 touched the bottom edge of a 1280x800 output under the bar (VM, MacBook 13").
+    default-window-height { proportion 0.82; }
+    background-effect { blur true; }
+}

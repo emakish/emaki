@@ -1,0 +1,124 @@
+{
+  "hello": {
+    "type": "hello",
+    "proto": 1,
+    "archinstall_version": "4.5",
+    "emaki_version": "0.1.0",
+    "test_mode": false,
+    "busy_job": null
+  },
+  "inventory": {
+    "type": "inventory",
+    "disks": [
+      {
+        "id": "/dev/vda",
+        "path": "/dev/vda",
+        "model": "VirtIO System Disk",
+        "size_bytes": 42949672960,
+        "bus": "virtio",
+        "removable": false,
+        "is_boot_medium": false,
+        "partitions": [
+          {
+            "id": "/dev/vda1",
+            "path": "/dev/vda1",
+            "number": 1,
+            "uuid": "fixture-1",
+            "fs": "vfat",
+            "size_bytes": 1073741824,
+            "start_bytes": 1048576,
+            "mountpoint": null,
+            "label": null,
+            "os_hint": null,
+            "esp": true
+          },
+          {
+            "id": "/dev/vda2",
+            "path": "/dev/vda2",
+            "number": 2,
+            "uuid": "fixture-2",
+            "fs": "btrfs",
+            "size_bytes": 41875931136,
+            "start_bytes": 1074790400,
+            "mountpoint": null,
+            "label": null,
+            "os_hint": null,
+            "esp": false
+          }
+        ],
+        "free_extents": [],
+        "shrink": null
+      },
+      {
+        "id": "/dev/sdb",
+        "path": "/dev/sdb",
+        "model": "Emaki Live USB",
+        "size_bytes": 8589934592,
+        "bus": "usb",
+        "removable": true,
+        "is_boot_medium": true,
+        "partitions": [],
+        "free_extents": [],
+        "shrink": null
+      }
+    ],
+    "gpu": "Virtual GPU",
+    "cpu": "Virtual CPU",
+    "memory_bytes": 8589934592,
+    "uefi": true,
+    "network": {
+      "online": false
+    },
+    "tz_guess": "Europe/Lisbon",
+    "scale_guess": null
+  },
+  "plan_ack": {
+    "type": "plan_ack",
+    "plan_id": "fixture-plan",
+    "token": "mock-capability",
+    "expires_s": 600,
+    "summary": [
+      "Erase installation on /dev/vda (VirtIO System Disk).",
+      "Erase all partitions and create a new GPT partition table.",
+      "Partition 1: format vfat, 1.00 GiB; /efi.",
+      "Partition 2: format btrfs, 39.00 GiB; @ \u2192 /, @home \u2192 /home, @log \u2192 /var/log, @pkg \u2192 /var/cache/pacman/pkg, @snapshots \u2192 /.snapshots.",
+      "Account: alex; hostname: emaki; timezone: Europe/Lisbon.",
+      "Packages are installed from the signed offline USB repository."
+    ],
+    "errors": [],
+    "warnings": [
+      {
+        "code": "unstable_id",
+        "msg": "No by-id name is available; device identity and geometry will be rechecked."
+      }
+    ]
+  },
+  "reply": {
+    "type": "reply",
+    "ok": true,
+    "job_id": "fixture-job"
+  },
+  "state": {
+    "type": "state",
+    "job_id": "fixture-job",
+    "phase": "copy_packages",
+    "phase_pct": 42,
+    "total_pct": 32,
+    "indeterminate": false
+  },
+  "done": {
+    "type": "done",
+    "job_id": "fixture-job",
+    "log_path": "/var/log/emaki-install.log",
+    "seconds": 187
+  },
+  "error": {
+    "type": "error",
+    "job_id": "fixture-job",
+    "code": "command_failed",
+    "phase": "copy_packages",
+    "message": "The package operation failed. Check the USB connection and try again.",
+    "retryable": true,
+    "log_path": "/var/log/emaki-install.log"
+  }
+}

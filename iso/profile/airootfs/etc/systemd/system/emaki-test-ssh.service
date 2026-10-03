@@ -1,0 +1,14 @@
+[Unit]
+Description=Emaki test-only SSH access
+ConditionKernelCommandLine=emaki.test=1
+ConditionPathExists=/etc/emaki-test/authorized_keys
+After=network.target
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/ssh-keygen -A
+ExecStart=/usr/bin/sshd -D -e -f /etc/emaki-live/sshd_config
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

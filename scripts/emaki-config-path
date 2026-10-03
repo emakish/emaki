@@ -1,0 +1,23 @@
+#!/bin/sh
+# Print the component config path, respecting Emaki's config layers.
+#
+# Why: an application's system directory (/etc/xdg/<application>) often belongs to its
+# package — for fuzzel, /etc/xdg/fuzzel/fuzzel.ini is owned by the fuzzel package. Writing
+# there is forbidden (directives 2 and 6), so our default lives in /usr/share/emaki and
+# is passed via a flag; this wrapper ensures that the user's file takes precedence.
+#
+# Usage:
+#   prog --config "$(emaki-config-path prog prog.ini)"
+#
+# The same rule as everywhere else: if the user has a file, use it and
+# leave ours alone. Otherwise, use the Emaki default.
+set -eu
+component="$1"
+file="${2:-config}"
+user_config="${XDG_CONFIG_HOME:-$HOME/.config}/$component/$file"
+
+if [ -r "$user_config" ]; then
+    printf '%s\n' "$user_config"
+else
+    printf '%s\n' "/usr/share/emaki/$component/$file"
+fi

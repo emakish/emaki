@@ -1,0 +1,36 @@
+{
+  "blockdevices": [
+    {
+      "name": "/dev/sda", "kname": "/dev/sda", "path": "/dev/sda", "type": "disk",
+      "size": 256060514304, "log-sec": 512, "pttype": "gpt",
+      "ptuuid": "1a425ea8-2674-40ae-b4d0-715b5a8ef49f", "fstype": null,
+      "mountpoints": [null], "model": "Fixture APPLE SSD", "serial": "FIXTURE-MAC-001",
+      "wwn": "0xfixture000000002", "tran": "sata", "rm": false, "ro": false, "maj:min": "8:0",
+      "children": [
+        {
+          "name": "/dev/sda1", "path": "/dev/sda1", "type": "part",
+          "size": 209715200, "start": 40, "partn": 1,
+          "parttype": "c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
+          "partuuid": "5863f191-ebbb-425f-aa6c-00036e34ed50", "fstype": "vfat",
+          "uuid": "67E3-17ED", "label": "EFI", "mountpoints": [null], "maj:min": "8:1"
+        },
+        {
+          "name": "/dev/sda2", "path": "/dev/sda2", "type": "part",
+          "size": 250000000000, "start": 409640, "partn": 2,
+          "parttype": "7c3457ef-0000-11aa-aa11-00306543ecac",
+          "partuuid": "73fd380b-0c94-418f-9aa4-97d15228fc7d", "fstype": "apfs",
+          "uuid": "123f456a-999f-1234-abcd-123456789abc", "label": null,
+          "mountpoints": [null], "maj:min": "8:2"
+        },
+        {
+          "name": "/dev/sda3", "path": "/dev/sda3", "type": "part",
+          "size": 5368709120, "start": 489216000, "partn": 3,
+          "parttype": "48465300-0000-11aa-aa11-00306543ecac",
+          "partuuid": "a8eae1e5-6716-4c3f-83ef-81a420c099de", "fstype": "hfsplus",
+          "uuid": "517fb366-84b6-4811-bf8e-123456789abc", "label": "Recovery HD",
+          "mountpoints": [null], "maj:min": "8:3"
+        }
+      ]
+    }
+  ]
+}
