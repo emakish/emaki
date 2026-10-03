@@ -97,6 +97,12 @@ Item {
     onBatteryPercentChanged: checkBattery()
     Connections {
         target: service.backend
+        function onWifiPasswordRequired(key: string): void {
+            // NM may reject the secret after the generic confirmation deadline has elapsed.
+            // The backend still tracks that attempt and the panel reopens its password field.
+            if (!service.pendingCheck && !action.busy)
+                service.actionState = "wrong_password";
+        }
         function onBatteryPowerChanged(): void {
             service.checkBattery();
         }
@@ -372,6 +378,7 @@ Item {
             charging: backend?.charging ?? false,
             network: backend?.networkReady ? (backend.wifiDevices.length ? (backend.wifiEnabled ? "on" : "off") : "no_adapter") : "unavailable",
             networks: backend?.networks.length ?? 0,
+            wifi_scanners: Array.from(backend?.wifiDevices ?? []).filter(d => d?.scannerEnabled === true).length,
             connectivity: backend?.connectivity ?? "unknown",
             vpn: vpn.state,
             vpn_count: vpn.connections.length,

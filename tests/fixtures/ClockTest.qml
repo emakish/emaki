@@ -7,6 +7,20 @@ import Quickshell.Io
 
 ShellRoot {
     id: root
+    // A Wi-Fi network delegate held by holdNetwork().
+    property var held: null
+    function passwordIn(item: var): var {
+        if (!item)
+            return null;
+        if (item.echoMode === TextInput.Password && item.visible)
+            return item;
+        for (const child of item.children ?? []) {
+            const found = passwordIn(child);
+            if (found)
+                return found;
+        }
+        return null;
+    }
     NiriService {
         id: niri
         binary: ""
@@ -118,6 +132,53 @@ ShellRoot {
         }
         function wifiMessage(): string {
             return scene.systemBody.message;
+        }
+        function wifiAdapter(on: bool): void {
+            if (fixtureSystem.item)
+                fixtureSystem.item.secondAdapter = on;
+        }
+        function farSignal(value: real): void {
+            if (fixtureSystem.item)
+                fixtureSystem.item.farSignal = value;
+        }
+        function wifiRows(): string {
+            return JSON.stringify(scene.systemBody.rows.map(r => r.name + " · " + r.detail));
+        }
+        // Opens a network's row (password field for an unsaved secured one), focuses that field
+        // and keeps its delegate for heldNetwork().
+        function holdNetwork(key: string): string {
+            const body = scene.systemBody;
+            body.activateRow(body.rows.find(r => r.value === key));
+            const list = body.networkList;
+            for (let i = 0; i < list.count; ++i) {
+                const item = list.itemAt(i);
+                if (item.netKey === "net-" + key) {
+                    root.held = item;
+                    const input = root.passwordIn(item);
+                    if (!input)
+                        return "no_field";
+                    input.forceActiveFocus();
+                    return input.activeFocus ? "focused" : "unfocused";
+                }
+            }
+            return "missing";
+        }
+        function heldNetwork(): string {
+            const list = scene.systemBody.networkList;
+            const items = [];
+            for (let i = 0; i < list.count; ++i)
+                items.push(list.itemAt(i));
+            const input = root.held ? root.passwordIn(root.held) : null;
+            return JSON.stringify({
+                kept: items.includes(root.held),
+                focused: !!input && input.activeFocus,
+                order: items.slice().sort((a, b) => a.y - b.y).map(item => item.row.name),
+                password: scene.systemBody.wifiPassword
+            });
+        }
+        function typeText(text: string): void {
+            for (const ch of text)
+                pointer.keyClick(ch);
         }
         function night(on: bool): bool {
             return scene.services.night.setOn(on);

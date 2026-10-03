@@ -90,9 +90,9 @@ def until(predicate, timeout=3):
     raise AssertionError('deadline')
 
 
-# The user explicitly allows a short temp path for Unix sockets: AF_UNIX names
-# otherwise exceed 108 bytes in deeply nested worktrees.
-with tempfile.TemporaryDirectory(prefix='emaki-lock-') as value:
+# Use /tmp explicitly: inheriting CI's TMPDIR makes the longest AF_UNIX
+# pathname 110 bytes, exceeding Linux's 107-byte pathname limit.
+with tempfile.TemporaryDirectory(prefix='emaki-lock-', dir='/tmp') as value:
     base = Path(value)
     commands = base / 'bin'; commands.mkdir()
     for name in ('qs', 'hyprlock'):
@@ -239,15 +239,24 @@ with tempfile.TemporaryDirectory(prefix='emaki-lock-') as value:
     owners = []
     real_popen = subprocess.Popen
     def owned_popen(*args, **kwargs):
-        process = real_popen(*args, **kwargs)
+        # Files cannot fill a pipe or wait for EOF from a still-running owner.
+        # Override DEVNULL only in this fixture; production stays detached.
+        with (directory / f'launcher-{len(owners)}.stderr').open('wb') as stderr:
+            kwargs['stderr'] = stderr
+            process = real_popen(*args, **kwargs)
         owners.append(process)
         return process
     try:
         with patch.object(lock.subprocess, 'Popen', owned_popen):
             result = lock.client(directory, 'wait')
-        assert result['state'] == 'locked' and result['secure'] and result['poured']
-        assert len(owners) == 2 and owners[0].returncode == 1
-        assert (directory / 'calls').read_text().count('qs ') == 1
+        calls = (directory / 'calls').read_text() if (directory / 'calls').exists() else ''
+        diagnostics = dict(result=result, calls=calls, socket_path=str(directory / 'control.sock'), launchers=[
+            dict(argv=owner.args, returncode=owner.poll(),
+                 stderr=(directory / f'launcher-{index}.stderr').read_text(errors='replace'))
+            for index, owner in enumerate(owners)])
+        assert result['state'] == 'locked' and result['secure'] and result['poured'], diagnostics
+        assert len(owners) == 2 and owners[0].returncode == 1, diagnostics
+        assert calls.count('qs ') == 1, diagnostics
         print('PASS failed fake systemd user manager falls back to one confirmed setsid locker')
     finally:
         for owner in owners:

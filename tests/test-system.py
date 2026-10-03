@@ -158,6 +158,94 @@ try:
     (root/'native.txt').write_text(native_result.stdout+native_result.stderr)
     assert native_result.returncode == 0 and 'NATIVE_LOADED' in native_result.stdout+native_result.stderr, native_result.stdout+native_result.stderr
     assert not any(t in native_result.stdout+native_result.stderr for t in ('TypeError','ReferenceError','Failed to load configuration','Cannot assign','is not a type'))
+    # The native bridge on QS's own NetworkManager backend (fake NM on this private bus): QS lists
+    # an unsaved network only while the device's scanner is on, and only then asks NM to scan.
+    w=root/'w';shutil.copytree(ROOT/'shell',w);shutil.copyfile(ROOT/'tests/fixtures/NativeWifiTest.qml',w/'shell.qml')
+    wlog=(root/'native-wifi.txt').open('w');wp=subprocess.Popen(['qs','-p',str(w),'--no-color'],env=nmenv,stdout=wlog,stderr=subprocess.STDOUT);processes.append((wp,wlog))
+    def native_wifi(pred,timeout=10):
+        last=None;end=time.monotonic()+timeout
+        while time.monotonic()<end:
+            try:
+                last=json.loads(run(['qs','-p',str(w),'ipc','call','test','state']))
+                if pred(last):return last
+            except (subprocess.CalledProcessError,json.JSONDecodeError):pass
+            time.sleep(.07)
+        raise AssertionError(('native wifi timeout',last))
+    def scans():return (root/'nm-scans').read_text().splitlines() if (root/'nm-scans').exists() else []
+    def fake_nm(method):run(['busctl','--user','call','org.freedesktop.NetworkManager','/org/freedesktop/NetworkManager','org.emaki.FakeNM',method])
+    saved=['wlan0/PRIVATE_SAVED:known'];near=sorted(saved+['wlan0/PRIVATE_NEAR','wlan0/PRIVATE_CAFE'])
+    s=native_wifi(lambda s:s['devices']==[{'name':'wlan0','scanner':False}] and s['networks']==saved);assert s['ready'] and s['enabled'],s
+    time.sleep(.5);assert native_wifi(lambda s:True)['networks']==saved and scans()==[]  # no scanner: no scan, nothing unsaved
+    run(['qs','-p',str(w),'ipc','call','test','scan','true'])
+    native_wifi(lambda s:s['devices']==[{'name':'wlan0','scanner':True}] and s['networks']==near)
+    until=time.monotonic()+5
+    while scans()!=['/org/freedesktop/NetworkManager/Devices/3'] and time.monotonic()<until: time.sleep(.05)
+    assert scans()==['/org/freedesktop/NetworkManager/Devices/3'],scans()
+    # An adapter that appears while scanning gets its scanner on and lists its unsaved network.
+    fake_nm('AddWifi');s=native_wifi(lambda s:{'name':'wlan1','scanner':True} in s['devices'] and 'wlan1/PRIVATE_FAR' in s['networks'])
+    until=time.monotonic()+5
+    while len(scans())<2 and time.monotonic()<until: time.sleep(.05)
+    assert scans()==['/org/freedesktop/NetworkManager/Devices/3','/org/freedesktop/NetworkManager/Devices/4'],scans()
+    fake_nm('RemoveWifi');native_wifi(lambda s:s['devices']==[{'name':'wlan0','scanner':True}] and s['networks']==near)
+    run(['qs','-p',str(w),'ipc','call','test','scan','false'])
+    native_wifi(lambda s:s['devices']==[{'name':'wlan0','scanner':False}] and s['networks']==saved)
+    # Exercise the real SystemBody -> SystemService -> SystemNative -> QS NM D-Bus path.
+    # Secrets are fixture constants inside QML, never command-line arguments or status fields.
+    ipc(w,'scan','true');native_wifi(lambda s:len(s['networks'])==3)
+    def nm_native():return json.loads((root/'nm-native.json').read_text())
+    def field(s,key):return next(f for f in s['fields'] if f['key']==key)
+    def failed(key,reason='wrong_password'):
+        return native_wifi(lambda s:s['action']==reason and (reason!='wrong_password' or
+            (s['selected']==key and field(s,key)['visible'] and field(s,key)['focused'] and s['passwordEmpty'])))
+    def joined(key):
+        return native_wifi(lambda s:s['action']=='confirmed' and key+':known:connected' in s['networks'] and
+            not field(s,key)['visible'] and s['passwordEmpty'])
+    def disconnected(key):
+        ipc(w,'disconnect',key)
+        native_wifi(lambda s:s['action']=='confirmed' and not any(':connected' in n for n in s['networks']))
+    new='wlan0/PRIVATE_NEAR';known='wlan0/PRIVATE_SAVED'
+    ipc(w,'select',new);native_wifi(lambda s:field(s,new)['visible'] and field(s,new)['focused'])
+    ipc(w,'deadline',1)  # NM's failure arrives after the generic confirmation timer expires.
+    ipc(w,'submit','false');s=failed(new)
+    ipc(w,'deadline',25)
+    assert s['message']=='Wrong password. Try again.',s
+    native_wifi(lambda s:new in s['networks'])
+    data=nm_native();assert list(data['profiles'].values())==['PRIVATE_SAVED'],data
+    rejected=data['calls'][0][1];assert data['calls']==[['AddAndActivateConnection',rejected],['Delete',rejected]],data
+    # A failed row stays editable when clicked again; correct submission creates one profile.
+    ipc(w,'select',new);ipc(w,'submit','true');joined(new)
+    data=nm_native();assert sorted(data['profiles'].values())==['PRIVATE_NEAR','PRIVATE_SAVED'],data
+    assert len([c for c in data['calls'] if c[0]=='AddAndActivateConnection'])==2,data
+    disconnected(new)
+    # Saved credentials are stale: row click uses ActivateConnection, correction uses Update
+    # on that very profile and ActivateConnection again, with no add or delete.
+    before=nm_native();ipc(w,'select',known);s=failed(known)
+    assert s['message']=='Wrong password. Try again.' and known+':known' in s['networks'],s
+    ipc(w,'select',known);native_wifi(lambda s:field(s,known)['visible'])
+    ipc(w,'submit','true');joined(known)
+    after=nm_native();saved_path='/org/freedesktop/NetworkManager/Settings/2'
+    assert after['profiles']==before['profiles'],after
+    assert after['calls'][len(before['calls']):]==[['ActivateConnection',saved_path],['Update',saved_path],['ActivateConnection',saved_path]],after
+    disconnected(known)
+    # Timeouts, lost APs and other errors keep their messages and all profiles, new or saved.
+    for mode,reason,message in [('auth_timeout','auth_timeout','The network did not answer in time. Try again.'),
+                                ('network_lost','network_lost','The network disappeared while connecting.'),
+                                ('client_failed','network_connection_failed','Couldn’t connect to this network.')]:
+        (root/'nm-mode').write_text(mode)
+        before=nm_native();ipc(w,'select',known);s=failed(known,reason)
+        assert s['message']==message and nm_native()['profiles']==before['profiles'],s
+        assert nm_native()['calls'][len(before['calls']):]==[['ActivateConnection',saved_path]]
+    # Open unsaved network also persists on a non-password failure; never automatically forget it.
+    cafe='wlan0/PRIVATE_CAFE';before=nm_native();ipc(w,'select',cafe);failed(cafe,'network_connection_failed')
+    after=nm_native();assert len(after['profiles'])==len(before['profiles'])+1
+    assert [c[0] for c in after['calls'][len(before['calls']):]]==['AddAndActivateConnection'],after
+    (root/'nm-mode').unlink()
+    assert not any(secret in ipc(w,'status') for secret in ('PRIVATE_', 'fixture-password', 'bad-password', 'outdated-password'))
+    wp.terminate();wp.wait(timeout=3);wlog.close()
+    native_log=(root/'native-wifi.txt').read_text()
+    # PipeWire/UPower/BlueZ are absent here and complain; the network backend, the D-Bus property
+    # groups (a missing or mistyped NM property in the fake) and QML must not.
+    assert not any(t in native_log for t in ('quickshell.network','quickshell.dbus.properties','TypeError','ReferenceError','Failed to load configuration','Cannot assign','is not a type','fixture-password','bad-password','outdated-password')),native_log
     q,p=start('a',False,nmenv)
     s=wait(q,lambda s:s['services']['profiles']=='ready' and s['services']['brightness']=='ready')
     assert s['services']['volume']=='64' and s['services']['battery']==82
@@ -197,13 +285,42 @@ try:
     action(q,'stream-volume',{'id':9,'percent':20});action(q,'stream-volume',{'id':77,'percent':20},'stream_gone')
     action(q,'mic-volume',70);action(q,'input',4);action(q,'input',3);action(q,'input',55,'input_gone')
     ipc(q,'system','sound');wait(q,lambda s:s['services']['mic_meter'] is True);ipc(q,'close');wait(q,lambda s:s['services']['mic_meter'] is False)
+    # Wi-Fi scanner (QS WifiDevice.scannerEnabled) only while the Wi-Fi page is open: QS lists a
+    # network that is neither saved nor connected only while its device scans (the fixture does too).
+    s=state(q);assert (s['services']['wifi_scanners'],s['services']['networks'])==(0,1),s['services']
+    ipc(q,'system','wifi');s=wait(q,lambda s:s['services']['wifi_scanners']==1);assert s['services']['networks']==2
+    assert json.loads(ipc(q,'wifiRows'))==['PRIVATE_WIFI · Connected','PRIVATE_NEAR · Secured']
+    ipc(q,'system','sound');s=wait(q,lambda s:s['system_page']=='sound' and s['services']['wifi_scanners']==0);assert s['services']['networks']==1
+    ipc(q,'system','wifi');wait(q,lambda s:s['services']['wifi_scanners']==1)
+    action(q,'wifi-power',None);s=wait(q,lambda s:s['services']['network']=='off' and s['services']['wifi_scanners']==0)
+    action(q,'wifi-power',None);s=wait(q,lambda s:s['services']['network']=='on' and s['services']['wifi_scanners']==1)
+    # An adapter plugged in while the page is open scans too; its unsaved network is listed.
+    ipc(q,'wifiAdapter','true');s=wait(q,lambda s:s['services']['wifi_scanners']==2);assert s['services']['networks']==3
+    assert json.loads(ipc(q,'wifiRows'))==['PRIVATE_WIFI · Connected','PRIVATE_NEAR · Secured','PRIVATE_FAR · Open network']
+    # A scan reorders the list by signal: the open row keeps its delegate, its password field
+    # keeps the keyboard and the typing goes on.
+    wait(q,lambda s:s['system_expansion']==1)
+    assert ipc(q,'holdNetwork','fixture/near')=='focused';ipc(q,'typeText','abc')
+    held=json.loads(ipc(q,'heldNetwork'));assert held=={'kept':True,'focused':True,'order':['PRIVATE_WIFI','PRIVATE_NEAR','PRIVATE_FAR'],'password':'abc'},held
+    ipc(q,'farSignal','0.8')
+    until=time.monotonic()+3
+    while json.loads(ipc(q,'heldNetwork'))['order']!=['PRIVATE_WIFI','PRIVATE_FAR','PRIVATE_NEAR'] and time.monotonic()<until: time.sleep(.05)
+    ipc(q,'typeText','d');held=json.loads(ipc(q,'heldNetwork'))
+    assert held=={'kept':True,'focused':True,'order':['PRIVATE_WIFI','PRIVATE_FAR','PRIVATE_NEAR'],'password':'abcd'},held
+    # Closing the panel stops every scanner; unsaved networks leave the list again.
+    ipc(q,'close');s=wait(q,lambda s:s['services']['wifi_scanners']==0);assert s['services']['networks']==1
+    ipc(q,'wifiAdapter','false');ipc(q,'farSignal','0.3')
     action(q,'wifi-disconnect',{'key':'fixture'});action(q,'wifi-connect',{'key':'fixture'})
     action(q,'wifi-forget',{'key':'fixture'});action(q,'wifi-disconnect',{'key':'fixture'})
+    # Neither saved nor connected now: listed only while the Wi-Fi page scans.
+    action(q,'wifi-connect',{'key':'fixture','password':'bad-password'},'network_gone')
+    ipc(q,'system','wifi');wait(q,lambda s:s['services']['wifi_scanners']==1)
     action(q,'wifi-connect',{'key':'fixture','password':'bad-password'},'wrong_password')
-    ipc(q,'system','wifi');ipc(q,'systemRow',0);assert ipc(q,'wifiMessage')=='Wrong password. Try again.'
+    ipc(q,'systemRow',0);assert ipc(q,'wifiMessage')=='Wrong password. Try again.'
     ipc(q,'wifiFail','auth_timeout');action(q,'wifi-connect',{'key':'fixture','password':'bad-password'},'auth_timeout')
-    assert ipc(q,'wifiMessage').startswith('The network did not answer');ipc(q,'wifiFail','wrong_password');ipc(q,'close')
-    action(q,'wifi-connect',{'key':'fixture','password':'fixture-password'})
+    assert ipc(q,'wifiMessage').startswith('The network did not answer');ipc(q,'wifiFail','wrong_password')
+    action(q,'wifi-connect',{'key':'fixture','password':'fixture-password'});ipc(q,'close')
+    s=wait(q,lambda s:s['services']['wifi_scanners']==0);assert s['services']['networks']==1
     # Captive portal: connectivity from the backend, sign-in through the fixture http handler.
     s=state(q);assert s['services']['connectivity']=='full' and s['services']['vpn']=='ready' and s['services']['vpn_count']==1 and s['services']['vpn_active']==0
     ipc(q,'connectivity','portal');wait(q,lambda s:s['services']['connectivity']=='portal')

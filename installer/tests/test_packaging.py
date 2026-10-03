@@ -11,7 +11,10 @@ class PackagingTests(unittest.TestCase):
         actual = {p.stem for p in (root / 'installer/emaki_installer').glob('*.py')}
         self.assertEqual(modules, actual)
         self.assertIn('archinstall=4.5-1', recipe)
-        self.assertIn('pkgver=0.1.0', recipe)
+        # The launcher icon lives in hicolor; its index.theme names the scalable/apps directory.
+        self.assertIn('hicolor-icon-theme', re.search(r'depends=\(([^)]+)\)', recipe, re.S)[1].split())
+        self.assertIn('/usr/share/icons/hicolor/scalable/apps/emaki-install.svg', recipe)
+        self.assertIn('pkgver=0.1.1', recipe)
         self.assertIn('pkgrel=1', recipe)
         for path in ('bin/emaki-installerd', 'bin/emaki-install-cli',
                      'systemd/emaki-installerd.service', 'sysusers.d/emaki-installer.conf',

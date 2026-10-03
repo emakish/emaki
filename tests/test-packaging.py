@@ -66,16 +66,16 @@ class MetadataTests(unittest.TestCase):
             with self.subTest(package=name):
                 info = self.recipes[name]
                 self.assertEqual(info['pkgname'], [name])
-                self.assertEqual(info['pkgver'], ['0.1.0'])
+                self.assertEqual(info['pkgver'], ['0.1.1'])
                 self.assertEqual(info['pkgrel'], ['1'])
                 self.assertEqual(info['license'], ['GPL-3.0-or-later'])
         cargo = tomllib.loads((ROOT / 'Cargo.toml').read_text())
-        self.assertEqual(cargo['workspace']['package']['version'], '0.1.0')
+        self.assertEqual(cargo['workspace']['package']['version'], '0.1.1')
         packages = tomllib.loads((ROOT / 'Cargo.lock').read_text())['package']
-        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.1.0'})
+        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.1.1'})
         self.assertEqual(self.recipes['emaki']['depends'], [
-            'emaki-config=0.1.0-1', 'emaki-desktop=0.1.0-1', 'niri-emaki=26.04-7',
-            'quickshell-emaki=0.3.1-1', 'emaki-keyring=0.1.0-1', 'emaki-mirrorlist=0.1.0-1'])
+            'emaki-config=0.1.1-1', 'emaki-desktop=0.1.1-1', 'niri-emaki=26.04-7',
+            'quickshell-emaki=0.3.1-1', 'emaki-keyring=0.1.1-1', 'emaki-mirrorlist=0.1.1-1'])
 
     def test_preset_units_have_shipped_providers(self):
         # Cached upstream file-list evidence keeps this gate usable off Arch.
@@ -148,8 +148,8 @@ class MetadataTests(unittest.TestCase):
 
     def test_desktop_and_fork_constraints(self):
         desktop = self.recipes['emaki-desktop']
-        self.assertTrue({'emaki-config', 'niri-emaki>=26.04-6', 'quickshell-emaki', 'hyprlock'}
-                        <= set(desktop['depends']))
+        self.assertTrue({'emaki-config', 'niri-emaki>=26.04-6', 'quickshell-emaki', 'hyprlock',
+                         'firefox', 'noto-fonts'} <= set(desktop['depends']))
         self.assertFalse({'make', 'rust', 'qt6-shadertools'} & set(desktop['depends']))
         self.assertTrue(any(d.startswith('swayidle:') for d in desktop['optdepends']))
         self.assertFalse(any(d.startswith('niri-emaki:') for d in desktop['optdepends']))
@@ -309,6 +309,148 @@ assert worker.runner.chroot.call_args_list == [
         self.assertEqual(result.returncode, 0, result.stderr)
 
 
+def hook_sections(path):
+    sections = {}
+    for line in path.read_text().splitlines():
+        if line.startswith('['):
+            fields = sections.setdefault(line, {})
+        elif line.strip() and not line.startswith('#'):
+            key, value = map(str.strip, line.split('=', 1))
+            fields.setdefault(key, []).append(value)
+    return sections
+
+
+def os_release_fields(text):
+    """os-release(5): KEY=value lines; '#' lines and blank lines are ignored."""
+    fields = {}
+    for line in text.splitlines():
+        if line and not line.startswith('#'):
+            key, value = line.split('=', 1)
+            fields[key] = value[1:-1] if value[:1] == '"' else value
+    return fields
+
+
+class OsReleaseTests(unittest.TestCase):
+    ARCH = '../usr/lib/os-release'
+    EMAKI = '../usr/lib/emaki/os-release'
+    SCRIPT = ROOT / 'os-release/emaki-os-release'
+
+    def test_identity(self):
+        raw = (ROOT / 'os-release/os-release').read_bytes()
+        self.assertTrue(raw.isascii())
+        fields = os_release_fields(raw.decode())
+        # ID stays arch (installers that match ID alone); the name is Emaki everywhere.
+        self.assertEqual({k: fields[k] for k in ('NAME', 'PRETTY_NAME', 'ID', 'VARIANT_ID', 'BUILD_ID')},
+                         {'NAME': 'Emaki', 'PRETTY_NAME': 'Emaki', 'ID': 'arch',
+                          'VARIANT_ID': 'emaki', 'BUILD_ID': 'rolling'})
+        for absent in ('ID_LIKE', 'VERSION', 'VERSION_ID', 'LOGO', 'IMAGE_ID'):
+            self.assertNotIn(absent, fields)
+        red = tomllib.loads((ROOT / 'tokens.toml').read_text())['ansi']['red']
+        self.assertEqual(fields['ANSI_COLOR'], '38;2;' + ';'.join(str(b) for b in bytes.fromhex(red)),
+                         'stale: run scripts/render-theme')
+        self.assertTrue(all(fields[k].startswith('https://github.com/emakish/emaki')
+                            for k in ('HOME_URL', 'BUG_REPORT_URL')))
+
+    def test_hook_fields_and_order(self):
+        apply = hook_sections(ROOT / 'os-release/50-emaki-os-release.hook')
+        self.assertEqual(apply['[Trigger]'], {
+            'Operation': ['Install', 'Upgrade'], 'Type': ['Package'],
+            'Target': ['emaki-config', 'systemd']})
+        self.assertEqual(apply['[Action]']['When'], ['PostTransaction'])
+        self.assertEqual(apply['[Action]']['Exec'], ['/usr/share/libalpm/scripts/emaki-os-release'])
+        restore = hook_sections(ROOT / 'os-release/50-emaki-os-release-remove.hook')
+        self.assertEqual(restore['[Trigger]'], {
+            'Operation': ['Remove'], 'Type': ['Package'], 'Target': ['emaki-config']})
+        self.assertEqual(restore['[Action]']['When'], ['PreTransaction'])
+        self.assertEqual(restore['[Action]']['Exec'],
+                         ['/usr/share/libalpm/scripts/emaki-os-release --restore'])
+        # alpm runs hooks by file name: after systemd's tmpfiles hook has created
+        # Arch's link in the same transaction, before mkinitcpio copies os-release.
+        self.assertTrue('21-systemd-tmpfiles.hook' < '50-emaki-os-release.hook' < '90-mkinitcpio-install.hook')
+
+    def make_root(self, temporary):
+        root = Path(temporary)
+        (root / 'etc').mkdir()
+        (root / 'usr/lib/emaki').mkdir(parents=True)
+        (root / 'usr/lib/os-release').write_text('NAME="Arch Linux"\nID=arch\n')
+        shutil.copyfile(ROOT / 'os-release/os-release', root / 'usr/lib/emaki/os-release')
+        return root, root / 'etc/os-release'
+
+    def script(self, root, *args):
+        result = run(['bash', str(self.SCRIPT), *args, str(root)])
+        self.assertEqual((result.returncode, result.stdout), (0, ''), result.stderr)
+        return result.stderr
+
+    def test_apply_restore_and_noops(self):
+        with tempfile.TemporaryDirectory(prefix='emaki-os-release-') as temporary:
+            root, link = self.make_root(temporary)
+            for arch in (self.ARCH, '/usr/lib/os-release', None):
+                link.unlink(missing_ok=True)
+                if arch:
+                    link.symlink_to(arch)
+                self.assertEqual(self.script(root), '')
+                self.assertEqual(os.readlink(link), self.EMAKI)
+                self.assertEqual(link.read_bytes(), (ROOT / 'os-release/os-release').read_bytes())
+                self.assertEqual(os.listdir(root / 'etc'), ['os-release'])
+            before = link.lstat()
+            self.assertEqual(self.script(root), '')
+            self.assertEqual((link.lstat().st_ino, link.lstat().st_mtime_ns),
+                             (before.st_ino, before.st_mtime_ns))
+            self.assertEqual(self.script(root, '--restore'), '')
+            self.assertEqual(os.readlink(link), self.ARCH)
+            self.assertEqual(self.script(root, '--restore'), '')
+            self.assertEqual(os.readlink(link), self.ARCH)
+            link.unlink()
+            self.assertEqual(self.script(root, '--restore'), '')
+            self.assertFalse(link.exists() or link.is_symlink())
+            self.assertEqual(os.listdir(root / 'etc'), [])
+
+    def test_administrator_choice_is_kept(self):
+        with tempfile.TemporaryDirectory(prefix='emaki-os-release-') as temporary:
+            root, link = self.make_root(temporary)
+            for setup in ('file', 'link'):
+                link.unlink(missing_ok=True)
+                if setup == 'file':
+                    link.write_text('NAME="Mine"\n')
+                else:
+                    link.symlink_to('../usr/lib/os-release.mine')
+                before = (link.lstat().st_ino, link.lstat().st_mtime_ns)
+                for args in ((), ('--restore',)):
+                    stderr = self.script(root, *args)
+                    self.assertEqual(len(stderr.splitlines()), 1, stderr)
+                    self.assertIn('WARNING', stderr)
+                    self.assertEqual((link.lstat().st_ino, link.lstat().st_mtime_ns), before)
+            # Without Emaki's file there is nothing to link to.
+            link.unlink()
+            link.symlink_to(self.ARCH)
+            (root / 'usr/lib/emaki/os-release').unlink()
+            stderr = self.script(root)
+            self.assertIn('WARNING', stderr)
+            self.assertEqual(os.readlink(link), self.ARCH)
+
+    def test_systemd_tmpfiles_keeps_the_link(self):
+        """The real systemd rule recreates only a missing link; it never replaces ours."""
+        rule = Path('/usr/lib/tmpfiles.d/etc.conf')
+        tmpfiles = shutil.which('systemd-tmpfiles')
+        lines = [line for line in (rule.read_text().splitlines() if rule.is_file() else [])
+                 if line.split()[1:2] == ['/etc/os-release']]
+        if not tmpfiles or not lines:
+            self.skipTest('systemd-tmpfiles or its /etc/os-release rule is unavailable')
+        self.assertEqual(lines, ['L /etc/os-release - - - - ../usr/lib/os-release'])
+        with tempfile.TemporaryDirectory(prefix='emaki-os-release-') as temporary:
+            root, link = self.make_root(temporary)
+            conf = root / 'etc-os-release.conf'
+            conf.write_text(lines[0] + '\n')
+            tmpfiles_create = [tmpfiles, '--create', f'--root={root}', str(conf)]
+            result = run(tmpfiles_create)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(os.readlink(link), self.ARCH)
+            self.assertEqual(self.script(root), '')
+            result = run(tmpfiles_create)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(os.readlink(link), self.EMAKI)
+
+
 class PayloadTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -349,14 +491,14 @@ class PayloadTests(unittest.TestCase):
                 executable = path.parent in (self.dest / 'usr/bin', self.dest / 'usr/share/libalpm/scripts')
                 self.assertEqual(mode, 0o755 if executable else 0o644, str(path))
         binary = self.dest / 'usr/bin/emaki'
-        self.assertEqual(run([str(binary), 'version']).stdout, 'emaki 0.1.0\n')
+        self.assertEqual(run([str(binary), 'version']).stdout, 'emaki 0.1.1\n')
         result = run(['python3', 'scripts/core-package.py', 'verify-build-paths', '--binary', str(binary)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_defaults_and_presets(self):
         commit = run(['git', 'rev-parse', 'HEAD']).stdout.strip()
         self.assertEqual((self.dest / 'usr/lib/emaki-release').read_text(),
-                         f'VERSION=0.1.0\nCHANNEL=stable\nEMAKI_COMMIT={commit}\n')
+                         f'VERSION=0.1.1\nCHANNEL=stable\nEMAKI_COMMIT={commit}\n')
         expected = {'greetd.service', 'NetworkManager.service', 'bluetooth.service', 'grub-btrfsd.service',
                     'snapper-timeline.timer', 'snapper-cleanup.timer', 'fstrim.timer'}
         preset = (self.dest / 'usr/lib/systemd/system-preset/50-emaki.preset').read_text().splitlines()
@@ -373,6 +515,15 @@ class PayloadTests(unittest.TestCase):
         self.assertEqual(qt['Appearance']['color_scheme_path'], '/usr/share/emaki/qt6ct/emaki.conf')
         self.assertEqual((self.dest / 'usr/share/emaki/grub/background.png').read_bytes(),
                          (ROOT / 'art/grub/background.png').read_bytes())
+        for staged, source in (('usr/lib/emaki/os-release', 'os-release/os-release'),
+                               ('usr/share/libalpm/hooks/50-emaki-os-release.hook',
+                                'os-release/50-emaki-os-release.hook'),
+                               ('usr/share/libalpm/hooks/50-emaki-os-release-remove.hook',
+                                'os-release/50-emaki-os-release-remove.hook'),
+                               ('usr/share/libalpm/scripts/emaki-os-release', 'os-release/emaki-os-release')):
+            self.assertEqual((self.dest / staged).read_bytes(), (ROOT / source).read_bytes(), staged)
+        # Staging never links /etc/os-release itself: no package may own that path.
+        self.assertFalse((self.dest / 'etc/os-release').exists() or (self.dest / 'etc/os-release').is_symlink())
 
     def test_sleep_guard_wiring(self):
         unit = self.dest / 'usr/lib/systemd/user/emaki-sleep-guard.service'

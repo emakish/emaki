@@ -32,7 +32,8 @@ if [[ -f $HERE/profile/profiledef.sh ]]; then
         declare -A file_permissions=()
         # shellcheck disable=SC1091
         source ./profiledef.sh
-        [[ $iso_name == emaki && $iso_version == 0.1.0 && $iso_label == EMAKI_0.1.0 ]]
+        version=$(<"$HERE/VERSION")
+        [[ $iso_name == emaki && $iso_version == "$version" && $iso_label == "EMAKI_$version" ]]
         [[ $install_dir == emaki && ${buildmodes[*]} == iso ]]
         ((${#bootmodes[@]} > 0))
         [[ ${file_permissions[/etc/shadow]} == 0:0:0400 ]]

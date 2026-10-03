@@ -1,0 +1,11 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = emaki-config
+Target = systemd
+
+[Action]
+Description = Applying Emaki os-release
+When = PostTransaction
+Exec = /usr/share/libalpm/scripts/emaki-os-release

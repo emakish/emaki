@@ -61,7 +61,7 @@ printf '#!/bin/sh\nprintf "%%s\\n" "$*" > "%s/args"\n' "$T" > "$T/bin/niri-emaki
 chmod +x "$T/bin/niri-emaki"
 chooses() {   # chooses "<name>" "<HOME>" "<expected arguments>"
     rm -f "$T/args"
-    HOME="$2" PATH="$T/bin:$PATH" EMAKI_LOGIN_HANDOFF= bash "$R/scripts/niri-emaki-session" --compositor
+    HOME="$2" PATH="$T/bin:$PATH" EMAKI_LOGIN_HANDOFF='' bash "$R/scripts/niri-emaki-session" --compositor
     got=$(cat "$T/args" 2>/dev/null)
     if [ "$got" = "$3" ]; then ok "$1"; else bad "$1: got [$got] want [$3]"; fi
 }

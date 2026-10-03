@@ -16,10 +16,10 @@
   },
   "modules": [
     {
-      "type": "os",
+      "type": "command",
       "key": "OS",
       "keyColor": "#e05a4f",
-      "format": "Emaki (Arch Linux)"
+      "text": "[ -r /usr/lib/emaki-release ] && . /usr/lib/emaki-release; echo \"Emaki${VERSION:+ $VERSION}\""
     },
     {
       "type": "host",

@@ -8,11 +8,21 @@ from emaki_installer.errors import InstallError
 from emaki_installer.planner import make_plan
 from emaki_installer.render import (console_keymap, grub_defaults, mkinitcpio_config,
                                     mkinitcpio_preset, niri_config, normalize_fstab, snapper_config,
-                                    validate_xkb_layouts, verify_grub)
+                                    validate_xkb_layouts, verify_grub, wireless_regdom)
 from support import config, inventory
 
 
 class RenderTests(unittest.TestCase):
+    def test_wireless_regdom_from_timezone(self):
+        tab = ('# comment\tUS\tAmerica/New_York\n'
+               'US\t+404251-0740023\tAmerica/New_York\tEastern (most areas)\n'
+               'PT\t+3843-00908\tEurope/Lisbon\tPortugal (mainland)\n'
+               'xx\t+0000+00000\tEtc/Bogus\n')
+        self.assertIn('\nWIRELESS_REGDOM="US"\n', wireless_regdom('America/New_York', tab))
+        self.assertIn('\nWIRELESS_REGDOM="PT"\n', wireless_regdom('Europe/Lisbon', tab))
+        for unset in ('UTC', 'Etc/Bogus', 'America/New_Yor'):
+            self.assertIsNone(wireless_regdom(unset, tab))
+
     def test_grub_parameters(self):
         text = grub_defaults()
         for required in ('GRUB_DISTRIBUTOR="Emaki"', 'GRUB_DISABLE_SUBMENU=y', 'GRUB_TIMEOUT=5',

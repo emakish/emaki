@@ -1,20 +1,26 @@
 #!/bin/bash
-# One process keeps its in-memory plan while the window is hidden.
+# One installer process per session keeps the in-memory plan while its window is hidden or
+# closed; running emaki-install again brings that window back.
 set -eu
 umask 077
 ulimit -c 0
 : "${XDG_RUNTIME_DIR:?The installer needs a user runtime directory}"
+config=/usr/share/emaki-installer/ui/shell.qml
 exec 9>"$XDG_RUNTIME_DIR/emaki-install.lock"
 if ! flock -n 9; then
-    # The first process may still be loading its QML; never launch a second one.
-    for _ in {1..20}; do
-        if qs ipc -p /usr/share/emaki-installer/ui/shell.qml call installer show >/dev/null 2>&1; then
+    # The first process may still be loading its QML; never launch a second one. Only the
+    # function's own reply counts: `qs ipc` can exit 0 without calling anything.
+    reply=''
+    for _ in {1..50}; do
+        if reply=$(qs ipc -p "$config" call installer present 2>&1) && [[ ${reply##*$'\n'} == presented ]]; then
             exit 0
         fi
         sleep 0.1
     done
-    printf '%s\n' 'The Emaki installer is already starting.' >&2
-    exit 0
+    printf 'emaki-install: the running installer did not show its window:\n%s\n' "${reply:-(no reply)}" >&2
+    exit 1
 fi
 export EMAKI_SHELL_SHADER_DIR=/usr/share/emaki/shell/shaders
-exec qs -p /usr/share/emaki-installer/ui/shell.qml
+# This shell holds the lock for exactly the lifetime of qs. qs gets no fd 9, so processes it
+# starts (helpers, a crash reporter) cannot keep the lock once it is gone.
+qs -p "$config" 9>&-

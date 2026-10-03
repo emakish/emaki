@@ -1,0 +1,58 @@
+#!/bin/bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Point /etc/os-release at Emaki's package-owned file; with --restore, point it
+# back at Arch's. No package owns /etc/os-release: systemd's tmpfiles rule
+# `L /etc/os-release - - - - ../usr/lib/os-release` creates it only when the
+# path is missing, so a link set here survives systemd and filesystem upgrades,
+# and /usr/lib/os-release (owned by filesystem) is never modified.
+# Anything else at /etc/os-release is the administrator's and is left alone.
+set -euo pipefail
+
+mode=apply
+if [[ ${1-} == --restore ]]; then
+    mode=restore
+    shift
+fi
+# An optional root argument allows testing without touching the host.
+root=${1:-/}
+root=${root%/}
+link=$root/etc/os-release
+arch=../usr/lib/os-release
+emaki=../usr/lib/emaki/os-release
+
+warn() {
+    printf 'emaki-os-release: WARNING: %s\n' "$*" >&2
+}
+
+if [[ $mode == apply ]]; then
+    from=$arch to=$emaki
+    if [[ ! -f $root/usr/lib/emaki/os-release ]]; then
+        warn "$root/usr/lib/emaki/os-release is missing; /etc/os-release left unchanged."
+        exit 0
+    fi
+else
+    from=$emaki to=$arch
+fi
+
+if [[ -L $link ]]; then
+    current=$(readlink -- "$link")
+    [[ $current != "$to" ]] || exit 0
+    if [[ $current != "$from" && $current != "/${from#../}" ]]; then
+        warn "$link points to $current; left unchanged."
+        exit 0
+    fi
+elif [[ -e $link ]]; then
+    warn "$link is not a symlink; left unchanged."
+    exit 0
+elif [[ $mode == restore ]]; then
+    exit 0  # Nothing of ours to undo; systemd-tmpfiles recreates Arch's link.
+fi
+
+# Rename a new link over the old one, so readers never see a missing file.
+temporary=$(mktemp -d "$root/etc/.emaki-os-release.XXXXXX")
+trap 'rm -f -- "$temporary/os-release"; rmdir -- "$temporary"' EXIT
+trap 'exit 1' HUP INT TERM
+ln -s -- "$to" "$temporary/os-release"
+mv -fT -- "$temporary/os-release" "$link"

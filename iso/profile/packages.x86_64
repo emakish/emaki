@@ -43,6 +43,7 @@ f2fs-tools
 fastfetch
 fatresize
 file-roller
+firefox
 foot-terminfo
 fsarchiver
 fuzzel
@@ -110,6 +111,7 @@ nilfs-utils
 niri
 niri-emaki
 nmap
+noto-fonts
 ntfs-3g
 ntfsprogs
 nvme-cli

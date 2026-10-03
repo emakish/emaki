@@ -4,7 +4,7 @@
 # shellcheck disable=SC2034,SC2154
 # Build from the local checkout; no source downloads or disk access in check().
 pkgname=emaki-installer
-pkgver=0.1.0
+pkgver=0.1.1
 pkgrel=1
 pkgdesc='Emaki live ISO installation worker and protocol CLI'
 arch=('any')
@@ -12,7 +12,8 @@ url='https://github.com/emakish/emaki'
 license=('GPL-3.0-or-later')
 depends=(python archinstall=4.5-1 arch-install-scripts btrfs-progs dosfstools
          e2fsprogs grub efibootmgr snapper snap-pac grub-btrfs zram-generator
-         ntfs-3g gptfdisk parted util-linux os-prober quickshell-emaki gparted)
+         ntfs-3g gptfdisk parted util-linux os-prober quickshell-emaki gparted
+         hicolor-icon-theme)
 makedepends=('git')
 source=()
 sha256sums=()
@@ -70,6 +71,8 @@ package() {
     done
     install -Dm755 installer/ui/emaki-install "$pkgdir/usr/bin/emaki-install"
     install -Dm644 installer/ui/emaki-install.desktop "$pkgdir/usr/share/applications/emaki-install.desktop"
+    install -Dm644 installer/ui/emaki-install.svg \
+        "$pkgdir/usr/share/icons/hicolor/scalable/apps/emaki-install.svg"
     ln -s /usr/share/emaki/shell/shaders "$pkgdir/usr/share/emaki-installer/ui/shaders"
     # --- end installer window ---
 }

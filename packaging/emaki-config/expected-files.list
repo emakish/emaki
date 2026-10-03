@@ -19,6 +19,7 @@
 /usr/bin/emaki-sleep-guard
 /usr/bin/niri-emaki-session
 /usr/lib/emaki-release
+/usr/lib/emaki/os-release
 /usr/lib/pam.d/emaki-greetd
 /usr/lib/systemd/logind.conf.d/50-emaki.conf
 /usr/lib/systemd/system-preset/50-emaki.preset
@@ -257,7 +258,10 @@
 /usr/share/icons/Emaki/cursors/zoom-in
 /usr/share/icons/Emaki/cursors/zoom-out
 /usr/share/icons/Emaki/index.theme
+/usr/share/libalpm/hooks/50-emaki-os-release-remove.hook
+/usr/share/libalpm/hooks/50-emaki-os-release.hook
 /usr/share/libalpm/hooks/90-emaki-grub-title.hook
 /usr/share/libalpm/scripts/emaki-grub-title
+/usr/share/libalpm/scripts/emaki-os-release
 /usr/share/licenses/emaki-config/LICENSE
 /usr/share/wayland-sessions/niri-emaki.desktop

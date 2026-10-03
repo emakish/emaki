@@ -50,7 +50,10 @@ def generate():
     ]):
         module = {'type': kind, 'key': key, 'keyColor': '#' + warm[i % len(warm)]}
         if kind == 'os':
-            module['format'] = 'Emaki (Arch Linux)'
+            # Emaki and its release version (DECISIONS: versions are shown in emaki fetch),
+            # from /usr/lib/emaki-release; a preview off Emaki prints just "Emaki".
+            module = {'type': 'command', 'key': key, 'keyColor': module['keyColor'],
+                      'text': '[ -r /usr/lib/emaki-release ] && . /usr/lib/emaki-release; echo "Emaki${VERSION:+ $VERSION}"'}
         elif kind == 'disk':
             module['folders'] = '/'
         modules.append(module)

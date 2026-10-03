@@ -23,6 +23,24 @@ Item {
     property bool wifiHardwareEnabled: false
     property var wifiDevices: []
     property var networks: []
+    // Wi-Fi scanning while the Wi-Fi page asks for it (SystemBody). QS 0.3.1 lists a network
+    // that is neither saved nor connected only while its device's scanner is on
+    // (nm/wireless.cpp: visible = scanning || activated || known), and an enabled scanner asks
+    // NetworkManager for a scan every 10 s: on only while the page is open, never in the
+    // background, and not while the radio is off or blocked.
+    property bool wifiScan: false
+    readonly property bool wifiScanning: wifiScan && wifiEnabled && wifiHardwareEnabled
+    function setScanners(on: bool): void {
+        for (const d of Array.from(wifiDevices ?? []))
+            if (typeof d?.scannerEnabled === "boolean" && d.scannerEnabled !== on)
+                d.scannerEnabled = on;
+    }
+    onWifiScanningChanged: setScanners(wifiScanning)
+    // An adapter that appears while the page is open scans too.
+    onWifiDevicesChanged: setScanners(wifiScanning)
+    // QS devices outlive this item (Networking is one per process): a reload or an unloaded
+    // backend must not leave a scanner running.
+    Component.onDestruction: setScanners(false)
     // NetworkManager connectivity: unknown | none | portal | limited | full
     property string connectivity: "unknown"
     property var adapter: null
@@ -30,6 +48,48 @@ Item {
     // Capture streams: [{kind: "mic"|"cam", name}] — presentation data, never serialized by status.
     property var captures: []
     property string actionError: ""
+    // Keep attempt provenance across NM's asynchronous profile creation. No secrets here.
+    property var wifiAttempts: ({})
+    property var wifiCleanup: ({})
+    property var wifiPasswordKeys: []
+    signal wifiPasswordRequired(string key)
+    function updateWifiAttempts(): void {
+        for (const key of Object.keys(wifiCleanup)) {
+            const cleanup = wifiCleanup[key];
+            if (!cleanup.ref || (cleanup.requested && !cleanup.ref.known))
+                delete wifiCleanup[key];
+            else if (!cleanup.requested && cleanup.ref.known) {
+                cleanup.requested = true;
+                cleanup.ref.forget();
+            }
+        }
+        for (const key of Object.keys(wifiAttempts)) {
+            if (wifiAttempts[key].ref?.connected) {
+                delete wifiAttempts[key];
+                wifiPasswordKeys = wifiPasswordKeys.filter(k => k !== key);
+            }
+        }
+    }
+    onNetworksChanged: updateWifiAttempts()
+    function wifiFailed(key: string, network: var, error: string): void {
+        actionError = error;
+        const attempt = wifiAttempts[key];
+        if (!attempt || attempt.ref !== network)
+            return;
+        delete wifiAttempts[key];
+        if (error !== "wrong_password")
+            return;
+        if (!wifiPasswordKeys.includes(key))
+            wifiPasswordKeys = wifiPasswordKeys.concat([key]);
+        if (!attempt.known) {
+            wifiCleanup[key] = {
+                ref: network,
+                requested: false
+            };
+            updateWifiAttempts();
+        }
+        wifiPasswordRequired(key);
+    }
     // Confirm from published properties, not an optimistic local switch.
     function act(kind: string, value: var): var {
         actionError = "";
@@ -84,12 +144,21 @@ Item {
                 return "network_gone";
             const n = entry.ref;
             if (kind === "wifi-connect") {
-                if (n.known || entry.open)
-                    n.connect();
-                else if (entry.psk && typeof value.password === "string" && value.password.length >= 8 && value.password.length <= 63)
+                // Wait for Delete to be observed before another join can recreate the profile.
+                if (wifiCleanup[entry.key])
+                    return "busy";
+                const supplied = typeof value.password === "string" && value.password.length > 0;
+                const replaceSecret = !entry.open && (supplied || wifiPasswordKeys.includes(entry.key) || !n.known);
+                if (replaceSecret && !(entry.psk && supplied && value.password.length >= 8 && value.password.length <= 63))
+                    return "password_or_security_unsupported";
+                wifiAttempts[entry.key] = {
+                    ref: n,
+                    known: n.known
+                };
+                if (replaceSecret)
                     n.connectWithPsk(value.password);
                 else
-                    return "password_or_security_unsupported";
+                    n.connect();
                 return () => n.connected === true;
             }
             if (kind === "wifi-disconnect") {

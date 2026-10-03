@@ -277,6 +277,9 @@ if name == 'python3':
     (base / 'users').rename(quarantine / 'users')
     print('fixture: simulated bounded purge failure', file=sys.stderr)
     sys.exit(1)
+elif name == 'bash':
+    # make uninstall points the staged /etc/os-release back at Arch's file first.
+    assert arguments == ['os-release/emaki-os-release', '--restore', str(stage)], arguments
 elif name == 'rm':
     for value in arguments:
         if value.startswith('-'):
@@ -299,7 +302,7 @@ elif name == 'rmdir':
 else:
     raise AssertionError('unexpected fixture command: ' + name)
 '''
-    for name in ('python3', 'rm', 'rmdir'):
+    for name in ('python3', 'bash', 'rm', 'rmdir'):
         command = stubs / name
         command.write_text(stub)
         command.chmod(0o700)

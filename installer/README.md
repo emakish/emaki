@@ -1,4 +1,4 @@
-# Emaki installer core 0.1.0
+# Emaki installer core
 
 This package is for the Emaki live ISO. The root worker implements the frozen
 v1 NDJSON contract at `/run/emaki-installer/sock`; the CLI uses that same socket.

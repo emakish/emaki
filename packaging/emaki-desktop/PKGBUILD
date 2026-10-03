@@ -6,7 +6,7 @@
 # Desktop applications and the password-only lock PAM service. Runtime helpers
 # and their dependencies are also declared by emaki-config for standalone use.
 pkgname=emaki-desktop
-pkgver=0.1.0
+pkgver=0.1.1
 pkgrel=1
 pkgdesc='Emaki desktop applications, dependencies and lock PAM configuration'
 arch=('any')
@@ -28,6 +28,9 @@ depends=(
     'pipewire' 'wireplumber' 'pipewire-pulse' 'wlsunset'
     'greetd' 'greetd-regreet' 'gnome-keyring'
     'nautilus' 'loupe' 'file-roller' '7zip' 'unrar' 'papers'
+    # Before firefox, so pacman resolves Firefox's ttf-font with it, not gnu-free-fonts.
+    'noto-fonts'                # Broad script coverage for web pages (2026-10-03).
+    'firefox'                   # The web browser (2026-10-03).
 )
 optdepends=(
     'swayidle: optional emaki-idle policy'

@@ -7,12 +7,13 @@ import tempfile
 import time
 from urllib.parse import unquote, urlsplit
 
+from . import __version__
 from .arch_backend import Backend, offline_config
 from .constants import LOG, MARKER, PACKAGES, PHASES, TARGET, TEST_PACKAGES, WORK
 from .errors import Code, InstallError, require
 from .planner import make_plan
 from .render import (console_keymap, grub_btrfs_config, grub_defaults, mkinitcpio_config, mkinitcpio_preset, niri_config,
-                     normalize_fstab, snapper_config, verify_grub)
+                     normalize_fstab, snapper_config, verify_grub, wireless_regdom)
 from .runtime import Runner, TargetFiles, cleanup
 
 
@@ -139,7 +140,7 @@ class Worker:
         # Mark conservatively before calling the first destructive operation.
         self.disk_changed = True
         self.backend.prepare()
-        self.files.write(MARKER, 'Emaki 0.1.0 installation in progress\n', 0o600)
+        self.files.write(MARKER, f'Emaki {__version__} installation in progress\n', 0o600)
 
     def copy_packages(self):
         keymap = console_keymap(self.plan.config['layouts'][0])
@@ -235,6 +236,12 @@ class Worker:
         localtime = parent / 'localtime'
         localtime.unlink(missing_ok=True)
         localtime.symlink_to('/usr/share/zoneinfo/' + c['timezone'])
+        zone_tab = self.files.path('/usr/share/zoneinfo/zone.tab')
+        regdom = wireless_regdom(c['timezone'], zone_tab.read_text()) if zone_tab.is_file() else None
+        if regdom:
+            self.files.write('/etc/conf.d/wireless-regdom', regdom)
+        else:
+            self.log('Wi-Fi country left unset: timezone ' + c['timezone'] + ' has no country.')
         self.runner.chroot(['locale-gen'], self.target)
         self.runner.chroot(['hwclock', '--systohc'], self.target)
         outputs = []
@@ -315,7 +322,7 @@ class Worker:
         mountpoint.chmod(0o750)
         self.files.write('/etc/snapper/configs/root', snapper_config(config.read_text()), 0o640)
         self.runner.chroot(['snapper', '--no-dbus', '-c', 'root', 'create',
-                            '-d', 'Fresh Emaki 0.1.0 install'], self.target)
+                            '-d', f'Fresh Emaki {__version__} install'], self.target)
         # grub-btrfsd is enabled for the first boot, not running in this chroot.
         self.grub_config()
 

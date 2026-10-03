@@ -1,4 +1,4 @@
-# Building and testing the Emaki 0.1.0 ISO
+# Building and testing the Emaki ISO
 
 The output is `emaki-0.1.0-x86_64.iso`, volume label `EMAKI_0.1.0`.
 UEFI is supported. The releng BIOS loader is retained, but the installer requires

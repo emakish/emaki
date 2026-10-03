@@ -266,7 +266,7 @@ def make_plan(config, inventory):
     require(disk is not None, Code.DISK_NOT_FOUND, 'Selected disk no longer exists.')
     validate_disk(disk, inventory)
     require(c['mode'] != 'alongside', Code.UNSUPPORTED_MODE,
-            'Windows alongside installation is deferred; no NTFS resize is performed in 0.1.0.')
+            'Windows alongside installation is not available yet; no NTFS resize is performed.')
     parts = (erase_partitions(disk['size_bytes'], c['fs']) if c['mode'] == 'erase'
              else manual_partitions(c.get('mounts'), disk))
     summary = [f"{c['mode'].capitalize()} installation on {disk['path']} ({disk['model']})."]

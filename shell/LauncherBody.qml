@@ -402,7 +402,7 @@ Item {
                 continue;
             if (e.kind === "app") {
                 const entry = DesktopEntries.byId(e.ref);
-                if (entry && !entry.noDisplay)
+                if (entry && apps.shown(entry))
                     rows.push({
                         kind: "app",
                         group: group,

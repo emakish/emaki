@@ -72,6 +72,13 @@ assert '0.3.1' in checked([qs, '--version']).stdout, 'Review the API/metadata ex
 if '--lint-only' in sys.argv:
     raise SystemExit(0)
 
+# Desktop ids the launcher never lists (Arch live-ISO/dependency utilities; DECISIONS 2026-10-03).
+HIDDEN_IDS = ['avahi-discover', 'bssh', 'bvnc', 'lftp', 'lstopo', 'qv4l2', 'qvidcap',
+              'stoken-gui', 'stoken-gui-small', 'vim']
+_catalog = Path('shell/AppCatalog.qml').read_text()
+_listed = json.loads(_catalog[_catalog.index('hiddenIds: [') + len('hiddenIds: '):].split('\n', 1)[0])
+assert _listed == HIDDEN_IDS, ('AppCatalog.hiddenIds and the fixture list differ', _listed)
+
 def smoke(width, height, scale, exclusive_zone=None):
     profile = Path(tempfile.mkdtemp(prefix='shell-test-', dir=CACHE))
     for part in ('runtime', 'cache', 'config', 'state', 'data', 'tmp'):
@@ -82,6 +89,14 @@ def smoke(width, height, scale, exclusive_zone=None):
         (profile / 'data' / 'applications' / f'emaki-{name.lower()}.desktop').write_text(
             f'[Desktop Entry]\nType=Application\nName=Emaki {name}\nExec=/usr/bin/true\nTerminal={str(terminal).lower()}\nCategories=Utility;\nKeywords=fixture;{"terminal;" if name == "Browser" else ""}\n')
     # Browser carries the keyword "terminal": the query below must still rank Emaki Terminal (name) first.
+    # The launcher-hidden utility ids (AppCatalog.hiddenIds) are valid, displayable entries
+    # here; the launcher must still list only the four above, in Apps, search and Recent.
+    for desktop_id in HIDDEN_IDS:
+        (profile / 'data' / 'applications' / f'{desktop_id}.desktop').write_text(
+            f'[Desktop Entry]\nType=Application\nName=Hidden {desktop_id}\nExec=/usr/bin/true\nCategories=Utility;\nKeywords=fixture;\n')
+    (profile / 'state' / 'emaki').mkdir(mode=0o700)
+    (profile / 'state' / 'emaki' / 'recent.json').write_text(json.dumps([
+        dict(kind='app', ref='vim', t=3), dict(kind='app', ref='emaki-alpha', t=2), dict(kind='app', ref='avahi-discover', t=1)]))
     # Deliberately ignores Exec: checks only that the shell passes the selected
     # desktop ID, with no query interpolation. Real gtk-launch is checked in a live session.
     launcher = profile / 'bin' / 'gtk-launch'
@@ -207,6 +222,17 @@ def smoke(width, height, scale, exclusive_zone=None):
             assert opened['launcher'] == 'open' and 140 <= opened['launcher_panel']['height'] <= 560, opened['launcher_panel']
             wait_state(lambda s: s['search']['labels'] == 'ready')
             assert private_title not in call('launcher', 'status')
+            # Recent keeps the visible app and skips the two hidden ids logged around it.
+            call('launcher', 'mode', 'All')
+            recent = wait_state(lambda s: s['search']['recent']['state'] == 'ready' and s['search']['recent']['count'] == 3)['search']
+            assert recent['result_count'] == 1 and recent['recent']['groups'] == ['Apps'], recent
+            # Every fixture entry has the keyword; only the four listed apps may match.
+            call('launcher', 'mode', 'Apps')
+            call('launcher', 'query', 'fixture')
+            wait_state(lambda s: s['search']['result_count'] == 4)
+            call('launcher', 'query', 'Hidden')
+            wait_state(lambda s: s['search']['result_count'] == 0)
+            call('launcher', 'query', '')
             call('launcher', 'mode', 'Windows')
             call('launcher', 'query', 'PRIVATE_TITLE_10')
             wait_state(lambda s: s['search']['result_count'] == 1 and s['search']['selected_kind'] == 'window')

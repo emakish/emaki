@@ -7,6 +7,7 @@ Read tokens.toml and rewrite the files designated as generated:
   hypr/hyprlock.conf    lock screen
   kitty/theme.conf      terminal colors
   qt6ct/emaki.conf      Qt application palette (also works with qt5ct)
+  os-release/os-release system identity; ANSI_COLOR colours "Welcome to Emaki!"
 
 Manual edits to these files are overwritten. Change all values
 in tokens.toml, then run this script.
@@ -264,12 +265,31 @@ disabled_colors={", ".join(_qt_disabled)}
 inactive_colors={", ".join(_qt_active)}
 """
 
+# os-release(5). ASCII only; '#' lines are comments in the format. ID stays arch:
+# the system is Arch's packages plus [emaki], and installers that match ID alone
+# must keep recognising it (DECISIONS 2026-10-03). systemd prints PRETTY_NAME in
+# ANSI_COLOR at boot; the wordmark's first colour is the ANSI red token.
+_red = A["red"]
+os_release = f"""# GENERATED from tokens.toml - manual edits will be overwritten.
+# Source: tokens.toml, generator: scripts/render-theme
+# Installed to /usr/lib/emaki/os-release; /etc/os-release links here.
+NAME="Emaki"
+PRETTY_NAME="Emaki"
+ID=arch
+VARIANT_ID=emaki
+BUILD_ID=rolling
+ANSI_COLOR="38;2;{int(_red[0:2], 16)};{int(_red[2:4], 16)};{int(_red[4:6], 16)}"
+HOME_URL="https://github.com/emakish/emaki"
+BUG_REPORT_URL="https://github.com/emakish/emaki/issues"
+"""
+
 for path, content in (
     ("niri/theme.kdl", niri),
     ("fuzzel/fuzzel.ini", fuzzel),
     ("hypr/hyprlock.conf", hyprlock),
     ("kitty/theme.conf", kitty),
     ("qt6ct/emaki.conf", qt6ct),
+    ("os-release/os-release", os_release),
 ):
     (ROOT / path).parent.mkdir(parents=True, exist_ok=True)
     (ROOT / path).write_text(content)

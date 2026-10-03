@@ -132,11 +132,18 @@ def main():
     check('failed-units', 'systemctl --failed --no-legend --plain', predicate=lambda output: not output.strip())
     check('journal-errors', 'journalctl -p err -b --no-pager -o cat', privileged=True,
           predicate=journal_errors_ok)
-    check('emaki-package', 'LC_ALL=C pacman -Qi emaki', predicate=lambda output: bool(re.search(r'^Version\s*:\s*0\.1\.0(?:-|\s)', output, re.M)))
+    version = (HERE.parent.parent / 'iso/VERSION').read_text().strip()
+    check('emaki-package', 'LC_ALL=C pacman -Qi emaki',
+          predicate=lambda output: bool(re.search(r'^Version\s*:\s*' + re.escape(version) + r'(?:-|\s)', output, re.M)))
     check('package-ownership', 'pacman -Qo /usr/bin/emaki /usr/share/emaki/shell/shell.qml', predicate=lambda output: len(output.strip().splitlines()) == 2)
     check('network', 'LC_ALL=C nmcli -t general', predicate=lambda output: output.startswith('connected:'))
     check('emaki-repository', 'pacman-conf --repo emaki Server', predicate=lambda output: bool(output.strip()))
     check('package-update', 'pacman -Syu --noconfirm', privileged=True, timeout=1800)
+    # After the update: an upgraded systemd or filesystem must leave the identity link alone.
+    check('os-release', "sh -c 'readlink /etc/os-release && cat /etc/os-release'",
+          predicate=lambda output: output.startswith('../usr/lib/emaki/os-release\n')
+          and bool(re.search(r'^PRETTY_NAME="Emaki"$', output, re.M))
+          and bool(re.search(r'^ID=arch$', output, re.M)))
     fs = check('root-filesystem', 'findmnt -n -o FSTYPE /').stdout.decode().strip()
     if fs == 'btrfs':
         check('snapper', 'env LC_ALL=C snapper -c root list', privileged=True, predicate=lambda output: bool(re.search(r'^\s*[1-9][0-9]*\s*\|', output, re.M)))

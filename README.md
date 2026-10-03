@@ -6,8 +6,9 @@ Emaki is an Arch-based desktop built around **niri-emaki**, a fork of the
 pixel-art wallpaper: a looping valley at sunset that scrolls with your workspaces, with
 steam trains running through it.
 
-**Status: 0.1.0 — the first working version, not a stable release.** It has been tested in
-QEMU with UEFI firmware (OVMF), not yet on a range of real hardware.
+**Status: 0.1.1 — an early version, not a stable release.** It is tested in QEMU with UEFI
+firmware (OVMF) and has been installed on one real machine so far, see
+[Tested hardware](#tested-hardware).
 
 ![The Emaki desktop](docs/screenshots/desktop.png)
 
@@ -38,7 +39,7 @@ QEMU with UEFI firmware (OVMF), not yet on a range of real hardware.
 
 ## The ISO
 
-`emaki-0.1.0-x86_64.iso` boots (UEFI only) into a live Emaki session with the installer open.
+`emaki-0.1.1-x86_64.iso` boots (UEFI only) into a live Emaki session with the installer open.
 The installer offers:
 
 - **Erase disk** with **btrfs** (recommended: snapper snapshots that you can boot from the GRUB
@@ -48,8 +49,17 @@ The installer offers:
 - **Offline installation** from the signed package repository on the USB stick. When the
   machine is online, the installer can also update Emaki at the end.
 
-The installed system gets GRUB with `linux` and `linux-lts`, zram (no swap file) and
-NetworkManager. Not in 0.1.0: disk encryption, BIOS boot, installing alongside Windows.
+The installed system gets GRUB with `linux` and `linux-lts`, zram (no swap file),
+NetworkManager and Firefox. Not in 0.1.1: disk encryption, BIOS boot, installing
+alongside Windows.
+
+## Tested hardware
+
+| Machine | Emaki | Works | Known issues |
+|---|---|---|---|
+| MacBook Pro (Retina, 13-inch, Early 2015) | 0.1.1 | Live session from USB, installation (erase disk, btrfs), boot, login, desktop, Wi-Fi on 2.4 GHz, screen lock on lid close | 5 GHz Wi-Fi networks are not listed (Broadcom BCM43602); the GRUB menu text is very small on the Retina display; the lock on lid close has open issues |
+
+Installed Emaki on another machine? Reports are welcome in the issues.
 
 ## Updates
 

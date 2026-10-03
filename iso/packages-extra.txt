@@ -18,6 +18,7 @@ emaki-keyring
 emaki-mirrorlist
 fastfetch
 file-roller
+firefox
 fuzzel
 gnome-keyring
 gparted
@@ -41,6 +42,7 @@ nautilus
 networkmanager
 niri
 niri-emaki
+noto-fonts
 ntfs-3g
 os-prober
 papers

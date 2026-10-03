@@ -13,6 +13,22 @@ def console_keymap(layout):
     return CONSOLE.get(layout, 'us')
 
 
+def wireless_regdom(timezone, zone_tab):
+    """/etc/conf.d/wireless-regdom for the country of the chosen timezone, or None.
+
+    Without a country the kernel stays on the world domain and some firmware (brcmfmac)
+    keeps its own default, which can hide 5 GHz channels. zone.tab maps a zone to one
+    country; zones outside it (UTC, Etc/*) leave the setting alone.
+    """
+    for line in zone_tab.splitlines():
+        fields = line.split('\t')
+        if len(fields) >= 3 and not line.startswith('#') and fields[2] == timezone \
+                and re.fullmatch(r'[A-Z]{2}', fields[0]):
+            return ('# Set by the Emaki installer from the timezone ' + timezone + '.\n'
+                    'WIRELESS_REGDOM="' + fields[0] + '"\n')
+    return None
+
+
 def validate_xkb_layouts(layouts, rules):
     available, section = {'dvorak', 'colemak'}, None
     for line in rules.splitlines():

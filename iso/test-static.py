@@ -39,6 +39,24 @@ class StaticTests(unittest.TestCase):
             self.assertIn(name, live)
             self.assertNotIn(name, constants['PACKAGES'])
 
+    def test_installer_packages_are_offline_closure_seeds(self):
+        constants = runpy.run_path(str(HERE.parent / 'installer/emaki_installer/constants.py'))
+        seeds = set((HERE / 'target-packages.txt').read_text().split())
+        self.assertEqual(set(constants['PACKAGES'] + ['mkinitcpio']) - seeds, set())
+
+    def test_desktop_dependencies_are_explicit_live_seeds(self):
+        # The live image and the offline repo name every emaki-desktop dependency
+        # explicitly (packages-extra.txt, merged into packages.x86_64 by import-releng.py).
+        recipe = HERE.parent / 'packaging/emaki-desktop/PKGBUILD'
+        result = subprocess.run(['bash', '-c', 'source "$1"; printf "%s\\n" "${depends[@]}"', '_', str(recipe)],
+                                capture_output=True, text=True, check=True)
+        names = {re.split(r'[<>=]', line, maxsplit=1)[0] for line in result.stdout.splitlines()}
+        self.assertIn('firefox', names)
+        extra = set((HERE / 'packages-extra.txt').read_text().split())
+        live = set((HERE / 'profile/packages.x86_64').read_text().split())
+        self.assertEqual(names - extra, set())
+        self.assertEqual(extra - live, set())
+
     def make_profile(self, directory):
         profile = Path(directory) / 'profile'
         root = profile / 'airootfs'
@@ -113,7 +131,8 @@ class StaticTests(unittest.TestCase):
             self.assertFalse((destination / 'airootfs/root/.zlogin').exists())
             self.assertFalse((destination / 'airootfs/etc/systemd/system/getty@tty1.service.d/autologin.conf').exists())
             self.assertIn('%ARCHISO_UUID%', (destination / 'grub/grub.cfg').read_text())
-            self.assertIn('Emaki 0.1.0', (destination / 'grub/grub.cfg').read_text())
+            version = (HERE / 'VERSION').read_text().strip()
+            self.assertIn('Emaki ' + version, (destination / 'grub/grub.cfg').read_text())
             packages = (destination / 'packages.x86_64').read_text().splitlines()
             self.assertEqual(packages, sorted(set(packages)))
             self.assertNotIn('iwd', packages)
@@ -121,8 +140,8 @@ class StaticTests(unittest.TestCase):
             image_check.check_loaders(destination)
             self.assertIn('linux', packages)
             self.assertEqual((destination / 'airootfs/etc/systemd/system/greetd.service.d/emaki.conf').readlink(), Path('/dev/null'))
-            subprocess.run(['bash', '-c', 'declare -A file_permissions=(); source "$1"; [[ $iso_label == EMAKI_0.1.0 && ${bootmodes[*]} == "bios.syslinux uefi.grub" ]]',
-                            '_', str(destination / 'profiledef.sh')], check=True)
+            subprocess.run(['bash', '-c', 'declare -A file_permissions=(); source "$1"; [[ $iso_label == "EMAKI_$2" && ${bootmodes[*]} == "bios.syslinux uefi.grub" ]]',
+                            '_', str(destination / 'profiledef.sh'), version], check=True)
 
     def test_embedded_package_signature_materialization(self):
         with tempfile.TemporaryDirectory(prefix='emaki-iso-static-') as directory:

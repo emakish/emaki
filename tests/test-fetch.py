@@ -24,14 +24,32 @@ FASTFETCH = shutil.which('fastfetch')
 assert FASTFETCH, 'fastfetch is required for make check'
 subprocess.run([sys.executable, str(ROOT / 'scripts/build-fetch'), '--check'], check=True)
 ANSI = re.compile(rb'\x1b\[[0-9;?]*[A-Za-z]')
+KITTY_IMAGE = re.compile(rb'\x1b_G[^\x1b]*\x1b\\')
+OS_LINE = re.compile(rb'(?m)OS: Emaki( [0-9]+\.[0-9]+\.[0-9]+)?[ \t]*$')
 KEYS = ['OS', 'Host', 'Kernel', 'Uptime', 'Packages', 'Shell', 'WM', 'Terminal',
         'CPU', 'GPU', 'Memory', 'Disk', 'Battery', 'Locale']
 config = json.loads((ROOT / 'fetch/details.jsonc').read_text())
 assert [m['key'] for m in config['modules']] == KEYS
 assert all(m['type'].lower() not in ('publicip', 'localip', 'netio', 'weather', 'wifi')
            for m in config['modules'])
-assert config['modules'][0]['format'] == 'Emaki (Arch Linux)'
+# Emaki's own release file, never the host's os-release (Arch on a builder).
+os_module = config['modules'][0]
+assert os_module['type'] == 'command' and '/usr/lib/emaki-release' in os_module['text'], os_module
+with tempfile.TemporaryDirectory() as release_dir:
+    release = Path(release_dir) / 'emaki-release'
+    release.write_text('VERSION=0.1.1\nCHANNEL=stable\n')
+    for path, expected in ((release, b'Emaki 0.1.1\n'), (Path(release_dir) / 'missing', b'Emaki\n')):
+        line = subprocess.run(['sh', '-c', os_module['text'].replace('/usr/lib/emaki-release', str(path))],
+                              capture_output=True, check=True).stdout
+        assert line == expected, (path, line)
 assert config['logo']['type'] == 'none', 'details alone must never select a distro logo'
+
+
+def assert_os_line(output):
+    """The OS line reads Emaki (and the version on Emaki) once escapes are removed; no Arch name."""
+    text = ANSI.sub(b'', KITTY_IMAGE.sub(b'', output)).replace(b'\r', b'')
+    assert OS_LINE.search(text), text[-2000:]
+    assert b'Arch Linux' not in text, text[-2000:]
 
 
 def tty_run(args, env):
@@ -102,7 +120,7 @@ with tempfile.TemporaryDirectory(prefix='emaki-fetch-') as temporary:
     assert default_paths.index(str(user / 'fastfetch') + '/') < default_paths.index('/etc/xdg/fastfetch/')
 
     preview = run(['-c', str(ROOT / 'fetch/config.jsonc'), '--pipe'])
-    assert b'OS: Emaki (Arch Linux)' in preview
+    assert_os_line(preview)
     assert b'\x1b' not in preview
     assert '▀'.encode() in preview and '▄'.encode() in preview
     assert b'-`' not in preview and b'ooo/' not in preview, 'Arch logo leaked'
@@ -112,17 +130,18 @@ with tempfile.TemporaryDirectory(prefix='emaki-fetch-') as temporary:
         assert (key + ':').encode() in preview, (key, preview)
     (ROOT / '.cache').mkdir(exist_ok=True)
     (ROOT / '.cache/fetch-preview.txt').write_bytes(preview)
-    assert b'Emaki (Arch Linux)' in run(['--pipe'])
+    assert_os_line(run(['--pipe']))
     custom = user / 'fastfetch/config.jsonc'
     custom.write_text(json.dumps({'logo': {'type': 'none'}, 'modules': [
         {'type': 'custom', 'format': 'USER-CONFIG-WINS'}]}))
     assert run(['--pipe']).strip() == b'USER-CONFIG-WINS'
-    assert b'Emaki (Arch Linux)' in run(['-c', str(ROOT / 'fetch/config.jsonc'), '--pipe'])
+    assert_os_line(run(['-c', str(ROOT / 'fetch/config.jsonc'), '--pipe']))
     custom.unlink()
 
     text = tty_run([], {**env, 'TERM': 'xterm-256color'})
     assert b'\x1b_G' not in text and b'\x1b[38;2;' in text
-    assert '▀'.encode() in text and b'Emaki (Arch Linux)' in text
+    assert '▀'.encode() in text
+    assert_os_line(text)
     for term, extra in [('xterm-kitty', {'TMUX': 'test'}), ('xterm-kitty', {'NO_COLOR': '1'})]:
         fallback = tty_run([], {**env, 'TERM': term, **extra})
         assert b'\x1b_G' not in fallback and '▀'.encode() in fallback
@@ -140,7 +159,8 @@ with tempfile.TemporaryDirectory(prefix='emaki-fetch-') as temporary:
     with Image.open(ROOT / 'fetch/wordmark.png') as image:
         assert image.size == (400, 96)
         assert rgba == image.tobytes(), 'fastfetch resampled the canonical PNG'
-    assert b'Emaki (Arch Linux)' in kitty and '▀'.encode() not in kitty
+    assert '▀'.encode() not in kitty
+    assert_os_line(kitty)
     assert b'render.py' not in kitty, 'helper polluted shell detection'
     assert b'ooo/' not in kitty
     (ROOT / '.cache/fetch-kitty.ansi').write_bytes(kitty)
@@ -157,6 +177,6 @@ with tempfile.TemporaryDirectory(prefix='emaki-fetch-') as temporary:
                          'PATH': str(fakebin) + ':' + env['PATH']})
     assert b'ARCH-LOGO' not in failed and b'ooo/' not in failed
     assert b'\x1b_G' not in failed and '▀'.encode() in failed
-    assert b'Emaki (Arch Linux)' in failed
+    assert_os_line(failed)
 
 print('PASS: real fastfetch config, user precedence, pipe/text and native Kitty pixels')

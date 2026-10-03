@@ -147,6 +147,7 @@ if args[0] == '-Sp':
         calls = [json.loads(line) for line in self.calls.read_text().splitlines()]
         self.assertEqual([c[0] for c in calls], ['-Sy', '-Sp'])
         self.assertTrue(set(PACKAGES + ['mkinitcpio', 'openssh', 'grim']) <= set(calls[1]))
+        self.assertIn('wireless-regdb', PACKAGES)
         self.assertEqual(calls[0][calls[0].index('--dbpath') + 1], calls[1][calls[1].index('--dbpath') + 1])
         self.assertFalse(Path(calls[0][calls[0].index('--dbpath') + 1]).exists())
 

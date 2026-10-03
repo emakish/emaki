@@ -1,11 +1,14 @@
-# Emaki 0.1.0 packages
+# Emaki 0.1.1 packages
 
 Copyright (C) 2026 Artur Yakymenko. Emaki packaging is GPL-3.0-or-later;
 the Quickshell fork retains its upstream LGPL-3.0-only license.
 
 `emaki` pins the six tested release packages. `emaki-config` owns the CLI,
 shell, session files, greeter, themes, cursors, wallpaper, GRUB background,
-release marker, system preset and skel defaults. `emaki-desktop` adds the
+release marker, os-release, system preset and skel defaults. Its alpm hook
+links the unowned `/etc/os-release` to `/usr/lib/emaki/os-release` and links
+it back to Arch's file on removal; `/usr/lib/os-release` stays as `filesystem`
+ships it, so `pacman -Qkk` reports nothing for it. `emaki-desktop` adds the
 applications and password-only lock PAM configuration. The `niri-emaki`
 package alone owns the fork executable. Qt minor-version ranges and niri's
 stock-version/soname constraints require rebuilding the forks before those

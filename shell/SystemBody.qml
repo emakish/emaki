@@ -69,6 +69,8 @@ Item {
     readonly property alias pages: pages
     readonly property alias micMeterItem: micSlider.meterItem
     readonly property Item micMeterOwner: micSlider
+    // The Wi-Fi page's network delegates (tests hold one across list changes).
+    readonly property alias networkList: networkRepeater
     function wake(): void {
         if (glass && glass.wake)
             glass.wake();
@@ -91,16 +93,20 @@ Item {
         if (value === "reboot" || value === "poweroff" || value === "suspend")
             confirmation = value;
     }
-    // The mic meter runs only while the sound page is open (PwNodePeakMonitor costs a stream).
-    function updateMeter(): void {
-        if (backend)
+    // The mic meter runs only while the sound page is open (PwNodePeakMonitor costs a stream),
+    // the Wi-Fi scanner only while the Wi-Fi page is (unsaved networks are listed only then).
+    function updateMonitors(): void {
+        if (backend) {
             backend.micMeter = opened && page === "sound";
+            backend.wifiScan = opened && page === "wifi";
+        }
     }
     onPageChanged: {
         reset();
-        updateMeter();
+        updateMonitors();
     }
-    onOpenedChanged: updateMeter()
+    onOpenedChanged: updateMonitors()
+    onBackendChanged: updateMonitors()
     // Lists rebuilt (a device, a network's signal): their resting drops find the new rows.
     onRowsChanged: {
         const keys = page === "wifi" ? rows.map(r => r.key) : [];
@@ -108,8 +114,32 @@ Item {
             networkKeys = keys;
         wake();
     }
-    // The Wi-Fi list's model: its keys change only when networks come or go.
+    // The Wi-Fi list's keys in row order (they change when networks come, go or reorder).
     property var networkKeys: []
+    // The Wi-Fi list's model follows networkKeys by removing, inserting and moving elements:
+    // a reassigned JS array would rebuild every delegate, and while the page scans a new scan
+    // reorders the rows by signal every few seconds — the open row's password field would lose
+    // the keyboard mid-typing.
+    ListModel {
+        id: networkModel
+    }
+    onNetworkKeysChanged: {
+        const keys = networkKeys;
+        for (let i = networkModel.count - 1; i >= 0; --i)
+            if (!keys.includes(networkModel.get(i).netKey))
+                networkModel.remove(i);
+        keys.forEach((key, i) => {
+            let at = i;
+            while (at < networkModel.count && networkModel.get(at).netKey !== key)
+                ++at;
+            if (at === networkModel.count)
+                networkModel.insert(i, {
+                    netKey: key
+                });
+            else if (at !== i)
+                networkModel.move(at, i, 1);
+        });
+    }
     onStreamGroupsChanged: wake()
     function confirmSession(): void {
         const value = confirmation;
@@ -127,6 +157,23 @@ Item {
             password: hiddenSecured ? hiddenPassword : ""
         });
         hiddenPassword = "";
+    }
+    Connections {
+        target: body.backend
+        function onWifiPasswordRequired(key: string): void {
+            if (!body.opened || body.page !== "wifi")
+                return;
+            body.selectedNetwork = key;
+            body.wifiPassword = "";
+            Qt.callLater(body.focusWifiPassword);
+        }
+    }
+    function focusWifiPassword(): void {
+        for (let i = 0; i < networkRepeater.count; ++i) {
+            const row = networkRepeater.itemAt(i);
+            if (row?.open)
+                row.focusPassword();
+        }
     }
     function wifiConnect(): void {
         service.act("wifi-connect", {
@@ -278,7 +325,7 @@ Item {
             // Disconnect/Forget words; a new secured one asks for the password under its row.
             if (n.connected || n.busy)
                 selectedNetwork = selectedNetwork === row.value ? "" : row.value;
-            else if (n.known || n.open) {
+            else if ((n.known && !backend.wifiPasswordKeys.includes(row.value)) || n.open) {
                 selectedNetwork = "";
                 service.act("wifi-connect", {
                     key: row.value,
@@ -856,6 +903,9 @@ Item {
         property int maximumLength: 63
         property alias text: input.text
         signal accepted
+        function focusInput(): void {
+            input.forceActiveFocus();
+        }
         width: body.inner
         height: 34
         radius: 10
@@ -1155,17 +1205,22 @@ Item {
                     visible: body.wifiOn
                 }
                 Repeater {
+                    id: networkRepeater
                     // Keyed by network, not by row: the rows are rebuilt on every change of a
                     // signal, and a rebuilt delegate would take the password field's focus away.
-                    model: body.page === "wifi" && body.wifiOn ? body.networkKeys : []
+                    model: body.page === "wifi" && body.wifiOn ? networkModel : []
                     Column {
                         id: network
-                        required property string modelData
-                        readonly property var row: body.rows.find(r => r.key === network.modelData) ?? body.entry({})
+                        required property string netKey
+                        readonly property var row: body.rows.find(r => r.key === network.netKey) ?? body.entry({})
                         readonly property bool open: body.selectedNetwork === row.value && body.selected !== null
+                        function focusPassword(): void {
+                            if (passwordField.visible)
+                                passwordField.focusInput();
+                        }
                         width: body.inner
                         PanelRow {
-                            key: network.modelData
+                            key: network.netKey
                             label: network.row.name
                             text: network.row.name
                             detail: network.row.detail
@@ -1185,8 +1240,11 @@ Item {
                             visible: network.open
                             spacing: 6
                             Field {
+                                id: passwordField
                                 width: parent.width
-                                visible: !!body.selected && !body.selected.connected && !body.selected.known && !body.selected.open
+                                visible: network.open && !!body.selected && !body.selected.connected && !body.selected.open && (!body.selected.known || body.backend.wifiPasswordKeys.includes(network.row.value))
+                                onVisibleChanged: if (visible)
+                                    Qt.callLater(body.focusWifiPassword)
                                 secret: true
                                 placeholder: "Password"
                                 text: body.wifiPassword

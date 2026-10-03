@@ -1,0 +1,11 @@
+# GENERATED from tokens.toml - manual edits will be overwritten.
+# Source: tokens.toml, generator: scripts/render-theme
+# Installed to /usr/lib/emaki/os-release; /etc/os-release links here.
+NAME="Emaki"
+PRETTY_NAME="Emaki"
+ID=arch
+VARIANT_ID=emaki
+BUILD_ID=rolling
+ANSI_COLOR="38;2;224;90;79"
+HOME_URL="https://github.com/emakish/emaki"
+BUG_REPORT_URL="https://github.com/emakish/emaki/issues"

@@ -103,7 +103,7 @@ SystemBackend {
             target: modelData.ref
             // ConnectionFailReason (QS 0.3.1 enums.hpp): NoSecrets is the rejected-PSK case.
             function onConnectionFailed(reason): void {
-                native.actionError = reason === ConnectionFailReason.NoSecrets ? "wrong_password" : reason === ConnectionFailReason.WifiAuthTimeout ? "auth_timeout" : reason === ConnectionFailReason.WifiNetworkLost ? "network_lost" : "network_connection_failed";
+                native.wifiFailed(modelData.key, modelData.ref, reason === ConnectionFailReason.NoSecrets ? "wrong_password" : reason === ConnectionFailReason.WifiAuthTimeout ? "auth_timeout" : reason === ConnectionFailReason.WifiNetworkLost ? "network_lost" : "network_connection_failed");
             }
         }
     }

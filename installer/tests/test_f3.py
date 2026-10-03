@@ -171,6 +171,18 @@ class WorkerFixTests(unittest.TestCase):
         self.assertFalse(any('sshd.service' in c for c, _ in self.worker.runner.commands))
         self.assertFalse(self.worker.files.path('/home/vmuser/.ssh').exists())
 
+    def test_settings_set_wifi_country_from_timezone_only_when_known(self):
+        self.worker.backend = SimpleNamespace(instance=SimpleNamespace(pacman=Mock()))
+        self.worker.repositories = Mock()
+        self.worker.files.write('/etc/passwd', 'vmuser:x:1001:987:VM User:/home/vmuser:/bin/bash\n')
+        self.worker.files.write('/usr/share/zoneinfo/zone.tab',
+                                'US\t+404251-0740023\tAmerica/New_York\tEastern (most areas)\n')
+        self.worker.settings()
+        self.assertFalse(self.worker.files.path('/etc/conf.d/wireless-regdom').exists())
+        self.worker.plan.config['timezone'] = 'America/New_York'
+        self.worker.settings()
+        self.assertIn('\nWIRELESS_REGDOM="US"\n', self.worker.files.read('/etc/conf.d/wireless-regdom'))
+
     def test_snapshot_title_written_before_every_grub_generation(self):
         self.boot_files()
         original = self.worker.runner.run

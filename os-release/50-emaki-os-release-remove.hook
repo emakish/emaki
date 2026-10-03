@@ -1,0 +1,9 @@
+[Trigger]
+Operation = Remove
+Type = Package
+Target = emaki-config
+
+[Action]
+Description = Restoring Arch os-release
+When = PreTransaction
+Exec = /usr/share/libalpm/scripts/emaki-os-release --restore

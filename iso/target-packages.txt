@@ -26,5 +26,6 @@ quickshell-emaki
 snap-pac
 snapper
 sudo
+wireless-regdb
 wpa_supplicant
 zram-generator

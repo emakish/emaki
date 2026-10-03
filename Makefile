@@ -110,6 +110,11 @@ install:
 	install -Dm644 art/grub/background.png $(SHARE)/grub/background.png
 	install -Dm644 grub/90-emaki-grub-title.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/90-emaki-grub-title.hook
 	install -Dm755 grub/emaki-grub-title $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-grub-title
+	# System identity: /etc/os-release is linked to this file by the hook (no package owns
+	# /etc/os-release; Arch's /usr/lib/os-release stays untouched).
+	install -Dm644 os-release/os-release $(DESTDIR)$(PREFIX)/lib/emaki/os-release
+	install -Dm644 -t $(DESTDIR)$(PREFIX)/share/libalpm/hooks os-release/50-emaki-os-release.hook os-release/50-emaki-os-release-remove.hook
+	install -Dm755 os-release/emaki-os-release $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-os-release
 	install -Dm644 packaging/emaki-config/emaki-release $(DESTDIR)$(PREFIX)/lib/emaki-release
 	@commit='$(if $(EMAKI_COMMIT),$(EMAKI_COMMIT),$(shell git rev-parse --verify HEAD))'; \
 		printf '%s\n' "$$commit" | grep -Eq '^[0-9a-f]{40}$$' || exit 1; \
@@ -137,8 +142,10 @@ install:
 	ln -sfn ../emaki-greeter-wallpaper-watch.service $(SYSTEMD)/user/graphical-session.target.wants/emaki-greeter-wallpaper-watch.service
 	install -Dm644 greetd/emaki-greeter.conf $(DESTDIR)$(PREFIX)/lib/tmpfiles.d/emaki-greeter.conf
 # Staging packages must not require a greeter account inside DESTDIR.
+# On this machine, apply the os-release link now instead of at the next pacman transaction.
 ifeq ($(DESTDIR),)
 	systemd-tmpfiles --create $(PREFIX)/lib/tmpfiles.d/emaki-greeter.conf
+	$(PREFIX)/share/libalpm/scripts/emaki-os-release
 endif
 
 # Explicit opt-in after installation: provision fixed private greeter directories
@@ -214,6 +221,11 @@ uninstall:
 	@case "$(DESTDIR)" in ""|/*) ;; *) echo "uninstall: DESTDIR must be empty or an absolute path; nothing changed." >&2; exit 1 ;; esac; \
 		case "/$(DESTDIR)/" in */../*) echo "uninstall: DESTDIR must not contain '..' components; nothing changed." >&2; exit 1 ;; esac
 	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/hooks/90-emaki-grub-title.hook $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-grub-title
+	# Point /etc/os-release back at Arch's file before removing ours (source helper, as below).
+	bash os-release/emaki-os-release --restore "$(if $(DESTDIR),$(DESTDIR),/)"
+	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/hooks/50-emaki-os-release.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/50-emaki-os-release-remove.hook
+	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-os-release $(DESTDIR)$(PREFIX)/lib/emaki/os-release
+	[ ! -d $(DESTDIR)$(PREFIX)/lib/emaki ] || rmdir --ignore-fail-on-non-empty $(DESTDIR)$(PREFIX)/lib/emaki
 	# Use this source helper: older installed provisioners may not support purging.
 	@if ! python3 -I scripts/emaki-greeter-provision --root "$(if $(DESTDIR),$(DESTDIR),/)" --purge-published; then \
 		echo "uninstall: WARNING: published wallpaper cleanup incomplete at $(if $(DESTDIR),$(DESTDIR),)/var/lib/emaki-greeter; retained copies need administrator cleanup. Continuing removal." >&2; \

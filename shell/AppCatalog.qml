@@ -5,7 +5,13 @@ import Quickshell.Io
 
 Scope {
     id: catalog
-    readonly property var entries: DesktopEntries.applications.values.filter(entry => !entry.noDisplay).sort((a, b) => a.name.localeCompare(b.name))
+    // Utility entries that Arch's live-ISO set and its dependencies put in every menu:
+    // avahi (avahi-discover, bssh, bvnc), lftp, hwloc (lstopo), v4l-utils (qv4l2,
+    // qvidcap), stoken (stoken-gui, stoken-gui-small), vim. Only the launcher skips
+    // them: the programs stay installed, gtk-launch and MIME handling are unchanged
+    // and the dock still resolves their windows (DECISIONS 2026-10-03).
+    readonly property var hiddenIds: ["avahi-discover", "bssh", "bvnc", "lftp", "lstopo", "qv4l2", "qvidcap", "stoken-gui", "stoken-gui-small", "vim"]
+    readonly property var entries: DesktopEntries.applications.values.filter(entry => catalog.shown(entry)).sort((a, b) => a.name.localeCompare(b.name))
     readonly property string launcher: Quickshell.env("EMAKI_GTK_LAUNCH") || "gtk-launch"
     property string launchState: "idle"
     // A launch in flight; frequency bookkeeping never blocks the next click (it queues).
@@ -24,6 +30,10 @@ Scope {
     Component.onCompleted: frequency.start({
         op: "frequent-list"
     })
+    // Whether a desktop entry belongs in the launcher's lists (Apps, search, Recent).
+    function shown(entry: DesktopEntry): bool {
+        return entry !== null && !entry.noDisplay && !hiddenIds.includes(entry.id);
+    }
     function accepted(): void {
         recordQueue = recordQueue.concat([pendingId]);
         flushRecords();
