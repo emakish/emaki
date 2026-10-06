@@ -12,6 +12,7 @@ import struct
 import sys
 
 from .arch_backend import load_archinstall, validate_live_plan
+from .timezones import set_live_timezone
 from .constants import LOG, MAX_FRAME, SOCKET, TARGET, WORK
 from .errors import Code, InstallError, require
 from .inventory import Inventory
@@ -234,6 +235,7 @@ def main():
                                     test_mode=read_test_mode(), log_stream=log,
                                     validate_plan=lambda plan: validate_live_plan(api, plan))
             runner = Runner(controller.log, controller.redactor)
+            controller.set_timezone_fn = lambda name: set_live_timezone(name, runner)
             inventory.runner = runner
             controller.save_log_fn = lambda dest: export_log(dest, runner, controller.redactor)
             controller.reboot_fn = lambda: runner.run(['systemctl', 'reboot'])

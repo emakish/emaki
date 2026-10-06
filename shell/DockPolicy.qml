@@ -1,7 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 
-// Visibility, reserve and timers of the dock; mirrors app.js dockShow/dockLater/dkReveal.
+// Visibility, reserve and edge dwell timers of the dock.
 Item {
     id: policy
     property bool on: true
@@ -17,11 +17,10 @@ Item {
     // 2 px above the screen edge (2026-09-25; mockup 74).
     readonly property int thickness: 77
     readonly property bool fullscreen: presentation === "covered"
-    // "unknown" (labels pending, a window without tile_size, core gone) must not lock the
-    // dock away: only a known fullscreen cover kills the edge.
-    readonly property bool edgeEnabled: on && autoHide && presentation !== "covered" && !overview
+    // The edge remains reachable over fullscreen windows, including a pinned dock.
+    readonly property bool edgeEnabled: on && (autoHide || fullscreen) && !overview
     // Overview and fullscreen slide the dock away in the mockup regardless of auto-hide.
-    readonly property bool dockVisible: on && !overview && !fullscreen && (!autoHide || revealed || popupOpen || dragging)
+    readonly property bool dockVisible: on && !overview && ((!autoHide && !fullscreen) || revealed || popupOpen || dragging)
     readonly property int reserve: on && !autoHide ? thickness : 0
     function scheduleHide(): void {
         if (!popupOpen && !dragging && !pointerInside && !edgeHovered)
@@ -55,34 +54,28 @@ Item {
             scheduleHide();
     }
     onEdgeEnabledChanged: {
-        if (!edgeEnabled)
+        if (edgeEnabled && edgeHovered)
+            revealDelay.restart();
+        else
             revealDelay.stop();
+    }
+    function resetReveal(): void {
+        revealed = false;
+        hideDelay.stop();
+        revealDelay.stop();
+        if (edgeEnabled && edgeHovered)
+            revealDelay.restart();
     }
     onFullscreenChanged: {
-        if (fullscreen) {
-            revealed = false;
-            hideDelay.stop();
-            revealDelay.stop();
-        }
+        if (fullscreen)
+            resetReveal();
     }
-    onOverviewChanged: {
-        revealed = false;
-        hideDelay.stop();
-        revealDelay.stop();
-    }
-    onAutoHideChanged: {
-        revealed = false;
-        hideDelay.stop();
-        revealDelay.stop();
-    }
-    onOnChanged: {
-        revealed = false;
-        hideDelay.stop();
-        revealDelay.stop();
-    }
+    onOverviewChanged: resetReveal()
+    onAutoHideChanged: resetReveal()
+    onOnChanged: resetReveal()
     Timer {
         id: revealDelay
-        interval: 150
+        interval: 100
         onTriggered: {
             if (policy.edgeEnabled && policy.edgeHovered)
                 policy.revealed = true;
@@ -90,7 +83,7 @@ Item {
     }
     Timer {
         id: hideDelay
-        interval: 500
+        interval: 100
         onTriggered: {
             if (!policy.popupOpen && !policy.dragging && !policy.pointerInside && !policy.edgeHovered)
                 policy.revealed = false;

@@ -1,0 +1,405 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Watch Arch dependency fences. Exit 0: satisfied; 1: broken; 2: incomplete/error.
+
+Requires the makepkg libraries and vercmp (pacman); works as root or a user.
+Only trusted local PKGBUILDs are sourced with bash; no build hooks run.
+Downloaded database contents are data, never shell code, and are never extracted.
+"""
+
+import argparse
+from collections import defaultdict
+from dataclasses import dataclass
+from functools import lru_cache
+import io
+import gzip
+import bz2
+import lzma
+from pathlib import Path
+import re
+import resource
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import urllib.error
+import urllib.request
+import zlib
+
+REPOS = ('core', 'extra', 'core-testing', 'extra-testing')
+LIMIT = 128 * 1024 * 1024
+DEP = re.compile(r'^([^<>=\s]+)(?:(>=|<=|=|>|<)([^\s]+))?$')
+
+
+class WatchError(Exception):
+    pass
+
+
+def dependency(value):
+    match = DEP.fullmatch(value)
+    if not match or any(ord(char) < 32 or ord(char) == 127 for char in value):
+        raise WatchError(f'invalid dependency metadata: {value!r}')
+    return match.groups()
+
+
+@dataclass(frozen=True)
+class Package:
+    name: str
+    version: str
+    repo: str
+    provides: tuple = ()
+    depends: tuple = ()
+    replaces: tuple = ()
+
+
+@dataclass(frozen=True)
+class Fence:
+    recipe: str
+    package: str
+    kind: str
+    value: str
+
+
+@lru_cache(maxsize=4096)
+def compare(left, right):
+    result = subprocess.run(['vercmp', left, right], capture_output=True, text=True,
+                            timeout=10, check=True)
+    try:
+        return int(result.stdout.strip())
+    except ValueError as exc:
+        raise WatchError('vercmp returned invalid output') from exc
+
+
+def accepts(version, operator, required):
+    if operator is None:
+        return True
+    if version is None:
+        return False  # An unversioned provide cannot satisfy a versioned dependency.
+    order = compare(version, required)
+    return {'=': order == 0, '>': order > 0, '<': order < 0,
+            '>=': order >= 0, '<=': order <= 0}[operator]
+
+
+def recipe_metadata(recipe, arch):
+    # Use pacman's own split-package metadata extraction without the makepkg
+    # command's root prohibition. Its extractor reads assignments, not hooks.
+    script = """
+export MAKEPKG_LIBRARY=/usr/share/makepkg
+source "$MAKEPKG_LIBRARY/srcinfo.sh" || exit
+CARCH=$1
+startdir=$PWD
+source ./PKGBUILD || exit
+write_srcinfo_content
+"""
+    result = subprocess.run(['bash', '-c', script, 'arch-watch', arch], cwd=recipe.parent,
+                            capture_output=True, text=True, timeout=60)
+    if result.returncode:
+        raise WatchError(f'{recipe}: recipe metadata extraction failed: {result.stderr.strip()}')
+    base, packages = defaultdict(list), []
+    section = base
+    for line in result.stdout.splitlines():
+        if not line.strip() or line.lstrip().startswith('#'):
+            continue
+        if ' = ' not in line:
+            raise WatchError(f'{recipe}: invalid .SRCINFO line: {line!r}')
+        key, value = (part.strip() for part in line.split(' = ', 1))
+        if key == 'pkgname':
+            section = defaultdict(list)
+            packages.append((value, section))
+        else:
+            section[key].append(value)
+    if not base.get('pkgbase') or not packages:
+        raise WatchError(f'{recipe}: missing package metadata')
+    fences, names = [], set()
+    for name, overrides in packages:
+        effective = {**base, **overrides}
+        if arch not in effective.get('arch', []) and 'any' not in effective.get('arch', []):
+            continue
+        names.add(name)
+        for kind in ('depends', 'makedepends', 'checkdepends'):
+            for field in (kind, f'{kind}_{arch}'):
+                for value in effective.get(field, []):
+                    if not value:
+                        continue  # Empty split-package override removes the base list.
+                    depname, operator, _ = dependency(value)
+                    if operator or '.so' in depname or depname.startswith('lib:'):
+                        fences.append(Fence(str(recipe), name, kind, value))
+    return fences, names
+
+
+def discover(root, arch):
+    recipes = sorted(root.glob('*/PKGBUILD'))
+    if not recipes:
+        raise WatchError(f'no active */PKGBUILD recipes in {root}')
+    fences, local_names = [], set()
+    for recipe in recipes:
+        found, names = recipe_metadata(recipe, arch)
+        fences.extend(found)
+        local_names.update(names)
+    if not fences:
+        raise WatchError('no dependency fences found')
+    return sorted(set(fences), key=lambda f: (f.recipe, f.package, f.kind, f.value)), local_names
+
+
+def verified_tar(blob, source):
+    """Validate the entire compression stream and every tar header before parsing."""
+    try:
+        if blob.startswith(b'\x1f\x8b'):
+            stream = gzip.GzipFile(fileobj=io.BytesIO(blob))
+        elif blob.startswith(b'BZh'):
+            stream = bz2.BZ2File(io.BytesIO(blob))
+        elif blob.startswith(b'\xfd7zXZ\x00'):
+            stream = lzma.LZMAFile(io.BytesIO(blob))
+        elif blob.startswith(b'\x28\xb5\x2f\xfd'):
+            # Bound expanded output as well as the download, including zstd bombs.
+            with tempfile.TemporaryFile() as output:
+                subprocess.run(['zstd', '-d', '-q', '-c'], input=blob,
+                               stdout=output, stderr=subprocess.PIPE, timeout=60, check=True,
+                               preexec_fn=lambda: resource.setrlimit(
+                                   resource.RLIMIT_FSIZE, (LIMIT + 1, LIMIT + 1)))
+                output.seek(0)
+                stream = io.BytesIO(output.read(LIMIT + 1))
+        else:
+            stream = io.BytesIO(blob)
+        with stream:
+            data = stream.read(LIMIT + 1)
+        if len(data) > LIMIT:
+            raise WatchError(f'{source}: expanded archive exceeds {LIMIT} bytes')
+        offset = 0
+        while offset + 512 <= len(data):
+            header = data[offset:offset + 512]
+            if header == bytes(512):
+                if len(data) - offset < 1024 or any(data[offset:]) or len(data) % 512:
+                    raise WatchError(f'{source}: invalid tar end markers')
+                return io.BytesIO(data)
+            entry = tarfile.TarInfo.frombuf(header, 'utf-8', 'strict')
+            if entry.size < 0:
+                raise WatchError(f'{source}: negative tar entry size')
+            offset += 512 + ((entry.size + 511) // 512) * 512
+        raise WatchError(f'{source}: unreadable database: truncated tar archive')
+    except (tarfile.TarError, UnicodeError, EOFError, OSError, lzma.LZMAError, zlib.error) as exc:
+        raise WatchError(f'{source}: unreadable database: {exc}') from exc
+
+
+def database(blob, repo):
+    packages = {}
+    entries = 0
+    try:
+        with tarfile.open(fileobj=verified_tar(blob, repo), mode='r:') as archive:
+            for index, entry in enumerate(archive):
+                entries += 1
+                if index > 200000:
+                    raise WatchError(f'{repo}: too many database entries')
+                if not entry.name.endswith('/desc'):
+                    continue
+                parts = entry.name.split('/')
+                if len(parts) != 2 or parts[0] in ('', '.', '..') or not entry.isfile():
+                    raise WatchError(f'{repo}: invalid desc entry: {entry.name}')
+                if entry.size > 1024 * 1024:
+                    raise WatchError(f'{repo}: oversized desc entry')
+                with archive.extractfile(entry) as handle:
+                    data = handle.read().decode('utf-8')
+                fields = defaultdict(list)
+                field = None
+                for line in data.splitlines():
+                    if line.startswith('%') and line.endswith('%'):
+                        field = line[1:-1]
+                    elif line:
+                        if field is None:
+                            raise WatchError(f'{repo}: invalid desc format')
+                        fields[field].append(line)
+                    else:
+                        field = None
+                if len(fields['NAME']) != 1 or len(fields['VERSION']) != 1:
+                    raise WatchError(f'{repo}: desc missing unique NAME/VERSION')
+                name, version = fields['NAME'][0], fields['VERSION'][0]
+                if (not re.fullmatch(r'[A-Za-z0-9@._+-]+', name) or not version
+                        or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in version)):
+                    raise WatchError(f'{repo}: invalid NAME/VERSION')
+                provides = []
+                for value in fields['PROVIDES']:
+                    provided, operator, provided_version = dependency(value)
+                    if operator not in (None, '='):
+                        raise WatchError(f'{repo}: invalid provide: {value}')
+                    provides.append((provided, provided_version))
+                if name in packages:
+                    raise WatchError(f'{repo}: duplicate package {name}')
+                for value in fields['DEPENDS'] + fields['REPLACES']:
+                    dependency(value)
+                packages[name] = Package(name, version, repo, tuple(provides),
+                                         tuple(fields['DEPENDS']), tuple(fields['REPLACES']))
+    except (tarfile.TarError, UnicodeError, EOFError) as exc:
+        raise WatchError(f'{repo}: unreadable database: {exc}') from exc
+    if entries and not packages:
+        raise WatchError(f'{repo}: nonempty archive has no package descriptions')
+    return packages
+
+
+def load_databases(args):
+    databases = {}
+    for repo in REPOS:
+        if args.db_dir:
+            with (args.db_dir / f'{repo}.db').open('rb') as handle:
+                blob = handle.read(LIMIT + 1)
+        else:
+            url = f'{args.mirror.rstrip("/")}/{repo}/os/{args.arch}/{repo}.db'
+            request = urllib.request.Request(url, headers={'User-Agent': 'emaki-arch-watch'})
+            with urllib.request.urlopen(request, timeout=60) as response:
+                if response.geturl().split(':', 1)[0] != 'https':
+                    raise WatchError(f'{repo}: mirror redirected outside HTTPS')
+                blob = response.read(LIMIT + 1)
+        if len(blob) > LIMIT:
+            raise WatchError(f'{repo}: database exceeds {LIMIT} bytes')
+        databases[repo] = database(blob, repo)
+    return databases
+
+
+def shipped_fences(args):
+    """Published runtime dependencies supplement, never replace, recipe fences."""
+    source = (str(args.emaki_db) if args.emaki_db else
+              f'https://pkgs.emaki.sh/{args.channel}/{args.arch}/emaki.db')
+    try:
+        if args.emaki_db or args.db_dir:
+            path = args.emaki_db or args.db_dir / 'emaki.db'
+            source = str(path)
+            with path.open('rb') as handle:
+                blob = handle.read(LIMIT + 1)
+        else:
+            request = urllib.request.Request(source, headers={'User-Agent': 'emaki-arch-watch'})
+            with urllib.request.urlopen(request, timeout=60) as response:
+                if not response.geturl().startswith('https://'):
+                    raise WatchError('Emaki database redirected outside HTTPS')
+                blob = response.read(LIMIT + 1)
+    except (FileNotFoundError, urllib.error.HTTPError) as exc:
+        if args.emaki_db:
+            raise
+        if isinstance(exc, urllib.error.HTTPError):
+            # Only the Worker's exact missing-pointer response means unpublished.
+            missing = b'pointer missing\n'
+            with exc:
+                if exc.code != 503 or exc.read(len(missing) + 1) != missing:
+                    raise
+        print(f'FALLBACK: Emaki database absent ({source}); recipe fences only; '
+              'shipped ABI fences are unavailable')
+        return [], set()
+    if len(blob) > LIMIT:
+        raise WatchError('Emaki database too large')
+    packages = database(blob, source)
+    if not packages:
+        raise WatchError(f'{source}: Emaki database contains no packages')
+    fences = []
+    for package in packages.values():
+        for value in package.depends:
+            name, operator, _ = dependency(value)
+            if operator or '.so' in name or name.startswith('lib:'):
+                fences.append(Fence(source, package.name, 'depends', value))
+    print(f'SHIPPED: {len(fences)} runtime fences from {source}')
+    return fences, set(packages)
+
+
+def universe(databases, repos):
+    # First repository wins, as in pacman.conf. Testing supersedes stable by
+    # package name, including removal of a package's old soname provides.
+    packages = {}
+    for repo in repos:
+        for name, package in databases[repo].items():
+            packages.setdefault(name, package)
+    # A renamed testing package removes the replaced stable package too.
+    removed = set()
+    for package in packages.values():
+        if package.repo not in ('core-testing', 'extra-testing'):
+            continue
+        for value in package.replaces:
+            name, operator, required = dependency(value)
+            old = packages.get(name)
+            if (old is not None and old.repo in ('core', 'extra')
+                    and accepts(old.version, operator, required)):
+                removed.add(name)
+    packages = {name: package for name, package in packages.items() if name not in removed}
+    providers = defaultdict(list)
+    for package in packages.values():
+        providers[package.name].append((package, package.version))
+        for name, version in package.provides:
+            providers[name].append((package, version))
+    return providers
+
+
+def assess(fences, local_names, databases):
+    broken = 0
+    groups = defaultdict(list)
+    for fence in fences:
+        name, operator, _ = dependency(fence.value)
+        if name in local_names:
+            print(f'LOCAL {fence.package} {fence.kind} {fence.value}: '
+                  'Emaki package; published versions are outside this Arch watch')
+            continue
+        if operator is None:
+            print(f'NOTE {fence.package} {fence.value}: unversioned soname; '
+                  'provider availability only, installed ABI cannot be proven from PKGBUILD')
+        groups[(fence.recipe, fence.package, fence.kind, name)].append(fence)
+    for label, repos in (
+        ('stable', ('core', 'extra')),
+        ('testing', ('core-testing', 'extra-testing', 'core', 'extra')),
+    ):
+        providers = universe(databases, repos)
+        for (recipe, package, kind, name), requirements in sorted(groups.items()):
+            candidates = providers.get(name, [])
+            # The same provider must satisfy both sides of a range.
+            good = any(all(accepts(version, *dependency(f.value)[1:])
+                           for f in requirements) for _, version in candidates)
+            if good:
+                continue
+            broken += 1
+            available = ', '.join(sorted({
+                f'{p.repo}/{p.name} {p.version} (provides {name}'
+                + (f'={v}' if v is not None else ' without version') + ')'
+                for p, v in candidates
+            })) or 'no provider in this repository set'
+            constraints = ', '.join(f.value for f in requirements)
+            print(f'BREAK {label}: {package} {kind} [{constraints}] '
+                  f'({recipe}): {available}')
+    print(f'Checked {len(fences)} dependency fences in stable and testing overlay; '
+          f'{broken} broken fence groups. This is metadata monitoring, not an upgrade solver.')
+    return 1 if broken else 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--packaging-dir', type=Path,
+                        default=Path(__file__).resolve().parent,
+                        help='trusted recipes; only immediate */PKGBUILD children are active')
+    parser.add_argument('--db-dir', type=Path, help='offline directory containing all four REPO.db files')
+    parser.add_argument('--mirror', default='https://geo.mirror.pkgbuild.com', help='HTTPS Arch mirror root')
+    parser.add_argument('--arch', default='x86_64')
+    parser.add_argument('--emaki-db', type=Path, help='published Emaki database saved locally')
+    parser.add_argument('--channel', choices=('stable', 'testing'), default='stable',
+                        help='published Emaki channel (default: stable); offline mode uses DB_DIR/emaki.db')
+    args = parser.parse_args(argv)
+    try:
+        for executable in ('bash', 'vercmp'):
+            if not shutil.which(executable):
+                raise WatchError(f'required command missing: {executable} (install pacman)')
+        if not re.fullmatch(r'[A-Za-z0-9_]+', args.arch):
+            raise WatchError('invalid architecture')
+        if not args.db_dir and not args.mirror.startswith('https://'):
+            raise WatchError('--mirror must use HTTPS')
+        fences, local_names = discover(args.packaging_dir.resolve(), args.arch)
+        shipped, shipped_names = shipped_fences(args)
+        databases = load_databases(args)
+        # Buffer assessment so a later comparison failure cannot leave false BREAKs.
+        from contextlib import redirect_stdout
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = assess(fences + shipped, local_names | shipped_names, databases)
+        print(output.getvalue(), end='')
+        return result
+    except Exception as exc:
+        # No parser, decompressor, transport or comparison failure is an ABI break.
+        print(f'ERROR: arch-watch incomplete: {exc}', file=sys.stderr)
+        return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main())

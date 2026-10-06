@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# shellcheck shell=bash
+# Removing the package deletes the wallpaper copies published for the greeter; its
+# state and private directories stay. Before removal the provisioner is still
+# installed; it is called by its packaged path because scriptlets inherit whatever
+# PATH pacman was started with. pacman calls no remove function on an upgrade, but
+# does when another package replaces this one. A failed purge is named and never
+# stops the removal.
+pre_remove() {
+    /usr/bin/emaki-greeter-provision --root / --purge-published ||
+        echo 'emaki-config: published wallpaper copies remain in /var/lib/emaki-greeter; an administrator can remove them' >&2
+}

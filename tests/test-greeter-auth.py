@@ -24,6 +24,8 @@ import threading
 import time
 from collections import deque
 from unittest.mock import Mock, patch
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 sys.dont_write_bytecode = True
 

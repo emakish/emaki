@@ -1,0 +1,22 @@
+[
+  {"path": "/stable/x86_64/SOURCES", "pointer": {"stable": "20261012T183000Z\n"}, "status": 302, "location": "/snap/stable/20261012T183000Z/SOURCES"},
+  {"path": "/testing/x86_64/SOURCES.json", "pointer": {"testing": "20261012T183001Z"}, "status": 302, "location": "/snap/testing/20261012T183001Z/SOURCES.json"},
+  {"path": "/stable/x86_64/SOURCES", "pointer": {}, "status": 503},
+  {"path": "/stable/x86_64/niri-emaki-26.04-8.sources.tar.gz", "pointer": {"stable": "20261012T183000Z"}, "status": "fallthrough"},
+  {"path": "/stable/x86_64/SOURCES.extra", "pointer": {"stable": "20261012T183000Z"}, "status": "fallthrough"},
+  {"path": "/stable/x86_64/emaki.db", "pointer": {"stable": "20261012T183000Z\n"}, "status": 302, "location": "/snap/stable/20261012T183000Z/emaki.db"},
+  {"path": "/stable/x86_64/emaki.db.sig", "pointer": {"stable": "20261012T183000Z"}, "status": 302, "location": "/snap/stable/20261012T183000Z/emaki.db.sig"},
+  {"path": "/testing/x86_64/emaki.files", "pointer": {"testing": "20261012T183001Z\n"}, "status": 302, "location": "/snap/testing/20261012T183001Z/emaki.files"},
+  {"path": "/testing/x86_64/emaki.files.sig", "pointer": {"testing": "20261012T183001Z"}, "status": 302, "location": "/snap/testing/20261012T183001Z/emaki.files.sig"},
+  {"path": "/testing/x86_64/emaki.db", "pointer": {"stable": "20261012T183000Z"}, "status": 503},
+  {"path": "/stable/x86_64/emaki.db", "pointer": {"stable": "../../etc/passwd"}, "status": 503},
+  {"path": "/stable/x86_64/emaki.db", "pointer": {"stable": "20261012T1830Z"}, "status": 503},
+  {"path": "/stable/x86_64/emaki.db", "pointer": {"stable": ""}, "status": 503},
+  {"path": "/stable/x86_64/emaki-config-0.1.3-1-x86_64.pkg.tar.zst", "pointer": {"stable": "20261012T183000Z"}, "status": "fallthrough"},
+  {"path": "/stable/x86_64/emaki.db.tar.gz", "pointer": {"stable": "20261012T183000Z"}, "status": "fallthrough"},
+  {"path": "/staging/x86_64/emaki.db", "pointer": {"staging": "20261012T183000Z"}, "status": "fallthrough"},
+  {"path": "/stable/aarch64/emaki.db", "pointer": {"stable": "20261012T183000Z"}, "status": "fallthrough"},
+  {"path": "/snap/stable/20261012T183000Z/emaki.db", "pointer": {"stable": "20261012T183000Z"}, "status": "fallthrough"},
+  {"path": "/pointers/stable", "pointer": {"stable": "20261012T183000Z"}, "status": "fallthrough"},
+  {"path": "/stable/x86_64/emaki.dbx", "pointer": {"stable": "20261012T183000Z"}, "status": "fallthrough"}
+]

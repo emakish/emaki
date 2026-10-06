@@ -1,0 +1,13 @@
+{
+  "cups": {
+    "source": "Arch package file list: cups 2:2.4.19-1 (Emaki 0.1.2 offline repository)",
+    "files": [
+      "/usr/lib/systemd/system/cups-lpd.socket",
+      "/usr/lib/systemd/system/cups-lpd@.service",
+      "/usr/lib/systemd/system/cups.path",
+      "/usr/lib/systemd/system/cups.service",
+      "/usr/lib/systemd/system/cups.socket",
+      "/usr/lib/systemd/system/system-cups.slice"
+    ]
+  }
+}

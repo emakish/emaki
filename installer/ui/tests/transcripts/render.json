@@ -82,8 +82,9 @@
       "Erase all partitions and create a new GPT partition table.",
       "Partition 1: format vfat, 1.00 GiB; /efi.",
       "Partition 2: format btrfs, 39.00 GiB; @ \u2192 /, @home \u2192 /home, @log \u2192 /var/log, @pkg \u2192 /var/cache/pacman/pkg, @snapshots \u2192 /.snapshots.",
-      "Account: alex; hostname: emaki; timezone: Europe/Lisbon.",
-      "Packages are installed from the signed offline USB repository."
+      "Account: demo; hostname: emaki; timezone: Europe/Lisbon.",
+      "Packages are installed from the signed offline USB repository.",
+      "Software: Rich \u2014 desktop apps, office, email, media and utilities."
     ],
     "errors": [],
     "warnings": [
@@ -120,5 +121,17 @@
     "message": "The package operation failed. Check the USB connection and try again.",
     "retryable": true,
     "log_path": "/var/log/emaki-install.log"
-  }
+  },
+  "logs": [
+    {"type": "log", "job_id": "fixture-job", "line": "$ pacstrap -K /mnt base base-devel linux linux-lts linux-firmware mkinitcpio grub efibootmgr btrfs-progs snapper snap-pac grub-btrfs emaki-desktop emaki-apps"},
+    {"type": "log", "job_id": "fixture-job", "line": "==> Installing packages to /mnt"},
+    {"type": "log", "job_id": "fixture-job", "line": "checking keys in keyring..."},
+    {"type": "log", "job_id": "fixture-job", "line": "checking package integrity..."},
+    {"type": "log", "job_id": "fixture-job", "line": "loading package files..."},
+    {"type": "log", "job_id": "fixture-job", "line": "error: could not open file /run/archiso/bootmnt/emaki/repo/emaki-apps-0.1.2-1-any.pkg.tar.zst: Input/output error"},
+    {"type": "log", "job_id": "fixture-job", "line": "error: failed to commit transaction (invalid or corrupted package)"},
+    {"type": "log", "job_id": "fixture-job", "line": "Errors occurred, no packages were upgraded."},
+    {"type": "log", "job_id": "fixture-job", "line": "==> ERROR: Failed to install packages to new root"},
+    {"type": "log", "job_id": "fixture-job", "line": "pacstrap: exit 1"}
+  ]
 }

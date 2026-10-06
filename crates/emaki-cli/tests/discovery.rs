@@ -1,5 +1,5 @@
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::{fs::PermissionsExt, net::UnixListener};
@@ -310,6 +310,334 @@ fn map_resolves_xdg_and_marks_planned_paths_without_creating_them() {
         json!(f.root.join("home/.config/niri/config.kdl"))
     );
     assert!(entries.iter().find(|e| e["id"] == "runtime").unwrap()["path"].is_null());
+}
+
+#[test]
+fn every_map_entry_names_one_of_three_zones_and_its_attributes() {
+    let f = Fixture::new();
+    let out = f.command().args(["map", "--json"]).output().unwrap();
+    let map: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(map["schema_version"], 1);
+    let entries = map["entries"].as_array().unwrap();
+    let mut zones = BTreeSet::new();
+    for entry in entries {
+        for field in ["zone", "owner", "change_via", "on_update", "history"] {
+            assert!(
+                entry[field].as_str().is_some_and(|v| !v.is_empty()),
+                "{field}: {entry}"
+            );
+        }
+        zones.insert(entry["zone"].as_str().unwrap());
+    }
+    // The three zones of the 2026-09-23 decision; a fourth name is a bug, not a new zone.
+    assert_eq!(zones, BTreeSet::from(["managed", "package", "yours"]));
+    let page = entries.iter().find(|e| e["id"] == "zones_doc").unwrap();
+    let page = page["path"].as_str().unwrap();
+    assert!(page.ends_with("/share/doc/emaki/ZONES.md"), "{page}");
+    let text = String::from_utf8(f.command().arg("map").output().unwrap().stdout).unwrap();
+    assert!(text.contains(&format!(
+        "Zones (package, managed, yours) are explained in {page:?}\n"
+    )));
+    let settings = text.split("\nemaki_settings: ").nth(1).unwrap();
+    let settings = settings.split_once("\n  owner: ").unwrap();
+    assert!(settings.0.ends_with("zone: managed; on update: never_touched; change via: emaki_settings; history: emaki_settings"));
+    assert!(
+        settings
+            .1
+            .contains("isolated_profile_only, not connected yet;")
+    );
+}
+
+/// Path patterns that docs/ZONES.md lists under each zone's heading, `{a,b}` groups expanded.
+fn zone_page() -> BTreeMap<&'static str, Vec<Vec<String>>> {
+    let mut sections: BTreeMap<&str, String> = BTreeMap::new();
+    let mut zone = None;
+    for line in include_str!("../../../docs/ZONES.md").lines() {
+        if let Some(title) = line.strip_prefix("## ") {
+            zone = match title.split('.').next() {
+                Some("1") => Some("package"),
+                Some("2") => Some("managed"),
+                Some("3") => Some("yours"),
+                _ => None,
+            };
+        } else if let Some(zone) = zone {
+            let section = sections.entry(zone).or_default();
+            section.push_str(line);
+            section.push('\n');
+        }
+    }
+    fn expand(word: &str) -> Vec<String> {
+        match (word.find('{'), word.find('}')) {
+            (Some(open), Some(close)) if open < close => word[open + 1..close]
+                .split(',')
+                .flat_map(|choice| {
+                    expand(&format!("{}{choice}{}", &word[..open], &word[close + 1..]))
+                })
+                .collect(),
+            _ => vec![word.to_owned()],
+        }
+    }
+    sections
+        .into_iter()
+        .map(|(zone, section)| {
+            // A `{a,b}` group may wrap onto the next line: drop whitespace inside braces.
+            let mut depth = 0;
+            let joined: String = section
+                .chars()
+                .filter(|&c| {
+                    match c {
+                        '{' => depth += 1,
+                        '}' => depth -= 1,
+                        _ => {}
+                    }
+                    depth == 0 || !c.is_whitespace()
+                })
+                .collect();
+            let patterns = joined
+                .split_whitespace()
+                .map(|word| {
+                    word.trim_matches('`')
+                        .trim_end_matches([',', '.', ';', ':', ')'])
+                        .trim_matches('`')
+                })
+                .filter(|word| word.starts_with('/') || word.starts_with("~/"))
+                .flat_map(expand)
+                .map(|pattern| pattern.split('/').map(str::to_owned).collect())
+                .collect();
+            (zone, patterns)
+        })
+        .collect()
+}
+
+/// One path component against one pattern component; `*` matches any run of characters.
+fn name_matches(pattern: &str, name: &str) -> bool {
+    match pattern.split_once('*') {
+        None => pattern == name,
+        Some((head, rest)) => name.strip_prefix(head).is_some_and(|tail| {
+            (0..=tail.len()).any(|i| tail.is_char_boundary(i) && name_matches(rest, &tail[i..]))
+        }),
+    }
+}
+
+/// `**` matches any number of components, including none.
+fn glob(pattern: &[String], path: &[&str]) -> bool {
+    match pattern.split_first() {
+        None => path.is_empty(),
+        Some((first, rest)) if first == "**" => {
+            glob(rest, path) || (!path.is_empty() && glob(pattern, &path[1..]))
+        }
+        Some((first, rest)) => path
+            .split_first()
+            .is_some_and(|(name, tail)| name_matches(first, name) && glob(rest, tail)),
+    }
+}
+
+/// The path is listed itself, or is a directory above a listed path (`/etc/xdg`).
+fn listed(pattern: &[String], path: &[&str]) -> bool {
+    glob(pattern, path)
+        || (path.len() < pattern.len()
+            && path
+                .iter()
+                .zip(pattern)
+                .all(|(name, p)| p != "**" && name_matches(p, name)))
+}
+
+/// The page names the packaged locations; a probe build elsewhere has nothing to compare.
+fn built_for_default_locations() -> bool {
+    let locations = [
+        (option_env!("EMAKI_PREFIX"), "/usr"),
+        (option_env!("EMAKI_DATADIR"), "/usr/share/emaki"),
+        (option_env!("EMAKI_SYSCONFDIR"), "/etc"),
+    ];
+    let default = !locations
+        .iter()
+        .any(|(value, default)| value.is_some_and(|v| v != *default));
+    if !default {
+        eprintln!("skipped: built for non-default locations {locations:?}");
+    }
+    default
+}
+
+fn zone_map() -> Value {
+    let out = Command::new(env!("CARGO_BIN_EXE_emaki"))
+        .env_clear()
+        .env("HOME", "/zones-home")
+        .args(["map", "--json"])
+        .output()
+        .unwrap();
+    serde_json::from_slice(&out.stdout).unwrap()
+}
+
+/// The paths of the page's list under "Files in /etc that pacman protects".
+fn protected_on_page() -> BTreeSet<String> {
+    let page = include_str!("../../../docs/ZONES.md");
+    let start = page
+        .find("Files in /etc that pacman protects")
+        .expect("the zone page lists the files pacman protects");
+    let mut paths = BTreeSet::new();
+    let mut in_list = false;
+    for line in page[start..].lines() {
+        in_list |= line.starts_with("- ");
+        if in_list && line.trim().is_empty() {
+            break;
+        }
+        if in_list {
+            paths.extend(
+                line.split_whitespace()
+                    .map(|word| word.trim_end_matches(','))
+                    .filter(|word| word.starts_with("/etc/"))
+                    .map(str::to_owned),
+            );
+        }
+    }
+    paths
+}
+
+/// The files the Emaki packages mark `backup=` in packaging/*/PKGBUILD.
+fn backup_files() -> BTreeSet<String> {
+    let packaging = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packaging");
+    let mut files = BTreeSet::new();
+    for entry in fs::read_dir(packaging).unwrap() {
+        let Ok(recipe) = fs::read_to_string(entry.unwrap().path().join("PKGBUILD")) else {
+            continue;
+        };
+        let Some(start) = recipe.find("\nbackup=(") else {
+            continue;
+        };
+        let list = &recipe[start + "\nbackup=(".len()..];
+        files.extend(
+            list[..list.find(')').unwrap()]
+                .split_whitespace()
+                .map(|word| format!("/{}", word.trim_matches(['\'', '"']))),
+        );
+    }
+    files
+}
+
+#[test]
+fn every_protected_etc_file_is_on_the_zone_page_and_in_the_map() {
+    // The other direction of every_map_path_sits_in_its_own_zone_on_the_zone_page: a file a
+    // package protects in /etc must reach the page and `emaki map`, and neither may name a
+    // file no package protects.
+    if !built_for_default_locations() {
+        return;
+    }
+    let packaged = backup_files();
+    assert!(packaged.len() >= 10, "{packaged:?}");
+    assert_eq!(
+        protected_on_page(),
+        packaged,
+        "docs/ZONES.md against the backup= arrays"
+    );
+    let mapped: BTreeSet<String> = zone_map()["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        // Emaki's own files; `system_xdg` is the /etc/xdg directory all packages share.
+        .filter(|entry| {
+            entry["on_update"] == "replaced_unless_edited" && entry["owner"] == "emaki_package"
+        })
+        .map(|entry| entry["path"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(mapped, packaged, "emaki map against the backup= arrays");
+}
+
+#[test]
+fn every_etc_file_of_emaki_config_is_on_the_zone_page() {
+    // expected-files.list is emaki-config's file list; package() fails on any difference.
+    if !built_for_default_locations() {
+        return;
+    }
+    let page = zone_page();
+    let mut checked = 0;
+    for path in include_str!("../../../packaging/emaki-config/expected-files.list")
+        .lines()
+        .filter(|path| path.starts_with("/etc/"))
+    {
+        let parts: Vec<&str> = path.split('/').collect();
+        assert!(
+            page["package"].iter().any(|pattern| glob(pattern, &parts)),
+            "{path} is not in the package zone of docs/ZONES.md"
+        );
+        checked += 1;
+    }
+    assert!(checked >= 10, "only {checked} files compared");
+}
+
+#[test]
+fn the_snapshot_boot_hook_is_a_file_of_emaki_config() {
+    // emaki-config ships the hook in mkinitcpio's own directory; the installer writes no
+    // copy into /etc/initcpio, so the map names exactly the packaged files, in zone 1.
+    if !built_for_default_locations() {
+        return;
+    }
+    let shipped: BTreeSet<String> =
+        include_str!("../../../packaging/emaki-config/expected-files.list")
+            .lines()
+            .filter(|path| path.contains("/initcpio/"))
+            .map(str::to_owned)
+            .collect();
+    assert_eq!(shipped.len(), 2, "{shipped:?}");
+    let map = zone_map();
+    let mut mapped = BTreeSet::new();
+    for entry in map["entries"].as_array().unwrap() {
+        let Some(path) = entry["path"].as_str().filter(|p| p.contains("/initcpio/")) else {
+            continue;
+        };
+        assert_eq!(
+            (entry["zone"].as_str(), entry["owner"].as_str()),
+            (Some("package"), Some("emaki_package")),
+            "{entry}"
+        );
+        mapped.insert(path.to_owned());
+    }
+    assert_eq!(
+        mapped, shipped,
+        "emaki map against emaki-config's file list"
+    );
+}
+
+#[test]
+fn every_map_path_sits_in_its_own_zone_on_the_zone_page() {
+    if !built_for_default_locations() {
+        return;
+    }
+    let page = zone_page();
+    assert_eq!(
+        page.keys().copied().collect::<Vec<_>>(),
+        ["managed", "package", "yours"]
+    );
+    assert!(
+        page.values().all(|patterns| patterns.len() >= 3),
+        "{page:?}"
+    );
+    let out = Command::new(env!("CARGO_BIN_EXE_emaki"))
+        .env_clear()
+        .env("HOME", "/zones-home")
+        .args(["map", "--json"])
+        .output()
+        .unwrap();
+    let map: Value = serde_json::from_slice(&out.stdout).unwrap();
+    let mut checked = 0;
+    for entry in map["entries"].as_array().unwrap() {
+        // Planned locations do not exist yet, so the page does not describe them.
+        if entry["lifecycle"] == "planned" {
+            continue;
+        }
+        let path = entry["path"].as_str().unwrap();
+        let path = path
+            .strip_prefix("/zones-home/")
+            .map_or(path.to_owned(), |rest| format!("~/{rest}"));
+        let parts: Vec<&str> = path.split('/').collect();
+        let zones: Vec<&str> = page
+            .iter()
+            .filter(|(_, patterns)| patterns.iter().any(|p| listed(p, &parts)))
+            .map(|(zone, _)| *zone)
+            .collect();
+        assert_eq!(zones, [entry["zone"].as_str().unwrap()], "{path}");
+        checked += 1;
+    }
+    assert!(checked >= 40, "only {checked} entries compared");
 }
 
 #[test]

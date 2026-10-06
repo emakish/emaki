@@ -11,6 +11,9 @@ Scope {
     property var entries: []
     readonly property string statePath: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/emaki/notifications.json"
     property bool restored: false
+    // A file written by a newer shell (it outlives a system rollback in /home): its format is
+    // unknown here, so it is neither read nor overwritten during this run.
+    property bool foreign: false
     onEntriesChanged: if (restored)
         saveTimer.restart()
     onDndChanged: if (restored)
@@ -18,7 +21,9 @@ Scope {
     Component.onCompleted: restore()
     function restore(): void {
         try {
-            const saved = JSON.parse(stateFile.text() || "{}");
+            const file = JSON.parse(stateFile.text() || "{}");
+            store.foreign = file.version !== undefined && file.version !== 1;
+            const saved = store.foreign ? {} : file;
             store.dnd = saved.dnd === true;
             store.entries = (Array.isArray(saved.entries) ? saved.entries : []).filter(e => e && typeof e.summary === "string" && typeof e.time === "number").slice(0, 200).map(e => ({
                         id: store.systemId--,
@@ -45,16 +50,17 @@ Scope {
     Timer {
         id: saveTimer
         interval: 500
-        onTriggered: stateFile.setText(JSON.stringify({
-            version: 1,
-            dnd: store.dnd,
-            entries: store.entries.map(e => ({
-                        app: e.app,
-                        summary: e.summary,
-                        body: e.body,
-                        time: e.time
-                    }))
-        }))
+        onTriggered: if (!store.foreign)
+            stateFile.setText(JSON.stringify({
+                version: 1,
+                dnd: store.dnd,
+                entries: store.entries.map(e => ({
+                            app: e.app,
+                            summary: e.summary,
+                            body: e.body,
+                            time: e.time
+                        }))
+            }))
     }
     property var expanded: ({})
     property double now: Date.now()
@@ -155,12 +161,19 @@ Scope {
                 actions: [],
                 deadline: 0
             }
-        ].concat(entries).slice(0, 200);
+        ].concat(entries);
+        if (entries.length > 200)
+            dismiss(entries.slice(200).map(e => e.id));
         arrived(id);
         return id;
     }
     function systemBattery(percent: int): void {
         local("Battery low", percent + "% left — plug in soon.", "");
+    }
+    // The sleep guard's policy names (scripts/emaki-sleep-guard). Only what the policy is
+    // known to have done: the guard does not report whether its second attempt locked.
+    function systemSleepLock(policy: string): void {
+        local("Screen lock", policy === "end-session" ? "Emaki could not lock the screen before sleep, so it ended the session." : policy === "end-session-failed" ? "Emaki could not lock the screen before sleep and could not end the session." : policy === "sleep-relock" ? "Emaki could not lock the screen before sleep. It tried again after waking." : policy === "stay-awake" ? "Emaki could not lock the screen when sleep was requested." : "Emaki could not lock the screen before sleep.", "");
     }
     function dismiss(ids: var): void {
         const removed = entries.filter(e => ids.includes(e.id));

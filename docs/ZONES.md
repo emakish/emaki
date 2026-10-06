@@ -1,0 +1,140 @@
+# Who owns which file
+
+Every file Emaki puts on a computer belongs to one of three zones. The
+zone says who changes the file, how, and what an Emaki update does to it.
+
+1. Package zone. Files of the Emaki packages.
+   On update: replaced. An edit there is lost without a warning.
+2. Managed settings. Settings changed with `emaki settings`.
+   On update: never touched.
+   NOT CONNECTED YET: in this release `emaki settings` does not change
+   your settings or your session (see zone 2).
+3. Your zone. Your files in your home, and the machine's own settings.
+   On update: never written by Emaki in your home.
+
+Change things in zone 3. Zone 1 is for reading.
+
+
+## 1. Package zone
+
+Owner: the Emaki packages, installed and updated by pacman.
+How to change: not by hand. Override in your own file instead (zone 3).
+History: none.
+
+Files that an update replaces whole:
+
+- /usr/share/emaki/**  (niri defaults, shell, themes, wallpaper)
+- /usr/bin/emaki*, /usr/bin/niri-emaki-session
+- Emaki units under /usr/lib/systemd/**, and /usr/lib/emaki*
+- /usr/share/libalpm/hooks/*emaki*, /usr/share/libalpm/scripts/emaki-*
+- /usr/share/doc/emaki/**  (this page)
+- /usr/lib/initcpio/{hooks,install}/emaki-snapshot-fstab  (a boot hook
+  for starting a snapshot from the boot menu)
+- /etc/skel/.config/{kitty,qt6ct,wpaperd}/*  (templates that are
+  copied into the home of a new account; see zone 3)
+
+Files in /etc that pacman protects. If you never edited one, an update
+replaces it. If you edited it and the package version did not change,
+yours stays. If you edited it and the package changed it too, yours
+stays and the new one is saved next to it as `<file>.pacnew`; pacman
+prints a warning (see "HANDLING CONFIG FILES" in `man pacman`):
+
+- /etc/niri/config.kdl
+- /etc/xdg/mimeapps.list, /etc/xdg/kdeglobals, /etc/xdg/dolphinrc,
+  /etc/xdg/qt6ct/qt6ct.conf, /etc/xdg/menus/emaki-applications.menu,
+  /etc/xdg/xdg-desktop-portal/niri-portals.conf,
+  /etc/xdg/fastfetch/config.jsonc, /etc/xdg/hypr/hyprlock.conf
+- /etc/pam.d/emaki-lock, /etc/pacman.d/emaki-mirrorlist
+
+Editing these needs sudo. A file of your own in zone 3 is the better
+place for a change.
+
+Files of other packages that an Emaki hook adjusts after every update
+of the package named:
+
+- /etc/grub.d/10_linux (grub, emaki-config): one line, the menu title.
+- /etc/os-release (emaki-config, systemd): a link to
+  /usr/lib/emaki/os-release.
+
+
+## 2. Managed settings
+
+NOT CONNECTED YET. In this release `emaki settings` works only in a
+separate test profile (`--profile-root`). It does not read or change
+your own settings and does not change the running session. Until it is
+connected, change settings in your own files (zone 3).
+
+Owner: Emaki, on your command.
+How to change: only with `emaki settings`, never by hand.
+On update: never touched. A changed Emaki default reaches every
+setting you have not set yourself.
+
+- ~/.config/emaki/settings.toml  (the settings you set; not created in
+  this release)
+- ~/.local/state/emaki/generations/**, ~/.local/state/emaki/history/**
+  (files built from it, and the record of changes)
+
+The shell keeps a few choices of its own, changed by clicking in the
+shell (dock, night light, the welcome window). They are in this zone,
+but they are not in the `emaki settings` history and have no undo:
+
+- ~/.local/state/emaki/{dock,apps,recent,notifications,night-light,
+  welcome}.json
+
+
+## 3. Your zone
+
+Owner: you. Emaki never writes these files in your home.
+How to change: any way you like.
+History: yours to keep; a system snapshot does not cover your home.
+
+Your files:
+
+- ~/.config/niri/config.kdl  Your niri config. The installer may have
+  created it with your keyboard layout; after that it is only yours. If
+  you write one, its first line must be
+  `include "/usr/share/emaki/niri/default.kdl"`.
+- ~/.config/emaki/niri-emaki.kdl  Read after everything else in the
+  "niri (Emaki)" session, if it exists.
+- ~/.config/kitty/kitty.conf, ~/.config/qt6ct/qt6ct.conf,
+  ~/.config/wpaperd/config.toml  Copied from /etc/skel when your account
+  was made; they only point at Emaki's files in zone 1.
+- ~/.config/mimeapps.list  Your default applications.
+- ~/.config/fuzzel/fuzzel.ini, ~/.config/hypr/hyprlock.conf  If one of
+  these exists, it replaces Emaki's file of the same name whole.
+- everything else in your home.
+
+The machine's own settings, written once by the installer from your
+answers. Emaki packages do not own them and an update does not replace
+them; you change them with sudo or with the system tool (`localectl`,
+`timedatectl`):
+
+- /etc/vconsole.conf, /etc/locale.conf, /etc/locale.gen,
+  /etc/localtime, /etc/hostname, /etc/conf.d/wireless-regdom
+- /etc/fstab, /etc/default/grub, /boot/grub/grub.cfg,
+  /etc/mkinitcpio.conf, /etc/mkinitcpio.d/*.preset,
+  /etc/cryptsetup-keys.d/*
+- /etc/snapper/configs/root, /etc/default/grub-btrfs/config
+- /etc/sudoers.d/10-wheel, /etc/systemd/zram-generator.conf
+- the [emaki] section of /etc/pacman.conf
+- /etc/initcpio/{hooks,install}/emaki-snapshot-fstab, only where the
+  Emaki 0.1.2 installer wrote them (btrfs installs): mkinitcpio uses
+  these copies instead of the hook in zone 1.
+
+
+## How your niri config meets Emaki's
+
+Your niri file is read after Emaki's defaults, so it wins where niri
+lets a later setting win:
+
+- A bind on the same keys replaces Emaki's bind.
+- Gaps and other `layout` values replace Emaki's one by one.
+- A `touchpad { }` block replaces Emaki's touchpad block whole.
+- An `xkb { }` block sets your keyboard layouts. With it, your session
+  no longer follows the system keyboard layouts (`localectl`).
+- An `output` block sets up a monitor; Emaki ships none. If two blocks
+  name the same monitor, niri uses the first one it reads.
+
+What your file cannot do: remove an Emaki bind, autostart
+(`spawn-at-startup`), window rule or workspace. A bind can only be
+overridden with one of your own.

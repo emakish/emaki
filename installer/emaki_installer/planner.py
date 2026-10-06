@@ -3,13 +3,16 @@ import copy
 from dataclasses import dataclass, field
 import hashlib
 import json
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 import re
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .constants import BTRFS_OPTIONS, GIB, MIB, MIN_DISK, SUBVOLUMES
+from . import inventory as alongside
 from .errors import Code, require
+from .latin_layouts import CONSOLE_CHARS, is_latin
+from .render import keyboard_summary, unlock_layout
 
 
 @dataclass
@@ -26,6 +29,12 @@ class Partition:
     uuid: str | None = None
     partuuid: str | None = None
     existing_subvolumes: list | None = None
+    mapper: str | None = None
+    luks_uuid: str | None = None
+
+    @property
+    def device(self):
+        return self.mapper or self.path
 
     @property
     def options(self):
@@ -42,6 +51,16 @@ class Plan:
     summary: list[str]
     warnings: list[dict]
     fingerprint: str
+    swap_bytes: int = 0
+
+    @property
+    def encrypted(self):
+        return self.config['encryption'] != 'none'
+
+    @property
+    def disk_password(self):
+        return (self.config['user']['password'] if self.config['encryption'] == 'account'
+                else self.config.get('disk_password', ''))
 
     @property
     def root(self):
@@ -62,9 +81,68 @@ class Plan:
         return sorted(rows, key=lambda row: (len(PurePosixPath(row[1]).parts), row[1]))
 
 
+# Every user and group name the installed system already has: `useradd` runs
+# after the disk is erased and must not meet an existing name. Collected from
+# usr/lib/sysusers.d/*.conf (u, u!, g) of every package in the 0.1.2 ISO's
+# offline repository plus filesystem's passwd and group; `live` is the live
+# session's user. Keep sorted; extend when the package set grows.
+# Whether the first (default) layout must type Latin letters: the login screen and the
+# launcher start in it, and a non-Latin first layout types no login name or URL until the
+# person switches. Off: whether to enforce the rule is not decided yet.
+REQUIRE_LATIN_FIRST = False
+
+RESERVED_LOGINS = (
+    'adm', 'alpm', 'audio', 'avahi', 'bin', 'brlapi', 'brltty', 'clock', 'cups', 'daemon',
+    'dbus', 'dhcpcd', 'disk', 'dnsmasq', 'emaki-install', 'empower', 'flatpak', 'floppy', 'ftp',
+    'fwupd', 'games', 'greeter', 'http', 'input', 'kmem', 'kvm', 'live', 'lock', 'log', 'lp',
+    'mail', 'mem', 'named', 'nbd', 'network', 'nobody', 'openvpn', 'optical', 'partimag',
+    'passim', 'pcscd', 'polkitd', 'power', 'proc', 'render', 'rfkill', 'root', 'rpc', 'rpcuser',
+    'saned', 'scanner', 'seat', 'sgx', 'smmsp', 'storage', 'sys', 'systemd-coredump',
+    'systemd-imds', 'systemd-journal', 'systemd-journal-remote', 'systemd-network', 'systemd-oom',
+    'systemd-resolve', 'systemd-timesync', 'tss', 'tty', 'usbmux', 'users', 'utmp', 'uucp',
+    'uuidd', 'vboxsf', 'video', 'wheel',
+)
+
+
+def console_unsafe_chars(layouts, password):
+    """The characters of the password the text console types differently: each once, in code
+    point order; "" when there are none.
+
+    The login and lock screens start in the first layout, and a character it lacks is typed
+    after switching to the first chosen layout that has it. The text console (Ctrl+Alt+F2, the
+    login without graphics) has only the first layout's console map (latin_layouts.CONSOLE_CHARS
+    says what it types with the same keys). A first layout without a record (not offered by
+    this xkeyboard-config) has the us map, and only its printable ASCII counts as safe. The
+    window repeats this on the You page (installer/ui/Protocol.js consoleUnsafeChars) with the
+    table the worker's hello carries; the password itself is never sent for it.
+    """
+    first = CONSOLE_CHARS.get(layouts[0])
+
+    def safe(char):
+        printable = ' ' <= char <= '~'
+        if first is None:
+            return printable
+        us, differs, more, _, absent = first
+        if not printable:
+            return char in more
+        if char not in differs:
+            return True
+        if not us or char not in absent:
+            return False
+        # Typed in a later layout; its keys must be the English (US) ones the console types.
+        for name in layouts[1:]:
+            later = CONSOLE_CHARS.get(name)
+            if later is None:
+                return True
+            if char not in later[4]:
+                return char not in later[3]
+        return False
+    return ''.join(sorted({char for char in password if not safe(char)}))
+
+
 def fingerprint(disk):
     identity = {k: disk.get(k) for k in ('id', 'path', 'size_bytes', '_sector_size',
-                                        '_identity', '_pttype')}
+                                        '_identity', '_pttype', '_fs', 'closed_encrypted')}
     identity['partitions'] = [{k: p.get(k) for k in
                               ('id', 'path', 'number', 'uuid', 'fs', 'size_bytes',
                                'start_bytes', 'esp', '_subvolumes')}
@@ -72,16 +150,35 @@ def fingerprint(disk):
     return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
 
 
+def alongside_fingerprint(disk):
+    evidence = {'disk': fingerprint(disk), 'parts': [{k: p.get(k) for k in
+                ('id', 'shrink', '_shrink_probe', '_gpt', '_esp_free_bytes', '_efi_loaders', '_partuuid', '_parttype', '_partlabel')}
+                for p in disk['partitions']]}
+    return hashlib.sha256(json.dumps(evidence, sort_keys=True).encode()).hexdigest()
+
+
 def validate_config(value):
     require(isinstance(value, dict), Code.BAD_CONFIG, 'Config must be an object.')
     c = copy.deepcopy(value)
-    allowed = {'mode', 'disk_id', 'fs', 'mounts', 'shrink_bytes', 'hostname', 'timezone',
-               'layouts', 'user', 'repo_server', 'online_update', 'scale_guess'}
+    allowed = {'mode', 'disk_id', 'partition_id', 'fs', 'mounts', 'shrink_bytes', 'hostname', 'timezone',
+               'layouts', 'user', 'repo_server', 'online_update', 'scale_guess', 'software',
+               'encryption', 'disk_password', 'hibernation', 'confirmed_encrypted'}
     require(not (set(c) - allowed), Code.BAD_CONFIG, 'Unknown config fields.')
     require(c.get('mode') in ('erase', 'manual', 'alongside'), Code.BAD_CONFIG, 'Invalid mode.')
+    if c['mode'] == 'alongside':
+        alongside.require_verified()  # Off by default; refused before any disk is looked at.
     require(isinstance(c.get('disk_id'), str), Code.BAD_CONFIG, 'A disk ID is required.')
     if c['mode'] != 'manual':
         require(c.get('fs') in ('btrfs', 'ext4'), Code.BAD_CONFIG, 'Choose btrfs or ext4.')
+    if c['mode'] == 'alongside':
+        require(isinstance(c.get('partition_id'), str) and type(c.get('shrink_bytes')) is int,
+                Code.BAD_CONFIG, 'Alongside requires partition_id and integer shrink_bytes (bytes freed for Emaki).')
+    confirmations = c.setdefault('confirmed_encrypted', [])
+    require(isinstance(confirmations, list) and all(
+        isinstance(row, dict) and set(row) == {'path', 'type', 'uuid'}
+        and all(isinstance(row[key], str) and row[key] for key in row)
+        and row['type'] in alongside.ENCRYPTED_TYPES for row in confirmations),
+        Code.BAD_CONFIG, 'Encrypted-volume confirmations require a device path, encryption type and UUID.')
     c.setdefault('hostname', 'emaki')
     require(isinstance(c['hostname'], str) and re.fullmatch(
         r'[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?', c['hostname']),
@@ -99,22 +196,57 @@ def validate_config(value):
             and all(isinstance(x, str) and re.fullmatch(r'[a-z][a-z0-9_]{0,19}', x)
                     for x in c['layouts']) and len(set(c['layouts'])) == len(c['layouts']),
             Code.BAD_CONFIG, 'Supply one to four distinct XKB layouts.')
+    if REQUIRE_LATIN_FIRST:
+        require(is_latin(c['layouts'][0]), Code.BAD_CONFIG,
+                'The default (first) layout must type Latin letters; a non-Latin layout can be second.')
     u = c.get('user')
     require(isinstance(u, dict) and not (set(u) - {'name', 'login', 'password'}),
             Code.BAD_CONFIG, 'Invalid account.')
     login = u.get('login')
     require(isinstance(login, str) and re.fullmatch(r'[a-z_][a-z0-9_-]{0,31}', login)
-            and login not in ('root', 'greeter', 'live', 'nobody'),
+            and login not in RESERVED_LOGINS,
             Code.BAD_CONFIG, 'Invalid user login.')
     u.setdefault('name', login)
     require(isinstance(u['name'], str) and len(u['name']) <= 128
             and not any(ord(x) < 32 or x in ':\x7f' for x in u['name']),
             Code.BAD_CONFIG, 'Invalid full name.')
+    # No key types a control character into the login screen's or GRUB's password prompt (Tab
+    # moves the focus, Return submits): a password holding one (U+0000-U+001F, U+007F) could
+    # only have been pasted. installer/ui/Protocol.js accountErrors has the same rule.
     password = u.get('password')
     require(isinstance(password, str) and 1 <= len(password.encode()) <= 1024
-            and not any(x in password for x in ('\0', '\n', '\r')),
-            Code.BAD_CONFIG, 'Password must be nonempty and contain no line breaks or NUL.')
+            and not any(ord(x) < 32 or x == '\x7f' for x in password),
+            Code.BAD_CONFIG, 'Password must be nonempty and contain no control characters (line breaks, tabs).')
+    require(c.get('encryption') in ('none', 'account', 'separate'), Code.BAD_CONFIG,
+            'Choose whether to encrypt the disk and which password to use.')
+    if c['encryption'] == 'separate':
+        password = c.get('disk_password')
+        require(isinstance(password, str) and 1 <= len(password.encode()) <= 1024
+                and not any(ord(x) < 32 or x == '\x7f' for x in password), Code.BAD_CONFIG,
+                'Disk password must be nonempty and contain no control characters (line breaks, tabs).')
+    else:
+        require(not c.get('disk_password'), Code.BAD_CONFIG,
+                'A separate disk password is only used with that password choice.')
+    if c['encryption'] != 'none':
+        # The passphrase is typed at GRUB's prompt, which reads US key positions whatever the
+        # chosen layouts are (keyboard contract K5: unlock_layout(layouts, 'grub') is 'us'), so
+        # it must be printable ASCII. The window says "Startup uses an English (US) keyboard".
+        unlock = unlock_layout(c['layouts'], 'grub')
+        disk_password = c['user']['password'] if c['encryption'] == 'account' else c['disk_password']
+        require(unlock == 'us' and disk_password.isascii()
+                and disk_password.isprintable(), Code.BAD_CONFIG,
+                'The startup password must use characters available on an English (US) keyboard.')
+        # The account password is also typed at the login screen, which starts in the first
+        # layout, while GRUB reads unlock_layout(layouts, 'grub'): the window offers it for the
+        # disk only when the two agree (InstallerController.accountUnlocks).
+        require(c['encryption'] != 'account' or c['layouts'][0] == unlock, Code.BAD_CONFIG,
+                f"One password for everything is not available: the login screen starts in {c['layouts'][0]}, "
+                f'but the disk is unlocked at startup in {unlock}.')
+    c.setdefault('hibernation', False)
+    require(type(c['hibernation']) is bool, Code.BAD_CONFIG, 'hibernation must be boolean.')
     c.setdefault('online_update', True)
+    c.setdefault('software', 'rich')
+    require(c['software'] in ('rich', 'minimal'), Code.BAD_CONFIG, 'Choose Rich or Minimal software.')
     require(type(c['online_update']) is bool, Code.BAD_CONFIG, 'online_update must be boolean.')
     server = c.get('repo_server')
     if server is not None:
@@ -132,12 +264,13 @@ def validate_config(value):
 
 
 def validate_disk(disk, inventory):
-    require(inventory.get('uefi') is True, Code.UEFI_REQUIRED, 'UEFI boot is required.')
+    require(inventory.get('uefi') is True, Code.UEFI_REQUIRED,
+            '64-bit UEFI is required.' if inventory.get('uefi_bits') not in (None, 64) else 'UEFI boot is required.')
     require(inventory.get('_boot_medium_known') is True, Code.UNSAFE_DISK,
             'Cannot identify the live boot medium; installation is refused.')
     require(not disk['is_boot_medium'], Code.BOOT_MEDIUM, 'The live boot medium cannot be a target.')
     require(not disk.get('_busy', True) and not any(p.get('mountpoint') for p in disk['partitions']),
-            Code.DISK_BUSY, 'The target or one of its partitions is mounted, held, or in use.')
+            Code.DISK_BUSY, disk.get('reason') or 'The target or one of its partitions is mounted, held, or in use.')
     require(not disk.get('_read_only', True), Code.UNSAFE_DISK, 'The target is read-only.')
     require(disk['size_bytes'] >= MIN_DISK, Code.DISK_TOO_SMALL, 'The disk must be at least 24 GiB.')
     require(disk.get('_sector_size') in (512, 4096), Code.UNSAFE_DISK, 'Unsupported sector geometry.')
@@ -158,10 +291,58 @@ def erase_partitions(size, fs):
 
 def shrink_bounds(new_size, min_bytes, old_size, disk_free=0):
     """Bounds only; never constitutes permission to resize an NTFS volume."""
-    require(type(new_size) is int and min_bytes + GIB <= new_size < old_size,
-            Code.SHRINK_BOUNDS, 'Windows must retain its minimum size plus 1 GiB.')
-    require(old_size - new_size + disk_free >= MIN_DISK,
-            Code.SHRINK_BOUNDS, 'At least 24 GiB must remain for Emaki.')
+    require(type(new_size) is int and min_bytes + alongside.WINDOWS_RESERVE <= new_size < old_size,
+            Code.SHRINK_BOUNDS, 'Windows must retain its minimum size plus 2 GiB.')
+    # Unrelated pre-existing free space cannot make the resized extent safe.
+    require(old_size - new_size >= alongside.MIN_ROOT, Code.SHRINK_BOUNDS,
+            'At least 32 GiB must be freed from Windows for Emaki.')
+
+
+def alongside_partitions(c, disk):
+    require(disk.get('_pttype') == 'gpt', Code.SHRINK_BOUNDS, 'Alongside requires GPT.')
+    candidates = [p for p in disk['partitions'] if p['fs'] in ('ntfs', 'ntfs3')]
+    p = next((p for p in candidates if p['id'] == c['partition_id']), None)
+    require(p is not None, Code.SHRINK_BOUNDS, 'Selected Windows NTFS partition is not on this disk.')
+    require(all(p['size_bytes'] > other['size_bytes'] for other in candidates if other is not p),
+            Code.SHRINK_BOUNDS, 'Only an unambiguous largest Windows/NTFS partition can be offered.')
+    offer = p.get('shrink') or {}
+    require(offer and not offer.get('reason'), Code.SHRINK_BOUNDS,
+            offer.get('reason') or 'No verified NTFS shrink bounds are available.')
+    require(p.get('_geometry_known') is True and not p.get('_read_only') and not p.get('_busy'),
+            Code.SHRINK_BOUNDS, 'Windows geometry is unknown or the partition is busy/read-only.')
+    verified = alongside.shrink_offer(offer['min_bytes'], p['size_bytes'], p['start_bytes'])
+    freed = c['shrink_bytes']
+    require(type(freed) is int and freed % MIB == 0 and alongside.MIN_ROOT <= freed <= verified['max_free_bytes']
+            and freed <= offer.get('max_free_bytes', 0), Code.SHRINK_BOUNDS,
+            'Choose a whole-MiB Emaki size within the verified shrink bounds (at least 32 GiB).')
+    new_size = p['size_bytes'] - freed
+    shrink_bounds(new_size, offer['min_bytes'], p['size_bytes'])
+    metadata = p.get('_gpt')
+    sector = disk['_sector_size']
+    require(metadata and metadata['start'] * sector == p['start_bytes']
+            and (metadata['end'] + 1) * sector == p['start_bytes'] + p['size_bytes']
+            and metadata['guid'] == str(p.get('_partuuid')).lower()
+            and metadata['type'] == p.get('_parttype') and metadata['name'] == p.get('_partlabel'), Code.SHRINK_BOUNDS,
+            'Windows GPT identity or geometry could not be verified.')
+    esps = [part for part in disk['partitions'] if part['esp']]
+    require(len(esps) == 1 and esps[0]['fs'] == 'vfat', Code.ESP_SPACE,
+            'Alongside requires exactly one existing FAT32 ESP on the selected disk.')
+    esp = esps[0]
+    require(esp.get('_esp_free_bytes') is not None and esp['_esp_free_bytes'] >= 32 * MIB,
+            Code.ESP_SPACE, 'ESP needs at least 32 MiB of verified free space; it will never be formatted.')
+    require('EFI/Microsoft/Boot/bootmgfw.efi' in esp.get('_efi_loaders', {}), Code.SHRINK_BOUNDS,
+            'No verified Microsoft EFI loader exists on this disk; automatic Windows boot setup is unavailable.')
+    occupied = {part['number'] for part in disk['partitions']}
+    number = next((n for n in range(1, 129) if n not in occupied), None)
+    require(number is not None, Code.SHRINK_BOUNDS, 'No free GPT partition entry is available.')
+    start, end = p['start_bytes'] + new_size, p['start_bytes'] + p['size_bytes']
+    require(all(other is p or end <= other['start_bytes'] or start >= other['start_bytes'] + other['size_bytes']
+                for other in disk['partitions']), Code.SHRINK_BOUNDS, 'Freed extent overlaps another partition.')
+    return [Partition(esp['path'], esp['number'], esp['start_bytes'], esp['size_bytes'], 'vfat', False,
+                      '/efi', True, uuid=esp['uuid'], partuuid=esp.get('_partuuid')),
+            Partition(None, number, start, freed, c['fs'], True,
+                      None if c['fs'] == 'btrfs' else '/',
+                      subvolumes=SUBVOLUMES.copy() if c['fs'] == 'btrfs' else {})]
 
 
 def _mountpoint(mp):
@@ -206,6 +387,10 @@ def manual_partitions(rows, disk):
                 'Use a simple top-level btrfs subvolume name.')
         require(mp != '/' or fs in ('btrfs', 'ext4'), Code.MANUAL_LAYOUT,
                 'Root must be btrfs or ext4.')
+        # FAT has no owners or modes; creating the account in /home would fail
+        # after root has already been formatted.
+        require(fs != 'vfat' or not (mp == '/home' or mp.startswith('/home/')), Code.MANUAL_LAYOUT,
+                '/home cannot be FAT; choose ext4 or btrfs.')
         require(mp != '/' or p['size_bytes'] >= 20 * GIB, Code.ROOT_TOO_SMALL,
                 'Root partition must be at least 20 GiB.')
         if mp == '/efi':
@@ -260,27 +445,100 @@ def manual_partitions(rows, disk):
     return sorted(result, key=lambda p: not (p.mountpoint == '/' or '/' in p.subvolumes.values()))
 
 
+def xkb_rules():
+    try:
+        return Path('/usr/share/X11/xkb/rules/evdev.lst').read_text()
+    except OSError:
+        return ''
+
+
+def validate_encrypted_confirmation(config, disk):
+    """Require current identity for each locked volume this plan destroys."""
+    mode = config['mode']
+    if mode == 'alongside':
+        return
+    rows = config.get('mounts', [])
+    formatted = ({row.get('partition_id') for row in rows
+                  if isinstance(row, dict) and row.get('format') is True}
+                 if isinstance(rows, list) else set())
+    paths = {part['path'] for part in disk['partitions'] if part['id'] in formatted}
+    for volume in disk.get('closed_encrypted', []):
+        if mode != 'erase' and volume['path'] not in paths:
+            continue
+        warning = volume['warning']
+        require(bool(volume.get('uuid')), Code.ENCRYPTED_CONFIRMATION,
+                alongside.unconfirmed_identity_warning(volume['path']))
+        identity = {key: volume[key] for key in ('path', 'type', 'uuid')}
+        require(identity in config.get('confirmed_encrypted', []), Code.ENCRYPTED_CONFIRMATION, warning)
+
+
 def make_plan(config, inventory):
     c = validate_config(config)
     disk = next((d for d in inventory['disks'] if d['id'] == c['disk_id']), None)
     require(disk is not None, Code.DISK_NOT_FOUND, 'Selected disk no longer exists.')
     validate_disk(disk, inventory)
-    require(c['mode'] != 'alongside', Code.UNSUPPORTED_MODE,
-            'Windows alongside installation is not available yet; no NTFS resize is performed.')
-    parts = (erase_partitions(disk['size_bytes'], c['fs']) if c['mode'] == 'erase'
-             else manual_partitions(c.get('mounts'), disk))
+    validate_encrypted_confirmation(c, disk)
+    if c['mode'] == 'alongside':
+        parts = alongside_partitions(c, disk)
+    else:
+        parts = (erase_partitions(disk['size_bytes'], c['fs']) if c['mode'] == 'erase'
+                 else manual_partitions(c.get('mounts'), disk))
+    swap_bytes = storage_layout(c, parts, inventory)
     summary = [f"{c['mode'].capitalize()} installation on {disk['path']} ({disk['model']})."]
     if c['mode'] == 'erase':
         summary.append('Erase all partitions and create a new GPT partition table.')
+    if c['mode'] == 'alongside':
+        windows = next(p for p in disk['partitions'] if p['id'] == c['partition_id'])
+        keep = windows['size_bytes'] - c['shrink_bytes']
+        summary += [f"Windows keeps {keep / 10**9:.2f} GB, Emaki gets {c['shrink_bytes'] / 10**9:.2f} GB; back up your files first.",
+                    'Shrink the Windows filesystem and its partition end only; preserve its start, GUID, type, name and files.',
+                    'Create and format Emaki root immediately after Windows; preserve all other partitions and reuse the ESP without formatting.',
+                    'Preserve Microsoft and foreign fallback EFI loaders; add Windows Boot Manager to GRUB; Emaki stays the default.',
+                    'Windows will run a consistency check (chkdsk) on its first boot after resizing. Let it finish.']
     for p in parts:
         dest = ', '.join(f'{name} → {mp}' for name, mp in p.subvolumes.items()) or p.mountpoint
         summary.append(f"Partition {p.number}: {'format' if p.format else 'preserve'} {p.fs}, {p.size / GIB:.2f} GiB; {dest}.")
-    summary.extend(['GRUB, linux + linux-lts; /boot inside root; zram only; no encryption.',
+    summary.extend(['GRUB, linux + linux-lts; /boot inside root; zram with higher swap priority.',
+                    {'none': 'Encryption: off.', 'account': 'Encryption: LUKS2 root, account password.',
+                     'separate': 'Encryption: LUKS2 root, separate disk password.'}[c['encryption']],
+                    (f'Hibernation: reserve {swap_bytes:,} bytes ({swap_bytes / GIB:.2f} GiB), equal to RAM.'
+                     if swap_bytes else 'Hibernation: off.'),
                     f"Account: {c['user']['login']}; hostname: {c['hostname']}; timezone: {c['timezone']}.",
+                    keyboard_summary(c['layouts'], xkb_rules()),
+                    'Software: ' + ('Rich — desktop apps, office, email, media and utilities.'
+                                   if c['software'] == 'rich' else 'Minimal — Dolphin, Firefox and kitty.'),
                     'Packages are installed from the signed offline USB repository.'])
     warnings = []
+    if swap_bytes and c['encryption'] == 'none':
+        warnings.append({'code': 'unencrypted_memory', 'msg':
+                         'Hibernation writes memory, including passwords, to the disk unencrypted.'})
+    if c['encryption'] != 'none':
+        warnings.append({'code': 'encryption_scope', 'msg':
+                         'The root partition is encrypted. The EFI partition and any separate data partitions stay unencrypted.'})
     if c['mode'] == 'manual':
         warnings.append({'code': 'preserved_files', 'msg': 'Unformatted filesystems keep data; installation still writes system and account files.'})
     if disk.get('_id_fallback'):
         warnings.append({'code': 'unstable_id', 'msg': 'No by-id name is available; device identity and geometry will be rechecked.'})
-    return Plan(c, copy.deepcopy(disk), parts, summary, warnings, fingerprint(disk))
+    return Plan(c, copy.deepcopy(disk), parts, summary, warnings,
+                alongside_fingerprint(disk) if c['mode'] == 'alongside' else fingerprint(disk), swap_bytes)
+
+
+def storage_layout(config, parts, inventory):
+    """Apply root storage options after any layout builder, including alongside."""
+    root = next(p for p in parts if p.mountpoint == '/' or '/' in p.subvolumes.values())
+    encrypted = config['encryption'] != 'none'
+    require(not encrypted or root.format, Code.MANUAL_LAYOUT,
+            'Encrypting root requires formatting it; existing files cannot be encrypted in place.')
+    size = inventory.get('memory_bytes', 0) if config['hibernation'] else 0
+    require(not config['hibernation'] or (type(size) is int and size > 0 and size % 4096 == 0),
+            Code.BAD_CONFIG, 'Cannot determine RAM size for hibernation.')
+    require(root.size >= 20 * GIB + size + (16 * MIB if encrypted else 0), Code.ROOT_TOO_SMALL,
+            'Root needs 20 GiB plus the RAM-sized hibernation file and encryption header.')
+    if size:
+        require(not any((p.mountpoint or '').startswith('/swap/') or p.mountpoint == '/swap' or '/swap' in p.subvolumes.values()
+                        or any(mp.startswith('/swap/') for mp in p.subvolumes.values()) for p in parts),
+                Code.MANUAL_LAYOUT, '/swap is reserved for hibernation.')
+        if root.fs == 'btrfs':
+            require('@swap' not in root.subvolumes, Code.MANUAL_LAYOUT, '@swap is reserved for hibernation.')
+            root.subvolumes['@swap'] = '/swap'
+    return size

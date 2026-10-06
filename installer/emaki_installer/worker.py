@@ -1,5 +1,7 @@
 """Ordered installation phases. All mutations start only after confirmation."""
+import contextlib
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 import re
 import stat
@@ -9,12 +11,106 @@ from urllib.parse import unquote, urlsplit
 
 from . import __version__
 from .arch_backend import Backend, offline_config
-from .constants import LOG, MARKER, PACKAGES, PHASES, TARGET, TEST_PACKAGES, WORK
+from . import inventory as alongside
+from .constants import GRUB_VISIBLE_FONT, LOG, MARKER, PACKAGES, PHASES, TARGET, TEST_PACKAGES, WORK
 from .errors import Code, InstallError, require
+# The inventory's "online": a default route, read again at the end of the installation.
+from .inventory import _online as default_route
 from .planner import make_plan
-from .render import (console_keymap, grub_btrfs_config, grub_defaults, mkinitcpio_config, mkinitcpio_preset, niri_config,
-                     normalize_fstab, snapper_config, verify_grub, wireless_regdom)
-from .runtime import Runner, TargetFiles, cleanup
+from .render import (GRUB_EARLY_MODULES, console_keymap,
+                     grub_btrfs_config, grub_defaults, grub_early_config, grub_image_carries, grub_prefix,
+                     grub_unlock_memdisk, mkinitcpio_config, mkinitcpio_preset, niri_config,
+                     normalize_fstab, snapper_config, vconsole_conf, verify_grub, wireless_regdom)
+from .runtime import Runner, TargetFiles, cleanup, processes_under, safe_log
+
+# Seconds for the optional update's downloads: a captive portal or a dead mirror
+# must not hold the installation. Installing is never limited (never cut in half).
+UPDATE_TIMEOUT = 900
+# A refresh-only -Sy downloads a few MiB of package lists; Cancel is disabled in that phase.
+REFRESH_TIMEOUT = 120
+# The update's pacman configuration without [emaki], used only when that repository
+# alone cannot be reached. arch-chroot bind-mounts the live /run onto the target's
+# /run, so the file has the same path inside the chroot and never reaches the target.
+UPDATE_CONFIG = 'update-pacman.conf'
+# The update's pacman inside the chroot. The snapshot phase has made the root snapper
+# config, and snap-pac would snapshot / around each update transaction while the live
+# root still carries the marker; a rollback to such a snapshot brings the marker back.
+# Snapshot 1 is already the state before the update. snap-pac 3.0.1 skips on this
+# variable, and pacman hands its environment to the hooks (libalpm _alpm_run_chroot).
+UPDATE_PACMAN = ['env', 'SNAP_PAC_SKIP=y', 'pacman']
+# The update's downloads. Through a pipe pacman 7.1 prints ' <file> downloading...' without
+# flushing (src/pacman/callback.c dload_init_event; util.c colon_printf does flush), so the
+# lines arrived in one burst at the end (VM walk run E). Line-buffered, each arrives as its
+# download starts (measured on the host with the same pacman, 7.1.0.r9.g54d9411-2).
+DOWNLOAD_PACMAN = ['env', 'SNAP_PAC_SKIP=y', 'stdbuf', '-oL', 'pacman']
+# emaki-config's snapshot boot hook, as named inside its archive; a btrfs image runs it.
+SNAPSHOT_HOOK = ('usr/lib/initcpio/hooks/emaki-snapshot-fstab', 'usr/lib/initcpio/install/emaki-snapshot-fstab')
+# Sent with `done` when the update's install step failed: pacman may have replaced
+# some packages before it stopped. finish() still rebuilds the boot images.
+PARTIAL_UPDATE = ('The online update stopped part-way; some packages may be newer than others. '
+                  'Run `sudo pacman -Syu` after the first login.')
+# Sent with `done` when the installed system has no package lists (pacman's sync databases):
+# the offline copy leaves none, and its first `pacman -S` fails until they are downloaded.
+NO_PACKAGE_LISTS = 'Run `sudo pacman -Syu` once you are online.'
+# Sent with `done` when the package lists are there but no full upgrade ran: lists newer than
+# the USB's packages make the first `pacman -S` a partial upgrade, which Arch does not support.
+UPGRADE_FIRST = 'Run `sudo pacman -Syu` before installing software.'
+
+
+def process_name(pid):
+    try:
+        return Path(f'/proc/{pid}/comm').read_text().strip()
+    except OSError:
+        return ''
+
+
+def regular_id(value):
+    """A regular account's UID/GID: UID_MIN..UID_MAX (GID_*) of shadow's /etc/login.defs."""
+    return 1000 <= int(value) <= 60000
+
+
+def emaki_unreachable(output):
+    """True when the [emaki] database is the only file pacman failed to fetch while syncing.
+
+    Matches pacman 7.1 (lib/libalpm/dload.c, src/pacman/util.c sync_syncdbs); the
+    Runner's captured output has no line breaks.
+    """
+    failed = set(re.findall(r"error: failed retrieving file '([^']+)' from ", output))
+    return failed == {'emaki.db'} and 'error: failed to synchronize all databases (' in output
+
+
+def without_emaki(text):
+    output, skip = [], False
+    for line in text.splitlines():
+        if re.match(r'^\s*\[', line):
+            skip = line.strip() == '[emaki]'
+        if not skip:
+            output.append(line)
+    return '\n'.join(output).rstrip() + '\n'
+
+
+class DownloadCount:
+    """What pacman says while it downloads, through a pipe with LC_ALL=C (pacman 7.1).
+
+    ':: Synchronizing package databases...' starts the package lists, 'Packages (N) ...'
+    names the transaction, then ' <file> downloading...' starts each package download
+    (signatures are fetched without a line). report(done, total) gets (None, None) for the
+    lists, then (0, N) and each started download.
+    """
+    def __init__(self, report):
+        self.report, self.total, self.started = report, None, 0
+
+    def line(self, text):
+        packages = re.match(r'Packages \((\d+)\) ', text)
+        if text == ':: Synchronizing package databases...':
+            self.total, self.started = None, 0
+            self.report(None, None)
+        elif packages:
+            self.total, self.started = int(packages[1]), 0
+            self.report(0, self.total)
+        elif self.total and self.started < self.total and re.fullmatch(r' \S+ downloading\.\.\.', text):
+            self.started += 1
+            self.report(self.started, self.total)
 
 
 def enable_units(runner, target, units):
@@ -27,7 +123,11 @@ def enable_units(runner, target, units):
         runner.chroot(['systemctl', 'enable', unit], target)
 
 
-def preflight_repo(runner, test_mode=False):
+def software_packages(software='rich'):
+    return PACKAGES + ['mkinitcpio'] + (['emaki-apps'] if software == 'rich' else [])
+
+
+def preflight_repo(runner, test_mode=False, software='rich', *, alongside_mode=False):
     """Resolve the complete transaction without touching the target or live DB."""
     try:
         conf = offline_config()
@@ -38,18 +138,66 @@ def preflight_repo(runner, test_mode=False):
             options = ['--config', str(conf), '--dbpath', str(work / 'db'),
                        '--cachedir', str(work / 'cache'), '--logfile', str(work / 'pacman.log')]
             runner.run(['pacman', '-Sy', '--noconfirm', *options])
-            packages = PACKAGES + ['mkinitcpio'] + (TEST_PACKAGES if test_mode else [])
+            packages = software_packages(software) + (TEST_PACKAGES if test_mode else [])
+            if alongside_mode:
+                packages += ['os-prober', 'ntfs-3g']
             output = runner.run(['pacman', '-Sp', '--print-format', '%l', *options, *packages])
             urls = [line.strip() for line in output.splitlines() if line.startswith('file://')]
             require(urls, Code.OFFLINE_REPO_INCOMPLETE, 'Offline package transaction is empty.')
-            for url in urls:
-                package = Path(unquote(urlsplit(url).path))
+            archives = [Path(unquote(urlsplit(url).path)) for url in urls]
+            for package in archives:
                 require(package.is_file() and package.stat().st_size > 0
                         and Path(str(package) + '.sig').is_file(), Code.OFFLINE_REPO_INCOMPLETE,
                         f'Offline package or signature is missing: {package.name}.')
     except (InstallError, OSError) as exc:
         raise InstallError(Code.OFFLINE_REPO_INCOMPLETE,
-                           'Offline repository preflight failed; disk untouched: ' + str(exc)) from exc
+                           'Offline repository preflight failed' +
+                           (' (Rich software requires emaki-apps)' if software == 'rich' else '') +
+                           '; disk untouched: ' + str(exc)) from exc
+    return archives
+
+
+def verify_packages(runner, packages, progress=None):
+    """Check every archive against its detached signature with the live keyring.
+
+    pacstrap verifies the same files only after the disk has been rewritten.
+    progress(checked, total) follows the check, which takes minutes from a slow USB stick.
+    """
+    for checked, package in enumerate(packages):
+        if progress:
+            progress(checked, len(packages))
+        try:
+            runner.run(['pacman-key', '--verify', str(package) + '.sig', str(package)])
+        except InstallError as exc:
+            raise InstallError(Code.OFFLINE_REPO_INCOMPLETE,
+                               'Offline repository preflight failed; disk untouched: '
+                               f'package signature verification failed: {package.name}.') from exc
+    if progress:
+        progress(len(packages), len(packages))
+
+
+def verify_snapshot_hook(runner, packages):
+    """The resolved emaki-config archive carries the snapshot boot hook a btrfs image needs.
+
+    An ISO assembled with an older emaki-config of the same version has none, and the
+    bootloader phase would find that out only after the disk has been rewritten. The archive
+    is named like every pacman package file, <name>-<pkgver>-<pkgrel>-<arch>.pkg.tar.*;
+    bsdtar (libarchive, a pacman dependency) lists only the named members and fails when
+    one is missing.
+    """
+    failed = 'Offline repository preflight failed; disk untouched: '
+    archives = [package for package in packages if package.name.rsplit('-', 3)[0] == 'emaki-config']
+    require(len(archives) == 1, Code.OFFLINE_REPO_INCOMPLETE,
+            failed + 'no single emaki-config archive in the resolved package set.')
+    try:
+        listed = runner.run(['bsdtar', '-tf', str(archives[0]), *SNAPSHOT_HOOK]).splitlines()
+    except InstallError as exc:
+        if 'Not found in archive' not in exc.output:
+            raise InstallError(Code.OFFLINE_REPO_INCOMPLETE,
+                               failed + f'cannot list {archives[0].name}: {exc.message}') from exc
+        listed = []
+    require(all(member in listed for member in SNAPSHOT_HOOK), Code.OFFLINE_REPO_INCOMPLETE,
+            failed + f'{archives[0].name} has no snapshot boot hook (/{SNAPSHOT_HOOK[0]}, /{SNAPSHOT_HOOK[1]}).')
 
 
 class Worker:
@@ -65,19 +213,50 @@ class Worker:
         self.last_progress = 0
         self.disk_changed = False
         self.update_attempted = False
+        # Whether a limited download ran, whether a download or the refresh at the end synced
+        # the package lists, and whether the update's full upgrade (-Su) completed.
+        self.download_tried = False
+        self.synced = False
+        self.upgraded = False
+        # What the person must know after a successful installation; sent with `done`.
+        self.warnings = []
         self.cleanup_required = False
+        self.kept_home = None
+        self.package_total = None
+        self.installed = 0
 
-    def progress(self, pct):
-        if self.phase != 'copy_packages':
+    def progress(self, pct=None, *, package=None):
+        # Hook "(n/N)" counters restart in every transaction and say nothing about
+        # the copy as a whole; only announced packages drive the bar.
+        if self.phase != 'copy_packages' or package is None:
             return
-        # Multiple pacstrap transactions must never move the displayed bar back.
-        self.phase_pct = max(self.phase_pct, min(99, pct))
+        self.installed += 1
+        if not self.package_total:
+            return
+        # Counted over all pacstrap transactions, so the bar never moves back.
+        self.phase_pct = max(self.phase_pct, min(99, 100 * self.installed / self.package_total))
         now = time.monotonic()
         if now - self.last_progress >= 0.25:
             self.emit('progress', phase=self.phase, phase_pct=self.phase_pct,
                       total_pct=self.completed + PHASES[self.phase] * self.phase_pct / 100,
                       indeterminate=False)
             self.last_progress = now
+
+    def activity(self, name, done=None, total=None):
+        """What a long step of the current phase is doing, as a count for the window.
+
+        name: 'signatures' (the preflight's checks) or 'downloads' (the update's, with no
+        count while pacman downloads the package lists); None ends it, as does the phase's
+        next state event. Signature counts are sent at most four times a second, except the
+        first and the last; a download count with every line, since a download can take
+        minutes and pacman already sends each such line to the log.
+        """
+        now = time.monotonic()
+        if name == 'signatures' and done not in (0, total) and now - self.last_progress < 0.25:
+            return
+        self.last_progress = now
+        self.emit('progress', phase=self.phase, phase_pct=self.phase_pct, total_pct=self.completed,
+                  indeterminate=True, activity={'name': name, 'done': done, 'total': total} if name else None)
 
     def run(self, plan, cancelled):
         started = time.monotonic()
@@ -91,8 +270,24 @@ class Worker:
             fresh = make_plan(plan.config, current)
             require(fresh.fingerprint == plan.fingerprint, Code.DISK_CHANGED,
                     'Disk identity or partition layout changed after the review.')
+            require(fresh.swap_bytes == plan.swap_bytes, Code.DISK_CHANGED,
+                    'RAM size changed after the review; prepare a new installation plan.')
             self.online = current['network']['online']
-            preflight_repo(self.runner, self.test_mode)
+            if self.test_mode:
+                # Checked again in settings(); failing here leaves the disk untouched.
+                keys = Path('/etc/emaki-test/authorized_keys')
+                require(keys.is_file() and keys.stat().st_size > 0, Code.BAD_CONFIG,
+                        'Test mode requires /etc/emaki-test/authorized_keys.')
+            packages = preflight_repo(self.runner, self.test_mode, plan.config.get('software', 'rich'),
+                                      alongside_mode=plan.config['mode'] == 'alongside')
+            # Every byte that pacstrap will install is proven before the first disk write.
+            verify_packages(self.runner, packages,
+                            progress=lambda checked, total: self.activity('signatures', checked, total))
+            if plan.btrfs:
+                # The bootloader phase checks the installed hook again.
+                verify_snapshot_hook(self.runner, packages)
+            # The resolved closure is exactly what the copy phase will announce.
+            self.package_total = len(packages) if isinstance(packages, list) and packages else None
             self.cleanup_required = True
             cleanup(self.runner, [self.target, WORK / 'btrfs-top'], lazy=True)
             self.backend = self.backend_factory(self.api, plan, self.runner, self.target)
@@ -102,8 +297,10 @@ class Worker:
                     raise InstallError(Code.CANCELLED, 'Installation cancelled at a phase boundary; disk changes are not undone.')
                 skipped = ((phase == 'snapshot' and not plan.btrfs) or
                            (phase == 'update' and not (plan.config['online_update'] and self.online)))
+                # Only copy_packages has a counter; the other phases show the busy indicator.
+                counted = phase == 'copy_packages' and bool(self.package_total)
                 self.emit('state', phase=phase, phase_pct=None if skipped else 0,
-                          total_pct=self.completed, indeterminate=False)
+                          total_pct=self.completed, indeterminate=not skipped and not counted)
                 if skipped:
                     self.log(f'{phase}: skipped.')
                 else:
@@ -119,34 +316,76 @@ class Worker:
             failure = InstallError(Code.INTERNAL, f'Installation failed: {type(exc).__name__}: {self.redactor.text(exc)}')
         finally:
             try:
+                problems = []
                 if self.cleanup_required:
-                    cleanup(self.runner, [self.target, WORK / 'btrfs-top'])
-            except Exception as exc:
-                success = False
-                self.log('Cleanup failed: ' + self.redactor.text(exc))
-                failure = InstallError(Code.CLEANUP_FAILED, 'Could not unmount all target filesystems; inspect the log before retrying.')
-            # Drop the password as soon as the account operation/job has finished.
-            plan.config['user']['password'] = ''
+                    try:
+                        # A pacman that outlived its stopped download kept its lock; by now
+                        # every target process was stopped, and no later check would see it.
+                        cleanup(self.runner, [self.target, WORK / 'btrfs-top'],
+                                before_unmount=self.release_pacman_lock)
+                    except Exception as exc:
+                        problems.append(exc)
+                    try:
+                        # The LUKS mapping is closed even when an unmount failed.
+                        if hasattr(self, 'backend') and hasattr(self.backend, 'devices'):
+                            self.backend.devices.close()
+                    except Exception as exc:
+                        problems.append(exc)
+                for problem in problems:
+                    # A full log must not replace the cleanup result.
+                    safe_log(self.log, 'Cleanup failed: ' + self.redactor.text(problem))
+                if problems:
+                    success = False
+                    failure = InstallError(Code.CLEANUP_FAILED, 'Could not unmount all target filesystems; inspect the log before retrying.')
+            finally:
+                # Drop the password as soon as the account operation/job has finished.
+                plan.config['user']['password'] = ''
+                plan.config['disk_password'] = ''
         if failure:
             if failure.code == Code.CANCELLED:
                 self.emit('cancel_ack', disk_changed=self.disk_changed)
+            # Nothing was written yet: the person may fix the cause and try again.
+            # A failed cleanup needs the log inspected first.
+            retryable = failure.retryable or (not self.disk_changed and failure.code != Code.CLEANUP_FAILED)
             self.emit('error', code=failure.code.value, phase=self.phase,
-                      message=self.redactor.text(failure.message), retryable=failure.retryable,
+                      message=self.redactor.text(failure.message), retryable=retryable,
                       log_path=str(LOG))
         elif success:
-            self.emit('done', log_path=str(LOG), seconds=round(time.monotonic() - started, 2))
+            self.emit('done', log_path=str(LOG), seconds=round(time.monotonic() - started, 2),
+                      warnings=list(self.warnings))
 
     def prepare_disk(self):
-        # Mark conservatively before calling the first destructive operation.
-        self.disk_changed = True
+        if self.plan.config['mode'] == 'alongside':
+            alongside.require_verified()
+        # Package verification can take minutes. Recheck every mode at the write
+        # boundary, including encrypted-volume confirmations against fresh UUIDs.
+        fresh = make_plan(self.plan.config, self.inventory.probe())
+        require(fresh.fingerprint == self.plan.fingerprint, Code.DISK_CHANGED,
+                'Windows shrink bounds, disk identity or ESP state changed after review; disk untouched.'
+                if self.plan.config['mode'] == 'alongside' else
+                'Disk identity or partition layout changed after the review.')
+        require(fresh.swap_bytes == self.plan.swap_bytes, Code.DISK_CHANGED,
+                'RAM size changed after the review; prepare a new installation plan.')
+        if self.plan.config['mode'] == 'alongside':
+            self.backend.devices.changed = self.mark_disk_changed
+        else:
+            self.mark_disk_changed()
         self.backend.prepare()
         self.files.write(MARKER, f'Emaki {__version__} installation in progress\n', 0o600)
 
+    def mark_disk_changed(self):
+        self.disk_changed = True
+
     def copy_packages(self):
-        keymap = console_keymap(self.plan.config['layouts'][0])
-        locale = self.api.locale.LocaleConfiguration(keymap, 'en_US', 'UTF-8')
+        layouts = self.plan.config['layouts']
+        locale = self.api.locale.LocaleConfiguration(console_keymap(layouts[0]), 'en_US', 'UTF-8')
         self.backend.minimal(locale)
-        packages = PACKAGES + ['mkinitcpio']
+        # The minimal install leaves the console map alone in this file. The whole text must
+        # be there before the first mkinitcpio run (bootloader phase) reads it for the image.
+        self.files.write('/etc/vconsole.conf', vconsole_conf(layouts))
+        packages = software_packages(self.plan.config.get('software', 'rich'))
+        if self.plan.config['mode'] == 'alongside':
+            packages += ['os-prober', 'ntfs-3g']
         self.backend.instance.pacman.strap(packages)
         self.populate_keyring()
 
@@ -160,7 +399,35 @@ class Worker:
                                self.target, check=False)
 
     def bootloader(self):
-        self.files.write('/etc/mkinitcpio.conf', mkinitcpio_config(self.plan.btrfs))
+        preserved_loaders = (alongside.efi_loaders(self.files.path('/efi'))
+                             if self.plan.config['mode'] == 'alongside' else {})
+        if self.plan.config['mode'] == 'alongside':
+            reviewed = next(p['_efi_loaders'] for p in self.plan.disk['partitions'] if p['esp'])
+            require(preserved_loaders == reviewed, Code.BOOT_VERIFY,
+                    'STOP: EFI loaders differ from the reviewed Windows installation.')
+        root = self.plan.root
+        if self.plan.encrypted:
+            self.files.mkdir('/etc/cryptsetup-keys.d', 0o700).chmod(0o700)
+            key = '/etc/cryptsetup-keys.d/emaki-root.key'
+            self.files.write(key, os.urandom(64), 0o600)
+            # 64 random bytes need no slow KDF: PBKDF2 at cryptsetup's minimum keeps the
+            # wrong-passphrase cost in GRUB and the keyfile unlock to one Argon2id run.
+            self.runner.run(['cryptsetup', 'luksAddKey', '--pbkdf', 'pbkdf2',
+                             '--pbkdf-force-iterations', '1000',
+                             '--key-file', '-', root.path, str(self.files.path(key))],
+                            input=self.plan.disk_password, secret=True)
+            self.plan.config['disk_password'] = ''
+            self.files.path('/boot').chmod(0o700)
+        offset = self.create_swap() if self.plan.swap_bytes else None
+        self.files.write('/etc/mkinitcpio.conf', mkinitcpio_config(
+            self.plan.btrfs, self.plan.encrypted, bool(self.plan.swap_bytes)))
+        if self.plan.btrfs:
+            # emaki-config (copy_packages) owns the snapshot hook, so updates reach it. Nothing
+            # goes to /etc/initcpio: mkinitcpio reads it first, so a copy there would hide the
+            # packaged one. The preflight has read the archive; this checks what was installed.
+            for directory in ('hooks', 'install'):
+                require(self.files.path(f'/usr/lib/initcpio/{directory}/emaki-snapshot-fstab').is_file(),
+                        Code.BOOT_VERIFY, 'emaki-config did not install the snapshot boot hook.')
         for kernel in ('linux', 'linux-lts'):
             require(self.files.path(f'/etc/mkinitcpio.d/{kernel}.preset').is_file(),
                     Code.BOOT_VERIFY, f'Missing {kernel} mkinitcpio preset.')
@@ -170,7 +437,9 @@ class Worker:
             for name in (f'vmlinuz-{kernel}', f'initramfs-{kernel}.img'):
                 p = self.files.path('/boot/' + name)
                 require(p.is_file() and p.stat().st_size > 0, Code.BOOT_VERIFY, f'Missing /boot/{name}.')
-        self.files.write('/etc/default/grub', grub_defaults(self.plan.config['mode'] == 'alongside'))
+        self.files.write('/etc/default/grub', grub_defaults(
+            self.plan.config['mode'] == 'alongside', root.luks_uuid,
+            root.uuid if self.plan.swap_bytes else None, offset))
         # Recognize a previous Emaki copy before updating the vendor binary.
         # FAT is case insensitive; Path works on the actual mounted filesystem.
         fallback = self.files.path('/efi/EFI/BOOT/BOOTX64.EFI')
@@ -179,7 +448,9 @@ class Worker:
                         and fallback.read_bytes() == vendor.read_bytes())
         command = ['grub-install', '--target=x86_64-efi', '--efi-directory=/efi',
                    '--boot-directory=/boot', '--bootloader-id=Emaki']
-        nvram_ok = True
+        if self.plan.encrypted:
+            command += ['--modules=part_gpt cryptodisk luks2 argon2 gcry_rijndael gcry_sha256 pbkdf2']
+        nvram_ok = vendor_ok = True
         try:
             self.runner.chroot(command, self.target)
         except InstallError:
@@ -188,9 +459,10 @@ class Worker:
             try:
                 self.runner.chroot([*command, '--no-nvram'], self.target)
             except InstallError:
+                vendor_ok = False
                 self.log('WARNING: vendor GRUB retry failed; attempting the removable loader.')
         removable_ok = False
-        if not fallback.exists() or own_fallback:
+        if not fallback.exists() or (own_fallback and self.plan.config['mode'] != 'alongside'):
             try:
                 self.runner.chroot([*command, '--removable'], self.target)
                 removable_ok = True
@@ -200,9 +472,92 @@ class Worker:
             self.log('WARNING: preserving existing fallback EFI boot file; removable GRUB copy skipped.')
         require(nvram_ok or removable_ok, Code.BOOT_VERIFY,
                 'GRUB NVRAM registration failed and no removable loader could be installed.')
+        if self.plan.encrypted:
+            self.unlock_screen([name for name, written in (('/efi/EFI/Emaki/grubx64.efi', vendor_ok),
+                                                          ('/efi/EFI/BOOT/BOOTX64.EFI', removable_ok)) if written])
         self.grub_config()
+        if self.plan.config['mode'] == 'alongside':
+            after = alongside.efi_loaders(self.files.path('/efi'))
+            require(all(after.get(name) == digest for name, digest in preserved_loaders.items()),
+                    Code.BOOT_VERIFY, 'STOP: a pre-existing Microsoft or fallback EFI loader changed.')
         text = self.runner.run(['genfstab', '-U', '-f', str(self.target), str(self.target)])
-        self.files.write('/etc/fstab', normalize_fstab(text, self.plan))
+        fstab = normalize_fstab(text, self.plan)
+        if self.plan.swap_bytes:
+            fstab += '/swap/swapfile\tnone\tswap\tdefaults,pri=10\t0 0\n'
+        self.files.write('/etc/fstab', fstab)
+
+    def unlock_screen(self, loaders):
+        """Rebuild GRUB's EFI image so it asks for the disk password in graphics mode.
+
+        grub-install's image asks on the firmware text console: one small line, or nothing a
+        person can see. The same image rebuilt with an embedded early config draws the prompt
+        with gfxterm; the font and the picture travel inside the image as its memdisk, because
+        before the unlock GRUB's $root is the locked root and nothing else is read. The early
+        config and the memdisk stay next to grub-install's files under /boot (its clean-up
+        there deletes .mod, .lst, .img, .efi and .mo files, modinfo.sh and efiemu*.o, not
+        .cfg or .tar), so the image can be rebuilt later from the installed system, but only
+        right after grub-install from the same grub package: the image comes from
+        /usr/lib/grub. Its normal parser is embedded for the retry loop; after unlocking,
+        the menu and further modules come from the copies grub-install made under /boot.
+        A grub upgrade alone changes neither the
+        loaders nor those copies and needs no rebuild. A failure here fails the install: a
+        prompt nobody can see is the fault this repairs, not a fallback.
+        """
+        platform = '/boot/grub/x86_64-efi'
+        prefix = grub_prefix(self.plan)
+        # grub-install hardcodes the prefix into its image; the rebuilt image must carry the same.
+        require(loaders, Code.BOOT_VERIFY, 'No GRUB loader was written.')
+        for name in loaders:
+            require(grub_image_carries(self.files.path(name).read_bytes(), prefix), Code.BOOT_VERIFY,
+                    f'GRUB loader {name} does not carry the expected prefix; the unlock screen was not built.')
+        load_cfg = self.files.read(platform + '/load.cfg')
+        early = grub_early_config(load_cfg, self.plan.root.luks_uuid)
+        require(GRUB_VISIBLE_FONT.is_file(), Code.BOOT_VERIFY, 'The GRUB unlock-screen font is missing from this ISO.')
+        font = GRUB_VISIBLE_FONT.read_bytes()
+        require(font.startswith(b'FILE\x00\x00\x00\x04PFF2'), Code.BOOT_VERIFY, 'The GRUB unlock-screen font is not a PFF2 font.')
+        self.files.write(platform + '/emaki-early.cfg', early)
+        self.files.write(platform + '/emaki-early.tar',
+                         grub_unlock_memdisk(font, load_cfg, self.plan.root.luks_uuid))
+        output = platform + '/emaki-early.efi'
+        # --memdisk first: grub-mkimage resets the prefix to (memdisk)/boot/grub on --memdisk,
+        # and the later option wins.
+        self.runner.chroot(['grub-mkimage', '--directory=/usr/lib/grub/x86_64-efi', '--format=x86_64-efi',
+                            '--memdisk=' + platform + '/emaki-early.tar', '--prefix=' + prefix,
+                            '--config=' + platform + '/emaki-early.cfg',
+                            '--output=' + output, *GRUB_EARLY_MODULES], self.target)
+        image = self.files.path(output)
+        require(image.is_file() and grub_image_carries(image.read_bytes(), prefix), Code.BOOT_VERIFY,
+                'grub-mkimage did not produce a GRUB image with the expected prefix.')
+        for name in loaders:
+            self.files.write(name, image.read_bytes(), 0o600)
+
+    def create_swap(self):
+        self.files.mkdir('/swap', 0o700).chmod(0o700)
+        path = self.files.path('/swap/swapfile')
+        require(not path.exists(), Code.MANUAL_LAYOUT,
+                'A swapfile already exists at /swap/swapfile; move it before installing.')
+        size = self.plan.swap_bytes
+        require(os.statvfs(path.parent).f_bavail * os.statvfs(path.parent).f_frsize >= size,
+                Code.ROOT_TOO_SMALL, 'Not enough free space for the RAM-sized swapfile.')
+        if self.plan.btrfs:
+            self.runner.run(['chattr', '+C', str(path.parent)])
+            self.runner.run(['btrfs', 'filesystem', 'mkswapfile', '--size', str(size), str(path)])
+            output = self.runner.run(['btrfs', 'inspect-internal', 'map-swapfile', '-r', str(path)])
+            require(output.strip().isdigit(), Code.BOOT_VERIFY, 'Cannot determine btrfs resume offset.')
+            offset = int(output.strip())
+        else:
+            self.files.write('/swap/swapfile', b'', 0o600)
+            self.runner.run(['fallocate', '-l', str(size), str(path)])
+            self.runner.run(['mkswap', str(path)])
+            # filefrag reports physical blocks in explicitly requested page units.
+            output = self.runner.run(['filefrag', '-v', '-b4096', str(path)])
+            match = re.search(r'^\s*0:\s+0\.\.\s*\d+:\s+(\d+)\.\.', output, re.M)
+            require(match is not None, Code.BOOT_VERIFY, 'Cannot determine ext4 resume offset.')
+            offset = int(match[1])
+        require(offset > 0 and path.stat().st_size == size, Code.BOOT_VERIFY,
+                'Swapfile size or resume offset is invalid.')
+        path.chmod(0o600)
+        return offset
 
     def grub_config(self):
         config = '/etc/default/grub-btrfs/config'
@@ -210,9 +565,20 @@ class Worker:
         self.runner.chroot(['/usr/share/libalpm/scripts/emaki-grub-title'], self.target)
         self.runner.chroot(['grub-mkconfig', '-o', '/boot/grub/grub.cfg'], self.target)
         verify_grub(self.files.read('/boot/grub/grub.cfg'))
+        if self.plan.config['mode'] == 'alongside':
+            # 30_os-prober invokes os-prober inside this chroot. Do not invent
+            # a Windows entry when discovery failed.
+            require(re.search(r'^menuentry [^\n]*Windows Boot Manager',
+                              self.files.read('/boot/grub/grub.cfg'), re.M), Code.BOOT_VERIFY,
+                    'Windows Boot Manager was not discovered by os-prober; inspect GRUB before rebooting.')
 
     def account(self):
         user = self.plan.config['user']
+        # A kept /home may already hold this login's directory; remember whose it was.
+        home = self.files.path('/home/' + user['login'])
+        if home.exists():
+            info = home.stat()
+            self.kept_home = (str(info.st_uid), str(info.st_gid))
         self.runner.chroot(['useradd', '-m', '-d', '/home/' + user['login'], '-G', 'wheel',
                             '-s', '/bin/bash', '-c', user['name'], user['login']], self.target)
         self.runner.chroot(['chpasswd'], self.target, input=user['login'] + ':' + user['password'] + '\n', secret=True)
@@ -228,9 +594,9 @@ class Worker:
             self.populate_keyring()
         self.files.write('/etc/locale.gen', 'en_US.UTF-8 UTF-8\n')
         self.files.write('/etc/locale.conf', 'LANG=en_US.UTF-8\n')
-        self.files.write('/etc/vconsole.conf', 'KEYMAP=' + console_keymap(c['layouts'][0]) + '\n')
+        self.files.write('/etc/vconsole.conf', vconsole_conf(c['layouts']))
         self.files.write('/etc/hostname', c['hostname'] + '\n')
-        self.files.write('/etc/systemd/zram-generator.conf', '[zram0]\nzram-size = min(ram / 2, 8192)\n')
+        self.files.write('/etc/systemd/zram-generator.conf', '[zram0]\nzram-size = min(ram / 2, 8192)\nswap-priority = 100\n')
         # A target-relative absolute symlink is correct after boot/chroot.
         parent = self.files.path('/etc')
         localtime = parent / 'localtime'
@@ -251,21 +617,60 @@ class Worker:
                     outputs.append(status.parent.name.split('-', 1)[1])
             if not outputs:
                 self.log('WARNING: no connected DRM output identified; scale override omitted.')
-        self.files.write('/home/' + user['login'] + '/.config/niri/config.kdl',
-                         niri_config(c['layouts'], c.get('scale_guess'), sorted(set(outputs))))
+        home = '/home/' + user['login']
+        # Everything the installer writes into the home as root is listed for the chown below.
+        written = [home + '/.config', home + '/.config/niri', home + '/.config/niri/config.kdl']
+        self.files.write(written[-1], niri_config(c.get('scale_guess'), sorted(set(outputs))))
         if self.test_mode:
             keys = Path('/etc/emaki-test/authorized_keys')
             require(keys.is_file() and keys.stat().st_size > 0, Code.BAD_CONFIG,
                     'Test mode requires /etc/emaki-test/authorized_keys.')
-            ssh = '/home/' + user['login'] + '/.ssh'
+            ssh = home + '/.ssh'
             self.files.mkdir(ssh, 0o700).chmod(0o700)
             self.files.write(ssh + '/authorized_keys', keys.read_bytes(), 0o600)
+            written += [ssh, ssh + '/authorized_keys']
         account = next((row.split(':') for row in self.files.read('/etc/passwd').splitlines()
                         if row.split(':')[0] == user['login']), None)
         require(account is not None and len(account) == 7 and account[2].isdigit() and account[3].isdigit(),
                 Code.BAD_CONFIG, 'Cannot determine the new account UID/GID.')
-        self.runner.chroot(['chown', '-R', account[2] + ':' + account[3], '/home/' + user['login']], self.target)
+        uid, gid = account[2], account[3]
+        if self.kept_home is not None:
+            # Never a blanket recursive chown over a kept home: only the previous
+            # owner's files move to the new account; root's, other accounts' and
+            # sub-uid container files keep their owner. A previous owner outside the
+            # regular account range (root after a directory made by hand, nobody) is
+            # not remapped at all: every file of that system account would move.
+            old_uid, old_gid = self.kept_home
+            # The warning says what was done, not what was meant.
+            done = []
+            if old_uid != uid and regular_id(old_uid):
+                self.runner.chroot(['chown', '-R', '-h', '--from=' + old_uid, uid, home], self.target)
+                done.append(f'files of user {old_uid} now belong to {user["login"]} ({uid})')
+            elif not regular_id(old_uid):
+                done.append(f'files of user {old_uid} keep that owner (not a regular account)')
+            if old_gid != gid and regular_id(old_gid):
+                self.runner.chroot(['chown', '-R', '-h', '--from=:' + old_gid, ':' + gid, home], self.target)
+                done.append(f'files of group {old_gid} now have group {gid}')
+            elif not regular_id(old_gid):
+                done.append(f'files of group {old_gid} keep that group (not a regular group)')
+            if not (regular_id(old_uid) and regular_id(old_gid)):
+                self.log('; '.join([f'WARNING: the kept {home} belonged to {old_uid}:{old_gid}', *done,
+                                    'the directory itself and the files the installer wrote now belong to '
+                                    f'{user["login"]}.']))
+            written.insert(0, home)
+        self.runner.chroot(['chown', '-h', uid + ':' + gid, *written], self.target)
         self.runner.run(['emaki-greeter-provision', '--root', str(self.target), '--user', user['login']])
+        # The first login screen shows the default wallpaper: the session's own publisher runs once
+        # as the new account with the default wpaperd config, never reading the home. Each login
+        # publishes again from the account's own config (DECISIONS: the published copy).
+        answer = self.runner.chroot(['setpriv', '--reuid', uid, '--regid', gid, '--clear-groups', '--no-new-privs',
+                                     '--', 'env', '-i', 'XDG_CONFIG_HOME=/etc/skel/.config', '/usr/bin/python3', '-B',
+                                     '-s', '/usr/share/emaki/shell/helpers/publish-wallpaper.py'],
+                                    self.target, check=False)
+        state = re.search(r'"state":"(\w+)"(?:,"reason":"(\w+)")?', answer)
+        if not state or state[1] != 'published':
+            self.log('WARNING: the login screen shows its plain background until the first login (wallpaper copy: '
+                     + (', '.join(filter(None, state.groups())) if state else 'no answer') + ').')
         self.repositories()
         self.runner.chroot(['systemctl', 'preset-all'], self.target)
         units = ['greetd.service', 'NetworkManager.service', 'bluetooth.service', 'fstrim.timer']
@@ -315,23 +720,138 @@ class Worker:
             finally:
                 self.files.mkdir('/.snapshots')
                 self.runner.run(['mount', '-t', 'btrfs', '-o', ','.join(root.options + ['subvol=' + name]),
-                                 root.path, str(mountpoint)])
+                                 root.device, str(mountpoint)])
         else:
             require(re.search(r'^SUBVOLUME="/"$', config.read_text(), re.M), Code.MANUAL_LAYOUT,
                     'Existing snapper root config points at a different subvolume.')
         mountpoint.chmod(0o750)
         self.files.write('/etc/snapper/configs/root', snapper_config(config.read_text()), 0o640)
-        self.runner.chroot(['snapper', '--no-dbus', '-c', 'root', 'create',
-                            '-d', f'Fresh Emaki {__version__} install'], self.target)
+        # The first snapshot must not carry the marker: a rollback to it would bring the
+        # marker back. The live root keeps it until finish(), also while snapper runs, so a
+        # power loss here still leaves an installation that says it is unfinished. The
+        # snapshot is made writable, loses the marker, then becomes read-only as snapper
+        # makes it by default: snapper keeps no read-only flag of its own (info.xml) and
+        # reads the subvolume's (snapper 0.13.2, Snapshot.cc:318, Btrfs.cc:457-472).
+        output = self.runner.chroot(['snapper', '--no-dbus', '-c', 'root', 'create', '--read-write',
+                                     '--print-number', '-d', f'Fresh Emaki {__version__} install'], self.target)
+        # The number is the last line it prints (client/snapper/cmd-create.cc).
+        number = (output.strip().splitlines() or [''])[-1].strip()
+        require(number.isdigit(), Code.COMMAND_FAILED, 'snapper did not print the new snapshot number.')
+        snapshot = f'/.snapshots/{int(number)}/snapshot'
+        self.files.path(snapshot + MARKER).unlink(missing_ok=True)
+        self.runner.run(['btrfs', 'property', 'set', '-ts', str(self.files.path(snapshot)), 'ro', 'true'])
         # grub-btrfsd is enabled for the first boot, not running in this chroot.
         self.grub_config()
 
     def update(self):
-        self.update_attempted = True
+        # Extra pacman options for the rest of the update ([emaki] left out).
+        self.update_options = []
         try:
-            self.runner.chroot(['pacman', '-Syu', '--noconfirm'], self.target)
+            self.refresh_keyring()
+            # The documented two-step: nothing between the download and the install
+            # touches the sync databases, so -Su installs exactly what -Syuw fetched.
+            try:
+                self.download(['-Syuw', '--noconfirm'])
+            except InstallError as exc:
+                self.log('WARNING: online update failed; the offline installation is retained: ' + exc.message)
+                self.release_pacman_lock()
+                return
+            # From here on the target changes: finish() rebuilds the boot images.
+            self.update_attempted = True
+            try:
+                self.runner.chroot([*UPDATE_PACMAN, '-Su', '--noconfirm', *self.update_options], self.target)
+            except InstallError as exc:
+                self.warnings.append(PARTIAL_UPDATE)
+                self.log(f'WARNING: {PARTIAL_UPDATE} ({exc.message})')
+                return
+            self.upgraded = True
+            if self.update_options:
+                self.log("Emaki's own repository was unreachable; Arch packages were updated, "
+                         'Emaki packages stay at the USB version.')
+        finally:
+            if self.update_options:
+                try:
+                    Path(self.update_options[1]).unlink(missing_ok=True)
+                except OSError as error:
+                    self.log(f'WARNING: could not remove {self.update_options[1]}: {error.strerror}')
+
+    def download(self, args):
+        """A limited download; when only [emaki] is unreachable, it is retried once without it.
+
+        The target's /etc/pacman.conf keeps [emaki]: the installed system tries it again
+        on its own first update.
+        """
+        self.download_tried = True
+        # The window shows what pacman reports: the package lists, then "n of N" downloads.
+        watch = DownloadCount(lambda done, total: self.activity('downloads', done, total)).line
+        try:
+            try:
+                self.runner.chroot([*DOWNLOAD_PACMAN, *args, *self.update_options], self.target,
+                                   timeout=UPDATE_TIMEOUT, watch=watch)
+            except InstallError as exc:
+                if self.update_options or not emaki_unreachable(exc.output):
+                    raise
+                path = WORK / UPDATE_CONFIG
+                try:
+                    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+                    with os.fdopen(fd, 'w') as stream:
+                        stream.write(without_emaki(self.files.read('/etc/pacman.conf')))
+                except OSError as error:
+                    with contextlib.suppress(OSError):
+                        path.unlink(missing_ok=True)
+                    raise InstallError(Code.COMMAND_FAILED, f'Cannot write {path}: {error.strerror}.') from error
+                self.update_options = ['--config', str(path)]
+                self.runner.chroot([*DOWNLOAD_PACMAN, *args, *self.update_options], self.target,
+                                   timeout=UPDATE_TIMEOUT, watch=watch)
+        finally:
+            # What follows (the keyring's or the update's installation) shows the busy word again.
+            self.activity(None)
+        # Every download starts with -y, so the package lists are there now (after the retry
+        # without [emaki], the installed pacman names that one list in a warning).
+        self.synced = True
+
+    def refresh_keyring(self):
+        """Packages newer than the image can be signed by keys the image does not know yet."""
+        try:
+            # Downloaded with the same limit, installed without one, like the update itself.
+            self.download(['-Syw', '--needed', '--noconfirm', 'archlinux-keyring'])
+            self.runner.chroot([*UPDATE_PACMAN, '-S', '--needed', '--noconfirm', 'archlinux-keyring',
+                                *self.update_options], self.target)
         except InstallError as exc:
-            self.log('WARNING: online update failed; the offline installation is retained: ' + exc.message)
+            self.log('WARNING: the Arch keyring was not refreshed; the update is still attempted: ' + exc.message)
+            self.release_pacman_lock()
+
+    def release_pacman_lock(self):
+        """A stopped pacman leaves its lock behind; remove it only when no pacman runs in the target."""
+        lock = self.files.path('/var/lib/pacman/db.lck')
+        if not lock.exists():
+            return
+        if any(process_name(pid) == 'pacman' for pid, _ in processes_under(self.target)):
+            self.log('WARNING: pacman is still running in the target; its lock is kept.')
+            return
+        lock.unlink()
+        self.log('Removed the stale pacman lock; no pacman runs in the target.')
+
+    def package_lists(self):
+        """Leave pacman its sync databases, and tell the person when the system is not upgraded.
+
+        The update's download syncs them. Without it they are downloaded here, refresh only,
+        when the machine is online now, with a short limit; -Sy runs no transaction,
+        so snap-pac has nothing to skip. A download that already failed is not repeated.
+        Synced lists are newer than the packages the USB installed: unless the update's -Su
+        completed, the person is told to upgrade before installing software, or to upgrade
+        once online when there are no lists. A partial update has already said so.
+        """
+        if self.upgraded or PARTIAL_UPDATE in self.warnings:
+            return
+        if not self.synced and not self.download_tried and default_route():
+            try:
+                self.runner.chroot(['pacman', '-Sy'], self.target, timeout=REFRESH_TIMEOUT)
+                self.synced = True
+            except InstallError as exc:
+                self.log('WARNING: the package lists were not downloaded: ' + exc.message)
+                self.release_pacman_lock()
+        self.warnings.append(UPGRADE_FIRST if self.synced else NO_PACKAGE_LISTS)
 
     def finish(self):
         # Catch a restrictive umask leaking into the target (0700 /etc locks everyone out).
@@ -339,13 +859,15 @@ class Worker:
         # world-readable modes are accepted.
         for name in ('/', '/etc', '/usr', '/var', '/boot'):
             path = self.files.path(name)
-            require(path.is_dir() and stat.S_IMODE(path.stat().st_mode) in (0o755, 0o555),
-                    Code.BOOT_VERIFY, f'Target {name} must be a directory with mode 0755 or 0555.')
+            modes = (0o700,) if name == '/boot' and self.plan.encrypted else (0o755, 0o555)
+            require(path.is_dir() and stat.S_IMODE(path.stat().st_mode) in modes,
+                    Code.BOOT_VERIFY, f'Target {name} has unsafe directory permissions.')
         if self.update_attempted:
             # Optional update failure is a warning. A subsequently broken boot
             # configuration is independently fatal at the final verification.
             self.runner.chroot(['mkinitcpio', '-p', 'linux', '-p', 'linux-lts'], self.target)
             self.grub_config()
+        self.package_lists()
         self.files.path(MARKER).unlink(missing_ok=True)
         self.log('Installation complete; syncing and unmounting target filesystems.')
         destination = '/var/log/emaki-install/install-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '.log'

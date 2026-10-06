@@ -1,15 +1,18 @@
 import fcntl
 import importlib.util
+import io
 import json
 from pathlib import Path
 import secrets
 import os
+import re
 import shutil
 import signal
 import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
@@ -58,6 +61,41 @@ REOPEN_PROBE = '''
             reopenProbe.clears++;
         }
     }
+'''
+
+
+# Test-only probe for the partition editor: gparted() opens it as the warning's button does,
+# on a disk whose stable id differs from its device path, as on real hardware (the mock worker's
+# manual-by-id screen; Open GParted probes the disks again before GParted starts).
+EDITOR_PROBE = '''
+    IpcHandler {
+        target: "installertest"
+        function state(): string {
+            const window = windowLoader.item as FloatingWindow;
+            return JSON.stringify({
+                ready: controller.session.ready && !!controller.session.inventory,
+                shown: !!window && window.backingWindowVisible,
+                partitioning: controller.partitioning,
+                step: controller.step
+            });
+        }
+        function gparted(): string {
+            controller.diskId = controller.session.inventory.disks[0].id;
+            if (controller.diskId !== "/dev/disk/by-id/virtio-emaki-target")
+                return "unexpected disk id " + controller.diskId;
+            controller.mode = "manual";
+            controller.step = "disk";
+            controller.partitionEditorCommand = [Quickshell.env("EMAKI_TEST_EDITOR")];
+            controller.gpartedWarning = true;
+            controller.openGparted();
+            return "opened";
+        }
+    }
+'''
+EDITOR = '''#!/bin/sh
+printf '%s\\n' "$@" > "$EMAKI_TEST_EDITOR_ARGS"
+i=0
+while [ ! -e "$EMAKI_TEST_EDITOR_RELEASE" ] && [ "$i" -lt 300 ]; do sleep 0.1; i=$((i + 1)); done
 '''
 
 
@@ -131,6 +169,17 @@ class Helpers(unittest.TestCase):
         self.assertTrue(any(x['layout'] == 'us' and x['variant'] == 'dvorak' for x in rows))
         self.assertIn('Europe/Lisbon', helper.zones())
 
+    def test_catalog_says_whether_the_boot_medium_is_mounted(self):
+        # With copytoram archiso removes the boot mount and the worker's unit never starts
+        # (ConditionPathExists); the window learns it here instead of waiting for the worker.
+        with tempfile.TemporaryDirectory() as temp, patch.object(helper, 'layouts', return_value=[]), \
+                patch.object(helper, 'zones', return_value=['UTC']):
+            mount = Path(temp) / 'bootmnt'
+            with patch.object(helper, 'BOOT_MOUNT', mount):
+                self.assertIs(helper.catalog()['boot_medium'], False)
+                mount.mkdir()
+                self.assertIs(helper.catalog()['boot_medium'], True)
+
     def test_nmcli_escape_and_credentials(self):
         self.assertEqual(helper.terse(r'Cafe\: A\\B:72'), ['Cafe: A\\B', '72'])
         secret = secrets.token_hex(16)
@@ -143,10 +192,183 @@ class Helpers(unittest.TestCase):
             self.assertEqual(run.call_args.kwargs['input'], (secret + '\n').encode())
             self.assertNotIn(secret, json.dumps(result))
 
+    def test_network_one_row_per_name_and_security(self):
+        def scan(in_use):
+            wifi = ''.join(f'{"*" if in_use and strength == 60 else " "}:HomeNet:AA\\:BB\\:CC\\:DD\\:EE\\:{n:02X}:{strength}:WPA2:wlan0\n'
+                           for n, strength in enumerate((40, 80, 60)))
+            wifi += ' :HomeNet:AA\\:BB\\:CC\\:DD\\:EE\\:10:90:--:wlan0\n :Other:AA\\:BB\\:CC\\:DD\\:EE\\:20:50:WPA2:wlan0\n'
+            def run(argv, **_):
+                return subprocess.CompletedProcess(argv, 0, b'wifi:connected\n' if 'status' in argv else wifi.encode(), b'')
+            with patch.object(helper, 'run', side_effect=run):
+                return helper.network()['networks']
+        rows = scan(True)
+        self.assertEqual(len(rows), 3)
+        secured = [x for x in rows if x['ssid'] == 'HomeNet' and x['security'] == 'WPA2']
+        self.assertEqual([(x['bssid'], x['connected']) for x in secured], [('AA:BB:CC:DD:EE:02', True)])
+        self.assertEqual([x['bssid'] for x in rows if x['ssid'] == 'HomeNet' and x['security'] == ''], ['AA:BB:CC:DD:EE:10'])
+        self.assertEqual([x['bssid'] for x in scan(False) if x['ssid'] == 'HomeNet' and x['security'] == 'WPA2'], ['AA:BB:CC:DD:EE:01'])
+
+    def test_layout_state_reads_niri_and_names_codes(self):
+        # niri answers KeyboardLayouts with xkeyboard-config descriptions; the window gets codes.
+        rows = [dict(layout='us', variant='', label='English (US)'), dict(layout='de', variant='', label='German'),
+                dict(layout='us', variant='dvorak', label='English (Dvorak)')]
+        with tempfile.TemporaryDirectory() as temp:
+            path = str(Path(temp) / 'niri.sock')
+            with socket.socket(socket.AF_UNIX) as server:
+                server.bind(path)
+                server.listen(1)
+                requests = []
+
+                def serve():
+                    conn, _ = server.accept()
+                    with conn:
+                        requests.append(conn.recv(4096))
+                        names = ['German', 'English (Dvorak)', 'Custom layout']
+                        conn.sendall(json.dumps({'Ok': {'KeyboardLayouts': {'names': names, 'current_idx': 1}}}).encode() + b'\n')
+                thread = threading.Thread(target=serve)
+                thread.start()
+                with patch.dict(os.environ, NIRI_SOCKET=path), patch.object(helper, 'layouts', return_value=rows), \
+                        patch.object(helper, 'LEDS', Path(temp) / 'no-leds'):
+                    state = helper.layout_state()
+                thread.join(5)
+        self.assertEqual(requests, [b'"KeyboardLayouts"\n'])
+        self.assertEqual(state, dict(ok=True, codes=['DE', 'US', 'Custom layout'], current=1, caps=None, num=None))
+        with patch.dict(os.environ, NIRI_SOCKET=''):
+            self.assertFalse(helper.layout_state()['ok'])
+
+    def test_caps_lock_is_read_from_the_keyboard_leds(self):
+        # As the lock screen reads it (shell/helpers/lock-environment.py): any keyboard's LED on.
+        with tempfile.TemporaryDirectory() as temp:
+            leds = Path(temp)
+            with patch.object(helper, 'LEDS', leds):
+                self.assertIsNone(helper.caps_lock())
+                for name, value in (('input3::capslock', '0'), ('input3::numlock', '1'), ('input9::capslock', '0')):
+                    (leds / name).mkdir()
+                    (leds / name / 'brightness').write_text(value + '\n')
+                self.assertIs(helper.caps_lock(), False)
+                (leds / 'input9::capslock/brightness').write_text('1\n')
+                self.assertIs(helper.caps_lock(), True)
+
+    def test_num_lock_is_read_from_the_keyboard_leds(self):
+        # The same way as Caps Lock: any keyboard's Num Lock LED on; a Caps Lock LED does not count.
+        with tempfile.TemporaryDirectory() as temp:
+            leds = Path(temp)
+            with patch.object(helper, 'LEDS', leds):
+                self.assertIsNone(helper.num_lock())
+                for name, value in (('input3::numlock', '0'), ('input3::capslock', '1'), ('input9::numlock', '0')):
+                    (leds / name).mkdir()
+                    (leds / name / 'brightness').write_text(value + '\n')
+                self.assertIs(helper.num_lock(), False)
+                (leds / 'input9::numlock/brightness').write_text('1\n')
+                self.assertIs(helper.num_lock(), True)
+
+    def test_first_layout_sends_switch_layout_zero(self):
+        # What `niri msg action switch-layout 0` sends (niri-ipc 26.04, LayoutSwitchTarget::Index).
+        with tempfile.TemporaryDirectory() as temp:
+            path = str(Path(temp) / 'niri.sock')
+            with socket.socket(socket.AF_UNIX) as server:
+                server.bind(path)
+                server.listen(1)
+                requests = []
+
+                def serve():
+                    conn, _ = server.accept()
+                    with conn:
+                        requests.append(conn.recv(4096))
+                        conn.sendall(b'{"Ok":"Handled"}\n')
+                thread = threading.Thread(target=serve)
+                thread.start()
+                with patch.dict(os.environ, NIRI_SOCKET=path):
+                    result = helper.first_layout()
+                thread.join(5)
+        self.assertEqual(result, dict(ok=True))
+        self.assertEqual([json.loads(r) for r in requests], [{'Action': {'SwitchLayout': {'layout': {'Index': 0}}}}])
+        with patch.dict(os.environ, NIRI_SOCKET=''):
+            self.assertFalse(helper.first_layout()['ok'])
+
+    def test_layout_events_counts_switches_after_niris_current_state(self):
+        # niri 26.04's event stream: the reply, the current state (replicate), then events.
+        def layouts(names, idx):
+            return {'KeyboardLayoutsChanged': {'keyboard_layouts': {'names': names, 'current_idx': idx}}}
+        events = [{'Ok': 'Handled'}, {'WorkspacesChanged': {'workspaces': []}}, layouts(['English (US)', 'Russian'], 0),
+                  {'OverviewOpenedOrClosed': {'is_open': False}}, {'KeyboardLayoutSwitched': {'idx': 1}},
+                  {'WindowFocusChanged': {'id': None}}, {'KeyboardLayoutSwitched': {'idx': 0}},
+                  layouts(['English (US)', 'Russian'], 0), layouts(['German'], 0)]
+        with tempfile.TemporaryDirectory() as temp:
+            path = str(Path(temp) / 'niri.sock')
+            with socket.socket(socket.AF_UNIX) as server:
+                server.bind(path)
+                server.listen(1)
+                requests = []
+
+                def serve():
+                    conn, _ = server.accept()
+                    with conn:
+                        requests.append(conn.recv(4096))
+                        # Split across writes, as a socket may deliver it.
+                        data = b''.join(json.dumps(event).encode() + b'\n' for event in events)
+                        for start in range(0, len(data), 37):
+                            conn.sendall(data[start:start + 37])
+                            time.sleep(.001)
+                thread = threading.Thread(target=serve)
+                thread.start()
+                read, write = os.pipe()
+                output = io.StringIO()
+                try:
+                    with patch.dict(os.environ, NIRI_SOCKET=path), open(read, 'rb', buffering=0) as stdin:
+                        helper.layout_events(stdin, output)
+                finally:
+                    os.close(write)
+                thread.join(5)
+        self.assertEqual(requests, [b'"EventStream"\n'])
+        # Ready after the current state; Russian, back to English (US), German. The same list
+        # again is no change.
+        self.assertEqual([json.loads(line) for line in output.getvalue().splitlines()],
+                         [{'ready': True}, {'switched': True}, {'switched': True}, {'switched': True}])
+
+    def test_layout_events_end_when_the_window_closes_its_input(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = str(Path(temp) / 'niri.sock')
+            with socket.socket(socket.AF_UNIX) as server:
+                server.bind(path)
+                server.listen(1)
+                read, write = os.pipe()
+                os.close(write)
+                output = io.StringIO()
+                with patch.dict(os.environ, NIRI_SOCKET=path), open(read, 'rb', buffering=0) as stdin:
+                    helper.layout_events(stdin, output)
+        self.assertEqual(output.getvalue(), '')
+
+    @unittest.skipUnless(Path('/usr/share/X11/xkb/rules/evdev.lst').is_file(), 'xkeyboard-config is not installed')
+    def test_fake_niri_names_layouts_as_xkeyboard_config_does(self):
+        # The window tests' niri (FakeNiri.js) names layouts by their evdev.lst descriptions.
+        text = (UI / 'tests/FakeNiri.js').read_text()
+        names = dict(re.findall(r'^\s+(\w+): "([^"]+)",?$', text.split('var NAMES = {', 1)[1].split('};', 1)[0], re.M))
+        self.assertGreaterEqual(len(names), 5)
+        labels = {row['layout']: row['label'] for row in reversed(helper.layouts()) if not row['variant']}
+        self.assertEqual(names, {code: labels[code] for code in names})
+
     def test_trial_refuses_nonlive(self):
         with patch.object(helper, 'trial_available', return_value=False), patch.object(helper.os, 'open') as op:
             self.assertFalse(helper.trial(['us'])['ok'])
             op.assert_not_called()
+
+    def test_trial_is_refused_where_niri_never_reads_the_file(self):
+        # The peer of NIRI_SOCKET decides: here it is this test's own process, not niri-emaki.
+        with tempfile.TemporaryDirectory() as temp:
+            path = str(Path(temp) / 'niri.sock')
+            with socket.socket(socket.AF_UNIX) as server:
+                server.bind(path)
+                server.listen(4)
+                with patch.dict(os.environ, NIRI_SOCKET=path):
+                    self.assertFalse(helper.trial_reloads())
+                    with patch.object(helper.os, 'readlink', return_value='/usr/bin/niri-emaki (deleted)'):
+                        self.assertTrue(helper.trial_reloads())
+                    with patch.object(helper.os, 'readlink', side_effect=PermissionError()):
+                        self.assertTrue(helper.trial_reloads(), 'unknown is not a refusal')
+                    with patch.object(helper, 'trial_available', return_value=True), patch.object(helper.os, 'open') as op:
+                        self.assertEqual(helper.trial(['de']), dict(ok=False, reloads=False, message='This session does not read the keyboard trial.'))
+                        op.assert_not_called()
 
     def test_media_filters_unmounted_and_nonremovable(self):
         mounts = dict(filesystems=[dict(target='/home/live', source='/dev/vda2'),
@@ -161,7 +383,7 @@ class Helpers(unittest.TestCase):
     def test_mock_worker_stdio(self):
         secret = secrets.token_hex(16)
         requests = [dict(type='hello', id='h', proto=1), dict(type='probe', id='i'),
-                    dict(type='plan', id='p', config=dict(user=dict(password=secret))),
+                    dict(type='plan', id='p', config=dict(encryption='none', user=dict(password=secret))),
                     dict(type='confirm', id='c', plan_id='fixture-plan', token='mock-capability')]
         result = subprocess.run([sys.executable, '-B', str(UI / 'tests/mock-worker.py'), '--stdio', '--delay', '0'],
                                 input=''.join(json.dumps(x) + '\n' for x in requests), text=True, capture_output=True, timeout=5)
@@ -298,6 +520,79 @@ class Helpers(unittest.TestCase):
                 state = until(loaded=True, shown=True)
                 self.assertEqual((state['step'], state['name']), ('you', 'Alex Morgan'))
                 self.assertIsNone(first.poll(), 'the first installer process must keep running')
+            finally:
+                os.killpg(first.pid, signal.SIGTERM)
+                first.wait(timeout=10)
+            for diagnostic in ['ReferenceError', 'TypeError', 'Binding loop', 'Unable to assign']:
+                self.assertNotIn(diagnostic, log.read_text())
+
+    @unittest.skipUnless(shutil.which('qs'), 'Quickshell is not installed')
+    def test_window_steps_aside_while_the_partition_editor_runs(self):
+        """GParted opens tiled, under the floating installer (VM walk B3, frame B-19), and on the
+        first disk it finds, the live stick. The real window and launcher, offscreen: the editor
+        gets the chosen disk's device path, the window hides while it runs and comes back after."""
+        with tempfile.TemporaryDirectory(prefix='eir-') as temporary:  # short: sun_path is 108 bytes
+            root = Path(temporary)
+            worker = subprocess.Popen([sys.executable, '-B', str(UI / 'tests/mock-worker.py'), '--socket', str(root / 'w.sock'),
+                                       '--screen', 'manual-by-id', '--delay', '0'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            self.addCleanup(worker.wait, 5)
+            self.addCleanup(worker.terminate)
+            if worker.stdout.readline().strip() != str(root / 'w.sock'):
+                self.skipTest('the mock worker could not bind its socket: ' + worker.stderr.read())
+            ui = root / 'ui'
+            shutil.copytree(UI, ui, ignore=shutil.ignore_patterns('__pycache__', 'tests'))
+            if not Path('/usr/share/emaki/shell/qmldir').exists():
+                for filename in ui.glob('*.qml'):
+                    filename.write_text(filename.read_text().replace('"file:///usr/share/emaki/shell"', '"file://' + str(ROOT / 'shell') + '"'))
+            shell = ui / 'shell.qml'
+            text = shell.read_text().rstrip()
+            shell.write_text(text[:-1] + EDITOR_PROBE + '}\n')
+            launcher = root / 'emaki-install'
+            launcher.write_text((UI / 'emaki-install').read_text().replace(INSTALLED_UI, str(shell)))
+            launcher.chmod(0o700)
+            editor = root / 'editor'
+            editor.write_text(EDITOR)
+            editor.chmod(0o700)
+            for name in ['runtime', 'cache', 'config', 'state', 'data']:
+                (root / name).mkdir(mode=0o700)
+            env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QML_DISABLE_DISK_CACHE='1',
+                       QS_DISABLE_CRASH_HANDLER='1', XDG_RUNTIME_DIR=str(root / 'runtime'), XDG_CACHE_HOME=str(root / 'cache'),
+                       XDG_CONFIG_HOME=str(root / 'config'), XDG_STATE_HOME=str(root / 'state'), XDG_DATA_HOME=str(root / 'data'),
+                       EMAKI_INSTALLER_SOCKET=str(root / 'w.sock'), EMAKI_TEST_EDITOR=str(editor),
+                       EMAKI_TEST_EDITOR_ARGS=str(root / 'args'), EMAKI_TEST_EDITOR_RELEASE=str(root / 'release'))
+            for key in ['WAYLAND_DISPLAY', 'DISPLAY', 'NIRI_SOCKET', 'DBUS_SESSION_BUS_ADDRESS']:
+                env.pop(key, None)
+
+            def probe(function):
+                result = subprocess.run(['qs', 'ipc', '-p', str(shell), 'call', 'installertest', function], env=env,
+                                        capture_output=True, text=True, timeout=10)
+                return result.stdout.strip() if result.returncode == 0 else ''
+
+            def until(**expected):
+                deadline = time.monotonic() + 15
+                reply = ''
+                while time.monotonic() < deadline:
+                    reply = probe('state')
+                    state = json.loads(reply) if reply.startswith('{') else {}
+                    if all(state.get(key) == value for key, value in expected.items()):
+                        return state
+                    time.sleep(.1)
+                self.fail(f'window never reached {expected}; last state {reply!r}; log:\n' + log.read_text())
+
+            log = root / 'qs.log'
+            with log.open('w') as output:
+                first = subprocess.Popen([str(launcher)], env=env, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
+            try:
+                until(ready=True, shown=True, partitioning=False)
+                self.assertEqual(probe('gparted'), 'opened')
+                until(partitioning=True, shown=False)
+                deadline = time.monotonic() + 5
+                while not (root / 'args').exists() and time.monotonic() < deadline:
+                    time.sleep(.05)
+                self.assertEqual((root / 'args').read_text().splitlines(), ['/dev/vda'])
+                (root / 'release').touch()
+                state = until(partitioning=False, shown=True)
+                self.assertEqual(state['step'], 'disk')
             finally:
                 os.killpg(first.pid, signal.SIGTERM)
                 first.wait(timeout=10)

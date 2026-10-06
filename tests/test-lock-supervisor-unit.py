@@ -15,6 +15,8 @@ import sys
 import tempfile
 import time
 from unittest.mock import patch
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 sys.dont_write_bytecode = True
 
@@ -276,6 +278,19 @@ def run():
                     lock.Supervisor(directory).spawn()
             assert captured[0]['MALLOC_CONF'] == (original or 'thp:never')
         print('PASS lock launch defaults unset/empty allocator config and preserves user tuning; unit does not override it')
+        # Mod+L, the idle policy and the power menu start the locker from niri's
+        # environment, the session menu from emaki-shell's (which exports the variable).
+        for inherited in (None, '1'):
+            environment = dict(os.environ)
+            environment.pop('QS_DISABLE_CRASH_HANDLER', None)
+            if inherited is not None:
+                environment['QS_DISABLE_CRASH_HANDLER'] = inherited
+            captured.clear()
+            with patch.dict(os.environ, environment, clear=True):
+                with patch.object(lock.subprocess, 'Popen', fake_spawn), patch.object(lock, 'process_identity', return_value={'start': 'fixture', 'boot': 'fixture'}):
+                    lock.Supervisor(directory).spawn()
+            assert captured[0].get('QS_DISABLE_CRASH_HANDLER') == '1', (inherited, captured[0].get('QS_DISABLE_CRASH_HANDLER'))
+        print('PASS the Quickshell locker runs without the crash handler whoever requested the lock')
         s = lock.Supervisor(directory); s.child = Child(); s.backend = 'hyprlock'
         read, write = os.pipe(); stream = os.fdopen(read, 'rb', buffering=0)
         os.write(write, b'noise\nnoise onLockLocked called\n')
@@ -287,13 +302,61 @@ def run():
         stream.close(); os.close(write)
         print('PASS fallback requires exact native compositor-locked callback')
 
-        for code in (0, 1):
-            s = lock.Supervisor(directory); s.child = Child(); s.child.returncode = code
-            s.backend = 'hyprlock'; s.secure = False
-            starts = []; s.spawn = lambda fallback=False: starts.append(fallback)
-            s.tick()
-            assert s.finished and s.phase == ('refused' if code == 0 else 'failed') and not starts
+        s = lock.Supervisor(directory); s.child = Child(); s.child.returncode = 0
+        s.backend = 'hyprlock'; s.secure = False
+        starts = []; s.spawn = lambda fallback=False: starts.append(fallback)
+        s.tick()
+        assert s.finished and s.phase == 'refused' and not starts and s.retry_at is None
         print('PASS fallback exit is terminal without marker; refusal never retries')
+        # Crash of both lockers: a new quickshell->hyprlock cycle after 2, 5, 10 s, then stop.
+        s = lock.Supervisor(directory)
+        starts = []; s.spawn = lambda fallback=False: starts.append(fallback)
+        for attempt, delay in enumerate(lock.RETRY_BACKOFF):
+            s.child = Child(); s.child.returncode = -11 if attempt else 1
+            s.backend = 'hyprlock'; s.secure = attempt == 1; s.phase = 'locked' if attempt == 1 else 'starting'
+            before = time.monotonic()
+            s.tick()
+            assert not s.finished and s.child is None and s.snapshot()['state'] == 'recovering'
+            assert not s.snapshot()['secure'] and not s.snapshot()['poured']
+            assert before + delay <= s.retry_at <= time.monotonic() + delay, (attempt, delay)
+            s.tick(); assert starts == [False] * attempt, 'no restart before the delay'
+            s.retry_at = time.monotonic() - 1
+            s.tick(); assert starts == [False] * (attempt + 1) and s.retry_at is None
+        s.child = Child(); s.child.returncode = 1; s.backend = 'hyprlock'; s.secure = False
+        s.tick()
+        assert s.finished and s.phase == 'failed' and len(starts) == len(lock.RETRY_BACKOFF)
+        print('PASS both lockers crashed: bounded retry with backoff, then failure')
+        # A waiter during the backoff gets its answer at its own deadline, not before.
+        s = lock.Supervisor(directory); s.child = Child(); s.child.returncode = 1; s.backend = 'hyprlock'
+        public, peer = socket.socketpair()
+        s.connections[public] = dict(trusted=False, buffer=b'', wait=True, deadline=time.monotonic() + 100, generation=0)
+        replies = []; s.respond = lambda conn, value: replies.append(value)
+        s.tick(); assert not replies and s.retry_at is not None
+        s.connections[public]['deadline'] = 0
+        s.tick(); assert replies == [dict(state='lock_failed', backend='hyprlock', secure=False, poured=False)]
+        public.close(); peer.close()
+        print('PASS a waiter outlives a crash only until its own deadline')
+        # A live fallback that never confirmed blocks later requests until a lock request replaces it.
+        s = lock.Supervisor(directory, start_seconds=.1); s.child = Child(); child = s.child
+        s.backend = 'hyprlock'; s.fallback_attempts = 1; s.started = time.monotonic() - 1
+        s.tick(); assert s.phase == 'failed' and not s.finished and s.child is child
+        public, peer = socket.socketpair()
+        s.connections[public] = dict(trusted=False, buffer=b'', wait=False, deadline=time.monotonic() + 2)
+        replies = []; s.respond = lambda conn, value: replies.append(value)
+        starts = []
+        def restart(fallback=False):
+            starts.append(fallback); s.phase = 'starting'; s.backend = 'quickshell'
+        s.spawn = restart
+        s.handle(public, dict(version=1, command='lock'))
+        assert child.killed and starts == [False] and s.child is None and replies[0]['state'] == 'starting'
+        public.close(); peer.close()
+        print('PASS a lock request replaces a failed, unconfirmed live fallback with a fresh locker')
+        # A fresh cycle may use the fallback again.
+        s = lock.Supervisor(directory); s.fallback_attempts = 1
+        with patch.object(lock.subprocess, 'Popen', lambda *a, **k: Child()), patch.object(lock, 'process_identity', return_value={'start': 'f', 'boot': 'f'}):
+            s.spawn(False)
+        assert s.fallback_attempts == 0
+        print('PASS a new quickshell cycle resets the fallback budget')
         s = lock.Supervisor(directory); s.child = Child(); s.child.returncode = 0
         s.backend = 'hyprlock'; s.secure = s.poured = True; s.phase = 'locked'
         s.tick()

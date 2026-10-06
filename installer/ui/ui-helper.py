@@ -9,9 +9,17 @@ import os
 from pathlib import Path
 import pwd
 import re
+import select
+import socket
 import stat
+import struct
 import subprocess
 import sys
+
+
+# The live boot medium. Without it (copytoram) the worker's unit never starts:
+# installer/systemd/emaki-installerd.service has ConditionPathExists on this path.
+BOOT_MOUNT = Path('/run/archiso/bootmnt')
 
 
 def run(argv, **kwargs):
@@ -35,24 +43,52 @@ def layouts(path=Path('/usr/share/X11/xkb/rules/evdev.lst')):
     return rows
 
 
-def zones(path=Path('/usr/share/zoneinfo/tzdata.zi')):
-    if path.exists():
-        names = {line.split()[1] for line in path.read_text().splitlines() if line.startswith('Z ')}
-        names.update(line.split()[2] for line in path.read_text().splitlines() if line.startswith('L '))
-        return sorted(names | {'UTC'})
-    result = run(['timedatectl', 'list-timezones'])
-    return sorted(set(result.stdout.decode().splitlines()) | {'UTC'})
+def zones(root=Path('/usr/share/zoneinfo')):
+    names = {'UTC'}
+    for table in ('zone1970.tab', 'zone.tab'):
+        path = root / table
+        if path.is_file():
+            names.update(line.split()[2] for line in path.read_text().splitlines()
+                         if line and not line.startswith('#') and len(line.split()) >= 3)
+    return sorted(name for name in names if (root / name).is_file())
 
 
 def trial_available():
     user = pwd.getpwuid(os.getuid())
-    return (user.pw_name == 'live' and Path('/run/archiso/bootmnt').is_dir()
+    return (user.pw_name == 'live' and BOOT_MOUNT.is_dir()
             and bool(os.environ.get('NIRI_SOCKET')))
+
+
+def catalog():
+    # boot_medium: the window tells the person why the worker never answers.
+    return dict(ok=True, layouts=layouts(), zones=zones(), trial=trial_available(),
+                boot_medium=BOOT_MOUNT.is_dir())
+
+
+def trial_reloads():
+    """Whether the compositor behind NIRI_SOCKET reads the trial file.
+
+    Only niri-emaki does: its configs (fork.kdl, fork-system.kdl) include
+    ~/.config/emaki/niri-emaki.kdl, which includes installer-input.kdl. The stock niri session
+    reads ~/.config/niri/config.kdl or /etc/niri/config.kdl and never sees the file. Unknown
+    answers True: the window still waits for niri to report the list.
+    """
+    try:
+        with socket.socket(socket.AF_UNIX) as stream:
+            stream.settimeout(.5)
+            stream.connect(os.environ['NIRI_SOCKET'])
+            pid = struct.unpack('3i', stream.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize('3i')))[0]
+        # A binary replaced while it runs reads as "/usr/bin/niri-emaki (deleted)".
+        return Path(os.readlink(f'/proc/{pid}/exe')).name.split(' ', 1)[0] == 'niri-emaki'
+    except (OSError, KeyError, struct.error):
+        return True
 
 
 def trial(chosen):
     if not trial_available():
         return dict(ok=False, message='Keyboard trial is available only in the live Emaki session.')
+    if not trial_reloads():
+        return dict(ok=False, reloads=False, message='This session does not read the keyboard trial.')
     known = {x['layout'] for x in layouts() if not x['variant']}
     if not isinstance(chosen, list) or not 1 <= len(chosen) <= 4 or len(set(chosen)) != len(chosen) or any(x not in known for x in chosen):
         raise ValueError()
@@ -75,7 +111,118 @@ def trial(chosen):
         os.fsync(fd)
     finally:
         os.close(fd)
-    return dict(ok=True, message='Layouts saved for the live session; allow a moment for niri to reload. Mod+Space switches layouts.')
+    return dict(ok=True, message='Layouts saved for the live session; allow a moment for niri to reload. Super+Space switches layouts.')
+
+
+def niri_request(kind):
+    # The request the lock screen's helper sends (shell/helpers/lock-environment.py).
+    with socket.socket(socket.AF_UNIX) as stream:
+        stream.settimeout(.5)
+        stream.connect(os.environ['NIRI_SOCKET'])
+        stream.sendall((json.dumps(kind) + '\n').encode())
+        data = b''
+        while b'\n' not in data:
+            chunk = stream.recv(16384)
+            if not chunk or len(data) > 1048576:
+                raise ValueError()
+            data += chunk
+    return json.loads(data.split(b'\n', 1)[0])['Ok']
+
+
+LEDS = Path('/sys/class/leds')
+
+
+def lock_led(name):
+    """Whether a lock key is on, from the keyboards' LEDs named `*::<name>` (niri keeps them in
+    step with its own state), as the lock screen reads Caps Lock
+    (shell/helpers/lock-environment.py); None without such a LED."""
+    values = []
+    for path in LEDS.glob(f'*::{name}/brightness'):
+        try:
+            values.append(int(path.read_text().strip()) > 0)
+        except (OSError, ValueError):
+            pass
+    return any(values) if values else None
+
+
+def caps_lock():
+    return lock_led('capslock')
+
+
+def num_lock():
+    return lock_led('numlock')
+
+
+def layout_state():
+    """The layouts niri runs now, as codes: a written trial file is not yet an active layout.
+
+    niri names a layout by its xkeyboard-config description; the code is the first evdev.lst
+    row with that description, as on the login and lock screens (lock-environment.py). caps and
+    num: Caps Lock and Num Lock, for the lines under the password fields.
+    """
+    if not os.environ.get('NIRI_SOCKET'):
+        return dict(ok=False, codes=[], current=-1)
+    state = niri_request('KeyboardLayouts')['KeyboardLayouts']
+    names, index = [str(name) for name in state['names']], state['current_idx']
+    table = {}
+    for row in layouts():
+        table.setdefault(row['label'], row['layout'].upper())
+    current = index if type(index) is int and 0 <= index < len(names) else -1
+    return dict(ok=True, codes=[table.get(name) or name[:32] for name in names], current=current, caps=caps_lock(), num=num_lock())
+
+
+def layout_events(stdin=sys.stdin, stdout=sys.stdout):
+    """Follow niri's event stream until stdin closes: one {"switched": true} line per change of
+    the layout list or of the active layout, after one {"ready": true} line.
+
+    A layout_state report is read after the key it checks, so Super+Space, a key and Super+Space
+    back inside one round trip look right in it; the window counts these lines instead. niri sends
+    its current KeyboardLayoutsChanged first (niri-ipc EventStreamState::replicate): that one is
+    the starting point, not a change. Switches inside one niri event loop iteration send no event
+    (State::ipc_refresh_keyboard_layout_index compares with the last sent index).
+    """
+    if not os.environ.get('NIRI_SOCKET'):
+        return
+    with socket.socket(socket.AF_UNIX) as stream:
+        stream.settimeout(.5)
+        stream.connect(os.environ['NIRI_SOCKET'])
+        stream.sendall(b'"EventStream"\n')
+        stream.setblocking(False)
+        data, state = b'', None
+        while True:
+            ready, _, _ = select.select([stream, stdin], [], [])
+            if stdin in ready and not os.read(stdin.fileno(), 4096):
+                return
+            if stream not in ready:
+                continue
+            chunk = stream.recv(65536)
+            if not chunk or len(data) > 16777216:
+                return
+            data += chunk
+            *lines, data = data.split(b'\n')
+            for line in lines:
+                event = json.loads(line)
+                if 'Ok' in event or 'Err' in event:
+                    continue
+                if 'KeyboardLayoutsChanged' in event:
+                    layouts = event['KeyboardLayoutsChanged']['keyboard_layouts']
+                    current = (tuple(layouts['names']), layouts['current_idx'])
+                elif 'KeyboardLayoutSwitched' in event:
+                    current = (state[0] if state else None, event['KeyboardLayoutSwitched']['idx'])
+                else:
+                    continue
+                if state is None and 'KeyboardLayoutsChanged' in event:
+                    print(json.dumps(dict(ready=True)), file=stdout, flush=True)
+                elif current != state:
+                    print(json.dumps(dict(switched=True)), file=stdout, flush=True)
+                state = current
+
+
+def first_layout():
+    """`niri msg action switch-layout 0`: the first layout of niri's list becomes the active one."""
+    if not os.environ.get('NIRI_SOCKET'):
+        return dict(ok=False)
+    return dict(ok=niri_request({'Action': {'SwitchLayout': {'layout': {'Index': 0}}}}) == 'Handled')
 
 
 def terse(line):
@@ -112,7 +259,11 @@ def network():
         if ssid and re.fullmatch(r'(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}', bssid):
             rows.append(dict(ssid=ssid, bssid=bssid, strength=int(strength), security=security,
                              device=device, connected=active == '*', enterprise='802.1X' in security))
-    return dict(ok=True, wired=wired, networks=sorted(rows, key=lambda x: (-x['connected'], -x['strength'])))
+    # One row per network: the access point in use, else the strongest one, is kept for join.
+    merged = {}
+    for row in sorted(rows, key=lambda x: (-x['connected'], -x['strength'])):
+        merged.setdefault((row['ssid'], row['security']), row)
+    return dict(ok=True, wired=wired, networks=list(merged.values()))
 
 
 def join(request):
@@ -151,11 +302,15 @@ def main():
     try:
         request = json.loads(sys.stdin.buffer.readline(8193))
         op = request.get('op')
-        if op == 'catalog':
-            result = dict(ok=True, layouts=layouts(), zones=zones(), trial=trial_available())
+        if op == 'catalog': result = catalog()
         elif op == 'network': result = network()
         elif op == 'join': result = join(request)
         elif op == 'trial': result = trial(request.get('layouts'))
+        elif op == 'layout_state': result = layout_state()
+        elif op == 'first_layout': result = first_layout()
+        elif op == 'layout_events':
+            layout_events()
+            return
         elif op == 'media': result = media()
         else: raise ValueError()
     except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):

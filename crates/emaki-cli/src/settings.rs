@@ -4,27 +4,31 @@ use std::path::Path;
 use std::process::ExitCode;
 use std::time::Duration;
 
-const HELP: &str = "Usage: emaki settings <command> --profile-root ABSOLUTE_PATH [--json]
+const HELP: &str = "Managed settings are not connected to your session yet.
+These commands work only in a separate test profile and change nothing you use.
+
+Usage: emaki settings <command> --profile-root ABSOLUTE_PATH [--json]
   list                       List all settings, defaults, sources and schema
   get KEY                    Read one effective setting
   history                    List semantic changes; observe manual edits/recover first
   undo ID                    Restore only changed keys, refusing later-key conflicts
   set KEY VALUE              Validate and prepare a generation; never live reload
-Keys (an empty VALUE removes the override, except for the first two):
+  reset KEY                  Remove the override; the key inherits the package default
+Keys (an empty VALUE removes the override, except for the first two: use reset):
   appearance.gaps            Integer 0..64; default from packaged tokens.toml
   keybindings.toggle_window_floating
                              Mod + optional Ctrl/Alt/Shift + XKB keysym; default unset
   appearance.wallpaper       Absolute path of an existing image -> generation/wpaperd.toml
   keyboard.layouts           1..4 XKB layout codes, comma-separated (us,ru), checked
-                             against the installed XKB rules -> input.keyboard.xkb.layout
-  keyboard.switch_key        Super+Space | Alt+Shift | Caps Lock -> xkb options
+                             against the installed XKB rules; stored in settings.toml only
+  keyboard.switch_key        Super+Space | Alt+Shift | Caps Lock; stored in settings.toml only
                              (Super+Space is the packaged Mod+Space bind)
   defaults.terminal          Desktop entry id -> generation/xdg-terminals.list
   defaults.browser           Desktop entry id -> generation/mimeapps.list (http/https/html)
   defaults.files             Desktop entry id -> generation/mimeapps.list (inode/directory)
   bar.autohide, bar.overview_workspaces, dock.on, dock.auto_hide
                              true | false; read by the shell from settings.toml
-Night guard (required for reads as well as writes):
+Isolated profile (required for reads as well as writes):
   --profile-root PATH        Existing isolated directory owned by this user
   XDG_CONFIG_HOME            Must be PATH/config (existing directory)
   XDG_STATE_HOME             Must be PATH/state (existing directory)
@@ -32,7 +36,7 @@ Night guard (required for reads as well as writes):
   No HOME fallback, symlink redirection, system installation or live niri include.
 Options:
   --json                     JSON schema_version=1 (no raw validator diagnostics)
-  --timeout-ms N             Set/undo: 10..10000 ms for all validator calls; default 2000
+  --timeout-ms N             Set/reset/undo: 10..10000 ms for all validator calls; default 2000
 Validation:
   niri 26.04: generated fragment, then fragment over packaged default.kdl/theme.kdl.
   Source settings.toml is replaced atomically only after successful validation.
@@ -57,6 +61,7 @@ pub(super) fn run(args: &[&str]) -> ExitCode {
         ["history", tail @ ..] => (Operation::History, tail),
         ["undo", id, tail @ ..] if !id.starts_with('-') => (Operation::Undo { id }, tail),
         ["get", key, tail @ ..] if !key.starts_with('-') => (Operation::Get { key }, tail),
+        ["reset", key, tail @ ..] if !key.starts_with('-') => (Operation::Reset { key }, tail),
         ["set", key, value, tail @ ..] if !key.starts_with('-') => {
             (Operation::Set { key, value }, tail)
         }
@@ -75,7 +80,10 @@ pub(super) fn run(args: &[&str]) -> ExitCode {
             "--json" if !json => json = true,
             "--timeout-ms"
                 if timeout.is_none()
-                    && matches!(operation, Operation::Set { .. } | Operation::Undo { .. }) =>
+                    && matches!(
+                        operation,
+                        Operation::Set { .. } | Operation::Reset { .. } | Operation::Undo { .. }
+                    ) =>
             {
                 let Some(ms) = args
                     .next()

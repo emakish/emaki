@@ -10,7 +10,8 @@ Scope {
     // qvidcap), stoken (stoken-gui, stoken-gui-small), vim. Only the launcher skips
     // them: the programs stay installed, gtk-launch and MIME handling are unchanged
     // and the dock still resolves their windows (DECISIONS 2026-10-03).
-    readonly property var hiddenIds: ["avahi-discover", "bssh", "bvnc", "lftp", "lstopo", "qv4l2", "qvidcap", "stoken-gui", "stoken-gui-small", "vim"]
+    // Rich helpers and duplicate indicator entries; KDE Connect and SMS stay visible.
+    readonly property var hiddenIds: ["avahi-discover", "bssh", "bvnc", "lftp", "lstopo", "qv4l2", "qvidcap", "stoken-gui", "stoken-gui-small", "vim", "qt6ct", "org.kde.kdeconnect.daemon", "org.kde.kdeconnect.handler", "org.kde.kdeconnect.nonplasma", "kcm_updates", "org.kde.discover.flatpak", "org.kde.discover.notifier", "org.kde.discover.snap", "org.kde.discover.urlhandler", "org.kde.ConfigurePrinter", "libreoffice-xsltfilter"]
     readonly property var entries: DesktopEntries.applications.values.filter(entry => catalog.shown(entry)).sort((a, b) => a.name.localeCompare(b.name))
     readonly property string launcher: Quickshell.env("EMAKI_GTK_LAUNCH") || "gtk-launch"
     property string launchState: "idle"
@@ -25,7 +26,7 @@ Scope {
     readonly property var frequent: entries.filter(e => (counts[e.id] || 0) > 0).sort((a, b) => counts[b.id] - counts[a.id] || a.name.localeCompare(b.name)).slice(0, 6)
     readonly property string frequentState: frequency.state
     signal launched
-    // The launcher could not start the app: id, human name, one-line reason.
+    // The launcher could not start the app: id, human name and one plain sentence for the notice.
     signal failed(string id, string name, string reason)
     Component.onCompleted: frequency.start({
         op: "frequent-list"
@@ -49,9 +50,19 @@ Scope {
             id: id
         });
     }
-    function fail(reason: string): void {
+    // `state`: the helper's state or "launch_failed"; `detail`: the raw reason (the launcher's
+    // stderr line or exit code), which goes to the log only.
+    function fail(state: string, detail: string): void {
         launchState = launchState === "timeout" ? "timeout" : "failed";
-        failed(pendingId, pendingName, reason);
+        console.info("Couldn't open " + pendingId + ": " + (detail || state));
+        failed(pendingId, pendingName, failureText(state));
+    }
+    // What the notice says: an internal code or a program's message never reaches the screen.
+    function failureText(state: string): string {
+        return ({
+                terminal_missing: "The terminal it needs isn’t installed.",
+                desktop_missing: "The app is no longer installed."
+            })[state] ?? "The app didn’t start.";
     }
     PrivateJob {
         id: frequency
@@ -69,12 +80,12 @@ Scope {
             if (value.state === "requested")
                 catalog.accepted();
             else
-                catalog.fail("Terminal launch: " + value.state);
+                catalog.fail(value.state, "");
         }
         onBusyChanged: if (!busy)
             Qt.callLater(() => {
                 if (catalog.launchState === "pending")
-                    catalog.fail("Terminal helper: " + terminal.state);
+                    catalog.fail(terminal.state, "terminal helper " + terminal.state);
             })
     }
     // false: another launch is still in flight (the dock shows the pulse on that icon).
@@ -123,14 +134,14 @@ Scope {
                 catalog.launchState = "requested";
                 catalog.accepted();
             } else
-                catalog.fail(catalog.errorLine || "gtk-launch exited with code " + code);
+                catalog.fail("launch_failed", catalog.errorLine || "gtk-launch exited with code " + code);
         }
         // exited() may arrive after runningChanged(): decide once the current signals settle.
         onRunningChanged: if (!running)
             Qt.callLater(() => {
                 if (catalog.launchState === "pending") {
                     deadline.stop();
-                    catalog.fail(catalog.errorLine || "gtk-launch could not be started");
+                    catalog.fail("launch_failed", catalog.errorLine || "gtk-launch could not be started");
                 }
             })
     }

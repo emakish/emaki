@@ -14,14 +14,30 @@ Documentation=https://github.com/emakish/emaki
 PartOf=graphical-session.target
 After=graphical-session.target
 Requisite=graphical-session.target
-# Stop after five crashes in 30 s: this is more than a transient failure.
-StartLimitIntervalSec=30
-StartLimitBurst=5
+# A crash restarts the shell, but a tight crash loop stops: 20 starts within 60 s mean
+# the shell dies within two seconds of every start, and restarting it every second only
+# fills the journal, /run/user and the core dumps (about 3,000 starts an hour). systemd
+# counts starts per window and opens a new window by itself (systemd 262
+# src/basic/ratelimit.c), so occasional crashes never add up, unlike RestartSteps=. The
+# manager default without these keys (5 starts in 10 s) once left the session without
+# bar, launcher, dock and notifications after a few crashes. With the shell stopped,
+# Mod+T still opens a terminal (a niri bind): `emaki-shell restart` works again a minute
+# later, at once after `systemctl --user reset-failed emaki-shell`.
+StartLimitIntervalSec=60
+StartLimitBurst=20
 
 [Service]
 Type=simple
 ExecStart=/usr/bin/emaki-shell
 Restart=on-failure
+# No restart heals 127: qs is not installed. 255 is restarted: qs exits with it when it
+# cannot load the shell (a QML error, a missing file; the start limit above ends that
+# loop), but Qt's Wayland client exits with it on every fatal Wayland error too (a
+# protocol error, a broken compositor connection), which a restart heals.
+RestartPreventExitStatus=127
+# A flat delay: systemd's restart counter is never reset while the session lives
+# (only a manual start, reset-failed or RESTART_RESET=1 do), so RestartSteps= would
+# keep every later crash waiting the full maximum delay.
 RestartSec=1
 Slice=session.slice
 

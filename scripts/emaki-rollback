@@ -1,0 +1,448 @@
+#!/usr/bin/python3 -I
+"""Keep a root snapshot in Emaki's explicit subvol=@ layout.
+
+All boot files live in @. Prepare and verify them before atomically exchanging
+subvolume names; never leave @ missing, even if the process or power fails.
+"""
+import argparse
+from contextlib import contextmanager
+import ctypes
+from datetime import datetime, timezone
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import signal
+import subprocess
+import sys
+import tempfile
+import uuid
+import xml.etree.ElementTree as ET
+
+KEPT = re.compile(r'@emaki-kept-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}')
+SNAPSHOT = re.compile(r'/@snapshots/([1-9][0-9]*)/snapshot')
+SHARED = {'/home': '@home', '/var/log': '@log', '/var/cache/pacman/pkg': '@pkg',
+          '/.snapshots': '@snapshots'}
+# Present only on installs with hibernation; checked like a shared one when listed.
+OPTIONAL = {'/swap': '@swap'}
+ENV = {'PATH': '/usr/bin:/usr/sbin', 'LC_ALL': 'C'}
+
+
+class Refused(RuntimeError):
+    pass
+
+
+def require(ok, message):
+    if not ok:
+        raise Refused(message)
+
+
+def run(*args):
+    result = subprocess.run([str(a) for a in args], env=ENV, text=True, capture_output=True)
+    if result.returncode:
+        raise Refused(f'{args[0]} failed: {result.stderr.strip() or result.stdout.strip()}')
+    return result.stdout.strip()
+
+
+def mount_info(path):
+    rows = json.loads(run('findmnt', '--json', '--mountpoint', path,
+                          '--output', 'TARGET,SOURCE,FSTYPE,FSROOT,UUID,OPTIONS,MAJ:MIN'))['filesystems']
+    require(len(rows) == 1, f'A single mount is required at {path}.')
+    return rows[0]
+
+
+def boot_status(root, cmdline):
+    """The kernel command line identifies the read-only lower snapshot of overlayfs."""
+    flags = [word[10:] for word in cmdline.split() if word.startswith('rootflags=')]
+    subvols = [opt[7:] for flag in flags for opt in flag.split(',') if opt.startswith('subvol=')]
+    snapshot = SNAPSHOT.fullmatch('/' + subvols[0].lstrip('/')) if len(subvols) == 1 else None
+    if snapshot and (root['fstype'] == 'overlay' or
+                     (root['fstype'] == 'btrfs' and root['fsroot'] == snapshot[0])):
+        return {'mode': 'snapshot', 'snapshot': snapshot[1],
+                'message': 'You are using a recovery snapshot.'}
+    if root['fstype'] == 'btrfs' and root['fsroot'] == '/@':
+        return {'mode': 'normal', 'message': 'The normal system is running.'}
+    if root['fstype'] == 'btrfs' and KEPT.fullmatch(root['fsroot'].lstrip('/')):
+        return {'mode': 'pending', 'message': 'A rollback is ready. Restart before making another change.'}
+    return {'mode': 'unsupported', 'message': 'Snapshots are unavailable on this root filesystem. Nothing changed.'}
+
+
+def safe_path(root, relative):
+    path = root / relative
+    # Snapshot contents must not redirect privileged preparation outside the copy.
+    require(path.resolve().is_relative_to(root.resolve()), f'Unsafe path in root: {relative}.')
+    return path
+
+
+def fstab_rows(text, fs_uuid):
+    rows = {}
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith('#'):
+            continue
+        fields = line.split()
+        require(len(fields) == 6, 'Malformed fstab.')
+        source, target, kind, options, dump, passno = fields
+        require(target not in rows, 'Duplicate fstab mountpoint.')
+        require('\\' not in target, 'Escaped fstab mountpoints are unsupported.')
+        opts = set(options.split(','))
+        require(not any(o.startswith('subvolid=') for o in opts), 'fstab pins a subvolume ID; use subvol=@ first.')
+        if target in {'/': '@', **SHARED, **OPTIONAL}:
+            name = {'/': '@', **SHARED, **OPTIONAL}[target]
+            require(source == 'UUID=' + fs_uuid and kind == 'btrfs', 'The Emaki subvolumes must share one filesystem UUID.')
+            require({o for o in opts if o.startswith('subvol=')} in ({'subvol=' + name}, {'subvol=/' + name}),
+                    f'Unexpected subvolume at {target}.')
+            require(not {'ro', 'noauto'} & opts, f'{target} must mount writable at boot.')
+        elif target != '/efi' and kind != 'swap':
+            raise Refused(f'Unsupported separate mount: {target}.')
+        rows[target] = (source, kind, frozenset(opts), dump, passno)
+    require({'/', '/efi', *SHARED} <= rows.keys(), 'The installed Emaki fstab layout is required.')
+    require(rows['/efi'][1] == 'vfat', 'The EFI system partition must be mounted at /efi.')
+    return rows
+
+
+def check_grub(root, fs_uuid):
+    text = safe_path(root, 'boot/grub/grub.cfg').read_text()
+    linux = re.findall(r'^\s*linux(?:efi)?\s+(.*)$', text, re.M)
+    initrds = re.findall(r'^\s*initrd(?:efi)?\s+(.*)$', text, re.M)
+    require(linux and initrds, 'GRUB has no normal kernel/initramfs entries.')
+    for line in linux:
+        words = line.split()
+        require('root=UUID=' + fs_uuid in words, 'GRUB root UUID differs from this filesystem.')
+        flags = [w[10:] for w in words if w.startswith('rootflags=')]
+        require(len(flags) == 1 and set(o for o in flags[0].split(',') if o.startswith('subvol')) in
+                ({'subvol=@'}, {'subvol=/@'}), 'GRUB must boot subvol=@ without subvolid.')
+    for path in [line.split()[0] for line in linux] + [p for line in initrds for p in line.split()]:
+        require(path.startswith('/@/boot/') and '..' not in path.split('/'), 'Unsupported GRUB boot path.')
+        require(safe_path(root, path[3:]).is_file(), f'Missing boot file: {path}.')
+    # Saved/one-shot entries are cleared in the writable copy. A custom default
+    # could still send a normal reboot back to recovery, so require the installer default.
+    require('set default="0"' in text and 'set default="${saved_entry}"' not in text,
+            'GRUB must use the first normal entry as its default.')
+
+
+def subvolume(path, readonly=None):
+    require(path.is_dir() and not path.is_symlink(), f'Not a subvolume directory: {path.name}.')
+    details = run('btrfs', 'subvolume', 'show', path)
+    ident = re.search(r'^\s*Subvolume ID:\s*(\d+)$', details, re.M)
+    require(ident is not None, f'Cannot identify subvolume {path.name}.')
+    if readonly is not None:
+        require(run('btrfs', 'property', 'get', '-ts', path, 'ro') == f'ro={str(readonly).lower()}',
+                f'Unexpected read-only state: {path.name}.')
+    return int(ident[1])
+
+
+def empty_children(root):
+    listing = run('btrfs', 'subvolume', 'list', '-o', root)
+    if not listing:
+        return []
+    ids = {int(value) for value in re.findall(r'^ID (\d+) ', listing, re.M)}
+    require(ids, 'Cannot inspect nested subvolumes.')
+    children = []
+    known = set()
+    for relative in ('var/lib/machines', 'var/lib/portables'):
+        child = safe_path(root, relative)
+        if child.is_dir() and child.stat().st_ino == 256:
+            known.add(subvolume(child))
+            require(not any(child.iterdir()), 'Populated nested subvolumes are unsupported. Nothing changed.')
+            children.append(child)
+    require(ids == known, 'Unknown nested subvolumes are unsupported. Nothing changed.')
+    return children
+
+
+def atomic_exchange(left, right):
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.renameat2(-100, os.fsencode(left), -100, os.fsencode(right), 2) != 0:
+        raise OSError(ctypes.get_errno(), 'Atomic root exchange failed')
+
+
+def write_record(path, data):
+    temp = path.with_suffix('.tmp')
+    with temp.open('x') as stream:
+        json.dump(data, stream, sort_keys=True)
+        stream.write('\n')
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temp, path)
+    fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+@contextmanager
+def top_mount(device):
+    # No mounts or mount propagation changes escape this process's namespace.
+    libc = ctypes.CDLL(None, use_errno=True)
+    require(libc.unshare(0x00020000) == 0, 'Cannot create a private mount namespace.')
+    run('mount', '--make-rprivate', '/')
+    with tempfile.TemporaryDirectory(prefix='emaki-rollback-', dir='/run') as directory:
+        top = Path(directory)
+        run('mount', '-t', 'btrfs', '-o', 'rw,subvolid=5', device, top)
+        try:
+            yield top
+        finally:
+            run('umount', top)
+
+
+def records(top):
+    directory = top / '.emaki-rollback'
+    if not directory.exists():
+        directory.mkdir(mode=0o700)
+    require(not directory.is_symlink() and directory.stat().st_uid == 0 and
+            directory.stat().st_mode & 0o077 == 0, 'Unsafe rollback record directory.')
+    found = {}
+    for path in sorted(directory.glob('*.json')):
+        require(KEPT.fullmatch(path.stem) and not path.is_symlink(), 'Invalid rollback record.')
+        record = json.loads(path.read_text())
+        require(record['kept'] == path.stem, 'Inconsistent rollback record.')
+        found[path.stem] = record
+    return directory, found
+
+
+def check_layout(top, fs_uuid):
+    current = top / '@'
+    subvolume(current, readonly=False)
+    empty_children(current)
+    devices = run('btrfs', 'filesystem', 'show', top)
+    require(re.search(r'Total devices 1\b', devices) and 'missing' not in devices.lower(),
+            'Only a complete single-device btrfs filesystem is supported.')
+    rows = fstab_rows(safe_path(current, 'etc/fstab').read_text(), fs_uuid)
+    for target, name in {**SHARED, **OPTIONAL}.items():
+        if target in OPTIONAL and target not in rows:
+            continue
+        actual = mount_info(target)
+        require(actual['uuid'] == fs_uuid and actual['fsroot'] == '/' + name and actual['fstype'] == 'btrfs',
+                f'{target} is not mounted from the expected shared subvolume.')
+    efi = mount_info('/efi')
+    require(rows['/efi'][0] == 'UUID=' + efi['uuid'], 'The mounted EFI partition differs from fstab.')
+    for target in ('/boot', '/usr', '/etc', '/var', '/var/lib', '/var/lib/pacman'):
+        result = subprocess.run(['findmnt', '--mountpoint', target], env=ENV, capture_output=True)
+        require(result.returncode == 1, f'Separate or uninspectable mount at {target}.')
+    require(not safe_path(current, 'var/lib/pacman/db.lck').exists(), 'A package transaction is active or unfinished.')
+    return rows
+
+
+@contextmanager
+def package_guard(current):
+    directory = os.open(safe_path(current, 'var/lib/pacman'), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        try:
+            lock = os.open('db.lck', os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600, dir_fd=directory)
+        except FileExistsError:
+            raise Refused('A package transaction is active or unfinished.') from None
+        try:
+            try:
+                token = 'emaki-rollback:' + uuid.uuid4().hex
+                os.write(lock, token.encode())
+                os.fsync(lock)
+            finally:
+                os.close(lock)
+            yield token
+        finally:
+            # The directory descriptor still refers to the previous root after
+            # the exchange. Never remove a new root's unrelated package lock.
+            os.unlink('db.lck', dir_fd=directory)
+    finally:
+        os.close(directory)
+
+
+def promote(top, source, fs_uuid, boot_id, history):
+    current = top / '@'
+    rows = check_layout(top, fs_uuid)
+    require(fstab_rows(safe_path(source, 'etc/fstab').read_text(), fs_uuid) == rows,
+            'The selected root has a different mount layout. Nothing changed.')
+    empty_children(source)
+    if safe_path(source, 'var/lib/pacman/db.lck').exists():
+        # snap-pac's pre/post hooks run while pacman owns db.lck. Only those
+        # transaction-boundary snapshots may carry a stale lock into preparation.
+        info = safe_path(top, str(source.parent.relative_to(top) / 'info.xml'))
+        boundary = (source.parent.parent == top / '@snapshots' and info.is_file() and
+                    ET.fromstring(info.read_text()).findtext('type') in ('pre', 'post'))
+        receipt = history.get(source.name, {})
+        interrupted_guard = (receipt.get('boot_id') != boot_id and receipt.get('lock_token') and
+                             safe_path(source, 'var/lib/pacman/db.lck').read_text() == receipt['lock_token'])
+        require(boundary or interrupted_guard,
+                'The selected root contains a package lock outside a pre/post snapshot or recorded rollback.')
+    check_grub(source, fs_uuid)
+    source_id = subvolume(source)
+    old_id = subvolume(current, readonly=False)
+    # A preparation that failed before the exchange blocks nothing: it never became @.
+    require(not any(r['boot_id'] == boot_id and r.get('state') != 'preparing' for r in history.values()),
+            'A rollback was already prepared during this boot. Restart before trying again.')
+    kept = '@emaki-kept-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ-') + uuid.uuid4().hex[:8]
+    staged = top / kept
+    receipt = top / '.emaki-rollback' / (kept + '.json')
+    with package_guard(current) as lock_token:
+        record = {'kept': kept, 'previous_id': old_id, 'source_id': source_id, 'boot_id': boot_id,
+                  'filesystem': fs_uuid, 'lock_token': lock_token, 'state': 'preparing'}
+        # Recorded before the copy exists: whatever fails below leaves a receipt that
+        # `list` shows as an incomplete preparation and `delete` can remove.
+        write_record(receipt, record)
+        run('btrfs', 'subvolume', 'snapshot', source, staged)
+        print(f'Prepared a writable copy of {source.relative_to(top)}.', flush=True)
+        try:
+            new_id = subvolume(staged, readonly=False)
+            check_grub(staged, fs_uuid)
+            require(fstab_rows(safe_path(staged, 'etc/fstab').read_text(), fs_uuid) == rows,
+                    'Mount layout changed during preparation. Nothing changed.')
+            safe_path(staged, 'var/lib/pacman/db.lck').unlink(missing_ok=True)
+            # Do not carry a one-shot snapshot selection into the normal reboot.
+            run('grub-editenv', safe_path(staged, 'boot/grub/grubenv'), 'create')
+            del record['state']
+            record['new_id'] = new_id
+            write_record(receipt, record)
+            run('btrfs', 'filesystem', 'sync', top)
+            # Both names exist before and after the sole commit operation. On a kill
+            # before exchange, the receipt identifies a prepared copy, not a kept root.
+            signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT, signal.SIGTERM, signal.SIGHUP})
+            atomic_exchange(current, staged)
+            run('btrfs', 'filesystem', 'sync', top)
+        except Exception:
+            print(f'Inspect @ and {kept} before retrying. Both copies were retained.', file=sys.stderr)
+            raise
+    print(f'Kept the previous root as {kept}.\n'
+          'The selected state is now the writable @. Restart to use it.\n'
+          'Home, logs, package cache and snapshots were not rolled back.\n'
+          f'Undo after restarting: emaki-rollback restore {kept}\n'
+          'From recovery media: mount this filesystem with subvolid=5, keep @ under a new name,\n'
+          f'then create a writable btrfs snapshot of {kept} named @.\n'
+          'Kept roots are never deleted automatically.')
+
+
+def task_mounts(task):
+    """The mountinfo lines of a /proc process or thread; none when it holds no mounts.
+
+    An exited thread-group leader (a zombie) has no mount namespace and its mountinfo
+    read fails with EINVAL, but its other threads may still run in that namespace. A
+    task whose table cannot be read is mount-free only when ns/mnt is gone too.
+    """
+    try:
+        return (task / 'mountinfo').read_text().splitlines()
+    except OSError as error:
+        failure = error
+    try:
+        os.readlink(task / 'ns' / 'mnt')
+    except (FileNotFoundError, ProcessLookupError):
+        try:
+            threads = [t for t in (task / 'task').iterdir() if t.name != task.name]
+        except FileNotFoundError:
+            return []
+        return [line for thread in threads for line in task_mounts(thread)]
+    except OSError:
+        pass
+    raise Refused(f'Cannot read the mounts of process {task.name} ({failure.strerror}). '
+                  'Nothing was deleted; try again.')
+
+
+def delete_kept(top, name, history, root, fs_uuid):
+    require(root['fstype'] == 'btrfs' and root['fsroot'] == '/@' and 'rw' in root['options'].split(','),
+            'Cleanup requires a normal writable boot of @.')
+    check_layout(top, fs_uuid)
+    check_grub(top / '@', fs_uuid)
+    require(name in history, 'This is not a recorded kept root.')
+    require(history[name]['filesystem'] == fs_uuid, 'Kept root filesystem mismatch.')
+    receipt = top / '.emaki-rollback' / (name + '.json')
+    if not (top / name).exists():
+        # The preparation failed before or at its copy command; only the receipt is left.
+        receipt.unlink()
+        print(f'Removed the record of {name}; it has no copy.')
+        return
+    ident = subvolume(top / name)
+    # A kept root carries the previous @ (the exchange happened). Any other recorded
+    # copy is an incomplete preparation that never became @: not an undo copy, not retained.
+    kept = {n for n, r in history.items() if (top / n).exists() and subvolume(top / n) == r['previous_id']}
+    if name in kept:
+        require(len(kept) > 1 and name != sorted(kept)[-1], 'Always retain the newest kept root and at least one undo copy.')
+    default = run('btrfs', 'subvolume', 'get-default', top)
+    require(not re.match(r'ID ' + str(ident) + r'\b', default), 'Cannot delete the default subvolume.')
+    require(f'subvolid={ident}' not in root['options'].split(','), 'Cannot delete the running root.')
+    # Another session/namespace may still be using a kept root after an exchange.
+    for info in Path('/proc').glob('[0-9]*/mountinfo'):
+        for line in task_mounts(info.parent):
+            fields = line.split()
+            require(not (' - btrfs ' in line and
+                         (fields[3] == '/' + name or fields[3].startswith('/' + name + '/'))),
+                    'The kept root is still mounted. Restart or unmount it before cleanup.')
+    for child in empty_children(top / name):
+        run('btrfs', 'subvolume', 'delete', child)
+    run('btrfs', 'subvolume', 'delete', top / name)
+    run('btrfs', 'filesystem', 'sync', top)
+    receipt.unlink()
+    if name in kept:
+        print(f'Deleted {name}. The newest kept root remains available for undo.')
+    else:
+        print(f'Deleted the incomplete preparation {name}.')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest='action', required=True)
+    sub.add_parser('status').add_argument('--json', action='store_true')
+    sub.add_parser('keep', help='keep the originally booted snapshot, excluding the temporary overlay')
+    sub.add_parser('snapshot', help='keep a chosen Snapper root snapshot').add_argument('number')
+    sub.add_parser('restore', help='undo using a kept root; preserve the current root too').add_argument('name')
+    sub.add_parser('list', help='list kept roots and incomplete preparations')
+    cleanup = sub.add_parser('delete', help='explicit cleanup; always retain the newest kept root')
+    cleanup.add_argument('name')
+    cleanup.add_argument('--yes', action='store_true', help='confirm deletion of this exact kept root')
+    args = parser.parse_args()
+    root = mount_info('/')
+    cmdline = Path('/proc/cmdline').read_text()
+    status = boot_status(root, cmdline)
+    if args.action == 'status':
+        print(json.dumps(status) if args.json else status['message'])
+        return
+    require(os.geteuid() == 0, 'Run this command as root (or through pkexec).')
+    require(status['mode'] not in ('unsupported', 'pending'), status['message'])
+    if args.action in ('restore', 'delete'):
+        require(KEPT.fullmatch(args.name), 'Use the exact kept-root name printed by emaki-rollback list.')
+    if args.action == 'delete':
+        require(args.yes, 'Deletion needs --yes and an exact kept-root name. Nothing changed.')
+    if args.action == 'keep':
+        require(status['mode'] == 'snapshot', 'Keep is available only from a snapshot boot.')
+        args.number = status['snapshot']
+    if args.action in ('keep', 'snapshot'):
+        require(re.fullmatch(r'[1-9][0-9]*', args.number), 'Snapshot must be a positive number.')
+    snapmount = mount_info('/.snapshots')
+    fs_uuid = snapmount['uuid']
+    require(snapmount['fstype'] == 'btrfs' and snapmount['fsroot'] == '/@snapshots' and
+            re.fullmatch(r'[0-9a-fA-F-]{36}', fs_uuid or ''), 'The shared snapshot mount is unavailable.')
+    if status['mode'] == 'snapshot':
+        require(('root=UUID=' + fs_uuid) in cmdline.split(), 'Snapshot boot and snapshot storage have different roots.')
+    else:
+        require(root['uuid'] == fs_uuid, 'Root and snapshots have different filesystem UUIDs.')
+    os.umask(0o077)
+    with open('/run/emaki-rollback.lock', 'a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise Refused('Another rollback operation is running.') from None
+        with top_mount('/dev/disk/by-uuid/' + fs_uuid) as top:
+            directory, history = records(top)
+            if args.action == 'list':
+                for name, record in history.items():
+                    ident = subvolume(top / name) if (top / name).exists() else None
+                    state = 'kept' if ident == record['previous_id'] else 'incomplete preparation'
+                    print(f'{name}\t{state}')
+                if not history:
+                    print('No kept roots. Nothing to clean up.')
+            elif args.action == 'delete':
+                delete_kept(top, args.name, history, root, fs_uuid)
+            else:
+                if args.action == 'restore':
+                    require(args.name in history, 'Unknown kept root.')
+                    source = top / args.name
+                    require(subvolume(source) == history[args.name]['previous_id'], 'This copy is an incomplete preparation, not a kept root.')
+                else:
+                    source = safe_path(top, '@snapshots/' + args.number + '/snapshot')
+                    subvolume(source, readonly=True)
+                promote(top, source, fs_uuid, Path('/proc/sys/kernel/random/boot_id').read_text().strip(), history)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (Refused, OSError, ValueError, KeyError, ET.ParseError) as error:
+        sys.exit(f'emaki-rollback: {error}')

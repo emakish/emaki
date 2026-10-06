@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "XkbCodes.js" as XkbCodes
 
 Scope {
     id: service
@@ -23,9 +24,19 @@ Scope {
     readonly property var casts: connected && model.casts ? Object.values(model.casts).filter(c => !c.by_parent) : []
     readonly property string layoutName: layouts ? layouts.names[layouts.current_idx] : ""
     readonly property string layoutLabel: layoutCode(layoutName)
-    // The short code of a layout name (the system island's cell, the keyboard page's rows).
+    // The short code of a layout name (the system island's cell, the keyboard page's rows):
+    // the xkb code from evdev.lst, uppercased (Ukrainian -> UA), as on the lock screen.
+    property var layoutCodes: ({})
     function layoutCode(name: string): string {
-        return name === "English (US)" ? "US" : name === "Russian" ? "RU" : name.slice(0, 2).toUpperCase();
+        return XkbCodes.code(name, layoutCodes);
+    }
+    FileView {
+        id: xkbRules
+        path: Quickshell.env("EMAKI_XKB_RULES") || "/usr/share/X11/xkb/rules/evdev.lst"
+        blockLoading: true
+        printErrors: false
+        onLoaded: service.layoutCodes = XkbCodes.parse(text())
+        onLoadFailed: service.layoutCodes = ({})
     }
 
     Component.onCompleted: {
@@ -56,6 +67,7 @@ Scope {
     }
     function invalidate(why: string): void {
         closeQueue = [];
+        pendingRequest = null;
         model = null;
         connection = "disconnected";
         reason = why;
@@ -88,16 +100,39 @@ Scope {
         }
     }
     function focusWorkspace(id: double): bool {
-        if (!connected || action.running || !Number.isSafeInteger(id) || !workspaces.some(w => w.id === id))
+        if (!connected || !Number.isSafeInteger(id) || !workspaces.some(w => w.id === id))
             return false;
-        actionState = "pending";
-        actionReason = "";
-        action.command = [binary, "niri", "focus-workspace", "--id", String(id), "--json", "--timeout-ms", "1500"];
-        action.running = true;
-        return true;
+        return request(["focus-workspace", "--id", String(id)]);
     }
     // Close requests queue behind the single action process (dock "Close all windows").
     property var closeQueue: []
+    // Focus/layout requests made while an action runs: only the latest one waits, and it goes
+    // before the queued closes, so a click waits for the action in flight, not for all of them.
+    property var pendingRequest: null
+    function request(args: var): bool {
+        pendingRequest = args;
+        pump();
+        return true;
+    }
+    // A deferred request is checked again against the model when it starts.
+    function stillValid(args: var): bool {
+        const value = Number(args[2]);
+        if (args[0] === "focus-workspace")
+            return workspaces.some(w => w.id === value);
+        if (args[0] === "focus-window")
+            return windows.some(w => w.id === value);
+        return !!layouts && value < layouts.names.length;
+    }
+    // The action actionState speaks of ("close-window", "switch-layout", ...): one action runs at
+    // a time, and a page reports an outcome only for its own kind.
+    property string actionKind: ""
+    function start(args: var): void {
+        actionKind = args[0];
+        actionState = "pending";
+        actionReason = "";
+        action.command = [binary, "niri"].concat(args, ["--json", "--timeout-ms", "1500"]);
+        action.running = true;
+    }
     function closeWindow(id: double): bool {
         if (!connected || !Number.isSafeInteger(id) || !windows.some(w => w.id === id) || closeQueue.includes(id))
             return false;
@@ -105,38 +140,37 @@ Scope {
         pump();
         return true;
     }
+    // Serves the pending request first, then closeQueue; invalid ones are dropped silently.
     function pump(): void {
-        if (action.running || !closeQueue.length)
+        if (action.running)
             return;
-        const id = closeQueue[0];
-        closeQueue = closeQueue.slice(1);
-        if (!connected || !windows.some(w => w.id === id)) {
-            pump();
-            return;
+        if (pendingRequest) {
+            const args = pendingRequest;
+            pendingRequest = null;
+            if (connected && stillValid(args))
+                start(args);
+            else
+                pump();
+        } else if (closeQueue.length) {
+            const id = closeQueue[0];
+            closeQueue = closeQueue.slice(1);
+            if (!connected || !windows.some(w => w.id === id)) {
+                pump();
+                return;
+            }
+            start(["close-window", "--id", String(id)]);
         }
-        actionState = "pending";
-        actionReason = "";
-        action.command = [binary, "niri", "close-window", "--id", String(id), "--json", "--timeout-ms", "1500"];
-        action.running = true;
     }
     // Layouts have no niri IDs: the configured index from the current model is the address.
     function switchLayout(index: int): bool {
-        if (!connected || action.running || !layouts || !Number.isInteger(index) || index < 0 || index >= layouts.names.length)
+        if (!connected || !layouts || !Number.isInteger(index) || index < 0 || index >= layouts.names.length)
             return false;
-        actionState = "pending";
-        actionReason = "";
-        action.command = [binary, "niri", "switch-layout", "--index", String(index), "--json", "--timeout-ms", "1500"];
-        action.running = true;
-        return true;
+        return request(["switch-layout", "--index", String(index)]);
     }
     function focusWindow(id: double): bool {
-        if (!connected || action.running || !Number.isSafeInteger(id) || !windows.some(w => w.id === id))
+        if (!connected || !Number.isSafeInteger(id) || !windows.some(w => w.id === id))
             return false;
-        actionState = "pending";
-        actionReason = "";
-        action.command = [binary, "niri", "focus-window", "--id", String(id), "--json", "--timeout-ms", "1500"];
-        action.running = true;
-        return true;
+        return request(["focus-window", "--id", String(id)]);
     }
     Process {
         id: watcher

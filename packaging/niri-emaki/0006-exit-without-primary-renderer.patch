@@ -1,0 +1,301 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Emaki contributors <emaki@localhost>
+Date: Mon, 5 Oct 2026 04:00:00 +0000
+Subject: [PATCH 6/6] tty: exit with status 3 when the primary renderer is missing
+
+On a TTY, niri draws every output with the primary GPU's renderer. When that
+renderer cannot be created (software EGL is rejected: llvmpipe on simpledrm,
+a VM without 3D acceleration, Hyper-V; or the driver fails), Tty::init only
+logs a warning and niri keeps running with no output and no way to notice:
+the screen keeps the boot log or stays black for good.
+
+Tty::init now reports whether the primary renderer exists after the device
+loop (the dmabuf global is created together with it). When it does not, the
+primary GPU was in the device list taken at start (a primary GPU that
+registered later is left to its udev "added" event, as in stock niri), and
+the session was active at start, State::new returns NoPrimaryRenderer, main
+logs "no primary GPU renderer (software EGL rejected or driver failed)",
+drops the event loop and exits with status 3. The seat session lives in the
+loop's session notifier, so dropping the loop closes the seat: logind and
+seatd put the VT back in text mode before they answer, and the text failure
+screen printed after the exit is visible. A working secondary GPU does not change this: nothing can be drawn without
+the primary renderer. Exit status 3 is the contract emaki-greeter-compositor
+relies on to show its text failure screen; other errors keep their behaviour.
+Starting on an inactive session is unchanged.
+
+Generated with git diff against the emaki-wallpaper branch; no commit or index mutation.
+---
+diff --git a/src/backend/mod.rs b/src/backend/mod.rs
+index 49fbc6b0..c2442cb1 100644
+--- a/src/backend/mod.rs
++++ b/src/backend/mod.rs
+@@ -20,6 +20,25 @@ pub use winit::Winit;
+ pub mod headless;
+ pub use headless::Headless;
+ 
++/// The TTY backend started on an active session, found the primary GPU among its devices, and
++/// got no primary renderer from it.
++///
++/// niri exits with [`NoPrimaryRenderer::EXIT_STATUS`] instead of idling with no output.
++#[derive(Debug)]
++pub struct NoPrimaryRenderer;
++
++impl NoPrimaryRenderer {
++    pub const EXIT_STATUS: i32 = 3;
++}
++
++impl std::fmt::Display for NoPrimaryRenderer {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        f.write_str("no primary GPU renderer (software EGL rejected or driver failed)")
++    }
++}
++
++impl std::error::Error for NoPrimaryRenderer {}
++
+ #[allow(clippy::large_enum_variant)]
+ pub enum Backend {
+     Tty(Tty),
+@@ -55,13 +74,18 @@ impl OutputId {
+ }
+ 
+ impl Backend {
+-    pub fn init(&mut self, niri: &mut Niri) {
++    pub fn init(&mut self, niri: &mut Niri) -> Result<(), NoPrimaryRenderer> {
+         let _span = tracy_client::span!("Backend::init");
+         match self {
+-            Backend::Tty(tty) => tty.init(niri),
++            Backend::Tty(tty) => {
++                if !tty.init(niri) {
++                    return Err(NoPrimaryRenderer);
++                }
++            }
+             Backend::Winit(winit) => winit.init(niri),
+             Backend::Headless(headless) => headless.init(niri),
+         }
++        Ok(())
+     }
+ 
+     pub fn seat_name(&self) -> String {
+@@ -233,3 +257,67 @@ impl Backend {
+         }
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use std::cell::Cell;
++    use std::rc::Rc;
++    use std::time::Duration;
++
++    use calloop::timer::{TimeoutAction, Timer};
++    use calloop::EventLoop;
++    use niri_config::Config;
++    use smithay::reexports::wayland_server::Display;
++
++    use crate::niri::State;
++
++    /// Sets its flag when dropped.
++    struct DropFlag(Rc<Cell<bool>>);
++    impl Drop for DropFlag {
++        fn drop(&mut self) {
++            self.0.set(true);
++        }
++    }
++
++    /// main() answers `NoPrimaryRenderer` by dropping the event loop before it exits: the libseat
++    /// session lives in its notifier, which `Tty::new` inserts into the loop as a source, and
++    /// only dropping that source closes the seat. A source stands in for the notifier here, and
++    /// the compositor state is built as in main(), on the headless backend.
++    #[test]
++    fn emaki_no_primary_renderer_exit_drops_the_session_notifier_with_the_event_loop() {
++        let event_loop = EventLoop::<State>::try_new().unwrap();
++        let dropped = Rc::new(Cell::new(false));
++        let notifier = DropFlag(dropped.clone());
++        event_loop
++            .handle()
++            .insert_source(
++                Timer::from_duration(Duration::from_secs(3600)),
++                move |_, _, _| {
++                    let _notifier = &notifier;
++                    TimeoutAction::Drop
++                },
++            )
++            .unwrap();
++        let state = State::new(
++            Config::default(),
++            event_loop.handle(),
++            event_loop.get_signal(),
++            Display::new().unwrap(),
++            true,
++            true,
++            false,
++        )
++        .unwrap();
++        // What State::new's error return drops: the backend and Niri. The session stays open.
++        drop(state);
++        assert!(
++            !dropped.get(),
++            "the notifier is not owned by the compositor state"
++        );
++        drop(event_loop);
++        assert!(
++            dropped.get(),
++            "a source outlived the event loop: something State::new built keeps the loop alive"
++        );
++    }
++}
+diff --git a/src/backend/tty.rs b/src/backend/tty.rs
+index 54a415b2..ded986a3 100644
+--- a/src/backend/tty.rs
++++ b/src/backend/tty.rs
+@@ -595,13 +595,19 @@ impl Tty {
+         Ok(())
+     }
+ 
+-    pub fn init(&mut self, niri: &mut Niri) {
++    /// Returns `false` when the session is active, the primary GPU was in the device list and
++    /// adding it initialized no renderer.
++    ///
++    /// Everything is drawn with the primary renderer, so without it no output can ever show a
++    /// frame, even when a secondary GPU works. A primary GPU missing from the list may still
++    /// arrive as a udev event; see [`primary_renderer_missing`].
++    pub fn init(&mut self, niri: &mut Niri) -> bool {
+         // If the session is inactive, skip initialization because we won't be able to do much with
+         // the devices anyway. We'll get ActivateSession and add the devices there instead.
+         //
+         // This can happen when starting niri while having a different TTY active (e.g. via tmux).
+         if !self.session.is_active() {
+-            return;
++            return true;
+         }
+ 
+         // Initialize the ignored nodes.
+@@ -612,7 +618,7 @@ impl Tty {
+ 
+         // Initialize the primary node first as later nodes might depend on the primary render node
+         // being available.
+-        if let Some((primary_device_id, primary_device_path)) = udev
++        let primary_listed = if let Some((primary_device_id, primary_device_path)) = udev
+             .device_list()
+             .find(|&(device_id, _)| device_id == self.primary_node.dev_id())
+         {
+@@ -621,8 +627,10 @@ impl Tty {
+                     "error adding primary node device, display-only devices may not work: {err:?}"
+                 );
+             }
++            true
+         } else {
+             warn!("primary node is missing, display-only devices may not work");
++            false
+         };
+ 
+         for (device_id, path) in udev.device_list() {
+@@ -634,6 +642,9 @@ impl Tty {
+                 warn!("error adding device: {err:?}");
+             }
+         }
++
++        // The dmabuf global is created together with the primary renderer.
++        !primary_renderer_missing(primary_listed, self.dmabuf_global.is_some())
+     }
+ 
+     fn on_udev_event(&mut self, niri: &mut Niri, event: UdevEvent) {
+@@ -2887,6 +2898,16 @@ fn ignored_nodes_from_config(config: &Config) -> HashSet<DrmNode> {
+     disabled_nodes
+ }
+ 
++/// Whether [`Tty::init`] ends without the primary renderer for good: the primary GPU was in the
++/// device list taken at start and adding it created no renderer.
++///
++/// `Tty::new` takes the device list before it picks the primary GPU. A GPU that registers in
++/// between can become the primary one without being in the list; like stock niri, init then
++/// waits for its udev "added" event, which initializes the renderer.
++fn primary_renderer_missing(primary_listed: bool, primary_renderer: bool) -> bool {
++    primary_listed && !primary_renderer
++}
++
+ fn surface_dmabuf_feedback(
+     compositor: &GbmDrmCompositor,
+     primary_formats: FormatSet,
+@@ -3545,7 +3566,24 @@ mod tests {
+     use niri_config::output::Modeline;
+     use niri_ipc::{HSyncPolarity, VSyncPolarity};
+ 
+-    use crate::backend::tty::{calculate_drm_mode_from_modeline, calculate_mode_cvt};
++    use crate::backend::tty::{
++        calculate_drm_mode_from_modeline, calculate_mode_cvt, primary_renderer_missing,
++    };
++
++    #[test]
++    fn emaki_no_primary_renderer_only_when_the_primary_gpu_was_listed_at_start() {
++        // Listed and its renderer created: niri runs.
++        assert!(!primary_renderer_missing(true, true));
++        // Listed, but adding it created no renderer (software EGL, failed driver): exit status 3.
++        assert!(primary_renderer_missing(true, false));
++        // Not in the list taken at start: the GPU registered after the list was taken and before
++        // the primary GPU was picked. Its udev "added" event still initializes the renderer, so
++        // init must not report it missing.
++        assert!(
++            !primary_renderer_missing(false, false),
++            "a primary GPU that registered after the device list was taken counts as missing"
++        );
++    }
+ 
+     #[test]
+     fn test_calculate_drmmode_from_modeline() {
+diff --git a/src/main.rs b/src/main.rs
+index aac65fa2..dca08957 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -16,6 +16,7 @@ use clap::{CommandFactory, Parser};
+ use clap_complete::Shell;
+ use clap_complete_nushell::Nushell;
+ use directories::ProjectDirs;
++use niri::backend::NoPrimaryRenderer;
+ use niri::cli::{Cli, CompletionShell, Sub};
+ #[cfg(feature = "dbus")]
+ use niri::dbus;
+@@ -183,7 +184,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
+     // Increase the buffer size so that it's harder to crash a frozen client with a 1000 Hz mouse.
+     set_default_max_buffer_size(&display, 1024 * 1024);
+ 
+-    let mut state = State::new(
++    let mut state = match State::new(
+         config,
+         event_loop.handle(),
+         event_loop.get_signal(),
+@@ -191,8 +192,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
+         false,
+         true,
+         cli.session,
+-    )
+-    .unwrap();
++    ) {
++        Ok(state) => state,
++        Err(err) if err.is::<NoPrimaryRenderer>() => {
++            error!("{err}");
++            // State::new dropped the backend, but the seat session lives in its notifier, a
++            // source of this event loop. Dropping the loop closes the seat, and logind or seatd
++            // put the VT back in text mode before they answer, so whatever is printed on the VT
++            // after this exit status is visible. process::exit runs no destructors.
++            drop(event_loop);
++            std::process::exit(NoPrimaryRenderer::EXIT_STATUS);
++        }
++        Err(err) => panic!("called `Result::unwrap()` on an `Err` value: {err:?}"),
++    };
+ 
+     if took_over_greeter {
+         if let niri::backend::Backend::Tty(tty) = &mut state.backend {
+diff --git a/src/niri.rs b/src/niri.rs
+index 1910d1b4..36637419 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -755,7 +755,7 @@ impl State {
+             create_wayland_socket,
+             is_session_instance,
+         );
+-        backend.init(&mut niri);
++        backend.init(&mut niri)?;
+ 
+         let mut state = Self { backend, niri };
+ 

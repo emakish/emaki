@@ -175,7 +175,9 @@ struct Session {
     next_outputs: Instant,
 }
 impl Session {
-    fn open(path: &Path, timeout: Duration) -> Result<Self, Failure> {
+    /// `with_casts`: also wait for the initial `CastsChanged` (26.04 sends it last). Only the
+    /// one-shot snapshot needs it; a watching session receives it as its next event.
+    fn open(path: &Path, timeout: Duration, with_casts: bool) -> Result<Self, Failure> {
         let deadline = Instant::now() + timeout;
         let mut socket = connect(path, deadline)?;
         check_version(&mut socket, deadline)?;
@@ -198,9 +200,10 @@ impl Session {
             return Err(malformed());
         }
         let (mut windows, mut workspaces, mut overview) = (false, false, false);
+        let mut casts = !with_casts;
         // 26.04 replicates overview on subscription too. Wait for that newer
         // value: the overview may change between OverviewState and EventStream.
-        while !windows || !workspaces || !overview || model.keyboard_layouts.is_none() {
+        while !windows || !workspaces || !overview || !casts || model.keyboard_layouts.is_none() {
             remaining(deadline)?;
             let bytes = lines
                 .next(deadline)?
@@ -209,6 +212,7 @@ impl Session {
             windows |= matches!(event, Event::WindowsChanged { .. });
             workspaces |= matches!(event, Event::WorkspacesChanged { .. });
             overview |= matches!(event, Event::OverviewOpenedOrClosed { .. });
+            casts |= matches!(event, Event::CastsChanged { .. });
             model.apply(event)?;
         }
         Ok(Self {
@@ -244,7 +248,7 @@ fn snapshot_at(path: Option<PathBuf>, timeout: Duration) -> Observation {
     let result = path
         .as_deref()
         .ok_or_else(missing_endpoint)
-        .and_then(|p| Session::open(p, timeout));
+        .and_then(|p| Session::open(p, timeout, true));
     match result {
         Ok(s) => Observation::new(Connection::connected(), Some(s.model), 1),
         Err(e) => Observation::new(Connection::failed(e), None, 0),
@@ -307,7 +311,7 @@ impl Observer {
                 .path
                 .as_deref()
                 .ok_or_else(missing_endpoint)
-                .and_then(|p| Session::open(p, self.timeout))
+                .and_then(|p| Session::open(p, self.timeout, false))
             {
                 Ok(session) => {
                     self.session = Some(session);

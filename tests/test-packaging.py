@@ -16,11 +16,14 @@ import tempfile
 import tomllib
 import unittest
 from unittest.mock import patch
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 FIELDS = ('pkgname', 'pkgver', 'pkgrel', 'arch', 'license', 'depends', 'makedepends',
           'checkdepends', 'optdepends', 'backup', 'conflicts', 'source', 'sha256sums',
-          'sha512sums', 'b2sums', 'install')
+          'sha512sums', 'b2sums', 'install', 'provides', 'replaces',
+          'groups', 'validpgpkeys')
 
 
 def run(argv, **kwargs):
@@ -62,25 +65,28 @@ class MetadataTests(unittest.TestCase):
         cls.recipes = {p.parent.name: metadata(p) for p in sorted(ROOT.glob('packaging/*/PKGBUILD'))}
 
     def test_release_versions(self):
-        for name in ('emaki', 'emaki-config', 'emaki-desktop', 'emaki-keyring', 'emaki-mirrorlist'):
+        for name in ('emaki', 'emaki-config', 'emaki-desktop', 'emaki-apps', 'emaki-keyring', 'emaki-mirrorlist', 'emaki-installer'):
             with self.subTest(package=name):
                 info = self.recipes[name]
                 self.assertEqual(info['pkgname'], [name])
-                self.assertEqual(info['pkgver'], ['0.1.1'])
+                self.assertEqual(info['pkgver'], ['0.2.0'])
                 self.assertEqual(info['pkgrel'], ['1'])
-                self.assertEqual(info['license'], ['GPL-3.0-or-later'])
+                # emaki-installer also ships the zone map (ODbL) and the GRUB unlock-screen fonts (DejaVu, Bitstream Vera).
+                self.assertEqual(info['license'], ['GPL-3.0-or-later', 'ODbL-1.0', 'Bitstream-Vera']
+                                 if name == 'emaki-installer' else ['GPL-3.0-or-later'])
         cargo = tomllib.loads((ROOT / 'Cargo.toml').read_text())
-        self.assertEqual(cargo['workspace']['package']['version'], '0.1.1')
+        self.assertEqual(cargo['workspace']['package']['version'], '0.2.0')
         packages = tomllib.loads((ROOT / 'Cargo.lock').read_text())['package']
-        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.1.1'})
+        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.2.0'})
         self.assertEqual(self.recipes['emaki']['depends'], [
-            'emaki-config=0.1.1-1', 'emaki-desktop=0.1.1-1', 'niri-emaki=26.04-7',
-            'quickshell-emaki=0.3.1-1', 'emaki-keyring=0.1.1-1', 'emaki-mirrorlist=0.1.1-1'])
+            'emaki-config=0.2.0-1', 'emaki-desktop=0.2.0-1', 'niri-emaki=26.04-8',
+            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring=0.2.0-1', 'emaki-mirrorlist=0.2.0-1'])
 
     def test_preset_units_have_shipped_providers(self):
         # Cached upstream file-list evidence keeps this gate usable off Arch.
         # Prefer installed/cached package file lists whenever available.
         evidence = json.loads((ROOT / 'packaging/emaki-config/preset-unit-files.json').read_text())
+        evidence.update(json.loads((ROOT / 'packaging/emaki-apps/preset-unit-files.json').read_text()))
         providers = {}
         shipped = set((ROOT / 'iso/target-packages.txt').read_text().split())
         for recipe in self.recipes.values():
@@ -99,9 +105,13 @@ class MetadataTests(unittest.TestCase):
                     if path.lstrip('/').startswith('usr/lib/systemd/system/'):
                         providers[Path(path).name] = package
         preset = (ROOT / 'systemd/50-emaki.preset').read_text().splitlines()
-        for line in preset:
+        rich = (ROOT / 'packaging/emaki-apps/45-emaki-apps.preset').read_text().splitlines()
+        for line in preset + rich:
             if line.startswith('enable '):
                 self.assertIn(line.split()[1], providers, f'no shipped package provides {line}')
+        for line in rich:
+            if line.startswith('enable '):
+                self.assertIn(providers[line.split()[1]], self.recipes['emaki-apps']['depends'])
         required = {'systemd-networkd.service', 'systemd-networkd.socket',
                     'systemd-networkd-wait-online.service', 'systemd-network-generator.service',
                     'systemd-resolved.service', 'systemd-homed.service',
@@ -124,12 +134,14 @@ class MetadataTests(unittest.TestCase):
     def test_config_contract(self):
         info = self.recipes['emaki-config']
         self.assertEqual(set(info['backup']), {
-            'etc/niri/config.kdl', 'etc/xdg/hypr/hyprlock.conf', 'etc/xdg/fastfetch/config.jsonc'})
+            'etc/niri/config.kdl', 'etc/xdg/hypr/hyprlock.conf', 'etc/xdg/fastfetch/config.jsonc',
+            'etc/xdg/mimeapps.list', 'etc/xdg/kdeglobals', 'etc/xdg/dolphinrc', 'etc/xdg/qt6ct/qt6ct.conf',
+            'etc/xdg/menus/emaki-applications.menu', 'etc/xdg/xdg-desktop-portal/niri-portals.conf'})
         self.assertEqual(info['conflicts'], ['emaki-core'])
         self.assertEqual(set(info['makedepends']), {'git', 'make', 'python', 'rust', 'qt6-shadertools'})
         self.assertIn('niri', info['checkdepends'])
         required = {
-            'niri-emaki>=26.04-6', 'quickshell-emaki', 'python', 'python-gobject', 'python-pillow',
+            'niri-emaki>=26.04-6', 'quickshell-emaki>=0.3.1-2', 'python', 'python-gobject', 'python-pillow',
             'gtk3', 'wpaperd', 'wl-clipboard', 'cliphist', 'polkit-gnome', 'udiskie', 'kitty',
             'fastfetch>=2.68.1', 'imagemagick', 'hyprlock', 'playerctl', 'fuzzel', 'qt6ct',
             'adwaita-cursors', 'adwaita-fonts', 'adwaita-icon-theme', 'brightnessctl',
@@ -139,7 +151,7 @@ class MetadataTests(unittest.TestCase):
         }
         self.assertTrue(required <= set(info['depends']), required - set(info['depends']))
         recipe = (ROOT / 'packaging/emaki-config/PKGBUILD').read_text()
-        for text in ('export _emaki_commit', 'archive --format=tar', '"$_emaki_commit"',
+        for text in ('export _emaki_commit', 'source_archive.py" checkout', '"$_emaki_commit"',
                      'cargo fetch --locked', '_emaki_make build', '_emaki_make check',
                      '_emaki_make install install-niri-emaki DESTDIR="$pkgdir"',
                      'diff -u packaging/emaki-config/expected-files.list'):
@@ -149,20 +161,149 @@ class MetadataTests(unittest.TestCase):
     def test_desktop_and_fork_constraints(self):
         desktop = self.recipes['emaki-desktop']
         self.assertTrue({'emaki-config', 'niri-emaki>=26.04-6', 'quickshell-emaki', 'hyprlock',
-                         'firefox', 'noto-fonts'} <= set(desktop['depends']))
+                         'firefox', 'noto-fonts', 'dolphin', 'kitty'} <= set(desktop['depends']))
+        # niri runs X11 clients only through xwayland-satellite found on PATH.
+        self.assertIn('xwayland-satellite', desktop['depends'])
+        # Colour emoji outside Firefox (file names, chat, the terminal).
+        self.assertIn('noto-fonts-emoji', desktop['depends'])
+        self.assertFalse({'nautilus', 'loupe', 'file-roller', 'papers', '7zip', 'unrar',
+                          'emaki-apps'} & set(desktop['depends']))
         self.assertFalse({'make', 'rust', 'qt6-shadertools'} & set(desktop['depends']))
         self.assertTrue(any(d.startswith('swayidle:') for d in desktop['optdepends']))
         self.assertFalse(any(d.startswith('niri-emaki:') for d in desktop['optdepends']))
         niri = self.recipes['niri-emaki']
-        self.assertEqual((niri['pkgver'], niri['pkgrel']), (['26.04'], ['7']))
+        self.assertEqual((niri['pkgver'], niri['pkgrel']), (['26.04'], ['8']))
         self.assertTrue({'niri=26.04', 'libdisplay-info.so=3-64', 'libinput.so=10-64',
                          'libseat.so=1-64', 'mesa'} <= set(niri['depends']))
         self.assertNotIn('libgbm.so=1-64', niri['depends'])  # Arch mesa does not provide it
         qs = self.recipes['quickshell-emaki']
-        self.assertEqual((qs['pkgver'], qs['pkgrel']), (['0.3.1'], ['1']))
+        self.assertEqual(qs['pkgver'], ['0.3.1'])
+        self.assertIn(qs['pkgrel'], (['2'], ['3']))
+        lower, upper = ('6.11', '6.12') if qs['pkgrel'] == ['2'] else ('6.12', '6.13')
         for dep in ('qt6-base', 'qt6-declarative', 'qt6-wayland'):
-            self.assertIn(dep + '>=6.11', qs['depends'])
-            self.assertIn(dep + '<6.12', qs['depends'])
+            self.assertIn(dep + '>=' + lower, qs['depends'])
+            self.assertIn(dep + '<' + upper, qs['depends'])
+
+    def test_staged_qt612_recipe(self):
+        active = ROOT / 'packaging/quickshell-emaki'
+        staged = active / 'qt-6.12'
+        candidate = metadata(staged / 'PKGBUILD')
+        self.assertEqual(candidate['pkgver'], ['0.3.1'])
+        self.assertEqual(candidate['pkgrel'], ['3'])
+        for dep in ('qt6-base', 'qt6-declarative', 'qt6-wayland'):
+            self.assertIn(dep + '>=6.12', candidate['depends'])
+            self.assertIn(dep + '<6.13', candidate['depends'])
+        self.assertEqual(len(candidate['source']), len(candidate['sha256sums']))
+        for source, digest in zip(candidate['source'], candidate['sha256sums']):
+            if '://' in source:
+                continue
+            path = staged / source if (staged / source).is_file() else active / source
+            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), digest, source)
+        # The build driver selects the active recipe; activation also selects patch 0003.
+        self.assertNotIn('qt-6.12', (ROOT / 'packaging/build.sh').read_text())
+        qs = self.recipes['quickshell-emaki']
+        self.assertEqual('0003-qt-6.12-moc-includes.patch' in qs['source'], qs['pkgrel'] == ['3'])
+
+    def test_qt612_activation(self):
+        activate = runpy.run_path(str(ROOT / 'packaging/activate-qt612.py'))['activate']
+        with tempfile.TemporaryDirectory(prefix='qt612-', dir='/tmp') as directory:
+            checkout = Path(directory)
+            shutil.copytree(ROOT / 'packaging', checkout / 'packaging')
+            for name in ('Cargo.toml', 'Cargo.lock'):
+                shutil.copy2(ROOT / name, checkout / name)
+            activate(checkout)
+            # Run the same packaging gates against the activated tree.
+            with patch.dict(globals(), ROOT=checkout):
+                instance = MetadataTests()
+                instance.recipes = dict(self.recipes)
+                for name in ('emaki', 'quickshell-emaki'):
+                    instance.recipes[name] = metadata(checkout / 'packaging' / name / 'PKGBUILD')
+                instance.test_release_versions()
+                instance.test_desktop_and_fork_constraints()
+                instance.test_staged_qt612_recipe()
+                instance.test_local_source_checksums()
+            self.assertEqual(metadata(checkout / 'packaging/quickshell-emaki/PKGBUILD')['pkgrel'], ['3'])
+
+    def test_portal_without_nautilus(self):
+        portal = self.recipes['xdg-desktop-portal-gnome-emaki']
+        self.assertEqual(portal['pkgver'], ['50.0'])
+        self.assertEqual(portal['pkgrel'], ['2'])
+        self.assertNotIn('nautilus', portal['depends'])
+        self.assertIn('xdg-desktop-portal-gnome', portal['provides'])
+        self.assertIn('xdg-desktop-portal-gnome', portal['conflicts'])
+        self.assertIn('xdg-desktop-portal-gnome', portal['replaces'])
+        self.assertEqual(portal['groups'], [])
+        self.assertEqual(len(portal['validpgpkeys']), 2)
+        for fingerprint in portal['validpgpkeys']:
+            key = ROOT / 'packaging/xdg-desktop-portal-gnome-emaki/keys/pgp' / f'{fingerprint}.asc'
+            self.assertTrue(key.is_file(), key)
+        self.assertEqual(portal['b2sums'], [
+            '85ef8077172eb7fe181f2b3ab1585e7d8e467cec5acc163c9438364d4f8f127d4c582141a91899c859689b08a7b8c470668f9fd883f1457254b6cf913b75ce2e',
+            'afa272ad0b3f5b417326269ff55cb943a8c811860f13a48867e0673ebcb58df8a4b91756a0aceace9860f8754880b95328d6670fd9c0420f81d859db4631b19c'])
+        # By the upstream name, never by the fork's own (PortalResolutionTests).
+        for name, recipe in self.recipes.items():
+            self.assertNotIn(FORK, [re.split(r'[<>=]', d)[0] for d in recipe['depends']], name)
+        for name in ('emaki-config', 'emaki-desktop'):
+            self.assertIn(PORTAL, self.recipes[name]['depends'], name)
+        config = configparser.ConfigParser()
+        config.read(ROOT / 'packaging/emaki-config/niri-portals.conf')
+        self.assertEqual(config['preferred']['org.freedesktop.impl.portal.FileChooser'], 'gtk;')
+        self.assertEqual(config['preferred']['org.freedesktop.impl.portal.ScreenCast'], 'gnome;')
+        installed = 'etc/xdg/xdg-desktop-portal/niri-portals.conf'
+        self.assertIn(installed, self.recipes['emaki-config']['backup'])
+        self.assertIn('/' + installed, (ROOT / 'packaging/emaki-config/expected-files.list').read_text().splitlines())
+        evidence = json.loads((ROOT / 'packaging/emaki-apps/arch-packages.json').read_text())
+        self.assertNotIn('nautilus', evidence['live_and_target_closure_names'])
+        self.assertNotIn('xdg-desktop-portal-gnome', evidence['live_and_target_closure_names'])
+        self.assertIn('xdg-desktop-portal-gnome-emaki', evidence['live_and_target_closure_names'])
+        self.assertEqual(evidence['retained_gnome_apps'], [])
+
+    def test_rich_apps(self):
+        info = self.recipes['emaki-apps']
+        self.assertEqual(info['arch'], ['any'])
+        self.assertEqual(info['pkgver'], [(ROOT / 'iso/VERSION').read_text().strip()])
+        required = {'emaki-desktop', 'gwenview', 'ark', 'okular', 'thunderbird', 'qbittorrent',
+                    'haruna', 'elisa', 'kate', 'libreoffice-fresh', 'spectacle', 'obs-studio',
+                    'plasma-systemmonitor', 'partitionmanager', 'filelight', 'discover', 'flatpak',
+                    'fwupd', 'isoimagewriter', 'cups', 'print-manager', 'skanlite', 'kdeconnect',
+                    'kcharselect', 'keepassxc', '7zip', 'unrar', 'ffmpeg', 'qt6-multimedia-ffmpeg',
+                    'gst-plugins-base', 'gst-plugins-good', 'gst-plugins-bad', 'gst-plugins-ugly', 'gst-libav',
+                    'ttf-liberation', 'ttf-carlito', 'hunspell-en_us'}
+        self.assertEqual(set(info['depends']), required)
+        self.assertEqual(len(info['depends']), len(required))
+        evidence = json.loads((ROOT / 'packaging/emaki-apps/arch-packages.json').read_text())
+        self.assertEqual({p['pkgname'] for p in evidence['direct']}, required - {'emaki-desktop'})
+        self.assertTrue(all(p['repo'] in ('core', 'extra') for p in evidence['direct']))
+
+    def test_rich_printing_preset(self):
+        # Rich enables CUPS through a preset file of its own: the shared 50-emaki.preset
+        # also reaches Minimal, and a scriptlet must not enable or start units on a
+        # running system (it cannot tell "never enabled" from "switched off by the person").
+        self.assertIn('cups', self.recipes['emaki-apps']['depends'])
+        preset = (ROOT / 'packaging/emaki-apps/45-emaki-apps.preset').read_text().splitlines()
+        rules = [line for line in preset if line.strip() and not line.startswith('#')]
+        self.assertEqual(rules, ['enable cups.service', 'enable cups.socket', 'enable cups.path'])
+        for path in (ROOT / 'systemd/50-emaki.preset', ROOT / 'packaging/emaki-apps/45-emaki-apps.preset'):
+            self.assertNotIn('avahi', path.read_text())
+        self.assertEqual(self.recipes['emaki-apps']['install'], ['emaki-apps.install'])
+        hooks = ROOT / 'packaging/emaki-apps/emaki-apps.install'
+        self.assertNotIn('systemctl ', ''.join(line for line in hooks.read_text().splitlines(True)
+                                               if not line.lstrip().startswith(('#', 'echo'))))
+        result = run(['bash', '-eu', '-c', 'source "$1"; post_install 0.1.2-1; post_upgrade 0.1.2-1 0.1.1-1',
+                      'hooks', str(hooks)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        line = 'Printing is off. Switch it on: sudo systemctl enable --now cups.service'
+        enabled = (Path('/etc/systemd/system/multi-user.target.wants/cups.service').exists()
+                   or Path('/etc/systemd/system/cups.service').is_symlink())
+        self.assertEqual(result.stdout.splitlines(), [] if enabled else [line, line])
+
+    def test_installer_dependencies(self):
+        depends = self.recipes['emaki-installer']['depends']
+        # The worker runs the snapshot and zram steps inside the target, never on the live host.
+        for name in ('snapper', 'snap-pac', 'grub-btrfs', 'zram-generator'):
+            self.assertNotIn(name, depends)
+        # The installer UI imports the shell modules and shaders under /usr/share/emaki/shell.
+        self.assertIn('emaki-config', depends)
 
     def test_local_source_checksums(self):
         for name, info in self.recipes.items():
@@ -186,9 +327,11 @@ class MetadataTests(unittest.TestCase):
                          '668569956D2D747847D87D01F62680BE583363AC:4:')
         self.assertEqual(self.recipes['emaki-mirrorlist']['backup'], ['etc/pacman.d/emaki-mirrorlist'])
         mirror = (ROOT / 'packaging/emaki-mirrorlist/emaki-mirrorlist').read_text().splitlines()
-        server = 'Server = https://github.com/emakish/packages/releases/download/'
-        self.assertEqual([line for line in mirror if line.startswith('Server')], [server + 'stable'])
-        self.assertIn('# ' + server + 'testing', mirror)
+        server = 'Server = https://pkgs.emaki.sh/'
+        self.assertEqual([line for line in mirror if line.startswith('Server')], [server + 'stable/$arch'])
+        self.assertIn('# ' + server + 'testing/$arch', mirror)
+        # The address the package ships is the one the mirror documentation describes.
+        self.assertIn(server + 'stable/$arch', (ROOT / 'docs/mirror.md').read_text())
 
     def test_small_package_payloads_and_keyring_hooks(self):
         expected = {
@@ -197,6 +340,7 @@ class MetadataTests(unittest.TestCase):
                               for name in ('emaki.gpg', 'emaki-trusted', 'emaki-revoked')},
             'emaki-mirrorlist': {'/etc/pacman.d/emaki-mirrorlist'},
             'emaki': set(),
+            'emaki-apps': {'/usr/lib/systemd/system-preset/45-emaki-apps.preset'},
         }
         with tempfile.TemporaryDirectory(prefix='emaki-small-') as temporary:
             base = Path(temporary)
@@ -233,6 +377,200 @@ class MetadataTests(unittest.TestCase):
         ''', 'hooks', str(ROOT / 'packaging/emaki-keyring/emaki-keyring.install')])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((result.stdout, result.stderr), ('', ''))
+
+
+PORTAL, FORK = 'xdg-desktop-portal-gnome', 'xdg-desktop-portal-gnome-emaki'
+# The names whose relations decide which portal a machine gets; the stubs carry only these.
+PORTAL_NAMES = {'emaki', 'emaki-config', 'emaki-desktop', 'emaki-apps', FORK, PORTAL, 'nautilus',
+                'xdg-desktop-portal', 'xdg-desktop-portal-gtk'}
+# Arch's side as `pacman -Si` showed it on 2026-10-05 (extra/xdg-desktop-portal-gnome 50.0-1).
+ARCH_STUBS = [
+    {'name': PORTAL, 'version': '50.0-1',
+     'depends': ['nautilus', 'xdg-desktop-portal', 'xdg-desktop-portal-gtk>=1.10.0-2'],
+     'provides': ['xdg-desktop-portal-impl'], 'conflicts': ['xdg-desktop-portal-gtk<1.10.0-2'],
+     'replaces': ['xdg-desktop-portal-gtk<1.10.0-2']},
+    {'name': 'nautilus', 'version': '50.3.1-1'},
+    {'name': 'xdg-desktop-portal', 'version': '1.20.3-1'},
+    {'name': 'xdg-desktop-portal-gtk', 'version': '1.15.3-1', 'depends': ['xdg-desktop-portal'],
+     'provides': ['xdg-desktop-portal-impl']},
+]
+
+
+def released(version):
+    """The portal relations of an install from the <version> ISO (recipes at v0.1.0 and v0.1.1;
+    0.1.2 is a726db4, whose fork 50.0-1 had no replaces=)."""
+    release, portal = f'{version}-1', FORK if version == '0.1.2' else PORTAL
+    desktop = ['emaki-config', portal, 'xdg-desktop-portal-gtk'] + ([] if version == '0.1.2' else ['nautilus'])
+    stubs = [{'name': 'emaki-config', 'version': release, 'depends': [portal, 'xdg-desktop-portal-gtk']},
+             {'name': 'emaki-desktop', 'version': release, 'depends': desktop},
+             {'name': 'emaki', 'version': release,
+              'depends': [f'emaki-config={release}', f'emaki-desktop={release}']}]
+    if version == '0.1.2':
+        stubs.append({'name': FORK, 'version': '50.0-1',
+                      'depends': ['xdg-desktop-portal', 'xdg-desktop-portal-gtk>=1.10.0-2'],
+                      'provides': [PORTAL, 'xdg-desktop-portal-impl'],
+                      'conflicts': [PORTAL, 'xdg-desktop-portal-gtk<1.10.0-2'],
+                      'replaces': ['xdg-desktop-portal-gtk<1.10.0-2']})
+    return stubs
+
+
+def stub_repository(directory, name, stubs):
+    """A pacman repository of empty packages that carry only the given relations."""
+    directory.mkdir(parents=True)
+    for stub in stubs:
+        stage = directory / 'stage' / stub['name']
+        # Arch's portal and the fork own the same files, as the real packages do.
+        owned = stage / ('usr/lib/xdg-desktop-portal-gnome' if stub['name'] in (PORTAL, FORK)
+                         else f'usr/share/stub/{stub["name"]}')
+        owned.parent.mkdir(parents=True)
+        owned.write_text(stub['version'] + '\n')
+        fields = [('pkgname', stub['name']), ('pkgbase', stub['name']), ('pkgver', stub['version']),
+                  ('pkgdesc', 'stub'), ('builddate', '1'), ('size', '0'), ('arch', 'any')]
+        fields += [(key, value) for field, key in (('depends', 'depend'), ('provides', 'provides'),
+                                                    ('conflicts', 'conflict'), ('replaces', 'replaces'))
+                   for value in stub.get(field, ())]
+        (stage / '.PKGINFO').write_text(''.join(f'{key} = {value}\n' for key, value in fields))
+        archive = directory / f'{stub["name"]}-{stub["version"]}-any.pkg.tar.zst'
+        subprocess.run(['bsdtar', '--zstd', '--uid', '0', '--gid', '0', '-cf', str(archive),
+                        '-C', str(stage), '.PKGINFO', 'usr'], check=True)
+    subprocess.run(['repo-add', '-q', str(directory / f'{name}.db.tar.gz'),
+                    *sorted(map(str, directory.glob('*.pkg.tar.zst')))], check=True, capture_output=True)
+    return directory
+
+
+@unittest.skipUnless(all(map(shutil.which, ('pacman', 'repo-add', 'bsdtar')))
+                     and (os.geteuid() == 0 or shutil.which('fakeroot')),
+                     'needs pacman, repo-add, bsdtar and fakeroot')
+class PortalResolutionTests(unittest.TestCase):
+    """Which portal each kind of machine ends up with, resolved by pacman in a scratch root.
+
+    Installed systems list [emaki] after [core] and [extra] (the installer's worker.py since
+    0.1.0). For each installed package libalpm looks for a replacement or an upgrade repository
+    by repository and stops at the first one that carries the package's own name
+    (alpm_sync_sysupgrade in lib/libalpm/sync.c), so [extra]'s xdg-desktop-portal-gnome hides
+    the fork's replaces= from 0.1.0 and 0.1.1. A recipe that pulls the fork in by its name then
+    meets the conflict question, whose default is No: `pacman -Syu` with Enter (or
+    --noconfirm) aborts the whole update.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.candidate = []
+        for name in ('emaki', 'emaki-config', 'emaki-desktop', 'emaki-apps', FORK):
+            info = metadata(ROOT / 'packaging' / name / 'PKGBUILD')
+            cls.candidate.append({
+                'name': name, 'version': f'{info["pkgver"][0]}-{info["pkgrel"][0]}',
+                'depends': [d for d in info['depends'] if re.split(r'[<>=]', d)[0] in PORTAL_NAMES],
+                'provides': info['provides'], 'conflicts': info['conflicts'], 'replaces': info['replaces']})
+        cls.versions = {stub['name']: stub['version'] for stub in cls.candidate}
+
+    def setUp(self):
+        self.work = Path(self.enterContext(tempfile.TemporaryDirectory(prefix='emaki-portal-')))
+        self.extra = stub_repository(self.work / 'extra', 'extra', ARCH_STUBS)
+        self.emaki = stub_repository(self.work / 'emaki', 'emaki', self.candidate)
+
+    def pacman(self, system, repos, *args, answers=None):
+        """pacman on a scratch system; answers: what a person types, else --noconfirm (= Enter)."""
+        for name in ('root', 'db', 'cache', 'hooks'):
+            (system / name).mkdir(parents=True, exist_ok=True)
+        (system / 'pacman.conf').write_text('[options]\nArchitecture = x86_64\nSigLevel = Never\n' + ''.join(
+            f'[{name}]\nServer = file://{path}\n' for name, path in repos))
+        argv = ['pacman', '--config', str(system / 'pacman.conf'), '--root', str(system / 'root'),
+                '--dbpath', str(system / 'db'), '--cachedir', str(system / 'cache'),
+                '--hookdir', str(system / 'hooks'), '--logfile', str(system / 'pacman.log'),
+                '--noprogressbar', '--color', 'never', *(['--noconfirm'] if answers is None else []), *args]
+        result = run(argv if os.geteuid() == 0 else ['fakeroot', '--', *argv], input=answers or '')
+        return result.returncode, result.stdout + result.stderr
+
+    def installed(self, system):
+        result = run(['pacman', '--dbpath', str(system / 'db'), '-Q'])
+        return dict(line.split() for line in result.stdout.splitlines())
+
+    def upgrade(self, version, emaki_first=False):
+        """Install <version> as its ISO left it, then `pacman -Syu --noconfirm` to the candidate."""
+        self.system = self.work / f'{version}-{emaki_first}'
+        old = self.work / f'emaki-{version}'
+        if not old.exists():
+            stub_repository(old, 'emaki', released(version))
+
+        def repos(emaki):
+            pair = [('extra', self.extra), ('emaki', emaki)]
+            return pair[::-1] if emaki_first else pair
+
+        code, output = self.pacman(self.system, repos(old), '-Sy', 'emaki')
+        self.assertEqual(code, 0, output)
+        # -yy: a scratch database can carry the same mtime second as the one it replaces.
+        code, output = self.pacman(self.system, repos(self.emaki), '-Syyu')
+        return code, output, self.installed(self.system)
+
+    def test_old_installs_update_with_default_answers(self):
+        for version in ('0.1.0', '0.1.1'):
+            with self.subTest(start=version):
+                code, output, installed = self.upgrade(version)
+                self.assertNotIn('are in conflict', output)
+                self.assertEqual(code, 0, output)
+                for name in ('emaki', 'emaki-config', 'emaki-desktop'):
+                    self.assertEqual(installed[name], self.versions[name])
+                # Arch's portal stays until the person switches (docs/updates-runbook.md).
+                self.assertEqual(installed.get(PORTAL), '50.0-1')
+                self.assertNotIn(FORK, installed)
+
+    def test_old_installs_switch_by_hand(self):
+        # The release-note commands (docs/updates-runbook.md, step 11), answered as a person does.
+        code, output, _ = self.upgrade('0.1.1')
+        self.assertEqual(code, 0, output)
+        repos = [('extra', self.extra), ('emaki', self.emaki)]
+        code, output = self.pacman(self.system, repos, '-S', FORK, answers='y\n\n')
+        self.assertIn(f'Remove {PORTAL}? [y/N]', output)
+        self.assertEqual(code, 0, output)
+        installed = self.installed(self.system)
+        self.assertEqual(installed.get(FORK), self.versions[FORK])
+        self.assertNotIn(PORTAL, installed)
+        self.assertIn('nautilus', installed)  # nothing requires it any more, but pacman keeps it
+        code, output = self.pacman(self.system, repos, '-Rs', 'nautilus', answers='\n')
+        self.assertEqual(code, 0, output)
+        installed = self.installed(self.system)
+        self.assertNotIn('nautilus', installed)
+        self.assertTrue({'emaki', 'emaki-desktop', FORK} <= installed.keys())
+
+    def test_fork_replaces_where_emaki_is_checked_first(self):
+        code, output, installed = self.upgrade('0.1.1', emaki_first=True)
+        self.assertIn(f':: Replace {PORTAL} with emaki/{FORK}? [Y/n]', output)
+        self.assertEqual(code, 0, output)
+        self.assertEqual(installed.get(FORK), self.versions[FORK])
+        self.assertNotIn(PORTAL, installed)
+
+    def test_0_1_2_installs_keep_the_fork(self):
+        code, output, installed = self.upgrade('0.1.2')
+        self.assertEqual(code, 0, output)
+        self.assertEqual(installed.get(FORK), self.versions[FORK])
+        self.assertFalse({PORTAL, 'nautilus'} & installed.keys())
+
+    def test_fresh_install_gets_the_fork(self):
+        stubs = {stub['name']: stub for stub in ARCH_STUBS + self.candidate}
+        # iso/build.sh: the offline closure of the live and target seeds, [emaki-offline] first.
+        seeds = set((ROOT / 'iso/profile/packages.x86_64').read_text().split())
+        seeds |= set((ROOT / 'iso/target-packages.txt').read_text().split())
+        source = stub_repository(self.work / 'input-repo', 'emaki-offline', self.candidate)
+        code, output = self.pacman(self.work / 'iso', [('emaki-offline', source), ('extra', self.extra)],
+                                   '-Syp', '--print-format', '%n', *sorted(seeds & stubs.keys()))
+        self.assertEqual(code, 0, output)
+        closure = {line.strip() for line in output.splitlines()} & stubs.keys()
+        self.assertIn(FORK, closure)
+        self.assertFalse({PORTAL, 'nautilus'} & closure)
+        # The installer resolves its list from [emaki-offline] alone (worker.preflight_repo).
+        offline = stub_repository(self.work / 'offline', 'emaki-offline', [stubs[n] for n in closure])
+        targets = set(runpy.run_path(str(ROOT / 'installer/emaki_installer/constants.py'))['PACKAGES'])
+        target = self.work / 'target'
+        code, output = self.pacman(target, [('emaki-offline', offline)], '-Sy',
+                                   *sorted((targets | {'emaki-apps'}) & stubs.keys()))
+        self.assertEqual(code, 0, output)
+        self.assertIn(FORK, self.installed(target))
+        # Its first update, with [emaki] after [extra] as the installer writes it.
+        code, output = self.pacman(target, [('extra', self.extra), ('emaki', self.emaki)], '-Syyu')
+        self.assertEqual(code, 0, output)
+        self.assertEqual(self.installed(target).get(FORK), self.versions[FORK])
+        self.assertFalse({PORTAL, 'nautilus'} & self.installed(target).keys())
 
 
 class GrubTitleTests(unittest.TestCase):
@@ -297,6 +635,7 @@ class GrubTitleTests(unittest.TestCase):
 from unittest.mock import Mock, call
 from emaki_installer.worker import Worker
 worker = Worker.__new__(Worker)
+worker.plan = Mock(config={'mode': 'erase'})
 worker.target = '/target'
 worker.runner = Mock()
 worker.files = Mock()
@@ -491,14 +830,14 @@ class PayloadTests(unittest.TestCase):
                 executable = path.parent in (self.dest / 'usr/bin', self.dest / 'usr/share/libalpm/scripts')
                 self.assertEqual(mode, 0o755 if executable else 0o644, str(path))
         binary = self.dest / 'usr/bin/emaki'
-        self.assertEqual(run([str(binary), 'version']).stdout, 'emaki 0.1.1\n')
+        self.assertEqual(run([str(binary), 'version']).stdout, 'emaki 0.2.0\n')
         result = run(['python3', 'scripts/core-package.py', 'verify-build-paths', '--binary', str(binary)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_defaults_and_presets(self):
         commit = run(['git', 'rev-parse', 'HEAD']).stdout.strip()
         self.assertEqual((self.dest / 'usr/lib/emaki-release').read_text(),
-                         f'VERSION=0.1.1\nCHANNEL=stable\nEMAKI_COMMIT={commit}\n')
+                         f'VERSION=0.2.0\nLABEL=alpha\nCHANNEL=stable\nEMAKI_COMMIT={commit}\n')
         expected = {'greetd.service', 'NetworkManager.service', 'bluetooth.service', 'grub-btrfsd.service',
                     'snapper-timeline.timer', 'snapper-cleanup.timer', 'fstrim.timer'}
         preset = (self.dest / 'usr/lib/systemd/system-preset/50-emaki.preset').read_text().splitlines()
@@ -525,6 +864,39 @@ class PayloadTests(unittest.TestCase):
         # Staging never links /etc/os-release itself: no package may own that path.
         self.assertFalse((self.dest / 'etc/os-release').exists() or (self.dest / 'etc/os-release').is_symlink())
 
+    def test_snapshot_boot_hook(self):
+        # Under /usr/lib/initcpio, where pacman owns it and an update replaces it. Never in
+        # /etc/initcpio: mkinitcpio reads that first, and 0.1.2's installer wrote its own copies
+        # there; a package owning those paths would stop the upgrade ("exists in filesystem").
+        for directory in ('hooks', 'install'):
+            staged = self.dest / 'usr/lib/initcpio' / directory / 'emaki-snapshot-fstab'
+            self.assertEqual(staged.read_bytes(), (ROOT / 'initcpio' / directory / 'emaki-snapshot-fstab').read_bytes())
+        self.assertFalse((self.dest / 'etc/initcpio').exists())
+
+    def test_skel_templates_name_only_shipped_files(self):
+        # useradd copies these into a new home once; the copies are the person's (zone 3) and
+        # no update rewrites them. Every package path they name must therefore keep existing.
+        listed = set((ROOT / 'packaging/emaki-config/expected-files.list').read_text().splitlines())
+        templates = sorted(p for p in listed if p.startswith('/etc/skel/'))
+        self.assertTrue(templates)
+        for template in templates:
+            named = re.findall(r'/usr/[^\s"\']+', (self.dest / template.lstrip('/')).read_text())
+            self.assertTrue(named, template)
+            for path in named:
+                self.assertTrue(path in listed, f'{template} names {path}, which the package does not ship')
+        # The person's niri file is never created from a template.
+        self.assertFalse([p for p in listed if p.startswith('/etc/skel/.config/niri')])
+
+    def test_zone_page(self):
+        # The one table of who owns which file is on every installed system, not only in the repo.
+        page = '/usr/share/doc/emaki/ZONES.md'
+        listed = (ROOT / 'packaging/emaki-config/expected-files.list').read_text().splitlines()
+        self.assertTrue(page in listed, f'{page} is not in expected-files.list')
+        self.assertEqual((self.dest / page.lstrip('/')).read_bytes(), (ROOT / 'docs/ZONES.md').read_bytes())
+        # The niri defaults are the file people open first; their header points at the page.
+        header = (self.dest / 'usr/share/emaki/niri/default.kdl').read_text().split('\n\n', 1)[0]
+        self.assertIn(page, header)
+
     def test_sleep_guard_wiring(self):
         unit = self.dest / 'usr/lib/systemd/user/emaki-sleep-guard.service'
         config = configparser.ConfigParser(interpolation=None)
@@ -532,7 +904,7 @@ class PayloadTests(unittest.TestCase):
         self.assertEqual(config['Unit']['PartOf'], 'graphical-session.target')
         self.assertEqual(config['Install']['WantedBy'], 'graphical-session.target')
         self.assertEqual(config['Service']['ExecStart'], '/usr/bin/python3 -I /usr/bin/emaki-sleep-guard')
-        self.assertEqual(config['Service']['Restart'], 'on-failure')
+        self.assertEqual(config['Service']['Restart'], 'always')
         self.assertIn('"--no-block" "emaki-shell.service" "emaki-sleep-guard.service"',
                       (self.dest / 'usr/share/emaki/niri/default.kdl').read_text())
         self.assertFalse((self.dest / 'usr/lib/systemd/user/graphical-session.target.wants/emaki-sleep-guard.service').exists())

@@ -35,8 +35,11 @@ Item {
     height: 26
 
     // ---- What each cell shows ----
+    // A connected cable wins over Wi-Fi: NetworkManager routes over it by default.
     readonly property string wifiIcon: {
         const b = backend;
+        if (b?.wiredConnected)
+            return ["portal", "limited", "none"].includes(b.connectivity) ? "network-wired-no-route-symbolic" : "network-wired-symbolic";
         if (!b?.networkReady || !b.wifiDevices.length)
             return "network-wireless-disabled-symbolic";
         if (!b.wifiHardwareEnabled)
@@ -76,7 +79,7 @@ Item {
             return soundReady && !services.sinkMuted ? "sound" : "muted";
         return ({
                 tray: "tray",
-                wifi: "wifi",
+                wifi: backend?.wiredConnected ? "wired" : "wifi",
                 bt: "bt",
                 light: "light",
                 power: "battery"

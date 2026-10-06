@@ -5,6 +5,8 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 (ROOT / '.cache').mkdir(exist_ok=True)

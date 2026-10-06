@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════
-//  Emaki — системный конфиг niri. Installed to /etc/niri/config.kdl (make install).
+//  Emaki — system niri config. Installed to /etc/niri/config.kdl (make install).
 //
 //  Purpose: on a clean machine the user has no ~/.config/niri/config.kdl.
 //  niri 26.04 looks for its config as follows (src/main.rs, niri-config/src/lib.rs):

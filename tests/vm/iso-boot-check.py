@@ -72,6 +72,16 @@ def main():
             failures.append(label)
         return ok
 
+    def picture(saved, path, what, inspect, failure_hint=''):
+        # A saved picture is evidence for a person to judge, not a passed check.
+        if not saved:
+            return status(False, f'{what} screenshot capture failed{failure_hint}')
+        line = f'SHOT: {path} (not judged); inspect {inspect}'
+        print(line, flush=True)
+        with (run / 'summary.txt').open('a') as stream:
+            stream.write(line + '\n')
+        return True
+
     # Start the checker BEFORE QEMU. Repeated Up keys span firmware handoff and
     # stop GRUB's five-second countdown as soon as it becomes ready for input.
     deadline = time.monotonic() + 60
@@ -103,8 +113,8 @@ def main():
         log.write(monitor.command(vm, 'sendkey home'))
         time.sleep(.2)
         log.write(monitor.command(vm, 'sendkey ret'))
-    status(capture_ok, 'GRUB monitor frames saved; inspect Emaki title, theme and both kernels'
-           if capture_ok else 'GRUB screenshot unavailable; virgl may report no surface (see grub-monitor.log)')
+    picture(capture_ok, run / 'grub-*.png', 'GRUB', 'Emaki title, theme and both kernels',
+            '; virgl may report no surface (see grub-monitor.log)')
     port_file = vm / 'ssh-port'
     port = args.ssh_port or int(os.environ.get('EMAKI_ISO_SSH_PORT', port_file.read_text().strip() if port_file.exists() else '2223'))
     common = ['--dir', str(vm), '--ssh-port', str(port), '--user', user]
@@ -152,9 +162,22 @@ def main():
           predicate=lambda output: output.strip().isdigit() and int(output.strip()) >= 1)
     check('grub-kernels', "sh -c 'grep -q vmlinuz-linux /boot/grub/grub.cfg && grep -q vmlinuz-linux-lts /boot/grub/grub.cfg'", privileged=True)
     check('grub-lts-title', '''grep -Fq "menuentry 'Emaki, with Linux linux-lts'" /boot/grub/grub.cfg''', privileged=True)
+    if config['mode'] == 'alongside':
+        check('grub-windows', "grep -E '^menuentry .*Windows Boot Manager' /boot/grub/grub.cfg", privileged=True)
+        check('grub-os-prober', 'grep -Fx GRUB_DISABLE_OS_PROBER=false /etc/default/grub', privileged=True)
+        check('grub-default-emaki', 'grep -Fx GRUB_DEFAULT=0 /etc/default/grub', privileged=True)
+        baseline = vm / 'windows-before.json'
+        if status(baseline.is_file(), 'Windows preservation baseline available'):
+            uploaded = remote('umask 077; cat > /tmp/emaki-windows-fixture.py',
+                              input_data=(HERE / 'fixtures/windows-disk.py').read_bytes())
+            if status(uploaded.returncode == 0, 'Windows verifier uploaded'):
+                result = remote('python3 /tmp/emaki-windows-fixture.py check --freed ' + str(int(config['shrink_bytes'])),
+                                privileged=True, input_data=baseline.read_bytes())
+                (run / 'windows-preservation.log').write_bytes(result.stdout + result.stderr)
+                status(result.returncode == 0, 'Windows files, partition identity and EFI loaders preserved')
     shot = subprocess.run([str(HERE / 'iso-shot.sh'), *common, '--fixture', str(fixture), str(run / 'greeter.png')], capture_output=True)
     (run / 'greeter-shot.log').write_bytes(shot.stdout + shot.stderr)
-    status(shot.returncode == 0, 'greeter screenshot (visual review required)')
+    picture(shot.returncode == 0, run / 'greeter.png', 'greeter', 'the greeter')
     upload = remote('umask 077; cat > "$HOME/iso-guest-login.py"', input_data=(HERE / 'guest-login.py').read_bytes())
     if status(upload.returncode == 0, 'guest-login.py uploaded'):
         # sudo consumes its password line; the remaining bytes are the exact PAM
@@ -173,7 +196,7 @@ def main():
         status(ready, 'installed compositor and shell active')
         shot = subprocess.run([str(HERE / 'iso-shot.sh'), *common, '--fixture', str(fixture), str(run / 'desktop.png')], capture_output=True)
         (run / 'desktop-shot.log').write_bytes(shot.stdout + shot.stderr)
-        status(shot.returncode == 0, 'desktop screenshot (inspect ring and shell)')
+        picture(shot.returncode == 0, run / 'desktop.png', 'desktop', 'ring and shell')
     print(f'Evidence: {run}', flush=True)
     return 1 if failures else 0
 

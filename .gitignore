@@ -11,3 +11,5 @@ __pycache__/
 packaging/*/src/
 packaging/*/pkg/
 packaging/*/*.tar.gz
+# installer window test output
+installer/ui/tests/artifacts/

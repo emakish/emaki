@@ -5,6 +5,12 @@ import QtQuick
 Item {
     id: input
     required property AuthController auth
+    property bool revealed: false
+    property bool showToggle: true
+    property real toggleX: width / 2 + 118
+    property real toggleY: height / 2 - 16
+    onShowToggleChanged: if (!showToggle)
+        revealed = false
     signal engaged
     signal edited
     function takeFocus(): void {
@@ -15,7 +21,9 @@ Item {
         anchors.fill: parent
         opacity: 0
         focus: true
-        echoMode: input.auth.usernameMode ? TextInput.Normal : TextInput.Password
+        KeyNavigation.tab: revealButton
+        KeyNavigation.backtab: revealButton
+        echoMode: input.auth.usernameMode || input.revealed ? TextInput.Normal : TextInput.Password
         passwordMaskDelay: 0
         maximumLength: 2147483647
         inputMethodHints: Qt.ImhSensitiveData | Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
@@ -55,11 +63,26 @@ Item {
     Connections {
         target: input.auth
         function onBufferChanged(): void {
+            if (!input.auth.buffer.length)
+                input.revealed = false;
             editor.text = input.auth.buffer;
             editor.cursorPosition = editor.text.length;
         }
         function onClearInput(): void {
+            input.revealed = false;
             editor.clear();
+        }
+        function onEnabledChanged(): void {
+            input.revealed = false;
+        }
+        function onCheckingChanged(): void {
+            input.revealed = false;
+        }
+        function onUsernameModeChanged(): void {
+            input.revealed = false;
+        }
+        function onPromptChanged(): void {
+            input.revealed = false;
         }
     }
     MouseArea {
@@ -73,5 +96,20 @@ Item {
         Accessible.name: input.auth.prompt || "Password"
         Accessible.description: input.auth.message
         Accessible.onPressAction: input.takeFocus()
+    }
+    PasswordToggle {
+        id: revealButton
+        x: input.toggleX
+        y: input.toggleY
+        visible: input.showToggle && !input.auth.usernameMode
+        enabled: input.auth.enabled && !input.auth.checking
+        ink: LiquidPalette.inkOnLight
+        revealed: input.revealed
+        onToggled: {
+            input.engaged();
+            input.revealed = !input.revealed;
+        }
+        KeyNavigation.tab: editor
+        KeyNavigation.backtab: editor
     }
 }

@@ -3,13 +3,13 @@ import QtQuick
 import Quickshell
 
 // One launcher result as drawn in liquid-glass/launcher.js drawItem(): a tile (Frequent and
-// the app grid), a settings page card, or a row (everything else). Pure drawing: the same
+// the app grid), or a row (everything else). Pure drawing: the same
 // item lies under the glass in the list and, for the selected result, again on the glass.
 // `row` is a LauncherBody result; colours come from the glass palette of the panel.
 Item {
     id: item
     required property var row
-    // "tile" | "page" | "row"
+    // "tile" | "row"
     required property string shape
     property color ink: LiquidPalette.inkOnDark
     property color dim: LiquidPalette.dimOnDark
@@ -18,29 +18,13 @@ Item {
     property string term: ""
     readonly property string kind: row?.kind ?? ""
     readonly property string icon: row?.entry?.icon ? Quickshell.iconPath(row.entry.icon, true) : ""
-    // Settings rows and kinds without an app icon carry an Adwaita symbolic icon.
+    // Results without an app icon use a symbolic icon.
     readonly property string symbol: ({
-            page: row?.symbol ?? "preferences-other-symbolic",
             calculator: "accessories-calculator-symbolic",
             web: "web-browser-symbolic",
-            clip: "edit-paste-symbolic",
-            layout: "input-keyboard-symbolic",
-            "layout-add": "list-add-symbolic",
-            "layout-pick": "input-keyboard-symbolic",
-            "switch-key": "preferences-desktop-keyboard-shortcuts-symbolic",
-            "key-edit": "preferences-desktop-keyboard-shortcuts-symbolic",
-            "wallpaper-pick": "preferences-desktop-wallpaper-symbolic",
-            "default-role": "preferences-other-symbolic",
-            "default-pick": "preferences-other-symbolic",
-            undo: "edit-undo-symbolic",
-            "dock-on": "view-app-grid-symbolic",
-            "dock-auto": "view-conceal-symbolic",
-            "bar-auto": "focus-top-bar-symbolic",
-            "bar-ovws": "view-grid-symbolic",
-            info: row?.symbol ?? "dialog-information-symbolic"
+            clip: "edit-paste-symbolic"
         })[kind] ?? ""
-    // Right-hand word of a row: the workspace of a window, the action of a setting.
-    readonly property string trailing: kind === "window" ? String(row.tag ?? "") : kind === "calculator" ? "Copy" : kind === "undo" ? "Undo" : kind === "key-edit" ? "Change" : kind === "layout-add" ? "Choose" : kind === "page" ? "" : kind === "web" ? "Open" : kind === "clip" ? "Delete" : kind === "app" ? (row.detail ?? "") : (row?.action ?? "")
+    readonly property string trailing: kind === "window" ? String(row.tag ?? "") : kind === "calculator" ? "Copy" : kind === "web" ? "Open" : kind === "clip" ? "Delete" : kind === "app" ? (row.detail ?? "") : ""
     readonly property bool quietTrailing: kind === "app" || kind === "window" || kind === "clip" || ["In use", "Off", "Only one installed", "None installed"].includes(trailing)
     readonly property bool twoLines: shape === "row" && kind !== "app" && kind !== "window" && kind !== "clip" && kind !== "calculator" && (row?.detail ?? "") !== ""
     function escaped(text: string): string {
@@ -102,46 +86,6 @@ Item {
             font.pixelSize: 11
             font.weight: Font.Medium
             color: item.ink
-        }
-    }
-
-    // ---- Settings page card: symbol, name, what is inside ----
-    Item {
-        visible: item.shape === "page"
-        anchors.fill: parent
-        SymbolIcon {
-            x: 14
-            y: 12
-            name: item.shape === "page" ? item.symbol : ""
-            ink: item.ink
-        }
-        Text {
-            x: 42
-            y: 12
-            height: 16
-            width: parent.width - 56
-            verticalAlignment: Text.AlignVCenter
-            elide: Text.ElideRight
-            textFormat: Text.PlainText
-            text: item.row?.label ?? ""
-            font.family: ShellPalette.uiFont
-            font.pixelSize: 14
-            font.weight: Font.Medium
-            color: item.ink
-        }
-        Text {
-            x: 14
-            y: 33
-            height: 14
-            width: parent.width - 28
-            verticalAlignment: Text.AlignVCenter
-            elide: Text.ElideRight
-            textFormat: Text.PlainText
-            text: item.row?.summary ?? ""
-            font.family: ShellPalette.uiFont
-            font.pixelSize: 11
-            font.weight: Font.Medium
-            color: item.dim
         }
     }
 

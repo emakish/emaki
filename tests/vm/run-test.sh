@@ -142,8 +142,13 @@ HEADREF=$(git -C "$REPO" bundle list-heads "$OUT/emaki.bundle" | awk 'NR==1 {pri
     && git checkout -q FETCH_HEAD && git log --oneline -1" >>"$OUT/summary.txt" 2>&1
 
 log "installing"
-"$HERE/ssh.sh" 'bash -s' < "$HERE/guest-install.sh" > "$OUT/install.log" 2>&1
+if "$HERE/ssh.sh" 'bash -s' < "$HERE/guest-install.sh" > "$OUT/install.log" 2>&1; then
+    INSTALL_STATUS=0
+else
+    INSTALL_STATUS=$?
+fi
 summarize '^STEP\|^greetd\|^niri\|^emaki\|^enable-services\|^NetworkManager\|^bluetooth\|^systemd-networkd\|^iwd' "$OUT/install.log"
+[ "$INSTALL_STATUS" -eq 0 ] || fail "$INSTALL_STATUS" "guest install: failed steps (see install.log)"
 
 log "rebooting"
 OLD_BOOT=$("$HERE/ssh.sh" 'cat /proc/sys/kernel/random/boot_id')
@@ -180,4 +185,4 @@ else
     log "logging in to Niri"
     "$HERE/login.sh" "$OUT" | tee -a "$OUT/summary.txt"
 fi
-log "done: $OUT"
+log "RESULT: SCRIPTS PASSED: $OUT"

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Production input/session integration with deliberately broken optional visuals."""
+import json
 import os
 from pathlib import Path
 import shutil
@@ -11,6 +12,8 @@ import io
 import re
 import shlex
 from unittest.mock import patch
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / '.cache'
@@ -39,6 +42,33 @@ with os.fdopen(read_fd) as commands, patch.dict(os.environ, NIRI_SOCKET='fixture
 assert queries and all(query in ('KeyboardLayouts', 'Outputs') for query in queries)
 assert '"caps":null' in observed.getvalue() and '"layout":"RU"' in observed.getvalue()
 print('PASS: metadata never wakes monitors; unknown Caps LED is not guessed; no window metadata queried')
+# One code table for the lock/greeter label and the bar (shell/XkbCodes.js): every layout and
+# variant name of the installed evdev.lst gives its xkb code, uppercased, in both readers.
+rules = Path(os.environ.get('EMAKI_XKB_RULES') or '/usr/share/X11/xkb/rules/evdev.lst')
+assert rules.is_file(), rules
+expected, section = {}, ''
+for line in rules.read_text().splitlines():
+    if line.startswith('!'):
+        section = line[1:].strip()
+    elif line.strip() and section == 'layout':
+        code, _, name = line.strip().partition(' ')
+        expected.setdefault(name.strip(), code.upper())
+    elif line.strip() and section == 'variant':
+        match = re.fullmatch(r'\s*(\S+)\s+(\S+):\s*(.+)', line)
+        if match:
+            expected.setdefault(match[3].strip(), match[2].upper())
+assert len(expected) > 400 and expected['Ukrainian'] == 'UA' and expected['Czech (QWERTY)'] == 'CZ', len(expected)
+codes = helper.layout_codes()
+assert {name: helper.layout_label(name, codes) for name in expected} == expected
+assert helper.layout_label('Something niri made up', codes) == 'Something niri made up'
+assert helper.layout_label('', codes) == 'Layout unavailable'
+library = (ROOT / 'shell/XkbCodes.js').read_text().replace('.pragma library', '')
+script = library + '\nconst t = parse(require("fs").readFileSync(process.argv[1], "utf8"));'
+script += '\nconst out = {}; for (const n of JSON.parse(process.argv[2])) out[n] = code(n, t); console.log(JSON.stringify(out));'
+names = list(expected) + ['Something niri made up']
+got = json.loads(subprocess.run(['node', '-e', script, str(rules), json.dumps(names)], check=True, capture_output=True, text=True).stdout)
+assert got == dict(expected, **{'Something niri made up': 'SO'}), [k for k in names if got.get(k) != expected.get(k)][:10]
+print('PASS: layout codes follow evdev.lst in the helper and in XkbCodes.js (%d names)' % len(expected))
 with tempfile.TemporaryDirectory(prefix='ls-', dir=CACHE) as work:
     profile = Path(work)
     for name in ('r', 'cache', 'config', 'state', 'data', 'tmp'):

@@ -7,6 +7,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -29,7 +31,8 @@ ShellRoot {
     Component.onCompleted: {
         console.log("ALLOCATOR_ENV=" + JSON.stringify({
             "MALLOC_CONF": Quickshell.env("MALLOC_CONF"),
-            "EMAKI_SHELL_ORIGINAL_MALLOC_CONF": Quickshell.env("EMAKI_SHELL_ORIGINAL_MALLOC_CONF")
+            "EMAKI_SHELL_ORIGINAL_MALLOC_CONF": Quickshell.env("EMAKI_SHELL_ORIGINAL_MALLOC_CONF"),
+            "QS_DISABLE_CRASH_HANDLER": Quickshell.env("QS_DISABLE_CRASH_HANDLER")
         }));
     }
     Timer { interval: 50; running: true; onTriggered: Qt.quit() }
@@ -44,6 +47,7 @@ from pathlib import Path
 keys = ('MALLOC_CONF', 'EMAKI_SHELL_ORIGINAL_MALLOC_CONF')
 Path(os.environ['EMAKI_ALLOCATOR_RESULT']).write_text(json.dumps({
     'env': {key: os.environ[key] for key in keys if key in os.environ},
+    'crash_handler_disabled': os.environ.get('QS_DISABLE_CRASH_HANDLER'),
     'argv': sys.argv[1:]
 }))
 ''')
@@ -110,6 +114,8 @@ Path(os.environ['EMAKI_ALLOCATOR_RESULT']).write_text(json.dumps(result))
                            check=True, capture_output=True, timeout=3)
             launch = json.loads(capture.read_text())
             assert launch['argv'] == ['-n', '-p', str(qml)], launch
+            # A crash ends the process so systemd restarts it (no in-place re-exec).
+            assert launch['crash_handler_disabled'] == '1', launch
             shell_env = launch['env']
             assert shell_env['MALLOC_CONF'] == (original or 'thp:never'), shell_env
             assert shell_env[MARKER] == ('0' if original is None else '1' + original), shell_env
@@ -177,8 +183,11 @@ Path(os.environ['EMAKI_ALLOCATOR_RESULT']).write_text(json.dumps(result))
             line = next(line for line in (completed.stdout + completed.stderr).splitlines()
                         if 'ALLOCATOR_ENV=' in line)
             observed = json.loads(line.split('ALLOCATOR_ENV=', 1)[1])
+            # The variable itself reaches qs; qs prints "Crash handling disabled." only when it
+            # was built with CRASH_HANDLER, which is a packaging choice, not this launch path's.
             assert observed == {'MALLOC_CONF': original or 'thp:never',
-                                MARKER: '0' if original is None else '1' + original}, observed
+                                MARKER: '0' if original is None else '1' + original,
+                                'QS_DISABLE_CRASH_HANDLER': '1'}, observed
         assert 'Environment=MALLOC_CONF=' not in (ROOT / 'systemd/emaki-shell.service').read_text()
     print('PASS allocator defaults: real offscreen qs, unset/empty/custom session values, '
           'scoped/failed/missing-manager app launches, system lock and hyprlock fallback, '

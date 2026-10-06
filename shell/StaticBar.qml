@@ -117,7 +117,7 @@ Item {
         x: Metrics.logoX
         y: 49
         visible: !bar.launcherPresent && bar.policy.normalIslands && ["rejected", "unconfirmed", "error"].includes(bar.niri.actionState)
-        text: "niri: " + bar.niri.actionState + "/" + bar.niri.actionReason
+        text: "The last window action didn’t go through."
         font.family: ShellPalette.uiFont
         font.pixelSize: 11
         fallbackColor: ShellPalette.muted

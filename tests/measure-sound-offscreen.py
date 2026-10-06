@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location('render_shell', ROOT / 'tests/render-shell.py')
@@ -81,7 +83,7 @@ def main():
                                   scale=args.scale, screen_scale=args.screen_scale,
                                   warmup=1000, milliseconds=round(args.seconds * 1000),
                                   ready_property='ready', shader_dir=qml / 'shaders',
-                                  extra_env={'EMAKI_FIXTURE_WALLPAPER': (ROOT / 'docs/mockups/liquid-glass/wallpaper-neo-pink.jpg').as_uri()})
+                                  extra_env={'EMAKI_FIXTURE_WALLPAPER': (ROOT / 'art/wallpaper/ring.png').as_uri()})
             (args.output / (name + '.log')).write_text(log)
             summary = summarize(json.loads(stats_file.read_text()))
             result['runs'][label][samples] = summary

@@ -54,8 +54,6 @@ if [[ -f $out/.emaki-mode ]]; then
     [[ $(<"$out/.emaki-mode") == "$mode" ]] || fail 'test/release output directories must be separate'
 fi
 printf '%s\n' "$mode" >"$out/.emaki-mode"
-# A failed rebuild must never leave an older image/checksum looking current.
-rm -f -- "$out"/emaki-*.iso*
 if [[ -f $work/.emaki-mode ]]; then
     [[ $(<"$work/.emaki-mode") == "$mode" ]] || fail 'test/release work directories must be separate'
 else
@@ -65,6 +63,8 @@ fi
 version=$(<"$HERE/VERSION")
 [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail 'invalid VERSION'
 python3 "$HERE/repo-files.py" check-input "$repo" "$HERE/emaki-packages.txt"
+# A failed rebuild must never leave an older image/checksum looking current.
+rm -f -- "$out"/emaki-*.iso*
 # Keep downloads across failed builds, but never keep resolver DBs, generated profile,
 # or mkarchiso _run_once stamps. This also prevents stale input/package overlays.
 for directory in db resolved-db profile mk input-repo; do
@@ -107,6 +107,7 @@ pacman -Syw --noconfirm --cachedir "$work/offline" --dbpath "$work/db" \
 # Record the exact transaction and prune older cached versions before repo-add.
 pacman -Sp --print-format '%f' --dbpath "$work/db" --config "$work/download.conf" \
     "${packages[@]}" >"$work/closure.txt"
+python3 "$HERE/repo-files.py" check-closure "$work/closure.txt"
 python3 - "$work/offline" "$work/closure.txt" <<'PY'
 from pathlib import Path
 import sys
@@ -136,6 +137,8 @@ mkdir -- "$work/resolved-db"
 pacman -Syw --noconfirm --cachedir "$work/offline" --dbpath "$work/resolved-db" \
     --config "$work/profile/pacman.conf" "${packages[@]}"
 mkdir -p -- "$work/mk"
+# archiso copies profile/grub into both the ISO and its EFI image.
+install -Dm644 "$ROOT/art/grub/background.png" "$work/profile/grub/background.png"
 # v91 has no external-tree hook. Suppress only mastering on pass one, retaining
 # normal base construction; _run_once uses iso._build_iso_image for that stage.
 # -r means DELETE work, not resume, and must not be used in either pass.
@@ -160,9 +163,11 @@ image=$out/emaki-$version-x86_64.iso
 verify_args=()
 ((test_mode == 0)) || verify_args+=(--test)
 if ! python3 "$HERE/verify-image.py" "$image" "${verify_args[@]}" >"$work/iso-image-check.log" 2>&1; then
-    rm -f -- "$image" "$image.sha256"
+    rm -f -- "$image" "$image.sha256" "$image.sig"
     fail "mastered image verification failed; see $work/iso-image-check.log"
 fi
 printf 'ISO: %s\n' "$image"
 stat -c 'Size: %s bytes' -- "$image"
-(cd -- "$out" && sha256sum -- "${image##*/}") | tee "$image.sha256"
+# Checksum always; a detached signature only when EMAKI_ISO_SIGN_KEY is set (the build VM holds
+# no private key by default: packaging/publish.sh iso signs on the publishing machine).
+"$ROOT/packaging/mirror/iso-sums.sh" "$image"

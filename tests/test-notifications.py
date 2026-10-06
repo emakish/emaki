@@ -8,6 +8,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 if '--inside' not in sys.argv:
@@ -130,6 +132,17 @@ try:
     run(['gdbus','call','--session','--dest','org.freedesktop.Notifications','--object-path','/org/freedesktop/Notifications','--method','org.freedesktop.Notifications.CloseNotification',str(notify())])
     assert state(q)['notifications']['count']==1
     ipc(q,'clear');ipc(q,'close');time.sleep(.45)
+    # A shell notice that pushes a still-open notification off the 200-entry list closes it:
+    # its sender gets NotificationClosed (reason 2, dismissed), as with the overflow of accept().
+    oldest=notify()
+    for _ in range(199):notify()
+    wait(q,lambda s:s['notifications']['count']==200,timeout=10)
+    monitor=subprocess.Popen(['gdbus','monitor','--session','--dest','org.freedesktop.Notifications'],stdout=subprocess.PIPE,text=True)
+    time.sleep(.15)
+    assert ipc(q,'localNotice')=='200'
+    time.sleep(.3);monitor.terminate();out=monitor.communicate(timeout=3)[0]
+    assert f'NotificationClosed (uint32 {oldest}, uint32 2)' in out, out
+    ipc(q,'clear');ipc(q,'close');time.sleep(.45)
     start_time=time.monotonic()
     while time.monotonic()-start_time<7.6:
         notify('Fixture' if int((time.monotonic()-start_time)*2)%2 else 'Other fixture')
@@ -145,6 +158,19 @@ try:
     # must not contain the QS retrying server singleton.
     other.terminate();other.wait(timeout=4);time.sleep(.2)
     assert not bus('NameHasOwner',['s','org.freedesktop.Notifications'])
+    # Files written by a newer shell (kept in /home across a system rollback): not read, not
+    # overwritten. Notifications, and Night Light, whose Warmth is stored even while it is off.
+    newer=profile/'state/emaki/notifications.json'
+    newer.write_text(json.dumps(dict(version=2,dnd=True,entries=[dict(app='Fixture',summary='Newer format',body='',time=1790200000000)],grouping='future')))
+    night=profile/'state/emaki/night-light.json'
+    night.write_text(json.dumps(dict(version=2,on=True,warmth=80,schedule='future')))
+    saved=newer.read_bytes(),night.read_bytes()
+    p,q,log=start('newer',False);processes.append((p,q,log))
+    s=wait(q,lambda s:s['notifications']['server']=='disabled');assert s['notifications']['count']==0 and not s['notifications']['dnd'],s['notifications']
+    assert s['services']['night']['warmth']==50,s['services']['night']
+    ipc(q,'dnd','true');ipc(q,'nightWarmth','30');wait(q,lambda s:s['notifications']['dnd'] and s['services']['night']['warmth']==30)
+    time.sleep(.9)  # past the 500 ms save timers
+    assert (newer.read_bytes(),night.read_bytes())==saved
 finally:
     for p,q,log in processes:
         if p.poll() is None:

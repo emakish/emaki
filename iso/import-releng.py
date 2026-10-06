@@ -52,6 +52,9 @@ def import_profile(source, destination):
         'root/.automated_script.sh', 'root/.zlogin', 'root/.zshrc',
         'etc/systemd/system/sshd.service.d',
         'etc/systemd/system/sysinit.target.wants/systemd-time-wait-sync.service',
+        # Mirror chooser (its service is masked), install guide and masked networkd units.
+        'usr/local/bin/choose-mirror', 'usr/local/bin/Installation_guide',
+        'etc/systemd/network',
     ]
     for relative in removals:
         path = root / relative
@@ -81,6 +84,8 @@ def import_profile(source, destination):
     # Keep releng bootmodes, squashfs options and other fields verbatim. Appended
     # assignments replace only Emaki identity/build fields and removed permissions.
     original = re.sub(r'^\s*\[["\']?/root/[^\n]+\n', '', original, flags=re.M)
+    original = re.sub(r'^\s*\[["\']?/usr/local/bin/(?:choose-mirror|Installation_guide)["\']?\][^\n]*\n',
+                      '', original, flags=re.M)
     additions = '''
 # Emaki ISO overrides; bootmodes and image options above are releng v91's.
 # shellcheck disable=SC2034
@@ -105,6 +110,21 @@ unset _emaki_profile_dir
         for path in destination.glob(pattern):
             text = path.read_text()
             text = text.replace('Arch Linux', f'Emaki {version}')
+            if path.name == 'archiso_sys-linux.cfg':
+                # The installer needs UEFI: the BIOS entries only start the live session.
+                uefi = ("Emaki installs only on computers with UEFI. If the computer's boot menu\n"
+                        'offers a UEFI entry for the USB stick, choose it; otherwise this computer\n'
+                        'is not supported.\n')
+                medium = f'Emaki {version} install medium'
+                for old, new in (
+                        (f'Boot the {medium} on BIOS.\n'
+                         f'It allows you to install Emaki {version} or perform system maintenance.\n',
+                         f'Try Emaki {version} from the USB stick on this BIOS computer.\n' + uefi),
+                        (f'Boot the {medium} on BIOS with speakup screen reader.\n'
+                         f'It allows you to install Emaki {version} or perform system maintenance with speech feedback.\n',
+                         f'Try Emaki {version} with the speakup screen reader on this BIOS computer.\n' + uefi),
+                        (f'MENU LABEL {medium} (%ARCH%, BIOS)', f'MENU LABEL Try Emaki {version} (BIOS: installing needs UEFI)')):
+                    text = text.replace(old, new)
             # v91 supports kernel_params_x86_64; keep this requirement explicit
             # in every loader too, including retained inactive/alternate loaders.
             text = '\n'.join(

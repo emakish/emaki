@@ -1,6 +1,7 @@
 # Building and testing the Emaki ISO
 
-The output is `emaki-0.1.0-x86_64.iso`, volume label `EMAKI_0.1.0`.
+The output is `emaki-<version>-x86_64.iso`, volume label `EMAKI_<version>`, where `<version>`
+is the content of `iso/VERSION` (read by `iso/build.sh` and `iso/profile/profiledef.sh`).
 UEFI is supported. The releng BIOS loader is retained, but the installer requires
 UEFI. English is the live system language. Proprietary NVIDIA drivers and
 `broadcom-wl` are not included.
@@ -123,7 +124,7 @@ image out to a separate directory:
 mkdir -p "$HOME/VMs/iso/test"
 scp -P 2222 -i "$HOME/VMs/emaki-vm/id_vm" \
   -o UserKnownHostsFile="$HOME/VMs/emaki-vm/known_hosts" \
-  'arch@127.0.0.1:/var/tmp/emaki-iso-test-out/emaki-0.1.0-x86_64.iso*' \
+  'arch@127.0.0.1:/var/tmp/emaki-iso-test-out/emaki-<version>-x86_64.iso*' \
   "$HOME/VMs/iso/test/"
 ```
 
@@ -180,7 +181,7 @@ user networking blocks internet while retaining the SSH host forward:
 ```bash
 export EMAKI_ISO_VM_DIR="$HOME/VMs/iso-vm-btrfs"
 mkdir -p "$EMAKI_ISO_VM_DIR"
-setsid tests/vm/run-iso.sh --usb --offline --iso "$HOME/VMs/iso/test/emaki-0.1.0-x86_64.iso" \
+setsid tests/vm/run-iso.sh --usb --offline --iso "$HOME/VMs/iso/test/emaki-<version>-x86_64.iso" \
   >"$EMAKI_ISO_VM_DIR/qemu.log" 2>&1 </dev/null &
 tests/vm/iso-wait-ssh.sh
 tests/vm/iso-shot.sh "$EMAKI_ISO_VM_DIR/live.png"
@@ -252,6 +253,20 @@ formats both and uses ext4. Inspect the selected fixture before running it.
 A blank disk alone is not a manual-partition fixture. Rollback booting from a
 snapshot and hardware testing remain separate acceptance steps.
 
+## Encryption and alongside-Windows VM checks
+
+Two host-queue checks cover the encryption step and installing next to Windows:
+`tests/vm/iso-encrypt-check.sh` (described in `installer/README.md`, "Encryption and
+hibernation") and `tests/vm/iso-alongside-check.sh` (`installer/README.md`, "Alongside
+Windows"). The alongside check uses a synthetic Windows disk: its Microsoft
+path holds a diagnostic EFI program, so it tests chainloading only, not Windows. The last
+encrypted run on the full 0.1.2 test ISO ended rc=1.
+
+Install alongside Windows is not offered in 0.2: the 0.2 installer has no experimental
+options. On a 0.2 ISO the alongside check asks the worker for a plan only, sees the mode
+refused, prints `NOT APPLICABLE` and exits 77 without touching the target disk; treat 77 as
+"not run", never as a pass.
+
 ## Release build and gates
 
 Inside the VM, after test acceptance:
@@ -275,3 +290,50 @@ versions, service ordering, rendering, physical UEFI boot and installation still
 need the build/VM gates. The host `make check` currently rejects the existing
 fork-only `emaki-wallpaper` node with its installed niri-emaki binary; the live
 session's one-line autostart KDL validates successfully with stock niri.
+
+## Permanent snapshot rollback
+
+On installed btrfs systems, `emaki-rollback snapshot NUMBER` (as root) prepares a
+writable copy of a Snapper root snapshot and atomically exchanges it with `@`.
+From a snapshot recovery boot, `emaki-rollback keep` selects the original booted
+snapshot. The shell offers **Keep this state** through polkit with an
+administrator password, or **Not now**. Changes in the temporary recovery overlay
+are discarded; home files, logs, the package cache and snapshot history stay on
+their shared subvolumes. Restart after promotion before changing the system again.
+Ext4 has no snapshots: the tool explains this and changes nothing.
+
+The old root remains at a printed, dated `@emaki-kept-…` name. After restarting,
+`emaki-rollback list` lists kept roots and `emaki-rollback restore NAME` prepares
+an undo in the same way, preserving the currently selected root too. Cleanup is
+explicit: `emaki-rollback delete NAME --yes`. It requires a normal writable boot,
+rejects mounted copies, and always preserves the newest kept root and at least
+one undo copy. No timer or Snapper cleanup policy deletes these kept roots.
+Snapshots predating installation of the tool can lack it after restoration; use
+recovery media and the printed top-level mount instructions in that case.
+
+The tool requires the installer's UUID-based fstab and shared subvolumes, boot
+files inside `@`, and GRUB entries targeting that same `@`. It preserves the
+snapshot's matching kernels, initramfs, package database and GRUB configuration;
+it clears the copied one-shot GRUB selection. It does not regenerate GRUB against
+the recovery overlay or reinstall EFI loaders. New snapshots continue to update
+the menu through grub-btrfsd after reboot. Unsupported layouts, populated nested
+subvolumes, active package transactions and mismatching boot paths are refused.
+Only systemd's empty `var/lib/machines` and `var/lib/portables` subvolumes are
+allowed as nested roots. They are retained with the previous root; their empty
+snapshot placeholders remain empty in the restored root.
+
+[Snapper's rollback](https://snapper.io/manpages/snapper.html) sets the filesystem's
+default subvolume. Emaki explicitly mounts `subvol=@` in fstab and GRUB, so changing
+that default does not select the next root. The name exchange preserves the
+installed boot contract, and keeps `@` present even if interrupted at commit.
+A root-only record outside the roots is written before the copy is made and identifies
+both subvolume IDs before the exchange. `emaki-rollback list` shows a copy that never
+became `@` as an incomplete preparation; `emaki-rollback delete NAME --yes` removes it,
+or a record whose copy was never made. Nothing removes them automatically. A staging
+copy without a record is not touched; this version never leaves one, an earlier build could.
+
+`tests/vm/rollback-check.sh` is the host-queue acceptance job. With the session's
+`VMDIR` set to its `n2-rollback-run` directory, it copies `n2-rollback-base`, uses
+KVM and SSH port 2251, boots recovery through the QEMU monitor, and tests promotion,
+reboot, Snapper/menu updates, undo and cleanup. All images and logs stay below
+`VMDIR`; the base is read-only and the test VM is stopped in a `finally` block.

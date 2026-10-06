@@ -313,38 +313,7 @@ Scope {
         WlrLayershell.namespace: "emaki-test-bar"
         WlrLayershell.layer: WlrLayer.Top
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
-        mask: Region {
-            Region {
-                item: surfaces.controller.edge
-                intersection: surfaces.controller.barPolicy.edgeEnabled ? Intersection.Combine : Intersection.Subtract
-            }
-            Region {
-                item: surfaces.controller.bar.logo
-                intersection: surfaces.controller.bar.logo.visible ? Intersection.Combine : Intersection.Subtract
-                radius: Metrics.islandRadius
-            }
-            Region {
-                item: surfaces.controller.bar.workspaces
-                intersection: surfaces.controller.bar.workspaces.visible ? Intersection.Combine : Intersection.Subtract
-                radius: Metrics.islandRadius
-            }
-            // Hover highlights need pointer input on these islands too.
-            Region {
-                item: surfaces.controller.bar.clock
-                intersection: surfaces.controller.bar.clock.visible ? Intersection.Combine : Intersection.Subtract
-                radius: Metrics.islandRadius
-            }
-            Region {
-                item: surfaces.controller.bar.systemIsland
-                intersection: surfaces.controller.bar.systemIsland.visible ? Intersection.Combine : Intersection.Subtract
-                radius: Metrics.islandRadius
-            }
-            Region {
-                item: surfaces.controller.privacy
-                intersection: surfaces.controller.privacy.visible && surfaces.controller.privacy.shown ? Intersection.Combine : Intersection.Subtract
-                radius: Metrics.islandRadius
-            }
-        }
+        mask: barInput
         BackgroundEffect.blurRegion: barBlur
     }
     // The overlay stays mapped for the whole session, transparent and without input while
@@ -400,6 +369,51 @@ Scope {
                 mouse.accepted = true;
                 surfaces.controller.outsidePressButton(mouse.x, mouse.y, mouse.button);
             }
+        }
+    }
+    Region {
+        id: barInput
+        Region {
+            item: surfaces.controller.edge
+            intersection: surfaces.controller.barPolicy.edgeEnabled ? Intersection.Combine : Intersection.Subtract
+        }
+        Region {
+            item: surfaces.controller.bar.logo
+            intersection: surfaces.controller.bar.logo.visible ? Intersection.Combine : Intersection.Subtract
+            radius: Metrics.islandRadius
+        }
+        Region {
+            item: surfaces.controller.bar.workspaces
+            intersection: surfaces.controller.bar.workspaces.visible ? Intersection.Combine : Intersection.Subtract
+            radius: Metrics.islandRadius
+        }
+        // Hover highlights need pointer input on these islands too.
+        Region {
+            item: surfaces.controller.bar.clock
+            intersection: surfaces.controller.bar.clock.visible ? Intersection.Combine : Intersection.Subtract
+            radius: Metrics.islandRadius
+        }
+        Region {
+            item: surfaces.controller.bar.systemIsland
+            intersection: surfaces.controller.bar.systemIsland.visible ? Intersection.Combine : Intersection.Subtract
+            radius: Metrics.islandRadius
+        }
+        Region {
+            item: surfaces.controller.privacy
+            intersection: surfaces.controller.privacy.visible && surfaces.controller.privacy.shown ? Intersection.Combine : Intersection.Subtract
+            radius: Metrics.islandRadius
+        }
+    }
+    // A Region with an `item` follows only that item's own x, y, width and height (Quickshell
+    // core/region.hpp: "In some cases the region does not update automatically"). The bar's
+    // islands ride on the bar, which ShellScene slides up out of sight when it hides (fullscreen
+    // window, auto-hide) and back: without these rebuilds the input region stayed where the
+    // slide began, above the surface, and the bar took no pointer until the shell restarted.
+    Connections {
+        target: surfaces.controller.bar
+        function onYChanged(): void {
+            barInput.changed();
+            barBlur.changed();
         }
     }
     Region {

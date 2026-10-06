@@ -15,6 +15,8 @@ import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 sys.dont_write_bytecode = True
 
@@ -127,7 +129,9 @@ class StateTests(unittest.TestCase):
                       'Path(os.environ["RESULT"]).write_text(json.dumps([sys.argv,os.environ.get("EMAKI_GREETER_KEEP_FRAME"),os.environ.get("EMAKI_GREETER_COMPOSITOR")]))\n'
                       'print("compositor-output",flush=True); print("compositor-error",file=sys.stderr,flush=True)\n'
                       'print("x"*262144,flush=True)\n'
-                      'sys.exit(7)\n')
+                      # A clean exit: an early non-zero exit is the graphics-failed path, covered
+                      # by tests/test-greeter-compositor.py.
+                      'sys.exit(0)\n')
         stock = binary / 'niri'
         stock.write_text(compositor)
         stock.chmod(0o700)
@@ -156,7 +160,7 @@ class StateTests(unittest.TestCase):
                                             env=dict(PATH=str(binary), RESULT=str(self.base / 'result'),
                                                      JOURNAL=str(log), EMAKI_GREETER_KEEP_FRAME='stale'),
                                             capture_output=True, text=True, timeout=5)
-                    self.assertEqual((result.returncode, result.stdout, result.stderr), (7, '', ''))
+                    self.assertEqual((result.returncode, result.stdout, result.stderr), (0, '', ''))
                     argv, keep, selected = json.loads((self.base / 'result').read_text())
                     expected = 'niri-emaki' if installed else 'niri'
                     self.assertEqual(Path(argv[0]).name, expected)

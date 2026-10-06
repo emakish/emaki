@@ -26,6 +26,10 @@ VERSION = 1
 WAIT_SECONDS = 15.0
 START_SECONDS = 6.0
 HEARTBEAT_SECONDS = 3.0
+# After both lockers crashed (non-zero or signal exit, or a hang killed by the
+# heartbeat), a new quickshell->hyprlock cycle starts after these delays; then stop.
+# A refusal (hyprlock exit 0 without its locked marker) is never retried.
+RETRY_BACKOFF = (2.0, 5.0, 10.0)
 # Hyprlock's normal (non-verbose) onLockLocked callback emits this exact line.
 # Do not enable WAYLAND_DEBUG: keyboard events would cross the secret boundary.
 LOCKED_EVENT = re.compile(rb'^(?:DEBUG(?: from [A-Za-z0-9_.-]+)? \]: |\[LOG\] )?onLockLocked called\s*$')
@@ -98,6 +102,8 @@ class Supervisor:
         self.sleep_generation = 0
         self.prepared_generation = 0
         self.fallback_attempts = 0
+        self.cycles = 0
+        self.retry_at = None
         self.last_error_log = 0.0
         self.finished = False
         self.stopping = False
@@ -118,6 +124,7 @@ class Supervisor:
             self.fallback_attempts += 1
         self.backend = 'hyprlock' if fallback else 'quickshell'
         if not fallback:
+            self.fallback_attempts = 0
             self.established = False
             self.prepared_generation = 0
             self.sleep_pending = self.sleep_generation > 0
@@ -139,6 +146,10 @@ class Supervisor:
             # Match emaki-shell's default, without overriding user allocator tuning.
             env['MALLOC_CONF'] = env.get('MALLOC_CONF') or 'thp:never'
             env['EMAKI_LOCK_SOCKET'] = str(self.socket_path)
+            # Quickshell's crash handler relaunches qs and opens a report window instead
+            # of exiting; the supervisor must see the crash to start the fallback. Set it
+            # here so that every caller's environment gives the same locker.
+            env['QS_DISABLE_CRASH_HANDLER'] = '1'
             argv = ['qs', '-p', str(entry), '--no-color']
         gate_read, gate_write = os.pipe()
         try:
@@ -171,6 +182,18 @@ class Supervisor:
         self.secure = self.poured = False
         self.phase = 'failed'
         self.finished = True
+
+    def crashed(self):
+        # Both lockers died: a crash, not a refusal. The compositor keeps the
+        # session locked on the dead client's surfaces and accepts a new client,
+        # so a bounded retry puts a password field back without exposing anything.
+        if self.stopping or self.cycles >= len(RETRY_BACKOFF):
+            self.fail()
+            return
+        self.retry_at = time.monotonic() + RETRY_BACKOFF[self.cycles]
+        self.cycles += 1
+        self.secure = self.poured = False
+        self.phase = 'recovering'
 
     def record_child(self):
         identity = process_identity(self.child.pid)
@@ -236,7 +259,7 @@ class Supervisor:
                  (self.backend == 'hyprlock' or time.monotonic() - self.last_heartbeat < self.heartbeat_seconds))
         ready = self.secure and self.poured and fresh and self.phase == 'locked'
         state = ('locked' if ready else 'locking' if self.phase == 'locked' else
-                 'recovering' if self.phase == 'lost' or self.phase == 'starting' and self.backend == 'hyprlock' else self.phase)
+                 'recovering' if self.phase in ('lost', 'recovering') or self.phase == 'starting' and self.backend == 'hyprlock' else self.phase)
         return dict(state=state,
                     backend=self.backend, secure=self.secure and fresh, poured=self.poured and fresh)
 
@@ -307,6 +330,12 @@ class Supervisor:
                 self.sleep_generation += 1
                 self.sleep_pending = True
                 self.prepare_sleep()
+            elif command == 'lock' and self.phase == 'failed' and self.child is not None:
+                # A live fallback that never confirmed (fact: it keeps waiting for the
+                # compositor) would otherwise block every later request. An explicit
+                # request replaces it with a fresh quickshell locker.
+                self.retire(kill=True)
+                self.spawn(False)
             self.respond(conn, self.snapshot())
 
     def prepare_sleep(self):
@@ -397,7 +426,11 @@ class Supervisor:
             return
         now = time.monotonic()
         if self.child is None:
-            self.fail()
+            if self.retry_at is None:
+                self.fail()
+            elif now >= self.retry_at:
+                self.retry_at = None
+                self.spawn(False)
         elif self.child.poll() is not None:
             normal = self.child.returncode == 0 and (self.authenticated_exit if self.backend == 'quickshell' else True)
             backend = self.backend
@@ -413,7 +446,7 @@ class Supervisor:
                 self.secure = self.poured = False
                 self.finished = True
             elif backend == 'hyprlock':
-                self.fail()
+                self.crashed()
             else:
                 self.spawn(True)
         elif self.backend == 'quickshell' and ((self.phase == 'starting' and now - self.started > self.start_seconds) or

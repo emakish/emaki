@@ -1,0 +1,10 @@
+Emaki could not start its graphical desktop.
+
+Common causes:
+  A virtual machine without 3D acceleration: turn it on in the VM settings.
+  A graphics card whose driver is not included in this release.
+
+Details: journalctl -b -t emaki-greeter-compositor -t niri-emaki-session
+
+Ctrl+Alt+F2 opens another text console with its own login.
+Log in below for a text console. Type "exit" there to try graphics again.

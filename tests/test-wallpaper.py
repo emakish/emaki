@@ -12,6 +12,8 @@ import time
 from PIL import Image
 from unittest.mock import patch
 from urllib.parse import unquote, urlparse
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 HELPER = ROOT / 'shell/helpers/wallpaper.py'

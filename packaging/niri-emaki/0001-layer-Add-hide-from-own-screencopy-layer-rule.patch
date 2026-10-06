@@ -1,6 +1,6 @@
 From 132ab9013c31d45926a37cefc26b43d05c8e3875 Mon Sep 17 00:00:00 2001
 From: Yakyman <246958375+Yakyman@users.noreply.github.com>
-Date: Fri, 25 Sep 2026 17:59:05 -0500
+Date: Fri, 25 Sep 2026 22:59:05 +0000
 Subject: [PATCH] layer: Add hide-from-own-screencopy layer rule
 
 Add a boolean layer rule property that omits matching layer surfaces

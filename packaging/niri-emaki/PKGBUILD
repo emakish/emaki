@@ -3,12 +3,14 @@
 # Upstream v26.04 plus Emaki's capture, login handoff, overview, cursor and wallpaper patches.
 # Installs only /usr/bin/niri-emaki alongside stock niri; install the session
 # files through make install-niri-emaki after make install. The dedicated greeter
-# prefers this fork, with stock niri as a recovery fallback. Rebase all five patches on updates.
+# prefers this fork, with stock niri as a recovery fallback. Rebase all six patches on updates.
+# Patch 0006 makes the fork exit with status 3 when it has no primary renderer (software EGL,
+# failed driver): emaki-greeter-compositor shows its text failure screen on that status.
 
 pkgname=niri-emaki
 _pkgname=niri
 pkgver=26.04
-pkgrel=7
+pkgrel=8
 pkgdesc="niri with Emaki glass capture, login handoff, overview backdrop, crisp cursors and living wallpaper"
 arch=(x86_64)
 url="https://github.com/niri-wm/niri"
@@ -46,19 +48,22 @@ source=("$_pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
         0002-keep-greeter-frame-and-cover-session-startup.patch
         0003-emaki-overview-backdrop.patch
         0004-crisp-xcursor-at-fractional-scale.patch
-        0005-emaki-wallpaper.patch)
+        0005-emaki-wallpaper.patch
+        0006-exit-without-primary-renderer.patch)
 sha512sums=('ae30446fbf529155907726cf2cba7402bcfc5be2032370d66f9f980efb257f29353b47d495f1218b81ac32c643f15bbb74834dc35882849a4479021b4b9fa97f'
-        '6b9033237c53967fff478210be0639a1859357d7db3b723d002ee537a3b44baea18634452bc4e05a5146d87d17eca4a71d28ffe21ae493f3e34a420f280a114a'
-        'a6f765e783bd6c5be598bbe2491ec355bbd76307b3ed9c754094c8be66ec365194a2dad27e06fb4956d1ed1b1a28f6d93afac64b2f74cafeba5e3ba3880c8e7f'
-        '2340cdc9028698c1fad6c56cd18ad0a95cbeb29219a04ea5365042aeda115c47d529d661a4f6170221ccf95540350784f309c526c08c1b8370d20a40ac8dfaee'
-        '7e06e8b28bee4d52ca79abc47f9196451717e70afc04078098287a813d556770e2a899a17070d9371b6be4744b1920d7a4b781f9cf78e6ff435d5b6f78cb69df'
-        'ed3c4f80452cdee47e51fa5520e49fa88c6e8723fe65d9857c58deed7ff5e783f1272be1a564785a2a58693a2c777fba306a5e876046f855980f312e01e09c9a')
+        'de1dbca747b46acdc3c97ec8f7b8686d517f3306e5bf550f5e51873ef2f3620979a87c92a5de425ad1f1962784480fbabdaa76efded2610dae33fbbd6f3bb429'
+        '97b088c0e16f0f853a952e0aab8f1f04b4b17352db6232d0ddcb70e6b1284388c22dd157c142f63d36a4dc607ceca293eb0831be13390c48ba415d634114ba2a'
+        'c6346772507d0419679ee909f0ec1fe4a9421b78bf6ed5d4129a10b6121d406b8a41b00c3d8fbd7b62246cf704830a077a17b3bf37271a4c8633653667c866b1'
+        '52587005192dde50c31abf9154a71a427e8931c57346d75462a9bc3bddcef06ec55fd3482ba699fe1c499723037c695d151662aa28ee359c1333f69131ff5eca'
+        '841c827ab087810a2c00eec9f9e25aca75ea80c2eaf1649b62f7707e220828ebdc034eadc9ca8e10d0010bcff55c6c96f7cef012061355143ae2d0c207d4918a'
+        'cc07be9095d34ef952cff6b0d449e36bc6c9d459381e6a8895275b418e24275a16d3f0acc424df7998cdc8c1896a34714253e3479171b9abc4109e6743f027b4')
 b2sums=('65fc4df85ab40c1a7a82900a9812c542a8a00467a0f1742f2dede50c0e323bd8957149e91b181a6c71ad077735f6a4db53451bbad0deb768f7d4840ebe798a20'
-        'a52aa75550807818933afd5ec908f07a42038abb83148962da724df52146034c89f26bb6a2e6565216c5c5b8801d392312d6e771220b5bf81768fd20803856eb'
-        '507ba90d7019d606c1d8bffa886ab480480c6351e1a248aba2acc1cac6c19b8e1302a95b63ac785ee8cf300949f25092c18760cf2817465c7d9aaa21c5933a32'
-        '50f4f0063b33ad90aa348e2158684152cab75205db93475bfabf592147c88f63cff60e1e5cc8e6748f82064c72b14f99b800c6565250b8b75c31404d1fc8a796'
-        'b9de259d4f5ec8d6ef101d168b147f5cd1e79f77c55492d7bd95c537c2fd5ccd9fcfbcfcdd9b13440d3cf3f81412c29e91cdc6899e4115a9ac25ecf55d06833f'
-        'd9a79832c4b4df2b4b82ebd4c10b6d7484803c374d52b9a21c5eef50e8873b5c336c530602c14ebb11331921320d96294101153dc67e599298554910be840eab')
+        '66244823b80fb158ee0623df0989a3090b4b42e12be147a859b50e8badfaa8677d57eda85d324658813d030e71c9d7f765dfef2206e83b32c302fb49437817f8'
+        '68022cee01623d211cf7f399f1d5f0fdaec915637f1b7d9b096a1a0896e9c6a89b0b543eb2d2d5a64c99c4156182e6633724ad83e41eaf44ad4bce3e89524fa9'
+        'b3ad2256e0d8a64987adc4eb5fc07703d06f26eab1dc85761b1af4265e0d00d229d0b29788c8be3599a8b6acaadc30812c1ea7f85b1ca5153213a29ee06dd422'
+        '9daa14d4f4fc17ab912546c45966ea4885c02ae6cce96e72af4c748de2bf32deec951c28ef3c89c5d5b8f4831b42bdfa9994f737e7696dcd876eb4dbe82590ff'
+        'b30d91b345b40bfd4b5130ae24e06b7ba9559e67ad639afc7b5d79eea3e7ef9419b4cc986bdcab988cbfa15664841efe2a035dffa93144b4ced376b15082dcc2'
+        'ddb729c4dbeb7c149d322d86478ea99ab8d22b815f0ae3a89d4ecec984334e575b5ac396272e1166d85ef30a82ab366dd43d70fe847d29f14d271b7b7febe9ad')
 
 # Keep the cargo cache inside $srcdir: makepkg remaps $srcdir paths in the binary
 # (--remap-path-prefix); otherwise the builder's ~/.cargo leaks into panic messages —
@@ -74,6 +79,7 @@ prepare() {
   patch -Np1 -i ../0003-emaki-overview-backdrop.patch
   patch -Np1 -i ../0004-crisp-xcursor-at-fractional-scale.patch
   patch -Np1 -i ../0005-emaki-wallpaper.patch
+  patch -Np1 -i ../0006-exit-without-primary-renderer.patch
   cargo fetch --locked --target "$(rustc --print host-tuple)"
 }
 

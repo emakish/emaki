@@ -8,6 +8,19 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 static SERIAL: AtomicU64 = AtomicU64::new(0);
+// A write runs the validator three times. On a loaded machine (the suite itself runs
+// tests in parallel) the product's 2 s default can run out before a validator that is
+// not under test finishes; only the deadline test uses a short limit on purpose.
+const SLOW_MACHINE_TIMEOUT_MS: &str = "10000";
+// Waiting for a child process: generous, because these waits only end a stuck test.
+const CHILD_DEADLINE: Duration = Duration::from_secs(60);
+fn write_timeout(args: &[&str]) -> Vec<&'static str> {
+    if matches!(args.first(), Some(&"set" | &"reset" | &"undo")) {
+        vec!["--timeout-ms", SLOW_MACHINE_TIMEOUT_MS]
+    } else {
+        vec![]
+    }
+}
 struct Fixture {
     root: PathBuf,
 }
@@ -41,13 +54,14 @@ impl Fixture {
         c
     }
     fn run(&self, args: &[&str]) -> (Output, Value) {
-        let out = self
-            .command()
-            .arg("settings")
-            .args(args)
-            .args(["--profile-root", self.root.to_str().unwrap(), "--json"])
-            .output()
-            .unwrap();
+        let mut command = self.command();
+        command.arg("settings").args(args).args([
+            "--profile-root",
+            self.root.to_str().unwrap(),
+            "--json",
+        ]);
+        command.args(write_timeout(args));
+        let out = command.output().unwrap();
         assert!(out.stderr.is_empty(), "{out:?}");
         let json = serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{out:?}"));
         (out, json)
@@ -108,6 +122,13 @@ if p.name == 'config.kdl':
         c
     }
     fn fake_set(&self, mode: &str) -> (Output, Value) {
+        // The fake validator is a python script started three times; only the
+        // "timeout" mode is about the deadline, the others must not race it.
+        let timeout = if mode == "timeout" {
+            "150"
+        } else {
+            SLOW_MACHINE_TIMEOUT_MS
+        };
         let out = self
             .fake(mode)
             .args([
@@ -119,7 +140,7 @@ if p.name == 'config.kdl':
                 "--profile-root",
                 self.root.to_str().unwrap(),
                 "--timeout-ms",
-                "150",
+                timeout,
             ])
             .output()
             .unwrap();
@@ -211,6 +232,27 @@ fn settings_defaults_reads_and_required_isolated_profile_never_write() {
         ));
     }
     assert_eq!(before, tree(&f.root));
+}
+
+#[test]
+fn without_a_profile_the_person_reads_one_plain_sentence_not_a_code() {
+    let f = Fixture::new();
+    for args in [["settings", "list"], ["settings", "history"]] {
+        let out = f.command().args(args).output().unwrap();
+        assert_eq!(out.status.code(), Some(1));
+        assert_eq!(
+            String::from_utf8(out.stdout).unwrap(),
+            "Managed settings are not connected to your session yet. Nothing was changed.\n"
+        );
+    }
+    let help = f.command().args(["settings", "--help"]).output().unwrap();
+    let help = String::from_utf8(help.stdout).unwrap();
+    assert!(
+        help.lines()
+            .next()
+            .unwrap()
+            .contains("not connected to your session yet")
+    );
 }
 
 #[test]
@@ -337,7 +379,10 @@ fn validator_rejections_timeouts_and_missing_helper_leave_no_published_generatio
         let (out, v) = f.fake_set(mode);
         assert_eq!(out.status.code(), Some(1), "{v}");
         assert_eq!(v["reason"], reason);
-        assert!(start.elapsed() < Duration::from_secs(2));
+        if mode == "timeout" {
+            // The fake sleeps 5 s; the 150 ms deadline must cut it short.
+            assert!(start.elapsed() < Duration::from_secs(4));
+        }
         assert!(!String::from_utf8(out.stdout).unwrap().contains("SECRET"));
         assert_eq!(before, tree(&f.root));
     }
@@ -424,13 +469,36 @@ fn manual_change_is_visible_as_unprepared_and_a_late_edit_is_not_overwritten() {
 fn busy_writer_is_rejected_and_released_lock_allows_next_write() {
     let f = Fixture::new();
     let before = tree(&f.root);
-    let lock = fs::File::open(f.root.join("runtime")).unwrap();
-    lock.try_lock().unwrap();
+    // The lock is held by a separate process, not by a descriptor of this test process:
+    // other tests fork children all the time, and a child forked while such a descriptor
+    // is open keeps the flock alive until it execs, after the test has dropped it.
+    let mut holder = Command::new("python")
+        .args([
+            "-c",
+            "import fcntl,os,sys\n\
+             fd=os.open(sys.argv[1],os.O_RDONLY)\n\
+             fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)\n\
+             print('locked',flush=True)\n\
+             sys.stdin.read()",
+            f.root.join("runtime").to_str().unwrap(),
+        ])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(
+        &mut std::io::BufReader::new(holder.stdout.take().unwrap()),
+        &mut line,
+    )
+    .unwrap();
+    assert_eq!(line, "locked\n");
     let (out, v) = f.run(&["set", "appearance.gaps", "4"]);
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(v["reason"], "settings_busy");
     assert_eq!(before, tree(&f.root));
-    drop(lock);
+    drop(holder.stdin.take());
+    assert!(holder.wait().unwrap().success());
     assert_eq!(f.set("appearance.gaps", "4")["status"], "committed");
 }
 
@@ -460,6 +528,70 @@ fn semantic_undo_restores_only_appearance_and_keeps_hotkey() {
         "undo_conflict"
     );
     assert_eq!(before, tree(&f.root));
+}
+
+#[test]
+fn reset_returns_any_key_to_the_package_default_through_the_journal() {
+    let f = Fixture::new();
+    let default_gaps = row(&f.run(&["list"]).1, "appearance.gaps")["default"].clone();
+    f.set("appearance.gaps", "4");
+    f.set("keybindings.toggle_window_floating", "Mod+Shift+V");
+    f.set("dock.on", "false");
+    // An empty value is refused for these two keys; reset is the way back.
+    let (out, v) = f.run(&["reset", "appearance.gaps"]);
+    assert!(out.status.success(), "{v}");
+    assert_eq!(v["status"], "committed");
+    assert!(row(&v, "appearance.gaps")["override_value"].is_null());
+    assert_eq!(row(&v, "appearance.gaps")["value"], default_gaps);
+    assert_eq!(
+        row(&v, "keybindings.toggle_window_floating")["value"],
+        "Mod+Shift+V"
+    );
+    assert!(!fs::read_to_string(f.source()).unwrap().contains("gaps"));
+    let (out, v) = f.run(&["reset", "keybindings.toggle_window_floating"]);
+    assert!(out.status.success(), "{v}");
+    let fragment =
+        fs::read_to_string(PathBuf::from(v["generation_path"].as_str().unwrap()).join("niri.kdl"))
+            .unwrap();
+    assert!(!fragment.contains("toggle-window-floating"));
+    let (_, h) = f.run(&["history"]);
+    let entries = h["history"].as_array().unwrap();
+    assert_eq!(entries.len(), 5);
+    for (entry, key, before) in [
+        (&entries[3], "appearance.gaps", json!(4)),
+        (
+            &entries[4],
+            "keybindings.toggle_window_floating",
+            json!("Mod+Shift+V"),
+        ),
+    ] {
+        assert_eq!(entry["kind"], "set");
+        assert_eq!(
+            entry["changes"],
+            json!([{"key": key, "before": before, "after": null}])
+        );
+    }
+    // Undo of a reset brings the override back.
+    let (out, v) = f.run(&["undo", entries[3]["id"].as_str().unwrap()]);
+    assert!(out.status.success(), "{v}");
+    assert_eq!(row(&v, "appearance.gaps")["value"], 4);
+    // Nothing to reset: unchanged, nothing written.
+    let before = tree(&f.root);
+    assert_eq!(f.run(&["reset", "bar.autohide"]).1["status"], "unchanged");
+    assert_eq!(before, tree(&f.root));
+    let (out, v) = f.run(&["reset", "dock.pinned"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(v["reason"], "unknown_setting");
+    assert_eq!(before, tree(&f.root));
+    for args in [
+        &["settings", "reset"][..],
+        &["settings", "reset", "--json"][..],
+    ] {
+        assert_eq!(
+            f.command().args(args).output().unwrap().status.code(),
+            Some(2)
+        );
+    }
 }
 
 #[test]
@@ -545,6 +677,16 @@ fn corrupted_history_is_refused_without_exposing_raw_data_or_overwriting_setting
     assert_eq!(before, tree(&f.root));
 }
 
+// The child writes its marker first and stops itself after that. A SIGCONT sent in
+// between is lost and the child then stays stopped, so wait for the stopped state.
+#[cfg(feature = "test-hooks")]
+fn stopped(pid: u32) -> bool {
+    fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| {
+        stat.rsplit_once(')')
+            .and_then(|(_, rest)| rest.split_whitespace().next())
+            == Some("T")
+    })
+}
 #[cfg(feature = "test-hooks")]
 struct Stopped(std::process::Child);
 #[cfg(feature = "test-hooks")]
@@ -555,18 +697,20 @@ impl Stopped {
             .args(["settings"])
             .args(args)
             .args(["--profile-root", f.root.to_str().unwrap(), "--json"])
+            .args(write_timeout(args))
             .env("EMAKI_TEST_PAUSE", phase)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap();
         let mut guard = Self(child);
-        let deadline = Instant::now() + Duration::from_secs(5);
+        let deadline = Instant::now() + CHILD_DEADLINE;
         loop {
             if let Ok(bytes) = fs::read(f.root.join("runtime/emaki-settings-hook.json"))
                 && let Ok(v) = serde_json::from_slice::<Value>(&bytes)
                 && v["pid"] == guard.0.id()
                 && v["phase"] == phase
+                && stopped(guard.0.id())
             {
                 break;
             }
@@ -583,7 +727,7 @@ impl Stopped {
         self.0.kill().unwrap();
         self.0.wait().unwrap();
     }
-    fn resume(&mut self) {
+    fn resume(&mut self) -> Option<i32> {
         assert!(
             Command::new("python")
                 .args([
@@ -595,11 +739,10 @@ impl Stopped {
                 .unwrap()
                 .success()
         );
-        let deadline = Instant::now() + Duration::from_secs(5);
+        let deadline = Instant::now() + CHILD_DEADLINE;
         loop {
             if let Some(status) = self.0.try_wait().unwrap() {
-                assert!(status.success());
-                break;
+                return status.code();
             }
             assert!(Instant::now() < deadline, "resumed child did not exit");
             std::thread::sleep(Duration::from_millis(5));
@@ -675,7 +818,7 @@ fn two_clients_do_not_lose_keys_and_recovery_can_itself_be_killed() {
     let (out, b) = f.run(&["set", "keybindings.toggle_window_floating", "Mod+Shift+V"]);
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(b["reason"], "settings_busy");
-    a.resume();
+    assert_eq!(a.resume(), Some(0));
     let b = f.set("keybindings.toggle_window_floating", "Mod+Shift+V");
     assert_eq!(row(&b, "appearance.gaps")["value"], 4);
     let mut a = Stopped::launch(&f, &["set", "appearance.gaps", "8"], "after_rename");
@@ -692,6 +835,33 @@ fn two_clients_do_not_lose_keys_and_recovery_can_itself_be_killed() {
     assert!(!f.root.join("state/emaki/history/pending.json").exists());
 }
 
+#[cfg(feature = "test-hooks")]
+#[test]
+fn write_refused_after_its_generation_was_written_leaves_the_profile_usable() {
+    let f = Fixture::new();
+    let initial = f.set("appearance.gaps", "3");
+    // The generation of the new value is on disk; the source changes before the rename.
+    let mut child = Stopped::launch(&f, &["set", "appearance.gaps", "7"], "before_rename");
+    let edited = fs::read_to_string(f.source())
+        .unwrap()
+        .replace("gaps = 3", "gaps = 9");
+    fs::write(f.source(), &edited).unwrap();
+    assert_eq!(child.resume(), Some(1), "settings_conflict expected");
+    assert!(!f.root.join("state/emaki/history/pending.json").exists());
+    assert_eq!(
+        fs::read_dir(f.root.join("state/emaki/generations"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect::<Vec<_>>(),
+        [initial["generation"].as_str().unwrap()]
+    );
+    assert_eq!(fs::read_to_string(f.source()).unwrap(), edited);
+    let (out, v) = f.run(&["list"]);
+    assert!(out.status.success(), "{v}");
+    assert_eq!(row(&v, "appearance.gaps")["value"], 9);
+    assert_eq!(f.set("appearance.gaps", "5")["status"], "committed");
+}
+
 #[cfg(not(feature = "test-hooks"))]
 #[test]
 fn production_build_cannot_enable_fault_hooks_by_environment() {
@@ -706,12 +876,14 @@ fn production_build_cannot_enable_fault_hooks_by_environment() {
             "--json",
             "--profile-root",
             f.root.to_str().unwrap(),
+            "--timeout-ms",
+            SLOW_MACHINE_TIMEOUT_MS,
         ])
         .env("EMAKI_TEST_PAUSE", "before_rename")
         .stdout(std::process::Stdio::null())
         .spawn()
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + CHILD_DEADLINE;
     loop {
         if let Some(status) = child.try_wait().unwrap() {
             assert!(status.success());
@@ -775,7 +947,7 @@ fn first_write_recovery_and_manual_edit_after_committed_crash_are_distinct() {
 }
 
 #[test]
-fn settings_page_keys_generate_xkb_wallpaper_and_default_app_files_and_undo_one_key() {
+fn settings_page_keys_generate_wallpaper_and_default_app_files_never_xkb_and_undo_one_key() {
     let f = Fixture::new();
     let before = tree(&f.root);
     let picture = f.root.join("bin/fixture.png");
@@ -826,9 +998,17 @@ fn settings_page_keys_generate_xkb_wallpaper_and_default_app_files_and_undo_one_
         row(&layouts, "keyboard.layouts")["value"],
         json!(["us", "ru"])
     );
-    let generation = PathBuf::from(layouts["generation_path"].as_str().unwrap());
-    let fragment = fs::read_to_string(generation.join("niri.kdl")).unwrap();
-    assert!(fragment.contains("layout \"us,ru\"") && !fragment.contains("options"));
+    // Layouts live in /etc/vconsole.conf behind localed: the keyboard keys are kept in
+    // settings.toml, and no generated niri file gets an xkb section or a grp: option.
+    let no_xkb = |reply: &Value| {
+        let generation = PathBuf::from(reply["generation_path"].as_str().unwrap());
+        let fragment = fs::read_to_string(generation.join("niri.kdl")).unwrap();
+        assert!(
+            !fragment.contains("xkb") && !fragment.contains("grp:"),
+            "{fragment}"
+        );
+    };
+    no_xkb(&layouts);
     assert!(
         fs::read_to_string(f.source())
             .unwrap()
@@ -836,21 +1016,14 @@ fn settings_page_keys_generate_xkb_wallpaper_and_default_app_files_and_undo_one_
     );
     assert_eq!(row(&layouts, "keyboard.switch_key")["value"], "Super+Space");
     let switch = f.set("keyboard.switch_key", "Alt+Shift");
-    let fragment = fs::read_to_string(
-        PathBuf::from(switch["generation_path"].as_str().unwrap()).join("niri.kdl"),
-    )
-    .unwrap();
-    assert!(
-        fragment.contains("layout \"us,ru\"")
-            && fragment.contains("options \"grp:alt_shift_toggle\"")
-    );
+    no_xkb(&switch);
+    assert_eq!(row(&switch, "keyboard.switch_key")["value"], "Alt+Shift");
     let caps = f.set("keyboard.switch_key", "Caps Lock");
+    no_xkb(&caps);
     assert!(
-        fs::read_to_string(
-            PathBuf::from(caps["generation_path"].as_str().unwrap()).join("niri.kdl")
-        )
-        .unwrap()
-        .contains("options \"grp:caps_toggle\"")
+        fs::read_to_string(f.source())
+            .unwrap()
+            .contains("switch_key = \"Caps Lock\"")
     );
     let wall = f.set("appearance.wallpaper", picture.to_str().unwrap());
     let generation = PathBuf::from(wall["generation_path"].as_str().unwrap());
@@ -899,15 +1072,12 @@ fn settings_page_keys_generate_xkb_wallpaper_and_default_app_files_and_undo_one_
     );
     assert_eq!(row(&v, "defaults.terminal")["value"], "kitty.desktop");
     assert_eq!(row(&v, "dock.on")["value"], false);
-    // Undo of the layouts entry alone: xkb options and every other key stay.
+    // Undo of the layouts entry alone: every other key stays.
     let (out, v) = f.run(&["undo", layouts["change_id"].as_str().unwrap()]);
     assert!(out.status.success(), "{v}");
     assert!(row(&v, "keyboard.layouts")["value"].is_null());
     assert_eq!(row(&v, "keyboard.switch_key")["value"], "Caps Lock");
-    let fragment =
-        fs::read_to_string(PathBuf::from(v["generation_path"].as_str().unwrap()).join("niri.kdl"))
-            .unwrap();
-    assert!(!fragment.contains("layout \"") && fragment.contains("grp:caps_toggle"));
+    no_xkb(&v);
     // Undo of a picture whose file has since disappeared still restores the key.
     fs::remove_file(&picture).unwrap();
     let (_, h) = f.run(&["history"]);

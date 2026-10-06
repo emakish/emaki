@@ -10,8 +10,13 @@ Item {
     required property int testWidth
     required property int testHeight
     required property NiriService niri
+    readonly property alias settings: settings
+    SettingsCatalog {
+        id: settings
+        active: false
+    }
     property bool skipIntro: false
-    readonly property bool startupModelsReady: services.startupReady && niri.connected && dockStore.restored && (!dockLabels.wanted || dockLabels.state === "ready") && (!launcherBody.settings.profile || (!launcherBody.settings.busy && launcherBody.settings.state !== "idle")) && !dock.animating && !bar.leftIslands.animating
+    readonly property bool startupModelsReady: services.startupReady && niri.connected && dockStore.restored && (!dockLabels.wanted || dockLabels.state === "ready") && (!settings.profile || (!settings.busy && settings.state !== "idle")) && !dock.animating && !bar.leftIslands.animating
     readonly property string startupRevision: skipIntro ? JSON.stringify({
         model: niri.model,
         pinned: dockStore.pinned,
@@ -196,6 +201,7 @@ Item {
         live: !scene.headless
         panelOpen: scene.systemOpen
         onLowBattery: percent => notes.systemBattery(percent)
+        onSleepLockFailed: policy => notes.systemSleepLock(policy)
         // Initial native values settle under the login cover. The open panel
         // already shows the value (mockup: panel === k ? paintSys : showOsd).
         onOsdRequested: page => {
@@ -354,8 +360,9 @@ Item {
     readonly property alias notificationService: notificationService
     readonly property alias clockPanel: clockPanel
     readonly property alias clockBody: clockPanel.body
-    // A failed launch (dock or launcher) is reported where the user looks: the drawer,
-    // with the launcher's exit code as the body. The dock icon has no room for a message.
+    // A failed launch (dock or launcher) is reported where the user looks: the drawer, with
+    // AppCatalog's plain sentence as the body (the raw reason is in the log). The dock icon has
+    // no room for a message.
     Connections {
         target: launcherBody.appCatalog
         function onFailed(id: string, name: string, reason: string): void {
@@ -804,9 +811,7 @@ Item {
             wallpaperTexture: wallpaper.texture
             liquid: wallpaper.ready
             niri: scene.niri
-            dock: dockStore
             identity: appIdentity
-            barPolicy: barPolicy
             width: scene.panelWidth
             height: scene.panelHeight
             expansion: scene.expansion
@@ -821,9 +826,9 @@ Item {
     // default, so undo to "unset" is visible); pinned stays in dock.json, whose
     // on/position/auto_hide then only mirror the core. Without a profile: env/dock.json.
     Connections {
-        target: launcherBody.settings
+        target: settings
         function onValuesChanged(): void {
-            const s = launcherBody.settings;
+            const s = settings;
             const core = key => s.profile ? s.value(key) : null;
             const auto = core("bar.autohide");
             if (typeof auto === "boolean")

@@ -29,7 +29,8 @@ hotkey-overlay {
 prefer-no-csd
 
 input {
-    // No xkb override: niri uses the system layout configured through localed.
+    // No xkb section: niri takes the layouts from /etc/vconsole.conf (XKBLAYOUT, written by the
+    // installer) through systemd-localed, the same list the session and the lock screen use.
     touchpad {
         tap
     }
@@ -42,5 +43,8 @@ cursor {
 
 // No application-launching bindings on the login screen. Ctrl+Alt+F2 is the
 // compositor's standard VT switch and remains the getty recovery route.
+// Super+Space cycles the system layouts, as in the session (niri/default.kdl), so a
+// password typed in the second layout can be typed here; the code next to the field follows.
 binds {
+    Mod+Space { switch-layout "next"; }
 }

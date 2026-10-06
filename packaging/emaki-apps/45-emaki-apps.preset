@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Rich installs print: the installer's `systemctl preset-all` enables the local CUPS
+# scheduler (unix socket and localhost:631 only). Minimal never has this file.
+enable cups.service
+enable cups.socket
+enable cups.path

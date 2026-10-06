@@ -2,9 +2,11 @@
 # Emaki power menu. Uses the same fuzzel as the launcher: no extra programs,
 # shared appearance. Invoked by a shortcut in niri/default.kdl.
 #
-# Immediate, no prompt: Lock, Suspend        — easily reversible
+# Immediate, no prompt: Lock, Sleep          — easily reversible
 # With confirmation:    Hibernate, Log out,  — ends the desktop or loses unsaved work
-#                       Reboot, Shut down
+#                       Restart, Shut down
+# Hibernate is listed only when logind says the machine can hibernate (the same
+# question the panel asks); without a swapfile it would lock and then fail.
 #
 # Lock before suspend and hibernation; otherwise the system is unlocked on wake.
 # Esc in any menu exits without taking action.
@@ -31,14 +33,23 @@ lock() {
     emaki-lock --wait
 }
 
-choice="$(menu "power  " "Lock" "Suspend" "Hibernate" "Log out" "Reboot" "Shut down")" || exit 0
+can_hibernate() {
+    busctl --system --json=short call org.freedesktop.login1 /org/freedesktop/login1 \
+        org.freedesktop.login1.Manager CanHibernate 2>/dev/null | grep -q '"data":\["yes"\]'
+}
+
+if can_hibernate; then
+    choice="$(menu "power  " "Lock" "Sleep" "Hibernate" "Log out" "Restart" "Shut down")" || exit 0
+else
+    choice="$(menu "power  " "Lock" "Sleep" "Log out" "Restart" "Shut down")" || exit 0
+fi
 
 case "$choice" in
     "Lock")      lock ;;
-    "Suspend")   lock; systemctl suspend ;;
+    "Sleep")     lock && systemctl suspend ;;
     "Hibernate") confirm "Hibernate" && { lock && systemctl hibernate; } ;;
     "Log out")   confirm "Log out"   && niri msg action quit --skip-confirmation ;;
-    "Reboot")    confirm "Reboot"    && systemctl reboot ;;
+    "Restart")   confirm "Restart"   && systemctl reboot ;;
     "Shut down") confirm "Shut down" && systemctl poweroff ;;
     *)           exit 0 ;;
 esac

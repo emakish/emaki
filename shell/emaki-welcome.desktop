@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Welcome to Emaki
+Comment=Get comfortable with windows, workspaces and shortcuts
+Exec=emaki-shell call welcome present
+Icon=emaki-welcome
+Terminal=false
+Categories=Utility;
+Keywords=welcome;help;shortcuts;getting started;

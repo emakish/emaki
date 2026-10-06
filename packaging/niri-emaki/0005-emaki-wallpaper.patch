@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Emaki contributors <emaki@localhost>
-Date: Fri, 2 Oct 2026 12:00:00 -0500
+Date: Fri, 2 Oct 2026 17:00:00 +0000
 Subject: [PATCH 5/5] Add per-workspace indexed ring wallpaper and living trains
 
 Keep lifetime workspace starts and physical camera motion through rebases.
@@ -473,10 +473,10 @@ index 32e31bfd..1e087cdd 100644
      fn parse_size_change() {
          assert_eq!(
 diff --git a/src/backend/tty.rs b/src/backend/tty.rs
-index 21a78596..2d13f4b6 100644
+index 2172fb9d..54a415b2 100644
 --- a/src/backend/tty.rs
 +++ b/src/backend/tty.rs
-@@ -1974,6 +1974,7 @@ impl Tty {
+@@ -1976,6 +1976,7 @@ impl Tty {
              capture_client: None,
          };
          let mut elements = niri.render_to_vec(ctx, output, true);
@@ -1723,20 +1723,30 @@ index 26f8659a..fd2dc4ee 100644
 +    farthest.map_or(0., |(_, candidate)| candidate)
 +}
 diff --git a/src/niri.rs b/src/niri.rs
-index d7d4b710..0de13890 100644
+index d7d4b710..1910d1b4 100644
 --- a/src/niri.rs
 +++ b/src/niri.rs
-@@ -383,6 +383,9 @@ pub struct Niri {
+@@ -383,6 +383,19 @@ pub struct Niri {
      pub lock_state: LockState,
  
      startup_cover: Option<StartupCover>,
 +    emaki_wallpaper: RefCell<crate::render_helpers::emaki_wallpaper::Wallpaper>,
 +    wallpaper_timer: Option<(RegistrationToken, Instant)>,
-+    wallpaper_loader: Option<RegistrationToken>,
++    wallpaper_decoder: Option<
++        crate::render_helpers::emaki_wallpaper::assets::Decoder<(
++            niri_config::EmakiWallpaper,
++            usize,
++        )>,
++    >,
++    /// Work done by `refresh_emaki_wallpaper`, counted for tests: config clones and views built.
++    #[cfg(test)]
++    pub(crate) emaki_wallpaper_config_clones: usize,
++    #[cfg(test)]
++    pub(crate) emaki_wallpaper_views_built: usize,
      // Survives texture release: a frozen shell replacement must also stop covering windows.
      startup_cover_deadline: Option<Instant>,
  
-@@ -813,6 +816,7 @@ impl State {
+@@ -813,6 +826,7 @@ impl State {
  
          // Needs to be called after updating the keyboard focus.
          self.niri.refresh_layout();
@@ -1744,7 +1754,7 @@ index d7d4b710..0de13890 100644
  
          self.niri.cursor_manager.check_cursor_image_surface_alive();
          self.niri.refresh_pointer_outputs();
-@@ -1440,6 +1444,7 @@ impl State {
+@@ -1440,6 +1454,7 @@ impl State {
          };
  
          self.niri.config_error_notification.hide();
@@ -1752,17 +1762,21 @@ index d7d4b710..0de13890 100644
  
          // Find & orphan removed named workspaces.
          let mut removed_workspaces: Vec<String> = vec![];
-@@ -2600,6 +2605,9 @@ impl Niri {
+@@ -2600,6 +2615,13 @@ impl Niri {
  
              lock_state: LockState::Unlocked,
              startup_cover: None,
 +            emaki_wallpaper: RefCell::default(),
 +            wallpaper_timer: None,
-+            wallpaper_loader: None,
++            wallpaper_decoder: None,
++            #[cfg(test)]
++            emaki_wallpaper_config_clones: 0,
++            #[cfg(test)]
++            emaki_wallpaper_views_built: 0,
              startup_cover_deadline: None,
              locked_hint: None,
  
-@@ -4085,6 +4093,7 @@ impl Niri {
+@@ -4085,6 +4107,7 @@ impl Niri {
      pub fn update_render_elements(&mut self, output: Option<&Output>) {
          self.update_xray_render_elements(output);
          self.layout.update_render_elements(output);
@@ -1770,7 +1784,7 @@ index d7d4b710..0de13890 100644
  
          for (out, state) in self.output_state.iter_mut() {
              if output.is_none_or(|output| out == output) {
-@@ -4174,6 +4183,24 @@ impl Niri {
+@@ -4174,6 +4197,24 @@ impl Niri {
          elements
      }
  
@@ -1795,7 +1809,7 @@ index d7d4b710..0de13890 100644
      /// Interactive captures keep output privacy semantics but omit the login decoration.
      pub fn render_capture_to_vec<R: NiriRenderer>(
          &self,
-@@ -4429,6 +4456,18 @@ impl Niri {
+@@ -4429,6 +4470,18 @@ impl Niri {
              push_popups_from_layer!(Layer::Bottom);
              push_popups_from_layer!(Layer::Background);
              push_normal_from_layer!(Layer::Bottom);
@@ -1814,7 +1828,7 @@ index d7d4b710..0de13890 100644
              push_normal_from_layer!(Layer::Background);
  
              // We don't expect more than one workspace when render_above_top_layer().
-@@ -4476,6 +4515,16 @@ impl Niri {
+@@ -4476,6 +4529,16 @@ impl Niri {
                  let ns = Some(ws.id().get() as usize);
                  let xray_pos = XrayPos::new(geo.loc, zoom);
                  push_normal_from_layer!(Layer::Bottom, ns, xray_pos, process!(geo));
@@ -1831,7 +1845,7 @@ index d7d4b710..0de13890 100644
                  push_normal_from_layer!(Layer::Background, ns, xray_pos, process!(geo));
  
                  process!(geo)(ws.render_background());
-@@ -4532,6 +4581,20 @@ impl Niri {
+@@ -4532,6 +4595,20 @@ impl Niri {
          {
              let elements = buffer.elements();
              elements.clear();
@@ -1852,7 +1866,7 @@ index d7d4b710..0de13890 100644
              self.render_layer_normal(
                  ctx.r(),
                  None,
-@@ -4725,6 +4788,12 @@ impl Niri {
+@@ -4725,6 +4802,12 @@ impl Niri {
  
              // Render.
              res = backend.render(self, output, target_presentation_time);
@@ -1865,7 +1879,7 @@ index d7d4b710..0de13890 100644
          }
  
          let is_locked = self.is_locked();
-@@ -6364,6 +6433,173 @@ impl Niri {
+@@ -6364,6 +6447,209 @@ impl Niri {
          self.startup_cover.is_none() && self.startup_cover_layer_expired("emaki-session-cover")
      }
  
@@ -1890,18 +1904,27 @@ index d7d4b710..0de13890 100644
 +    /// decode loop or periodic wallpaper timer when the output is idle.
 +    fn refresh_emaki_wallpaper(&mut self, output: Option<&Output>) {
 +        use crate::render_helpers::emaki_wallpaper::assets;
-+        let config = self.config.borrow().emaki_wallpaper.clone();
-+        let generation = self.emaki_wallpaper.borrow_mut().configure(&config);
++        // Runs on every event loop turn: only a new decoder needs its own copy of the config.
++        let (generation, image) = {
++            let config = self.config.borrow();
++            let config = &config.emaki_wallpaper;
++            (
++                self.emaki_wallpaper.borrow_mut().configure(config),
++                config.mode == niri_config::EmakiWallpaperMode::Image,
++            )
++        };
 +        if let Some(generation) = generation {
-+            let limit = self.emaki_wallpaper.borrow().upload_limit.unwrap_or(16384);
-+            if let Some(token) = self.wallpaper_loader.take() {
-+                self.event_loop.remove(token);
++            let config = self.config.borrow().emaki_wallpaper.clone();
++            #[cfg(test)]
++            {
++                self.emaki_wallpaper_config_clones += 1;
 +            }
-+            let (tx, rx) = calloop::channel::channel();
-+            self.wallpaper_loader = Some(
++            let limit = self.emaki_wallpaper.borrow().upload_limit.unwrap_or(16384);
++            let decoder = self.wallpaper_decoder.get_or_insert_with(|| {
++                let (tx, rx) = calloop::channel::channel();
 +                self.event_loop
-+                    .insert_source(rx, move |event, _, state| {
-+                        if let calloop::channel::Event::Msg(decoded) = event {
++                    .insert_source(rx, |event, _, state| {
++                        if let calloop::channel::Event::Msg((generation, decoded)) = event {
 +                            state
 +                                .niri
 +                                .emaki_wallpaper
@@ -1910,17 +1933,32 @@ index d7d4b710..0de13890 100644
 +                            state.niri.queue_redraw_all();
 +                        }
 +                    })
-+                    .expect("wallpaper worker source"),
-+            );
-+            if let Err(err) = std::thread::Builder::new()
-+                .name("emaki-wallpaper".into())
-+                .spawn(move || {
-+                    let _ = tx.send(assets::decode(&config).map(|decoded| decoded.prepare(limit)));
++                    .expect("wallpaper worker source");
++                let failed = tx.clone();
++                assets::Decoder::new(move |generation, (config, limit), current| {
++                    let decoded = assets::decode(&config, current);
++                    // A stale job sends nothing; loaded() still checks the generation.
++                    if current() {
++                        let prepared = decoded.map(|decoded| decoded.prepare(limit));
++                        let _ = tx.send((generation, prepared));
++                    }
 +                })
-+            {
++                .on_panic(move |generation, message| {
++                    let err = anyhow::anyhow!("wallpaper decoder panicked: {message}");
++                    let _ = failed.send((generation, Err(err)));
++                })
++            });
++            if let Err(err) = decoder.submit(generation, (config, limit)) {
 +                self.emaki_wallpaper
 +                    .borrow_mut()
 +                    .loaded(generation, Err(err.into()));
++            }
++        } else if let Some(decoder) = &mut self.wallpaper_decoder {
++            // A job waiting behind a stuck read (a hung network mount) gets its own thread.
++            if let Err(err) = decoder.unstick() {
++                let mut wallpaper = self.emaki_wallpaper.borrow_mut();
++                let generation = wallpaper.generation;
++                wallpaper.loaded(generation, Err(err.into()));
 +            }
 +        }
 +        let paused = self.is_locked() || self.screenshot_ui.is_open() || !self.monitors_active;
@@ -1934,7 +1972,8 @@ index d7d4b710..0de13890 100644
 +            .collect();
 +        wallpaper.retain(&outputs, &workspaces);
 +        let mut newly_animated = Vec::new();
-+        for mon in self.layout.monitors() {
++        // The still image has no scene to update: its views would be dropped unused.
++        for mon in self.layout.monitors().filter(|_| !image) {
 +            if output.is_some_and(|output| output != mon.output()) {
 +                continue;
 +            }
@@ -1944,10 +1983,14 @@ index d7d4b710..0de13890 100644
 +                mon,
 +                Rectangle::from_size(mon.view_size()),
 +            );
-+            let views = mon
++            let views: Vec<_> = mon
 +                .workspaces_with_render_geo()
 +                .map(|(ws, geo)| self.wallpaper_view(ws, mon, geo))
 +                .collect();
++            #[cfg(test)]
++            {
++                self.emaki_wallpaper_views_built += 1 + views.len();
++            }
 +            wallpaper.update_output(mon.output().name(), active, views);
 +            if !was_animated && wallpaper.animated(&mon.output().name()) {
 +                newly_animated.push(mon.output().clone());
@@ -1987,6 +2030,13 @@ index d7d4b710..0de13890 100644
 +                self.wallpaper_timer = Some((token, deadline));
 +            }
 +        }
++    }
++
++    #[cfg(test)]
++    pub(crate) fn emaki_wallpaper_decoder_threads(&self) -> usize {
++        self.wallpaper_decoder
++            .as_ref()
++            .map_or(0, |decoder| decoder.threads_started())
 +    }
 +
 +    pub fn emaki_wallpaper_status(&self) -> niri_ipc::EmakiWallpaperStatus {
@@ -2039,7 +2089,7 @@ index d7d4b710..0de13890 100644
      pub fn install_startup_cover(&mut self, cover: StartupCover) {
          self.startup_cover_deadline = Some(cover.deadline());
          let timer = Timer::from_deadline(cover.deadline());
-@@ -6688,6 +6924,16 @@ impl ClientData for ClientState {
+@@ -6688,6 +6974,16 @@ impl ClientData for ClientState {
      fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
  }
  
@@ -2056,7 +2106,7 @@ index d7d4b710..0de13890 100644
  fn scale_relocate_crop<E: Element>(
      elem: E,
      output_scale: Scale<f64>,
-@@ -6718,6 +6964,9 @@ niri_render_elements! {
+@@ -6718,6 +7014,9 @@ niri_render_elements! {
      OutputRenderElements<R> => {
          Monitor = MonitorRenderElement<R>,
          EmakiBackdrop = crate::render_helpers::shader_element::ShaderRenderElement,
@@ -2066,7 +2116,7 @@ index d7d4b710..0de13890 100644
          RescaledTile = RescaleRenderElement<TileRenderElement<R>>,
          LayerSurface = LayerSurfaceRenderElement<R>,
          RelocatedLayerSurface = CropRenderElement<RelocateRenderElement<RescaleRenderElement<
-@@ -6759,3 +7008,90 @@ mod emaki_redraw_tests {
+@@ -6759,3 +7058,90 @@ mod emaki_redraw_tests {
          }
      }
  }
@@ -2159,16 +2209,22 @@ index d7d4b710..0de13890 100644
 +}
 diff --git a/src/render_helpers/emaki_wallpaper/assets.rs b/src/render_helpers/emaki_wallpaper/assets.rs
 new file mode 100644
-index 00000000..5bf3cd75
+index 00000000..5d114a4f
 --- /dev/null
 +++ b/src/render_helpers/emaki_wallpaper/assets.rs
-@@ -0,0 +1,780 @@
+@@ -0,0 +1,1069 @@
 +//! Bounded indexed PNG decoding on a worker, and single-channel tiled GPU storage.
++use std::any::Any;
 +use std::fs::{File, OpenOptions};
 +use std::io::{BufReader, Read};
 +use std::os::unix::fs::OpenOptionsExt;
++use std::panic::{self, AssertUnwindSafe};
 +use std::path::Path;
 +use std::rc::Rc;
++use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
++use std::sync::{Arc, Condvar, Mutex, PoisonError};
++use std::thread::JoinHandle;
++use std::time::{Duration, Instant};
 +
 +use anyhow::{ensure, Context};
 +use niri_config::EmakiWallpaper;
@@ -2342,18 +2398,47 @@ index 00000000..5bf3cd75
 +        palette,
 +    })
 +}
-+pub fn decode(config: &EmakiWallpaper) -> anyhow::Result<Decoded> {
++/// A newer wallpaper generation was submitted while this one was decoding.
++#[derive(Debug)]
++pub struct Superseded;
++impl std::fmt::Display for Superseded {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        f.write_str("superseded by a newer wallpaper configuration")
++    }
++}
++impl std::error::Error for Superseded {}
++
++/// The train path for which [`decode`] panics in tests.
++#[cfg(test)]
++pub(crate) const PANICKING_TRAIN: &str = "/nonexistent/emaki-wallpaper-test/panic/train.json";
++
++/// `current` is asked before each image stage; a stale job stops there with [`Superseded`].
++pub fn decode(config: &EmakiWallpaper, current: &dyn Fn() -> bool) -> anyhow::Result<Decoded> {
++    #[cfg(test)]
++    if config.train == PANICKING_TRAIN {
++        panic!("wallpaper decoder panic (expected by a test)");
++    }
++    let stage = || {
++        if current() {
++            Ok(())
++        } else {
++            Err(anyhow::Error::new(Superseded))
++        }
++    };
 +    let mut json = String::new();
 +    open(&config.train, 64 * 1024)?
 +        .take(64 * 1024 + 1)
 +        .read_to_string(&mut json)?;
 +    let mut train: TrainArt = serde_json::from_str(&json).context("reading train.json")?;
 +    train.validate()?;
++    stage()?;
 +    let ring = decode_image(&config.ring, (RING_WIDTH, RING_HEIGHT), false)?;
 +    if train.palette.is_empty() {
 +        train.palette.clone_from(&ring.palette);
 +    }
++    stage()?;
 +    let front = decode_image(&config.front, (RING_WIDTH, RING_HEIGHT), true)?;
++    stage()?;
 +    let frames = decode_image(
 +        &config.train_frames,
 +        (train.width, train.height * train.frames),
@@ -2371,6 +2456,207 @@ index 00000000..5bf3cd75
 +        frames,
 +        train,
 +    })
++}
++
++type Run<J> = Arc<dyn Fn(u64, J, &dyn Fn() -> bool) + Send + Sync>;
++type Panicked = Arc<dyn Fn(u64, String) + Send + Sync>;
++
++/// A job running this long is taken to be stuck: a whole decode of the shipped wallpaper takes
++/// 0.04 to 0.1 s in a release build, and the job checks for a newer generation between its
++/// stages. A read from a file on a hung network mount never returns (`O_NONBLOCK` does nothing
++/// for regular files).
++const STUCK_AFTER: Duration = Duration::from_secs(5);
++
++/// The compositor's one wallpaper decoder thread. Its mailbox holds a single job: a newer job
++/// replaces a waiting one, and the running job sees at its stage boundaries whether a newer
++/// generation was submitted. Decoding never runs on the event loop. A panic while decoding fails
++/// only its job (see [`Decoder::on_panic`]); the thread goes on with the next one. A thread that
++/// is gone anyway is replaced when the next job arrives, and a job that waits behind a stuck one
++/// gets a new thread (see [`Decoder::unstick`]).
++pub struct Decoder<J> {
++    mailbox: Arc<Mailbox<J>>,
++    run: Run<J>,
++    panicked: Panicked,
++    thread: Option<JoinHandle<()>>,
++    stuck_after: Duration,
++    #[cfg(test)]
++    started: usize,
++}
++struct Mailbox<J> {
++    /// The newest submitted generation: a job of any other generation is stale.
++    latest: AtomicU64,
++    closed: AtomicBool,
++    job: Mutex<Option<(u64, J)>>,
++    wake: Condvar,
++    /// When the running job started; `None` while the thread waits for a job.
++    running_since: Mutex<Option<Instant>>,
++}
++impl<J> Mailbox<J> {
++    fn new(latest: u64, job: Option<(u64, J)>) -> Self {
++        Self {
++            latest: AtomicU64::new(latest),
++            closed: AtomicBool::new(false),
++            job: Mutex::new(job),
++            wake: Condvar::new(),
++            running_since: Mutex::new(None),
++        }
++    }
++    /// Its thread exits instead of taking another job, and its running job is stale.
++    fn close(&self) {
++        let _job = self.job.lock().unwrap_or_else(PoisonError::into_inner);
++        self.closed.store(true, Ordering::SeqCst);
++        self.wake.notify_all();
++    }
++    fn stuck(&self, after: Duration) -> bool {
++        self.running_since
++            .lock()
++            .unwrap_or_else(PoisonError::into_inner)
++            .is_some_and(|since| since.elapsed() >= after)
++    }
++}
++impl<J: Send + 'static> Decoder<J> {
++    pub fn new(run: impl Fn(u64, J, &dyn Fn() -> bool) + Send + Sync + 'static) -> Self {
++        Self {
++            mailbox: Arc::new(Mailbox::new(0, None)),
++            run: Arc::new(run),
++            panicked: Arc::new(|_, _| ()),
++            thread: None,
++            stuck_after: STUCK_AFTER,
++            #[cfg(test)]
++            started: 0,
++        }
++    }
++    /// `report` gets the generation and panic message of a job that panicked while it was still
++    /// the newest generation.
++    pub fn on_panic(mut self, report: impl Fn(u64, String) + Send + Sync + 'static) -> Self {
++        self.panicked = Arc::new(report);
++        self
++    }
++    #[cfg(test)]
++    pub(crate) fn stuck_after(mut self, stuck_after: Duration) -> Self {
++        self.stuck_after = stuck_after;
++        self
++    }
++    /// Queues `job` as the newest generation. Fails only when the thread cannot be started.
++    pub fn submit(&mut self, generation: u64, job: J) -> std::io::Result<()> {
++        self.mailbox.latest.store(generation, Ordering::SeqCst);
++        let mut waiting = self
++            .mailbox
++            .job
++            .lock()
++            .unwrap_or_else(PoisonError::into_inner);
++        *waiting = Some((generation, job));
++        drop(waiting);
++        self.mailbox.wake.notify_one();
++        if self.running() {
++            return self.unstick();
++        }
++        self.spawn()
++    }
++    /// Called on every event loop turn. When a job waits behind one that has run for
++    /// [`STUCK_AFTER`], the stuck job is left to its thread, which ends if its read ever returns,
++    /// and the waiting job starts on a new thread with a new mailbox. Fails only when that thread
++    /// cannot be started; the waiting job is then the newest generation.
++    pub fn unstick(&mut self) -> std::io::Result<()> {
++        if !self.running() || !self.mailbox.stuck(self.stuck_after) {
++            return Ok(());
++        }
++        let waiting = self
++            .mailbox
++            .job
++            .lock()
++            .unwrap_or_else(PoisonError::into_inner)
++            .take();
++        let Some(waiting) = waiting else {
++            return Ok(());
++        };
++        // From here on the stuck job is stale: it sends nothing if it ever finishes.
++        self.mailbox.close();
++        self.mailbox = Arc::new(Mailbox::new(waiting.0, Some(waiting)));
++        self.spawn()
++    }
++    fn spawn(&mut self) -> std::io::Result<()> {
++        // Without a thread after a failed start, the next submit starts one.
++        self.thread = None;
++        let mailbox = self.mailbox.clone();
++        let run = self.run.clone();
++        let panicked = self.panicked.clone();
++        self.thread = Some(
++            std::thread::Builder::new()
++                .name("emaki-wallpaper".into())
++                .spawn(move || work(&mailbox, &run, &panicked))?,
++        );
++        #[cfg(test)]
++        {
++            self.started += 1;
++        }
++        Ok(())
++    }
++    pub(super) fn running(&self) -> bool {
++        self.thread
++            .as_ref()
++            .is_some_and(|thread| !thread.is_finished())
++    }
++    #[cfg(test)]
++    pub(crate) fn threads_started(&self) -> usize {
++        self.started
++    }
++}
++impl<J> Drop for Decoder<J> {
++    fn drop(&mut self) {
++        // Not joined: a running stage ends at its next boundary, then the thread exits.
++        self.mailbox.close();
++    }
++}
++fn work<J>(mailbox: &Mailbox<J>, run: &Run<J>, panicked: &Panicked) {
++    loop {
++        let (generation, job) = {
++            let mut job = mailbox.job.lock().unwrap_or_else(PoisonError::into_inner);
++            loop {
++                if mailbox.closed.load(Ordering::SeqCst) {
++                    return;
++                }
++                if let Some(job) = job.take() {
++                    break job;
++                }
++                job = mailbox
++                    .wake
++                    .wait(job)
++                    .unwrap_or_else(PoisonError::into_inner);
++            }
++        };
++        let running_since = || {
++            mailbox
++                .running_since
++                .lock()
++                .unwrap_or_else(PoisonError::into_inner)
++        };
++        *running_since() = Some(Instant::now());
++        let current = || {
++            !mailbox.closed.load(Ordering::SeqCst)
++                && mailbox.latest.load(Ordering::SeqCst) == generation
++        };
++        // A panic ends this job, not the thread: `submit` sees a thread that is still running its
++        // panic hook or unwinding as alive, so a job submitted then would wait in the mailbox of
++        // a dying thread for good. The job shares nothing with the loop that it could leave
++        // half-updated; the mailbox lock is not held while it runs.
++        let ran = panic::catch_unwind(AssertUnwindSafe(|| run(generation, job, &current)));
++        *running_since() = None;
++        if let Err(payload) = ran {
++            if current() {
++                panicked(generation, panic_message(&*payload));
++            }
++        }
++    }
++}
++fn panic_message(payload: &(dyn Any + Send)) -> String {
++    if let Some(message) = payload.downcast_ref::<&str>() {
++        (*message).to_owned()
++    } else if let Some(message) = payload.downcast_ref::<String>() {
++        message.clone()
++    } else {
++        "unknown panic".to_owned()
++    }
 +}
 +
 +pub struct Tile {
@@ -2584,7 +2870,17 @@ index 00000000..5bf3cd75
 +        ),
 +    )
 +}
++#[cfg(test)]
++thread_local! {
++    /// Stands in for GL_MAX_TEXTURE_SIZE in tests of smaller GPUs than the test driver.
++    pub(super) static TEXTURE_LIMIT: std::cell::Cell<Option<usize>> =
++        const { std::cell::Cell::new(None) };
++}
 +pub fn texture_limit(renderer: &mut GlesRenderer) -> anyhow::Result<usize> {
++    #[cfg(test)]
++    if let Some(limit) = TEXTURE_LIMIT.with(|limit| limit.get()) {
++        return Ok(limit);
++    }
 +    let limit = renderer.with_context(|gl| {
 +        let mut value = 0;
 +        unsafe { gl.GetIntegerv(ffi::MAX_TEXTURE_SIZE, &mut value) };
@@ -2751,7 +3047,7 @@ index 00000000..5bf3cd75
 +            Some(&alpha),
 +            63,
 +        );
-+        let decoded = decode(&config).unwrap();
++        let decoded = decode(&config, &|| true).unwrap();
 +        assert_eq!(decoded.train.palette, palette());
 +        assert_eq!(decoded.ring.bytes.len(), RING_WIDTH * RING_HEIGHT);
 +        assert!(decoded.ring.bytes.iter().all(|&index| index == 17));
@@ -2762,11 +3058,11 @@ index 00000000..5bf3cd75
 +        let mut json = metadata();
 +        json["palette"] = json!(palette());
 +        std::fs::write(&config.train, json.to_string()).unwrap();
-+        assert!(decode(&config).is_ok());
++        assert!(decode(&config, &|| true).is_ok());
 +        json["palette"][0] = json!([255, 255, 255]);
 +        std::fs::write(&config.train, json.to_string()).unwrap();
 +        assert!(
-+            decode(&config).is_err(),
++            decode(&config, &|| true).is_err(),
 +            "accepted mismatched metadata palette"
 +        );
 +
@@ -2780,9 +3076,52 @@ index 00000000..5bf3cd75
 +            63,
 +        );
 +        assert!(
-+            decode(&config).is_err(),
++            decode(&config, &|| true).is_err(),
 +            "accepted mismatched sheet palette"
 +        );
++    }
++
++    #[test]
++    fn emaki_wallpaper_assets_decode_stops_at_a_stage_boundary_when_superseded() {
++        let dir = TestDir::new();
++        let config = EmakiWallpaper {
++            ring: dir.path("ring.png").to_str().unwrap().into(),
++            front: dir.path("front.png").to_str().unwrap().into(),
++            train_frames: dir.path("missing-frames.png").to_str().unwrap().into(),
++            train: dir.path("train.json").to_str().unwrap().into(),
++            ..Default::default()
++        };
++        std::fs::write(&config.train, metadata().to_string()).unwrap();
++        write_indexed(
++            Path::new(&config.ring),
++            (RING_WIDTH, RING_HEIGHT),
++            &palette(),
++            None,
++            17,
++        );
++        let (colours, alpha) = overlay_palette();
++        write_indexed(
++            Path::new(&config.front),
++            (RING_WIDTH, RING_HEIGHT),
++            &colours,
++            Some(&alpha),
++            64,
++        );
++        // The job turns stale at boundary `stale` (1: before the ring, 2: before the front,
++        // 3: before the frames); a stale job stops there instead of reading the next file.
++        for stale in 1..=3 {
++            let checks = std::cell::Cell::new(0);
++            let current = || {
++                checks.set(checks.get() + 1);
++                checks.get() < stale
++            };
++            let err = decode(&config, &current).err().unwrap();
++            assert!(err.is::<Superseded>(), "boundary {stale}: {err:#}");
++            assert_eq!(checks.get(), stale);
++        }
++        // A current job reaches the last stage: the missing frames file.
++        let err = decode(&config, &|| true).err().unwrap();
++        assert!(format!("{err:#}").contains("missing-frames.png"), "{err:#}");
 +    }
 +
 +    #[test]
@@ -2912,11 +3251,11 @@ index 00000000..5bf3cd75
 +            train_frames: dir.path("missing-frames.png").to_str().unwrap().into(),
 +            ..Default::default()
 +        };
-+        assert!(decode(&config).is_err());
++        assert!(decode(&config, &|| true).is_err());
 +        std::fs::write(&path, b"{").unwrap();
-+        assert!(format!("{:#}", decode(&config).err().unwrap()).contains("train.json"));
++        assert!(format!("{:#}", decode(&config, &|| true).err().unwrap()).contains("train.json"));
 +        File::create(&path).unwrap().set_len(64 * 1024 + 1).unwrap();
-+        assert!(decode(&config).is_err());
++        assert!(decode(&config, &|| true).is_err());
 +    }
 +    #[test]
 +    fn emaki_wallpaper_home_paths_use_niri_expansion() {
@@ -2945,10 +3284,10 @@ index 00000000..5bf3cd75
 +}
 diff --git a/src/render_helpers/emaki_wallpaper/mod.rs b/src/render_helpers/emaki_wallpaper/mod.rs
 new file mode 100644
-index 00000000..e5a52fd6
+index 00000000..3ec63637
 --- /dev/null
 +++ b/src/render_helpers/emaki_wallpaper/mod.rs
-@@ -0,0 +1,796 @@
+@@ -0,0 +1,838 @@
 +//! Per-workspace indexed ring wallpaper. The compositor owns timing and geometry;
 +//! wpaperd remains underneath whenever this engine has no complete valid scene.
 +pub mod assets;
@@ -2960,7 +3299,7 @@ index 00000000..e5a52fd6
 +
 +use niri_config::{EmakiWallpaper, EmakiWallpaperMode};
 +use smithay::backend::renderer::element::{Element, Kind};
-+use smithay::backend::renderer::gles::{GlesRenderer, Uniform};
++use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture, Uniform};
 +use smithay::backend::renderer::Texture;
 +use smithay::utils::{Logical, Rectangle, Size};
 +
@@ -3023,7 +3362,44 @@ index 00000000..e5a52fd6
 +    signature: Option<[u64; 6]>,
 +    ring: Vec<ShaderRenderElement>,
 +    front: Vec<ShaderRenderElement>,
-+    dynamic: HashMap<(u64, u32, u8), ShaderRenderElement>,
++    dynamic: HashMap<(u64, u32, u8), Dynamic>,
++}
++/// A vehicle or puff element with the inputs of its last update. Train positions are
++/// quantised to art pixels, so on a 120 Hz output every other frame repeats them; an
++/// element with unchanged inputs keeps its commit and leaves no damage. A move alone
++/// needs no commit: the damage tracker compares geometry itself. Textures change only
++/// with `Wallpaper::gpu`, which drops every scene cache.
++struct Dynamic {
++    element: ShaderRenderElement,
++    size: Size<f64, Logical>,
++    scale: f32,
++    uniforms: Rc<[Uniform<'static>]>,
++}
++impl Dynamic {
++    fn new(program: ProgramType) -> Self {
++        Self {
++            element: ShaderRenderElement::empty(program, Kind::Unspecified).with_nearest_sampling(),
++            size: Size::default(),
++            scale: 0.,
++            uniforms: Rc::new([]),
++        }
++    }
++    fn update(
++        &mut self,
++        size: Size<f64, Logical>,
++        scale: f32,
++        uniforms: Rc<[Uniform<'static>]>,
++        textures: impl FnOnce() -> HashMap<String, GlesTexture>,
++    ) {
++        if self.size == size && self.scale == scale && *self.uniforms == *uniforms {
++            return;
++        }
++        self.size = size;
++        self.scale = scale;
++        self.uniforms = uniforms.clone();
++        self.element
++            .update(size, None, scale, 1., uniforms, textures());
++    }
 +}
 +struct OutputScene {
 +    schedule: Schedule,
@@ -3329,6 +3705,8 @@ index 00000000..e5a52fd6
 +                }
 +                match GpuArt::upload(renderer, &decoded) {
 +                    Ok(gpu) => {
++                        // Retained elements compare their inputs, not their textures.
++                        self.scenes.clear();
 +                        self.gpu = Some(gpu);
 +                        self.load_state = "ready";
 +                    }
@@ -3385,19 +3763,14 @@ index 00000000..e5a52fd6
 +                            },
 +                        ),
 +                    ]);
-+                    let elem = cache.dynamic.entry(key).or_insert_with(|| {
-+                        ShaderRenderElement::empty(ProgramType::EmakiPuff, Kind::Unspecified)
-+                            .with_nearest_sampling()
++                    let elem = cache
++                        .dynamic
++                        .entry(key)
++                        .or_insert_with(|| Dynamic::new(ProgramType::EmakiPuff));
++                    elem.update(rect.size, view.scale as f32, uniforms, || {
++                        HashMap::from([("palette_tex".into(), gpu.palette.clone())])
 +                    });
-+                    elem.update(
-+                        rect.size,
-+                        None,
-+                        view.scale as f32,
-+                        1.,
-+                        uniforms,
-+                        HashMap::from([("palette_tex".into(), gpu.palette.clone())]),
-+                    );
-+                    result.push(elem.clone().with_location(rect.loc));
++                    result.push(elem.element.clone().with_location(rect.loc));
 +                }
 +                let frame = art.frame(train.travelled(now));
 +                let first = art.first(train.carriages);
@@ -3419,26 +3792,23 @@ index 00000000..e5a52fd6
 +                    }
 +                    let key = (train.id, 0, vehicle as u8);
 +                    keys.insert(key);
-+                    let elem = cache.dynamic.entry(key).or_insert_with(|| {
-+                        ShaderRenderElement::empty(ProgramType::EmakiWallpaper, Kind::Unspecified)
-+                            .with_nearest_sampling()
-+                    });
-+                    update_indexed(
-+                        elem,
-+                        rect,
-+                        [
-+                            a as f64,
-+                            (frame as usize * art.height) as f64,
-+                            (b - a) as f64,
-+                            art.height as f64,
-+                        ],
-+                        &gpu.frames,
-+                        &gpu.palette,
-+                        view,
-+                        0,
-+                        false,
++                    let elem = cache
++                        .dynamic
++                        .entry(key)
++                        .or_insert_with(|| Dynamic::new(ProgramType::EmakiWallpaper));
++                    let source = [
++                        a as f64,
++                        (frame as usize * art.height) as f64,
++                        (b - a) as f64,
++                        art.height as f64,
++                    ];
++                    elem.update(
++                        rect.size,
++                        view.scale as f32,
++                        indexed_uniforms(source, &gpu.frames, view, 0),
++                        || indexed_textures(&gpu.frames, &gpu.palette),
 +                    );
-+                    train_elements.push(elem.clone().with_location(rect.loc));
++                    train_elements.push(elem.element.clone().with_location(rect.loc));
 +                }
 +            }
 +        }
@@ -3620,33 +3990,44 @@ index 00000000..e5a52fd6
 +    None
 +}
 +
++fn indexed_uniforms(
++    source: [f64; 4],
++    texture: &GlesTexture,
++    view: &View,
++    atlas_stride: usize,
++) -> Rc<[Uniform<'static>]> {
++    let tex = texture.size();
++    let footprint = (1. / (view.art_scale() * view.zoom)) as f32;
++    Rc::from(vec![
++        Uniform::new("tex_size", [tex.w as f32, tex.h as f32]),
++        Uniform::new("source_rect", source.map(|v| v as f32)),
++        Uniform::new("footprint", [footprint, footprint]),
++        Uniform::new("atlas_stride", atlas_stride as f32),
++    ])
++}
++fn indexed_textures(texture: &GlesTexture, palette: &GlesTexture) -> HashMap<String, GlesTexture> {
++    HashMap::from([
++        ("indices".into(), texture.clone()),
++        ("palette_tex".into(), palette.clone()),
++    ])
++}
 +fn update_indexed(
 +    element: &mut ShaderRenderElement,
 +    rect: Rectangle<f64, Logical>,
 +    source: [f64; 4],
-+    texture: &smithay::backend::renderer::gles::GlesTexture,
-+    palette: &smithay::backend::renderer::gles::GlesTexture,
++    texture: &GlesTexture,
++    palette: &GlesTexture,
 +    view: &View,
 +    atlas_stride: usize,
 +    opaque: bool,
 +) {
-+    let tex = texture.size();
-+    let footprint = (1. / (view.art_scale() * view.zoom)) as f32;
 +    element.update(
 +        rect.size,
 +        opaque.then(|| vec![Rectangle::from_size(rect.size)]),
 +        view.scale as f32,
 +        1.,
-+        Rc::from(vec![
-+            Uniform::new("tex_size", [tex.w as f32, tex.h as f32]),
-+            Uniform::new("source_rect", source.map(|v| v as f32)),
-+            Uniform::new("footprint", [footprint, footprint]),
-+            Uniform::new("atlas_stride", atlas_stride as f32),
-+        ]),
-+        HashMap::from([
-+            ("indices".into(), texture.clone()),
-+            ("palette_tex".into(), palette.clone()),
-+        ]),
++        indexed_uniforms(source, texture, view, atlas_stride),
++        indexed_textures(texture, palette),
 +    );
 +}
 +fn ring_origin(origin: f64, art_scale: f64) -> f64 {
@@ -3747,10 +4128,10 @@ index 00000000..e5a52fd6
 +pub(crate) mod tests;
 diff --git a/src/render_helpers/emaki_wallpaper/tests.rs b/src/render_helpers/emaki_wallpaper/tests.rs
 new file mode 100644
-index 00000000..051fe6de
+index 00000000..11ef7ae2
 --- /dev/null
 +++ b/src/render_helpers/emaki_wallpaper/tests.rs
-@@ -0,0 +1,868 @@
+@@ -0,0 +1,1186 @@
 +use super::assets::{upload_texture, Tile};
 +use super::train::Train;
 +use super::*;
@@ -3758,8 +4139,9 @@ index 00000000..051fe6de
 +use smithay::backend::allocator::Fourcc;
 +use smithay::backend::egl::native::EGLSurfacelessDisplay;
 +use smithay::backend::egl::{EGLContext, EGLDisplay};
-+use smithay::backend::renderer::element::Element;
-+use smithay::utils::Transform;
++use smithay::backend::renderer::element::{Element, Id};
++use smithay::backend::renderer::utils::CommitCounter;
++use smithay::utils::{Physical, Transform};
 +
 +pub(crate) fn renderer() -> GlesRenderer {
 +    let mut renderer = unsafe {
@@ -3996,8 +4378,8 @@ index 00000000..051fe6de
 +            .map(|e| (e.id().clone(), e.current_commit()))
 +            .collect::<Vec<_>>()
 +    );
-+    for element in wallpaper.scenes[&1].dynamic.values() {
-+        let rect = element.geometry(view.scale.into());
++    for dynamic in wallpaper.scenes[&1].dynamic.values() {
++        let rect = dynamic.element.geometry(view.scale.into());
 +        assert!(
 +            rect.size.w <= 163 && rect.size.h <= 50,
 +            "dynamic damage exceeds vehicle/puff bounds: {rect:?}"
@@ -4291,7 +4673,7 @@ index 00000000..051fe6de
 +                let cache = &wallpaper.scenes[&1];
 +                let mut vehicles = (0..4)
 +                    .map(|v| {
-+                        let id = cache.dynamic[&(1, 0, v)].id();
++                        let id = cache.dynamic[&(1, 0, v)].element.id();
 +                        elements
 +                            .iter()
 +                            .find(|e| e.id() == id)
@@ -4378,7 +4760,7 @@ index 00000000..051fe6de
 +        .iter()
 +        .filter_map(|element| {
 +            cache.dynamic.iter().find_map(|(&(id, chuff, kind), e)| {
-+                (id == 1 && kind >= 4 && e.id() == element.id()).then_some(chuff)
++                (id == 1 && kind >= 4 && e.element.id() == element.id()).then_some(chuff)
 +            })
 +        })
 +        .collect::<Vec<_>>();
@@ -4402,6 +4784,96 @@ index 00000000..051fe6de
 +}
 +fn cache_size(wallpaper: &Wallpaper, id: u64) -> usize {
 +    wallpaper.scenes[&id].ring.len() + wallpaper.scenes[&id].front.len()
++}
++
++type Frame = Vec<(Id, CommitCounter, Rectangle<i32, Physical>)>;
++fn frame(renderer: &mut GlesRenderer, wallpaper: &mut Wallpaper, view: &View, now: f64) -> Frame {
++    wallpaper.now = now;
++    wallpaper
++        .render(renderer, "test", view)
++        .iter()
++        .map(|e| {
++            (
++                e.id().clone(),
++                e.current_commit(),
++                e.geometry(view.scale.into()),
++            )
++        })
++        .collect()
++}
++
++#[test]
++fn emaki_wallpaper_unchanged_train_frame_keeps_commits_on_fast_outputs() {
++    let mut renderer = renderer();
++    let mut wallpaper = engine(art(&mut renderer));
++    let view = view(900, 1200, 1., 0.);
++    let mut schedule = Schedule::default();
++    schedule.trains.push(Train {
++        id: 1,
++        born: 0.,
++        start: 100.,
++        carriages: 3,
++    });
++    wallpaper.outputs.insert(
++        "test".into(),
++        OutputScene {
++            schedule,
++            views: vec![view.clone()],
++            active: view.clone(),
++            animated: true,
++            deadline: None,
++            now: 2.,
++            prediction: None,
++        },
++    );
++    // The same clock twice: nothing changed, so no element may commit again.
++    let a = frame(&mut renderer, &mut wallpaper, &view, 2.01);
++    let b = frame(&mut renderer, &mut wallpaper, &view, 2.01);
++    assert!(a.iter().any(|(_, _, geo)| geo.size.w > 0));
++    assert_eq!(a, b, "a repeated frame must not commit any element");
++    let vehicles = (0..4)
++        .map(|v| {
++            wallpaper.scenes[&1].dynamic[&(1, 0, v)]
++                .element
++                .id()
++                .clone()
++        })
++        .collect::<Vec<_>>();
++    let vehicle = |frame: &Frame, id: &Id| {
++        frame
++            .iter()
++            .find(|(e, _, _)| e == id)
++            .map(|(_, commit, geo)| (*commit, *geo))
++            .unwrap()
++    };
++    // Two 120 Hz frames with the same art-pixel position and wheel frame: at 60 px/s
++    // the train moves one pixel per 60 Hz step, so every other fast frame repeats.
++    let b = frame(&mut renderer, &mut wallpaper, &view, 2.018);
++    for id in &vehicles {
++        assert_eq!(
++            vehicle(&a, id),
++            vehicle(&b, id),
++            "quantised train re-committed"
++        );
++    }
++    // One art pixel on: the element moves (geometry is tracked by the damage tracker)
++    // but samples the same wheel frame, so its commit stays.
++    let c = frame(&mut renderer, &mut wallpaper, &view, 2.03);
++    for id in &vehicles {
++        let (commit, geo) = vehicle(&b, id);
++        let (moved_commit, moved_geo) = vehicle(&c, id);
++        assert_eq!(moved_geo.loc.x, geo.loc.x + 1);
++        assert_eq!(moved_commit, commit, "a pure move must not commit");
++    }
++    // The next wheel frame changes the sampled source rectangle: a new commit.
++    let d = frame(&mut renderer, &mut wallpaper, &view, 2.05);
++    for id in &vehicles {
++        assert_ne!(
++            vehicle(&c, id).0,
++            vehicle(&d, id).0,
++            "wheel frame change lost"
++        );
++    }
 +}
 +
 +#[test]
@@ -4563,6 +5035,87 @@ index 00000000..051fe6de
 +}
 +
 +#[test]
++fn emaki_wallpaper_ring_reload_at_an_8192_texture_limit_draws_the_same_ring() {
++    let decoded = |train: &TrainArt| assets::Decoded {
++        ring: assets::IndexedImage {
++            width: RING_WIDTH,
++            height: RING_HEIGHT,
++            bytes: (0..RING_HEIGHT)
++                .flat_map(|y| (0..RING_WIDTH).map(move |x| pattern(x, y) as u8))
++                .collect(),
++            palette: vec![],
++        },
++        front: assets::IndexedImage {
++            width: RING_WIDTH,
++            height: RING_HEIGHT,
++            bytes: vec![64; RING_WIDTH * RING_HEIGHT],
++            palette: vec![],
++        },
++        frames: assets::IndexedImage {
++            width: 372,
++            height: 576,
++            bytes: vec![10; 372 * 576],
++            palette: vec![],
++        },
++        train: train.clone(),
++    };
++    // The two edge origins of the atlas test: the first row seam and the ring wrap.
++    let views = [4094., 19394.].map(|origin| {
++        let mut view = view(7000, 1200, 1.25, origin);
++        view.zoom = 0.5;
++        view
++    });
++    let ring_layout = |wallpaper: &Wallpaper| {
++        let ring = &wallpaper.gpu.as_ref().unwrap().ring;
++        let size = ring[0].texture.size();
++        (ring.len(), ring[0].atlas_stride, size.w, size.h)
++    };
++
++    let mut renderer = renderer();
++    let gpu = art(&mut renderer);
++    let train = gpu.train.clone();
++    let mut wallpaper = engine(gpu);
++    wallpaper.gpu = None;
++    wallpaper.decoded = Some(decoded(&train).prepare(16384));
++    // Both limits are set here, whatever the test driver reports.
++    assets::TEXTURE_LIMIT.with(|limit| limit.set(Some(16384)));
++    let expected = views
++        .iter()
++        .map(|view| draw(&mut renderer, &mut wallpaper, view))
++        .collect::<Vec<_>>();
++    // Five 4096-wide rows of 1200 lines: one 4096 x 6000 atlas.
++    assert_eq!(ring_layout(&wallpaper), (1, 4096, 4096, 6000));
++
++    // A GPU limited to 8192 rejects the staging made for 16384 and asks for a reload.
++    assets::TEXTURE_LIMIT.with(|limit| limit.set(Some(8192)));
++    let mut wallpaper = engine(art(&mut renderer));
++    wallpaper.gpu = None;
++    wallpaper.decoded = Some(decoded(&train).prepare(16384));
++    assert!(wallpaper
++        .render(&mut renderer, "test", &views[0])
++        .is_empty());
++    assert_eq!(wallpaper.upload_limit, Some(8192));
++    assert!(wallpaper.reload_requested);
++    // The reload generation is staged for the stored limit, as the compositor does.
++    let settings = wallpaper.settings.clone().unwrap();
++    let generation = wallpaper.configure(&settings).unwrap();
++    let limit = wallpaper.upload_limit.unwrap();
++    wallpaper.loaded(generation, Ok(decoded(&train).prepare(limit)));
++    for (view, expected) in views.iter().zip(&expected) {
++        let pixels = draw(&mut renderer, &mut wallpaper, view);
++        assert!(
++            pixels == *expected,
++            "8192 draw differs at origin {}",
++            view.origin
++        );
++    }
++    assert_eq!(wallpaper.load_state, "ready");
++    // The ring still fits one atlas within 8192.
++    assert_eq!(ring_layout(&wallpaper), (1, 4096, 4096, 6000));
++    assets::TEXTURE_LIMIT.with(|limit| limit.set(None));
++}
++
++#[test]
 +fn emaki_wallpaper_hidden_prediction_is_bounded_and_cached() {
 +    let mut renderer = renderer();
 +    let gpu = art(&mut renderer);
@@ -4618,6 +5171,152 @@ index 00000000..051fe6de
 +        let width = (4200. * zoom).round() as usize;
 +        assert!(pixels[..width * 4].chunks_exact(4).all(|p| p[3] == 255));
 +    }
++}
++
++#[test]
++fn emaki_wallpaper_decoder_runs_only_the_latest_waiting_job() {
++    use std::sync::mpsc;
++    use std::sync::{Arc, Barrier};
++
++    let wait = Duration::from_secs(10);
++    let (started, started_rx) = mpsc::channel();
++    let (finished, finished_rx) = mpsc::channel();
++    let release = Arc::new(Barrier::new(2));
++    let blocker = release.clone();
++    let mut decoder = assets::Decoder::new(move |generation, job: u64, current| {
++        assert_eq!(generation, job);
++        started.send(generation).unwrap();
++        if generation == 1 {
++            blocker.wait();
++        }
++        // The stage boundary after the blocked stage.
++        finished.send((generation, current())).unwrap();
++    });
++    decoder.submit(1, 1).unwrap();
++    assert_eq!(started_rx.recv_timeout(wait), Ok(1));
++    decoder.submit(2, 2).unwrap();
++    decoder.submit(3, 3).unwrap();
++    release.wait();
++    // g1 learns at its next boundary that it is stale; g3 replaced the waiting g2.
++    assert_eq!(finished_rx.recv_timeout(wait), Ok((1, false)));
++    assert_eq!(started_rx.recv_timeout(wait), Ok(3));
++    assert_eq!(finished_rx.recv_timeout(wait), Ok((3, true)));
++    assert!(started_rx.recv_timeout(Duration::from_millis(200)).is_err());
++    assert_eq!(decoder.threads_started(), 1);
++}
++
++#[test]
++fn emaki_wallpaper_decoder_thread_survives_a_panic_and_runs_the_next_job() {
++    use std::sync::mpsc;
++
++    let wait = Duration::from_secs(10);
++    let (done, done_rx) = mpsc::channel();
++    let (failed, failed_rx) = mpsc::channel();
++    let mut decoder = assets::Decoder::new(move |generation, (): (), _current| {
++        assert_ne!(generation, 1, "decoder panic (expected by this test)");
++        done.send(generation).unwrap();
++    })
++    .on_panic(move |generation, message| failed.send((generation, message)).unwrap());
++    decoder.submit(1, ()).unwrap();
++    let (generation, message) = failed_rx.recv_timeout(wait).unwrap();
++    assert_eq!(generation, 1);
++    assert!(message.contains("expected by this test"), "{message}");
++    assert!(decoder.running(), "the thread ended with the panic");
++    decoder.submit(2, ()).unwrap();
++    assert_eq!(done_rx.recv_timeout(wait), Ok(2));
++    assert_eq!(decoder.threads_started(), 1);
++    assert!(failed_rx.try_recv().is_err());
++}
++
++/// A job submitted while a panicking job still unwinds: the thread is not finished, so
++/// `submit` starts no new one, and the job must still run.
++#[test]
++fn emaki_wallpaper_decoder_runs_a_job_submitted_while_a_panic_unwinds() {
++    use std::sync::mpsc;
++
++    struct SlowUnwind;
++    impl Drop for SlowUnwind {
++        fn drop(&mut self) {
++            if std::thread::panicking() {
++                std::thread::sleep(Duration::from_millis(500));
++            }
++        }
++    }
++    let (done, done_rx) = mpsc::channel();
++    let (panicking, panicking_rx) = mpsc::channel();
++    let mut decoder = assets::Decoder::new(move |generation, (): (), _current| {
++        if generation == 1 {
++            let _unwinding = SlowUnwind;
++            panicking.send(()).unwrap();
++            panic!("decoder panic (expected by this test)");
++        }
++        done.send(generation).unwrap();
++    });
++    decoder.submit(1, ()).unwrap();
++    panicking_rx.recv_timeout(Duration::from_secs(10)).unwrap();
++    std::thread::sleep(Duration::from_millis(50));
++    decoder.submit(2, ()).unwrap();
++    assert_eq!(
++        done_rx.recv_timeout(Duration::from_secs(10)),
++        Ok(2),
++        "the job submitted during the unwinding never ran"
++    );
++    assert_eq!(decoder.threads_started(), 1);
++}
++
++/// A job that never returns (a read from a file on a hung network mount): a newer job must not
++/// wait behind it for good.
++#[test]
++fn emaki_wallpaper_decoder_leaves_a_stuck_job_to_its_thread() {
++    use std::sync::mpsc;
++    use std::sync::{Arc, Barrier};
++
++    let (done, done_rx) = mpsc::channel();
++    let (started, started_rx) = mpsc::channel();
++    let hung = Arc::new(Barrier::new(2));
++    let read = hung.clone();
++    let mut decoder = assets::Decoder::new(move |generation, (): (), current| {
++        started.send(generation).unwrap();
++        if generation == 1 {
++            // The blocking read; released only when the test ends.
++            read.wait();
++        }
++        done.send((generation, current())).unwrap();
++    })
++    .stuck_after(Duration::from_millis(300));
++    decoder.submit(1, ()).unwrap();
++    assert_eq!(started_rx.recv_timeout(Duration::from_secs(10)), Ok(1));
++    decoder.submit(2, ()).unwrap();
++    // Not stuck yet: job 2 waits for the same thread.
++    decoder.unstick().unwrap();
++    assert_eq!(decoder.threads_started(), 1);
++    // The event loop turns while job 2 waits.
++    let deadline = std::time::Instant::now() + Duration::from_secs(3);
++    let finished = loop {
++        decoder.unstick().unwrap();
++        if let Ok(finished) = done_rx.recv_timeout(Duration::from_millis(20)) {
++            break Some(finished);
++        }
++        if std::time::Instant::now() > deadline {
++            break None;
++        }
++    };
++    assert_eq!(
++        finished,
++        Some((2, true)),
++        "job 2 waited behind the stuck job"
++    );
++    assert_eq!(decoder.threads_started(), 2);
++    // Later jobs go to the new thread.
++    decoder.submit(3, ()).unwrap();
++    assert_eq!(done_rx.recv_timeout(Duration::from_secs(10)), Ok((3, true)));
++    assert_eq!(decoder.threads_started(), 2);
++    // The read returns at last: the abandoned job is stale and its thread ends.
++    hung.wait();
++    assert_eq!(
++        done_rx.recv_timeout(Duration::from_secs(10)),
++        Ok((1, false))
++    );
 +}
 diff --git a/src/render_helpers/emaki_wallpaper/train.rs b/src/render_helpers/emaki_wallpaper/train.rs
 new file mode 100644
@@ -5371,3 +6070,170 @@ index 7d4c9629..f5aa35bc 100644
              ProgramType::EmakiBackdrop => self.emaki_backdrop.clone(),
              ProgramType::Border => self.border.clone(),
              ProgramType::Shadow => self.shadow.clone(),
+diff --git a/src/tests/emaki_wallpaper.rs b/src/tests/emaki_wallpaper.rs
+new file mode 100644
+index 00000000..d396a8ce
+--- /dev/null
++++ b/src/tests/emaki_wallpaper.rs
+@@ -0,0 +1,149 @@
++//! The wallpaper refresh that runs on every event loop turn, and its decoder.
++
++use std::time::{Duration, Instant};
++
++use niri_config::{Config, EmakiWallpaper, EmakiWallpaperMode};
++
++use super::Fixture;
++
++/// The living mode with missing files: every decode fails at its first file.
++fn missing(dir: &str) -> EmakiWallpaper {
++    let path = |name: &str| format!("/nonexistent/emaki-wallpaper-test/{dir}/{name}");
++    EmakiWallpaper {
++        mode: EmakiWallpaperMode::Ring,
++        ring: path("ring.png"),
++        front: path("front.png"),
++        train_frames: path("frames.png"),
++        train: path("train.json"),
++        ..Default::default()
++    }
++}
++
++/// Config clones and views built by the wallpaper refresh.
++#[derive(Debug, Default, PartialEq, Eq)]
++struct Work {
++    clones: usize,
++    views: usize,
++}
++
++/// One output and one turn to settle the first configuration, then `turns` event loop turns
++/// with an unchanged config. Returns the work of the first turn and of the later ones.
++fn refresh_work(config: Config, turns: usize) -> (Work, Work) {
++    let mut f = Fixture::with_config(config);
++    f.add_output(1, (64, 48));
++    f.state.server.dispatch();
++    let niri = f.niri();
++    let first = Work {
++        clones: niri.emaki_wallpaper_config_clones,
++        views: niri.emaki_wallpaper_views_built,
++    };
++    for _ in 0..turns {
++        f.state.server.dispatch();
++    }
++    let niri = f.niri();
++    let later = Work {
++        clones: niri.emaki_wallpaper_config_clones - first.clones,
++        views: niri.emaki_wallpaper_views_built - first.views,
++    };
++    (first, later)
++}
++
++#[test]
++fn emaki_wallpaper_refresh_clones_no_config_while_it_is_unchanged() {
++    // The decoder fails once and nothing reloads until the config changes.
++    let config = Config {
++        emaki_wallpaper: missing("a"),
++        ..Default::default()
++    };
++    let (first, later) = refresh_work(config, 10);
++    assert_eq!(
++        first.clones, 1,
++        "the decoder of the first generation needs its copy"
++    );
++    assert_eq!(
++        later.clones, 0,
++        "an unchanged config was cloned on an event loop turn"
++    );
++    // The living mode keeps rebuilding its views on every turn.
++    assert!(
++        later.views >= 10,
++        "living mode views were not rebuilt: {later:?}"
++    );
++}
++
++#[test]
++fn emaki_wallpaper_refresh_in_image_mode_builds_no_views() {
++    let config = Config::default();
++    assert_eq!(config.emaki_wallpaper.mode, EmakiWallpaperMode::Image);
++    let (first, later) = refresh_work(config, 10);
++    assert_eq!(first, Work::default());
++    assert_eq!(later, Work::default());
++}
++
++#[test]
++fn emaki_wallpaper_quick_path_changes_share_one_decoder_thread() {
++    let mut f = Fixture::with_config(Config {
++        emaki_wallpaper: missing("a"),
++        ..Default::default()
++    });
++    f.add_output(1, (64, 48));
++    f.state.server.dispatch();
++    for dir in ["b", "c"] {
++        f.niri().config.borrow_mut().emaki_wallpaper = missing(dir);
++        f.state.server.dispatch();
++    }
++    // Only the newest generation's result is shown, and it arrives through the event loop.
++    let deadline = Instant::now() + Duration::from_secs(10);
++    loop {
++        f.state.server.dispatch();
++        let status = f.niri().emaki_wallpaper_status();
++        if status.load_state == "failed" {
++            let error = status.error.unwrap();
++            assert!(error.contains("/c/train.json"), "{error}");
++            break;
++        }
++        assert!(Instant::now() < deadline, "no decoder result");
++        std::thread::sleep(Duration::from_millis(5));
++    }
++    assert_eq!(f.niri().emaki_wallpaper_decoder_threads(), 1);
++}
++
++/// Turns the event loop until the wallpaper status is "failed"; returns its error.
++fn failed_status(f: &mut Fixture) -> String {
++    let deadline = Instant::now() + Duration::from_secs(10);
++    loop {
++        f.state.server.dispatch();
++        let status = f.niri().emaki_wallpaper_status();
++        if status.load_state == "failed" {
++            return status.error.unwrap();
++        }
++        assert!(
++            Instant::now() < deadline,
++            "no decoder result; status {}",
++            status.load_state
++        );
++        std::thread::sleep(Duration::from_millis(5));
++    }
++}
++
++#[test]
++fn emaki_wallpaper_decoder_panic_fails_its_job_and_the_next_change_loads() {
++    use crate::render_helpers::emaki_wallpaper::assets::PANICKING_TRAIN;
++
++    let mut f = Fixture::with_config(Config {
++        emaki_wallpaper: EmakiWallpaper {
++            train: PANICKING_TRAIN.to_owned(),
++            ..missing("a")
++        },
++        ..Default::default()
++    });
++    f.add_output(1, (64, 48));
++    // The panicking job reports a failure instead of leaving the status at "loading".
++    let error = failed_status(&mut f);
++    assert!(error.contains("panicked"), "{error}");
++    // The same thread decodes the next change.
++    f.niri().config.borrow_mut().emaki_wallpaper = missing("b");
++    let error = failed_status(&mut f);
++    assert!(error.contains("/b/train.json"), "{error}");
++    assert_eq!(f.niri().emaki_wallpaper_decoder_threads(), 1);
++}
+diff --git a/src/tests/mod.rs b/src/tests/mod.rs
+index d7b28d8a..a8c7013d 100644
+--- a/src/tests/mod.rs
++++ b/src/tests/mod.rs
+@@ -5,6 +5,7 @@ mod fixture;
+ mod server;
+ 
+ mod animations;
++mod emaki_wallpaper;
+ mod floating;
+ mod fullscreen;
+ mod layer_shell;

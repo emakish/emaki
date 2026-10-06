@@ -77,6 +77,20 @@ ShellRoot {
     }
     Component.onCompleted: Qt.callLater(() => {
         Quickshell.watchFiles = false;
+        // Before the core's first answer (this NiriService has no binary, so its start state is
+        // set here), then after a lost connection: the offline text and the island's width.
+        const strip = scene.bar.workspaceStrip;
+        const offline = Array.from(strip.children).find(c => typeof c.text === "string");
+        const offlineState = () => JSON.stringify({
+                visible: offline.visible,
+                text: offline.text,
+                strip: strip.width,
+                island: scene.bar.workspaces.width
+            });
+        niri.connection = "connecting";
+        console.log("STRIP_CONNECTING " + offlineState());
+        niri.invalidate("fixture_disconnect");
+        console.log("STRIP_DISCONNECTED " + offlineState());
         const workspaces = {};
         for (let i = 1; i <= 5; ++i)
             workspaces[String(100 + i)] = {

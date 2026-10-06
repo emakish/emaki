@@ -1,0 +1,4586 @@
+[
+  {
+    "expect": "hello",
+    "responses": [
+      {
+        "type": "hello",
+        "proto": 1,
+        "archinstall_version": "4.5",
+        "emaki_version": "0.1.0",
+        "test_mode": false,
+        "busy_job": null
+      }
+    ]
+  },
+  {
+    "expect": "probe",
+    "responses": [
+      {
+        "type": "inventory",
+        "disks": [
+          {
+            "id": "/dev/vda",
+            "path": "/dev/vda",
+            "model": "VirtIO System Disk",
+            "size_bytes": 42949672960,
+            "bus": "virtio",
+            "removable": false,
+            "is_boot_medium": false,
+            "partitions": [
+              {
+                "id": "/dev/vda1",
+                "path": "/dev/vda1",
+                "number": 1,
+                "uuid": "fixture-1",
+                "fs": "vfat",
+                "size_bytes": 1073741824,
+                "start_bytes": 1048576,
+                "mountpoint": null,
+                "label": null,
+                "os_hint": null,
+                "esp": true
+              },
+              {
+                "id": "/dev/vda2",
+                "path": "/dev/vda2",
+                "number": 2,
+                "uuid": "fixture-2",
+                "fs": "btrfs",
+                "size_bytes": 41875931136,
+                "start_bytes": 1074790400,
+                "mountpoint": null,
+                "label": null,
+                "os_hint": null,
+                "esp": false
+              }
+            ],
+            "free_extents": [],
+            "shrink": null
+          },
+          {
+            "id": "/dev/sdb",
+            "path": "/dev/sdb",
+            "model": "Emaki Live USB",
+            "size_bytes": 8589934592,
+            "bus": "usb",
+            "removable": true,
+            "is_boot_medium": true,
+            "partitions": [],
+            "free_extents": [],
+            "shrink": null
+          }
+        ],
+        "gpu": "Virtual GPU",
+        "cpu": "Virtual CPU",
+        "memory_bytes": 8589934592,
+        "uefi": true,
+        "network": {
+          "online": false
+        },
+        "tz_guess": "Europe/Lisbon",
+        "scale_guess": null
+      }
+    ]
+  },
+  {
+    "expect": "plan",
+    "responses": [
+      {
+        "type": "plan_ack",
+        "plan_id": "fixture-plan",
+        "token": "mock-capability",
+        "expires_s": 600,
+        "summary": [
+          "Erase installation on /dev/vda (VirtIO System Disk).",
+          "Erase all partitions and create a new GPT partition table.",
+          "Partition 1: format vfat, 1.00 GiB; /efi.",
+          "Partition 2: format btrfs, 39.00 GiB; @ → /, @home → /home, @log → /var/log, @pkg → /var/cache/pacman/pkg, @snapshots → /.snapshots.",
+          "Account: demo; hostname: emaki; timezone: Europe/Lisbon.",
+          "Packages are installed from the signed offline USB repository.",
+          "Software: Rich — desktop apps, office, email, media and utilities."
+        ],
+        "errors": [],
+        "warnings": [
+          {
+            "code": "unstable_id",
+            "msg": "No by-id name is available; device identity and geometry will be rechecked."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "expect": "confirm",
+    "responses": [
+      {
+        "type": "reply",
+        "ok": true,
+        "job_id": "53d414964d6c95560d5197a726a4ac33"
+      },
+      {
+        "type": "state",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "prepare_disk",
+        "phase_pct": 0,
+        "total_pct": 0,
+        "indeterminate": true
+      },
+      {
+        "type": "state",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "prepare_disk",
+        "phase_pct": 100,
+        "total_pct": 5,
+        "indeterminate": false
+      },
+      {
+        "type": "state",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 0,
+        "total_pct": 5,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing iana-etc..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 0.16474464579901152,
+        "total_pct": 5.098846787479407,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing filesystem..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing linux-api-headers..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing tzdata..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 0.6589785831960461,
+        "total_pct": 5.395387149917628,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing glibc..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libgcc..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 0.9884678747940692,
+        "total_pct": 5.593080724876442,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libstdc++..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libasan..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libatomic..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libgfortran..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libgomp..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libhwasan..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing liblsan..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libobjc..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libquadmath..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libtsan..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libubsan..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gcc-libs..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing ncurses..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing readline..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing bash..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing acl..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 3.624382207578254,
+        "total_pct": 7.174629324546952,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing attr..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gmp..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing zlib..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing sqlite..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing util-linux-libs..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing e2fsprogs..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing keyutils..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gdbm..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing brotli..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 5.107084019769357,
+        "total_pct": 8.064250411861615,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing xz..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing lz4..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing zstd..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing openssl..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libsasl..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 5.930807248764415,
+        "total_pct": 8.558484349258649,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libldap..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libevent..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libverto..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing lmdb..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing krb5..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libcap-ng..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing audit..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxcrypt..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libtirpc..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libnsl..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing pambase..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libgpg-error..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libgcrypt..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing systemd-libs..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing pam..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 8.401976935749587,
+        "total_pct": 10.041186161449753,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libcap..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing coreutils..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing bzip2..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 8.896210873146623,
+        "total_pct": 10.337726523887973,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libseccomp..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing file..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing findutils..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing mpfr..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gawk..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing pcre2..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing grep..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing procps-ng..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing sed..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing tar..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libtasn1..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libffi..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libp11-kit..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing p11-kit..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 11.202635914332784,
+        "total_pct": 11.721581548599671,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing ca-certificates-utils..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing ca-certificates-mozilla..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing ca-certificates..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libunistring..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libidn2..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libnghttp2..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libnghttp3..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing nettle..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing leancrypto..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gnutls..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libngtcp2..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 13.014827018121911,
+        "total_pct": 12.808896210873147,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libpsl..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libssh2..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing curl..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing json-c..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gnulib-l10n..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing icu..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxml2..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 14.168039538714991,
+        "total_pct": 13.500823723228995,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gettext..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing hwdata..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kmod..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing pciutils..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing psmisc..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing shadow..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing util-linux..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gzip..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 15.485996705107084,
+        "total_pct": 14.29159802306425,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing licenses..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libksba..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libusb..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libassuan..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libsysprof-capture..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing glib2..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing tpm2-tss..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libsecret..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing pinentry..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing npth..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gnupg..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gpgme..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 17.462932454695224,
+        "total_pct": 15.477759472817134,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libarchive..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing pacman-mirrorlist..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing device-mapper..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing popt..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing cryptsetup..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing expat..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing dbus..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing dbus-broker..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing dbus-broker-units..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing dbus-units..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kbd..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libelf..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing systemd..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing jansson..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 19.769357495881383,
+        "total_pct": 16.86161449752883,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing binutils..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libmakepkg-dropins..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 20.098846787479406,
+        "total_pct": 17.059308072487642,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing pacman..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing archlinux-keyring..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing systemd-sysvcompat..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 20.59308072487644,
+        "total_pct": 17.355848434925868,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing iputils..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libmnl..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libnfnetlink..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libnetfilter_conntrack..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libnftnl..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libnl..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libpcap..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing nftables..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing iptables..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libbpf..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing iproute2..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing base..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing lzo..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing btrfs-progs..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing mkinitcpio-busybox..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing diffutils..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing mkinitcpio..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing linux..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing linux-lts..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 23.72322899505766,
+        "total_pct": 19.233937397034595,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing amd-ucode..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 23.88797364085667,
+        "total_pct": 19.332784184514004,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing dosfstools..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing efivar..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing efibootmgr..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libpng..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing freetype2..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing fontconfig..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing xcb-proto..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 25.041186161449755,
+        "total_pct": 20.024711696869854,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing xorgproto..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxdmcp..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxau..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxcb..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libx11..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 25.86490939044481,
+        "total_pct": 20.518945634266885,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxext..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 26.029654036243823,
+        "total_pct": 20.617792421746294,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxrender..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing pixman..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing cairo..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libdisplay-info..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libevdev..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libgudev..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libwacom..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing lua54..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 27.347611202635914,
+        "total_pct": 21.40856672158155,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing mtdev..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libinput..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libpipewire..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing xkeyboard-config..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxkbcommon..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 28.17133443163097,
+        "total_pct": 21.902800658978585,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libpciaccess..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libdrm..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libglvnd..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxshmfence..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxxf86vm..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libedit..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing llvm-libs..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing lm_sensors..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 29.489291598023065,
+        "total_pct": 22.69357495881384,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing spirv-tools..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing default-cursors..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing wayland..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing mesa..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing fribidi..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 30.313014827018122,
+        "total_pct": 23.18780889621087,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing graphite..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing harfbuzz..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libdatrie..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libthai..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxft..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing pango..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing seatd..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing dconf..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 31.630971993410213,
+        "total_pct": 23.97858319604613,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing bubblewrap..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libjpeg-turbo..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing jbigkit..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libdeflate..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libwebp..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libtiff..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing lcms2..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing giflib..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libunwind..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gperftools..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 33.27841845140033,
+        "total_pct": 24.967051070840196,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gtest..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing highway..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libjxl..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing dav1d..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing librsvg..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing glycin..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 34.266886326194395,
+        "total_pct": 25.56013179571664,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing shared-mime-info..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gdk-pixbuf2..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gsettings-system-schemas..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing adwaita-fonts..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gsettings-desktop-schemas..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing iso-codes..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gnome-desktop-common..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 35.42009884678748,
+        "total_pct": 26.25205930807249,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing hicolor-icon-theme..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 35.584843492586494,
+        "total_pct": 26.350906095551895,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing adwaita-icon-theme-legacy..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing adwaita-cursors..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 35.914332784184516,
+        "total_pct": 26.54859967051071,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing adwaita-icon-theme..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxfixes..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxi..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxtst..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing xorg-xprop..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing at-spi2-core..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing desktop-file-utils..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 37.067545304777596,
+        "total_pct": 27.240527182866558,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing graphene..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gstreamer..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxv..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing orc..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gst-plugins-base-libs..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 37.89126853377265,
+        "total_pct": 27.73476112026359,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing duktape..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libproxy..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing glib-networking..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libsoup3..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gssdp..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gupnp..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gupnp-igd..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libnice..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libva..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 39.373970345963755,
+        "total_pct": 28.624382207578254,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxkbcommon-x11..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing vulkan-icd-loader..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing vmaf..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gst-plugins-bad-libs..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 40.0329489291598,
+        "total_pct": 29.01976935749588,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gtk-update-icon-cache..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 40.19769357495881,
+        "total_pct": 29.118616144975284,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libcloudproviders..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libcolord..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libdaemon..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 40.691927512355846,
+        "total_pct": 29.415156507413506,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing avahi..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libcups..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libepoxy..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxcursor..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxdamage..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxinerama..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxrandr..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing json-glib..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libstemmer..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing tinysparql..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxcomposite..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 42.50411861614498,
+        "total_pct": 30.502471169686988,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gtk3..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing fuse-common..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 42.833607907743,
+        "total_pct": 30.7001647446458,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing liburing..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing numactl..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing fuse3..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing pipewire..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing xdg-desktop-portal..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing xdg-desktop-portal-gtk..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 43.82207578253707,
+        "total_pct": 31.293245469522244,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gtk4..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gnome-desktop-4..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 44.15156507413509,
+        "total_pct": 31.490939044481056,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing hwloc..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing onetbb..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 44.481054365733115,
+        "total_pct": 31.68863261943987,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libblake3..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libfyaml..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing cfitsio..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing fftw..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libcgif..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 45.30477759472817,
+        "total_pct": 32.1828665568369,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libexif..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libimagequant..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libaec..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing hdf5..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libmatio..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 46.12850082372323,
+        "total_pct": 32.67710049423394,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libraw..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing imath..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing openjph..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing openexr..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing openjpeg2..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 46.952224052718286,
+        "total_pct": 33.17133443163097,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libvips..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 47.1169686985173,
+        "total_pct": 33.27018121911038,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxmlb..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing appstream..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 47.44645799011532,
+        "total_pct": 33.46787479406919,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libadwaita..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 47.61120263591433,
+        "total_pct": 33.5667215815486,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing xdg-desktop-portal-gnome-emaki..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing niri..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing niri-emaki..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 48.105436573311366,
+        "total_pct": 33.863261943986814,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing elfutils..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libdwarf..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing cpptrace..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing jemalloc..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing polkit..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing double-conversion..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 49.093904448105434,
+        "total_pct": 34.45634266886326,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libb2..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libice..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libsm..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing md4c..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing tslib..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing xcb-util-renderutil..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing xcb-util..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing xcb-util-image..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing xcb-util-cursor..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing xcb-util-keysyms..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing xcb-util-wm..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing xdg-utils..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing qt6-translations..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing qt6-base..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 51.4003294892916,
+        "total_pct": 35.840197693574964,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing qt6-declarative..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 51.56507413509061,
+        "total_pct": 35.93904448105437,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing qt6-svg..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 51.72981878088962,
+        "total_pct": 36.03789126853377,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing qt6-wayland..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing quickshell-emaki..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing mpdecimal..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing python..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 52.38879736408567,
+        "total_pct": 36.4332784184514,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libgirepository..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 52.55354200988468,
+        "total_pct": 36.53212520593081,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gobject-introspection-runtime..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing python-gobject..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing python-packaging..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing aom..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libyuv..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 53.37726523887974,
+        "total_pct": 37.02635914332784,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing rav1e..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing svt-av1..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libavif..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 53.87149917627677,
+        "total_pct": 37.32289950576606,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libraqm..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing python-pillow..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing wpaperd..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing wl-clipboard..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 54.53047775947282,
+        "total_pct": 37.71828665568369,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing cliphist..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing polkit-gnome..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libblockdev..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing nspr..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing nss..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing volume_key..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 55.518945634266885,
+        "total_pct": 38.311367380560135,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libblockdev-crypto..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libbytesize..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing parted..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libblockdev-fs..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing mdadm..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libblockdev-mdraid..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libblockdev-loop..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libnvme..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libblockdev-nvme..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libblockdev-part..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libatasmart..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libblockdev-smart..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libblockdev-swap..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing udisks2..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libyaml..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 57.99011532125206,
+        "total_pct": 39.79406919275124,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing python-yaml..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing python-docopt..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libnotify..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing udiskie..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing librsync..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing xxhash..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kitty-terminfo..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kitty-shell-integration..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kitty..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing yyjson..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 59.637561779242176,
+        "total_pct": 40.782537067545306,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing fastfetch..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing liblqr..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libtool..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing imagemagick..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing hyprutils..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 60.46128500823723,
+        "total_pct": 41.27677100494234,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing hyprgraphics..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing hyprlang..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing sdbus-cpp..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing wayland-protocols..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing hyprlock..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing playerctl..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 61.4497528830313,
+        "total_pct": 41.86985172981878,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libutf8proc..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing fcft..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing resvg..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing fuzzel..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing qt6ct..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing brightnessctl..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 62.43822075782537,
+        "total_pct": 42.46293245469522,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libplist..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libimobiledevice-glue..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libtatsu..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libusbmuxd..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libimobiledevice..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing upower..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing power-profiles-daemon..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libmm-glib..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libndp..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 63.92092257001647,
+        "total_pct": 43.35255354200988,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gpm..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing pcre..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing slang..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libnewt..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 64.57990115321252,
+        "total_pct": 43.74794069192751,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libnm..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libsodium..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libpgm..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing zeromq..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libteam..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 65.40362438220758,
+        "total_pct": 44.24217462932455,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing mobile-broadband-provider-info..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing pcsclite..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing wpa_supplicant..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing networkmanager..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing alsa-topology-conf..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 66.22734761120263,
+        "total_pct": 44.73640856672158,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing alsa-ucm-conf..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing alsa-lib..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 66.55683690280065,
+        "total_pct": 44.93410214168039,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing bluez..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libwireplumber..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing lua..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing wireplumber..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing alsa-card-profiles..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing bluez-libs..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libebur128..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 67.71004942339374,
+        "total_pct": 45.626029654036245,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libfdk-aac..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libfreeaptx..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing liblc3..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libldac..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libmysofa..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libogg..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing flac..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing mpg123..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing lame..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libvorbis..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing opus..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libsndfile..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 69.68698517298188,
+        "total_pct": 46.812191103789125,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing serd..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing zix..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing sord..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing lv2..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing sratom..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing lilv..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing sbc..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing spandsp..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing abseil-cpp..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing webrtc-audio-processing-1..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 71.33443163097199,
+        "total_pct": 47.80065897858319,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing pipewire-audio..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libasyncns..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libpulse..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing pipewire-pulse..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing wlsunset..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 72.15815485996706,
+        "total_pct": 48.294892915980235,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing greetd-agreety..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing accountsservice..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing greetd-regreet..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing greetd..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing openssh..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gcr..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 73.14662273476112,
+        "total_pct": 48.88797364085667,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gcr-4..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gnome-keyring..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing emaki-config..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 73.64085667215815,
+        "total_pct": 49.184514003294886,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kconfig..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kcoreaddons..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kcrash..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kdbusaddons..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libtommath..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing convertlit..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libzip..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing ebook-tools..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 74.95881383855024,
+        "total_pct": 49.97528830313015,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libinih..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing exiv2..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gsm..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing db5.3..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libsamplerate..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 75.7825370675453,
+        "total_pct": 50.46952224052718,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing jack2..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libunibreak..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libass..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libraw1394..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libavc1394..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 76.60626029654036,
+        "total_pct": 50.96375617792422,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libbluray..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libbs2b..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libdvdread..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libdvdnav..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libiec61883..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libmodplug..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing portaudio..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libopenmpt..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing glslang..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 78.08896210873147,
+        "total_pct": 51.853377265238876,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing shaderc..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 78.25370675453048,
+        "total_pct": 51.95222405271829,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libdovi..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libplacebo..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libsoxr..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libssh..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libtheora..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 79.07742998352553,
+        "total_pct": 52.44645799011532,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libvdpau..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libvpx..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 79.40691927512356,
+        "total_pct": 52.64415156507413,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing ocl-icd..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libvpl..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing opencore-amr..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 79.9011532125206,
+        "total_pct": 52.94069192751236,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing rubberband..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing hidapi..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing sdl3..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing sdl2-compat..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 80.56013179571664,
+        "total_pct": 53.336079077429986,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing snappy..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libmd..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libbsd..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing sndio..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 81.21911037891269,
+        "total_pct": 53.73146622734761,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing speexdsp..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing speex..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing srt..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing v4l-utils..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing zimg..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 82.04283360790774,
+        "total_pct": 54.22570016474464,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing vapoursynth..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing vid.stab..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing l-smash..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 82.53706754530478,
+        "total_pct": 54.522240527182866,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing x264..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing x265..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing xvidcore..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing ffmpeg..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing karchive..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 83.36079077429983,
+        "total_pct": 55.01647446457989,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kcodecs..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing ki18n..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing gpgmepp..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing poppler..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing poppler-qt6..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 84.1845140032949,
+        "total_pct": 55.510708401976935,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing taglib..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kfilemetadata..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kidletime..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kwidgetsaddons..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kbookmarks..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kguiaddons..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kcolorscheme..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kcompletion..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing breeze-icons..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kiconthemes..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 85.83196046128501,
+        "total_pct": 56.499176276771,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kitemviews..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing tdb..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing sound-theme-freedesktop..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libcanberra..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing knotifications..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kjobwidgets..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kservice..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kwindowsystem..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing qt6-shadertools..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing qt6-5compat..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing qca-qt6..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kwallet..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxslt..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing media-player-info..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing solid..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kio..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing baloo..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 88.63261943986821,
+        "total_pct": 58.179571663920925,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing baloo-widgets..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kconfigwidgets..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kirigami..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kglobalaccel..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kxmlgui..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kcmutils..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kdnssd..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kdsoap..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kdsoap-ws-discovery-client..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libkexiv2..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libmtp..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing plasma-activities..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing ripgrep..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing ripgrep-all..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libwbclient..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 91.10378912685337,
+        "total_pct": 59.66227347611202,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing talloc..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing cifs-utils..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing tevent..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing ldb..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing smbclient..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing syntax-highlighting..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kio-extras..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing attica..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 92.42174629324548,
+        "total_pct": 60.45304777594729,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kpackage..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing syndication..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing knewstuff..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kparts..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing qt6-multimedia-ffmpeg..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing qt6-multimedia..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing qt6-speech..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing sonnet..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing ktextwidgets..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing kuserfeedback..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing dolphin..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing noto-fonts..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxss..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 94.56342668863262,
+        "total_pct": 61.738056013179566,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing libxt..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing mailcap..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing firefox..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing emaki-desktop..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 95.22240527182866,
+        "total_pct": 62.1334431630972,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing emaki-keyring..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing emaki-mirrorlist..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 95.55189456342669,
+        "total_pct": 62.33113673805601,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing emaki..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing grub..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing grub-btrfs..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 96.04612850082373,
+        "total_pct": 62.62767710049424,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing inotify-tools..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing intel-ucode..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing linux-firmware-whence..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing linux-firmware-amd..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing linux-firmware-amdgpu..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing linux-firmware-atheros..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing linux-firmware-broadcom..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing linux-firmware-cirrus..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing linux-firmware-intel..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 97.52883031301482,
+        "total_pct": 63.51729818780889,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing linux-firmware-mediatek..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing linux-firmware-nvidia..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 97.85831960461284,
+        "total_pct": 63.7149917627677,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing linux-firmware-other..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing linux-firmware-radeon..."
+      },
+      {
+        "type": "progress",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 98.18780889621087,
+        "total_pct": 63.91268533772652,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing linux-firmware-realtek..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing linux-firmware-ti..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing linux-firmware..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing boost-libs..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing snapper..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing snap-pac..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing sudo..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing iw..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing wireless-regdb..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "installing zram-generator..."
+      },
+      {
+        "type": "state",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "copy_packages",
+        "phase_pct": 100,
+        "total_pct": 65,
+        "indeterminate": false
+      },
+      {
+        "type": "state",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "bootloader",
+        "phase_pct": 0,
+        "total_pct": 65,
+        "indeterminate": true
+      },
+      {
+        "type": "state",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "bootloader",
+        "phase_pct": 100,
+        "total_pct": 75,
+        "indeterminate": false
+      },
+      {
+        "type": "state",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "account",
+        "phase_pct": 0,
+        "total_pct": 75,
+        "indeterminate": true
+      },
+      {
+        "type": "state",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "account",
+        "phase_pct": 100,
+        "total_pct": 80,
+        "indeterminate": false
+      },
+      {
+        "type": "state",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "settings",
+        "phase_pct": 0,
+        "total_pct": 80,
+        "indeterminate": true
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target chown -h 1000:1000 /home/emaki/.config /home/emaki/.config/niri /home/emaki/.config/niri/config.kdl /home/emaki/.ssh /home/emaki/.ssh/authorized_keys"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ emaki-greeter-provision --root /mnt/emaki-target --user emaki"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "Emaki greeter directories provisioned; no user files were read."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "To publish before the next login, run these in the emaki account session (without sudo):"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "  systemctl --user daemon-reload"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "  systemctl --user start emaki-greeter-wallpaper.service emaki-greeter-wallpaper.path emaki-greeter-wallpaper-watch.service"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "emaki-greeter-provision: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target systemctl preset-all"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target systemctl list-unit-files --no-legend greetd.service"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "greetd.service enabled enabled"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target systemctl enable greetd.service"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target systemctl list-unit-files --no-legend NetworkManager.service"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "NetworkManager.service enabled enabled"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target systemctl enable NetworkManager.service"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target systemctl list-unit-files --no-legend bluetooth.service"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "bluetooth.service enabled enabled"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target systemctl enable bluetooth.service"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target systemctl list-unit-files --no-legend fstrim.timer"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "fstrim.timer enabled enabled"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target systemctl enable fstrim.timer"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target systemctl list-unit-files --no-legend grub-btrfsd.service"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "grub-btrfsd.service enabled enabled"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target systemctl enable grub-btrfsd.service"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target systemctl list-unit-files --no-legend snapper-timeline.timer"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "snapper-timeline.timer enabled enabled"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target systemctl enable snapper-timeline.timer"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target systemctl list-unit-files --no-legend snapper-cleanup.timer"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "snapper-cleanup.timer enabled enabled"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target systemctl enable snapper-cleanup.timer"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target systemctl list-unit-files --no-legend sshd.service"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "sshd.service disabled disabled"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target systemctl enable sshd.service"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "state",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "settings",
+        "phase_pct": 100,
+        "total_pct": 90,
+        "indeterminate": false
+      },
+      {
+        "type": "state",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "snapshot",
+        "phase_pct": 0,
+        "total_pct": 90,
+        "indeterminate": true
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ umount -- /mnt/emaki-target/.snapshots"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "umount: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target snapper --no-dbus -c root create-config /"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target btrfs subvolume delete /.snapshots"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "Delete subvolume 263 (no-commit): '//.snapshots'"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ mount -t btrfs -o compress=zstd:3,noatime,space_cache=v2,discard=async,subvol=@snapshots /dev/vda2 /mnt/emaki-target/.snapshots"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "mount: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target snapper --no-dbus -c root create -d 'Fresh Emaki 0.1.2 install'"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target /usr/share/libalpm/scripts/emaki-grub-title"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ arch-chroot /mnt/emaki-target grub-mkconfig -o /boot/grub/grub.cfg"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "Generating grub configuration file ..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "Found background: /usr/share/emaki/grub/background.png"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "Found linux image: /boot/vmlinuz-linux"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "Found initrd image: /boot/intel-ucode.img /boot/amd-ucode.img /boot/initramfs-linux.img"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "Found fallback initrd image(s) in /boot:  intel-ucode.img amd-ucode.img initramfs-linux-fallback.img"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "Found linux image: /boot/vmlinuz-linux-lts"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "Found initrd image: /boot/intel-ucode.img /boot/amd-ucode.img /boot/initramfs-linux-lts.img"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "Found fallback initrd image(s) in /boot:  intel-ucode.img amd-ucode.img initramfs-linux-lts-fallback.img"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "Warning: os-prober will not be executed to detect other bootable partitions."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "Systems on them will not be added to the GRUB boot configuration."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "Check GRUB_DISABLE_OS_PROBER documentation entry."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "Adding boot menu entry for UEFI Firmware Settings ..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "Detecting snapshots ..."
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "Found snapshot: 2026-10-05 06:45:27 | @snapshots/1/snapshot | single | Fresh Emaki 0.1.2 install |"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "Found 1 snapshot(s)"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "Unmount /tmp/grub-btrfs.RQ2agNubkR .. Success"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "done"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "arch-chroot: exit 0"
+      },
+      {
+        "type": "state",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "snapshot",
+        "phase_pct": 100,
+        "total_pct": 93,
+        "indeterminate": false
+      },
+      {
+        "type": "state",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "update",
+        "phase_pct": null,
+        "total_pct": 93,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "update: skipped."
+      },
+      {
+        "type": "state",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "update",
+        "phase_pct": null,
+        "total_pct": 98,
+        "indeterminate": false
+      },
+      {
+        "type": "state",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "finish",
+        "phase_pct": 0,
+        "total_pct": 98,
+        "indeterminate": true
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "Installation complete; syncing and unmounting target filesystems."
+      },
+      {
+        "type": "state",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "phase": "finish",
+        "phase_pct": 100,
+        "total_pct": 100,
+        "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ sync"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "sync: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ udevadm settle --timeout=10"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "udevadm: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ umount -- /mnt/emaki-target/var/cache/pacman/pkg"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "umount: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ umount -- /mnt/emaki-target/var/log"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "umount: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ umount -- /mnt/emaki-target/efi"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "umount: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ umount -- /mnt/emaki-target/home"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "umount: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ umount -- /mnt/emaki-target/.snapshots"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "umount: exit 0"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "$ umount -- /mnt/emaki-target"
+      },
+      {
+        "type": "log",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "line": "umount: exit 0"
+      },
+      {
+        "type": "done",
+        "job_id": "53d414964d6c95560d5197a726a4ac33",
+        "log_path": "/var/log/emaki-install.log",
+        "seconds": 300.35
+      }
+    ]
+  }
+]

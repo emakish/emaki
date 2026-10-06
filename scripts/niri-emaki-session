@@ -19,6 +19,9 @@ fi
 # ReGreet fallback also has a session picker;
 # Ctrl+Alt+F2, log in and run niri-session is the independent recovery path.
 
+# KService needs an application menu even when the session does not run Plasma.
+export XDG_MENU_PREFIX=emaki-
+
 # Config selection. Same order as stock niri 26.04 (src/main.rs):
 # if a personal ~/.config/niri/config.kdl exists, use fork.kdl (includes it entirely); otherwise,
 # use fork-system.kdl (includes /etc/niri/config.kdl). This script never creates or
@@ -95,4 +98,4 @@ systemctl --user --wait start niri-emaki.service
 # Force stop of graphical-session.target (niri-shutdown.target comes with the niri package).
 systemctl --user start --job-mode=replace-irreversibly niri-shutdown.target
 
-systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP NIRI_SOCKET EMAKI_SHELL_DOCK_BACKDROP EMAKI_LOGIN_HANDOFF
+systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_MENU_PREFIX NIRI_SOCKET EMAKI_SHELL_DOCK_BACKDROP EMAKI_LOGIN_HANDOFF

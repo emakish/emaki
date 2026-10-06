@@ -6,7 +6,7 @@ Emaki is an Arch-based desktop built around **niri-emaki**, a fork of the
 pixel-art wallpaper: a looping valley at sunset that scrolls with your workspaces, with
 steam trains running through it.
 
-**Status: 0.1.1 — an early version, not a stable release.** It is tested in QEMU with UEFI
+**Status: 0.2.0 — an early version, not a stable release.** It is tested in QEMU with UEFI
 firmware (OVMF) and has been installed on one real machine so far, see
 [Tested hardware](#tested-hardware).
 
@@ -21,9 +21,10 @@ firmware (OVMF) and has been installed on one real machine so far, see
 
 ## What's inside
 
-- **niri-emaki** (`packaging/niri-emaki/`) — niri 26.04 with five patches: the living
+- **niri-emaki** (`packaging/niri-emaki/`) — niri 26.04 with six patches: the living
   wallpaper, glass capture for the shell, a seamless handoff from the login screen, an
-  animated overview backdrop and crisp cursors at fractional scale.
+  animated overview backdrop, crisp cursors at fractional scale and a distinct exit status
+  when no GPU renderer can be created.
 - **The shell** (`shell/`) — bar islands (workspaces, clock, system, privacy), dock,
   launcher, notifications and on-screen display on liquid glass. The login screen (a greetd
   greeter) and the lock screen are drawn by the same shell.
@@ -32,14 +33,19 @@ firmware (OVMF) and has been installed on one real machine so far, see
 - **The installer** (`installer/`) — a root worker with a JSON protocol, a command-line client
   and a graphical window.
 - **The ISO profile** (`iso/`) — archiso 91 releng with the Emaki overlay.
-- **Packages** (`packaging/`) — `emaki`, `emaki-config`, `emaki-desktop`, `emaki-installer`,
-  `emaki-keyring`, `emaki-mirrorlist`, `niri-emaki`, `quickshell-emaki`.
+- **Packages** (`packaging/`) — `emaki`, `emaki-apps`, `emaki-config`, `emaki-desktop`,
+  `emaki-installer`, `emaki-keyring`, `emaki-mirrorlist`, `niri-emaki`, `quickshell-emaki`,
+  `xdg-desktop-portal-gnome-emaki`.
 - **Art** (`art/`, `cursors/`, `fetch/`, `boot/`) — the wallpaper, logo, cursors, GRUB
   background and boot splash, with the scripts that make them.
 
 ## The ISO
 
-`emaki-0.1.1-x86_64.iso` boots (UEFI only) into a live Emaki session with the installer open.
+`emaki-0.2.0-x86_64.iso` boots into a live Emaki session with the installer open. Emaki
+needs a computer with 64-bit UEFI; legacy BIOS computers are refused by the installer. If
+Windows on the computer uses BitLocker or device encryption, save its recovery key first:
+changing firmware security settings can make Windows ask for it.
+Secure Boot must be switched off in the firmware settings before booting the stick.
 The installer offers:
 
 - **Erase disk** with **btrfs** (recommended: snapper snapshots that you can boot from the GRUB
@@ -49,24 +55,27 @@ The installer offers:
 - **Offline installation** from the signed package repository on the USB stick. When the
   machine is online, the installer can also update Emaki at the end.
 
-The installed system gets GRUB with `linux` and `linux-lts`, zram (no swap file),
-NetworkManager and Firefox. Not in 0.1.1: disk encryption, BIOS boot, installing
-alongside Windows.
+The installed system gets GRUB with `linux` and `linux-lts`, zram and NetworkManager. The
+installer offers two software sets. **Minimal** is the desktop with Dolphin, Firefox and kitty.
+**Rich** (preselected) adds LibreOffice, Thunderbird, Okular, Kate, Gwenview, Ark, Haruna,
+Elisa, Spectacle, OBS Studio, qBittorrent, KeePassXC, Discover with Flatpak, Partition Manager,
+Filelight, System Monitor, ISO Image Writer, KCharSelect, Skanlite, KDE Connect, printing and
+media codecs. Not in 0.2.0: BIOS boot, installing alongside Windows.
 
 ## Tested hardware
 
 | Machine | Emaki | Works | Known issues |
 |---|---|---|---|
-| MacBook Pro (Retina, 13-inch, Early 2015) | 0.1.1 | Live session from USB, installation (erase disk, btrfs), boot, login, desktop, Wi-Fi on 2.4 GHz, screen lock on lid close | 5 GHz Wi-Fi networks are not listed (Broadcom BCM43602); the GRUB menu text is very small on the Retina display; the lock on lid close has open issues |
+| MacBook Pro (Retina, 13-inch, Early 2015) | 0.1.1 | Live session from USB, installation (erase disk, btrfs), boot, login, desktop, Wi-Fi on 2.4 GHz, screen lock on lid close | 5 GHz Wi-Fi networks are not listed (Broadcom BCM43602); the GRUB menu text is very small on the Retina display |
+| MacBook Pro (Retina, 13-inch, Early 2015) | 0.2.0 | Installation from USB with disk encryption, disk unlock in about 5 s, boot, desktop, updates from the Emaki mirror | The disk-password screen is drawn small in a corner of the Retina display; Wi-Fi joined in the installer has to be joined again after installing |
 
 Installed Emaki on another machine? Reports are welcome in the issues.
 
 ## Updates
 
 An installed system updates with `pacman -Syu`. Emaki's own packages come from the signed
-`[emaki]` repository, published as GitHub Releases of
-[`emakish/packages`](https://github.com/emakish/packages): `emaki-keyring` installs the signing
-key and `emaki-mirrorlist` selects the `stable` channel. Everything else comes from Arch.
+`[emaki]` repository at `pkgs.emaki.sh`: `emaki-keyring` installs the signing key and
+`emaki-mirrorlist` selects the `stable` channel. Everything else comes from Arch.
 
 ## Building
 

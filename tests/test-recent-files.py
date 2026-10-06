@@ -9,6 +9,8 @@ import tempfile
 import time
 from app_scope_fixture import install, launches
 from xml.sax.saxutils import quoteattr
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 PROFILE = Path(tempfile.mkdtemp(prefix='recent-files-', dir=ROOT / '.cache'))

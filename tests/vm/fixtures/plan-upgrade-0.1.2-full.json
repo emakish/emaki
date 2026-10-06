@@ -1,0 +1,12 @@
+{
+  "mode": "erase",
+  "disk_id": "/dev/disk/by-id/virtio-emaki-target",
+  "fs": "btrfs",
+  "hostname": "emaki-vm",
+  "timezone": "UTC",
+  "layouts": ["us", "ru"],
+  "user": {"name": "Emaki VM", "login": "emaki", "password": "emaki-vm-test-only"},
+  "online_update": false,
+  "encryption": "none",
+  "hibernation": false
+}

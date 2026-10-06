@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+"""Generate KDE's system palette from the same tokens used by qt6ct."""
+from pathlib import Path
+import sys
+import tomllib
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def render(tokens):
+    colors, ansi = tokens['color'], tokens['ansi']
+
+    def rgb(value):
+        return ','.join(str(n) for n in bytes.fromhex(value))
+
+    # TerminalApplication: Dolphin's Open Terminal (KIO's KTerminalLauncherJob) starts this
+    # terminal; without it KIO looks only for Konsole and xterm, which Emaki does not install.
+    # Never TerminalService: KIO reads it first, so from this system file it would beat a
+    # person's own TerminalApplication in ~/.config/kdeglobals.
+    lines = ['# GENERATED from tokens.toml by scripts/render-kde-theme.',
+             '[General]', 'ColorScheme=Emaki', 'TerminalApplication=kitty',
+             '', '[KDE]', 'contrast=4']
+    for group, background, foreground in (
+        ('View', 'background', 'text'), ('Window', 'background', 'text'),
+        ('Button', 'surface', 'text'), ('Selection', 'accent', 'on_accent'),
+        ('Tooltip', 'surface', 'text'), ('Complementary', 'surface', 'text'),
+        ('Header', 'surface', 'text'),
+    ):
+        roles = {
+            'BackgroundNormal': colors[background], 'BackgroundAlternate': colors['surface_high'],
+            'ForegroundNormal': colors[foreground], 'ForegroundInactive': colors['text_muted'],
+            'ForegroundActive': colors['accent'], 'ForegroundLink': colors['accent'],
+            'ForegroundVisited': ansi['magenta'], 'ForegroundNegative': colors['critical'],
+            'ForegroundNeutral': ansi['yellow'], 'ForegroundPositive': ansi['green'],
+            'DecorationFocus': colors['accent'], 'DecorationHover': colors['accent'],
+        }
+        lines += ['', f'[Colors:{group}]', *(f'{key}={rgb(value)}' for key, value in roles.items())]
+    return '\n'.join(lines) + '\n'
+
+
+if __name__ == '__main__':
+    target = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / 'packaging/emaki-config/kdeglobals'
+    target.write_text(render(tomllib.loads((ROOT / 'tokens.toml').read_text())))

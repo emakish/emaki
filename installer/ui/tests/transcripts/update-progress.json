@@ -1,0 +1,94 @@
+{
+  "base": "erase-happy",
+  "confirm": [
+    {
+      "type": "reply",
+      "ok": true,
+      "job_id": "fixture-preflight-job"
+    },
+    {
+      "type": "state",
+      "job_id": "fixture-preflight-job",
+      "phase": "update",
+      "phase_pct": 0,
+      "total_pct": 93,
+      "indeterminate": true
+    },
+    {
+      "type": "progress",
+      "job_id": "fixture-preflight-job",
+      "phase": "update",
+      "phase_pct": 0,
+      "total_pct": 93,
+      "indeterminate": true,
+      "activity": {
+        "name": "downloads",
+        "done": null,
+        "total": null
+      }
+    },
+    {
+      "type": "progress",
+      "job_id": "fixture-preflight-job",
+      "phase": "update",
+      "phase_pct": 0,
+      "total_pct": 93,
+      "indeterminate": true,
+      "activity": {
+        "name": "downloads",
+        "done": 0,
+        "total": 144
+      }
+    },
+    {
+      "type": "progress",
+      "job_id": "fixture-preflight-job",
+      "phase": "update",
+      "phase_pct": 0,
+      "total_pct": 93,
+      "indeterminate": true,
+      "activity": {
+        "name": "downloads",
+        "done": 1,
+        "total": 144
+      }
+    },
+    {
+      "type": "progress",
+      "job_id": "fixture-preflight-job",
+      "phase": "update",
+      "phase_pct": 0,
+      "total_pct": 93,
+      "indeterminate": true,
+      "activity": {
+        "name": "downloads",
+        "done": 144,
+        "total": 144
+      }
+    },
+    {
+      "type": "progress",
+      "job_id": "fixture-preflight-job",
+      "phase": "update",
+      "phase_pct": 0,
+      "total_pct": 93,
+      "indeterminate": true,
+      "activity": null
+    },
+    {
+      "type": "state",
+      "job_id": "fixture-preflight-job",
+      "phase": "update",
+      "phase_pct": 100,
+      "total_pct": 98,
+      "indeterminate": false
+    },
+    {
+      "type": "done",
+      "job_id": "fixture-preflight-job",
+      "log_path": "/var/log/emaki-install.log",
+      "seconds": 640,
+      "warnings": []
+    }
+  ]
+}

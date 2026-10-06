@@ -9,6 +9,8 @@ import sys
 import tempfile
 import time
 from app_scope_fixture import install, launches
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 ROOT=Path(__file__).resolve().parent.parent
 if '--inside' not in sys.argv:
     root=Path(tempfile.mkdtemp(prefix='lt-',dir=ROOT/'.cache'))
@@ -114,69 +116,31 @@ try:
     wait_for(lambda:helper({'op':'frequent-list'})['counts'].get('fixture-term',0)>=3)
     ipc('launcher');ipc('mode','All');ipc('query','PRIVATE_WEB');wait_for(lambda:state()['search']['selected_kind']=='web')
     ipc('enter');wait_for(lambda:state()['launcher']=='closed')
-    ipc('launcher');ipc('page','keys')
-    wait_for(lambda:not state()['search']['settings']['busy'] and state()['search']['result_count']==1)
-    ipc('enter');ipc('shortcut');ipc('saveShortcut')
-    wait_for(lambda:state()['search']['settings']['history_count']==1 and not state()['search']['settings']['busy'])
-    assert 'Mod+Shift+V' in (core_profile/'config/emaki/settings.toml').read_text()
-    ipc('page','history');wait_for(lambda:state()['search']['result_count']==1)
-    ipc('enter');wait_for(lambda:state()['search']['settings']['history_count']==2 and not state()['search']['settings']['busy'])
-    assert 'Mod+Shift+V' not in (core_profile/'config/emaki/settings.toml').read_text()
-    ipc('undoNewest');wait_for(lambda:state()['search']['settings']['history_count']==3 and not state()['search']['settings']['busy'])
-    ipc('select',2);ipc('enter');wait_for(lambda:state()['search']['settings']['action']=='undo_conflict')
-    ipc('esc');assert state()['search']['page']=='' and state()['launcher']=='open'
-    # Settings pages write core keys through the same history: keyboard, wallpaper, defaults, bar, dock.
-    toml=lambda:(core_profile/'config/emaki/settings.toml').read_text()
-    def settle(count):wait_for(lambda:state()['search']['settings']['history_count']==count and not state()['search']['settings']['busy'])
-    def pick(query):
-        ipc('query',query);wait_for(lambda:state()['search']['result_count']==1);ipc('enter')
-    ipc('page','keyboard');wait_for(lambda:state()['search']['result_count']==3)   # fixture niri layout (info) + Add layout + single-layout note
-    assert ipc('resultKinds')=='info,layout-add,info'
-    pick('Add layout');wait_for(lambda:state()['search']['result_count']>50)
-    ipc('query','Russian');wait_for(lambda:state()['search']['result_count']==1 and state()['search']['selected_kind']=='layout-pick');ipc('enter');settle(4)
-    assert 'layouts = ["ru"]' in toml()
-    wait_for(lambda:state()['search']['result_count']==3)   # Russian (In use now) + Add layout + note
-    pick('Add layout');ipc('query','English (US)');wait_for(lambda:state()['search']['result_count']==1);ipc('enter');settle(5)
-    assert 'layouts = ["ru", "us"]' in toml()
-    wait_for(lambda:state()['search']['result_count']==6)   # two layouts + Add layout + three switch keys
-    pick('Alt+Shift');settle(6);assert 'switch_key = "Alt+Shift"' in toml()
-    generation=json.loads(run([os.environ['EMAKI_BIN'],'settings','list','--profile-root',str(core_profile),'--json'],env=dict(os.environ,XDG_CONFIG_HOME=str(core_profile/'config'),XDG_STATE_HOME=str(core_profile/'state'),XDG_RUNTIME_DIR=str(core_profile/'runtime'))))['generation_path']
-    fragment=Path(generation,'niri.kdl').read_text();assert 'layout "ru,us"' in fragment and 'grp:alt_shift_toggle' in fragment
-    ipc('query','');ipc('select',1);ipc('enter');settle(7);assert 'layouts = ["ru"]' in toml()   # Remove English (US)
-    ipc('page','wallpaper');wait_for(lambda:state()['search']['result_count']==2)
-    ipc('select',1);ipc('enter');settle(8);assert 'wallpaper = "'+str(wall)+'"' in toml()
-    assert str(wall) not in ipc('status') and 'PRIVATE_' not in ipc('status')
-    ipc('page','defaults');wait_for(lambda:state()['search']['result_count']==6)
-    ipc('select',0);ipc('enter');wait_for(lambda:state()['search']['result_count']==7)   # Browser opens its one candidate
-    ipc('select',1);ipc('enter');settle(9);assert 'browser = "fixture-web.desktop"' in toml()
-    ipc('page','bar');wait_for(lambda:state()['search']['result_count']==2)
-    assert not state()['bar_policy']['auto_hide'] and not state()['search']['applied']
-    ipc('select',0);ipc('enter');settle(10);assert 'autohide = true' in toml();wait_for(lambda:state()['bar_policy']['auto_hide'])
-    # "Applied · Undo in History" after a committed change; it clears when leaving the page.
-    assert state()['search']['applied']
-    ipc('esc');assert not state()['search']['applied']
-    ipc('page','dock');wait_for(lambda:state()['search']['result_count']==3)
-    ipc('select',0);ipc('enter');settle(11);assert '[dock]\non = false' in toml();wait_for(lambda:not state()['dock']['on'] and state()['search']['result_count']==1)
-    ipc('undoNewest');settle(12);wait_for(lambda:state()['dock']['on'] and state()['search']['result_count']==3)
-    ipc('esc');ipc('close')
-    # `qs ipc call dock autoHide` with a profile goes through the core key too (a plain store write
-    # would be reverted by the next settings list); dock.json keeps only pinned apps in charge.
-    assert state()['dock']['auto_hide']
+    ipc('launcher')
+    assert ipc('mode', 'Settings') == 'false'
+    ipc('mode', 'Clipboard'); ipc('tab', 'false')
+    assert state()['search']['mode'] == 'All'
+    ipc('tab', 'true'); assert state()['search']['mode'] == 'Clipboard'
+    ipc('mode', 'All'); ipc('query', 'Top bar')
+    wait_for(lambda: state()['search']['selected_kind'] == 'web')
+    assert ipc('resultKinds') == 'web'
+    assert 'settings' not in state()['search'] and 'page' not in state()['search']
+    # The retained core still owns dock keys when an isolated profile is configured.
+    toml = lambda: (core_profile/'config/emaki/settings.toml').read_text()
     run(['qs','-p',str(qml),'ipc','call','dock','autoHide','false'])
-    settle(13);assert 'auto_hide = false' in toml();wait_for(lambda:not state()['dock']['auto_hide'])
+    wait_for(lambda: not state()['dock']['auto_hide'])
+    assert 'auto_hide = false' in toml()
     run(['qs','-p',str(qml),'ipc','call','dock','autoHide','true'])
-    settle(14);assert 'auto_hide = true' in toml();wait_for(lambda:state()['dock']['auto_hide'])
-    # Recent: opened through the launcher so far — a clip (since deleted: logged, not shown) and the
-    # terminal app; opening a Settings page from a row logs it too. Grouped by kind, newest group first.
-    ipc('launcher');ipc('mode','Settings');ipc('query','Top bar');wait_for(lambda:state()['search']['result_count']==1);ipc('enter');wait_for(lambda:state()['search']['page']=='bar')
-    ipc('esc');ipc('mode','All');ipc('query','')
-    wait_for(lambda:state()['search']['recent']['count']==3 and state()['search']['recent']['groups']==['Settings','Apps'])
-    assert ipc('resultKinds')=='page,app' and state()['search']['result_count']==2
-    ipc('select',1);ipc('enter');wait_for(lambda:state()['launcher']=='closed')   # the recent app launches again
-    wait_for(lambda:[e['kind'] for e in helper({'op':'recent-list'})['entries']]==['app','page','clip'])
-    entries=helper({'op':'recent-list'})['entries'];assert entries[0]['ref']=='fixture-term' and entries[1]['ref']=='bar' and entries[2]['ref']==text_id,entries
-    for bad in [dict(kind='app',ref='bad/id'),dict(kind='nope',ref='x'),dict(kind='file',ref='relative'),dict(kind='clip',ref='1;x'),dict(kind='page',ref='')]:
-        assert helper(dict(op='recent-record',**bad))['state']=='invalid_recent_entry',bad
+    wait_for(lambda: state()['dock']['auto_hide'])
+    wait_for(lambda: not json.loads(ipc('settingsStatus'))['busy'])
+    run([os.environ['EMAKI_BIN'], 'settings', 'set', 'bar.autohide', 'true', '--profile-root', str(core_profile), '--json'], env=dict(os.environ, XDG_CONFIG_HOME=str(core_profile/'config'), XDG_STATE_HOME=str(core_profile/'state'), XDG_RUNTIME_DIR=str(core_profile/'runtime')))
+    # Stale saved settings-page history must not produce a launcher result.
+    assert helper(dict(op='recent-record',kind='page',ref='bar'))['state'] == 'ready'
+    ipc('close'); ipc('launcher'); ipc('mode','All'); ipc('query','')
+    wait_for(lambda: state()['search']['recent']['count'] == 3)
+    assert state()['search']['recent']['groups'] == ['Apps']
+    assert ipc('resultKinds') == 'app'
+    ipc('enter'); wait_for(lambda: state()['launcher'] == 'closed')
     assert 'PRIVATE_' not in ipc('status') and str(root) not in ipc('status')
     ipc('close')
     player=subprocess.Popen([sys.executable,'-B',str(ROOT/'tests/fixtures/mpris-player.py'),str(root)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -208,4 +172,4 @@ assert helper({'op':'clip-clear'})['state']=='deleted'
 assert helper({'op':'clip-list'})['entries']==[]
 content=(root/'qs.log').read_text();assert not any(s in content for s in ['PRIVATE_','WARN','ERROR','TypeError','ReferenceError']),content
 assert launches(root, ['fixture-term', 'fixture-web', 'wl-copy']).count('fixture-term') >= 3
-print('PASS: cliphist text/image/copy/delete/private UI; owned recorder pause/resume/no orphan; GIO web/terminal field codes; persistent frequent; core key/history/undo/conflict; Settings pages keyboard/wallpaper/defaults/bar/dock via core keys, bar.* applied at start; real QS MPRIS against private player;',root.relative_to(ROOT))
+print('PASS: cliphist text/image/copy/delete/private UI; owned recorder pause/resume/no orphan; GIO web/terminal field codes; persistent frequent; launcher settings removed; retained dock core keys, bar.* applied at start; real QS MPRIS against private player;',root.relative_to(ROOT))

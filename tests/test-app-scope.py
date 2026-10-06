@@ -9,6 +9,8 @@ import sys
 import tempfile
 import time
 from app_scope_fixture import install, launches
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 root = Path(tempfile.mkdtemp(prefix='as-', dir=ROOT / '.cache'))

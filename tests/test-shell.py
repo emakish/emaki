@@ -14,6 +14,8 @@ import tempfile
 import time
 from app_scope_fixture import install, launches
 from xml.sax.saxutils import quoteattr
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 os.chdir(ROOT)
@@ -37,6 +39,8 @@ report = json.loads(lint.stdout)
 (CACHE / 'shell-qmllint.json').write_text(lint.stdout)
 known = []
 additional_metadata = {
+    ('WelcomeController.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
+    ('SnapshotRecovery.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('greeter.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('AppCatalog.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('GreeterState.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
@@ -61,8 +65,8 @@ for file in report['files']:
             known.append(warning)
         else:
             raise AssertionError((file['filename'], warning))
-# Existing metadata gaps plus the cover observer's new QProcess exit handler.
-assert len(known) <= 18, known
+# Exact Quickshell metadata gaps; runtime tests exercise these handlers.
+assert len(known) <= 20, known
 assert lint.returncode == 0 or known, (lint.returncode, lint.stderr)
 print(f'QML format OK; qmllint raw rc={lint.returncode}, {len(known)} documented QS metadata diagnostics, no others')
 
@@ -74,13 +78,14 @@ if '--lint-only' in sys.argv:
 
 # Desktop ids the launcher never lists (Arch live-ISO/dependency utilities; DECISIONS 2026-10-03).
 HIDDEN_IDS = ['avahi-discover', 'bssh', 'bvnc', 'lftp', 'lstopo', 'qv4l2', 'qvidcap',
-              'stoken-gui', 'stoken-gui-small', 'vim']
+              'stoken-gui', 'stoken-gui-small', 'vim',
+              'qt6ct', 'org.kde.kdeconnect.daemon', 'org.kde.kdeconnect.handler', 'org.kde.kdeconnect.nonplasma', 'kcm_updates', 'org.kde.discover.flatpak', 'org.kde.discover.notifier', 'org.kde.discover.snap', 'org.kde.discover.urlhandler', 'org.kde.ConfigurePrinter', 'libreoffice-xsltfilter']
 _catalog = Path('shell/AppCatalog.qml').read_text()
 _listed = json.loads(_catalog[_catalog.index('hiddenIds: [') + len('hiddenIds: '):].split('\n', 1)[0])
 assert _listed == HIDDEN_IDS, ('AppCatalog.hiddenIds and the fixture list differ', _listed)
 
 def smoke(width, height, scale, exclusive_zone=None):
-    profile = Path(tempfile.mkdtemp(prefix='shell-test-', dir=CACHE))
+    profile = Path(tempfile.mkdtemp(prefix='sh-', dir=CACHE))
     for part in ('runtime', 'cache', 'config', 'state', 'data', 'tmp'):
         (profile / part).mkdir(mode=0o700)
     (profile / 'bin').mkdir()
@@ -159,6 +164,11 @@ def smoke(width, height, scale, exclusive_zone=None):
         env.pop(key, None)
     env['NIRI_SOCKET'] = str(profile / 'niri.sock')
     install(profile, env)
+    # An invalid environment must end qs with a nonzero status (systemd restarts on failure).
+    bad = subprocess.run([qs, '-p', str(ROOT / 'shell'), '--no-color'], env=dict(env, EMAKI_SHELL_BORDER='bad'),
+                         capture_output=True, text=True, timeout=10)
+    assert bad.returncode == 1, (bad.returncode, bad.stdout, bad.stderr)
+    assert 'choose EMAKI_SHELL_BORDER=soft|full' in bad.stdout + bad.stderr, bad
     (profile / 'calculator-fixture').mkdir()
     shutil.copy(ROOT / 'tests/fixtures/CalculatorTest.qml', profile / 'calculator-fixture/shell.qml')
     shutil.copy(ROOT / 'shell/Calculator.js', profile / 'calculator-fixture/Calculator.js')
@@ -328,6 +338,13 @@ def smoke(width, height, scale, exclusive_zone=None):
             observation['model']['keyboard_layouts']['current_idx'] = 1
             publish()
             wait_state(lambda s: s['niri']['layout'] == 'RU')
+            # Codes come from evdev.lst, not from the first two letters: Ukrainian is UA (UK is Britain).
+            observation['model']['keyboard_layouts'] = dict(names=['English (US)', 'Ukrainian', 'Czech (QWERTY)'], current_idx=1)
+            publish()
+            wait_state(lambda s: s['niri']['layout'] == 'UA')
+            observation['model']['keyboard_layouts']['current_idx'] = 2
+            publish()
+            wait_state(lambda s: s['niri']['layout'] == 'CZ')
             observation['model']['keyboard_layouts'] = dict(names=['English (US)'], current_idx=0)
             publish()
             wait_state(lambda s: s['niri']['layout_count'] == 1)

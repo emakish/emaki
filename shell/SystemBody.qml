@@ -43,7 +43,7 @@ Item {
             invalid_password: "Password must be 8–63 characters, or leave it empty for an open network.",
             activation_failed: "Couldn’t connect. Check the name and password.",
             network_not_found: "No network with that name was found.",
-            nm_not_running: "NetworkManager is not running.",
+            nm_not_running: "Networking isn’t running.",
             password_required: "This network needs a password.",
             timeout: "The connection attempt timed out.",
             no_handler: "No browser is set for http links.",
@@ -90,7 +90,7 @@ Item {
         scroller.contentY = 0;
     }
     function session(value: string): void {
-        if (value === "reboot" || value === "poweroff" || value === "suspend")
+        if (["reboot", "poweroff", "suspend", "logout"].includes(value) || (value === "hibernate" && service.canHibernate))
             confirmation = value;
     }
     // The mic meter runs only while the sound page is open (PwNodePeakMonitor costs a stream),
@@ -105,7 +105,11 @@ Item {
         reset();
         updateMonitors();
     }
-    onOpenedChanged: updateMonitors()
+    onOpenedChanged: {
+        if (!opened)
+            reset();
+        updateMonitors();
+    }
     onBackendChanged: updateMonitors()
     // Lists rebuilt (a device, a network's signal): their resting drops find the new rows.
     onRowsChanged: {
@@ -275,7 +279,7 @@ Item {
                 })).concat(list.filter(d => !d.paired).map(d => entry({
                     key: "near-" + d.key,
                     name: d.name,
-                    detail: d.pairing ? "Pairing…" : failed && pairTarget === d.key ? "Couldn’t pair. Make sure it’s in pairing mode." : "Tap to pair",
+                    detail: d.pairing ? "Pairing…" : failed && pairTarget === d.key ? "Couldn’t pair. Make sure it’s in pairing mode." : "Click to pair",
                     action: d.pairing ? "bt-cancel-pair" : "bt-pair",
                     value: d.key,
                     icon: SystemIcons.bluetoothDevice(d.icon ?? ""),
@@ -408,7 +412,8 @@ Item {
             return batteryPercent + "%" + (b?.timeToEmpty > 0 ? " · " + duration(b.timeToEmpty) + " remaining" : " · On battery");
         return batteryPercent + "% · Connected to power";
     }
-    readonly property string wifiSub: !backend?.networkReady ? "NetworkManager unavailable" : !backend.wifiDevices.length ? "No Wi-Fi adapter" : !backend.wifiHardwareEnabled ? "Wi-Fi is hardware blocked" : !backend.wifiEnabled ? "Off" : connectedNetwork ? "Connected to " + connectedNetwork.name : "Not connected"
+    readonly property string soundSub: backend?.audioReady ? (backend.sink ? audioName(backend.sink).name : "No output") : "Sound unavailable"
+    readonly property string wifiSub: !backend?.networkReady ? "Networking unavailable" : backend.wiredConnected ? "Wired · Connected" : !backend.wifiDevices.length ? "No Wi-Fi adapter" : !backend.wifiHardwareEnabled ? "Wi-Fi is hardware blocked" : !backend.wifiEnabled ? "Off" : connectedNetwork ? "Connected to " + connectedNetwork.name : "Not connected"
     readonly property string btSub: {
         const a = backend?.adapter;
         if (!a)
@@ -420,31 +425,50 @@ Item {
         const connected = (backend.devices ?? []).filter(d => d.connected).length;
         return connected ? connected + " connected" : "On";
     }
-    readonly property string nightDetail: {
-        const s = service.night.state;
-        return s === "on" ? "On · warmer colors" : s === "off" ? "Off" : s === "not_installed" ? "wlsunset is not installed" : s === "starting" ? "Starting…" : s === "checking" ? "Checking…" : s === "disabled" ? "Not available in this mode" : "Unavailable: " + s;
+    readonly property string nightDetail: stateNote("night", service.night.state)
+    // Words for a service's state: an internal code never reaches the screen.
+    function stateNote(what: string, s: string): string {
+        switch (what) {
+        case "night":
+            return s === "on" ? "On · warmer colors" : s === "off" ? "Off" : s === "not_installed" ? "Night Light isn’t installed" : s === "starting" ? "Starting…" : s === "checking" ? "Checking…" : s === "disabled" ? "Not available in this session" : "Unavailable";
+        case "brightness":
+            return s === "ready" ? "Built-in display" : s === "unavailable" ? "No brightness control" : "Brightness can’t be changed right now.";
+        case "tray":
+            return s === "active" ? service.tray.items.length + " running" : s === "owned_elsewhere" ? "The tray is shown by another program" : s === "disabled" ? "The tray is off in this session" : s === "checking" || s === "registering" ? "Starting…" : "The tray isn’t available.";
+        case "vpn":
+            return s === "ready" || s === "unavailable" ? "" : "VPN connections couldn’t be listed.";
+        }
+        return "";
+    }
+    // The keyboard page's note after a layout switch (`state`: layoutState, `outcome`: niri's). The
+    // outcome counts only when niri's last action is a switch-layout, never another action's.
+    function layoutNote(state: string, outcome: string): string {
+        if (state === "niri_unavailable")
+            return "Layout switching isn’t available; use Super+Space.";
+        return state === "requested" && niri.actionKind === "switch-layout" && ["rejected", "unconfirmed", "error"].includes(outcome) ? "The layout switch wasn’t confirmed." : "";
     }
     // One line at the foot of the page: what the last action did (only when it needs words),
     // then what the page cannot do yet.
-    readonly property string message: {
-        const s = service.actionState;
+    readonly property string message: messageText(service.actionState, page)
+    function messageText(s: string, onPage: string): string {
         if (s === "idle" || s === "confirmed")
             return "";
-        if (page === "wifi" && wifiErrors[s])
+        if (onPage === "wifi" && wifiErrors[s])
             return wifiErrors[s];
         return ({
                 pending: "Working…",
                 busy: "Still busy with the last change.",
                 requested: "Requested.",
                 locked: "Screen locked.",
+                hibernate_unavailable: "Hibernation is unavailable.",
                 lock_failed: "The screen lock was not confirmed. Sleep was cancelled.",
                 confirmation_timeout: "The service did not confirm the change yet.",
                 pairing_failed: "Couldn’t pair.",
                 disabled: "Not available in this mode.",
                 unavailable: "The service is unavailable."
-            })[s] ?? s;
+            })[s] ?? "The change didn’t go through.";
     }
-    readonly property string note: page === "wifi" ? (service.vpn.state === "ready" || service.vpn.state === "unavailable" ? "" : "VPN list: " + service.vpn.state) : page === "bt" && rows.some(r => r.action === "bt-pair" || r.action === "bt-cancel-pair") ? "Devices that ask to type or compare a code need a Bluetooth agent; this shell has none yet." : page === "kb" ? (layoutState === "niri_unavailable" ? "niri is unavailable; switch with your keyboard shortcut." : layoutState === "requested" && ["rejected", "unconfirmed", "error"].includes(niri.actionState) ? "Switch not confirmed: " + niri.actionReason : "") : page === "tray" && selectedSub ? "Deeper menus than one level are not shown." : ""
+    readonly property string note: page === "wifi" ? stateNote("vpn", service.vpn.state) : page === "bt" && rows.some(r => r.action === "bt-pair" || r.action === "bt-cancel-pair") ? "Devices that ask to type or compare a code need a Bluetooth agent; this shell has none yet." : page === "kb" ? layoutNote(layoutState, niri.actionState) : page === "tray" && selectedSub ? "Deeper menus than one level are not shown." : ""
 
     // ---- Parts (system.js drawItem) ----
     component Label: Text {
@@ -670,6 +694,17 @@ Item {
     // A word in the accent (system.js button()).
     component Word: GlassTarget {
         id: word
+        activeFocusOnTab: body.opened && key.startsWith("confirm-")
+        Keys.onReturnPressed: clicked()
+        Keys.onEnterPressed: clicked()
+        Keys.onSpacePressed: clicked()
+        Rectangle {
+            anchors.fill: parent
+            color: "transparent"
+            radius: 10
+            border.width: word.activeFocus ? 2 : 0
+            border.color: body.accent
+        }
         property color color: body.accent
         property bool strong: false
         glass: body.glass
@@ -900,8 +935,18 @@ Item {
         id: field
         property string placeholder: ""
         property bool secret: false
+        property bool revealed: false
         property int maximumLength: 63
         property alias text: input.text
+        onVisibleChanged: if (!visible)
+            revealed = false
+        Connections {
+            target: body
+            function onOpenedChanged(): void {
+                if (!body.opened)
+                    field.revealed = false;
+            }
+        }
         signal accepted
         function focusInput(): void {
             input.forceActiveFocus();
@@ -913,7 +958,7 @@ Item {
         TextInput {
             id: input
             x: 12
-            width: parent.width - 24
+            width: parent.width - (field.secret ? 56 : 24)
             height: parent.height
             verticalAlignment: TextInput.AlignVCenter
             clip: true
@@ -923,10 +968,23 @@ Item {
             font.family: ShellPalette.uiFont
             font.pixelSize: 14
             font.weight: Font.Medium
-            echoMode: field.secret ? TextInput.Password : TextInput.Normal
+            echoMode: field.secret && !field.revealed ? TextInput.Password : TextInput.Normal
+            passwordMaskDelay: 0
+            inputMethodHints: field.secret ? Qt.ImhSensitiveData | Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase : Qt.ImhNone
             maximumLength: field.maximumLength
             selectByMouse: true
             onAccepted: field.accepted()
+            onTextChanged: if (!text.length)
+                field.revealed = false
+        }
+        PasswordToggle {
+            anchors.right: parent.right
+            anchors.rightMargin: 3
+            anchors.verticalCenter: parent.verticalCenter
+            visible: field.secret
+            ink: body.ink
+            revealed: field.revealed
+            onToggled: field.revealed = !field.revealed
         }
         Label {
             x: 12
@@ -944,11 +1002,15 @@ Item {
         required property string kind
         required property string text
         signal clicked
-        width: body.inner / 4
+        width: body.inner / (body.service.canHibernate ? 6 : 5)
         height: 90
         GlassTarget {
             glass: body.glass
             key: round.key
+            activeFocusOnTab: body.opened && body.page === "power"
+            Keys.onReturnPressed: round.clicked()
+            Keys.onEnterPressed: round.clicked()
+            Keys.onSpacePressed: round.clicked()
             label: round.text
             x: (round.width - 52) / 2
             width: 52
@@ -959,6 +1021,8 @@ Item {
             Rectangle {
                 anchors.fill: parent
                 radius: 26
+                border.width: parent.activeFocus ? 2 : 0
+                border.color: body.accent
                 color: body.faint
             }
             Icon {
@@ -1036,7 +1100,7 @@ Item {
                 visible: body.page === "sound"
                 Title {
                     text: "Sound"
-                    sub: body.backend?.audioReady ? (body.backend.sink ? body.audioName(body.backend.sink).name : "No output") : "PipeWire unavailable"
+                    sub: body.soundSub
                 }
                 PanelSlider {
                     key: "volume"
@@ -1126,7 +1190,7 @@ Item {
                 visible: body.page === "light"
                 Title {
                     text: "Display"
-                    sub: body.service.brightness.state === "ready" ? "Built-in display" : body.service.brightness.state === "unavailable" ? "No brightness control" : "Brightness: " + body.service.brightness.state
+                    sub: body.stateNote("brightness", body.service.brightness.state)
                 }
                 PanelSlider {
                     key: "brightness"
@@ -1529,6 +1593,19 @@ Item {
                         text: "Shut down"
                         onClicked: body.confirmation = body.confirmation === "poweroff" ? "" : "poweroff"
                     }
+                    Round {
+                        key: "act-logout"
+                        kind: "logout"
+                        text: "Log out"
+                        onClicked: body.confirmation = body.confirmation === "logout" ? "" : "logout"
+                    }
+                    Round {
+                        visible: body.service.canHibernate
+                        key: "act-hibernate"
+                        kind: "hibernate"
+                        text: "Hibernate"
+                        onClicked: body.confirmation = body.confirmation === "hibernate" ? "" : "hibernate"
+                    }
                 }
                 // "Shut down now? · Save your work first." with Cancel and the action.
                 Item {
@@ -1536,7 +1613,7 @@ Item {
                     width: body.inner
                     height: 48
                     visible: body.confirmation !== ""
-                    readonly property string action: body.confirmation === "reboot" ? "Restart" : body.confirmation === "suspend" ? "Sleep" : "Shut down"
+                    readonly property string action: body.confirmation === "reboot" ? "Restart" : body.confirmation === "suspend" ? "Sleep" : body.confirmation === "logout" ? "Log out" : body.confirmation === "hibernate" ? "Hibernate" : "Shut down"
                     Label {
                         y: -4
                         width: body.inner - 180
@@ -1549,7 +1626,7 @@ Item {
                         y: 16
                         width: body.inner - 180
                         height: 18
-                        text: body.confirmation === "suspend" ? "The screen locks first." : "Save your work first."
+                        text: ["suspend", "hibernate"].includes(body.confirmation) ? "The screen locks first." : "Save your work first."
                     }
                     Row {
                         x: body.inner - width
@@ -1589,7 +1666,7 @@ Item {
                 visible: body.page === "tray"
                 Title {
                     text: "Background apps"
-                    sub: body.service.tray.state === "active" ? body.service.tray.items.length + " running" : body.service.tray.state === "owned_elsewhere" ? "The tray is shown by another program" : body.service.tray.state === "disabled" ? "The tray is off in this session" : "Tray: " + body.service.tray.state
+                    sub: body.stateNote("tray", body.service.tray.state)
                 }
                 Repeater {
                     model: body.page === "tray" ? body.rows : []

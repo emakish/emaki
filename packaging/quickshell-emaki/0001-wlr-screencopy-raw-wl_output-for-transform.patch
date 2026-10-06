@@ -1,6 +1,6 @@
 From 4a24b2f21ba3c1a7c54120ba02e7de0cfa1f6ffa Mon Sep 17 00:00:00 2001
 From: Yakyman <246958375+Yakyman@users.noreply.github.com>
-Date: Fri, 25 Sep 2026 19:10:29 -0500
+Date: Sat, 26 Sep 2026 00:10:29 +0000
 Subject: [PATCH] wayland/screencopy/wlr: use a raw wl_output for the transform
  query
 

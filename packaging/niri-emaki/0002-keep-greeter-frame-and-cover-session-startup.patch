@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Emaki contributors <emaki@localhost>
-Date: Thu, 1 Oct 2026 15:00:00 -0500
+Date: Thu, 1 Oct 2026 20:00:00 +0000
 Subject: [PATCH 2/2] Retain greeter scanout and cover fresh session startup
 
 Consume a final-frame PNG before the first output render, exclude it from
@@ -58,7 +58,7 @@ index 0aa3cb4f..32e31bfd 100644
 @@ -167,6 +171,18 @@ pub enum Response {
      Casts(Vec<Cast>),
  }
-
+ 
 +/// Current compositor startup cover, for a shell taking over the same image.
 +#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 +#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
@@ -88,13 +88,13 @@ index 0aa3cb4f..32e31bfd 100644
      Screenshot {
          ///  Whether to show the mouse pointer by default in the screenshot UI.
 diff --git a/src/backend/tty.rs b/src/backend/tty.rs
-index be4a0c41..21a78596 100644
+index be4a0c41..2172fb9d 100644
 --- a/src/backend/tty.rs
 +++ b/src/backend/tty.rs
 @@ -70,6 +70,8 @@ use crate::render_helpers::renderer::AsGlesRenderer;
  use crate::render_helpers::{resources, shaders, RenderCtx, RenderTarget};
  use crate::utils::{get_monotonic_time, is_laptop_panel, logical_output, PanelOrientation};
-
+ 
 +mod keep_frame;
 +
  const SUPPORTED_COLOR_FORMATS: [Fourcc; 4] = [
@@ -108,20 +108,20 @@ index be4a0c41..21a78596 100644
 +    keep_frame_on_exit: bool,
 +    discard_previous_drm_state: bool,
  }
-
+ 
  pub type TtyRenderer<'render> = MultiRenderer<
 @@ -128,6 +133,7 @@ type GbmDrmCompositor = DrmCompositor<
  >;
-
+ 
  pub struct OutputDevice {
 +    discard_previous_drm_state: bool,
      token: RegistrationToken,
      // Can be None for display-only devices such as DisplayLink.
      render_node: Option<DrmNode>,
-@@ -414,6 +420,16 @@ impl Tty {
+@@ -414,6 +420,18 @@ impl Tty {
      ) -> anyhow::Result<Self> {
          let _span = tracy_client::span!("Tty::new");
-
+ 
 +        let keep_frame_on_exit =
 +            std::env::var_os("EMAKI_GREETER_KEEP_FRAME").is_some_and(|value| value == "1");
 +        // Never pass the greeter-only shutdown mode to clients or another compositor.
@@ -131,11 +131,13 @@ index be4a0c41..21a78596 100644
 +            .is_some_and(|value| value == "1")
 +            || std::env::var_os("EMAKI_LOGIN_HANDOFF").is_some();
 +        std::env::remove_var("EMAKI_SESSION_TAKEOVER");
++        // Only this start uses the login marker; the shell gets its copy from the user manager.
++        std::env::remove_var("EMAKI_LOGIN_HANDOFF");
 +
          let (session, notifier) = LibSeatSession::new().context(
              "Error creating a session. This might mean that you're trying to run niri on a TTY \
               that is already busy, for example if you're running this inside tmux that had been \
-@@ -506,9 +522,77 @@ impl Tty {
+@@ -506,9 +524,77 @@ impl Tty {
              update_output_config_on_resume: false,
              debug_tint: false,
              ipc_outputs: Arc::new(Mutex::new(HashMap::new())),
@@ -143,7 +145,7 @@ index be4a0c41..21a78596 100644
 +            discard_previous_drm_state,
          })
      }
-
+ 
 +    /// The saved Smithay state refers to the previous compositor's freed framebuffer.
 +    pub fn discard_previous_drm_state(&mut self) {
 +        self.discard_previous_drm_state = true;
@@ -213,18 +215,18 @@ index be4a0c41..21a78596 100644
      pub fn init(&mut self, niri: &mut Niri) {
          // If the session is inactive, skip initialization because we won't be able to do much with
          // the devices anyway. We'll get ActivateSession and add the devices there instead.
-@@ -911,6 +995,7 @@ impl Tty {
+@@ -911,6 +997,7 @@ impl Tty {
              .ok();
-
+ 
          let device = OutputDevice {
 +            discard_previous_drm_state: self.discard_previous_drm_state,
              token,
              render_node,
              drm,
-@@ -2585,6 +2670,27 @@ impl Tty {
+@@ -2585,6 +2672,27 @@ impl Tty {
      }
  }
-
+ 
 +impl Drop for OutputDevice {
 +    fn drop(&mut self) {
 +        if self.discard_previous_drm_state {
@@ -366,7 +368,7 @@ index 222abbde..dbc1a301 100644
 @@ -35,7 +35,10 @@ impl PickColorGrab {
          state.niri.queue_redraw_all();
      }
-
+ 
 -    fn pick_color_at_point(location: Point<f64, Logical>, data: &mut State) -> Option<PickedColor> {
 +    pub(crate) fn pick_color_at_point(
 +        location: Point<f64, Logical>,
@@ -374,14 +376,14 @@ index 222abbde..dbc1a301 100644
 +    ) -> Option<PickedColor> {
          let (output, pos_within_output) = data.niri.output_under(location)?;
          let output = output.clone();
-
+ 
 @@ -56,7 +59,7 @@ impl PickColorGrab {
                      xray: None,
                      capture_client: None,
                  };
 -                let elements = data.niri.render_to_vec(ctx, &output, false);
 +                let elements = data.niri.render_capture_to_vec(ctx, &output, false);
-
+ 
                  let mapping = match render_and_download(
                      renderer,
 diff --git a/src/ipc/client.rs b/src/ipc/client.rs
@@ -436,7 +438,7 @@ index db71da6d..486f8f0e 100644
 +        }
          Request::Action(action) => {
              validate_action(&action)?;
-
+ 
 diff --git a/src/main.rs b/src/main.rs
 index e80992ee..aac65fa2 100644
 --- a/src/main.rs
@@ -447,7 +449,7 @@ index e80992ee..aac65fa2 100644
  use std::sync::atomic::Ordering;
 +use std::time::Instant;
  use std::{env, mem};
-
+ 
  use calloop::EventLoop;
 @@ -20,6 +21,7 @@ use niri::cli::{Cli, CompletionShell, Sub};
  use niri::dbus;
@@ -459,7 +461,7 @@ index e80992ee..aac65fa2 100644
      REMOVE_ENV_RUST_BACKTRACE, REMOVE_ENV_RUST_LIB_BACKTRACE,
 @@ -39,6 +41,10 @@ static GLOBAL: tracy_client::ProfiledAllocator<std::alloc::System> =
      tracy_client::ProfiledAllocator::new(std::alloc::System, 100);
-
+ 
  fn main() -> Result<(), Box<dyn std::error::Error>> {
 +    let started_at = Instant::now();
 +    let startup_cover_path = env::var_os("EMAKI_STARTUP_COVER");
@@ -471,7 +473,7 @@ index e80992ee..aac65fa2 100644
 @@ -139,6 +145,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
      // Needs to be done before starting Tracy, so that it applies to Tracy's threads.
      niri::utils::signals::block_early().unwrap();
-
+ 
 +    let took_over_greeter = startup_cover_path.is_some();
 +    let startup_cover = StartupCoverLoader::start(startup_cover_path, started_at);
 +
@@ -481,7 +483,7 @@ index e80992ee..aac65fa2 100644
 @@ -185,6 +194,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
      )
      .unwrap();
-
+ 
 +    if took_over_greeter {
 +        if let niri::backend::Backend::Tty(tty) = &mut state.backend {
 +            tty.discard_previous_drm_state();
@@ -513,29 +515,29 @@ index 1d5574ea..58367496 100644
  use crate::utils::spawning::{CHILD_DISPLAY, CHILD_ENV};
  use crate::utils::vblank_throttle::VBlankThrottle;
 @@ -381,6 +382,10 @@ pub struct Niri {
-
+ 
      pub lock_state: LockState,
-
+ 
 +    startup_cover: Option<StartupCover>,
 +    // Survives texture release: a frozen shell replacement must also stop covering windows.
 +    startup_cover_deadline: Option<Instant>,
 +
      // State that we last sent to the logind LockedHint.
      pub locked_hint: Option<bool>,
-
+ 
 @@ -2594,6 +2599,8 @@ impl Niri {
              mods_with_finger_scroll_binds,
-
+ 
              lock_state: LockState::Unlocked,
 +            startup_cover: None,
 +            startup_cover_deadline: None,
              locked_hint: None,
-
+ 
              screenshot_ui,
 @@ -4059,6 +4066,15 @@ impl Niri {
          self.screenshot_ui.advance_animations();
          self.window_mru_ui.advance_animations();
-
+ 
 +        if self
 +            .startup_cover
 +            .as_ref()
@@ -551,7 +553,7 @@ index 1d5574ea..58367496 100644
 @@ -4160,11 +4176,36 @@ impl Niri {
          elements
      }
-
+ 
 +    /// Interactive captures keep output privacy semantics but omit the login decoration.
 +    pub fn render_capture_to_vec<R: NiriRenderer>(
 +        &self,
@@ -588,18 +590,18 @@ index 1d5574ea..58367496 100644
 @@ -4178,14 +4219,14 @@ impl Niri {
              }
          }
-
+ 
 -        self.fill_xray_elements(ctx.as_gles(), output);
 +        self.fill_xray_elements_with_startup_cover(ctx.as_gles(), output, include_startup_cover);
-
+ 
          // Reborrow to shorten lifetime to be able to put in xray.
          let mut ctx = ctx.r();
          let state = self.output_state.get(output).unwrap();
          ctx.xray = Some(&state.xray);
-
+ 
 -        self.render_inner(ctx, output, include_pointer, push);
 +        self.render_inner(ctx, output, include_pointer, include_startup_cover, push);
-
+ 
          self.clear_xray_elements(output);
      }
 @@ -4195,6 +4236,7 @@ impl Niri {
@@ -613,7 +615,7 @@ index 1d5574ea..58367496 100644
 @@ -4214,13 +4256,6 @@ impl Niri {
              self.render_pointer(ctx.renderer, output, &mut |elem| push(elem.into()));
          }
-
+ 
 -        // Next, the screen transition texture.
 -        {
 -            if let Some(transition) = &state.screen_transition {
@@ -627,7 +629,7 @@ index 1d5574ea..58367496 100644
 @@ -4230,6 +4265,27 @@ impl Niri {
              push(element.into());
          }
-
+ 
 +        // This decoration must never enter screencopy or screencasts: the shell prepares
 +        // its glass from the real desktop underneath. Locks and screenshot UI take priority.
 +        if include_startup_cover
@@ -671,7 +673,7 @@ index 1d5574ea..58367496 100644
 @@ -4435,7 +4493,16 @@ impl Niri {
          push(backdrop);
      }
-
+ 
 -    pub fn fill_xray_elements(&self, mut ctx: RenderCtx<GlesRenderer>, output: &Output) {
 +    pub fn fill_xray_elements(&self, ctx: RenderCtx<GlesRenderer>, output: &Output) {
 +        self.fill_xray_elements_with_startup_cover(ctx, output, true);
@@ -684,7 +686,7 @@ index 1d5574ea..58367496 100644
 +        include_startup_cover: bool,
 +    ) {
          let _span = tracy_client::span!("Niri::fill_xray_elements");
-
+ 
          // Make sure the xrayed elements themselves cannot use xray by mistake.
 @@ -4468,6 +4535,7 @@ impl Niri {
                  Layer::Background,
@@ -728,7 +730,7 @@ index 1d5574ea..58367496 100644
 +                return None;
 +            }
              let mapped = self.mapped_layer_surfaces.get(surface)?;
-
+ 
              if for_backdrop != mapped.place_within_backdrop() {
 @@ -4549,9 +4627,15 @@ impl Niri {
          layer: Layer,
@@ -772,7 +774,7 @@ index 1d5574ea..58367496 100644
 +                .startup_cover
 +                .as_ref()
 +                .is_some_and(StartupCover::is_fading);
-
+ 
              // Also keep redrawing if the current cursor is animated.
              state.unfinished_animations_remain |= self
 @@ -5481,7 +5575,7 @@ impl Niri {
@@ -782,11 +784,11 @@ index 1d5574ea..58367496 100644
 -                let elements = self.render_to_vec(ctx, &output, false);
 +                let elements = self.render_capture_to_vec(ctx, &output, false);
                  let elements = elements.iter().rev();
-
+ 
                  let res = render_to_texture(
 @@ -5837,6 +5931,16 @@ impl Niri {
      }
-
+ 
      pub fn lock(&mut self, confirmation: SessionLocker) {
 +        if self.startup_cover_deadline.is_some() {
 +            self.startup_cover_deadline = Some(Instant::now());
@@ -804,7 +806,7 @@ index 1d5574ea..58367496 100644
 @@ -6240,11 +6344,87 @@ impl Niri {
          }
      }
-
+ 
 +    #[cfg(test)]
 +    pub(crate) fn startup_cover_timer_finished(&self) -> bool {
 +        self.startup_cover.is_none() && self.startup_cover_layer_expired("emaki-session-cover")
@@ -876,9 +878,9 @@ index 1d5574ea..58367496 100644
 +
      pub fn do_screen_transition(&mut self, renderer: &mut GlesRenderer, delay_ms: Option<u16>) {
          let _span = tracy_client::span!("Niri::do_screen_transition");
-
+ 
          self.update_render_elements(None);
-
+ 
 +        // Never bake the startup image into a second, independently timed decoration.
 +        let startup_cover = self.startup_cover.take();
 +        let client_deadline = self.startup_cover_deadline;
@@ -892,7 +894,7 @@ index 1d5574ea..58367496 100644
 @@ -6304,6 +6484,9 @@ impl Niri {
              })
              .collect();
-
+ 
 +        self.startup_cover = startup_cover;
 +        self.startup_cover_deadline = client_deadline;
 +

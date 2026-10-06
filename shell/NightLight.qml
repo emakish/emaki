@@ -20,6 +20,9 @@ Scope {
     readonly property string state: !enabled ? "disabled" : checkState !== "ready" ? (checkState === "idle" || checkState === "pending" ? "checking" : checkState) : !installed ? "not_installed" : runner.running ? "on" : on ? "starting" : "off"
     readonly property string statePath: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/emaki/night-light.json"
     property bool restored: false
+    // A file written by a newer shell (it outlives a system rollback in /home): its format is
+    // unknown here, so it is neither read nor overwritten during this run.
+    property bool foreign: false
     property bool restartPending: false
     function setOn(value: bool): bool {
         if (!enabled || !installed)
@@ -62,7 +65,9 @@ Scope {
         saveTimer.restart()
     Component.onCompleted: {
         try {
-            const saved = JSON.parse(stateFile.text() || "{}");
+            const file = JSON.parse(stateFile.text() || "{}");
+            foreign = file.version !== undefined && file.version !== 1;
+            const saved = foreign ? {} : file;
             on = saved.on === true;
             if (typeof saved.warmth === "number" && saved.warmth >= 0 && saved.warmth <= 100)
                 warmth = Math.round(saved.warmth);
@@ -85,11 +90,12 @@ Scope {
     Timer {
         id: saveTimer
         interval: 500
-        onTriggered: stateFile.setText(JSON.stringify({
-            version: 1,
-            on: night.on,
-            warmth: night.warmth
-        }))
+        onTriggered: if (!night.foreign)
+            stateFile.setText(JSON.stringify({
+                version: 1,
+                on: night.on,
+                warmth: night.warmth
+            }))
     }
     PrivateJob {
         id: check

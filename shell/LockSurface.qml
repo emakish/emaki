@@ -160,9 +160,9 @@ Item {
             Text {
                 id: username
                 anchors.centerIn: parent
-                width: Math.min(280, surface.fieldWidth - 40)
-                text: surface.auth.usernameMode ? surface.auth.buffer : ""
-                visible: surface.auth.usernameMode && surface.auth.dotCount > 0
+                width: Math.min(240, surface.fieldWidth - 88)
+                text: surface.auth.usernameMode || input.revealed ? surface.auth.buffer : ""
+                visible: (surface.auth.usernameMode || input.revealed) && surface.auth.dotCount > 0
                 color: LiquidPalette.inkOnLight
                 font.pixelSize: 15
                 horizontalAlignment: Text.AlignHCenter
@@ -170,11 +170,11 @@ Item {
                 textFormat: Text.PlainText
             }
             Repeater {
-                model: surface.auth.usernameMode ? 0 : Math.min(16, surface.auth.dotCount)
+                model: surface.auth.usernameMode || input.revealed ? 0 : Math.min(14, surface.auth.dotCount)
                 Rectangle {
                     required property int index
-                    readonly property real pop: surface.session.reducedMotion || surface.auth.checking || index !== Math.min(16, surface.auth.dotCount) - 1 ? 1 : 1 + .5 * Math.exp(-(surface.session.clock - surface.keyAt) * 14)
-                    x: (index - (Math.min(16, surface.auth.dotCount) - 1) / 2) * 16 - width / 2
+                    readonly property real pop: surface.session.reducedMotion || surface.auth.checking || index !== Math.min(14, surface.auth.dotCount) - 1 ? 1 : 1 + .5 * Math.exp(-(surface.session.clock - surface.keyAt) * 14)
+                    x: (index - (Math.min(14, surface.auth.dotCount) - 1) / 2) * 16 - width / 2
                     y: -height / 2
                     width: 9 * pop
                     height: width
@@ -184,7 +184,7 @@ Item {
                 }
             }
             Rectangle {
-                x: surface.auth.dotCount ? (surface.auth.usernameMode ? Math.min(username.contentWidth, username.width) / 2 + 4 : (Math.min(16, surface.auth.dotCount) - 1) * 8 + 12) : -placeholder.width / 2 - 5
+                x: surface.auth.dotCount ? (surface.auth.usernameMode || input.revealed ? Math.min(username.contentWidth, username.width) / 2 + 4 : (Math.min(14, surface.auth.dotCount) - 1) * 8 + 12) : -placeholder.width / 2 - 5
                 y: -10
                 width: 1.5
                 height: 20
@@ -245,6 +245,8 @@ Item {
         id: input
         anchors.fill: parent
         auth: surface.auth
+        showToggle: surface.fieldsVisible && surface.life > .95
+        toggleX: surface.width / 2 + surface.shake + surface.fieldWidth / 2 - 40
         onEngaged: surface.session.chooseOutput(surface.outputName, surface.height)
         onEdited: surface.keyAt = surface.session.clock
     }
@@ -258,6 +260,9 @@ Item {
     }
     Connections {
         target: surface.session
+        function onPhaseChanged(): void {
+            input.revealed = false;
+        }
         function onPrivacyChanged(): void {
             if (surface.Window.window)
                 surface.Window.window.update();

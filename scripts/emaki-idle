@@ -5,41 +5,111 @@
 #   5 min     lock
 #   5.5 min   turn screen off
 #
-# Also lock before manually initiated suspend.
+# The policy ends there. Lock on logind's request and lock before sleep belong
+# to emaki-sleep-guard; one owner per job.
 #
 # NO AUTOMATIC SUSPEND — BY DESIGN.
 #
-# 2026-09-15: the “hibernate after 30 minutes” step killed the running desktop on
-# the test machine. The system entered hibernation, allocated a 22 GB image, and failed,
+# 2026-09-15: the “hibernate after 30 minutes” step killed a running desktop.
+# The system entered hibernation, allocated a 22 GB image, and failed,
 # then kept retrying unsuccessfully, leaving the graphics card in a broken
 # state — a black screen and corrupted output.
 #
-# Hardware-specific cause: ACPI reports "supports S0 S4 S5", so S3 is absent,
-# and S4 does not complete on this configuration.
+# Cause: firmware may offer no S3 sleep state at all, and S4 (hibernation)
+# may not complete on a given machine.
 #
 # Distribution policy: never automatically suspend someone else's machine. How many
 # laptops have broken suspend is unknown, and a failure costs the user
 # their running desktop. Suspend remains a manual action
 # until the user verifies that it works.
 #
+#   emaki-idle                 run the whole policy (swayidle in the foreground)
+#   emaki-idle --only STEP     run one step: dim, lock or off (live trials)
+#   emaki-idle --dim | --undim the dim step itself, called by swayidle
+#
+# The timings are package defaults. EMAKI_IDLE_DIM / EMAKI_IDLE_LOCK /
+# EMAKI_IDLE_OFF (seconds, 0 = step off) exist for automated checks only.
+#
 # Brightness: `brightnessctl -s` saves the CURRENT brightness. If the timer
-# fires again while the screen is already dimmed, it saves 10 %, and “restore”
-# keeps restoring 10 %. Save only when not already dimmed:
-# track this with a flag file in the runtime directory.
+# fires again while the screen is already dimmed, it saves the dimmed value and
+# “restore” keeps restoring it. Save only when not already dimmed: track this
+# with a flag file in the runtime directory. Dim goes to half of each device's
+# current level and never up. Every backlight device is addressed by name,
+# because brightnessctl 0.5 changes one device per call (the first of the class
+# when --device is missing); --class=backlight never reaches a keyboard LED.
+# The flag lists the devices that were dimmed; only those are restored.
 set -eu
 
 FLAG="${XDG_RUNTIME_DIR:-/tmp}/emaki-idle-dimmed"
 
-dim='[ -e "'"$FLAG"'" ] || { brightnessctl -s set 10% && : > "'"$FLAG"'"; }'
-undim='[ -e "'"$FLAG"'" ] && { brightnessctl -r; rm -f "'"$FLAG"'"; } || true'
+dim() {
+    [ -e "$FLAG" ] && return 0
+    # One row per backlight device: name,class,current,percent,max.
+    rows="$(brightnessctl --class=backlight --list --machine-readable)" || return 0
+    dimmed=
+    while IFS=, read -r name _class _current percent _max; do
+        # --device takes a glob pattern: a name that is one is not addressed.
+        case "$name" in ''|*[\*\?\[]*) continue ;; esac
+        percent="${percent%\%}"
+        case "$percent" in ''|*[!0-9]*) continue ;; esac
+        half=$((percent / 2))
+        [ "$half" -ge 1 ] || continue      # already dark: a lower value could switch the panel off
+        if brightnessctl --class=backlight --device="$name" --save set "${half}%" >/dev/null; then
+            dimmed="$dimmed$name
+"
+        fi
+    done <<EOF
+$rows
+EOF
+    [ -z "$dimmed" ] || printf '%s' "$dimmed" > "$FLAG"
+}
+
+undim() {
+    [ -e "$FLAG" ] || return 0
+    while IFS= read -r name; do
+        [ -z "$name" ] || brightnessctl --class=backlight --device="$name" --restore >/dev/null || :
+    done < "$FLAG"
+    rm -f "$FLAG"
+}
+
+seconds() {   # seconds NAME VALUE: a non-negative integer, or refuse to start
+    case "$2" in
+        ''|*[!0-9]*) echo "emaki-idle: $1 must be a number of seconds, got '$2'" >&2; exit 2 ;;
+    esac
+}
+
+case "${1:-}" in
+    --dim)   dim; exit ;;
+    --undim) undim; exit ;;
+esac
+
+DIM="${EMAKI_IDLE_DIM:-150}"; LOCK="${EMAKI_IDLE_LOCK:-300}"; OFF="${EMAKI_IDLE_OFF:-330}"
+seconds EMAKI_IDLE_DIM "$DIM"; seconds EMAKI_IDLE_LOCK "$LOCK"; seconds EMAKI_IDLE_OFF "$OFF"
+
+only=
+if [ "${1:-}" = "--only" ]; then
+    case "${2:-}" in
+        dim|lock|off) only="$2" ;;
+        *) echo "emaki-idle: --only takes dim, lock or off" >&2; exit 2 ;;
+    esac
+elif [ $# -ne 0 ]; then
+    echo "usage: emaki-idle [--only dim|lock|off]" >&2; exit 2
+fi
+
+case "$0" in */*) self="$0" ;; *) self="$(command -v "$0")" ;; esac
 
 rm -f "$FLAG"
 
-exec swayidle -w \
-    timeout 150 "$dim" \
-        resume "$undim" \
-    timeout 300 'emaki-lock' \
-    timeout 330 'niri msg action power-off-monitors' \
-        resume 'niri msg action power-on-monitors' \
-    lock 'emaki-lock' \
-    before-sleep 'emaki-lock --wait'
+set --
+if [ "$DIM" -gt 0 ] && { [ -z "$only" ] || [ "$only" = dim ]; }; then
+    set -- "$@" timeout "$DIM" "$self --dim" resume "$self --undim"
+fi
+if [ "$LOCK" -gt 0 ] && { [ -z "$only" ] || [ "$only" = lock ]; }; then
+    set -- "$@" timeout "$LOCK" 'emaki-lock'
+fi
+if [ "$OFF" -gt 0 ] && { [ -z "$only" ] || [ "$only" = off ]; }; then
+    set -- "$@" timeout "$OFF" 'niri msg action power-off-monitors' resume 'niri msg action power-on-monitors'
+fi
+[ $# -gt 0 ] || { echo "emaki-idle: every step is off; nothing to do" >&2; exit 2; }
+
+exec swayidle -w "$@"

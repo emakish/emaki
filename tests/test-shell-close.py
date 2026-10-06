@@ -9,6 +9,8 @@ import sys
 import tempfile
 import threading
 import time
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 assert len(sys.argv) == 2, 'Pass the freshly built emaki binary'
@@ -115,18 +117,7 @@ try:
             assert json.loads(call('status'))['close_count'] == count
             call('click', 28, 26)
             opened()
-            # Hover moves the one selection bubble, as the arrows do (launcher.js pointermove):
-            # Settings cards 220 x 58 on a pitch of 228 from (32, 78) on the screen.
-            call('mode', 'Settings')
-            # The bubble keeps the Apps tile's shape for a frame after the switch: wait for the
-            # page shape too, or a loaded machine reads the old one (27.09).
-            value = wait(lambda s: s['search']['result_count'] == 9 and s['launcher_glass']['select']['alpha'] == 1 and s['launcher_glass']['select_shape'] == 'page')
-            assert value['search']['selected_index'] == 0, value['search']
-            call('move', 370, 100)
-            value = wait(lambda s: s['search']['selected_index'] == 1 and s['launcher_glass']['select']['x'] == 22 + 228 - 6)
-            assert value['launcher_glass']['select']['width'] == 220 + 12, value['launcher_glass']
-            call('move', 600, 170)
-            wait(lambda s: s['search']['selected_index'] == 5)
+            assert call('mode', 'Settings') == 'false'
             # Apps: the selection bubble is one size on every tile, short name or long
             # (27.09: the bubble of "Qt V4L2 video capture utility" grew over the neighbours).
             # Panel at (10, 8) on the screen; Frequent tiles 676/6 x 76 from (22, 92), grid

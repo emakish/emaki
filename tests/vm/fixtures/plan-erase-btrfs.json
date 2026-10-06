@@ -1,4 +1,6 @@
 {
+  "encryption": "none",
+  "hibernation": false,
   "mode": "erase",
   "disk_id": "/dev/disk/by-id/virtio-emaki-target",
   "fs": "btrfs",

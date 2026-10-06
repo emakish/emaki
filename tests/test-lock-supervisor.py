@@ -13,6 +13,8 @@ import tempfile
 import threading
 import time
 from unittest.mock import patch
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 sys.dont_write_bytecode = True
 
@@ -155,22 +157,44 @@ with tempfile.TemporaryDirectory(prefix='emaki-lock-', dir='/tmp') as value:
         print('PASS alive fallback without acknowledgement fails closed')
     finally:
         supervisor.finished = True; thread.join(timeout=2); supervisor.retire(kill=True)
-    for code in (0, 1):
-        directory = base / ('exit-' + str(code)); directory.mkdir(mode=0o700)
-        (directory / 'mode').write_text('die-before')
-        (directory / ('fallback-fail' if code else 'fallback-success')).touch()
-        os.environ['LOCK_FIXTURE'] = str(directory)
-        supervisor = lock.Supervisor(directory, start_seconds=.3)
+    directory = base / 'exit-0'; directory.mkdir(mode=0o700)
+    (directory / 'mode').write_text('die-before')
+    (directory / 'fallback-success').touch()
+    os.environ['LOCK_FIXTURE'] = str(directory)
+    supervisor = lock.Supervisor(directory, start_seconds=.3)
+    thread = threading.Thread(target=supervisor.run); thread.start()
+    try:
+        until(lambda: supervisor.finished)
+        thread.join(timeout=2)
+        assert not thread.is_alive() and supervisor.phase == 'refused'
+        calls = (directory / 'calls').read_text()
+        assert calls.count('qs ') == calls.count('hyprlock ') == 1
+        time.sleep(.2)
+        assert (directory / 'calls').read_text() == calls
+        print('PASS fallback exit 0 without marker is terminal and cannot retry')
+    finally:
+        supervisor.finished = True; thread.join(timeout=2); supervisor.retire(kill=True)
+    # Both lockers crash: new cycles after each backoff step, then terminal failure.
+    directory = base / 'exit-1'; directory.mkdir(mode=0o700)
+    (directory / 'mode').write_text('die-before')
+    (directory / 'fallback-fail').touch()
+    os.environ['LOCK_FIXTURE'] = str(directory)
+    supervisor = lock.Supervisor(directory, start_seconds=.3)
+    with patch.object(lock, 'RETRY_BACKOFF', (.2, .2, .2)):
         thread = threading.Thread(target=supervisor.run); thread.start()
         try:
-            until(lambda: supervisor.finished)
-            thread.join(timeout=2)
-            assert not thread.is_alive() and supervisor.phase == ('failed' if code else 'refused')
+            until(lambda: supervisor.retry_at is not None)
+            assert not supervisor.finished and lock.client(directory, 'status')['state'] == 'recovering'
             calls = (directory / 'calls').read_text()
             assert calls.count('qs ') == calls.count('hyprlock ') == 1
-            time.sleep(.2)
+            until(lambda: supervisor.finished, timeout=6)
+            thread.join(timeout=2)
+            assert not thread.is_alive() and supervisor.phase == 'failed'
+            calls = (directory / 'calls').read_text()
+            assert calls.count('qs ') == calls.count('hyprlock ') == 1 + len(lock.RETRY_BACKOFF), calls
+            time.sleep(.3)
             assert (directory / 'calls').read_text() == calls
-            print('PASS fallback exit', code, 'without marker is terminal and cannot retry')
+            print('PASS crashed lockers are retried through the backoff steps, then stop')
         finally:
             supervisor.finished = True; thread.join(timeout=2); supervisor.retire(kill=True)
     # An exception in an event handler must not unlink the socket or orphan the child.

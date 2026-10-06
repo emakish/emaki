@@ -9,6 +9,8 @@ import sys
 import tempfile
 import threading
 import time
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 os.chdir(ROOT)
@@ -19,9 +21,9 @@ CACHE.mkdir(exist_ok=True)
 PROFILE = Path(tempfile.mkdtemp(prefix='na-', dir=CACHE))
 for part in ('config', 'state', 'data', 'cache', 'runtime', 'tmp', 'qml'):
     (PROFILE / part).mkdir(mode=0o700)
-shutil.copy(ROOT / 'shell/NiriService.qml', PROFILE / 'qml/NiriService.qml')
+# The whole production shell: the harness also holds the system panel's keyboard page.
+shutil.copytree(ROOT / 'shell', PROFILE / 'qml', dirs_exist_ok=True)
 shutil.copy(ROOT / 'tests/fixtures/NiriActionsTest.qml', PROFILE / 'qml/shell.qml')
-(PROFILE / 'qml/qmldir').write_text('NiriService 1.0 NiriService.qml\n')
 ENV = dict(os.environ, EMAKI_BIN=str(BINARY), NIRI_SOCKET=str(PROFILE / 'n.sock'),
            QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QML_DISABLE_DISK_CACHE='1',
            XDG_CONFIG_HOME=str(PROFILE / 'config'), XDG_STATE_HOME=str(PROFILE / 'state'),
@@ -34,7 +36,7 @@ for key in ('WAYLAND_DISPLAY', 'DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'DBUS_SYST
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(ROOT / 'tests/fixtures'))
-from niri_server import Server
+from niri_server import Server, window
 
 
 def command(server, args, code, outcome):
@@ -97,6 +99,65 @@ def qml_check(server):
             before_layouts = len(server.actions)
             reply = ipc('layout', '7')
             assert reply.stdout.strip() == 'false' and len(server.actions) == before_layouts
+            # Requests in one tick: the second waits for the first action and still returns true.
+            def arrivals(before, count, timeout=6):
+                times = []
+                deadline = time.monotonic() + timeout
+                while len(times) < count and time.monotonic() < deadline:
+                    while len(server.actions) > before + len(times):
+                        times.append(time.monotonic())
+                    time.sleep(.01)
+                return times
+            workspace_202 = {'FocusWorkspace': {'reference': {'Id': 202}}}
+            before = len(server.actions)
+            reply = ipc('burst', '202', '2', '0')
+            assert reply.returncode == 0 and json.loads(reply.stdout) == [True, True], reply
+            assert len(arrivals(before, 2)) == 2, server.actions[before:]
+            wait_status(lambda value: value['action'] == 'confirmed')
+            assert server.actions[before:] == [workspace_202, {'FocusWindow': {'id': 2}}], server.actions[before:]
+            assert server.workspaces[1]['is_focused'] and server.windows[1]['is_focused']
+            # Unanswered first action (confirmation timeout 1.5 s): the pending request starts only
+            # after it ends, and a newer request replaces the pending one.
+            server.set_mode('ignore')
+            before = len(server.actions)
+            reply = ipc('burst', '101', '2', '1')
+            assert reply.returncode == 0 and json.loads(reply.stdout) == [True, True, True], reply
+            times = arrivals(before, 3, timeout=5)
+            assert len(times) == 2 and times[1] - times[0] > 1.3, (times, server.actions[before:])
+            assert server.actions[before:] == [{'FocusWorkspace': {'reference': {'Id': 101}}},
+                                               {'FocusWindow': {'id': 1}}], server.actions[before:]
+            server.set_mode('apply')
+            # The keyboard page's note speaks of the layout switch only: its own rejection shows,
+            # a later action's (a close from "Close all windows") does not.
+            wait_status(lambda value: value['action'] != 'pending')
+            unconfirmed = 'The layout switch wasn’t confirmed.'
+            server.set_mode('reject')
+            assert ipc('keyboardLayout', '0').stdout.strip() == 'requested'
+            wait_status(lambda value: value['action'] == 'rejected' and value['keyboard_note'] == unconfirmed)
+            server.set_mode('apply')
+            assert ipc('keyboardLayout', '0').stdout.strip() == 'requested'
+            wait_status(lambda value: value['action'] == 'confirmed' and value['keyboard_note'] == '')
+            assert server.layouts['current_idx'] == 0
+            server.set_mode('reject')
+            assert ipc('close', '2').stdout.strip() == 'true'
+            last = wait_status(lambda value: value['action'] == 'rejected')
+            assert last['keyboard_note'] == '', last
+            server.set_mode('apply')
+            # Dock "Close all windows" on windows that stay open (each close waits 1.5 s for niri),
+            # then a click on a third window: the click waits for the close in flight only, not
+            # for every close queued behind it; the remaining close still runs.
+            wait_status(lambda value: value['action'] != 'pending')
+            server.open_window(window(3, 101, False))
+            wait_status(lambda value: value['windows'] == 3)
+            server.set_mode('ignore')
+            before = len(server.actions)
+            reply = ipc('closeAllThenFocus', '1', '2', '3')
+            assert reply.returncode == 0 and json.loads(reply.stdout) == [True, True, True], reply
+            assert len(arrivals(before, 3, timeout=7)) == 3, server.actions[before:]
+            assert server.actions[before:] == [{'CloseWindow': {'id': 1}}, {'FocusWindow': {'id': 3}},
+                                               {'CloseWindow': {'id': 2}}], server.actions[before:]
+            wait_status(lambda value: value['action'] == 'unconfirmed')
+            server.set_mode('apply')
         finally:
             proc.terminate()
             try:

@@ -9,9 +9,9 @@ Scope {
     required property ShellScene scene
     // With a settings profile the core owns dock.on/auto_hide: a direct store write
     // would be reverted by the next `settings list` (ShellScene mirrors the core), so the
-    // IPC goes through the same core key as the Settings page. pinned stays in dock.json.
+    // IPC goes through the core key. pinned stays in dock.json.
     function apply(key: string, value: string, local: var): void {
-        const settings = wrapper.scene.input.settings;
+        const settings = wrapper.scene.settings;
         if (settings.profile)
             settings.set(key, value);
         else

@@ -8,10 +8,12 @@ import threading
 import time
 import weakref
 
+from . import __label__, __version__
 from .constants import LOG, MAX_FRAME
 from .errors import Code, InstallError, require
 from .inventory import public_inventory
-from .planner import make_plan
+from .latin_layouts import CONSOLE_CHARS
+from .planner import RESERVED_LOGINS, make_plan, validate_config
 from .runtime import Redactor
 
 
@@ -39,6 +41,7 @@ class Job:
     cancelled: threading.Event = field(default_factory=threading.Event)
     state: dict | None = None
     terminal: dict | None = None
+    history_full: bool = False
     history: object = field(default_factory=lambda: tempfile.SpooledTemporaryFile(
         max_size=4 * 1024 * 1024, mode='w+t', encoding='utf-8'), repr=False)
 
@@ -49,11 +52,12 @@ class Job:
 class Controller:
     def __init__(self, inventory, worker_factory, *, test_mode=False, version='4.5',
                  clock=time.monotonic, log_stream=None, save_log=None, reboot=None,
-                 validate_plan=None):
+                 validate_plan=None, set_timezone=None):
         self.inventory, self.worker_factory = inventory, worker_factory
         self.test_mode, self.version, self.clock = test_mode, version, clock
         self.log_stream, self.save_log_fn, self.reboot_fn = log_stream, save_log, reboot
         self.validate_plan = validate_plan
+        self.set_timezone_fn = set_timezone
         self.redactor = Redactor()
         self.lock = threading.RLock()
         self.operation_lock = threading.Lock()
@@ -82,9 +86,20 @@ class Controller:
                 self.job.state = msg
             if kind == 'log':
                 msg['line'] = self.redactor.text(msg['line'])
-                self.job.history.seek(0, 2)
-                self.job.history.write(json.dumps(msg) + '\n')
-                self.job.history.flush()
+                if not self.job.history_full:
+                    end = self.job.history.seek(0, 2)
+                    try:
+                        self.job.history.write(json.dumps(msg) + '\n')
+                        self.job.history.flush()
+                    except OSError:
+                        # The history rolls over to a file, which can fill up.
+                        # Losing replay must not lose the job: drop any partial
+                        # line and keep delivering to listeners.
+                        self.job.history_full = True
+                        try:
+                            self.job.history.truncate(end)
+                        except OSError:
+                            pass
             if kind in ('done', 'error'):
                 self.job.terminal = msg
             for listener in list(self.listeners):
@@ -99,15 +114,25 @@ class Controller:
             for offset in range(0, max(1, len(line)), 4096):
                 chunk = line[offset:offset + 4096]
                 if self.log_stream:
-                    self.log_stream.write(chunk + '\n')
-                    self.log_stream.flush()
+                    try:
+                        self.log_stream.write(chunk + '\n')
+                        self.log_stream.flush()
+                    except OSError:
+                        # A full log file must not kill the job thread: stop
+                        # writing to it for good, keep emitting to listeners.
+                        self.log_stream = None
                 if self.busy:
                     self.emit('log', line=chunk)
 
     def invalidate(self):
         if self.pending:
             self.pending['plan'].config['user']['password'] = ''
+            self.pending['plan'].config['disk_password'] = ''
         self.pending = None
+        # plan and probe requests invalidate before their busy check: a running
+        # job still logs and needs its secrets redacted until it ends.
+        if not self.busy:
+            self.redactor.secrets.clear()
 
     def expire(self):
         with self.lock:
@@ -132,9 +157,21 @@ class Controller:
         if kind == 'hello':
             require(type(msg.get('proto')) is int and msg['proto'] == 1,
                     Code.BAD_REQUEST, 'Only protocol 1 is supported.')
+            # reserved_logins: the window refuses these before the password is typed.
+            # console_chars: the window names the password characters the text console types
+            # differently (planner.console_unsafe_chars), without sending the password.
             return [self.message('hello', ident, proto=1, archinstall_version=self.version,
-                                 emaki_version='0.1.0', test_mode=self.test_mode,
-                                 busy_job=self.job.id if self.busy else None)]
+                                 emaki_version=__version__, emaki_label=__label__, test_mode=self.test_mode,
+                                 busy_job=self.job.id if self.busy else None,
+                                 reserved_logins=list(RESERVED_LOGINS),
+                                 console_chars={name: list(record) for name, record in CONSOLE_CHARS.items()})]
+        if kind == 'set_timezone':
+            with self.lock:
+                require(not self.busy and not self.stopping, Code.BUSY, 'The worker is busy or stopping.')
+                self.invalidate()
+            require(self.set_timezone_fn is not None, Code.BAD_REQUEST,
+                    'Live clock changes are unavailable.')
+            return [self.reply(ident, **self.set_timezone_fn(msg.get('timezone')))]
         if kind in ('plan', 'probe'):
             with self.lock:
                 self.invalidate()
@@ -144,8 +181,11 @@ class Controller:
             config = msg.get('config')
             if isinstance(config, dict) and isinstance(config.get('user'), dict):
                 self.redactor.add(config['user'].get('password'))
+            if isinstance(config, dict):
+                self.redactor.add(config.get('disk_password'))
             plan_id = secrets.token_hex(16)
             try:
+                validate_config(config)  # An unoffered mode is refused before any probe.
                 plan = make_plan(config, self.inventory.probe())
                 if self.validate_plan:
                     self.validate_plan(plan)
@@ -228,11 +268,16 @@ class Controller:
             try:
                 self.worker_factory(self).run(plan, self.job.cancelled)
             except Exception as exc:
-                self.log('Worker failed: ' + self.redactor.text(exc))
-                self.emit('error', code=Code.INTERNAL.value, phase='prepare_disk',
-                          message='Worker failed; inspect the log.', retryable=False, log_path=str(LOG))
+                try:
+                    self.log('Worker failed: ' + self.redactor.text(exc))
+                finally:
+                    # Without a terminal event the daemon stays busy forever.
+                    self.emit('error', code=Code.INTERNAL.value, phase='prepare_disk',
+                              message='Worker failed; inspect the log.', retryable=False, log_path=str(LOG))
             finally:
                 plan.config['user']['password'] = ''
+                plan.config['disk_password'] = ''
+                self.redactor.secrets.clear()
         thread = threading.Thread(target=run, name='emaki-install-job', daemon=False)
         thread.start()
         return thread

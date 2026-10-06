@@ -13,6 +13,9 @@ Item {
     readonly property bool startupReady: !live || (native.status === Loader.Ready && backend?.startupReady === true)
     property string actionState: "idle"
     property var pendingCheck: null
+    property string pendingKind: ""
+    // The value the pending check was started with (a pairing's device key).
+    property var pendingValue: null
     property int attempts: 0
     property int confirmationTicks: 25
     property var brightness: ({
@@ -28,8 +31,11 @@ Item {
             state: "unavailable",
             connections: []
         })
+    property bool canHibernate: false
     property bool lowSent: false
     signal lowBattery(int percent)
+    // emaki-sleep-guard could not confirm the lock before sleep; the policy it then applied.
+    signal sleepLockFailed(string policy)
     // OSD: only changes of an already known value, never the first reading or an output switch.
     signal osdRequested(string page)
     property var seenSink: null
@@ -133,6 +139,22 @@ Item {
         enabled: service.helpersEnabled
     }
     function act(kind: string, value: var): bool {
+        // Cancel replaces the pairing's check: that check would report the deliberate stop as a failure.
+        // Only for the device being paired; a cancel the backend refuses reports why, and the
+        // pairing stays tracked.
+        if (kind === "bt-cancel-pair" && pendingKind === "bt-pair" && pendingValue === value && !action.busy && backend) {
+            const cancel = backend.act(kind, value);
+            if (typeof cancel !== "function") {
+                actionState = cancel;
+                return false;
+            }
+            pendingCheck = cancel;
+            pendingKind = kind;
+            actionState = "pending";
+            attempts = 0;
+            ticks = confirmationTicks;
+            return true;
+        }
         if (pendingCheck || action.busy) {
             actionState = "busy";
             return false;
@@ -143,7 +165,7 @@ Item {
                 return false;
             }
             // Lock may need recovery plus the full pour; outlast the 21 s helper deadline.
-            action.timeoutMs = kind === "lock" || (kind === "session" && value === "suspend") ? 25000 : 8000;
+            action.timeoutMs = kind === "session" && value === "hibernate" ? 30000 : kind === "lock" || (kind === "session" && value === "suspend") ? 25000 : 8000;
             action.start({
                 op: kind === "brightness" ? "brightness-set" : kind === "profile" ? "profile-set" : kind === "lock" ? "lock" : "session",
                 value: value,
@@ -183,6 +205,8 @@ Item {
             return false;
         }
         pendingCheck = check;
+        pendingKind = kind;
+        pendingValue = value;
         actionState = "pending";
         attempts = 0;
         // Pairing waits for the other device (and a code on it): up to 60 s instead of 5 s.
@@ -197,10 +221,8 @@ Item {
         repeat: true
         onTriggered: {
             try {
-                const result = service.backend.actionError ? "" : service.pendingCheck();
-                if (service.backend.actionError) {
-                    service.actionState = service.backend.actionError;
-                } else if (result === true)
+                const result = service.pendingCheck();
+                if (result === true)
                     service.actionState = "confirmed";
                 else if (typeof result === "string")
                     service.actionState = result;
@@ -214,6 +236,8 @@ Item {
                 service.actionState = "target_gone";
             }
             service.pendingCheck = null;
+            service.pendingKind = "";
+            service.pendingValue = null;
             stop();
         }
     }
@@ -296,9 +320,22 @@ Item {
                 };
         }
     }
+    PrivateJob {
+        id: hibernation
+        timeoutMs: 8000
+        helper: Quickshell.shellPath("helpers/system-tools.py")
+        onCompleted: r => service.canHibernate = r.state === "ready" && r.available === true
+        onStateChanged: {
+            if (["timeout", "helper_failed", "invalid_response"].includes(state))
+                service.canHibernate = false;
+        }
+    }
     function refresh(): void {
         if (!helpersEnabled || action.busy)
             return;
+        hibernation.start({
+            op: "hibernate-read"
+        });
         bright.start({
             op: "brightness-read"
         });
@@ -317,10 +354,49 @@ Item {
     property bool panelOpen: false
     onPanelOpenChanged: if (panelOpen)
         refresh()
-    Component.onCompleted: if (helpersEnabled)
-        refresh()
-    onHelpersEnabledChanged: if (helpersEnabled)
-        refresh()
+    Component.onCompleted: if (helpersEnabled) {
+        refresh();
+        takeSleepFlags(true);
+    }
+    onHelpersEnabledChanged: if (helpersEnabled) {
+        refresh();
+        takeSleepFlags(true);
+    }
+    // The sleep guard leaves a flag for a one-time notice (scripts/emaki-sleep-guard): in the
+    // runtime directory while the session goes on, in the state directory when it ended the
+    // session. The helper reads and deletes them; the state flag only at a start in a later
+    // session than the one it names (a restart of the shell in the same session leaves it).
+    property bool sleepFlagsAgain: false
+    function takeSleepFlags(sessionStart: bool): void {
+        if (helpersEnabled && !sleepFlags.start({
+            op: "sleep-lock-flags",
+            session_start: sessionStart
+        }))
+            sleepFlagsAgain = true;
+    }
+    PrivateJob {
+        id: sleepFlags
+        helper: Quickshell.shellPath("helpers/system-tools.py")
+        onCompleted: r => {
+            if (r.state === "ready" && Array.isArray(r.policies))
+                for (const policy of r.policies)
+                    service.sleepLockFailed(String(policy));
+        }
+        onBusyChanged: {
+            if (!busy && service.sleepFlagsAgain) {
+                service.sleepFlagsAgain = false;
+                service.takeSleepFlags(false);
+            }
+        }
+    }
+    FileView {
+        // Quickshell also watches the directory, so a flag created later is seen.
+        path: service.helpersEnabled && Quickshell.env("XDG_RUNTIME_DIR") ? Quickshell.env("XDG_RUNTIME_DIR") + "/emaki-sleep-lock-failed" : ""
+        preload: false
+        watchChanges: true
+        printErrors: false
+        onFileChanged: service.takeSleepFlags(false)
+    }
     Process {
         id: backlightMonitor
         running: service.helpersEnabled

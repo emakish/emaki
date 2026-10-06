@@ -14,6 +14,9 @@ Scope {
     property var learned: ({})
     readonly property string statePath: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/emaki/apps.json"
     property bool restored: false
+    // A file written by a newer shell (it outlives a system rollback in /home): its format is
+    // unknown here, so it is neither read nor overwritten during this run.
+    property bool foreign: false
     // Launch learning: the id gtk-launch accepted and when; the first unknown window that
     // appears within learnWindowMs is taken to be that app.
     property string pendingId: ""
@@ -38,7 +41,9 @@ Scope {
     }
     function restore(): void {
         try {
-            const saved = JSON.parse(stateFile.text() || "{}");
+            const file = JSON.parse(stateFile.text() || "{}");
+            foreign = file.version !== undefined && file.version !== 1;
+            const saved = foreign ? {} : file;
             const next = {};
             let count = 0;
             if (saved.map && typeof saved.map === "object")
@@ -91,7 +96,7 @@ Scope {
                 e => steam !== null && (e.execString.includes("steam://rungameid/" + steam[1]) || e.execString.includes("steam://run/" + steam[1])),
             // Any word of Exec whose file name is the app id: telegram-desktop, wine …\Game.exe.
                 e => execWords(e.execString).includes(lower), e => e.startupClass.toLocaleLowerCase() === lower,
-            // org.gnome.Nautilus ↔ nautilus
+            // org.kde.dolphin ↔ dolphin
                 e => e.id.split(".").pop().toLocaleLowerCase() === lower, e => e.icon.toLocaleLowerCase() === lower, e => e.name.toLocaleLowerCase() === lower];
         for (const rule of rules) {
             const found = entries.filter(rule);
@@ -158,9 +163,10 @@ Scope {
     Timer {
         id: saveTimer
         interval: 500
-        onTriggered: stateFile.setText(JSON.stringify({
-            version: 1,
-            map: identity.learned
-        }, null, 2) + "\n")
+        onTriggered: if (!identity.foreign)
+            stateFile.setText(JSON.stringify({
+                version: 1,
+                map: identity.learned
+            }, null, 2) + "\n")
     }
 }

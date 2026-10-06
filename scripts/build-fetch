@@ -53,7 +53,7 @@ def generate():
             # Emaki and its release version (DECISIONS: versions are shown in emaki fetch),
             # from /usr/lib/emaki-release; a preview off Emaki prints just "Emaki".
             module = {'type': 'command', 'key': key, 'keyColor': module['keyColor'],
-                      'text': '[ -r /usr/lib/emaki-release ] && . /usr/lib/emaki-release; echo "Emaki${VERSION:+ $VERSION}"'}
+                      'text': '[ -r /usr/lib/emaki-release ] && . /usr/lib/emaki-release; echo "Emaki${VERSION:+ $VERSION}${LABEL:+ $LABEL}"'}
         elif kind == 'disk':
             module['folders'] = '/'
         modules.append(module)

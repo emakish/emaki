@@ -3,14 +3,20 @@
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
 from app_scope_fixture import install, launches
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
+# Every state wait below, and the whole run's limit, is multiplied by EMAKI_TEST_WAIT_SCALE
+# (default 1): a slow or loaded machine (CI) raises this one knob, no wait carries its own slack.
+SCALE = float(os.environ.get('EMAKI_TEST_WAIT_SCALE') or 1)
 if '--inside' not in sys.argv:
     root = Path(tempfile.mkdtemp(prefix='sy-', dir=ROOT/'.cache'))
     for d in ('r','config','state','data','cache','tmp'): (root/d).mkdir(mode=0o700)
@@ -20,7 +26,10 @@ if '--inside' not in sys.argv:
                EMAKI_SHELL_NOTIFICATIONS='0', EMAKI_TEST_SYSTEM='1', EMAKI_TEST_MPRIS='0', EMAKI_SETTINGS_PROFILE='', NIRI_SOCKET='', EMAKI_BIN='',
                DBUS_SYSTEM_BUS_ADDRESS='unix:path='+str(root/'missing'), PIPEWIRE_REMOTE='emaki-no-pipewire')
     for k in ('DISPLAY','WAYLAND_DISPLAY','DBUS_SESSION_BUS_ADDRESS','QT_SCALE_FACTOR','QT_LOGGING_RULES'): env.pop(k,None)
-    subprocess.run(['dbus-run-session','--config-file='+str(root/'bus.conf'),'--',sys.executable,'-B',__file__,'--inside',str(root)],env=env,check=True,timeout=65)
+    # The limit only stops a hung run. Measured on a 16-thread laptop (2026-10-05): 50 s at load
+    # 15, 68 s at load 20-22. A large part is ~660 `qs ipc` calls (a process each, 33 ms at load
+    # 18), so the time grows with load; 90 s is 1.3x the slowest run.
+    subprocess.run(['dbus-run-session','--config-file='+str(root/'bus.conf'),'--',sys.executable,'-B',__file__,'--inside',str(root)],env=env,check=True,timeout=90*SCALE)
     raise SystemExit
 
 root=Path(sys.argv[-1])
@@ -41,9 +50,17 @@ elif n=='powerprofilesctl':
  elif a[0]=='set': (r/'profile').write_text(a[1])
  else: print((r/'profile').read_text())
 elif n=='systemctl':
- if a not in [['reboot'],['poweroff'],['suspend']]: sys.exit(9)
- if a==['suspend'] and not (r/'locked').exists():sys.exit(10)
+ if a not in [['reboot'],['poweroff'],['suspend'],['hibernate']]: sys.exit(9)
+ if a in [['suspend'],['hibernate']] and not (r/'locked').exists():sys.exit(10)
  (r/'session').write_text(a[0])
+elif n=='busctl':
+ if a != ['--system','--json=short','call','org.freedesktop.login1','/org/freedesktop/login1','org.freedesktop.login1.Manager','CanHibernate']: sys.exit(9)
+ value=(r/'hibernate').read_text() if (r/'hibernate').exists() else 'no'
+ if value=='error': sys.exit(1)
+ print(json.dumps({'type':'s','data':[value]}))
+elif n=='niri':
+ if a != ['msg','action','quit','--skip-confirmation']: sys.exit(9)
+ (r/'session').write_text('logout')
 elif n=='emaki-lock':
  import time
  if (r/'lock-fail').exists(): sys.exit(1)
@@ -62,10 +79,10 @@ elif n=='nmcli':
 ''')
 fixture.chmod(0o700)
 (root/'brightness').write_text('70'); (root/'profile').write_text('balanced')
-for name in ('brightnessctl','powerprofilesctl','systemctl','nmcli','emaki-lock'): (root/name).symlink_to(fixture)
+for name in ('brightnessctl','powerprofilesctl','systemctl','nmcli','emaki-lock','busctl','niri'): (root/name).symlink_to(fixture)
 # Fake wlsunset: records pid/argv and waits for SIGTERM (the guard's stdin pipe or a stop).
 (root/'wlsunset').write_text('#!/usr/bin/python3\nimport os,sys,time,json\nfrom pathlib import Path\nPath('+repr(str(root/'wlsunset.json'))+').write_text(json.dumps([os.getpid(),sys.argv[1:]]))\nwhile True: time.sleep(1)\n');(root/'wlsunset').chmod(0o700)
-os.environ.update(EMAKI_SYSTEM_TEST=str(root), EMAKI_BRIGHTNESSCTL=str(root/'brightnessctl'), EMAKI_POWERPROFILESCTL=str(root/'powerprofilesctl'), EMAKI_SYSTEMCTL=str(root/'systemctl'), EMAKI_NMCLI=str(root/'nmcli'), EMAKI_LOCK=str(root/'emaki-lock'), EMAKI_WLSUNSET=str(root/'wlsunset'))
+os.environ.update(EMAKI_BUSCTL=str(root/'busctl'), EMAKI_NIRI=str(root/'niri'), EMAKI_SYSTEM_TEST=str(root), EMAKI_BRIGHTNESSCTL=str(root/'brightnessctl'), EMAKI_POWERPROFILESCTL=str(root/'powerprofilesctl'), EMAKI_SYSTEMCTL=str(root/'systemctl'), EMAKI_NMCLI=str(root/'nmcli'), EMAKI_LOCK=str(root/'emaki-lock'), EMAKI_WLSUNSET=str(root/'wlsunset'))
 # Portal sign-in opens the default http handler through GIO: a fixture browser, never a real one.
 (root/'data/applications').mkdir()
 web=root/'web.py';web.write_text('import sys,json\nfrom pathlib import Path\nPath('+repr(str(root/'web.json'))+').write_text(json.dumps(sys.argv[1:]))\n')
@@ -84,7 +101,7 @@ def start(name,tray,env=None):
 def ipc(q,method,*args):return run(['qs','-p',str(q),'ipc','call','test',method,*map(str,args)])
 def state(q):return json.loads(ipc(q,'status'))
 def wait(q,pred,timeout=7):
-    last=None; end=time.monotonic()+timeout
+    last=None; end=time.monotonic()+timeout*SCALE
     while time.monotonic()<end:
         try:
             last=state(q)
@@ -97,10 +114,98 @@ def action(q,kind,value,expect='confirmed'):
     return wait(q,lambda s:s['services']['action']==expect)
 def helper(r,env=None):
     return json.loads(run([sys.executable,'-B',str(ROOT/'shell/helpers/system-tools.py')],input=json.dumps(r),env=env))
+# Service-level cases: the production SystemService over SystemFixture in an offscreen qs of its
+# own, with 2 confirmation ticks (400 ms). Each step is a JS pair [act, condition]: the act runs
+# once, the next step waits until the condition holds; note(name, value) records a fact.
+SCENARIO='''import QtQuick
+import Quickshell
+ShellRoot {
+    id: root
+    SystemFixture { id: fx }
+    SystemService { id: svc; backend: fx; confirmationTicks: 2 }
+    function device(key: string): var { return fx.devices.find(d => d.key === key); }
+    function network(key: string): var { return fx.networks.find(n => n.key === key).ref; }
+    function note(name: string, value: var): void { console.info("SCENARIO " + JSON.stringify([name, value])); }
+    property int mark: 0
+    property var old
+    readonly property var steps: [STEPS]
+    property int step: 0
+    property int waited: 0
+    Timer {
+        interval: 50; repeat: true; running: true
+        onTriggered: {
+            if (root.step >= root.steps.length) { root.note("done", true); Qt.quit(); return; }
+            if (root.waited === 0) root.steps[root.step][0]();
+            if (root.steps[root.step][1]()) { root.step++; root.waited = 0; }
+            else if (++root.waited > 200) { root.note("stuck", [root.step, svc.actionState, svc.pendingKind]); Qt.quit(); }
+        }
+    }
+}
+'''
+# A scenario starts at once and runs beside the rest of the test; the returned function waits
+# for it and gives its facts.
+def scenario(name,steps):
+    d=root/name;shutil.copytree(ROOT/'shell',d);shutil.copyfile(ROOT/'tests/fixtures/SystemFixture.qml',d/'SystemFixture.qml')
+    with (d/'qmldir').open('a') as f:f.write('SystemFixture 1.0 SystemFixture.qml\n')
+    (d/'shell.qml').write_text(SCENARIO.replace('STEPS',',\n'.join(steps)))
+    log=(root/(name+'.log')).open('w');p=subprocess.Popen(['qs','-p',str(d),'--no-color'],env=dict(os.environ,EMAKI_SHELL_TRAY='0'),stdout=log,stderr=subprocess.STDOUT);processes.append((p,log))
+    def facts():
+        p.wait(timeout=40*SCALE);text=(root/(name+'.log')).read_text()
+        facts=dict(json.loads(l.split('SCENARIO ',1)[1]) for l in text.splitlines() if 'SCENARIO ' in l)
+        assert facts.get('done') is True,(name,facts,text)
+        return facts
+    return facts
+# Failed launches through the production AppCatalog, one per path: the terminal helper's state
+# (no terminal), the launcher's stderr and exit code, a crashed helper. A stand-in for
+# EMAKI_PYTHON fails the launcher run (app_scope.py) with a raw stderr line and crashes the
+# helper for "fixture-crash"; every other helper request runs the real helper. Nothing starts.
+LAUNCH='''import QtQuick
+import Quickshell
+ShellRoot {
+    id: root
+    readonly property var ids: ["fixture-term", "fixture-fail", "fixture-crash"]
+    property int index: 0
+    AppCatalog {
+        id: catalog
+        onFailed: (id, name, reason) => { console.info("LAUNCH " + JSON.stringify([id, reason])); root.index++; next.restart(); }
+    }
+    Timer {
+        id: next
+        interval: 100; running: true
+        onTriggered: {
+            if (root.index >= root.ids.length) { console.info("LAUNCH " + JSON.stringify(["done", true])); Qt.quit(); return; }
+            const entry = DesktopEntries.applications.values.find(e => e.id === root.ids[root.index]);
+            if (!entry || !catalog.launch(entry)) restart();
+        }
+    }
+}
+'''
+def launch_failures():
+    d=root/'launch';shutil.copytree(ROOT/'shell',d);(d/'shell.qml').write_text(LAUNCH)
+    apps=root/'launch-data/applications';apps.mkdir(parents=True)
+    for name,terminal in (('term',True),('fail',False),('crash',True)):
+        (apps/f'fixture-{name}.desktop').write_text(f'[Desktop Entry]\nType=Application\nName=Fixture {name}\nExec=/usr/bin/true\nTerminal={str(terminal).lower()}\n')
+    python=root/'launch-python';python.write_text('#!'+sys.executable+'''
+import json,os,subprocess,sys
+if any(a.endswith('app_scope.py') for a in sys.argv[1:]):
+    print('fixture-raw-line: no such application',file=sys.stderr);sys.exit(2)
+request=sys.stdin.readline()
+if json.loads(request).get('id')=='fixture-crash':sys.exit(3)
+done=subprocess.run([sys.executable,*sys.argv[1:]],input=request,text=True,capture_output=True)
+sys.stdout.write(done.stdout);sys.exit(done.returncode)
+''');python.chmod(0o700)
+    env=dict(os.environ,EMAKI_PYTHON=str(python),EMAKI_TERMINAL=str(root/'missing'),XDG_DATA_HOME=str(root/'launch-data'),XDG_DATA_DIRS=str(root/'launch-data'),EMAKI_SHELL_TRAY='0')
+    log=(root/'launch.log').open('w');p=subprocess.Popen(['qs','-p',str(d),'--no-color'],env=env,stdout=log,stderr=subprocess.STDOUT);processes.append((p,log))
+    def reasons():
+        p.wait(timeout=40*SCALE);text=(root/'launch.log').read_text()
+        got=dict(json.loads(l.split('LAUNCH ',1)[1]) for l in text.splitlines() if 'LAUNCH ' in l)
+        assert got.pop('done',None) is True,(got,text)
+        return got,text
+    return reasons
 # Fake NetworkManager on this private bus; only the helper and shell "a" see it as their system bus.
 nmlog=(root/'nm-fake.log').open('w')
 nm=subprocess.Popen([sys.executable,'-B',str(ROOT/'tests/fixtures/nm-fake.py'),str(root)],stdout=nmlog,stderr=subprocess.STDOUT);processes.append((nm,nmlog))
-until=time.monotonic()+5
+until=time.monotonic()+5*SCALE
 while not (root/'nm-ready').exists() and time.monotonic()<until: time.sleep(.05)
 assert (root/'nm-ready').exists()
 nmenv=dict(os.environ,DBUS_SYSTEM_BUS_ADDRESS=os.environ['DBUS_SESSION_BUS_ADDRESS'])
@@ -109,6 +214,47 @@ def no_password_argv(before):
     new=(root/'commands').read_text()[len(before):]
     return not any(x in new for x in ('fixture-password','PRIVATE_HIDDEN','PRIVATE_OPEN','"connect"'))
 try:
+    # Service-level scenarios start first and run beside everything else; their facts are checked
+    # where the panel cases cover the same ground.
+    # A panel join NetworkManager has not finished when the check gives up stays registered; its
+    # late failure is neither the result of a join of another network nor of a pairing.
+    late_wifi=scenario('late-wifi',['[() => { fx.wifiScan = true; svc.act("wifi-disconnect", {key: "fixture"}); }, () => svc.actionState === "confirmed"]',
+        '[() => { fx.deny = true; svc.act("wifi-connect", {key: "fixture", password: ""}); }, () => svc.actionState === "confirmation_timeout"]',
+        '[() => { root.note("first join kept", !!fx.wifiAttempts["fixture"]); svc.act("wifi-connect", {key: "fixture/near", password: "fixture-password"}); '
+        'fx.wifiFailed("fixture", root.network("fixture"), "auth_timeout", root.network("fixture").activation); }, () => svc.actionState !== "pending"]',
+        '[() => { root.note("join of another network", svc.actionState); svc.act("wifi-connect", {key: "fixture", password: ""}); }, () => svc.actionState === "confirmation_timeout"]',
+        '[() => { root.note("second join kept", !!fx.wifiAttempts["fixture"]); fx.pairOutcome = "hang"; root.note("pair accepted", svc.act("bt-pair", "fixture-nearby")); root.mark = svc.attempts; '
+        'fx.wifiFailed("fixture", root.network("fixture"), "wrong_password", root.network("fixture").activation); }, () => svc.actionState !== "pending" || svc.attempts >= root.mark + 2]',
+        '[() => { root.note("pairing after the late failure", [svc.actionState, svc.pendingKind, root.device("fixture-nearby").pairing]); '
+        'root.note("password asked again", fx.wifiPasswordKeys.includes("fixture")); root.device("fixture-nearby").ref.cancelPair(); }, () => !svc.pendingCheck]'])
+    # A join retried on the same network supersedes the one its check gave up on. A late failure
+    # of the earlier activation is not the retry's result: it neither asks for the password again
+    # nor forgets a new network. The retry's own failure still is its result.
+    retry_wifi=scenario('retry-wifi',['[() => { fx.wifiScan = true; svc.act("wifi-disconnect", {key: "fixture"}); }, () => svc.actionState === "confirmed"]',
+        '[() => { fx.deny = true; svc.act("wifi-connect", {key: "fixture", password: ""}); }, () => svc.actionState === "confirmation_timeout"]',
+        '[() => { root.old = root.network("fixture").activation; svc.act("wifi-connect", {key: "fixture", password: ""}); '
+        'fx.wifiFailed("fixture", root.network("fixture"), "wrong_password", root.old); }, () => svc.actionState !== "pending" || svc.attempts >= 1]',
+        '[() => { root.note("retry after a late failure of the earlier join", svc.actionState); root.note("password asked again", fx.wifiPasswordKeys.includes("fixture")); '
+        'fx.wifiFailed("fixture", root.network("fixture"), "auth_timeout", root.network("fixture").activation); }, () => svc.actionState !== "pending"]',
+        '[() => { root.note("the retry failing itself", svc.actionState); root.network("fixture/near").hang = true; '
+        'svc.act("wifi-connect", {key: "fixture/near", password: "fixture-password"}); }, () => svc.actionState === "confirmation_timeout"]',
+        '[() => { root.old = root.network("fixture/near").activation; svc.act("wifi-connect", {key: "fixture/near", password: "fixture-password"}); '
+        'fx.wifiFailed("fixture/near", root.network("fixture/near"), "wrong_password", root.old); }, () => svc.actionState !== "pending"]',
+        '[() => { root.note("retry of a new network after a late failure", svc.actionState); '
+        'root.note("new network to be forgotten", !!fx.wifiCleanup["fixture/near"]); }, () => true]'])
+    # A connection the device never confirms times out (the panel's own service waits 5 s for
+    # it). Cancel takes over the pairing's check only for the device being paired: another
+    # device's pairing (started by another program) is not cancelled from under it, and a cancel
+    # the backend refuses reports the backend's state, not "busy".
+    bluetooth=scenario('bluetooth',['[() => { fx.deny = true; svc.act("bt-connect", "fixture-device"); }, () => svc.actionState !== "pending"]',
+        '[() => { root.note("connect not answered", svc.actionState); fx.deny = false; fx.secondNearby = true; fx.pairOutcome = "hang"; root.device("fixture-nearby2").ref.pair(); '
+        'svc.act("bt-pair", "fixture-nearby"); }, () => svc.actionState === "pending"]',
+        '[() => { root.note("other device", [svc.act("bt-cancel-pair", "fixture-nearby2"), svc.actionState, svc.pendingKind, root.device("fixture-nearby2").pairing]); '
+        'root.device("fixture-nearby2").ref.cancelPair(); root.device("fixture-nearby").ref.cancelPair(); }, () => !svc.pendingCheck]',
+        '[() => svc.act("bt-pair", "fixture-nearby"), () => svc.actionState === "pending"]',
+        '[() => { const paired = root.device("fixture-nearby").ref; fx.forgotten = true; '
+        'root.note("device gone", [svc.act("bt-cancel-pair", "fixture-nearby"), svc.actionState, svc.pendingKind]); fx.forgotten = false; paired.cancelPair(); }, () => !svc.pendingCheck]'])
+    failed_launches=launch_failures()
     # Invalid requests never reach a command, and no shell syntax gets interpreted.
     assert helper({'op':'session','value':'poweroff'})['state']=='confirmation_required'
     assert helper({'op':'session','value':'suspend'})['state']=='confirmation_required'
@@ -121,11 +267,40 @@ try:
     lock_calls=[a for n,a in map(json.loads,(root/'commands').read_text().splitlines()) if n=='emaki-lock']
     assert lock_calls==[['--confirm'],['--wait'],['--confirm'],['--wait']],lock_calls
     (root/'session').unlink();(root/'locked').unlink()
+    for value in ('no', 'na', 'challenge', 'yes'):
+        (root/'hibernate').write_text(value)
+        assert helper({'op':'hibernate-read'})['available'] is (value == 'yes')
+        assert helper({'op':'session','value':'hibernate'})['state'] == 'confirmation_required'
+    (root/'lock-fail').write_text('1')
+    assert helper({'op':'session','value':'hibernate','confirmed':True})['state'] == 'lock_failed'
+    assert not (root/'session').exists()
+    (root/'lock-fail').unlink()
+    assert helper({'op':'session','value':'hibernate','confirmed':True})['state'] == 'requested'
+    assert (root/'session').read_text() == 'hibernate' and (root/'locked').exists()
+    (root/'session').unlink(); (root/'locked').unlink()
+    (root/'hibernate').write_text('challenge')
+    assert helper({'op':'session','value':'hibernate','confirmed':True})['state'] == 'hibernate_unavailable'
+    assert not (root/'session').exists()
+    assert helper({'op':'session','value':'logout'})['state'] == 'confirmation_required'
+    assert helper({'op':'session','value':'logout','confirmed':True})['state'] == 'requested'
+    assert (root/'session').read_text() == 'logout'
+    (root/'session').unlink()
+    (root/'hibernate').write_text('yes')
     assert helper({'op':'brightness-set','value':'40; touch x'})['state']=='invalid_brightness'
     assert helper({'op':'profile-set','value':'bad'})['state']=='invalid_profile'
     assert helper({'op':'brightness-read'},dict(os.environ,EMAKI_BRIGHTNESSCTL=str(root/'missing')))['state']=='helper_missing'
     assert helper({'op':'night-light-check'})=={'schema_version':1,'state':'ready','installed':True}
     assert helper({'op':'night-light-check'},dict(os.environ,EMAKI_WLSUNSET=str(root/'missing')))['installed'] is False
+    # The sleep guard's notice flags (scripts/emaki-sleep-guard writes its policy name): each one
+    # is taken once; the persistent one only when the shell starts, i.e. after the next login.
+    state_flag=root/'state/emaki/sleep-lock-failed';runtime_flag=root/'r/emaki-sleep-lock-failed'
+    assert helper({'op':'sleep-lock-flags','session_start':True})=={'schema_version':1,'state':'ready','policies':[]}
+    state_flag.parent.mkdir(parents=True,exist_ok=True);state_flag.write_text('end-session\n');runtime_flag.write_text('sleep-relock\n')
+    assert helper({'op':'sleep-lock-flags','session_start':False})['policies']==['sleep-relock'] and not runtime_flag.exists() and state_flag.exists()
+    assert helper({'op':'sleep-lock-flags','session_start':True})['policies']==['end-session'] and not state_flag.exists()
+    runtime_flag.write_text('x'*5000);assert helper({'op':'sleep-lock-flags','session_start':False})['policies']==['unknown'] and not runtime_flag.exists()
+    assert helper({'op':'sleep-lock-flags','session_start':'yes'})['state']=='invalid_request'
+    assert not list(root.glob('r/*sleep-lock*'))+list(root.glob('state/emaki/*sleep-lock*'))
     # Hidden network: NetworkManager D-Bus AddAndActivateConnection on the fake NM owning the
     # NM name on this private bus (the helper's "system bus" address points here). The password
     # is a property in the message: no process is spawned, no argv carries it.
@@ -163,7 +338,7 @@ try:
     w=root/'w';shutil.copytree(ROOT/'shell',w);shutil.copyfile(ROOT/'tests/fixtures/NativeWifiTest.qml',w/'shell.qml')
     wlog=(root/'native-wifi.txt').open('w');wp=subprocess.Popen(['qs','-p',str(w),'--no-color'],env=nmenv,stdout=wlog,stderr=subprocess.STDOUT);processes.append((wp,wlog))
     def native_wifi(pred,timeout=10):
-        last=None;end=time.monotonic()+timeout
+        last=None;end=time.monotonic()+timeout*SCALE
         while time.monotonic()<end:
             try:
                 last=json.loads(run(['qs','-p',str(w),'ipc','call','test','state']))
@@ -178,12 +353,12 @@ try:
     time.sleep(.5);assert native_wifi(lambda s:True)['networks']==saved and scans()==[]  # no scanner: no scan, nothing unsaved
     run(['qs','-p',str(w),'ipc','call','test','scan','true'])
     native_wifi(lambda s:s['devices']==[{'name':'wlan0','scanner':True}] and s['networks']==near)
-    until=time.monotonic()+5
+    until=time.monotonic()+5*SCALE
     while scans()!=['/org/freedesktop/NetworkManager/Devices/3'] and time.monotonic()<until: time.sleep(.05)
     assert scans()==['/org/freedesktop/NetworkManager/Devices/3'],scans()
     # An adapter that appears while scanning gets its scanner on and lists its unsaved network.
     fake_nm('AddWifi');s=native_wifi(lambda s:{'name':'wlan1','scanner':True} in s['devices'] and 'wlan1/PRIVATE_FAR' in s['networks'])
-    until=time.monotonic()+5
+    until=time.monotonic()+5*SCALE
     while len(scans())<2 and time.monotonic()<until: time.sleep(.05)
     assert scans()==['/org/freedesktop/NetworkManager/Devices/3','/org/freedesktop/NetworkManager/Devices/4'],scans()
     fake_nm('RemoveWifi');native_wifi(lambda s:s['devices']==[{'name':'wlan0','scanner':True}] and s['networks']==near)
@@ -303,7 +478,7 @@ try:
     assert ipc(q,'holdNetwork','fixture/near')=='focused';ipc(q,'typeText','abc')
     held=json.loads(ipc(q,'heldNetwork'));assert held=={'kept':True,'focused':True,'order':['PRIVATE_WIFI','PRIVATE_NEAR','PRIVATE_FAR'],'password':'abc'},held
     ipc(q,'farSignal','0.8')
-    until=time.monotonic()+3
+    until=time.monotonic()+3*SCALE
     while json.loads(ipc(q,'heldNetwork'))['order']!=['PRIVATE_WIFI','PRIVATE_FAR','PRIVATE_NEAR'] and time.monotonic()<until: time.sleep(.05)
     ipc(q,'typeText','d');held=json.loads(ipc(q,'heldNetwork'))
     assert held=={'kept':True,'focused':True,'order':['PRIVATE_WIFI','PRIVATE_FAR','PRIVATE_NEAR'],'password':'abcd'},held
@@ -317,6 +492,16 @@ try:
     ipc(q,'system','wifi');wait(q,lambda s:s['services']['wifi_scanners']==1)
     action(q,'wifi-connect',{'key':'fixture','password':'bad-password'},'wrong_password')
     ipc(q,'systemRow',0);assert ipc(q,'wifiMessage')=='Wrong password. Try again.'
+    # A Wi-Fi error is not the result of a later audio action, nor is a failure the panel did not start.
+    action(q,'output',2)
+    ipc(q,'systemActionStrayWifiFailure','output','2','wrong_password');wait(q,lambda s:s['services']['action']=='confirmed')
+    # A late failure of a join the check gave up on (scenario late-wifi, started above).
+    late=late_wifi()
+    assert late=={'first join kept':True,'join of another network':'confirmed','second join kept':True,'pair accepted':True,
+                  'pairing after the late failure':['pending','bt-pair',True],'password asked again':True,'done':True},late
+    retry=retry_wifi()
+    assert retry=={'retry after a late failure of the earlier join':'pending','password asked again':False,'the retry failing itself':'auth_timeout',
+                   'retry of a new network after a late failure':'confirmation_timeout','new network to be forgotten':False,'done':True},retry
     ipc(q,'wifiFail','auth_timeout');action(q,'wifi-connect',{'key':'fixture','password':'bad-password'},'auth_timeout')
     assert ipc(q,'wifiMessage').startswith('The network did not answer');ipc(q,'wifiFail','wrong_password')
     action(q,'wifi-connect',{'key':'fixture','password':'fixture-password'});ipc(q,'close')
@@ -325,7 +510,7 @@ try:
     s=state(q);assert s['services']['connectivity']=='full' and s['services']['vpn']=='ready' and s['services']['vpn_count']==1 and s['services']['vpn_active']==0
     ipc(q,'connectivity','portal');wait(q,lambda s:s['services']['connectivity']=='portal')
     ipc(q,'system','wifi');action(q,'portal',None,'requested')
-    until=time.monotonic()+5
+    until=time.monotonic()+5*SCALE
     while not (root/'web.json').exists() and time.monotonic()<until: time.sleep(.05)
     assert json.loads((root/'web.json').read_text())==['http://nmcheck.gnome.org/']
     ipc(q,'connectivity','full');ipc(q,'close')
@@ -343,12 +528,19 @@ try:
     action(q,'vpn',{'uuid':'11111111-2222-3333-4444-555555555555','up':False});assert not (root/'vpn-up').exists()
     ipc(q,'close')
     action(q,'bt-connect','fixture-device');action(q,'bt-disconnect','fixture-device')
-    ipc(q,'systemDeny','true');action(q,'bt-connect','fixture-device','confirmation_timeout');ipc(q,'systemDeny','false')
     # Discovery, pairing (failure = `pairing` drops without `paired`), cancel, forget; 60 s pairing window.
     assert action(q,'bt-scan',None)['services']['discovering'] is True;action(q,'bt-scan',None)
     action(q,'bt-pair','fixture-device','already_paired')
     ipc(q,'system','bt');ipc(q,'btPairOutcome','fail');ipc(q,'systemRow',1);wait(q,lambda s:s['services']['action']=='pairing_failed')
     assert ipc(q,'btDetail',1).startswith('Couldn’t pair') and state(q)['services']['paired']==1
+    # Cancelling a pairing that never ends: not refused as busy, no "Couldn’t pair", the panel is free again.
+    ipc(q,'btPairOutcome','hang');ipc(q,'systemRow',1);wait(q,lambda s:s['services']['action']=='pending' and ipc(q,'btDetail',1)=='Pairing…')
+    ipc(q,'systemRow',1);wait(q,lambda s:s['services']['action']=='confirmed')
+    detail=ipc(q,'btDetail',1);assert not detail.startswith(('Pairing','Couldn’t pair')),detail
+    # Connection timeout and cancel targets (scenario bluetooth, started above).
+    bt=bluetooth()
+    assert bt=={'connect not answered':'confirmation_timeout','other device':[False,'busy','bt-pair',True],'device gone':[False,'device_gone','bt-pair'],'done':True},bt
+    action(q,'bt-scan',None);action(q,'bt-scan',None)
     ipc(q,'btPairOutcome','ok');ipc(q,'systemRow',1);wait(q,lambda s:s['services']['action']=='confirmed' and s['services']['paired']==2)
     ipc(q,'close');action(q,'bt-forget','fixture-nearby');assert state(q)['services']['devices']==1
     action(q,'bt-forget','fixture-nearby','device_gone')
@@ -364,18 +556,23 @@ try:
     assert sun()[1]==['-t','4000','-T','4001'];pid1=sun()[0]
     assert ipc(q,'nightWarmth','80')=='true';wait(q,lambda s:s['services']['night']['state']=='on' and (root/'wlsunset.json').exists() and sun()[0]!=pid1)
     assert sun()[1]==['-t','2500','-T','2501'] and not alive(pid1);pid2=sun()[0]
-    until=time.monotonic()+3
+    until=time.monotonic()+3*SCALE
     while not (root/'state/emaki/night-light.json').exists() and time.monotonic()<until: time.sleep(.05)
     assert json.loads((root/'state/emaki/night-light.json').read_text())==dict(version=1,on=True,warmth=80)
     assert ipc(q,'night','false')=='true';wait(q,lambda s:s['services']['night']['state']=='off');time.sleep(.3);assert not alive(pid2)
     (root/'wlsunset.json').unlink();ipc(q,'night','true');wait(q,lambda s:s['services']['night']['state']=='on' and (root/'wlsunset.json').exists());pid3=sun()[0]
     # A new shell with the same state dir starts tinted from the first frame; its death takes wlsunset down (stdin guard).
-    until=time.monotonic()+3
+    until=time.monotonic()+3*SCALE
     while json.loads((root/'state/emaki/night-light.json').read_text())['on'] is not True and time.monotonic()<until: time.sleep(.05)  # the save runs 500 ms after a change
+    # The new shell is also the next login: it takes the flag the guard left when it ended the
+    # session, and says so once; the running shell q leaves that flag alone.
+    state_flag.write_text('end-session\n')
     (root/'wlsunset.json').unlink();d,dp=start('d',False,nmenv);wait(d,lambda s:s['services']['night']['state']=='on' and (root/'wlsunset.json').exists())
     assert sun()[1]==['-t','2500','-T','2501'];pid4=sun()[0];assert pid4!=pid3 and alive(pid3)
+    wait(d,lambda s:not state_flag.exists() and json.loads(ipc(d,'notices'))==[['Screen lock','Emaki could not lock the screen before sleep, so it ended the session.']])
+    assert json.loads(ipc(q,'notices'))==[]
     dp.kill();dp.wait(timeout=3)
-    until=time.monotonic()+3
+    until=time.monotonic()+3*SCALE
     while alive(pid4) and time.monotonic()<until: time.sleep(.05)
     assert not alive(pid4) and alive(pid3)
     ipc(q,'night','false');wait(q,lambda s:s['services']['night']['state']=='off')
@@ -388,6 +585,27 @@ try:
     ipc(q,'close');assert state(q)['session_confirmation']==''
     ipc(q,'system','power');ipc(q,'session','reboot');ipc(q,'confirmSession');wait(q,lambda s:s['services']['action']=='requested')
     assert (root/'session').read_text()=='reboot'
+    # Real Qt Tab/Return/Space on all six power buttons and the confirmation actions.
+    buttons = json.loads(ipc(q, 'powerButtons'))
+    assert [b['key'] for b in buttons] == ['act-lock','act-sleep','act-reboot','act-off','act-logout','act-hibernate'], buttons
+    assert all(b['x'] >= 0 and b['x'] + b['width'] <= b['panelWidth'] for b in buttons), buttons
+    assert ipc(q, 'powerKey', 'act-logout', 'return') == 'act-logout'
+    assert state(q)['session_confirmation'] == 'logout' and (root/'session').read_text() == 'reboot'
+    ipc(q, 'powerKey', 'confirm-no', 'space')
+    assert state(q)['session_confirmation'] == ''
+    assert ipc(q, 'powerKey', 'act-logout', 'tab') == 'act-hibernate'
+    ipc(q, 'powerKey', 'act-hibernate', 'space')
+    assert state(q)['session_confirmation'] == 'hibernate'
+    ipc(q, 'powerKey', 'confirm-go', 'return')
+    wait(q, lambda s: s['services']['action'] == 'requested' and (root/'session').read_text() == 'hibernate')
+    (root/'locked').unlink()
+    ipc(q, 'powerKey', 'act-logout', 'return'); ipc(q, 'powerKey', 'confirm-go', 'space')
+    wait(q, lambda s: s['services']['action'] == 'requested' and (root/'session').read_text() == 'logout')
+    (root/'hibernate').write_text('no')
+    ipc(q, 'systemRefresh')
+    wait(q, lambda s: len(json.loads(ipc(q, 'powerButtons'))) == 5)
+    ipc(q, 'session', 'hibernate'); assert state(q)['session_confirmation'] == ''
+    (root/'session').write_text('reboot')
     # Lock and Sleep from the panel: Sleep asks first, then locks, then suspends.
     action(q,'lock',None,'locked');assert (root/'locked').exists();(root/'locked').unlink()
     ipc(q,'session','suspend');assert state(q)['session_confirmation']=='suspend' and (root/'session').read_text()=='reboot'
@@ -395,6 +613,15 @@ try:
     ipc(q,'close');ipc(q,'battery',9,'false');wait(q,lambda s:s['notifications']['count']==1)
     ipc(q,'battery',8,'false');time.sleep(.15);assert state(q)['notifications']['count']==1
     ipc(q,'battery',50,'true');ipc(q,'battery',9,'false');wait(q,lambda s:s['notifications']['count']==2)
+    # A flag the guard writes while the shell runs: one notice at once, then the flag is gone; the
+    # text says only what the policy in the flag is known to have done.
+    for count,(policy,text) in enumerate({'sleep-relock':'Emaki could not lock the screen before sleep. It tried again after waking.',
+                                          'stay-awake':'Emaki could not lock the screen when sleep was requested.',
+                                          'sleep':'Emaki could not lock the screen before sleep.',
+                                          'unknown-policy':'Emaki could not lock the screen before sleep.'}.items(),3):
+        runtime_flag.write_text(policy+'\n');wait(q,lambda s:s['notifications']['count']==count and not runtime_flag.exists())
+        assert json.loads(ipc(q,'notices'))[0]==['Screen lock',text],(policy,json.loads(ipc(q,'notices'))[0])
+    time.sleep(.3);assert state(q)['notifications']['count']==6 and not state_flag.exists()
     assert not any(x in ipc(q,'status') for x in ('PRIVATE_WIFI','PRIVATE_BT','fixture-password','PRIVATE_HIDDEN','PRIVATE:VPN','1111'))
     # Privacy pill: capture streams (fixture) and screencasts (core model); names stay out of status.
     s=state(q);assert {k:s['privacy'][k] for k in ('mic','cam','cast','visible','open','panel','expansion','rows')}==dict(mic=0,cam=0,cast=0,visible=False,open=False,panel='closed',expansion=0,rows=0)
@@ -424,6 +651,40 @@ try:
     ipc(q,'clickPrivacy');wait(q,lambda s:s['privacy']['expansion']==1)
     ipc(q,'captures','{"list":[]}');ipc(q,'casts',0);s=wait(q,lambda s:not s['privacy']['visible']);assert s['privacy']['rows']==0 and s['privacy']['panel']=='closed',s['privacy']
     assert not any(x in ipc(q,'status') for x in ('PRIVATE_APP','PRIVATE_OTHER'))
+    # A machine on a cable: the Wi-Fi cell and page say wired, with or without a Wi-Fi adapter.
+    def cell():return json.loads(ipc(q,'wifiCell'))
+    before=cell();action(q,'wifi-disconnect',{'key':'fixture'})
+    offline=cell();assert (offline['icon'],offline['fallback'],offline['sub'])==('network-wireless-offline-symbolic','wifi','Not connected'),offline
+    ipc(q,'wired','true');s=cell();assert (s['icon'],s['fallback'])==('network-wired-symbolic','wired') and s['sub'].startswith('Wired · Connected'),s
+    ipc(q,'connectivity','limited');assert cell()['icon']=='network-wired-no-route-symbolic';ipc(q,'connectivity','full')
+    ipc(q,'wifiAbsent','true');s=cell();assert (s['icon'],s['fallback'])==('network-wired-symbolic','wired') and s['sub'].startswith('Wired · Connected'),s
+    ipc(q,'wired','false');s=cell();assert (s['icon'],s['fallback'],s['sub'])==('network-wireless-disabled-symbolic','wifi','No Wi-Fi adapter'),s
+    ipc(q,'wifiAbsent','false');assert cell()==offline
+    action(q,'wifi-connect',{'key':'fixture'});assert cell()==before,(cell(),before)
+    # No internal state code or program name on screen: every state the services, helpers and the
+    # core can report (tests/fixtures/ClockTest.qml shownTexts), and one nobody knows.
+    states=['idle','pending','busy','disabled','unavailable','confirmed','confirmation_timeout','target_gone','stream_gone','invalid_volume','audio_unavailable',
+            'wifi_unavailable_or_blocked','network_gone','password_or_security_unsupported','no_bluetooth_adapter','paired_device_required','bluetooth_off','device_gone',
+            'already_paired','unsupported','output_unavailable','input_unavailable','output_gone','input_gone','pairing_failed','wrong_password','auth_timeout','network_lost',
+            'network_connection_failed','ready','requested','locked','lock_failed','hibernate_unavailable','confirmation_required','invalid_brightness','invalid_profile',
+            'invalid_request','invalid_ssid','invalid_password','no_wifi_device','activation_failed','network_not_found','password_required','helper_missing','operation_failed',
+            'timeout','unconfirmed','no_handler','open_failed','output_limit','helper_failed','invalid_response','on','off','starting','checking','registering','active',
+            'owned_elsewhere','clipboard_missing','copy_failed','invalid_clip_id','copied','deleted','invalid_query','launch_failed','failed','terminal_missing',
+            'not_terminal_app','desktop_missing','connecting','closed','disconnected','incompatible','socket_not_configured','initial_state_timeout','unsupported_version',
+            'unsupported_event','request_rejected','core_binary_not_configured','invalid_core_response','id_out_of_js_range','action_helper_stopped',
+            'invalid_action_response','window_not_found','layout_not_found','postcondition_observed','error','rejected','fixture_code_x']
+    # States whose sentences named a program: NetworkManager, wlsunset, niri, Python GObject.
+    states+=['nm_not_running','not_installed','niri_unavailable','file_missing','access_denied','helper_dependency_missing']
+    def plain(text):return '_' not in text and not re.search(r': [a-z]',text) and not any(w in text for w in ('niri','NetworkManager','PipeWire','wlsunset','GObject'))
+    shown=json.loads(ipc(q,'shownTexts',json.dumps(dict(list=states))));assert len(shown)==len(states)*15,len(shown)
+    raw={k:v for k,v in shown.items() if not plain(v)};assert not raw,raw
+    bar=json.loads(ipc(q,'barTexts','fixture_code_x'));assert bar and all(map(plain,bar)),bar
+    down=json.loads(ipc(q,'downTexts'));assert all(map(plain,down)),down
+    # A failed launch's drawer notice (ShellScene "Couldn’t open …") gets a plain sentence; the
+    # raw reason goes to the log only.
+    got,text=failed_launches()
+    assert got=={'fixture-term':'The terminal it needs isn’t installed.','fixture-fail':'The app didn’t start.','fixture-crash':'The app didn’t start.'},got
+    assert all(map(plain,got.values())) and all(x in text for x in ('fixture-raw-line','terminal_missing','invalid_response')),text
     ipc(q,'systemAbsent');s=state(q)
     assert s['services']['audio']=='unavailable' and s['services']['networks']==0 and s['services']['battery']==-1
     action(q,'volume',40,'unavailable')
@@ -433,20 +694,20 @@ try:
     item=subprocess.Popen([sys.executable,'-B',str(ROOT/'tests/fixtures/tray-item.py'),str(root)],stdout=traylog,stderr=subprocess.STDOUT);processes.append((item,traylog))
     wait(a,lambda s:s['services']['tray_count']==1)
     ipc(a,'system','tray');ipc(a,'systemRow',0)
-    until=time.monotonic()+3
+    until=time.monotonic()+3*SCALE
     while ipc(a,'trayMenuCount')=='0' and time.monotonic()<until: time.sleep(.05)
     assert ipc(a,'trayMenuCount')=='2'
     ipc(a,'trayMenuFirst')
-    until=time.monotonic()+3
+    until=time.monotonic()+3*SCALE
     while not (root/'tray-activated').exists() and time.monotonic()<until: time.sleep(.05)
     assert (root/'tray-activated').read_text()=='clicked';(root/'tray-activated').unlink()
     # Nested DBusMenu: the submenu entry is a QsMenuHandle for a second QsMenuOpener.
     ipc(a,'trayOpenSub',1)
-    until=time.monotonic()+3
+    until=time.monotonic()+3*SCALE
     while ipc(a,'traySubCount')=='0' and time.monotonic()<until: time.sleep(.05)
     assert ipc(a,'traySubCount')=='1'
     ipc(a,'traySubFirst')
-    until=time.monotonic()+3
+    until=time.monotonic()+3*SCALE
     while not (root/'tray-activated').exists() and time.monotonic()<until: time.sleep(.05)
     assert (root/'tray-activated').read_text()=='clicked-3'
     assert 'PRIVATE_SUB' not in ipc(a,'status')

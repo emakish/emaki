@@ -40,7 +40,7 @@ iso_ssh_args() {
     local generation=initial
     [[ ! -f $ISO_VM/ssh-host-generation ]] || generation=$(<"$ISO_VM/ssh-host-generation")
     [[ $generation =~ ^[a-z0-9-]+$ ]] || iso_die 'invalid SSH host generation'
-    ISO_SSH=(ssh -p "$ISO_PORT" -i "$ISO_KEY" -o BatchMode=yes -o IdentitiesOnly=yes
+    ISO_SSH=(ssh -F /dev/null -p "$ISO_PORT" -i "$ISO_KEY" -o BatchMode=yes -o IdentitiesOnly=yes
         -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$ISO_VM/known_hosts-$ISO_USER-$generation"
         -o ConnectTimeout=3 -o ServerAliveInterval=15 "$ISO_USER@127.0.0.1")
 }

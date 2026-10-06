@@ -51,6 +51,7 @@ SystemBackend {
         })[Networking.connectivity] ?? "unknown"
     wifiHardwareEnabled: Networking.wifiHardwareEnabled
     wifiDevices: Networking.devices.values.filter(d => d.type === DeviceType.Wifi)
+    wiredConnected: Networking.devices.values.some(d => d.type === DeviceType.Wired && d.connected)
     networks: wifiDevices.reduce((rows, d) => rows.concat(d.networks.values.map(n => ({
                     key: d.name + "/" + n.name,
                     name: n.name,
@@ -101,9 +102,12 @@ SystemBackend {
         delegate: Connections {
             required property var modelData
             target: modelData.ref
-            // ConnectionFailReason (QS 0.3.1 enums.hpp): NoSecrets is the rejected-PSK case.
+            // ConnectionFailReason (QS 0.3.1 enums.hpp): NoSecrets is the rejected-PSK case;
+            // quickshell-emaki reports a failure without a reason of its own as Unknown. While
+            // the signal is emitted, its Network.activation names the activation that failed
+            // (undefined on a stock Quickshell).
             function onConnectionFailed(reason): void {
-                native.wifiFailed(modelData.key, modelData.ref, reason === ConnectionFailReason.NoSecrets ? "wrong_password" : reason === ConnectionFailReason.WifiAuthTimeout ? "auth_timeout" : reason === ConnectionFailReason.WifiNetworkLost ? "network_lost" : "network_connection_failed");
+                native.wifiFailed(modelData.key, modelData.ref, reason === ConnectionFailReason.NoSecrets ? "wrong_password" : reason === ConnectionFailReason.WifiAuthTimeout ? "auth_timeout" : reason === ConnectionFailReason.WifiNetworkLost ? "network_lost" : "network_connection_failed", modelData.ref.activation);
             }
         }
     }

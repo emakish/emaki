@@ -23,6 +23,8 @@ import statistics
 import subprocess
 import sys
 import time
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 
 MEMORY_FIELDS = ('pss_bytes', 'rss_bytes', 'pss_anon_bytes', 'anon_huge_pages_bytes', 'swap_bytes')

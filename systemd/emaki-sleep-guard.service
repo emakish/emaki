@@ -8,15 +8,31 @@ PartOf=graphical-session.target
 After=graphical-session.target
 Requisite=graphical-session.target
 ConditionUser=!root
-StartLimitIntervalSec=30
-StartLimitBurst=5
+StartLimitIntervalSec=0
 
 [Service]
-Type=simple
+# The guard sends READY=1 once it holds logind's delay inhibitor, together with
+# RESTART_RESET=1 (below). python3 is the main process, as NotifyAccess=main needs.
+Type=notify
 ExecStart=/usr/bin/python3 -I /usr/bin/emaki-sleep-guard
-Restart=on-failure
+# always, not on-failure: the guard exits 0 on SIGTERM, so a `systemctl --user kill`
+# would end it for good. A stop job (systemctl --user stop, the end of the session
+# through PartOf=) is never restarted.
+Restart=always
+# One second after the end of a guard that held its inhibitor: its RESTART_RESET=1
+# sets systemd's restart counter back to 0, which nothing else does while the
+# session lives. A guard that keeps failing before that point backs off in five
+# steps to one start every 30 s instead of one every second. No ExecStartPost=:
+# with one, READY=1 would not make the service running in time for systemd to take
+# the RESTART_RESET=1 of the same message.
 RestartSec=1
+RestartSteps=5
+RestartMaxDelaySec=30
 TimeoutStopSec=20
+# What the guard does when the lock is not confirmed before sleep: see the policy
+# list in /usr/bin/emaki-sleep-guard. Unset = sleep (today's behaviour). Set it in
+# a drop-in (systemctl --user edit emaki-sleep-guard), never here.
+# Environment=EMAKI_SLEEP_LOCK_FAILURE=sleep
 Slice=session.slice
 
 [Install]

@@ -33,16 +33,77 @@ class Redactor:
         return ''.join(ch for ch in value if ord(ch) >= 32 or ch == '\t')
 
 
+def safe_log(log, line):
+    """A failing log sink (a full disk) must never stop a command or the cleanup."""
+    try:
+        log(line)
+    except Exception:
+        pass
+
+
+# Seconds a timed-out command's process group gets after SIGTERM, and after SIGKILL.
+KILL_GRACE = 5.0
+
+
+def group_running(group, proc=Path('/proc')):
+    """True while a process of the group is alive; zombies do not count."""
+    for entry in proc.iterdir():
+        if not entry.name.isdecimal():
+            continue
+        try:
+            text = (entry / 'stat').read_text()
+        except OSError:
+            continue  # A process can exit during the scan.
+        # The command name in parentheses may itself contain spaces and parentheses.
+        fields = text[text.rindex(')') + 2:].split()
+        if len(fields) > 2 and fields[2] == str(group) and fields[0] != 'Z':
+            return True
+    return False
+
+
+def stop_group(process):
+    """Stop a timed-out command with everything it started; True when nothing is left.
+
+    arch-chroot runs the real command as a grandchild, so killing the direct child
+    alone leaves it running. The leader is reaped only after both signals were sent:
+    until then its process group ID cannot be reused by an unrelated process.
+    """
+    group = process.pid
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(group, sig)
+        except ProcessLookupError:
+            break
+        deadline = time.monotonic() + KILL_GRACE
+        while group_running(group) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if not group_running(group):
+            break
+    process.wait()
+    deadline = time.monotonic() + KILL_GRACE
+    while True:
+        try:
+            os.killpg(group, 0)
+        except ProcessLookupError:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
+
+
 class Runner:
     def __init__(self, log, redactor=None, progress=None):
         self.log = log
         self.redactor = redactor or Redactor()
         self.progress = progress
 
-    def run(self, argv, *, check=True, input=None, secret=False, timeout=None):
-        """No shell; secret stdin AND all output of secret commands are suppressed."""
+    def run(self, argv, *, check=True, input=None, secret=False, timeout=None, watch=None):
+        """No shell; secret stdin AND all output of secret commands are suppressed.
+
+        watch(line) sees each logged line of this command; a failing watch is ignored.
+        """
         argv = [str(x) for x in argv]
-        self.log(self.redactor.text('$ ' + shlex.join(argv)))
+        safe_log(self.log, self.redactor.text('$ ' + shlex.join(argv)))
         env = dict(os.environ, LC_ALL='C', LANG='C', SYSTEMD_COLORS='0',
                    SYSTEMD_PAGER='cat', PAGER='cat')
         chunks, pending = [], ''
@@ -50,8 +111,10 @@ class Runner:
         dropping = False
         decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
         try:
+            # Its own session: a timeout reaches every process the command started.
             with subprocess.Popen(argv, stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
-                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env) as process:
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env,
+                                  start_new_session=True) as process:
                 if input is not None:
                     data = input.encode() if isinstance(input, str) else input
                     try:
@@ -64,9 +127,7 @@ class Runner:
                     selector.register(process.stdout, selectors.EVENT_READ)
                     while selector.get_map():
                         if timeout is not None and time.monotonic() - start > timeout:
-                            process.kill()
-                            process.wait()
-                            raise InstallError(Code.COMMAND_FAILED, f'{argv[0]} timed out.')
+                            self._timed_out(process, argv)
                         for key, _ in selector.select(0.2):
                             data = os.read(key.fd, 16384)
                             if not data:
@@ -84,29 +145,49 @@ class Runner:
                                 if not dropping:
                                     pending += segment
                                     if len(pending) > 65536:
-                                        self.log('Oversized subprocess log line suppressed.')
+                                        safe_log(self.log, 'Oversized subprocess log line suppressed.')
                                         pending, dropping = '', True
                                 if index < len(segments) - 1:
                                     if not dropping:
-                                        self._line(pending)
+                                        self._line(pending, watch)
                                     pending, dropping = '', False
                     if not dropping and not secret:
-                        self._line(pending + decoder.decode(b'', final=True))
-                status = process.wait()
+                        self._line(pending + decoder.decode(b'', final=True), watch)
+                if timeout is None:
+                    status = process.wait()
+                else:
+                    # The output can close long before the command ends.
+                    try:
+                        status = process.wait(max(0, timeout - (time.monotonic() - start)))
+                    except subprocess.TimeoutExpired:
+                        self._timed_out(process, argv)
         except OSError as exc:
             raise InstallError(Code.COMMAND_FAILED, f'Cannot run {argv[0]}: {exc.strerror}.') from exc
-        self.log(f'{Path(argv[0]).name}: exit {status}' + (' (private input/output)' if secret else ''))
+        safe_log(self.log, f'{Path(argv[0]).name}: exit {status}' + (' (private input/output)' if secret else ''))
         if check and status:
-            raise InstallError(Code.COMMAND_FAILED, f'{Path(argv[0]).name} exited with status {status}.')
+            raise InstallError(Code.COMMAND_FAILED, f'{Path(argv[0]).name} exited with status {status}.',
+                               output='' if secret else self.redactor.text(''.join(chunks)), returncode=status)
         return '' if secret else ''.join(chunks)
 
-    def _line(self, line):
+    def _timed_out(self, process, argv):
+        if not stop_group(process):
+            safe_log(self.log, f'{Path(argv[0]).name}: processes of the stopped command are still running.')
+        raise InstallError(Code.COMMAND_FAILED, f'{argv[0]} timed out.')
+
+    def _line(self, line, watch=None):
         if line:
-            self.log(self.redactor.text(line))
+            safe_log(self.log, self.redactor.text(line))
+            if watch:
+                # Like the log: a progress display must never stop the command it follows.
+                safe_log(watch, self.redactor.text(line))
             if self.progress:
                 match = re.search(r'\((\d+)\s*/\s*(\d+)\)', line)
                 if match and int(match[2]):
                     self.progress(min(99, 100 * int(match[1]) / int(match[2])))
+                # pacman announces every package of a transaction on its own line.
+                package = re.fullmatch(r'installing (\S+)\.\.\.', line)
+                if package:
+                    self.progress(None, package=package[1])
 
     def chroot(self, argv, target=TARGET, **kwargs):
         return self.run(['arch-chroot', str(target), *argv], **kwargs)
@@ -197,7 +278,7 @@ def stop_target_processes(runner, root):
                 try:
                     if pid not in dict(processes_under(root)):
                         continue
-                    runner.log(f'Stopping target process {pid}: {sig.name}')
+                    safe_log(runner.log, f'Stopping target process {pid}: {sig.name}')
                     signal.pidfd_send_signal(fd, sig)
                     signalled = True
                 finally:
@@ -205,12 +286,13 @@ def stop_target_processes(runner, root):
             except ProcessLookupError:
                 pass
             except OSError as exc:
-                runner.log(f'Could not stop target process {pid}: {exc}')
+                safe_log(runner.log, f'Could not stop target process {pid}: {exc}')
         if sig == signal.SIGTERM and signalled:
             time.sleep(0.5)
 
 
-def cleanup(runner, roots, *, lazy=False):
+def cleanup(runner, roots, *, lazy=False, before_unmount=None):
+    """before_unmount runs once the roots' processes were stopped, while they are still mounted."""
     errors = []
     if not lazy:
         for root in roots:
@@ -221,6 +303,12 @@ def cleanup(runner, roots, *, lazy=False):
                 runner.run(command)
             except InstallError as exc:
                 errors.append(exc.message)
+        if before_unmount is not None:
+            try:
+                before_unmount()
+            except Exception as exc:
+                # It must never keep the target mounted.
+                safe_log(runner.log, 'WARNING: the check before unmounting failed: ' + str(exc))
     for root in roots:
         for mount in mounts_under(root):
             attempts = 1 if lazy else 10
@@ -234,14 +322,14 @@ def cleanup(runner, roots, *, lazy=False):
                         continue
                     errors.append(exc.message)
                     if not lazy:
-                        runner.log(f'Unmount failed after {attempts} attempts: {mount}')
+                        safe_log(runner.log, f'Unmount failed after {attempts} attempts: {mount}')
                         try:
                             runner.run(['fuser', '-vm', '--', str(mount)], check=False)
                         except InstallError as diagnostic:
-                            runner.log('fuser diagnostic failed: ' + diagnostic.message)
+                            safe_log(runner.log, 'fuser diagnostic failed: ' + diagnostic.message)
                         remaining = processes_under(root) if root.exists() else []
-                        runner.log('Processes rooted inside target: ' +
-                                   (', '.join(f'{pid} root={path}' for pid, path in remaining) or 'none'))
+                        safe_log(runner.log, 'Processes rooted inside target: ' +
+                                 (', '.join(f'{pid} root={path}' for pid, path in remaining) or 'none'))
     require(not errors, Code.CLEANUP_FAILED, '; '.join(errors))
 
 

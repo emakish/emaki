@@ -412,6 +412,23 @@ pub(super) fn run(
                 },
             )?;
         }
+        Operation::Reset { key } => {
+            // Same commit path and journal as set: a set entry whose after is null.
+            document.clear(key)?;
+            (status, reason, change_id) = apply(
+                &profile,
+                &mut journal,
+                Commit {
+                    before: before.as_deref().unwrap_or_default(),
+                    original: &original,
+                    desired: &mut document,
+                    gaps,
+                    timeout,
+                    kind: journal::Kind::Set,
+                    undo_of: None,
+                },
+            )?;
+        }
         Operation::Undo { id } => {
             (document, conflicts) = journal.undo(id, &original)?;
             if conflicts.is_empty() {

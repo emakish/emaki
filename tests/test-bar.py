@@ -3,10 +3,13 @@
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
 import time
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT=Path(__file__).resolve().parent.parent
 root=Path(tempfile.mkdtemp(prefix='bp-',dir=ROOT/'.cache'))
@@ -102,3 +105,36 @@ with (root/'qs.log').open('w') as log:
 text=(root/'qs.log').read_text()
 assert not any(x in text for x in ('WARN','ERROR','TypeError','ReferenceError')),text
 print('PASS: overview variants, reserve 52→10, edge/hot-corner/fullscreen/unknown, modal hold, pointer tooltips and cancellation:',root)
+
+# The bar's input mask after a fullscreen window hid the bar and gave it back: the real
+# shell.qml and Surfaces.qml, the layer-shell windows as FloatingWindows that keep their masks.
+def remove_block(source,marker):
+    while marker in source:
+        begin=source.index(marker);end=source.index('{',begin)+1;depth=1
+        while depth:depth+=(source[end]=='{')-(source[end]=='}');end+=1
+        source=source[:begin]+source[end:]
+    return source
+m=Path(tempfile.mkdtemp(prefix='bm-',dir=ROOT/'.cache'))
+for d in ('r','cache','config','state','data','tmp'): (m/d).mkdir(mode=0o700)
+mq=m/'q';shutil.copytree(ROOT/'shell',mq);shutil.copyfile(ROOT/'tests/fixtures/BarMaskDriver.qml',mq/'BarMaskDriver.qml')
+with (mq/'qmldir').open('a') as f:f.write('BarMaskDriver 1.0 BarMaskDriver.qml\n')
+(mq/'SystemNative.qml').write_text('import QtQuick\nSystemBackend { startupReady: true }\n')
+(mq/'helpers/wallpaper.py').write_text('import json\nprint(json.dumps(dict(state="unavailable", texture="")))\n')
+(mq/'helpers/launcher-tools.py').write_text('import json,sys\njson.loads(sys.stdin.readline())\nprint(json.dumps(dict(schema_version=1,state="unavailable")))\n')
+surf=remove_block((mq/'Surfaces.qml').read_text(),'        anchors {')
+surf=re.sub(r'^        (?:exclusiveZone|exclusionMode|WlrLayershell\.[A-Za-z]+|BackgroundEffect\.blurRegion|implicit(?:Width|Height)):[^\n]*\n','',surf,flags=re.MULTILINE)
+surf=surf.replace('PanelWindow {','FloatingWindow {\n        implicitWidth: surfaces.controller.viewportWidth\n        implicitHeight: surfaces.controller.viewportHeight')
+surf=surf.replace('surfaces.controller.output !== null','true')
+assert surf.count('FloatingWindow {')==3 and surf.count('        mask: ')==3,surf
+(mq/'Surfaces.qml').write_text(surf)
+entry=(mq/'shell.qml').read_text().replace('headless: root.headless','headless: true')
+entry=entry[:entry.rfind('}')]+'    BarMaskDriver {\n        scene: scene\n        surfaces: root.surfaceWindows\n    }\n}\n'
+(mq/'check.qml').write_text(entry)
+menv=dict(env,EMAKI_SHELL_BORDER='soft',EMAKI_SHELL_HEADLESS='0',EMAKI_SHELL_TEST_WIDTH='1280',EMAKI_SHELL_TEST_HEIGHT='800',
+          EMAKI_SESSION_START='',EMAKI_SESSION_SKIP_INTRO='',HOME=str(m),EMAKI_PYTHON='/usr/bin/python3',
+          XDG_RUNTIME_DIR=str(m/'r'),XDG_CACHE_HOME=str(m/'cache'),XDG_CONFIG_HOME=str(m/'config'),XDG_STATE_HOME=str(m/'state'),
+          XDG_DATA_HOME=str(m/'data'),XDG_DATA_DIRS=str(m/'data'),TMPDIR=str(m/'tmp'))
+r=subprocess.run(['qs','-p',str(mq/'check.qml'),'--no-color'],env=menv,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=20)
+assert r.returncode==0 and 'BAR_MASK_OK' in r.stdout,r.stdout
+assert not any(x in r.stdout for x in ('TypeError','ReferenceError','Binding loop','BAR_MASK_FAILED')),r.stdout
+print('PASS: the bar input mask follows the bar back after a covering window:',next(l for l in r.stdout.splitlines() if 'BAR_MASK_OK' in l).split('BAR_MASK_OK ')[1],m)

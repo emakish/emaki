@@ -27,7 +27,7 @@ MAX_IMAGE = 32 * 1024 * 1024
 # selection itself, before Image.open can dispatch to EPS/Ghostscript or another
 # external decoder. The ordinary C8/user reader keeps its existing format policy.
 PUBLISHED_FORMATS = ('PNG', 'JPEG', 'WEBP')
-# 6016×6016 (36 Mpx, the MacBook Neo wallpaper Emaki's glass was tuned on) must pass.
+# 6016×6016 (36 Mpx) must pass.
 MAX_PIXELS = 48_000_000
 MAX_OUTPUT = 12_000_000  # Includes 3840x2400 while bounding each output's allocation.
 STALE_TEMP_SECONDS = 60  # Longer than WallpaperSource's eight-second helper deadline.

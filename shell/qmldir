@@ -28,6 +28,7 @@ SystemBackend 1.0 SystemBackend.qml
 SystemNative 1.0 SystemNative.qml
 SystemService 1.0 SystemService.qml
 SystemBody 1.0 SystemBody.qml
+PasswordToggle 1.0 PasswordToggle.qml
 MicMeter 1.0 MicMeter.qml
 SystemMeterPolicy 1.0 SystemMeterPolicy.qml
 TrayService 1.0 TrayService.qml
@@ -80,3 +81,11 @@ LockVisual 1.0 LockVisual.qml
 LockWordmark 1.0 LockWordmark.qml
 LockCapture 1.0 LockCapture.qml
 LockCapturePanel 1.0 LockCapturePanel.qml
+Welcome 1.0 Welcome.qml
+WelcomeButton 1.0 WelcomeButton.qml
+WelcomeGlass 1.0 WelcomeGlass.qml
+WelcomeStore 1.0 WelcomeStore.qml
+WelcomeWindow 1.0 WelcomeWindow.qml
+WelcomeController 1.0 WelcomeController.qml
+SnapshotPrompt 1.0 SnapshotPrompt.qml
+SnapshotRecovery 1.0 SnapshotRecovery.qml

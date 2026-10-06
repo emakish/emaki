@@ -15,6 +15,7 @@ if command -v shellcheck >/dev/null; then
     echo 'OK: shellcheck'
 else
     echo 'UNVERIFIED: shellcheck unavailable'
+    incomplete=1
 fi
 python3 - "$HERE" "$ROOT/tests/vm" <<'PY'
 import ast

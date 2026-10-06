@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# shellcheck shell=bash
+# The preset file enables CUPS only through the installer's preset-all. On a running
+# system nothing is enabled or started here: "never enabled" and "switched off by the
+# person" look the same, so the person gets the one command instead.
+_emaki_printing_hint() {
+    # Silent when enabled, or masked on purpose (a link to /dev/null).
+    [ -e /etc/systemd/system/multi-user.target.wants/cups.service ] ||
+        [ -L /etc/systemd/system/cups.service ] ||
+        echo 'Printing is off. Switch it on: sudo systemctl enable --now cups.service'
+}
+
+post_install() {
+    _emaki_printing_hint
+}
+
+post_upgrade() {
+    _emaki_printing_hint
+}

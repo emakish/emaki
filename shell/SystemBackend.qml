@@ -21,6 +21,8 @@ Item {
     property bool networkReady: false
     property bool wifiEnabled: false
     property bool wifiHardwareEnabled: false
+    // A wired (Ethernet) device is connected.
+    property bool wiredConnected: false
     property var wifiDevices: []
     property var networks: []
     // Wi-Fi scanning while the Wi-Fi page asks for it (SystemBody). QS 0.3.1 lists a network
@@ -47,8 +49,11 @@ Item {
     property var devices: []
     // Capture streams: [{kind: "mic"|"cam", name}] — presentation data, never serialized by status.
     property var captures: []
-    property string actionError: ""
     // Keep attempt provenance across NM's asynchronous profile creation. No secrets here.
+    // A failure is kept on its attempt and read only by that attempt's own check: it arrives
+    // asynchronously, possibly after that check gave up and while another action is pending.
+    // A join retried on the same network supersedes the activation it found there
+    // (quickshell-emaki's Network.activation): that activation's failure is not the retry's.
     property var wifiAttempts: ({})
     property var wifiCleanup: ({})
     property var wifiPasswordKeys: []
@@ -71,11 +76,15 @@ Item {
         }
     }
     onNetworksChanged: updateWifiAttempts()
-    function wifiFailed(key: string, network: var, error: string): void {
-        actionError = error;
+    // `activation`: the activation that failed; undefined when Quickshell does not name it.
+    function wifiFailed(key: string, network: var, error: string, activation: var): void {
         const attempt = wifiAttempts[key];
         if (!attempt || attempt.ref !== network)
             return;
+        if (activation && activation === attempt.superseded)
+            return;
+        // Only failures of the panel's own attempts become the action's result.
+        attempt.error = error;
         delete wifiAttempts[key];
         if (error !== "wrong_password")
             return;
@@ -92,7 +101,6 @@ Item {
     }
     // Confirm from published properties, not an optimistic local switch.
     function act(kind: string, value: var): var {
-        actionError = "";
         // One stream (`id`) or an app's streams at once (`ids`: the panel's slider per app).
         if (kind === "stream-volume") {
             const ids = value?.ids !== undefined ? Array.from(value.ids).map(Number) : [Number(value?.id)];
@@ -151,15 +159,18 @@ Item {
                 const replaceSecret = !entry.open && (supplied || wifiPasswordKeys.includes(entry.key) || !n.known);
                 if (replaceSecret && !(entry.psk && supplied && value.password.length >= 8 && value.password.length <= 63))
                     return "password_or_security_unsupported";
-                wifiAttempts[entry.key] = {
+                const attempt = {
                     ref: n,
-                    known: n.known
+                    known: n.known,
+                    error: "",
+                    superseded: n.activation
                 };
+                wifiAttempts[entry.key] = attempt;
                 if (replaceSecret)
                     n.connectWithPsk(value.password);
                 else
                     n.connect();
-                return () => n.connected === true;
+                return () => attempt.error || n.connected === true;
             }
             if (kind === "wifi-disconnect") {
                 n.disconnect();

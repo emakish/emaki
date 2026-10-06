@@ -53,7 +53,7 @@ SystemBackend {
             discoverable: true,
             name: "emaki"
         })
-    devices: [["buds", "Pixel Buds Pro", "audio-headphones", true, 80], ["k2", "Keychron K2", "input-keyboard", false, -1], ["pixel", "Pixel 11 Pro", "phone", false, -1]].map(d => ({
+    devices: [["buds", "Pixel Buds Pro", "audio-headphones", true, 80], ["k2", "Keychron K2", "input-keyboard", false, -1], ["pixel", "Phone", "phone", false, -1]].map(d => ({
                 key: "/org/bluez/hci0/dev_" + d[0],
                 name: d[1],
                 icon: d[2],

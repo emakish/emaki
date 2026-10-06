@@ -1,4 +1,7 @@
 #!/bin/bash
+# greetd hands this process the login VT as stdin/stdout/stderr. Keep the VT on fd 3 for the
+# failure screen below; nothing else writes to it.
+exec 3>&1
 # Keep the login VT silent, including dbus-run-session diagnostics.
 # Drain the pipe if journald is unavailable so children can continue writing.
 if command -v systemd-cat >/dev/null 2>&1; then
@@ -13,4 +16,132 @@ else
     export EMAKI_GREETER_COMPOSITOR=niri
     unset EMAKI_GREETER_KEEP_FRAME
 fi
-exec dbus-run-session "$EMAKI_GREETER_COMPOSITOR" --config /usr/share/emaki/greetd/niri.kdl
+
+# The compositor runs as a child, so this process can show a text screen when it fails.
+# greetd's signals arrive here and are forwarded, as they reached the compositor before.
+# bash gives a background command /dev/null as stdin and ignores SIGINT/SIGQUIT in it; the
+# subshell undoes both so the compositor starts exactly as it did with exec.
+signalled=
+interrupted=
+forward() { signalled=1 interrupted=1; kill -s "$1" "$compositor" 2>/dev/null; }
+trap 'forward TERM' TERM
+trap 'forward INT' INT
+trap 'forward HUP' HUP
+# Whole seconds since boot from /proc/uptime (the kernel's boot clock). bash's SECONDS follows
+# the wall clock, which NTP may step while the system boots.
+boot_seconds() {
+    local now=
+    read -r now _ 2>/dev/null < "${EMAKI_UPTIME_FILE:-/proc/uptime}"
+    now=${now%%.*}
+    [[ $now =~ ^[0-9]+$ ]] || now=0
+    echo "$((10#$now))"
+}
+started=$(boot_seconds)
+(
+    trap - INT QUIT
+    exec dbus-run-session "$EMAKI_GREETER_COMPOSITOR" --config /usr/share/emaki/greetd/niri.kdl
+) <&0 3>&- &
+compositor=$!
+wait "$compositor"
+status=$?
+# A trapped signal interrupts wait before the child is gone: wait again for its real status.
+while [[ -n $interrupted ]] && kill -0 "$compositor" 2>/dev/null; do
+    interrupted=
+    wait "$compositor"
+    status=$?
+done
+ended=$(boot_seconds)
+
+# Failure = the fork's "no primary GPU renderer" status (niri-emaki patch 0006), or any other
+# non-zero exit within 15 s of the start. Every other exit, and any exit after a signal from
+# greetd, ends this process with the compositor's status as before.
+if [[ -n $signalled ]] || ((status == 0)) || { ((status != 3)) && ((ended - started >= 15)); }; then
+    exit "$status"
+fi
+
+echo "showing graphics-failed message (status $status)"
+greetd_dir=${EMAKI_GREETD_DIR:-/usr/share/emaki/greetd}
+show_message() {
+    local lines=() i
+    mapfile -t lines < "$greetd_dir/graphics-failed.txt" 2>/dev/null
+    ((${#lines[@]})) || lines=('Emaki could not start its graphical desktop.')
+    printf '\033[H\033[2J' >&3
+    printf '%s\n' "${lines[0]}" >&3
+    if ((status == 3)); then
+        printf '%s\n' 'Cause: no hardware 3D renderer was found.' >&3
+    fi
+    for ((i = 1; i < ${#lines[@]} - 1; i++)); do
+        printf '%s\n' "${lines[i]}" >&3
+    done
+    if [[ -e ${EMAKI_LIVE_MARKER:-/run/archiso} ]]; then
+        printf '%s\n' 'User: live, no password.' >&3
+    fi
+    if ((${#lines[@]} > 1)); then
+        printf '%s\n' "${lines[-1]}" >&3
+    fi
+}
+
+# Text login on the VT. agreety prints its prompts on stderr, which goes to fd 3, and /etc/issue
+# on stdout, which goes nowhere (below); it exits 0 once greetd has accepted a login (the
+# session starts when this process exits) and non-zero on anything else, including end of
+# input. A greeter that exits without a session ends greetd, so this loop ends only on a login
+# or on greetd's own signal; Ctrl+C, Ctrl+\ and Ctrl+Z at the prompt are ignored for the same
+# reason.
+# SIGTTOU too: this process and agreety change the VT's settings and foreground group from
+# outside that group (below).
+trap '' INT QUIT TSTP TTOU
+trap 'kill -s TERM "$login" 2>/dev/null; exit 0' TERM HUP
+# The traps cannot cover greetd's session worker: it made the VT its controlling terminal and
+# shares its foreground process group with this process, with the default action for SIGINT
+# and SIGQUIT. A key that killed it would end greetd, and five of those in 30 s leave
+# greetd.service failed and this VT dead. So the VT sends no signals while that group is in
+# front of it; its settings come back when this process exits.
+vt_settings=$(stty -g 2>/dev/null)
+trap '[[ -n $vt_settings ]] && stty "$vt_settings" 2>/dev/null' EXIT
+stty -isig 2>/dev/null
+# Each agreety leads its own process group, put in front of the VT before the signal keys go
+# back on: Ctrl+C, Ctrl+\ and Ctrl+Z then signal only that group, which ignores them, and the
+# VT drops them instead of handing agreety a login name with a control character in it (greetd
+# answers that with "protocol error"). The VT stays with that group, live or ended, until this
+# process exits. bash cannot move the VT to another group (tcsetpgrp); Python can. Without it,
+# or when the VT refuses, agreety runs as before: in this group, with the keys off.
+front='import os, signal, sys, termios
+signal.signal(signal.SIGTTOU, signal.SIG_IGN)
+group = os.getpgrp()
+try:
+    os.setpgid(0, 0)
+    os.tcsetpgrp(0, os.getpid())
+except OSError:
+    os.setpgid(0, group)
+else:
+    try:
+        mode = termios.tcgetattr(0)
+        mode[3] |= termios.ISIG
+        termios.tcsetattr(0, termios.TCSANOW, mode)
+    except (OSError, termios.error):
+        pass
+os.execvp(sys.argv[1], sys.argv[1:])'
+# Only a python3 that can run the step, asked once: one that fails (a broken interpreter, no
+# termios module) would end every attempt before agreety starts, and the VT would show the
+# issue once a second and never a prompt. Its error goes to the journal.
+launch=()
+if python3 -I -c 'import os, signal, sys, termios' >/dev/null; then
+    launch=(python3 -I -c "$front")
+fi
+# The message once per failure: a new agreety run leaves the screen as it is, so the "error:"
+# line agreety printed when it ended stays visible above the next prompt.
+show_message
+while :; do
+    # The issue above every prompt, as the getty on tty2 shows it. agreety 0.10.3 expands only
+    # \S, \l, \s, \r, \v, \n, \m and \\ in /etc/issue, so Arch's `\S{PRETTY_NAME} \r (\l)` came
+    # out as "Emaki{PRETTY_NAME} ..."; its stdout carries nothing else. agetty --show-issue
+    # expands the issue as the getty does; its \l is always tty1, this greeter's VT
+    # (greetd/config.toml).
+    agetty --show-issue >&3
+    "${launch[@]}" agreety --max-failures 1000000 --cmd emaki-text-session <&0 >/dev/null 2>&3 3>&- &
+    login=$!
+    if wait "$login"; then
+        exit 0
+    fi
+    sleep 1
+done

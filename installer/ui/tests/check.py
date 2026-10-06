@@ -89,12 +89,14 @@ def main():
     if shutil.which('desktop-file-validate'):
         checked(['desktop-file-validate', str(UI / 'emaki-install.desktop')])
         print('PASS desktop-file-validate')
-    with tempfile.TemporaryDirectory(prefix='emaki-package-s4-') as temp:
+    with tempfile.TemporaryDirectory(prefix='emaki-installer-package-') as temp:
         block = (ROOT / 'packaging/emaki-installer/PKGBUILD').read_text().split('# --- installer window ---')[1].split('# --- end installer window ---')[0]
         checked(['bash', '-c', 'set -eu\nstage() {\n' + block + '\n}\nstage\n'], cwd=ROOT, env=dict(os.environ, pkgdir=temp))
         destination = Path(temp) / 'usr/share/emaki-installer/ui'
-        for name in ['shell.qml', 'InstallerController.qml', 'InstallerView.qml', 'GlassPane.qml', 'Protocol.js', 'ui-helper.py']:
+        for name in ['shell.qml', 'InstallerController.qml', 'InstallerView.qml', 'GlassPane.qml', 'TimezoneMap.qml', 'Protocol.js', 'Timezones.js', 'ui-helper.py']:
             assert (destination / name).read_bytes() == (UI / name).read_bytes()
+        for name in ['ZoneData.js', 'timezone-map.png', 'README.md', 'ODbL-1.0.txt', 'generate-timezones.py']:
+            assert (destination / 'assets' / name).read_bytes() == (UI / 'assets' / name).read_bytes()
         assert (destination / 'shaders').is_symlink()
         assert os.access(Path(temp) / 'usr/bin/emaki-install', os.X_OK)
         assert (Path(temp) / 'usr/share/applications/emaki-install.desktop').exists()

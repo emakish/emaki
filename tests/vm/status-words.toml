@@ -1,0 +1,83 @@
+# Honest status words (plans/eyes-acceptance.md 5.5). tests/test-status-words.py reads this list
+# and checks the status documents and the release gates below against it (make check).
+#
+# A check is reported with one of the phrases below and carries what that phrase must carry.
+# A word of `claim_words` may stand only on a line that holds one of the three positive phrases
+# (script passed, seen in VM, seen on hardware by) with its evidence. A word of `never_alone`
+# needs, in its paragraph, one of the phrases or a piece of `alone_evidence` (a command or path
+# in backticks, a commit or sha, a log, a hardware line, a DECISIONS entry). Nothing is claimed
+# by a negation (one of `negations` up to three words before the word), by words in double
+# quotes (a person's own words, a label on screen), by `code` or by a link target.
+
+# The vocabulary applies to text written from this day on. A document block dated earlier is
+# history and is not checked; [documents] says how a block's date is read.
+since = 2026-10-05
+
+claim_words = ["verified", "works", "OK", "проверено"]
+never_alone = ["done", "passed", "clean", "accepted"]
+negations = ["not", "never", "no", "none", "nothing", "nobody", "neither", "nor", "without", "whether"]
+alone_evidence = ['`[^`]+`', '\b(?=[0-9a-f]*[a-f])[0-9a-f]{7,64}\b', '\.log\b', '\bH-[MTN]\d+\b', '\bDECISIONS\b']
+# Fixed phrases in which a word of `never_alone` is no claim (regular expressions, any case).
+idioms = ['\b(done|closed) when\b']   # the closure criteria of a brick
+
+# `evidence`: regular expressions that must all match in the paragraph of the phrase. Only the
+# positive phrases are held to it; the negative ones are honest as they stand.
+[[phrase]]
+text = "script passed"
+when = "a named command exited 0"
+carries = "the command and the log path; says nothing about the screen"
+evidence = ['`[^`]+`', '\blogs?\b']
+
+[[phrase]]
+text = "seen in VM"
+when = "the stage's frame from the release ISO was opened and judged OK under plan 5.3"
+carries = "sheet path, ISO sha12, reviewer, date"
+evidence = ['\b[0-9a-f]{12,64}\b', '\b\d{4}-\d{2}-\d{2}\b', '\S+\.(toml|md|html)\b']
+
+[[phrase]]
+text = "seen on hardware by"
+when = "the owner said so, in his words (the phrase names who saw it)"
+carries = "machine, date, ISO sha12"
+evidence = ['\b[0-9a-f]{12,64}\b', '\b\d{4}-\d{2}-\d{2}\b']
+
+[[phrase]]
+text = "failed"
+when = "a script exited non-zero, or a stage result is FAIL"
+carries = "the command or stage, the log or frame"
+
+[[phrase]]
+text = "not tested"
+when = "it applies to this release and nobody ran or saw it (stage result NOT TESTED; includes what the VM cannot show)"
+carries = "reason and the hardware line or run that will cover it"
+
+[[phrase]]
+text = "not applicable"
+when = "the feature is not in this image (stage result NOT APPLICABLE)"
+carries = "the DECISIONS entry or the frame showing its absence"
+
+# Status documents: path or glob -> how an undated line is treated ("check" or "skip").
+# A block's date: a heading dates everything up to the next heading, with its own date or else
+# the date of the heading above it (# Night 2026-10-05 dates its ## sections); a line that
+# opens with a bold span holding a date (**2026-10-04 — ...**) dates everything up to the next
+# such line or heading; a line that opens with an italic span holding a date (*Update
+# 2026-10-05:*) dates its own paragraph only (up to a blank line, a list item or a bold-led line).
+# STATUS.md is status throughout; ROADMAP.md is a plan whose status lines are its dated ones.
+# Files named on the command line (a night journal, release notes) are read as "check".
+[documents]
+"STATUS.md" = "check"
+"ROADMAP.md" = "skip"
+"docs/history/acceptance-*.md" = "check"
+
+# Release gates: every printed RESULT line is one of `result_lines`; every SHOT line says
+# `shot_suffix` (a picture is never a pass). Globs are relative to the repository root.
+[gate]
+files = ["tests/vm/*.sh", "tests/vm/*.py", "tests/vm/eyes/*.sh", "tests/vm/eyes/*.py", "iso/*.sh",
+         "iso/*.py", "installer/ui/tests/check.py", "Makefile"]
+required = ["tests/vm/release-gate.sh", "tests/vm/eyes/eyes-gate.py"]
+result_lines = [
+    '^RESULT: SCRIPTS PASSED(: .+)?$',
+    '^RESULT: FAILED at .+$',
+    '^RESULT: NOT TESTED .+$',
+    '^RESULT: PASSED \(walk record of .+\)$',   # eyes-gate.py: a judged walk record of one image
+]
+shot_suffix = "(not judged)"

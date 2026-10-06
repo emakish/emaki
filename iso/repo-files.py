@@ -38,6 +38,14 @@ def check_input(repo, names):
         subprocess.run(['pacman-key', '--verify', str(package) + '.sig', str(package)], check=True)
 
 
+def check_closure(manifest):
+    names = {name.rsplit('-', 3)[0] for name in manifest.read_text().splitlines()}
+    if 'nautilus' in names:
+        raise ValueError('Nautilus is forbidden in the target/offline closure')
+    if 'xdg-desktop-portal-gnome' in names:
+        raise ValueError('Use the Emaki portal package in the target/offline closure')
+
+
 def signatures(cache, db):
     entries = {}
     for database in sorted((db / 'sync').glob('*.db')):
@@ -64,12 +72,16 @@ def main():
     source = sub.add_parser('check-input')
     source.add_argument('repo', type=Path)
     source.add_argument('names', type=Path)
+    closure = sub.add_parser('check-closure')
+    closure.add_argument('manifest', type=Path)
     sigs = sub.add_parser('signatures')
     sigs.add_argument('cache', type=Path)
     sigs.add_argument('db', type=Path)
     args = parser.parse_args()
     if args.action == 'check-input':
         check_input(args.repo, args.names)
+    elif args.action == 'check-closure':
+        check_closure(args.manifest)
     else:
         signatures(args.cache, args.db)
 

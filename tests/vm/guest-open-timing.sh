@@ -79,4 +79,5 @@ best = min(repeat) if repeat else None
 ok_first = best is not None and best < 16
 print(f"[{name}]   first frame excluding vsync wait on repeat openings: {repeat} ms (best < 16)")
 print(f"[{name}] open-first-frame: {'ok' if ok_first else f'BAD best={best}'}")
+sys.exit(0 if ok_windows and ok_first else 1)
 EOF

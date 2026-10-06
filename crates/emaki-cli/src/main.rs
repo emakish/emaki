@@ -11,7 +11,7 @@ use std::time::Duration;
 const HELP: &str = "Usage: emaki <command> [options]
 
 Commands:
-  settings list|get|set          Isolated managed settings; see settings --help
+  settings list|get|set          Not connected to your session yet; see settings --help
   version                       Print the Emaki build version
   map [--json]                  Expected paths and ownership; no filesystem writes
   state [--json] [--timeout-ms N]

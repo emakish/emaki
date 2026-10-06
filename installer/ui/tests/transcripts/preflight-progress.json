@@ -1,0 +1,72 @@
+{
+  "base": "erase-happy",
+  "confirm": [
+    {
+      "type": "reply",
+      "ok": true,
+      "job_id": "fixture-preflight-job"
+    },
+    {
+      "type": "progress",
+      "job_id": "fixture-preflight-job",
+      "phase": "prepare_disk",
+      "phase_pct": 0,
+      "total_pct": 0,
+      "indeterminate": true,
+      "activity": {
+        "name": "signatures",
+        "done": 0,
+        "total": 871
+      }
+    },
+    {
+      "type": "progress",
+      "job_id": "fixture-preflight-job",
+      "phase": "prepare_disk",
+      "phase_pct": 0,
+      "total_pct": 0,
+      "indeterminate": true,
+      "activity": {
+        "name": "signatures",
+        "done": 312,
+        "total": 871
+      }
+    },
+    {
+      "type": "progress",
+      "job_id": "fixture-preflight-job",
+      "phase": "prepare_disk",
+      "phase_pct": 0,
+      "total_pct": 0,
+      "indeterminate": true,
+      "activity": {
+        "name": "signatures",
+        "done": 871,
+        "total": 871
+      }
+    },
+    {
+      "type": "state",
+      "job_id": "fixture-preflight-job",
+      "phase": "prepare_disk",
+      "phase_pct": 0,
+      "total_pct": 0,
+      "indeterminate": true
+    },
+    {
+      "type": "state",
+      "job_id": "fixture-preflight-job",
+      "phase": "prepare_disk",
+      "phase_pct": 100,
+      "total_pct": 5,
+      "indeterminate": false
+    },
+    {
+      "type": "done",
+      "job_id": "fixture-preflight-job",
+      "log_path": "/var/log/emaki-install.log",
+      "seconds": 64,
+      "warnings": []
+    }
+  ]
+}

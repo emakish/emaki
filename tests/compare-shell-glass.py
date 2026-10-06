@@ -15,6 +15,8 @@ import subprocess
 
 import numpy as np
 from PIL import Image, ImageOps
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location('render_shell', ROOT/'tests/render-shell.py')
@@ -59,7 +61,7 @@ def main():
     parser.add_argument('--scale', type=float, default=1.25, help='redirected window buffer DPR')
     parser.add_argument('--screen-scale', type=float, default=2, help='independent synthetic QScreen DPR')
     parser.add_argument('--texture-scale', type=float, default=2)
-    parser.add_argument('--wallpaper', type=Path, default=ROOT/'docs/mockups/liquid-glass/wallpaper-neo-pink.jpg')
+    parser.add_argument('--wallpaper', type=Path, default=ROOT/'art/wallpaper/ring.png')
     parser.add_argument('--candidate-scale', type=float, help='optional separate texture/decode scale candidate')
     parser.add_argument('--shots', nargs='+', choices=(*SHOTS, 'dock-release'), default=SHOTS)
     parser.add_argument('--release-frame', type=int, default=0, help='deterministic return steps for dock-release')

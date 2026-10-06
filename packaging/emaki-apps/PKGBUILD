@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# shellcheck shell=bash disable=SC2034,SC2154
+pkgname=emaki-apps
+pkgver=0.2.0
+pkgrel=1
+pkgdesc='Emaki Rich application set and multimedia codecs'
+arch=('any')
+url='https://github.com/emakish/emaki'
+license=('GPL-3.0-or-later')
+install=emaki-apps.install
+source=('45-emaki-apps.preset')
+sha256sums=('6f4c0b34deae9d86b115cc630ed06e27bb56326dab9e05e9dc0315b0bb245cba')
+depends=(
+    'emaki-desktop'
+    'gwenview' 'ark' 'okular' '7zip' 'unrar'
+    'thunderbird' 'qbittorrent'
+    'haruna' 'elisa'
+    'kate' 'libreoffice-fresh'
+    # Metric-compatible with Arial/Times/Courier and Calibri, so Office documents keep
+    # their page layout; the English spelling dictionary for LibreOffice and KDE apps.
+    'ttf-liberation' 'ttf-carlito' 'hunspell-en_us'
+    'spectacle' 'obs-studio'
+    'plasma-systemmonitor' 'partitionmanager' 'filelight' 'discover' 'flatpak'
+    'fwupd' 'isoimagewriter'
+    'cups' 'print-manager' 'skanlite' 'kdeconnect'
+    'kcharselect' 'keepassxc'
+    'gst-plugins-base' 'gst-plugins-good' 'gst-plugins-bad' 'gst-plugins-ugly'
+    # The explicit codec contract of the Rich set. ffmpeg already arrives as a
+    # dependency of firefox (Minimal) and of thunderbird, haruna, obs-studio and
+    # gst-libav. qt6-multimedia-ffmpeg arrives only as one of the two providers of
+    # qt6-multimedia-backend (the other is qt6-multimedia-gstreamer); naming it
+    # keeps Qt Multimedia on the FFmpeg backend.
+    'gst-libav' 'qt6-multimedia-ffmpeg' 'ffmpeg'
+)
+
+package() {
+    install -Dm644 "$srcdir/45-emaki-apps.preset" \
+        "$pkgdir/usr/lib/systemd/system-preset/45-emaki-apps.preset"
+}

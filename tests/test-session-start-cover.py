@@ -14,6 +14,8 @@ import subprocess
 import sys
 import tempfile
 from PIL import Image, ImageChops
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 TOKEN = 'a'*32

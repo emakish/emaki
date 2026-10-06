@@ -11,6 +11,8 @@ import subprocess
 import tempfile
 
 from PIL import Image
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / '.cache'
@@ -66,6 +68,11 @@ for scale in ('1', '1.25', '2'):
     text = (profile / 'qs.log').read_text()
     assert 'STRIP_COMPLETE' in text, text
     assert not any(w in text for w in ('WARN', 'ERROR', 'ReferenceError', 'TypeError')), text
+    # While the core has not answered, the island is one empty cell; offline it says so in words.
+    connecting, down = (json.loads(next(line.split(tag, 1)[1] for line in text.splitlines() if tag in line))
+                        for tag in ('STRIP_CONNECTING ', 'STRIP_DISCONNECTED '))
+    assert not connecting['visible'] and connecting['strip'] == 28 and connecting['island'] == 28 + 16, (scale, connecting)
+    assert down['visible'] and down['text'] == 'Workspaces unavailable', (scale, down)
     geometry = json.loads(next(line.split('CELLS ', 1)[1] for line in text.splitlines() if 'CELLS ' in line))
     dpr = float(scale)
     assert abs(geometry['dpr'] - dpr) < 1e-6, geometry['dpr']

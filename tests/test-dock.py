@@ -10,6 +10,8 @@ import tempfile
 import threading
 import time
 from app_scope_fixture import install, launches
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 assert len(sys.argv) == 2, 'Pass the freshly built emaki binary'
@@ -125,6 +127,7 @@ def run(check):
 def first(call, state, wait, center):
     s = wait(lambda s: s['niri']['connection'] == 'connected' and s['dock']['labels'] == 'ready'
              and len(s['dock']['entries']) == 3)
+    assert call("test", "timing") == "ok"
     d = s['dock']
     assert d['on'] and d['auto_hide'] and d['pinned'] == []
     assert not d['visible'] and d['reserve'] == 0 and d['edge_enabled'], d
@@ -242,7 +245,7 @@ def first(call, state, wait, center):
     call('test', 'drag', bx, by, center(s, 'fixture-editor')[0] - 20, by)
     s = wait(lambda s: s['dock']['pinned'] == ['fixture-browser', 'fixture-editor'] and not s['dock']['dragging'])
     assert s['dock_keys'] == ['fixture-browser', 'fixture-editor', 'sep', 'app:PRIVATE_UNKNOWN_APP']
-    # Auto-hide: hidden until the 2 px screen edge is touched for 150 ms; leaves after 500 ms.
+    # Auto-hide: hidden until the 2 px screen edge is touched for 100 ms; leaves after 100 ms.
     call('dock', 'autoHide', 'true')
     s = wait(lambda s: not s['dock']['visible'] and s['dock']['reserve'] == 0 and s['dock']['edge_enabled'])
     call('test', 'hover', 700, EDGE_Y)
@@ -280,7 +283,7 @@ def first(call, state, wait, center):
     wait(lambda s: not s['dock']['visible'])
     server.overview(False)
     wait(lambda s: s['dock']['visible'])
-    # Fullscreen-like coverage: the dock slides away and the edge stays dead.
+    # Fullscreen-like coverage: the dock slides away and the edge still reveals it.
     server.set_windows(windows(cover=True))
     s = wait(lambda s: s['notifications']['presentation'] == 'covered')
     assert not s['dock']['visible']
@@ -289,7 +292,9 @@ def first(call, state, wait, center):
     call('test', 'hover', 700, EDGE_Y)
     time.sleep(.3)
     s = state()
-    assert not s['dock']['edge_enabled'] and not s['dock']['visible'] and not s['dock']['revealed']
+    assert s['dock']['edge_enabled'] and s['dock']['visible'] and s['dock']['revealed']
+    call('test', 'hover', 700, 300)
+    wait(lambda s: not s['dock']['visible'])
     server.set_windows(windows())
     wait(lambda s: s['notifications']['presentation'] == 'clear' and s['dock']['edge_enabled'])
     call('dock', 'autoHide', 'false')
@@ -302,19 +307,11 @@ def first(call, state, wait, center):
     call('test', 'click', pop['x'] + 40, pop['y'] + pop['height'] - 8 - 18)
     s = wait(lambda s: s['dock']['popup'] == 'closed' and s['dock_windows'] == [[1], [], [2]])
     assert [a for a in server.actions if 'CloseWindow' in a] == [{'CloseWindow': {'id': 3}}, {'CloseWindow': {'id': 4}}], server.actions
-    # Settings → Dock page drives the same store.
-    call('test', 'open')
-    wait(lambda s: s['launcher'] == 'open')
-    call('test', 'page', 'dock')
-    s = wait(lambda s: s['search']['page'] == 'dock' and s['search']['result_count'] == 3)
-    call('test', 'select', 1)
-    call('test', 'activate')
-    s = wait(lambda s: s['dock']['auto_hide'])
-    call('test', 'select', 0)
-    call('test', 'activate')
-    s = wait(lambda s: not s['dock']['on'] and s['search']['result_count'] == 1)
+    # Dock IPC remains available without launcher settings pages.
+    call('dock', 'autoHide', 'true')
+    call('dock', 'toggle')
+    s = wait(lambda s: not s['dock']['on'])
     assert not s['dock']['visible'] and s['dock']['reserve'] == 0 and not s['dock']['edge_enabled']
-    call('test', 'close')
     assert call('dock', 'toggle') == 'true'
     wait(lambda s: s['dock']['on'])
     call('dock', 'autoHide', 'false')
@@ -410,6 +407,21 @@ def fourth(call, state, wait, center):
     assert s['dock_keys'] == ['fixture-files', 'sep', 'fixture-browser', 'fixture-editor', 'fixture-game', 'fixture-suite', 'app:PRIVATE_LATE_APP'], s['dock_keys']
 
 
+# Files written by a newer shell (kept in /home across a system rollback): not read, not overwritten.
+NEWER_DOCK = json.dumps(dict(version=2, on=False, auto_hide=False, pinned=['fixture-browser'], placement='future'))
+NEWER_APPS = json.dumps(dict(version=2, map={'PRIVATE_UNKNOWN_APP': 'fixture-editor'}))
+
+
+def newer(call, state, wait, center):
+    s = wait(lambda s: s['niri']['connection'] == 'connected' and s['dock']['labels'] == 'ready')
+    assert s['dock']['on'] and s['dock']['auto_hide'] and s['dock']['pinned'] == [] and s['dock']['learned'] == 0, s['dock']
+    assert call('dock', 'pin', 'fixture-files') == 'true' and call('dock', 'assign', 'PRIVATE_UNKNOWN_APP', 'fixture-editor') == 'true'
+    wait(lambda s: s['dock']['pinned'] == ['fixture-files'] and s['dock']['learned'] == 1)
+    time.sleep(.9)  # past the 500 ms save timers
+    assert (profile / 'state/emaki/dock.json').read_text() == NEWER_DOCK
+    assert (profile / 'state/emaki/apps.json').read_text() == NEWER_APPS
+
+
 try:
     run(first)
     run(second)
@@ -419,6 +431,9 @@ try:
     run(fourth)
     (profile / 'state/emaki/dock.json').write_text('{broken')
     run(lambda call, state, wait, center: wait(lambda s: s['dock']['labels'] == 'ready' and s['dock']['pinned'] == [] and s['dock']['auto_hide']))
+    (profile / 'state/emaki/dock.json').write_text(NEWER_DOCK)
+    (profile / 'state/emaki/apps.json').write_text(NEWER_APPS)
+    run(newer)
     contents = log_path.read_text()
     assert not any(w in contents for w in ('WARN', 'ERROR', 'FAIL!', 'PRIVATE', 'ReferenceError', 'TypeError')), contents
     assert not server.errors, server.errors
@@ -431,4 +446,4 @@ finally:
     server.server_close()
     thread.join(timeout=3)
 launches(profile, ['fixture-files', 'org.fixture.desktop', 'fixture-slow', 'fixture-fail'])
-print(f'Dock: pinned/running order, dots, launch/focus/list, menu pin/close-all, drag reorder/unpin/pin, auto-hide timers, overview, coverage, settings page, dock.json restart, identity guess/choose/learn/forget, apps.json restart: OK; {profile.relative_to(ROOT)}')
+print(f'Dock: pinned/running order, dots, launch/focus/list, menu pin/close-all, drag reorder/unpin/pin, auto-hide timers, overview, coverage, dock IPC, dock.json restart, identity guess/choose/learn/forget, apps.json restart: OK; {profile.relative_to(ROOT)}')

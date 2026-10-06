@@ -13,6 +13,8 @@ import io
 import itertools
 from types import SimpleNamespace
 from unittest.mock import patch
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 with tempfile.TemporaryDirectory(prefix='lw-', dir=ROOT / '.cache') as folder:

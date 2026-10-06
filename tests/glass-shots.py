@@ -11,7 +11,8 @@ stand-in. This tool renders the real thing for review:
      (tests/fixtures/glass-harness.html), and saves one PNG per state.
 Firefox is headless (no window) with a throwaway profile, but it needs the session's
 WAYLAND_DISPLAY/DISPLAY for an EGL display: without one it has no WebGL at all.
-Defaults: the mockups' wallpaper, the system's apps and icon theme (as a person sees them).
+Defaults: the shipped wallpaper (art/wallpaper/ring.png), the system's apps and icon theme (as a
+person sees them).
 Output: .cache/glass-shots/glass-<state>@<scale>x.png. Not part of check-shell.
 EMAKI_GLASS_MOTION=1: frames of drops in flight instead (GlassShots.qml motionSteps), each
 also rendered without dispersion, and the numbers of the colour fringe per sequence
@@ -27,12 +28,14 @@ import subprocess
 import sys
 import tempfile
 import time
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / '.cache'
 OUT = CACHE / 'glass-shots'
 QSB = os.environ.get('QSB') or shutil.which('qsb') or '/usr/lib/qt6/bin/qsb'
-WALLPAPER = Path(os.environ.get('EMAKI_GLASS_WALLPAPER') or ROOT / 'docs/mockups/liquid-glass/wallpaper-neo-pink.jpg')
+WALLPAPER = Path(os.environ.get('EMAKI_GLASS_WALLPAPER') or ROOT / 'art/wallpaper/ring.png')
 SCALE = os.environ.get('EMAKI_GLASS_SCALE', '1')
 PORT = int(os.environ.get('EMAKI_GLASS_MARIONETTE_PORT', '28284'))
 MOTION = os.environ.get('EMAKI_GLASS_MOTION') == '1'

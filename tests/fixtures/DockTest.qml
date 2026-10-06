@@ -48,8 +48,65 @@ ShellRoot {
     DockIpc {
         scene: scene
     }
+    DockPolicy {
+        id: timedPolicy
+        on: false
+    }
     IpcHandler {
         target: "test"
+        function timing(): string {
+            function check(value) {
+                if (!value)
+                    throw new Error("Dock timing/state regression");
+            }
+            timedPolicy.on = true;
+            timedPolicy.edgeHovered = true;
+            pointer.wait(50);
+            check(!timedPolicy.revealed);
+            timedPolicy.edgeHovered = false;
+            pointer.wait(130);
+            check(!timedPolicy.revealed);
+            timedPolicy.edgeHovered = true;
+            pointer.wait(140);
+            check(timedPolicy.dockVisible);
+            timedPolicy.edgeHovered = false;
+            pointer.wait(50);
+            check(timedPolicy.dockVisible);
+            pointer.wait(90);
+            check(!timedPolicy.dockVisible);
+            timedPolicy.edgeHovered = true;
+            pointer.wait(140);
+            timedPolicy.popupOpen = true;
+            timedPolicy.edgeHovered = false;
+            pointer.wait(140);
+            check(timedPolicy.dockVisible);
+            timedPolicy.dragging = true;
+            timedPolicy.popupOpen = false;
+            pointer.wait(140);
+            check(timedPolicy.dockVisible);
+            timedPolicy.dragging = false;
+            pointer.wait(140);
+            check(!timedPolicy.dockVisible);
+            timedPolicy.autoHide = false;
+            timedPolicy.presentation = "clear";
+            check(timedPolicy.dockVisible);
+            timedPolicy.presentation = "covered";
+            check(!timedPolicy.dockVisible && timedPolicy.edgeEnabled);
+            timedPolicy.edgeHovered = true;
+            pointer.wait(140);
+            check(timedPolicy.dockVisible);
+            timedPolicy.pointerInside = true;
+            timedPolicy.edgeHovered = false;
+            pointer.wait(140);
+            check(timedPolicy.dockVisible);
+            timedPolicy.pointerInside = false;
+            pointer.wait(140);
+            check(!timedPolicy.dockVisible);
+            timedPolicy.presentation = "clear";
+            check(timedPolicy.dockVisible);
+            timedPolicy.on = false;
+            return "ok";
+        }
         function click(x: real, y: real): void {
             pointer.mouseClick(scene, x, y, Qt.LeftButton);
         }
@@ -70,9 +127,6 @@ ShellRoot {
         }
         function close(): void {
             scene.closeAll();
-        }
-        function page(name: string): void {
-            scene.input.openPage(name);
         }
         function select(index: int): void {
             scene.input.selectAt(index);

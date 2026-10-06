@@ -49,9 +49,9 @@ PAMDIR  = $(DESTDIR)/usr/lib/pam.d
 NIRI_ETC = $(DESTDIR)/etc/niri/config.kdl
 # Header string from niri/system.kdl: install and uninstall use it to recognize our file
 # and leave any other /etc/niri/config.kdl alone.
-NIRI_ETC_MARK = Emaki — системный конфиг niri
+NIRI_ETC_MARK = Emaki — system niri config
 
-SCRIPTS = scripts/emaki-drm-hold scripts/emaki-greeter-compositor scripts/emaki-greeter-run scripts/emaki-session-import-environment scripts/emaki-idle scripts/emaki-config-path scripts/emaki-power scripts/emaki-shell scripts/emaki-lock scripts/emaki-greeter-provision scripts/emaki-session-wallpaper scripts/emaki-sleep-guard
+SCRIPTS = scripts/emaki-rollback scripts/emaki-drm-hold scripts/emaki-greeter-compositor scripts/emaki-greeter-run scripts/emaki-session-import-environment scripts/emaki-idle scripts/emaki-config-path scripts/emaki-power scripts/emaki-shell scripts/emaki-lock scripts/emaki-greeter-provision scripts/emaki-session-wallpaper scripts/emaki-sleep-guard scripts/emaki-text-session
 # Shell: QML, helpers, shader — copied as is to $(SHARE)/shell. Core: release binary
 # from `make build` (prefix/datadir paths are compiled in; see CORE_ENV below).
 SHELL_SRC = $(shell find shell -type f ! -path '*/__pycache__/*' ! -name '*.pyc' ! -name '*.pyo')
@@ -63,6 +63,7 @@ CORE_BIN  = $(CARGO_TARGET_DIR)/release/emaki
 render:
 	./scripts/render-theme
 	python scripts/render-shell-palette
+	python3 scripts/render-kde-theme
 
 check:
 	niri validate -c niri/default.kdl
@@ -74,13 +75,57 @@ check:
 	fi
 	sh tests/test-niri-entry.sh
 	sh tests/test-power.sh
+	python3 tests/test-uninstall.py
 	python3 tests/test-boot-splash.py
 	python3 tests/test-fetch.py
 	python3 tests/test-cursors.py
+	python3 tests/test-iso-check-env.py
+	python3 tests/test-status-words.py
+	python3 tests/test-iso-install-harness.py
+	EMAKI_TEST_UNIX_SOCKET=1 PYTHONPATH=installer python3 -m unittest discover -s installer/tests
+	python3 tests/test-sleep-guard-unit.py
+	python3 tests/test-sleep-guard.py
+	sh tests/test-idle.sh
+	python3 tests/test-keyboard-single-source.py
+	python3 tests/test-reaper.py
+	python3 tests/test-arch-watch.py
 
 # Every metapackage dependency is in the official repositories (requires the pacman -Sy database).
 check-deps:
 	bash tests/test-desktop-deps.sh
+
+# The installer window: lint, helpers, protocol, controller over a real unix socket,
+# pointer/key interactions and offscreen renders.
+.PHONY: check-installer check-iso check-updates check-all
+check-installer:
+	python3 installer/ui/tests/check.py
+	python3 -m unittest discover -s installer/ui/tests -p 'test_*.py'
+	node installer/ui/tests/test-protocol.js
+	node installer/ui/tests/test-timezones.js
+	python3 installer/ui/tests/controller.py --unix
+	python3 installer/ui/tests/interactions.py
+	python3 installer/ui/tests/render.py
+
+# Static ISO profile checks and the offline tests of the release walk tools (no VM).
+check-iso:
+	bash iso/check.sh
+	python3 tests/vm/eyes/test_eyes.py
+	python3 tests/test-release-gate.py
+	python3 tests/test-graphics-fallback-check.py
+
+# The package mirror: publisher, R2 client, pointer Worker, key-backup check, upgrade-check
+# helpers (no network, no Cloudflare; see docs/mirror.md).
+check-updates:
+	python3 tests/test-iso-sources.py
+	python3 tests/test-source-archives.py
+	python3 tests/test-publish.py
+	python3 tests/test-r2-client.py
+	python3 tests/test-upgrade-check.py
+	node tests/test-pointer-worker.mjs
+	bash tests/test-key-backup.sh
+
+# Everything a release candidate passes on the host before any VM job (tests/vm/release-gate.sh).
+check-all: check check-deps check-shell check-installer check-iso check-updates check-leaks
 
 install:
 	@if [ -e "$(XDG)/fastfetch/config.jsonc" ] && ! grep -qF 'Emaki fetch default.' "$(XDG)/fastfetch/config.jsonc"; then \
@@ -89,27 +134,41 @@ install:
 		echo "make install: $(NIRI_ETC) already exists and is not from Emaki — refusing to overwrite." >&2; \
 		echo "Move your settings to ~/.config/niri/config.kdl and remove this file, then retry." >&2; \
 		exit 1; fi
+	install -Dm644 polkit/org.emaki.rollback.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.rollback.policy
 	install -Dm755 -t $(BIN) $(SCRIPTS)
 	rm -f $(BIN)/emaki-session-cover
 	install -Dm755 $(CORE_BIN) $(BIN)/emaki
 	for f in $(SHELL_SRC); do install -Dm644 "$$f" "$(SHARE)/$$f"; done
+	install -Dm644 shell/emaki-welcome.desktop $(DESTDIR)$(PREFIX)/share/applications/emaki-welcome.desktop
+	install -Dm644 art/logo/mark.svg $(ICONS)/hicolor/scalable/apps/emaki-welcome.svg
+	install -Dm644 docs/ZONES.md $(DESTDIR)$(PREFIX)/share/doc/emaki/ZONES.md
 	# Cancellation now belongs to the attempt's existing greetd connection.
 	rm -f "$(SHARE)/shell/helpers/greeter-cancel.py"
 	# Dock glass shaders: built by `make build` in .cache/shell-shaders; only copied here.
 	for f in $(SHADERS); do install -Dm644 "$$f" "$(SHARE)/shell/shaders/$$(basename "$$f")"; done
 	install -Dm644 -t $(SHARE)/niri niri/default.kdl niri/theme.kdl niri/shell.kdl
 	install -Dm644 niri/system.kdl $(NIRI_ETC)
-	install -Dm644 -t $(SYSTEMD)/user systemd/emaki-shell.service systemd/emaki-sleep-guard.service
+	install -Dm644 -t $(SYSTEMD)/user systemd/emaki-shell.service systemd/emaki-sleep-guard.service systemd/emaki-idle.service
 	install -Dm644 -t $(SHARE)/kitty kitty/theme.conf
 	install -Dm644 -t $(SHARE)/qt6ct qt6ct/emaki.conf
+	install -Dm644 packaging/emaki-config/kdeglobals $(XDG)/kdeglobals
+	install -Dm644 packaging/emaki-config/dolphinrc $(XDG)/dolphinrc
+	install -Dm644 packaging/emaki-config/niri-portals.conf $(XDG)/xdg-desktop-portal/niri-portals.conf
+	install -Dm644 packaging/emaki-config/mimeapps.list $(XDG)/mimeapps.list
+	install -Dm644 packaging/emaki-config/emaki-applications.menu $(XDG)/menus/emaki-applications.menu
+	install -Dm644 etc-skel/.config/qt6ct/qt6ct.conf $(XDG)/qt6ct/qt6ct.conf
 	install -Dm644 -t $(SHARE)/fuzzel fuzzel/fuzzel.ini
 	# swayosd removed 2026-09-27 (the shell provides OSD): remove its old installed style.
 	rm -rf $(SHARE)/swayosd
 	install -Dm644 -t $(XDG)/hypr hypr/hyprlock.conf
-	install -Dm644 -t $(SHARE)/greetd greetd/config.toml greetd/niri.kdl
+	install -Dm644 -t $(SHARE)/greetd greetd/config.toml greetd/niri.kdl greetd/graphics-failed.txt
 	install -Dm644 art/grub/background.png $(SHARE)/grub/background.png
 	install -Dm644 grub/90-emaki-grub-title.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/90-emaki-grub-title.hook
 	install -Dm755 grub/emaki-grub-title $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-grub-title
+	# Snapshot boot hook, named in HOOKS on btrfs installs. mkinitcpio's own directory, fixed
+	# whatever PREFIX is; a copy in /etc/initcpio is the administrator's and is read first.
+	install -Dm644 initcpio/hooks/emaki-snapshot-fstab $(DESTDIR)/usr/lib/initcpio/hooks/emaki-snapshot-fstab
+	install -Dm644 initcpio/install/emaki-snapshot-fstab $(DESTDIR)/usr/lib/initcpio/install/emaki-snapshot-fstab
 	# System identity: /etc/os-release is linked to this file by the hook (no package owns
 	# /etc/os-release; Arch's /usr/lib/os-release stays untouched).
 	install -Dm644 os-release/os-release $(DESTDIR)$(PREFIX)/lib/emaki/os-release
@@ -221,6 +280,7 @@ uninstall:
 	@case "$(DESTDIR)" in ""|/*) ;; *) echo "uninstall: DESTDIR must be empty or an absolute path; nothing changed." >&2; exit 1 ;; esac; \
 		case "/$(DESTDIR)/" in */../*) echo "uninstall: DESTDIR must not contain '..' components; nothing changed." >&2; exit 1 ;; esac
 	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/hooks/90-emaki-grub-title.hook $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-grub-title
+	rm -f $(DESTDIR)/usr/lib/initcpio/hooks/emaki-snapshot-fstab $(DESTDIR)/usr/lib/initcpio/install/emaki-snapshot-fstab
 	# Point /etc/os-release back at Arch's file before removing ours (source helper, as below).
 	bash os-release/emaki-os-release --restore "$(if $(DESTDIR),$(DESTDIR),/)"
 	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/hooks/50-emaki-os-release.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/50-emaki-os-release-remove.hook
@@ -230,17 +290,33 @@ uninstall:
 	@if ! python3 -I scripts/emaki-greeter-provision --root "$(if $(DESTDIR),$(DESTDIR),/)" --purge-published; then \
 		echo "uninstall: WARNING: published wallpaper cleanup incomplete at $(if $(DESTDIR),$(DESTDIR),)/var/lib/emaki-greeter; retained copies need administrator cleanup. Continuing removal." >&2; \
 	fi
-	rm -f $(BIN)/emaki-drm-hold $(BIN)/emaki-greeter-compositor $(BIN)/emaki-greeter-run $(BIN)/emaki-session-import-environment $(SYSTEMD)/system/emaki-drm-hold.service
+	rm -f $(BIN)/emaki-rollback $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.rollback.policy
+	rm -f $(BIN)/emaki-drm-hold $(BIN)/emaki-greeter-compositor $(BIN)/emaki-greeter-run $(BIN)/emaki-text-session $(BIN)/emaki-session-import-environment $(SYSTEMD)/system/emaki-drm-hold.service
 	rm -f $(BIN)/emaki-idle $(BIN)/emaki-config-path $(BIN)/emaki-power $(BIN)/emaki-shell $(BIN)/emaki-lock $(BIN)/emaki-session-cover $(BIN)/emaki-session-wallpaper $(BIN)/emaki
+	# The fork session (install-niri-emaki) goes too: its wrapper reads configs from $(SHARE).
+	rm -f $(BIN)/niri-emaki-session
+	rm -f $(SHARE)/niri/fork.kdl $(SHARE)/niri/fork-system.kdl $(SHARE)/niri/fork-rules.kdl
+	rm -f $(DESTDIR)$(PREFIX)/lib/systemd/user/niri-emaki.service
+	rm -f $(DESTDIR)$(PREFIX)/share/wayland-sessions/niri-emaki.desktop
 	rm -rf $(SHARE)
+	rm -f $(DESTDIR)$(PREFIX)/share/applications/emaki-welcome.desktop $(ICONS)/hicolor/scalable/apps/emaki-welcome.svg
 	rm -rf $(ICONS)/Emaki
-	rm -f $(SYSTEMD)/user/emaki-shell.service $(SYSTEMD)/user/emaki-sleep-guard.service
+	rm -f $(SYSTEMD)/user/emaki-shell.service $(SYSTEMD)/user/emaki-sleep-guard.service $(SYSTEMD)/user/emaki-idle.service
 	rm -f $(BIN)/emaki-sleep-guard $(DESTDIR)$(PREFIX)/lib/emaki-release
 	rm -f $(SYSTEMD)/system-preset/50-emaki.preset $(SYSTEMD)/logind.conf.d/50-emaki.conf
 	for f in wpaperd/config.toml kitty/kitty.conf qt6ct/qt6ct.conf; do \
 		if cmp -s "etc-skel/.config/$$f" "$(DESTDIR)/etc/skel/.config/$$f"; then \
 			rm -f "$(DESTDIR)/etc/skel/.config/$$f"; fi; done
-	rm -f $(XDG)/hypr/hyprlock.conf
+	# System defaults in /etc: remove only the file as shipped. An edited copy is the
+	# administrator's (the package keeps it too, backup=), so it stays and is named.
+	for pair in packaging/emaki-config/niri-portals.conf:xdg-desktop-portal/niri-portals.conf \
+		hypr/hyprlock.conf:hypr/hyprlock.conf packaging/emaki-config/kdeglobals:kdeglobals \
+		packaging/emaki-config/dolphinrc:dolphinrc packaging/emaki-config/mimeapps.list:mimeapps.list \
+		packaging/emaki-config/emaki-applications.menu:menus/emaki-applications.menu \
+		etc-skel/.config/qt6ct/qt6ct.conf:qt6ct/qt6ct.conf; do \
+		src="$${pair%%:*}"; dst="$(XDG)/$${pair#*:}"; \
+		if cmp -s "$$src" "$$dst"; then rm -f "$$dst"; \
+		elif [ -e "$$dst" ]; then echo "uninstall: kept $$dst (it differs from the shipped file)"; fi; done
 	if [ -f $(XDG)/fastfetch/config.jsonc ] && grep -qF 'Emaki fetch default.' $(XDG)/fastfetch/config.jsonc; then rm -f $(XDG)/fastfetch/config.jsonc; fi
 	rm -f $(PAMDIR)/emaki-greetd $(SYSTEMD)/system/greetd.service.d/emaki.conf
 	rm -f $(BIN)/emaki-greeter-provision $(DESTDIR)$(PREFIX)/lib/tmpfiles.d/emaki-greeter.conf
@@ -248,8 +324,12 @@ uninstall:
 	rm -f $(SYSTEMD)/user/graphical-session.target.wants/emaki-greeter-wallpaper.path $(SYSTEMD)/user/graphical-session.target.wants/emaki-greeter-wallpaper-watch.service
 	[ ! -d $(SYSTEMD)/user/graphical-session.target.wants ] || rmdir --ignore-fail-on-non-empty $(SYSTEMD)/user/graphical-session.target.wants
 	[ ! -d $(SYSTEMD)/system/greetd.service.d ] || rmdir --ignore-fail-on-non-empty $(SYSTEMD)/system/greetd.service.d
-	if [ -e "$(NIRI_ETC)" ] && grep -qF "$(NIRI_ETC_MARK)" "$(NIRI_ETC)"; then rm -f "$(NIRI_ETC)"; fi
+	if cmp -s niri/system.kdl "$(NIRI_ETC)"; then rm -f "$(NIRI_ETC)"; \
+	elif [ -e "$(NIRI_ETC)" ] && grep -qF "$(NIRI_ETC_MARK)" "$(NIRI_ETC)"; then \
+		echo "uninstall: kept $(NIRI_ETC) (it differs from the shipped file)"; fi
 	[ ! -d $(DESTDIR)/etc/niri ] || rmdir --ignore-fail-on-non-empty $(DESTDIR)/etc/niri
+	rm -f $(DESTDIR)$(PREFIX)/share/doc/emaki/ZONES.md
+	[ ! -d $(DESTDIR)$(PREFIX)/share/doc/emaki ] || rmdir --ignore-fail-on-non-empty $(DESTDIR)$(PREFIX)/share/doc/emaki
 
 # The emaki CLI binary (crates/), built reproducibly by scripts/core-package.py.
 CARGO_HOME      ?= $(CURDIR)/.cache/cargo-home
@@ -315,17 +395,18 @@ check-shell: shell-shaders
 	python tests/test-dock-region.py
 	python tests/test-greeter-wallpaper.py
 	python tests/test-greeter-state.py
+	python tests/test-greeter-compositor.py
 	python tests/test-greeter-visual.py
 	python tests/test-greeter-auth.py
 	python tests/test-greeter-grab.py
 	python tests/test-greeter-entry.py
-	python tests/test-greeter-vm.py
+	python tests/test-greeter-harness.py
 	python tests/test-drm-hold.py
 	python tests/test-session-environment.py
 	python tests/test-session-start.py
 	python tests/test-session-start-cover.py
 	python tests/test-session-start-shell.py
-	python tests/test-session-start-vm.py
+	python tests/test-session-start-harness.py
 	python tests/test-notifications.py
 	python tests/test-launcher-tools.py
 	python tests/test-system.py
@@ -335,6 +416,10 @@ check-shell: shell-shaders
 	python tests/test-lock-supervisor.py
 	python tests/test-lock-wiring.py
 	python tests/test-lock-auth.py
+	python3 tests/test-rollback.py
+	python3 tests/test-rollback-shell.py
+	python tests/test-password-toggle.py
+	python tests/test-welcome.py
 	python tests/test-lock-glass.py
 	python tests/test-lock-capture.py
 	python tests/test-lock-session.py
@@ -344,7 +429,18 @@ check-shell: shell-shaders
 	python tests/test-shell-niri-actions.py "$(CARGO_TARGET_DIR)/debug/emaki"
 	python tests/test-shell-close.py "$(CARGO_TARGET_DIR)/debug/emaki"
 	python tests/test-dock.py "$(CARGO_TARGET_DIR)/debug/emaki"
+	# Package payloads and metadata; builds the core offline from the cargo cache filled by the
+	# cargo build above.
+	python3 tests/test-packaging.py
+	python3 tests/test-kde-defaults.py
 	$(MAKE) shell-shots
+
+# No process a test starts outlives it: a representative set of shell tests, plus one run
+# interrupted and one stopped by its own time limit, each checked for survivors. Short socket
+# paths as for check-shell.
+.PHONY: check-leaks
+check-leaks: shell-shaders
+	python tests/leak-check.py
 
 # Actual QML pixels; software/offscreen only, synthetic data, no session services.
 shell-shaders:

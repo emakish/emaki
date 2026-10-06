@@ -1,0 +1,465 @@
+From 2ad0d43db60d84108a6d3abe5ef13fb058f21aff Mon Sep 17 00:00:00 2001
+From: Emaki contributors <emaki@localhost>
+Date: Mon, 5 Oct 2026 13:39:51 +0000
+Subject: [PATCH] network/nm: name the activation a connection failure belongs
+ to
+
+A connection failure arrives asynchronously. A client that starts another
+connection attempt on the same network could not tell a late failure of
+the earlier attempt from a failure of the new one, and some failures were
+reported with a stale reason or not at all.
+
+- Network.activation names the network's current activation; with
+  NetworkManager it is the D-Bus path of the active connection, new for
+  every activation. While connectionFailed is emitted it names the
+  activation that failed.
+- NMDevice kept the reason of its last Failed state across activations,
+  so an activation that ended without failing (a disconnect, a newer
+  activation replacing it) was reported with an earlier activation's
+  failure reason. The reason is now cleared when an activation starts
+  (device state Prepare), and a failure is reported only when the device
+  failed during the activation.
+- Failure reasons other than the five mapped ones (IpConfigUnavailable
+  when DHCP gives no address, for one) emitted nothing; they are now
+  reported as ConnectionFailReason.Unknown.
+
+Test: connectionfailure in src/network/test (BUILD_TESTING).
+---
+ src/network/CMakeLists.txt             |   4 +
+ src/network/network.hpp                |  12 ++
+ src/network/nm/device.cpp              |   3 +
+ src/network/nm/device.hpp              |  11 +-
+ src/network/nm/network.cpp             |  35 ++++--
+ src/network/nm/network.hpp             |  12 +-
+ src/network/test/CMakeLists.txt        |   7 ++
+ src/network/test/connectionfailure.cpp | 156 +++++++++++++++++++++++++
+ src/network/test/connectionfailure.hpp |  14 +++
+ 9 files changed, 235 insertions(+), 19 deletions(-)
+ create mode 100644 src/network/test/CMakeLists.txt
+ create mode 100644 src/network/test/connectionfailure.cpp
+ create mode 100644 src/network/test/connectionfailure.hpp
+
+diff --git a/src/network/CMakeLists.txt b/src/network/CMakeLists.txt
+index d82c0ab..8b2523f 100644
+--- a/src/network/CMakeLists.txt
++++ b/src/network/CMakeLists.txt
+@@ -25,3 +25,7 @@ target_link_libraries(quickshell-network PRIVATE quickshell-network-nm Qt::Qml Q
+ qs_add_link_dependencies(quickshell-network quickshell-dbus)
+ target_link_libraries(quickshell PRIVATE quickshell-networkplugin)
+ qs_module_pch(quickshell-network SET dbus)
++
++if (BUILD_TESTING)
++	add_subdirectory(test)
++endif()
+diff --git a/src/network/network.hpp b/src/network/network.hpp
+index 2a3b046..5211420 100644
+--- a/src/network/network.hpp
++++ b/src/network/network.hpp
+@@ -40,6 +40,13 @@ class Network: public QObject {
+ 	Q_PROPERTY(ConnectionState::Enum state READ default NOTIFY stateChanged BINDABLE bindableState);
+ 	/// If the network is currently connecting or disconnecting. Shorthand for checking @@state.
+ 	Q_PROPERTY(bool stateChanging READ default NOTIFY stateChangingChanged BINDABLE bindableStateChanging);
++	/// An identifier of the network's current activation: a connection attempt, or the connection
++	/// it established. Every activation gets a new one, also when the same network is connected
++	/// again; empty when the network has no activation. While @@connectionFailed(s) is emitted,
++	/// it is the identifier of the activation that failed.
++	///
++	/// > [!NOTE] With the NetworkManager backend this is the D-Bus object path of the active connection.
++	Q_PROPERTY(QString activation READ default NOTIFY activationChanged BINDABLE bindableActivation);
+ 	// clang-format on
+ 
+ public:
+@@ -73,10 +80,13 @@ public:
+ 	[[nodiscard]] ConnectionState::Enum state() const { return this->bState; }
+ 	QBindable<ConnectionState::Enum> bindableState() { return &this->bState; }
+ 	QBindable<bool> bindableStateChanging() { return &this->bStateChanging; }
++	QBindable<QString> bindableActivation() { return &this->bActivation; }
+ 	// clang-format on
+ 
+ signals:
+ 	/// Signals that a connection to the network has failed because of the given @@ConnectionFailReason.
++	/// A failure without a more specific reason is reported as `Unknown`. @@activation names the
++	/// activation that failed while this signal is emitted.
+ 	void connectionFailed(ConnectionFailReason::Enum reason);
+ 
+ 	void nameChanged();
+@@ -84,6 +94,7 @@ signals:
+ 	void knownChanged();
+ 	void stateChanged();
+ 	void stateChangingChanged();
++	void activationChanged();
+ 	void nmSettingsChanged();
+ 	QSDOC_HIDE void requestConnect();
+ 	QSDOC_HIDE void requestConnectWithSettings(NMSettings* settings);
+@@ -97,6 +108,7 @@ protected:
+ 	Q_OBJECT_BINDABLE_PROPERTY(Network, bool, bKnown, &Network::knownChanged);
+ 	Q_OBJECT_BINDABLE_PROPERTY(Network, ConnectionState::Enum, bState, &Network::stateChanged);
+ 	Q_OBJECT_BINDABLE_PROPERTY(Network, bool, bStateChanging, &Network::stateChangingChanged);
++	Q_OBJECT_BINDABLE_PROPERTY(Network, QString, bActivation, &Network::activationChanged);
+ 	Q_OBJECT_BINDABLE_PROPERTY(Network, QList<NMSettings*>, bNmSettings, &Network::nmSettingsChanged);
+ 	// clang-format on
+ 
+diff --git a/src/network/nm/device.cpp b/src/network/nm/device.cpp
+index 0a5f91c..41a0a10 100644
+--- a/src/network/nm/device.cpp
++++ b/src/network/nm/device.cpp
+@@ -1,4 +1,5 @@
+ #include "device.hpp"
++#include <optional>
+ 
+ #include <qdbusconnection.h>
+ #include <qdbusextratypes.h>
+@@ -79,6 +80,8 @@ void NMDevice::bindFrontend(NetworkDevice* frontend) {
+ void NMDevice::onStateChanged(quint32 newState, quint32 /*oldState*/, quint32 reason) {
+ 	auto enumReason = static_cast<NMDeviceStateReason::Enum>(reason);
+ 	auto enumNewState = static_cast<NMDeviceState::Enum>(newState);
++	// Every activation starts in Prepare: a new one does not inherit the failure of the last.
++	if (enumNewState == NMDeviceState::Prepare) this->bLastFailReason = std::nullopt;
+ 	if (enumNewState == NMDeviceState::Failed) this->bLastFailReason = enumReason;
+ 	if (this->bStateReason == enumReason) return;
+ 	this->bStateReason = enumReason;
+diff --git a/src/network/nm/device.hpp b/src/network/nm/device.hpp
+index d6b332b..6d4a2ed 100644
+--- a/src/network/nm/device.hpp
++++ b/src/network/nm/device.hpp
+@@ -1,5 +1,7 @@
+ #pragma once
+ 
++#include <optional>
++
+ #include <qdbusextratypes.h>
+ #include <qhash.h>
+ #include <qobject.h>
+@@ -52,7 +54,10 @@ public:
+ 	[[nodiscard]] bool managed() const { return this->bManaged; }
+ 	[[nodiscard]] NMDeviceState::Enum state() const { return this->bState; }
+ 	[[nodiscard]] NMDeviceStateReason::Enum stateReason() const { return this->bStateReason; }
+-	[[nodiscard]] NMDeviceStateReason::Enum lastFailReason() const { return this->bLastFailReason; }
++	// The reason the device failed during its current or last activation; empty if it did not fail.
++	[[nodiscard]] std::optional<NMDeviceStateReason::Enum> lastFailReason() const {
++		return this->bLastFailReason;
++	}
+ 	[[nodiscard]] NMDeviceInterfaceFlags::Enum interfaceFlags() const {
+ 		return this->bInterfaceFlags;
+ 	}
+@@ -80,7 +85,7 @@ signals:
+ 	void managedChanged(bool managed);
+ 	void stateChanged(NMDeviceState::Enum state);
+ 	void stateReasonChanged(NMDeviceStateReason::Enum reason);
+-	void lastFailReasonChanged(NMDeviceStateReason::Enum reason);
++	void lastFailReasonChanged(std::optional<NMDeviceStateReason::Enum> reason);
+ 	void autoconnectChanged(bool autoconnect);
+ 	void interfaceFlagsChanged(NMDeviceInterfaceFlags::Enum flags);
+ 
+@@ -110,7 +115,7 @@ private:
+ 	Q_OBJECT_BINDABLE_PROPERTY(NMDevice, bool, bManaged, &NMDevice::managedChanged);
+ 	Q_OBJECT_BINDABLE_PROPERTY(NMDevice, NMDeviceState::Enum, bState, &NMDevice::stateChanged);
+ 	Q_OBJECT_BINDABLE_PROPERTY(NMDevice, NMDeviceStateReason::Enum, bStateReason, &NMDevice::stateReasonChanged);
+-	Q_OBJECT_BINDABLE_PROPERTY(NMDevice, NMDeviceStateReason::Enum, bLastFailReason, &NMDevice::lastFailReasonChanged);
++	Q_OBJECT_BINDABLE_PROPERTY(NMDevice, std::optional<NMDeviceStateReason::Enum>, bLastFailReason, &NMDevice::lastFailReasonChanged);
+ 	Q_OBJECT_BINDABLE_PROPERTY(NMDevice, bool, bAutoconnect, &NMDevice::autoconnectChanged);
+ 	Q_OBJECT_BINDABLE_PROPERTY(NMDevice, QList<QDBusObjectPath>, bAvailableConnections, &NMDevice::availableSettingsPathsChanged);
+ 	Q_OBJECT_BINDABLE_PROPERTY(NMDevice, QDBusObjectPath, bActiveConnection, &NMDevice::activeConnectionPathChanged);
+diff --git a/src/network/nm/network.cpp b/src/network/nm/network.cpp
+index a3e0ef9..60a0a99 100644
+--- a/src/network/nm/network.cpp
++++ b/src/network/nm/network.cpp
+@@ -90,12 +90,14 @@ void NMNetwork::addActiveConnection(NMActiveConnection* active) {
+ 
+ 	this->bState.setBinding([active]() { return active->state(); });
+ 	this->bReason.setBinding([active]() { return active->stateReason(); });
++	this->bActivePath = active->path();
+ 	auto onDestroyed = [this, active]() {
+ 		if (this->mActiveConnection && this->mActiveConnection == active) {
+ 			this->mActiveConnection = nullptr;
+ 			this->updateReferenceSettings();
+ 			this->bState = NMConnectionState::Deactivated;
+ 			this->bReason = NMConnectionStateReason::None;
++			this->bActivePath = QString();
+ 		}
+ 	};
+ 	QObject::connect(active, &NMActiveConnection::destroyed, this, onDestroyed);
+@@ -120,21 +122,30 @@ void NMNetwork::bindFrontend(Network* frontend) {
+ 		auto s = static_cast<ConnectionState::Enum>(this->state());
+ 		return s == ConnectionState::Connecting || s == ConnectionState::Disconnecting;
+ 	});
++	frontend->bindableActivation().setBinding([this]() { return this->bActivePath.value(); });
+ 
+ 	QObject::connect(this, &NMNetwork::reasonChanged, this, [this, frontend]() {
+-		if (this->reason() == NMConnectionStateReason::DeviceDisconnected) {
+-			auto deviceReason = this->deviceFailReason();
+-			if (deviceReason == NMDeviceStateReason::NoSecrets)
+-				emit frontend->connectionFailed(ConnectionFailReason::NoSecrets);
+-			if (deviceReason == NMDeviceStateReason::SupplicantDisconnect)
+-				emit frontend->connectionFailed(ConnectionFailReason::WifiClientDisconnected);
+-			if (deviceReason == NMDeviceStateReason::SupplicantFailed)
+-				emit frontend->connectionFailed(ConnectionFailReason::WifiClientFailed);
+-			if (deviceReason == NMDeviceStateReason::SupplicantTimeout)
+-				emit frontend->connectionFailed(ConnectionFailReason::WifiAuthTimeout);
+-			if (deviceReason == NMDeviceStateReason::SsidNotFound)
+-				emit frontend->connectionFailed(ConnectionFailReason::WifiNetworkLost);
++		if (this->reason() != NMConnectionStateReason::DeviceDisconnected) return;
++		// NetworkManager signals the device's Failed state before the active connection ends.
++		// An activation that ended without it (a disconnect, a newer activation) did not fail.
++		auto deviceReason = this->deviceFailReason();
++		if (!deviceReason) return;
++		auto reason = ConnectionFailReason::Unknown;
++		switch (*deviceReason) {
++		case NMDeviceStateReason::NoSecrets: reason = ConnectionFailReason::NoSecrets; break;
++		case NMDeviceStateReason::SupplicantDisconnect:
++			reason = ConnectionFailReason::WifiClientDisconnected;
++			break;
++		case NMDeviceStateReason::SupplicantFailed:
++			reason = ConnectionFailReason::WifiClientFailed;
++			break;
++		case NMDeviceStateReason::SupplicantTimeout:
++			reason = ConnectionFailReason::WifiAuthTimeout;
++			break;
++		case NMDeviceStateReason::SsidNotFound: reason = ConnectionFailReason::WifiNetworkLost; break;
++		default: break;
+ 		}
++		emit frontend->connectionFailed(reason);
+ 	});
+ 
+ 	QObject::connect(
+diff --git a/src/network/nm/network.hpp b/src/network/nm/network.hpp
+index b4cc6b3..37f5661 100644
+--- a/src/network/nm/network.hpp
++++ b/src/network/nm/network.hpp
+@@ -1,5 +1,7 @@
+ #pragma once
+ 
++#include <optional>
++
+ #include <qobject.h>
+ 
+ #include "../enums.hpp"
+@@ -29,8 +31,8 @@ public:
+ 	[[nodiscard]] NMConnectionState::Enum state() const { return this->bState; }
+ 	[[nodiscard]] bool known() const { return this->bKnown; }
+ 	[[nodiscard]] NMConnectionStateReason::Enum reason() const { return this->bReason; }
+-	QBindable<NMDeviceStateReason::Enum> bindableDeviceFailReason() { return &this->bDeviceFailReason; }
+-	[[nodiscard]] NMDeviceStateReason::Enum deviceFailReason() const { return this->bDeviceFailReason; }
++	QBindable<std::optional<NMDeviceStateReason::Enum>> bindableDeviceFailReason() { return &this->bDeviceFailReason; }
++	[[nodiscard]] std::optional<NMDeviceStateReason::Enum> deviceFailReason() const { return this->bDeviceFailReason; }
+ 	[[nodiscard]] QList<NMSettings*> settings() const { return this->mSettings.values(); }
+ 	[[nodiscard]] NMSettings* referenceSettings() const { return this->bReferenceSettings; }
+ 	[[nodiscard]] virtual Network* frontend() = 0;
+@@ -49,7 +51,8 @@ signals:
+ 	void stateChanged(NMConnectionState::Enum state);
+ 	void knownChanged(bool known);
+ 	void reasonChanged(NMConnectionStateReason::Enum reason);
+-	void deviceFailReasonChanged(NMDeviceStateReason::Enum reason);
++	void deviceFailReasonChanged(std::optional<NMDeviceStateReason::Enum> reason);
++	void activePathChanged(QString path);
+ 	void referenceSettingsChanged(NMSettings* settings);
+ 	void visibilityChanged(bool visible);
+ 
+@@ -73,7 +76,8 @@ private:
+ 	Q_OBJECT_BINDABLE_PROPERTY(NMNetwork, bool, bKnown, &NMNetwork::knownChanged);
+ 	Q_OBJECT_BINDABLE_PROPERTY(NMNetwork, NMConnectionStateReason::Enum, bReason, &NMNetwork::reasonChanged);
+ 	Q_OBJECT_BINDABLE_PROPERTY(NMNetwork, NMConnectionState::Enum, bState, &NMNetwork::stateChanged);
+-	Q_OBJECT_BINDABLE_PROPERTY(NMNetwork, NMDeviceStateReason::Enum, bDeviceFailReason, &NMNetwork::deviceFailReasonChanged);
++	Q_OBJECT_BINDABLE_PROPERTY(NMNetwork, std::optional<NMDeviceStateReason::Enum>, bDeviceFailReason, &NMNetwork::deviceFailReasonChanged);
++	Q_OBJECT_BINDABLE_PROPERTY(NMNetwork, QString, bActivePath, &NMNetwork::activePathChanged);
+ 	// clang-format on
+ };
+ 
+diff --git a/src/network/test/CMakeLists.txt b/src/network/test/CMakeLists.txt
+new file mode 100644
+index 0000000..7bad863
+--- /dev/null
++++ b/src/network/test/CMakeLists.txt
+@@ -0,0 +1,7 @@
++function (qs_test name)
++	add_executable(${name} ${ARGN})
++	target_link_libraries(${name} PRIVATE Qt::DBus Qt::Quick Qt::Test quickshell-network-nm quickshell-network quickshell-dbus quickshell-core quickshell-window quickshell-ui quickshell-io)
++	add_test(NAME ${name} WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" COMMAND $<TARGET_FILE:${name}>)
++endfunction()
++
++qs_test(connectionfailure connectionfailure.cpp)
+diff --git a/src/network/test/connectionfailure.cpp b/src/network/test/connectionfailure.cpp
+new file mode 100644
+index 0000000..026d294
+--- /dev/null
++++ b/src/network/test/connectionfailure.cpp
+@@ -0,0 +1,156 @@
++#include "connectionfailure.hpp"
++
++#include <qdbusconnection.h>
++#include <qlist.h>
++#include <qobject.h>
++#include <qstring.h>
++#include <qtest.h>
++#include <qtestcase.h>
++#include <qtypes.h>
++#include <qvariant.h>
++
++#include "../device.hpp"
++#include "../enums.hpp"
++#include "../network.hpp"
++#include "../nm/active_connection.hpp"
++#include "../nm/device.hpp"
++#include "../nm/enums.hpp"
++#include "../nm/network.hpp"
++
++using namespace qs::network;
++
++namespace {
++
++const QString ACTIVE1 = QStringLiteral("/org/freedesktop/NetworkManager/ActiveConnection/1");
++const QString ACTIVE2 = QStringLiteral("/org/freedesktop/NetworkManager/ActiveConnection/2");
++
++// A device without a D-Bus peer. Its state changes are fed in the order NetworkManager signals
++// them: the device's StateChanged first, then the active connection's StateChanged.
++class FakeDevice: public NMDevice {
++public:
++	FakeDevice(): NMDevice(QStringLiteral("/org/freedesktop/NetworkManager/Devices/1")) {}
++
++	NetworkDevice* frontend() override { return &this->mFrontend; }
++	void bind(NMNetwork* net) { this->bindNetwork(net); }
++
++	void state(NMDeviceState::Enum state, NMDeviceStateReason::Enum reason) {
++		QVERIFY(
++		    QMetaObject::invokeMethod(
++		        this,
++		        "onStateChanged",
++		        Q_ARG(quint32, state),
++		        Q_ARG(quint32, NMDeviceState::Unknown),
++		        Q_ARG(quint32, reason)
++		    )
++		);
++	}
++
++private:
++	NetworkDevice mFrontend {DeviceType::Wired};
++};
++
++void deactivate(NMActiveConnection* active, NMConnectionStateReason::Enum reason) {
++	QVERIFY(
++	    QMetaObject::invokeMethod(
++	        active,
++	        "onStateChanged",
++	        Q_ARG(quint32, NMConnectionState::Deactivated),
++	        Q_ARG(quint32, reason)
++	    )
++	);
++}
++
++QString activation(Network* network) {
++	auto value = network->property("activation");
++	return value.isValid() ? value.toString() : QStringLiteral("<no activation property>");
++}
++
++using Failure = QPair<ConnectionFailReason::Enum, QString>;
++
++// Every failure the network signals, with the activation it names while signalling it.
++QList<Failure>* record(Network* network) {
++	auto* failures = new QList<Failure>();
++	QObject::connect(network, &QObject::destroyed, [failures]() { delete failures; });
++	QObject::connect(
++	    network,
++	    &Network::connectionFailed,
++	    [network, failures](ConnectionFailReason::Enum reason) {
++		    failures->append({reason, activation(network)});
++	    }
++	);
++	return failures;
++}
++
++} // namespace
++
++void TestConnectionFailure::initTestCase() {
++	// Never reach a real NetworkManager: the proxies stay without a bus.
++	qputenv("DBUS_SYSTEM_BUS_ADDRESS", "unix:path=/nonexistent/qs-test-system-bus");
++	QVERIFY(!QDBusConnection::systemBus().isConnected());
++}
++
++void TestConnectionFailure::failureNamesItsActivation() {
++	FakeDevice device;
++	NMGenericNetwork net(QStringLiteral("net"), device.frontend());
++	device.bind(&net);
++	auto* failures = record(net.frontend());
++	QCOMPARE(activation(net.frontend()), QString());
++
++	auto* active = new NMActiveConnection(ACTIVE1, &device);
++	device.state(NMDeviceState::Prepare, NMDeviceStateReason::None);
++	net.addActiveConnection(active);
++	QCOMPARE(activation(net.frontend()), ACTIVE1);
++
++	device.state(NMDeviceState::Failed, NMDeviceStateReason::NoSecrets);
++	deactivate(active, NMConnectionStateReason::DeviceDisconnected);
++	QCOMPARE(*failures, QList<Failure>({{ConnectionFailReason::NoSecrets, ACTIVE1}}));
++
++	delete active;
++	QCOMPARE(activation(net.frontend()), QString());
++}
++
++void TestConnectionFailure::unmappedReasonIsUnknown() {
++	FakeDevice device;
++	NMGenericNetwork net(QStringLiteral("net"), device.frontend());
++	device.bind(&net);
++	auto* failures = record(net.frontend());
++
++	auto* active = new NMActiveConnection(ACTIVE1, &device);
++	device.state(NMDeviceState::Prepare, NMDeviceStateReason::None);
++	net.addActiveConnection(active);
++	// DHCP gave no address: NetworkManager fails the device with a reason that has no
++	// ConnectionFailReason of its own.
++	device.state(NMDeviceState::Failed, NMDeviceStateReason::IpConfigUnavailable);
++	deactivate(active, NMConnectionStateReason::DeviceDisconnected);
++	QCOMPARE(*failures, QList<Failure>({{ConnectionFailReason::Unknown, ACTIVE1}}));
++}
++
++void TestConnectionFailure::failureIsNotCarriedIntoNextActivation() {
++	FakeDevice device;
++	NMGenericNetwork net(QStringLiteral("net"), device.frontend());
++	device.bind(&net);
++	auto* failures = record(net.frontend());
++
++	auto* first = new NMActiveConnection(ACTIVE1, &device);
++	device.state(NMDeviceState::Prepare, NMDeviceStateReason::None);
++	net.addActiveConnection(first);
++	device.state(NMDeviceState::Failed, NMDeviceStateReason::NoSecrets);
++	deactivate(first, NMConnectionStateReason::DeviceDisconnected);
++	device.state(NMDeviceState::Disconnected, NMDeviceStateReason::None);
++	delete first;
++	QCOMPARE(failures->size(), 1);
++
++	// The next activation is replaced by another one before it finishes: it ends, but the
++	// device never failed during it.
++	auto* second = new NMActiveConnection(ACTIVE2, &device);
++	device.state(NMDeviceState::Prepare, NMDeviceStateReason::None);
++	net.addActiveConnection(second);
++	device.state(NMDeviceState::Deactivating, NMDeviceStateReason::NewActivation);
++	device.state(NMDeviceState::Disconnected, NMDeviceStateReason::NewActivation);
++	deactivate(second, NMConnectionStateReason::DeviceDisconnected);
++	QCOMPARE(failures->size(), 1);
++	// A new activation of the same network has an identifier of its own.
++	QCOMPARE(activation(net.frontend()), ACTIVE2);
++}
++
++QTEST_MAIN(TestConnectionFailure);
+diff --git a/src/network/test/connectionfailure.hpp b/src/network/test/connectionfailure.hpp
+new file mode 100644
+index 0000000..7f6144c
+--- /dev/null
++++ b/src/network/test/connectionfailure.hpp
+@@ -0,0 +1,14 @@
++#pragma once
++
++#include <qobject.h>
++#include <qtmetamacros.h>
++
++class TestConnectionFailure: public QObject {
++	Q_OBJECT;
++
++private slots:
++	static void initTestCase();
++	static void failureNamesItsActivation();
++	static void unmappedReasonIsUnknown();
++	static void failureIsNotCarriedIntoNextActivation();
++};
+-- 
+2.55.0
+

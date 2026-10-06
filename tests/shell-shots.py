@@ -12,6 +12,8 @@ import tempfile
 from PIL import Image
 import importlib.util
 import sys
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 sys.dont_write_bytecode = True
 
 spec = importlib.util.spec_from_file_location("wallpaper_tests", Path(__file__).with_name("test-wallpaper.py"))
@@ -25,8 +27,8 @@ DEST = Path(os.environ.get('EMAKI_SHELL_SHOT_DIR', CACHE / 'shots')).resolve()
 if not DEST.is_relative_to(ROOT) or DEST == ROOT:
     raise SystemExit('EMAKI_SHELL_SHOT_DIR must be a directory inside the repository')
 DEST.mkdir(parents=True, exist_ok=True)
-KINDS = ('logo', 'corner', 'tray', 'file', 'wifi', 'bt', 'sound', 'light', 'battery',
-         'power-saver', 'balanced', 'performance', 'lock', 'sleep', 'restart', 'shutdown')
+KINDS = ('logo', 'corner', 'tray', 'file', 'wifi', 'wired', 'bt', 'sound', 'light', 'battery',
+         'power-saver', 'balanced', 'performance', 'lock', 'sleep', 'restart', 'shutdown', 'logout', 'hibernate')
 SIZES = (16, 18, 22, 36)
 report = []
 
@@ -80,7 +82,7 @@ for scale, fallback in ((1, ''), (2, ''), (1, 'config_invalid'), (1, 'image_miss
         continue
     assert 'MATERIAL_IDLE_OK' in result.stdout, result.stdout
     assert 'PRIVATE' not in result.stdout, result.stdout
-    for state in ('bar', 'bar-hover', 'bar-logo-hover', 'launcher', 'launcher-selected', 'launcher-search', 'launcher-pages', 'drawer', 'drawer-dnd', 'drawer-hover', 'notification-peek', 'notification-flood', 'launcher-clipboard', 'launcher-web', 'launcher-frequent', 'launcher-settings', 'launcher-history', 'drawer-media', 'dock', 'dock-list', 'dock-menu', 'osd-sound', 'osd-light', 'privacy', 'privacy-open', 'wifi-portal', 'wifi-hidden', 'launcher-recent', 'bar-system-hover', 'system-sound', 'system-wifi', 'system-bt', 'system-power', 'system-power-confirm'):
+    for state in ('bar', 'bar-hover', 'bar-logo-hover', 'launcher', 'launcher-selected', 'launcher-search', 'drawer', 'drawer-dnd', 'drawer-hover', 'notification-peek', 'notification-flood', 'launcher-clipboard', 'launcher-web', 'launcher-frequent', 'drawer-media', 'dock', 'dock-list', 'dock-menu', 'osd-sound', 'osd-light', 'privacy', 'privacy-open', 'wifi-portal', 'wifi-hidden', 'launcher-recent', 'bar-system-hover', 'system-sound', 'system-wifi', 'system-bt', 'system-power', 'system-power-confirm'):
         with Image.open(DEST / f'{state}@{scale}x.png') as frame:
             assert frame.size == (1536 * scale, 960 * scale), frame.size
     # The selected / current drops (today, the chosen player, the open page's tab) are orange,

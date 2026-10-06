@@ -37,7 +37,9 @@ Item {
     function cellX(position: int): real {
         return snap(position * pitch);
     }
-    implicitWidth: niri.connected ? Math.max(cell, entries.length * pitch - (pitch - cell)) : offline.implicitWidth + 12
+    // Until the core's first answer the island is one empty cell; offline it says so.
+    readonly property bool connecting: niri.connection === "connecting"
+    implicitWidth: niri.connected ? Math.max(cell, entries.length * pitch - (pitch - cell)) : connecting ? cell : offline.implicitWidth + 12
     implicitHeight: Metrics.islandHeight
     function choose(position: int): bool {
         const entry = entries.find(w => w.idx === position);
@@ -56,8 +58,8 @@ Item {
     Text {
         id: offline
         anchors.centerIn: parent
-        visible: !strip.niri.connected
-        text: "niri · " + strip.niri.connection
+        visible: !strip.niri.connected && !strip.connecting
+        text: "Workspaces unavailable"
         textFormat: Text.PlainText
         font.family: ShellPalette.uiFont
         font.pixelSize: 12

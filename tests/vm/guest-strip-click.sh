@@ -25,4 +25,9 @@ after=$(active)
 sudo python3 /tmp/guest-pointer.py move:0.5,0.6 >/dev/null 2>&1
 niri msg action focus-workspace 1
 echo "[$name]   workspace before click $before, after $after (expect 3)"
-[ "$after" = 3 ] && echo "[$name] strip-click: ok" || echo "[$name] strip-click: BAD active=$after"
+if [ "$after" = 3 ]; then
+    echo "[$name] strip-click: ok"
+else
+    echo "[$name] strip-click: BAD active=$after"
+    exit 1
+fi

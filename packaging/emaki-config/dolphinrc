@@ -1,0 +1,3 @@
+# Emaki system default for Dolphin; a person's ~/.config/dolphinrc overrides it.
+[General]
+ShowStatusBar=FullWidth

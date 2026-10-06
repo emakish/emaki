@@ -26,6 +26,8 @@ from urllib.parse import unquote, urlparse
 from types import SimpleNamespace
 
 from PIL import Image
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.dont_write_bytecode = True
@@ -233,12 +235,29 @@ def uninstall_recipe_checks(base):
         'usr/lib/systemd/user/emaki-greeter-wallpaper.service',
         'usr/lib/systemd/user/emaki-greeter-wallpaper-watch.service',
         'usr/lib/tmpfiles.d/emaki-greeter.conf', 'usr/lib/pam.d/emaki-greetd',
-        'etc/xdg/hypr/hyprlock.conf',
+        'etc/xdg/hypr/hyprlock.conf', 'etc/niri/config.kdl', 'etc/skel/.config/kitty/kitty.conf',
+        # The fork session (install-niri-emaki): its wrapper reads the fork configs under share.
+        'usr/bin/niri-emaki-session', 'usr/share/emaki/niri/fork.kdl',
+        'usr/lib/systemd/user/niri-emaki.service', 'usr/share/wayland-sessions/niri-emaki.desktop',
     )
     for name in installed:
         path = stage / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('staged installation fixture')
+    # The recipe removes an /etc default only when cmp says it equals the shipped source, read
+    # relative to the working directory: give the fixture shipped copies equal to the staged ones.
+    for source in ('hypr/hyprlock.conf', 'niri/system.kdl', 'etc-skel/.config/kitty/kitty.conf',
+                   'packaging/emaki-config/kdeglobals'):
+        (fixture / source).parent.mkdir(parents=True, exist_ok=True)
+        (fixture / source).write_text('staged installation fixture')
+    # Like the real file, the niri entry carries the marker the recipe recognises it by.
+    marker = next(line for line in (ROOT / 'Makefile').read_text().splitlines()
+                  if line.startswith('NIRI_ETC_MARK = ')).split(' = ', 1)[1]
+    for path in (stage / 'etc/niri/config.kdl', fixture / 'niri/system.kdl'):
+        path.write_text('// ' + marker + '\nstaged installation fixture\n')
+    # An administrator's edit differs from the shipped copy: it is kept and named.
+    edited = stage / 'etc/xdg/kdeglobals'
+    edited.write_text('staged installation fixture\nedited by the administrator\n')
     wants = stage / 'usr/lib/systemd/user/graphical-session.target.wants'
     wants.mkdir()
     for name in ('emaki-greeter-wallpaper.path', 'emaki-greeter-wallpaper-watch.service'):
@@ -299,10 +318,26 @@ elif name == 'rmdir':
             path.rmdir()
         except OSError as error:
             assert '--ignore-fail-on-non-empty' in arguments and error.errno == errno.ENOTEMPTY
+elif name == 'cmp':
+    # Read-only, with cmp's exit codes: 0 equal, 1 different, 2 a file is missing.
+    assert len(arguments) == 3 and arguments[0] == '-s', arguments
+    shipped = Path(arguments[1])
+    assert not shipped.is_absolute() and '..' not in shipped.parts, arguments
+    assert (Path.cwd() / shipped).resolve().is_relative_to(Path.cwd().resolve()), arguments
+    files = (Path.cwd() / shipped, bounded(arguments[2]))
+    if not all(path.is_file() for path in files):
+        sys.exit(2)
+    sys.exit(0 if files[0].read_bytes() == files[1].read_bytes() else 1)
+elif name == 'grep':
+    assert len(arguments) == 3 and arguments[0] == '-qF', arguments
+    path = bounded(arguments[2])
+    if not path.is_file():
+        sys.exit(2)
+    sys.exit(0 if arguments[1] in path.read_text() else 1)
 else:
     raise AssertionError('unexpected fixture command: ' + name)
 '''
-    for name in ('python3', 'bash', 'rm', 'rmdir'):
+    for name in ('python3', 'bash', 'rm', 'rmdir', 'cmp', 'grep'):
         command = stubs / name
         command.write_text(stub)
         command.chmod(0o700)
@@ -339,7 +374,11 @@ fixture-cleanup:
     assert result.returncode == 0, result
     assert 'WARNING' in result.stderr and str(greeter_root) in result.stderr, result.stderr
     assert 'Continuing removal' in result.stderr
-    assert all(not (stage / name).exists() for name in installed)
+    remaining = [name for name in installed if (stage / name).exists()]
+    assert not remaining, (remaining, result)
+    assert edited.read_text() == 'staged installation fixture\nedited by the administrator\n'
+    # The command echo shows `$dst`; only the executed line carries the expanded path.
+    assert f'uninstall: kept {edited} (it differs from the shipped file)\n' in result.stdout, result
     assert not wants.exists()
     remainder = greeter_root / ('.purge-published-' + 'a' * 32) / 'users/fixture/photo'
     assert remainder.read_bytes() == b'retained after simulated bounded purge failure'
@@ -347,6 +386,187 @@ fixture-cleanup:
     names = [json.loads(line)[0] for line in log.read_text().splitlines()]
     # The purge runs (removing the GRUB title hook may come first), and removal continues after it fails.
     assert 'python3' in names and 'rm' in names[names.index('python3') + 1:], names
+
+
+def package_removal_checks(base):
+    """emaki-config's scriptlet purges published copies on removal only, and never fails it.
+
+    Runs a copy of the scriptlet whose provisioner path points at a fixture command; the real
+    provisioner then purges a fixture root as a simulated root. Nothing here runs as root or
+    touches anything outside this temporary directory.
+    """
+    package = ROOT / 'packaging/emaki-config'
+    assert 'install=emaki-config.install' in (package / 'PKGBUILD').read_text().splitlines(), \
+        'emaki-config has no removal scriptlet'
+    scriptlet = package / 'emaki-config.install'
+    provisioner_path = '/usr/bin/emaki-greeter-provision'
+    # The packaged path: pacman's environment fixes no PATH for scriptlets.
+    assert provisioner_path in (package / 'expected-files.list').read_text().splitlines()
+    assert scriptlet.read_text().count(provisioner_path) == 1
+    assert subprocess.run(['bash', '-n', str(scriptlet)]).returncode == 0
+    if shutil.which('shellcheck'):
+        lint = subprocess.run(['shellcheck', '-s', 'bash', str(scriptlet)], capture_output=True, text=True)
+        assert lint.returncode == 0, lint.stdout
+    fixture = base / 'package-removal'
+    empty_path = fixture / 'no-commands'
+    empty_path.mkdir(parents=True)
+    log = fixture / 'calls.jsonl'
+    command = fixture / 'provisioner'
+    copy = fixture / 'emaki-config.install'
+    copy.write_text(scriptlet.read_text().replace(provisioner_path, str(command)))
+    environment = {'PATH': str(empty_path), 'FIXTURE_LOG': str(log),
+                   'FIXTURE_PROVISIONER': str(ROOT / 'scripts/emaki-greeter-provision')}
+
+    def calls():
+        lines = log.read_text().splitlines() if log.exists() else []
+        log.unlink(missing_ok=True)
+        return [json.loads(line) for line in lines]
+
+    def scriptlet_run(script, **extra):
+        # As libalpm runs it: source the file, call one function with the old version.
+        return subprocess.run([shutil.which('bash'), '-c', '. "$1"; ' + script, 'scriptlet', str(copy), '0.1.2-1'],
+                              env=environment | extra, cwd=fixture, capture_output=True, text=True, timeout=30)
+
+    # Sourcing runs nothing; only pre_remove exists, so installs and upgrades never purge.
+    listed = scriptlet_run('declare -F')
+    assert listed.returncode == 0 and not listed.stderr, listed
+    assert listed.stdout.splitlines() == ['declare -f pre_remove'], listed.stdout
+    assert calls() == []
+    warning = ('emaki-config: published wallpaper copies remain in /var/lib/emaki-greeter; '
+               'an administrator can remove them\n')
+    # A failed or missing purge is named but never fails the removal. No other command runs:
+    # PATH is empty, so any would fail with "command not found" on stderr.
+    command.write_text('#!' + sys.executable + '''
+import json, os, sys
+with open(os.environ['FIXTURE_LOG'], 'a') as stream:
+    stream.write(json.dumps(sys.argv[1:]) + '\\n')
+sys.exit(int(os.environ['FIXTURE_EXIT']))
+''')
+    command.chmod(0o700)
+    for status, expected in (('0', ''), ('1', warning)):
+        result = scriptlet_run('pre_remove "$2"', FIXTURE_EXIT=status)
+        assert (result.returncode, result.stdout, result.stderr) == (0, '', expected), result
+        assert calls() == [['--root', '/', '--purge-published']]
+    command.unlink()
+    result = scriptlet_run('pre_remove "$2"')
+    assert result.returncode == 0 and result.stderr.endswith(warning), result
+    assert calls() == []
+
+    # The real purge, given the root the scriptlet names (pacman chroots into its --root first).
+    # Simulated root, as in purge_checks: it may open directories only, never file contents.
+    command.write_text('#!' + sys.executable + '''
+import importlib.util, json, os, sys
+from importlib.machinery import SourceFileLoader
+from unittest.mock import patch
+sys.dont_write_bytecode = True
+with open(os.environ['FIXTURE_LOG'], 'a') as stream:
+    stream.write(json.dumps(sys.argv[1:]) + '\\n')
+assert sys.argv[1:] == ['--root', '/', '--purge-published'], sys.argv
+spec = importlib.util.spec_from_loader('provisioner', SourceFileLoader('provisioner', os.environ['FIXTURE_PROVISIONER']))
+provisioner = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(provisioner)
+original_open = os.open
+def directory_open(path, flags, *args, **kwargs):
+    assert flags & os.O_DIRECTORY, ('purge opened file contents', path)
+    return original_open(path, flags, *args, **kwargs)
+sys.argv[1:] = ['--root', os.environ['FIXTURE_ROOT'], '--purge-published']
+with patch.object(provisioner.os, 'getuid', return_value=0), patch.object(provisioner.os, 'geteuid', return_value=0), \\
+        patch.object(provisioner, 'require_root_directory'), patch.object(provisioner.os, 'fchown'), \\
+        patch.object(provisioner.os, 'open', side_effect=directory_open):
+    sys.exit(provisioner.main())
+''')
+    command.chmod(0o700)
+
+    def tree(root):
+        # Every entry with its type, mode and contents or link target; link counts are left out.
+        entries = {}
+        for directory, names, files in os.walk(root):
+            for name in names + files:
+                path = Path(directory, name)
+                info = path.lstat()
+                if stat.S_ISLNK(info.st_mode):
+                    value = os.readlink(path)
+                elif stat.S_ISREG(info.st_mode):
+                    value = path.read_bytes()
+                else:
+                    value = None
+                entries[str(path.relative_to(root))] = (stat.S_IFMT(info.st_mode), stat.S_IMODE(info.st_mode), value)
+        return entries
+
+    root = fixture / 'root'
+    greeter = root / 'var/lib/emaki-greeter'
+    person = root / 'home/fixture'
+    (person / 'Pictures').mkdir(parents=True, mode=0o700)
+    (person / 'Pictures/PRIVATE_WALLPAPER.png').write_bytes(png('red'))
+    (person / 'Pictures/linked.png').write_bytes(png('blue'))
+    (person / '.config/wpaperd').mkdir(parents=True)
+    write_config(person / '.config/wpaperd/config.toml', person / 'Pictures/PRIVATE_WALLPAPER.png')
+    (root / 'var/lib/other').mkdir(parents=True)
+    (root / 'var/lib/other/data').write_text('another package')
+    greeter.mkdir(mode=0o755)
+    published = greeter / 'users/fixture'
+    (published / 'wpaperd').mkdir(parents=True)
+    (published / 'wpaperd/config.toml').write_text('path = "published copy"\n')
+    (published / 'wallpaper-fixture.png').write_bytes(png('red'))
+    # Links a person could leave in their publishing directory: removed as entries only.
+    (published / 'file-link').symlink_to(person / 'Pictures/PRIVATE_WALLPAPER.png')
+    (published / 'directory-link').symlink_to(person / 'Pictures', target_is_directory=True)
+    os.link(person / 'Pictures/linked.png', published / 'hard-link')
+    for name in ('state', 'handoff', 'home', 'cache', 'config', 'data'):
+        (greeter / name).mkdir(mode=0o700)
+        (greeter / name / 'kept').write_text('greeter ' + name)
+    before = tree(root)
+    first = scriptlet_run('pre_remove "$2"', FIXTURE_ROOT=str(root))
+    assert first.returncode == 0 and first.stderr == '', first
+    assert 'Published wallpaper copies removed' in first.stdout, first
+    after = tree(root)
+    # Exactly the published tree went; the person's files and greeter state are unchanged.
+    expected = {path: entry for path, entry in before.items()
+                if path != 'var/lib/emaki-greeter/users' and not path.startswith('var/lib/emaki-greeter/users/')}
+    assert after == expected, (set(expected) ^ set(after), [path for path in after if after[path] != expected.get(path)])
+    # Idempotent: a repeated removal finds nothing and changes nothing.
+    second = scriptlet_run('pre_remove "$2"', FIXTURE_ROOT=str(root))
+    assert second.returncode == 0 and second.stderr == '', second
+    assert tree(root) == after
+    assert calls() == [['--root', '/', '--purge-published']] * 2
+    # A root that never had a greeter, and one whose users entry is unsafe, stay untouched.
+    for name in ('never-provisioned', 'unsafe-users'):
+        other = fixture / name
+        (other / 'var/lib').mkdir(parents=True)
+        if name == 'unsafe-users':
+            (other / 'var/lib/emaki-greeter').mkdir()
+            (other / 'var/lib/emaki-greeter/users').write_text('not a directory')
+        before = tree(other)
+        result = scriptlet_run('pre_remove "$2"', FIXTURE_ROOT=str(other))
+        assert result.returncode == 0 and tree(other) == before, result
+        assert result.stderr.endswith(warning) == (name == 'unsafe-users'), result
+        assert calls() == [['--root', '/', '--purge-published']]
+
+
+def default_config_checks(base):
+    """The installer's publication before the first login (worker.settings): the new account
+    runs this publisher with the default wpaperd config. Its picture passes both sides."""
+    assert 'install -Dm644 -t $(SHARE)/wallpaper art/wallpaper/ring.png' in (ROOT / 'Makefile').read_text()
+    skel = (ROOT / 'etc-skel/.config/wpaperd/config.toml').read_text()
+    installed = '"/usr/share/emaki/wallpaper/'
+    assert installed in skel
+    config_home = base / 'default-config'
+    config = config_home / 'wpaperd/config.toml'
+    config.parent.mkdir(parents=True)
+    config.write_text(skel.replace(installed, json.dumps(str(ROOT / 'art/wallpaper'))[:-1] + '/'))
+    destination = base / 'default-published'
+    destination.mkdir(mode=0o750)
+    destination.chmod(0o2750)
+    with patch.dict(os.environ, XDG_CONFIG_HOME=str(config_home)):
+        assert publisher.paths()[0] == config
+    assert publisher.publish(config, destination) == {'state': 'published', 'images': 1}
+    published = tomllib.loads((destination / 'wpaperd/config.toml').read_text())
+    image = Path(next(iter(published.values()))['path'])
+    assert image.parent == destination
+    assert image.read_bytes() == (ROOT / 'art/wallpaper/ring.png').read_bytes()
+    with patch.dict(os.environ, EMAKI_GREETER_WALLPAPER_ROOT=str(destination), XDG_CACHE_HOME=str(base / 'default-cache'),
+                    XDG_CONFIG_HOME='/home/DO_NOT_READ/config', HOME='/home/DO_NOT_READ'):
+        assert wallpaper.texture(80, 50, 1, 'Fixture', 'sharp')['state'] == 'ready'
 
 
 def main():
@@ -801,7 +1021,9 @@ Scope {
             assert ('systemctl --user daemon-reload' in hint.getvalue()) is expects_hint
         purge_checks(base)
         uninstall_recipe_checks(base)
-        watcher_unit = (ROOT / 'systemd/emaki-greeter-wallpaper-watch.service').read_text()
+        package_removal_checks(base)
+        default_config_checks(base)
+        watcher_unit =(ROOT / 'systemd/emaki-greeter-wallpaper-watch.service').read_text()
         assert 'StartLimitIntervalSec=60' in watcher_unit and 'StartLimitBurst=5' in watcher_unit
     print('Greeter wallpaper: safe publication/removal/purge, PNG/JPEG/WebP-only/no Ghostscript, bounds/symlinks/races, private roots, inotify, isolated QS helpers, optional provisioning/hints, private refusal codes: PASS')
 

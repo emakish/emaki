@@ -8,6 +8,8 @@ import runpy
 import struct
 import subprocess
 import sys
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 THEME = ROOT / 'cursors/Emaki'

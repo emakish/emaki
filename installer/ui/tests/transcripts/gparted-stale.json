@@ -1,0 +1,602 @@
+[
+  {
+    "expect": "hello",
+    "responses": [
+      {
+        "type": "hello",
+        "proto": 1,
+        "archinstall_version": "4.5",
+        "emaki_version": "0.1.0",
+        "test_mode": false,
+        "busy_job": null
+      }
+    ]
+  },
+  {
+    "expect": "probe",
+    "responses": [
+      {
+        "type": "inventory",
+        "disks": [
+          {
+            "id": "/dev/vda",
+            "path": "/dev/vda",
+            "size_bytes": 42949672960,
+            "bus": "virtio",
+            "removable": false,
+            "is_boot_medium": false,
+            "partitions": [
+              {
+                "id": "/dev/vda1",
+                "path": "/dev/vda1",
+                "number": 1,
+                "uuid": "fixture-1",
+                "fs": "vfat",
+                "size_bytes": 1073741824,
+                "start_bytes": 1048576,
+                "mountpoint": null,
+                "label": null,
+                "os_hint": null,
+                "esp": true
+              },
+              {
+                "id": "/dev/vda2",
+                "path": "/dev/vda2",
+                "number": 2,
+                "uuid": "fixture-2",
+                "fs": "btrfs",
+                "size_bytes": 41875931136,
+                "start_bytes": 1074790400,
+                "mountpoint": null,
+                "label": null,
+                "os_hint": null,
+                "esp": false
+              }
+            ],
+            "free_extents": [],
+            "shrink": null
+          },
+          {
+            "id": "/dev/disk/by-id/usb-Emaki_Live_USB_L0-0:0",
+            "path": "/dev/sda",
+            "size_bytes": 8589934592,
+            "bus": "usb",
+            "removable": true,
+            "is_boot_medium": true,
+            "partitions": [],
+            "free_extents": [],
+            "shrink": null
+          },
+          {
+            "id": "/dev/disk/by-id/usb-Target_Disk_T1-0:0",
+            "path": "/dev/sdb",
+            "size_bytes": 68719476736,
+            "bus": "usb",
+            "removable": true,
+            "is_boot_medium": false,
+            "partitions": [],
+            "free_extents": [],
+            "shrink": null
+          }
+        ],
+        "gpu": "Virtual GPU",
+        "cpu": "Virtual CPU",
+        "memory_bytes": 8589934592,
+        "uefi": true,
+        "network": {
+          "online": false
+        },
+        "tz_guess": "Europe/Lisbon",
+        "scale_guess": null
+      }
+    ],
+    "note": "The list the person chooses from: the target disk is /dev/sdb."
+  },
+  {
+    "expect": "probe",
+    "note": "Open GParted: the worker refuses the probe; refused.",
+    "responses": [
+      {
+        "type": "reply",
+        "ok": false,
+        "code": "internal",
+        "msg": "Request failed; inspect the worker log.",
+        "log_path": "/var/log/emaki-install.log"
+      }
+    ]
+  },
+  {
+    "expect": "probe",
+    "responses": [
+      {
+        "type": "inventory",
+        "disks": [
+          {
+            "id": "/dev/vda",
+            "path": "/dev/vda",
+            "size_bytes": 42949672960,
+            "bus": "virtio",
+            "removable": false,
+            "is_boot_medium": false,
+            "partitions": [
+              {
+                "id": "/dev/vda1",
+                "path": "/dev/vda1",
+                "number": 1,
+                "uuid": "fixture-1",
+                "fs": "vfat",
+                "size_bytes": 1073741824,
+                "start_bytes": 1048576,
+                "mountpoint": null,
+                "label": null,
+                "os_hint": null,
+                "esp": true
+              },
+              {
+                "id": "/dev/vda2",
+                "path": "/dev/vda2",
+                "number": 2,
+                "uuid": "fixture-2",
+                "fs": "btrfs",
+                "size_bytes": 41875931136,
+                "start_bytes": 1074790400,
+                "mountpoint": null,
+                "label": null,
+                "os_hint": null,
+                "esp": false
+              }
+            ],
+            "free_extents": [],
+            "shrink": null
+          },
+          {
+            "id": "/dev/disk/by-id/usb-Emaki_Live_USB_L0-0:0",
+            "path": "/dev/sda",
+            "size_bytes": 8589934592,
+            "bus": "usb",
+            "removable": true,
+            "is_boot_medium": true,
+            "partitions": [],
+            "free_extents": [],
+            "shrink": null
+          },
+          {
+            "id": "/dev/disk/by-id/usb-Other_Disk_O2-0:0",
+            "path": "/dev/sdb",
+            "size_bytes": 34359738368,
+            "bus": "usb",
+            "removable": true,
+            "is_boot_medium": false,
+            "partitions": [],
+            "free_extents": [],
+            "shrink": null
+          },
+          {
+            "id": "/dev/disk/by-id/usb-Target_Disk_T1-0:0",
+            "path": "/dev/sdc",
+            "size_bytes": 68719476736,
+            "bus": "usb",
+            "removable": true,
+            "is_boot_medium": false,
+            "partitions": [],
+            "free_extents": [],
+            "shrink": null
+          }
+        ],
+        "gpu": "Virtual GPU",
+        "cpu": "Virtual CPU",
+        "memory_bytes": 8589934592,
+        "uefi": true,
+        "network": {
+          "online": false
+        },
+        "tz_guess": "Europe/Lisbon",
+        "scale_guess": null
+      }
+    ],
+    "note": "Open GParted: the target was replugged as /dev/sdc and another disk took /dev/sdb; refused."
+  },
+  {
+    "expect": "probe",
+    "responses": [
+      {
+        "type": "inventory",
+        "disks": [
+          {
+            "id": "/dev/vda",
+            "path": "/dev/vda",
+            "size_bytes": 42949672960,
+            "bus": "virtio",
+            "removable": false,
+            "is_boot_medium": false,
+            "partitions": [
+              {
+                "id": "/dev/vda1",
+                "path": "/dev/vda1",
+                "number": 1,
+                "uuid": "fixture-1",
+                "fs": "vfat",
+                "size_bytes": 1073741824,
+                "start_bytes": 1048576,
+                "mountpoint": null,
+                "label": null,
+                "os_hint": null,
+                "esp": true
+              },
+              {
+                "id": "/dev/vda2",
+                "path": "/dev/vda2",
+                "number": 2,
+                "uuid": "fixture-2",
+                "fs": "btrfs",
+                "size_bytes": 41875931136,
+                "start_bytes": 1074790400,
+                "mountpoint": null,
+                "label": null,
+                "os_hint": null,
+                "esp": false
+              }
+            ],
+            "free_extents": [],
+            "shrink": null
+          },
+          {
+            "id": "/dev/disk/by-id/usb-Emaki_Live_USB_L0-0:0",
+            "path": "/dev/sda",
+            "size_bytes": 8589934592,
+            "bus": "usb",
+            "removable": true,
+            "is_boot_medium": true,
+            "partitions": [],
+            "free_extents": [],
+            "shrink": null
+          },
+          {
+            "id": "/dev/disk/by-id/usb-Other_Disk_O2-0:0",
+            "path": "/dev/sdb",
+            "size_bytes": 34359738368,
+            "bus": "usb",
+            "removable": true,
+            "is_boot_medium": false,
+            "partitions": [],
+            "free_extents": [],
+            "shrink": null
+          }
+        ],
+        "gpu": "Virtual GPU",
+        "cpu": "Virtual CPU",
+        "memory_bytes": 8589934592,
+        "uefi": true,
+        "network": {
+          "online": false
+        },
+        "tz_guess": "Europe/Lisbon",
+        "scale_guess": null
+      }
+    ],
+    "note": "Open GParted again: the target is unplugged; refused."
+  },
+  {
+    "expect": "probe",
+    "responses": [
+      {
+        "type": "inventory",
+        "disks": [
+          {
+            "id": "/dev/vda",
+            "path": "/dev/vda",
+            "size_bytes": 42949672960,
+            "bus": "virtio",
+            "removable": false,
+            "is_boot_medium": false,
+            "partitions": [
+              {
+                "id": "/dev/vda1",
+                "path": "/dev/vda1",
+                "number": 1,
+                "uuid": "fixture-1",
+                "fs": "vfat",
+                "size_bytes": 1073741824,
+                "start_bytes": 1048576,
+                "mountpoint": null,
+                "label": null,
+                "os_hint": null,
+                "esp": true
+              },
+              {
+                "id": "/dev/vda2",
+                "path": "/dev/vda2",
+                "number": 2,
+                "uuid": "fixture-2",
+                "fs": "btrfs",
+                "size_bytes": 41875931136,
+                "start_bytes": 1074790400,
+                "mountpoint": null,
+                "label": null,
+                "os_hint": null,
+                "esp": false
+              }
+            ],
+            "free_extents": [],
+            "shrink": null
+          },
+          {
+            "id": "/dev/disk/by-id/usb-Emaki_Live_USB_L0-0:0",
+            "path": "/dev/sda",
+            "size_bytes": 8589934592,
+            "bus": "usb",
+            "removable": true,
+            "is_boot_medium": true,
+            "partitions": [],
+            "free_extents": [],
+            "shrink": null
+          },
+          {
+            "id": "/dev/disk/by-id/usb-Other_Disk_O2-0:0",
+            "path": "/dev/sdb",
+            "size_bytes": 34359738368,
+            "bus": "usb",
+            "removable": true,
+            "is_boot_medium": false,
+            "partitions": [],
+            "free_extents": [],
+            "shrink": null
+          },
+          {
+            "id": "/dev/disk/by-id/usb-Target_Disk_T1-0:0",
+            "path": "/dev/sdc",
+            "size_bytes": 68719476736,
+            "bus": "usb",
+            "removable": true,
+            "is_boot_medium": false,
+            "partitions": [],
+            "free_extents": [],
+            "shrink": null
+          }
+        ],
+        "gpu": "Virtual GPU",
+        "cpu": "Virtual CPU",
+        "memory_bytes": 8589934592,
+        "uefi": true,
+        "network": {
+          "online": false
+        },
+        "tz_guess": "Europe/Lisbon",
+        "scale_guess": null
+      }
+    ],
+    "note": "The disk list is refreshed: the target is back as /dev/sdc."
+  },
+  {
+    "expect": "probe",
+    "responses": [
+      {
+        "type": "inventory",
+        "disks": [
+          {
+            "id": "/dev/vda",
+            "path": "/dev/vda",
+            "size_bytes": 42949672960,
+            "bus": "virtio",
+            "removable": false,
+            "is_boot_medium": false,
+            "partitions": [
+              {
+                "id": "/dev/vda1",
+                "path": "/dev/vda1",
+                "number": 1,
+                "uuid": "fixture-1",
+                "fs": "vfat",
+                "size_bytes": 1073741824,
+                "start_bytes": 1048576,
+                "mountpoint": null,
+                "label": null,
+                "os_hint": null,
+                "esp": true
+              },
+              {
+                "id": "/dev/vda2",
+                "path": "/dev/vda2",
+                "number": 2,
+                "uuid": "fixture-2",
+                "fs": "btrfs",
+                "size_bytes": 41875931136,
+                "start_bytes": 1074790400,
+                "mountpoint": null,
+                "label": null,
+                "os_hint": null,
+                "esp": false
+              }
+            ],
+            "free_extents": [],
+            "shrink": null
+          },
+          {
+            "id": "/dev/disk/by-id/usb-Emaki_Live_USB_L0-0:0",
+            "path": "/dev/sda",
+            "size_bytes": 8589934592,
+            "bus": "usb",
+            "removable": true,
+            "is_boot_medium": true,
+            "partitions": [],
+            "free_extents": [],
+            "shrink": null
+          },
+          {
+            "id": "/dev/disk/by-id/usb-Other_Disk_O2-0:0",
+            "path": "/dev/sdb",
+            "size_bytes": 34359738368,
+            "bus": "usb",
+            "removable": true,
+            "is_boot_medium": false,
+            "partitions": [],
+            "free_extents": [],
+            "shrink": null
+          },
+          {
+            "id": "/dev/disk/by-id/usb-Target_Disk_T1-0:0",
+            "path": "/dev/sdc",
+            "size_bytes": 68719476736,
+            "bus": "usb",
+            "removable": true,
+            "is_boot_medium": false,
+            "partitions": [],
+            "free_extents": [],
+            "shrink": null
+          }
+        ],
+        "gpu": "Virtual GPU",
+        "cpu": "Virtual CPU",
+        "memory_bytes": 8589934592,
+        "uefi": true,
+        "network": {
+          "online": false
+        },
+        "tz_guess": "Europe/Lisbon",
+        "scale_guess": null
+      }
+    ],
+    "note": "Open GParted: the target is still /dev/sdc; GParted opens on it."
+  },
+  {
+    "expect": "probe",
+    "responses": [
+      {
+        "type": "inventory",
+        "disks": [
+          {
+            "id": "/dev/vda",
+            "path": "/dev/vda",
+            "size_bytes": 42949672960,
+            "bus": "virtio",
+            "removable": false,
+            "is_boot_medium": false,
+            "partitions": [
+              {
+                "id": "/dev/vda1",
+                "path": "/dev/vda1",
+                "number": 1,
+                "uuid": "fixture-1",
+                "fs": "vfat",
+                "size_bytes": 1073741824,
+                "start_bytes": 1048576,
+                "mountpoint": null,
+                "label": null,
+                "os_hint": null,
+                "esp": true
+              },
+              {
+                "id": "/dev/vda2",
+                "path": "/dev/vda2",
+                "number": 2,
+                "uuid": "fixture-2",
+                "fs": "btrfs",
+                "size_bytes": 41875931136,
+                "start_bytes": 1074790400,
+                "mountpoint": null,
+                "label": null,
+                "os_hint": null,
+                "esp": false
+              }
+            ],
+            "free_extents": [],
+            "shrink": null
+          },
+          {
+            "id": "/dev/disk/by-id/usb-Emaki_Live_USB_L0-0:0",
+            "path": "/dev/sda",
+            "size_bytes": 8589934592,
+            "bus": "usb",
+            "removable": true,
+            "is_boot_medium": true,
+            "partitions": [],
+            "free_extents": [],
+            "shrink": null
+          },
+          {
+            "id": "/dev/disk/by-id/usb-Other_Disk_O2-0:0",
+            "path": "/dev/sdb",
+            "size_bytes": 34359738368,
+            "bus": "usb",
+            "removable": true,
+            "is_boot_medium": false,
+            "partitions": [],
+            "free_extents": [],
+            "shrink": null
+          },
+          {
+            "id": "/dev/disk/by-id/usb-Target_Disk_T1-0:0",
+            "path": "/dev/sdc",
+            "size_bytes": 68719476736,
+            "bus": "usb",
+            "removable": true,
+            "is_boot_medium": false,
+            "partitions": [],
+            "free_extents": [],
+            "shrink": null
+          }
+        ],
+        "gpu": "Virtual GPU",
+        "cpu": "Virtual CPU",
+        "memory_bytes": 8589934592,
+        "uefi": true,
+        "network": {
+          "online": false
+        },
+        "tz_guess": "Europe/Lisbon",
+        "scale_guess": null
+      }
+    ],
+    "note": "GParted closed: the disk list is refreshed."
+  },
+  {
+    "expect": "plan",
+    "responses": [
+      {
+        "type": "plan_ack",
+        "plan_id": "fixture-plan",
+        "token": "mock-capability",
+        "expires_s": 600,
+        "summary": [
+          "Erase installation on /dev/vda (VirtIO System Disk).",
+          "Partition 1: format vfat, 1.00 GiB; /efi.",
+          "Partition 2: format btrfs, 39.00 GiB; @ \u2192 /, @home \u2192 /home, @log \u2192 /var/log, @pkg \u2192 /var/cache/pacman/pkg, @snapshots \u2192 /.snapshots.",
+          "Account: demo; hostname: emaki; timezone: Europe/Lisbon.",
+          "Packages are installed from the signed offline USB repository.",
+          "Software: Rich \u2014 desktop apps, office, email, media and utilities."
+        ],
+        "errors": [],
+        "warnings": [
+          {
+            "code": "unstable_id",
+            "msg": "No by-id name is available; device identity and geometry will be rechecked."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "expect": "confirm",
+    "responses": [
+      {
+        "type": "reply",
+        "ok": true,
+        "job_id": "fixture-job"
+      },
+      {
+        "type": "state",
+        "job_id": "fixture-job",
+        "phase": "copy_packages",
+        "phase_pct": 42,
+        "total_pct": 32,
+        "indeterminate": false
+      },
+      {
+        "type": "done",
+        "job_id": "fixture-job",
+        "log_path": "/var/log/emaki-install.log",
+        "seconds": 187
+      }
+    ]
+  }
+]

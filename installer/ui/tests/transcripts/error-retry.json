@@ -95,8 +95,9 @@
           "Erase all partitions and create a new GPT partition table.",
           "Partition 1: format vfat, 1.00 GiB; /efi.",
           "Partition 2: format btrfs, 39.00 GiB; @ \u2192 /, @home \u2192 /home, @log \u2192 /var/log, @pkg \u2192 /var/cache/pacman/pkg, @snapshots \u2192 /.snapshots.",
-          "Account: alex; hostname: emaki; timezone: Europe/Lisbon.",
-          "Packages are installed from the signed offline USB repository."
+          "Account: demo; hostname: emaki; timezone: Europe/Lisbon.",
+          "Packages are installed from the signed offline USB repository.",
+          "Software: Rich \u2014 desktop apps, office, email, media and utilities."
         ],
         "errors": [],
         "warnings": [
@@ -123,6 +124,21 @@
         "phase_pct": 42,
         "total_pct": 32,
         "indeterminate": false
+      },
+      {
+        "type": "log",
+        "job_id": "fixture-job",
+        "line": "$ pacstrap -K /mnt base"
+      },
+      {
+        "type": "log",
+        "job_id": "fixture-job",
+        "line": "error: failed to commit transaction (invalid or corrupted package)"
+      },
+      {
+        "type": "log",
+        "job_id": "fixture-job",
+        "line": "pacstrap: exit 1"
       },
       {
         "type": "error",
@@ -218,8 +234,9 @@
           "Erase all partitions and create a new GPT partition table.",
           "Partition 1: format vfat, 1.00 GiB; /efi.",
           "Partition 2: format btrfs, 39.00 GiB; @ \u2192 /, @home \u2192 /home, @log \u2192 /var/log, @pkg \u2192 /var/cache/pacman/pkg, @snapshots \u2192 /.snapshots.",
-          "Account: alex; hostname: emaki; timezone: Europe/Lisbon.",
-          "Packages are installed from the signed offline USB repository."
+          "Account: demo; hostname: emaki; timezone: Europe/Lisbon.",
+          "Packages are installed from the signed offline USB repository.",
+          "Software: Rich \u2014 desktop apps, office, email, media and utilities."
         ],
         "errors": [],
         "warnings": [

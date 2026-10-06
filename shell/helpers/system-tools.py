@@ -157,6 +157,69 @@ def brightness():
     return dict(state='ready', percent=percent)
 
 
+# The names emaki-sleep-guard writes: its policies, and end-session-failed when
+# end-session could not end the session.
+SLEEP_LOCK_POLICIES = ('sleep', 'sleep-relock', 'end-session', 'end-session-failed', 'stay-awake')
+
+
+def sleep_lock_flags(session_start):
+    """Take the flags emaki-sleep-guard leaves when it could not confirm the lock before
+    sleep; each holds the guard's policy name and is read once, then deleted. The
+    persistent flag (end-session) belongs to the next login, so only a starting shell
+    takes it, and only when it runs in another session than the one the flag names (the
+    guard records the boot and niri's socket): a shell restarted within the same session
+    leaves it. A flag without them (an older guard) is taken at any start."""
+    runtime = os.environ.get('XDG_RUNTIME_DIR')
+    paths = [Path(runtime) / 'emaki-sleep-lock-failed'] if runtime else []
+    persistent = None
+    if session_start:
+        state = os.environ.get('XDG_STATE_HOME') or os.path.join(os.environ.get('HOME', '/'), '.local/state')
+        persistent = Path(state) / 'emaki' / 'sleep-lock-failed'
+        paths.insert(0, persistent)
+    try:
+        boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+    except OSError:
+        boot = ''
+    policies = []
+    for path in paths:
+        # Rename first: a flag is taken by one reader, and a new one written meanwhile stays.
+        taken = path.with_name(f'.{path.name}.{os.getpid()}')
+        try:
+            os.rename(path, taken)
+        except FileNotFoundError:
+            continue
+        try:
+            descriptor = os.open(taken, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+            with os.fdopen(descriptor, 'rb') as flag:
+                lines = flag.read(1024).decode('utf-8', 'replace').splitlines() or ['']
+            if path == persistent:
+                recorded = dict(line.split('=', 1) for line in lines[1:] if '=' in line)
+                if recorded.get('niri') and recorded['niri'] == os.environ.get('NIRI_SOCKET') and recorded.get('boot') == boot:
+                    # Put back (unless a newer flag arrived meanwhile) for the next session.
+                    try:
+                        os.link(taken, path)
+                    except OSError:
+                        pass
+                    continue
+            name = lines[0].strip()
+        except OSError:
+            name = ''
+        finally:
+            try:
+                taken.unlink()
+            except OSError:
+                pass
+        policies.append(name if name in SLEEP_LOCK_POLICIES else 'unknown')
+    return dict(state='ready', policies=policies)
+
+
+def can_hibernate():
+    reply = json.loads(run('busctl', ['--system', '--json=short', 'call',
+        'org.freedesktop.login1', '/org/freedesktop/login1',
+        'org.freedesktop.login1.Manager', 'CanHibernate']))
+    return reply.get('type') == 's' and reply.get('data') == ['yes']
+
+
 def operation(r):
     op = r.get('op')
     if op == 'brightness-read': return brightness()
@@ -186,14 +249,22 @@ def operation(r):
     if op == 'night-light-check':
         # Presence only; the shell starts wlsunset itself (long-lived, guarded by its stdin).
         return dict(state='ready', installed=shutil.which(os.environ.get('EMAKI_WLSUNSET') or 'wlsunset') is not None)
+    if op == 'hibernate-read': return dict(state='ready', available=can_hibernate())
+    if op == 'sleep-lock-flags':
+        if type(r.get('session_start')) is not bool: return dict(state='invalid_request')
+        return sleep_lock_flags(r['session_start'])
     if op == 'session':
         value = r.get('value')
-        if value not in ('reboot', 'poweroff', 'suspend') or r.get('confirmed') is not True: return dict(state='confirmation_required')
-        if value == 'suspend':
+        if value not in ('reboot', 'poweroff', 'suspend', 'logout', 'hibernate') or r.get('confirmed') is not True: return dict(state='confirmation_required')
+        if value == 'hibernate' and not can_hibernate(): return dict(state='hibernate_unavailable')
+        if value in ('suspend', 'hibernate'):
             # Never sleep before the compositor confirms the lock and the pour completes.
             locked = lock(prepare_sleep=True)
             if locked['state'] != 'locked': return locked
-        run('systemctl', [value])
+        if value == 'logout':
+            run('niri', ['msg', 'action', 'quit', '--skip-confirmation'])
+        else:
+            run('systemctl', [value])
         return dict(state='requested')  # systemctl accepted; NOT proof that a session ended.
     return dict(state='unsupported')
 

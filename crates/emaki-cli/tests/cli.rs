@@ -223,72 +223,115 @@ fn non_utf8_argument_is_a_usage_error_not_a_panic() {
     assert!(output.stdout.is_empty());
 }
 
-#[test]
-fn niri_snapshot_serializes_overview_from_query_and_newer_initial_event() {
+/// Runs `emaki niri snapshot` against a fixture niri: it answers the four requests, then
+/// writes `events` on the subscription. The stream stays open until the client exits, so a
+/// missing initial event ends in the client's timeout rather than in a closed connection.
+fn niri_snapshot_against(
+    name: &str,
+    query: bool,
+    events: Vec<serde_json::Value>,
+    timeout_ms: &str,
+) -> Output {
     use serde_json::json;
     use std::io::{BufRead, BufReader, Write};
     use std::os::unix::net::UnixListener;
     use std::time::{Duration, Instant};
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../.cache/tmp")
-        .join(format!("overview-snapshot-{}", std::process::id()));
+        .join(format!("{name}-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
-    for (query, event) in [(false, false), (true, true), (false, true), (true, false)] {
-        let path = root.join("n.sock");
-        let listener = UnixListener::bind(&path).unwrap();
-        listener.set_nonblocking(true).unwrap();
-        let server = std::thread::spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(3);
-            let stream = loop {
-                match listener.accept() {
-                    Ok((stream, _)) => break stream,
-                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        assert!(Instant::now() < deadline, "snapshot never connected");
-                        std::thread::sleep(Duration::from_millis(2));
-                    }
-                    Err(e) => panic!("{e}"),
+    let path = root.join("n.sock");
+    let listener = UnixListener::bind(&path).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let (exited, client_exited) = std::sync::mpsc::channel::<()>();
+    let server = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(Instant::now() < deadline, "snapshot never connected");
+                    std::thread::sleep(Duration::from_millis(2));
                 }
-            };
-            stream
-                .set_read_timeout(Some(Duration::from_secs(2)))
-                .unwrap();
-            let mut reader = BufReader::new(stream);
-            for (expected, reply) in [
-                ("Version", json!({"Ok":{"Version":"26.04 (fixture)"}})),
-                ("Outputs", json!({"Ok":{"Outputs":{}}})),
-                (
-                    "OverviewState",
-                    json!({"Ok":{"OverviewState":{"is_open":query}}}),
-                ),
-                ("EventStream", json!({"Ok":"Handled"})),
-            ] {
-                let mut line = String::new();
-                reader.read_line(&mut line).unwrap();
-                assert_eq!(serde_json::from_str::<String>(&line).unwrap(), expected);
-                writeln!(reader.get_mut(), "{reply}").unwrap();
+                Err(e) => panic!("{e}"),
             }
-            for value in [
-                json!({"WindowsChanged":{"windows":[]}}),
-                json!({"WorkspacesChanged":{"workspaces":[]}}),
-                json!({"KeyboardLayoutsChanged":{"keyboard_layouts":{"names":["English (US)"],"current_idx":0}}}),
-                json!({"OverviewOpenedOrClosed":{"is_open":event}}),
-            ] {
-                writeln!(reader.get_mut(), "{value}").unwrap();
-            }
-        });
-        let result = Command::new(env!("CARGO_BIN_EXE_emaki"))
-            .args(["niri", "snapshot", "--json", "--timeout-ms", "1000"])
-            .env_clear()
-            .env("NIRI_SOCKET", &path)
-            .output()
+        };
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
             .unwrap();
-        server.join().unwrap();
+        let mut reader = BufReader::new(stream);
+        for (expected, reply) in [
+            ("Version", json!({"Ok":{"Version":"26.04 (fixture)"}})),
+            ("Outputs", json!({"Ok":{"Outputs":{}}})),
+            (
+                "OverviewState",
+                json!({"Ok":{"OverviewState":{"is_open":query}}}),
+            ),
+            ("EventStream", json!({"Ok":"Handled"})),
+        ] {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            assert_eq!(serde_json::from_str::<String>(&line).unwrap(), expected);
+            writeln!(reader.get_mut(), "{reply}").unwrap();
+        }
+        for value in events {
+            writeln!(reader.get_mut(), "{value}").unwrap();
+        }
+        let _ = client_exited.recv();
+    });
+    let result = Command::new(env!("CARGO_BIN_EXE_emaki"))
+        .args(["niri", "snapshot", "--json", "--timeout-ms", timeout_ms])
+        .env_clear()
+        .env("NIRI_SOCKET", &path)
+        .output()
+        .unwrap();
+    let _ = exited.send(());
+    server.join().unwrap();
+    std::fs::remove_file(path).unwrap();
+    std::fs::remove_dir(root).unwrap();
+    result
+}
+
+/// The initial events before the casts, in niri 26.04's order apart from the first two.
+fn niri_initial_events_without_casts(overview: bool) -> Vec<serde_json::Value> {
+    use serde_json::json;
+    vec![
+        json!({"WindowsChanged":{"windows":[]}}),
+        json!({"WorkspacesChanged":{"workspaces":[]}}),
+        json!({"KeyboardLayoutsChanged":{"keyboard_layouts":{"names":["English (US)"],"current_idx":0}}}),
+        json!({"OverviewOpenedOrClosed":{"is_open":overview}}),
+    ]
+}
+
+#[test]
+fn niri_snapshot_serializes_overview_from_query_and_newer_initial_event() {
+    use serde_json::json;
+    for (query, event) in [(false, false), (true, true), (false, true), (true, false)] {
+        let mut events = niri_initial_events_without_casts(event);
+        events.push(json!({"ConfigLoaded":{"failed":false}}));
+        events.push(
+            json!({"CastsChanged":{"casts":[{"stream_id":42,"session_id":7,
+            "kind":"PipeWire","target":{"Nothing":{}},"is_dynamic_target":false,
+            "is_active":true,"pid":4321,"pw_node_id":99}]}}),
+        );
+        let result = niri_snapshot_against("overview-snapshot", query, events, "1000");
         assert!(result.status.success(), "{result:?}");
         assert!(result.stderr.is_empty());
         let view: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
         assert_eq!(view["model"]["overview_open"], event);
         assert_eq!(view["connection"]["status"], "connected");
-        std::fs::remove_file(path).unwrap();
+        // Casts come only from the initial CastsChanged, which niri sends last.
+        assert_eq!(view["model"]["casts"]["42"]["stream_id"], 42, "{view}");
     }
-    std::fs::remove_dir(root).unwrap();
+}
+
+#[test]
+fn niri_snapshot_waits_for_the_initial_casts_event() {
+    // Without the initial CastsChanged a snapshot cannot tell "no casts" from "not read yet".
+    let events = niri_initial_events_without_casts(false);
+    let result = niri_snapshot_against("snapshot-no-casts", false, events, "300");
+    assert_eq!(result.status.code(), Some(1), "{result:?}");
+    let view: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(view["connection"]["reason"], "initial_state_timeout");
+    assert!(view["model"].is_null(), "{view}");
 }

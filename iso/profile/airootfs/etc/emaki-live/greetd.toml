@@ -11,10 +11,12 @@
 # greetd uses greetd-greeter for its own process, falling back to emaki-greetd if
 # that separate service is absent.
 #
-# If graphics fail, an administrator can replace the command below with:
-#   command = "tuigreet --cmd niri-session"
-# Install the optional greetd-tuigreet package first. Without any graphical
-# greeter, Ctrl+Alt+F2 reaches the getty: log in there and run `niri-session`.
+# If the compositor cannot start (status 3 from niri-emaki = no primary renderer, or any
+# other non-zero exit within 15 s), emaki-greeter-compositor clears this VT, prints
+# /usr/share/emaki/greetd/graphics-failed.txt and runs agreety there in a loop; a login
+# opens emaki-text-session (a login shell, no compositor). Leaving that shell ends the
+# session and greetd starts this greeter again, which tries graphics again.
+# Ctrl+Alt+F2 reaches the getty as before: log in there and run `niri-session`.
 # Never restart greetd on a live desktop: doing so terminates that session.
 
 [general]

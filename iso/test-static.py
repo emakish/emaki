@@ -27,9 +27,50 @@ prepare = load('prepare-profile')
 repo = load('repo-files')
 importer = load('import-releng')
 image_check = load('verify-image')
+# releng's mirror chooser, install guide and networkd units: the live session uses NetworkManager.
+RELENG_LEFTOVERS = ('usr/local/bin/choose-mirror', 'usr/local/bin/Installation_guide',
+                    'etc/systemd/network/20-ethernet.network', 'etc/systemd/network/20-wlan.network',
+                    'etc/systemd/network/20-wwan.network')
 
 
 class StaticTests(unittest.TestCase):
+    def test_target_closure_excludes_nautilus(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / 'closure.txt'
+            manifest.write_text('xdg-desktop-portal-gnome-emaki-50.0-1-x86_64.pkg.tar.zst\n')
+            repo.check_closure(manifest)
+            for forbidden in ('nautilus-50.0-1-x86_64.pkg.tar.zst',
+                              'xdg-desktop-portal-gnome-50.0-1-x86_64.pkg.tar.zst'):
+                manifest.write_text(forbidden + '\n')
+                with self.assertRaises(ValueError):
+                    repo.check_closure(manifest)
+        self.assertIn('repo-files.py" check-closure "$work/closure.txt"',
+                      (HERE / 'build.sh').read_text())
+
+    def test_rich_apps_are_offline_only(self):
+        seeds = set((HERE / 'target-packages.txt').read_text().split())
+        local = set((HERE / 'emaki-packages.txt').read_text().split())
+        self.assertIn('emaki-apps', seeds)
+        self.assertIn('emaki-apps', local)
+        for path in ('packages-extra.txt', 'profile/packages.x86_64'):
+            live = set((HERE / path).read_text().split())
+            self.assertIn('dolphin', live)
+            self.assertFalse({'emaki-apps', 'nautilus', 'loupe', 'file-roller', 'papers',
+                              'gwenview', 'libreoffice-fresh', 'haruna'} & live)
+        builder = (HERE / 'build.sh').read_text()
+        self.assertIn('"$work/profile/packages.x86_64" "$HERE/target-packages.txt"', builder)
+        self.assertIn('"$work/resolved-db"', builder)
+
+    def test_readable_boot_menus(self):
+        for name in ('grub.cfg', 'loopback.cfg'):
+            grub = (HERE / 'profile/grub' / name).read_text()
+            self.assertIn('set gfxmode="1024x768,800x600,640x480,auto"', grub)
+            self.assertIn('terminal_output gfxterm', grub)
+            self.assertIn('background_image /boot/grub/background.png', grub)
+        self.assertIn('"$ROOT/art/grub/background.png" "$work/profile/grub/background.png"',
+                      (HERE / 'build.sh').read_text())
+        self.assertIn('MENU RESOLUTION 640 480', (HERE / 'profile/syslinux/archiso_head.cfg').read_text())
+
     def test_test_packages_in_offline_closure_seeds_not_release_transaction(self):
         constants = runpy.run_path(str(HERE.parent / 'installer/emaki_installer/constants.py'))
         seeds = (HERE / 'target-packages.txt').read_text().splitlines()
@@ -44,6 +85,56 @@ class StaticTests(unittest.TestCase):
         seeds = set((HERE / 'target-packages.txt').read_text().split())
         self.assertEqual(set(constants['PACKAGES'] + ['mkinitcpio']) - seeds, set())
 
+    def test_no_releng_mirror_guide_or_networkd_leftovers(self):
+        root = HERE / 'profile/airootfs'
+        for relative in RELENG_LEFTOVERS:
+            self.assertFalse((root / relative).exists(), relative)
+        profiledef = (HERE / 'profile/profiledef.sh').read_text()
+        self.assertIsNone(re.search(r'choose-mirror|Installation_guide|20-.*\.network', profiledef))
+
+    def test_previous_image_removed_only_after_input_checks(self):
+        builder = (HERE / 'build.sh').read_text()
+        removal = builder.index('rm -f -- "$out"/emaki-*.iso*')
+        self.assertGreater(removal, builder.index('check-input "$repo"'))
+        self.assertGreater(removal, builder.index("fail 'invalid VERSION'"))
+        self.assertLess(removal, builder.index('mkdir -p -- "$work/db"'))
+
+    def test_snapshot_and_zram_packages_are_target_only(self):
+        seeds = set((HERE / 'target-packages.txt').read_text().split())
+        for path in ('packages-extra.txt', 'profile/packages.x86_64'):
+            live = set((HERE / path).read_text().split())
+            for name in ('snapper', 'snap-pac', 'grub-btrfs', 'zram-generator'):
+                self.assertIn(name, seeds)
+                self.assertNotIn(name, live, path)
+
+    def test_live_hardware_is_installed(self):
+        # Firmware, microcode and graphics/video drivers on the live image are also installed
+        # on every target, so a laptop keeps on disk what worked from the stick.
+        # LIVE_ONLY_HARDWARE takes a live seed only when it adds no hardware support by itself.
+        live_only_hardware = {
+            'b43-fwcutter',  # Extracts Broadcom firmware from a vendor driver; ships none.
+        }
+        pattern = re.compile(r'(linux-firmware.*|sof-firmware|alsa-firmware|.*-ucode|mesa'
+                             r'|vulkan-.*|intel-media-driver|libva-.*|b43-fwcutter)')
+        constants = runpy.run_path(str(HERE.parent / 'installer/emaki_installer/constants.py'))
+        recipes = {p.parent.name: p for p in (HERE.parent / 'packaging').glob('*/PKGBUILD')}
+        installed, pending = set(), list(constants['PACKAGES']) + ['mkinitcpio']
+        while pending:
+            name = pending.pop()
+            if name in installed:
+                continue
+            installed.add(name)
+            if name in recipes:
+                result = subprocess.run(
+                    ['bash', '-c', 'startdir=$1; cd "$1"; source ./PKGBUILD; printf "%s\\n" "${depends[@]}"',
+                     '_', str(recipes[name].parent)], capture_output=True, text=True, check=True)
+                pending.extend(re.split(r'[<>=]', line, maxsplit=1)[0] for line in result.stdout.split())
+        live = (HERE / 'profile/packages.x86_64').read_text().split()
+        hardware = {name for name in live if pattern.fullmatch(name)}
+        self.assertTrue({'linux-firmware', 'mesa'} <= hardware)
+        self.assertEqual(hardware - live_only_hardware - installed, set())
+        self.assertEqual(live_only_hardware - hardware, set())
+
     def test_desktop_dependencies_are_explicit_live_seeds(self):
         # The live image and the offline repo name every emaki-desktop dependency
         # explicitly (packages-extra.txt, merged into packages.x86_64 by import-releng.py).
@@ -52,6 +143,8 @@ class StaticTests(unittest.TestCase):
                                 capture_output=True, text=True, check=True)
         names = {re.split(r'[<>=]', line, maxsplit=1)[0] for line in result.stdout.splitlines()}
         self.assertIn('firefox', names)
+        # The portal is required by its upstream name; the image names the fork that provides it.
+        names = {'xdg-desktop-portal-gnome-emaki' if n == 'xdg-desktop-portal-gnome' else n for n in names}
         extra = set((HERE / 'packages-extra.txt').read_text().split())
         live = set((HERE / 'profile/packages.x86_64').read_text().split())
         self.assertEqual(names - extra, set())
@@ -115,7 +208,13 @@ class StaticTests(unittest.TestCase):
                          'airootfs/etc/systemd/system/getty@tty1.service.d',
                          'airootfs/etc/systemd/system/multi-user.target.wants'):
                 (source / name).mkdir(parents=True, exist_ok=True)
-            (source / 'profiledef.sh').write_text("bootmodes=('bios.syslinux' 'uefi.grub')\nfile_permissions=()\n")
+            (source / 'profiledef.sh').write_text(
+                "bootmodes=('bios.syslinux' 'uefi.grub')\nfile_permissions=(\n"
+                '  ["/usr/local/bin/choose-mirror"]="0:0:755"\n'
+                '  ["/usr/local/bin/Installation_guide"]="0:0:755"\n)\n')
+            for relative in RELENG_LEFTOVERS:
+                (source / 'airootfs' / relative).parent.mkdir(parents=True, exist_ok=True)
+                (source / 'airootfs' / relative).write_text('releng\n')
             (source / 'packages.x86_64').write_text('linux\niwd\nopenssh\n')
             (source / 'pacman.conf').write_text('[options]\n')
             (source / 'grub/grub.cfg').write_text('menuentry "Arch Linux" {\n linux /%INSTALL_DIR%/boot/vmlinuz-linux archisosearchuuid=%ARCHISO_UUID%\n}\n')
@@ -130,6 +229,10 @@ class StaticTests(unittest.TestCase):
             importer.import_profile(source, destination)
             self.assertFalse((destination / 'airootfs/root/.zlogin').exists())
             self.assertFalse((destination / 'airootfs/etc/systemd/system/getty@tty1.service.d/autologin.conf').exists())
+            for relative in RELENG_LEFTOVERS:
+                self.assertFalse((destination / 'airootfs' / relative).exists(), relative)
+            self.assertIsNone(re.search(r'choose-mirror|Installation_guide|20-.*\.network',
+                                        (destination / 'profiledef.sh').read_text()))
             self.assertIn('%ARCHISO_UUID%', (destination / 'grub/grub.cfg').read_text())
             version = (HERE / 'VERSION').read_text().strip()
             self.assertIn('Emaki ' + version, (destination / 'grub/grub.cfg').read_text())
@@ -268,6 +371,8 @@ class StaticTests(unittest.TestCase):
     def test_builder_clears_stale_images_and_rejects_shared_output(self):
         text = (HERE / 'build.sh').read_text()
         block = text[text.index('exec 8>'):text.index('if [[ -f $work/.emaki-mode')]
+        # The removal itself runs after the input checks; append it to the output block.
+        block += text[text.index('# A failed rebuild must never'):text.index('# Keep downloads across')]
         with tempfile.TemporaryDirectory() as temporary:
             out = Path(temporary)
             for name in ('emaki-old.iso', 'emaki-old.iso.sha256'):

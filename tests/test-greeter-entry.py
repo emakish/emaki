@@ -19,6 +19,8 @@ import sys
 import tempfile
 import time
 from PIL import Image, ImageChops
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parent.parent

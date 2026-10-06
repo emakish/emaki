@@ -31,7 +31,15 @@ SystemBackend {
     // open network of its own can be plugged in.
     property bool secondAdapter: false
     property real farSignal: .3
-    wifiDevices: [wifiDevice].concat(secondAdapter ? [wifiDevice2] : [])
+    // NM activations as quickshell-emaki's Network.activation names them: every join starts a
+    // new one, and a failure names the activation it belongs to (SystemNative passes it on).
+    property int activations: 0
+    function activate(network: var): void {
+        network.activation = "/org/freedesktop/NetworkManager/ActiveConnection/" + (++activations);
+    }
+    // A machine without a Wi-Fi adapter (a desktop on a cable).
+    property bool wifiAbsent: false
+    wifiDevices: wifiAbsent ? [] : [wifiDevice].concat(secondAdapter ? [wifiDevice2] : [])
     networks: {
         const listed = (device, list) => list.filter(n => device.scannerEnabled || n.connected || n.known);
         return listed(wifiDevice, [
@@ -85,12 +93,18 @@ SystemBackend {
         id: nearNetwork
         property bool known: false
         property bool connected: false
+        property string activation: ""
+        // NM never answers this network's joins: no profile, no result.
+        property bool hang: false
         function connectWithPsk(password: string): void {
+            fixture.activate(nearNetwork);
+            if (hang)
+                return;
             known = true;
             if (password === "fixture-password")
                 connected = true;
             else
-                fixture.wifiFailed("fixture/near", nearNetwork, fixture.failWith);
+                fixture.wifiFailed("fixture/near", nearNetwork, fixture.failWith, activation);
         }
         function forget(): void {
             known = false;
@@ -100,7 +114,9 @@ SystemBackend {
         id: farNetwork
         property bool known: false
         property bool connected: false
+        property string activation: ""
         function connect(): void {
+            fixture.activate(farNetwork);
             connected = true;
             known = true;
         }
@@ -128,7 +144,31 @@ SystemBackend {
             battery: -1,
             ref: nearby
         }
-    ])
+    ]).concat(secondNearby ? [
+        {
+            key: "fixture-nearby2",
+            name: "PRIVATE_BT3",
+            connected: false,
+            paired: false,
+            pairing: nearby2.pairing,
+            battery: -1,
+            ref: nearby2
+        }
+    ] : [])
+    // A second nearby device, for a pairing that another program (bluetoothctl) starts: the
+    // panel does not track it.
+    property bool secondNearby: false
+    QtObject {
+        id: nearby2
+        property bool paired: false
+        property bool pairing: false
+        function pair(): void {
+            pairing = true;
+        }
+        function cancelPair(): void {
+            pairing = false;
+        }
+    }
     property var output1: ({
             id: 1,
             name: "Speakers",
@@ -192,25 +232,30 @@ SystemBackend {
         id: network
         property bool known: true
         property bool connected: true
+        property string activation: "/org/freedesktop/NetworkManager/ActiveConnection/0"
         function connect(): void {
+            fixture.activate(network);
             if (!fixture.deny)
                 connected = true;
         }
         function disconnect(): void {
-            if (!fixture.deny)
-                connected = false;
+            if (fixture.deny)
+                return;
+            connected = false;
+            activation = "";
         }
         function forget(): void {
             if (!fixture.deny)
                 known = false;
         }
         function connectWithPsk(password: string): void {
+            fixture.activate(network);
             // NM persists before activation succeeds, including a rejected PSK.
             known = true;
             if (!fixture.deny && password === "fixture-password")
                 connected = true;
             else
-                fixture.wifiFailed("fixture", network, fixture.failWith);
+                fixture.wifiFailed("fixture", network, fixture.failWith, activation);
         }
     }
     QtObject {
@@ -224,7 +269,9 @@ SystemBackend {
         property bool pairing: false
         function pair(): void {
             pairing = true;
-            pairDone.restart();
+            // "hang": the other device never answers; only cancelPair() ends it.
+            if (fixture.pairOutcome !== "hang")
+                pairDone.restart();
         }
         function cancelPair(): void {
             pairDone.stop();

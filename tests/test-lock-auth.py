@@ -17,6 +17,8 @@ import shutil
 import subprocess
 import tempfile
 import time
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / '.cache'
@@ -117,7 +119,9 @@ def harness(service=None):
                     pass
                 time.sleep(.01)
             raise AssertionError(('fixture reply timeout', method, log_path.read_text()))
-        def wait(predicate, timeout=5):
+        # Cold PAM/module loading can exceed five seconds on shared CI runners.
+        # Keep a bounded deadline and the latest state/log in the failure report.
+        def wait(predicate, timeout=20):
             deadline = time.monotonic() + timeout
             latest = None
             while time.monotonic() < deadline:

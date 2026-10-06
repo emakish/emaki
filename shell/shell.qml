@@ -21,7 +21,9 @@ ShellRoot {
         Quickshell.watchFiles = false;
         if (!valid) {
             console.error("Emaki test shell: choose EMAKI_SHELL_BORDER=soft|full; dimensions/zone must be nonnegative; headless requires explicit test dimensions.");
-            Qt.quit();
+            // Quickshell connects the engine's exit only after the root's onCompleted:
+            // an exit from here is ignored, so defer it by one event-loop turn.
+            Qt.callLater(Qt.exit, 1);
         } else if (!headless) {
             surfacesLoader.setSource(Qt.resolvedUrl("Surfaces.qml"), {
                 controller: scene,
@@ -50,6 +52,11 @@ ShellRoot {
             }
         }
     }
+    WelcomeController {
+        enabled: root.valid && !root.headless
+        ready: !startup.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
+        onOpening: scene.closeAll()
+    }
     IpcHandler {
         target: "workspaces"
         function focus(id: string): bool {
@@ -76,6 +83,10 @@ ShellRoot {
                 Qt.exit(1); // nonzero: the session service restarts on failure
             }
         }
+    }
+    LazyLoader {
+        active: !root.headless && !startup.coverActive
+        SnapshotRecovery {}
     }
     Loader {
         id: coverLoader

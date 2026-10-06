@@ -49,4 +49,7 @@ case "$startup_token" in
     fi ;;
 esac
 unset EMAKI_LOGIN_HANDOFF startup_token
+# Without this, Quickshell's crash handler opens a report window and re-executes qs in
+# place, so systemd never sees the crash (Restart=on-failure and the start limit).
+export QS_DISABLE_CRASH_HANDLER=1
 exec qs -n -p "$shell"

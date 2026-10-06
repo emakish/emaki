@@ -95,8 +95,9 @@
           "Erase all partitions and create a new GPT partition table.",
           "Partition 1: format vfat, 1.00 GiB; /efi.",
           "Partition 2: format btrfs, 39.00 GiB; @ \u2192 /, @home \u2192 /home, @log \u2192 /var/log, @pkg \u2192 /var/cache/pacman/pkg, @snapshots \u2192 /.snapshots.",
-          "Account: alex; hostname: emaki; timezone: Europe/Lisbon.",
-          "Packages are installed from the signed offline USB repository."
+          "Account: demo; hostname: emaki; timezone: Europe/Lisbon.",
+          "Packages are installed from the signed offline USB repository.",
+          "Software: Rich \u2014 desktop apps, office, email, media and utilities."
         ],
         "errors": [],
         "warnings": [
@@ -107,6 +108,77 @@
         ]
       }
     ]
+  },
+  {
+    "expect": "probe",
+    "responses": [
+      {
+        "type": "inventory",
+        "disks": [
+          {
+            "id": "/dev/vda",
+            "path": "/dev/vda",
+            "model": "VirtIO System Disk",
+            "size_bytes": 42949672960,
+            "bus": "virtio",
+            "removable": false,
+            "is_boot_medium": false,
+            "partitions": [
+              {
+                "id": "/dev/vda1",
+                "path": "/dev/vda1",
+                "number": 1,
+                "uuid": "fixture-1",
+                "fs": "vfat",
+                "size_bytes": 1073741824,
+                "start_bytes": 1048576,
+                "mountpoint": null,
+                "label": null,
+                "os_hint": null,
+                "esp": true
+              },
+              {
+                "id": "/dev/vda2",
+                "path": "/dev/vda2",
+                "number": 2,
+                "uuid": "fixture-2",
+                "fs": "btrfs",
+                "size_bytes": 41875931136,
+                "start_bytes": 1074790400,
+                "mountpoint": null,
+                "label": null,
+                "os_hint": null,
+                "esp": false
+              }
+            ],
+            "free_extents": [],
+            "shrink": null
+          },
+          {
+            "id": "/dev/sdb",
+            "path": "/dev/sdb",
+            "model": "Emaki Live USB",
+            "size_bytes": 8589934592,
+            "bus": "usb",
+            "removable": true,
+            "is_boot_medium": true,
+            "partitions": [],
+            "free_extents": [],
+            "shrink": null
+          }
+        ],
+        "gpu": "Virtual GPU",
+        "cpu": "Virtual CPU",
+        "memory_bytes": 8589934592,
+        "uefi": true,
+        "network": {
+          "online": false
+        },
+        "tz_guess": "Europe/Lisbon",
+        "scale_guess": null
+      }
+    ],
+    "action": "gparted_open"
   },
   {
     "expect": "probe",
@@ -190,7 +262,8 @@
         "summary": [
           "Manual installation on /dev/vda (VirtIO System Disk).",
           "Partition 1: preserve vfat, 1.00 GiB; /efi.",
-          "Partition 2: format btrfs, 39.00 GiB; / and system subvolumes."
+          "Partition 2: format btrfs, 39.00 GiB; / and system subvolumes.",
+          "Software: Rich \u2014 desktop apps, office, email, media and utilities."
         ],
         "errors": [],
         "warnings": [

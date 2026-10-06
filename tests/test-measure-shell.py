@@ -11,6 +11,8 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parent.parent

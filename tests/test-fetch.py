@@ -18,6 +18,8 @@ import time
 import zlib
 
 from PIL import Image
+import reaper
+reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
 FASTFETCH = shutil.which('fastfetch')
@@ -25,7 +27,7 @@ assert FASTFETCH, 'fastfetch is required for make check'
 subprocess.run([sys.executable, str(ROOT / 'scripts/build-fetch'), '--check'], check=True)
 ANSI = re.compile(rb'\x1b\[[0-9;?]*[A-Za-z]')
 KITTY_IMAGE = re.compile(rb'\x1b_G[^\x1b]*\x1b\\')
-OS_LINE = re.compile(rb'(?m)OS: Emaki( [0-9]+\.[0-9]+\.[0-9]+)?[ \t]*$')
+OS_LINE = re.compile(rb'(?m)OS: Emaki( [0-9]+\.[0-9]+\.[0-9]+( (alpha|beta))?)?[ \t]*$')
 KEYS = ['OS', 'Host', 'Kernel', 'Uptime', 'Packages', 'Shell', 'WM', 'Terminal',
         'CPU', 'GPU', 'Memory', 'Disk', 'Battery', 'Locale']
 config = json.loads((ROOT / 'fetch/details.jsonc').read_text())
@@ -37,8 +39,8 @@ os_module = config['modules'][0]
 assert os_module['type'] == 'command' and '/usr/lib/emaki-release' in os_module['text'], os_module
 with tempfile.TemporaryDirectory() as release_dir:
     release = Path(release_dir) / 'emaki-release'
-    release.write_text('VERSION=0.1.1\nCHANNEL=stable\n')
-    for path, expected in ((release, b'Emaki 0.1.1\n'), (Path(release_dir) / 'missing', b'Emaki\n')):
+    release.write_text('VERSION=0.2.0\nLABEL=alpha\nCHANNEL=stable\n')
+    for path, expected in ((release, b'Emaki 0.2.0 alpha\n'), (Path(release_dir) / 'missing', b'Emaki\n')):
         line = subprocess.run(['sh', '-c', os_module['text'].replace('/usr/lib/emaki-release', str(path))],
                               capture_output=True, check=True).stdout
         assert line == expected, (path, line)

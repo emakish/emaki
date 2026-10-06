@@ -1,0 +1,21 @@
+#!/bin/bash
+# Text recovery session. emaki-greeter-compositor runs `agreety --cmd emaki-text-session` on
+# the login VT when the compositor cannot start; greetd starts this after a successful login.
+# It opens the user's login shell on that VT and never starts a compositor. Leaving the shell
+# ends the session, and greetd runs the graphical greeter again (the retry).
+# The text login turns the VT's signal keys off and normally restores them when it exits; reset
+# the VT here anyway so this shell always has Ctrl+C. `stty sane` clears the UTF-8 input flag
+# the console sets (systemd-vconsole-setup), so keep that flag as it was.
+if settings=$(stty -a 2>/dev/null); then
+    utf8=-iutf8
+    [[ " $settings " =~ [[:space:]]iutf8[[:space:]] ]] && utf8=iutf8
+    stty sane "$utf8" 2>/dev/null
+fi
+printf '%s\n' 'Text session - the graphical desktop did not start.' \
+    'Type "exit" to try the graphical login again.' \
+    'Details: journalctl -b -t emaki-greeter-compositor -t niri-emaki-session'
+shell=${SHELL:-/bin/bash}
+if [[ ! -x $shell ]]; then
+    shell=/bin/bash
+fi
+exec -l "$shell"

@@ -1,0 +1,9 @@
+#!/usr/bin/ash
+
+run_latehook() {
+    # OVERLAYFS_SUPER_MAGIC: BusyBox stat does not name every filesystem.
+    [ "$(stat -f -c %t /new_root)" = "794c7630" ] || return 0
+    # Only the temporary overlay changes; the read-only snapshot stays intact.
+    # Its btrfs root options cannot be reapplied to overlayfs by systemd.
+    sed -i '\|^[[:space:]]*[^#[:space:]][^[:space:]]*[[:space:]][[:space:]]*/[[:space:]]|d' /new_root/etc/fstab
+}

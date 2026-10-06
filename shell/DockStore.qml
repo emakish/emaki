@@ -13,6 +13,9 @@ Scope {
     property var pinned: []
     readonly property string statePath: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/emaki/dock.json"
     property bool restored: false
+    // A file written by a newer shell (it outlives a system rollback in /home): its format is
+    // unknown here, so it is neither read nor overwritten during this run.
+    property bool foreign: false
     onOnChanged: if (restored)
         saveTimer.restart()
     onAutoHideChanged: if (restored)
@@ -25,7 +28,9 @@ Scope {
     }
     function restore(): void {
         try {
-            const saved = JSON.parse(stateFile.text() || "{}");
+            const file = JSON.parse(stateFile.text() || "{}");
+            foreign = file.version !== undefined && file.version !== 1;
+            const saved = foreign ? {} : file;
             if (typeof saved.on === "boolean")
                 on = saved.on;
             if (typeof saved.auto_hide === "boolean")
@@ -64,11 +69,12 @@ Scope {
     Timer {
         id: saveTimer
         interval: 500
-        onTriggered: stateFile.setText(JSON.stringify({
-            version: 1,
-            on: store.on,
-            auto_hide: store.autoHide,
-            pinned: store.pinned
-        }))
+        onTriggered: if (!store.foreign)
+            stateFile.setText(JSON.stringify({
+                version: 1,
+                on: store.on,
+                auto_hide: store.autoHide,
+                pinned: store.pinned
+            }))
     }
 }

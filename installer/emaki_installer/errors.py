@@ -12,6 +12,7 @@ class Code(StrEnum):
     DISK_NOT_FOUND = 'disk_not_found'
     BOOT_MEDIUM = 'boot_medium'
     DISK_BUSY = 'disk_busy'
+    ENCRYPTED_CONFIRMATION = 'encrypted_confirmation'
     DISK_TOO_SMALL = 'disk_too_small'
     DISK_CHANGED = 'disk_changed'
     UNSAFE_DISK = 'unsafe_disk'
@@ -33,10 +34,12 @@ class Code(StrEnum):
 
 
 class InstallError(RuntimeError):
-    def __init__(self, code, message, *, retryable=False):
+    def __init__(self, code, message, *, retryable=False, output='', returncode=None):
         self.code = Code(code)
         self.message = message
         self.retryable = retryable
+        self.output = output
+        self.returncode = returncode
         super().__init__(message)
 
 

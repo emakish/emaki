@@ -5,9 +5,19 @@ import socket
 import sys
 import uuid
 
-from .constants import MAX_FRAME, SOCKET
+from .constants import BOOT_MOUNT, MAX_FRAME, SOCKET
 from .errors import InstallError
 from .protocol import encode_frame
+
+
+def unavailable(path):
+    """Why nothing listens on the worker's socket, in words instead of an exception name."""
+    if not BOOT_MOUNT.is_dir():
+        # emaki-installerd.service: ConditionPathExists on the boot mount.
+        return (f'emaki-install-cli: the installer service cannot start: the boot medium is not mounted at '
+                f'{BOOT_MOUNT} (the live system was copied to RAM). '
+                "Restart from the USB stick without the 'copy to RAM' option to install.")
+    return f'emaki-install-cli: the installer service is not running (nothing listens at {path}).'
 
 
 def main(argv=None):
@@ -35,7 +45,11 @@ def main(argv=None):
         if args.plan:
             config = json.loads(args.plan.read_text())
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-            client.connect(str(args.socket))
+            try:
+                client.connect(str(args.socket))
+            except (FileNotFoundError, ConnectionRefusedError):
+                print(unavailable(args.socket), file=sys.stderr)
+                return 2
             stream = client.makefile('rb')
 
             def send(kind, **fields):

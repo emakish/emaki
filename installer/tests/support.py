@@ -1,12 +1,19 @@
 import copy
 import json
 from pathlib import Path
+from unittest.mock import patch
 
+from emaki_installer import constants
 from emaki_installer.constants import GIB, MIB
 
 
+def alongside_on():
+    """Offer the alongside mode for one test; the shipped default keeps it off."""
+    return patch.object(constants, 'ALONGSIDE', True)
+
+
 def config(mode='erase', fs='btrfs'):
-    return {'mode': mode, 'disk_id': '/dev/vda', 'fs': fs, 'hostname': 'emaki',
+    return {'encryption': 'none', 'hibernation': False, 'mode': mode, 'disk_id': '/dev/vda', 'fs': fs, 'hostname': 'emaki',
             'timezone': 'UTC', 'layouts': ['us', 'ru'], 'online_update': False,
             'user': {'name': 'VM User', 'login': 'vmuser', 'password': 'a-secret-for-tests'}}
 

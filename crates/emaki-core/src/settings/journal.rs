@@ -341,7 +341,7 @@ pub(super) fn remove_generation(path: &Path) -> Result<()> {
                     let file = io(file)?.path();
                     if !matches!(
                         file.file_name().and_then(|s| s.to_str()),
-                        Some("default.kdl" | "theme.kdl")
+                        Some("default.kdl" | "theme.kdl" | "shell.kdl")
                     ) {
                         return Err(err("unknown_temporary_file"));
                     }

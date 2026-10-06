@@ -1,0 +1,4622 @@
+{
+  "checked_at": "2026-10-05T04:15:25.957930+00:00",
+  "source": "https://geo.mirror.pkgbuild.com/{core,extra}/os/x86_64/{core,extra}.db (sync databases; JSON API unreachable)",
+  "method": "Current core/extra API required-dependency closure; virtual providers chosen deterministically. Pacman build resolution remains authoritative.",
+  "direct": [
+    {
+      "pkgname": "7zip",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.03",
+      "pkgrel": "1",
+      "compressed_size": 2079887,
+      "installed_size": 6783359
+    },
+    {
+      "pkgname": "ark",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 1580253,
+      "installed_size": 5433393
+    },
+    {
+      "pkgname": "cups",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.4.19",
+      "pkgrel": "1",
+      "compressed_size": 5427275,
+      "installed_size": 13402955
+    },
+    {
+      "pkgname": "discover",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.7.5",
+      "pkgrel": "1",
+      "compressed_size": 1630007,
+      "installed_size": 7665922
+    },
+    {
+      "pkgname": "elisa",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 1996857,
+      "installed_size": 6781047
+    },
+    {
+      "pkgname": "ffmpeg",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "9.0.2",
+      "pkgrel": "2",
+      "compressed_size": 15894388,
+      "installed_size": 50800266
+    },
+    {
+      "pkgname": "filelight",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 790820,
+      "installed_size": 1570681
+    },
+    {
+      "pkgname": "flatpak",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.18.4",
+      "pkgrel": "1",
+      "compressed_size": 2050038,
+      "installed_size": 8468006
+    },
+    {
+      "pkgname": "fwupd",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.1.8",
+      "pkgrel": "1",
+      "compressed_size": 9236154,
+      "installed_size": 20064305
+    },
+    {
+      "pkgname": "gst-libav",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.28.7",
+      "pkgrel": "2",
+      "compressed_size": 104683,
+      "installed_size": 260864
+    },
+    {
+      "pkgname": "gst-plugins-bad",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.28.7",
+      "pkgrel": "2",
+      "compressed_size": 1178946,
+      "installed_size": 3932232
+    },
+    {
+      "pkgname": "gst-plugins-base",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.28.7",
+      "pkgrel": "2",
+      "compressed_size": 222860,
+      "installed_size": 659712
+    },
+    {
+      "pkgname": "gst-plugins-good",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.28.7",
+      "pkgrel": "2",
+      "compressed_size": 2432587,
+      "installed_size": 7787504
+    },
+    {
+      "pkgname": "gst-plugins-ugly",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.28.7",
+      "pkgrel": "2",
+      "compressed_size": 188431,
+      "installed_size": 574470
+    },
+    {
+      "pkgname": "gwenview",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 6937159,
+      "installed_size": 12016459
+    },
+    {
+      "pkgname": "haruna",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.8.1",
+      "pkgrel": "2",
+      "compressed_size": 1093826,
+      "installed_size": 5480358
+    },
+    {
+      "pkgname": "hunspell-en_us",
+      "repo": "extra",
+      "arch": "any",
+      "pkgver": "2026.02.25",
+      "pkgrel": "1",
+      "compressed_size": 571925,
+      "installed_size": 2237737
+    },
+    {
+      "pkgname": "isoimagewriter",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 170826,
+      "installed_size": 662712
+    },
+    {
+      "pkgname": "kate",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 11126318,
+      "installed_size": 37870432
+    },
+    {
+      "pkgname": "kcharselect",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 453433,
+      "installed_size": 738055
+    },
+    {
+      "pkgname": "kdeconnect",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 1529000,
+      "installed_size": 7443125
+    },
+    {
+      "pkgname": "keepassxc",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.7.12",
+      "pkgrel": "5",
+      "compressed_size": 9416872,
+      "installed_size": 32542553
+    },
+    {
+      "pkgname": "libreoffice-fresh",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.8.0",
+      "pkgrel": "2",
+      "compressed_size": 155356570,
+      "installed_size": 443641163
+    },
+    {
+      "pkgname": "obs-studio",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "32.2.2",
+      "pkgrel": "1",
+      "compressed_size": 7015569,
+      "installed_size": 25913121
+    },
+    {
+      "pkgname": "okular",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 7350253,
+      "installed_size": 20437253
+    },
+    {
+      "pkgname": "partitionmanager",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 2559856,
+      "installed_size": 7248156
+    },
+    {
+      "pkgname": "plasma-systemmonitor",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.7.5",
+      "pkgrel": "1",
+      "compressed_size": 543151,
+      "installed_size": 2754550
+    },
+    {
+      "pkgname": "print-manager",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.7.5",
+      "pkgrel": "1",
+      "compressed_size": 595451,
+      "installed_size": 2852560
+    },
+    {
+      "pkgname": "qbittorrent",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "5.2.4",
+      "pkgrel": "1",
+      "compressed_size": 8634522,
+      "installed_size": 14647222
+    },
+    {
+      "pkgname": "qt6-multimedia-ffmpeg",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.11.2",
+      "pkgrel": "1",
+      "compressed_size": 611393,
+      "installed_size": 3097968
+    },
+    {
+      "pkgname": "skanlite",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 2502231,
+      "installed_size": 3128969
+    },
+    {
+      "pkgname": "spectacle",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.7.5",
+      "pkgrel": "1",
+      "compressed_size": 2183286,
+      "installed_size": 6482051
+    },
+    {
+      "pkgname": "thunderbird",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "156.0.1",
+      "pkgrel": "1",
+      "compressed_size": 84774276,
+      "installed_size": 313844289
+    },
+    {
+      "pkgname": "ttf-carlito",
+      "repo": "extra",
+      "arch": "any",
+      "pkgver": "20230509",
+      "pkgrel": "2",
+      "compressed_size": 810251,
+      "installed_size": 2739086
+    },
+    {
+      "pkgname": "ttf-liberation",
+      "repo": "extra",
+      "arch": "any",
+      "pkgver": "2.1.5",
+      "pkgrel": "2",
+      "compressed_size": 1603926,
+      "installed_size": 4364854
+    },
+    {
+      "pkgname": "unrar",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "7.3.1",
+      "pkgrel": "1",
+      "compressed_size": 196394,
+      "installed_size": 431328
+    }
+  ],
+  "minimal": [
+    {
+      "pkgname": "dolphin",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 5099918,
+      "installed_size": 16500605
+    },
+    {
+      "pkgname": "firefox",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "157.0",
+      "pkgrel": "1",
+      "compressed_size": 89392330,
+      "installed_size": 313520438
+    },
+    {
+      "pkgname": "kitty",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.49.2",
+      "pkgrel": "1",
+      "compressed_size": 20056438,
+      "installed_size": 80421988
+    }
+  ],
+  "infrastructure": [
+    {
+      "pkgname": "gnome-keyring",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "50.0",
+      "pkgrel": "1",
+      "compressed_size": 729458,
+      "installed_size": 3368179,
+      "depends": [
+        "dconf",
+        "gcr",
+        "gcr-4",
+        "glib2",
+        "glibc",
+        "libcap-ng",
+        "libgcc",
+        "libgcrypt",
+        "pam",
+        "systemd-libs"
+      ]
+    },
+    {
+      "pkgname": "polkit-gnome",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.105",
+      "pkgrel": "12",
+      "compressed_size": 64047,
+      "installed_size": 341144,
+      "depends": [
+        "gdk-pixbuf2",
+        "glib2",
+        "glibc",
+        "gtk3",
+        "polkit"
+      ]
+    },
+    {
+      "pkgname": "xdg-desktop-portal-gnome",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "50.0",
+      "pkgrel": "1",
+      "compressed_size": 231106,
+      "installed_size": 958225,
+      "depends": [
+        "cairo",
+        "dconf",
+        "fontconfig",
+        "gdk-pixbuf2",
+        "glib2",
+        "glibc",
+        "gnome-desktop-4",
+        "graphene",
+        "gtk4",
+        "libadwaita",
+        "libgcc",
+        "libx11",
+        "nautilus",
+        "wayland",
+        "xdg-desktop-portal",
+        "xdg-desktop-portal-gtk>=1.10.0-2"
+      ]
+    },
+    {
+      "pkgname": "xdg-desktop-portal-gtk",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.15.3",
+      "pkgrel": "1",
+      "compressed_size": 109554,
+      "installed_size": 438110,
+      "depends": [
+        "fontconfig",
+        "gcc-libs",
+        "gdk-pixbuf2",
+        "glib2",
+        "glibc",
+        "gsettings-desktop-schemas",
+        "gtk3",
+        "xdg-desktop-portal"
+      ]
+    }
+  ],
+  "local_portal": {
+    "name": "xdg-desktop-portal-gnome-emaki",
+    "depends": [
+      "cairo",
+      "dconf",
+      "fontconfig",
+      "gdk-pixbuf2",
+      "glib2",
+      "glibc",
+      "gnome-desktop-4",
+      "graphene",
+      "gtk4",
+      "libadwaita",
+      "libgcc",
+      "libx11",
+      "wayland",
+      "xdg-desktop-portal",
+      "xdg-desktop-portal-gtk>=1.10.0-2"
+    ]
+  },
+  "live_and_target_closure_names": [
+    "7zip",
+    "a52dec",
+    "aalib",
+    "abseil-cpp",
+    "accountsservice",
+    "acl",
+    "adwaita-cursors",
+    "adwaita-fonts",
+    "adwaita-icon-theme",
+    "adwaita-icon-theme-legacy",
+    "alsa-card-profiles",
+    "alsa-lib",
+    "alsa-topology-conf",
+    "alsa-ucm-conf",
+    "alsa-utils",
+    "amd-ucode",
+    "aom",
+    "appstream",
+    "appstream-qt",
+    "arch-install-scripts",
+    "archinstall",
+    "archlinux-appstream-data",
+    "archlinux-keyring",
+    "argon2",
+    "ark",
+    "at-spi2-core",
+    "atkmm",
+    "attica",
+    "attr",
+    "audit",
+    "avahi",
+    "b43-fwcutter",
+    "baloo",
+    "baloo-widgets",
+    "base",
+    "bash",
+    "bc",
+    "bcachefs-tools",
+    "bind",
+    "binutils",
+    "blas",
+    "bluez",
+    "bluez-libs",
+    "bolt",
+    "boost-libs",
+    "botan",
+    "breeze-icons",
+    "brightnessctl",
+    "brltty",
+    "brotli",
+    "btrfs-progs",
+    "bubblewrap",
+    "bzip2",
+    "ca-certificates",
+    "ca-certificates-mozilla",
+    "ca-certificates-utils",
+    "cairo",
+    "cairomm",
+    "cblas",
+    "ccid",
+    "cdparanoia",
+    "cfitsio",
+    "chromaprint",
+    "cifs-utils",
+    "cliphist",
+    "clonezilla",
+    "cloud-init",
+    "clucene",
+    "composefs",
+    "convertlit",
+    "coreutils",
+    "cpptrace",
+    "cryptsetup",
+    "cups",
+    "cups-filters",
+    "curl",
+    "darkhttpd",
+    "dav1d",
+    "db5.3",
+    "dbus",
+    "dbus-broker",
+    "dbus-broker-units",
+    "dbus-glib",
+    "dbus-units",
+    "dconf",
+    "ddrescue",
+    "default-cursors",
+    "desktop-file-utils",
+    "device-mapper",
+    "dhcpcd",
+    "diffutils",
+    "ding-libs",
+    "discount",
+    "discover",
+    "djvulibre",
+    "dmidecode",
+    "dmraid",
+    "dnsmasq",
+    "dnssec-anchors",
+    "dolphin",
+    "dosfstools",
+    "double-conversion",
+    "drbl",
+    "duktape",
+    "e2fsprogs",
+    "ebook-tools",
+    "ecryptfs-utils",
+    "editorconfig-core-c",
+    "edk2-shell",
+    "efibootmgr",
+    "efivar",
+    "elfutils",
+    "elisa",
+    "emaki",
+    "emaki-apps",
+    "emaki-config",
+    "emaki-desktop",
+    "emaki-installer",
+    "emaki-keyring",
+    "emaki-mirrorlist",
+    "espeak-ng",
+    "espeakup",
+    "ethtool",
+    "exfatprogs",
+    "exiv2",
+    "expat",
+    "f2fs-tools",
+    "faac",
+    "faad2",
+    "fastfetch",
+    "fatresize",
+    "fcft",
+    "ffmpeg",
+    "fftw",
+    "file",
+    "filelight",
+    "filesystem",
+    "findutils",
+    "firefox",
+    "flac",
+    "flatpak",
+    "flex",
+    "fluidsynth",
+    "fontconfig",
+    "foot-terminfo",
+    "freeglut",
+    "freetype2",
+    "fribidi",
+    "fsarchiver",
+    "fuse-common",
+    "fuse2",
+    "fuse3",
+    "fuzzel",
+    "fwupd",
+    "fwupd-efi",
+    "gawk",
+    "gcc-libs",
+    "gcr",
+    "gcr-4",
+    "gd",
+    "gdbm",
+    "gdk-pixbuf2",
+    "gettext",
+    "ghostscript",
+    "ghostty-terminfo",
+    "giflib",
+    "glib-networking",
+    "glib2",
+    "glibc",
+    "glibmm",
+    "glslang",
+    "glu",
+    "glycin",
+    "gmp",
+    "gnome-desktop-4",
+    "gnome-desktop-common",
+    "gnome-keyring",
+    "gnulib-l10n",
+    "gnupg",
+    "gnutls",
+    "gobject-introspection-runtime",
+    "gpart",
+    "gparted",
+    "gperftools",
+    "gpgme",
+    "gpgmepp",
+    "gpm",
+    "gptfdisk",
+    "graphene",
+    "graphite",
+    "greetd",
+    "greetd-agreety",
+    "greetd-regreet",
+    "grep",
+    "grim",
+    "grml-zsh-config",
+    "groff",
+    "grub",
+    "grub-btrfs",
+    "gsettings-desktop-schemas",
+    "gsettings-system-schemas",
+    "gsm",
+    "gssdp",
+    "gssproxy",
+    "gst-libav",
+    "gst-plugins-bad",
+    "gst-plugins-bad-libs",
+    "gst-plugins-base",
+    "gst-plugins-base-libs",
+    "gst-plugins-good",
+    "gst-plugins-ugly",
+    "gstreamer",
+    "gtest",
+    "gtk-update-icon-cache",
+    "gtk3",
+    "gtk4",
+    "gtkmm3",
+    "gupnp",
+    "gupnp-igd",
+    "gwenview",
+    "gzip",
+    "harfbuzz",
+    "harfbuzz-icu",
+    "haruna",
+    "hdf5",
+    "hdparm",
+    "hicolor-icon-theme",
+    "hidapi",
+    "highway",
+    "hunspell",
+    "hunspell-en_us",
+    "hwdata",
+    "hwloc",
+    "hyperv",
+    "hyphen",
+    "hyprgraphics",
+    "hyprlang",
+    "hyprlock",
+    "hyprutils",
+    "iana-etc",
+    "icu",
+    "ijs",
+    "imagemagick",
+    "imath",
+    "imlib2",
+    "inotify-tools",
+    "intel-gmmlib",
+    "intel-media-driver",
+    "intel-ucode",
+    "iproute2",
+    "iptables",
+    "iputils",
+    "irssi",
+    "iso-codes",
+    "isoimagewriter",
+    "iw",
+    "jack2",
+    "jansson",
+    "jasper",
+    "jbig2dec",
+    "jbigkit",
+    "jemalloc",
+    "jfsutils",
+    "jq",
+    "json-c",
+    "json-glib",
+    "kaccounts-integration",
+    "karchive",
+    "kate",
+    "kauth",
+    "kbd",
+    "kbookmarks",
+    "kcharselect",
+    "kcmutils",
+    "kcodecs",
+    "kcolorpicker",
+    "kcolorscheme",
+    "kcompletion",
+    "kconfig",
+    "kconfigwidgets",
+    "kcontacts",
+    "kcoreaddons",
+    "kcrash",
+    "kdbusaddons",
+    "kdeclarative",
+    "kdeconnect",
+    "kdnssd",
+    "kdsingleapplication",
+    "kdsoap",
+    "kdsoap-ws-discovery-client",
+    "keepassxc",
+    "keyutils",
+    "kfilemetadata",
+    "kglobalaccel",
+    "kguiaddons",
+    "ki18n",
+    "kiconthemes",
+    "kidletime",
+    "kimageannotator",
+    "kio",
+    "kio-extras",
+    "kirigami",
+    "kirigami-addons",
+    "kitemmodels",
+    "kitemviews",
+    "kitty",
+    "kitty-shell-integration",
+    "kitty-terminfo",
+    "kjobwidgets",
+    "kmod",
+    "kmscon-terminfo",
+    "knewstuff",
+    "knotifications",
+    "kpackage",
+    "kparts",
+    "kpeople",
+    "kpipewire",
+    "kpmcore",
+    "kpty",
+    "kquickcharts",
+    "kquickimageeditor",
+    "krb5",
+    "ksanecore",
+    "kservice",
+    "kstatusnotifieritem",
+    "ksvg",
+    "ksystemstats",
+    "ktexteditor",
+    "ktextwidgets",
+    "kuserfeedback",
+    "kwallet",
+    "kwidgetsaddons",
+    "kwindowsystem",
+    "kxmlgui",
+    "l-smash",
+    "lame",
+    "lapack",
+    "layer-shell-qt",
+    "lbzip2",
+    "lcms2",
+    "ldb",
+    "ldns",
+    "leancrypto",
+    "leptonica",
+    "less",
+    "lftp",
+    "libabw",
+    "libaccounts-glib",
+    "libaccounts-qt",
+    "libadwaita",
+    "libaec",
+    "libaio",
+    "libarchive",
+    "libasan",
+    "libass",
+    "libassuan",
+    "libasyncns",
+    "libatasmart",
+    "libatomic",
+    "libatomic_ops",
+    "libavc1394",
+    "libavif",
+    "libavtp",
+    "libb2",
+    "libblake3",
+    "libblockdev",
+    "libblockdev-crypto",
+    "libblockdev-fs",
+    "libblockdev-loop",
+    "libblockdev-mdraid",
+    "libblockdev-nvme",
+    "libblockdev-part",
+    "libblockdev-smart",
+    "libblockdev-swap",
+    "libbluray",
+    "libbpf",
+    "libbs2b",
+    "libbsd",
+    "libbytesize",
+    "libcaca",
+    "libcanberra",
+    "libcap",
+    "libcap-ng",
+    "libcbor",
+    "libcdio",
+    "libcdio-paranoia",
+    "libcdr",
+    "libcgif",
+    "libcloudproviders",
+    "libcmis",
+    "libcolord",
+    "libcups",
+    "libcupsfilters",
+    "libdaemon",
+    "libdatachannel",
+    "libdatrie",
+    "libdc1394",
+    "libdca",
+    "libde265",
+    "libdecor",
+    "libdeflate",
+    "libdisplay-info",
+    "libdmtx",
+    "libdnet",
+    "libdovi",
+    "libdrm",
+    "libdv",
+    "libdvdnav",
+    "libdvdread",
+    "libdwarf",
+    "libe-book",
+    "libebml",
+    "libebur128",
+    "libedit",
+    "libei",
+    "libelf",
+    "libepoxy",
+    "libepubgen",
+    "libetonyek",
+    "libevdev",
+    "libevent",
+    "libexif",
+    "libexttextcat",
+    "libfakekey",
+    "libfdk-aac",
+    "libffi",
+    "libfido2",
+    "libfontenc",
+    "libfreeaptx",
+    "libfreehand",
+    "libfyaml",
+    "libgcc",
+    "libgcrypt",
+    "libgfortran",
+    "libgirepository",
+    "libglvnd",
+    "libgme",
+    "libgomp",
+    "libgpg-error",
+    "libgphoto2",
+    "libgudev",
+    "libheif",
+    "libhwasan",
+    "libice",
+    "libidn",
+    "libidn2",
+    "libiec61883",
+    "libieee1284",
+    "libimagequant",
+    "libimobiledevice",
+    "libimobiledevice-glue",
+    "libinih",
+    "libinput",
+    "libixion",
+    "libjpeg-turbo",
+    "libjuice",
+    "libjxl",
+    "libkdcraw",
+    "libkexiv2",
+    "libksane",
+    "libksba",
+    "libksysguard",
+    "liblangtag",
+    "liblc3",
+    "libldac",
+    "libldap",
+    "liblouis",
+    "liblqr",
+    "liblrdf",
+    "liblsan",
+    "libltc",
+    "libmakepkg-dropins",
+    "libmalcontent",
+    "libmatio",
+    "libmatroska",
+    "libmaxminddb",
+    "libmbim",
+    "libmd",
+    "libmicrodns",
+    "libmm-glib",
+    "libmng",
+    "libmnl",
+    "libmodplug",
+    "libmpcdec",
+    "libmpeg2",
+    "libmspack",
+    "libmspub",
+    "libmtp",
+    "libmwaw",
+    "libmysofa",
+    "libndp",
+    "libnetfilter_conntrack",
+    "libnewt",
+    "libnfnetlink",
+    "libnftnl",
+    "libnghttp2",
+    "libnghttp3",
+    "libngtcp2",
+    "libnice",
+    "libnl",
+    "libnm",
+    "libnotify",
+    "libnsl",
+    "libntfs-3g",
+    "libnumbertext",
+    "libnvme",
+    "libobjc",
+    "libodfgen",
+    "libogg",
+    "libopenmpt",
+    "liborcus",
+    "libotr",
+    "libp11-kit",
+    "libpagemaker",
+    "libpaper",
+    "libpcap",
+    "libpciaccess",
+    "libpgm",
+    "libpipeline",
+    "libpipewire",
+    "libplacebo",
+    "libplasma",
+    "libplist",
+    "libpng",
+    "libppd",
+    "libproxy",
+    "libpsl",
+    "libpulse",
+    "libqmi",
+    "libqrtr-glib",
+    "libquadmath",
+    "libqxp",
+    "libraqm",
+    "libraw",
+    "libraw1394",
+    "libreoffice-fresh",
+    "librevenge",
+    "librsvg",
+    "librsync",
+    "libsamplerate",
+    "libsasl",
+    "libseccomp",
+    "libsecret",
+    "libshout",
+    "libsigc++",
+    "libsixel",
+    "libsm",
+    "libsndfile",
+    "libsodium",
+    "libsonic",
+    "libsoup3",
+    "libsoxr",
+    "libspectre",
+    "libspeechd",
+    "libsrtp",
+    "libssh",
+    "libssh2",
+    "libstaroffice",
+    "libstdc++",
+    "libstemmer",
+    "libsysprof-capture",
+    "libtasn1",
+    "libtatsu",
+    "libteam",
+    "libthai",
+    "libtheora",
+    "libtiff",
+    "libtirpc",
+    "libtommath",
+    "libtool",
+    "libtorrent-rasterbar",
+    "libtsan",
+    "libubsan",
+    "libunibreak",
+    "libunistring",
+    "libunwind",
+    "liburcu",
+    "liburing",
+    "libusb",
+    "libusb-compat",
+    "libusbmuxd",
+    "libutempter",
+    "libutf8proc",
+    "libuv",
+    "libva",
+    "libvdpau",
+    "libverto",
+    "libvips",
+    "libvisio",
+    "libvlc",
+    "libvorbis",
+    "libvpl",
+    "libvpx",
+    "libwacom",
+    "libwbclient",
+    "libwebp",
+    "libwireplumber",
+    "libwpd",
+    "libwps",
+    "libx11",
+    "libxau",
+    "libxaw",
+    "libxcb",
+    "libxcomposite",
+    "libxcrypt",
+    "libxcursor",
+    "libxcvt",
+    "libxdamage",
+    "libxdmcp",
+    "libxext",
+    "libxfixes",
+    "libxfont2",
+    "libxft",
+    "libxi",
+    "libxinerama",
+    "libxkbcommon",
+    "libxkbcommon-x11",
+    "libxkbfile",
+    "libxml2",
+    "libxmlb",
+    "libxmu",
+    "libxpm",
+    "libxpresent",
+    "libxrandr",
+    "libxrender",
+    "libxshmfence",
+    "libxslt",
+    "libxss",
+    "libxt",
+    "libxtst",
+    "libxv",
+    "libxxf86vm",
+    "libyaml",
+    "libyuv",
+    "libzip",
+    "libzmf",
+    "licenses",
+    "lilv",
+    "linux",
+    "linux-api-headers",
+    "linux-atm",
+    "linux-firmware",
+    "linux-firmware-amd",
+    "linux-firmware-amdgpu",
+    "linux-firmware-atheros",
+    "linux-firmware-broadcom",
+    "linux-firmware-cirrus",
+    "linux-firmware-intel",
+    "linux-firmware-marvell",
+    "linux-firmware-mediatek",
+    "linux-firmware-nvidia",
+    "linux-firmware-other",
+    "linux-firmware-radeon",
+    "linux-firmware-realtek",
+    "linux-firmware-ti",
+    "linux-firmware-whence",
+    "linux-lts",
+    "livecd-sounds",
+    "llvm-libs",
+    "lm_sensors",
+    "lmdb",
+    "lpsolve",
+    "lrzip",
+    "lsb-release",
+    "lsscsi",
+    "lua",
+    "lua54",
+    "luajit",
+    "lv2",
+    "lvm2",
+    "lynx",
+    "lz4",
+    "lzo",
+    "lzop",
+    "m4",
+    "mailcap",
+    "man-db",
+    "man-pages",
+    "mbedtls3",
+    "mc",
+    "md4c",
+    "mdadm",
+    "media-player-info",
+    "memtest86+",
+    "memtest86+-efi",
+    "mesa",
+    "minizip",
+    "mjpegtools",
+    "mkinitcpio",
+    "mkinitcpio-archiso",
+    "mkinitcpio-busybox",
+    "mkinitcpio-nfs-utils",
+    "mmc-utils",
+    "mobile-broadband-provider-info",
+    "modemmanager",
+    "modemmanager-qt",
+    "mpdecimal",
+    "mpfr",
+    "mpg123",
+    "mpv",
+    "mpvqt",
+    "mtdev",
+    "mtools",
+    "mujs",
+    "nano",
+    "nbd",
+    "ncurses",
+    "ndisc6",
+    "neon",
+    "net-snmp",
+    "net-tools",
+    "nettle",
+    "networkmanager",
+    "nfs-utils",
+    "nfsidmap",
+    "nftables",
+    "nilfs-utils",
+    "niri",
+    "niri-emaki",
+    "nmap",
+    "noto-fonts",
+    "noto-fonts-emoji",
+    "npth",
+    "nspr",
+    "nss",
+    "ntfs-3g",
+    "ntfsprogs",
+    "numactl",
+    "nvme-cli",
+    "oath-toolkit",
+    "obs-studio",
+    "ocl-icd",
+    "okular",
+    "onetbb",
+    "oniguruma",
+    "open-iscsi",
+    "open-isns",
+    "open-vm-tools",
+    "openal",
+    "openbsd-netcat",
+    "openconnect",
+    "opencore-amr",
+    "opencv",
+    "openexr",
+    "openh264",
+    "openjpeg2",
+    "openjph",
+    "openpgp-card-tools",
+    "openssh",
+    "openssl",
+    "openvpn",
+    "opus",
+    "orc",
+    "os-prober",
+    "ostree",
+    "p11-kit",
+    "pacman",
+    "pacman-mirrorlist",
+    "pam",
+    "pambase",
+    "pango",
+    "pangomm",
+    "partclone",
+    "parted",
+    "partimage",
+    "partitionmanager",
+    "passim",
+    "pbzip2",
+    "pcaudiolib",
+    "pciutils",
+    "pcre",
+    "pcre2",
+    "pcsclite",
+    "pdfio",
+    "perl",
+    "phonon-qt6",
+    "phonon-qt6-vlc",
+    "pigz",
+    "pinentry",
+    "pipewire",
+    "pipewire-audio",
+    "pipewire-pulse",
+    "pipewire-session-manager",
+    "pixman",
+    "pixz",
+    "pkcs11-helper",
+    "plasma-activities",
+    "plasma-systemmonitor",
+    "playerctl",
+    "polkit",
+    "polkit-gnome",
+    "polkit-qt6",
+    "poppler",
+    "poppler-data",
+    "poppler-glib",
+    "poppler-qt6",
+    "popt",
+    "portaudio",
+    "power-profiles-daemon",
+    "ppp",
+    "pptpclient",
+    "print-manager",
+    "prison",
+    "procps-ng",
+    "protobuf",
+    "psmisc",
+    "pulseaudio-qt",
+    "purpose",
+    "pv",
+    "python",
+    "python-annotated-types",
+    "python-attrs",
+    "python-certifi",
+    "python-cffi",
+    "python-charset-normalizer",
+    "python-configobj",
+    "python-cryptography",
+    "python-docopt",
+    "python-gobject",
+    "python-idna",
+    "python-jinja",
+    "python-jsonpatch",
+    "python-jsonpointer",
+    "python-jsonschema",
+    "python-jsonschema-specifications",
+    "python-linkify-it-py",
+    "python-markdown-it-py",
+    "python-markupsafe",
+    "python-mdit_py_plugins",
+    "python-mdurl",
+    "python-netifaces",
+    "python-oauthlib",
+    "python-packaging",
+    "python-pillow",
+    "python-platformdirs",
+    "python-pycparser",
+    "python-pydantic",
+    "python-pydantic-core",
+    "python-pygments",
+    "python-pyparted",
+    "python-pyserial",
+    "python-referencing",
+    "python-requests",
+    "python-rich",
+    "python-rpds-py",
+    "python-textual",
+    "python-typing-inspection",
+    "python-typing_extensions",
+    "python-urllib3",
+    "python-yaml",
+    "qbittorrent",
+    "qca-qt6",
+    "qcoro",
+    "qemu-guest-agent",
+    "qgpgme",
+    "qqc2-desktop-style",
+    "qrcodegencpp-cmake",
+    "qrencode",
+    "qt5-base",
+    "qt5-svg",
+    "qt5-translations",
+    "qt5-x11extras",
+    "qt6-5compat",
+    "qt6-base",
+    "qt6-connectivity",
+    "qt6-declarative",
+    "qt6-imageformats",
+    "qt6-multimedia",
+    "qt6-multimedia-ffmpeg",
+    "qt6-positioning",
+    "qt6-shadertools",
+    "qt6-speech",
+    "qt6-svg",
+    "qt6-translations",
+    "qt6-wayland",
+    "qt6-webchannel",
+    "qt6-webengine",
+    "qt6-websockets",
+    "qt6-webview",
+    "qt6ct",
+    "quickshell-emaki",
+    "raptor",
+    "rasqal",
+    "rav1e",
+    "re2",
+    "readline",
+    "redland",
+    "refind",
+    "reflector",
+    "resvg",
+    "ripgrep",
+    "ripgrep-all",
+    "rnnoise",
+    "rpcbind",
+    "rsync",
+    "rtmpdump",
+    "rubberband",
+    "rxvt-unicode-terminfo",
+    "sane",
+    "sbc",
+    "screen",
+    "sdbus-cpp",
+    "sdl2-compat",
+    "sdl3",
+    "sdparm",
+    "seatd",
+    "sed",
+    "sequoia-sq",
+    "serd",
+    "sg3_utils",
+    "shaderc",
+    "shadow",
+    "shared-mime-info",
+    "signon-kwallet-extension",
+    "signon-plugin-oauth2",
+    "signon-ui",
+    "signond",
+    "simde",
+    "skanlite",
+    "slang",
+    "smartmontools",
+    "smbclient",
+    "snap-pac",
+    "snapper",
+    "snappy",
+    "sndio",
+    "sof-firmware",
+    "solid",
+    "sonnet",
+    "sord",
+    "sound-theme-freedesktop",
+    "soundtouch",
+    "spandsp",
+    "spectacle",
+    "speex",
+    "speexdsp",
+    "spirv-tools",
+    "sqlite",
+    "squashfs-tools",
+    "sratom",
+    "srt",
+    "sshfs",
+    "stoken",
+    "sudo",
+    "svt-av1",
+    "syndication",
+    "syntax-highlighting",
+    "sysfsutils",
+    "syslinux",
+    "systemd",
+    "systemd-libs",
+    "systemd-resolvconf",
+    "systemd-sysvcompat",
+    "taglib",
+    "talloc",
+    "tar",
+    "tcl",
+    "tcpdump",
+    "tdb",
+    "terminus-font",
+    "tesseract",
+    "tesseract-data-afr",
+    "tesseract-data-osd",
+    "testdisk",
+    "tevent",
+    "thin-provisioning-tools",
+    "threadweaver",
+    "thunderbird",
+    "tinysparql",
+    "tmux",
+    "tpm2-tools",
+    "tpm2-tss",
+    "tslib",
+    "ttf-carlito",
+    "ttf-liberation",
+    "twolame",
+    "tzdata",
+    "uchardet",
+    "udftools",
+    "udiskie",
+    "udisks2",
+    "unrar",
+    "upower",
+    "uriparser",
+    "usb_modeswitch",
+    "usbmuxd",
+    "usbutils",
+    "uthash",
+    "util-linux",
+    "util-linux-libs",
+    "v4l-utils",
+    "vapoursynth",
+    "verdict",
+    "vid.stab",
+    "vim",
+    "vim-runtime",
+    "virtualbox-guest-utils-nox",
+    "vlc-plugin-a52dec",
+    "vlc-plugin-alsa",
+    "vlc-plugin-archive",
+    "vlc-plugin-dav1d",
+    "vlc-plugin-dbus",
+    "vlc-plugin-dbus-screensaver",
+    "vlc-plugin-faad2",
+    "vlc-plugin-ffmpeg",
+    "vlc-plugin-flac",
+    "vlc-plugin-gnutls",
+    "vlc-plugin-inflate",
+    "vlc-plugin-journal",
+    "vlc-plugin-jpeg",
+    "vlc-plugin-matroska",
+    "vlc-plugin-mpg123",
+    "vlc-plugin-ogg",
+    "vlc-plugin-opus",
+    "vlc-plugin-png",
+    "vlc-plugin-shout",
+    "vlc-plugin-speex",
+    "vlc-plugin-tag",
+    "vlc-plugin-theora",
+    "vlc-plugin-twolame",
+    "vlc-plugin-vorbis",
+    "vlc-plugin-vpx",
+    "vlc-plugin-xml",
+    "vlc-plugins-base",
+    "vlc-plugins-video-output",
+    "vmaf",
+    "volume_key",
+    "vpnc",
+    "vulkan-icd-loader",
+    "vulkan-intel",
+    "vulkan-mesa-implicit-layers",
+    "vulkan-radeon",
+    "wavpack",
+    "wayland",
+    "wayland-protocols",
+    "webrtc-audio-processing-1",
+    "which",
+    "wildmidi",
+    "wireless-regdb",
+    "wireless_tools",
+    "wireplumber",
+    "wl-clipboard",
+    "wlsunset",
+    "wpa_supplicant",
+    "wpaperd",
+    "wvdial",
+    "wvstreams",
+    "x264",
+    "x265",
+    "xcb-proto",
+    "xcb-util",
+    "xcb-util-cursor",
+    "xcb-util-image",
+    "xcb-util-keysyms",
+    "xcb-util-renderutil",
+    "xcb-util-wm",
+    "xdg-dbus-proxy",
+    "xdg-desktop-portal",
+    "xdg-desktop-portal-gnome-emaki",
+    "xdg-desktop-portal-gtk",
+    "xdg-utils",
+    "xfsprogs",
+    "xkeyboard-config",
+    "xl2tpd",
+    "xmlsec",
+    "xorg-fonts-encodings",
+    "xorg-server-common",
+    "xorg-setxkbmap",
+    "xorg-xkbcomp",
+    "xorg-xprop",
+    "xorg-xwayland",
+    "xorgproto",
+    "xvidcore",
+    "xwayland-satellite",
+    "xxhash",
+    "xz",
+    "yyjson",
+    "zbar",
+    "zeromq",
+    "zimg",
+    "zint",
+    "zix",
+    "zlib",
+    "zram-generator",
+    "zsh",
+    "zstd",
+    "zvbi",
+    "zxing-cpp"
+  ],
+  "retained_gnome_apps": [],
+  "direct_compressed_bytes": 350849674,
+  "added_offline_compressed_bytes": 624281306,
+  "added": [
+    {
+      "pkgname": "7zip",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.03",
+      "pkgrel": "1",
+      "compressed_size": 2079887,
+      "installed_size": 6783359
+    },
+    {
+      "pkgname": "a52dec",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.8.0",
+      "pkgrel": "3",
+      "compressed_size": 48350,
+      "installed_size": 135521
+    },
+    {
+      "pkgname": "aalib",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.4rc5",
+      "pkgrel": "19",
+      "compressed_size": 138109,
+      "installed_size": 291082
+    },
+    {
+      "pkgname": "appstream-qt",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.2.1",
+      "pkgrel": "1",
+      "compressed_size": 156412,
+      "installed_size": 790840
+    },
+    {
+      "pkgname": "archlinux-appstream-data",
+      "repo": "extra",
+      "arch": "any",
+      "pkgver": "20260910",
+      "pkgrel": "1",
+      "compressed_size": 21283013,
+      "installed_size": 21694881
+    },
+    {
+      "pkgname": "argon2",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "20190702",
+      "pkgrel": "7",
+      "compressed_size": 35344,
+      "installed_size": 112732
+    },
+    {
+      "pkgname": "ark",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 1580253,
+      "installed_size": 5433393
+    },
+    {
+      "pkgname": "blas",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.12.1",
+      "pkgrel": "2",
+      "compressed_size": 255598,
+      "installed_size": 774575
+    },
+    {
+      "pkgname": "botan",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.13.0",
+      "pkgrel": "1",
+      "compressed_size": 3981980,
+      "installed_size": 13985690
+    },
+    {
+      "pkgname": "cblas",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.12.1",
+      "pkgrel": "2",
+      "compressed_size": 58348,
+      "installed_size": 351799
+    },
+    {
+      "pkgname": "cdparanoia",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "10.2",
+      "pkgrel": "10",
+      "compressed_size": 77119,
+      "installed_size": 194843
+    },
+    {
+      "pkgname": "chromaprint",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.6.1",
+      "pkgrel": "2",
+      "compressed_size": 55595,
+      "installed_size": 148571
+    },
+    {
+      "pkgname": "clucene",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.3.3.4",
+      "pkgrel": "17",
+      "compressed_size": 758360,
+      "installed_size": 2782549
+    },
+    {
+      "pkgname": "composefs",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.0.8",
+      "pkgrel": "1",
+      "compressed_size": 60060,
+      "installed_size": 161195
+    },
+    {
+      "pkgname": "cups",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.4.19",
+      "pkgrel": "1",
+      "compressed_size": 5427275,
+      "installed_size": 13402955
+    },
+    {
+      "pkgname": "cups-filters",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.0.1",
+      "pkgrel": "3",
+      "compressed_size": 203015,
+      "installed_size": 1229637
+    },
+    {
+      "pkgname": "dbus-glib",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.116",
+      "pkgrel": "1",
+      "compressed_size": 136515,
+      "installed_size": 765509
+    },
+    {
+      "pkgname": "discount",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.2.0",
+      "pkgrel": "1",
+      "compressed_size": 83804,
+      "installed_size": 201263
+    },
+    {
+      "pkgname": "discover",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.7.5",
+      "pkgrel": "1",
+      "compressed_size": 1630007,
+      "installed_size": 7665922
+    },
+    {
+      "pkgname": "djvulibre",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.5.30.1",
+      "pkgrel": "1",
+      "compressed_size": 1117839,
+      "installed_size": 3280843
+    },
+    {
+      "pkgname": "editorconfig-core-c",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.12.11",
+      "pkgrel": "1",
+      "compressed_size": 34712,
+      "installed_size": 113468
+    },
+    {
+      "pkgname": "elisa",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 1996857,
+      "installed_size": 6781047
+    },
+    {
+      "pkgname": "faac",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.1",
+      "pkgrel": "1",
+      "compressed_size": 86041,
+      "installed_size": 198308
+    },
+    {
+      "pkgname": "faad2",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.11.3",
+      "pkgrel": "1",
+      "compressed_size": 241303,
+      "installed_size": 686975
+    },
+    {
+      "pkgname": "filelight",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 790820,
+      "installed_size": 1570681
+    },
+    {
+      "pkgname": "flatpak",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.18.4",
+      "pkgrel": "1",
+      "compressed_size": 2050038,
+      "installed_size": 8468006
+    },
+    {
+      "pkgname": "fluidsynth",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.6.1",
+      "pkgrel": "1",
+      "compressed_size": 339589,
+      "installed_size": 883984
+    },
+    {
+      "pkgname": "freeglut",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.8.0",
+      "pkgrel": "1",
+      "compressed_size": 189103,
+      "installed_size": 433721
+    },
+    {
+      "pkgname": "fwupd",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.1.8",
+      "pkgrel": "1",
+      "compressed_size": 9236154,
+      "installed_size": 20064305
+    },
+    {
+      "pkgname": "fwupd-efi",
+      "repo": "extra",
+      "arch": "any",
+      "pkgver": "1.8",
+      "pkgrel": "2",
+      "compressed_size": 29970,
+      "installed_size": 76957
+    },
+    {
+      "pkgname": "gd",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.3.3",
+      "pkgrel": "9",
+      "compressed_size": 154777,
+      "installed_size": 669598
+    },
+    {
+      "pkgname": "ghostscript",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "10.08.0",
+      "pkgrel": "1",
+      "compressed_size": 21009787,
+      "installed_size": 43078021
+    },
+    {
+      "pkgname": "glu",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "9.0.3",
+      "pkgrel": "3",
+      "compressed_size": 160043,
+      "installed_size": 384036
+    },
+    {
+      "pkgname": "gst-libav",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.28.7",
+      "pkgrel": "2",
+      "compressed_size": 104683,
+      "installed_size": 260864
+    },
+    {
+      "pkgname": "gst-plugins-bad",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.28.7",
+      "pkgrel": "2",
+      "compressed_size": 1178946,
+      "installed_size": 3932232
+    },
+    {
+      "pkgname": "gst-plugins-base",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.28.7",
+      "pkgrel": "2",
+      "compressed_size": 222860,
+      "installed_size": 659712
+    },
+    {
+      "pkgname": "gst-plugins-good",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.28.7",
+      "pkgrel": "2",
+      "compressed_size": 2432587,
+      "installed_size": 7787504
+    },
+    {
+      "pkgname": "gst-plugins-ugly",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.28.7",
+      "pkgrel": "2",
+      "compressed_size": 188431,
+      "installed_size": 574470
+    },
+    {
+      "pkgname": "gwenview",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 6937159,
+      "installed_size": 12016459
+    },
+    {
+      "pkgname": "harfbuzz-icu",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "14.5.1",
+      "pkgrel": "1",
+      "compressed_size": 8520,
+      "installed_size": 18070
+    },
+    {
+      "pkgname": "haruna",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.8.1",
+      "pkgrel": "2",
+      "compressed_size": 1093826,
+      "installed_size": 5480358
+    },
+    {
+      "pkgname": "hunspell",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.7.5",
+      "pkgrel": "1",
+      "compressed_size": 438504,
+      "installed_size": 1480634
+    },
+    {
+      "pkgname": "hunspell-en_us",
+      "repo": "extra",
+      "arch": "any",
+      "pkgver": "2026.02.25",
+      "pkgrel": "1",
+      "compressed_size": 571925,
+      "installed_size": 2237737
+    },
+    {
+      "pkgname": "hyphen",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.8.9",
+      "pkgrel": "1",
+      "compressed_size": 18237,
+      "installed_size": 39033
+    },
+    {
+      "pkgname": "ijs",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.35",
+      "pkgrel": "7",
+      "compressed_size": 54234,
+      "installed_size": 128387
+    },
+    {
+      "pkgname": "imlib2",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.12.7",
+      "pkgrel": "3",
+      "compressed_size": 596237,
+      "installed_size": 1556845
+    },
+    {
+      "pkgname": "isoimagewriter",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 170826,
+      "installed_size": 662712
+    },
+    {
+      "pkgname": "jasper",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "4.2.9",
+      "pkgrel": "1",
+      "compressed_size": 211094,
+      "installed_size": 695606
+    },
+    {
+      "pkgname": "jbig2dec",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.20",
+      "pkgrel": "2",
+      "compressed_size": 64798,
+      "installed_size": 161089
+    },
+    {
+      "pkgname": "kaccounts-integration",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 157057,
+      "installed_size": 643424
+    },
+    {
+      "pkgname": "kate",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 11126318,
+      "installed_size": 37870432
+    },
+    {
+      "pkgname": "kauth",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.30.0",
+      "pkgrel": "1",
+      "compressed_size": 124613,
+      "installed_size": 448551
+    },
+    {
+      "pkgname": "kcharselect",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 453433,
+      "installed_size": 738055
+    },
+    {
+      "pkgname": "kcolorpicker",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.3.1",
+      "pkgrel": "6",
+      "compressed_size": 26517,
+      "installed_size": 88457
+    },
+    {
+      "pkgname": "kcontacts",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.30.0",
+      "pkgrel": "1",
+      "compressed_size": 345674,
+      "installed_size": 1482280
+    },
+    {
+      "pkgname": "kdeclarative",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.30.0",
+      "pkgrel": "1",
+      "compressed_size": 191484,
+      "installed_size": 797652
+    },
+    {
+      "pkgname": "kdeconnect",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 1529000,
+      "installed_size": 7443125
+    },
+    {
+      "pkgname": "kdsingleapplication",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.2.1",
+      "pkgrel": "1",
+      "compressed_size": 28795,
+      "installed_size": 82266
+    },
+    {
+      "pkgname": "keepassxc",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.7.12",
+      "pkgrel": "5",
+      "compressed_size": 9416872,
+      "installed_size": 32542553
+    },
+    {
+      "pkgname": "kimageannotator",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.7.2",
+      "pkgrel": "2",
+      "compressed_size": 409670,
+      "installed_size": 1767734
+    },
+    {
+      "pkgname": "kirigami-addons",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.15.0",
+      "pkgrel": "1",
+      "compressed_size": 2436061,
+      "installed_size": 8097792
+    },
+    {
+      "pkgname": "kitemmodels",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.30.0",
+      "pkgrel": "1",
+      "compressed_size": 164813,
+      "installed_size": 561866
+    },
+    {
+      "pkgname": "kpeople",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.30.0",
+      "pkgrel": "1",
+      "compressed_size": 189709,
+      "installed_size": 692489
+    },
+    {
+      "pkgname": "kpipewire",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.7.5",
+      "pkgrel": "1",
+      "compressed_size": 156652,
+      "installed_size": 551591
+    },
+    {
+      "pkgname": "kpmcore",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 807422,
+      "installed_size": 4858547
+    },
+    {
+      "pkgname": "kpty",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.30.0",
+      "pkgrel": "1",
+      "compressed_size": 55543,
+      "installed_size": 162084
+    },
+    {
+      "pkgname": "kquickcharts",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.30.0",
+      "pkgrel": "1",
+      "compressed_size": 193028,
+      "installed_size": 722489
+    },
+    {
+      "pkgname": "kquickimageeditor",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.7.0.1",
+      "pkgrel": "1",
+      "compressed_size": 523068,
+      "installed_size": 2520628
+    },
+    {
+      "pkgname": "ksanecore",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 109164,
+      "installed_size": 331364
+    },
+    {
+      "pkgname": "kstatusnotifieritem",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.30.0",
+      "pkgrel": "1",
+      "compressed_size": 154585,
+      "installed_size": 479823
+    },
+    {
+      "pkgname": "ksvg",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.30.0",
+      "pkgrel": "1",
+      "compressed_size": 164727,
+      "installed_size": 548960
+    },
+    {
+      "pkgname": "ksystemstats",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.7.5",
+      "pkgrel": "1",
+      "compressed_size": 300816,
+      "installed_size": 1680899
+    },
+    {
+      "pkgname": "ktexteditor",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.30.0",
+      "pkgrel": "1",
+      "compressed_size": 3036398,
+      "installed_size": 14735167
+    },
+    {
+      "pkgname": "lapack",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.12.1",
+      "pkgrel": "2",
+      "compressed_size": 5059573,
+      "installed_size": 15790053
+    },
+    {
+      "pkgname": "layer-shell-qt",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.7.5",
+      "pkgrel": "1",
+      "compressed_size": 38476,
+      "installed_size": 145742
+    },
+    {
+      "pkgname": "leptonica",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.87.0",
+      "pkgrel": "2",
+      "compressed_size": 1332492,
+      "installed_size": 3893255
+    },
+    {
+      "pkgname": "libabw",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.1.4",
+      "pkgrel": "1",
+      "compressed_size": 280303,
+      "installed_size": 2805916
+    },
+    {
+      "pkgname": "libaccounts-glib",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.27",
+      "pkgrel": "3",
+      "compressed_size": 119052,
+      "installed_size": 1006111
+    },
+    {
+      "pkgname": "libaccounts-qt",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.17",
+      "pkgrel": "2",
+      "compressed_size": 59708,
+      "installed_size": 194421
+    },
+    {
+      "pkgname": "libatomic_ops",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "7.8.2",
+      "pkgrel": "2",
+      "compressed_size": 68588,
+      "installed_size": 699304
+    },
+    {
+      "pkgname": "libavtp",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.2.0",
+      "pkgrel": "3",
+      "compressed_size": 13356,
+      "installed_size": 50569
+    },
+    {
+      "pkgname": "libcaca",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.99.beta20",
+      "pkgrel": "7",
+      "compressed_size": 431556,
+      "installed_size": 2702147
+    },
+    {
+      "pkgname": "libcdio",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.4.0",
+      "pkgrel": "1",
+      "compressed_size": 268585,
+      "installed_size": 930362
+    },
+    {
+      "pkgname": "libcdio-paranoia",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "10.2+2.0.2",
+      "pkgrel": "3",
+      "compressed_size": 69410,
+      "installed_size": 168235
+    },
+    {
+      "pkgname": "libcdr",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.1.9",
+      "pkgrel": "1",
+      "compressed_size": 991816,
+      "installed_size": 8281265
+    },
+    {
+      "pkgname": "libcmis",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.6.3",
+      "pkgrel": "2",
+      "compressed_size": 439107,
+      "installed_size": 1381918
+    },
+    {
+      "pkgname": "libcupsfilters",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.2.1.r23.gdee3b387",
+      "pkgrel": "1",
+      "compressed_size": 578381,
+      "installed_size": 1594109
+    },
+    {
+      "pkgname": "libdatachannel",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.24.5",
+      "pkgrel": "2",
+      "compressed_size": 905165,
+      "installed_size": 2925771
+    },
+    {
+      "pkgname": "libdc1394",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.2.7",
+      "pkgrel": "2",
+      "compressed_size": 241202,
+      "installed_size": 1564235
+    },
+    {
+      "pkgname": "libdca",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.0.7",
+      "pkgrel": "3",
+      "compressed_size": 107684,
+      "installed_size": 226073
+    },
+    {
+      "pkgname": "libde265",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.1.3",
+      "pkgrel": "1",
+      "compressed_size": 364938,
+      "installed_size": 1004724
+    },
+    {
+      "pkgname": "libdmtx",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.7.8",
+      "pkgrel": "1",
+      "compressed_size": 54474,
+      "installed_size": 124867
+    },
+    {
+      "pkgname": "libdv",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.0.0",
+      "pkgrel": "12",
+      "compressed_size": 80423,
+      "installed_size": 210774
+    },
+    {
+      "pkgname": "libe-book",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.1.4",
+      "pkgrel": "1",
+      "compressed_size": 758608,
+      "installed_size": 11581603
+    },
+    {
+      "pkgname": "libebml",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.4.7",
+      "pkgrel": "1",
+      "compressed_size": 76417,
+      "installed_size": 244626
+    },
+    {
+      "pkgname": "libepubgen",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.1.1",
+      "pkgrel": "6",
+      "compressed_size": 247188,
+      "installed_size": 2685213
+    },
+    {
+      "pkgname": "libetonyek",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.1.13",
+      "pkgrel": "3",
+      "compressed_size": 680130,
+      "installed_size": 2582210
+    },
+    {
+      "pkgname": "libexttextcat",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.4.8",
+      "pkgrel": "1",
+      "compressed_size": 219408,
+      "installed_size": 509570
+    },
+    {
+      "pkgname": "libfakekey",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.3",
+      "pkgrel": "4",
+      "compressed_size": 6750,
+      "installed_size": 17250
+    },
+    {
+      "pkgname": "libfreehand",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.1.4",
+      "pkgrel": "1",
+      "compressed_size": 707614,
+      "installed_size": 6266118
+    },
+    {
+      "pkgname": "libgme",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.6.5",
+      "pkgrel": "1",
+      "compressed_size": 152161,
+      "installed_size": 340924
+    },
+    {
+      "pkgname": "libgphoto2",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.5.34",
+      "pkgrel": "1",
+      "compressed_size": 1665480,
+      "installed_size": 8459917
+    },
+    {
+      "pkgname": "libheif",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.23.5",
+      "pkgrel": "1",
+      "compressed_size": 904407,
+      "installed_size": 2919943
+    },
+    {
+      "pkgname": "libidn",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.44",
+      "pkgrel": "1",
+      "compressed_size": 312123,
+      "installed_size": 901951
+    },
+    {
+      "pkgname": "libieee1284",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.2.11",
+      "pkgrel": "19",
+      "compressed_size": 58845,
+      "installed_size": 130479
+    },
+    {
+      "pkgname": "libixion",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.20.0",
+      "pkgrel": "9",
+      "compressed_size": 432371,
+      "installed_size": 1356554
+    },
+    {
+      "pkgname": "libjuice",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.7.3",
+      "pkgrel": "1",
+      "compressed_size": 84396,
+      "installed_size": 198484
+    },
+    {
+      "pkgname": "libkdcraw",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 45295,
+      "installed_size": 139151
+    },
+    {
+      "pkgname": "libksane",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 175122,
+      "installed_size": 727213
+    },
+    {
+      "pkgname": "libksysguard",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.7.5",
+      "pkgrel": "1",
+      "compressed_size": 722230,
+      "installed_size": 3621456
+    },
+    {
+      "pkgname": "liblangtag",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.6.8",
+      "pkgrel": "1",
+      "compressed_size": 333376,
+      "installed_size": 3392806
+    },
+    {
+      "pkgname": "liblrdf",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.6.1",
+      "pkgrel": "5",
+      "compressed_size": 20121,
+      "installed_size": 55586
+    },
+    {
+      "pkgname": "libltc",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.3.2",
+      "pkgrel": "2",
+      "compressed_size": 150298,
+      "installed_size": 774319
+    },
+    {
+      "pkgname": "libmalcontent",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.14.0",
+      "pkgrel": "4",
+      "compressed_size": 70373,
+      "installed_size": 432482
+    },
+    {
+      "pkgname": "libmatroska",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.7.2",
+      "pkgrel": "2",
+      "compressed_size": 135494,
+      "installed_size": 736123
+    },
+    {
+      "pkgname": "libmicrodns",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.2.0",
+      "pkgrel": "2",
+      "compressed_size": 15553,
+      "installed_size": 37370
+    },
+    {
+      "pkgname": "libmng",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.0.3",
+      "pkgrel": "4",
+      "compressed_size": 193337,
+      "installed_size": 692270
+    },
+    {
+      "pkgname": "libmpcdec",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.1+r475",
+      "pkgrel": "6",
+      "compressed_size": 37183,
+      "installed_size": 92111
+    },
+    {
+      "pkgname": "libmpeg2",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.5.1",
+      "pkgrel": "11",
+      "compressed_size": 78727,
+      "installed_size": 238340
+    },
+    {
+      "pkgname": "libmspub",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.1.5",
+      "pkgrel": "1",
+      "compressed_size": 499028,
+      "installed_size": 7951281
+    },
+    {
+      "pkgname": "libmwaw",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.3.23",
+      "pkgrel": "1",
+      "compressed_size": 2747484,
+      "installed_size": 7473807
+    },
+    {
+      "pkgname": "libnumbertext",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.0.11",
+      "pkgrel": "3",
+      "compressed_size": 193836,
+      "installed_size": 725463
+    },
+    {
+      "pkgname": "libodfgen",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.1.8",
+      "pkgrel": "5",
+      "compressed_size": 310786,
+      "installed_size": 1822858
+    },
+    {
+      "pkgname": "liborcus",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.21.0",
+      "pkgrel": "8",
+      "compressed_size": 970323,
+      "installed_size": 3725823
+    },
+    {
+      "pkgname": "libpagemaker",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.0.4",
+      "pkgrel": "5",
+      "compressed_size": 179679,
+      "installed_size": 2141853
+    },
+    {
+      "pkgname": "libpaper",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.2.8",
+      "pkgrel": "1",
+      "compressed_size": 50024,
+      "installed_size": 163405
+    },
+    {
+      "pkgname": "libplasma",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.7.5",
+      "pkgrel": "1",
+      "compressed_size": 2636533,
+      "installed_size": 7210086
+    },
+    {
+      "pkgname": "libppd",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.1.1",
+      "pkgrel": "2",
+      "compressed_size": 324173,
+      "installed_size": 1004041
+    },
+    {
+      "pkgname": "libqxp",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.0.3",
+      "pkgrel": "1",
+      "compressed_size": 309826,
+      "installed_size": 3592740
+    },
+    {
+      "pkgname": "libreoffice-fresh",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.8.0",
+      "pkgrel": "2",
+      "compressed_size": 155356570,
+      "installed_size": 443641163
+    },
+    {
+      "pkgname": "librevenge",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.0.6",
+      "pkgrel": "1",
+      "compressed_size": 619036,
+      "installed_size": 9748390
+    },
+    {
+      "pkgname": "libshout",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.4.6",
+      "pkgrel": "5",
+      "compressed_size": 71410,
+      "installed_size": 206621
+    },
+    {
+      "pkgname": "libsixel",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.10.5",
+      "pkgrel": "1",
+      "compressed_size": 126013,
+      "installed_size": 422443
+    },
+    {
+      "pkgname": "libspectre",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.2.12",
+      "pkgrel": "2",
+      "compressed_size": 31268,
+      "installed_size": 88227
+    },
+    {
+      "pkgname": "libsrtp",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.8.1",
+      "pkgrel": "1",
+      "compressed_size": 54629,
+      "installed_size": 183433
+    },
+    {
+      "pkgname": "libstaroffice",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.0.8",
+      "pkgrel": "1",
+      "compressed_size": 793891,
+      "installed_size": 2396628
+    },
+    {
+      "pkgname": "libvisio",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.1.11",
+      "pkgrel": "1",
+      "compressed_size": 802541,
+      "installed_size": 10131760
+    },
+    {
+      "pkgname": "libvlc",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 718894,
+      "installed_size": 2313138
+    },
+    {
+      "pkgname": "libwpd",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.10.3",
+      "pkgrel": "6",
+      "compressed_size": 1017745,
+      "installed_size": 15374156
+    },
+    {
+      "pkgname": "libwps",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.4.14",
+      "pkgrel": "4",
+      "compressed_size": 867310,
+      "installed_size": 2218470
+    },
+    {
+      "pkgname": "libxpresent",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.0.2",
+      "pkgrel": "1",
+      "compressed_size": 18529,
+      "installed_size": 30423
+    },
+    {
+      "pkgname": "libzmf",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.0.2",
+      "pkgrel": "20",
+      "compressed_size": 253553,
+      "installed_size": 2172095
+    },
+    {
+      "pkgname": "lpsolve",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "5.5.2.14",
+      "pkgrel": "1",
+      "compressed_size": 563094,
+      "installed_size": 1515505
+    },
+    {
+      "pkgname": "luajit",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.1.1788856981+c6ffc14",
+      "pkgrel": "1",
+      "compressed_size": 349893,
+      "installed_size": 867971
+    },
+    {
+      "pkgname": "mbedtls3",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.6.7",
+      "pkgrel": "1",
+      "compressed_size": 1164577,
+      "installed_size": 6422718
+    },
+    {
+      "pkgname": "minizip",
+      "repo": "core",
+      "arch": "x86_64",
+      "pkgver": "1.3.2",
+      "pkgrel": "3",
+      "compressed_size": 32341,
+      "installed_size": 102046
+    },
+    {
+      "pkgname": "mjpegtools",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.2.1",
+      "pkgrel": "4",
+      "compressed_size": 749851,
+      "installed_size": 2316883
+    },
+    {
+      "pkgname": "modemmanager-qt",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.30.0",
+      "pkgrel": "1",
+      "compressed_size": 241284,
+      "installed_size": 988635
+    },
+    {
+      "pkgname": "mpv",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.41.0",
+      "pkgrel": "6",
+      "compressed_size": 1714353,
+      "installed_size": 6656527
+    },
+    {
+      "pkgname": "mpvqt",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.2.0",
+      "pkgrel": "1",
+      "compressed_size": 39973,
+      "installed_size": 115659
+    },
+    {
+      "pkgname": "mujs",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.3.10",
+      "pkgrel": "1",
+      "compressed_size": 322969,
+      "installed_size": 1218761
+    },
+    {
+      "pkgname": "neon",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.37.1",
+      "pkgrel": "1",
+      "compressed_size": 245505,
+      "installed_size": 816823
+    },
+    {
+      "pkgname": "net-snmp",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "5.9.5.2",
+      "pkgrel": "1",
+      "compressed_size": 2126336,
+      "installed_size": 8976039
+    },
+    {
+      "pkgname": "obs-studio",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "32.2.2",
+      "pkgrel": "1",
+      "compressed_size": 7015569,
+      "installed_size": 25913121
+    },
+    {
+      "pkgname": "okular",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 7350253,
+      "installed_size": 20437253
+    },
+    {
+      "pkgname": "openal",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.25.2",
+      "pkgrel": "2",
+      "compressed_size": 995050,
+      "installed_size": 2829370
+    },
+    {
+      "pkgname": "opencv",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "5.0.0",
+      "pkgrel": "12",
+      "compressed_size": 35517445,
+      "installed_size": 118294417
+    },
+    {
+      "pkgname": "openh264",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.6.0",
+      "pkgrel": "2",
+      "compressed_size": 667382,
+      "installed_size": 2323536
+    },
+    {
+      "pkgname": "ostree",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2026.4",
+      "pkgrel": "1",
+      "compressed_size": 860271,
+      "installed_size": 4586776
+    },
+    {
+      "pkgname": "partitionmanager",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 2559856,
+      "installed_size": 7248156
+    },
+    {
+      "pkgname": "passim",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.1.12",
+      "pkgrel": "1",
+      "compressed_size": 105652,
+      "installed_size": 378701
+    },
+    {
+      "pkgname": "pdfio",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.6.5",
+      "pkgrel": "1",
+      "compressed_size": 718829,
+      "installed_size": 1976418
+    },
+    {
+      "pkgname": "phonon-qt6",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "4.12.0",
+      "pkgrel": "6",
+      "compressed_size": 429161,
+      "installed_size": 1751109
+    },
+    {
+      "pkgname": "phonon-qt6-vlc",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.12.0",
+      "pkgrel": "6",
+      "compressed_size": 123907,
+      "installed_size": 360754
+    },
+    {
+      "pkgname": "plasma-systemmonitor",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.7.5",
+      "pkgrel": "1",
+      "compressed_size": 543151,
+      "installed_size": 2754550
+    },
+    {
+      "pkgname": "polkit-qt6",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.201.1",
+      "pkgrel": "1",
+      "compressed_size": 95685,
+      "installed_size": 368456
+    },
+    {
+      "pkgname": "poppler-data",
+      "repo": "extra",
+      "arch": "any",
+      "pkgver": "0.4.12",
+      "pkgrel": "2",
+      "compressed_size": 1995768,
+      "installed_size": 12941097
+    },
+    {
+      "pkgname": "poppler-glib",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.0",
+      "pkgrel": "1",
+      "compressed_size": 375622,
+      "installed_size": 3410213
+    },
+    {
+      "pkgname": "print-manager",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.7.5",
+      "pkgrel": "1",
+      "compressed_size": 595451,
+      "installed_size": 2852560
+    },
+    {
+      "pkgname": "prison",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.30.0",
+      "pkgrel": "1",
+      "compressed_size": 87733,
+      "installed_size": 293191
+    },
+    {
+      "pkgname": "protobuf",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "36.1",
+      "pkgrel": "1",
+      "compressed_size": 4106999,
+      "installed_size": 19802545
+    },
+    {
+      "pkgname": "pulseaudio-qt",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.9.0",
+      "pkgrel": "1",
+      "compressed_size": 129200,
+      "installed_size": 611380
+    },
+    {
+      "pkgname": "purpose",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.30.0",
+      "pkgrel": "1",
+      "compressed_size": 461787,
+      "installed_size": 2182947
+    },
+    {
+      "pkgname": "qbittorrent",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "5.2.4",
+      "pkgrel": "1",
+      "compressed_size": 8634522,
+      "installed_size": 14647222
+    },
+    {
+      "pkgname": "qcoro",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.13.0",
+      "pkgrel": "2",
+      "compressed_size": 147733,
+      "installed_size": 756750
+    },
+    {
+      "pkgname": "qgpgme",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.2.0",
+      "pkgrel": "1",
+      "compressed_size": 333111,
+      "installed_size": 1506136
+    },
+    {
+      "pkgname": "qqc2-desktop-style",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.30.0",
+      "pkgrel": "1",
+      "compressed_size": 565999,
+      "installed_size": 3077391
+    },
+    {
+      "pkgname": "qrcodegencpp-cmake",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.8.0",
+      "pkgrel": "4",
+      "compressed_size": 35036,
+      "installed_size": 95379
+    },
+    {
+      "pkgname": "qrencode",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "4.1.1",
+      "pkgrel": "4",
+      "compressed_size": 41834,
+      "installed_size": 113218
+    },
+    {
+      "pkgname": "qt5-base",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "5.15.19+kde+r96",
+      "pkgrel": "1",
+      "compressed_size": 14087128,
+      "installed_size": 66804102
+    },
+    {
+      "pkgname": "qt5-svg",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "5.15.19+kde+r5",
+      "pkgrel": "1",
+      "compressed_size": 154217,
+      "installed_size": 515350
+    },
+    {
+      "pkgname": "qt5-translations",
+      "repo": "extra",
+      "arch": "any",
+      "pkgver": "5.15.19",
+      "pkgrel": "1",
+      "compressed_size": 1952692,
+      "installed_size": 15421930
+    },
+    {
+      "pkgname": "qt5-x11extras",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "5.15.19",
+      "pkgrel": "1",
+      "compressed_size": 14748,
+      "installed_size": 41892
+    },
+    {
+      "pkgname": "qt6-connectivity",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.11.2",
+      "pkgrel": "1",
+      "compressed_size": 562023,
+      "installed_size": 2161049
+    },
+    {
+      "pkgname": "qt6-imageformats",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.11.2",
+      "pkgrel": "1",
+      "compressed_size": 72355,
+      "installed_size": 373213
+    },
+    {
+      "pkgname": "qt6-positioning",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.11.2",
+      "pkgrel": "1",
+      "compressed_size": 408602,
+      "installed_size": 1887420
+    },
+    {
+      "pkgname": "qt6-webchannel",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.11.2",
+      "pkgrel": "1",
+      "compressed_size": 147074,
+      "installed_size": 544134
+    },
+    {
+      "pkgname": "qt6-webengine",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.11.2",
+      "pkgrel": "1",
+      "compressed_size": 99047055,
+      "installed_size": 295877767
+    },
+    {
+      "pkgname": "qt6-websockets",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.11.2",
+      "pkgrel": "1",
+      "compressed_size": 114861,
+      "installed_size": 451681
+    },
+    {
+      "pkgname": "qt6-webview",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.11.2",
+      "pkgrel": "1",
+      "compressed_size": 76055,
+      "installed_size": 425517
+    },
+    {
+      "pkgname": "raptor",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.0.16",
+      "pkgrel": "9",
+      "compressed_size": 300548,
+      "installed_size": 2086525
+    },
+    {
+      "pkgname": "rasqal",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.9.33",
+      "pkgrel": "9",
+      "compressed_size": 482373,
+      "installed_size": 2887147
+    },
+    {
+      "pkgname": "re2",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2025.11.05",
+      "pkgrel": "6",
+      "compressed_size": 238303,
+      "installed_size": 637441
+    },
+    {
+      "pkgname": "redland",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.0.17",
+      "pkgrel": "10",
+      "compressed_size": 200443,
+      "installed_size": 1762432
+    },
+    {
+      "pkgname": "rnnoise",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.2",
+      "pkgrel": "1",
+      "compressed_size": 1213966,
+      "installed_size": 1481323
+    },
+    {
+      "pkgname": "rtmpdump",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.6",
+      "pkgrel": "2",
+      "compressed_size": 102278,
+      "installed_size": 276679
+    },
+    {
+      "pkgname": "sane",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.4.0",
+      "pkgrel": "4",
+      "compressed_size": 3945787,
+      "installed_size": 19649851
+    },
+    {
+      "pkgname": "signon-kwallet-extension",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 15606,
+      "installed_size": 35296
+    },
+    {
+      "pkgname": "signon-plugin-oauth2",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.25",
+      "pkgrel": "4",
+      "compressed_size": 83785,
+      "installed_size": 241424
+    },
+    {
+      "pkgname": "signon-ui",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.17+20231016",
+      "pkgrel": "4",
+      "compressed_size": 99531,
+      "installed_size": 264684
+    },
+    {
+      "pkgname": "signond",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "8.61",
+      "pkgrel": "4",
+      "compressed_size": 380626,
+      "installed_size": 1423422
+    },
+    {
+      "pkgname": "simde",
+      "repo": "extra",
+      "arch": "any",
+      "pkgver": "0.8.2",
+      "pkgrel": "1",
+      "compressed_size": 477699,
+      "installed_size": 8338643
+    },
+    {
+      "pkgname": "skanlite",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "26.08.1",
+      "pkgrel": "1",
+      "compressed_size": 2502231,
+      "installed_size": 3128969
+    },
+    {
+      "pkgname": "soundtouch",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.4.1",
+      "pkgrel": "1",
+      "compressed_size": 72423,
+      "installed_size": 210646
+    },
+    {
+      "pkgname": "spectacle",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.7.5",
+      "pkgrel": "1",
+      "compressed_size": 2183286,
+      "installed_size": 6482051
+    },
+    {
+      "pkgname": "tesseract",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "5.5.3",
+      "pkgrel": "1",
+      "compressed_size": 1759644,
+      "installed_size": 4889669
+    },
+    {
+      "pkgname": "tesseract-data-afr",
+      "repo": "extra",
+      "arch": "any",
+      "pkgver": "4.1.0",
+      "pkgrel": "5",
+      "compressed_size": 3602706,
+      "installed_size": 7851157
+    },
+    {
+      "pkgname": "tesseract-data-osd",
+      "repo": "extra",
+      "arch": "any",
+      "pkgver": "4.1.0",
+      "pkgrel": "5",
+      "compressed_size": 3815507,
+      "installed_size": 10562874
+    },
+    {
+      "pkgname": "threadweaver",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "6.30.0",
+      "pkgrel": "1",
+      "compressed_size": 83871,
+      "installed_size": 271696
+    },
+    {
+      "pkgname": "thunderbird",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "156.0.1",
+      "pkgrel": "1",
+      "compressed_size": 84774276,
+      "installed_size": 313844289
+    },
+    {
+      "pkgname": "ttf-carlito",
+      "repo": "extra",
+      "arch": "any",
+      "pkgver": "20230509",
+      "pkgrel": "2",
+      "compressed_size": 810251,
+      "installed_size": 2739086
+    },
+    {
+      "pkgname": "ttf-liberation",
+      "repo": "extra",
+      "arch": "any",
+      "pkgver": "2.1.5",
+      "pkgrel": "2",
+      "compressed_size": 1603926,
+      "installed_size": 4364854
+    },
+    {
+      "pkgname": "twolame",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.4.0",
+      "pkgrel": "4",
+      "compressed_size": 86287,
+      "installed_size": 248623
+    },
+    {
+      "pkgname": "uchardet",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.0.8",
+      "pkgrel": "4",
+      "compressed_size": 79618,
+      "installed_size": 209324
+    },
+    {
+      "pkgname": "unrar",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "7.3.1",
+      "pkgrel": "1",
+      "compressed_size": 196394,
+      "installed_size": 431328
+    },
+    {
+      "pkgname": "uthash",
+      "repo": "extra",
+      "arch": "any",
+      "pkgver": "2.3.0",
+      "pkgrel": "3",
+      "compressed_size": 21952,
+      "installed_size": 191133
+    },
+    {
+      "pkgname": "verdict",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "1.4.5",
+      "pkgrel": "3",
+      "compressed_size": 102860,
+      "installed_size": 274640
+    },
+    {
+      "pkgname": "vlc-plugin-a52dec",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 9337,
+      "installed_size": 14200
+    },
+    {
+      "pkgname": "vlc-plugin-alsa",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 18966,
+      "installed_size": 53144
+    },
+    {
+      "pkgname": "vlc-plugin-archive",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 12030,
+      "installed_size": 22472
+    },
+    {
+      "pkgname": "vlc-plugin-dav1d",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 9746,
+      "installed_size": 14280
+    },
+    {
+      "pkgname": "vlc-plugin-dbus",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 39671,
+      "installed_size": 96208
+    },
+    {
+      "pkgname": "vlc-plugin-dbus-screensaver",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 8700,
+      "installed_size": 14216
+    },
+    {
+      "pkgname": "vlc-plugin-faad2",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 12692,
+      "installed_size": 22392
+    },
+    {
+      "pkgname": "vlc-plugin-ffmpeg",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 84772,
+      "installed_size": 253520
+    },
+    {
+      "pkgname": "vlc-plugin-flac",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 13621,
+      "installed_size": 26488
+    },
+    {
+      "pkgname": "vlc-plugin-gnutls",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 14970,
+      "installed_size": 30664
+    },
+    {
+      "pkgname": "vlc-plugin-inflate",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 8352,
+      "installed_size": 14280
+    },
+    {
+      "pkgname": "vlc-plugin-journal",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 7681,
+      "installed_size": 14208
+    },
+    {
+      "pkgname": "vlc-plugin-jpeg",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 12633,
+      "installed_size": 22472
+    },
+    {
+      "pkgname": "vlc-plugin-matroska",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 212430,
+      "installed_size": 514160
+    },
+    {
+      "pkgname": "vlc-plugin-mpg123",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 9741,
+      "installed_size": 14208
+    },
+    {
+      "pkgname": "vlc-plugin-ogg",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 64171,
+      "installed_size": 135056
+    },
+    {
+      "pkgname": "vlc-plugin-opus",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 16051,
+      "installed_size": 26568
+    },
+    {
+      "pkgname": "vlc-plugin-png",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 9940,
+      "installed_size": 18296
+    },
+    {
+      "pkgname": "vlc-plugin-shout",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 10915,
+      "installed_size": 22488
+    },
+    {
+      "pkgname": "vlc-plugin-speex",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 16925,
+      "installed_size": 44880
+    },
+    {
+      "pkgname": "vlc-plugin-tag",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 41656,
+      "installed_size": 104496
+    },
+    {
+      "pkgname": "vlc-plugin-theora",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 15206,
+      "installed_size": 26568
+    },
+    {
+      "pkgname": "vlc-plugin-twolame",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 9848,
+      "installed_size": 14280
+    },
+    {
+      "pkgname": "vlc-plugin-vorbis",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 16817,
+      "installed_size": 30664
+    },
+    {
+      "pkgname": "vlc-plugin-vpx",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 10970,
+      "installed_size": 18376
+    },
+    {
+      "pkgname": "vlc-plugin-xml",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 8387,
+      "installed_size": 14280
+    },
+    {
+      "pkgname": "vlc-plugins-base",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 2134567,
+      "installed_size": 8138256
+    },
+    {
+      "pkgname": "vlc-plugins-video-output",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.0.23_2",
+      "pkgrel": "16",
+      "compressed_size": 169187,
+      "installed_size": 674576
+    },
+    {
+      "pkgname": "wavpack",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "5.9.0",
+      "pkgrel": "1",
+      "compressed_size": 531028,
+      "installed_size": 940220
+    },
+    {
+      "pkgname": "wildmidi",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.5.0",
+      "pkgrel": "1",
+      "compressed_size": 147491,
+      "installed_size": 280654
+    },
+    {
+      "pkgname": "xdg-dbus-proxy",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.1.9",
+      "pkgrel": "1",
+      "compressed_size": 27654,
+      "installed_size": 62477
+    },
+    {
+      "pkgname": "zbar",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.23.93",
+      "pkgrel": "7",
+      "compressed_size": 260776,
+      "installed_size": 805363
+    },
+    {
+      "pkgname": "zint",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "2.16.0",
+      "pkgrel": "2",
+      "compressed_size": 519951,
+      "installed_size": 987829
+    },
+    {
+      "pkgname": "zvbi",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "0.2.45",
+      "pkgrel": "1",
+      "compressed_size": 390054,
+      "installed_size": 1151604
+    },
+    {
+      "pkgname": "zxing-cpp",
+      "repo": "extra",
+      "arch": "x86_64",
+      "pkgver": "3.1.1",
+      "pkgrel": "1",
+      "compressed_size": 867461,
+      "installed_size": 1940466
+    }
+  ],
+  "virtual_provider_choices": {
+    "libsamplerate": [
+      "libsamplerate"
+    ],
+    "ncurses": [
+      "ncurses"
+    ],
+    "fftw": [
+      "fftw"
+    ],
+    "readline": [
+      "readline"
+    ],
+    "alsa-lib": [
+      "alsa-lib"
+    ],
+    "bash": [
+      "bash"
+    ],
+    "libgcc": [
+      "libgcc"
+    ],
+    "systemd-libs": [
+      "systemd-libs"
+    ],
+    "pam": [
+      "pam"
+    ],
+    "libverto": [
+      "libverto"
+    ],
+    "e2fsprogs": [
+      "e2fsprogs"
+    ],
+    "keyutils": [
+      "keyutils"
+    ],
+    "openssl": [
+      "openssl"
+    ],
+    "gdbm": [
+      "gdbm"
+    ],
+    "libxcrypt": [
+      "libxcrypt",
+      "libxcrypt-compat"
+    ],
+    "audit": [
+      "audit"
+    ],
+    "libcap-ng": [
+      "libcap-ng"
+    ],
+    "krb5": [
+      "krb5"
+    ],
+    "acl": [
+      "acl"
+    ],
+    "file": [
+      "file"
+    ],
+    "zstd": [
+      "zstd"
+    ],
+    "zlib": [
+      "zlib",
+      "zlib-ng-compat"
+    ],
+    "xz": [
+      "xz"
+    ],
+    "libseccomp": [
+      "libseccomp"
+    ],
+    "bzip2": [
+      "bzip2"
+    ],
+    "curl": [
+      "curl"
+    ],
+    "libssh2": [
+      "libssh2"
+    ],
+    "libpsl": [
+      "libpsl"
+    ],
+    "libunistring": [
+      "libunistring"
+    ],
+    "libidn2": [
+      "libidn2"
+    ],
+    "libngtcp2": [
+      "libngtcp2"
+    ],
+    "libnghttp3": [
+      "libnghttp3"
+    ],
+    "libnghttp2": [
+      "libnghttp2"
+    ],
+    "brotli": [
+      "brotli"
+    ],
+    "libp11-kit": [
+      "libp11-kit"
+    ],
+    "gawk": [
+      "gawk"
+    ],
+    "expat": [
+      "expat"
+    ],
+    "json-c": [
+      "json-c"
+    ],
+    "util-linux-libs": [
+      "util-linux-libs"
+    ],
+    "device-mapper": [
+      "device-mapper"
+    ],
+    "libarchive": [
+      "libarchive"
+    ],
+    "libxml2": [
+      "libxml2",
+      "libxml2-legacy"
+    ],
+    "icu": [
+      "icu"
+    ],
+    "gpgme": [
+      "gpgme"
+    ],
+    "npth": [
+      "npth"
+    ],
+    "libassuan": [
+      "libassuan"
+    ],
+    "libsecret": [
+      "libsecret"
+    ],
+    "libffi": [
+      "libffi"
+    ],
+    "glib2": [
+      "glib2"
+    ],
+    "libcbor": [
+      "libcbor"
+    ],
+    "lz4": [
+      "lz4"
+    ],
+    "libaio": [
+      "libaio"
+    ],
+    "libbpf": [
+      "libbpf"
+    ],
+    "libcap": [
+      "libcap"
+    ],
+    "iptables": [
+      "iptables",
+      "iptables-legacy"
+    ],
+    "dbus": [
+      "dbus"
+    ],
+    "systemd": [
+      "systemd"
+    ],
+    "libunwind": [
+      "libunwind"
+    ],
+    "libsodium": [
+      "libsodium"
+    ],
+    "numactl": [
+      "numactl"
+    ],
+    "liburing": [
+      "liburing"
+    ],
+    "libstdc++": [
+      "libstdc++"
+    ],
+    "gpm": [
+      "gpm"
+    ],
+    "opus": [
+      "opus"
+    ],
+    "mpg123": [
+      "mpg123"
+    ],
+    "libvorbis": [
+      "libvorbis"
+    ],
+    "libogg": [
+      "libogg"
+    ],
+    "lame": [
+      "lame"
+    ],
+    "flac": [
+      "flac"
+    ],
+    "libedit": [
+      "libedit"
+    ],
+    "python-yaml": [
+      "python-yaml"
+    ],
+    "dhcpcd": [
+      "dhclient",
+      "dhcpcd"
+    ],
+    "nettle": [
+      "nettle",
+      "nettle3"
+    ],
+    "polkit": [
+      "polkit"
+    ],
+    "libgudev": [
+      "libgudev"
+    ],
+    "libblockdev": [
+      "libblockdev"
+    ],
+    "kmod": [
+      "kmod"
+    ],
+    "cryptsetup": [
+      "cryptsetup"
+    ],
+    "mesa": [
+      "mesa",
+      "mesa-amber",
+      "nvidia-utils"
+    ],
+    "libxkbcommon": [
+      "libxkbcommon"
+    ],
+    "libglvnd": [
+      "libglvnd"
+    ],
+    "libpng": [
+      "libpng"
+    ],
+    "graphite": [
+      "graphite"
+    ],
+    "freetype2": [
+      "freetype2"
+    ],
+    "qt6-multimedia-ffmpeg": [
+      "qt6-multimedia-ffmpeg",
+      "qt6-multimedia-gstreamer"
+    ],
+    "zeromq": [
+      "zeromq"
+    ],
+    "zimg": [
+      "zimg"
+    ],
+    "xvidcore": [
+      "xvidcore"
+    ],
+    "x264": [
+      "x264"
+    ],
+    "l-smash": [
+      "l-smash"
+    ],
+    "libvpx": [
+      "libvpx"
+    ],
+    "vid.stab": [
+      "vid.stab"
+    ],
+    "libva": [
+      "libva"
+    ],
+    "rubberband": [
+      "rubberband"
+    ],
+    "libsndfile": [
+      "libsndfile"
+    ],
+    "librsvg": [
+      "librsvg"
+    ],
+    "libjpeg-turbo": [
+      "libjpeg-turbo"
+    ],
+    "rav1e": [
+      "rav1e"
+    ],
+    "libplacebo": [
+      "libplacebo"
+    ],
+    "vulkan-icd-loader": [
+      "vulkan-icd-loader"
+    ],
+    "shaderc": [
+      "shaderc"
+    ],
+    "lcms2": [
+      "lcms2"
+    ],
+    "libdovi": [
+      "libdovi"
+    ],
+    "libopenmpt": [
+      "libopenmpt"
+    ],
+    "jack2": [
+      "jack2",
+      "pipewire-jack"
+    ],
+    "harfbuzz": [
+      "harfbuzz"
+    ],
+    "dav1d": [
+      "dav1d"
+    ],
+    "libbs2b": [
+      "libbs2b"
+    ],
+    "libass": [
+      "libass"
+    ],
+    "speexdsp": [
+      "speexdsp"
+    ],
+    "sdl2-compat": [
+      "sdl2-compat"
+    ],
+    "libvpl": [
+      "libvpl"
+    ],
+    "libpipewire": [
+      "libpipewire"
+    ],
+    "libtool": [
+      "libtool"
+    ],
+    "tevent": [
+      "tevent"
+    ],
+    "tdb": [
+      "tdb"
+    ],
+    "ldb": [
+      "ldb"
+    ],
+    "libinih": [
+      "libinih"
+    ],
+    "kdsoap": [
+      "kdsoap"
+    ],
+    "efivar": [
+      "efivar"
+    ],
+    "wayland": [
+      "wayland"
+    ],
+    "jemalloc": [
+      "jemalloc"
+    ],
+    "cpptrace": [
+      "cpptrace"
+    ],
+    "libdwarf": [
+      "libdwarf"
+    ],
+    "seatd": [
+      "seatd"
+    ],
+    "libinput": [
+      "libinput"
+    ],
+    "libdisplay-info": [
+      "libdisplay-info"
+    ],
+    "xdg-desktop-portal-gtk": [
+      "xdg-desktop-portal-cosmic",
+      "xdg-desktop-portal-dde",
+      "xdg-desktop-portal-gnome",
+      "xdg-desktop-portal-gtk",
+      "xdg-desktop-portal-hyprland",
+      "xdg-desktop-portal-kde",
+      "xdg-desktop-portal-lxqt",
+      "xdg-desktop-portal-phosh",
+      "xdg-desktop-portal-wlr",
+      "xdg-desktop-portal-xapp"
+    ],
+    "noto-fonts": [
+      "gnu-free-fonts",
+      "noto-fonts",
+      "ttf-bitstream-vera",
+      "ttf-croscore",
+      "ttf-dejavu",
+      "ttf-droid",
+      "ttf-ibm-plex",
+      "ttf-input",
+      "ttf-input-nerd",
+      "ttf-liberation",
+      "ttf-roboto"
+    ],
+    "mailcap": [
+      "mailcap"
+    ],
+    "gupnp": [
+      "gupnp"
+    ],
+    "libsoup3": [
+      "libsoup3"
+    ],
+    "gssdp": [
+      "gssdp"
+    ],
+    "greetd-agreety": [
+      "greetd-agreety",
+      "greetd-regreet",
+      "greetd-tuigreet"
+    ],
+    "niri": [
+      "cage",
+      "hyprland",
+      "hyprpm",
+      "niri",
+      "river-classic",
+      "sway"
+    ],
+    "libpulse": [
+      "libpulse"
+    ],
+    "avahi": [
+      "avahi"
+    ],
+    "webrtc-audio-processing-1": [
+      "webrtc-audio-processing-1"
+    ],
+    "spandsp": [
+      "spandsp"
+    ],
+    "sbc": [
+      "sbc"
+    ],
+    "lilv": [
+      "lilv"
+    ],
+    "sratom": [
+      "sratom"
+    ],
+    "sord": [
+      "sord"
+    ],
+    "zix": [
+      "zix"
+    ],
+    "serd": [
+      "serd"
+    ],
+    "libusb": [
+      "libusb"
+    ],
+    "libmysofa": [
+      "libmysofa"
+    ],
+    "libldac": [
+      "libldac"
+    ],
+    "liblc3": [
+      "liblc3"
+    ],
+    "libfreeaptx": [
+      "libfreeaptx"
+    ],
+    "libfdk-aac": [
+      "libfdk-aac"
+    ],
+    "bluez-libs": [
+      "bluez-libs"
+    ],
+    "gtk4": [
+      "gtk4"
+    ],
+    "fcft": [
+      "fcft"
+    ],
+    "sdbus-cpp": [
+      "sdbus-cpp"
+    ],
+    "hyprutils": [
+      "hyprutils"
+    ],
+    "pixman": [
+      "pixman"
+    ],
+    "hyprlang": [
+      "hyprlang"
+    ],
+    "hyprgraphics": [
+      "hyprgraphics"
+    ],
+    "pango": [
+      "pango"
+    ],
+    "libwebp": [
+      "libwebp"
+    ],
+    "libjxl": [
+      "libjxl"
+    ],
+    "python": [
+      "python"
+    ],
+    "pangomm": [
+      "pangomm"
+    ],
+    "libsigc++": [
+      "libsigc++"
+    ],
+    "glibmm": [
+      "glibmm"
+    ],
+    "cairomm": [
+      "cairomm"
+    ],
+    "atkmm": [
+      "atkmm"
+    ],
+    "at-spi2-core": [
+      "at-spi2-core"
+    ],
+    "gtk3": [
+      "gtk3"
+    ],
+    "procps-ng": [
+      "procps-ng"
+    ],
+    "mkinitcpio": [
+      "booster",
+      "dracut",
+      "mkinitcpio"
+    ],
+    "libqmi": [
+      "libqmi"
+    ],
+    "libmbim": [
+      "libmbim"
+    ],
+    "libmm-glib": [
+      "libmm-glib"
+    ],
+    "pcsclite": [
+      "pcsclite"
+    ],
+    "oath-toolkit": [
+      "oath-toolkit"
+    ],
+    "libproxy": [
+      "libproxy"
+    ],
+    "tpm2-tss": [
+      "tpm2-tss"
+    ],
+    "stoken": [
+      "stoken"
+    ],
+    "pkcs11-helper": [
+      "pkcs11-helper"
+    ],
+    "lzo": [
+      "lzo"
+    ],
+    "libnl": [
+      "libnl"
+    ],
+    "xxhash": [
+      "xxhash"
+    ],
+    "libpcap": [
+      "libpcap"
+    ],
+    "libevent": [
+      "libevent"
+    ],
+    "linux": [
+      "linux",
+      "linux-hardened",
+      "linux-lts",
+      "linux-rt",
+      "linux-rt-lts",
+      "linux-zen"
+    ],
+    "portaudio": [
+      "portaudio"
+    ],
+    "ffmpeg": [
+      "ffmpeg",
+      "ffmpeg4.4"
+    ],
+    "poppler-glib": [
+      "poppler-glib"
+    ],
+    "libtiff": [
+      "libtiff"
+    ],
+    "libgphoto2": [
+      "libgphoto2"
+    ],
+    "x265": [
+      "x265"
+    ],
+    "openh264": [
+      "openh264"
+    ],
+    "aom": [
+      "aom"
+    ],
+    "passim": [
+      "passim"
+    ],
+    "ostree": [
+      "ostree"
+    ],
+    "tesseract-data-afr": [
+      "tesseract-data-afr",
+      "tesseract-data-amh",
+      "tesseract-data-ara",
+      "tesseract-data-asm",
+      "tesseract-data-aze",
+      "tesseract-data-aze_cyrl",
+      "tesseract-data-bel",
+      "tesseract-data-ben",
+      "tesseract-data-bod",
+      "tesseract-data-bos",
+      "tesseract-data-bre",
+      "tesseract-data-bul",
+      "tesseract-data-cat",
+      "tesseract-data-ceb",
+      "tesseract-data-ces",
+      "tesseract-data-chi_sim",
+      "tesseract-data-chi_sim_vert",
+      "tesseract-data-chi_tra",
+      "tesseract-data-chi_tra_vert",
+      "tesseract-data-chr",
+      "tesseract-data-cos",
+      "tesseract-data-cym",
+      "tesseract-data-dan",
+      "tesseract-data-dan_frak",
+      "tesseract-data-deu",
+      "tesseract-data-deu_frak",
+      "tesseract-data-div",
+      "tesseract-data-dzo",
+      "tesseract-data-ell",
+      "tesseract-data-eng",
+      "tesseract-data-enm",
+      "tesseract-data-epo",
+      "tesseract-data-equ",
+      "tesseract-data-est",
+      "tesseract-data-eus",
+      "tesseract-data-fao",
+      "tesseract-data-fas",
+      "tesseract-data-fil",
+      "tesseract-data-fin",
+      "tesseract-data-fra",
+      "tesseract-data-frk",
+      "tesseract-data-frm",
+      "tesseract-data-fry",
+      "tesseract-data-gla",
+      "tesseract-data-gle",
+      "tesseract-data-glg",
+      "tesseract-data-grc",
+      "tesseract-data-guj",
+      "tesseract-data-hat",
+      "tesseract-data-heb",
+      "tesseract-data-hin",
+      "tesseract-data-hrv",
+      "tesseract-data-hun",
+      "tesseract-data-hye",
+      "tesseract-data-iku",
+      "tesseract-data-ind",
+      "tesseract-data-isl",
+      "tesseract-data-ita",
+      "tesseract-data-ita_old",
+      "tesseract-data-jav",
+      "tesseract-data-jpn",
+      "tesseract-data-jpn_vert",
+      "tesseract-data-kan",
+      "tesseract-data-kat",
+      "tesseract-data-kat_old",
+      "tesseract-data-kaz",
+      "tesseract-data-khm",
+      "tesseract-data-kir",
+      "tesseract-data-kmr",
+      "tesseract-data-kor",
+      "tesseract-data-kor_vert",
+      "tesseract-data-lao",
+      "tesseract-data-lat",
+      "tesseract-data-lav",
+      "tesseract-data-lit",
+      "tesseract-data-ltz",
+      "tesseract-data-mal",
+      "tesseract-data-mar",
+      "tesseract-data-mkd",
+      "tesseract-data-mlt",
+      "tesseract-data-mon",
+      "tesseract-data-mri",
+      "tesseract-data-msa",
+      "tesseract-data-mya",
+      "tesseract-data-nep",
+      "tesseract-data-nld",
+      "tesseract-data-nor",
+      "tesseract-data-oci",
+      "tesseract-data-ori",
+      "tesseract-data-pan",
+      "tesseract-data-pol",
+      "tesseract-data-por",
+      "tesseract-data-pus",
+      "tesseract-data-que",
+      "tesseract-data-ron",
+      "tesseract-data-rus",
+      "tesseract-data-san",
+      "tesseract-data-sin",
+      "tesseract-data-slk",
+      "tesseract-data-slk_frak",
+      "tesseract-data-slv",
+      "tesseract-data-snd",
+      "tesseract-data-spa",
+      "tesseract-data-spa_old",
+      "tesseract-data-sqi",
+      "tesseract-data-srp",
+      "tesseract-data-srp_latn",
+      "tesseract-data-sun",
+      "tesseract-data-swa",
+      "tesseract-data-swe",
+      "tesseract-data-syr",
+      "tesseract-data-tam",
+      "tesseract-data-tat",
+      "tesseract-data-tel",
+      "tesseract-data-tgk",
+      "tesseract-data-tgl",
+      "tesseract-data-tha",
+      "tesseract-data-tir",
+      "tesseract-data-ton",
+      "tesseract-data-tur",
+      "tesseract-data-uig",
+      "tesseract-data-ukr",
+      "tesseract-data-urd",
+      "tesseract-data-uzb",
+      "tesseract-data-uzb_cyrl",
+      "tesseract-data-vie",
+      "tesseract-data-yid",
+      "tesseract-data-yor"
+    ],
+    "giflib": [
+      "giflib"
+    ],
+    "onetbb": [
+      "onetbb"
+    ],
+    "raptor": [
+      "raptor"
+    ],
+    "vlc-plugins-video-output": [
+      "vlc-plugins-video-output"
+    ],
+    "libvlc": [
+      "libvlc"
+    ],
+    "libebml": [
+      "libebml"
+    ],
+    "libbluray": [
+      "libbluray"
+    ],
+    "fontconfig": [
+      "fontconfig"
+    ],
+    "phonon-qt6-vlc": [
+      "phonon-qt6-vlc"
+    ]
+  }
+}

@@ -1,0 +1,75 @@
+# Derived from the Arch Linux 'quickshell' package (Maintainer: Caleb Maclennan <caleb@alerque.com>)
+# Emaki: same build + a fix for the wlr-screencopy crash on Smithay compositors (niri)
+# and a fix that names the activation each network connection failure belongs to.
+
+_pkgname=quickshell
+pkgname=quickshell-emaki
+pkgver=0.3.1
+pkgrel=3
+pkgdesc='Flexible toolkit for making desktop shells with QtQuick (Emaki patched build)'
+arch=(x86_64 aarch64)
+url="https://git.outfoxxed.me/$_pkgname/$_pkgname"
+license=(LGPL-3.0-only)
+depends=(cpptrace libcpptrace.so
+         glibc # libc.so libm.so
+         hicolor-icon-theme
+         jemalloc libjemalloc.so
+         libdrm # libdrm.so
+         libgcc libgcc_s.so
+         libglvnd libEGL.so libOpenGL.so
+         libpipewire libpipewire-0.3.so
+         libstdc++ libstdc++.so
+         libxcb # libxcb.so
+         mesa # libgbm.so
+         pam libpam.so
+         polkit
+         'qt6-base>=6.12' 'qt6-base<6.13' # libQt6Core.so libQt6DBus.so libQt6Gui.so libQt6Network.so libQt6Widgets.so
+         'qt6-declarative>=6.12' 'qt6-declarative<6.13' # libQt6Qml.so libQt6Quick.so
+         qt6-svg
+         'qt6-wayland>=6.12' 'qt6-wayland<6.13' # libQt6WaylandClient.so
+         wayland libwayland-client.so)
+makedepends=(cli11
+             cmake
+             ninja
+             qt6-shadertools
+             spirv-tools
+             vulkan-headers
+             wayland-protocols)
+provides=("quickshell=$pkgver")
+conflicts=(quickshell)
+_archive="$_pkgname-$pkgver"
+source=("$_archive.tar.gz::$url/archive/v$pkgver.tar.gz"
+        0001-wlr-screencopy-raw-wl_output-for-transform.patch
+        0002-network-nm-name-the-activation-a-connection-failure.patch
+        0003-qt-6.12-moc-includes.patch)
+sha256sums=('d60592622f1aa1cbb853d4814f605dfde827bc692befbfecffaccf4c90e352d8'
+            'b32f0be7920e0dd10cf89bb0fecdd0a7c0ac73f0f113fc93e3b235ad36e894c7'
+            'a01afe049a5eec79752ecbb57b705fb672a34bb7b5eff20c43e68c544f70ea65'
+            '4cb3b5acc94e0c9546568a782540ab01c1ad06946c8c7b7e290e2b9ffc21b7a2')
+
+prepare() {
+	cd "$_pkgname"
+	patch -Np1 -i "$srcdir/0001-wlr-screencopy-raw-wl_output-for-transform.patch"
+	patch -Np1 -i "$srcdir/0002-network-nm-name-the-activation-a-connection-failure.patch"
+	patch -Np1 -i "$srcdir/0003-qt-6.12-moc-includes.patch"
+}
+
+build() {
+	cd "$_pkgname"
+	local cmake_options=(
+		-D CMAKE_BUILD_TYPE=RelWithDebInfo
+		-D DISTRIBUTOR='Emaki (Arch Linux package + patches)'
+		-D DISTRIBUTOR_DEBUGINFO_AVAILABLE=Yes
+		-D CRASH_REPORTER=Off
+		-D CMAKE_INSTALL_PREFIX=/usr
+		-D INSTALL_QML_PREFIX=lib/qt6/qml
+	)
+	cmake -G Ninja -B build -W no-dev "${cmake_options[@]}"
+	cmake --build build
+}
+
+package() {
+	cd "$_pkgname"
+	DESTDIR="$pkgdir" cmake --install build
+	install -Dm0644 -t "$pkgdir/usr/share/licenses/$pkgname/" LICENSE
+}

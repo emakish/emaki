@@ -1,0 +1,22 @@
+{
+  "mode": "alongside",
+  "disk_id": "/dev/disk/by-id/virtio-emaki-target",
+  "partition_id": "/dev/disk/by-id/virtio-emaki-target-part3",
+  "shrink_bytes": 42949672960,
+  "fs": "btrfs",
+  "hostname": "emaki",
+  "timezone": "UTC",
+  "layouts": [
+    "us"
+  ],
+  "user": {
+    "name": "Emaki Test",
+    "login": "emaki",
+    "password": "emaki-vm-test-only"
+  },
+  "repo_server": "http://10.0.2.2:8765/testing",
+  "online_update": false,
+  "encryption": "none",
+  "hibernation": false,
+  "software": "minimal"
+}

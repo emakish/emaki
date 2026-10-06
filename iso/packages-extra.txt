@@ -1,4 +1,3 @@
-7zip
 adwaita-cursors
 adwaita-fonts
 adwaita-icon-theme
@@ -9,6 +8,7 @@ bluez
 brightnessctl
 btrfs-progs
 cliphist
+dolphin
 efibootmgr
 emaki
 emaki-config
@@ -17,7 +17,6 @@ emaki-installer
 emaki-keyring
 emaki-mirrorlist
 fastfetch
-file-roller
 firefox
 fuzzel
 gnome-keyring
@@ -26,7 +25,6 @@ greetd
 greetd-regreet
 grim
 grub
-grub-btrfs
 gtk3
 hyprlock
 imagemagick
@@ -35,17 +33,16 @@ intel-media-driver
 intel-ucode
 kitty
 linux-firmware
+linux-firmware-marvell
 linux-lts
-loupe
 mesa
-nautilus
 networkmanager
 niri
 niri-emaki
 noto-fonts
+noto-fonts-emoji
 ntfs-3g
 os-prober
-papers
 pipewire
 pipewire-pulse
 playerctl
@@ -56,11 +53,9 @@ python-gobject
 python-pillow
 qt6ct
 quickshell-emaki
-snap-pac
-snapper
+sof-firmware
 sudo
 udiskie
-unrar
 upower
 vulkan-intel
 vulkan-radeon
@@ -69,6 +64,6 @@ wl-clipboard
 wlsunset
 wpa_supplicant
 wpaperd
-xdg-desktop-portal-gnome
+xdg-desktop-portal-gnome-emaki
 xdg-desktop-portal-gtk
-zram-generator
+xwayland-satellite

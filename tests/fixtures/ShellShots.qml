@@ -13,7 +13,7 @@ ShellRoot {
     property int stage: 0
     property int wallpaperWaits: 0
     property int iconIndex: 0
-    readonly property var kinds: ["logo", "corner", "tray", "file", "wifi", "bt", "sound", "light", "battery", "power-saver", "balanced", "performance", "lock", "sleep", "restart", "shutdown"]
+    readonly property var kinds: ["logo", "corner", "tray", "file", "wifi", "wired", "bt", "sound", "light", "battery", "power-saver", "balanced", "performance", "lock", "sleep", "restart", "shutdown", "logout", "hibernate"]
     readonly property var sizes: [16, 18, 22, 36]
 
     // The first visible GlassTarget of the clock panel whose key starts with `prefix`.
@@ -298,37 +298,6 @@ ShellRoot {
                 });
             } else if (root.stage === 15) {
                 root.save(canvas, "launcher-frequent", () => {
-                    scene.input.openPage("keys");
-                    scene.input.settings.values = [
-                        {
-                            key: "keybindings.toggle_window_floating",
-                            value: "Mod+Shift+V"
-                        }
-                    ];
-                    root.stage = 16;
-                    tick.restart();
-                });
-            } else if (root.stage === 16) {
-                root.save(canvas, "launcher-settings", () => {
-                    scene.input.openPage("history");
-                    scene.input.settings.history = [
-                        {
-                            id: "fixture-change",
-                            kind: "set",
-                            observed_at_unix_ms: Date.now(),
-                            changes: [
-                                {
-                                    key: "keybindings.toggle_window_floating",
-                                    after: "Mod+Shift+V"
-                                }
-                            ]
-                        }
-                    ];
-                    root.stage = 17;
-                    tick.restart();
-                });
-            } else if (root.stage === 17) {
-                root.save(canvas, "launcher-history", () => {
                     scene.clockBody.mediaSource = fixtureMedia;
                     scene.clockBody.mediaEnabled = true;
                     scene.openDrawer();
@@ -338,6 +307,7 @@ ShellRoot {
             } else if (root.stage === 18) {
                 root.save(canvas, "drawer-media", () => {
                     scene.closeAll();
+                    scene.systemBody.service.canHibernate = true;
                     scene.openSystem("sound");
                     root.stage = 19;
                     tick.restart();
@@ -362,7 +332,7 @@ ShellRoot {
                     ++root.stage;
                     if (root.stage === 26) {
                         scene.openSystem("power");
-                        scene.systemBody.session("poweroff");
+                        scene.systemBody.session("hibernate");
                     } else if (root.stage <= 25)
                         scene.openSystem(pages[root.stage - 19]);
                     else {
@@ -495,13 +465,6 @@ ShellRoot {
                 });
             } else if (root.stage === 42) {
                 root.save(canvas, "launcher-search", () => {
-                    scene.input.setQuery("");
-                    scene.input.setMode("Settings");
-                    root.stage = 43;
-                    tick.restart();
-                });
-            } else if (root.stage === 43) {
-                root.save(canvas, "launcher-pages", () => {
                     scene.closeAll();
                     scene.openDrawer();
                     root.stage = 44;

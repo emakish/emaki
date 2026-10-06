@@ -32,6 +32,34 @@ iso_ssh_args
     sleep 1
 done' || iso_die 'installer worker was not ready within 300 seconds (see guest service diagnostics)'
 "${ISO_SSH[@]}" 'umask 077; cat > "$HOME/emaki-plan.json"' <"$plan"
+if [[ $fixture == alongside ]]; then
+    # 0.2 ships with alongside Windows switched off in the installer core. Ask the packaged
+    # worker for the plan only (no --yes, nothing is written); a refusal of the mode itself
+    # means this fixture does not apply to the image: exit 77, neither a pass nor a failure.
+    set +e
+    "${ISO_SSH[@]}" 'emaki-install-cli --plan "$HOME/emaki-plan.json"' >"$run/offer.ndjson" 2>&1
+    set -e
+    if python3 -c 'import json, sys
+for line in open(sys.argv[1], errors="replace"):
+    try:
+        msg = json.loads(line)
+    except ValueError:
+        continue
+    if isinstance(msg, dict) and msg.get("type") == "plan_ack" and any(
+            error.get("code") == "unsupported_mode" for error in msg.get("errors") or []):
+        sys.exit(0)
+sys.exit(1)' "$run/offer.ndjson"; then
+        "${ISO_SSH[@]}" 'rm -f "$HOME/emaki-plan.json"' || true
+        printf 'The installer in this image does not offer install alongside Windows.\n' >"$run/NOT-APPLICABLE"
+        printf '77\n' >"$run/exit-code"
+        printf 'NOT APPLICABLE: the installer in this ISO refuses install alongside Windows; nothing was installed (%s)\n' "$run/offer.ndjson"
+        exit 77
+    fi
+    [[ -s $ISO_VM/windows-before.json ]] || iso_die 'prepare the Windows fixture and baseline first'
+    cp -- "$ISO_VM/windows-before.json" "$run/windows-before.json"
+    "${ISO_SSH[@]}" 'umask 077; cat > /tmp/emaki-windows-fixture.py' <"$ISO_HERE/fixtures/windows-disk.py"
+    "${ISO_SSH[@]}" 'sudo -n python3 /tmp/emaki-windows-fixture.py check' <"$run/windows-before.json" >"$run/windows-before-check.log" 2>&1
+fi
 # pipefail is insufficient to preserve the CLI status when tee also fails.
 set +e
 # --plan --yes already streams the job until done/error.

@@ -1,13 +1,14 @@
 amd-ucode
 base
 btrfs-progs
+cryptsetup
 dosfstools
 e2fsprogs
 efibootmgr
 emaki
+emaki-apps
 emaki-config
 emaki-desktop
-emaki-installer
 emaki-keyring
 emaki-mirrorlist
 grim

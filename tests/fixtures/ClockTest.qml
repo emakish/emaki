@@ -49,6 +49,12 @@ ShellRoot {
             when: false
         }
     }
+    function targets(item: var): var {
+        let result = item.key && item.visible && item.pressable !== undefined ? [item] : [];
+        for (const child of item.children ?? [])
+            result = result.concat(targets(child));
+        return result;
+    }
     function publish(overview: bool, full: bool): void {
         niri.receive(JSON.stringify({
             schema_version: 1,
@@ -140,6 +146,64 @@ ShellRoot {
         function farSignal(value: real): void {
             if (fixtureSystem.item)
                 fixtureSystem.item.farSignal = value;
+        }
+        function wired(on: bool): void {
+            if (fixtureSystem.item)
+                fixtureSystem.item.wiredConnected = on;
+        }
+        function wifiAbsent(on: bool): void {
+            if (fixtureSystem.item)
+                fixtureSystem.item.wifiAbsent = on;
+        }
+        // What the system panel and the launcher would show for each state (a JSON {list}):
+        // their lookups called with every state, the layout note with niri's reason injected.
+        function shownTexts(states: string): string {
+            const body = scene.systemBody;
+            const shown = {};
+            const reason = niri.actionReason;
+            for (const s of JSON.parse(states).list) {
+                for (const page of ["sound", "wifi"])
+                    shown["message " + page + " " + s] = body.messageText(s, page);
+                for (const what of ["night", "brightness", "tray", "vpn"])
+                    shown[what + " " + s] = body.stateNote(what, s);
+                niri.actionReason = s;
+                shown["layout " + s] = body.layoutNote("requested", "rejected");
+                shown["layout-state " + s] = body.layoutNote(s, "idle");
+                for (const what of ["clipboard", "clipboard-action", "web", "launch", "windows", "labels", "file-open"])
+                    shown["launcher " + what + " " + s] = scene.input.stateNote(what, s);
+            }
+            niri.actionReason = reason;
+            return JSON.stringify(shown);
+        }
+        // The Wi-Fi and sound pages' subtitles while networking and sound services are down.
+        function downTexts(): string {
+            const backend = fixtureSystem.item;
+            backend.networkReady = false;
+            backend.audioReady = false;
+            const shown = [scene.systemBody.wifiSub, scene.systemBody.soundSub];
+            backend.networkReady = true;
+            backend.audioReady = true;
+            return JSON.stringify(shown);
+        }
+        // The texts that appear in the bar after a niri action was rejected for `reason`.
+        function barTexts(reason: string): string {
+            const texts = item => (item.visible && typeof item.text === "string" && item.text ? [item.text] : []).concat(...Array.from(item.children ?? []).map(texts));
+            const before = texts(scene.bar);
+            niri.actionState = "rejected";
+            niri.actionReason = reason;
+            const after = texts(scene.bar).filter(t => !before.includes(t));
+            niri.actionState = "idle";
+            niri.actionReason = "";
+            return JSON.stringify(after);
+        }
+        // The bar's Wi-Fi cell (theme icon and Icon.qml fallback shape) and the Wi-Fi page's subtitle.
+        function wifiCell(): string {
+            const row = scene.bar.systemGlass.row;
+            return JSON.stringify({
+                icon: row.cell("wifi").icon,
+                fallback: row.fallbackOf("wifi"),
+                sub: scene.systemBody.wifiSub
+            });
         }
         function wifiRows(): string {
             return JSON.stringify(scene.systemBody.rows.map(r => r.name + " · " + r.detail));
@@ -281,15 +345,40 @@ ShellRoot {
         function systemAction(kind: string, value: string): bool {
             return scene.services.act(kind, JSON.parse(value));
         }
-        function systemDeny(value: bool): void {
+        // A NetworkManager failure of a connection this panel did not start, while an action is pending.
+        function systemActionStrayWifiFailure(kind: string, value: string, error: string): bool {
+            const accepted = scene.services.act(kind, JSON.parse(value));
             if (fixtureSystem.item)
-                fixtureSystem.item.deny = value;
+                fixtureSystem.item.wifiFailed("stray", null, error);
+            return accepted;
         }
         function battery(value: int, charging: bool): void {
             if (fixtureSystem.item) {
                 fixtureSystem.item.charging = charging;
                 fixtureSystem.item.percent = value / 100;
             }
+        }
+        function powerButtons(): string {
+            return JSON.stringify(root.targets(scene.systemBody).filter(t => t.key.startsWith("act-")).map(t => {
+                const p = t.mapToItem(scene.systemBody, 0, 0);
+                return {
+                    key: t.key,
+                    x: p.x,
+                    width: t.width,
+                    panelWidth: scene.systemBody.width
+                };
+            }));
+        }
+        function powerKey(key: string, action: string): string {
+            const target = root.targets(scene.systemBody).find(t => t.key === key);
+            if (!target)
+                return "missing";
+            target.forceActiveFocus();
+            pointer.keyClick(action === "tab" ? Qt.Key_Tab : action === "space" ? Qt.Key_Space : Qt.Key_Return);
+            return root.targets(scene.systemBody).find(t => t.activeFocus)?.key ?? "";
+        }
+        function systemRefresh(): void {
+            scene.services.refresh();
         }
         function session(value: string): void {
             scene.systemBody.session(value);
@@ -300,25 +389,23 @@ ShellRoot {
         function status(): string {
             return scene.status();
         }
-        function page(name: string): void {
-            scene.input.openPage(name);
-        }
-        function shortcut(): void {
-            pointer.keyClick(Qt.Key_V, Qt.MetaModifier | Qt.ShiftModifier);
-        }
-        function saveShortcut(): void {
-            scene.input.saveRecorded();
-        }
-        function undoNewest(): void {
-            const rows = scene.input.settings.history;
-            if (rows.length)
-                scene.input.settings.undo(rows[rows.length - 1].id);
+        function settingsStatus(): string {
+            const s = scene.settings;
+            return JSON.stringify({
+                state: s.state,
+                action: s.lastAction,
+                history_count: s.history.length,
+                busy: s.busy
+            });
         }
         function mode(name: string): bool {
             return scene.input.setMode(name);
         }
         function query(value: string): void {
             scene.input.setQuery(value);
+        }
+        function tab(back: bool): void {
+            pointer.keyClick(back ? Qt.Key_Backtab : Qt.Key_Tab, back ? Qt.ShiftModifier : Qt.NoModifier);
         }
         function down(): void {
             pointer.keyClick(Qt.Key_Down);
@@ -407,6 +494,15 @@ ShellRoot {
         }
         function action(id: int, name: string): bool {
             return scene.notifications.activate(id, name);
+        }
+        // A shell notice (no D-Bus object); returns the list length afterwards.
+        function localNotice(): int {
+            scene.notifications.local("Fixture", "Fixture notice", "");
+            return scene.notifications.entries.length;
+        }
+        // [heading, text] of every entry, newest first.
+        function notices(): string {
+            return JSON.stringify(scene.notifications.entries.map(e => [e.app, e.summary]));
         }
         function shift(delta: int): void {
             scene.clockBody.calendar.shift(delta);

@@ -42,7 +42,7 @@ def screenshot(args):
             log.write_bytes(result.stderr)
             if result.returncode == 0 and result.stdout.startswith(b'\x89PNG\r\n\x1a\n'):
                 destination.write_bytes(result.stdout)
-                print(f'OK: guest grim: {destination}')
+                print(f'SHOT: guest grim: {destination} (not judged)')
                 return True
         else:
             log.write_bytes(uploaded.stderr)
@@ -52,7 +52,7 @@ def screenshot(args):
     with log.open('a') as stream:
         stream.write(response)
     if destination.is_file() and destination.read_bytes().startswith(b'\x89PNG\r\n\x1a\n'):
-        print(f'OK: QEMU screendump: {destination}')
+        print(f'SHOT: QEMU screendump: {destination} (not judged)')
         return True
     destination.unlink(missing_ok=True)
     print(f'BAD: screenshot unavailable (virgl may report "no surface"); see {log}', file=sys.stderr)

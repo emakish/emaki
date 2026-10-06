@@ -60,10 +60,12 @@ if ((no_cd == 0)); then
 fi
 network="user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:$ISO_PORT-:22"
 ((offline == 0)) || network+=",restrict=on"
+# discard=unmap passes the guest's discards to the image, as a disk would: without it,
+# mkfs.btrfs's whole-device discard left no superblock on a formatted partition (VM check d3).
 exec qemu-system-x86_64 -machine q35 -enable-kvm -cpu host -smp 6 -m 6G \
     -drive "if=pflash,format=raw,readonly=on,file=$code" \
     -drive "if=pflash,format=raw,file=$ISO_VM/OVMF_VARS.4m.fd" \
-    -drive "file=$disk,if=none,id=target,format=qcow2" \
+    -drive "file=$disk,if=none,id=target,format=qcow2,discard=unmap" \
     -device virtio-blk-pci,drive=target,serial=emaki-target "${cd_args[@]}" \
     -nic "$network" \
     -device "virtio-vga-gl,max_outputs=$outputs" -display egl-headless,rendernode=/dev/dri/renderD128 \

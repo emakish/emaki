@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# Based on Arch Linux xdg-desktop-portal-gnome 50.0-1, without Nautilus.
+# https://gitlab.archlinux.org/archlinux/packaging/packages/xdg-desktop-portal-gnome/-/tree/50.0-1
+# shellcheck disable=SC2034,SC2154
+pkgname=xdg-desktop-portal-gnome-emaki
+_upstream=xdg-desktop-portal-gnome
+pkgver=50.0
+pkgrel=2
+pkgdesc="Backend implementation for xdg-desktop-portal for the GNOME desktop environment"
+url="https://gitlab.gnome.org/GNOME/xdg-desktop-portal-gnome"
+arch=(x86_64)
+license=(LGPL-2.1-or-later)
+depends=(
+  cairo
+  dconf
+  fontconfig
+  gdk-pixbuf2
+  glib2
+  glibc
+  gnome-desktop-4
+  graphene
+  gtk4
+  libadwaita
+  libgcc
+  libx11
+  wayland
+  xdg-desktop-portal
+  'xdg-desktop-portal-gtk>=1.10.0-2'
+)
+makedepends=(
+  git
+  glib2-devel
+  meson
+)
+optdepends=('evince: Print previews')
+# replaces= acts only where pacman.conf lists [emaki] before [extra]: libalpm takes a
+# replacement from the first repository that carries the old name. Installed Emaki lists
+# [emaki] last, so the Emaki packages depend on the provided upstream name, never on this one.
+provides=(xdg-desktop-portal-gnome xdg-desktop-portal-impl)
+conflicts=(xdg-desktop-portal-gnome 'xdg-desktop-portal-gtk<1.10.0-2')
+replaces=(xdg-desktop-portal-gnome 'xdg-desktop-portal-gtk<1.10.0-2')
+source=(
+  "git+https://gitlab.gnome.org/GNOME/xdg-desktop-portal-gnome.git?signed#tag=${pkgver/[a-z]/.&}"
+  "git+https://gitlab.gnome.org/GNOME/libgxdp.git#commit=d5eca997aa2fea5af54fdd286d5c1e1aa7c76389"
+)
+b2sums=('85ef8077172eb7fe181f2b3ab1585e7d8e467cec5acc163c9438364d4f8f127d4c582141a91899c859689b08a7b8c470668f9fd883f1457254b6cf913b75ce2e'
+        'afa272ad0b3f5b417326269ff55cb943a8c811860f13a48867e0673ebcb58df8a4b91756a0aceace9860f8754880b95328d6670fd9c0420f81d859db4631b19c')
+validpgpkeys=(
+  8307C0A224BABDA1BABD0EB9A6EEEC9E0136164A
+  9038F70CA72FAC9D10C6327B89AFE307C861D158
+)
+
+prepare() {
+  cd "$_upstream"
+}
+
+build() {
+  # Inject libgxdp
+  export MESON_PACKAGE_CACHE_DIR="$srcdir"
+
+  arch-meson "$_upstream" build
+  meson compile -C build
+}
+
+check() {
+  meson test -C build --print-errorlogs
+}
+
+package() {
+  meson install -C build --destdir "$pkgdir"
+}
+
+# vim:set sw=2 sts=-1 et:

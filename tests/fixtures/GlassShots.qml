@@ -15,7 +15,7 @@ ShellRoot {
     readonly property real shotScale: Number(Quickshell.env("QT_SCALE_FACTOR") || "1")
     // EMAKI_GLASS_MOTION=1: instead of the still states, frames of drops in flight (motionSteps).
     readonly property bool motion: Quickshell.env("EMAKI_GLASS_MOTION") === "1"
-    readonly property var states: motion ? ["closed"].concat(Object.keys(motionSteps)) : ["closed", "logo-hover", "open", "selected", "search", "pages", "clock-hover", "clock-open", "clock-row-hover", "clock-day-hover", "clock-player-hover", "clock-dnd", "clock-closed-dnd", "clock-peek", "system-hover", "system-sound", "system-sound-hover", "system-wifi", "system-bt", "system-bt-cell-hover", "system-power", "system-power-confirm", "system-osd", "privacy", "privacy-open", "lock-pour-50", "lock-locked", "lock-wrong", "lock-melt", "lock-drain-50"]
+    readonly property var states: motion ? ["closed"].concat(Object.keys(motionSteps)) : ["closed", "logo-hover", "open", "selected", "search", "clock-hover", "clock-open", "clock-row-hover", "clock-day-hover", "clock-player-hover", "clock-dnd", "clock-closed-dnd", "clock-peek", "system-hover", "system-sound", "system-sound-hover", "system-wifi", "system-bt", "system-bt-cell-hover", "system-power", "system-power-confirm", "system-osd", "privacy", "privacy-open", "lock-pour-50", "lock-locked", "lock-wrong", "lock-melt", "lock-drain-50"]
     // ---- Motion: each state is one exact frame. The owner's FrameAnimation is stopped and its
     // frame() is called on a clock of our own (60 fps), so a dump shows the drop where it is
     // after that many frames, not wherever the offscreen timer happened to leave it. `roi` is
@@ -231,7 +231,7 @@ ShellRoot {
     // The mockup's notifications (clock.js NOTES): five apps and a burst of 63 from kitty.
     function fixtureNotes(): void {
         const now = Date.now();
-        const rows = [["kitty", "kitty", "Build", "make check finished: all tests passed", 2], ["Telegram", "org.telegram.desktop", "Alex", "Dinner at 7? I will bring the bread", 14], ["Thunderbird", "org.mozilla.Thunderbird", "Shop · new order #1042", "Bracelet, silver · 68 USD · pay by card", 48], ["Signal", "signal", "Mom", "Photos from the garden", 95], ["Firefox", "firefox", "Download finished", "emaki-0.3.pkg.tar.zst · 184 MB", 130]];
+        const rows = [["kitty", "kitty", "Build", "make check finished: all tests passed", 2], ["Telegram", "org.telegram.desktop", "Alex", "Dinner at 7? I will bring the bread", 14], ["Thunderbird", "org.mozilla.Thunderbird", "Library · loan #1042", "Book returned · thank you for visiting", 48], ["Signal", "signal", "Sam", "Photos from the garden", 95], ["Firefox", "firefox", "Download finished", "emaki-0.3.pkg.tar.zst · 184 MB", 130]];
         for (let i = 0; i < 63; ++i)
             rows.push(["kitty", "kitty", "Build", "make check finished: all tests passed", 11 + i * 7]);
         const entries = rows.map((r, i) => ({
@@ -603,9 +603,6 @@ ShellRoot {
                 } else if (nextState === "search") {
                     scene.input.setMode("All");
                     scene.input.setQuery(Quickshell.env("EMAKI_GLASS_QUERY") || "tele");
-                } else if (nextState === "pages") {
-                    scene.input.setQuery("");
-                    scene.input.setMode("Settings");
                 } else if (nextState === "clock-hover") {
                     scene.closeAll();
                     root.pointAt(scene.bar.clock);
@@ -751,7 +748,7 @@ ShellRoot {
         scene.panel.visible = Qt.binding(() => scene.launcherPresent);
         // Frequent: the mockup's six, as far as they are installed here.
         const counts = {};
-        const wanted = (Quickshell.env("EMAKI_GLASS_FREQUENT") || "firefox,kitty,org.telegram.desktop,org.gnome.TextEditor,org.gnome.Nautilus,org.gnome.Calculator").split(",");
+        const wanted = (Quickshell.env("EMAKI_GLASS_FREQUENT") || "firefox,kitty,org.telegram.desktop,org.kde.kate,org.kde.dolphin,org.kde.gwenview").split(",");
         wanted.forEach((id, i) => {
             if (DesktopEntries.byId(id))
                 counts[id] = 10 - i;
