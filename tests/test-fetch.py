@@ -27,7 +27,7 @@ assert FASTFETCH, 'fastfetch is required for make check'
 subprocess.run([sys.executable, str(ROOT / 'scripts/build-fetch'), '--check'], check=True)
 ANSI = re.compile(rb'\x1b\[[0-9;?]*[A-Za-z]')
 KITTY_IMAGE = re.compile(rb'\x1b_G[^\x1b]*\x1b\\')
-OS_LINE = re.compile(rb'(?m)OS: Emaki( [0-9]+\.[0-9]+\.[0-9]+( (alpha|beta))?)?[ \t]*$')
+OS_LINE = re.compile(rb'(?m)OS: Emaki( [0-9]+\.[0-9]+\.[0-9]+( (alpha|beta))?)?( \[channel: (stable|testing|custom|mixed|disabled|unknown)\])?[ \t]*$')
 KEYS = ['OS', 'Host', 'Kernel', 'Uptime', 'Packages', 'Shell', 'WM', 'Terminal',
         'CPU', 'GPU', 'Memory', 'Disk', 'Battery', 'Locale']
 config = json.loads((ROOT / 'fetch/details.jsonc').read_text())
@@ -40,9 +40,31 @@ assert os_module['type'] == 'command' and '/usr/lib/emaki-release' in os_module[
 with tempfile.TemporaryDirectory() as release_dir:
     release = Path(release_dir) / 'emaki-release'
     release.write_text('VERSION=0.2.0\nLABEL=alpha\nCHANNEL=stable\n')
-    for path, expected in ((release, b'Emaki 0.2.0 alpha\n'), (Path(release_dir) / 'missing', b'Emaki\n')):
-        line = subprocess.run(['sh', '-c', os_module['text'].replace('/usr/lib/emaki-release', str(path))],
-                              capture_output=True, check=True).stdout
+    helper = Path(release_dir) / 'emaki-update-channel'
+    env = dict(os.environ, PATH=release_dir)
+    for channel, status, expected in [('stable', 0, 'stable'), ('testing', 0, 'testing'),
+                                      ('custom', 0, 'custom'), ('mixed', 0, 'mixed'),
+                                      ('disabled', 0, 'disabled'), ('unknown', 1, 'unknown'),
+                                      ('stable', 1, 'unknown'), ('garbage', 0, 'unknown')]:
+        helper.write_text(f'#!/bin/sh\nprintf "%s\\n" "{channel}"\nexit {status}\n')
+        helper.chmod(0o755)
+        line = subprocess.run(['/bin/sh', '-c', os_module['text'].replace('/usr/lib/emaki-release', str(release))],
+                              env=env, capture_output=True, check=True).stdout
+        assert line == f'Emaki 0.2.0 alpha [channel: {expected}]\n'.encode(), line
+    live_marker = Path(release_dir) / 'greetd.toml'
+    live_marker.write_text('# live session fixture\n')
+    helper.write_text('#!/bin/sh\nprintf "%s\\n" disabled\n')
+    live_command = os_module['text'].replace('/usr/lib/emaki-release', str(release)).replace(
+        '/etc/emaki-live/greetd.toml', str(live_marker))
+    line = subprocess.run(['/bin/sh', '-c', live_command], env=env,
+                          capture_output=True, check=True).stdout
+    assert line == b'Emaki 0.2.0 alpha\n', line
+    live_marker.unlink()
+    helper.unlink()
+    for path, expected in ((release, b'Emaki 0.2.0 alpha [channel: unknown]\n'),
+                           (Path(release_dir) / 'missing', b'Emaki\n')):
+        line = subprocess.run(['/bin/sh', '-c', os_module['text'].replace('/usr/lib/emaki-release', str(path))],
+                              env=env, capture_output=True, check=True).stdout
         assert line == expected, (path, line)
 assert config['logo']['type'] == 'none', 'details alone must never select a distro logo'
 

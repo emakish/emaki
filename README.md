@@ -6,8 +6,8 @@ Emaki is an Arch-based desktop built around **niri-emaki**, a fork of the
 pixel-art wallpaper: a looping valley at sunset that scrolls with your workspaces, with
 steam trains running through it.
 
-**Status: 0.2.0 — an early version, not a stable release.** It is tested in QEMU with UEFI
-firmware (OVMF) and has been installed on one real machine so far, see
+**Status: 0.3.0 alpha — not for everyday use.** See [Release stages](#release-stages). It is
+tested in QEMU with UEFI firmware (OVMF) and has been installed on one real machine so far, see
 [Tested hardware](#tested-hardware).
 
 ![The Emaki desktop](docs/screenshots/desktop.png)
@@ -19,12 +19,24 @@ firmware (OVMF) and has been installed on one real machine so far, see
 | ![Boot menu](docs/screenshots/boot-menu.png) | ![Login screen](docs/screenshots/login.png) |
 | GRUB: two kernels and the btrfs snapshots | The login screen |
 
+## Release stages
+
+- **0.x — alpha.** The rawest stage, for the people building Emaki. Things can break between
+  updates and data can be lost. Do not install it on a computer you depend on; if you try it, use
+  a spare machine and keep backups.
+- **1.x — beta.** Ready for everyday use. Rough edges remain and updates keep fixing them; if
+  something is wrong, report it in the issues.
+- **2.0 and later — no label.**
+
+Beta here is the stage of Emaki as a whole, not a pre-release: every new version reaches the
+`testing` update channel first and `stable` after it passes the checks.
+
 ## What's inside
 
-- **niri-emaki** (`packaging/niri-emaki/`) — niri 26.04 with six patches: the living
+- **niri-emaki** (`packaging/niri-emaki/`) — niri 26.04 with eight patches: the living
   wallpaper, glass capture for the shell, a seamless handoff from the login screen, an
   animated overview backdrop, crisp cursors at fractional scale and a distinct exit status
-  when no GPU renderer can be created.
+  when no GPU renderer can be created, plus locked-session capture protection.
 - **The shell** (`shell/`) — bar islands (workspaces, clock, system, privacy), dock,
   launcher, notifications and on-screen display on liquid glass. The login screen (a greetd
   greeter) and the lock screen are drawn by the same shell.
@@ -34,14 +46,14 @@ firmware (OVMF) and has been installed on one real machine so far, see
   and a graphical window.
 - **The ISO profile** (`iso/`) — archiso 91 releng with the Emaki overlay.
 - **Packages** (`packaging/`) — `emaki`, `emaki-apps`, `emaki-config`, `emaki-desktop`,
-  `emaki-installer`, `emaki-keyring`, `emaki-mirrorlist`, `niri-emaki`, `quickshell-emaki`,
+  `emaki-installer`, `emaki-keyring`, `emaki-mirrorlist`, `emaki-nvidia`, `niri-emaki`, `quickshell-emaki`,
   `xdg-desktop-portal-gnome-emaki`.
 - **Art** (`art/`, `cursors/`, `fetch/`, `boot/`) — the wallpaper, logo, cursors, GRUB
   background and boot splash, with the scripts that make them.
 
 ## The ISO
 
-`emaki-0.2.0-x86_64.iso` boots into a live Emaki session with the installer open. Emaki
+`emaki-0.3.0-x86_64.iso` boots into a live Emaki session with the installer open. Emaki
 needs a computer with 64-bit UEFI; legacy BIOS computers are refused by the installer. If
 Windows on the computer uses BitLocker or device encryption, save its recovery key first:
 changing firmware security settings can make Windows ask for it.
@@ -59,8 +71,21 @@ The installed system gets GRUB with `linux` and `linux-lts`, zram and NetworkMan
 installer offers two software sets. **Minimal** is the desktop with Dolphin, Firefox and kitty.
 **Rich** (preselected) adds LibreOffice, Thunderbird, Okular, Kate, Gwenview, Ark, Haruna,
 Elisa, Spectacle, OBS Studio, qBittorrent, KeePassXC, Discover with Flatpak, Partition Manager,
-Filelight, System Monitor, ISO Image Writer, KCharSelect, Skanlite, KDE Connect, printing and
-media codecs. Not in 0.2.0: BIOS boot, installing alongside Windows.
+Filelight, System Monitor, ISO Image Writer, KCharSelect, Skanlite, printing and
+media codecs. Not in 0.3.0: BIOS boot, installing alongside Windows.
+
+## Security notes
+
+Ordinary apps running in your account outside a sandbox, including non-Flatpak apps,
+can capture your screen and send key presses or pointer input without asking
+(wlr-screencopy, virtual-keyboard, wlr-virtual-pointer).
+niri blocks direct access to these protocols for clients it recognises as sandboxed,
+such as Flatpak apps using a sandbox connection (security-context-v1).
+
+If the lock-screen program crashes, the desktop stays locked, but niri accepts another
+program as the replacement locker (ext-session-lock-v1).
+A malicious program already running in your account could take over and unlock the
+session without your password.
 
 ## Tested hardware
 
@@ -68,8 +93,19 @@ media codecs. Not in 0.2.0: BIOS boot, installing alongside Windows.
 |---|---|---|---|
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.1.1 | Live session from USB, installation (erase disk, btrfs), boot, login, desktop, Wi-Fi on 2.4 GHz, screen lock on lid close | 5 GHz Wi-Fi networks are not listed (Broadcom BCM43602); the GRUB menu text is very small on the Retina display |
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.2.0 | Installation from USB with disk encryption, disk unlock in about 5 s, boot, desktop, updates from the Emaki mirror | The disk-password screen is drawn small in a corner of the Retina display; Wi-Fi joined in the installer has to be joined again after installing |
+| MacBook Pro (Retina, 13-inch, Early 2015) | 0.3.0 | Update from 0.2.0 with `pacman -Syu`, screen lock after closing and opening the lid, installation from USB with disk encryption, wrong and right disk password, boot, login, desktop | After "Restart now" the "remove the USB stick" message is almost unreadable (dark text on a black box); shutting down the live session reports "Failed to start Generate shutdown ramfs"; the disk-password screen does not yet match the boot menu |
 
 Installed Emaki on another machine? Reports are welcome in the issues.
+
+### Known issues in 0.3.0
+
+- Systems installed **without** disk encryption print "The boot loader update did not finish"
+  during updates. They keep starting with their current boot loader; 0.3.1 fixes the update.
+- After installing from the USB stick, run `sudo pacman -Syu` once before installing software;
+  the installer says so on its last page. A later version will do this for you.
+- Machines that still update from the old GitHub address print
+  "emaki: missing required signature" once after moving to `pkgs.emaki.sh`; the next update is
+  clean.
 
 ## Updates
 

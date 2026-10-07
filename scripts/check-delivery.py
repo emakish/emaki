@@ -1,0 +1,208 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Prove runtime sources reach a package, using the real installation recipes.
+
+Only installation runs: the compiled core is a scratch placeholder and shader
+compilation is omitted. No root, network, source builds or installed-system writes.
+The exact-path exceptions also cover build inputs whose generated output ships.
+"""
+import argparse
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+
+ROOT = Path(__file__).resolve().parent.parent
+RUNTIME_ROOTS = (
+    'shell', 'niri', 'systemd', 'scripts', 'upkeep', 'etc-skel', 'fuzzel',
+    'greetd', 'grub', 'gtk', 'hypr', 'initcpio', 'kitty', 'os-release',
+    'polkit', 'qt6ct', 'fetch', 'boot', 'art', 'cursors', 'config', 'templates',
+    'installer/emaki_installer', 'installer/bin', 'installer/systemd',
+    'installer/sysusers.d', 'installer/tmpfiles.d', 'installer/fixtures',
+    'installer/ui', 'installer/assets/grub', 'packaging/emaki-config',
+    'packaging/emaki-apps', 'packaging/emaki-desktop', 'packaging/emaki-keyring',
+    'packaging/emaki-mirrorlist', 'packaging/emaki-installer', 'packaging/emaki-nvidia',
+    'iso/profile/airootfs', 'crates',
+)
+LOCAL_PACKAGES = ('emaki-installer', 'emaki-apps', 'emaki-desktop',
+                  'emaki-keyring', 'emaki-mirrorlist', 'emaki-nvidia')
+
+
+def ignored(root):
+    """Paths git ignores (test artifacts, caches); an export without git ignores nothing."""
+    try:
+        top = subprocess.run(['git', '-C', str(root), 'rev-parse', '--show-toplevel'],
+                             check=True, capture_output=True, text=True).stdout.strip()
+        # A copy inside another checkout (for example under its ignored .cache) is not filtered.
+        if Path(top).resolve() != Path(root).resolve():
+            return set()
+        listing = subprocess.run(
+            ['git', '-C', str(root), 'ls-files', '-z', '--others', '--ignored', '--exclude-standard'],
+            check=True, capture_output=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return set()
+    return {item.decode() for item in listing.split(b'\0') if item}
+
+
+def candidates(root):
+    skip = ignored(root)
+    result = set()
+    for directory in RUNTIME_ROOTS:
+        for path in (root / directory).rglob('*'):
+            relative = path.relative_to(root)
+            if '__pycache__' in relative.parts or path.suffix in ('.pyc', '.pyo'):
+                continue
+            # Build output is never a source; all other untracked files count too.
+            if directory.startswith('packaging/') and any(
+                    part in ('src', 'pkg') for part in relative.parts[2:]):
+                continue
+            if (path.is_file() or path.is_symlink()) and relative.as_posix() not in skip:
+                result.add(relative.as_posix())
+    result.update(path.relative_to(root).as_posix()
+                  for path in (root / 'installer').glob('*.py')
+                  if path.is_file() or path.is_symlink())
+    return result
+
+
+def exceptions(root):
+    result = {}
+    path = root / 'packaging/delivery-dev-only.tsv'
+    for number, line in enumerate(path.read_text().splitlines(), 1):
+        if not line or line.startswith('#'):
+            continue
+        fields = line.split('\t')
+        if len(fields) != 3 or not all(field.strip() for field in fields):
+            raise ValueError(f'{path.name}:{number}: expected path, reason, evidence')
+        name, reason, evidence = fields
+        if name in result or Path(name).is_absolute() or '..' in Path(name).parts or any(
+                char in name for char in '*?['):
+            raise ValueError(f'{path.name}:{number}: duplicate or non-exact path: {name}')
+        result[name] = (reason, evidence)
+    return result
+
+
+def run(argv, root, env):
+    result = subprocess.run(argv, cwd=root, env=env, text=True,
+                            capture_output=True, timeout=90)
+    if result.returncode:
+        raise ValueError(f'installation trace failed: {result.stdout[-2000:]}{result.stderr[-2000:]}')
+
+
+def installed_sources(root):
+    """Trace successful install/cp calls, rather than matching recipe comments."""
+    cache = root / '.cache/evidence'
+    cache.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='delivery-', dir=cache) as temporary:
+        work = Path(temporary)
+        stage = work / 'root'
+        trace = work / 'sources'
+        trace.touch()
+        shim = work / 'trace.bash'
+        shim.write_text('''install() {
+    printf '%s\\0' "$PWD" "$@" '' >> "$DELIVERY_TRACE"
+    command install "$@"
+}
+cp() {
+    printf '%s\\0' "$PWD" "$@" '' >> "$DELIVERY_TRACE"
+    command cp "$@"
+}
+export -f install cp
+''')
+        core = work / 'emaki'
+        core.write_text('delivery staging placeholder\n')
+        environment = {key: value for key, value in os.environ.items()
+                       if key not in ('MAKEFLAGS', 'MFLAGS', 'MAKELEVEL', 'DESTDIR',
+                                      'BASH_ENV', 'EMAKI_SOURCE_COMMIT')}
+        environment.update(BASH_ENV=str(shim), DELIVERY_TRACE=str(trace),
+                           LC_ALL='C', PYTHONDONTWRITEBYTECODE='1')
+        # These targets must remain wired into the actual package() function.
+        recipe = (root / 'packaging/emaki-config/PKGBUILD').read_text()
+        if not re.search(r'^\s+_emaki_make install install-niri-emaki DESTDIR="\$pkgdir"$',
+                         recipe, re.M):
+            raise ValueError('emaki-config package no longer invokes the traced install targets')
+        run(['make', '-s', '--no-print-directory', 'install', 'install-niri-emaki',
+             'SHELL=/bin/bash', f'DESTDIR={stage}', 'PREFIX=/usr', f'CORE_BIN={core}',
+             'CORE_SRC=', 'SHADERS=', 'EMAKI_COMMIT=' + '0' * 40], root, environment)
+        start = work / 'metadata'
+        start.mkdir()
+        (start / 'SOURCE-COMMIT').write_text('0' * 40 + '\n')
+        sources = work / 'sources-dir'
+        sources.mkdir()
+        (sources / 'emaki-installer').symlink_to(root, target_is_directory=True)
+        (sources / 'emaki-nvidia').symlink_to(root, target_is_directory=True)
+        for name in LOCAL_PACKAGES:
+            source = sources if name in ('emaki-installer', 'emaki-nvidia') else root / 'packaging' / name
+            run(['bash', '-e', '-c', '''
+startdir=$1 srcdir=$2 pkgdir=$3
+source "$4"
+package
+''', 'delivery', str(start), str(source), str(stage),
+                 str(root / 'packaging' / name / 'PKGBUILD')], root, environment)
+        # makepkg stores the declared package scriptlet as .INSTALL; it does not
+        # go through an install command in package().
+        delivered = {f'packaging/emaki-config/{name}' for name in
+                     re.findall(r'^install=([A-Za-z0-9_.-]+)$', recipe, re.M)}
+        for record in trace.read_text().split('\0\0'):
+            if not record:
+                continue
+            cwd, *args = record.split('\0')
+            operands = []
+            target_directory = False
+            skip = False
+            directory_only = False
+            for argument in args:
+                if skip:
+                    skip = False
+                elif argument in ('-t', '--target-directory', '-m', '--mode', '-o', '-g'):
+                    skip = True
+                    target_directory |= argument in ('-t', '--target-directory')
+                elif argument.startswith('--target-directory='):
+                    target_directory = True
+                elif argument.startswith('-'):
+                    directory_only |= argument == '--directory' or (
+                        not argument.startswith('--') and 'd' in argument[1:])
+                else:
+                    operands.append(argument)
+            if directory_only:
+                continue
+            for operand in operands if target_directory else operands[:-1]:
+                # abspath preserves the source name of installed cursor symlinks.
+                source = Path(os.path.abspath(Path(cwd).resolve() / operand))
+                if source.is_relative_to(root) and (source.is_file() or source.is_symlink()):
+                    delivered.add(source.relative_to(root).as_posix())
+        return delivered
+
+
+def problems(files, delivered, exempt):
+    errors = [f'{path}: no package installs this file; add an install rule or a reasoned '
+              'entry to packaging/delivery-dev-only.tsv'
+              for path in sorted(files - delivered - exempt.keys())]
+    errors += [f'{path}: installed files must not be listed as dev-only'
+               for path in sorted(files & delivered & exempt.keys())]
+    return errors
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--root', type=Path, default=ROOT)
+    args = parser.parse_args()
+    root = args.root.resolve()
+    try:
+        files = candidates(root)
+        errors = problems(files, installed_sources(root), exceptions(root))
+    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+        print(f'delivery: {error}', file=sys.stderr)
+        return 1
+    if errors:
+        for error in errors:
+            print(f'delivery: {error}', file=sys.stderr)
+        return 1
+    print(f'delivery: {len(files)} sources have an installation path or a documented development use')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

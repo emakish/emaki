@@ -5,6 +5,7 @@ Only compositor window plumbing and local metadata/artwork helpers are replaced
 in an isolated COPY. Auth, state controller, greeter session/shared surfaces and all
 production launch/error handlers remain real. No fixture API ships in the entry.
 """
+from runtime_fixture import runtime_path
 import importlib.util
 import json
 import os
@@ -281,7 +282,7 @@ def run(scenario, scripted=False):
             shutil.copy(ROOT / 'tests/fixtures/greeter/auth_transport.py', qml / 'helpers/greeter-auth.py')
             (qml / 'fixture-mode').write_text(scenario)
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
-                   QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(profile / 'r'),
+                   QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(runtime_path(profile)),
                    XDG_CACHE_HOME=str(profile / 'cache'), XDG_CONFIG_HOME=str(profile / 'config'),
                    XDG_STATE_HOME=str(profile / 'state'), XDG_DATA_HOME=str(profile / 'data'),
                    HOME=str(profile), TMPDIR=str(profile / 'tmp'), NIRI_SOCKET='',
@@ -293,8 +294,8 @@ def run(scenario, scripted=False):
         if scripted:
             env['GREETD_SOCK'] = 'fixture-only'
         elif scenario != 'missing-socket' and not scenario.startswith('escape-'):
-            server = server_module.GreetdServer(profile / 'g.sock')
-            env['GREETD_SOCK'] = str(profile / 'g.sock')
+            server = server_module.GreetdServer(runtime_path(profile) / 'g.sock')
+            env['GREETD_SOCK'] = str(runtime_path(profile) / 'g.sock')
         log_path = profile / 'qs.log'
         with log_path.open('w') as log:
             process = subprocess.Popen(['qs', '-p', str(target), '--no-color'], env=env,
@@ -489,7 +490,7 @@ no_socket = False
 with tempfile.TemporaryDirectory(prefix='gep-', dir=CACHE) as work:
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
         try:
-            probe.bind(str(Path(work) / 'g.sock'))
+            probe.bind(str(runtime_path(work) / 'g.sock'))
         except PermissionError:
             if os.environ.get('EMAKI_TEST_SANDBOX') != '1':
                 raise

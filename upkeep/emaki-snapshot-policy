@@ -1,0 +1,73 @@
+#!/usr/bin/python3 -B
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Migrate the installer's snapshot limits once, preserving local settings."""
+import os
+from pathlib import Path
+import re
+import sys
+import tempfile
+
+
+LIMITS = {
+    'NUMBER_LIMIT': ('20', '6-10'),
+    'NUMBER_LIMIT_IMPORTANT': ('10', '2-10'),
+    'TIMELINE_LIMIT_HOURLY': ('10', '0-10'),
+    'TIMELINE_LIMIT_DAILY': ('10', '0-10'),
+    'TIMELINE_LIMIT_MONTHLY': ('10', '0-2'),
+    'TIMELINE_LIMIT_YEARLY': ('10', '0'),
+}
+MARKER = '# Emaki snapshot limits migration 1\n'
+
+
+def migrate(text):
+    if MARKER in text:
+        return text
+    # Do not adopt other Snapper configurations or guess at malformed settings.
+    values = {}
+    for line in text.splitlines():
+        match = re.fullmatch(r'([A-Z_]+)="([^"\n]*)"', line)
+        if not match and re.match(r'\s*(?:' + '|'.join(LIMITS) + r'|SUBVOLUME|FSTYPE)\s*=', line):
+            return text
+        if match:
+            key, value = match.groups()
+            if key in values:
+                return text
+            values[key] = value
+    if values.get('SUBVOLUME') != '/' or values.get('FSTYPE', 'btrfs') != 'btrfs':
+        return text
+    # NUMBER_LIMIT=20 identifies the old installer policy. A different limit is local.
+    if values.get('NUMBER_LIMIT') != '20':
+        return text
+    for key, (old, new) in LIMITS.items():
+        text = re.sub(r'^' + key + '="' + old + r'"$', key + '="' + new + '"', text, flags=re.M)
+    return text.rstrip('\n') + '\n' + MARKER
+
+
+def apply(root):
+    config = root / 'etc/snapper/configs/root'
+    if any(path.is_symlink() for path in (config, *config.parents)) or not config.is_file():
+        return
+    original = config.read_text()
+    updated = migrate(original)
+    if original == updated:
+        return
+    metadata = config.stat()
+    if metadata.st_nlink != 1:
+        return
+    fd, name = tempfile.mkstemp(prefix='.emaki-', dir=config.parent)
+    try:
+        with os.fdopen(fd, 'w') as output:
+            os.fchmod(output.fileno(), metadata.st_mode & 0o7777)
+            os.fchown(output.fileno(), metadata.st_uid, metadata.st_gid)
+            output.write(updated)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(name, config)
+        print("Emaki snapshot cleanup now keeps 6 to 10 numbered snapshots instead of 20.")
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
+if __name__ == '__main__':
+    apply(Path(sys.argv[1] if len(sys.argv) > 1 else '/').absolute())

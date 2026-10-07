@@ -1,0 +1,25 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# shellcheck shell=bash
+
+post_upgrade() {
+    # Include machines that already passed through 0.1.2 or 0.2.0 without this notice.
+    (( $(vercmp "$2" '0.2.0-2') < 0 )) || return 0
+
+    local orphans package
+    local -a leftovers=()
+    orphans=$(pacman -Qdtq 2>/dev/null) || return 0
+    for package in $orphans; do
+        case "$package" in
+            nautilus|loupe|file-roller|papers) leftovers+=("$package") ;;
+        esac
+    done
+    ((${#leftovers[@]})) || return 0
+    printf 'Optional cleanup: unused applications from earlier Emaki releases remain installed:\n'
+    printf '  %s\n' "${leftovers[*]}"
+    printf 'If you no longer use them, review the removal transaction before confirming:\n'
+    printf '  pacman -R'
+    printf ' %s' "${leftovers[@]}"
+    printf '\n'
+    printf 'The desktop portal is required [xdg-desktop-portal-gnome].\n'
+}

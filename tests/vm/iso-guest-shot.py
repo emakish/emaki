@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Guest-only, root: capture the active Wayland session to stdout using grim."""
+"""Guest diagnostic only (grim): never evidence of the visible host display."""
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 import os
 from pathlib import Path
 import pwd

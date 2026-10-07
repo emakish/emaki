@@ -14,6 +14,10 @@ Item {
     property string actionState: "idle"
     property var pendingCheck: null
     property string pendingKind: ""
+    // The Wayland surface supplies readiness after mapping with OnDemand focus.
+    property bool pairingFocusManaged: false
+    property bool pairingFocusReady: true
+    property bool pairingQueued: false
     // The value the pending check was started with (a pairing's device key).
     property var pendingValue: null
     property int attempts: 0
@@ -33,6 +37,7 @@ Item {
         })
     property bool canHibernate: false
     property bool lowSent: false
+    property bool criticalSent: false
     signal lowBattery(int percent)
     // emaki-sleep-guard could not confirm the lock before sleep; the policy it then applied.
     signal sleepLockFailed(string policy)
@@ -117,9 +122,29 @@ Item {
         }
     }
     function checkBattery(): void {
-        if (backend?.charging || batteryPercent > 10)
+        if (batteryPercent < 0 || !backend)
+            return;
+        if (!backend.batteryPower || backend.charging) {
+            // Re-arm each threshold only after recovering above it on external power.
+            // Brief plug/unplug cycles below a threshold must not repeat its warning.
+            if (batteryPercent > 10)
+                lowSent = false;
+            if (batteryPercent > 5)
+                criticalSent = false;
+            return;
+        }
+        // Charging may happen entirely while asleep; a recovered battery re-arms both.
+        if (batteryPercent >= 20) {
             lowSent = false;
-        if (batteryPercent >= 0 && batteryPercent <= 10 && backend?.batteryPower && !backend.charging && !lowSent) {
+            criticalSent = false;
+        }
+        // A first reading below 5% sends just the urgent warning, not both.
+        // Fluctuations below 20% do not re-arm either warning.
+        if (batteryPercent <= 5 && !criticalSent) {
+            lowSent = true;
+            criticalSent = true;
+            lowBattery(batteryPercent);
+        } else if (batteryPercent <= 10 && !lowSent) {
             lowSent = true;
             lowBattery(batteryPercent);
         }
@@ -143,6 +168,12 @@ Item {
         // Only for the device being paired; a cancel the backend refuses reports why, and the
         // pairing stays tracked.
         if (kind === "bt-cancel-pair" && pendingKind === "bt-pair" && pendingValue === value && !action.busy && backend) {
+            if (pairingQueued) {
+                pairingQueued = false;
+                pendingCheck = () => true;
+                pendingKind = kind;
+                return true;
+            }
             const cancel = backend.act(kind, value);
             if (typeof cancel !== "function") {
                 actionState = cancel;
@@ -199,7 +230,22 @@ Item {
             actionState = "unavailable";
             return false;
         }
-        const check = kind === "output" && typeof backend.chooseOutput === "function" ? backend.chooseOutput(Number(value)) : kind === "input" && typeof backend.chooseInput === "function" ? backend.chooseInput(Number(value)) : backend.act(kind, value);
+        let check;
+        if (kind === "bt-pair" && pairingFocusManaged) {
+            pairingQueued = true;
+            check = () => {
+                if (!service.pairingFocusReady)
+                    return false;
+                // Start only after the compositor focuses the remapped panel, so
+                // that remap cannot steal focus from a fast native PIN dialog.
+                service.pairingQueued = false;
+                const started = service.backend.act(kind, value);
+                service.pendingCheck = typeof started === "function" ? started : () => started;
+                return service.pendingCheck();
+            };
+        } else {
+            check = kind === "output" && typeof backend.chooseOutput === "function" ? backend.chooseOutput(Number(value)) : kind === "input" && typeof backend.chooseInput === "function" ? backend.chooseInput(Number(value)) : backend.act(kind, value);
+        }
         if (typeof check !== "function") {
             actionState = check;
             return false;
@@ -236,6 +282,7 @@ Item {
                 service.actionState = "target_gone";
             }
             service.pendingCheck = null;
+            service.pairingQueued = false;
             service.pendingKind = "";
             service.pendingValue = null;
             stop();

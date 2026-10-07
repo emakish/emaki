@@ -90,6 +90,7 @@ History: yours to keep; a system snapshot does not cover your home.
 
 Your files:
 
+- ~/.config/emaki/autostart-disabled/*  Your login off switches [autostart].
 - ~/.config/niri/config.kdl  Your niri config. The installer may have
   created it with your keyboard layout; after that it is only yours. If
   you write one, its first line must be
@@ -104,10 +105,12 @@ Your files:
   these exists, it replaces Emaki's file of the same name whole.
 - everything else in your home.
 
-The machine's own settings, written once by the installer from your
-answers. Emaki packages do not own them and an update does not replace
-them; you change them with sudo or with the system tool (`localectl`,
-`timedatectl`):
+The machine's own settings, initially written by the installer from your
+answers. Emaki packages do not own these files; you change them with sudo
+or with the system tool (`localectl`, `timedatectl`). Boot refresh migrates
+recognized menu defaults to a packaged include, preserves your custom menu
+values and disk arguments, and regenerates the boot menu and initramfs.
+It also replaces the stock resume hook name with `emaki-resume`:
 
 - /etc/vconsole.conf, /etc/locale.conf, /etc/locale.gen,
   /etc/localtime, /etc/hostname, /etc/conf.d/wireless-regdom
@@ -127,7 +130,8 @@ them; you change them with sudo or with the system tool (`localectl`,
 Your niri file is read after Emaki's defaults, so it wins where niri
 lets a later setting win:
 
-- A bind on the same keys replaces Emaki's bind.
+- Your own shortcuts override Emaki defaults [niri binds].
+  A bind on the same keys replaces Emaki's bind.
 - Gaps and other `layout` values replace Emaki's one by one.
 - A `touchpad { }` block replaces Emaki's touchpad block whole.
 - An `xkb { }` block sets your keyboard layouts. With it, your session
@@ -135,6 +139,68 @@ lets a later setting win:
 - An `output` block sets up a monitor; Emaki ships none. If two blocks
   name the same monitor, niri uses the first one it reads.
 
-What your file cannot do: remove an Emaki bind, autostart
-(`spawn-at-startup`), window rule or workspace. A bind can only be
-overridden with one of your own.
+Your file cannot remove an Emaki shortcut, window rule or workspace [niri].
+You can replace a shortcut with `spawn-sh "true"` to stop its action, but niri
+still captures those keys; it does not pass them to the application.
+For example, put `binds { Mod+V { spawn-sh "true"; }; }` after the include
+line to stop the clipboard shortcut [niri binds].
+
+### Turn off a login command [autostart]
+
+Create an empty file in `~/.config/emaki/autostart-disabled/` to switch off
+one Emaki login command [autostart].
+These files belong to you: Emaki never creates, edits or removes them,
+and updates leave them alone.
+If you set `XDG_CONFIG_HOME` to an absolute path, use that directory instead
+of `~/.config`.
+
+| File name | Login command switched off |
+| --- | --- |
+| `wallpaper` | Desktop wallpaper [emaki-session-wallpaper] |
+| `clipboard` | Clipboard history recording [wl-paste, cliphist] |
+| `authentication` | Administrator password prompts [polkit-gnome] |
+| `automount` | Drive mounting on request (udiskie) |
+| `shell` | Panel, launcher and notifications [emaki-shell] |
+| `sleep-guard` | Locking before sleep [emaki-sleep-guard] |
+
+To turn off the clipboard history at login [cliphist]:
+
+```sh
+mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/emaki/autostart-disabled"
+touch "${XDG_CONFIG_HOME:-$HOME/.config}/emaki/autostart-disabled/clipboard"
+```
+
+To turn it back on at login [cliphist]:
+
+```sh
+rm "${XDG_CONFIG_HOME:-$HOME/.config}/emaki/autostart-disabled/clipboard"
+```
+
+Log out and back in for the change to take effect [autostart].
+A switch does not stop a running command or prevent you from starting it yourself.
+
+
+## Legacy snapshot limits
+
+The maintenance update makes one narrow migration of `/etc/snapper/configs/root`: only a
+regular root-btrfs configuration with the installer's `NUMBER_LIMIT="20"` is eligible, and
+only individual limits still equal to the old defaults change. Other values stay intact.
+A migration comment prevents repeating the change if you later choose old values again.
+Package-owned cleanup code supplies this repair to existing systems; the configuration
+remains machine-owned. A symlink or a customized number limit opts out of this migration.
+
+
+## Old KDE passwords
+
+At login, Emaki automatically asks KWallet to move old KDE passwords to the login keyring.
+Wallets with an empty password move without a prompt.
+If an old wallet needs a password, KWallet asks for it; Cancel skips that attempt.
+Automatic attempts run at most once per login and stop after three logins with passwords still unmoved; interrupted attempts count too.
+Each attempt lasts at most five minutes.
+A single notification then gives the retry command: `emaki-wallet-migrate`.
+
+To retry later, log out and back in, then run `emaki-wallet-migrate` in a terminal before opening KDE applications.
+Enter the old wallet password in KWallet's dialog, then press Enter in the terminal after all dialogs close.
+Run `emaki-wallet-migrate --help` for help.
+Original wallet files are kept, and migration records belong to `~/.local/state/emaki/wallet-migration.json` (or `$XDG_STATE_HOME/emaki/wallet-migration.json`).
+An empty-looking wallet in a KDE application does not mean the old passwords were deleted.

@@ -1,5 +1,6 @@
 #!/bin/bash
-# Run a command in the test VM: tests/vm/ssh.sh '<command>'
-VM=${EMAKI_VM_DIR:-$HOME/VMs/emaki-vm}
-exec ssh -p 2222 -i "$VM/id_vm" -o UserKnownHostsFile="$VM/known_hosts" -o BatchMode=yes \
-    -o ServerAliveInterval=15 arch@127.0.0.1 "$@"
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Run a command in the test VM; --fixture JSON selects the release account.
+HERE=$(dirname -- "$(readlink -f -- "$0")")
+exec python3 "$HERE/suite_target.py" "$@"

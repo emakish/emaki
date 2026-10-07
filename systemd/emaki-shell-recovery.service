@@ -1,0 +1,13 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Recovery remains available when the shell cannot draw its own notification.
+[Unit]
+Description=Emaki shell recovery prompt
+PartOf=graphical-session.target
+After=graphical-session.target
+Requisite=graphical-session.target
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/kitty --class emaki-shell-recovery --title "Emaki panel recovery" /usr/bin/emaki-shell recover
+Slice=app.slice

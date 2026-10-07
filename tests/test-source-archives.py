@@ -156,27 +156,77 @@ class Archives(unittest.TestCase):
         self.assertEqual((root / 'PKGBUILD').read_text(), 'pkgname=emaki\npkgver=1.0\npkgrel=1\n')
         self.assertNotIn('/tree/', (root / 'REBUILD.txt').read_text())
 
-    def test_checkout_uses_public_exclusions_before_archiving(self):
+    def checkout_fixture(self):
+        if not (ROOT / 'scripts/make-public.sh').is_file():
+            self.skipTest('private export policy is not shipped in the public tree')
         (self.repo / 'scripts/public').mkdir(parents=True)
         (self.repo / 'art/wallpaper').mkdir(parents=True)
         (self.repo / 'art/wallpaper/README.md').write_text('private background notes')
         (self.repo / 'scripts/public/wallpaper-README.md').write_text('public background description')
-        (self.repo / 'scripts/make-public.sh').write_text(
-            'EXCLUDE=(scripts/public scripts/make-public.sh tests/private-check.py)\n'
-            'NOTES=(PRIVATE.md)\n')
-        (self.repo / 'PRIVATE.md').write_text('private notes')
-        (self.repo / 'Makefile').write_text('check:\n\tpython tests/private-check.py\n\techo checked\n')
+        shutil.copy2(ROOT / 'scripts/make-public.sh', self.repo / 'scripts/make-public.sh')
+        (self.repo / 'scripts/public/allow.txt').write_text('')
+        (self.repo / 'Makefile').write_text('check:\n\tpython3 tests/test-make-public.py\n\techo checked\n')
+        return self.base / 'public-inputs'
+
+    def test_checkout_uses_public_exclusions_before_archiving(self):
+        target = self.checkout_fixture()
+        policy = (self.repo / 'scripts/make-public.sh').read_text()
+        notes = source.shlex.split(source.re.search(r'^NOTES=\((.*?)\)', policy,
+                                                    source.re.M | source.re.S)[1])
+        private = self.repo / 'nested' / notes[0].swapcase()
+        private.parent.mkdir()
+        private.write_text('private notes')
         commit = git_commit(self.repo)
-        target = self.base / 'public-inputs'
         source.checkout(self.repo, target, commit)
-        self.assertFalse((target / 'PRIVATE.md').exists())
+        self.assertFalse((target / private.relative_to(self.repo)).exists())
         self.assertFalse((target / 'scripts/public').exists())
-        self.assertNotIn('private-check.py', (target / 'Makefile').read_text())
+        self.assertNotIn('test-make-public.py', (target / 'Makefile').read_text())
         self.assertEqual((target / 'art/wallpaper/README.md').read_text(), 'public background description')
-        # Public exports omit the export tool; their clean inputs are still buildable.
+        self.assertFalse((target / '.git').exists())
         public_commit = git_commit(target)
-        source.checkout(target, self.base / 'second-export', public_commit)
-        self.assertEqual((self.base / 'second-export/Makefile').read_text(), (target / 'Makefile').read_text())
+        with self.assertRaisesRegex(ValueError, 'cannot read committed public source exclusion policy'):
+            source.checkout(target, self.base / 'second-export', public_commit)
+        self.assertFalse((self.base / 'second-export').exists())
+
+    def test_checkout_refuses_missing_or_incomplete_policy(self):
+        for policy in (None, 'EXCLUDE=()\nNOTES=()\n',
+                       'EXCLUDE=(private)\nNOTES=(private)\n'):
+            with self.subTest(policy=policy):
+                path = self.repo / 'scripts/make-public.sh'
+                path.parent.mkdir(exist_ok=True)
+                if policy is not None:
+                    path.write_text(policy)
+                (self.repo / 'input').write_text('public input')
+                commit = git_commit(self.repo)
+                with self.assertRaisesRegex(ValueError, 'public source'):
+                    source.checkout(self.repo, self.base / 'refused', commit)
+                self.assertFalse((self.base / 'refused').exists())
+
+    def test_checkout_guard_checks_ignored_files(self):
+        target = self.checkout_fixture()
+        identity = '@'.join(('private-person', 'private.invalid'))
+        (self.repo / 'identity.txt').write_text(identity)
+        commit = git_commit(self.repo)
+        (self.repo / '.gitignore').write_text('identity.txt\n')
+        commit = git_commit(self.repo)
+        with self.assertRaisesRegex(ValueError, 'identity.txt'):
+            source.checkout(self.repo, target, commit)
+
+    def test_checkout_refuses_missing_allow_list(self):
+        target = self.checkout_fixture()
+        (self.repo / 'scripts/public/allow.txt').unlink()
+        commit = git_commit(self.repo)
+        with self.assertRaisesRegex(ValueError, 'public source policy failed'):
+            source.checkout(self.repo, target, commit)
+
+    def test_checkout_refuses_archive_substitution(self):
+        target = self.checkout_fixture()
+        (self.repo / '.gitattributes').write_text('input export-subst\n')
+        (self.repo / 'input').write_text('$' + 'Format:%an$')
+        commit = git_commit(self.repo)
+        with self.assertRaisesRegex(ValueError, 'attributes enable export-subst'):
+            source.checkout(self.repo, target, commit)
+        self.assertFalse(target.exists())
 
     @unittest.skipUnless(shutil.which('cargo') and shutil.which('rustc'), 'Cargo and Rust required')
     def test_config_recipe_loads_and_builds_without_checkout_or_download_cache(self):

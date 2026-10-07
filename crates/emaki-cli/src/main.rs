@@ -8,10 +8,25 @@ use std::process::Command;
 use std::process::ExitCode;
 use std::time::Duration;
 
-const HELP: &str = "Usage: emaki <command> [options]
+const HELP: &str = "Usage: emaki [command]
+
+Desktop help:
+  Open apps: press Super + D.
+  Getting started: open Welcome to Emaki from the app list.
+  All shortcuts: press Super + Shift + /.
+  Your own shortcuts override Emaki defaults, including new ones (niri bindings).
 
 Commands:
-  settings list|get|set          Not connected to your session yet; see settings --help
+  emaki                         Show system information (fastfetch)
+  emaki --version               Show the Emaki version
+  emaki help                    Show this help
+  emaki help --internal         Show diagnostic commands
+
+Super is the Windows key, or Command on a Mac keyboard.";
+
+const INTERNAL_HELP: &str = "Usage: emaki <command> [options]
+
+Commands:
   version                       Print the Emaki build version
   map [--json]                  Expected paths and ownership; no filesystem writes
   state [--json] [--timeout-ms N]
@@ -81,6 +96,19 @@ fn bad_arguments() -> ExitCode {
     ExitCode::from(2)
 }
 
+fn update_channel() -> String {
+    let Ok(result) = Command::new("emaki-update-channel").output() else {
+        return "unknown".into();
+    };
+    let text = String::from_utf8_lossy(&result.stdout);
+    match text.trim() {
+        "stable" | "testing" | "custom" | "mixed" | "disabled" if result.status.success() => {
+            text.trim().into()
+        }
+        _ => "unknown".into(),
+    }
+}
+
 fn fetch() -> ExitCode {
     let data = option_env!("EMAKI_DATADIR").map_or_else(
         || PathBuf::from(option_env!("EMAKI_PREFIX").unwrap_or("/usr")).join("share/emaki"),
@@ -108,10 +136,18 @@ fn main() -> ExitCode {
     };
     let args: Vec<_> = args.iter().map(String::as_str).collect();
     match args.as_slice() {
-        ["version" | "--version" | "-V"] => output(&format!("emaki {}\n", emaki_core::VERSION), 0),
+        ["version" | "--version" | "-V"] => output(
+            &format!(
+                "emaki {} [channel: {}]\n",
+                emaki_core::VERSION,
+                update_channel()
+            ),
+            0,
+        ),
         [] => fetch(),
-        ["help" | "--help" | "-h"] | ["map" | "state", "--help" | "-h"] => {
-            output(&format!("{HELP}\n"), 0)
+        ["help" | "--help" | "-h"] => output(&format!("{HELP}\n"), 0),
+        ["help", "--internal"] | ["map" | "state", "--help" | "-h"] => {
+            output(&format!("{INTERNAL_HELP}\n"), 0)
         }
         ["settings", tail @ ..] => settings::run(tail),
         ["map"] => {
@@ -291,6 +327,29 @@ fn json_output(result: Result<String, serde_json::Error>, code: u8) -> ExitCode 
         Err(_) => {
             eprintln!("emaki: cannot serialize response");
             ExitCode::from(2)
+        }
+    }
+}
+
+#[cfg(test)]
+mod help_tests {
+    use super::HELP;
+
+    #[test]
+    fn everyday_help_explains_desktop_entry_points() {
+        assert!(HELP.contains("Welcome to Emaki"));
+        assert!(HELP.contains("Super + D"));
+        assert!(HELP.contains("emaki help --internal"));
+        for internal in [
+            "settings list|get|set",
+            "map [--json]",
+            "niri snapshot",
+            "State statuses:",
+        ] {
+            assert!(
+                !HELP.contains(internal),
+                "internal command leaked: {internal}"
+            );
         }
     }
 }

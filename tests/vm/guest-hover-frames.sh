@@ -1,13 +1,21 @@
 #!/bin/bash
-# C11/F0, INSIDE the VM (as arch, logged in): capture the launcher's first tile row while the pointer
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# C11/F0, INSIDE the VM (as the selected account, logged in): capture the launcher's first tile row while the pointer
 # moves steadily across it and the selection bubble follows. For check-launcher-hover.py.
 #   tests/vm/ssh.sh 'bash -s -- <frames> <movement-ms>' < tests/vm/guest-hover-frames.sh \
 #       | tar -C <directory> -xf -
 # Requires /tmp/guest-pointer.py (python-evdev). Workspace 2 must be empty.
 frames=${1:-240}; ms=${2:-1500}
-export XDG_RUNTIME_DIR=/run/user/1000
-export WAYLAND_DISPLAY=$(ls $XDG_RUNTIME_DIR | grep -E '^wayland-[0-9]+$' | head -1)
-export NIRI_SOCKET=$(ls $XDG_RUNTIME_DIR/niri.*.sock 2>/dev/null | head -1)
+# The optional password arrives only on stdin; never export or trace it.
+if [ "${EMAKI_VM_PASSWORD_STDIN:-}" = 1 ]; then
+    IFS= read -r vm_password || exit 1
+    sudo() { printf '%s\n' "$vm_password" | command sudo -S -p '' -- "$@"; }
+fi
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
+export WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-$(ls "$XDG_RUNTIME_DIR" | grep -E '^wayland-[0-9]+$' | head -1)}
+export NIRI_SOCKET=${NIRI_SOCKET:-$(ls "$XDG_RUNTIME_DIR"/niri.*.sock 2>/dev/null | head -1)}
 read LW LH < <(niri msg -j outputs | python3 -c 'import json,sys; o=list(json.load(sys.stdin).values())[0]["logical"]; print(o["width"], o["height"])')
 f() { python3 -c "print(f'{$1/$LW:.4f},{$2/$LH:.4f}')"; }
 niri msg action focus-workspace 2 >/dev/null; sleep 1

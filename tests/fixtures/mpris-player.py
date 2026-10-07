@@ -7,7 +7,7 @@ import sys
 import gi
 gi.require_version('Gio','2.0')
 from gi.repository import Gio, GLib
-root=Path(sys.argv[1]); assert os.environ['DBUS_SESSION_BUS_ADDRESS'].startswith('unix:path='+str(root/'r/bus'))
+root=Path(sys.argv[1]); assert os.environ['DBUS_SESSION_BUS_ADDRESS'].startswith('unix:path='+str(Path(os.environ['XDG_RUNTIME_DIR']) / 'bus'))
 name='org.mpris.MediaPlayer2.emaki_fixture'; player='org.mpris.MediaPlayer2.Player'; base='org.mpris.MediaPlayer2'
 props={
 base: {'Identity':('s','Fixture player'),'DesktopEntry':('s','fixture-player'),'CanQuit':('b',False),'CanRaise':('b',False),'HasTrackList':('b',False),'SupportedUriSchemes':('as',[]),'SupportedMimeTypes':('as',[])},

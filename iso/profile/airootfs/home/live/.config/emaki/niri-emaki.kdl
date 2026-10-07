@@ -8,7 +8,7 @@ window-rule {
     match app-id="^emaki-install$"
     open-floating true
     default-column-width { proportion 0.80; }
-    // 0.88 touched the bottom edge of a 1280x800 output under the bar (VM, MacBook 13").
+    // Keep room for the panel and dock; the installer scrolls at small logical sizes.
     default-window-height { proportion 0.82; }
     background-effect { blur true; }
 }

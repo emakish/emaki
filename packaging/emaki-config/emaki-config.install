@@ -1,3 +1,4 @@
+# Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 # shellcheck shell=bash
 # Removing the package deletes the wallpaper copies published for the greeter; its
@@ -9,4 +10,23 @@
 pre_remove() {
     /usr/bin/emaki-greeter-provision --root / --purge-published ||
         echo 'emaki-config: published wallpaper copies remain in /var/lib/emaki-greeter; an administrator can remove them' >&2
+}
+
+post_install() {
+    /usr/share/libalpm/scripts/emaki-initramfs-refresh --install-hooks
+    /usr/share/libalpm/scripts/emaki-system-migrate --mark-fresh
+}
+
+post_upgrade() {
+    /usr/share/libalpm/scripts/emaki-initramfs-refresh --install-hooks
+    /usr/bin/python3 -I /usr/bin/emaki-migrate-installer-config
+}
+
+pre_upgrade() {
+    # Preserve the enabled vendor timer while moving it to ordinary enable/disable.
+    if [[ -L /usr/lib/systemd/system/timers.target.wants/paccache.timer ]] &&
+       [[ $(systemctl --root=/ is-enabled paccache.timer 2>/dev/null) != masked ]]; then
+        install -d -m755 /var/lib/emaki/migrations
+        touch /var/lib/emaki/migrations/paccache-enabled
+    fi
 }

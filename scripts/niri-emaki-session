@@ -22,6 +22,14 @@ fi
 # KService needs an application menu even when the session does not run Plasma.
 export XDG_MENU_PREFIX=emaki-
 
+# Packaged autostart overrides precede upstream defaults, without changing user files.
+# environment.d supplies this to user generators first; keep direct session launches
+# consistent too. Imports alone cannot change the environment seen by generators.
+case "${XDG_CONFIG_DIRS:-/etc/xdg}" in
+    /usr/share/emaki/xdg|/usr/share/emaki/xdg:*) ;;
+    *) export XDG_CONFIG_DIRS="/usr/share/emaki/xdg:${XDG_CONFIG_DIRS:-/etc/xdg}" ;;
+esac
+
 # Config selection. Same order as stock niri 26.04 (src/main.rs):
 # if a personal ~/.config/niri/config.kdl exists, use fork.kdl (includes it entirely); otherwise,
 # use fork-system.kdl (includes /etc/niri/config.kdl). This script never creates or
@@ -34,7 +42,15 @@ fork_config() {
     fi
 }
 
+emaki_nvidia_session_policy() {
+    if [ -r /usr/share/emaki/nvidia/session.sh ]; then
+        # shellcheck source=packaging/emaki-nvidia/session.sh
+        source /usr/share/emaki/nvidia/session.sh
+    fi
+}
+
 start_compositor() {
+    emaki_nvidia_session_policy
     unset EMAKI_STARTUP_COVER EMAKI_SESSION_TAKEOVER
     cover_png=
     if [ -n "${EMAKI_LOGIN_HANDOFF:-}" ]; then
@@ -73,6 +89,10 @@ if [ -n "$SHELL" ] &&
   fi
 fi
 
+# Read profile exports before applying automatic graphics defaults. Otherwise a
+# profile value equal to an earlier default could be mistaken for our own value.
+emaki_nvidia_session_policy
+
 if ! hash systemctl >/dev/null 2>&1; then
     echo "niri-emaki-session needs systemd."
     exit 1
@@ -85,8 +105,14 @@ if systemctl --user -q is-active niri-emaki.service || systemctl --user -q is-ac
 fi
 
 systemctl --user reset-failed
+# A login gets a fresh token; restarting the shell or wallet keeps this token.
+export EMAKI_WALLET_SESSION
+EMAKI_WALLET_SESSION=$(cat /proc/sys/kernel/random/uuid)
 # Preserve every login-profile export without systemctl's nameless-import warning.
 # Values never pass through shell parsing (including newlines and metacharacters).
+if declare -F emaki_nvidia_clear_activation >/dev/null; then
+    emaki_nvidia_clear_activation
+fi
 emaki-session-import-environment
 systemctl --user set-environment EMAKI_SHELL_DOCK_BACKDROP=capture
 if hash dbus-update-activation-environment 2>/dev/null; then
@@ -98,4 +124,7 @@ systemctl --user --wait start niri-emaki.service
 # Force stop of graphical-session.target (niri-shutdown.target comes with the niri package).
 systemctl --user start --job-mode=replace-irreversibly niri-shutdown.target
 
-systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_MENU_PREFIX NIRI_SOCKET EMAKI_SHELL_DOCK_BACKDROP EMAKI_LOGIN_HANDOFF
+systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_MENU_PREFIX NIRI_SOCKET EMAKI_SHELL_DOCK_BACKDROP EMAKI_LOGIN_HANDOFF EMAKI_WALLET_SESSION
+if declare -F emaki_nvidia_clear_activation >/dev/null; then
+    emaki_nvidia_clear_activation
+fi

@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Collect release-note trailers from local Git history without inventing text."""
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+
+
+KINDS = ('New', 'Fixed', 'Changed', 'Removed')
+NOTE = re.compile(r'(New|Fixed|Changed|Removed): ([^\r\n]+)')
+VISIBLE_ROOTS = ('shell/', 'niri/', 'installer/', 'upkeep/', 'systemd/')
+
+
+def git(*args):
+    result = subprocess.run(
+        ['git', '-c', 'trailer.separators=:', *args], capture_output=True,
+        env={**os.environ, 'GIT_NO_LAZY_FETCH': '1'},
+    )
+    if result.returncode:
+        raise ValueError(result.stderr.decode('utf-8', errors='replace').strip())
+    return result.stdout.decode('utf-8', errors='surrogateescape')
+
+
+def resolve(ref):
+    return git('rev-parse', '--verify', '--end-of-options', ref + '^{commit}').strip()
+
+
+def collect(revision_range):
+    # Git recognizes the final trailer block, so examples in prose are not notes.
+    values = git(
+        'log', '--reverse', '--topo-order', '-z',
+        '--format=%(trailers:key=Note,valueonly,separator=%x00)', revision_range, '--',
+    )
+    notes = {kind: [] for kind in KINDS}
+    seen = set()
+    for value in values.split('\0'):
+        match = NOTE.fullmatch(value.strip())
+        if not match:
+            continue
+        kind, sentence = match.groups()
+        if (kind, sentence) not in seen:
+            notes[kind].append(sentence)
+            seen.add((kind, sentence))
+    return notes
+
+
+def visible_changes(old, revision_range):
+    # Include side branches and merge resolutions, even if later commits revert them.
+    # Disabling rename detection retains both sides of a move out of a visible root.
+    paths = git(
+        'log', '--format=', '--name-only', '-z', '--diff-merges=first-parent',
+        '--no-renames', '--no-ext-diff', '--no-textconv', revision_range, '--',
+    ).split('\0')
+    if any(path.startswith(VISIBLE_ROOTS) for path in paths):
+        return True
+    directories = {
+        '/'.join(parts[:2]) for path in paths
+        if len(parts := path.split('/')) >= 3 and parts[0] == 'packaging'
+    }
+    if not directories:
+        return False
+    # A package directory has a recipe. Inspect historical trees too, so removed
+    # packages count while publishing infrastructure under packaging/ does not.
+    revisions = [old, *git('rev-list', revision_range, '--').splitlines()]
+    for revision in revisions:
+        files = git('ls-tree', '-r', '--name-only', '-z', revision, '--', 'packaging/').split('\0')
+        if any(directory + '/PKGBUILD' in files for directory in directories):
+            return True
+    return False
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--check', action='store_true',
+                        help='fail if user-visible changes have no valid Note trailer')
+    parser.add_argument('old', help='exclusive starting commit or tag')
+    parser.add_argument('new', help='inclusive ending commit or tag')
+    args = parser.parse_args()
+    try:
+        old, new = resolve(args.old), resolve(args.new)
+        if git('rev-parse', '--is-shallow-repository').strip() == 'true':
+            raise ValueError('complete local history is required; this repository is shallow')
+        revision_range = f'{old}..{new}'
+        notes = collect(revision_range)
+        if args.check and not any(notes.values()) and visible_changes(old, revision_range):
+            print('release-notes: user-visible changes have no valid Note trailer', file=sys.stderr)
+            return 1
+        sections = [f'## {kind}\n\n' + '\n'.join(f'- {text}' for text in notes[kind])
+                    for kind in KINDS if notes[kind]]
+        if sections:
+            print('\n\n'.join(sections))
+        return 0
+    except (OSError, ValueError) as error:
+        print(f'release-notes: {error}', file=sys.stderr)
+        return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main())

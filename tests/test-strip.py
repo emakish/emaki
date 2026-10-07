@@ -2,6 +2,7 @@
 """Workspace strip pixels at scale 1, 1.25 and 2: only the existing workspaces, every digit on
 the optical centre of its cell, every mark a crisp device-pixel rectangle centred under the
 digit with the same gap. Flat stand-in (no GPU offscreen): digits in the glass ink."""
+from runtime_fixture import runtime_path
 import json
 import math
 import os
@@ -54,7 +55,7 @@ for scale in ('1', '1.25', '2'):
                QML_DISABLE_DISK_CACHE='1', QT_SCALE_FACTOR=scale, PYTHONDONTWRITEBYTECODE='1',
                EMAKI_SHELL_TRAY='0', EMAKI_TEST_SYSTEM='0', EMAKI_BIN='', EMAKI_SETTINGS_PROFILE='',
                EMAKI_TEST_MPRIS='0', EMAKI_SHELL_NOTIFICATIONS='0', EMAKI_SHELL_SHOT_DIR=str(DEST),
-               XDG_RUNTIME_DIR=str(profile / 'runtime'), XDG_CACHE_HOME=str(profile / 'cache'),
+               XDG_RUNTIME_DIR=str(runtime_path(profile)), XDG_CACHE_HOME=str(profile / 'cache'),
                XDG_CONFIG_HOME=str(profile / 'config'), XDG_STATE_HOME=str(profile / 'state'),
                XDG_DATA_HOME=str(profile / 'data'), XDG_DATA_DIRS=str(profile / 'data'),
                TMPDIR=str(profile / 'tmp'), NIRI_SOCKET='',

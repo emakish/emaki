@@ -11,7 +11,7 @@
 set -Eeuo pipefail
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(dirname -- "$HERE")
-ORDER=(niri-emaki quickshell-emaki xdg-desktop-portal-gnome-emaki emaki-config emaki-desktop emaki-apps
+ORDER=(niri-emaki quickshell-emaki xdg-desktop-portal-gnome-emaki emaki-config emaki-nvidia emaki-desktop emaki-apps
        emaki-installer emaki-keyring emaki-mirrorlist emaki)
 # Packages whose build needs makedepends from Arch (--syncdeps). The others depend at run time on
 # Emaki packages that are not in any repository yet, so their dependencies are not checked here
@@ -21,16 +21,18 @@ ORDER=(niri-emaki quickshell-emaki xdg-desktop-portal-gnome-emaki emaki-config e
 SYNCDEPS=(niri-emaki quickshell-emaki xdg-desktop-portal-gnome-emaki emaki-installer)
 out=$ROOT/.cache/build-out
 only=()
+published_sources=''
 dry_run=0
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 usage() {
-    echo 'Usage: packaging/build.sh [--out DIR] [--only NAME]... [--dry-run]'
+    echo 'Usage: packaging/build.sh [--out DIR] [--only NAME]... [--published-sources SOURCES.json] [--dry-run]'
     echo "Order: ${ORDER[*]}"
 }
 while (($#)); do
     case $1 in
         --out) (($# >= 2)) || fail 'missing value for --out'; out=$2; shift 2 ;;
         --only) (($# >= 2)) || fail 'missing value for --only'; only+=("$2"); shift 2 ;;
+        --published-sources) (($# >= 2)) || fail 'missing value for --published-sources'; published_sources=$2; shift 2 ;;
         --dry-run) dry_run=1; shift ;;
         --help) usage; exit 0 ;;
         *) fail "unknown option: $1" ;;
@@ -94,6 +96,13 @@ if [[ -d $out && -n $(find "$out" -mindepth 1 -maxdepth 1 -print -quit) ]]; then
 fi
 
 commit=$(git -C "$ROOT" rev-parse --verify HEAD)
+if [[ -n $published_sources ]]; then
+    ((${#only[@]})) || fail '--published-sources requires explicit --only selections'
+    release_args=()
+    for name in "${only[@]}"; do release_args+=(--only "$name"); done
+    python3 "$HERE/release_inputs.py" --repo "$ROOT" --published-sources "$published_sources" \
+        "${release_args[@]}"
+fi
 if ((dry_run)); then
     printf 'Would build from %s into %s:\n' "$commit" "$out"
     for name in "${selected[@]}"; do

@@ -6,18 +6,21 @@
 //  Which file belongs to which zone: /usr/share/doc/emaki/ZONES.md
 //
 //  Your niri config is ~/.config/niri/config.kdl (zone 3, yours: the installer
-//  may create it once, Emaki never writes it again). Its first line includes
-//  this file:
-//    include "/usr/share/emaki/niri/default.kdl"
-//  Put your changes below that line. Until your file exists, /etc/niri/config.kdl
-//  (niri/system.kdl) includes this file instead.
+//  may create it once, Emaki never writes it again). It includes machine settings:
+//    include "/etc/emaki/niri.kdl"
+//  That installer-owned file includes these defaults; upgraded machines may also
+//  retain a global panel strut, overridable by your later layout settings.
+//  Initial non-default monitor scales live in your file. Put changes below its
+//  marked line, before those initial settings. Until your file exists,
+//  /etc/niri/config.kdl (niri/system.kdl) includes this file instead.
 //
 //  Override, not remove. Your file wins where niri lets a later setting win: a
 //  bind on the same keys, layout values such as gaps, the whole touchpad block,
 //  the whole xkb block (your session then no longer follows the system keyboard
-//  layouts). It cannot remove an Emaki autostart (spawn-at-startup), window rule,
-//  workspace or bind; a bind can only be replaced by one of your own. For a
-//  monitor, the first output block niri reads wins; Emaki ships none.
+//  layouts). Login commands have personal off switches; see the zone map above.
+//  It cannot remove a window rule, workspace or bind; a bind can only be replaced. For a
+//  monitor, the first output block for its connector wins; Emaki ships none.
+//  Put personal output blocks in the marked slot before initial installer blocks.
 //
 //  Zone 2, managed settings (`emaki settings`), is not connected to the session
 //  yet: nothing here reads it.
@@ -44,22 +47,23 @@ prefer-no-csd
 // follows that file. wpaperctl set changes only the running session's wallpaper.
 //   wpaperctl get <output>   show the current wallpaper
 //   wpaperctl set <file>     change it in memory; update the config to publish it
-spawn-at-startup "emaki-session-wallpaper"
+spawn-at-startup "emaki-autostart" "wallpaper" "emaki-session-wallpaper"
 
 // The Emaki shell shows notifications (see “Panel” below). mako is not autostarted:
 // two notification servers cannot share a bus name — the first one takes it.
 
-// Clipboard history. No separate password filter is needed: wl-paste in
+// Clipboard history stays in the login runtime, never the persistent cache.
+// Retire only the old database once before recording. wl-paste in
 // --watch mode passes CLIPBOARD_STATE=sensitive for entries marked by
 // a password manager, and cliphist store skips those entries.
-spawn-at-startup "wl-paste" "--watch" "cliphist" "store"
+spawn-at-startup "emaki-autostart" "clipboard" "python3" "-B" "/usr/share/emaki/shell/helpers/clipboard_store.py" "--watch"
 
 // polkit authentication service. Without it, graphical applications cannot request
 // an administrator password: requests are silently denied.
-spawn-at-startup "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"
+spawn-at-startup "emaki-autostart" "authentication" "env" "GTK_THEME=Emaki" "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"
 
-// Automatically mount USB drives and disks.
-spawn-at-startup "udiskie"
+// Mount USB drives on request; insertion must not mount behind the lock.
+spawn-at-startup "emaki-autostart" "automount" "udiskie" "--no-automount"
 
 // Panel, launcher, clock shade with notifications, right island, dock, tray —
 // the Emaki shell (Quickshell on top of the emaki core). It runs as the
@@ -69,8 +73,10 @@ spawn-at-startup "udiskie"
 // `systemctl --user set-environment` or a service drop-in.
 //   emaki-shell call launcher status     current shell state
 //   emaki-shell call dock status         pinned and running dock apps
-// Without systemd (niri started without niri-session), use spawn-at-startup "emaki-shell".
-spawn-at-startup "systemctl" "--user" "start" "--no-block" "emaki-shell.service" "emaki-sleep-guard.service"
+// Without systemd (niri started without niri-session), replace the shell command with
+// spawn-at-startup "emaki-autostart" "shell" "emaki-shell".
+spawn-at-startup "emaki-autostart" "shell" "systemctl" "--user" "start" "--no-block" "emaki-shell.service"
+spawn-at-startup "emaki-autostart" "sleep-guard" "systemctl" "--user" "start" "--no-block" "emaki-sleep-guard.service"
 
 // The idle policy (emaki-idle) is NOT started yet: each step —
 // dimming, locking, screen blanking — must first be tested individually on a running
@@ -146,12 +152,14 @@ input {
 
     touchpad {
         tap
+        dwt
+        dwtp
         natural-scroll
     }
 }
 
-// The terminal is already translucent by default, so only add blur underneath it.
-// Applying opacity again would multiply the two values and make it look muddy.
+// If the terminal is made translucent, blur goes underneath it.
+// Applying opacity here too would multiply the two values and make it look muddy.
 window-rule {
     match app-id="^kitty$"
     background-effect {
@@ -253,7 +261,7 @@ binds {
 
     // Clipboard history — the launcher's Clipboard mode (reads the cliphist database).
     // Without a shell: cliphist in fuzzel; Esc (nothing picked) leaves the clipboard alone.
-    Mod+V hotkey-overlay-title="Clipboard history" { spawn-sh "emaki-shell call launcher open && emaki-shell call launcher mode Clipboard || { pick=$(cliphist list | fuzzel --config \"$(emaki-config-path fuzzel fuzzel.ini)\" --dmenu) && [ -n \"$pick\" ] && printf %s \"$pick\" | cliphist decode | wl-copy; }"; }
+    Mod+V hotkey-overlay-title="Clipboard history" { spawn-sh "emaki-shell call launcher open && emaki-shell call launcher mode Clipboard || { pick=$(cliphist -config-path /dev/null -db-path \"${XDG_RUNTIME_DIR:?}/emaki-cliphist.db\" list | fuzzel --config \"$(emaki-config-path fuzzel fuzzel.ini)\" --dmenu) && [ -n \"$pick\" ] && printf %s \"$pick\" | cliphist -config-path /dev/null -db-path \"${XDG_RUNTIME_DIR:?}/emaki-cliphist.db\" decode | wl-copy; }"; }
 
     // The lock supervisor serializes requests and confirms compositor coverage.
     // It runs independently of the shell and optional idle policy. Works when locked:
@@ -273,6 +281,12 @@ binds {
     Mod+Shift+Slash { show-hotkey-overlay; }
 
     // ── Laptop keys ────────────────────────────────────────────────────────
+    // Apple media F3/F4: KEY_SCALE/KEY_DASHBOARD become these XKB keysyms.
+    XF86LaunchA repeat=false { toggle-overview; }
+    XF86LaunchB repeat=false { spawn "emaki-shell" "call" "launcher" "toggle"; }
+    // Select only the keyboard LED, never Caps Lock or another status light.
+    XF86KbdBrightnessUp allow-when-locked=true { spawn "brightnessctl" "--class=leds" "--device=*::kbd_backlight" "set" "10%+"; }
+    XF86KbdBrightnessDown allow-when-locked=true { spawn "brightnessctl" "--class=leds" "--device=*::kbd_backlight" "set" "10%-"; }
     XF86AudioPlay  { spawn "playerctl" "play-pause"; }
     XF86AudioPrev  { spawn "playerctl" "previous"; }
     XF86AudioNext  { spawn "playerctl" "next"; }
@@ -292,6 +306,6 @@ binds {
 
 // ── Shell ──────────────────────────────────────────────────────────────
 // Reserve space for the bar and blur behind islands/launcher. Included last:
-// struts here assume scale 1; for fractional scale, add a layout to your personal config
-// (calculation in docs/shell.md, “Exclusive zone and gaps”).
+// Base struts assume whole scale. The installer writes each session output scale and
+// its fractional strut compensation to the target config (calculation in docs/shell.md).
 include "shell.kdl"

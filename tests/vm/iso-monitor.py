@@ -10,7 +10,7 @@ import sys
 def command(directory, text, timeout=5):
     with socket.socket(socket.AF_UNIX) as connection:
         connection.settimeout(timeout)
-        connection.connect(str(Path(directory) / 'mon.sock'))
+        connection.connect(str((Path(directory) / 'mon.sock').resolve()))
 
         def response(eof_ok=False):
             data = bytearray()

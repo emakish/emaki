@@ -417,6 +417,17 @@ class AlongsideTests(AlongsideOnTestCase):
         self.assertEqual(runner.commands[-1][0], ['blockdev', '--getsize64', '/dev/vda2'])
         self.assertFalse(any('--new=3:' in ' '.join(cmd) or cmd[0].startswith('mkfs') for cmd, _ in runner.commands))
 
+    @patch.object(ntfs, 'verify_resized_ntfs')
+    def test_post_shrink_refusal_is_not_retryable(self, verify):
+        plan = self.plan()
+        runner = self.runner(plan)
+        verify.side_effect = InstallError(Code.COMMAND_FAILED, 'read failed', retryable=True)
+        with self.assertRaises(InstallError) as caught:
+            resize_partition(plan, runner, Mock())
+        self.assertEqual(caught.exception.code, Code.UNSAFE_DISK)
+        self.assertFalse(caught.exception.retryable)
+        self.assertFalse(any('--new=3:' in ' '.join(cmd) for cmd, _ in runner.commands))
+
     def test_reprobe_changed_in_prepare_aborts_before_backend(self):
         plan = self.plan()
         worker = Worker(None, FakeInventory(self.inv), Redactor(), Mock(), Mock())

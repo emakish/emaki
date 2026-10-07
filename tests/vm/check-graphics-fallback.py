@@ -58,6 +58,8 @@ import tomllib
 
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import socket_runtime
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE / 'eyes'))
 import eyes  # noqa: E402  (QMP keys and VNC grabs of a guest whose sockets live in one directory)
@@ -105,14 +107,13 @@ REFERENCE_DOC = 'tests/vm/fixtures/graphics-fallback'
 OVMF = Path(os.environ.get('EYES_OVMF_DIR', '/usr/share/edk2/x64'))
 RENDER = os.environ.get('EYES_RENDER_NODE', '/dev/dri/renderD128')
 GL_LOCK = Path(os.environ.get('EYES_ROOT', Path.home() / 'VMs/eyes')) / '.gl.lock'
-SOCKET_LIMIT = 107
 
 now = time.monotonic
 sleep = time.sleep
 
 
 class Guest:
-    """One QEMU guest of this check, started and stopped here; its sockets live in its directory."""
+    """One QEMU guest of this check, started and stopped here; its sockets have links in its evidence directory."""
 
     def __init__(self, directory, *, system, display, res, iso, disk, port, account, password):
         self.dir = Path(directory)
@@ -138,10 +139,10 @@ class Guest:
             args += ['-device', f'VGA,xres={x},yres={y},vgamem_mb=64', '-display', 'none']
         else:
             args += ['-device', f'virtio-vga-gl,xres={x},yres={y}', '-display', f'egl-headless,rendernode={RENDER}']
-        return args + ['-vnc', f'unix:{d / "vnc.sock"}',
+        return args + ['-vnc', f'unix:{socket_runtime.runtime(d) / "vnc.sock"}',
                        '-netdev', f'user,id=net0,hostfwd=tcp:127.0.0.1:{self.port}-:22',
                        '-device', 'virtio-net-pci,netdev=net0',
-                       '-qmp', f'unix:{d / "qmp.sock"},server=on,wait=off',
+                       '-qmp', f'unix:{socket_runtime.runtime(d) / "qmp.sock"},server=on,wait=off',
                        '-serial', f'file:{d / "serial.log"}', '-pidfile', str(d / 'qemu.pid')]
 
     def start(self):
@@ -183,6 +184,7 @@ class Guest:
                 self.process.wait(timeout=30)
         if self.vm is not None:
             self.vm.close()
+        socket_runtime.cleanup(self.dir)
 
     def grab(self):
         return self.vm.grab()[0]
@@ -790,9 +792,6 @@ def main(argv=None):
     disk = Path(args.installed_disk).absolute() if args.installed_disk else None
     if out.exists():
         return refuse(f'output directory exists, never reused: {out}')
-    longest = max(len(str(out / part / 'qmp.sock').encode()) for part in PARTS)
-    if longest > SOCKET_LIMIT:
-        return refuse(f'output path too long for unix sockets ({longest} > {SOCKET_LIMIT} bytes): {out}')
     if any(',' in str(path) for path in (out, iso, disk or '')):
         return refuse('QEMU paths must not contain commas')
     if not 1024 <= args.ssh_port <= 65535:

@@ -273,17 +273,17 @@ pub(crate) fn helper_failure(stderr: &[u8]) -> Failure {
 }
 
 #[cfg(test)]
+#[path = "../../../tests/socket_dir.rs"]
+mod socket_dir;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
     struct SocketDir(std::path::PathBuf);
     impl SocketDir {
-        fn new(name: &str) -> Self {
-            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../.cache/tmp")
-                .join(format!("transport-{}-{name}", std::process::id()));
-            std::fs::create_dir_all(&path).unwrap();
-            Self(path.canonicalize().unwrap())
+        fn new(_name: &str) -> Self {
+            Self(super::socket_dir::short_socket_dir())
         }
     }
     impl Drop for SocketDir {

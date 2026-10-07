@@ -1,15 +1,17 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # shellcheck shell=bash disable=SC2034,SC2154
 pkgname=emaki-apps
-pkgver=0.2.0
+pkgver=0.3.0
 pkgrel=1
 pkgdesc='Emaki Rich application set and multimedia codecs'
 arch=('any')
 url='https://github.com/emakish/emaki'
 license=('GPL-3.0-or-later')
 install=emaki-apps.install
-source=('45-emaki-apps.preset')
-sha256sums=('6f4c0b34deae9d86b115cc630ed06e27bb56326dab9e05e9dc0315b0bb245cba')
+source=('45-emaki-apps.preset' 'emaki-printers.desktop' 'emaki-discover-notifier.desktop')
+sha256sums=('770e6c1ed6e2c0d22d19062218e794769043423d419b618938fcd746be5958ec'
+            '2d792d2c51503e66817ed23b5bac6348ee658f88ef968d155798b2eb7d81861e'
+            '980e9b3a010612537e485ebcfb9baf12d2ef953e7a2fda3a2e8f11f959ec564b')
 depends=(
     'emaki-desktop'
     'gwenview' 'ark' 'okular' '7zip' 'unrar'
@@ -22,7 +24,7 @@ depends=(
     'spectacle' 'obs-studio'
     'plasma-systemmonitor' 'partitionmanager' 'filelight' 'discover' 'flatpak'
     'fwupd' 'isoimagewriter'
-    'cups' 'print-manager' 'skanlite' 'kdeconnect'
+    'cups' 'print-manager' 'skanlite'
     'kcharselect' 'keepassxc'
     'gst-plugins-base' 'gst-plugins-good' 'gst-plugins-bad' 'gst-plugins-ugly'
     # The explicit codec contract of the Rich set. ffmpeg already arrives as a
@@ -34,6 +36,10 @@ depends=(
 )
 
 package() {
+    install -Dm644 "$srcdir/emaki-discover-notifier.desktop" \
+        "$pkgdir/etc/xdg/autostart/emaki-discover-notifier.desktop"
+    install -Dm644 "$srcdir/emaki-printers.desktop" \
+        "$pkgdir/usr/share/applications/emaki-printers.desktop"
     install -Dm644 "$srcdir/45-emaki-apps.preset" \
         "$pkgdir/usr/lib/systemd/system-preset/45-emaki-apps.preset"
 }

@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Local static gates only: no installs, database sync, build, or VM operations.
-# Profile variables are supplied by the dynamically sourced profile.
-# shellcheck disable=SC2154
 set -Eeuo pipefail
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(dirname -- "$HERE")
+"$HERE/preflight.sh" "$@"
 incomplete=0
 mapfile -t scripts < <(find "$HERE" -type f -name '*.sh' -print)
 scripts+=("$ROOT/tests/vm/run-iso.sh" "$ROOT"/tests/vm/iso-*.sh)
@@ -27,31 +26,10 @@ for directory in map(Path, sys.argv[1:]):
         ast.parse(path.read_text(), filename=str(path))
 print('OK: Python syntax')
 PY
-if [[ -f $HERE/profile/profiledef.sh ]]; then
-    (
-        cd -- "$HERE/profile"
-        declare -A file_permissions=()
-        # shellcheck disable=SC1091
-        source ./profiledef.sh
-        version=$(<"$HERE/VERSION")
-        [[ $iso_name == emaki && $iso_version == "$version" && $iso_label == "EMAKI_$version" ]]
-        [[ $install_dir == emaki && ${buildmodes[*]} == iso ]]
-        ((${#bootmodes[@]} > 0))
-        [[ ${file_permissions[/etc/shadow]} == 0:0:0400 ]]
-        [[ ${file_permissions[/root]} == 0:0:0700 ]]
-    )
-    echo 'OK: profiledef dry parse'
-else
-    echo 'UNVERIFIED: full releng profile unavailable; build.sh imports installed v91 in the VM'
-    incomplete=1
-fi
-files=("$HERE/packages-extra.txt" "$HERE/target-packages.txt" "$HERE/emaki-packages.txt")
-[[ ! -f $HERE/profile/packages.x86_64 ]] || files+=("$HERE/profile/packages.x86_64")
-for file in "${files[@]}"; do LC_ALL=C sort -cu "$file"; done
-echo 'OK: package seeds sorted and unique'
+files=("$HERE/packages-extra.txt" "$HERE/target-packages.txt" "$HERE/emaki-packages.txt" "$HERE/profile/packages.x86_64")
 if command -v pacman >/dev/null; then
     failed=()
-    mapfile -t packages < <(cat "${files[@]}" | LC_ALL=C sort -u)
+    mapfile -t packages < <(cat "${files[@]}" | sed '/^#/d; /^$/d' | LC_ALL=C sort -u)
     for package in "${packages[@]}"; do
         grep -Fxq "$package" "$HERE/emaki-packages.txt" && continue
         pacman -Si "$package" >/dev/null 2>&1 || failed+=("$package")
@@ -61,5 +39,20 @@ if command -v pacman >/dev/null; then
 else
     echo 'UNVERIFIED: pacman unavailable'
 fi
+python3 -B "$ROOT/tests/test-iso-preflight.py"
+modules=${GRUB_MODULE_DIR-/usr/lib/grub/x86_64-efi}
+if [[ -d $modules ]]; then
+    python3 -B "$HERE/check-grub-modules.py" "$HERE/profile/grub" "$modules"
+elif [[ ${GRUB_MODULE_DIR+x} ]]; then
+    printf 'ERROR: GRUB_MODULE_DIR is not a directory: %s\n' "$modules" >&2
+    exit 1
+else
+    printf 'SKIP: build GRUB module check; default directory absent: %s (set GRUB_MODULE_DIR to require it)\n' "$modules"
+fi
 python3 -B "$HERE/test-static.py"
+python3 -B "$HERE/test-live-hygiene.py"
+python3 -B "$HERE/test-live-payload.py"
+python3 -B "$HERE/test-loopback-assets.py"
+python3 -B "$HERE/test-offline-repo.py"
+python3 -B "$HERE/test-efi-image.py"
 exit "$incomplete"

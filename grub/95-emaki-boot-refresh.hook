@@ -1,0 +1,23 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = emaki-config
+Target = grub
+Target = grub-btrfs
+Target = linux
+Target = linux-lts
+
+[Trigger]
+Operation = Remove
+Type = Package
+Target = linux
+Target = linux-lts
+Target = grub-btrfs
+
+[Action]
+Description = Refreshing the Emaki boot loader and menu
+When = PostTransaction
+Exec = /usr/bin/emaki-boot-refresh --hook

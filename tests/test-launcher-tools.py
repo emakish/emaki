@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Actual helpers, cliphist/GIO, QS UI, fake terminal/wl-copy/MPRIS; private profile/bus."""
+from runtime_fixture import runtime_path
 import json
 import os
 from pathlib import Path
@@ -15,12 +16,12 @@ ROOT=Path(__file__).resolve().parent.parent
 if '--inside' not in sys.argv:
     root=Path(tempfile.mkdtemp(prefix='lt-',dir=ROOT/'.cache'))
     for d in ('r','c','s','d','cache','tmp','bin'):(root/d).mkdir(mode=0o700)
-    cfg=root/'bus.conf';cfg.write_text(f'<busconfig><type>session</type><listen>unix:path={root}/r/bus</listen><auth>EXTERNAL</auth><policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>')
-    env=dict(os.environ,QT_QPA_PLATFORM='offscreen',QT_QUICK_BACKEND='software',QML_DISABLE_DISK_CACHE='1',PYTHONDONTWRITEBYTECODE='1',EMAKI_BIN='',EMAKI_SHELL_NOTIFICATIONS='0',EMAKI_TEST_MPRIS='1',GSETTINGS_BACKEND='memory',XDG_CONFIG_HOME=str(root/'c'),XDG_STATE_HOME=str(root/'s'),XDG_DATA_HOME=str(root/'d'),XDG_DATA_DIRS=str(root/'d'),XDG_CACHE_HOME=str(root/'cache'),XDG_RUNTIME_DIR=str(root/'r'),TMPDIR=str(root/'tmp'),DBUS_SYSTEM_BUS_ADDRESS='unix:path='+str(root/'missing'))
+    cfg=root/'bus.conf';cfg.write_text(f'<busconfig><type>session</type><listen>unix:path={runtime_path(root)}/bus</listen><auth>EXTERNAL</auth><policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>')
+    env=dict(os.environ,QT_QPA_PLATFORM='offscreen',QT_QUICK_BACKEND='software',QML_DISABLE_DISK_CACHE='1',PYTHONDONTWRITEBYTECODE='1',EMAKI_BIN='',EMAKI_SHELL_NOTIFICATIONS='0',EMAKI_TEST_MPRIS='1',GSETTINGS_BACKEND='memory',XDG_CONFIG_HOME=str(root/'c'),XDG_STATE_HOME=str(root/'s'),XDG_DATA_HOME=str(root/'d'),XDG_DATA_DIRS=str(root/'d'),XDG_CACHE_HOME=str(root/'cache'),XDG_RUNTIME_DIR=str(runtime_path(root)),TMPDIR=str(root/'tmp'),DBUS_SYSTEM_BUS_ADDRESS='unix:path='+str(root/'missing'))
     for k in ('DISPLAY','WAYLAND_DISPLAY','NIRI_SOCKET','DBUS_SESSION_BUS_ADDRESS','QT_SCALE_FACTOR','QT_LOGGING_RULES'):env.pop(k,None)
     subprocess.run(['dbus-run-session','--config-file='+str(cfg),'--',sys.executable,'-B',__file__,'--inside',str(root)],env=env,check=True,timeout=90)
     raise SystemExit
-root=Path(sys.argv[-1]);assert os.environ['DBUS_SESSION_BUS_ADDRESS'].startswith('unix:path='+str(root/'r/bus'))
+root=Path(sys.argv[-1]);assert os.environ['DBUS_SESSION_BUS_ADDRESS'].startswith('unix:path='+str(Path(os.environ['XDG_RUNTIME_DIR']) / 'bus'))
 install(root, os.environ)
 def run(args,**kw):return subprocess.run(args,check=True,capture_output=True,timeout=7,**kw).stdout
 def helper(req):return json.loads(run([sys.executable,'-B',str(ROOT/'shell/helpers/launcher-tools.py')],input=json.dumps(req).encode()))
@@ -40,7 +41,7 @@ os.environ['EMAKI_SETTINGS_PROFILE']=str(core_profile)
 os.environ['EMAKI_BIN']=str(ROOT/'.cache/target/debug/emaki')
 assert helper({'op':'clip-list'})['entries']==[]
 assert not (root/'cache/cliphist').exists()
-clip=['cliphist','-config-path','/dev/null']
+clip=['cliphist','-config-path','/dev/null','-db-path',str(Path(os.environ['XDG_RUNTIME_DIR'])/'emaki-cliphist.db')]
 text=b'PRIVATE_CLIP $(touch not-executed) <b>literal</b>'
 run(clip+['store'],input=text)
 # Valid tiny PNG, as image clipboard entries must be marked as images.
@@ -101,7 +102,7 @@ try:
     ipc('mode','Clipboard');wait_for(lambda:state()['search']['clipboard']['count']==2)
     # Recorder: started with the shell as `wl-paste --watch cliphist store`; Pause kills it, history stays; Resume restarts.
     wait_for(lambda:(root/'recorder.json').exists() and state()['search']['clipboard']['recorder']=='recording')
-    first_pid,argv=recorder();assert argv==['--watch','cliphist','store'],argv
+    first_pid,argv=recorder();assert argv==['--watch',*clip,'store'],argv
     assert ipc('clipRecording','false')=='true';wait_for(lambda:state()['search']['clipboard']['recorder']=='paused')
     wait_for(lambda:not alive(first_pid));assert state()['search']['clipboard']['count']==2
     assert ipc('clipRecording','true')=='true';wait_for(lambda:state()['search']['clipboard']['recorder']=='recording' and recorder()[0]!=first_pid)

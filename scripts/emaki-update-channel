@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Report the effective Emaki repository channel without accessing the network."""
+
+import argparse
+import re
+import subprocess
+import sys
+
+
+def classify(servers):
+    channels = set()
+    for server in servers:
+        match = re.fullmatch(r'https://pkgs\.emaki\.sh/(stable|testing)/[A-Za-z0-9_]+/?', server)
+        if match is None:
+            match = re.fullmatch(
+                r'https://github\.com/emakish/packages/releases/download/(stable|testing)/?', server)
+        channels.add(match[1] if match else 'custom')
+    if not channels:
+        return 'unknown'
+    return next(iter(channels)) if len(channels) == 1 else 'mixed'
+
+
+def detect(config):
+    def query(*arguments):
+        result = subprocess.run(['pacman-conf', '--config', config, *arguments],
+                                check=True, capture_output=True, text=True, timeout=10)
+        return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+    try:
+        if 'emaki' not in query('--repo-list'):
+            return 'disabled'
+        return classify(query('--repo', 'emaki', 'Server'))
+    except (OSError, subprocess.SubprocessError, UnicodeError):
+        return 'unknown'
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--config', default='/etc/pacman.conf',
+                        help='read an alternate pacman configuration')
+    channel = detect(parser.parse_args().config)
+    print(channel)
+    if channel == 'unknown':
+        print('Could not determine the Emaki update channel from pacman configuration.', file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

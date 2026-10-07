@@ -7,3 +7,4 @@ disable sshd.socket
 disable systemd-networkd.service
 disable systemd-networkd.socket
 disable iwd.service
+disable pcscd.socket

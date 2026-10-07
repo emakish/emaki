@@ -17,6 +17,7 @@ GlassText 1.0 GlassText.qml
 NotificationStore 1.0 NotificationStore.qml
 NotificationService 1.0 NotificationService.qml
 NotificationReceiver 1.0 NotificationReceiver.qml
+ShellRecoveryNotice 1.0 ShellRecoveryNotice.qml
 CalendarMonth 1.0 CalendarMonth.qml
 ClockBody 1.0 ClockBody.qml
 PrivateJob 1.0 PrivateJob.qml

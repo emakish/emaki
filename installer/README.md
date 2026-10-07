@@ -6,6 +6,24 @@ Importing `emaki_installer` or running its unit tests does not import archinstal
 or inspect/write a block device. The daemon checks **archinstall 4.5** before
 opening its socket. Arch's package dependency is pinned to **4.5-1**.
 
+During `copy_packages`, `progress.step` names the operation displayed below the bar:
+`{"id":"copy-17","name":"initramfs","text":"Building the startup image (mkinitcpio: linux-lts: default).","detail":"linux-lts: default","state":"running"}`.
+The ID identifies one running instance. A step transition is emitted immediately;
+`step: null` ends it, and a phase state without a step clears it. The saved state
+replays the current step after reconnect. Logs and elapsed time never advance it.
+Pacman's padded hook counters name the current hook; nested image presets and
+locale generation temporarily replace that line. Command exits clear the line.
+
+The copy percentage counts work, not estimated seconds: package announcements
+have 60 points, nine preparation checks per transaction have 10, the two hook
+groups have 20, four image presets have 4, locale generation has 4, and the two
+explicit keyring commands have 2. Checks and hooks advance when the next step or
+successful command return proves completion. Each preset contributes half its
+point when selected and half when its image succeeds. A repeated preset in the
+second transaction is separate work. The value is monotonic and capped at 99
+until the copy phase returns successfully; without a resolved package total the
+bar remains indeterminate while the same running-step text is shown.
+
 The installer offers two layouts: erase and manual. Erase supports btrfs and
 ext4. Manual supports existing GPT partitions, explicit format flags, ESP
 reuse, and btrfs subvolume assignments. Both share optional LUKS2 root
@@ -13,7 +31,7 @@ encryption and a RAM-sized hibernation file. BIOS installation is unsupported.
 
 ## Alongside Windows
 
-**Not offered in 0.2.** Installing alongside Windows returns only after a check
+**Not offered in 0.3.0.** Installing alongside Windows returns only after a check
 on a real Windows (a real shrink of its partition, BitLocker); see DECISIONS,
 2026-10-04 "No experimental options". One switch controls it: `ALONGSIDE` in
 `emaki_installer/constants.py`, `False`. With it off the inventory does not
@@ -102,7 +120,7 @@ not Windows. This tests chainloading only. All files and evidence stay under
 the dedicated VM directory, and the guest is stopped on success or failure.
 Before it touches the target disk, the job asks the ISO's worker for a plan
 only; when the worker refuses the mode itself (`unsupported_mode`, as every
-0.2 image does), it prints `NOT APPLICABLE`, writes `NOT-APPLICABLE` into the
+0.3.0 image does), it prints `NOT APPLICABLE`, writes `NOT-APPLICABLE` into the
 run directory and exits 77: neither a pass nor a failure.
 
 ### First real Windows laptop checklist
@@ -192,7 +210,7 @@ The render set includes every step, encryption choices and password states,
 hibernation in every layout mode, a selected map region, active and empty
 time zone searches, and both software choices, at the default 1024 × 700 size.
 The `alongside*` screens replay a worker offer recorded with the alongside
-switch on; a 0.2 worker never sends one.
+switch on; a 0.3.0 worker never sends one.
 Use `--width 960 --height 640` for the minimum window, and `--iso-fonts` to limit
 the test to the ISO's Adwaita fonts. `controller.py --unix` additionally exercises
 the real socket; it returns 77 when the sandbox cannot bind Unix sockets.
@@ -225,6 +243,12 @@ an error and retry control and does not advance until the live clock succeeds.
 Only the latest selection is applied after an outstanding request completes.
 The time preview ticks each second and refreshes its offset every minute while
 the page is open, including across daylight-saving changes.
+
+The hello reply advertises `timezone_guess` support. `get_timezone_guess` returns
+`tz_guess` and `pending` immediately from a shared background lookup. The lookup
+starts once a route is available; disk probes never start or wait for it. The
+window polls this cache until complete and applies a detected zone through
+`set_timezone` before the time-zone page, unless the person chose a zone.
 
 This operation is separate from disk installation and needs no installation
 confirmation. It requires root, `/run/archiso/bootmnt`, and `IMAGE_ID=emaki` in
@@ -279,7 +303,7 @@ Only root is encrypted; the ESP remains plain at `/efi`. Manual encryption
 requires formatting root and preserves the existing GPT and ESP. Any other
 data partitions stay unencrypted, as stated in the UI and review. The common
 `storage_layout` planner function applies these options after a layout builder;
-the alongside builder (off in 0.2) calls it without duplicating storage policy.
+the alongside builder (off in 0.3.0) calls it without duplicating storage policy.
 
 The shipped Arch GRUB 2:2.16-1 includes `luks2`, `argon2`, `cryptodisk` and
 `pbkdf2` modules, verified in the test ISO. Root uses LUKS2/Argon2id with a
@@ -487,9 +511,10 @@ GRUB retries failed NVRAM registration with `--no-nvram` and installs the remova
 loader unless a foreign BOOTX64.EFI is present. Failed NVRAM registration with no
 usable removable path is fatal. Existing ESP free space must be verified and at
 least 32 MiB. Ext4 deliberately disables snapshot services after presets.
-Scale uses an optional `scale_guess` config extension; niri requires an output
-name, so the worker names connected DRM outputs, or warns and omits scale when
-none is identifiable. Unknown console layouts fall back to `us`.
+The window passes the active niri session's per-output scales as `output_scales`;
+the target keeps these scales and compensates the shell gap for physical-pixel rounding.
+Without a session no scales are invented. The legacy optional `scale_guess` config
+extension still names connected DRM outputs, or warns and omits scale when none is identifiable. Unknown console layouts fall back to `us`.
 
 The live log is root-only. Log export requires a new file on actual mounted
 removable/USB media below `/run/media/live`, rejects symlinks and never
@@ -515,3 +540,39 @@ Sources checked against tag 4.5:
 - [Device handler](https://raw.githubusercontent.com/archlinux/archinstall/4.5/archinstall/lib/disk/device_handler.py)
 - [pacstrap manual](https://man.archlinux.org/man/pacstrap.8.en)
 - [mkinitcpio manual](https://man.archlinux.org/man/mkinitcpio.8.en)
+
+
+## NVIDIA graphics
+
+Detection reads cached PCI and DRM sysfs attributes, including when the live
+medium uses basic display (`nomodeset`) and the card has no DRM node. Turing and
+newer (PCI device ID at least `0x1e00`) select official Arch open modules for both
+installed kernels. If the offline repository lacks either prebuilt module,
+installation uses `nvidia-open-dkms`, DKMS and both sets of kernel headers.
+Availability comes from the discovered repository, including alternate live-media
+mounts. Online recovery selects the official prebuilt modules for both kernels.
+The Review page names the selected packages.
+
+Maxwell, Pascal, Volta, Kepler and older cards follow the same installation path
+as 0.2, using nouveau or the integrated GPU. They do not add driver packages,
+change plan hashes or refuse installation. Mixed old/open NVIDIA systems also
+retain that path because installing `nvidia-utils` would blacklist nouveau.
+All NVIDIA hardware acceptance remains **NOT TESTED**.
+
+`emaki-nvidia` delivers graphics settings as package files. At each session start,
+active display connectors determine automatic NVIDIA video/GLX library selection;
+an Intel-driven hybrid display retains automatic selection. User profile settings
+take precedence. The package does not prevent greetd from starting. The existing
+graphical-session failure path provides the normal console recovery message.
+The transaction hook diagnoses missing modules, and installation checks both
+installed kernels before reporting completion. Inspect
+`python3 -I /usr/lib/emaki/nvidia/runtime.py check` after repairing kernel, headers
+or driver packages, then rebuild the initramfs normally. A failed DKMS hook is not
+a transaction rollback. Custom kernels need their own headers and successful DKMS
+build; the automatic check covers the installer kernels (`linux`, `linux-lts`).
+
+The initramfs drop-in skips early NVIDIA loading when `emaki-resume` is in HOOKS,
+preserving the hibernation path. This does not establish hardware resume acceptance.
+The live image continues to use nouveau/Mesa. The “Emaki (basic display, text
+console)” boot entry adds `nomodeset` for troubleshooting at a console.
+No NVIDIA hardware has verified either live boot path.

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Sleep guard behaviour with fakes for logind and for every command it runs.
 
 Nothing here opens a bus, locks, suspends or ends a session: the logind proxy is a
@@ -15,7 +17,6 @@ import socket
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import unittest
 from unittest.mock import patch
@@ -44,6 +45,12 @@ class Logind:
     def __init__(self, events):
         self.events = events
         self.sessions = {'7': SESSION}
+        self.delay_usec = 20_000_000
+        self.session_type = 'wayland'
+        self.session_uid = os.getuid()
+
+    def get_cached_property(self, name):
+        return Reply(self.delay_usec) if name == 'InhibitDelayMaxUSec' else None
 
     def call_with_unix_fd_list_sync(self, method, params, *_rest):
         from gi.repository import Gio, GLib
@@ -56,8 +63,19 @@ class Logind:
         self.events.append(f'inhibit {what} {mode}')
         return GLib.Variant('(h)', (handle,)), fds
 
+    def get_connection(self):
+        return self
+
     def call_sync(self, method, params, *_rest):
         from gi.repository import GLib
+        if method == 'org.freedesktop.login1':
+            interface, member, arguments = _rest[:3]
+            self.assert_property_request(interface, member, arguments)
+            name = arguments.unpack()[1]
+            self.events.append(f'Get Session.{name}')
+            values = {'Id': '7', 'Type': self.session_type,
+                      'User': (self.session_uid, '/org/freedesktop/login1/user/_1000')}
+            return Reply((values[name],))
         if method != 'GetSession':
             raise AssertionError(method)
         session, = params.unpack()
@@ -66,10 +84,16 @@ class Logind:
             raise GLib.Error('no such session')
         return Reply((self.sessions[session],))
 
+    @staticmethod
+    def assert_property_request(interface, member, arguments):
+        assert (interface, member, arguments.unpack()[0]) == (
+            'org.freedesktop.DBus.Properties', 'Get', 'org.freedesktop.login1.Session')
+
 
 class GuardCase(unittest.TestCase):
     def guard(self, **options):
         self.events = []
+        options.setdefault('environ', {'XDG_SESSION_ID': '7'})
         guard = GUARD['SleepGuard'](Logind(self.events), **options)
         self.addCleanup(guard.release)
         self.addCleanup(guard.release_lid)
@@ -86,7 +110,7 @@ class GuardCase(unittest.TestCase):
             outcome = results.get(' '.join(argv), results.get(argv[0], 0))
             if isinstance(outcome, BaseException):
                 raise outcome
-            return subprocess.CompletedProcess(argv, outcome)
+            return subprocess.CompletedProcess(argv, outcome, stdout='inactive\ninactive\ninactive\n', stderr='')
         return patch('subprocess.run', side_effect=run)
 
 
@@ -117,13 +141,23 @@ class SessionLock(GuardCase):
     def test_session_comes_from_the_environment(self):
         events = []
         path = GUARD['session_path'](Logind(events), {'XDG_SESSION_ID': '7'}, lambda: self.fail('no fallback'))
-        self.assertEqual((path, events), (SESSION, ['GetSession 7']))
+        self.assertEqual((path, events), (SESSION, ['GetSession 7', 'Get Session.Type', 'Get Session.User']))
 
     def test_session_falls_back_to_the_users_display(self):
         # A user service has XDG_SESSION_ID only when the session imported it.
         events = []
         path = GUARD['session_path'](Logind(events), {}, lambda: ('7', SESSION))
-        self.assertEqual((path, events), (SESSION, []))
+        self.assertEqual((path, events), (SESSION, ['Get Session.Type', 'Get Session.User']))
+
+    def test_session_must_be_wayland_and_owned_by_this_user(self):
+        for use_environment in (True, False):
+            for session_type, uid in (('tty', os.getuid()), ('wayland', os.getuid() + 1)):
+                with self.subTest(environment=use_environment, session_type=session_type, uid=uid):
+                    proxy = Logind([])
+                    proxy.session_type, proxy.session_uid = session_type, uid
+                    environ = {'XDG_SESSION_ID': '7'} if use_environment else {}
+                    with self.assertRaises(ValueError):
+                        GUARD['session_path'](proxy, environ, lambda: ('7', SESSION))
 
     def test_no_session_means_no_subscription(self):
         self.assertIsNone(GUARD['session_path'](Logind([]), {}, lambda: ('', '/')))
@@ -159,14 +193,11 @@ class FlagCase(GuardCase):
         self.socket = self.runtime / 'niri.wayland-1.4242.sock'
         self.socket.touch()
         self.environ = {'XDG_STATE_HOME': str(self.state), 'XDG_RUNTIME_DIR': str(self.runtime),
-                        'NIRI_SOCKET': str(self.socket)}
+                        'NIRI_SOCKET': str(self.socket), 'XDG_SESSION_ID': '7'}
 
     def policy_guard(self, policy, environ=None):
-        # Timers the guard sets (GLib's in main()) are recorded here and run by the test.
-        self.scheduled = []
-        guard = self.guard(policy=policy, environ=environ or self.environ,
-                           later=lambda seconds, callback: self.scheduled.append((seconds, callback)))
-        # logind's 20 s would make every end-session failure wait 19 s here.
+        guard = self.guard(policy=policy, environ=environ or self.environ)
+        # Keep ordinary scenarios quick; the budget cases cover the reported range.
         guard.delay_window = 1.5
         return guard
 
@@ -176,16 +207,10 @@ class FlagCase(GuardCase):
     def runtime_flag(self):
         return self.runtime / 'emaki-sleep-lock-failed'
 
-    def niri_quits(self, code=1):
-        """The real niri on quit: it stops its loop before it answers, so the command fails
-        ("error communicating with niri", exit 1) although niri exits and removes its socket."""
-        def outcome():
-            self.socket.unlink()
-            return code
-        return outcome
-
     def fail_lock(self, guard, failure, extra=None):
-        results = {'/usr/bin/emaki-lock --wait': failure, **(extra or {})}
+        results = {'/usr/bin/emaki-lock --wait': failure,
+                   '/usr/bin/emaki-lock --fallback --wait': failure,
+                   '/usr/bin/emaki-lock status': 1, **(extra or {})}
         held = []
 
         def run(argv, **kwargs):
@@ -196,7 +221,7 @@ class FlagCase(GuardCase):
                 outcome = outcome()
             if isinstance(outcome, BaseException):
                 raise outcome
-            return subprocess.CompletedProcess(argv, outcome)
+            return subprocess.CompletedProcess(argv, outcome, stdout='inactive\ninactive\ninactive\n', stderr='')
         with patch('subprocess.run', side_effect=run), patch('sys.stderr') as errors:
             guard.prepare_for_sleep(True)
         self.assertTrue(errors.write.called)
@@ -204,203 +229,287 @@ class FlagCase(GuardCase):
 
 
 class FailurePolicy(FlagCase):
-    """What the guard does when the lock is not confirmed before sleep: one switch.
+    FAILURES = {'exit': 1, 'timeout': subprocess.TimeoutExpired('emaki-lock', 1),
+                'missing': FileNotFoundError('x')}
 
-    The default is today's behaviour ('sleep'). The other values exist so that the
-    owner's answer to the lid-close question is one value, not new code.
-    """
-    FAILURES = {'exit': 1, 'timeout': subprocess.TimeoutExpired('emaki-lock', 1), 'missing': FileNotFoundError('x')}
+    def test_default_and_obsolete_values_fail_closed(self):
+        self.assertEqual(GUARD['DEFAULT_FAILURE_POLICY'], 'end-session')
+        self.assertEqual(GUARD['failure_policy']({}), 'end-session')
+        for value in ('sleep', 'sleep-relock', 'nonsense'):
+            with self.subTest(value=value), patch('sys.stderr'):
+                self.assertEqual(GUARD['failure_policy']({'EMAKI_SLEEP_LOCK_FAILURE': value}), 'end-session')
+        self.assertEqual(set(GUARD['FAILURE_POLICIES']), {'end-session', 'stay-awake'})
 
-    def test_the_default_is_todays_behaviour(self):
-        self.assertEqual(GUARD['DEFAULT_FAILURE_POLICY'], 'sleep')
-        self.assertEqual(GUARD['failure_policy']({}), 'sleep')
-        with patch('sys.stderr') as errors:
-            self.assertEqual(GUARD['failure_policy']({'EMAKI_SLEEP_LOCK_FAILURE': 'nonsense'}), 'sleep')
-        self.assertTrue(errors.write.called)
-        for policy in GUARD['FAILURE_POLICIES']:
-            self.assertEqual(GUARD['failure_policy']({'EMAKI_SLEEP_LOCK_FAILURE': policy}), policy)
-        self.assertEqual(set(GUARD['FAILURE_POLICIES']), {'sleep', 'sleep-relock', 'end-session', 'stay-awake'})
-        self.assertEqual(self.guard().policy, 'sleep')
-
-    def test_sleep_logs_flags_and_releases(self):
-        # The default still sleeps unlocked; the person is told after waking.
-        for name, failure in self.FAILURES.items():
-            with self.subTest(failure=name):
-                self.runtime_flag().unlink(missing_ok=True)
-                guard = self.policy_guard('sleep')
-                self.fail_lock(guard, failure)
-                self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait'])
-                self.assertIsNone(guard.inhibitor)
-                self.assertEqual(self.runtime_flag().read_text(), 'sleep\n')
-                self.assertFalse(self.state_flag().exists())
-                with self.commands():
-                    guard.prepare_for_sleep(False)
-                self.assertEqual(self.events[1:], ['inhibit sleep delay'])
-
-    def test_sleep_relock_blanks_flags_and_locks_first_after_wake(self):
-        for name, failure in self.FAILURES.items():
-            with self.subTest(failure=name):
-                guard = self.policy_guard('sleep-relock')
-                held = self.fail_lock(guard, failure)
-                self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait', 'niri msg action power-off-monitors'])
-                self.assertEqual(held[1], ('niri', True), 'monitors go off before the delay is released')
-                self.assertIsNone(guard.inhibitor)
-                self.assertEqual(self.runtime_flag().read_text(), 'sleep-relock\n')
-                self.assertFalse(self.state_flag().exists())
-                with self.commands():
-                    guard.prepare_for_sleep(False)
-                self.assertEqual(self.events[2:], ['/usr/bin/emaki-lock', 'inhibit sleep delay'])
-                guard.release()
-                with self.commands():
-                    guard.prepare_for_sleep(False)
-                self.assertEqual(self.events[4:], ['inhibit sleep delay'], 'relock happens once')
-
-    def test_end_session_quits_niri_and_keeps_the_delay_until_stopped(self):
-        # niri's exit code says nothing (see niri_quits); its socket going away does.
-        for name, failure in self.FAILURES.items():
-            for code in (1, 0):
-                with self.subTest(failure=name, quit_exit=code):
-                    self.socket.touch()
-                    self.state_flag().unlink(missing_ok=True)
-                    guard = self.policy_guard('end-session')
-                    held = self.fail_lock(guard, failure, {'niri': self.niri_quits(code)})
-                    self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait', 'niri msg action quit --skip-confirmation'])
-                    self.assertEqual(held[1], ('niri', True))
-                    # The session has ended; systemd stops this service with it and
-                    # main() releases then. logind's InhibitDelayMaxSec bounds the wait.
-                    self.assertIsNotNone(guard.inhibitor)
-                    # The flag names the session that ended, so only a later one shows it.
-                    self.assertEqual(self.state_flag().read_text(),
-                                     f'end-session\nboot={BOOT}\nniri={self.socket}\n')
-                    self.assertFalse(self.runtime_flag().exists())
-
-    def test_end_session_waits_for_a_slow_niri_while_holding_the_delay(self):
+    def test_primary_success_never_terminates_or_leaves_notice(self):
         guard = self.policy_guard('end-session')
-        later = threading.Timer(0.2, self.socket.unlink)
-        later.start()
-        self.addCleanup(later.cancel)
-        self.fail_lock(guard, 1, {'niri': 1})
-        self.assertFalse(self.socket.exists())
-        self.assertIsNotNone(guard.inhibitor)
-        self.assertEqual(self.state_flag().read_text().splitlines()[0], 'end-session')
-        self.assertFalse(self.runtime_flag().exists())
-
-    def test_end_session_that_did_not_end_says_so_and_releases(self):
-        # niri answered (or not) but kept running: the session goes on, unlocked. The
-        # guard holds the delay until one second before logind's own deadline, then
-        # releases, and the notice says the session was not ended.
-        outcomes = {'exit 0': 0, 'exit 1': 1, 'missing': FileNotFoundError('niri'),
-                    'timeout': subprocess.TimeoutExpired('niri', 5)}
-        for name, outcome in outcomes.items():
-            with self.subTest(niri=name):
-                self.runtime_flag().unlink(missing_ok=True)
-                self.state_flag().unlink(missing_ok=True)
-                guard = self.policy_guard('end-session')
-                started = time.monotonic()
-                self.fail_lock(guard, 1, {'niri': outcome})
-                waited = time.monotonic() - started
-                self.assertGreaterEqual(waited, guard.delay_window - 1 - 0.05)
-                self.assertTrue(self.socket.exists())
-                self.assertIsNone(guard.inhibitor)
-                self.assertEqual(self.runtime_flag().read_text(), 'end-session-failed\n')
-                # niri was asked to quit and may still go after the release; the runtime
-                # directory goes with the session, so the state directory keeps it too.
-                self.assertEqual(self.state_flag().read_text(),
-                                 f'end-session-failed\nboot={BOOT}\nniri={self.socket}\n')
-                self.assertEqual([seconds for seconds, _callback in self.scheduled], [GUARD['LATE_END_WAIT']])
-
-    def test_end_session_without_a_niri_socket_cannot_tell_an_ended_session(self):
-        environ = dict(self.environ)
-        del environ['NIRI_SOCKET']
-        guard = self.policy_guard('end-session', environ)
-        started = time.monotonic()
-        self.fail_lock(guard, 1, {'niri': 1})
-        # Without a socket `niri msg` reaches no niri: nothing is asked to quit, at once.
-        self.assertLess(time.monotonic() - started, 0.5)
+        with self.commands():
+            guard.prepare_for_sleep(True)
         self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait'])
+        self.assertIsNone(guard.inhibitor)
+        self.assertFalse(self.state_flag().exists() or self.runtime_flag().exists())
+
+    def test_fallback_success_preserves_session(self):
+        for name, failure in self.FAILURES.items():
+            with self.subTest(failure=name):
+                guard = self.policy_guard('end-session')
+                with self.commands({'/usr/bin/emaki-lock --wait': failure}), patch('sys.stderr') as errors:
+                    guard.prepare_for_sleep(True)
+                logged = ''.join(call.args[0] for call in errors.write.call_args_list)
+                self.assertEqual(len(logged.strip().splitlines()), 1)
+                self.assertIn('primary', logged.lower())
+                self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait',
+                                               '/usr/bin/emaki-lock --fallback --wait'])
+                self.assertIsNone(guard.inhibitor)
+                self.assertFalse(self.state_flag().exists() or self.runtime_flag().exists())
+
+    def test_both_failures_request_termination_before_release(self):
+        for name, failure in self.FAILURES.items():
+            with self.subTest(failure=name):
+                guard = self.policy_guard('end-session')
+                held = self.fail_lock(guard, failure)
+                self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait',
+                                               '/usr/bin/emaki-lock --fallback --wait',
+                                               '/usr/bin/emaki-lock status',
+                                               '/usr/bin/loginctl terminate-session 7',
+                                               ' '.join(ShutdownRegression.SHUTDOWN),
+                                               ' '.join(ShutdownRegression.SHOW)])
+                self.assertTrue(all(was_held for _program, was_held in held))
+                self.assertIsNone(guard.inhibitor)
+                self.assertEqual(self.state_flag().read_text(),
+                                 f'end-session\nboot={BOOT}\nniri={self.socket}\n')
+                self.assertFalse(self.runtime_flag().exists())
+
+    def test_termination_failure_and_timeout_always_release(self):
+        for name, failure in self.FAILURES.items():
+            with self.subTest(failure=name):
+                guard = self.policy_guard('end-session')
+                self.fail_lock(guard, 1, {'/usr/bin/loginctl': failure})
+                self.assertIsNone(guard.inhibitor)
+                self.assertIn('/usr/bin/loginctl terminate-session 7', self.events)
+                self.assertEqual(self.runtime_flag().read_text(), 'end-session-failed\n')
+                self.assertFalse(self.state_flag().exists())
+
+    def test_missing_session_id_warns_the_running_shell_and_releases(self):
+        guard = self.policy_guard('end-session', {**self.environ, 'XDG_SESSION_ID': ''})
+        with self.assertRaisesRegex(ValueError, 'No graphical session ID'):
+            self.fail_lock(guard, 1)
         self.assertIsNone(guard.inhibitor)
         self.assertEqual(self.runtime_flag().read_text(), 'end-session-failed\n')
         self.assertFalse(self.state_flag().exists())
-        self.assertEqual(self.scheduled, [])
 
-    def test_end_session_with_a_niri_socket_that_is_not_there_quits_nothing(self):
-        # NIRI_SOCKET names a path that does not exist when the lock fails (a stale import,
-        # a niri other than the one on screen): no niri answers there, and its absence after
-        # a quit would say nothing. The guard must not report the running session as ended.
-        self.socket.unlink()
+    def test_budget_comes_from_logind_and_is_refreshed_on_reacquire(self):
+        guard = self.guard()
+        self.assertEqual(guard.delay_window, 20)
+        guard.release()
+        guard.proxy.delay_usec = 2_000_000
+        guard.acquire()
+        self.assertEqual(guard.delay_window, 2)
+
+    def test_missing_budget_refuses_to_hold_an_inhibitor(self):
+        guard = self.guard()
+        guard.release()
+        with patch.object(guard.proxy, 'get_cached_property', return_value=None):
+            with self.assertRaises(ValueError):
+                guard.acquire()
+        self.assertIsNone(guard.inhibitor)
+
+    def test_command_timeouts_fit_each_reported_budget(self):
+        for window in (0.1, 1, 5, 20, 60):
+            with self.subTest(window=window):
+                guard = self.policy_guard('end-session')
+                guard.delay_window = window
+                clock = [100.0]
+                calls = []
+                def run(argv, **kwargs):
+                    timeout = kwargs['timeout']
+                    calls.append((list(argv), timeout, clock[0]))
+                    self.assertIsNotNone(guard.inhibitor)
+                    self.assertGreater(timeout, 0)
+                    self.assertLessEqual(clock[0] + timeout, 100.0 + window)
+                    clock[0] += timeout
+                    raise subprocess.TimeoutExpired(argv, timeout)
+                with patch('time.monotonic', side_effect=lambda: clock[0]), \
+                        patch('time.sleep', side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)), \
+                        patch('subprocess.run', side_effect=run), patch('sys.stderr'):
+                    guard.prepare_for_sleep(True)
+                commands = [argv for argv, _timeout, _at in calls]
+                self.assertEqual(commands[:4], [
+                    ['/usr/bin/emaki-lock', '--wait'],
+                    ['/usr/bin/emaki-lock', '--fallback', '--wait'],
+                    ['/usr/bin/emaki-lock', 'status'],
+                    ['/usr/bin/loginctl', 'terminate-session', '7']])
+                self.assertTrue(all(argv in (ShutdownRegression.SHUTDOWN, ShutdownRegression.SHOW)
+                                    for argv in commands[4:]))
+                self.assertLessEqual(clock[0], 100.0 + window)
+                self.assertIsNone(guard.inhibitor)
+
+    def test_wake_reacquires_without_launching_an_unconfirmed_locker(self):
         guard = self.policy_guard('end-session')
-        started = time.monotonic()
-        self.fail_lock(guard, 1, {'niri': 1})
-        self.assertLess(time.monotonic() - started, 0.5)
-        self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait'])
-        self.assertIsNone(guard.inhibitor, 'nothing ends, so the delay is not held to the deadline')
-        self.assertEqual(self.runtime_flag().read_text(), 'end-session-failed\n')
-        self.assertFalse(self.state_flag().exists())
-        self.assertEqual(self.scheduled, [])
-
-    def test_stay_awake_holds_the_lid_and_suspends_only_after_a_confirmed_lock(self):
-        guard = self.policy_guard('stay-awake')
-        guard.release(); guard.release_lid(); self.events.clear(); guard.acquire()
-        self.assertEqual(self.events, ['inhibit sleep delay', 'inhibit handle-lid-switch block'])
-        self.addCleanup(guard.release_lid)
+        self.fail_lock(guard, 1)
         self.events.clear()
+        with self.commands():
+            guard.prepare_for_sleep(False)
+        self.assertEqual(self.events, ['inhibit sleep delay'])
+
+    def test_stay_awake_lid_path_suspends_only_after_confirmed_lock(self):
+        guard = self.policy_guard('stay-awake')
         with self.commands():
             guard.lid_closed(True, docked=False)
         self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait', '/usr/bin/systemctl suspend'])
-        self.assertIsNotNone(guard.lid_inhibitor, 'the lid inhibitor is held for the whole session')
+        self.assertIsNotNone(guard.lid_inhibitor)
         self.events.clear()
-        with self.commands():
-            guard.lid_closed(False, docked=False)
-            guard.lid_closed(True, docked=True)
-        self.assertEqual(self.events, [], 'lid open and docked lid close do nothing')
+        with self.commands({'/usr/bin/emaki-lock --wait': 1}), patch('sys.stderr'):
+            guard.lid_closed(True, docked=False)
+        self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait'])
+        self.assertEqual(self.runtime_flag().read_text(), 'stay-awake\n')
 
-    def test_stay_awake_never_suspends_after_a_failed_lock(self):
-        for name, failure in self.FAILURES.items():
-            with self.subTest(failure=name):
-                guard = self.policy_guard('stay-awake')
-                with self.commands({'/usr/bin/emaki-lock --wait': failure}), patch('sys.stderr') as errors:
-                    guard.lid_closed(True, docked=False)
-                self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait'])
-                self.assertTrue(errors.write.called)
-                self.assertEqual(self.runtime_flag().read_text(), 'stay-awake\n')
-                # Sleep requested by other means cannot be refused: lock attempt, log, release.
-                self.events.clear()
-                self.fail_lock(guard, failure)
-                self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait'])
-                self.assertIsNone(guard.inhibitor)
+    def test_external_sleep_under_stay_awake_still_fails_closed(self):
+        guard = self.policy_guard('stay-awake')
+        self.fail_lock(guard, 1)
+        self.assertIn('/usr/bin/loginctl terminate-session 7', self.events)
+        self.assertIsNone(guard.inhibitor)
+        self.assertFalse(any('suspend' in event or 'hibernate' in event for event in self.events))
 
-    def test_no_policy_sleeps_by_itself(self):
-        # The rule "never suspend automatically": only stay-awake runs systemctl, and only
-        # from a lid close (a human gesture that logind would otherwise act on) after a
-        # confirmed lock. Checked above; here: no policy sleeps from a failed lock.
-        for policy in GUARD['FAILURE_POLICIES']:
-            for failure in self.FAILURES.values():
-                guard = self.policy_guard(policy)
-                self.fail_lock(guard, failure)
-                self.assertFalse(any('suspend' in event or 'hibernate' in event for event in self.events), (policy, self.events))
-                guard.release()
-                with self.commands():
-                    guard.prepare_for_sleep(False)
 
-    def test_action_policies_leave_time_for_the_action(self):
-        # logind waits InhibitDelayMaxSec=20 at most; today's 18 s stays for 'sleep'.
-        self.assertEqual(self.guard().lock_timeout, 18)
-        for policy in ('sleep-relock', 'end-session', 'stay-awake'):
-            self.assertEqual(self.policy_guard(policy).lock_timeout, 12)
-        # The guard's window is logind's, and end-session keeps time to see niri go.
-        logind = (ROOT / 'systemd/logind.conf.d/50-emaki.conf').read_text()
-        self.assertIn(f"InhibitDelayMaxSec={GUARD['DELAY_WINDOW']}\n", logind)
-        self.assertEqual(self.guard().delay_window, GUARD['DELAY_WINDOW'])
-        self.assertLessEqual(GUARD['ACTION_LOCK_TIMEOUT'] + GUARD['ACTION_TIMEOUT'] + 2, GUARD['DELAY_WINDOW'] - 1)
+class ShutdownRegression(FlagCase):
+    """A fake clock, delayed lockers and user-manager jobs; never touches a session."""
+    SHUTDOWN = ['/usr/bin/systemctl', '--user', 'start', '--no-block',
+                '--job-mode=replace-irreversibly', 'niri-shutdown.target']
+    SHOW = ['/usr/bin/systemctl', '--user', 'show', '--property=ActiveState', '--value',
+            'niri-emaki.service', 'niri.service', 'graphical-session.target']
 
-    def test_success_leaves_no_flag_under_any_policy(self):
-        for policy in GUARD['FAILURE_POLICIES']:
-            guard = self.policy_guard(policy)
-            with self.commands():
-                guard.prepare_for_sleep(True)
-            self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait'])
-            self.assertFalse(self.state_flag().exists() or self.runtime_flag().exists())
-            guard.release()
+    def scenario(self, *, login_result=0, shutdown_result=0, state='inactive',
+                 fallback_delay=None, late_lock=False, poll_states=None, poll_result=0,
+                 compositor='niri-emaki.service'):
+        guard = self.policy_guard('end-session')
+        guard.delay_window = 20
+        clock = [100.0]
+        calls = []
+        shutdown_at = [None]
+        observed_inactive = [False]
+        attempt_flag = [None]
+
+        def run(argv, **kwargs):
+            calls.append((list(argv), clock[0], kwargs['timeout']))
+            self.assertIsNotNone(guard.inhibitor)
+            self.assertLessEqual(clock[0] + kwargs['timeout'], 120)
+            stdout = ''
+            result = 0
+            if argv == ['/usr/bin/emaki-lock', '--wait']:
+                clock[0] += kwargs['timeout']
+                raise subprocess.TimeoutExpired(argv, kwargs['timeout'])
+            elif argv == ['/usr/bin/emaki-lock', '--fallback', '--wait']:
+                elapsed = kwargs['timeout'] if fallback_delay is None else fallback_delay
+                clock[0] += min(elapsed, kwargs['timeout'])
+                if fallback_delay is None or elapsed > kwargs['timeout']:
+                    raise subprocess.TimeoutExpired(argv, kwargs['timeout'])
+            elif argv == ['/usr/bin/emaki-lock', 'status']:
+                result = 0 if late_lock else 1
+            elif argv == ['/usr/bin/loginctl', 'terminate-session', '7']:
+                # Until every shutdown check succeeds, a crash must not leave a success flag.
+                attempt_flag[0] = self.state_flag().read_text().splitlines()[0]
+                clock[0] += 0.05
+                result = login_result
+            elif argv == self.SHUTDOWN:
+                clock[0] += 0.05
+                shutdown_at[0] = clock[0]
+                result = shutdown_result
+            elif argv == self.SHOW:
+                self.assertIsNotNone(shutdown_at[0], 'polling must follow the shutdown request')
+                clock[0] += min(0.01, kwargs['timeout'])
+                ready = clock[0] - shutdown_at[0] >= 0.30
+                states = ['inactive', 'inactive', state]
+                states[self.SHOW[-3:].index(compositor)] = (
+                    'inactive' if ready and state == 'inactive' else 'deactivating')
+                stdout = '\n'.join(states) + '\n'
+                if poll_states is not None:
+                    stdout = '\n'.join(poll_states) + '\n'
+                result = poll_result
+                observed_inactive[0] = result == 0 and stdout == 'inactive\ninactive\ninactive\n'
+            else:
+                self.fail(f'unexpected command: {argv}')
+            return subprocess.CompletedProcess(argv, result, stdout=stdout, stderr='')
+
+        with patch('subprocess.run', side_effect=run), \
+                patch('time.monotonic', side_effect=lambda: clock[0]), \
+                patch('time.sleep', side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)), \
+                patch('sys.stderr') as errors:
+            guard.prepare_for_sleep(True)
+        self.assertIsNone(guard.inhibitor)
+        self.assertLessEqual(clock[0], 120)
+        self.logs = ''.join(call.args[0] for call in errors.write.call_args_list)
+        self.calls = [argv for argv, _at, _timeout in calls]
+        self.elapsed = clock[0] - 100
+        self.shutdown_elapsed = None if shutdown_at[0] is None else clock[0] - shutdown_at[0] + 0.10
+        self.observed_inactive = observed_inactive[0]
+        self.attempt_flag = attempt_flag[0]
+        return guard
+
+    def test_shutdown_is_proven_before_releasing_the_inhibitor(self):
+        self.scenario()
+        self.assertIn(self.SHUTDOWN, self.calls)
+        self.assertIn(self.SHOW, self.calls)
+        self.assertTrue(self.observed_inactive)
+        self.assertEqual(self.attempt_flag, 'end-session-failed')
+        self.assertLessEqual(self.shutdown_elapsed, 2 + 1e-9)
+        self.assertEqual(self.state_flag().read_text().splitlines()[0], 'end-session')
+
+    def test_each_compositor_must_finish_stopping_before_release(self):
+        for compositor in ('niri-emaki.service', 'niri.service'):
+            with self.subTest(compositor=compositor):
+                self.scenario(compositor=compositor)
+                self.assertTrue(self.observed_inactive)
+                self.assertGreaterEqual(self.calls.count(self.SHOW), 2)
+                self.assertEqual(self.state_flag().read_text().splitlines()[0], 'end-session')
+                self.assertFalse(self.runtime_flag().exists())
+
+    def test_refused_termination_leaves_the_failure_notice(self):
+        self.scenario(login_result=1)
+        self.assertEqual(self.runtime_flag().read_text(), 'end-session-failed\n')
+        self.assertFalse(self.state_flag().exists())
+        self.assertIn('failed', self.logs)
+        self.assertIn('loginctl', self.logs)
+
+    def test_shutdown_request_failure_cannot_claim_success(self):
+        self.scenario(shutdown_result=1)
+        self.assertEqual(self.runtime_flag().read_text(), 'end-session-failed\n')
+        self.assertFalse(self.state_flag().exists())
+        self.assertIn('failed', self.logs)
+
+    def test_shutdown_that_never_finishes_is_bounded_and_cannot_claim_success(self):
+        self.scenario(state='active')
+        self.assertFalse(self.observed_inactive)
+        self.assertIsNotNone(self.shutdown_elapsed)
+        self.assertLessEqual(self.shutdown_elapsed, 2 + 1e-9)
+        self.assertEqual(self.runtime_flag().read_text(), 'end-session-failed\n')
+        self.assertFalse(self.state_flag().exists())
+
+    def test_shutdown_requires_all_units_and_a_successful_complete_query(self):
+        for states, result in ((('active', 'inactive', 'inactive'), 0),
+                               (('inactive', 'active', 'inactive'), 0),
+                               (('inactive', 'inactive', 'active'), 0),
+                               (('inactive', 'inactive'), 0),
+                               (('inactive', 'inactive', 'inactive'), 1)):
+            with self.subTest(states=states, result=result):
+                self.scenario(poll_states=states, poll_result=result)
+                self.assertIn(self.SHOW, self.calls)
+                self.assertLessEqual(self.shutdown_elapsed, 2 + 1e-9)
+                self.assertFalse(self.observed_inactive)
+                self.assertEqual(self.runtime_flag().read_text(), 'end-session-failed\n')
+                self.assertFalse(self.state_flag().exists())
+
+    def test_three_second_fallback_preserves_the_session(self):
+        self.scenario(fallback_delay=3)
+        self.assertNotIn(['/usr/bin/loginctl', 'terminate-session', '7'], self.calls)
+        self.assertFalse(self.state_flag().exists())
+        self.assertEqual(len(self.logs.strip().splitlines()), 1)
+        self.assertIn('primary', self.logs.lower())
+
+    def test_lock_confirmed_after_fallback_timeout_preserves_the_session(self):
+        self.scenario(late_lock=True)
+        self.assertIn(['/usr/bin/emaki-lock', 'status'], self.calls)
+        self.assertNotIn(['/usr/bin/loginctl', 'terminate-session', '7'], self.calls)
+        self.assertFalse(self.state_flag().exists())
 
 
 class NoticeAcrossSessions(FlagCase):
@@ -423,7 +532,7 @@ class NoticeAcrossSessions(FlagCase):
 
     def test_an_ended_session_is_told_once_in_the_next_session_only(self):
         guard = self.policy_guard('end-session')
-        self.fail_lock(guard, 1, {'niri': self.niri_quits()})
+        self.fail_lock(guard, 1)
         # A shell restarted under the same niri (same boot, same socket) is not the next login.
         self.assertEqual(self.notices(str(self.socket), True), [])
         self.assertTrue(self.state_flag().exists())
@@ -432,72 +541,13 @@ class NoticeAcrossSessions(FlagCase):
         self.assertFalse(self.state_flag().exists())
         self.assertEqual(self.notices(self.LATER, True), [], 'told once')
 
-    def test_a_session_that_was_not_ended_is_told_at_once(self):
+    def test_refused_termination_is_told_once_in_the_running_session(self):
         guard = self.policy_guard('end-session')
-        self.fail_lock(guard, 1, {'niri': 1})
-        self.assertEqual(self.notices(str(self.socket), False), ['end-session-failed'])
-        self.assertEqual(self.notices(str(self.socket), True), [])
-
-    def test_a_stale_niri_socket_never_tells_of_an_ended_session(self):
-        # The guard's NIRI_SOCKET is not there (stale import, another niri): nothing quits,
-        # the live session (its shell has the real socket) is told at once that it was not
-        # ended, and no later session hears that one was.
-        self.socket.unlink()
-        guard = self.policy_guard('end-session')
-        self.fail_lock(guard, 1, {'niri': 1})
-        live = '/run/user/1000/niri.wayland-1.777.sock'
-        self.assertEqual(self.notices(live, False), ['end-session-failed'])
-        self.assertEqual(self.notices(live, True), [])
-        self.assertEqual(self.notices(self.LATER, True), [])
-
-    def test_a_session_that_ends_after_the_guard_gave_up_is_told_in_the_next_one(self):
-        # niri goes only after the guard's wait (slow, or frozen by the sleep that followed
-        # the release); the runtime directory with its flag is removed at logout.
-        guard = self.policy_guard('end-session')
-        self.fail_lock(guard, 1, {'niri': 1})
-        self.socket.unlink()
-        self.runtime_flag().unlink()
-        # systemd stops the guard with the session: its check never runs.
-        self.assertEqual(self.notices(self.LATER, True), ['end-session-failed'])
-        self.assertEqual(self.notices(self.LATER, True), [], 'told once')
-
-    def test_the_guard_drops_the_next_sessions_flag_once_this_one_went_on(self):
-        # LATE_END_WAIT after the release niri is still there and the shell has taken the
-        # runtime flag (the person was told): the next login is not told again.
-        guard = self.policy_guard('end-session')
-        self.fail_lock(guard, 1, {'niri': 1})
-        (_seconds, check), = self.scheduled
-        self.assertEqual(self.notices(str(self.socket), False), ['end-session-failed'])
-        self.assertFalse(check(), 'the check runs once')
+        self.fail_lock(guard, 1, {'/usr/bin/loginctl': 1})
         self.assertFalse(self.state_flag().exists())
+        self.assertEqual(self.notices(str(self.socket), False), ['end-session-failed'])
+        self.assertEqual(self.notices(str(self.socket), False), [])
         self.assertEqual(self.notices(self.LATER, True), [])
-
-    def test_the_next_sessions_flag_stays_while_this_one_is_not_told_or_has_ended(self):
-        for case in ('runtime flag not taken', 'niri gone'):
-            with self.subTest(case):
-                for flag in (self.state_flag(), self.runtime_flag()):
-                    flag.unlink(missing_ok=True)
-                self.socket.touch()
-                guard = self.policy_guard('end-session')
-                self.fail_lock(guard, 1, {'niri': 1})
-                (_seconds, check), = self.scheduled
-                if case == 'niri gone':
-                    self.socket.unlink()
-                    self.runtime_flag().unlink()
-                check()
-                self.assertTrue(self.state_flag().exists())
-                # The runtime directory goes at logout, with a flag no shell took.
-                self.runtime_flag().unlink(missing_ok=True)
-                self.assertEqual(self.notices(self.LATER, True), ['end-session-failed'])
-
-    def test_the_check_leaves_a_newer_flag_alone(self):
-        guard = self.policy_guard('end-session')
-        self.fail_lock(guard, 1, {'niri': 1})
-        (_seconds, check), = self.scheduled
-        self.runtime_flag().unlink()
-        self.state_flag().write_text('end-session\nboot=another-boot\nniri=/run/user/1000/niri.other.sock\n')
-        check()
-        self.assertEqual(self.state_flag().read_text().splitlines()[0], 'end-session')
 
     def test_a_flag_from_another_boot_or_an_older_guard_is_told(self):
         flag = self.state_flag()
@@ -509,7 +559,7 @@ class NoticeAcrossSessions(FlagCase):
                 self.assertFalse(flag.exists())
 
     def test_every_flag_name_has_a_known_name_and_its_own_sentence(self):
-        names = set(GUARD['FAILURE_POLICIES']) | {GUARD['SESSION_NOT_ENDED']}
+        names = {'sleep', 'sleep-relock', 'end-session', 'stay-awake', 'end-session-failed'}
         known, = (ast.literal_eval(node.value) for node in ast.parse(self.HELPER.read_text()).body
                   if isinstance(node, ast.Assign) and ast.unparse(node.targets[0]) == 'SLEEP_LOCK_POLICIES')
         self.assertEqual(set(known), names)
@@ -544,8 +594,77 @@ class LogindProxy(Logind):
     def signal_subscribe(self, *_args):
         return 1
 
-    def get_cached_property(self, _name):
-        return None
+    def get_cached_property(self, name):
+        return super().get_cached_property(name)
+
+
+class StartupValidation(unittest.TestCase):
+    """Startup ordering without a system bus, display or notification socket."""
+
+    def run_main(self, *, lookup_fails=False, preparing=False):
+        from gi.repository import GLib
+        self.events = []
+        acquired = {}
+        ready = []
+        signals = []
+        test = self
+
+        class Proxy(LogindProxy):
+            def call_sync(self, method, params, *rest):
+                if method == 'GetSession':
+                    held = acquired.get('guard')
+                    test.events.append(f'held during lookup: {held is not None and held.inhibitor is not None}')
+                    if lookup_fails:
+                        raise GLib.Error('no such session')
+                return super().call_sync(method, params, *rest)
+
+            def get_cached_property(self, name):
+                if name == 'PreparingForSleep':
+                    return Reply(preparing)
+                return super().get_cached_property(name)
+
+        class Loop:
+            def run(self):
+                pass
+
+            def quit(self):
+                pass
+
+        original_acquire = GUARD['SleepGuard'].acquire
+
+        def acquire(guard):
+            original_acquire(guard)
+            acquired['guard'] = guard
+
+        def prepare(guard, sleeping):
+            self.assertTrue(sleeping)
+            self.assertIsNotNone(guard.inhibitor)
+            self.assertIn(GUARD['signal'].SIGTERM, signals)
+            self.events.append('startup sleep guarded')
+
+        proxy = Proxy(self.events, lambda: bool(ready))
+        with patch.object(GUARD['Gio'].DBusProxy, 'new_for_bus_sync', return_value=proxy), \
+                patch.object(GUARD['GLib'], 'MainLoop', Loop), \
+                patch.object(GUARD['GLib'], 'unix_signal_add', side_effect=lambda _priority, sig, _callback: signals.append(sig)), \
+                patch.object(GUARD['SleepGuard'], 'acquire', acquire), \
+                patch.object(GUARD['SleepGuard'], 'prepare_for_sleep', prepare), \
+                patch.dict(GUARD['main'].__globals__, {'notify_ready': lambda: ready.append(True)}), \
+                patch.dict(os.environ, {'XDG_SESSION_ID': '7', 'EMAKI_SLEEP_LOCK_FAILURE': 'end-session'}), \
+                patch('sys.stderr'):
+            status = GUARD['main']()
+        self.assertTrue(not acquired or acquired['guard'].inhibitor is None, 'startup cleanup must release')
+        self.ready = ready
+        return status
+
+    def test_failed_lookup_still_holds_the_delay(self):
+        self.assertEqual(self.run_main(lookup_fails=True), 1)
+        self.assertIn('held during lookup: True', self.events)
+        self.assertEqual(self.ready, [])
+
+    def test_startup_during_sleep_registers_termination_handling_first(self):
+        self.assertEqual(self.run_main(preparing=True), 0)
+        self.assertIn('held during lookup: True', self.events)
+        self.assertIn('startup sleep guarded', self.events)
 
 
 class Readiness(unittest.TestCase):
@@ -555,7 +674,7 @@ class Readiness(unittest.TestCase):
     datagram socket of this test."""
 
     def setUp(self):
-        directory = tempfile.mkdtemp(prefix='notify-', dir=ROOT / '.cache')
+        directory = tempfile.mkdtemp(prefix='em-', dir='/tmp')
         self.addCleanup(shutil.rmtree, directory, True)
         self.path = os.path.join(directory, 'notify')
         self.receiver = self.listen(self.path)
@@ -611,7 +730,8 @@ class Readiness(unittest.TestCase):
 
     def test_ready_and_restart_reset_once_the_inhibitor_is_held(self):
         self.assertEqual(self.run_main({'NOTIFY_SOCKET': self.path}), 0, self.logged)
-        self.assertEqual(self.events, ['notified before Inhibit: False', 'inhibit sleep delay', 'GetSession 7',
+        self.assertEqual(self.events, ['notified before Inhibit: False', 'inhibit sleep delay',
+                                       'GetSession 7', 'Get Session.Type', 'Get Session.User', 'Get Session.Id',
                                        'notified before the loop: True', 'NOTIFY_SOCKET left for children: False'])
         # One message: systemd 262 handles its READY=1 first, which makes the service running,
         # the only state (with stopping) in which it takes RESTART_RESET=1 (service.c:5777).
@@ -638,15 +758,6 @@ class Readiness(unittest.TestCase):
         self.assertEqual(self.run_main({'NOTIFY_SOCKET': self.path + '-missing'}), 0)
         self.assertIn('could not notify systemd', self.logged)
         self.assertEqual(self.messages(), [])
-
-
-class PackageReadme(unittest.TestCase):
-    def test_readme_states_the_lock_timeouts_of_the_code(self):
-        # packaging/README.md describes the guard to packagers; its numbers follow the script.
-        text = ' '.join((ROOT / 'packaging/README.md').read_text().split())
-        for phrase in (f"{GUARD['LOCK_TIMEOUT']}-second timeout",
-                       f"{GUARD['ACTION_LOCK_TIMEOUT']} seconds when `EMAKI_SLEEP_LOCK_FAILURE`"):
-            self.assertTrue(phrase in text, f'packaging/README.md does not say "{phrase}"')
 
 
 if __name__ == '__main__':

@@ -11,7 +11,8 @@ Scope {
     // them: the programs stay installed, gtk-launch and MIME handling are unchanged
     // and the dock still resolves their windows (DECISIONS 2026-10-03).
     // Rich helpers and duplicate indicator entries; KDE Connect and SMS stay visible.
-    readonly property var hiddenIds: ["avahi-discover", "bssh", "bvnc", "lftp", "lstopo", "qv4l2", "qvidcap", "stoken-gui", "stoken-gui-small", "vim", "qt6ct", "org.kde.kdeconnect.daemon", "org.kde.kdeconnect.handler", "org.kde.kdeconnect.nonplasma", "kcm_updates", "org.kde.discover.flatpak", "org.kde.discover.notifier", "org.kde.discover.snap", "org.kde.discover.urlhandler", "org.kde.ConfigurePrinter", "libreoffice-xsltfilter"]
+    // NoDisplay entries are excluded by shown(), without duplicate IDs here.
+    readonly property var hiddenIds: ["avahi-discover", "bssh", "bvnc", "lftp", "lstopo", "qv4l2", "qvidcap", "stoken-gui", "stoken-gui-small", "vim", "qt6ct", "org.kde.kdeconnect.nonplasma", "mpv", "org.kde.kwrite"]
     readonly property var entries: DesktopEntries.applications.values.filter(entry => catalog.shown(entry)).sort((a, b) => a.name.localeCompare(b.name))
     readonly property string launcher: Quickshell.env("EMAKI_GTK_LAUNCH") || "gtk-launch"
     property string launchState: "idle"

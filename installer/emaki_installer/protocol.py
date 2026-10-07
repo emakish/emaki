@@ -39,6 +39,7 @@ def encode_frame(value):
 class Job:
     id: str
     cancelled: threading.Event = field(default_factory=threading.Event)
+    skip_update: threading.Event = field(default_factory=threading.Event)
     state: dict | None = None
     terminal: dict | None = None
     history_full: bool = False
@@ -52,12 +53,13 @@ class Job:
 class Controller:
     def __init__(self, inventory, worker_factory, *, test_mode=False, version='4.5',
                  clock=time.monotonic, log_stream=None, save_log=None, reboot=None,
-                 validate_plan=None, set_timezone=None):
+                 validate_plan=None, set_timezone=None, prepare_reboot=None):
         self.inventory, self.worker_factory = inventory, worker_factory
         self.test_mode, self.version, self.clock = test_mode, version, clock
         self.log_stream, self.save_log_fn, self.reboot_fn = log_stream, save_log, reboot
         self.validate_plan = validate_plan
         self.set_timezone_fn = set_timezone
+        self.prepare_reboot_fn = prepare_reboot
         self.redactor = Redactor()
         self.lock = threading.RLock()
         self.operation_lock = threading.Lock()
@@ -81,6 +83,8 @@ class Controller:
 
     def emit(self, kind, **fields):
         with self.lock:
+            if kind in ('state', 'progress') and 'notice' not in fields and (self.job.state or {}).get('notice'):
+                fields['notice'] = self.job.state['notice']
             msg = self.message(kind, job_id=self.job.id, **fields)
             if kind in ('state', 'progress'):
                 self.job.state = msg
@@ -163,8 +167,11 @@ class Controller:
             return [self.message('hello', ident, proto=1, archinstall_version=self.version,
                                  emaki_version=__version__, emaki_label=__label__, test_mode=self.test_mode,
                                  busy_job=self.job.id if self.busy else None,
+                                 timezone_guess=hasattr(self.inventory, "timezone_guess"),
                                  reserved_logins=list(RESERVED_LOGINS),
                                  console_chars={name: list(record) for name, record in CONSOLE_CHARS.items()})]
+        if kind == 'get_timezone_guess':
+            return [self.reply(ident, **self.inventory.timezone_guess())]
         if kind == 'set_timezone':
             with self.lock:
                 require(not self.busy and not self.stopping, Code.BUSY, 'The worker is busy or stopping.')
@@ -203,6 +210,27 @@ class Controller:
                                 'deadline': self.clock() + 600}
             return [self.message('plan_ack', ident, plan_id=plan_id, token=token, expires_s=600,
                                  summary=plan.summary, errors=[], warnings=plan.warnings)]
+        if kind == 'renew':
+            with self.lock:
+                require(not self.busy and not self.stopping, Code.BUSY, 'The worker is busy or stopping.')
+                pending = self.pending
+                if pending and self.clock() >= pending['deadline']:
+                    self.invalidate()
+                    raise InstallError(Code.TOKEN_EXPIRED, 'Plan token expired; review a new plan.')
+                require(pending is not None and msg.get('plan_id') == pending['plan_id']
+                        and isinstance(msg.get('token'), str)
+                        and secrets.compare_digest(msg['token'], pending['token']),
+                        Code.TOKEN_INVALID, 'Invalid plan confirmation.')
+                pending['token'] = secrets.token_urlsafe(32)
+                pending['deadline'] = self.clock() + 600
+                return [self.message('plan_ack', ident, plan_id=pending['plan_id'],
+                                     token=pending['token'], expires_s=600,
+                                     summary=pending['plan'].summary, errors=[], warnings=pending['plan'].warnings)]
+        if kind == 'skip_update':
+            with self.lock:
+                require(self.busy, Code.BAD_REQUEST, 'No installation is running.')
+                self.job.skip_update.set()
+                return [self.reply(ident)]
         if kind == 'confirm':
             with self.lock:
                 require(not self.busy and not self.stopping, Code.BUSY, 'The worker is busy or stopping.')
@@ -252,14 +280,22 @@ class Controller:
             require(self.save_log_fn is not None, Code.BAD_DEST, 'Log export unavailable.')
             self.save_log_fn(msg.get('dest'))
             return [self.reply(ident)]
-        if kind == 'reboot':
+        if kind in ('prepare_reboot', 'reboot'):
             require(self.job is not None and self.job.terminal is not None
                     and self.job.terminal['type'] == 'done', Code.BAD_REQUEST,
                     'Reboot is only available after a completed installation.')
+            if kind == 'prepare_reboot':
+                require(self.prepare_reboot_fn is not None, Code.BAD_REQUEST, 'Reboot is unavailable.')
+                self.prepare_reboot_fn()
+                return [self.reply(ident)]
+            require(self.reboot_fn is not None, Code.BAD_REQUEST, 'Reboot is unavailable.')
             self.stopping = True
             self.invalidate()
-            require(self.reboot_fn is not None, Code.BAD_REQUEST, 'Reboot is unavailable.')
-            self.reboot_fn()
+            try:
+                self.reboot_fn()
+            except Exception:
+                self.stopping = False
+                raise
             return [self.reply(ident)]
         raise InstallError(Code.BAD_REQUEST, 'Unknown request type.')
 

@@ -4,6 +4,7 @@
 --source-root allows an archived baseline. Pss is of this offscreen fixture only,
 not the live shell. Raw Qt image logs and samples accompany the JSON report.
 """
+from runtime_fixture import runtime_path
 import argparse
 import json
 import os
@@ -36,7 +37,7 @@ def run_profile(source_root, output, profile):
     env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
                QML_DISABLE_DISK_CACHE='1', QT_SCALE_FACTOR='1', MALLOC_CONF='thp:never',
                QT_LOGGING_RULES='qt.quick.image=true;qt.quick.pixmapcache=true',
-               XDG_RUNTIME_DIR=str(profile/'runtime'), XDG_CACHE_HOME=str(profile/'cache'),
+               XDG_RUNTIME_DIR=str(runtime_path(profile)), XDG_CACHE_HOME=str(profile/'cache'),
                XDG_CONFIG_HOME=str(profile/'config'), XDG_STATE_HOME=str(profile/'state'),
                XDG_DATA_HOME=str(profile/'data'), XDG_DATA_DIRS=str(profile/'data'),
                DBUS_SESSION_BUS_ADDRESS='unix:path='+str(profile/'no-session'),
@@ -72,10 +73,8 @@ def run_profile(source_root, output, profile):
     log = (output/'qs.log').read_text()
     assert 'BACKDROP_COMPLETE' in log, log
     assert not any(word in log for word in ('ReferenceError', 'TypeError', 'Backdrop was not ready', 'Revoked backdrop remained ready')), log
-    # qs's unused IPC socket is denied in restricted sandboxes; it doesn't affect
-    # this fixture's image loading. No warning other than that is accepted.
-    expected_offscreen = ('Failed to start IPC server on path',
-                          'Failed to create wl_display (Operation not permitted)',
+    assert 'Failed to start IPC server' not in log, log
+    expected_offscreen = ('Failed to create wl_display (Operation not permitted)',
                           'Failed to create wl_display (No such file or directory)',
                           'Failed to query render formats: No GL context.',
                           'Render format initialization failed. All buffers will fall back to SHM.')

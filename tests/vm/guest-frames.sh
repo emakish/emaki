@@ -1,5 +1,7 @@
 #!/bin/bash
-# F0, INSIDE the VM (as arch, logged in): capture a sequence of screenshots while a command runs.
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# F0, INSIDE the VM (as the selected account, logged in): capture a sequence of screenshots while a command runs.
 #   tests/vm/ssh.sh 'bash -s -- <frames> <x,y_wxh|full> <delay before command> "<command>"' \
 #       < tests/vm/guest-frames.sh | tar -C <directory> -xf -
 # Geometry uses grim logical pixels, with the space replaced by “_”. PPM frames (grim -t ppm, ~10 ms per
@@ -7,9 +9,10 @@
 count=$1; geom=$2; pre=$3; cmd=$4
 # Optional cadence bounds evidence size for multi-second lock recovery bursts.
 cadence=${5:-0}
-export XDG_RUNTIME_DIR=/run/user/1000
-export WAYLAND_DISPLAY=$(ls $XDG_RUNTIME_DIR | grep -E '^wayland-[0-9]+$' | head -1)
-export NIRI_SOCKET=$(ls $XDG_RUNTIME_DIR/niri.*.sock 2>/dev/null | head -1)
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
+export WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-$(ls "$XDG_RUNTIME_DIR" | grep -E '^wayland-[0-9]+$' | head -1)}
+export NIRI_SOCKET=${NIRI_SOCKET:-$(ls "$XDG_RUNTIME_DIR"/niri.*.sock 2>/dev/null | head -1)}
 d=$XDG_RUNTIME_DIR/frames
 rm -rf "$d"; mkdir -p "$d"
 g=(); [ "$geom" != full ] && g=(-g "${geom/_/ }")

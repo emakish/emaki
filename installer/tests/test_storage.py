@@ -13,7 +13,7 @@ from emaki_installer.errors import InstallError
 from emaki_installer.inventory import memory_size
 from emaki_installer.planner import make_plan
 from emaki_installer.protocol import Controller
-from emaki_installer.render import grub_defaults, mkinitcpio_config, normalize_fstab
+from emaki_installer.render import grub_defaults, mkinitcpio_machine_config, normalize_fstab
 from emaki_installer.runtime import Redactor
 from emaki_installer.worker import Worker
 from support import FakeInventory, RecordingRunner, config, inventory, manual
@@ -79,16 +79,16 @@ class StorageTests(unittest.TestCase):
             make_plan(c, inventory(partitions=True))
 
     def test_hooks_keep_busybox_encrypt_resume_filesystems_overlay_order(self):
-        text = mkinitcpio_config(True, True, True)
+        text = mkinitcpio_machine_config(True, True, True)
         hooks = text.split('HOOKS=(')[1].split(')')[0].split()
         for before, after in [('udev', 'encrypt'), ('keyboard', 'encrypt'), ('block', 'encrypt'),
-                              ('encrypt', 'resume'), ('resume', 'filesystems'),
+                              ('encrypt', 'emaki-resume'), ('emaki-resume', 'filesystems'),
                               ('filesystems', 'grub-btrfs-overlayfs')]:
             self.assertLess(hooks.index(before), hooks.index(after))
         self.assertNotIn('systemd', hooks)
         self.assertIn('umask 0077', text)
         self.assertIn('FILES=(/etc/cryptsetup-keys.d/emaki-root.key)', text)
-        self.assertNotIn('resume', mkinitcpio_config(False))
+        self.assertNotIn('resume', mkinitcpio_machine_config(False))
         grub = grub_defaults(False, 'luks-uuid', 'root-uuid', 123)
         for word in ('cryptdevice=UUID=luks-uuid:emaki-root', 'resume=UUID=root-uuid',
                      'resume_offset=123', 'GRUB_ENABLE_CRYPTODISK=y', 'argon2',

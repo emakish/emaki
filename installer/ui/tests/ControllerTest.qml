@@ -291,6 +291,9 @@ ShellRoot {
             const words = !activity ? "" : activity.name === "signatures" ? "Checking package signatures…" : "Downloading updates…";
             const expected = activity ? words + (activity.total ? " " + activity.done + " of " + activity.total : "") : message.indeterminate ? "Working…" : message.phase_pct + "%";
             test.check(controller.step === "install" && !!status && status.visible && status.text === expected, "the phase row shows " + expected + " (" + status?.text + ")");
+            const stepLine = test.findItem(viewLoader.item, "installStep");
+            const stepText = message.step?.text || "";
+            test.check(!!stepLine && stepLine.text === stepText && stepLine.visible === !!stepText, "the running step appears below the bar and clears at its boundary");
             if (activity)
                 ++test.counts;
         } else if (message.type === "error") {
@@ -347,9 +350,19 @@ ShellRoot {
         mockTransport: !test.socketMode
         helpersEnabled: false
         partitionEditorCommand: ["/usr/bin/true"]
+        catalog: ({
+                layouts: [],
+                zones: [],
+                trial: false,
+                output_scales: {
+                    "eDP-1": 1.25,
+                    "HDMI-A-1": 1.5
+                }
+            })
         onClearPasswords: ++test.clears
         onOutbound: message => {
             if (message.type === "plan") {
+                test.check(JSON.stringify(message.config.output_scales) === JSON.stringify(controller.catalog.output_scales), "plan keeps both fractional session output scales");
                 test.check(message.config.software === (test.scenario === "choices" ? "minimal" : "rich"), "plan carries software selection");
                 test.check(message.config.encryption === (test.scenario === "choices" ? "separate" : "none"), "plan carries explicit encryption choice");
                 if (test.scenario === "choices")

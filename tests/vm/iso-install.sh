@@ -33,7 +33,7 @@ iso_ssh_args
 done' || iso_die 'installer worker was not ready within 300 seconds (see guest service diagnostics)'
 "${ISO_SSH[@]}" 'umask 077; cat > "$HOME/emaki-plan.json"' <"$plan"
 if [[ $fixture == alongside ]]; then
-    # 0.2 ships with alongside Windows switched off in the installer core. Ask the packaged
+    # This release ships with alongside Windows switched off in the installer core. Ask the packaged
     # worker for the plan only (no --yes, nothing is written); a refusal of the mode itself
     # means this fixture does not apply to the image: exit 77, neither a pass nor a failure.
     set +e
@@ -69,6 +69,6 @@ statuses=("${PIPESTATUS[@]}")
 set -e
 printf '%s\n' "${statuses[0]}" >"$run/exit-code"
 "${ISO_SSH[@]}" 'rm -f "$HOME/emaki-plan.json"' || true
-printf 'Installation evidence: %s\n' "$run"
+printf 'Command-line installation evidence [CLI]: %s\n' "$run"
 if ((statuses[0] != 0)); then exit "${statuses[0]}"; fi
 ((statuses[1] == 0)) || iso_die 'could not save installer NDJSON'

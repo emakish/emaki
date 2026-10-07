@@ -1,0 +1,78 @@
+#!/usr/bin/python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Check the installed Quickshell build against both installed Qt releases."""
+import argparse
+from pathlib import Path
+import os
+import re
+import subprocess
+import sys
+
+BUILD_VERSION = Path('/usr/share/quickshell-emaki/qt-build-version')
+COMPONENTS = ('qt6-base', 'qt6-declarative')
+
+
+def build_version(build_file):
+    try:
+        built = build_file.read_text().strip()
+    except FileNotFoundError:
+        # Some packages record the validated build only in their Provides field.
+        # Query only the installed package, never a newer build in a sync database.
+        result = subprocess.run(['/usr/bin/pacman', '-Qi', 'quickshell-emaki'],
+                                env=dict(os.environ, LC_ALL='C'), capture_output=True,
+                                text=True, timeout=5, check=True)
+        fields = re.findall(r'^Provides\s*:\s*([^\n]*(?:\n[ \t]+[^\n]*)*)',
+                            result.stdout, re.MULTILINE)
+        versions = [value.partition('=')[2] for field in fields for value in field.split()
+                    if value.partition('=')[0] == 'emaki-quickshell-qt-build']
+        if len(fields) != 1 or len(versions) != 1:
+            raise ValueError('quickshell-emaki has missing or ambiguous Qt build metadata')
+        built = versions[0]
+    if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', built):
+        raise ValueError('quickshell-emaki has invalid Qt build metadata')
+    return built
+
+
+def check(build_file=BUILD_VERSION):
+    built = build_version(build_file)
+    result = subprocess.run(['/usr/bin/pacman', '-Q', *COMPONENTS],
+                            capture_output=True, text=True, timeout=5, check=True)
+    installed = {}
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) != 2 or fields[0] not in COMPONENTS or fields[0] in installed:
+            raise ValueError('installed Qt package versions could not be read')
+        name, version = fields
+        match = re.fullmatch(r'(?:[0-9]+:)?([0-9]+\.[0-9]+\.[0-9]+)-[0-9]+(?:\.[0-9]+)*', version)
+        if not match:
+            raise ValueError(f'{name} has an unrecognised version: {version}')
+        installed[name] = (match[1], version)
+    if set(installed) != set(COMPONENTS):
+        raise ValueError('both qt6-base and qt6-declarative must be installed')
+    if any(upstream != built for upstream, _ in installed.values()):
+        versions = ', '.join(f'{name} {installed[name][1]}' for name in COMPONENTS)
+        raise ValueError(f'quickshell-emaki was built with Qt {built}; installed: {versions}')
+
+
+def main(build_file=BUILD_VERSION, *, hook=False):
+    try:
+        check(build_file)
+    except (OSError, UnicodeError, ValueError, subprocess.SubprocessError) as error:
+        print(f'WARNING: Emaki panel Qt compatibility could not be confirmed: {error}.', file=sys.stderr)
+        print('The panel can still start; this warning does not prove it will crash. '
+              'Run sudo pacman -Syu to install the matching quickshell-emaki rebuild. '
+              'If it is not available, wait for the rebuilt Emaki update. '
+              'Do not downgrade Qt packages individually. '
+              'If the panel is already unavailable, use this terminal or Ctrl+Alt+F3 '
+              'to update, or restore a known-good system snapshot.', file=sys.stderr)
+        return 0 if hook else 1
+    return 0
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--hook', action='store_true',
+                        help='print warnings without failing a completed package transaction')
+    args = parser.parse_args()
+    raise SystemExit(main(hook=args.hook))

@@ -85,6 +85,7 @@ esac
 
 DIM="${EMAKI_IDLE_DIM:-150}"; LOCK="${EMAKI_IDLE_LOCK:-300}"; OFF="${EMAKI_IDLE_OFF:-330}"
 seconds EMAKI_IDLE_DIM "$DIM"; seconds EMAKI_IDLE_LOCK "$LOCK"; seconds EMAKI_IDLE_OFF "$OFF"
+[ ! -f /etc/emaki-live/greetd.toml ] || LOCK=0
 
 only=
 if [ "${1:-}" = "--only" ]; then

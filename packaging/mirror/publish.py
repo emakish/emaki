@@ -40,6 +40,8 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 import r2  # noqa: E402
+import transactions  # noqa: E402
+import acceptance  # noqa: E402
 
 CHANNELS = ('testing', 'stable')
 DB_FILES = ('emaki.db', 'emaki.db.sig', 'emaki.files', 'emaki.files.sig')
@@ -50,11 +52,10 @@ ID_RE = re.compile(r'^\d{8}T\d{6}Z$')
 PACKAGE_RE = re.compile(r'^[a-z0-9@._+-]+-[^-/]+-[^-/]+-(x86_64|any)\.pkg\.tar\.zst$')
 DEFAULT_KEY = '668569956D2D747847D87D01F62680BE583363AC'
 STAMP_MAX_AGE = datetime.timedelta(hours=24)
-REQUIRED_STARTS = ('0.1.0', '0.1.1')
-REQUIRED_RUNS = ('T1', 'T2')
-REQUIRED_SIZES = ('1920x1080', '2560x1600')  # tests/vm/upgrade-check.py SIZES
+REQUIRED_RUNS = acceptance.REQUIRED_RUNS
+REQUIRED_SIZES = acceptance.REQUIRED_SIZES
 EMAKI_PACKAGES = ('emaki', 'emaki-apps', 'emaki-config', 'emaki-desktop', 'emaki-installer', 'emaki-keyring',
-                  'emaki-mirrorlist', 'niri-emaki', 'quickshell-emaki', 'xdg-desktop-portal-gnome-emaki')
+                  'emaki-mirrorlist', 'emaki-nvidia', 'niri-emaki', 'quickshell-emaki', 'xdg-desktop-portal-gnome-emaki')
 GITHUB_REPO = 'emakish/packages'
 GITHUB_DOWNLOAD = 'https://github.com/emakish/packages/releases/download'
 
@@ -1042,24 +1043,43 @@ class Publisher:
             say(f'pointers/{channel}: {current or "(none)"} -> {snap_id}')
         self.done(journal, 6)
 
-    def check_closure(self, repo_dir, targets):
+    def check_transactions(self, repo_dir, targets, previous=None):
         if self.args.arch_dbs == 'skip':
-            say('closure check skipped (--arch-dbs skip)')
-            return
-        client = ScratchPacman()
-        try:
-            result = client.resolve(repo_dir, targets, self.args.arch_dbs)
-        finally:
-            client.close()
-        if result.returncode:
-            raise Refused('pacman cannot resolve ' + ' '.join(targets) + ':\n' +
-                          (result.stderr.strip() or result.stdout.strip()))
-        say(f'closure: {" ".join(targets)} resolve ({len(result.stdout.splitlines())} packages)')
+            raise Refused('Cannot skip the release check [pacman]. Choose auto or a directory holding core.db and extra.db.')
+        if targets:
+            profiles = [targets]
+        else:
+            # Reuse the worker's package selection, including boot and snapshot packages.
+            sys.path.insert(0, str(ROOT / 'installer'))
+            from emaki_installer.worker import software_packages
+            profiles = [software_packages('minimal'), software_packages('rich')]
+        for profile in profiles:
+            client = ScratchPacman()
+            try:
+                transactions.check_transactions(client, repo_dir, profile, self.args.arch_dbs, previous)
+            except transactions.TransactionError as error:
+                raise Refused(str(error)) from None
+            except subprocess.TimeoutExpired:
+                raise Refused('Release check timed out [pacman].') from None
+            finally:
+                client.close()
+        say('Release check passed [pacman]: fresh install and full system upgrade.')
 
-    def check_db_closure(self, db, targets):
+    def check_release(self, db, channel, targets):
+        """Check the candidate against the complete package sets machines can already hold."""
+        previous = []
+        channels = ('testing', 'stable') if channel == 'testing' else ('stable',)
+        for baseline in channels:
+            current, _ = self.pointer(baseline)
+            if current:
+                old = self.snapshot(baseline, current)['emaki.db']
+                if old not in previous:
+                    previous.append(old)
         with tempfile.TemporaryDirectory() as temp:
-            (Path(temp) / 'emaki.db').write_bytes(db)
-            self.check_closure(Path(temp), targets)
+            directory = Path(temp)
+            (directory / 'emaki.db').write_bytes(db)
+            for old in previous or [None]:
+                self.check_transactions(directory, targets, old)
 
     def check_tree(self):
         tree = Path(self.args.source_tree)
@@ -1203,6 +1223,24 @@ class Publisher:
             (work / f'{name}.tar.gz').write_bytes(files[name])
         return current
 
+    def retain_package_signatures(self, channel, work, packages):
+        """Keep a published signature when identical package bytes were signed again.
+
+        Re-select on resume too: journal inputs bind package bytes and provenance, while
+        the database and manifest must describe the signature actually served.
+        """
+        for filename, entry in packages.items():
+            signature, _ = self.backend.get(f'{channel}/x86_64/{filename}.sig')
+            if signature is None or sha256(signature) == entry['sig']:
+                continue
+            retained = work / 'signatures' / (filename + '.sig')
+            retained.parent.mkdir(parents=True, exist_ok=True)
+            retained.write_bytes(signature)
+            if not self.verifier.verify(entry['path'], retained):
+                raise Refused(f'{filename}: published signature does not verify against the candidate package')
+            entry['sig_path'] = str(retained.resolve())
+            entry['sig'] = sha256(signature)
+
     def build_db(self, channel, work, packages, sign):
         """repo-add the new packages on top of the channel's current database."""
         work.mkdir(parents=True, exist_ok=True)
@@ -1213,7 +1251,7 @@ class Publisher:
         pool.mkdir()
         for filename, entry in packages.items():
             os.symlink(entry['path'], pool / filename)
-            os.symlink(entry['path'] + '.sig', pool / (filename + '.sig'))
+            os.symlink(entry.get('sig_path', entry['path'] + '.sig'), pool / (filename + '.sig'))
         self.previous_db(channel, work)
         self.signer.repo_add(work / 'emaki.db.tar.gz', [pool / f for f in sorted(packages)], sign=sign)
         return pool
@@ -1242,12 +1280,21 @@ class Publisher:
                 self.build_db(channel, trial, packages, sign=False)
                 (trial / 'emaki.db').unlink(missing_ok=True)
                 shutil.copyfile(trial / 'emaki.db.tar.gz', trial / 'emaki.db')
-                self.check_closure(trial, targets)
+                self.check_release((trial / 'emaki.db').read_bytes(), channel, targets)
             if self.dry_run:
                 self.dry_plan(journal, packages)
                 return
             self.checked(journal)
+        elif 6 not in journal['steps']:
+            try:
+                with tempfile.TemporaryDirectory() as temp:
+                    trial = Path(temp)
+                    self.build_db(channel, trial, packages, sign=False)
+                    self.check_release((trial / 'emaki.db.tar.gz').read_bytes(), channel, targets)
+            except Refused as error:
+                raise self.abandon(journal, error) from None
         self.take_lock(journal)
+        self.retain_package_signatures(channel, work, packages)
 
         if 2 not in journal['steps']:
             for filename, entry in sorted(packages.items()):
@@ -1255,7 +1302,8 @@ class Publisher:
                     archive = entry['source']['archive']
                     self.put_source(entry['source'], Path(directory) / archive)
                 for suffix in ('', '.sig'):
-                    result = self.put_or_same(f'{channel}/x86_64/{filename}{suffix}', Path(entry['path'] + suffix))
+                    path = entry.get('sig_path', entry['path'] + suffix) if suffix else entry['path']
+                    result = self.put_or_same(f'{channel}/x86_64/{filename}{suffix}', Path(path))
                     say(f'{channel}/x86_64/{filename}{suffix}: {result}')
             self.done(journal, 2)
 
@@ -1315,7 +1363,7 @@ class Publisher:
             self.verify_snapshot(channel, journal['id'], files, targets)
             self.done(journal, 5)
         if 6 not in journal['steps']:
-            self.flip(journal, lambda: self.check_db_closure(files['emaki.db'], targets))
+            self.flip(journal, lambda: self.check_release(files['emaki.db'], channel, targets))
         self.confirm_channel(channel, files)
         self.finish(journal, {'id': journal['id'], 'kind': 'publish', 'manifest': sha256(files['MANIFEST'])})
         self.done(journal, 7)
@@ -1428,7 +1476,7 @@ class Publisher:
                 say('promote --first: allowed once, while no released mirrorlist names this mirror')
             else:
                 self.check_stamp(manifest_sha)
-            self.check_db_closure(files['emaki.db'], self.args.closure.split())
+            self.check_release(files['emaki.db'], 'stable', self.args.closure.split())
 
         if 0 not in journal['steps']:
             gate()
@@ -1440,6 +1488,11 @@ class Publisher:
                 self.backend.put_pointer('pointers/stable', (journal['id'] + '\n').encode(), etag)
                 return
             self.checked(journal)
+        elif 6 not in journal['steps']:
+            try:
+                gate()
+            except Refused as error:
+                raise self.abandon(journal, error) from None
         self.take_lock(journal)
         self.copy_snapshot(journal, 'testing', current, {'kind': 'promote-first' if first else 'promote',
                                                           'source': current}, gate)
@@ -1471,6 +1524,10 @@ class Publisher:
         if stamp.get('manifest_sha256') != manifest_sha:
             raise Refused(f'the acceptance stamp is for MANIFEST {stamp.get("manifest_sha256")}, '
                           f'not for {manifest_sha}')
+        try:
+            acceptance.validate_runs(stamp.get('runs'), acceptance.required_starts(self.backend, manifest_sha))
+        except ValueError as error:
+            raise Refused(str(error)) from None
         if bridge:
             t2 = [entry for entry in stamp.get('via', []) if entry.startswith('T2 ')]
             if not t2 or any(not entry.endswith(' old-address') for entry in t2):
@@ -1567,6 +1624,27 @@ class Publisher:
                             and (p / 'emaki.db').read_bytes() not in (serving, mirror))
             if not stamps:
                 raise Refused(f'no saved GitHub {tag} database differs from what GitHub {tag} serves now')
+            if not getattr(self.args, 'allow_sourceless_restore', False):
+                try:
+                    saved = stamps[-1]
+                    records = source_records({'SOURCES.json': (saved / 'SOURCES.json').read_bytes()})
+                    directions = (saved / 'SOURCES').read_text()
+                    for entry in db_entries((saved / 'emaki.db').read_bytes()).values():
+                        record = records.get(entry['name'])
+                        if record is None or record.get('version') != entry['version']:
+                            raise ValueError(f"{entry['name']} {entry['version']}: no matching source record")
+                        key = source_key(record)
+                        if key not in directions or not re.fullmatch('[0-9a-f]{64}', record['sha256']):
+                            raise ValueError(f"{entry['name']}: incomplete source directions")
+                        if http_sha256(f'{self.public}/{key}') != record['sha256']:
+                            raise ValueError(f"{entry['name']}: source archive missing or changed")
+                except (OSError, ValueError, KeyError, TypeError, tarfile.TarError, Refused) as error:
+                    raise Refused('restore refused: saved binaries lack verified corresponding sources '
+                                  f'({error}). Restoring them would publish binaries without source '
+                                  'coverage. Use --allow-sourceless-restore only for an explicit '
+                                  'exception.') from None
+            else:
+                say('WARNING: restoring without corresponding-source checks (--allow-sourceless-restore)')
             for path in sorted(stamps[-1].iterdir()):
                 if path.name.endswith(('.pkg.tar.zst', '.pkg.tar.zst.sig', '.sources.tar.gz')):
                     target.upload(tag, path, path.name)
@@ -1590,11 +1668,18 @@ class Publisher:
         files = self.snapshot(channel, current)
         if tag == 'stable':
             self.check_stamp(sha256(files['MANIFEST']), bridge=not self.backend.list('released/github-stable/'))
+        # Migration packages may reach the old address only after their destination serves
+        # the signed database clients will require on the next synchronization.
+        self.confirm_channel(channel, files)
         self.verify_sources(channel, files)
         manifest = parse_manifest(files['MANIFEST'])
         # A retry must add pruned assets to the same backup as the pre-publish database.
         backup = backups / current
         previous = {name: target.fetch(tag, name) for name in ('emaki.db', 'emaki.files') + SOURCE_FILES}
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            (directory / 'emaki.db').write_bytes(files['emaki.db'])
+            self.check_transactions(directory, self.args.closure.split(), previous['emaki.db'])
         if previous['emaki.db'] == files['emaki.db']:
             # A re-run: an earlier run already saved what GitHub served before it.
             say(f'GitHub {tag} already holds the database of mirror {channel} {current}; no backup made')
@@ -1671,6 +1756,77 @@ def key_verifies(publisher, armored, image, signature):
             verifier.close()
 
 
+def check_iso_transactions(image, filenames):
+    """Resolve live and target packages against the exact offline database on their image."""
+    client = ScratchPacman()
+    try:
+        database = subprocess.run(
+            ['bsdtar', '-xOf', str(image), 'emaki/repo/emaki-offline.db.tar.gz'],
+            capture_output=True, check=True, timeout=120).stdout
+        entries = db_entries(database)
+        if set(entries) != set(filenames):
+            raise Refused('ISO database does not match the image package closure.')
+        # Legacy repositories also carry live-only packages. Resolve against this image's
+        # pinned Arch dependencies, never the installed system's rolling mirrors.
+        repository = client.dir / 'image-repository'
+        repository.mkdir()
+        (repository / 'emaki.db').write_bytes(database)
+        targets = sorted(entry['name'] for entry in entries.values())
+        transactions.check_transactions(client, repository, targets, 'none')
+    except (OSError, ValueError, KeyError, IndexError, tarfile.TarError,
+            subprocess.SubprocessError, transactions.TransactionError) as error:
+        raise Refused(f'ISO package transaction failed: {error}') from None
+    finally:
+        client.close()
+
+
+def check_live_metadata(image, listing, version, root):
+    """Old releases predate full-image inventories; later releases must carry them."""
+    import iso_sources
+    entries = set(listing.splitlines())
+    metadata = ('emaki/live-closure.txt', 'emaki/live-packages.json')
+    if tuple(map(int, version.split('.'))) <= (0, 2, 0) and not entries.intersection(metadata):
+        return None
+    for entry in (*metadata, 'emaki/pkglist.x86_64.txt', 'emaki/repo/closure.txt'):
+        if entry not in entries:
+            raise Refused(f'{image.name} has no {entry}')
+        destination = root / entry
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(subprocess.run(
+            ['bsdtar', '-xOf', str(image), entry], capture_output=True, check=True).stdout)
+    closure = root / metadata[0]
+    inventory_path = root / metadata[1]
+    iso_sources.validate_live_closure(closure, root / 'emaki/pkglist.x86_64.txt',
+                                      root / 'emaki/repo/closure.txt', inventory_path)
+    expected = iso_sources.inventory(closure, inventory_path, EMAKI_PACKAGES)
+    return closure, json.loads(inventory_path.read_text()), expected
+
+
+def upload_image_source(publisher, dl, source_key_, source_path):
+    """Upload and anonymously verify an image source, or check its existing receipt."""
+    dry_run = publisher.dry_run
+    public = publisher.args.dl_public_url.rstrip('/')
+    source_digest = source_key_.split('/')[2]
+    receipt, _ = dl.get(source_key_ + '.verified')
+    etag = dl.head(source_key_)
+    if etag is None:
+        try:
+            dl.put_large(source_key_, source_path)
+        except Exists:
+            pass
+        etag = dl.head(source_key_)
+    expected = {'sha256': source_digest, 'etag': etag}
+    if receipt is None:
+        if not dry_run and http_sha256(f'{public}/{source_key_}') != source_digest:
+            raise Refused(f'{source_key_} differs from the image source manifest')
+        publisher.put_or_same(source_key_ + '.verified',
+                              json.dumps(expected, sort_keys=True).encode(), dl)
+    elif json.loads(receipt) != expected:
+        raise Refused(f'{source_key_} differs from its verified upload')
+    elif not dry_run and http_head(f'{public}/{source_key_}') != 200:
+        raise Refused(f'{source_key_} is not publicly available')
+
+
 def iso_publish(publisher, path, full_check):
     """W11: dl.emaki.sh/iso/<version>/ gets the image, then .sig, then .sha256 last (the file a
     download page links first must not exist before what it describes). Refused unless stable
@@ -1707,23 +1863,58 @@ def iso_publish(publisher, path, full_check):
               if entry.startswith('emaki/repo/') and entry.endswith('.pkg.tar.zst')}
     if not filenames or len(filenames) != len(set(filenames)) or set(filenames) != actual:
         raise Refused('closure.txt does not match the image package files')
+    check_iso_transactions(image, filenames)
     problems = []
+    source_manifest = getattr(args, 'arch_sources', None)
+    missing_sources = getattr(args, 'missing_sources', None)
+    missing_records = {}
+    if source_manifest is None:
+        raise Refused('ISO publication requires --arch-sources ARCH-SOURCES.json')
     with tempfile.TemporaryDirectory() as temp:
-        subprocess.run(['bsdtar', '-xf', str(image), '-C', temp, 'emaki/repo'], check=True)
-        source_manifest = getattr(args, 'arch_sources', None)
-        if source_manifest is None:
-            raise Refused('ISO publication requires --arch-sources ARCH-SOURCES.json')
+        root = Path(temp)
+        expected = {}
         try:
+            live = check_live_metadata(image, listing, version, root)
+            # Keep only one compressed package on disk at a time. The image repository can
+            # exceed the laptop's entire tmpfs, while metadata validation needs no payloads.
+            one_closure = root / 'one-package.txt'
+            for filename in filenames:
+                if Path(filename).name != filename:
+                    raise ValueError('invalid image package filename')
+                entry = f'emaki/repo/{filename}'
+                package = root / filename
+                with package.open('wb') as output:
+                    subprocess.run(['bsdtar', '-xOf', str(image), entry], stdout=output, check=True)
+                if live and live[1]['binaries'].get(filename) != sha256_file(package):
+                    raise ValueError(f'{filename}: offline binary differs from full image inventory')
+                if entry in ours:
+                    if stable.get(filename) != sha256_file(package):
+                        problems.append(f'{filename} ({"not in stable" if filename not in stable else "other bytes"})')
+                else:
+                    one_closure.write_text(filename + '\n')
+                    expected.update(iso_sources.inventory(one_closure, root, EMAKI_PACKAGES))
+                package.unlink()
+            complete_closure = root / 'closure.txt'
+            complete_closure.write_bytes(closure)
+            if live:
+                complete_closure, live_inventory, live_expected = live
+                for filename, record in expected.items():
+                    if live_expected.get(filename) != record:
+                        raise ValueError(f'{filename}: offline source identity differs from full image inventory')
+                expected = live_expected
+                closure = complete_closure.read_bytes()
+                ours = [name for name in live_inventory['binaries']
+                        if name.rsplit('-', 3)[0] in EMAKI_PACKAGES]
+                for filename in ours:
+                    if stable.get(filename) != live_inventory['binaries'][filename]:
+                        problems.append(f'{filename} (live image bytes not in stable)')
             arch_records, arch_objects = iso_sources.validate(
-                source_manifest, Path(temp) / 'emaki/repo/closure.txt',
-                Path(temp) / 'emaki/repo', EMAKI_PACKAGES)
+                source_manifest, complete_closure, root, EMAKI_PACKAGES,
+                expected_inventory=expected, missing_sources=missing_sources)
+            if missing_sources is not None:
+                missing_records = iso_sources.validate_missing(missing_sources, complete_closure, expected)
         except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as error:
             raise Refused(f'ISO source coverage failed: {error}') from None
-        for entry in sorted(ours):
-            filename = entry.split('/')[-1]
-            digest = sha256_file(Path(temp) / entry)
-            if stable.get(filename) != digest:
-                problems.append(f'{filename} ({"not in stable" if filename not in stable else "other bytes"})')
     if problems:
         raise Refused('stable does not serve the packages of this image: ' + ', '.join(problems))
     records = source_records(files)
@@ -1734,10 +1925,18 @@ def iso_publish(publisher, path, full_check):
         if record is None or record['version'] != version_:
             raise Refused(f'{name} {version_}: stable has no matching source record')
         image_sources[name] = record
+    arch_directions = iso_sources.directions(arch_records, args.dl_public_url,
+                                            partial=bool(missing_records))
+    if missing_records:
+        arch_directions += '\n' + iso_sources.missing_directions(missing_records)
     companions = {'closure.txt': closure,
-                  'SOURCES-ISO.txt': sources_text(image_sources, publisher.public) + b'\n' +
-                  iso_sources.directions(arch_records, args.dl_public_url).encode(),
+                  'SOURCES-ISO.txt': sources_text(image_sources, args.dl_public_url) + b'\n' +
+                  arch_directions.encode(),
                   'ARCH-SOURCES.json': Path(source_manifest).read_bytes()}
+    if missing_sources is not None:
+        companions['MISSING-SOURCES.json'] = Path(missing_sources).read_bytes()
+        if dry_run:
+            say(f'DRY-RUN: {len(missing_records)} missing packages listed in MISSING-SOURCES.json')
     publisher.verify_sources('stable', files)
     say(f'{len(ours)} Emaki packages of the image are served by stable {current} with the same bytes')
 
@@ -1761,25 +1960,17 @@ def iso_publish(publisher, path, full_check):
     key = f'iso/{version}/{image.name}'
     # Sources must exist before an image or its download directions can become public.
     for source_key_, source_path in arch_objects.items():
-        source_digest = source_key_.split('/')[2]
-        receipt, _ = dl.get(source_key_ + '.verified')
-        etag = dl.head(source_key_)
-        if etag is None:
-            try:
-                dl.put_large(source_key_, source_path)
-            except Exists:
-                pass
-            etag = dl.head(source_key_)
-        expected = {'sha256': source_digest, 'etag': etag}
-        if receipt is None:
-            if not dry_run and http_sha256(f'{public}/{source_key_}') != source_digest:
-                raise Refused(f'{source_key_} differs from the image source manifest')
-            publisher.put_or_same(source_key_ + '.verified',
-                                  json.dumps(expected, sort_keys=True).encode(), dl)
-        elif json.loads(receipt) != expected:
-            raise Refused(f'{source_key_} differs from its verified upload')
-        elif not dry_run and http_head(f'{public}/{source_key_}') != 200:
-            raise Refused(f'{source_key_} is not publicly available')
+        upload_image_source(publisher, dl, source_key_, source_path)
+    with tempfile.TemporaryDirectory() as temp:
+        for record in image_sources.values():
+            source_key_ = source_key(record)
+            data, _ = publisher.backend.get(source_key_)
+            if data is None or sha256(data) != record['sha256']:
+                raise Refused(f'{source_key_}: Emaki source archive missing or changed')
+            source_path = Path(temp) / 'source-archive'
+            source_path.write_bytes(data)
+            upload_image_source(publisher, dl, source_key_, source_path)
+            source_path.unlink()
 
     with tempfile.TemporaryDirectory() as temp:
         try:
@@ -1838,7 +2029,25 @@ def iso_publish(publisher, path, full_check):
             publisher.put_or_same(f'iso/{version}/{name}', data, dl, hint=once)
     if dry_run:
         return
-    for name, data in companions.items():
+    readback = dict(companions)
+    pointer, _ = dl.get(f'iso/{version}/source-pointer')
+    if pointer is not None:
+        try:
+            snapshot = pointer.decode().strip()
+            if not re.fullmatch('[0-9a-f]{64}', snapshot):
+                raise ValueError('invalid image source pointer')
+            current_sources = {}
+            for name in IMAGE_SOURCE_FILES:
+                data, _ = dl.get(f'iso/{version}/source-snapshots/{snapshot}/{name}')
+                if data is None:
+                    raise ValueError(f'{name}: published source metadata is missing')
+                current_sources[name] = data
+            if image_source_snapshot(current_sources) != snapshot:
+                raise ValueError('published source snapshot differs from its digest')
+            readback.update(current_sources)
+        except (ValueError, UnicodeError) as error:
+            raise Refused(f'ISO source read-back failed: {error}') from None
+    for name, data in readback.items():
         if http_get(f'{public}/iso/{version}/{name}') != data:
             raise Refused(f'the published {name} differs from the image source records')
     if http_get(f'{public}/{key}.sha256') != sums.read_bytes() or http_get(f'{public}/{key}.sig') != signature.read_bytes():
@@ -1858,6 +2067,155 @@ def iso_publish(publisher, path, full_check):
     say(f'published {public}/{key} (+ .sig, .sha256); first and last megabyte read back identical')
 
 
+IMAGE_SOURCE_FILES = ('SOURCES-ISO.txt', 'ARCH-SOURCES.json', 'MISSING-SOURCES.json')
+
+
+def image_source_snapshot(files):
+    return sha256(b''.join(name.encode() + b'\0' + files[name] + b'\0'
+                           for name in IMAGE_SOURCE_FILES))
+
+
+def iso_add_sources(publisher, version):
+    """Complete missing source bases without modifying any published image bytes."""
+    import iso_sources
+    if not re.fullmatch(r'\d+\.\d+\.\d+', version):
+        raise Refused('expected a published image version, such as 0.2.0')
+    args, dry_run = publisher.args, publisher.dry_run
+    dl = open_backend(args.dl_backend, dry_run)
+    prefix = f'iso/{version}'
+    public = args.dl_public_url.rstrip('/')
+    image_name = f'emaki-{version}-x86_64.iso'
+    release, _ = publisher.backend.get(f'released/iso/{version}')
+    checksum, _ = dl.get(f'{prefix}/{image_name}.sha256')
+    if (release is None or checksum is None or any(dl.head(f'{prefix}/{name}') is None for name in
+            (image_name, image_name + '.sig', 'emaki-signing-key.asc'))):
+        raise Refused(f'{version}: image is not published')
+    try:
+        digest = json.loads(release)['image_sha256']
+        if not re.fullmatch('[0-9a-f]{64}', digest) or checksum != f'{digest}  {image_name}\n'.encode():
+            raise ValueError('image checksum differs from release record')
+        pointer_key = f'{prefix}/source-pointer'
+        pointer, etag = dl.get(pointer_key)
+        metadata_prefix = prefix
+        if pointer is not None:
+            snapshot = pointer.decode().strip()
+            if not re.fullmatch('[0-9a-f]{64}', snapshot):
+                raise ValueError('invalid image source pointer')
+            metadata_prefix += f'/source-snapshots/{snapshot}'
+        previous = {}
+        for name in IMAGE_SOURCE_FILES:
+            data, _ = dl.get(f'{metadata_prefix}/{name}')
+            if data is None:
+                raise ValueError(f'{name}: published source metadata is missing')
+            previous[name] = data
+        if pointer is not None and image_source_snapshot(previous) != snapshot:
+            raise ValueError('published source snapshot differs from its digest')
+        closure, _ = dl.get(f'{prefix}/closure.txt')
+        if closure is None:
+            raise ValueError('published image closure is missing')
+        old_arch = json.loads(previous['ARCH-SOURCES.json'])
+        old_missing = json.loads(previous['MISSING-SOURCES.json'])
+        expected = {}
+        for filename, record in old_arch['packages'].items():
+            expected[filename] = {key: record[key] for key in
+                                 ('name', 'base', 'version', 'binary_sha256', 'recipe_sha256')}
+        for group in old_missing['bases']:
+            for filename, record in group['packages'].items():
+                if filename in expected:
+                    raise ValueError('published source metadata overlaps')
+                expected[filename] = record
+        if (old_arch['schema'] != 1 or old_arch['closure_sha256'] != sha256(closure)
+                or not set(expected) <= set(closure.decode().splitlines())):
+            raise ValueError('published source manifest differs from image closure')
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            closure_path = root / 'closure.txt'
+            closure_path.write_bytes(closure)
+            old_missing_path = root / 'MISSING-SOURCES.json'
+            old_missing_path.write_bytes(previous['MISSING-SOURCES.json'])
+            old_missing_records = iso_sources.validate_missing(old_missing_path, closure_path, expected)
+            records, objects = iso_sources.validate(
+                args.arch_sources, closure_path, root, expected_inventory=expected,
+                missing_sources=args.missing_sources)
+            missing = iso_sources.validate_missing(args.missing_sources, closure_path, expected)
+        # Existing records and still-missing bases are immutable. A base is added whole,
+        # including every split package covered by the original missing-source declaration.
+        for filename, record in old_arch['packages'].items():
+            if records.get(filename) != record:
+                raise ValueError(f'{filename}: previously collected sources cannot change')
+        added = set(records) - set(old_arch['packages'])
+        if not added <= set(old_missing_records):
+            raise ValueError('only previously missing sources may be added')
+        remaining_groups = []
+        for group in old_missing['bases']:
+            names = set(group['packages'])
+            if names & added and not names <= added:
+                raise ValueError(f'{group["base"]}: add the entire missing source base')
+            if not names & added:
+                remaining_groups.append(group)
+        new_missing = json.loads(Path(args.missing_sources).read_bytes())
+        if new_missing != dict(old_missing, bases=remaining_groups):
+            raise ValueError('remaining missing source bases cannot change')
+        separator = b'\nArch package sources in this image\n'
+        if previous['SOURCES-ISO.txt'].count(separator) != 1:
+            raise ValueError('published source directions have no unique Arch section')
+        emaki_directions = previous['SOURCES-ISO.txt'].split(separator)[0] + b'\n'
+        directions = iso_sources.directions(records, public, partial=bool(missing))
+        if missing:
+            directions += '\n' + iso_sources.missing_directions(missing)
+        companions = {'SOURCES-ISO.txt': emaki_directions + directions.encode(),
+                      'ARCH-SOURCES.json': Path(args.arch_sources).read_bytes(),
+                      'MISSING-SOURCES.json': Path(args.missing_sources).read_bytes()}
+        if not added and companions != previous:
+            raise ValueError('no previously missing source bases were added')
+    except (ValueError, TypeError, OSError, KeyError, subprocess.CalledProcessError) as error:
+        raise Refused(f'ISO source addition failed: {error}') from None
+    # The legacy publication command needs no Worker. Additions require its atomic metadata
+    # route, checked before any upload, including on the first migration from flat metadata.
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, request, fp, code, message, headers, newurl):
+            return None
+
+    try:
+        opener = urllib.request.build_opener(NoRedirect)
+        try:
+            response = opener.open(urllib.request.Request(
+                f'{public}/{prefix}/SOURCES-ISO.txt', method='HEAD',
+                headers={'User-Agent': 'emaki-publish'}), timeout=60)
+        except urllib.error.HTTPError as error:
+            if error.code != 302:
+                raise
+            response = error
+        with response:
+            ready = response.headers.get('X-Emaki-Source-Pointer') == '1'
+        if not ready or http_get(f'{public}/{prefix}/SOURCES-ISO.txt') != previous['SOURCES-ISO.txt']:
+            raise Refused('image source pointer route is absent or stale; deploy the download Worker first')
+    except urllib.error.URLError as error:
+        raise Refused(f'image source pointer route is unavailable: {error}') from None
+    for key, path in objects.items():
+        upload_image_source(publisher, dl, key, path)
+    if companions == previous:
+        say(f'{version}: these sources are already published')
+        return
+    snapshot = image_source_snapshot(companions)
+    destination = f'{prefix}/source-snapshots/{snapshot}'
+    for name, data in companions.items():
+        publisher.put_or_same(f'{destination}/{name}', data, dl)
+    if not dry_run:
+        for name, data in companions.items():
+            if http_get(f'{public}/{destination}/{name}') != data:
+                raise Refused(f'{name}: new source snapshot is not publicly available with these bytes')
+    try:
+        dl.put_pointer(pointer_key, (snapshot + '\n').encode(), etag)
+    except Conflict:
+        raise Refused('image sources changed during this run; retry against the current manifests') from None
+    if not dry_run:
+        for name, data in companions.items():
+            if http_get(f'{public}/{prefix}/{name}') != data:
+                raise Refused(f'{name}: source pointer read-back differs from the new snapshot')
+    say(f'{version}: added {len(added)} package source records; {len(missing)} remain missing')
+
+
 STEP_NAMES = {
     'publish': {0: 'checks', 1: 'lock', 2: 'packages uploaded', 3: 'packages verified anonymously',
                 4: 'snapshot uploaded', 5: 'snapshot verified by pacman', 6: 'pointer flipped',
@@ -1869,8 +2227,8 @@ STEP_NAMES['withdraw'] = STEP_NAMES['publish']
 
 # acceptance stamp ----------------------------------------------------------------------------
 
-def write_stamp(results, path):
-    """The gate's input: T1 and T2 green for 0.1.0 and 0.1.1 at both screen sizes, all on one
+def write_stamp(results, path, backend):
+    """The gate's input: T1 and T2 green from published images at both screen sizes, all on one
     candidate MANIFEST. A single red result for that candidate refuses: a green run of the same
     kind does not cancel it."""
     loaded = [json.loads(Path(p).read_text()) for p in results]
@@ -1891,10 +2249,11 @@ def write_stamp(results, path):
                           f'({result.get("evidence", "no evidence directory")}); one red result for the '
                           'candidate refuses the stamp')
         green.add((result['run'], result['start'], result.get('size')))
-    missing = [f'{run} from {start} at {size}' for run in REQUIRED_RUNS for start in REQUIRED_STARTS
-               for size in REQUIRED_SIZES if (run, start, size) not in green]
-    if missing:
-        raise Refused('the acceptance is not green for: ' + ', '.join(missing))
+    try:
+        acceptance.validate_runs(sorted(f'{r} {s} {z}' for r, s, z in green),
+                                 acceptance.required_starts(backend, next(iter(manifests))))
+    except ValueError as error:
+        raise Refused(str(error)) from None
     stamp = {'manifest_sha256': manifests.pop(), 'created': now.isoformat(timespec='seconds'),
              'tested': min(datetime.datetime.fromisoformat(r['finished']) for r in loaded).isoformat(),
              'runs': sorted(f'{r} {s} {z}' for r, s, z in green),
@@ -1943,10 +2302,10 @@ def parser():
                       help='where ISO images go: local:DIR or r2:BUCKET (default r2:emaki-dl)')
     main.add_argument('--dl-public-url', default=os.environ.get('EMAKI_PUBLISH_DL_URL', 'https://dl.emaki.sh'))
     main.add_argument('--source-tree', default=str(ROOT))
-    main.add_argument('--closure', default='emaki emaki-apps', help='packages that must resolve')
+    main.add_argument('--closure', default='', help='explicit transaction targets (default: installer Minimal and Rich)')
     main.add_argument('--arch-dbs', default='auto',
-                      help="'auto' (fresh core/extra via /etc/pacman.d/mirrorlist), 'none', 'skip' or a DIR "
-                           'holding core.db and extra.db')
+                      help="'auto' (fresh core/extra via /etc/pacman.d/mirrorlist) or a DIR holding "
+                           "core.db and extra.db; 'none' is for self-contained repositories")
     main.add_argument('--dry-run', action='store_true', help='read everything, write nothing, print the writes')
     main.add_argument('--layout', choices=('snapshot', 'flat'), default='snapshot', help=argparse.SUPPRESS)
     sub = main.add_subparsers(dest='command', required=True)
@@ -1966,12 +2325,20 @@ def parser():
     g = sub.add_parser('github', help='copy the mirror channel to the old GitHub address')
     g.add_argument('--tag', default='stable', choices=('stable', 'testing'))
     g.add_argument('--restore', action='store_true')
+    g.add_argument('--allow-sourceless-restore', action='store_true',
+                   help='explicitly allow restoring legacy binaries without verified corresponding sources')
     s = sub.add_parser('sign', help='sign packages that have no .sig yet')
     s.add_argument('directory')
     i = sub.add_parser('iso', help='publish an ISO image whose packages stable already serves')
     i.add_argument('image')
     i.add_argument('--arch-sources', type=Path, help='verified ARCH-SOURCES.json from iso_sources.py')
+    i.add_argument('--missing-sources', type=Path,
+                   help='explicit MISSING-SOURCES.json accounting for uncollected image sources')
     i.add_argument('--full-check', action='store_true', help='download the whole image back and compare')
+    additions = sub.add_parser('iso-sources', help='add previously missing sources to a published image')
+    additions.add_argument('version')
+    additions.add_argument('--arch-sources', type=Path, required=True, help='complete merged ARCH-SOURCES.json')
+    additions.add_argument('--missing-sources', type=Path, required=True, help='remaining MISSING-SOURCES.json')
     st = sub.add_parser('stamp', help='write the acceptance stamp from upgrade-check results')
     st.add_argument('results', nargs='+')
     return main
@@ -1991,7 +2358,7 @@ def main(argv=None):
             sign_directory(args)
             return 0
         if args.command == 'stamp':
-            write_stamp(args.results, args.stamp)
+            write_stamp(args.results, args.stamp, open_backend(args.backend, args.dry_run))
             return 0
         publisher = Publisher(args)
         try:
@@ -2011,6 +2378,8 @@ def main(argv=None):
                 publisher.withdraw(args.channel, args.to)
             elif args.command == 'iso':
                 iso_publish(publisher, args.image, args.full_check)
+            elif args.command == 'iso-sources':
+                iso_add_sources(publisher, args.version)
             elif args.command == 'github':
                 publisher.github(args.tag, args.restore)
         finally:

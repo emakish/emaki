@@ -3,6 +3,7 @@ import QtQuick
 import QtTest
 import Quickshell
 import "../../shell" as Shell
+import "../../shell/WelcomeContent.js" as Content
 
 ShellRoot {
     Shell.WelcomeController {
@@ -34,7 +35,74 @@ ShellRoot {
         function control(name) {
             return descendants(controller.window.view).find(c => c.objectName === "welcome-" + name);
         }
+        function expectedCopy() {
+            const page = Content.pages[controller.window.view.page];
+            let copy = ["Welcome to Emaki", page.title, page.description, page.diagram, "All shortcuts", controller.window.view.page === 2 ? "Start using Emaki" : "Next"];
+            for (const action of page.actions)
+                copy = copy.concat([action.title, action.pointer, action.keys, action.keyboard]);
+            return copy;
+        }
+        function textItem(copy) {
+            const matches = descendants(controller.window.view).filter(item => item.text === copy && item.truncated !== undefined);
+            equal(matches.length, 1, "Expected welcome copy: " + copy);
+            return matches[0];
+        }
+        function visibleBounds(item) {
+            const view = controller.window.view;
+            const point = item.mapToItem(view, 0, 0);
+            check(item.visible, "Welcome copy is visible: " + item.text);
+            for (let parent = item; parent; parent = parent.parent)
+                check(parent.opacity >= 0.99, "Welcome copy is opaque: " + item.text);
+            check(item.color.a > 0.99, "Welcome copy has ink: " + item.text);
+            check(!item.truncated && item.width > 0 && item.height > 0, "Welcome copy fits: " + item.text);
+            check(point.x >= 0 && point.y >= 0 && point.x + item.width <= view.width + 1 && point.y + item.height <= view.height + 1, "Welcome copy stays inside the window: " + item.text);
+            for (let parent = item.parent; parent && parent !== view; parent = parent.parent) {
+                if (!parent.clip)
+                    continue;
+                const clipped = item.mapToItem(parent, 0, 0);
+                check(clipped.x >= -1 && clipped.y >= -1 && clipped.x + item.width <= parent.width + 1 && clipped.y + item.height <= parent.height + 1, "Welcome copy stays inside its viewport: " + item.text);
+            }
+            return {
+                text: item.text,
+                x: point.x,
+                y: point.y,
+                width: item.width,
+                height: item.height
+            };
+        }
+        function checkPage() {
+            const body = control("body");
+            const view = controller.window.view;
+            for (const name of ["close", "shortcuts", "back", "next", "tab-0", "tab-1", "tab-2"]) {
+                const button = control(name);
+                const point = button.mapToItem(view, 0, 0);
+                check(button.visible && button.width > 0 && button.height > 0 && point.x >= 0 && point.y >= 0 && point.x + button.width <= view.width && point.y + button.height <= view.height, "Welcome control stays reachable: " + name);
+            }
+            for (const copy of expectedCopy()) {
+                const item = textItem(copy);
+                if (descendants(body).includes(item)) {
+                    body.contentY = 0;
+                    const position = item.mapToItem(body, 0, 0);
+                    body.contentY = Math.max(0, Math.min(position.y, body.contentHeight - body.height));
+                }
+                visibleBounds(item);
+            }
+            body.contentY = 0;
+        }
         function shot(name) {
+            const regions = [];
+            const body = control("body");
+            for (const copy of expectedCopy()) {
+                const item = textItem(copy);
+                const position = item.mapToItem(body, 0, 0);
+                if (descendants(body).includes(item) && (position.y < -1 || position.y + item.height > body.height + 1))
+                    continue;
+                regions.push(visibleBounds(item));
+            }
+            console.log("WELCOME_CONTENT " + JSON.stringify({
+                name: name,
+                regions: regions
+            }));
             let saved = false;
             check(controller.window.view.grabToImage(result => {
                 saved = result.saveToFile(Quickshell.env("WELCOME_SHOTS") + "/" + name + "@" + Quickshell.env("QT_SCALE_FACTOR") + "x.png");
@@ -81,6 +149,7 @@ ShellRoot {
                 check(texts.length > 10);
                 for (const text of texts)
                     equal(text.truncated, false, text.text);
+                checkPage();
                 shot("page-" + (page + 1));
                 if (page < 2)
                     keyClick(Qt.Key_Return);
@@ -96,6 +165,17 @@ ShellRoot {
             mouseClick(control("back"));
             equal(controller.window.view.page, 0);
 
+            // Match WelcomeWindow's available size on a 1366 by 768 logical display.
+            controller.window.view.Window.window.width = Math.min(800, 1366 - 48);
+            controller.window.view.Window.window.height = Math.min(660, 768 - 120);
+            for (let page = 0; page < 3; ++page) {
+                controller.window.view.page = page;
+                wait(80);
+                checkPage();
+                shot("1366x768-" + (page + 1));
+            }
+            controller.window.view.page = 0;
+
             // A small logical display keeps the footer reachable and the body scrollable.
             controller.window.view.Window.window.width = 560;
             controller.window.view.Window.window.height = 420;
@@ -109,6 +189,7 @@ ShellRoot {
             for (let page = 0; page < 3; ++page) {
                 controller.window.view.page = page;
                 wait(80);
+                checkPage();
                 shot("small-" + (page + 1) + "-top");
                 control("next").forceActiveFocus();
                 for (let i = 0; i < 30; ++i)

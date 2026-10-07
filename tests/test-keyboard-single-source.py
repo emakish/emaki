@@ -15,7 +15,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'installer'))
-from emaki_installer.render import niri_config, vconsole_conf  # noqa: E402
+from emaki_installer.render import managed_niri_config, niri_config, vconsole_conf  # noqa: E402
 
 SHIPPED = sorted(ROOT.glob('niri/*.kdl')) + [ROOT / 'greetd/niri.kdl',
                                              ROOT / 'iso/profile/airootfs/home/live/.config/emaki/niri-emaki.kdl']
@@ -32,6 +32,10 @@ class KeyboardSingleSourceTests(unittest.TestCase):
         for path in SHIPPED:
             self.assertTrue(path.is_file(), path)
 
+    def test_shared_defaults_do_not_preempt_personal_outputs(self):
+        for path in ROOT.glob('niri/*.kdl'):
+            self.assertNotRegex(without_comments(path.read_text()), r'(?m)^\s*output\s', path)
+
     def test_no_xkb_section_and_no_group_switch_option_in_shipped_configs(self):
         for path in SHIPPED:
             text = without_comments(path.read_text())
@@ -42,7 +46,7 @@ class KeyboardSingleSourceTests(unittest.TestCase):
     def test_generated_files_carry_no_xkb_section_and_no_group_switch_option(self):
         # The defaults bind Mod+Space to switch-layout; an xkb group option in a generated
         # file would switch a second time on every press.
-        for text in (niri_config(), niri_config(1.5, ['eDP-1']), vconsole_conf(['cz', 'us']),
+        for text in (niri_config(1.5, ["eDP-1"]), managed_niri_config(), vconsole_conf(['cz', 'us']),
                      vconsole_conf(['dvorak', 'ru'])):
             self.assertNotRegex(text, r'\bxkb\b')
             self.assertNotIn('grp:', text)

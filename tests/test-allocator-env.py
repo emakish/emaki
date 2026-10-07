@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Allocator defaults stay with shell/lock; scoped and fallback apps keep session env."""
+from runtime_fixture import runtime_path
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,9 @@ def run():
         root = Path(directory)
         binary = root / 'bin'
         binary.mkdir()
+        qt_check = binary / 'emaki-qt-check'
+        qt_check.write_text('#!/bin/sh\nexit 0\n')
+        qt_check.chmod(0o700)
         empty = root / 'empty'
         empty.mkdir()
         qml = root / 'qml'
@@ -169,7 +173,7 @@ Path(os.environ['EMAKI_ALLOCATOR_RESULT']).write_text(json.dumps(result))
         for name in ('runtime', 'config', 'state', 'cache', 'data'):
             (root / name).mkdir(mode=0o700)
         offscreen = dict(env, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
-                         QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(root / 'runtime'),
+                         QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(runtime_path(root)),
                          XDG_CONFIG_HOME=str(root / 'config'), XDG_STATE_HOME=str(root / 'state'),
                          XDG_CACHE_HOME=str(root / 'cache'), XDG_DATA_HOME=str(root / 'data'),
                          DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(root / 'no-bus'),

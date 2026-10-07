@@ -1,0 +1,363 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Emaki contributors <emaki@localhost>
+Date: Wed, 7 Oct 2026 12:00:00 +0000
+Subject: [PATCH 8/8] Account for static blur in wallpaper visibility
+
+Copyright (C) 2026 Artur Yakymenko
+SPDX-License-Identifier: GPL-3.0-or-later
+
+Report opaque xray interiors so static blur stops invisible train animation.
+Preserve clipping, rounded corners and effect subregions; leave translucent
+surfaces and live framebuffer blur animated. Test compositor pixels and
+scheduler visibility together.
+
+---
+diff --git a/src/niri.rs b/src/niri.rs
+index 9682565..3051ffa 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -7220,4 +7220,143 @@ mod emaki_wallpaper_xray_tests {
+             .elements()
+             .is_empty());
+     }
++
++    #[test]
++    fn emaki_wallpaper_blurred_translucent_window_visibility_matches_pixels() {
++        use crate::render_helpers::background_effect::{BackgroundEffect, RenderParams};
++        use crate::render_helpers::render_to_vec;
++        use smithay::backend::allocator::Fourcc;
++        use smithay::backend::renderer::element::Kind;
++
++        // Use the compositor's real static xray buffer and output element wrappers.
++        // A uniform premultiplied surface represents a terminal at opacity 0.8.
++        for (blur, xray, opacity, hidden) in [
++            (false, None, 0.8, false),
++            (true, None, 0.8, true),
++            (true, Some(false), 0.8, false),
++            (false, None, 1.0, true),
++        ] {
++            let event_loop = calloop::EventLoop::<State>::try_new().unwrap();
++            let mut backend = Backend::Headless(Headless::new());
++            let mut niri = Niri::new(
++                Rc::new(RefCell::new(Config::default())),
++                event_loop.handle(),
++                event_loop.get_signal(),
++                Display::new().unwrap(),
++                &backend,
++                false,
++                false,
++            );
++            backend.headless().add_output(&mut niri, 1, (900, 1200));
++            let output = niri.layout.outputs().next().unwrap().clone();
++            let mut renderer = renderer();
++            *niri.emaki_wallpaper.borrow_mut() = engine(art(&mut renderer));
++            niri.update_xray_render_elements(Some(&output));
++            let mon = niri.layout.monitors().next().unwrap();
++            let view = niri.wallpaper_view(
++                mon.active_workspace_ref(),
++                mon,
++                Rectangle::from_size(mon.view_size()),
++            );
++            let surface = SolidColorBuffer::new(view.size, [0.08, 0.08, 0.08, opacity]);
++            let mut effect = BackgroundEffect::new();
++            effect.update_render_elements(
++                Default::default(),
++                niri_config::BackgroundEffect {
++                    blur: Some(blur),
++                    xray,
++                    ..Default::default()
++                },
++                false,
++            );
++            let mut frames = Vec::new();
++            for now in [0., 61., 62., 63.] {
++                let mut wallpaper = niri.emaki_wallpaper.borrow_mut();
++                wallpaper.clock(Duration::from_secs_f64(now), false);
++                wallpaper.update_output(output.name(), view.clone(), vec![view.clone()]);
++                let wallpaper_elements = wallpaper.render(&mut renderer, &output.name(), &view);
++                drop(wallpaper);
++                niri.fill_xray_elements_with_startup_cover(
++                    RenderCtx {
++                        renderer: &mut renderer,
++                        target: RenderTarget::Output,
++                        xray: None,
++                        capture_client: None,
++                    },
++                    &output,
++                    false,
++                );
++                let mut elements: Vec<OutputRenderElements<GlesRenderer>> =
++                    vec![SolidColorRenderElement::from_buffer(
++                        &surface,
++                        (0., 0.),
++                        1.,
++                        Kind::Unspecified,
++                    )
++                    .into()];
++                effect.render(
++                    RenderCtx {
++                        renderer: &mut renderer,
++                        target: RenderTarget::Output,
++                        xray: Some(&niri.output_state[&output].xray),
++                        capture_client: None,
++                    },
++                    None,
++                    RenderParams {
++                        geometry: view.geo,
++                        subregion: None,
++                        clip: None,
++                        scale: 1.,
++                    },
++                    XrayPos::default(),
++                    &mut |element| {
++                        elements.push(
++                            RescaleRenderElement::from_element(
++                                TileRenderElement::BackgroundEffect(element),
++                                (0, 0).into(),
++                                1.,
++                            )
++                            .into(),
++                        )
++                    },
++                );
++                elements.extend(wallpaper_elements.into_iter().filter_map(|element| {
++                    place_wallpaper(element, 1.0.into(), view.geo)
++                        .map(OutputRenderElements::Wallpaper)
++                }));
++                // Rendering and scheduling consume exactly the same front-to-back list.
++                frames.push(
++                    render_to_vec(
++                        &mut renderer,
++                        (900, 1200).into(),
++                        1.0.into(),
++                        Transform::Normal,
++                        Fourcc::Abgr8888,
++                        elements.iter().rev(),
++                    )
++                    .unwrap(),
++                );
++                niri.update_emaki_wallpaper_occlusion(&output, &elements);
++                if now >= 62. {
++                    let wallpaper = niri.emaki_wallpaper.borrow();
++                    assert_eq!(
++                        wallpaper.output_status(&output.name()).is_empty(),
++                        hidden,
++                        "blur={blur}, xray={xray:?}, opacity={opacity}, time={now}"
++                    );
++                    assert_eq!(wallpaper.animated(&output.name()), !hidden);
++                    if hidden {
++                        assert!(wallpaper
++                            .wake_after()
++                            .is_none_or(|delay| delay > Duration::from_secs(1)));
++                    }
++                }
++            }
++            assert_eq!(
++                frames[2] == frames[3],
++                hidden,
++                "rendered pixels disagree: blur={blur}, xray={xray:?}, opacity={opacity}"
++            );
++        }
++    }
+ }
+diff --git a/src/render_helpers/xray.rs b/src/render_helpers/xray.rs
+index f4b4f86..2b74fd0 100644
+--- a/src/render_helpers/xray.rs
++++ b/src/render_helpers/xray.rs
+@@ -70,6 +70,8 @@ pub struct XrayElement {
+     buffer: Rc<RefCell<EffectBuffer>>,
+     id: Id,
+     geometry: Rectangle<f64, Logical>,
++    /// Clip and radii in element coordinates, before backdrop zoom.
++    opaque_clip: (Rectangle<f64, Logical>, CornerRadius),
+     src: Rectangle<f64, Buffer>,
+     subregion: Option<TransformedRegion>,
+     input_to_clip_geo: Mat3,
+@@ -191,6 +193,7 @@ impl Xray {
+                     buffer: self.background[ctx.target as usize].clone(),
+                     id: background.id().clone(),
+                     geometry,
++                    opaque_clip: (clip_geo, corner_radius),
+                     src,
+                     subregion: params.subregion.clone(),
+                     input_to_clip_geo,
+@@ -241,6 +244,7 @@ impl Xray {
+                 buffer: self.backdrop[ctx.target as usize].clone(),
+                 id: backdrop.id().clone(),
+                 geometry: params.geometry,
++                opaque_clip: (clip_geo, corner_radius),
+                 src,
+                 subregion: params.subregion.clone(),
+                 input_to_clip_geo,
+@@ -289,10 +293,60 @@ impl Element for XrayElement {
+         self.geometry.to_physical_precise_round(scale)
+     }
+ 
+-    fn opaque_regions(&self, _scale: Scale<f64>) -> OpaqueRegions<i32, Physical> {
+-        // FIXME: if bg_color alpha is 1 then compute opaque regions here taking corners into
+-        // account
+-        OpaqueRegions::default()
++    fn opaque_regions(&self, scale: Scale<f64>) -> OpaqueRegions<i32, Physical> {
++        // The postprocessing shader fills transparent samples with this color. In particular,
++        // xray wallpaper contains only static layers and hides the live scene underneath it.
++        if !self.bg_color.is_opaque() || self.program.is_none() {
++            return OpaqueRegions::default();
++        }
++
++        let geometry = self.geometry(scale);
++        if geometry.is_empty() || self.geometry.is_empty() {
++            return OpaqueRegions::default();
++        }
++        // Match the texture-to-destination mapping, including fractional-scale rounding.
++        let destination_scale = geometry.size.to_f64() / self.geometry.size;
++        let (mut clip, radius) = self.opaque_clip;
++        clip.loc -= self.geometry.loc;
++        let Some(opaque) = clip
++            .to_physical_precise_down(destination_scale)
++            .intersection(Rectangle::from_size(geometry.size))
++        else {
++            return OpaqueRegions::default();
++        };
++
++        // Keep all antialiased corner pixels out, as for clipped surface elements.
++        let tl = radius.top_left as f64;
++        let tr = radius.top_right as f64;
++        let br = radius.bottom_right as f64;
++        let bl = radius.bottom_left as f64;
++        let corners = [
++            Rectangle::new(clip.loc, (tl, tl).into()),
++            Rectangle::new(
++                (clip.loc.x + clip.size.w - tr, clip.loc.y).into(),
++                (tr, tr).into(),
++            ),
++            Rectangle::new(
++                (clip.loc.x + clip.size.w - br, clip.loc.y + clip.size.h - br).into(),
++                (br, br).into(),
++            ),
++            Rectangle::new(
++                (clip.loc.x, clip.loc.y + clip.size.h - bl).into(),
++                (bl, bl).into(),
++            ),
++        ];
++        let corners = corners
++            .into_iter()
++            .filter(|rect| !rect.is_empty())
++            .map(|rect| rect.to_physical_precise_up(destination_scale));
++        let regions = Rectangle::subtract_rects_many([opaque], corners);
++        if let Some(subregion) = &self.subregion {
++            let mut filtered = Vec::new();
++            subregion.filter_damage(self.geometry, geometry, &regions, &mut filtered);
++            OpaqueRegions::from_slice(&filtered)
++        } else {
++            OpaqueRegions::from_slice(&regions)
++        }
+     }
+ }
+ 
+@@ -380,3 +434,106 @@ impl<'render> RenderElement<TtyRenderer<'render>> for XrayElement {
+         Ok(())
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use std::sync::Arc;
++
++    use super::*;
++    use crate::render_helpers::emaki_wallpaper::tests::renderer;
++
++    #[test]
++    fn emaki_wallpaper_xray_opaque_regions_respect_clip_corners_and_subregion() {
++        let mut renderer = renderer();
++        let program = Shaders::get(&mut renderer).postprocess_and_clip.clone();
++        assert!(program.is_some());
++        let geometry = Rectangle::new((10., 20.).into(), (80., 60.).into());
++        let mut element = XrayElement {
++            buffer: Rc::new(RefCell::new(EffectBuffer::new())),
++            id: Id::new(),
++            geometry,
++            opaque_clip: (geometry, CornerRadius::default()),
++            src: Rectangle::from_size((80., 60.).into()),
++            subregion: None,
++            input_to_clip_geo: Mat3::IDENTITY,
++            clip_geo_size: Vec2::new(80., 60.),
++            corner_radius: CornerRadius::default(),
++            scale: 1.,
++            blur: true,
++            noise: 0.,
++            saturation: 1.,
++            bg_color: Color32F::BLACK,
++            program,
++        };
++        let regions = |element: &XrayElement, scale: f64| {
++            element
++                .opaque_regions(scale.into())
++                .into_iter()
++                .collect::<Vec<_>>()
++        };
++        for scale in [1., 1.25] {
++            assert_eq!(
++                regions(&element, scale),
++                vec![Rectangle::from_size(element.geometry(scale.into()).size)]
++            );
++        }
++
++        // A workspace crop must not move the window's corner rounding into the crop.
++        element.opaque_clip = (
++            Rectangle::new((0., 0.).into(), (100., 100.).into()),
++            CornerRadius::from(5.),
++        );
++        assert_eq!(
++            regions(&element, 1.),
++            vec![Rectangle::from_size((80, 60).into())]
++        );
++
++        // Clip smaller than the drawn element, with distinct corner sizes.
++        element.opaque_clip = (
++            Rectangle::new((20., 30.).into(), (60., 40.).into()),
++            CornerRadius {
++                top_left: 8.,
++                top_right: 4.,
++                bottom_right: 6.,
++                bottom_left: 2.,
++            },
++        );
++        for scale in [1., 1.25] {
++            let opaque = regions(&element, scale);
++            let covered = |point: Point<i32, Physical>| opaque.iter().any(|r| r.contains(point));
++            assert!(covered(
++                Point::from((40., 30.)).to_physical_precise_round(scale)
++            ));
++            for point in [(0., 0.), (10., 10.), (69., 10.), (69., 49.), (10., 49.)] {
++                assert!(
++                    !covered(Point::from(point).to_physical_precise_round(scale)),
++                    "{point:?} at {scale}"
++                );
++            }
++        }
++
++        element.opaque_clip = (geometry, CornerRadius::default());
++        element.subregion = Some(TransformedRegion {
++            rects: Arc::new(vec![Rectangle::new((0, 0).into(), (8, 8).into())]),
++            scale: 2.0.into(),
++            offset: (18., 28.).into(),
++        });
++        assert_eq!(
++            regions(&element, 1.),
++            vec![Rectangle::new((8, 8).into(), (16, 16).into())]
++        );
++        assert_eq!(
++            regions(&element, 1.25),
++            vec![Rectangle::new((10, 10).into(), (20, 20).into())]
++        );
++        element.subregion.as_mut().unwrap().rects = Arc::new(Vec::new());
++        assert!(regions(&element, 1.).is_empty());
++
++        element.subregion = None;
++        element.bg_color = Color32F::TRANSPARENT;
++        assert!(regions(&element, 1.).is_empty());
++        element.bg_color = Color32F::BLACK;
++        element.program = None;
++        assert!(regions(&element, 1.).is_empty());
++    }
++}

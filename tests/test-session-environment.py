@@ -59,3 +59,14 @@ with tempfile.TemporaryDirectory() as tmp:
         assert actual.get('EMAKI_SESSION_TAKEOVER') == ('1' if png else None), actual
         assert actual.get('EMAKI_STARTUP_COVER') == (png or None), actual
 print('PASS TTY/invalid handoff leaves takeover unset; prepared fresh handoff enables it')
+
+# The session owns an earlier XDG layer, keeping package/user files untouched.
+xdg_start = source.index('# Packaged autostart overrides')
+xdg_end = source.index('\n# Config selection.', xdg_start)
+for value in ('', '/etc/xdg', '/custom:/etc/xdg', '/usr/share/emaki/xdg:/etc/xdg'):
+    env = {'PATH': '/usr/bin', 'XDG_CONFIG_DIRS': value}
+    result = subprocess.run(['/bin/bash', '-c', source[xdg_start:xdg_end] + '\nprintf %s "$XDG_CONFIG_DIRS"'],
+                            env=env, text=True, capture_output=True, check=True)
+    expected = value if value.startswith('/usr/share/emaki/xdg:') else '/usr/share/emaki/xdg:' + (value or '/etc/xdg')
+    assert result.stdout == expected, result.stdout
+print('PASS packaged autostart layer precedes upstream defaults and preserves custom directories')

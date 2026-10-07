@@ -1,0 +1,118 @@
+{
+  "copyright": "Copyright (C) 2026 Artur Yakymenko",
+  "license": "SPDX-License-Identifier: GPL-3.0-or-later",
+  "cases": [
+    {
+      "name": "healthy-legacy-transcript",
+      "continue": true
+    },
+    {
+      "name": "healthy-hardware",
+      "hardware": {
+        "secure_boot": false,
+        "disk_notice": ""
+      },
+      "continue": true
+    },
+    {
+      "name": "uefi-without-secure-boot-variable",
+      "hardware": {
+        "secure_boot": false
+      },
+      "continue": true
+    },
+    {
+      "name": "secure-boot-enabled",
+      "hardware": {
+        "secure_boot": true
+      },
+      "continue": false,
+      "refused": true,
+      "notice": "Emaki cannot start with firmware signature checking enabled (Secure Boot). Restart into your firmware settings, turn Secure Boot off, then start the USB again.",
+      "error": {
+        "code": "secure_boot",
+        "message": "Emaki cannot start with firmware signature checking enabled (Secure Boot). Restart into your firmware settings, turn Secure Boot off, then start the USB again. No disk has been changed."
+      }
+    },
+    {
+      "name": "secure-boot-unreadable",
+      "hardware": {
+        "secure_boot": null
+      },
+      "continue": false,
+      "refused": true,
+      "notice": "The firmware signature setting could not be read (Secure Boot). Restart into your firmware settings, turn Secure Boot off, then start the USB again."
+    },
+    {
+      "name": "vmd-no-disk",
+      "hardware": {
+        "secure_boot": false,
+        "disk_notice": "No installation disk is visible behind the Intel storage controller (VMD/RST). In your firmware settings, disable VMD or Intel RST and select AHCI storage mode, then restart the USB. If another operating system is installed, prepare it for AHCI before changing this setting; otherwise it may stop booting."
+      },
+      "empty": true,
+      "continue": false,
+      "notice": "No installation disk is visible behind the Intel storage controller (VMD/RST). In your firmware settings, disable VMD or Intel RST and select AHCI storage mode, then restart the USB. If another operating system is installed, prepare it for AHCI before changing this setting; otherwise it may stop booting."
+    },
+    {
+      "name": "clock-progress-notice",
+      "hardware": {
+        "secure_boot": false
+      },
+      "continue": true,
+      "progress": [
+        {
+          "type": "progress",
+          "job_id": "fixture-clock",
+          "phase": "prepare_disk",
+          "phase_pct": 0,
+          "total_pct": 0,
+          "indeterminate": true,
+          "notice": "The clock was corrected for this live session (network time)."
+        },
+        {
+          "type": "state",
+          "job_id": "fixture-clock",
+          "phase": "copy_packages",
+          "phase_pct": 0,
+          "total_pct": 5,
+          "indeterminate": true
+        }
+      ]
+    },
+    {
+      "name": "missing-live-repository",
+      "neutral": true,
+      "hardware": {
+        "media_notice": "The installation files are missing. Connect to the internet before installing (Ventoy or copytoram)."
+      },
+      "continue": true,
+      "notice": "The installation files are missing. Connect to the internet before installing (Ventoy or copytoram)."
+    },
+    {
+      "name": "nvram-progress-notice",
+      "hardware": {
+        "secure_boot": false
+      },
+      "continue": true,
+      "progress": [
+        {
+          "type": "progress",
+          "job_id": "fixture-clock",
+          "phase": "prepare_disk",
+          "phase_pct": 0,
+          "total_pct": 0,
+          "indeterminate": true,
+          "notice": "The firmware could not save a startup entry (NVRAM/efibootmgr). Emaki installed the standard fallback loader (EFI/BOOT/BOOTX64.EFI). If needed, choose this disk in your firmware boot menu."
+        },
+        {
+          "type": "state",
+          "job_id": "fixture-clock",
+          "phase": "copy_packages",
+          "phase_pct": 0,
+          "total_pct": 5,
+          "indeterminate": true
+        }
+      ]
+    }
+  ]
+}

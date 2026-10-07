@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check reproducibility, BMP format and exact integer-scaled lock pixels."""
+"""Check the unused BMP artifact; GRUB does not display or install this file."""
 import json
 from pathlib import Path
 import re
@@ -29,4 +29,4 @@ for x, y, _letter, _neighbours, color in pixels:
 with Image.open(target) as image:
     assert image.format == 'BMP' and image.mode == 'RGB' and image.size == (600, 168)
     assert image.tobytes() == expected, 'BMP differs from the lock pixels, colours or black background'
-print('PASS: uncompressed 24-bit BMP, 600×168, exact 3× lock wordmark on black')
+print('PASS: unused BMP artifact only; GRUB appearance is NOT TESTED; uncompressed 24-bit BMP, 600×168, exact 3× lock wordmark on black')

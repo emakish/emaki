@@ -50,45 +50,64 @@ def checked(argv, **kwargs):
     return subprocess.run(argv, check=True, text=True, capture_output=True, timeout=30, **kwargs)
 
 
+def check_window_corners():
+    import tomllib
+    tokens = tomllib.loads((ROOT / 'tokens.toml').read_text())
+    theme = (ROOT / 'niri/theme.kdl').read_text()
+    pane = (UI / 'GlassPane.qml').read_text()
+    radius = int(re.search(r'geometry-corner-radius (\d+)', theme)[1])
+    assert radius == tokens['geometry']['radius']
+    assert 'clip-to-geometry true' in theme
+    assert f'readonly property real cornerRadius: {radius}' in pane
+    assert 'radius: root.cornerRadius' in pane
+    assert 'uRadius: root.cornerRadius' in pane
+    print('PASS installer glass matches compositor corner geometry')
+
+
+def required_tool(name, fallback=None):
+    found = shutil.which(name)
+    if not found and fallback and Path(fallback).is_file() and os.access(fallback, os.X_OK):
+        found = fallback
+    if not found:
+        raise RuntimeError(f'Required check tool is unavailable [{name}]')
+    return found
+
+
 def main():
+    lint = required_tool('qmllint', '/usr/lib/qt6/bin/qmllint')
+    formatter = required_tool('qmlformat', '/usr/lib/qt6/bin/qmlformat')
+    shellcheck = required_tool('shellcheck')
+    desktop_validate = required_tool('desktop-file-validate')
+    check_window_corners()
     qmlfiles = sorted(UI.glob('*.qml')) + sorted((UI / 'tests').glob('*.qml'))
-    lint = shutil.which('qmllint') or '/usr/lib/qt6/bin/qmllint'
-    if Path(lint).exists():
-        result = subprocess.run([lint, '--ignore-settings', '-W', '0', '--json', '-', '-I', '/usr/lib/qt6/qml', *map(str, qmlfiles)], text=True, capture_output=True, timeout=30)
-        report = json.loads(result.stdout)
-        known = []
-        # Exactly the two upstream metadata omissions already allowed by
-        # tests/test-shell.py, at one Socket and two Process handlers.
-        allowed = {
-            'Type QLocalSocket::LocalSocketError of parameter error in signal called error was not found, but is required to compile onError. Did you add all imports and dependencies?': 1,
-            'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?': 2,
-        }
-        for file in report['files']:
-            for warning in file['warnings']:
-                assert Path(file['filename']).name == 'InstallerController.qml', warning
-                assert warning['id'] == 'signal-handler-parameters' and warning['message'] in allowed, warning
-                known.append(warning['message'])
-        for message, count in allowed.items(): assert known.count(message) <= count
-        assert result.returncode == 0 or known, result.stderr
-        print(f'PASS qmllint: {len(known)} known Quickshell 0.3.1 metadata diagnostics; no new diagnostics')
-    else:
-        print('SKIP qmllint: unavailable')
-    formatter = Path('/usr/lib/qt6/bin/qmlformat')
-    if formatter.exists():
-        for filename in qmlfiles:
-            assert checked([str(formatter), '--ignore-settings', str(filename)]).stdout == filename.read_text(), filename
-        print('PASS qmlformat')
+    result = subprocess.run([lint, '--ignore-settings', '-W', '0', '--json', '-', '-I', '/usr/lib/qt6/qml', *map(str, qmlfiles)], text=True, capture_output=True, timeout=30)
+    report = json.loads(result.stdout)
+    known = []
+    # Exactly the two upstream metadata omissions already allowed by
+    # tests/test-shell.py, at one Socket and two Process handlers.
+    allowed = {
+        'Type QLocalSocket::LocalSocketError of parameter error in signal called error was not found, but is required to compile onError. Did you add all imports and dependencies?': 1,
+        'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?': 2,
+    }
+    for file in report['files']:
+        for warning in file['warnings']:
+            assert Path(file['filename']).name == 'InstallerController.qml', warning
+            assert warning['id'] == 'signal-handler-parameters' and warning['message'] in allowed, warning
+            known.append(warning['message'])
+    for message, count in allowed.items(): assert known.count(message) <= count
+    assert result.returncode == 0 or known, result.stderr
+    print(f'PASS qmllint: {len(known)} known Quickshell 0.3.1 metadata diagnostics; no new diagnostics')
+    for filename in qmlfiles:
+        assert checked([formatter, '--ignore-settings', str(filename)]).stdout == filename.read_text(), filename
+    print('PASS qmlformat')
     checked(['bash', '-n', str(UI / 'emaki-install'), str(ROOT / 'packaging/emaki-installer/PKGBUILD')])
     print('PASS bash -n launcher and PKGBUILD')
     check_reopen_contract()
     check_icon()
-    if shutil.which('shellcheck'):
-        checked(['shellcheck', str(UI / 'emaki-install')])
-        print('PASS shellcheck launcher')
-    else: print('SKIP shellcheck: unavailable')
-    if shutil.which('desktop-file-validate'):
-        checked(['desktop-file-validate', str(UI / 'emaki-install.desktop')])
-        print('PASS desktop-file-validate')
+    checked([shellcheck, str(UI / 'emaki-install')])
+    print('PASS shellcheck launcher')
+    checked([desktop_validate, str(UI / 'emaki-install.desktop')])
+    print('PASS desktop-file-validate')
     with tempfile.TemporaryDirectory(prefix='emaki-installer-package-') as temp:
         block = (ROOT / 'packaging/emaki-installer/PKGBUILD').read_text().split('# --- installer window ---')[1].split('# --- end installer window ---')[0]
         checked(['bash', '-c', 'set -eu\nstage() {\n' + block + '\n}\nstage\n'], cwd=ROOT, env=dict(os.environ, pkgdir=temp))

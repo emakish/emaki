@@ -1,0 +1,225 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Exact source path, reason it is not shipped, evidence of its development use.
+# Build inputs name the installed output; new files require their own entry.
+art/cursor/haze.py	Cursor drawing source; build-cursors produces the installed cursor theme.	scripts/build-cursors
+art/grub/background.py	Artwork generator for the installed GRUB background.png.	art/grub/background.py:usage
+art/icons/emaki-install.py	Artwork generator for installed installer/ui/emaki-install.svg.	art/icons/emaki-install.py:TARGET
+art/logo/mark-large.svg	Large gradient logo design reference; the runtime icon uses the copied geometry.	art/logo/mark.py:module documentation; shell/Icon.qml
+art/logo/mark.py	Vector geometry source for installed mark.svg and pixel wordmark assets.	art/logo/wordmark.py; scripts/build-lock-wordmark
+art/logo/wordmark.py	Vector geometry source for installed LockWordmarkData.js and fetch artwork.	scripts/build-lock-wordmark; scripts/build-fetch
+art/logo/wordmark.svg	Vector wordmark reference; installed pixel artwork is built from wordmark.py.	art/logo/wordmark.py; scripts/build-lock-wordmark
+art/wallpaper/README.md	Source artwork development notes; no runtime consumer.	scripts/public/wallpaper-README.md; Makefile wallpaper install list
+art/wallpaper/front.py	Artwork generator for installed ring-front.png.	art/wallpaper/README.md:step 9
+art/wallpaper/loop-cells.png	Intermediate pixel grid used to produce installed ring.png.	art/wallpaper/README.md:steps 5 and 6
+art/wallpaper/make-canvas.py	Source panel composition tool used before producing ring.png.	art/wallpaper/README.md:step 2
+art/wallpaper/palette-64.gpl	Source palette used to quantize installed wallpaper and train images.	art/wallpaper/README.md:steps 5 and 7
+art/wallpaper/palette.png	Source palette reference for wallpaper and train artwork.	art/wallpaper/README.md:steps 1 and 7
+art/wallpaper/pixelize.py	Source quantization tool producing the pixel grid for ring.png.	art/wallpaper/README.md:step 5
+art/wallpaper/prompts/01-anchor.txt	Source artwork brief for wallpaper panel 01; installed output is ring.png.	art/wallpaper/README.md:steps 1, 2 and 7
+art/wallpaper/prompts/02-lake-house.txt	Source artwork brief for wallpaper panel 02; installed output is ring.png.	art/wallpaper/README.md:steps 1, 2 and 7
+art/wallpaper/prompts/03-river-village.txt	Source artwork brief for wallpaper panel 03; installed output is ring.png.	art/wallpaper/README.md:steps 1, 2 and 7
+art/wallpaper/prompts/04-fields-city.txt	Source artwork brief for wallpaper panel 04; installed output is ring.png.	art/wallpaper/README.md:steps 1, 2 and 7
+art/wallpaper/prompts/05-gorge-bridge.txt	Source artwork brief for wallpaper panel 05; installed output is ring.png.	art/wallpaper/README.md:steps 1, 2 and 7
+art/wallpaper/prompts/06-coast-lighthouse.txt	Source artwork brief for wallpaper panel 06; installed output is ring.png.	art/wallpaper/README.md:steps 1, 2 and 7
+art/wallpaper/prompts/07-seaside-town.txt	Source artwork brief for wallpaper panel 07; installed output is ring.png.	art/wallpaper/README.md:steps 1, 2 and 7
+art/wallpaper/prompts/08-dunes.txt	Source artwork brief for wallpaper panel 08; installed output is ring.png.	art/wallpaper/README.md:steps 1, 2 and 7
+art/wallpaper/prompts/09-desert-mesas.txt	Source artwork brief for wallpaper panel 09; installed output is ring.png.	art/wallpaper/README.md:steps 1, 2 and 7
+art/wallpaper/prompts/10-oasis-ruins.txt	Source artwork brief for wallpaper panel 10; installed output is ring.png.	art/wallpaper/README.md:steps 1, 2 and 7
+art/wallpaper/prompts/11-vineyard-hills.txt	Source artwork brief for wallpaper panel 11; installed output is ring.png.	art/wallpaper/README.md:steps 1, 2 and 7
+art/wallpaper/prompts/12-mountain-pass.txt	Source artwork brief for wallpaper panel 12; installed output is ring.png.	art/wallpaper/README.md:steps 1, 2 and 7
+art/wallpaper/prompts/13-japanese-house.txt	Source artwork brief for wallpaper panel 13; installed output is ring.png.	art/wallpaper/README.md:steps 1, 2 and 7
+art/wallpaper/prompts/14-birch-grove.txt	Source artwork brief for wallpaper panel 14; installed output is ring.png.	art/wallpaper/README.md:steps 1, 2 and 7
+art/wallpaper/prompts/15-loop-forest.txt	Source artwork brief for wallpaper panel 15; installed output is ring.png.	art/wallpaper/README.md:steps 1, 2 and 7
+art/wallpaper/prompts/sprite-train.txt	Source artwork brief for the train sprite; installed output is train-frames.png.	art/wallpaper/README.md:steps 1, 2 and 7
+art/wallpaper/remove-sun.py	Source panel retouching tool used before producing ring.png.	art/wallpaper/README.md:step 3
+art/wallpaper/sprite.py	Source train preparation tool; train-anim.py produces installed frames.	art/wallpaper/README.md:steps 7 and 8
+art/wallpaper/stitch.py	Source panel stitching tool used before producing ring.png.	art/wallpaper/README.md:step 4
+art/wallpaper/touchup.py	Source artwork finishing tool producing installed ring.png.	art/wallpaper/README.md:step 6
+art/wallpaper/train-anim.js	Browser mockup animation metadata; runtime consumes train.json instead.	docs/mockups/wallpaper/train.html:52; Makefile wallpaper install list
+art/wallpaper/train-anim.py	Artwork generator for installed train-frames.png and train.json.	art/wallpaper/train-anim.py:usage
+art/wallpaper/train.png	Source sprite for the installed animated train frames.	art/wallpaper/README.md:step 8
+boot/emaki-splash.bmp	Unshipped UKI prototype; installed systems boot with GRUB.	MANIFEST.md:boot splash (not installed); tests/test-packaging.py
+grub/tests/10_linux-2.16.fixture	Regression fixture for boot menu compatibility.	tests/test-packaging.py
+grub/tests/grub-btrfs-4.14.fixture	Regression fixture for boot menu compatibility.	tests/test-snapshot-menu.py
+installer/assets/grub/README.md	Artwork and prototype-font regeneration instructions.	installer/assets/grub/README.md
+installer/assets/grub/generate-screens.py	Build tool producing installed emaki_installer/grub_artwork PNGs.	installer/assets/grub/README.md
+installer/assets/grub/subset-pf2.py	Build tool producing the installed unlock-24.pf2 fallback font.	installer/assets/grub/README.md
+installer/assets/grub/unlock-32.pf2	Unused 32 px font prototype; only unlock-24.pf2 ships.	installer/assets/grub/README.md
+installer/assets/grub/unlock-48.pf2	Unused 48 px font prototype; only unlock-24.pf2 ships.	installer/assets/grub/README.md
+installer/ui/tests/ControllerTest.qml	Controller test window.	installer/ui/tests/controller.py
+installer/ui/tests/CopyTest.qml	Password-copy regression test window.	installer/ui/tests/interactions.py
+installer/ui/tests/FakeNiri.js	Synthetic compositor for installer window tests.	installer/ui/tests/interactions.py; installer/ui/tests/render.py
+installer/ui/tests/InteractionTest.qml	Installer interaction regression test window.	installer/ui/tests/interactions.py
+installer/ui/tests/KeyboardTest.qml	Password keyboard regression test window.	installer/ui/tests/interactions.py
+installer/ui/tests/PasteTest.qml	Password-paste regression test window.	installer/ui/tests/interactions.py
+installer/ui/tests/TestWindow.qml	Screenshot fixture window for installer states.	installer/ui/tests/render.py
+installer/ui/tests/check.py	Installer static validation tool.	Makefile:check-installer-ui
+installer/ui/tests/controller.py	Controller regression runner over a test socket.	Makefile:check-installer-ui
+installer/ui/tests/cut-recording.py	Converts development install recordings into test transcripts.	installer/ui/tests/cut-recording.py:usage
+installer/ui/tests/interactions.py	Installer input interaction test runner.	Makefile:check-installer-ui
+installer/ui/tests/mock-worker.py	Synthetic worker serving recorded test transcripts.	installer/ui/tests/controller.py; installer/ui/tests/test_helpers.py
+installer/ui/tests/real-worker.py	Installer test worker with fake disks and package operations.	installer/ui/tests/controller.py; installer/ui/tests/real-worker.py:module documentation
+installer/ui/tests/render.py	Installer screenshot fixture runner.	Makefile:check-installer-ui
+installer/ui/tests/test-protocol.js	Installer protocol unit tests.	Makefile:check-installer-ui
+installer/ui/tests/test-timezones.js	Installer time zone unit tests.	Makefile:check-installer-ui
+installer/ui/tests/test_console_chars.py	Installer keyboard character unit tests.	Makefile:unittest discovery in installer/ui/tests
+installer/ui/tests/test_helpers.py	Installer helper unit tests.	Makefile:unittest discovery in installer/ui/tests
+installer/ui/tests/test_planner_limits.py	Installer planner boundary unit tests.	Makefile:unittest discovery in installer/ui/tests
+installer/ui/tests/transcripts/alongside.json	Recorded alongside scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
+installer/ui/tests/transcripts/cancel.json	Recorded cancel scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
+installer/ui/tests/transcripts/choices.json	Recorded choices scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
+installer/ui/tests/transcripts/disconnect-resume.json	Recorded disconnect-resume scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
+installer/ui/tests/transcripts/erase-happy.json	Recorded erase-happy scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
+installer/ui/tests/transcripts/error-retry.json	Recorded error-retry scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
+installer/ui/tests/transcripts/gparted-stale.json	Recorded gparted-stale scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
+installer/ui/tests/transcripts/manual-reprobe.json	Recorded manual-reprobe scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
+installer/ui/tests/transcripts/plan-errors.json	Recorded plan-errors scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
+installer/ui/tests/transcripts/preflight-progress.json	Recorded preflight-progress scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
+installer/ui/tests/transcripts/real-erase-btrfs.json	Recorded real-erase-btrfs scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
+installer/ui/tests/transcripts/render.json	Recorded render scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
+installer/ui/tests/transcripts/token-expiry.json	Recorded token-expiry scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
+installer/ui/tests/transcripts/update-progress.json	Recorded update-progress scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
+packaging/emaki-config/PKGBUILD	Package build recipe; packages contain its resulting payload.	packaging/emaki-config/PKGBUILD:package
+packaging/emaki-config/expected-files.list	Reviewed package payload assertion used during packaging.	packaging/emaki-config/PKGBUILD:diff actual-files.list
+packaging/emaki-config/preset-unit-files.json	Recorded upstream unit inventory for preset regression tests.	tests/test-packaging.py
+scripts/build-boot-splash	Build tool for the unshipped UKI splash prototype.	Makefile:boot-splash
+scripts/build-cursors	Build tool producing the installed checked-in cursor theme.	Makefile:cursors
+scripts/build-fetch	Build tool producing the installed checked-in fetch assets.	Makefile:fetch-assets
+scripts/build-lock-wordmark	Build tool producing installed LockWordmarkData.js.	Makefile:lock-wordmark
+scripts/build-shell-shaders	Build tool producing installed compiled QML shaders.	Makefile:SHADERS
+scripts/build-wallpaper-fallback	Build tool producing installed wallpaper/fallback.png.	tests/test-wallpaper-fallback.py; MANIFEST.md:wallpaper fallback
+scripts/check-arch-apps.py	Developer package dependency and size audit.	packaging/README.md
+scripts/check-delivery.py	Repository package-delivery validation tool.	Makefile:check
+scripts/cleanup/archive.sh	Personal-home archive before the historical workstation migration.	scripts/cleanup/archive.sh:header; docs/history/2026-09-17-cleanup-state.md
+scripts/cleanup/check-phase-u.sh	Historical workstation migration verification.	scripts/cleanup/check-phase-u.sh:header; docs/history/2026-09-17-cleanup-state.md
+scripts/cleanup/dry-run.sh	Historical workstation migration command preview.	scripts/cleanup/dry-run.sh:header; docs/history/2026-09-17-cleanup-state.md
+scripts/cleanup/home-traces.sh	Historical personal-home cleanup after workstation migration.	scripts/cleanup/home-traces.sh:header; docs/history/2026-09-17-cleanup-state.md
+scripts/cleanup/rewrite-email.sh	Historical private repository identity maintenance.	scripts/cleanup/rewrite-email.sh:header; docs/history/2026-09-17-cleanup-state.md
+scripts/cleanup/root-1.sh	Historical workstation desktop migration, first stage.	scripts/cleanup/root-1.sh:header; docs/history/2026-09-17-cleanup-state.md
+scripts/cleanup/root-2.sh	Historical workstation login migration, second stage.	scripts/cleanup/root-2.sh:header; docs/history/2026-09-17-cleanup-state.md
+scripts/cleanup/root-3.sh	Historical workstation package cleanup, third stage.	scripts/cleanup/root-3.sh:header; docs/history/2026-09-17-cleanup-state.md
+scripts/cleanup/user-after-r1.sh	Historical personal configuration migration.	scripts/cleanup/user-after-r1.sh:header; docs/history/2026-09-17-cleanup-state.md
+scripts/cleanup/user-units.sh	Historical personal user-service cleanup.	scripts/cleanup/user-units.sh:header; docs/history/2026-09-17-cleanup-state.md
+scripts/core-package.py	Build tool producing the installed core executable.	Makefile:build-core
+scripts/make-public.sh	Public source export maintenance tool.	MANIFEST.md:public source export; tests/test-make-public.py
+scripts/release-notes	Offline release draft and missing-note check; not installed.	docs/updates-runbook.md:Release notes draft; tests/test-release-notes.py
+scripts/public/README.md	Public source repository README template.	scripts/make-public.sh
+scripts/public/allow.txt	Public source export lexical exceptions.	scripts/make-public.sh
+scripts/public/screenshots/boot-menu.png	Public repository documentation screenshot for boot-menu.	scripts/make-public.sh:shots
+scripts/public/screenshots/desktop.png	Public repository documentation screenshot for desktop.	scripts/make-public.sh:shots
+scripts/public/screenshots/installer.png	Public repository documentation screenshot for installer.	scripts/make-public.sh:shots
+scripts/public/screenshots/live-session.png	Public repository documentation screenshot for live-session.	scripts/make-public.sh:shots
+scripts/public/screenshots/login.png	Public repository documentation screenshot for login.	scripts/make-public.sh:shots
+scripts/public/wallpaper-README.md	Public source artwork README template.	scripts/make-public.sh
+scripts/render-kde-theme	Build tool producing installed kdeglobals from tokens.toml.	Makefile:render
+scripts/render-shell-palette	Build tool producing installed ShellPalette.qml.	Makefile:render
+scripts/render-shell-tools	Build tool producing installed ShellTools.qml.	Makefile:shell-config
+scripts/render-theme	Build tool producing installed themes and system identity defaults.	Makefile:render
+scripts/try-palette.py	Developer palette experiment tool editing source tokens.toml.	scripts/try-palette.py:module documentation
+crates/emaki-cli/Cargo.toml	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-cli/src/main.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-cli/src/settings.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-cli/tests/cli.rs	Core regression test or fixture; not part of the installed executable.	cargo test --workspace
+crates/emaki-cli/tests/discovery.rs	Core regression test or fixture; not part of the installed executable.	cargo test --workspace
+crates/emaki-cli/tests/fetch.rs	Core regression test or fixture; not part of the installed executable.	cargo test --workspace
+crates/emaki-cli/tests/fixtures/busctl.py	Core regression test or fixture; not part of the installed executable.	cargo test --workspace
+crates/emaki-cli/tests/fixtures/help.txt	Core regression test or fixture; not part of the installed executable.	cargo test --workspace
+crates/emaki-cli/tests/fixtures/pw-cli.py	Core regression test or fixture; not part of the installed executable.	cargo test --workspace
+crates/emaki-cli/tests/settings.rs	Core regression test or fixture; not part of the installed executable.	cargo test --workspace
+crates/emaki-core/Cargo.toml	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-core/src/lib.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-core/src/map.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-core/src/niri/actions.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-core/src/niri/mod.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-core/src/niri/model.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-core/src/niri/stream.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-core/src/settings/journal.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-core/src/settings/mod.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-core/src/settings/storage.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-core/src/state.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-core/src/transport.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-core/tests/niri.rs	Core regression test or fixture; not part of the installed executable.	cargo test --workspace
+iso/profile/airootfs/etc/NetworkManager/conf.d/10-emaki-live.conf	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/emaki-installer/pacman-offline.conf	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/emaki-live/greetd.toml	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/emaki-live/sshd_config	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/group	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/hostname	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/locale.conf	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/locale.gen	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/localtime	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/mkinitcpio.conf.d/archiso.conf	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/motd	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/pacman.conf	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/pacman.d/hooks/uncomment-mirrors.hook	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/pacman.d/hooks/zzzz99-remove-custom-hooks-from-airootfs.hook	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/passwd	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/resolv.conf	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/shadow	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/sudoers.d/10-live	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/journald.conf.d/volatile-storage.conf	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/logind.conf.d/do-not-suspend.conf	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/networkd.conf.d/ipv6-privacy-extensions.conf	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/resolved.conf.d/archiso.conf	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system-generators/systemd-gpt-auto-generator	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system-preset/00-emaki-live.preset	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/choose-mirror.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/dbus-org.freedesktop.ModemManager1.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/dbus-org.freedesktop.network1.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/dbus-org.freedesktop.resolve1.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/dbus-org.freedesktop.timesync1.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/default.target	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/display-manager.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/emaki-installerd.service.d/10-live.conf	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/emaki-test-ssh.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/etc-pacman.d-gnupg.mount	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/greetd.service.d/10-live.conf	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/greetd.service.d/emaki.conf	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/iwd.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/multi-user.target.wants/ModemManager.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/multi-user.target.wants/NetworkManager.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/multi-user.target.wants/bluetooth.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/multi-user.target.wants/emaki-installerd.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/multi-user.target.wants/emaki-test-ssh.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/multi-user.target.wants/hv_kvp_daemon.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/multi-user.target.wants/hv_vss_daemon.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/multi-user.target.wants/pacman-init.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/multi-user.target.wants/power-profiles-daemon.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/multi-user.target.wants/systemd-resolved.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/multi-user.target.wants/vboxservice.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/multi-user.target.wants/vmtoolsd.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/multi-user.target.wants/vmware-vmblock-fuse.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/pacman-init.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/pacman-init.service.d/10-emaki.conf	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/reflector.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/sshd.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/sshd.socket	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/sysinit.target.wants/systemd-resolved.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/sysinit.target.wants/systemd-timesyncd.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/systemd-networkd-wait-online.service.d/wait-for-only-one-interface.conf	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/systemd-networkd.service	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/systemd/system/systemd-networkd.socket	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/sysusers.d/10-emaki-live.conf	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/etc/vconsole.conf	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/home/live/.config/emaki/niri-emaki.kdl	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/home/live/.config/wpaperd/config.toml	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+iso/profile/airootfs/root/.gnupg/scdaemon.conf	Live-image overlay input; mkarchiso includes it only in the live filesystem, not installed-target packages.	iso/build.sh:profile copy and mkarchiso; iso/profile/profiledef.sh
+packaging/emaki-apps/PKGBUILD	Package build recipe; packages contain its resulting payload.	packaging/emaki-apps/PKGBUILD:package
+packaging/emaki-apps/arch-packages.json	Recorded upstream package inventory for dependency audit and regression tests.	scripts/check-arch-apps.py; tests/test-packaging.py
+packaging/emaki-apps/emaki-apps.install	Package lifecycle metadata; makepkg embeds it as .INSTALL rather than a runtime source file.	packaging/emaki-apps/PKGBUILD:install
+packaging/emaki-apps/preset-unit-files.json	Recorded upstream unit inventory for preset regression tests.	tests/test-packaging.py
+packaging/emaki-desktop/PKGBUILD	Package build recipe; packages contain its resulting payload.	packaging/emaki-desktop/PKGBUILD:package
+packaging/emaki-desktop/emaki-desktop.install	Package lifecycle metadata; makepkg embeds it as .INSTALL rather than a runtime source file.	packaging/emaki-desktop/PKGBUILD:install
+packaging/emaki-installer/PKGBUILD	Package build recipe; packages contain its resulting payload.	packaging/emaki-installer/PKGBUILD:package
+packaging/emaki-nvidia/PKGBUILD	Package build recipe; packages contain its resulting payload.	packaging/emaki-nvidia/PKGBUILD:package
+packaging/emaki-keyring/PKGBUILD	Package build recipe; packages contain its resulting payload.	packaging/emaki-keyring/PKGBUILD:package
+packaging/emaki-keyring/emaki-keyring.install	Package lifecycle metadata; makepkg embeds it as .INSTALL rather than a runtime source file.	packaging/emaki-keyring/PKGBUILD:install
+packaging/emaki-mirrorlist/PKGBUILD	Package build recipe; packages contain its resulting payload.	packaging/emaki-mirrorlist/PKGBUILD:package
+packaging/emaki-mirrorlist/emaki-mirrorlist.install	Package lifecycle metadata; makepkg embeds it as .INSTALL rather than a runtime source file.	packaging/emaki-mirrorlist/PKGBUILD:install
+installer/ui/tests/render_content.py	Installer screenshot content and geometry test helpers.	installer/ui/tests/render.py; installer/ui/tests/test_render_content.py
+installer/ui/tests/test_render_content.py	Installer screenshot validation regression tests.	Makefile:unittest discovery in installer/ui/tests
+installer/ui/tests/HardwareTest.qml	Installer hardware-notice regression test window.	installer/ui/tests/test_hardware.py
+installer/ui/tests/fixtures/hardware.json	Installer hardware-notice test fixture.	installer/ui/tests/test_hardware.py
+installer/ui/tests/test_hardware.py	Installer hardware-notice unit tests.	Makefile:unittest discovery in installer/ui/tests
+installer/ui/tests/test_render_cleanup.py	Installer renderer cleanup regression tests.	Makefile:unittest discovery in installer/ui/tests

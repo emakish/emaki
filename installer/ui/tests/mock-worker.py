@@ -7,9 +7,11 @@ No request payloads are printed or saved; passwords are discarded immediately.
 """
 import argparse
 import copy
+from contextlib import nullcontext
 import json
 import os
 from pathlib import Path
+import signal
 import socket
 import sys
 import tempfile
@@ -77,7 +79,10 @@ class Replay:
     def respond(self, request):
         kind = request['type']
         assert isinstance(request.get('id'), str) and request['id']
-        if kind == 'set_timezone' and self.screen:
+        # Background detection can apply the live clock between recorded steps.
+        # Explicit clock rows still own their recorded success/failure replies.
+        clock_recorded = self.index < len(self.rows) and self.rows[self.index]['expect'] == 'set_timezone'
+        if kind == 'set_timezone' and (self.screen or not clock_recorded):
             now = datetime.now(ZoneInfo(request['timezone']))
             responses = [dict(type='reply', ok=True, timezone=request['timezone'],
                               unix_ms=int(now.timestamp() * 1000),
@@ -85,7 +90,7 @@ class Replay:
         elif self.screen:
             names = {'hello': ['hello'], 'probe': ['inventory'], 'plan': ['plan_ack'],
                      'confirm': ['reply', 'state'] + (['done'] if self.screen.startswith('done') else ['error'] if self.screen.startswith('error') else []),
-                     'save_log': ['reply'], 'reboot': ['reply']}.get(kind, [])
+                     'save_log': ['reply'], 'prepare_reboot': ['reply'], 'reboot': ['reply']}.get(kind, [])
             responses = [self.recorded[name] for name in names]
             if kind == 'hello':
                 # The real worker's hello carries the console table (protocol.py).
@@ -95,11 +100,22 @@ class Replay:
                 responses[-1] = dict(responses[-1], warnings=[
                     'The online update stopped part-way; some packages may be newer than others. '
                     'Run `sudo pacman -Syu` after the first login.'])
+            if kind == 'confirm' and self.screen == 'done-wifi-not-copied':
+                responses[-1] = dict(responses[-1], warnings=[
+                    'Wi-Fi was not copied; join it again after restarting.'])
+            if kind == 'confirm' and self.screen == 'error-login-name':
+                responses[-1] = dict(responses[-1], code='login_name_reserved', phase='prepare_disk',
+                                    message='This login name belongs to the system. Choose another name; the disk has not been changed.')
             if kind == 'confirm' and self.screen == 'install-signatures':
                 # The preflight's count (worker.py Worker.activity), before the first state event.
                 responses = [responses[0], dict(type='progress', job_id=responses[0].get('job_id', 'fixture-job'),
                                                 phase='prepare_disk', phase_pct=0, total_pct=0, indeterminate=True,
                                                 activity=dict(name='signatures', done=312, total=871))]
+            if kind == 'confirm' and self.screen == 'install-step':
+                responses = [responses[0], dict(type='progress', job_id=responses[0].get('job_id', 'fixture-job'),
+                                                phase='copy_packages', phase_pct=72, total_pct=55, indeterminate=False,
+                                                step=dict(id='copy:hook:12', state='running',
+                                                          text='Running package setup step 12 of 18 (pacman: Updating the desktop file MIME type cache).'))]
             if kind == 'confirm' and self.screen == 'install-updates':
                 # The update's downloads (worker.py DownloadCount): 93 % before the update phase.
                 responses = [responses[0], dict(type='progress', job_id=responses[0].get('job_id', 'fixture-job'),
@@ -183,7 +199,14 @@ def main():
     if args.stdio:
         serve_connection(sys.stdin.buffer, sys.stdout.buffer, replay, args.delay, stdio=True)
         return
-    with tempfile.TemporaryDirectory(prefix='emaki-mock-') as temporary:
+    # Let the temporary-directory context finish when the harness stops the worker.
+    def stop(signum, frame):
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, stop)
+    temporary_socket = (nullcontext(None) if args.socket else
+                        tempfile.TemporaryDirectory(prefix='emi-', dir='/tmp'))
+    with temporary_socket as temporary:
         path = args.socket or Path(temporary) / 'worker.sock'
         with socket.socket(socket.AF_UNIX) as server:
             server.bind(str(path))

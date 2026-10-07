@@ -4,6 +4,7 @@ import base64
 import contextlib
 import importlib.util
 import io
+import os
 from pathlib import Path
 import re
 import runpy
@@ -27,6 +28,7 @@ prepare = load('prepare-profile')
 repo = load('repo-files')
 importer = load('import-releng')
 image_check = load('verify-image')
+grub_modules = load('check-grub-modules')
 # releng's mirror chooser, install guide and networkd units: the live session uses NetworkManager.
 RELENG_LEFTOVERS = ('usr/local/bin/choose-mirror', 'usr/local/bin/Installation_guide',
                     'etc/systemd/network/20-ethernet.network', 'etc/systemd/network/20-wlan.network',
@@ -34,6 +36,115 @@ RELENG_LEFTOVERS = ('usr/local/bin/choose-mirror', 'usr/local/bin/Installation_g
 
 
 class StaticTests(unittest.TestCase):
+    def test_cache_pruning_keeps_full_current_transaction(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory)
+            keep = ['target-2-1-any.pkg.tar.zst', 'live-1-1-any.pkg.tar.zst']
+            stale = ['target-1-1-any.pkg.tar.zst', 'removed-1-1-any.pkg.tar.zst']
+            for name in keep + stale:
+                (cache / name).write_bytes(b'package')
+                (cache / (name + '.sig')).write_bytes(b'signature')
+            (cache / 'download.part').write_bytes(b'partial')
+            manifest = cache / 'closure.txt'
+            manifest.write_text(''.join(name + '\n' for name in keep))
+            repo.prune(cache, manifest)
+            self.assertEqual({p.name for p in cache.glob('*.pkg.tar.zst*')},
+                             set(keep + [name + '.sig' for name in keep]))
+            self.assertTrue((cache / 'download.part').exists())
+            manifest.write_text('missing-1-1-any.pkg.tar.zst\n')
+            with self.assertRaisesRegex(ValueError, 'incomplete'):
+                repo.prune(cache, manifest)
+            self.assertTrue((cache / keep[0]).exists())
+        builder = (HERE / 'build.sh').read_text()
+        self.assertIn('prune "$work/offline" "$work/closure.txt"', builder)
+
+    def test_grub_helper_license_headers(self):
+        for name in ('check-grub-modules.py', 'test-efi-image.py'):
+            with self.subTest(name=name):
+                lines = (HERE / name).read_text().splitlines()
+                self.assertEqual(lines[1], '# Copyright (C) 2026 Artur Yakymenko')
+                self.assertEqual(lines[2], '# SPDX-License-Identifier: GPL-3.0-or-later')
+
+    def test_loopback_background_options_require_asset(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            boot = Path(temporary)
+            grub = boot / 'grub'
+            grub.mkdir()
+            background = grub / 'background.png'
+            for option in ('', '-m stretch ', '-m normal ', '-mstretch ',
+                           '--mode stretch ', '--mode normal ', '--mode=stretch '):
+                with self.subTest(option=option):
+                    (grub / 'loopback.cfg').write_text(
+                        f'background_image {option}/boot/grub/background.png\n'
+                        'linux /vmlinuz-linux archisobasedir=emaki copytoram=n\n')
+                    background.unlink(missing_ok=True)
+                    with self.assertRaisesRegex(ValueError, 'missing or empty loopback background'):
+                        image_check.check_loaders(boot, check_assets=True)
+                    background.touch()
+                    with self.assertRaisesRegex(ValueError, 'missing or empty loopback background'):
+                        image_check.check_loaders(boot, check_assets=True)
+                    background.write_bytes(b'asset')
+                    image_check.check_loaders(boot, check_assets=True)
+
+    def test_module_gate_skips_only_missing_default_directory(self):
+        text = (HERE / 'check.sh').read_text()
+        block = text[text.index('modules='):text.index('python3 -B "$HERE/test-static.py"')]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            missing = root / 'missing'
+            modules = root / 'modules'
+            modules.mkdir()
+            for config in (HERE / 'profile/grub').glob('*.cfg'):
+                for name in re.findall(r'^\s*insmod\s+(\w+)', config.read_text(), re.M):
+                    (modules / f'{name}.mod').write_bytes(b'module')
+            script = 'HERE=$1; incomplete=0;\n' + block.replace(
+                '/usr/lib/grub/x86_64-efi', str(missing)) + '\nexit "$incomplete"'
+            env = dict(os.environ)
+            env.pop('GRUB_MODULE_DIR', None)
+            for value, status in ((None, 0), (str(missing), 1), ('', 1),
+                                  (str(modules), 0)):
+                with self.subTest(value=value):
+                    case_env = dict(env)
+                    if value is not None:
+                        case_env['GRUB_MODULE_DIR'] = value
+                    result = subprocess.run(['bash', '-eu', '-c', script, '_', str(HERE)],
+                                            env=case_env, capture_output=True, text=True)
+                    self.assertEqual(result.returncode, status, result.stdout + result.stderr)
+                    if value is None:
+                        self.assertIn('SKIP:', result.stdout)
+                        self.assertIn(str(missing), result.stdout)
+                    elif status:
+                        self.assertIn('GRUB_MODULE_DIR', result.stdout + result.stderr)
+                    else:
+                        self.assertIn('profile insmod commands exist', result.stdout)
+
+    def test_grub_modules_match_available_build_modules(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile = root / 'grub'
+            modules = root / 'x86_64-efi'
+            profile.mkdir()
+            modules.mkdir()
+            (modules / 'efi_gop.mod').write_bytes(b'module')
+            config = profile / 'grub.cfg'
+            config.write_text('insmod efi_gop\n# insmod nonexistent\n')
+            self.assertEqual(grub_modules.check(profile, modules), 1)
+            # The former UGA request must fail against a module set without it.
+            loopback = profile / 'loopback.cfg'
+            loopback.write_text('insmod efi_uga\n')
+            with self.assertRaisesRegex(ValueError, 'loopback.cfg: missing GRUB module: efi_uga.mod'):
+                grub_modules.check(profile, modules)
+            loopback.write_text('insmod "efi_gop"; insmod missing\n')
+            with self.assertRaisesRegex(ValueError, 'missing.mod'):
+                grub_modules.check(profile, modules)
+            loopback.write_text('insmod ${video_module}\n')
+            with self.assertRaisesRegex(ValueError, 'literal module name'):
+                grub_modules.check(profile, modules)
+            loopback.unlink()
+            (modules / 'efi_gop.mod').unlink()
+            with self.assertRaisesRegex(ValueError, 'no installed GRUB modules'):
+                grub_modules.check(profile, modules)
+
     def test_target_closure_excludes_nautilus(self):
         with tempfile.TemporaryDirectory() as directory:
             manifest = Path(directory) / 'closure.txt'
@@ -64,12 +175,119 @@ class StaticTests(unittest.TestCase):
     def test_readable_boot_menus(self):
         for name in ('grub.cfg', 'loopback.cfg'):
             grub = (HERE / 'profile/grub' / name).read_text()
-            self.assertIn('set gfxmode="1024x768,800x600,640x480,auto"', grub)
-            self.assertIn('terminal_output gfxterm', grub)
-            self.assertIn('background_image /boot/grub/background.png', grub)
+            self.assertIn('set gfxmode=auto', grub)
+            self.assertIn('if terminal_output gfxterm; then', grub)
+            self.assertIn('terminal_output console', grub)
+            self.assertIn('insmod efi_gop', grub)
+            self.assertNotIn('insmod efi_uga', grub)
+            self.assertIn('loadfont /boot/grub/menu.pf2', grub)
+            self.assertIn('set gfxterm_font="DejaVu Sans Mono Regular 30"', grub)
+            self.assertIn('background_image --mode stretch /boot/grub/background.png', grub)
+            self.assertNotIn('accessibility=on', grub)
         self.assertIn('"$ROOT/art/grub/background.png" "$work/profile/grub/background.png"',
                       (HERE / 'build.sh').read_text())
         self.assertIn('MENU RESOLUTION 640 480', (HERE / 'profile/syslinux/archiso_head.cfg').read_text())
+
+    def test_public_allowlist_has_no_deleted_speech_service(self):
+        self.assertFalse(any('livecd-talk.service' in line for line in
+                             (HERE.parent / 'scripts/public/allow.txt').read_text().splitlines()))
+
+    def test_live_boot_paths_and_no_speech(self):
+        result = subprocess.run(['bash', '-c', 'declare -A file_permissions=(); source "$1"; printf "%s\\n" "${bootmodes[@]}"',
+                                 '_', str(HERE / 'profile/profiledef.sh')], check=True, text=True, capture_output=True)
+        self.assertEqual(result.stdout.splitlines(), ['bios.syslinux', 'uefi.grub'])
+        self.assertFalse((HERE / 'profile/efiboot').exists())
+        self.assertFalse((HERE / 'profile/airootfs/etc/systemd/system/livecd-talk.service').exists())
+        self.assertFalse((HERE / 'profile/airootfs/etc/systemd/system/livecd-alsa-unmuter.service').exists())
+        self.assertFalse((HERE / 'profile/airootfs/usr/local/bin/livecd-sound').exists())
+        for architecture in ('x86_64', 'aarch64'):
+            self.assertFalse({'espeakup', 'livecd-sounds'} & set((HERE / f'profile/packages.{architecture}').read_text().split()))
+        for path in (HERE / 'profile/syslinux').glob('*.cfg'):
+            self.assertNotIn('accessibility=on', path.read_text())
+
+    def test_menu_font_cap_height_and_title_fit(self):
+        import math
+        import struct
+        font_tools = runpy.run_path(str(HERE.parent / 'installer/assets/grub/subset-pf2.py'))
+        data = (HERE / 'profile/grub/menu.pf2').read_bytes()
+        fields = dict(font_tools['read_sections'](data))
+        glyphs = font_tools['glyphs'](data, fields['CHIX'])
+        for char in 'EMH':
+            _, height, _, _, width = struct.unpack('>HHhhh', glyphs[ord(char)][:10])
+            self.assertGreaterEqual(height * 13.3 * 25.4 / math.hypot(2560, 1600), 2.4)
+            self.assertEqual(width, 18)
+        # Stock gfxterm reserves a ten-pixel border and menu decorations.
+        available = (1024 - 20) // 18 - 8
+        for path in (HERE / 'profile/grub').glob('*.cfg'):
+            for title in re.findall(r'^menuentry "([^"]+)"', path.read_text(), re.M):
+                title = title.replace('%ARCH%', 'x86_64').replace('${archiso_platform}', 'UEFI')
+                self.assertLessEqual(len(title), available, title)
+
+    def test_both_live_kernels_have_payload_packages_and_complete_boot_entries(self):
+        constants = runpy.run_path(str(HERE.parent / 'installer/emaki_installer/constants.py'))
+        target = set((HERE / 'target-packages.txt').read_text().split())
+        live = set((HERE / 'profile/packages.x86_64').read_text().split())
+        self.assertIn('linux-lts', (HERE / 'packages-extra.txt').read_text().split())
+        for kernel in ('linux', 'linux-lts'):
+            self.assertIn(kernel, constants['PACKAGES'])
+            self.assertIn(kernel, target)
+            self.assertIn(kernel, live)
+        common = ['archisobasedir=%INSTALL_DIR%', '%KERNEL_PARAMS%', 'copytoram=n']
+        for name in ('grub.cfg', 'loopback.cfg'):
+            text = (HERE / 'profile/grub' / name).read_text()
+            lines = [line.split() for line in text.splitlines() if line.lstrip().startswith('linux /%INSTALL_DIR%/')]
+            self.assertEqual(len(lines), 3)
+            for kernel, line in zip(('linux', 'linux-lts'), lines[:2]):
+                self.assertEqual(line[1], f'/%INSTALL_DIR%/boot/%ARCH%/vmlinuz-{kernel}')
+                location = (['archisosearchuuid=%ARCHISO_UUID%'] if name == 'grub.cfg' else
+                            ['img_dev=UUID=${archiso_img_dev_uuid}', 'img_loop="${iso_path}"'])
+                self.assertEqual(line[2:], [common[0], *location, *common[1:]])
+            self.assertEqual(lines[2], [*lines[0], 'nomodeset'])
+            self.assertEqual(re.findall(r'^\s*initrd (.+)$', text, re.M),
+                             [f'/%INSTALL_DIR%/boot/%ARCH%/initramfs-{kernel}.img'
+                              for kernel in ('linux', 'linux-lts', 'linux')])
+        syslinux = (HERE / 'profile/syslinux/archiso_sys-linux.cfg').read_text()
+        self.assertEqual(re.findall(r'^LINUX (.+)$', syslinux, re.M),
+                         [f'/%INSTALL_DIR%/boot/%ARCH%/vmlinuz-{kernel}'
+                          for kernel in ('linux', 'linux-lts', 'linux')])
+        self.assertEqual(re.findall(r'^INITRD (.+)$', syslinux, re.M),
+                         [f'/%INSTALL_DIR%/boot/%ARCH%/initramfs-{kernel}.img'
+                          for kernel in ('linux', 'linux-lts', 'linux')])
+        args = re.findall(r'^APPEND (.+)$', syslinux, re.M)
+        self.assertEqual(args, [args[0], args[0], args[0] + ' nomodeset'])
+
+    def test_safe_graphics_preserves_every_network_transport(self):
+        text = (HERE / 'profile/syslinux/archiso_pxe-linux.cfg').read_text()
+        blocks = {re.search(r'^LABEL (\S+)', block)[1]: block
+                  for block in re.split(r'(?=^LABEL )', text, flags=re.M) if block.strip()}
+        self.assertEqual(len(blocks), 6)
+        for protocol in ('nbd', 'nfs', 'http'):
+            normal = blocks[f'arch_{protocol}']
+            safe = blocks[f'arch_{protocol}_safe']
+            for directive, operand in (
+                    ('LINUX', '::/%INSTALL_DIR%/boot/%ARCH%/vmlinuz-linux'),
+                    ('INITRD', '::/%INSTALL_DIR%/boot/%ARCH%/initramfs-linux.img'),
+                    ('SYSAPPEND', '3')):
+                for block in (normal, safe):
+                    self.assertEqual(re.findall(rf'^{directive} (.+)$', block, re.M), [operand])
+            original = re.search(r'^APPEND (.+)$', normal, re.M)[1]
+            self.assertIn(f'archiso_{protocol}_srv=', original)
+            self.assertEqual(re.search(r'^APPEND (.+)$', safe, re.M)[1], original + ' nomodeset')
+
+    def test_safe_graphics_guard_rejects_missing_or_misplaced_argument(self):
+        for relative in ('grub/grub.cfg', 'grub/loopback.cfg',
+                         'syslinux/archiso_sys-linux.cfg', 'syslinux/archiso_pxe-linux.cfg'):
+            path = HERE / 'profile' / relative
+            text = path.read_text()
+            self.assertIn("basic display, text console", text)
+            image_check.check_graphics_entries(text, path, require_safe=True)
+            for broken in (text.replace(' nomodeset', ''),
+                           text.replace('copytoram=n', 'copytoram=n nomodeset', 1),
+                           text.replace('copytoram=n nomodeset', 'copytoram=n nomodeset nomodeset')):
+                with self.subTest(path=relative), self.assertRaisesRegex(ValueError, 'nomodeset'):
+                    image_check.check_graphics_entries(broken, path, require_safe=True)
+            with self.assertRaisesRegex(ValueError, 'safe graphics'):
+                image_check.check_graphics_entries('', path, require_safe=True)
 
     def test_test_packages_in_offline_closure_seeds_not_release_transaction(self):
         constants = runpy.run_path(str(HERE.parent / 'installer/emaki_installer/constants.py'))
@@ -77,7 +295,10 @@ class StaticTests(unittest.TestCase):
         live = (HERE / 'profile/packages.x86_64').read_text().splitlines()
         for name in constants['TEST_PACKAGES']:
             self.assertIn(name, seeds)
-            self.assertIn(name, live)
+            if name == 'grim':
+                self.assertNotIn(name, live)
+            else:
+                self.assertIn(name, live)
             self.assertNotIn(name, constants['PACKAGES'])
 
     def test_installer_packages_are_offline_closure_seeds(self):
@@ -131,7 +352,7 @@ class StaticTests(unittest.TestCase):
                 pending.extend(re.split(r'[<>=]', line, maxsplit=1)[0] for line in result.stdout.split())
         live = (HERE / 'profile/packages.x86_64').read_text().split()
         hardware = {name for name in live if pattern.fullmatch(name)}
-        self.assertTrue({'linux-firmware', 'mesa'} <= hardware)
+        self.assertTrue({'linux-firmware', 'mesa', 'vulkan-nouveau'} <= hardware)
         self.assertEqual(hardware - live_only_hardware - installed, set())
         self.assertEqual(live_only_hardware - hardware, set())
 
@@ -156,9 +377,8 @@ class StaticTests(unittest.TestCase):
         for name in ('home/live/.config/emaki', 'etc', 'root'):
             (root / name).mkdir(parents=True, exist_ok=True)
         (root / 'etc/shadow').write_text('root:!:::::::\n')
-        (profile / 'profiledef.sh').write_text("declare -A file_permissions=()\nbootmodes=('bios.syslinux' 'uefi.grub' 'uefi.systemd-boot')\n")
+        (profile / 'profiledef.sh').write_text("declare -A file_permissions=()\nbootmodes=('bios.syslinux' 'uefi.grub')\n")
         entries = {
-            'efiboot/loader/entries/live.conf': 'options archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID%\n',
             'grub/grub.cfg': '    linux /%INSTALL_DIR%/boot/vmlinuz-linux archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID%\n',
             'syslinux/archiso_sys-linux.cfg': 'APPEND archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID%\n',
         }
@@ -209,13 +429,16 @@ class StaticTests(unittest.TestCase):
                          'airootfs/etc/systemd/system/multi-user.target.wants'):
                 (source / name).mkdir(parents=True, exist_ok=True)
             (source / 'profiledef.sh').write_text(
-                "bootmodes=('bios.syslinux' 'uefi.grub')\nfile_permissions=(\n"
+                "bootmodes=('bios.syslinux' 'uefi.systemd-boot')\nfile_permissions=(\n"
                 '  ["/usr/local/bin/choose-mirror"]="0:0:755"\n'
                 '  ["/usr/local/bin/Installation_guide"]="0:0:755"\n)\n')
             for relative in RELENG_LEFTOVERS:
                 (source / 'airootfs' / relative).parent.mkdir(parents=True, exist_ok=True)
                 (source / 'airootfs' / relative).write_text('releng\n')
-            (source / 'packages.x86_64').write_text('linux\niwd\nopenssh\n')
+            (source / 'packages.x86_64').write_text('linux\niwd\nopenssh\nespeakup\nlivecd-sounds\n')
+            old_loader = source / 'efiboot/loader/entries/live.conf'
+            old_loader.parent.mkdir(parents=True)
+            old_loader.write_text('title Old loader\n')
             (source / 'pacman.conf').write_text('[options]\n')
             (source / 'grub/grub.cfg').write_text('menuentry "Arch Linux" {\n linux /%INSTALL_DIR%/boot/vmlinuz-linux archisosearchuuid=%ARCHISO_UUID%\n}\n')
             (source / 'syslinux/archiso.cfg').write_text('APPEND archisobasedir=%INSTALL_DIR%\n')
@@ -239,9 +462,12 @@ class StaticTests(unittest.TestCase):
             packages = (destination / 'packages.x86_64').read_text().splitlines()
             self.assertEqual(packages, sorted(set(packages)))
             self.assertNotIn('iwd', packages)
+            self.assertFalse({'espeakup', 'livecd-sounds'} & set(packages))
+            self.assertFalse((destination / 'efiboot').exists())
             self.assertFalse((destination / wait.relative_to(source)).is_symlink())
             image_check.check_loaders(destination)
             self.assertIn('linux', packages)
+            self.assertIn('linux-lts', packages)
             self.assertEqual((destination / 'airootfs/etc/systemd/system/greetd.service.d/emaki.conf').readlink(), Path('/dev/null'))
             subprocess.run(['bash', '-c', 'declare -A file_permissions=(); source "$1"; [[ $iso_label == "EMAKI_$2" && ${bootmodes[*]} == "bios.syslinux uefi.grub" ]]',
                             '_', str(destination / 'profiledef.sh'), version], check=True)
@@ -266,18 +492,18 @@ class StaticTests(unittest.TestCase):
             self.assertEqual(Path(str(package) + '.sig').read_bytes(), signature)
 
     def test_every_vendored_loader_retains_usb_repository(self):
-        image_check.check_loaders(HERE / 'profile')
+        image_check.check_loaders(HERE / 'profile', require_safe=True)
         with tempfile.TemporaryDirectory() as directory:
             profile = Path(directory) / 'profile'
             import shutil
             shutil.copytree(HERE / 'profile', profile, symlinks=True)
             prepare.prepare(profile, '/offline', '0.1.0')
             # Model mkarchiso v91 substitution and check the generated entries.
-            for pattern in ('efiboot/loader/entries/*.conf', 'grub/*.cfg', 'syslinux/*.cfg'):
+            for pattern in ('grub/*.cfg', 'syslinux/*.cfg'):
                 for path in profile.glob(pattern):
                     text = path.read_text().replace('%KERNEL_PARAMS%', '').replace('%INSTALL_DIR%', 'emaki')
                     path.write_text(text)
-            image_check.check_loaders(profile)
+            image_check.check_loaders(profile, require_safe=True)
 
     def test_offline_installer_start_chain_has_no_wait_service(self):
         root = HERE / 'profile/airootfs'
@@ -294,12 +520,12 @@ class StaticTests(unittest.TestCase):
     def test_mastered_loader_guard_rejects_test_and_missing_copytoram(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
-            path = directory / 'live.conf'
+            path = directory / 'live.cfg'
             for params in ('', 'copytoram=y', 'copytoram=n emaki.test=1', 'copytoram=n copytoram=y'):
-                path.write_text('options archisobasedir=emaki ' + params + '\n')
+                path.write_text('linux /emaki/boot/x86_64/vmlinuz-linux archisobasedir=emaki ' + params + '\n')
                 with self.assertRaises(ValueError):
                     image_check.check_loaders(directory)
-            path.write_text('options archisobasedir=emaki copytoram=n\n')
+            path.write_text('linux /emaki/boot/x86_64/vmlinuz-linux archisobasedir=emaki copytoram=n\n')
             image_check.check_loaders(directory)
             with self.assertRaises(ValueError):
                 image_check.check_loaders(directory, True)
@@ -314,31 +540,67 @@ class StaticTests(unittest.TestCase):
             image_check.check_root_listing('')
         image_check.check_root_listing(clean + 'squashfs-root/home/live/.ssh\nsquashfs-root/etc/emaki-test\n', True)
 
+    def test_frozen_image_hygiene_uses_strict_internal_version(self):
+        for version in ('0.1.0', '0.2.0'):
+            self.assertFalse(image_check.requires_hygiene(version))
+        for version in ('0.2.1', '0.3.0', '1.0.0'):
+            self.assertTrue(image_check.requires_hygiene(version))
+        for version in ('', '0.2', '0.2.0-test', '0.2.0\n0.3.0'):
+            with self.assertRaisesRegex(ValueError, 'invalid mastered image version'):
+                image_check.requires_hygiene(version)
+        clean = 'squashfs-root\nsquashfs-root/etc\n'
+        for leftover in ('squashfs-root/usr/include/legacy.h\n',
+                         'squashfs-root/etc/systemd/system/legacy.service -> missing.service\n'):
+            image_check.check_root_listing(clean + leftover, check_hygiene=False)
+            with self.assertRaises(ValueError):
+                image_check.check_root_listing(clean + leftover)
+        for material in ('home/live/.ssh', 'etc/emaki-test'):
+            with self.assertRaisesRegex(ValueError, 'test material'):
+                image_check.check_root_listing(clean + 'squashfs-root/' + material + '\n',
+                                               check_hygiene=False)
+
     def test_mastered_image_tools_extract_actual_efi_partition(self):
         calls = []
         def run(argv, **kwargs):
             calls.append(argv)
             if argv[0] == 'xorriso':
+                if '-find' in argv:
+                    paths = ['/EFI/BOOT/BOOTX64.EFI', '/boot/grub/grub.cfg',
+                             '/boot/memtest86+/memtest.efi', '/boot/memtest86+/memtest']
+                    paths += [f'/emaki/boot/x86_64/{name}' for name in
+                              ('vmlinuz-linux', 'vmlinuz-linux-lts',
+                               'initramfs-linux.img', 'initramfs-linux-lts.img')]
+                    return subprocess.CompletedProcess(argv, 0, stdout='\n'.join(paths))
                 for index, word in enumerate(argv):
                     if word == '-extract':
                         source, destination = argv[index + 1:index + 3]
                         destination = Path(destination)
-                        if source in ('/boot', '/loader'):
+                        if source == '/boot':
                             destination.mkdir()
-                            (destination / 'live.conf').write_text('options archisobasedir=emaki copytoram=n\n')
+                            (destination / 'live.cfg').write_text('linux /emaki/boot/x86_64/vmlinuz-linux archisobasedir=emaki copytoram=n\n')
+                            grub = destination / 'grub'
+                            grub.mkdir()
+                            for name in ('grub.cfg', 'loopback.cfg'):
+                                text = (HERE / 'profile/grub' / name).read_text()
+                                text = text.replace('%INSTALL_DIR%', 'emaki').replace('%ARCH%', 'x86_64')
+                                (grub / name).write_text(text)
+                            for name in ('menu.pf2', 'background.png'):
+                                (grub / name).write_bytes(b'asset')
+                        elif source == '/emaki/version':
+                            destination.write_text('0.3.0\n')
                         else:
                             destination.write_bytes(b'image')
                 images = Path(argv[-1])
                 images.mkdir()
                 (images / 'eltorito_img2_uefi.img').touch()
-            elif argv[0] == 'mcopy':
-                (Path(argv[-1]) / 'live.conf').write_text('options archisobasedir=emaki copytoram=n\n')
+            elif argv[0] == 'mdir':
+                return subprocess.CompletedProcess(argv, 0, stdout='::/EFI/BOOT/BOOTX64.EFI\n')
             return subprocess.CompletedProcess(argv, 0, stdout='squashfs-root\nsquashfs-root/etc\n')
         with tempfile.TemporaryDirectory() as temporary, patch.object(image_check.subprocess, 'run', side_effect=run):
             image_check.verify(Path(temporary) / 'test.iso')
-        self.assertEqual([c[0] for c in calls], ['xorriso', 'mcopy', 'unsquashfs'])
-        self.assertIn('-extract_boot_images', calls[0])
-        self.assertEqual(calls[-1][1], '-l')
+        self.assertEqual([c[0] for c in calls], ['xorriso', 'xorriso', 'mdir', 'unsquashfs'])
+        self.assertIn('-extract_boot_images', calls[1])
+        self.assertEqual(calls[-1][1], '-ll')
 
     def test_builder_window_requirement_is_release_only(self):
         text = (HERE / 'build.sh').read_text()

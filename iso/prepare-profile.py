@@ -18,6 +18,7 @@ Architecture = x86_64
 SigLevel = Required DatabaseOptional TrustedOnly
 LocalFileSigLevel = Required TrustedOnly
 CacheDir = {repo}
+NoExtract = usr/include/* usr/share/gtk-doc/* usr/share/gir-1.0/*
 
 [emaki-offline]
 SigLevel = Required DatabaseOptional TrustedOnly
@@ -26,15 +27,18 @@ Server = file://{repo}
     if (root / 'etc/emaki-test').exists() or (root / 'home/live/.ssh').exists():
         raise ValueError('source profile contains test key material; use a clean release source')
     if key:
+        packages = profile / 'packages.x86_64'
+        names = set(packages.read_text().split()) if packages.exists() else set()
+        packages.write_text('\n'.join(sorted(names | {'grim'})) + '\n')
         public_key = key.read_bytes()
         for name in ('home/live/.ssh/authorized_keys', 'etc/emaki-test/authorized_keys'):
             path = root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(public_key)
-        # Match every Linux entry, including accessibility and alternate/PXE
+        # Match every Linux entry, including alternate/PXE
         # variants, without touching memtest, chainloader or firmware entries.
         counts = {}
-        for pattern in ('efiboot/loader/entries/*.conf', 'grub/*.cfg', 'syslinux/*.cfg'):
+        for pattern in ('grub/*.cfg', 'syslinux/*.cfg'):
             count = 0
             for path in profile.glob(pattern):
                 lines = []
@@ -47,12 +51,11 @@ Server = file://{repo}
                 path.write_text('\n'.join(lines) + '\n')
             counts[pattern] = count
         modes = (profile / 'profiledef.sh').read_text()
-        for mode, pattern in [('bios.syslinux', 'syslinux/*.cfg'), ('uefi.grub', 'grub/*.cfg'),
-                              ('uefi.systemd-boot', 'efiboot/loader/entries/*.conf')]:
+        for mode, pattern in [('bios.syslinux', 'syslinux/*.cfg'), ('uefi.grub', 'grub/*.cfg')]:
             if mode in modes and counts[pattern] == 0:
                 raise ValueError(f'no test kernel entry found for {mode}')
     elif not template:
-        for path in [*profile.glob('efiboot/**/*.conf'), *profile.glob('grub/*.cfg'), *profile.glob('syslinux/*.cfg')]:
+        for path in [*profile.glob('grub/*.cfg'), *profile.glob('syslinux/*.cfg')]:
             if 'emaki.test=1' in path.read_text():
                 raise ValueError(f'test kernel argument in release source: {path}')
     definition = profile / 'profiledef.sh'

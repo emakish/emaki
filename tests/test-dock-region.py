@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Real dock drag-release/return bounds in isolated software Qt; no session/IPC."""
+from runtime_fixture import runtime_path
 import os
 from pathlib import Path
 import shutil
@@ -23,7 +24,7 @@ with tempfile.TemporaryDirectory(prefix='dock-region-', dir=ROOT / '.cache') as 
                QT_SCALE_FACTOR='1', QML_DISABLE_DISK_CACHE='1',
                EMAKI_BIN='', EMAKI_SETTINGS_PROFILE='', EMAKI_TEST_SYSTEM='0', EMAKI_TEST_MPRIS='0',
                EMAKI_SHELL_NOTIFICATIONS='0', EMAKI_SHELL_TRAY='0', NIRI_SOCKET='',
-               XDG_RUNTIME_DIR=str(profile / 'runtime'), XDG_CACHE_HOME=str(profile / 'cache'),
+               XDG_RUNTIME_DIR=str(runtime_path(profile)), XDG_CACHE_HOME=str(profile / 'cache'),
                XDG_CONFIG_HOME=str(profile / 'config'), XDG_STATE_HOME=str(profile / 'state'),
                XDG_DATA_HOME=str(profile / 'data'), XDG_DATA_DIRS=str(profile / 'data'),
                TMPDIR=str(profile / 'tmp'), DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(profile / 'no-session'),
@@ -35,8 +36,8 @@ with tempfile.TemporaryDirectory(prefix='dock-region-', dir=ROOT / '.cache') as 
                             text=True, capture_output=True, timeout=10)
     log = result.stdout + result.stderr
     assert result.returncode == 0 and 'DOCK_REGION_OK' in log, log
-    unexpected = [line for line in log.splitlines() if any(word in line for word in ('WARN', 'ERROR', 'Error:'))
-                  and 'ERROR quickshell.ipc: Failed to start IPC server on path ' not in line]
+    assert 'Failed to start IPC server' not in log, log
+    unexpected = [line for line in log.splitlines() if any(word in line for word in ('WARN', 'ERROR', 'Error:'))]
     assert not unexpected, '\n'.join(unexpected)
     print(next(line for line in log.splitlines() if 'DOCK_REGION_OK' in line))
 print('PASS: lifted running app returns before backdrop reclamation; menu reuses bounds; Regular reach')

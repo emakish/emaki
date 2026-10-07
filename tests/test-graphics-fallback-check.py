@@ -112,6 +112,7 @@ class FakeGuest:
         self.started = self.clock.t
 
     def stop(self):
+        check.socket_runtime.cleanup(self.dir)
         self.stopped = True
 
     def g(self):
@@ -490,10 +491,46 @@ class CheckTests(unittest.TestCase):
         refusing.write_text('import sys\nsys.exit(1)\n')
         self.assert_refused(self.run_check(verify=refusing), 'verify-image.py --test refused')
 
-    def test_output_path_too_long_for_sockets(self):
+    def test_long_output_path_is_accepted(self):
         long = self.base / ('x' * 90)
-        code = self.run_check('--out', str(long))
-        self.assert_refused(code, 'too long')
+        factory = World.factory
+        sockets = []
+        with contextlib.ExitStack() as cleanup:
+            def guest_factory(world, directory, **options):
+                # Exercise the real command builder; stand in for QEMU creating its endpoints.
+                guest = check.Guest(directory, **options)
+                cleanup.callback(check.socket_runtime.cleanup, directory)
+                args = guest.qemu_args()
+                runtime = (Path(directory) / '.socket-runtime').resolve()
+                self.assertEqual(runtime.parent, Path('/tmp'))
+                self.assertTrue(runtime.name.startswith('em-vm-'))
+                paths = [Path(arg.removeprefix('unix:').split(',', 1)[0])
+                         for arg in args if arg.startswith('unix:')]
+                self.assertEqual({path.name for path in paths}, {'vnc.sock', 'qmp.sock'})
+                self.assertEqual(len(paths), 2)
+                for path in paths:
+                    self.assertEqual(path.parent, runtime)
+                    self.assertFalse(path.is_relative_to(long))
+                    self.assertLess(len(os.fsencode(path)), 108)
+                    path.touch()
+                    link = Path(directory) / path.name
+                    self.assertTrue(link.is_symlink())
+                    self.assertEqual(link.resolve(), path)
+                    self.assertTrue(link.exists())
+                sockets.extend(paths)
+                return factory(world, directory, **options)
+
+            with mock.patch.object(World, 'factory', guest_factory):
+                code = self.run_check('--out', str(long), parts=())
+            self.out = long
+            self.assertEqual(code, 3, self.text)
+            self.assert_result(code, 'RESULT: NOT TESTED at live-std-1920x1080 (e) reference')
+            self.assertEqual(len(self.world.guests), len(check.PARTS))
+            self.assertEqual(len(sockets), 2 * len(check.PARTS))
+            self.assertTrue(all(guest.stopped for guest in self.world.guests))
+            self.assert_row('live-std-1920x1080', 'ssh', 'PASS')
+            self.assert_row('live-std-1920x1080', '(e) reference', 'NOT TESTED', 'no reference')
+            self.assertTrue(all(not path.parent.exists() for path in sockets))
 
     def test_no_installed_disk_is_not_tested(self):
         code = self.run_check(disk=False, parts=('installed-std-1920x1080',))
@@ -504,8 +541,19 @@ class CheckTests(unittest.TestCase):
 class GuestTests(unittest.TestCase):
     """The real Guest's commands, with subprocess replaced: nothing is started."""
 
+    def test_stop_removes_socket_runtime(self):
+        guest = self.guest('live')
+        guest.qemu_args()
+        runtime = (guest.dir / '.socket-runtime').resolve()
+        self.assertTrue(runtime.is_dir())
+        guest.process = mock.Mock()
+        guest.process.poll.return_value = 0
+        guest.stop()
+        self.assertFalse(runtime.exists())
+
     def guest(self, system, display='std', res='1920x1080'):
         directory = CACHE / 'gfx-guest'
+        self.addCleanup(check.socket_runtime.cleanup, directory)
         return check.Guest(directory, system=system, display=display, res=res, iso=Path('/i/emaki.iso'),
                            disk=Path('/d/target.qcow2') if system == 'installed' else None, port=2261,
                            account=ACCOUNT[system][0], password=ACCOUNT[system][1] or None)
@@ -519,7 +567,7 @@ class GuestTests(unittest.TestCase):
         self.assertIn('file=/i/emaki.iso', joined)
         self.assertIn('user,id=net0,hostfwd=tcp:127.0.0.1:2261-:22', std)
         self.assertNotRegex(joined, r'\bmodel\b')
-        self.assertIn(f'unix:{CACHE}/gfx-guest/vnc.sock', std)
+        self.assertIn(f'unix:{(CACHE / "gfx-guest/vnc.sock").resolve()}', std)
         gl = self.guest('installed', 'gl', '1920x1080').qemu_args()
         joined = ' '.join(gl)
         self.assertIn('virtio-vga-gl,xres=1920,yres=1080', gl)
@@ -652,6 +700,11 @@ class ReleaseGateJob(unittest.TestCase):
         self.test = self.image('test', b'test image emaki.test=1\n')
         self.walk = self.base / 'walk'
         self.walk.mkdir()
+        subprocess.run(['git', 'init', '-q', str(self.repo)], check=True)
+        subprocess.run(['git', '-C', str(self.repo), 'add', '.'], check=True)
+        subprocess.run(['git', '-C', str(self.repo), '-c', 'user.name=Test Fixture',
+                        '-c', 'user.email=fixture@example.invalid', '-c', 'core.hooksPath=/dev/null',
+                        'commit', '-qm', 'Initial fixture'], check=True)
 
     def tearDown(self):
         self.work.cleanup()
@@ -678,10 +731,10 @@ class ReleaseGateJob(unittest.TestCase):
         self.job = next(line for line in result.stdout.splitlines() if line.startswith('graphics-fallback  '))
         return result
 
-    def test_passing_check_passes_on_the_test_image_with_the_installed_disk(self):
+    def test_passing_check_does_not_waive_other_required_evidence(self):
         result = self.gate()
-        self.assertEqual(result.stdout.splitlines()[-1], 'RESULT: SCRIPTS PASSED', result.stdout)
-        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout.splitlines()[-1], 'RESULT: NOT TESTED at rollback', result.stdout)
+        self.assertEqual(result.returncode, 3)
         self.assertRegex(self.job, r'\bPASS\b')
         sha = hashlib.sha256(self.test.read_bytes()).hexdigest()
         self.assertIn(f'graphics-fallback: PASS - ', result.stdout)

@@ -18,6 +18,8 @@ ShellRoot {
     readonly property string luksReason: "__ENCRYPTED_WARNING__"
     readonly property string unidentifiedReason: "__UNIDENTIFIED_WARNING__"
     readonly property string apfsReason: "__APFS_WARNING__"
+    readonly property var wifiNetworks: ["__WIFI_NETWORKS__"]
+    readonly property string wifiFailure: "Could not connect. Check the password."
     readonly property var encryptedCases: ["__ENCRYPTED_CASES__"]
     readonly property var destructiveTexts: ["Erase disk and install", "Install", "Open GParted", "Cancel after this phase", "Restart now"]
     function check(ok: bool, message: string): void {
@@ -142,6 +144,64 @@ ShellRoot {
     function inside(inner: Item, outer: Item): bool {
         const area = inner.mapToItem(outer, 0, 0, inner.width, inner.height);
         return area.x >= -0.5 && area.y >= -0.5 && area.x + area.width <= outer.width + 0.5 && area.y + area.height <= outer.height + 0.5;
+    }
+    function wifiRow(index: int): var {
+        return findType(content, item => item.objectName === "wifiNetwork" && item.text === wifiNetworks[index].ssid).parent;
+    }
+    function wifiInViewport(index: int, message: string): void {
+        const row = wifiRow(index);
+        const form = findItem(row, "wifiJoinForm");
+        const button = findItem(row, "wifiNetwork");
+        const viewport = (find("installerBody") as C.ScrollView).contentItem as Flickable;
+        const bounds = form.mapToItem(viewport, 0, 0, form.width, form.height);
+        check(form.visible && inside(form, viewport), message + ": complete join form is visible (network=" + index + ", bounds=" + JSON.stringify(bounds) + ", viewport=" + viewport.width + "x" + viewport.height + ", contentY=" + viewport.contentY + ", contentHeight=" + viewport.contentHeight + ")");
+        check(inside(findItem(row, "wifiConnect"), viewport), message + ": Connect is visible");
+        check(under(form, button), message + ": form sits directly below the chosen network");
+    }
+    function wifiSelect(index: int, key: int): void {
+        const row = wifiRow(index);
+        const button = findItem(row, "wifiNetwork");
+        reveal(button);
+        if (key) {
+            button.forceActiveFocus();
+            input.keyClick(key);
+        } else {
+            input.mouseClick(button);
+        }
+        input.wait(80);
+        wifiInViewport(index, "select network " + index);
+        const field = findItem(row, "wifiPassword") as C.TextField;
+        check(field.activeFocus, "secured network focuses its password field");
+        input.keyClick(Qt.Key_A);
+        input.keyClick(Qt.Key_B);
+        input.keyClick(Qt.Key_C);
+        check(field.text === "abc", "typing after selection enters the Wi-Fi password");
+    }
+    function wifiFailureVisible(index: int): void {
+        for (let attempt = 0; attempt < 60 && (!controller.network.fixtureScan || controller.helperBusy); ++attempt)
+            input.wait(50);
+        input.wait(100);
+        check(controller.network.fixtureScan === true, "join is followed by a network rescan");
+        check(controller.joinFailed && controller.joinMessage === wifiFailure, "exact join payload reached helper and wrong-password result survives rescan: " + controller.joinMessage);
+        wifiInViewport(index, "failed join after rescan");
+        const row = wifiRow(index);
+        const message = findItem(row, "wifiJoinMessage") as Text;
+        const connect = findItem(row, "wifiConnect");
+        const gap = message.mapToItem(row, 0, 0).y - connect.mapToItem(row, 0, connect.height).y;
+        check(Qt.colorEqual(message.color, content.danger), "failed join uses the danger colour");
+        check(message.visible && message.text === wifiFailure && gap >= 0 && gap <= 16, "failed join appears directly below Connect");
+        check(inside(message, (find("installerBody") as C.ScrollView).contentItem), "failed join text stays in the viewport");
+    }
+    function wifiScanDone(): void {
+        for (let attempt = 0; attempt < 100 && controller.helperBusy; ++attempt)
+            input.wait(50);
+        input.wait(100);
+        check(!controller.helperBusy, "network helper finishes its scan");
+    }
+    function wifiRescanning(): void {
+        for (let attempt = 0; attempt < 100 && !(controller.joinFailed && controller.helperBusy && controller.helperOp === "network"); ++attempt)
+            input.wait(10);
+        check(controller.joinFailed && controller.helperBusy && controller.helperOp === "network", "failure is visible while the delayed rescan is running");
     }
     function warningInViewport(message: string): void {
         const field = find("encryptedEraseConfirmation");
@@ -280,6 +340,69 @@ ShellRoot {
                     trial: false
                 });
                 controller.session.ready = true;
+                controller.session.inventory = Object.assign({
+                    disks: []
+                }, controller.session.inventory, {
+                    tz_guess: null
+                });
+                controller.publish();
+                test.check(!controller.timezoneChosen, "an unfinished background lookup needs a time-zone choice");
+                controller.timezoneGuessPending = true;
+                controller.pollTimezoneGuess();
+                const guessId = Object.keys(controller.session.pending).find(id => controller.session.pending[id] === "get_timezone_guess");
+                const sentCount = test.sent.length;
+                controller.pollTimezoneGuess();
+                test.check(test.sent.length === sentCount, "only one cached guess request is outstanding");
+                controller.receive({
+                    type: "reply",
+                    id: guessId,
+                    ok: true,
+                    pending: true,
+                    tz_guess: null
+                });
+                test.check(controller.timezoneGuessPending && !controller.timezoneGuessRequest, "unfinished lookup remains pollable");
+                controller.pollTimezoneGuess();
+                const readyId = Object.keys(controller.session.pending).find(id => controller.session.pending[id] === "get_timezone_guess");
+                controller.receive({
+                    type: "reply",
+                    id: readyId,
+                    ok: true,
+                    pending: false,
+                    tz_guess: "Europe/Berlin"
+                });
+                test.check(controller.step === "keyboard" && controller.timezone === "Europe/Berlin" && test.selected === "Europe/Berlin", "background guess applies live before the time-zone page");
+                test.check(controller.timezoneChosen, "a completed background lookup supplies the time-zone choice");
+                test.check(!controller.timezoneGuessPending, "completed lookup stops polling");
+                controller.session.plan = {
+                    token: "timezone-review",
+                    summary: [],
+                    errors: [],
+                    warnings: []
+                };
+                controller.session.deadline = Date.now() + 600000;
+                controller.agreed = true;
+                controller.step = "review";
+                controller.timezoneInfo = {
+                    timezone: "Europe/Berlin"
+                };
+                controller.acceptTimezoneGuess("Europe/Berlin");
+                test.check(!!controller.session.plan && controller.step === "review" && controller.agreed, "same detected zone preserves the review");
+                controller.acceptTimezoneGuess("Asia/Kathmandu");
+                test.check(controller.timezone === "Asia/Kathmandu" && !controller.session.plan && controller.session.deadline === 0 && !controller.agreed && controller.step === "you", "late changed zone invalidates review and returns to account");
+                controller.chooseTimezone("America/New_York");
+                controller.session.plan = {
+                    token: "chosen-zone-review",
+                    summary: [],
+                    errors: [],
+                    warnings: []
+                };
+                controller.step = "review";
+                controller.acceptTimezoneGuess("Europe/Berlin");
+                test.check(controller.timezone === "America/New_York" && !!controller.session.plan && controller.step === "review", "late guess cannot override chosen zone or its review");
+                controller.acceptTimezoneGuess(null);
+                test.check(controller.timezone === "America/New_York", "empty inventory guess cannot reset chosen zone");
+                controller.chooseTimezone("UTC");
+                controller.timezoneEdited = false;
                 controller.step = "timezone";
                 test.check(controller.timezone === "UTC", "UTC fallback");
             } else if (test.stage === 1) {
@@ -327,7 +450,11 @@ ShellRoot {
                     test.check(field.echoMode === TextInput.Password, "password starts masked");
                     const toggle = test.findItem(content, name + "Toggle") as C.AbstractButton;
                     field.forceActiveFocus();
-                    input.keyClick(Qt.Key_Tab);
+                    if (name === "userPassword") {
+                        input.keyClick(Qt.Key_Tab);
+                        test.check(test.findItem(content, "confirmPassword").activeFocus, "Tab goes from password to confirmation");
+                    }
+                    test.tabTo(toggle, "password reveal control is reachable");
                     test.check(toggle.activeFocus, "Tab reaches password reveal control");
                     input.keyClick(Qt.Key_Space);
                     test.check(field.echoMode === TextInput.Normal, "Space reveals password");
@@ -359,6 +486,7 @@ ShellRoot {
                 const toggle = test.findItem(content, "wifiPasswordToggle") as C.AbstractButton;
                 const network = test.findItem(content, "wifiNetwork") as C.AbstractButton;
                 input.mouseClick(network);
+                input.wait(60);
                 field.text = "wifi-fixture";
                 toggle.forceActiveFocus();
                 input.keyClick(Qt.Key_Space);
@@ -401,7 +529,11 @@ ShellRoot {
                     field.forceActiveFocus();
                     input.keyClick(Qt.Key_A);
                     const toggle = test.findItem(content, name + "Toggle") as C.AbstractButton;
-                    input.keyClick(Qt.Key_Tab);
+                    if (name === "diskPassword") {
+                        input.keyClick(Qt.Key_Tab);
+                        test.check(test.findItem(content, "diskConfirmation").activeFocus, "Tab goes from disk password to confirmation");
+                    }
+                    test.tabTo(toggle, "password reveal control is reachable");
                     test.check(toggle.activeFocus, "Tab reaches disk password eye");
                     input.keyClick(Qt.Key_Space);
                     test.check(field.echoMode === TextInput.Normal, "disk password eye reveals");
@@ -519,6 +651,8 @@ ShellRoot {
                 controller.chooseDisk("/dev/vda");
                 controller.mode = "erase";
             } else if (test.stage === 14) {
+                const warning = test.find("windowsEraseWarning");
+                test.check(warning.visible && warning.text.includes("deletes Windows"), "erase mode names the Windows installation it removes");
                 const choice = test.findItem(content, "alongsideChoice") as C.AbstractButton;
                 test.check(choice.visible, "worker offer exposes alongside choice");
                 choice.forceActiveFocus();
@@ -1006,12 +1140,20 @@ ShellRoot {
                                     layout: layout,
                                     variant: "",
                                     label: "Layout " + layout
-                                }))
+                                })).concat([
+                            {
+                                layout: "ru",
+                                variant: "phonetic",
+                                label: "Layout ru phonetic"
+                            }
+                        ])
                     });
                     controller.step = "keyboard";
                 }
             } else if (test.stage === 37 || test.stage === 38) {
                 const trial = controller.catalog.trial;
+                if (trial && controller.keyboardSwitching)
+                    return;
                 const minimum = trial ? 170 : 245;
                 const body = test.findItem(content, "installerBody") as C.ScrollView;
                 const list = test.findType(test.findItem(content, "installerPage"), item => item instanceof ListView);
@@ -1019,6 +1161,15 @@ ShellRoot {
                 if (!list)
                     return test.check(false, "keyboard layout list found");
                 test.check(list.count === 6 && list.height >= minimum, "the layout list keeps its minimum (" + where + ")");
+                const search = test.findItem(content, "layoutSearch");
+                search.text = "ru";
+                input.wait(40);
+                test.check(list.count === 1 && list.model[0].layout === "ru" && !list.model[0].variant, "layout search shows only the supported base layout");
+                search.text = "phonetic";
+                input.wait(40);
+                test.check(list.count === 0, "unsupported variants are absent from search");
+                search.text = "";
+                input.wait(40);
                 if (window.height <= 640)
                     test.check(list.height === minimum, "a small window keeps the list at its minimum (" + where + ")");
                 if (window.height >= 886)
@@ -1032,6 +1183,10 @@ ShellRoot {
                         const area = item ? item.mapToItem(body, 0, 0, item.width, item.height) : null;
                         test.check(!!area && item.visible && area.y >= 0 && area.y + area.height <= body.height + 0.5, "the trial controls stay inside the body (" + (area ? area.y + "+" + area.height : "missing") + " in " + body.height + ")");
                     }
+                }
+                if (trial) {
+                    test.tabTo(test.findButton(content, "Apply layouts for testing", false), "layout apply button is reachable");
+                    test.tabTo(test.findType(content, item => item.placeholderText === "Type to test · Super+Space to switch"), "layout test field is reachable");
                 }
                 controller.catalog = Object.assign({}, controller.catalog, {
                     trial: false
@@ -1097,6 +1252,7 @@ ShellRoot {
                 if (!toggle || !box)
                     return test.check(false, "error details are named errorDetailsToggle and errorDetailsBox");
                 test.check(toggle.visible && !box.visible, "the log starts closed");
+                test.tabTo(toggle, "error details control is reachable");
                 input.mouseClick(toggle, 12, toggle.height / 2);
                 test.check(box.visible && (test.findItem(content, "errorDetails") as C.TextArea).text === "pacstrap exited with status 1.\n\n$ pacstrap -K /mnt base\npacstrap: exit 1", "a click on Show details opens the worker's message and the retained log");
                 test.check(test.visibleTexts(content, "pacstrap exited with status 1.") === 0, "the worker's message is not shown outside the details");
@@ -1345,7 +1501,11 @@ ShellRoot {
             } else if (test.stage === 58) {
                 const open = test.findButton(content, "Open GParted", false);
                 test.check(!!open && open.enabled, "no disk selection does not disable Open GParted");
+                test.check(input.waitForPolish(content.Window.window, 30000), "the manual page layout settles before scrolling");
                 test.reveal(open);
+                test.check(input.waitForPolish(content.Window.window, 30000), "the manual page layout settles after scrolling");
+                const viewport = (test.find("installerBody") as C.ScrollView).contentItem as Flickable;
+                test.check(test.inside(open, viewport), "Open GParted is inside the visible page before clicking");
                 input.mouseClick(open, open.width / 2, open.height / 2);
                 test.check(controller.gpartedWarning, "the editor still requires its destructive-action warning");
                 const confirm = test.findButton(content, "Open GParted", true);
@@ -1586,6 +1746,355 @@ ShellRoot {
                 input.wait(40);
                 test.warningInViewport("manual refusal");
                 test.check(!test.find("encryptedEraseConfirmation").visible, "manual refusal has no ERASE field");
+            } else if (test.stage === 67) {
+                controller.network = {
+                    wired: false,
+                    networks: test.wifiNetworks
+                };
+                controller.step = "network";
+                input.wait(80);
+                const connected = test.wifiRow(1);
+                const enterprise = test.wifiRow(2);
+                test.check(test.findType(connected, item => item.objectName === "wifiNetwork").chosen, "connected network is marked chosen");
+                test.reveal(test.findItem(connected, "wifiNetwork"));
+                input.mouseClick(test.findItem(connected, "wifiNetwork"));
+                input.wait(40);
+                test.check(!test.findItem(connected, "wifiJoinForm").visible, "connected network has no join form");
+                test.check(!test.findItem(enterprise, "wifiNetwork").enabled && !test.findItem(enterprise, "wifiJoinForm").visible, "enterprise network cannot open a password form");
+                let previous = null;
+                for (const index of [0, 12, 24]) {
+                    test.wifiSelect(index, 0);
+                    if (previous) {
+                        test.check(!test.findItem(previous, "wifiJoinForm").visible, "switching networks hides the previous form");
+                        test.check((test.findItem(previous, "wifiPassword") as C.TextField).text === "", "switching networks clears the previous password");
+                    }
+                    previous = test.wifiRow(index);
+                }
+                test.wifiSelect(0, Qt.Key_Space);
+                test.wifiSelect(12, Qt.Key_Return);
+                // The isolated worker socket is absent; keep reconnects out of these helper tests.
+                controller.retryDelay = 60000;
+                controller.mockTransport = false;
+                controller.helpersEnabled = true;
+                input.wait(80);
+                test.wifiSelect(24, 0);
+                input.keyClick(Qt.Key_Return);
+            } else if (test.stage === 68) {
+                test.wifiFailureVisible(24);
+                const field = test.findItem(test.wifiRow(24), "wifiPassword") as C.TextField;
+                test.check(field.activeFocus && field.text === "", "failed join restores focus with a cleared password (focus=" + field.activeFocus + ", length=" + field.text.length + ", active=" + content.Window.window.activeFocusItem + ")");
+                input.keyClick(Qt.Key_A);
+                input.keyClick(Qt.Key_B);
+                input.keyClick(Qt.Key_C);
+                controller.network.fixtureScan = false;
+                const retry = test.findItem(test.wifiRow(24), "wifiConnect");
+                input.mouseClick(retry);
+                test.check(controller.joinMessage === "" && !controller.joinFailed, "retry clears the preceding failure");
+            } else if (test.stage === 69) {
+                test.wifiFailureVisible(24);
+                const openRow = test.wifiRow(23);
+                const openButton = test.findItem(openRow, "wifiNetwork");
+                test.reveal(openButton);
+                input.mouseClick(openButton);
+                input.wait(80);
+                test.wifiInViewport(23, "open network");
+                test.check(!test.findItem(openRow, "wifiPassword").visible, "open network has no password field");
+                const connect = test.findItem(openRow, "wifiConnect");
+                test.check(connect.activeFocus, "open network focuses Connect");
+                test.check(controller.joinMessage === "" && !test.findItem(openRow, "wifiJoinMessage").visible, "switching networks clears the old failure");
+                controller.network.fixtureScan = false;
+                input.keyClick(Qt.Key_Space);
+            } else if (test.stage === 70) {
+                test.wifiFailureVisible(23);
+                test.check(test.findItem(test.wifiRow(23), "wifiConnect").activeFocus, "open network restores Connect focus after delegate rebuild");
+                test.wifiSelect(24, 0);
+                controller.network.fixtureScan = false;
+                input.keyClick(Qt.Key_Return);
+                test.wifiRescanning();
+                const oldField = test.findItem(test.wifiRow(24), "wifiPassword") as C.TextField;
+                const oldBssid = test.wifiRow(24).modelData.bssid;
+                test.check(oldField.activeFocus && oldField.text === "", "failed join clears the submitted password before rescan");
+                input.keyClick(Qt.Key_X);
+                input.keyClick(Qt.Key_Y);
+                input.keyClick(Qt.Key_Z);
+                test.check(oldField.text === "xyz", "replacement password is typed during the rescan");
+                test.wifiFailureVisible(24);
+                const replacement = test.findItem(test.wifiRow(24), "wifiPassword") as C.TextField;
+                test.check(oldField !== replacement, "signal jitter rebuilds the password delegate");
+                test.check(test.wifiRow(24).modelData.bssid !== oldBssid, "the stronger access point changes during rescan");
+                test.check(replacement.text === "xyz" && replacement.activeFocus, "rescan preserves replacement password and restores its focus across access points");
+                input.keyClick(Qt.Key_Return);
+                test.wifiRescanning();
+                const back = test.findButton(content, "Back", false);
+                for (let attempt = 0; attempt < 12 && !back.activeFocus; ++attempt)
+                    input.keyClick(Qt.Key_Tab);
+                test.check(back.activeFocus, "Tab leaves the failed form for Back during rescan");
+                test.wifiFailureVisible(24);
+                test.check(back.activeFocus, "rescan does not steal focus from Back");
+                input.keyClick(Qt.Key_Space);
+                input.wait(80);
+                test.check(controller.step !== "network", "Space after rescan activates Back");
+            } else if (test.stage === 71) {
+                const scanCount = controller.network.fixtureScanCount;
+                controller.step = "network";
+                for (let attempt = 0; attempt < 60 && (controller.network.fixtureScanCount === scanCount || controller.helperBusy); ++attempt)
+                    input.wait(50);
+                test.check(controller.network.fixtureScanCount > scanCount && !controller.helperBusy, "returning to the network page finishes its initial scan");
+                input.wait(80);
+                const row = test.wifiRow(24);
+                const button = test.findItem(row, "wifiNetwork");
+                test.reveal(button);
+                button.forceActiveFocus();
+                input.keyPress(Qt.Key_Return);
+                input.wait(80);
+                const password = test.findItem(row, "wifiPassword") as C.TextField;
+                test.check(password.activeFocus && password.text === "", "Return selects an empty secured password field: focused=" + password.activeFocus + ", text=" + password.text + ", enabled=" + button.enabled + ", active=" + content.Window.window.activeFocusItem + ", busy=" + controller.helperBusy);
+                input.keyRelease(Qt.Key_Return);
+                input.keyClick(Qt.Key_Return);
+                input.wait(80);
+                test.check(!controller.helperBusy, "Return on an empty secured field does not join");
+                const connect = test.findItem(row, "wifiConnect");
+                test.check(!connect.enabled, "empty secured password disables Connect");
+                input.mouseClick(connect);
+                input.wait(40);
+                test.check(!controller.helperBusy, "mouse cannot activate empty secured Connect");
+                password.forceActiveFocus();
+                input.keyClick(Qt.Key_Tab);
+                input.keyClick(Qt.Key_Tab);
+                test.check(!connect.activeFocus, "keyboard skips disabled empty Connect");
+                password.forceActiveFocus();
+                input.keyClick(Qt.Key_A);
+                test.check(connect.enabled, "typing a secured password enables Connect");
+                input.keyClick(Qt.Key_B);
+                input.keyClick(Qt.Key_C);
+                controller.network.fixtureScan = false;
+                input.keyClick(Qt.Key_Return);
+            } else if (test.stage === 72) {
+                test.wifiFailureVisible(24);
+                const row = test.wifiRow(24);
+                const field = test.findItem(row, "wifiPassword") as C.TextField;
+                test.check(field.activeFocus, "secured field regains focus after rescan");
+                input.keyClick(Qt.Key_X);
+                input.keyClick(Qt.Key_Y);
+                input.keyClick(Qt.Key_Z);
+                test.reveal(test.findItem(row, "wifiNetwork"));
+                input.mouseClick(test.findItem(row, "wifiNetwork"));
+                input.wait(80);
+                test.check(field.activeFocus && field.text === "xyz", "re-clicking the selected row preserves the draft and refocuses it");
+                test.check(controller.joinFailed && controller.joinMessage === test.wifiFailure, "re-clicking the selected row preserves the failure");
+                test.wifiFailureVisible(24);
+            } else if (test.stage === 73) {
+                test.wifiSelect(0, 0);
+                input.keyClick(Qt.Key_Return);
+                input.keyClick(Qt.Key_Tab);
+                input.keyClick(Qt.Key_Tab);
+                const update = test.findType(content, item => item.visible && item.text === "Update Emaki at the end when connected");
+                const viewport = (test.find("installerBody") as C.ScrollView).contentItem as Flickable;
+                test.check(update.activeFocus, "two Tabs leave the joining form for the update checkbox");
+                test.wifiRescanning();
+                input.wait(80);
+                test.check(update.activeFocus && test.inside(update, viewport), "join error keeps the focused update checkbox visible");
+                test.wifiScanDone();
+                test.check(controller.joinFailed && controller.joinMessage === test.wifiFailure, "join failure survives rescan with focus outside the form");
+                test.check(update.activeFocus && test.inside(update, viewport), "rescan keeps the focused update checkbox visible");
+                const before = controller.onlineUpdate;
+                input.keyClick(Qt.Key_Space);
+                test.check(controller.onlineUpdate !== before, "Space toggles the visible focused update checkbox");
+            } else if (test.stage === 74) {
+                for (const index of [21, 22]) {
+                    const row = test.wifiRow(index);
+                    const button = test.findItem(row, "wifiNetwork");
+                    test.reveal(button);
+                    input.mouseClick(button);
+                    input.wait(80);
+                    const connect = test.findItem(row, "wifiConnect");
+                    test.check(!test.findItem(row, "wifiPassword").visible, test.wifiNetworks[index].security + " has no password field");
+                    test.check(connect.activeFocus && connect.enabled, test.wifiNetworks[index].security + " enables and focuses Connect without a secret");
+                    controller.network.fixtureScan = false;
+                    if (index === 21)
+                        input.keyClick(Qt.Key_Space);
+                    else
+                        input.mouseClick(connect);
+                    test.wifiFailureVisible(index);
+                }
+            } else if (test.stage === 75) {
+                test.wifiSelect(3, 0);
+                input.keyClick(Qt.Key_D);
+                input.keyClick(Qt.Key_E);
+                input.keyClick(Qt.Key_F);
+                const row = test.wifiRow(3);
+                const field = test.findItem(row, "wifiPassword") as C.TextField;
+                input.mouseClick(test.findItem(row, "wifiPasswordToggle"));
+                field.forceActiveFocus();
+                input.keyClick(Qt.Key_Home);
+                controller.callHelper("network", {});
+                input.wait(30);
+                input.keyClick(Qt.Key_X);
+                test.check(field.text === "xabcdef" && field.cursorPosition === 1, "editing during scan inserts x at the start");
+                test.wifiScanDone();
+                const replacement = test.findItem(test.wifiRow(3), "wifiPassword") as C.TextField;
+                test.check(replacement !== field, "network scan rebuilds the editing delegate");
+                test.check(replacement.activeFocus && replacement.cursorPosition === 1 && replacement.echoMode === TextInput.Normal, "rebuild preserves cursor, focus and revealed password");
+                input.keyClick(Qt.Key_Y);
+                test.check(replacement.text === "xyabcdef", "typing y after scan continues at the preserved cursor");
+                for (const reverse of [false, true]) {
+                    const selected = test.findItem(test.wifiRow(3), "wifiPassword") as C.TextField;
+                    selected.select(reverse ? 5 : 2, reverse ? 2 : 5);
+                    test.check(selected.selectedText === "abc", "selection covers the intended password text");
+                    controller.callHelper("network", {});
+                    input.wait(30);
+                    test.wifiScanDone();
+                    const restored = test.findItem(test.wifiRow(3), "wifiPassword") as C.TextField;
+                    test.check(restored !== selected && restored.activeFocus && restored.echoMode === TextInput.Normal, "selection rebuild preserves focus and reveal state");
+                    test.check(restored.selectionStart === 2 && restored.selectionEnd === 5 && restored.cursorPosition === (reverse ? 2 : 5), "rebuild preserves selection bounds and direction");
+                }
+                controller.mockTransport = true;
+                controller.helpersEnabled = false;
+            } else if (test.stage === 76) {
+                controller.session.ready = true;
+                controller.session.inventory = Object.assign({}, controller.session.inventory, {
+                    tz_guess: ""
+                });
+                controller.timezoneEdited = false;
+                controller.timezone = "UTC";
+                controller.timezoneInfo = {
+                    timezone: "UTC",
+                    abbreviation: "UTC"
+                };
+                controller.publish();
+                controller.step = "timezone";
+            } else if (test.stage === 77) {
+                controller.applyingTimezone = "";
+                controller.timezoneInfo = {
+                    timezone: "UTC",
+                    abbreviation: "UTC"
+                };
+                test.check(!controller.timezoneChosen && !test.find("continueButton").enabled, "an unknown time zone needs an explicit choice");
+                controller.next();
+                test.check(controller.step === "timezone", "UTC is not silently accepted");
+                const utc = test.find("useUtc");
+                test.tabTo(utc, "UTC choice is reachable");
+                input.keyClick(Qt.Key_Space);
+                test.check(controller.timezoneChosen && controller.timezone === "UTC", "UTC can be explicitly chosen");
+                controller.session.running = true;
+                controller.session.phase = "update";
+                controller.session.activity = {
+                    name: "downloads"
+                };
+                controller.publish();
+                controller.step = "install";
+            } else if (test.stage === 78) {
+                const skip = test.find("skipUpdate");
+                test.check(skip.visible && skip.enabled, "the final update has a skip control");
+                skip.forceActiveFocus();
+                input.keyClick(Qt.Key_Space);
+                test.check(test.sent.includes("skip_update"), "skip sends the safe update request");
+                controller.session.running = false;
+                controller.session.outcome = "done";
+                controller.session.doneWarnings = ["The update failed. Emaki is installed."];
+                controller.catalog = Object.assign({}, controller.catalog, {
+                    boot_removable: true
+                });
+                controller.publish();
+                controller.step = "done";
+            } else if (test.stage === 79) {
+                test.check(test.find("doneWarnings").text === "The update failed. Emaki is installed.", "update warnings appear on the completion page");
+                const before = test.sent.filter(x => x === "reboot").length;
+                controller.requestReboot();
+                test.check(!controller.removeUsbPrompt && test.sent.filter(x => x === "reboot").length === before, "USB removal waits for restart preparation");
+                let prepareId = Object.keys(controller.session.pending).find(id => controller.session.pending[id] === "prepare_reboot");
+                controller.receive({
+                    type: "reply",
+                    id: prepareId,
+                    ok: false,
+                    msg: "Could not prepare to restart. Keep the USB stick connected and try again."
+                });
+                test.check(!controller.removeUsbPrompt && controller.session.notice.indexOf("Keep the USB stick connected") >= 0, "failed preparation keeps the USB connected and gives feedback");
+                controller.requestReboot();
+                prepareId = Object.keys(controller.session.pending).find(id => controller.session.pending[id] === "prepare_reboot");
+                controller.receive({
+                    type: "reply",
+                    id: prepareId,
+                    ok: true
+                });
+                test.check(controller.removeUsbPrompt && test.sent.filter(x => x === "reboot").length === before, "prepared removable boot waits for USB removal before reboot");
+            } else if (test.stage === 80) {
+                input.keyClick(Qt.Key_Return);
+                test.check(test.sent.includes("reboot"), "Enter on the USB removal screen requests reboot");
+                test.check((test.findItem(content.Window.window.contentItem, "removeUsbMessage") as Text).text === "Restarting…", "the removal prompt shows restart progress");
+                const pendingCount = test.sent.filter(x => x === "reboot").length;
+                input.keyClick(Qt.Key_Return);
+                test.check(test.sent.filter(x => x === "reboot").length === pendingCount, "repeated Enter does not submit a second reboot");
+                const rebootId = Object.keys(controller.session.pending).find(id => controller.session.pending[id] === "reboot");
+                controller.receive({
+                    type: "reply",
+                    id: rebootId,
+                    ok: false,
+                    msg: "Could not restart. Try again."
+                });
+            } else if (test.stage === 81) {
+                test.check((test.findItem(content.Window.window.contentItem, "removeUsbMessage") as Text).text === "Could not restart. Try again.", "the removal prompt shows a reboot failure");
+                const failedCount = test.sent.filter(x => x === "reboot").length;
+                input.keyClick(Qt.Key_Return);
+                test.check(test.sent.filter(x => x === "reboot").length === failedCount + 1, "Enter retries a failed reboot");
+                const rebootId = Object.keys(controller.session.pending).find(id => controller.session.pending[id] === "reboot");
+                controller.receive({
+                    type: "reply",
+                    id: rebootId,
+                    ok: false,
+                    msg: "Could not restart. Try again."
+                });
+                controller.removeUsbPrompt = false;
+                controller.catalog = Object.assign({}, controller.catalog, {
+                    boot_removable: false
+                });
+                const before = test.sent.filter(x => x === "reboot").length;
+                controller.requestReboot();
+                const prepareId = Object.keys(controller.session.pending).find(id => controller.session.pending[id] === "prepare_reboot");
+                controller.receive({
+                    type: "reply",
+                    id: prepareId,
+                    ok: true
+                });
+                test.check(!controller.removeUsbPrompt && test.sent.filter(x => x === "reboot").length === before + 1, "non-removable boot restarts without a USB prompt");
+            } else if (test.stage === 82) {
+                controller.session.error = {
+                    type: "error",
+                    code: "login_name_reserved",
+                    message: "This login name belongs to the system. Choose another name; the disk has not been changed.",
+                    retryable: true
+                };
+                controller.login = "system_account";
+                controller.session.outcome = "error";
+                controller.publish();
+                controller.step = "error";
+            } else if (test.stage === 83) {
+                input.mouseClick(test.find("retryInstallation"));
+            } else if (test.stage === 84) {
+                test.check(controller.step === "you" && !controller.session.error, "a refused login retries on the You step");
+                const login = test.find("loginField") as C.TextField;
+                test.check(login.activeFocus && login.text === "system_account", "the refused login is retained and focused for correction");
+                const viewport = (test.find("installerBody") as C.ScrollView).contentItem as Flickable;
+                test.check(test.inside(login, viewport), "the focused login is fully visible");
+                test.check(!controller.focusLogin, "the retry focus request is consumed");
+                input.keyClick(Qt.Key_End);
+                input.keyClick(Qt.Key_A);
+                test.check(controller.login === "system_accounta", "typing edits the refused login without another click");
+            } else if (test.stage === 85 || test.stage === 88) {
+                controller.session.error = {
+                    type: "error",
+                    code: "bad_config",
+                    message: test.stage === 85 ? "Test mode requires /etc/emaki-test/authorized_keys." : "Cannot determine the new account UID/GID.",
+                    retryable: true
+                };
+                controller.session.outcome = "error";
+                controller.publish();
+                controller.step = "error";
+            } else if (test.stage === 86 || test.stage === 89) {
+                input.mouseClick(test.find("retryInstallation"));
+            } else if (test.stage === 87 || test.stage === 90) {
+                test.check(controller.step === "disk" && !controller.session.error, "unrelated settings failures retry on the Disk step");
+                test.check(!controller.focusLogin, "unrelated settings failures do not focus the login");
             } else {
                 if (!test.failed)
                     console.log("INTERACTION_OK map, search, keyboard, software, password toggles and resets");

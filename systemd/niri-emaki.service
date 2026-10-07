@@ -9,7 +9,7 @@ Before=graphical-session.target
 Wants=graphical-session-pre.target
 After=graphical-session-pre.target
 
-Wants=xdg-desktop-autostart.target
+Wants=xdg-desktop-autostart.target emaki-wallet-migrate.service
 Before=xdg-desktop-autostart.target
 
 [Service]

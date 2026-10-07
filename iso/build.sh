@@ -20,12 +20,22 @@ while (($#)); do
         *) fail "unknown option: $1" ;;
     esac
 done
+preflight_args=(--repo "$repo")
+((test_mode == 0)) || preflight_args+=(--test)
+"$HERE/preflight.sh" "${preflight_args[@]}"
 ((EUID == 0)) || fail 'run as root inside the disposable build VM'
 [[ $(systemd-detect-virt --vm) =~ ^(qemu|kvm)$ ]] || fail 'build is restricted to the QEMU/KVM build VM'
-[[ $(pacman -Q archiso) == 'archiso 91-'* ]] || fail 'archiso 91 is required; re-audit staging before upgrading'
-for command in mkarchiso pacman pacman-key repo-add python3 ssh-keygen flock xorriso unsquashfs mcopy; do
+archiso_version=$(pacman -Q archiso)
+[[ $archiso_version == 'archiso 91-'* ]] || fail 'archiso 91 is required; re-audit staging before upgrading'
+for command in mkarchiso pacman pacman-key repo-add python3 ssh-keygen flock xorriso unsquashfs mcopy mdir; do
     command -v "$command" >/dev/null || fail "missing dependency: $command"
 done
+# A checked-in date freezes only the build resolver, never the live or installed
+# mirrorlist. Reject aliases such as "last" and impossible calendar dates.
+snapshot_values=$(python3 "$HERE/snapshot.py" show)
+read -r arch_snapshot pinned_archiso pinned_archinstall <<<"$snapshot_values"
+[[ $archiso_version == "archiso $pinned_archiso-"* ]] || fail 'install the recorded build tool version [archiso]'
+arch_server="https://archive.archlinux.org/repos/${arch_snapshot//-/\/}/\$repo/os/\$arch"
 mode=release
 if ((test_mode)); then
     mode='test'
@@ -67,7 +77,8 @@ python3 "$HERE/repo-files.py" check-input "$repo" "$HERE/emaki-packages.txt"
 rm -f -- "$out"/emaki-*.iso*
 # Keep downloads across failed builds, but never keep resolver DBs, generated profile,
 # or mkarchiso _run_once stamps. This also prevents stale input/package overlays.
-for directory in db resolved-db profile mk input-repo; do
+for directory in db resolved-db verify-cache build-repo target-repo profile mk input-repo \
+    nvidia-{open-prebuilt,open-dkms}-{db,cache}; do
     [[ ! -L $work/$directory ]] || fail "refusing symlink: $work/$directory"
     rm -rf -- "${work:?}/$directory"
 done
@@ -77,6 +88,11 @@ else
     # Source retrieval may be unavailable on the authoring host. The build VM's
     # installed v91 profile is the authoritative, complete fallback, never a stub.
     python3 "$HERE/import-releng.py" /usr/share/archiso/configs/releng "$work/profile"
+fi
+# archiso v91 runs the host grub-mkstandalone, including optional mixed-mode EFI.
+python3 "$HERE/check-grub-modules.py" "$work/profile/grub" /usr/lib/grub/x86_64-efi
+if [[ -d /usr/lib/grub/i386-efi ]]; then
+    python3 "$HERE/check-grub-modules.py" "$work/profile/grub" /usr/lib/grub/i386-efi
 fi
 mkdir -p -- "$work/db" "$work/offline"
 [[ ! -L $work/offline ]] || fail 'offline cache must not be a symlink'
@@ -97,54 +113,92 @@ LogFile = $work/pacman.log
 SigLevel = Required DatabaseOptional TrustedOnly
 Server = file://$work/input-repo
 [core]
-Include = /etc/pacman.d/mirrorlist
+Server = $arch_server
 [extra]
-Include = /etc/pacman.d/mirrorlist
+Server = $arch_server
 CONF
-mapfile -t packages < <(cat "$work/profile/packages.x86_64" "$HERE/target-packages.txt" | sed '/^\s*#/d;/^\s*$/d' | LC_ALL=C sort -u)
+mapfile -t packages < <(cat "$work/profile/packages.x86_64" "$HERE/target-packages.txt" | python3 "$HERE/nvidia-seeds.py" base | LC_ALL=C sort -u)
+mapfile -t target_packages < <(python3 "$HERE/nvidia-seeds.py" base <"$HERE/target-packages.txt")
 pacman -Syw --noconfirm --cachedir "$work/offline" --dbpath "$work/db" \
     --config "$work/download.conf" "${packages[@]}"
-# Record the exact transaction and prune older cached versions before repo-add.
+# The date pins the full archiso package release too. The VM must use the same
+# tools as the frozen repositories, rather than any later archiso 91 rebuild.
+archive_archiso=$(pacman -Sp --print-format '%n %v' --dbpath "$work/db" \
+    --config "$work/download.conf" archiso | awk '$1 == "archiso" { print }')
+[[ $archiso_version == "$archive_archiso" ]] || fail "install $archive_archiso from the recorded Arch snapshot in the build VM"
+# Retain the union manifest and cache for exact source collection of the live image.
 pacman -Sp --print-format '%f' --dbpath "$work/db" --config "$work/download.conf" \
     "${packages[@]}" >"$work/closure.txt"
 python3 "$HERE/repo-files.py" check-closure "$work/closure.txt"
-python3 - "$work/offline" "$work/closure.txt" <<'PY'
-from pathlib import Path
-import sys
-cache, manifest = map(Path, sys.argv[1:])
-keep = set(manifest.read_text().splitlines())
-if not keep or any(Path(name).name != name or not name.endswith('.pkg.tar.zst') for name in keep):
-    raise SystemExit('ERROR: unexpected package transaction manifest')
-for name in keep:
-    if not (cache / name).is_file():
-        raise SystemExit(f'ERROR: missing downloaded package: {name}')
-for package in cache.glob('*.pkg.tar.zst'):
-    if package.name not in keep:
-        package.unlink()
-        Path(str(package) + '.sig').unlink(missing_ok=True)
-for old in cache.glob('emaki-offline.*'):
-    old.unlink()
-PY
-python3 "$HERE/repo-files.py" signatures "$work/offline" "$work/db"
-repo-add "$work/offline/emaki-offline.db.tar.gz" "$work/offline/"*.pkg.tar.zst
+grep -Fxq "archinstall-$pinned_archinstall-any.pkg.tar.zst" "$work/closure.txt" || fail 'use the recorded installer package version [archinstall]'
+pacman -Sp --print-format '%f' --dbpath "$work/db" --config "$work/download.conf" \
+    "${target_packages[@]}" >"$work/target-closure.txt"
+python3 "$HERE/repo-files.py" check-closure "$work/target-closure.txt"
+# Prebuilt and DKMS module packages conflict. Resolve complete target transactions
+# separately and retain their union; the live package list keeps nouveau/Mesa.
+python3 "$HERE/nvidia-seeds.py" download --config "$work/download.conf" --db "$work/db" \
+    --cache "$work/offline" --closure "$work/closure.txt" --target-closure "$work/target-closure.txt"
+python3 "$HERE/repo-files.py" check-closure "$work/closure.txt"
+python3 "$HERE/repo-files.py" check-closure "$work/target-closure.txt"
+# Staging copies are recreated above; bound the persistent cache to this full transaction.
+python3 "$HERE/repo-files.py" prune "$work/offline" "$work/closure.txt"
+for kind in build target; do
+    manifest=$work/closure.txt
+    [[ $kind != target ]] || manifest=$work/target-closure.txt
+    python3 "$HERE/repo-files.py" stage "$work/offline" "$manifest" "$work/db" "$work/$kind-repo"
+    repo-add "$work/$kind-repo/emaki-offline.db.tar.gz" "$work/$kind-repo/"*.pkg.tar.zst
+done
 printf '%s\n' "$version" >"$work/profile/VERSION"
 profile_args=()
 [[ -z $test_key ]] || profile_args+=(--test-key "$test_key")
-python3 "$HERE/prepare-profile.py" "$work/profile" "$work/offline" "$version" "${profile_args[@]}"
-# Re-resolve with ONLY the offline repo and a second empty DB. Missing transitive
-# dependencies or signatures fail here, before the expensive squashfs stage.
-mkdir -- "$work/resolved-db"
-pacman -Syw --noconfirm --cachedir "$work/offline" --dbpath "$work/resolved-db" \
-    --config "$work/profile/pacman.conf" "${packages[@]}"
+python3 "$HERE/prepare-profile.py" "$work/profile" "$work/build-repo" "$version" "${profile_args[@]}"
+# Prove installation from only the target repository using an empty DB and cache.
+# Package signatures remain required; there is no network repository or cache fallback.
+cat >"$work/target.conf" <<CONF
+[options]
+Architecture = x86_64
+SigLevel = Required DatabaseOptional TrustedOnly
+LocalFileSigLevel = Required TrustedOnly
+GPGDir = /etc/pacman.d/gnupg
+LogFile = $work/pacman.log
+[emaki-offline]
+SigLevel = Required DatabaseOptional TrustedOnly
+Server = file://$work/target-repo
+CONF
+mkdir -- "$work/resolved-db" "$work/verify-cache"
+pacman -Syw --noconfirm --cachedir "$work/verify-cache" --dbpath "$work/resolved-db" \
+    --config "$work/target.conf" "${target_packages[@]}"
+python3 "$HERE/nvidia-seeds.py" verify --config "$work/target.conf" --db "$work/resolved-db" \
+    --cache "$work/verify-cache"
+rm -rf -- "$work/verify-cache"
 mkdir -p -- "$work/mk"
-# archiso copies profile/grub into both the ISO and its EFI image.
+# archiso v91 copies profile/grub to ISO9660; the ESP contains only EFI binaries.
 install -Dm644 "$ROOT/art/grub/background.png" "$work/profile/grub/background.png"
-# v91 has no external-tree hook. Suppress only mastering on pass one, retaining
-# normal base construction; _run_once uses iso._build_iso_image for that stage.
+# v91 has no external-tree hook. Suppress mastering (iso._build_iso_image) and packing
+# the live root (base._prepare_airootfs_image) on pass one, retaining the rest of base
+# construction; the live root is packed on pass two, after its pacman hooks are released.
 # -r means DELETE work, not resume, and must not be used in either pass.
-touch "$work/mk/iso._build_iso_image"
+touch "$work/mk/iso._build_iso_image" "$work/mk/base._prepare_airootfs_image"
 mkarchiso -v -w "$work/mk" -o "$out" "$work/profile"
 [[ -d $work/mk/iso/emaki && -f $work/mk/build._build_buildmode_iso ]] || fail 'archiso v91 stage layout changed'
+[[ ! -e $work/mk/base._mkairootfs_squashfs ]] || fail 'archiso v91 packed the live root before its hooks were released'
+# pacstrap runs the live system's /etc/pacman.d/hooks for the target. emaki-config's
+# mkinitcpio wrapper there shadows the target's stock hook while the target has no
+# wrapper yet: no kernel is copied and no preset is made (0.3.0 candidate, Mac install).
+live=$work/mk/x86_64/airootfs
+hook=$live/etc/pacman.d/hooks/90-mkinitcpio-install.hook
+ledger=$live/var/lib/emaki/migrations/mkinitcpio-hook
+if [[ -e $hook || -L $hook ]]; then
+    if [[ ! -f $hook || -L $hook || ! -f $ledger ]] || ! cmp -s -- "$hook" "$ledger"; then
+        fail 'the live mkinitcpio hook is not the one emaki-config wrote'
+    fi
+    rm -- "$hook" "$ledger"
+fi
+[[ ! -L $live/etc/pacman.d/hooks ]] || fail 'the live /etc/pacman.d/hooks is a symlink'
+leftover=$(find "$live/etc/pacman.d/hooks" -mindepth 1 -print -quit 2>/dev/null || true)
+[[ -z $leftover ]] || fail "the live /etc/pacman.d/hooks is not empty (pacstrap reads it for the target): ${leftover#"$live"}"
+# Keep the final ISO9660 artwork explicit across either loader's staging flow.
+install -Dm644 "$ROOT/art/grub/background.png" "$work/mk/iso/boot/grub/background.png"
 for installed in usr/bin/emaki-installerd usr/bin/emaki-install-cli usr/bin/niri-emaki-session usr/share/emaki/wallpaper/ring.png; do
     [[ -f $work/mk/x86_64/airootfs/$installed ]] || fail "required live file missing from packages: /$installed"
 done
@@ -153,19 +207,35 @@ if [[ ! -f $work/mk/x86_64/airootfs/usr/bin/emaki-install ]]; then
     echo 'WARNING: /usr/bin/emaki-install is missing; test ISO supports CLI installation only' >&2
 fi
 mkdir -p -- "$work/mk/iso/emaki/repo"
-cp -a -- "$work/offline/." "$work/mk/iso/emaki/repo/"
-cp -- "$work/closure.txt" "$work/mk/iso/emaki/repo/closure.txt"
-rm -- "$work/mk/iso._build_iso_image" "$work/mk/build._build_buildmode_iso"
+cp -a -- "$work/target-repo/." "$work/mk/iso/emaki/repo/"
+cp -- "$work/target-closure.txt" "$work/mk/iso/emaki/repo/closure.txt"
+cp -- "$work/closure.txt" "$work/mk/iso/emaki/live-closure.txt"
+python3 "$ROOT/packaging/mirror/iso_sources.py" --inventory-only \
+    --closure "$work/closure.txt" --packages "$work/build-repo" \
+    --pkglist "$work/mk/iso/emaki/pkglist.x86_64.txt" \
+    --target-closure "$work/target-closure.txt" \
+    --output "$work/mk/iso/emaki/live-packages.json"
+# Keep the date, exact build tools and downloaded bytes with the image. This
+# records package-input reproducibility, not a byte-identical ISO guarantee.
+{
+    printf 'arch_snapshot %s\narch_server %s\n%s\narchinstall %s\n' "$arch_snapshot" "$arch_server" "$archiso_version" "$pinned_archinstall"
+    (
+        cd "$work/offline"
+        while IFS= read -r package; do sha256sum -- "$package"; done <"$work/closure.txt"
+    )
+} >"$work/mk/iso/emaki/BUILDINFO"
+rm -- "$work/mk/iso._build_iso_image" "$work/mk/build._build_buildmode_iso" "$work/mk/base._prepare_airootfs_image"
 mkarchiso -v -w "$work/mk" -o "$out" "$work/profile"
 image=$out/emaki-$version-x86_64.iso
 [[ -s $image ]] || fail "missing ISO: $image"
 # Inspect the mastered ISO and its EFI partition, not just build staging.
 verify_args=()
 ((test_mode == 0)) || verify_args+=(--test)
-if ! python3 "$HERE/verify-image.py" "$image" "${verify_args[@]}" >"$work/iso-image-check.log" 2>&1; then
-    rm -f -- "$image" "$image.sha256" "$image.sig"
+if ! python3 "$HERE/verify-image.py" "$image" --efi-report "$image.efi.json" "${verify_args[@]}" >"$work/iso-image-check.log" 2>&1; then
+    rm -f -- "$image" "$image.sha256" "$image.sig" "$image.efi.json"
     fail "mastered image verification failed; see $work/iso-image-check.log"
 fi
+cp -- "$work/mk/iso/emaki/BUILDINFO" "$image.buildinfo"
 printf 'ISO: %s\n' "$image"
 stat -c 'Size: %s bytes' -- "$image"
 # Checksum always; a detached signature only when EMAKI_ISO_SIGN_KEY is set (the build VM holds

@@ -1,14 +1,26 @@
 #!/bin/bash
-# C11/F0, INSIDE the VM (as arch, logged in): a real click on “3” in the workspace strip.
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# C11/F0, INSIDE the VM (as the selected account, logged in): a real click on “3” in the workspace strip.
 #   tests/vm/ssh.sh 'bash -s -- <desktop>' < tests/vm/guest-strip-click.sh
 # The click goes through uinput → libinput → niri → shell (guest-pointer.py must be in /tmp).
 # 27.09: clicking the number did not switch workspaces — the island tooltip (TapHandler) covered the numbers
 # and intercepted the click. Prints `[<desktop>] strip-click: ok` or `BAD active=<number>`.
 name=${1:-glass}
-export XDG_RUNTIME_DIR=/run/user/1000
-export WAYLAND_DISPLAY=$(ls $XDG_RUNTIME_DIR | grep -E '^wayland-[0-9]+$' | head -1)
-export NIRI_SOCKET=$(ls $XDG_RUNTIME_DIR/niri.*.sock 2>/dev/null | head -1)
-sudo pacman -S --needed --noconfirm python-evdev >/dev/null 2>&1
+# The optional password arrives only on stdin; never export or trace it.
+if [ "${EMAKI_VM_PASSWORD_STDIN:-}" = 1 ]; then
+    IFS= read -r vm_password || exit 1
+    sudo() { printf '%s\n' "$vm_password" | command sudo -S -p '' -- "$@"; }
+fi
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
+export WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-$(ls "$XDG_RUNTIME_DIR" | grep -E '^wayland-[0-9]+$' | head -1)}
+export NIRI_SOCKET=${NIRI_SOCKET:-$(ls "$XDG_RUNTIME_DIR"/niri.*.sock 2>/dev/null | head -1)}
+if [ "${EMAKI_VM_PASSWORD_STDIN:-}" = 1 ]; then
+    python3 -c 'import evdev' || exit 1
+else
+    sudo pacman -S --needed --noconfirm python-evdev >/dev/null 2>&1
+fi
 # On a fresh system, the first click in the 27.09 run did not reach the shell (a repeat after the same login did;
 # cause unknown), so first create a trial device and move the pointer aside.
 sudo python3 /tmp/guest-pointer.py move:0.5,0.6 wait:1 >/dev/null 2>&1

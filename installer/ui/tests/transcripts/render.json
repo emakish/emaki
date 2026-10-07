@@ -3,7 +3,7 @@
     "type": "hello",
     "proto": 1,
     "archinstall_version": "4.5",
-    "emaki_version": "0.1.0",
+    "emaki_version": "0.3.0",
     "test_mode": false,
     "busy_job": null
   },

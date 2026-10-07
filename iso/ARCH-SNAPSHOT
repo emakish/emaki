@@ -1,0 +1,6 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Build inputs only; installed systems continue following current Arch mirrors.
+date=2026-10-05
+archiso=91
+archinstall=4.5-1

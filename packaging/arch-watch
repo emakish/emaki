@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Watch Arch dependency fences. Exit 0: satisfied; 1: broken; 2: incomplete/error.
+"""Watch dependency fences and fork releases. Exit 0: current; 1: attention; 2: incomplete/error.
 
 Requires the makepkg libraries and vercmp (pacman); works as root or a user.
 Only trusted local PKGBUILDs are sourced with bash; no build hooks run.
@@ -13,6 +13,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from functools import lru_cache
 import io
+import json
 import gzip
 import bz2
 import lzma
@@ -29,11 +30,21 @@ import urllib.request
 import zlib
 
 REPOS = ('core', 'extra', 'core-testing', 'extra-testing')
+QUICKSHELL_RELEASE = 'https://api.github.com/repos/quickshell-mirror/quickshell/releases/latest'
+FORKS = {'quickshell-emaki': 'quickshell',
+         'xdg-desktop-portal-gnome-emaki': 'xdg-desktop-portal-gnome'}
+RELEASE_LIMIT = 1024 * 1024
 LIMIT = 128 * 1024 * 1024
 DEP = re.compile(r'^([^<>=\s]+)(?:(>=|<=|=|>|<)([^\s]+))?$')
+# A new major needs database, hook and transaction checks before this is advanced.
+PACMAN_REVIEWED_MAJOR = 7
 
 
 class WatchError(Exception):
+    pass
+
+
+class CandidateUnavailable(WatchError):
     pass
 
 
@@ -82,7 +93,7 @@ def accepts(version, operator, required):
             '>=': order >= 0, '<=': order <= 0}[operator]
 
 
-def recipe_metadata(recipe, arch):
+def recipe_metadata(recipe, arch, releases=None):
     # Use pacman's own split-package metadata extraction without the makepkg
     # command's root prohibition. Its extractor reads assignments, not hooks.
     script = """
@@ -115,9 +126,23 @@ write_srcinfo_content
     fences, names = [], set()
     for name, overrides in packages:
         effective = {**base, **overrides}
+        # A single-package recipe's global dependencies are also build prerequisites.
+        # package() may replace them with versions captured during compilation, which
+        # srcinfo cannot reconstruct without that build. Keep the global fences as
+        # well as extractable overrides; the published database supplies runtime pins.
+        # Split-package overrides retain their normal per-package semantics.
+        if len(packages) == 1:
+            for field in ('depends', f'depends_{arch}'):
+                effective[field] = list(dict.fromkeys(base.get(field, [])
+                                                      + effective.get(field, [])))
         if arch not in effective.get('arch', []) and 'any' not in effective.get('arch', []):
             continue
         names.add(name)
+        if releases is not None and name in FORKS:
+            versions = effective.get('pkgver', [])
+            if len(versions) != 1 or not re.fullmatch(r'[A-Za-z0-9._+]+', versions[0]):
+                raise WatchError(f'invalid fork version [{recipe}]')
+            releases.append((name, FORKS[name], versions[0]))
         for kind in ('depends', 'makedepends', 'checkdepends'):
             for field in (kind, f'{kind}_{arch}'):
                 for value in effective.get(field, []):
@@ -129,13 +154,13 @@ write_srcinfo_content
     return fences, names
 
 
-def discover(root, arch):
+def discover(root, arch, releases=None):
     recipes = sorted(root.glob('*/PKGBUILD'))
     if not recipes:
         raise WatchError(f'no active */PKGBUILD recipes in {root}')
     fences, local_names = [], set()
     for recipe in recipes:
-        found, names = recipe_metadata(recipe, arch)
+        found, names = recipe_metadata(recipe, arch, releases)
         fences.extend(found)
         local_names.update(names)
     if not fences:
@@ -256,7 +281,7 @@ def load_databases(args):
     return databases
 
 
-def shipped_fences(args):
+def shipped_fences(args, qt_builds=None, errors=None):
     """Published runtime dependencies supplement, never replace, recipe fences."""
     source = (str(args.emaki_db) if args.emaki_db else
               f'https://pkgs.emaki.sh/{args.channel}/{args.arch}/emaki.db')
@@ -282,7 +307,7 @@ def shipped_fences(args):
                 if exc.code != 503 or exc.read(len(missing) + 1) != missing:
                     raise
         print(f'FALLBACK: Emaki database absent ({source}); recipe fences only; '
-              'shipped ABI fences are unavailable')
+              'shipped ABI fences and Qt build metadata are unavailable')
         return [], set()
     if len(blob) > LIMIT:
         raise WatchError('Emaki database too large')
@@ -291,6 +316,16 @@ def shipped_fences(args):
         raise WatchError(f'{source}: Emaki database contains no packages')
     fences = []
     for package in packages.values():
+        if package.name == 'quickshell-emaki':
+            builds = [version for name, version in package.provides
+                      if name == 'emaki-quickshell-qt-build']
+            if len(builds) != 1 or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', builds[0] or ''):
+                message = f'{source}: quickshell-emaki has missing or invalid Qt build metadata'
+                if errors is None:
+                    raise WatchError(message)
+                errors.append(message)
+            elif qt_builds is not None:
+                qt_builds[package.version] = builds[0]
         for value in package.depends:
             name, operator, _ = dependency(value)
             if operator or '.so' in name or name.startswith('lib:'):
@@ -365,12 +400,155 @@ def assess(fences, local_names, databases):
     return 1 if broken else 0
 
 
+def watch_pacman(databases):
+    """Flag format-review candidates even when no dependency fence mentions pacman."""
+    if 'pacman' not in databases['core']:
+        raise WatchError('package missing from stable database (pacman)')
+    attention = 0
+    for repo in REPOS:
+        package = databases[repo].get('pacman')
+        if package is None:
+            continue
+        match = re.fullmatch(r'(?:[0-9]+:)?([0-9]+)\.[0-9][A-Za-z0-9.+_]*-[0-9.]+', package.version)
+        if match is None:
+            raise WatchError(f'unrecognized version {package.version!r} (pacman)')
+        if int(match[1]) != PACMAN_REVIEWED_MAJOR:
+            print(f'REVIEW {repo}/pacman {package.version}: reviewed major is '
+                  f'{PACMAN_REVIEWED_MAJOR}; release engineer must check database and hook '
+                  'formats, snap-pac, installer transactions and iso/build.sh before release.')
+            attention = 1
+    return attention
+
+
+def quickshell_release(args):
+    if args.db_dir:
+        with (args.db_dir / 'quickshell-release.json').open('rb') as handle:
+            blob = handle.read(RELEASE_LIMIT + 1)
+    else:
+        request = urllib.request.Request(QUICKSHELL_RELEASE, headers={
+            'User-Agent': 'emaki-arch-watch', 'Accept': 'application/vnd.github+json'})
+        with urllib.request.urlopen(request, timeout=60) as response:
+            if not response.geturl().startswith('https://'):
+                raise WatchError('release redirected outside HTTPS [Quickshell]')
+            blob = response.read(RELEASE_LIMIT + 1)
+    if len(blob) > RELEASE_LIMIT:
+        raise WatchError('release metadata too large [Quickshell]')
+    release = json.loads(blob)
+    if (not isinstance(release, dict) or release.get('draft') is not False
+            or release.get('prerelease') is not False
+            or not isinstance(release.get('tag_name'), str)
+            or not re.fullmatch(r'v?[0-9]+(?:\.[0-9]+)+', release['tag_name'])):
+        raise WatchError('release metadata is not a stable release [Quickshell]')
+    return release['tag_name'].removeprefix('v')
+
+
+def assess_releases(releases, databases, args):
+    updates = 0
+    for fork, upstream, baseline in releases:
+        if upstream == 'quickshell':
+            candidates = [('upstream', quickshell_release(args))]
+        else:
+            candidates = [(repo, databases[repo][upstream].version) for repo in REPOS
+                          if upstream in databases[repo]]
+            if not candidates:
+                raise WatchError(f'upstream package missing from Arch databases [{upstream}]')
+        for source, version in candidates:
+            # Epoch and pkgrel describe Arch packaging, not an upstream release.
+            upstream_version = version.split(':')[-1].split('-')[0]
+            if compare(upstream_version, baseline) > 0:
+                print(f'UPDATE {source}: New release {version} [{upstream}]; '
+                      f'fork {fork} uses {baseline}.')
+                updates += 1
+    print(f'Checked {len(releases)} forks; {updates} new releases.')
+    return 1 if updates else 0
+
+
+def validate_stock_niri(package, root):
+    """Validate using the candidate's installed stock binary, never an older one."""
+    owner = subprocess.run(['pacman', '-Qqo', '/usr/bin/niri'], capture_output=True,
+                           text=True, timeout=10, check=True).stdout.strip()
+    version = subprocess.run(['pacman', '-Q', 'niri'], capture_output=True,
+                             text=True, timeout=10, check=True).stdout.split()
+    if owner != 'niri' or version != ['niri', package.version]:
+        raise CandidateUnavailable(f'stock niri {package.version} must own /usr/bin/niri; '
+                         'run this check in a disposable Arch environment with that package installed')
+    failed = False
+    # default.kdl includes theme.kdl and shell.kdl from this checkout. Fork-only
+    # rules are intentionally excluded: the recovery compositor is stock niri.
+    for name in ('greetd/niri.kdl', 'niri/default.kdl'):
+        config = root / name
+        if not config.is_file():
+            raise WatchError(f'missing stock niri configuration: {config}')
+        result = subprocess.run(['/usr/bin/niri', 'validate', '-c', str(config)],
+                                capture_output=True, text=True, timeout=60)
+        status = 'FAIL' if result.returncode else 'PASS'
+        print(f'NIRI {status}: {package.repo}/niri {package.version}: {name}')
+        if result.returncode:
+            failed = True
+            print((result.stderr or result.stdout).strip())
+    return 1 if failed else 0
+
+
+def watch_quickshell_qt(qt_builds, databases):
+    """Private Qt APIs can change on patches even while dependency ranges hold."""
+    result = 0
+    for built_package, built_qt in qt_builds.items():
+        for repo in ('extra', 'extra-testing'):
+            for name in ('qt6-base', 'qt6-declarative'):
+                package = databases[repo].get(name)
+                if package is None:
+                    continue  # Ordinary dependency assessment detects missing providers.
+                upstream = package.version.split(':')[-1].rsplit('-', 1)[0]
+                if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', upstream):
+                    raise WatchError(f'{repo}/{name}: invalid Qt release {package.version}')
+                if upstream != built_qt:
+                    print(f'REBUILD: {repo}/{name} {package.version} differs from Qt {built_qt} '
+                          f'used to build quickshell-emaki {built_package}; rebuild required. '
+                          'Build and publish quickshell-emaki against matching qt6-base and '
+                          'qt6-declarative before promoting this Qt release.')
+                    result = 1
+    return result
+
+
+def watch_stock_niri(fences, databases, root):
+    baselines = [required for fence in fences
+                 for name, operator, required in [dependency(fence.value)]
+                 if name == 'niri' and operator == '>=']
+    if not baselines:
+        return 0
+    result, checked = 0, {}
+    for label, repos in (
+        ('stable', ('core', 'extra')),
+        ('testing', ('core-testing', 'extra-testing', 'core', 'extra')),
+    ):
+        for package, _ in universe(databases, repos).get('niri', []):
+            if package.name != 'niri' or not all(compare(package.version, v) > 0 for v in baselines):
+                continue
+            print(f'RELEASE {label}: {package.repo}/niri {package.version} is newer than '
+                  f'the stock baseline {", ".join(sorted(set(baselines)))}; configuration validation required')
+            result = max(result, 1)
+            if package.version not in checked:
+                try:
+                    checked[package.version] = validate_stock_niri(package, root)
+                except CandidateUnavailable as exc:
+                    print(f'NIRI NOT CHECKED: {package.repo}/niri {package.version}: {exc}')
+                    checked[package.version] = None
+                except (OSError, subprocess.SubprocessError, WatchError) as exc:
+                    print(f'NIRI INCOMPLETE: {package.repo}/niri {package.version}: {exc}')
+                    checked[package.version] = 2
+            result = max(result, checked[package.version] or 0)
+    if checked and all(value is None for value in checked.values()):
+        print('NIRI INCOMPLETE: no release candidate could be validated')
+        return 2
+    return result
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--packaging-dir', type=Path,
                         default=Path(__file__).resolve().parent,
                         help='trusted recipes; only immediate */PKGBUILD children are active')
-    parser.add_argument('--db-dir', type=Path, help='offline directory containing all four REPO.db files')
+    parser.add_argument('--db-dir', type=Path, help='offline directory with four REPO.db files and quickshell-release.json')
     parser.add_argument('--mirror', default='https://geo.mirror.pkgbuild.com', help='HTTPS Arch mirror root')
     parser.add_argument('--arch', default='x86_64')
     parser.add_argument('--emaki-db', type=Path, help='published Emaki database saved locally')
@@ -385,16 +563,30 @@ def main(argv=None):
             raise WatchError('invalid architecture')
         if not args.db_dir and not args.mirror.startswith('https://'):
             raise WatchError('--mirror must use HTTPS')
-        fences, local_names = discover(args.packaging_dir.resolve(), args.arch)
-        shipped, shipped_names = shipped_fences(args)
+        releases = []
+        fences, local_names = discover(args.packaging_dir.resolve(), args.arch, releases)
+        qt_builds = {}
+        incomplete = []
+        shipped, shipped_names = shipped_fences(args, qt_builds, incomplete)
+        for message in incomplete:
+            print(f'ERROR: arch-watch incomplete: {message}', file=sys.stderr)
         databases = load_databases(args)
         # Buffer assessment so a later comparison failure cannot leave false BREAKs.
         from contextlib import redirect_stdout
         output = io.StringIO()
         with redirect_stdout(output):
             result = assess(fences + shipped, local_names | shipped_names, databases)
-        print(output.getvalue(), end='')
-        return result
+            result = max(result, watch_pacman(databases))
+            result = max(result, watch_quickshell_qt(qt_builds, databases))
+            result = max(result, watch_stock_niri(
+                fences, databases, args.packaging_dir.resolve().parent))
+        print(output.getvalue(), end='', flush=True)
+        # A release transport failure must not hide completed dependency alarms.
+        release_output = io.StringIO()
+        with redirect_stdout(release_output):
+            result = max(result, assess_releases(releases, databases, args))
+        print(release_output.getvalue(), end='')
+        return max(result, 2 if incomplete else 0)
     except Exception as exc:
         # No parser, decompressor, transport or comparison failure is an ABI break.
         print(f'ERROR: arch-watch incomplete: {exc}', file=sys.stderr)

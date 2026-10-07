@@ -26,7 +26,8 @@ SUBVOLUMES = {'@': '/', '@home': '/home', '@log': '/var/log',
               '@pkg': '/var/cache/pacman/pkg', '@snapshots': '/.snapshots'}
 BTRFS_OPTIONS = ['compress=zstd:3', 'noatime', 'space_cache=v2', 'discard=async']
 TEST_PACKAGES = ['openssh', 'grim']
+SNAPSHOT_PACKAGES = ['snapper', 'snap-pac', 'grub-btrfs']
 PACKAGES = '''base linux linux-lts linux-firmware intel-ucode amd-ucode
-btrfs-progs e2fsprogs dosfstools cryptsetup grub efibootmgr snapper snap-pac grub-btrfs
+btrfs-progs e2fsprogs dosfstools cryptsetup grub efibootmgr
 inotify-tools zram-generator networkmanager wpa_supplicant wireless-regdb sudo emaki emaki-config
 emaki-desktop emaki-keyring emaki-mirrorlist niri-emaki quickshell-emaki'''.split()

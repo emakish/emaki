@@ -1,0 +1,9 @@
+#!/usr/bin/python3 -IB
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+import sys
+
+sys.path.insert(0, '/usr/lib/emaki/boot')
+from emaki_boot.refresh import main
+
+sys.exit(main())

@@ -100,15 +100,39 @@ Scope {
             delete next[key];
         expanded = next;
     }
+    // Clients sometimes send body markup despite the advertised plain-text capability.
+    // Strip tags before decoding entities so escaped device names remain literal text.
+    // Consumers must keep Text.PlainText: decoded text is never interpreted as markup.
+    function plainBody(value: string): string {
+        const text = value.replace(/<!--[\s\S]*?-->|<\/?[a-zA-Z](?:[^"'<>]|"[^"]*"|'[^']*')*>/g, "");
+        const named = {
+            amp: "&",
+            lt: "<",
+            gt: ">",
+            quot: '"',
+            apos: "'",
+            nbsp: " "
+        };
+        return text.replace(/&(#x[0-9a-f]+|#[0-9]+|amp|lt|gt|quot|apos|nbsp);/gi, (entity, name) => {
+            if (name[0] !== "#")
+                return named[name] === undefined ? entity : named[name];
+            const hex = name[1].toLowerCase() === "x";
+            const code = parseInt(name.slice(hex ? 2 : 1), hex ? 16 : 10);
+            return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : entity;
+        }).slice(0, 4096);
+    }
     function snapshot(n: var, time: double): var {
         return {
             id: n.id,
             app: (n.appName || "Application").slice(0, 128),
+            // Pairing confirmation, authorization and displayed PINs use persistent
+            // blueman notices. Match protocol fields, not translated summaries.
+            critical: n.appName === "blueman" && n.appIcon === "blueman" && n.expireTimeout === 0,
             // The app's icon for the panel's row: the one it sent, else its desktop entry's.
             // Memory only: not saved with the history (a sent icon may be a private path).
             icon: String(n.appIcon || (n.desktopEntry ? DesktopEntries.byId(n.desktopEntry)?.icon ?? "" : "")).slice(0, 1024),
             summary: n.summary.slice(0, 512),
-            body: n.body.slice(0, 4096),
+            body: plainBody(n.body),
             time: time,
             object: n,
             actions: n.actions.map(a => ({
@@ -149,11 +173,16 @@ Scope {
     property int systemId: -1
     // A notice from the shell itself (no D-Bus object): negative IDs, no actions.
     function local(app: string, summary: string, body: string): int {
+        return localNotice(app, summary, body, false);
+    }
+    function localNotice(app: string, summary: string, body: string, batteryWarning: bool): int {
         const id = systemId--;
         entries = [
             {
                 id: id,
                 app: app.slice(0, 128),
+                critical: batteryWarning,
+                batteryWarning: batteryWarning,
                 summary: summary.slice(0, 512),
                 body: body.slice(0, 4096),
                 time: Date.now(),
@@ -168,7 +197,7 @@ Scope {
         return id;
     }
     function systemBattery(percent: int): void {
-        local("Battery low", percent + "% left — plug in soon.", "");
+        localNotice(percent <= 5 ? "Battery critical" : "Battery low", percent + "% left — plug in soon.", "", true);
     }
     // The sleep guard's policy names (scripts/emaki-sleep-guard). Only what the policy is
     // known to have done: the guard does not report whether its second attempt locked.

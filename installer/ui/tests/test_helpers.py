@@ -163,6 +163,48 @@ def fake_qs(root, body):
 
 
 class Helpers(unittest.TestCase):
+    def test_qml_runtime_stays_short_with_long_tmpdir(self):
+        class LaunchChecked(Exception):
+            pass
+
+        with tempfile.TemporaryDirectory(prefix='installer-fixture-') as temporary:
+            long_tmp = Path(temporary) / ('long-worktree-' * 12)
+            long_tmp.mkdir()
+            output = Path(temporary) / 'evidence'
+            for script in ('interactions', 'controller', 'render'):
+                with self.subTest(script=script):
+                    spec = importlib.util.spec_from_file_location('fixture_' + script, UI / 'tests' / (script + '.py'))
+                    fixture = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(fixture)
+                    runtime_paths = []
+
+                    def launch(argv, *, env, **kwargs):
+                        runtime = Path(env['XDG_RUNTIME_DIR'])
+                        runtime_paths.append(runtime)
+                        self.assertEqual(runtime.parent, Path('/tmp'))
+                        self.assertEqual(runtime.stat().st_mode & 0o777, 0o700)
+                        # Leave room for Quickshell's hashed instance path below its runtime root.
+                        self.assertLess(len(os.fsencode(runtime)) + 80, 108)
+                        # The renderer keeps its scratch (and its worker's) in the checkout's evidence
+                        # directory so a killed worker cannot leave files in /tmp.
+                        scratch = ROOT / '.cache/evidence' if script == 'render' else long_tmp
+                        self.assertTrue(Path(env['XDG_CACHE_HOME']).is_relative_to(scratch))
+                        if script == 'render':
+                            self.assertEqual(Path(env['EMAKI_INSTALLER_SCREENSHOT']).parent, output)
+                        raise LaunchChecked
+
+                    with patch.object(tempfile, 'tempdir', str(long_tmp)), \
+                            patch.dict(os.environ, TMPDIR=str(long_tmp)), \
+                            patch.object(sys, 'argv', [script, '--output', str(output)]), \
+                            patch.object(fixture.subprocess, 'run', side_effect=launch):
+                        with self.assertRaises(LaunchChecked):
+                            if script == 'interactions':
+                                fixture.run(1024, 700, 'KeyboardTest', 'KEYBOARD_OK')
+                            else:
+                                fixture.main()
+                    self.assertEqual(len(runtime_paths), 1)
+                    self.assertFalse(runtime_paths[0].exists())
+
     def test_catalog(self):
         rows = helper.layouts()
         self.assertTrue(any(x['layout'] == 'us' and not x['variant'] for x in rows))
@@ -180,17 +222,74 @@ class Helpers(unittest.TestCase):
                 mount.mkdir()
                 self.assertIs(helper.catalog()['boot_medium'], True)
 
+    def test_catalog_keeps_each_active_session_output_scale(self):
+        outputs = {'Outputs': {
+            'eDP-1': {'logical': {'scale': 1.25}},
+            'HDMI-A-1': {'logical': {'scale': 1.5}},
+            'DP-1': {'logical': {'scale': 1}},
+            'DP-2': {'logical': None},
+        }}
+        with patch.object(helper, 'niri_request', return_value=outputs) as request:
+            self.assertEqual(helper.catalog()['output_scales'],
+                             {'eDP-1': 1.25, 'HDMI-A-1': 1.5, 'DP-1': 1})
+        request.assert_called_once_with('Outputs')
+
+    def test_catalog_without_a_session_does_not_invent_a_scale(self):
+        with patch.object(helper, 'niri_request', side_effect=OSError):
+            self.assertEqual(helper.catalog()['output_scales'], {})
+
+    def test_catalog_preserves_choices_when_usb_probe_fails(self):
+        for failure in (OSError('missing probe'), ValueError('invalid JSON'),
+                        subprocess.TimeoutExpired(['findmnt'], 35), TypeError('bad tree')):
+            with self.subTest(failure=type(failure).__name__), \
+                    patch.object(helper, 'layouts', return_value=[dict(layout='us')]), \
+                    patch.object(helper, 'zones', return_value=['UTC']), \
+                    patch.object(helper, 'trial_available', return_value=False), \
+                    patch.object(helper, 'boot_removable', side_effect=failure):
+                result = helper.catalog()
+                self.assertTrue(result['ok'])
+                self.assertEqual(result['layouts'], [dict(layout='us')])
+                self.assertEqual(result['zones'], ['UTC'])
+                self.assertFalse(result['boot_removable'])
+
     def test_nmcli_escape_and_credentials(self):
         self.assertEqual(helper.terse(r'Cafe\: A\\B:72'), ['Cafe: A\\B', '72'])
         secret = secrets.token_hex(16)
-        with patch.object(helper, 'run', return_value=subprocess.CompletedProcess([], 0, b'', b'')) as run:
+        with patch.object(helper, 'run', side_effect=[subprocess.CompletedProcess([], 0, b'', b''),
+                subprocess.CompletedProcess([], 0, b'e6685942-10ed-4eaf-9741-1bfed347fc6f', b'')]) as run:
             result = helper.join(dict(bssid='AA:BB:CC:DD:EE:FF', device='wlan0', password=secret))
             self.assertTrue(result['ok'])
-            argv = run.call_args.args[0]
+            argv = run.call_args_list[0].args[0]
             self.assertNotIn(secret, ' '.join(argv))
             self.assertIn('--ask', argv)
-            self.assertEqual(run.call_args.kwargs['input'], (secret + '\n').encode())
+            self.assertEqual(run.call_args_list[0].kwargs['input'], (secret + '\n').encode())
             self.assertNotIn(secret, json.dumps(result))
+
+    def test_join_records_only_successful_connection_uuid(self):
+        uuid = 'e6685942-10ed-4eaf-9741-1bfed347fc6f'
+        for status in (0, 4):
+            replies = [subprocess.CompletedProcess([], status, b'', b''),
+                       subprocess.CompletedProcess([], 0, uuid.encode(), b'')]
+            with patch.object(helper, 'run', side_effect=replies) as command:
+                result = helper.join(dict(bssid='AA:BB:CC:DD:EE:FF', device='wlan0', password='fixture'))
+            self.assertEqual(result.get('wifi_uuid'), uuid if status == 0 else None)
+            self.assertEqual(command.call_count, 2 if status == 0 else 1)
+
+    def test_join_without_profile_identity_reports_that_it_will_not_be_saved(self):
+        with patch.object(helper, 'run', return_value=subprocess.CompletedProcess([], 0, b'', b'')):
+            result = helper.join(dict(bssid='AA:BB:CC:DD:EE:FF', device='wlan0', password='fixture'))
+        self.assertFalse(result['ok'])
+        self.assertNotIn('wifi_uuid', result)
+        self.assertIn('could not be saved for installation', result['message'])
+
+    def test_boot_medium_ancestry_detects_usb_and_skips_internal_disk(self):
+        with tempfile.TemporaryDirectory() as temp, patch.object(helper, 'BOOT_MOUNT', Path(temp)):
+            for transport, expected in [('usb', True), ('sata', False)]:
+                tree = {'blockdevices': [{'rm': False, 'children': [{'rm': False, 'tran': transport}]}]}
+                replies = [subprocess.CompletedProcess([], 0, b'/dev/sdb1\n', b''),
+                           subprocess.CompletedProcess([], 0, json.dumps(tree).encode(), b'')]
+                with patch.object(helper, 'run', side_effect=replies):
+                    self.assertEqual(helper.boot_removable(), expected)
 
     def test_network_one_row_per_name_and_security(self):
         def scan(in_use):
@@ -212,8 +311,9 @@ class Helpers(unittest.TestCase):
         # niri answers KeyboardLayouts with xkeyboard-config descriptions; the window gets codes.
         rows = [dict(layout='us', variant='', label='English (US)'), dict(layout='de', variant='', label='German'),
                 dict(layout='us', variant='dvorak', label='English (Dvorak)')]
-        with tempfile.TemporaryDirectory() as temp:
-            path = str(Path(temp) / 'niri.sock')
+        with tempfile.TemporaryDirectory() as temp, \
+                tempfile.TemporaryDirectory(prefix='ein-', dir='/tmp') as runtime:
+            path = str(Path(runtime) / 'niri.sock')
             with socket.socket(socket.AF_UNIX) as server:
                 server.bind(path)
                 server.listen(1)
@@ -264,8 +364,9 @@ class Helpers(unittest.TestCase):
 
     def test_first_layout_sends_switch_layout_zero(self):
         # What `niri msg action switch-layout 0` sends (niri-ipc 26.04, LayoutSwitchTarget::Index).
-        with tempfile.TemporaryDirectory() as temp:
-            path = str(Path(temp) / 'niri.sock')
+        with tempfile.TemporaryDirectory() as temp, \
+                tempfile.TemporaryDirectory(prefix='ein-', dir='/tmp') as runtime:
+            path = str(Path(runtime) / 'niri.sock')
             with socket.socket(socket.AF_UNIX) as server:
                 server.bind(path)
                 server.listen(1)
@@ -294,8 +395,9 @@ class Helpers(unittest.TestCase):
                   {'OverviewOpenedOrClosed': {'is_open': False}}, {'KeyboardLayoutSwitched': {'idx': 1}},
                   {'WindowFocusChanged': {'id': None}}, {'KeyboardLayoutSwitched': {'idx': 0}},
                   layouts(['English (US)', 'Russian'], 0), layouts(['German'], 0)]
-        with tempfile.TemporaryDirectory() as temp:
-            path = str(Path(temp) / 'niri.sock')
+        with tempfile.TemporaryDirectory() as temp, \
+                tempfile.TemporaryDirectory(prefix='ein-', dir='/tmp') as runtime:
+            path = str(Path(runtime) / 'niri.sock')
             with socket.socket(socket.AF_UNIX) as server:
                 server.bind(path)
                 server.listen(1)
@@ -327,8 +429,9 @@ class Helpers(unittest.TestCase):
                          [{'ready': True}, {'switched': True}, {'switched': True}, {'switched': True}])
 
     def test_layout_events_end_when_the_window_closes_its_input(self):
-        with tempfile.TemporaryDirectory() as temp:
-            path = str(Path(temp) / 'niri.sock')
+        with tempfile.TemporaryDirectory() as temp, \
+                tempfile.TemporaryDirectory(prefix='ein-', dir='/tmp') as runtime:
+            path = str(Path(runtime) / 'niri.sock')
             with socket.socket(socket.AF_UNIX) as server:
                 server.bind(path)
                 server.listen(1)
@@ -355,8 +458,9 @@ class Helpers(unittest.TestCase):
 
     def test_trial_is_refused_where_niri_never_reads_the_file(self):
         # The peer of NIRI_SOCKET decides: here it is this test's own process, not niri-emaki.
-        with tempfile.TemporaryDirectory() as temp:
-            path = str(Path(temp) / 'niri.sock')
+        with tempfile.TemporaryDirectory() as temp, \
+                tempfile.TemporaryDirectory(prefix='ein-', dir='/tmp') as runtime:
+            path = str(Path(runtime) / 'niri.sock')
             with socket.socket(socket.AF_UNIX) as server:
                 server.bind(path)
                 server.listen(4)
@@ -452,14 +556,15 @@ class Helpers(unittest.TestCase):
     @unittest.skipUnless(shutil.which('qs'), 'Quickshell is not installed')
     def test_window_comes_back_after_close_and_hide(self):
         """The real window, launcher and `qs ipc`, offscreen: no compositor, no visible window."""
-        with tempfile.TemporaryDirectory(prefix='eir-') as temporary:  # short: sun_path is 108 bytes
+        with tempfile.TemporaryDirectory(prefix='eir-') as temporary, \
+                tempfile.TemporaryDirectory(prefix='eir-', dir='/tmp') as runtime:
             root = Path(temporary)
             # A worker socket that accepts and stays silent: no reconnect loop, so the only
             # clearPasswords signals come from closing and hiding the window.
             worker = socket.socket(socket.AF_UNIX)
             self.addCleanup(worker.close)
             try:
-                worker.bind(str(root / 'w.sock'))
+                worker.bind(str(Path(runtime) / 'w.sock'))
             except PermissionError:
                 self.skipTest('this sandbox denies Unix socket binds')
             worker.listen(4)
@@ -475,12 +580,12 @@ class Helpers(unittest.TestCase):
             launcher = root / 'emaki-install'
             launcher.write_text((UI / 'emaki-install').read_text().replace(INSTALLED_UI, str(shell)))
             launcher.chmod(0o700)
-            for name in ['runtime', 'cache', 'config', 'state', 'data']:
+            for name in ['cache', 'config', 'state', 'data']:
                 (root / name).mkdir(mode=0o700)
             env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QML_DISABLE_DISK_CACHE='1',
-                       QS_DISABLE_CRASH_HANDLER='1', XDG_RUNTIME_DIR=str(root / 'runtime'), XDG_CACHE_HOME=str(root / 'cache'),
+                       QS_DISABLE_CRASH_HANDLER='1', XDG_RUNTIME_DIR=runtime, XDG_CACHE_HOME=str(root / 'cache'),
                        XDG_CONFIG_HOME=str(root / 'config'), XDG_STATE_HOME=str(root / 'state'), XDG_DATA_HOME=str(root / 'data'),
-                       EMAKI_INSTALLER_SOCKET=str(root / 'w.sock'))
+                       EMAKI_INSTALLER_SOCKET=str(Path(runtime) / 'w.sock'))
             for key in ['WAYLAND_DISPLAY', 'DISPLAY', 'NIRI_SOCKET', 'DBUS_SESSION_BUS_ADDRESS']:
                 env.pop(key, None)
 
@@ -531,13 +636,14 @@ class Helpers(unittest.TestCase):
         """GParted opens tiled, under the floating installer (VM walk B3, frame B-19), and on the
         first disk it finds, the live stick. The real window and launcher, offscreen: the editor
         gets the chosen disk's device path, the window hides while it runs and comes back after."""
-        with tempfile.TemporaryDirectory(prefix='eir-') as temporary:  # short: sun_path is 108 bytes
+        with tempfile.TemporaryDirectory(prefix='eir-') as temporary, \
+                tempfile.TemporaryDirectory(prefix='eir-', dir='/tmp') as runtime:
             root = Path(temporary)
-            worker = subprocess.Popen([sys.executable, '-B', str(UI / 'tests/mock-worker.py'), '--socket', str(root / 'w.sock'),
+            worker = subprocess.Popen([sys.executable, '-B', str(UI / 'tests/mock-worker.py'), '--socket', str(Path(runtime) / 'w.sock'),
                                        '--screen', 'manual-by-id', '--delay', '0'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             self.addCleanup(worker.wait, 5)
             self.addCleanup(worker.terminate)
-            if worker.stdout.readline().strip() != str(root / 'w.sock'):
+            if worker.stdout.readline().strip() != str(Path(runtime) / 'w.sock'):
                 self.skipTest('the mock worker could not bind its socket: ' + worker.stderr.read())
             ui = root / 'ui'
             shutil.copytree(UI, ui, ignore=shutil.ignore_patterns('__pycache__', 'tests'))
@@ -553,12 +659,12 @@ class Helpers(unittest.TestCase):
             editor = root / 'editor'
             editor.write_text(EDITOR)
             editor.chmod(0o700)
-            for name in ['runtime', 'cache', 'config', 'state', 'data']:
+            for name in ['cache', 'config', 'state', 'data']:
                 (root / name).mkdir(mode=0o700)
             env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QML_DISABLE_DISK_CACHE='1',
-                       QS_DISABLE_CRASH_HANDLER='1', XDG_RUNTIME_DIR=str(root / 'runtime'), XDG_CACHE_HOME=str(root / 'cache'),
+                       QS_DISABLE_CRASH_HANDLER='1', XDG_RUNTIME_DIR=runtime, XDG_CACHE_HOME=str(root / 'cache'),
                        XDG_CONFIG_HOME=str(root / 'config'), XDG_STATE_HOME=str(root / 'state'), XDG_DATA_HOME=str(root / 'data'),
-                       EMAKI_INSTALLER_SOCKET=str(root / 'w.sock'), EMAKI_TEST_EDITOR=str(editor),
+                       EMAKI_INSTALLER_SOCKET=str(Path(runtime) / 'w.sock'), EMAKI_TEST_EDITOR=str(editor),
                        EMAKI_TEST_EDITOR_ARGS=str(root / 'args'), EMAKI_TEST_EDITOR_RELEASE=str(root / 'release'))
             for key in ['WAYLAND_DISPLAY', 'DISPLAY', 'NIRI_SOCKET', 'DBUS_SESSION_BUS_ADDRESS']:
                 env.pop(key, None)
@@ -617,16 +723,17 @@ class Helpers(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('icon', ROOT / 'art/icons/emaki-install.py')
         icon = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(icon)
-        with tempfile.TemporaryDirectory(prefix='emaki-icon-') as temporary:
+        with tempfile.TemporaryDirectory(prefix='emaki-icon-') as temporary, \
+                tempfile.TemporaryDirectory(prefix='eir-', dir='/tmp') as runtime:
             root = Path(temporary)
             block = (ROOT / 'packaging/emaki-installer/PKGBUILD').read_text().split('# --- installer window ---')[1].split('# --- end installer window ---')[0]
             subprocess.run(['bash', '-c', 'set -eu\nstage() {\n' + block + '\n}\nstage\n'], cwd=ROOT, check=True,
                            env=dict(os.environ, pkgdir=str(root / 'pkg')))
             (root / 'probe.qml').write_text(ICON_PROBE)
-            for name in ['runtime', 'cache', 'config', 'state', 'data']:
+            for name in ['cache', 'config', 'state', 'data']:
                 (root / name).mkdir(mode=0o700)
             env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QML_DISABLE_DISK_CACHE='1',
-                       QS_DISABLE_CRASH_HANDLER='1', QT_QPA_PLATFORMTHEME='qt6ct', XDG_RUNTIME_DIR=str(root / 'runtime'),
+                       QS_DISABLE_CRASH_HANDLER='1', QT_QPA_PLATFORMTHEME='qt6ct', XDG_RUNTIME_DIR=runtime,
                        XDG_CACHE_HOME=str(root / 'cache'), XDG_CONFIG_HOME=str(root / 'config'),
                        XDG_STATE_HOME=str(root / 'state'), XDG_DATA_HOME=str(root / 'data'),
                        XDG_DATA_DIRS=str(root / 'pkg/usr/share') + ':/usr/share', ICON_OUT=str(root / 'icon.png'))

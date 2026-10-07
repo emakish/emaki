@@ -1,3 +1,5 @@
+import hashlib
+import json
 import io
 from pathlib import Path
 import shutil
@@ -7,11 +9,12 @@ import tempfile
 import unittest
 
 from emaki_installer.constants import GRUB_VISIBLE_FONT, SUBVOLUMES
+from emaki_installer import grub_screen
 from emaki_installer.errors import Code, InstallError
 from emaki_installer.planner import make_plan
-from emaki_installer.render import (CONSOLE, GRUB_EARLY_MODULES, GRUB_GFXMODE, console_keymap, grub_defaults,
+from emaki_installer.render import (CONSOLE, GRUB_EARLY_MODULES, GRUB_GFXMODE, GRUB_UNLOCK_GFXMODE, console_keymap, grub_defaults,
                                     grub_early_config, grub_image_carries, grub_prefix, grub_unlock_memdisk, grub_unlock_script,
-                                    mkinitcpio_config, mkinitcpio_preset, niri_config, normalize_fstab, snapper_config,
+                                    mkinitcpio_config, mkinitcpio_preset, niri_config, managed_niri_config, home_files_manifest, normalize_fstab, snapper_config,
                                     unlock_layout, validate_xkb_layouts, vconsole_conf, verify_grub, wireless_regdom)
 from support import config, inventory, manual
 
@@ -72,13 +75,20 @@ class RenderTests(unittest.TestCase):
             for word in line.split()[1:]:
                 if word.startswith(('/', '(')):
                     self.assertTrue(word.startswith('(memdisk)/'), line)
-        self.assertIn('for emaki_mode in ' + GRUB_GFXMODE.replace(',', ' ') + '; do', script)
+        self.assertEqual(GRUB_UNLOCK_GFXMODE, 'auto')
+        self.assertIn('set gfxmode=auto\n  if terminal_output gfxterm; then', script)
+        # A requested gfxmode does not identify the active framebuffer: gfxterm can
+        # silently fall back. Both states must fill the actual mode, including retries.
+        self.assertNotIn('for emaki_mode', script)
+        self.assertNotIn('--mode normal', script)
+        self.assertIn('set emaki_unlock_size=' + 'x'.join(map(str, grub_screen.ARTWORK_SIZE)), script)
+        self.assertEqual(script.count('background_image --mode stretch'), 2)
         self.assertIn('GRUB_GFXMODE=' + GRUB_GFXMODE + '\n', grub_defaults())
 
     def test_unlock_hides_output_only_inside_successful_graphics_and_image_branches(self):
         script = grub_unlock_script(f'cryptomount -u {LUKS_UUID}\n', LUKS_UUID)
-        graphics = script.index('    if terminal_output gfxterm; then')
-        picture = script.index('      if background_image --mode normal (memdisk)/unlock-')
+        graphics = script.index('  if terminal_output gfxterm; then')
+        picture = script.index('    if background_image --mode stretch (memdisk)/unlock-')
         hide = script.index('set color_normal=black/black')
         self.assertLess(graphics, picture)
         self.assertLess(picture, hide)
@@ -93,7 +103,7 @@ class RenderTests(unittest.TestCase):
                          'The letters do not appear while you type.',
                          'After Enter, wait a few seconds.'):
             self.assertIn(f'echo "{sentence}"', fallback)
-        self.assertIn('if background_image --mode normal (memdisk)/wrong-$emaki_unlock_size.png; then\n'
+        self.assertIn('if background_image --mode stretch (memdisk)/wrong-$emaki_unlock_size.png; then\n'
                       '      true\n    else\n      set emaki_unlock_graphics=', script)
 
     def test_console_retry_clears_and_reprints_instructions_before_the_error(self):
@@ -182,8 +192,8 @@ class RenderTests(unittest.TestCase):
         with tarfile.open(fileobj=io.BytesIO(data)) as archive:
             members = archive.getmembers()
             self.assertEqual({m.name for m in members}, {'visible.pf2', 'unlock.cfg', 'hidden.pf2',
-                             *(f'{state}-{size}.png' for state in ('unlock', 'wrong', 'checking')
-                               for size in GRUB_GFXMODE.split(',')[:-1])})
+                             *(f'{state}-{width}x{height}.png' for state in ('unlock', 'wrong')
+                               for width, height in grub_screen.SIZES)})
             self.assertTrue(all(m.isreg() and m.mode == 0o644 for m in members))
             self.assertEqual(archive.extractfile('visible.pf2').read(), font)
             self.assertEqual(archive.extractfile('unlock.cfg').read().decode(),
@@ -310,36 +320,79 @@ class RenderTests(unittest.TestCase):
         with self.assertRaises(InstallError):
             validate_xkb_layouts(['zzqq'], rules)
 
+    def test_personal_niri_config_marks_the_override_position(self):
+        self.assertEqual(niri_config(), 'include "/etc/emaki/niri.kdl"\n\n'
+                         '// Add your settings below this line, before the installation defaults.\n\n')
+
+    def test_home_manifest_records_exact_bytes_without_file_contents(self):
+        data = b'private value\n'
+        record = json.loads(home_files_manifest({'/home/test/.config/niri/config.kdl': data}))
+        self.assertEqual(record, {'version': 1, 'files': {
+            '/home/test/.config/niri/config.kdl': {'sha256': hashlib.sha256(data).hexdigest()}}})
+        self.assertNotIn('private value', home_files_manifest({'file': data}))
+
     def test_niri_config_is_the_include_and_the_scale_only(self):
         text = niri_config(1.25, ['eDP-1'])
-        self.assertTrue(text.startswith('include "/usr/share/emaki/niri/default.kdl"'))
+        self.assertTrue(text.startswith('include "/etc/emaki/niri.kdl"'))
         self.assertIn('output "eDP-1" {\n    scale 1.25', text)
         self.assertNotIn('output', niri_config(1, ['eDP-1']))
         self.assertNotIn('output', niri_config(None, ['eDP-1']))
-        self.assertEqual(niri_config(), 'include "/usr/share/emaki/niri/default.kdl"\n')
+        self.assertEqual(managed_niri_config(), 'include "/usr/share/emaki/niri/default.kdl"\n')
+
+    def test_session_output_scales_compensate_fractional_pixel_gaps(self):
+        import math
+        import re
+        text = niri_config(output_scales={'eDP-1': 1.25, 'HDMI-A-1': 1.5, 'DP-1': 1})
+        self.assertNotIn('output \"DP-1\"', text)
+        for output, scale, expected in [('eDP-1', 1.25, -2.4), ('HDMI-A-1', 1.5, -2)]:
+            block = text.split('output "' + output + '" {', 1)[1]
+            self.assertIn(f'scale {scale:g}', block)
+            top = float(re.search(r'top (-?[0-9.]+)', block)[1])
+            self.assertEqual(top, expected)
+            gap = math.floor(2 * scale + .5) / scale
+            self.assertAlmostEqual(math.ceil((52 + top) * scale) / scale + gap - 44, 8)
 
     def test_niri_config_carries_no_keyboard_settings(self):
         # Layouts live in /etc/vconsole.conf; niri reads them through localed only while its
         # merged xkb section is empty, so any xkb node here would cut the session off from it.
-        for text in (niri_config(), niri_config(1.25, ['eDP-1', 'HDMI-A-1'])):
+        for text in (managed_niri_config(), niri_config(1.25, ['eDP-1', 'HDMI-A-1'])):
             for word in ('xkb', 'input', 'layout', 'variant', 'options', 'grp:'):
                 self.assertNotIn(word, text)
 
     @unittest.skipUnless(shutil.which('niri'), 'niri is optional for no-disk unit tests')
-    def test_generated_niri_syntax_with_real_validator(self):
+    def test_personal_output_before_installation_defaults_wins(self):
+        import re
         with tempfile.TemporaryDirectory(prefix='emaki-niri-') as temp:
-            path = Path(temp) / 'config.kdl'
-            # This checks the generated layer, not installed Emaki defaults.
-            path.write_text(niri_config(1.25, ['eDP-1']).split('\n', 1)[1])
-            run = subprocess.run(['niri', 'validate', '-c', str(path)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stderr)
+            directory = Path(temp)
+            defaults = directory / 'defaults.kdl'
+            defaults.write_text('layout { gaps 2; }\n')
+            managed = directory / 'managed.kdl'
+            managed.write_text(managed_niri_config().replace('/usr/share/emaki/niri/default.kdl', str(defaults)))
+            path = directory / 'config.kdl'
+            template = niri_config(output_scales={'eDP-1': 1.5, 'DP-1': 1})
+            marker = '// Add your settings below this line, before the installation defaults.\n'
+            for setting in ('scale 1.25', 'off', 'position x=1920 y=0'):
+                with self.subTest(setting=setting):
+                    personal = f'output "eDP-1" {{ {setting}; }}\n'
+                    text = template.replace(marker, marker + personal).replace('/etc/emaki/niri.kdl', str(managed))
+                    path.write_text(text)
+                    run = subprocess.run(['niri', 'validate', '-c', str(path)], capture_output=True, text=True)
+                    self.assertEqual(run.returncode, 0, run.stderr)
+                    # niri 26.04 inserts includes in place and Outputs::find returns
+                    # the first matching block (niri-config/src/output.rs).
+                    expanded = text.replace(f'include "{managed}"', managed.read_text())
+                    expanded = expanded.replace(f'include "{defaults}"', defaults.read_text())
+                    first = re.search(r'output "eDP-1" \{([^}]+)', expanded)
+                    self.assertEqual(first[1].strip(), setting + ';')
+                    self.assertEqual(expanded.count('output "eDP-1"'), 2)
+                    self.assertNotIn('output "DP-1"', expanded)
 
     def test_snapper_preserves_other_settings_and_replaces_limits(self):
         text = snapper_config('SUBVOLUME="/"\nNUMBER_LIMIT="50"\nTIMELINE_CREATE="no"\nTIMELINE_LIMIT_HOURLY="10"\n')
         self.assertEqual(text.count('NUMBER_LIMIT='), 1)
-        self.assertIn('NUMBER_LIMIT="20"', text)
+        self.assertIn('NUMBER_LIMIT="6-10"', text)
         self.assertIn('TIMELINE_CREATE="yes"', text)
-        self.assertIn('TIMELINE_LIMIT_HOURLY="10"', text)
+        self.assertIn('TIMELINE_LIMIT_HOURLY="0-10"', text)
 
     def fstab(self, plan):
         lines = []

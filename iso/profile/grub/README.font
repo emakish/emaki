@@ -1,0 +1,17 @@
+Copyright (C) 2026 Artur Yakymenko
+SPDX-License-Identifier: GPL-3.0-or-later
+
+menu.pf2 is DejaVu Sans Mono Regular at 30 pixels, with printable ASCII,
+direction arrows and box-drawing glyphs. Its capitals are 22 pixels high and
+ASCII cell width is 18 pixels. The font license is in LICENSE-DejaVu.txt.
+
+Rebuild with grub 2:2.16-1 and ttf-dejavu 2.37:
+
+grub-mkfont -s 30 -r 0x20-0x7e,0x2190-0x2193,0x2500-0x257f \
+    -o iso/profile/grub/menu.pf2 /usr/share/fonts/TTF/DejaVuSansMono.ttf
+
+The fixed face works with firmware-native gfxmode=auto without guessing the
+actual mode from the requested mode. At 2560x1600 on a 13.3-inch screen its
+capital height is 2.46 mm; at 1024x768 the existing 47-character entry fits.
+The ISO acceptance check measures screenshot pixels against a 2.4 mm floor;
+font metadata alone does not prove that the firmware displayed this font.

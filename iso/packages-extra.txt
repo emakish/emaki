@@ -4,7 +4,9 @@ adwaita-icon-theme
 amd-ucode
 arch-install-scripts
 archinstall
+blueman
 bluez
+breeze-icons
 brightnessctl
 btrfs-progs
 cliphist
@@ -17,13 +19,13 @@ emaki-installer
 emaki-keyring
 emaki-mirrorlist
 fastfetch
+ffmpegthumbs
 firefox
 fuzzel
 gnome-keyring
 gparted
 greetd
 greetd-regreet
-grim
 grub
 gtk3
 hyprlock
@@ -31,6 +33,7 @@ imagemagick
 inotify-tools
 intel-media-driver
 intel-ucode
+kdegraphics-thumbnailers
 kitty
 linux-firmware
 linux-firmware-marvell
@@ -58,6 +61,7 @@ sudo
 udiskie
 upower
 vulkan-intel
+vulkan-nouveau
 vulkan-radeon
 wireplumber
 wl-clipboard

@@ -105,7 +105,7 @@ FocusScope {
             y: 49
             width: parent.width
             font.pixelSize: 13
-            text: "Super is the Windows key, or Command on a Mac keyboard.\nThese are the defaults; your own shortcuts may differ."
+            text: "Super is the Windows key, or Command on a Mac keyboard.\nYour own shortcuts override Emaki defaults, including new ones (niri bindings)."
         }
         Row {
             y: 94

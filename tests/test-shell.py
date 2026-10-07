@@ -14,6 +14,8 @@ import tempfile
 import time
 from app_scope_fixture import install, launches
 from xml.sax.saxutils import quoteattr
+from runtime_fixture import short_runtime
+from wait_fixture import wait_for
 import reaper
 reaper.guard()  # nothing this test starts outlives it
 
@@ -79,12 +81,17 @@ if '--lint-only' in sys.argv:
 # Desktop ids the launcher never lists (Arch live-ISO/dependency utilities; DECISIONS 2026-10-03).
 HIDDEN_IDS = ['avahi-discover', 'bssh', 'bvnc', 'lftp', 'lstopo', 'qv4l2', 'qvidcap',
               'stoken-gui', 'stoken-gui-small', 'vim',
-              'qt6ct', 'org.kde.kdeconnect.daemon', 'org.kde.kdeconnect.handler', 'org.kde.kdeconnect.nonplasma', 'kcm_updates', 'org.kde.discover.flatpak', 'org.kde.discover.notifier', 'org.kde.discover.snap', 'org.kde.discover.urlhandler', 'org.kde.ConfigurePrinter', 'libreoffice-xsltfilter']
+              'qt6ct', 'org.kde.kdeconnect.nonplasma', 'mpv', 'org.kde.kwrite']
 _catalog = Path('shell/AppCatalog.qml').read_text()
 _listed = json.loads(_catalog[_catalog.index('hiddenIds: [') + len('hiddenIds: '):].split('\n', 1)[0])
 assert _listed == HIDDEN_IDS, ('AppCatalog.hiddenIds and the fixture list differ', _listed)
 
 def smoke(width, height, scale, exclusive_zone=None):
+    with short_runtime() as runtime:
+        smoke_with_runtime(width, height, scale, exclusive_zone, Path(runtime))
+
+
+def smoke_with_runtime(width, height, scale, exclusive_zone, runtime):
     profile = Path(tempfile.mkdtemp(prefix='sh-', dir=CACHE))
     for part in ('runtime', 'cache', 'config', 'state', 'data', 'tmp'):
         (profile / part).mkdir(mode=0o700)
@@ -126,7 +133,7 @@ def smoke(width, height, scale, exclusive_zone=None):
         tmp.replace(profile / 'observation.json')
     publish()
     labels_socket = socket.socket(socket.AF_UNIX)
-    labels_socket.bind(str(profile / 'niri.sock'))
+    labels_socket.bind(str(runtime / 'niri.sock'))
     labels_socket.listen()
     labels_socket.settimeout(.1)
     stop = threading.Event()
@@ -153,7 +160,7 @@ def smoke(width, height, scale, exclusive_zone=None):
                EMAKI_SHELL_BORDER='soft', EMAKI_SHELL_HEADLESS='1',
                EMAKI_SHELL_TEST_WIDTH=str(width), EMAKI_SHELL_TEST_HEIGHT=str(height),
                EMAKI_SHELL_EXCLUSIVE_ZONE='0', EMAKI_SHELL_OUTPUT='',
-               XDG_RUNTIME_DIR=str(profile / 'runtime'), XDG_CACHE_HOME=str(profile / 'cache'),
+               XDG_RUNTIME_DIR=str(runtime), XDG_CACHE_HOME=str(profile / 'cache'),
                XDG_CONFIG_HOME=str(profile / 'config'), XDG_STATE_HOME=str(profile / 'state'),
                XDG_DATA_HOME=str(profile / 'data'), TMPDIR=str(profile / 'tmp'))
     if exclusive_zone is None:
@@ -162,7 +169,7 @@ def smoke(width, height, scale, exclusive_zone=None):
         env['EMAKI_SHELL_EXCLUSIVE_ZONE'] = str(exclusive_zone)
     for key in ('WAYLAND_DISPLAY', 'DISPLAY', 'NIRI_SOCKET', 'DBUS_SESSION_BUS_ADDRESS'):
         env.pop(key, None)
-    env['NIRI_SOCKET'] = str(profile / 'niri.sock')
+    env['NIRI_SOCKET'] = str(runtime / 'niri.sock')
     install(profile, env)
     # An invalid environment must end qs with a nonzero status (systemd restarts on failure).
     bad = subprocess.run([qs, '-p', str(ROOT / 'shell'), '--no-color'], env=dict(env, EMAKI_SHELL_BORDER='bad'),
@@ -175,16 +182,17 @@ def smoke(width, height, scale, exclusive_zone=None):
     calc_log = (profile / 'calculator.log').open('w')
     calc = subprocess.Popen([qs, '-p', str(profile / 'calculator-fixture'), '--no-color'], env=env, stdout=calc_log, stderr=subprocess.STDOUT)
     try:
-        deadline = time.monotonic() + 5
-        while time.monotonic() < deadline:
-            result = subprocess.run([qs, 'ipc', '--pid', str(calc.pid), 'call', 'tests', 'arithmetic'], env=env, capture_output=True, text=True, timeout=3)
+        def arithmetic_ready():
+            result = subprocess.run([qs, 'ipc', '--pid', str(calc.pid), 'call', 'tests', 'arithmetic'], env=env, capture_output=True, text=True, timeout=30)
             if result.returncode == 0:
                 assert json.loads(result.stdout) == [], result.stdout
-                break
+                return True
             assert calc.poll() is None
-            time.sleep(.05)
-        else:
-            raise AssertionError('calculator harness timeout')
+            return False
+        try:
+            wait_for(arithmetic_ready)
+        except TimeoutError:
+            raise AssertionError('calculator harness timeout') from None
     finally:
         calc.terminate()
         calc.wait(timeout=3)
@@ -195,22 +203,26 @@ def smoke(width, height, scale, exclusive_zone=None):
                                 stdout=log, stderr=subprocess.STDOUT)
         def ipc(*args):
             return subprocess.run([qs, 'ipc', '--pid', str(proc.pid), 'call', *args],
-                                  env=env, capture_output=True, text=True, timeout=3)
+                                  env=env, capture_output=True, text=True, timeout=30)
         def call(*args):
             result = ipc(*args)
             assert result.returncode == 0, (args, result.returncode, result.stdout, result.stderr)
             return result.stdout.strip()
         def wait_state(predicate):
-            deadline = time.monotonic() + 5
-            while time.monotonic() < deadline:
+            state = None
+            def ready():
+                nonlocal state
                 assert proc.poll() is None, log_path.read_text()
                 reply = ipc('launcher', 'status')
                 if reply.returncode == 0:
                     state = json.loads(reply.stdout)
                     if predicate(state):
                         return state
-                time.sleep(.025)
-            raise AssertionError(('state timeout', state, log_path.read_text()))
+                return None
+            try:
+                return wait_for(ready)
+            except TimeoutError:
+                raise AssertionError(('state timeout', state, log_path.read_text())) from None
         try:
             # Only the existing workspaces (two on output A): cells of 28 on a pitch of 30 and
             # 8 px of island on each side (liquid-glass/launcher.html, symmetric inset).

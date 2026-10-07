@@ -10,14 +10,52 @@
 # Environment variables can override these distribution defaults.
 # The shell writes nothing to ~/.config; its state lives in ~/.local/state/emaki/*.json.
 set -eu
+
+# The ISO owns this marker; an installed desktop never inherits a live flag.
+EMAKI_LIVE_SESSION=0
+[ ! -f /etc/emaki-live/greetd.toml ] || EMAKI_LIVE_SESSION=1
+export EMAKI_LIVE_SESSION
 shell="${EMAKI_SHELL_DIR:-/usr/share/emaki/shell}"
+case "$0" in
+    */*) health="${0%/*}/emaki-shell-health" ;;
+    *) health=emaki-shell-health ;;
+esac
 
 if [ "${1:-}" = "call" ]; then
+    [ ! -e "${XDG_RUNTIME_DIR:-/nonexistent}/emaki-shell-health/packaged" ] || shell=/usr/share/emaki/shell
     shift
+    if [ "$#" -eq 2 ] && [ "$1" = "launcher" ] && [ "$2" = "toggle" ]; then
+        qs -p "$shell" ipc call "$@" && exit 0
+        exec fuzzel --config "$(emaki-config-path fuzzel fuzzel.ini)"
+    fi
     exec qs -p "$shell" ipc call "$@"
 fi
-if [ "${1:-}" = "restart" ]; then
+if [ "${1:-}" = "recover" ]; then
+    "$health" report || :
+
+    emaki-qt-check || true
+    printf '%s\n' 'The Emaki panel stopped. Press Enter to restart it.'
+    IFS= read -r reply || exit 0
+    systemctl --user reset-failed emaki-shell.service
     exec systemctl --user restart emaki-shell.service
+fi
+if [ "${1:-}" = "restart" ]; then
+    systemctl --user reset-failed emaki-shell.service
+    exec systemctl --user restart emaki-shell.service
+fi
+
+# Record the actual service selection: its private environment may differ from
+# the failure handler's. IPC and subsequent starts honor the same recovery marker.
+shell=$("$health" record "$shell") || shell=/usr/share/emaki/shell
+
+# Metadata can be absent on older packages; even a version mismatch is not proof
+# of a crash. Keep the panel available and show diagnostics outside Quickshell.
+if ! emaki-qt-check; then
+    kitty --title 'Emaki panel compatibility warning' sh -c '
+        emaki-qt-check || true
+        printf "\nThe panel will still start. Press Enter to close this warning.\n"
+        IFS= read -r reply
+    ' &
 fi
 
 # Keep the session value for application launches: 0 means absent, 1 prefixes

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Right island: production QML/controller, fake devices/CLIs, isolated tray bus."""
+from runtime_fixture import runtime_path
 import json
 import os
 from pathlib import Path
@@ -20,9 +21,9 @@ SCALE = float(os.environ.get('EMAKI_TEST_WAIT_SCALE') or 1)
 if '--inside' not in sys.argv:
     root = Path(tempfile.mkdtemp(prefix='sy-', dir=ROOT/'.cache'))
     for d in ('r','config','state','data','cache','tmp'): (root/d).mkdir(mode=0o700)
-    (root/'bus.conf').write_text(f'<busconfig><type>session</type><listen>unix:path={root}/r/bus</listen><auth>EXTERNAL</auth><policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>')
+    (root/'bus.conf').write_text(f'<busconfig><type>session</type><listen>unix:path={runtime_path(root)}/bus</listen><auth>EXTERNAL</auth><policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>')
     env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QML_DISABLE_DISK_CACHE='1', PYTHONDONTWRITEBYTECODE='1',
-               XDG_RUNTIME_DIR=str(root/'r'), XDG_CONFIG_HOME=str(root/'config'), XDG_STATE_HOME=str(root/'state'), XDG_DATA_HOME=str(root/'data'), XDG_DATA_DIRS=str(root/'data'), XDG_CACHE_HOME=str(root/'cache'), TMPDIR=str(root/'tmp'),
+               XDG_RUNTIME_DIR=str(runtime_path(root)), XDG_CONFIG_HOME=str(root/'config'), XDG_STATE_HOME=str(root/'state'), XDG_DATA_HOME=str(root/'data'), XDG_DATA_DIRS=str(root/'data'), XDG_CACHE_HOME=str(root/'cache'), TMPDIR=str(root/'tmp'),
                EMAKI_SHELL_NOTIFICATIONS='0', EMAKI_TEST_SYSTEM='1', EMAKI_TEST_MPRIS='0', EMAKI_SETTINGS_PROFILE='', NIRI_SOCKET='', EMAKI_BIN='',
                DBUS_SYSTEM_BUS_ADDRESS='unix:path='+str(root/'missing'), PIPEWIRE_REMOTE='emaki-no-pipewire')
     for k in ('DISPLAY','WAYLAND_DISPLAY','DBUS_SESSION_BUS_ADDRESS','QT_SCALE_FACTOR','QT_LOGGING_RULES'): env.pop(k,None)
@@ -34,7 +35,7 @@ if '--inside' not in sys.argv:
 
 root=Path(sys.argv[-1])
 install(root, os.environ)
-assert os.environ['DBUS_SESSION_BUS_ADDRESS'].startswith('unix:path='+str(root/'r/bus'))
+assert os.environ['DBUS_SESSION_BUS_ADDRESS'].startswith('unix:path='+str(Path(os.environ['XDG_RUNTIME_DIR']) / 'bus'))
 fixture=root/'cli'
 fixture.write_text('''#!/usr/bin/env python3
 import os,sys,json
@@ -293,14 +294,14 @@ try:
     assert helper({'op':'night-light-check'},dict(os.environ,EMAKI_WLSUNSET=str(root/'missing')))['installed'] is False
     # The sleep guard's notice flags (scripts/emaki-sleep-guard writes its policy name): each one
     # is taken once; the persistent one only when the shell starts, i.e. after the next login.
-    state_flag=root/'state/emaki/sleep-lock-failed';runtime_flag=root/'r/emaki-sleep-lock-failed'
+    state_flag=root/'state/emaki/sleep-lock-failed';runtime_flag=Path(os.environ['XDG_RUNTIME_DIR'])/'emaki-sleep-lock-failed'
     assert helper({'op':'sleep-lock-flags','session_start':True})=={'schema_version':1,'state':'ready','policies':[]}
     state_flag.parent.mkdir(parents=True,exist_ok=True);state_flag.write_text('end-session\n');runtime_flag.write_text('sleep-relock\n')
     assert helper({'op':'sleep-lock-flags','session_start':False})['policies']==['sleep-relock'] and not runtime_flag.exists() and state_flag.exists()
     assert helper({'op':'sleep-lock-flags','session_start':True})['policies']==['end-session'] and not state_flag.exists()
     runtime_flag.write_text('x'*5000);assert helper({'op':'sleep-lock-flags','session_start':False})['policies']==['unknown'] and not runtime_flag.exists()
     assert helper({'op':'sleep-lock-flags','session_start':'yes'})['state']=='invalid_request'
-    assert not list(root.glob('r/*sleep-lock*'))+list(root.glob('state/emaki/*sleep-lock*'))
+    assert not list(runtime_flag.parent.glob('*sleep-lock*'))+list(root.glob('state/emaki/*sleep-lock*'))
     # Hidden network: NetworkManager D-Bus AddAndActivateConnection on the fake NM owning the
     # NM name on this private bus (the helper's "system bus" address points here). The password
     # is a property in the message: no process is spawned, no argv carries it.
@@ -612,16 +613,23 @@ try:
     ipc(q,'confirmSession');wait(q,lambda s:s['services']['action']=='requested' and (root/'session').read_text()=='suspend');assert (root/'locked').exists()
     ipc(q,'close');ipc(q,'battery',9,'false');wait(q,lambda s:s['notifications']['count']==1)
     ipc(q,'battery',8,'false');time.sleep(.15);assert state(q)['notifications']['count']==1
-    ipc(q,'battery',50,'true');ipc(q,'battery',9,'false');wait(q,lambda s:s['notifications']['count']==2)
+    ipc(q,'dnd','true');ipc(q,'environment','false','true')
+    ipc(q,'battery',5,'false');wait(q,lambda s:s['notifications']['count']==2 and s['notifications']['peek_count']>0)
+    assert json.loads(ipc(q,'notices'))[0] == ['Battery critical','5% left — plug in soon.']
+    ipc(q,'battery',6,'false');ipc(q,'battery',5,'false');ipc(q,'battery',4,'false')
+    assert state(q)['notifications']['count']==2
+    ipc(q,'battery',50,'true');ipc(q,'battery',4,'false');wait(q,lambda s:s['notifications']['count']==3)
+    ipc(q,'battery',3,'false');assert state(q)['notifications']['count']==3
+    ipc(q,'dnd','false');ipc(q,'environment','false','false')
     # A flag the guard writes while the shell runs: one notice at once, then the flag is gone; the
     # text says only what the policy in the flag is known to have done.
     for count,(policy,text) in enumerate({'sleep-relock':'Emaki could not lock the screen before sleep. It tried again after waking.',
                                           'stay-awake':'Emaki could not lock the screen when sleep was requested.',
                                           'sleep':'Emaki could not lock the screen before sleep.',
-                                          'unknown-policy':'Emaki could not lock the screen before sleep.'}.items(),3):
+                                          'unknown-policy':'Emaki could not lock the screen before sleep.'}.items(),4):
         runtime_flag.write_text(policy+'\n');wait(q,lambda s:s['notifications']['count']==count and not runtime_flag.exists())
         assert json.loads(ipc(q,'notices'))[0]==['Screen lock',text],(policy,json.loads(ipc(q,'notices'))[0])
-    time.sleep(.3);assert state(q)['notifications']['count']==6 and not state_flag.exists()
+    time.sleep(.3);assert state(q)['notifications']['count']==7 and not state_flag.exists()
     assert not any(x in ipc(q,'status') for x in ('PRIVATE_WIFI','PRIVATE_BT','fixture-password','PRIVATE_HIDDEN','PRIVATE:VPN','1111'))
     # Privacy pill: capture streams (fixture) and screencasts (core model); names stay out of status.
     s=state(q);assert {k:s['privacy'][k] for k in ('mic','cam','cast','visible','open','panel','expansion','rows')}==dict(mic=0,cam=0,cast=0,visible=False,open=False,panel='closed',expansion=0,rows=0)
@@ -661,7 +669,8 @@ try:
     ipc(q,'wired','false');s=cell();assert (s['icon'],s['fallback'],s['sub'])==('network-wireless-disabled-symbolic','wifi','No Wi-Fi adapter'),s
     ipc(q,'wifiAbsent','false');assert cell()==offline
     action(q,'wifi-connect',{'key':'fixture'});assert cell()==before,(cell(),before)
-    # No internal state code or program name on screen: every state the services, helpers and the
+    # No internal state code on screen; technical names follow plain words in round brackets.
+    # Exercise every state the services, helpers and the
     # core can report (tests/fixtures/ClockTest.qml shownTexts), and one nobody knows.
     states=['idle','pending','busy','disabled','unavailable','confirmed','confirmation_timeout','target_gone','stream_gone','invalid_volume','audio_unavailable',
             'wifi_unavailable_or_blocked','network_gone','password_or_security_unsupported','no_bluetooth_adapter','paired_device_required','bluetooth_off','device_gone',
@@ -675,7 +684,19 @@ try:
             'invalid_action_response','window_not_found','layout_not_found','postcondition_observed','error','rejected','fixture_code_x']
     # States whose sentences named a program: NetworkManager, wlsunset, niri, Python GObject.
     states+=['nm_not_running','not_installed','niri_unavailable','file_missing','access_denied','helper_dependency_missing']
-    def plain(text):return '_' not in text and not re.search(r': [a-z]',text) and not any(w in text for w in ('niri','NetworkManager','PipeWire','wlsunset','GObject'))
+    def plain(text):
+        for name in ('niri','NetworkManager','PipeWire','wlsunset','GObject'):
+            if name in text:
+                # The explanation must precede the parenthesized technical name.
+                text = re.sub(r'(?<=[.!?a-zA-Z…]) \(' + re.escape(name) + r'\)', '', text)
+                if name in text:
+                    return False
+        return '_' not in text and not re.search(r': [a-z]',text)
+    assert plain('Networking isn’t running (NetworkManager).')
+    assert plain('Night Light isn’t installed (wlsunset).')
+    for invalid in ('NetworkManager isn’t running.', 'Networking isn’t running [NetworkManager].',
+                    '(NetworkManager).', 'Night Light isn’t installed [wlsunset].'):
+        assert not plain(invalid), invalid
     shown=json.loads(ipc(q,'shownTexts',json.dumps(dict(list=states))));assert len(shown)==len(states)*15,len(shown)
     raw={k:v for k,v in shown.items() if not plain(v)};assert not raw,raw
     bar=json.loads(ipc(q,'barTexts','fixture_code_x'));assert bar and all(map(plain,bar)),bar

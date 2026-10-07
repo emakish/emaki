@@ -12,11 +12,12 @@ import re
 import shutil
 import shlex
 import subprocess
+import sys
 import tarfile
 import tempfile
 
 PACKAGES = ('niri-emaki', 'quickshell-emaki', 'xdg-desktop-portal-gnome-emaki',
-            'emaki-config', 'emaki-desktop', 'emaki-apps', 'emaki-installer',
+            'emaki-config', 'emaki-nvidia', 'emaki-desktop', 'emaki-apps', 'emaki-installer',
             'emaki-keyring', 'emaki-mirrorlist', 'emaki')
 
 
@@ -24,24 +25,56 @@ def run(*args, **kwargs):
     return subprocess.run(args, check=True, text=True, capture_output=True, **kwargs).stdout
 
 
-def checkout(repo, output, commit):
-    """Extract the build inputs using the committed public export exclusions."""
+def public_policy(repo, commit):
+    """Read the committed exclusions and transformation programs."""
     policy = subprocess.run(['git', '-C', str(repo), 'show',
                              f'{commit}:scripts/make-public.sh'], capture_output=True, text=True)
+    if policy.returncode != 0:
+        raise ValueError('cannot read committed public source exclusion policy')
     exclusions, notes = [], []
-    if policy.returncode == 0:
-        for name, target in (('EXCLUDE', exclusions), ('NOTES', notes)):
-            match = re.search(r'^' + name + r'=\((.*?)\)', policy.stdout, re.M | re.S)
-            if not match:
-                raise ValueError('missing public source exclusion policy')
-            target.extend(shlex.split(match[1], comments=True))
+    for name, target in (('EXCLUDE', exclusions), ('NOTES', notes)):
+        match = re.search(r'^' + name + r'=\((.*?)\)', policy.stdout, re.M | re.S)
+        if not match:
+            raise ValueError('missing public source exclusion policy')
+        target.extend(shlex.split(match[1], comments=True))
+        if not target:
+            raise ValueError('empty public source exclusion policy')
+    programs = {}
+    for name in ('tree', 'sanitize', 'guard'):
+        marker = f"cat > \"$work/{name}.py\" <<'PY'\n"
+        if policy.stdout.count(marker) != 1:
+            raise ValueError(f'missing public source {name} policy')
+        body, separator, _ = policy.stdout.split(marker, 1)[1].partition('\nPY\n')
+        if not separator:
+            raise ValueError(f'incomplete public source {name} policy')
+        programs[name] = body
+    return exclusions, notes, programs
+
+
+def public_excluded(path, exclusions, notes):
+    parts = path.casefold().split('/')
+    return (any(path == item or path.startswith(item + '/') for item in exclusions)
+            or any(parts[i:i + len(n)] == n for item in notes
+                   for n in [item.casefold().split('/')]
+                   for i in range(len(parts) - len(n) + 1)))
+
+
+def checkout(repo, output, commit):
+    """Extract the build inputs using the committed public export exclusions."""
+    exclusions, notes, programs = public_policy(repo, commit)
+    # Archive substitution could insert private commit metadata before the guard sees it.
+    paths = run('git', '-C', str(repo), 'ls-tree', '-r', '-z', '--name-only', commit).split('\0')
+    for path in paths:
+        if path and Path(path).name == '.gitattributes':
+            if 'export-subst' in run('git', '-C', str(repo), 'show', f'{commit}:{path}'):
+                raise ValueError('public source attributes enable export-subst')
+    attributes = Path(run('git', '-C', str(repo), 'rev-parse', '--path-format=absolute',
+                          '--git-path', 'info/attributes').strip())
+    if attributes.exists() and 'export-subst' in attributes.read_text():
+        raise ValueError('repository attributes enable export-subst')
 
     def excluded(path):
-        parts = path.casefold().split('/')
-        return (any(path == item or path.startswith(item + '/') for item in exclusions)
-                or any(parts[i:i + len(n)] == n for item in notes
-                       for n in [item.casefold().split('/')]
-                       for i in range(len(parts) - len(n) + 1)))
+        return public_excluded(path, exclusions, notes)
 
     output.mkdir(parents=True, exist_ok=False)
     with subprocess.Popen(['git', '-C', str(repo), '-c', 'core.attributesFile=/dev/null',
@@ -59,15 +92,31 @@ def checkout(repo, output, commit):
                     contents.extract(member, output, filter='fully_trusted')
         if process.wait() != 0:
             raise ValueError('could not read committed build inputs')
-    makefile = output / 'Makefile'
-    if makefile.exists():
-        makefile.write_text(''.join(line for line in makefile.read_text().splitlines(True)
-                                   if not any(item.startswith('tests/') and item in line
-                                              for item in exclusions)))
-    if policy.returncode == 0:
-        public_readme = run('git', '-C', str(repo), 'show',
-                            f'{commit}:scripts/public/wallpaper-README.md')
-        (output / 'art/wallpaper/README.md').write_text(public_readme)
+    with tempfile.TemporaryDirectory(prefix='emaki-public-policy-') as temporary:
+        work = Path(temporary)
+        for name, body in programs.items():
+            (work / f'{name}.py').write_text(body)
+        try:
+            run(sys.executable, str(work / 'tree.py'), 'links', str(output),
+                *exclusions, '--', *notes)
+            run(sys.executable, str(work / 'sanitize.py'), str(output))
+            public_readme = run('git', '-C', str(repo), 'show',
+                                f'{commit}:scripts/public/wallpaper-README.md')
+            (output / 'art/wallpaper/README.md').write_text(public_readme)
+            allow = work / 'allow.txt'
+            allow.write_text(run('git', '-C', str(repo), 'show',
+                                 f'{commit}:scripts/public/allow.txt'))
+            # An external index lets the exact export guard inspect every extracted file,
+            # including ignored files, without adding repository metadata to the sources.
+            env = dict(os.environ, GIT_DIR=str(work / 'index.git'),
+                       GIT_WORK_TREE=str(output.resolve()), GIT_INDEX_FILE=str(work / 'index'))
+            run('git', 'init', '--bare', '-q', str(work / 'index.git'))
+            run('git', 'add', '--all', '--force', env=env)
+            run(sys.executable, str(work / 'guard.py'), str(output), str(allow),
+                str(work / 'allowed.txt'), env=env)
+        except subprocess.CalledProcessError as error:
+            raise ValueError('public source policy failed: ' +
+                             (error.stdout + error.stderr).strip()) from error
 
 
 def vendor(src):
@@ -139,7 +188,8 @@ def archive(recipe, src, output, commit, version):
                 'xdg-desktop-portal-gnome-emaki': ['xdg-desktop-portal-gnome', 'libgxdp'],
                 'emaki-config': ['emaki', 'emaki/vendor', 'emaki/.cargo/config.toml',
                                  'emaki-source-commit'],
-                'emaki-installer': ['emaki-installer']}.get(name, [])
+                'emaki-installer': ['emaki-installer'],
+                'emaki-nvidia': ['emaki-nvidia']}.get(name, [])
     for relative in required:
         if not (src / relative).exists():
             raise ValueError(f'missing prepared source: {relative}')

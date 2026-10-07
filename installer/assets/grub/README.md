@@ -1,25 +1,35 @@
 # GRUB unlock-screen artwork
 
 The visible text is Adwaita Sans, rendered with antialiasing into opaque RGB PNGs.
-Each variant has initial, retry and checking pictures at 1024×768, 800×600 and
-640×480. The four sentence positions are
-centred as one block, with the last line reserved on the initial screen. Each
-sentence stays on one line, with even spacing and at least 12% side margins.
-The font sizes are 36, 28 and 22 px respectively.
+Each variant has initial, retry and checking masters at 2560×1600. GRUB stretches
+the master to its automatically selected firmware mode, so even an unlisted GOP
+mode fills the screen. The four sentences stay centred as one block, with the
+last line reserved on the initial screen. Each sentence stays on one line, with
+even spacing and at least 12% side margins. Adwaita Sans is rasterized at 90 px:
+at 1280 pixels wide the text is equivalent to 45 px; at 2560 it remains 90 px.
+Different aspect ratios stretch both the picture and glyphs; sharpness above the
+master resolution and physical size on unusual displays still need hardware checks.
 
 `VARIANT` in `emaki_installer/grub_screen.py` selects A, B or C in one line:
 
-- A: cream text on the warm dark background.
-- B: more line spacing, with an orange retry line.
-- C: B with a thin orange line above the instructions.
+- A: the historical cream text on the warm dark background.
+- B: the historical more spacious layout, with an orange retry line.
+- C: the boot menu's `art/grub/background.png`, with a soft darker band behind
+  the text and a thin orange rule above the instructions.
 
-Colors come from `tokens.toml`. The top 32 pixels remain black to conceal the
-black terminal cursor, with a subtle transition to the warm background by row 96.
-The checking sentence is the single `CHECKING` constant. Its pictures are ready,
-but stock cryptomount has no script hook between Enter and key derivation, so the
-current script cannot display them during checking. Actual-mode selection and
-centering on other sizes also require GRUB changes; the current mode loop can
-pick the wrong picture when gfxterm falls back to its automatic mode.
+Text colors come from `tokens.toml`. C resamples the 1920×1200 menu picture to
+2560×1600 without cropping or changing its aspect ratio. The generator measures
+contrast against the brightest pixel in each complete text rectangle and refuses
+anything below 4.5:1. Solid letter interiors therefore pass even over the brightest
+part of the wave; antialiased edges blend normally.
+
+The top 128 master rows remain black to conceal the terminal cursor even when
+stretched down to 480 pixels high; the fade ends at row 240. The checking sentence
+is the single `CHECKING` constant. Its picture is ready, but stock cryptomount has
+no script hook between Enter and key derivation, so the current script cannot
+display it during checking. The generator writes lossless PNG Up filters to keep
+the three embedded RGB pictures small; the offline tests decode those filters
+without Pillow or access to the root artwork.
 
 The PNGs are committed under `installer/emaki_installer/grub_artwork/` and copied
 beside the installed Python module by the package recipe. There is no image
@@ -34,7 +44,7 @@ python installer/assets/grub/generate-screens.py --check
 Regeneration uses the installed Adwaita Sans Regular file and the root palette;
 `--font` can name that font at another location. The generator rejects a different
 font family. Font or renderer upgrades may change antialiasing; regenerate and
-inspect all sizes before committing updated pictures. The current files were
+inspect all states before committing updated pictures. The current files were
 rendered with Pillow 12.3.0. No font file is embedded in the PNGs.
 
 The installer carries the script, pictures and fonts inside its EFI image's

@@ -1,6 +1,6 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Native artwork keeps whole sentences readable and terminal output invisible."""
+"""Scalable artwork keeps whole sentences readable and terminal output invisible."""
 
 from pathlib import Path
 import struct
@@ -26,8 +26,17 @@ def decode_png(data):
     raw = zlib.decompress(compressed)
     stride = width * 3 + 1
     assert len(raw) == height * stride
-    assert all(raw[y * stride] == 0 for y in range(height))
-    return width, height, b''.join(raw[y * stride + 1:(y + 1) * stride] for y in range(height))
+    rows = []
+    previous = bytes(width * 3)
+    for y in range(height):
+        filter_type = raw[y * stride]
+        row = raw[y * stride + 1:(y + 1) * stride]
+        assert filter_type in (0, 2)
+        if filter_type == 2:
+            row = bytes((a + b) & 255 for a, b in zip(row, previous))
+        rows.append(row)
+        previous = row
+    return width, height, b''.join(rows)
 
 
 class UnlockAssets(unittest.TestCase):
@@ -44,7 +53,9 @@ class UnlockAssets(unittest.TestCase):
         ))
         self.assertEqual(screen.WRONG, 'Wrong password. Try again.')
         self.assertEqual(screen.CHECKING, 'Checking the password…')
-        self.assertEqual(len(self.assets), 10)
+        self.assertEqual(len(self.assets), 4)
+        self.assertEqual(screen.SIZES, ((2560, 1600),))
+        self.assertLess(sum(map(len, self.assets.values())), 12 * 1024 * 1024)
 
     def test_hidden_ascii_font(self):
         fields, glyphs = screen._read_font(self.assets['hidden.pf2'])
@@ -56,7 +67,8 @@ class UnlockAssets(unittest.TestCase):
             self.assertFalse(any(bitmap))
 
     def test_all_variants_are_antialiased_centered_and_keep_the_cursor_hidden(self):
-        background = bytes.fromhex('14100d')
+        cream = bytes.fromhex('f2e6d8')
+        orange = bytes.fromhex('e2733f')
         for variant in ('A', 'B', 'C'):
             assets = screen.assets(variant)
             for width, height in screen.SIZES:
@@ -65,13 +77,24 @@ class UnlockAssets(unittest.TestCase):
                     _, _, retry = decode_png(assets[f'wrong-{width}x{height}.png'])
                     _, _, checking = decode_png(assets[f'checking-{width}x{height}.png'])
                     self.assertEqual((w, h), (width, height))
-                    self.assertFalse(any(retry[:32 * width * 3]))
+                    for state in (initial, retry, checking):
+                        self.assertFalse(any(state[:128 * width * 3]))
+                    # Cover the tested 400..8192px contract, including every
+                    # integer height. The floor is monotonic, so larger heights
+                    # retain at least as many black rows.
+                    # Stock GOP auto has no lower bound: modes below 400 need
+                    # a future runtime size guard, not an unsupported guarantee.
+                    for target_height in range(400, 8193):
+                        self.assertGreaterEqual(128 * target_height // height, 32,
+                                                f'{target_height}px cursor strip')
                     colors = {retry[i:i + 3] for i in range(0, len(retry), 3)}
                     self.assertGreater(len(colors), 100)  # antialiased, not one-bit glyphs
                     bands = []
-                    for y in range(96, height):
+                    for y in range(240, height):
                         row = retry[y * width * 3:(y + 1) * width * 3]
-                        xs = [x for x in range(width) if row[x * 3:x * 3 + 3] != background]
+                        if row.count(cream) + row.count(orange) < 3:
+                            continue
+                        xs = [x for x in range(width) if row[x * 3:x * 3 + 3] in (cream, orange)]
                         if xs:
                             self.assertGreaterEqual(min(xs), width * .12)
                             self.assertLessEqual(max(xs), width * .88)
@@ -86,25 +109,26 @@ class UnlockAssets(unittest.TestCase):
                     self.assertAlmostEqual((centers[0] + centers[-1]) / 2, height / 2, delta=1)
                     for band in text_bands:
                         xs = [x for y in band for x in range(width)
-                              if retry[(y * width + x) * 3:(y * width + x + 1) * 3] != background]
-                        self.assertAlmostEqual((min(xs) + max(xs)) / 2, width / 2, delta=2)
-                    wrong_start, wrong_end = text_bands[-1][0] * width * 3, (text_bands[-1][-1] + 1) * width * 3
+                              if retry[(y * width + x) * 3:(y * width + x + 1) * 3] in (cream, orange)]
+                        self.assertAlmostEqual((min(xs) + max(xs)) / 2, width / 2, delta=width * .002)
+                    wrong_start, wrong_end = (text_bands[-1][0] - 3) * width * 3, (text_bands[-1][-1] + 4) * width * 3
                     self.assertEqual(initial[:wrong_start], retry[:wrong_start])
                     self.assertEqual(initial[wrong_end:], retry[wrong_end:])
-                    self.assertEqual(initial[wrong_start:wrong_end], background * ((wrong_end - wrong_start) // 3))
+                    self.assertNotIn(orange, initial[wrong_start:wrong_end])
+                    self.assertNotIn(cream, initial[wrong_start:wrong_end])
                     # Checking keeps the instructions fixed and replaces only the status line.
                     status_top = int((centers[-2] + centers[-1]) / 2) * width * 3
                     self.assertEqual(checking[:status_top], initial[:status_top])
                     self.assertNotEqual(checking[status_top:], initial[status_top:])
                     self.assertNotEqual(checking[status_top:], retry[status_top:])
-                    self.assertFalse(any(checking[:32 * width * 3]))
+                    self.assertFalse(any(checking[:128 * width * 3]))
                     points = [(x, y) for y in range(status_top // (width * 3), height)
                               for x in range(width)
-                              if checking[(y * width + x) * 3:(y * width + x + 1) * 3] != background]
+                              if checking[(y * width + x) * 3:(y * width + x + 1) * 3] in (cream, orange)]
                     xs, ys = zip(*points)
                     self.assertGreaterEqual(min(xs), width * .12)
                     self.assertLessEqual(max(xs), width * .88)
-                    self.assertAlmostEqual((min(xs) + max(xs)) / 2, width / 2, delta=2)
+                    self.assertAlmostEqual((min(xs) + max(xs)) / 2, width / 2, delta=width * .002)
                     self.assertAlmostEqual((min(ys) + max(ys)) / 2, centers[-1], delta=1)
                     expected_color = bytes.fromhex('f2e6d8' if variant == 'A' else 'e2733f')
                     self.assertIn(expected_color, {retry[i:i + 3] for i in range(wrong_start, wrong_end, 3)})

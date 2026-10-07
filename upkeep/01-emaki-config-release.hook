@@ -1,0 +1,12 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Trigger]
+Type = Package
+Operation = Upgrade
+Target = emaki-config
+
+[Action]
+Description = Preserving Emaki configuration for package replacement...
+When = PreTransaction
+Exec = /usr/share/libalpm/scripts/emaki-system-migrate --release
+AbortOnFail

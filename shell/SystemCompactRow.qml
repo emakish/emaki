@@ -95,8 +95,7 @@ Item {
             power: "Battery and power"
         })
     readonly property var shortcuts: ({
-            kb: "Super+Space",
-            power: "Super+Escape"
+            kb: "Super+Space"
         })
 
     Row {

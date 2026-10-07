@@ -1,17 +1,19 @@
+#[path = "../../../tests/socket_dir.rs"]
+mod socket_dir;
+
 use emaki_core::niri::actions::{self, Command, Delivery, Outcome, Phase};
 use emaki_core::niri::{ConnectionStatus, Model, Observation, Observer};
 use serde_json::{Value, json};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicU64, Ordering},
 };
 use std::time::{Duration, Instant};
 
-static COUNTER: AtomicU64 = AtomicU64::new(0);
 const TIMEOUT: Duration = Duration::from_millis(300);
 
 fn layout() -> Value {
@@ -90,15 +92,7 @@ struct Fake {
 }
 impl Fake {
     fn new() -> Self {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.cache/tmp")
-            .join(format!(
-                "niri-{}-{}",
-                std::process::id(),
-                COUNTER.fetch_add(1, Ordering::Relaxed)
-            ));
-        fs::create_dir_all(&root).unwrap();
-        let root = root.canonicalize().unwrap();
+        let root = socket_dir::short_socket_dir();
         let mut fake = Self {
             path: root.join("n.sock"),
             root,

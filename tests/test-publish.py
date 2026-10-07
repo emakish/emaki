@@ -8,6 +8,7 @@ database and keyring; the signing key is a throwaway key made in a temporary GNU
 Cloudflare, no GitHub and no real key are touched. The flat-layout self-check shows that the
 interruption cases can fail: the old in-place procedure must break a syncing machine.
 """
+import base64
 import datetime
 import importlib.util
 import json
@@ -41,7 +42,7 @@ def load(name, path):
 pointer_server = load('pointer_server', HERE / 'pointer-server.py')
 publish = load('publish', PUBLISH)
 gnupg_daemons = load('gnupg_daemons', HERE / 'gnupg-daemons.py')
-SUITE_ROOT = OUTER_TMPDIR = None
+SUITE_ROOT = SUITE_STORAGE = SUITE_ALIAS = OUTER_TMPDIR = None
 
 
 def setUpModule():
@@ -49,9 +50,16 @@ def setUpModule():
     # one root: what GnuPG left running is counted after each test, and the directories of
     # runs killed on purpose go with the root. The prefix is short because pacman-key homes
     # hold their sockets themselves (sun_path is 108 bytes).
-    global SUITE_ROOT, OUTER_TMPDIR
+    global SUITE_ROOT, SUITE_STORAGE, SUITE_ALIAS, OUTER_TMPDIR
     OUTER_TMPDIR = os.environ.get('TMPDIR')
     SUITE_ROOT = Path(tempfile.mkdtemp(prefix='emaki-t-'))
+    SUITE_STORAGE = SUITE_ROOT
+    if len(str(SUITE_ROOT)) > 24:
+        # Keep payloads under the requested evidence directory while giving GnuPG sockets
+        # a short pathname. Only this directory and symlink occupy /tmp.
+        SUITE_ALIAS = Path(tempfile.mkdtemp(prefix='et-', dir='/tmp'))
+        SUITE_ROOT = SUITE_ALIAS / 't'
+        SUITE_ROOT.symlink_to(SUITE_STORAGE, target_is_directory=True)
     os.environ['TMPDIR'] = tempfile.tempdir = str(SUITE_ROOT)
 
 
@@ -60,15 +68,24 @@ def tearDownModule():
     if OUTER_TMPDIR is not None:
         os.environ['TMPDIR'] = OUTER_TMPDIR
     tempfile.tempdir = None
-    left = gnupg_daemons.check(SUITE_ROOT)
-    shutil.rmtree(SUITE_ROOT, ignore_errors=True)
+    left = suite_gnupg_daemons()
+    shutil.rmtree(SUITE_STORAGE, ignore_errors=True)
+    if SUITE_ALIAS is not None:
+        SUITE_ROOT.unlink()
+        SUITE_ALIAS.rmdir()
     if left:
         raise AssertionError('GnuPG daemons left by the suite:\n' + gnupg_daemons.describe(left))
 
 
+def suite_gnupg_daemons():
+    # GnuPG may retain either the supplied alias or the canonical home pathname.
+    return [process for root in {SUITE_ROOT, SUITE_STORAGE}
+            for process in gnupg_daemons.check(root)]
+
+
 def no_gnupg_daemons_left(test):
     """Registered by every test: nothing GnuPG started for it outlives it."""
-    left = gnupg_daemons.check(SUITE_ROOT)
+    left = suite_gnupg_daemons()
     test.assertEqual(left, [], 'GnuPG daemons outlived the test:\n' + gnupg_daemons.describe(left))
 
 
@@ -104,6 +121,12 @@ class Keys:
         run(['gpgconf', '--homedir', self.home, '--kill', 'all'])
 
 
+def fixture_recipe(name, version):
+    upstream, release = version.rsplit('-', 1)
+    epoch, upstream = upstream.split(':', 1) if ':' in upstream else ('0', upstream)
+    return (f'pkgname={name}\npkgver={upstream}\npkgrel={release}\nepoch={epoch}\n').encode()
+
+
 def make_package(directory, name, version, depends=(), payload=None, arch='any'):
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
@@ -114,7 +137,8 @@ def make_package(directory, name, version, depends=(), payload=None, arch='any')
              'url = https://example.invalid', 'builddate = 1700000000', 'packager = Test', 'size = 16',
              f'arch = {arch}', 'license = GPL-3.0-or-later'] + [f'depend = {d}' for d in depends]
     (stage / '.PKGINFO').write_text('\n'.join(lines) + '\n')
-    (stage / '.BUILDINFO').write_text('pkgbuild_sha256sum = ' + 'b' * 64 + '\n')
+    (stage / '.BUILDINFO').write_text('pkgbuild_sha256sum = ' +
+                                    publish.sha256(fixture_recipe(name, version)) + '\n')
     path = directory / f'{name}-{version}-{arch}.pkg.tar.zst'
     run(['bsdtar', '--zstd', '-cf', path, '-C', stage, '.PKGINFO', '.BUILDINFO', 'usr'], check=True)
     shutil.rmtree(stage)
@@ -254,12 +278,22 @@ class World:
         output = image.parent / 'arch-sources'
         output.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=self.base) as temporary:
-            run(['bsdtar', '-xf', image, '-C', temporary, 'emaki/repo'], check=True)
+            run(['bsdtar', '-xf', image, '-C', temporary, 'emaki'], check=True)
             packages = Path(temporary) / 'emaki/repo'
-            closure = packages / 'closure.txt'
-            records = module.inventory(closure, packages, publish.EMAKI_PACKAGES)
+            closure = packages.parent / 'live-closure.txt'
+            records = module.inventory(closure, packages.parent / 'live-packages.json', publish.EMAKI_PACKAGES)
             for record in records.values():
-                data = f'Source fixture for {record["name"]} {record["version"]}\n'.encode()
+                tree = Path(temporary) / 'source' / record['base']
+                tree.mkdir(parents=True, exist_ok=True)
+                recipe = fixture_recipe(record['name'], record['version'])
+                (tree / 'PKGBUILD').write_bytes(recipe)
+                (tree / '.SRCINFO').write_text('pkgbase = ' + record['base'] + '\n' +
+                                              recipe.decode().replace('=', ' = '))
+                raw = Path(temporary) / 'source.tar'
+                normalized = Path(temporary) / 'source.tar.gz'
+                run(['bsdtar', '-cf', raw, '-C', tree.parent, tree.name], check=True)
+                module.normalize(raw, normalized)
+                data = normalized.read_bytes()
                 digest = publish.sha256(data)
                 archive = record['base'] + '.src.tar.gz'
                 source = output / f'sources/sha256/{digest}/{archive}'
@@ -290,6 +324,61 @@ class World:
 
 def versions(listing):
     return {name: version for name, version in listing}
+
+
+class LiveMetadata(unittest.TestCase):
+    def test_only_legacy_images_may_omit_live_metadata(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            image = root / 'image.iso'
+            for version in ('0.1.0', '0.2.0'):
+                self.assertIsNone(publish.check_live_metadata(image, '', version, root))
+            for version in ('0.2.1', '0.3.0', '1.0.0'):
+                with self.subTest(version=version), self.assertRaisesRegex(publish.Refused, 'live-closure'):
+                    publish.check_live_metadata(image, '', version, root)
+            with self.assertRaisesRegex(publish.Refused, 'live-closure'):
+                publish.check_live_metadata(image, 'emaki/live-packages.json\n', '0.2.0', root)
+
+
+class PublishedAcceptance(unittest.TestCase):
+    def test_publication_preserves_020_stamp_but_next_candidate_requires_020(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            backend = publish.LocalBackend(root / 'bucket')
+            publisher = object.__new__(publish.Publisher)
+            publisher.backend = backend
+            publisher.args = SimpleNamespace(stamp=root / 'stamp.json')
+            current, following = 'a' * 64, 'b' * 64
+
+            def results(manifest, starts=('0.1.0', '0.1.1')):
+                paths = []
+                for run_name in ('T1', 'T2'):
+                    for start in starts:
+                        for size in publish.REQUIRED_SIZES:
+                            path = root / f'{run_name}-{start}-{size}.json'
+                            path.write_text(json.dumps({'manifest_sha256': manifest,
+                                'run': run_name, 'start': start, 'size': size, 'passed': True,
+                                'finished': publish.utcnow().isoformat()}))
+                            paths.append(path)
+                return paths
+
+            # A stamp prepared before a publication must be rechecked at promotion time.
+            publish.write_stamp(results(following), publisher.args.stamp, backend)
+            stale_stamp = publisher.args.stamp.read_bytes()
+            publish.write_stamp(results(current), publisher.args.stamp, backend)
+            original_stamp = publisher.args.stamp.read_bytes()
+            publisher.check_stamp(current)
+            backend.put_new('released/iso/0.2.0', json.dumps({'manifest': current}).encode())
+            publisher.check_stamp(current)
+            self.assertEqual(publisher.args.stamp.read_bytes(), original_stamp)
+            publisher.args.stamp.write_bytes(stale_stamp)
+            with self.assertRaisesRegex(publish.Refused, 'T1 from 0.2.0'):
+                publisher.check_stamp(following)
+            with self.assertRaisesRegex(publish.Refused, 'T1 from 0.2.0'):
+                publish.write_stamp(results(following), publisher.args.stamp, backend)
+            publish.write_stamp(results(following, ('0.1.0', '0.1.1', '0.2.0')),
+                                publisher.args.stamp, backend)
+            publisher.check_stamp(following)
 
 
 class SourceProvenance(unittest.TestCase):
@@ -432,7 +521,22 @@ class SourceProvenance(unittest.TestCase):
             self.publisher.collect(self.directory)
 
     def test_iso_publishes_exact_closure_and_adjacent_sources_before_checksum(self):
+        self.check_iso_publication(False)
+
+    def test_iso_partial_sources_require_exact_explicit_missing_file(self):
+        self.check_iso_publication(True)
+
+    def test_020_publication_keeps_legacy_inputs_and_uploads(self):
+        self.check_iso_publication(True, legacy=True)
+
+    def test_iso_complete_sources_with_empty_missing_file_has_no_missing_heading(self):
+        self.check_iso_publication(False, empty_missing=True)
+
+    def check_iso_publication(self, partial, legacy=False, empty_missing=False):
         root = self.directory
+        image_version = "0.2.0" if legacy else "9.9.9"
+        installer = make_package(root, 'emaki-installer', '1.2-3')
+        Path(str(installer) + '.sig').write_bytes(b'signature')
         entries = self.publisher.collect(root)
         records = {e['name']: e['source'] for e in entries.values()}
         files = {name: b'database' for name in publish.DB_FILES}
@@ -447,11 +551,35 @@ class SourceProvenance(unittest.TestCase):
         arch_build = root / 'arch-build'
         arch_build.mkdir()
         (arch_build / '.PKGINFO').write_text('pkgname = arch-demo\npkgbase = arch-demo\npkgver = 1-1\nlicense = GPL-2.0-only\n')
-        (arch_build / '.BUILDINFO').write_text('pkgbuild_sha256sum = ' + 'b' * 64 + '\n')
+        arch_recipe = b'pkgname=arch-demo\npkgver=1\npkgrel=1\n'
+        recipe_sha = publish.sha256(arch_recipe)
+        (arch_build / '.BUILDINFO').write_text('pkgbuild_sha256sum = ' + recipe_sha + '\n')
         run(['bsdtar', '-cf', stage / arch_name, '-C', arch_build, '.PKGINFO', '.BUILDINFO'], check=True)
         closure = ''.join(f + '\n' for f in sorted([*entries, arch_name])).encode()
         (stage / 'closure.txt').write_bytes(closure)
-        image = root / 'emaki-9.9.9-x86_64.iso'
+        module = load('iso_source_fixture', ROOT / 'packaging/mirror/iso_sources.py')
+        (stage.parent / 'live-closure.txt').write_bytes(closure)
+        (stage.parent / 'pkglist.x86_64.txt').write_text(''.join(
+            ' '.join(publish.package_version(name)) + '\n' for name in sorted([*entries, arch_name])))
+        module.write_image_inventory(stage.parent / 'live-closure.txt', stage,
+                                     stage.parent / 'live-packages.json', publish.EMAKI_PACKAGES)
+        # The live-only Arch package and installer have source coverage without offline archives.
+        target_names = (list(entries) + [arch_name] if legacy else
+                        [name for name in entries if not name.startswith('emaki-installer-')])
+        if legacy:
+            for name in ('live-closure.txt', 'live-packages.json', 'pkglist.x86_64.txt'):
+                (stage.parent / name).unlink()
+        target_closure = ''.join(name + '\n' for name in sorted(target_names)).encode()
+        (stage / 'closure.txt').write_bytes(target_closure)
+        arch_binary_sha = publish.sha256_file(stage / arch_name)
+        if not legacy:
+            (stage / arch_name).unlink()
+        for name in entries:
+            if name not in target_names:
+                (stage / name).unlink()
+        run(['repo-add', stage / 'emaki-offline.db.tar.gz',
+             *sorted(stage.glob('*.pkg.tar.zst'))], check=True)
+        image = root / f'emaki-{image_version}-x86_64.iso'
         run(['bsdtar', '--format=iso9660', '-cf', image, '-C', root / 'stage', '.'], check=True)
         Path(str(image) + '.sig').write_bytes(b'signature')
         Path(str(image) + '.sha256').write_text(f'{publish.sha256_file(image)}  {image.name}\n')
@@ -459,14 +587,21 @@ class SourceProvenance(unittest.TestCase):
         publisher = self.publisher
         publisher.public = 'https://pkgs.emaki.sh'
         arch_manifest = root / 'ARCH-SOURCES.json'
-        arch_data = b'exact Arch source fixture'
+        arch_source = root / 'arch-source/arch-demo'
+        arch_source.mkdir(parents=True)
+        (arch_source / 'PKGBUILD').write_bytes(arch_recipe)
+        (arch_source / '.SRCINFO').write_text(
+            'pkgbase = arch-demo\npkgver = 1\npkgrel = 1\npkgname = arch-demo\n')
+        arch_bundle = root / 'arch-fixture.src.tar.gz'
+        run(['bsdtar', '-czf', arch_bundle, '-C', arch_source.parent, 'arch-demo'], check=True)
+        arch_data = arch_bundle.read_bytes()
         arch_sha = publish.sha256(arch_data)
         arch_key = f'sources/sha256/{arch_sha}/arch-demo.src.tar.gz'
         arch_path = root / arch_key
         arch_path.parent.mkdir(parents=True)
         arch_path.write_bytes(arch_data)
         arch_record = {'name': 'arch-demo', 'base': 'arch-demo', 'version': '1-1',
-                       'recipe_sha256': 'b' * 64, 'binary_sha256': publish.sha256_file(stage / arch_name),
+                       'recipe_sha256': recipe_sha, 'binary_sha256': arch_binary_sha,
                        'archive': 'arch-demo.src.tar.gz', 'sha256': arch_sha, 'size': len(arch_data)}
         arch_manifest.write_text(json.dumps({'schema': 1, 'closure_sha256': publish.sha256(closure),
                                              'packages': {arch_name: arch_record}}))
@@ -487,11 +622,20 @@ class SourceProvenance(unittest.TestCase):
                 {'sha256': record['sha256'], 'etag': publisher.backend.head(key)}).encode())
         original_run = subprocess.run
         def command(args, **kwargs):
+            if args[0] == 'bsdtar' and '-xOf' in args and str(image) in args:
+                self.assertNotEqual(args[-1], 'emaki/repo')
+                if kwargs.get('stdout') is not None:
+                    self.assertEqual(len(list(Path(kwargs['stdout'].name).parent.glob('*.pkg.tar.zst'))), 1)
             if args[0] == 'gpg':
                 return subprocess.CompletedProcess(args, 0, stdout=b'public key', stderr=b'')
             return original_run(args, **kwargs)
         def fetch(url):
-            return (dl / url.removeprefix('https://download.invalid/')).read_bytes()
+            path = '/' + url.removeprefix('https://download.invalid/')
+            routed = pointer_server.route(dl, path)
+            if routed:
+                self.assertEqual(routed[0], 302)
+                path = routed[1]
+            return (dl / path.lstrip('/')).read_bytes()
         writes = []
         put_new = publish.LocalBackend.put_new
         def put(backend, key, data):
@@ -511,6 +655,13 @@ class SourceProvenance(unittest.TestCase):
             self.assertEqual(writes, [])
             publisher.args.arch_sources = arch_manifest
             saved_manifest = arch_manifest.read_text()
+            target_manifest = json.loads(saved_manifest)
+            target_manifest['closure_sha256'] = ('0' * 64 if legacy else publish.sha256(target_closure))
+            target_manifest['packages'] = {}
+            arch_manifest.write_text(json.dumps(target_manifest))
+            with self.assertRaisesRegex(publish.Refused, 'does not describe this image package list'):
+                publish.iso_publish(publisher, image, False)
+            self.assertEqual(writes, [])
             missing = json.loads(saved_manifest)
             missing['packages'] = {}
             arch_manifest.write_text(json.dumps(missing))
@@ -518,29 +669,166 @@ class SourceProvenance(unittest.TestCase):
                 publish.iso_publish(publisher, image, False)
             self.assertEqual(writes, [])
             arch_manifest.write_text(saved_manifest)
+            if partial:
+                missing_path = root / 'MISSING-SOURCES.json'
+                binary_record = {key: arch_record[key] for key in
+                                 ('name', 'base', 'version', 'binary_sha256', 'recipe_sha256')}
+                missing_file = {'schema': 1, 'closure_sha256': publish.sha256(closure), 'bases': [{
+                    'base': 'arch-demo', 'version': '1-1', 'recipe_sha256': recipe_sha,
+                    'packages': {arch_name: binary_record}, 'reason': 'upstream unavailable',
+                    'upstream_url': 'https://upstream.invalid/arch-demo', 'revision': 'b' * 40}]}
+                missing_path.write_text(json.dumps(missing_file))
+                publisher.args.missing_sources = missing_path
+                # A package cannot simultaneously be collected and missing.
+                with self.assertRaises(publish.Refused):
+                    publish.iso_publish(publisher, image, False)
+                arch_manifest.write_text(json.dumps(missing))
+                for mutation in ('omitted', 'version', 'closure'):
+                    invalid = json.loads(json.dumps(missing_file))
+                    if mutation == 'omitted':
+                        invalid['bases'] = []
+                    elif mutation == 'version':
+                        invalid['bases'][0]['version'] = '2-1'
+                        invalid['bases'][0]['packages'][arch_name]['version'] = '2-1'
+                    else:
+                        invalid['closure_sha256'] = '0' * 64
+                    missing_path.write_text(json.dumps(invalid))
+                    with self.subTest(missing=mutation), self.assertRaises(publish.Refused):
+                        publish.iso_publish(publisher, image, False)
+                self.assertEqual(writes, [])
+                missing_path.write_text(json.dumps(missing_file))
+                if legacy:
+                    publisher.args = publish.parser().parse_args([
+                        '--dl-backend', f'local:{dl}', '--dl-public-url', 'https://download.invalid',
+                        'iso', str(image), '--arch-sources', str(arch_manifest),
+                        '--missing-sources', str(missing_path)])
+                    self.assertEqual(publisher.args.command, 'iso')
+                    self.assertFalse(publisher.args.full_check)
+            if empty_missing:
+                missing_path = root / 'MISSING-SOURCES.json'
+                missing_path.write_text(json.dumps({'schema': 1,
+                    'closure_sha256': publish.sha256(closure), 'bases': []}))
+                publisher.args.missing_sources = missing_path
             publisher.dry_run = True
             backend = publisher.backend
             publisher.backend = publish.DryRunBackend(backend)
-            publish.iso_publish(publisher, image, False)
+            with mock.patch.object(publish, 'say') as messages:
+                publish.iso_publish(publisher, image, False)
+            if partial:
+                self.assertTrue(any('1 missing package' in str(call) for call in messages.call_args_list))
             self.assertEqual(list(dl.iterdir()), [])
             self.assertEqual(writes, [])
             publisher.dry_run = False
             publisher.backend = backend
             publish.iso_publish(publisher, image, False)
+            if legacy:
+                non_sources = [key for key in writes if not key.startswith('sources/')]
+                key = f'iso/{image_version}/{image.name}'
+                self.assertEqual(non_sources, [f'released/iso/{image_version}',
+                    f'iso/{image_version}/emaki-signing-key.asc', key, key + '.sig',
+                    f'iso/{image_version}/closure.txt', f'iso/{image_version}/SOURCES-ISO.txt',
+                    f'iso/{image_version}/ARCH-SOURCES.json', f'iso/{image_version}/MISSING-SOURCES.json',
+                    key + '.sha256'])
+                self.assertEqual((dl / f'iso/{image_version}/ARCH-SOURCES.json').read_bytes(),
+                                 arch_manifest.read_bytes())
             with mock.patch.object(publish, 'http_get', side_effect=lambda url: b'changed' if url.endswith('/SOURCES-ISO.txt') else fetch(url)):
                 with self.assertRaisesRegex(publish.Refused, 'published SOURCES-ISO.txt differs'):
                     publish.iso_publish(publisher, image, False)
-        destination = dl / 'iso/9.9.9'
+            if empty_missing:
+                self.assertNotIn(b'Sources not yet copied by Emaki',
+                                 fetch(f'https://download.invalid/iso/{image_version}/SOURCES-ISO.txt'))
+            if partial and not legacy:
+                original_arch = arch_manifest.read_bytes()
+                original_missing = missing_path.read_bytes()
+                originals = {str(path.relative_to(dl)): path.read_bytes()
+                             for path in dl.rglob('*') if path.is_file()}
+                arch_manifest.write_text(saved_manifest)
+                missing_path.write_text(json.dumps(dict(missing_file, bases=[])))
+                response = mock.MagicMock()
+                response.headers = {'X-Emaki-Source-Pointer': '1'}
+                opener = SimpleNamespace(open=lambda request, **kwargs: response)
+                with mock.patch.object(publish.urllib.request, 'build_opener', return_value=opener):
+                    publish.iso_add_sources(publisher, image_version)
+                arch_manifest.write_bytes(original_arch)
+                missing_path.write_bytes(original_missing)
+                self.assertNotIn(b'Sources not yet copied by Emaki',
+                                 fetch(f'https://download.invalid/iso/{image_version}/SOURCES-ISO.txt'))
+                publish.iso_publish(publisher, image, True)
+                for name, data in originals.items():
+                    self.assertEqual((dl / name).read_bytes(), data)
+                snapshot = (dl / f'iso/{image_version}/source-pointer').read_text().strip()
+                snapshot_text = dl / f'iso/{image_version}/source-snapshots/{snapshot}/SOURCES-ISO.txt'
+                snapshot_text.write_bytes(b'changed')
+                with self.assertRaisesRegex(publish.Refused, 'snapshot differs from its digest'):
+                    publish.iso_publish(publisher, image, True)
+        destination = dl / f'iso/{image_version}'
         self.assertEqual((destination / 'closure.txt').read_bytes(), closure)
-        self.assertTrue((destination / 'SOURCES-ISO.txt').read_bytes().startswith(files['SOURCES']))
+        self.assertTrue((destination / 'SOURCES-ISO.txt').read_bytes().startswith(
+            publish.sources_text(records, 'https://download.invalid')))
+        self.assertNotIn('https://pkgs.emaki.sh/', (destination / 'SOURCES-ISO.txt').read_text())
         for record in records.values():
             self.assertFalse((destination / record['archive']).exists())
+            self.assertEqual((dl / publish.source_key(record)).read_bytes(),
+                             (root / record['archive']).read_bytes())
+            self.assertLess(writes.index(publish.source_key(record)),
+                            writes.index(f'iso/{image_version}/{image.name}'))
             self.assertIn(publish.source_key(record), (destination / 'SOURCES-ISO.txt').read_text())
-        self.assertEqual((dl / arch_key).read_bytes(), arch_data)
-        self.assertLess(writes.index(arch_key), writes.index(f'iso/9.9.9/{image.name}'))
-        checksum_index = writes.index(f'iso/9.9.9/{image.name}.sha256')
+        if partial:
+            self.assertEqual((dl / arch_key).exists(), not legacy)
+            self.assertEqual((destination / 'MISSING-SOURCES.json').read_bytes(), missing_path.read_bytes())
+            text = (destination / 'SOURCES-ISO.txt').read_text()
+            self.assertIn('arch-demo 1-1', text)
+            self.assertIn('https://upstream.invalid/arch-demo', text)
+            self.assertIn('https://gitlab.archlinux.org/archlinux/packaging/packages/arch-demo/-/tree/' + 'b' * 40, text)
+            self.assertIn('will be added', text)
+            self.assertLess(writes.index(f'iso/{image_version}/MISSING-SOURCES.json'),
+                            writes.index(f'iso/{image_version}/{image.name}.sha256'))
+        else:
+            self.assertEqual((dl / arch_key).read_bytes(), arch_data)
+            self.assertLess(writes.index(arch_key), writes.index(f'iso/{image_version}/{image.name}'))
+        checksum_index = writes.index(f'iso/{image_version}/{image.name}.sha256')
         for name in ('closure.txt', 'SOURCES-ISO.txt', 'ARCH-SOURCES.json'):
-            self.assertLess(writes.index(f'iso/9.9.9/{name}'), checksum_index)
+            self.assertLess(writes.index(f'iso/{image_version}/{name}'), checksum_index)
+
+    def test_github_restore_requires_matching_available_sources_before_uploads(self):
+        root, publisher = self.directory, self.publisher
+        entries = publisher.collect(root)
+        records = {entry['name']: entry['source'] for entry in entries.values()}
+        publisher.args = SimpleNamespace(github=f'local:{root / "github"}')
+        publisher.state = root / 'state'
+        publisher.public = 'https://pkgs.emaki.sh'
+        publisher.dry_run = False
+        publisher.pointer = lambda channel: (None, None)
+        github = root / 'github/testing'
+        github.mkdir(parents=True)
+        (github / 'emaki.db').write_bytes(b'current')
+        saved = publisher.state / 'github/testing/20260101T000000Z'
+        saved.mkdir(parents=True)
+        (saved / 'emaki.db').write_bytes(b'previous')
+        (saved / 'SOURCES').write_bytes(publish.sources_text(records))
+        (saved / 'SOURCES.json').write_text(json.dumps({'format': 1, 'packages': records}))
+        db = {name: {'name': entry['name'], 'version': entry['version']}
+              for name, entry in entries.items()}
+        hashes = {publisher.public + '/' + publish.source_key(record): record['sha256']
+                  for record in records.values()}
+        with mock.patch.object(publish, 'db_entries', return_value=db), \
+                mock.patch.object(publish, 'http_sha256', side_effect=lambda url: hashes[url]):
+            damaged = json.loads((saved / 'SOURCES.json').read_text())
+            damaged['packages'][next(iter(records))]['version'] = '0-1'
+            (saved / 'SOURCES.json').write_text(json.dumps(damaged))
+            with self.assertRaisesRegex(publish.Refused, 'no matching source record'):
+                publisher.github('testing', True)
+            self.assertEqual((github / 'emaki.db').read_bytes(), b'current')
+            self.assertFalse((github / '.upload-log').exists())
+            (saved / 'SOURCES.json').write_text(json.dumps({'format': 1, 'packages': records}))
+            with mock.patch.object(publish, 'http_sha256', return_value='0' * 64):
+                with self.assertRaisesRegex(publish.Refused, 'source archive missing or changed'):
+                    publisher.github('testing', True)
+            self.assertFalse((github / '.upload-log').exists())
+            publisher.github('testing', True)
+        self.assertEqual((github / 'emaki.db').read_bytes(), b'previous')
+        self.assertEqual((github / 'SOURCES').read_bytes(), publish.sources_text(records))
+
 
     def test_github_copies_sources_and_restores_directions_with_database(self):
         root, publisher = self.directory, self.publisher
@@ -556,7 +844,9 @@ class SourceProvenance(unittest.TestCase):
             (github / name).write_bytes(b'previous database')
         (github / 'SOURCES').write_text('Previous source directions\n')
         (github / 'SOURCES.json').write_text('{"format":1,"packages":{}}')
-        publisher.args = SimpleNamespace(github=f'local:{root / "github"}')
+        publisher.args = SimpleNamespace(github=f'local:{root / "github"}', closure='emaki')
+        publisher.confirm_channel = mock.Mock()
+        publisher.check_transactions = mock.Mock()
         publisher.dry_run = True
         publisher.state = root / 'state'
         publisher.backend = publish.LocalBackend(root / 'bucket')
@@ -601,6 +891,11 @@ class SourceProvenance(unittest.TestCase):
         self.assertEqual((github / '.upload-log').read_text().splitlines()[-4:], ['SOURCES', 'SOURCES.json', 'emaki.files', 'emaki.db'])
         self.assertFalse((github / stale).exists())
         self.assertTrue((github / next(iter(entries))).exists())
+        before_restore = {p.name: p.read_bytes() for p in github.iterdir()}
+        with self.assertRaisesRegex(publish.Refused, 'saved binaries lack verified corresponding sources'):
+            publisher.github('testing', True)
+        self.assertEqual({p.name: p.read_bytes() for p in github.iterdir()}, before_restore)
+        publisher.args.allow_sourceless_restore = True
         publisher.github('testing', True)
         self.assertEqual((github / '.description').read_text(), publish.source_notes('Previous source directions\n'))
         self.assertEqual((github / 'SOURCES').read_bytes(), before['SOURCES'])
@@ -775,6 +1070,36 @@ class PublishTests(unittest.TestCase):
     def served_versions(self, channel='testing'):
         publish = load('publish', PUBLISH)
         return {e['name']: e['version'] for e in publish.db_entries(self.served_db(channel).read_bytes()).values()}
+
+    def test_identical_package_with_new_signature_keeps_published_signature(self):
+        world = self.world
+        candidate = self.candidate('1-1')
+        patched_sources(candidate)
+        self.ok(world.publish('publish', 'testing', candidate))
+        package = candidate / 'emaki-1-1-any.pkg.tar.zst'
+        signature = Path(str(package) + '.sig')
+        original = signature.read_bytes()
+        package_digest = publish.sha256_file(package)
+        # A notation makes a distinct valid signature even within the same second.
+        run(['gpg', '--batch', '--yes', '--local-user', world.keys.fpr,
+             '--sig-notation', 'publication@emaki.invalid=second-signature',
+             '--detach-sign', '--no-armor', '--output', signature, package],
+            env=world.keys.env, check=True)
+        self.assertNotEqual(signature.read_bytes(), original)
+        verifier = publish.Verifier(world.keys.keyring, world.keys.trusted)
+        try:
+            self.assertTrue(verifier.verify(package, signature))
+        finally:
+            verifier.close()
+        self.ok(world.publish('publish', 'testing', candidate))
+        served = world.bucket / 'testing/x86_64' / package.name
+        self.assertEqual(publish.sha256_file(served), package_digest)
+        self.assertEqual(Path(str(served) + '.sig').read_bytes(), original)
+        manifest = publish.parse_manifest((self.served_db().parent / 'MANIFEST').read_bytes())
+        self.assertEqual(manifest[f'packages/{package.name}.sig'], publish.sha256(original))
+        # repo-add does not embed package signatures in the database (no --include-sigs):
+        # the published detached .sig and the manifest are what clients and verify use.
+        self.ok(world.publish('verify', 'testing'))
 
     def test_a_lower_version_than_the_channel_serves_is_refused(self):
         world = self.world
@@ -1095,18 +1420,22 @@ class PublishTests(unittest.TestCase):
         self.ok(world.publish('publish', 'testing', self.candidate('1-1')))
         self.ok(world.publish('promote', '--first'))
         self.ok(world.publish('publish', 'testing', self.candidate('2-1')))
-        machine = world.machine('testing')
-        self.assertEqual(machine.sync().returncode, 0)
         text = (ROOT / 'docs/updates.md').read_text()
-        line = next(l for l in text.splitlines() if l.startswith("echo 'Server = ") and 'sudo pacman' in l)
-        server = re.match(r"echo 'Server = (\S+)'", line).group(1)
-        self.assertEqual(server, 'https://pkgs.emaki.sh/stable/$arch')
-        machine.set_server(f'{world.url}/stable/x86_64')
-        arguments = line.split('sudo pacman', 1)[1].split()
-        result = machine.pacman(*arguments)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotIn('error', result.stderr, f'pacman {" ".join(arguments)}: {result.stderr}')
-        self.assertEqual(versions(machine.listed()[1])['emaki'], '1-1')
+        # Every documented one-line switch (missed bridge, broken channel selector) must work.
+        lines = [l for l in text.splitlines() if l.startswith("echo 'Server = ") and 'sudo pacman' in l]
+        self.assertGreaterEqual(len(lines), 1)
+        for line in lines:
+            with self.subTest(line=line):
+                machine = world.machine('testing')
+                self.assertEqual(machine.sync().returncode, 0)
+                server = re.match(r"echo 'Server = (\S+)'", line).group(1)
+                self.assertEqual(server, 'https://pkgs.emaki.sh/stable/$arch')
+                machine.set_server(f'{world.url}/stable/x86_64')
+                arguments = line.split('sudo pacman', 1)[1].split()
+                result = machine.pacman(*arguments)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertNotIn('error', result.stderr, f'pacman {" ".join(arguments)}: {result.stderr}')
+                self.assertEqual(versions(machine.listed()[1])['emaki'], '1-1')
 
     def test_publish_writes_only_testing(self):
         """stable gets a release only through the stamped promote: `publish stable` would skip the gate."""
@@ -1153,8 +1482,12 @@ class PublishTests(unittest.TestCase):
         world = self.world
         old = world.github / 'testing'
         old.mkdir(parents=True)
-        (old / 'emaki.db').write_bytes(b'old database')
-        (old / 'emaki.files').write_bytes(b'old files')
+        previous = world.base / 'previous-release'
+        run(['repo-add', '-q', previous / 'emaki.db.tar.gz',
+             *release(previous, world.keys, '0-1')], check=True)
+        old_database = (previous / 'emaki.db.tar.gz').read_bytes()
+        (old / 'emaki.db').write_bytes(old_database)
+        (old / 'emaki.files').write_bytes((previous / 'emaki.files.tar.gz').read_bytes())
         self.ok(world.publish('publish', 'testing', self.candidate('1-1')))
         self.ok(world.publish('github', '--tag', 'testing'))
         uploads = (old / '.upload-log').read_text().split()
@@ -1164,8 +1497,9 @@ class PublishTests(unittest.TestCase):
         snap = world.bucket / 'snap/testing' / world.pointer('testing')
         self.assertEqual((old / 'emaki.db').read_bytes(), (snap / 'emaki.db').read_bytes())
         self.refused(world.publish("github"), "no stable snapshot")
-        self.ok(world.publish('github', '--tag', 'testing', '--restore'))
-        self.assertEqual((old / 'emaki.db').read_bytes(), b'old database')
+        self.refused(world.publish('github', '--tag', 'testing', '--restore'), 'saved binaries lack verified corresponding sources')
+        self.ok(world.publish('github', '--tag', 'testing', '--restore', '--allow-sourceless-restore'))
+        self.assertEqual((old / 'emaki.db').read_bytes(), old_database)
         # A machine on the old address (no signature) accepts the copied database.
         self.ok(world.publish('github', '--tag', 'testing'))
 
@@ -1187,7 +1521,8 @@ class PublishTests(unittest.TestCase):
         planted = world.state / 'github/stable/29991231T235959Z'
         planted.mkdir(parents=True)
         shutil.copyfile(github / 'emaki.db', planted / 'emaki.db')
-        self.ok(world.publish('github', '--restore'))
+        self.refused(world.publish('github', '--restore'), 'saved binaries lack verified corresponding sources')
+        self.ok(world.publish('github', '--restore', '--allow-sourceless-restore'))
         self.assertEqual((github / 'emaki.db').read_bytes(), before[0])
         self.assertEqual((github / 'emaki.files').read_bytes(), before[1])
         self.refused(world.publish('github', '--restore'), 'differs from what GitHub stable serves')
@@ -1236,6 +1571,15 @@ class PublishTests(unittest.TestCase):
             shutil.copy(path, repo)
         make_package(repo, 'mesa', '26.2.4-1')
         (repo / 'closure.txt').write_text(''.join(p.name + '\n' for p in sorted(repo.glob('*.pkg.tar.zst'))))
+        module = load('iso_source_fixture', ROOT / 'packaging/mirror/iso_sources.py')
+        shutil.copyfile(repo / 'closure.txt', repo.parent / 'live-closure.txt')
+        (repo.parent / 'pkglist.x86_64.txt').write_text(''.join(
+            ' '.join(publish.package_version(path.name)) + '\n'
+            for path in sorted(repo.glob('*.pkg.tar.zst'))))
+        module.write_image_inventory(repo.parent / 'live-closure.txt', repo,
+                                     repo.parent / 'live-packages.json', publish.EMAKI_PACKAGES)
+        run(['repo-add', repo / 'emaki-offline.db.tar.gz',
+             *sorted(repo.glob('*.pkg.tar.zst'))], check=True)
         (stage / 'payload').write_bytes(payload or os.urandom(3 * 1024 * 1024))
         image = self.world.base / f'iso-{label}' / f'emaki-{version}-x86_64.iso'
         image.parent.mkdir()
@@ -1364,7 +1708,9 @@ class PublishTests(unittest.TestCase):
             key = 'iso/9.9.9/emaki-9.9.9-x86_64.iso'
             self.assertRegex(writes[0], r'^sources/sha256/[0-9a-f]{64}/mesa\.src\.tar\.gz$')
             self.assertEqual(writes[1], writes[0] + '.verified')
-            self.assertEqual(writes[2:], ['released/iso/9.9.9', 'iso/9.9.9/emaki-signing-key.asc', key, key + '.sig',
+            source_writes = [name for name in writes if name.startswith('sources/sha256/')]
+            self.assertGreater(len(source_writes), 2)
+            self.assertEqual(writes[len(source_writes):], ['released/iso/9.9.9', 'iso/9.9.9/emaki-signing-key.asc', key, key + '.sig',
                                       'iso/9.9.9/closure.txt', 'iso/9.9.9/SOURCES-ISO.txt',
                                       'iso/9.9.9/ARCH-SOURCES.json', key + '.sha256'])
             self.assertEqual(list(dl.iterdir()), [])
@@ -1391,17 +1737,19 @@ class PublishTests(unittest.TestCase):
             other = self.fake_iso('9.9.9', packages, label='b')
             self.refused(world.publish('iso', other), 'never replaced')
             # PU-03: an image whose Emaki packages stable does not serve.
+            # An image carrying an Emaki package version stable does not serve is refused before
+            # any upload; the image transaction gate sees the marker's exact pin fail first.
             newer = world.base / 'newer'
             make_package(newer, 'emaki-config', '9-9')
-            self.refused(world.publish('iso', self.fake_iso('9.9.8', packages, newer.glob('*.zst'), 'c')),
-                         'emaki-config-9-9-any.pkg.tar.zst (not in stable)')
-            changed = world.base / 'changed'
-            make_package(changed, 'emaki-config', '1-1', payload='other bytes\n')
             mixed = self.world.base / 'mixed'
             mixed.mkdir()
             for path in packages.glob('*.pkg.tar.zst'):
                 if not path.name.startswith('emaki-config-'):
                     shutil.copy(path, mixed)
+            self.refused(world.publish('iso', self.fake_iso('9.9.8', mixed, newer.glob('*.zst'), 'c')),
+                         "unable to satisfy dependency 'emaki-config=1-1' required by emaki")
+            changed = world.base / 'changed'
+            make_package(changed, 'emaki-config', '1-1', payload='other bytes\n')
             self.refused(world.publish('iso', self.fake_iso('9.9.7', mixed, changed.glob('*.zst'), 'd')),
                          'emaki-config-1-1-any.pkg.tar.zst (other bytes)')
         finally:
@@ -1430,7 +1778,7 @@ class PublishTests(unittest.TestCase):
         publish = load('publish', PUBLISH)
         sub = next(a for a in publish.parser()._actions if a.dest == 'command')
         used = set(re.findall(r'publish\.sh (?:--[\w-]+(?: (?!publish|status|sign|promote|github|stamp|iso|verify'
-                              r'|withdraw|unlock)\S+)? )*([a-z]+)', text))
+                              r'|withdraw|unlock)\S+)? )*([a-z-]+)', text))
         self.assertTrue(used)
         self.assertLessEqual(used, set(sub.choices), used - set(sub.choices))
         options = set(re.findall(r'upgrade-check\.sh[^`]*?((?:--[a-z-]+ ?)+)', text))
@@ -1471,6 +1819,41 @@ class PublishTests(unittest.TestCase):
                     if needle in text:
                         offenders.append(f'{path.name}: {needle}')
         self.assertEqual(offenders, [])
+
+
+class DrillSyncWait(unittest.TestCase):
+    def test_socket_root_ignores_a_long_tmpdir(self):
+        source = (HERE / 'publish-drill.sh').read_text()
+        setup = source[source.index('work=$(mktemp'):source.index('# The client:')]
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / ('long-evidence-' * 12)
+            evidence.mkdir()
+            script = "log=''\nfakeroot() { :; }\n" + setup + '\nprintf "%s\\n" "$work" "$TMPDIR"\n'
+            result = run(['bash', '-eu', '-c', script], env=dict(os.environ, TMPDIR=str(evidence)))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            work, runtime = map(Path, result.stdout.splitlines())
+            self.assertEqual(work.parent, evidence)
+            self.assertEqual(runtime.parent.parent, Path('/tmp'))
+            self.assertLess(len(os.fsencode(runtime)) + 60, 108)
+            self.assertFalse(runtime.exists())
+
+    def test_waits_for_completed_syncs_from_a_slow_client(self):
+        source = (HERE / 'publish-drill.sh').read_text()
+        helpers = source[source.index('fail() {'):source.index('while (($#)); do')]
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / 'drill.log'
+            script = helpers + r"""
+log=$1
+: >"$log"
+( sleep 1.2; printf '00:00:00 sync 1\n' >>"$log";
+  sleep 0.2; printf '00:00:01 sync 1\n' >>"$log" ) &
+client_pid=$!
+trap 'kill "$client_pid" 2>/dev/null || true; wait "$client_pid" 2>/dev/null || true' EXIT
+wait_syncs 2
+[[ $(grep -c ' sync ' "$log") == 2 ]]
+"""
+            result = run(['bash', '-eu', '-c', script, 'drill-wait', log], timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 class DrillScript(unittest.TestCase):

@@ -4,10 +4,13 @@ from enum import StrEnum
 class Code(StrEnum):
     BAD_REQUEST = 'bad_request'
     BAD_CONFIG = 'bad_config'
+    LOGIN_NAME_RESERVED = 'login_name_reserved'
     BAD_DEST = 'bad_dest'
     BUSY = 'busy'
     UNSUPPORTED_MODE = 'unsupported_mode'
     UNSUPPORTED_VERSION = 'unsupported_version'
+    CLOCK_SKEW = 'clock_skew'
+    SECURE_BOOT = 'secure_boot'
     UEFI_REQUIRED = 'uefi_required'
     DISK_NOT_FOUND = 'disk_not_found'
     BOOT_MEDIUM = 'boot_medium'

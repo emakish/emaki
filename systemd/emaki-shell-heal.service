@@ -1,0 +1,15 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Recover the Emaki shell after exhausted retries
+PartOf=graphical-session.target
+After=graphical-session.target
+Requisite=graphical-session.target
+# Even a journal or state read failure must leave a way to recover manually.
+OnFailure=emaki-shell-recovery.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/emaki-shell-health reconcile
+TimeoutStartSec=60
+Slice=app.slice

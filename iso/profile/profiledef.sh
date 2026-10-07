@@ -8,7 +8,7 @@ iso_application="Arch Linux Live/Rescue DVD"
 iso_version="$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y.%m.%d)"
 install_dir="arch"
 bootmodes=('bios.syslinux'
-           'uefi.systemd-boot')
+           'uefi.grub')
 pacman_conf="pacman.conf"
 airootfs_image_type="squashfs"
 airootfs_image_tool_options=('-comp' 'xz' '-Xbcj' 'x86,arm64' '-b' '1M' '-Xdict-size' '1M')
@@ -17,10 +17,9 @@ kernel_params_aarch64="clk_ignore_unused pd_ignore_unused arm64.nopauth"
 file_permissions=(
   ["/etc/shadow"]="0:0:400"
   ["/root"]="0:0:750"
-  ["/usr/local/bin/livecd-sound"]="0:0:755"
 )
 
-# Emaki ISO overrides; bootmodes and image options above are releng v91's.
+# Emaki ISO overrides; GRUB handles both UEFI removable-media boot paths.
 # shellcheck disable=SC2034
 iso_name="emaki"
 _emaki_profile_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -61,8 +60,6 @@ file_permissions+=(
   ["/etc/pacman.d/hooks/zzzz99-remove-custom-hooks-from-airootfs.hook"]="0:0:0644"
   ["/etc/passwd"]="0:0:0644"
   ["/etc/shadow"]="0:0:0400"
-  ["/etc/ssh"]="0:0:0755"
-  ["/etc/ssh/sshd_config.d"]="0:0:0755"
   ["/etc/sudoers.d"]="0:0:0755"
   ["/etc/sudoers.d/10-live"]="0:0:0440"
   ["/etc/systemd"]="0:0:0755"
@@ -75,23 +72,16 @@ file_permissions+=(
   ["/etc/systemd/resolved.conf.d"]="0:0:0755"
   ["/etc/systemd/resolved.conf.d/archiso.conf"]="0:0:0644"
   ["/etc/systemd/system"]="0:0:0755"
-  ["/etc/systemd/system/cloud-init.target.wants"]="0:0:0755"
   ["/etc/systemd/system/emaki-installerd.service.d"]="0:0:0755"
   ["/etc/systemd/system/emaki-installerd.service.d/10-live.conf"]="0:0:0644"
   ["/etc/systemd/system/emaki-test-ssh.service"]="0:0:0644"
   ["/etc/systemd/system/etc-pacman.d-gnupg.mount"]="0:0:0644"
-  ["/etc/systemd/system/getty@tty1.service.d"]="0:0:0755"
   ["/etc/systemd/system/greetd.service.d"]="0:0:0755"
   ["/etc/systemd/system/greetd.service.d/10-live.conf"]="0:0:0644"
-  ["/etc/systemd/system/livecd-alsa-unmuter.service"]="0:0:0644"
-  ["/etc/systemd/system/livecd-talk.service"]="0:0:0644"
   ["/etc/systemd/system/multi-user.target.wants"]="0:0:0755"
-  ["/etc/systemd/system/network-online.target.wants"]="0:0:0755"
   ["/etc/systemd/system/pacman-init.service"]="0:0:0644"
   ["/etc/systemd/system/pacman-init.service.d"]="0:0:0755"
   ["/etc/systemd/system/pacman-init.service.d/10-emaki.conf"]="0:0:0644"
-  ["/etc/systemd/system/sockets.target.wants"]="0:0:0755"
-  ["/etc/systemd/system/sound.target.wants"]="0:0:0755"
   ["/etc/systemd/system/sysinit.target.wants"]="0:0:0755"
   ["/etc/systemd/system/systemd-networkd-wait-online.service.d"]="0:0:0755"
   ["/etc/systemd/system/systemd-networkd-wait-online.service.d/wait-for-only-one-interface.conf"]="0:0:0644"
@@ -111,12 +101,5 @@ file_permissions+=(
   ["/root"]="0:0:0700"
   ["/root/.gnupg"]="0:0:0700"
   ["/root/.gnupg/scdaemon.conf"]="0:0:0644"
-  ["/usr"]="0:0:0755"
-  ["/usr/local"]="0:0:0755"
-  ["/usr/local/bin"]="0:0:0755"
-  ["/usr/local/bin/livecd-sound"]="0:0:0755"
-  ["/usr/local/share"]="0:0:0755"
-  ["/usr/local/share/livecd-sound"]="0:0:0755"
-  ["/usr/local/share/livecd-sound/asound.conf.in"]="0:0:0644"
 )
 # END EMAKI PERMISSIONS

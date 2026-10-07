@@ -7,6 +7,7 @@ its own suite); capture readiness is delayed explicitly because software Qt cann
 exercise screencopy/GL. SessionStartup, shell entry, scene and surfaces stay real.
 No niri socket, session bus, user files or installed session services are used.
 """
+from runtime_fixture import runtime_path
 import json
 import os
 from pathlib import Path
@@ -340,7 +341,7 @@ def run(scenario):
                    EMAKI_SHELL_BAR_AUTOHIDE='0', EMAKI_SETTINGS_PROFILE='',
                    EMAKI_SHELL_DOCK_BACKDROP='capture', EMAKI_PYTHON='/usr/bin/python3',
                    EMAKI_SESSION_START=TOKEN if fresh else '', EMAKI_SESSION_SKIP_INTRO='1' if fresh else '',
-                   XDG_RUNTIME_DIR=str(profile / 'r'), XDG_CONFIG_HOME=str(profile / 'config'),
+                   XDG_RUNTIME_DIR=str(runtime_path(profile)), XDG_CONFIG_HOME=str(profile / 'config'),
                    XDG_STATE_HOME=str(profile / 'state'), XDG_CACHE_HOME=str(profile / 'cache'),
                    XDG_DATA_HOME=str(profile / 'data'), XDG_DATA_DIRS=str(profile / 'data'),
                    HOME=str(profile), TMPDIR=str(profile / 'tmp'),

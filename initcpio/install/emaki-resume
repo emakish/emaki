@@ -1,0 +1,16 @@
+#!/usr/bin/bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+build() {
+    # Match the stock resume hook's compression support and reuse its runtime
+    # implementation, including noresume and HibernateLocation handling.
+    map add_module 'crypto-lzo' 'crypto-lz4'
+    add_binary /usr/lib/systemd/systemd-hibernate-resume || return
+    add_file /usr/lib/initcpio/hooks/resume /hooks/emaki-resume-upstream || return
+    add_runscript
+}
+
+help() {
+    echo 'Resume hibernation while keeping expected cold-boot messages quiet.'
+}

@@ -14,6 +14,9 @@ HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('iso_monitor', HERE / 'iso-monitor.py')
 monitor = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(monitor)
+spec = importlib.util.spec_from_file_location('iso_shot', HERE / 'iso-shot.py')
+shot = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(shot)
 
 
 # Exact QEMU hardware limitations and the first raw-greetd login before a
@@ -32,12 +35,23 @@ def journal_errors_ok(output):
                for line in output.splitlines())
 
 
+def valid_boot_frame(output, log):
+    try:
+        shot.frame_metrics(output)
+    except (OSError, ValueError) as error:
+        log.write(f'Invalid GRUB frame: {error}\n')
+        return False
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('fixture', nargs='?', default='erase-btrfs')
     parser.add_argument('--dir', default=os.environ.get('EMAKI_ISO_VM_DIR', str(Path.home() / 'VMs/iso-vm')))
     parser.add_argument('--ssh-port', type=int)
     parser.add_argument('--user', help='installed account (default: fixture user)')
+    parser.add_argument('--session', choices=('niri-session', 'niri-emaki-session'),
+                        default='niri-emaki-session', help='installed desktop session')
     args = parser.parse_args()
     if not re.fullmatch('[a-z0-9-]+', args.fixture):
         parser.error('invalid fixture name')
@@ -106,7 +120,7 @@ def main():
                 output = run / f'grub-{next_capture:02d}.png'
                 response = monitor.command(vm, f'screendump {json.dumps(str(output))} -f png')
                 log.write(response)
-                if output.is_file() and output.read_bytes().startswith(b'\x89PNG'):
+                if valid_boot_frame(output, log):
                     capture_ok = True
                 next_capture += 4
             time.sleep(.25)
@@ -139,13 +153,30 @@ def main():
 
     if check('installed-not-live', 'test ! -d /run/archiso/bootmnt && case $(systemd-detect-virt --vm) in qemu|kvm) ;; *) exit 1;; esac').returncode != 0:
         return 1
-    check('failed-units', 'systemctl --failed --no-legend --plain', predicate=lambda output: not output.strip())
-    check('journal-errors', 'journalctl -p err -b --no-pager -o cat', privileged=True,
-          predicate=journal_errors_ok)
+    defaults_script = (HERE / 'check-installed-defaults.py').read_bytes()
+
+    def defaults_check(name, privileged=False):
+        result = remote('python3 - ' + name, privileged=privileged, input_data=defaults_script)
+        (run / f'defaults-{name}.log').write_bytes(result.stdout + result.stderr)
+        status(result.returncode == 0, 'installed defaults: ' + name)
+
+    # Clear the timestamp and prove denial before any privileged acceptance command.
+    defaults_check('sudo-user')
+    defaults_check('sudo-files', privileged=True)
     version = (HERE.parent.parent / 'iso/VERSION').read_text().strip()
     check('emaki-package', 'LC_ALL=C pacman -Qi emaki',
           predicate=lambda output: bool(re.search(r'^Version\s*:\s*' + re.escape(version) + r'(?:-|\s)', output, re.M)))
     check('package-ownership', 'pacman -Qo /usr/bin/emaki /usr/share/emaki/shell/shell.qml', predicate=lambda output: len(output.strip().splitlines()) == 2)
+    # Compare the pristine installed image, including dependency-provided menu entries.
+    # Read its packaged filter; the checkout must not mask a stale image's defects.
+    profile = config.get('software', 'rich')
+    if profile not in ('minimal', 'rich'):
+        raise ValueError('Unknown application profile: ' + str(profile))
+    inventory = remote('python3 - --profile ' + profile
+                       + ' --catalog /usr/share/emaki/shell/AppCatalog.qml',
+                       input_data=(HERE.parent / 'check-launcher-inventory.py').read_bytes())
+    (run / 'launcher-inventory.log').write_bytes(inventory.stdout + inventory.stderr)
+    status(inventory.returncode == 0, 'launcher-inventory')
     check('network', 'LC_ALL=C nmcli -t general', predicate=lambda output: output.startswith('connected:'))
     check('emaki-repository', 'pacman-conf --repo emaki Server', predicate=lambda output: bool(output.strip()))
     check('package-update', 'pacman -Syu --noconfirm', privileged=True, timeout=1800)
@@ -154,7 +185,8 @@ def main():
           predicate=lambda output: output.startswith('../usr/lib/emaki/os-release\n')
           and bool(re.search(r'^PRETTY_NAME="Emaki"$', output, re.M))
           and bool(re.search(r'^ID=arch$', output, re.M)))
-    fs = check('root-filesystem', 'findmnt -n -o FSTYPE /').stdout.decode().strip()
+    fs = check('root-filesystem', 'findmnt -n -o FSTYPE /',
+               predicate=lambda output: output.strip() == config['fs']).stdout.decode().strip()
     if fs == 'btrfs':
         check('snapper', 'env LC_ALL=C snapper -c root list', privileged=True, predicate=lambda output: bool(re.search(r'^\s*[1-9][0-9]*\s*\|', output, re.M)))
         check('snapshot-grub', "grep -E 'snapshot|Snapshot' /boot/grub/grub-btrfs.cfg", privileged=True)
@@ -182,18 +214,29 @@ def main():
     if status(upload.returncode == 0, 'guest-login.py uploaded'):
         # sudo consumes its password line; the remaining bytes are the exact PAM
         # password expected by guest-login.py (no trailing newline).
-        login = remote(f'python3 /home/{user}/iso-guest-login.py {user} niri-emaki-session',
+        login = remote(f'python3 /home/{user}/iso-guest-login.py {user} {args.session}',
                        privileged=True, input_data=password.encode(), timeout=60)
         (run / 'login.log').write_bytes(login.stdout + login.stderr)
         status(login.returncode == 0, 'raw greetd login (does not test greeter UI)')
         ready = False
         for _ in range(30):
-            session = remote('XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus systemctl --user is-active niri-emaki.service emaki-shell.service')
+            unit = 'niri.service' if args.session == 'niri-session' else 'niri-emaki.service'
+            session = remote('XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus systemctl --user is-active ' + unit + ' emaki-shell.service')
             if session.returncode == 0:
                 ready = True
                 break
             time.sleep(1)
         status(ready, 'installed compositor and shell active')
+        # Query both managers after the session has started, when desktop
+        # services and their error messages can actually be observed.
+        check('failed-units', 'systemctl --failed --no-legend --plain',
+              predicate=lambda output: not output.strip())
+        check('failed-user-units', 'XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus systemctl --user --failed --no-legend --plain',
+              predicate=lambda output: not output.strip())
+        check('journal-errors', 'journalctl -p err -b --no-pager -o cat',
+              privileged=True, predicate=journal_errors_ok)
+        if ready and args.session == 'niri-session':
+            defaults_check('wallpaper')
         shot = subprocess.run([str(HERE / 'iso-shot.sh'), *common, '--fixture', str(fixture), str(run / 'desktop.png')], capture_output=True)
         (run / 'desktop-shot.log').write_bytes(shot.stdout + shot.stderr)
         picture(shot.returncode == 0, run / 'desktop.png', 'desktop', 'ring and shell')

@@ -27,6 +27,8 @@ one linear stack on top of tag `v26.04`.
 | `0004-crisp-xcursor-at-fractional-scale.patch` | `emaki-cursor-crisp` | `emaki-overview-backdrop` |
 | `0005-emaki-wallpaper.patch` | `emaki-wallpaper` | `emaki-cursor-crisp` |
 | `0006-exit-without-primary-renderer.patch` | `fix/exit` (only in the clone with the `fix/*` branches, see below) | `fix/wp` (in place of `emaki-wallpaper`) |
+| `0007-protect-session-pixels-while-locked.patch` | patch delivered in the distribution tree | `v26.04` with `0001`–`0006` applied |
+| `0008-account-for-static-blur-occlusion.patch` | patch delivered in the distribution tree | `v26.04` with `0001`–`0007` applied |
 
 Check that the stack is linear (in the niri fork clone):
 
@@ -97,10 +99,10 @@ described above, keep its header, and pass the `diff -r` stack check.
 
 ### Rebase checklist
 
-1. Move the six branches onto the new upstream tag, keeping the table order.
+1. Move the existing branches and patches `0007` and `0008` onto the new upstream tag, keeping the table order.
    No command for this step is recorded (see above) **(not run)**.
 2. Go through the silent-break places below for every patch.
-3. Regenerate the six patch files so that they match the branch diffs above
+3. Regenerate the eight patch files so that they match the branch diffs above
    (`0006` from the `fix/wp`, `fix/exit` pair), keep each header with its UTC
    `Date:` line, and re-run the stack check with the new tag in place of `v26.04`.
 4. Update `pkgver`, `pkgrel`, the stock `niri=` dependency and the
@@ -368,6 +370,38 @@ alive after the loop is dropped. The second is tested by
 (headless backend); at each rebase or smithay update, re-read the first and
 the closures that `Tty` inserts into the loop.
 
+#### Locked-session capture isolation (patch 0007)
+
+Both window-cast paths must protect the session: output redraw calls
+`Niri::render_windows_for_screen_cast`, and PipeWire requests also call
+`State::redraw_cast` directly. Each must blank the buffer before reading the
+window, its dimensions or cursor. Keep cursor metadata clearing and damage-tracker
+reset in `Cast::dequeue_buffer_and_clear`; verify streams resume after unlock.
+
+Output casts render the pointer separately, then use central composition, as do
+both wlr-screencopy paths, output screenshots and GNOME portal screenshots.
+`render_inner` must return lock elements before any session overlay or transition.
+`render_pointer` must exclude session drag icons and non-lock-client surface cursors.
+Window screenshots bypass central composition and need their own lock check.
+`is_locked()` must cover `Locking` as well as `Locked`; review any state-machine change.
+The existing unconfirmed surface wait and already captured/queued pixels are outside
+this rendering boundary. Screenshot-worker and GPU-fence completion can happen later.
+
+The current version has no ext-image-copy-capture or export-dmabuf implementation.
+Any new capture protocol or direct window render path needs another lock audit, as
+well as the client filtering audit for patch `0001`. Run the delivery guard and then
+the source guard against the fully patched tree:
+
+```sh
+make check-assumptions
+NIRI_SOURCE_DIR=/absolute/patched-niri-source make check-assumptions
+LIBGL_ALWAYS_SOFTWARE=1 cargo test --frozen --release --lib lock_capture
+```
+
+The source guard detects changes to audited entry points; it is not pixel or protocol
+proof. Follow `tests/vm/README.md` for window/output portal streams, screenshots,
+cursor metadata and unlock recovery before accepting the package.
+
 ## quickshell-emaki
 
 Two patches on Quickshell `v0.3.1`, applied by `prepare()` in this order:
@@ -444,9 +478,11 @@ git grep -n 'emit frontend->connectionFailed' emaki-network-attempt -- src/netwo
 
 ### Qt 6.12 candidate (2026-10-05)
 
-The active recipe remains `0.3.1-2`, fenced to Qt `>=6.11`, `<6.12`.
-`quickshell-emaki/qt-6.12/` holds a dormant `0.3.1-3` recipe with `>=6.12`,
-`<6.13` fences for base, declarative and wayland, plus patch `0003`. The build
+The active recipe is `0.3.1-5`, fenced to Qt `>=6.11.2`, `<6.12`.
+`quickshell-emaki/qt-6.12/` holds a dormant recipe with `>=6.12.0`,
+`<6.13` fences for base and declarative, plus patch `0003`. Its placeholder
+`pkgrel=1` is replaced with the next active release number during activation;
+patch rebuilds never reserve a future minor's release number. The build
 and watch discover only active `packaging/*/PKGBUILD` files. The candidate is
 an activation overlay, not a standalone makepkg directory: it reuses patches
 `0001` and `0002` after being copied beside them. Do not activate it on the
@@ -503,8 +539,9 @@ git add packaging/quickshell-emaki/PKGBUILD packaging/quickshell-emaki/0003-qt-6
 git commit -m 'Build Quickshell against Qt 6.12'
 ```
 
-The helper copies the candidate recipe and patch 0003 and changes the `emaki`
-marker pin to `quickshell-emaki=0.3.1-3`. The packaging tests exercise activation
+The helper copies the candidate recipe and patch 0003, increments the active
+`pkgrel`, and changes the `emaki` marker pin to that version. Repeated activation
+is idempotent. The packaging tests exercise activation
 in a temporary tree as well as checking the current active recipe. Have the
 activation commit reviewed and made available through the normal release
 process before any VM build. Record its full commit hash as `REVIEWED_COMMIT`.
@@ -541,3 +578,30 @@ performed here cannot establish those results. Follow “A fenced dependency
 moved” in `docs/updates-runbook.md` for switch-day testing publication,
 acceptance, and stable promotion. No package build or publication was performed
 as part of this preparation.
+
+
+## Executable source review gates (2026-10-06)
+
+Package preparation runs `niri-emaki/check-assumptions.py` after every patch and before
+fetching build dependencies. It rejects source changes affecting own-layer capture (464),
+wallpaper camera/layout (465), action classification (753), cursor output scales (754),
+new cursor render files, and introduction of the image-copy capture protocol.
+Run `python3 tests/test-fork-assumptions.py` for mutation coverage.
+
+The full-file fingerprints intentionally also reject benign edits. On a rebase, follow
+“Silent-break places” above, classify new actions/render paths and layout mutations, extend
+or run the corresponding source tests, then update fingerprints and package checksums in
+the same reviewed change. Do not automatically regenerate fingerprints to make a build
+pass. This gate records review boundaries; it does not prove output pixels or replace
+fractional-scale, wallpaper navigation and capture checks in a running session.
+
+### Static blur and wallpaper visibility (2026-10-07)
+
+Patch `0008` fills in xray effect opaque regions when the postprocess shader mixes
+an opaque workspace background. Preserve effect subregions, cropped geometry and
+rounded corners. The wallpaper scheduler consumes these regions from the rendered
+output list: default xray blur hides trains, while plain translucent surfaces and
+`xray false` framebuffer blur show them. Run the `emaki_wallpaper_` source tests;
+the compositor regression compares pixels and visible train counts for each path.
+The guard fingerprints `xray.rs` and `postprocess.frag` alongside the compositor source. Revisit both
+when changing the xray shader's alpha composition or static wallpaper input.

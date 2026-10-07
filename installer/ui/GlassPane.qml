@@ -7,10 +7,12 @@ Item {
     // The floating surface uses wallpaper glass; it never captures its own window.
     // The same published wallpaper helper as the shell supplies this texture.
     property string wallpaperTexture: ""
+    // Match tokens.toml and niri's window geometry clip for this floating window.
+    readonly property real cornerRadius: 16
     readonly property bool software: GraphicsInfo.api === GraphicsInfo.Software
     Rectangle {
         anchors.fill: parent
-        radius: 26
+        radius: root.cornerRadius
         color: Shell.LiquidPalette.flatPanel
     }
     Loader {
@@ -42,7 +44,7 @@ Item {
                     visible: wallpaperBackdrop.ready
                     backdrop: wallpaperBackdrop
                     plate: Qt.rect(0, 0, gpu.width, gpu.height)
-                    uRadius: 26
+                    uRadius: root.cornerRadius
                     uCover: wallpaperBackdrop.coverFor(Qt.point(0, 0))
                     uIcons: empty
                     uHasIcons: 0

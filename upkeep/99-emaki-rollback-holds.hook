@@ -1,0 +1,12 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = emaki-config
+
+[Action]
+Description = Restore packaged rollback protection (pacman)
+When = PostTransaction
+Exec = /usr/share/libalpm/scripts/emaki-rollback-holds takeover

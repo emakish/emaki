@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Session/user memory, path boundaries and the real Quickshell helper protocol."""
+from runtime_fixture import runtime_path
 import importlib.util
 import json
 import os
@@ -51,6 +52,16 @@ class StateTests(unittest.TestCase):
     def tearDown(self):
         self.work.cleanup()
 
+    def test_stock_session_override_is_hidden_without_replacing_system_entry(self):
+        import configparser
+        entry = configparser.ConfigParser()
+        entry.read(ROOT / 'greetd/data/wayland-sessions/niri.desktop')
+        desktop = entry['Desktop Entry']
+        self.assertEqual(desktop['Name'], 'Niri')
+        self.assertTrue(desktop.getboolean('Hidden'))
+        # The primary greeter's automatic stock-session recovery stays usable.
+        self.assertIn('niri.desktop', helper.session_catalog(self.paths))
+
     def test_greeter_command_keeps_original_console_silent(self):
         binary = self.base / 'bin'
         binary.mkdir()
@@ -66,6 +77,7 @@ class StateTests(unittest.TestCase):
             executable = binary / name
             executable.write_text('#!/usr/bin/python3\nimport os,sys\nfrom pathlib import Path\n'
                                   'name=Path(sys.argv[0]).name\n'
+                                  'if name=="regreet": assert os.environ["XDG_DATA_DIRS"].split(":")[0]=="/usr/share/emaki/greetd/data"\n'
                                   'with open(os.environ["FIXTURE_COMMANDS"],"a") as f: f.write(name+"\\n")\n'
                                   'print(name+"-output"); print(name+"-error",file=sys.stderr)\n'
                                   'if name=="qs" and os.environ.get("FIXTURE_ACCEPTED")=="1":\n'
@@ -462,7 +474,7 @@ if __name__ == '__main__':
         shutil.copy(ROOT / 'tests/fixtures/GreeterStateTest.qml', base / 'qml/check.qml')
         target = base / 'qml/helpers/greeter-state.py'
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
-                   QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(base / 'r'),
+                   QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(runtime_path(base)),
                    XDG_CACHE_HOME=str(base / 'cache'), XDG_CONFIG_HOME=str(base / 'config'),
                    XDG_STATE_HOME=str(base / 'state'), XDG_DATA_HOME=str(base / 'data'),
                    TMPDIR=str(base / 'tmp'), PYTHONDONTWRITEBYTECODE='1',

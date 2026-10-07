@@ -71,7 +71,8 @@ time.sleep(120)
     cliphist = folder / 'cliphist'
     cliphist.write_text('#!/bin/sh\nprintf "fixture clipboard"\n'); cliphist.chmod(0o700)
     env.update(EMAKI_WL_COPY=str(copy), EMAKI_CLIPHIST=str(cliphist))
-    (folder / 'cache/cliphist/db').touch()
+    env['XDG_RUNTIME_DIR'] = str(folder)
+    (folder / 'emaki-cliphist.db').touch()
     file = folder / 'file.txt'; file.write_text('fixture')
     requests = [
         ('terminal', 'launcher-tools.py', [], dict(op='terminal', id='org.emaki.Scope.terminal', terminal=str(terminal))),

@@ -12,6 +12,7 @@ ShellRoot {
     property string screenName: Quickshell.env("EMAKI_INSTALLER_SCREEN") || "welcome"
     property bool prepared: false
     property bool captured: false
+    property bool warningScrolled: false
     property string screenshot: Quickshell.env("EMAKI_INSTALLER_SCREENSHOT")
     function findItem(item: Item, name: string): Item {
         if (item.objectName === name)
@@ -49,16 +50,62 @@ ShellRoot {
         }
         return true;
     }
+    function contentEvidence(frame: string) {
+        const texts = [];
+        function visit(item, inBody) {
+            if (!item.visible || item.opacity <= 0)
+                return;
+            inBody = inBody || item.objectName === "installerBody";
+            if (item instanceof Text && item.text.length && item.width > 0 && item.height > 0) {
+                const area = item.mapToItem(content, 0, 0, item.width, item.height);
+                let left = 0, top = 0, right = content.width, bottom = content.height;
+                for (let parent = item.parent; parent; parent = parent.parent) {
+                    if (parent.clip) {
+                        const clip = parent.mapToItem(content, 0, 0, parent.width, parent.height);
+                        left = Math.max(left, clip.x);
+                        top = Math.max(top, clip.y);
+                        right = Math.min(right, clip.x + clip.width);
+                        bottom = Math.min(bottom, clip.y + clip.height);
+                    }
+                }
+                if (area.x < right && area.x + area.width > left && area.y < bottom && area.y + area.height > top)
+                    texts.push({
+                        text: item.text,
+                        x: area.x,
+                        y: area.y,
+                        width: area.width,
+                        height: area.height,
+                        body: inBody,
+                        clipped: area.x < left - 1 || area.y < top - 1 || area.x + area.width > right + 1 || area.y + area.height > bottom + 1,
+                        truncated: item.truncated
+                    });
+            }
+            for (const child of item.children)
+                visit(child, inBody);
+        }
+        visit(content, false);
+        const footer = findItem(content, "installerFooter");
+        console.log("CONTENT_FRAME " + frame + " " + JSON.stringify({
+            width: content.width,
+            height: content.height,
+            footerY: footer.mapToItem(content, 0, 0).y,
+            texts: texts
+        }));
+    }
     // The hibernation screens get a second frame scrolled to the hibernation checkbox, which follows the mode choices.
     readonly property string modeTarget: ({
             "disk-hibernation": "hibernationCheck",
             "manual-hibernation": "hibernationCheck",
             "alongside-hibernation": "hibernationCheck"
         })[screenName] || ""
+    readonly property string warningTarget: screenName.endsWith("-caps") ? (screenName.startsWith("you-") ? "capsLock" : "diskCapsLock") : screenName.endsWith("-numlock") ? (screenName.startsWith("you-") ? "numLock" : "diskNumLock") : ""
     function scrollToMode(): bool {
+        return scrollToTarget(modeTarget);
+    }
+    function scrollToTarget(name: string): bool {
         const body = findItem(content, "installerBody") as C.ScrollView;
         const flick = body.contentItem as Flickable;
-        const choice = findItem(content, modeTarget);
+        const choice = findItem(content, name);
         if (!flick || !choice || !choice.visible)
             return false;
         const top = choice.mapToItem(flick.contentItem, 0, 0).y;
@@ -66,7 +113,7 @@ ShellRoot {
         const area = choice.mapToItem(body, 0, 0, choice.width, choice.height);
         if (area.y < 0 || area.y + area.height > body.height + 0.5)
             return false;
-        console.log("TARGET_VISIBLE " + modeTarget);
+        console.log("TARGET_VISIBLE " + name);
         return true;
     }
     UI.InstallerController {
@@ -166,7 +213,7 @@ ShellRoot {
                     controller.login = "demo";
                     controller.layouts = ["us", "ru"];
                     controller.media = ["/run/media/live/LOGS"];
-                    if (["review", "alongside-review", "review-encrypted", "plan-errors", "install", "install-signatures", "install-updates", "done", "done-warning", "done-no-package-lists", "error", "error-details", "error-real"].indexOf(test.screenName) >= 0) {
+                    if (["review", "alongside-review", "review-encrypted", "plan-errors", "install", "install-signatures", "install-updates", "install-step", "done", "done-warning", "done-no-package-lists", "done-wifi-not-copied", "error-login-name", "error", "error-details", "error-real"].indexOf(test.screenName) >= 0) {
                         if (test.screenName === "review-encrypted") {
                             controller.encryption = "encrypted";
                             controller.hibernation = true;
@@ -288,7 +335,7 @@ ShellRoot {
                         shot.restart();
                     }
                 } else if (message.type === "plan_ack") {
-                    if (["install", "install-signatures", "install-updates", "done", "done-warning", "done-no-package-lists", "error", "error-details", "error-real"].indexOf(test.screenName) >= 0) {
+                    if (["install", "install-signatures", "install-updates", "install-step", "done", "done-warning", "done-no-package-lists", "done-wifi-not-copied", "error-login-name", "error", "error-details", "error-real"].indexOf(test.screenName) >= 0) {
                         controller.agreed = true;
                         controller.confirm();
                     } else
@@ -323,6 +370,18 @@ ShellRoot {
             }
             if (test.screenName === "live-keyboard-second" && controller.keyboardMessage === "") {
                 controller.niri.current = 1;
+                shot.restart();
+                return;
+            }
+            // Warning frames exercise the scrolled page, independently of focus scrolling.
+            if (test.warningTarget !== "" && !test.warningScrolled) {
+                if (!test.scrollToTarget(test.warningTarget)) {
+                    console.error("Warning cannot be scrolled into view");
+                    Qt.quit();
+                    return;
+                }
+                test.warningScrolled = true;
+                console.log("SCROLLED_WARNING " + test.warningTarget);
                 shot.restart();
                 return;
             }
@@ -381,6 +440,27 @@ ShellRoot {
                     return;
                 }
                 console.log("PHASE_STATUS " + status.text);
+            }
+            if (test.screenName === "install-step") {
+                const step = test.findItem(content, "installStep") as Text;
+                const body = test.findItem(content, "installerBody");
+                let bar = null;
+                if (step) {
+                    for (const child of step.parent.children) {
+                        if (child instanceof C.ProgressBar)
+                            bar = child;
+                    }
+                }
+                const caption = step ? step.mapToItem(body, 0, 0, step.width, step.height) : null;
+                const progress = bar ? bar.mapToItem(body, 0, 0, bar.width, bar.height) : null;
+                if (!caption || !progress || !step.visible || !bar.visible || (step.implicitWidth > step.width && step.lineCount < 2) || step.height < step.contentHeight || caption.y < progress.y + progress.height || caption.y + caption.height > body.height || progress.y < 0 || progress.width <= 0 || bar.value !== 55) {
+                    console.error("Running step or progress bar is missing, clipped, or unwrapped");
+                    Qt.quit();
+                    return;
+                }
+                console.log("INSTALL_STEP_VISIBLE " + step.text);
+                console.log("STEP_WRAPPED " + step.lineCount);
+                console.log("PROGRESS_BAR_VISIBLE " + bar.value);
             }
             if (test.noWorker) {
                 const notice = test.findItem(content, "installerNotice") as Text;
@@ -444,6 +524,27 @@ ShellRoot {
                 }
                 console.log("DONE_WARNING_VISIBLE");
             }
+            if (test.screenName === "done-wifi-not-copied" || test.screenName === "error-login-name") {
+                const wifi = test.screenName === "done-wifi-not-copied";
+                const sentence = test.findItem(content, wifi ? "doneWarnings" : "errorSentence") as Text;
+                const expected = wifi ? "Wi-Fi was not copied; join it again after restarting." : "This login name belongs to the system. Choose another name; the disk has not been changed.";
+                const body = test.findItem(content, "installerBody");
+                const area = sentence ? sentence.mapToItem(body, 0, 0, sentence.width, sentence.height) : null;
+                if (!area || !sentence.visible || sentence.text.indexOf(expected) < 0 || sentence.truncated || area.x < 0 || area.x + area.width > body.width + 0.5 || area.y < 0 || area.y + area.height > body.height + 0.5) {
+                    console.error("Repair instruction not visible: " + (sentence ? sentence.text : "missing"));
+                    Qt.quit();
+                    return;
+                }
+                if (!wifi) {
+                    const action = test.findItem(content, "errorAction") as Text;
+                    if (action && action.visible && action.text.indexOf("Save the log") >= 0) {
+                        console.error("Login refusal asks to save the log");
+                        Qt.quit();
+                        return;
+                    }
+                }
+                console.log((wifi ? "DONE_WIFI_VISIBLE " : "LOGIN_REFUSAL_VISIBLE ") + expected);
+            }
             if (test.screenName === "you-empty") {
                 // The login rule starts right under the login field, at its left edge, no wider.
                 const field = test.findItem(content, "loginField");
@@ -477,6 +578,7 @@ ShellRoot {
                 }
                 console.log("CONSOLE_WARNING " + warning.text);
             }
+            test.contentEvidence(test.screenName);
             content.grabToImage(function (result) {
                 if (!result.saveToFile(test.screenshot)) {
                     console.error("Screenshot failed");
@@ -498,15 +600,18 @@ ShellRoot {
     Timer {
         id: modeShot
         interval: 150
-        onTriggered: content.grabToImage(function (result) {
-            if (!result.saveToFile(test.screenshot.replace(/\.png$/, "-mode.png"))) {
-                console.error("Screenshot failed");
+        onTriggered: {
+            test.contentEvidence(test.screenName + "-mode");
+            content.grabToImage(function (result) {
+                if (!result.saveToFile(test.screenshot.replace(/\.png$/, "-mode.png"))) {
+                    console.error("Screenshot failed");
+                    Qt.quit();
+                    return;
+                }
+                console.log("SCREENSHOT_OK " + test.screenName + "-mode");
                 Qt.quit();
-                return;
-            }
-            console.log("SCREENSHOT_OK " + test.screenName + "-mode");
-            Qt.quit();
-        })
+            });
+        }
     }
     Timer {
         interval: 10000

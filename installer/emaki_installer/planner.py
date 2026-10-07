@@ -11,6 +11,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from .constants import BTRFS_OPTIONS, GIB, MIB, MIN_DISK, SUBVOLUMES
 from . import inventory as alongside
 from .errors import Code, require
+from .graphics import planned_packages
+from .hardware import SECURE_BOOT_MESSAGE, SECURE_BOOT_UNKNOWN
 from .latin_layouts import CONSOLE_CHARS, is_latin
 from .render import keyboard_summary, unlock_layout
 
@@ -52,6 +54,7 @@ class Plan:
     warnings: list[dict]
     fingerprint: str
     swap_bytes: int = 0
+    graphics_packages: tuple = ()
 
     @property
     def encrypted(self):
@@ -161,8 +164,11 @@ def validate_config(value):
     require(isinstance(value, dict), Code.BAD_CONFIG, 'Config must be an object.')
     c = copy.deepcopy(value)
     allowed = {'mode', 'disk_id', 'partition_id', 'fs', 'mounts', 'shrink_bytes', 'hostname', 'timezone',
-               'layouts', 'user', 'repo_server', 'online_update', 'scale_guess', 'software',
-               'encryption', 'disk_password', 'hibernation', 'confirmed_encrypted'}
+               'layouts', 'user', 'repo_server', 'online_update', 'scale_guess', 'output_scales', 'software',
+               'encryption', 'disk_password', 'hibernation', 'confirmed_encrypted', 'wifi_uuid'}
+    require(c.get('wifi_uuid') is None or (isinstance(c['wifi_uuid'], str) and re.fullmatch(
+        r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', c['wifi_uuid'])),
+        Code.BAD_CONFIG, 'Invalid Wi-Fi connection ID.')
     require(not (set(c) - allowed), Code.BAD_CONFIG, 'Unknown config fields.')
     require(c.get('mode') in ('erase', 'manual', 'alongside'), Code.BAD_CONFIG, 'Invalid mode.')
     if c['mode'] == 'alongside':
@@ -260,6 +266,15 @@ def validate_config(value):
     scale = c.get('scale_guess')
     require(scale is None or (type(scale) in (int, float) and 0.5 <= scale <= 4),
             Code.BAD_CONFIG, 'Scale must be null or a number from 0.5 to 4.')
+    scales = c.get('output_scales', {})
+    require(isinstance(scales, dict) and len(scales) <= 64, Code.BAD_CONFIG,
+            'Display scales must be an object with at most 64 outputs.')
+    for output, scale in scales.items():
+        require(isinstance(output, str) and 1 <= len(output) <= 256
+                and not any(ord(ch) < 32 for ch in output), Code.BAD_CONFIG,
+                'Invalid display output name.')
+        require(type(scale) in (int, float) and 0.5 <= scale <= 4, Code.BAD_CONFIG,
+                'Display scale must be a number from 0.5 to 4.')
     return c
 
 
@@ -270,7 +285,7 @@ def validate_disk(disk, inventory):
             'Cannot identify the live boot medium; installation is refused.')
     require(not disk['is_boot_medium'], Code.BOOT_MEDIUM, 'The live boot medium cannot be a target.')
     require(not disk.get('_busy', True) and not any(p.get('mountpoint') for p in disk['partitions']),
-            Code.DISK_BUSY, disk.get('reason') or 'The target or one of its partitions is mounted, held, or in use.')
+            Code.DISK_BUSY, disk.get('reason') or disk.get('_busy_reason') or 'The disk is busy. Close its files and unmount its volumes [umount], then try again.')
     require(not disk.get('_read_only', True), Code.UNSAFE_DISK, 'The target is read-only.')
     require(disk['size_bytes'] >= MIN_DISK, Code.DISK_TOO_SMALL, 'The disk must be at least 24 GiB.')
     require(disk.get('_sector_size') in (512, 4096), Code.UNSAFE_DISK, 'Unsupported sector geometry.')
@@ -474,8 +489,12 @@ def validate_encrypted_confirmation(config, disk):
 
 def make_plan(config, inventory):
     c = validate_config(config)
+    graphics_packages = planned_packages(inventory)
+    hardware = inventory.get("hardware", {})
+    if "secure_boot" in hardware and hardware["secure_boot"] is not False:
+        require(False, Code.SECURE_BOOT, SECURE_BOOT_MESSAGE if hardware["secure_boot"] else SECURE_BOOT_UNKNOWN)
     disk = next((d for d in inventory['disks'] if d['id'] == c['disk_id']), None)
-    require(disk is not None, Code.DISK_NOT_FOUND, 'Selected disk no longer exists.')
+    require(disk is not None, Code.DISK_NOT_FOUND, inventory.get('hardware', {}).get('disk_notice') or 'Selected disk no longer exists.')
     validate_disk(disk, inventory)
     validate_encrypted_confirmation(c, disk)
     if c['mode'] == 'alongside':
@@ -505,10 +524,19 @@ def make_plan(config, inventory):
                      if swap_bytes else 'Hibernation: off.'),
                     f"Account: {c['user']['login']}; hostname: {c['hostname']}; timezone: {c['timezone']}.",
                     keyboard_summary(c['layouts'], xkb_rules()),
+                    'Update Emaki at the end: ' + ('when connected.' if c['online_update'] else 'off.'),
                     'Software: ' + ('Rich — desktop apps, office, email, media and utilities.'
                                    if c['software'] == 'rich' else 'Minimal — Dolphin, Firefox and kitty.'),
-                    'Packages are installed from the signed offline USB repository.'])
+                    ('Packages are downloaded and verified before disk changes.' if hardware.get('media_notice')
+                     else 'Packages are installed from the signed offline USB repository.')])
+    if graphics_packages:
+        summary.append("Graphics driver packages (Nvidia): " + ", ".join(graphics_packages) + ".")
     warnings = []
+    if hardware.get("media_notice"):
+        warnings.append({"code": "live_media", "msg": hardware["media_notice"]})
+    if disk.get("_vmd"):
+        warnings.append({"code": "vmd", "msg":
+                         "The installed system will include the Intel storage driver (vmd) so this disk can start."})
     if swap_bytes and c['encryption'] == 'none':
         warnings.append({'code': 'unencrypted_memory', 'msg':
                          'Hibernation writes memory, including passwords, to the disk unencrypted.'})
@@ -520,7 +548,7 @@ def make_plan(config, inventory):
     if disk.get('_id_fallback'):
         warnings.append({'code': 'unstable_id', 'msg': 'No by-id name is available; device identity and geometry will be rechecked.'})
     return Plan(c, copy.deepcopy(disk), parts, summary, warnings,
-                alongside_fingerprint(disk) if c['mode'] == 'alongside' else fingerprint(disk), swap_bytes)
+                alongside_fingerprint(disk) if c['mode'] == 'alongside' else fingerprint(disk), swap_bytes, graphics_packages)
 
 
 def storage_layout(config, parts, inventory):

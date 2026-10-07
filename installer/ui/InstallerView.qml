@@ -10,6 +10,7 @@ import "Timezones.js" as Timezones
 Item {
     id: view
     required property InstallerController controller
+    property bool inlineNetworkJoinMessage: false
     signal hideRequested
     signal requestPlan
     readonly property color ink: Shell.LiquidPalette.inkOnLight
@@ -55,6 +56,9 @@ Item {
         return mountpoint === "/efi" ? ["vfat"] : ["btrfs", "ext4"];
     }
     // Shown on the welcome page and on the Disk step: one sentence for both.
+    readonly property var hardware: controller.session.inventory?.hardware || ({})
+    readonly property bool secureBootRefused: hardware.secure_boot === true || hardware.secure_boot === null
+    readonly property string secureBootRefusal: hardware.secure_boot === null ? "The firmware signature setting could not be read (Secure Boot). Restart into your firmware settings, turn Secure Boot off, then start the USB again." : "Emaki cannot start with firmware signature checking enabled (Secure Boot). Restart into your firmware settings, turn Secure Boot off, then start the USB again."
     readonly property bool uefiRefused: !!controller.session.inventory && !controller.session.inventory.uefi
     readonly property string uefiRefusal: controller.session.inventory?.uefi_bits === 32 ? "64-bit UEFI is required." : "Emaki installs only on computers with UEFI. If the boot menu offers a UEFI entry for the USB stick, choose it; otherwise this computer is not supported."
     function capture(path: string): void {
@@ -71,7 +75,7 @@ Item {
         if (c.locked)
             return "";
         if (c.step === "timezone")
-            return c.applyingTimezone ? "Setting the live clock…" : c.timezoneInfo?.timezone === c.timezone ? "" : c.timezoneMessage;
+            return !c.timezoneChosen ? "Choose your time zone or select Use UTC." : c.applyingTimezone ? "Setting the live clock…" : c.timezoneInfo?.timezone === c.timezone ? "" : c.timezoneMessage;
         if (c.step === "encryption") {
             if (c.encryptionReady)
                 return "";
@@ -207,6 +211,8 @@ Item {
         // A Wi-Fi password is used now: any layout the person picks types it.
         property bool checksLayout: true
         readonly property bool eyeFocused: eye.activeFocus
+        property alias eyeButton: eye
+        property Item nextEye: null
         // The text before the edit being reported: textEdited comes before textChanged (Qt 6.11).
         property string shownText: ""
         echoMode: revealed ? TextInput.Normal : TextInput.Password
@@ -221,22 +227,37 @@ Item {
         // Pasted text was never typed with the login screen's keys, so a field that checks the
         // layout takes none: no context menu, no paste or undo keys (Ctrl+V, Shift+Insert, Ctrl+Z
         // can bring back emptied text), no middle-click paste of the primary selection (below).
+        // Wi-Fi allows paste, but its menu must not offer Copy or Cut.
         // ContextMenu.menu is a deferred property: reading it first runs the style's assignment
         // (TextEditingContextMenu), which would otherwise replace a null set before it.
-        Component.onCompleted: if (checksLayout && C.ContextMenu.menu)
-            C.ContextMenu.menu = null
+        Component.onCompleted: {
+            const defaultMenu = C.ContextMenu.menu;
+            C.ContextMenu.menu = checksLayout ? null : pasteMenu;
+        }
+        C.Menu {
+            id: pasteMenu
+            C.Action {
+                text: "Paste"
+                enabled: secretField.canPaste
+                onTriggered: secretField.paste()
+            }
+        }
         // A shown password is plain text to Qt: Copy and Cut keys put it on the clipboard, which the
         // session's history keeps, and a left release after a mouse selection publishes it as the
         // primary selection. These fields copy and cut nothing, shown or not, and a shown one
         // cannot be selected with the mouse.
-        selectByMouse: !(checksLayout && revealed)
+        selectByMouse: !revealed
         Keys.onPressed: event => {
+            if (event.matches(StandardKey.Copy) || event.matches(StandardKey.Cut)) {
+                event.accepted = true;
+                return;
+            }
             if (!secretField.checksLayout)
                 return;
             if (event.matches(StandardKey.Paste)) {
                 event.accepted = true;
                 view.controller.secretPasted(false);
-            } else if (event.matches(StandardKey.Undo) || event.matches(StandardKey.Redo) || event.matches(StandardKey.Copy) || event.matches(StandardKey.Cut))
+            } else if (event.matches(StandardKey.Undo) || event.matches(StandardKey.Redo))
                 event.accepted = true;
             else if (secretField.keypadDigit(event))
                 event.accepted = true;
@@ -316,6 +337,7 @@ Item {
         }
         C.AbstractButton {
             id: eye
+            KeyNavigation.tab: secretField.nextEye
             objectName: secretField.objectName + "Toggle"
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
@@ -397,7 +419,8 @@ Item {
         id: choice
         property string detail: ""
         property bool chosen: false
-        implicitHeight: Math.max(84, words.implicitHeight + 32)
+        property bool compact: false
+        implicitHeight: Math.max(compact ? 64 : 84, words.implicitHeight + (compact ? 16 : 32))
         opacity: enabled ? 1 : .42
         hoverEnabled: true
         onVisibleChanged: if (!visible)
@@ -466,6 +489,25 @@ Item {
         }
     }
 
+    C.Popup {
+        id: removeUsb
+        objectName: "removeUsbPrompt"
+        parent: C.Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(560, view.width - 48)
+        modal: true
+        focus: true
+        closePolicy: C.Popup.NoAutoClose
+        visible: view.controller.removeUsbPrompt
+        padding: 28
+        contentItem: Copy {
+            objectName: "removeUsbMessage"
+            text: view.controller.session.rebootMessage || "Remove the USB stick, then press Enter to restart."
+            focus: true
+            Keys.onReturnPressed: view.controller.reboot()
+            Keys.onEnterPressed: view.controller.reboot()
+        }
+    }
     GlassPane {
         anchors.fill: parent
         wallpaperTexture: view.wallpaperTexture
@@ -483,9 +525,10 @@ Item {
     }
     RowLayout {
         anchors.fill: parent
-        anchors.margins: 28
+        anchors.margins: view.height < 600 ? 18 : 28
         spacing: 30
         ColumnLayout {
+            visible: view.height >= 600
             Layout.preferredWidth: 192
             Layout.fillHeight: true
             spacing: 4
@@ -546,6 +589,7 @@ Item {
             }
         }
         Rectangle {
+            visible: view.height >= 600
             Layout.fillHeight: true
             implicitWidth: 1
             color: "#20241018"
@@ -614,7 +658,15 @@ Item {
                     flick.contentY = Math.max(0, Math.min(offset, flick.contentHeight - flick.height));
                 }
                 function revealFocus(): void {
-                    revealItem(view.Window.window?.activeFocusItem);
+                    let item = view.Window.window?.activeFocusItem;
+                    // Focus restored after a scan must keep the join result beside its controls.
+                    for (let ancestor = item; ancestor && ancestor !== page; ancestor = ancestor.parent) {
+                        if (ancestor.objectName === "wifiJoinForm") {
+                            item = ancestor;
+                            break;
+                        }
+                    }
+                    revealItem(item);
                 }
                 Connections {
                     target: view.Window.window
@@ -656,7 +708,7 @@ Item {
             }
             Hint {
                 Layout.fillWidth: true
-                visible: view.controller.helperMessage !== ""
+                visible: view.controller.helperMessage !== "" && !(view.inlineNetworkJoinMessage && view.controller.helperMessage === view.controller.joinMessage)
                 text: view.controller.helperMessage
                 color: view.controller.helperFailed ? view.danger : view.dim
             }
@@ -710,7 +762,7 @@ Item {
                     visible: ["keyboard", "network", "timezone", "disk", "filesystem", "encryption"].indexOf(view.controller.step) >= 0
                     text: view.controller.partitioning ? "GParted is open…" : "Continue"
                     primary: true
-                    enabled: !view.controller.locked && (view.controller.step !== "encryption" || (view.controller.encryptionReady && view.controller.secretsChecked)) && (view.controller.step !== "timezone" || (view.controller.timezoneInfo?.timezone === view.controller.timezone && !view.controller.applyingTimezone)) && (view.controller.step !== "disk" || (view.controller.session.inventory?.uefi && !!view.controller.selectedDisk && view.controller.encryptedConfirmed && !view.diskReason(view.controller.selectedDisk) && (view.controller.mode !== "alongside" || view.controller.alongsideSizeValid) && (view.controller.mode !== "manual" || (!Protocol.manualReason(view.controller.selectedDisk) && (!view.controller.manualAssignments || view.controller.manualReady)))))
+                    enabled: !view.controller.locked && (view.controller.step !== "encryption" || (view.controller.encryptionReady && view.controller.secretsChecked)) && (view.controller.step !== "timezone" || (view.controller.timezoneChosen && view.controller.timezoneInfo?.timezone === view.controller.timezone && !view.controller.applyingTimezone)) && (view.controller.step !== "disk" || (!view.secureBootRefused && view.controller.session.inventory?.uefi && !!view.controller.selectedDisk && view.controller.encryptedConfirmed && !view.diskReason(view.controller.selectedDisk) && (view.controller.mode !== "alongside" || view.controller.alongsideSizeValid) && (view.controller.mode !== "manual" || (!Protocol.manualReason(view.controller.selectedDisk) && (!view.controller.manualAssignments || view.controller.manualReady)))))
                     onClicked: view.controller.next()
                 }
                 Action {
@@ -735,8 +787,15 @@ Item {
                     text: view.controller.mode === "erase" ? "Erase disk and install" : "Install"
                     destructive: view.controller.needsAgreement
                     primary: true
-                    enabled: view.controller.session.ready && !view.controller.locked && view.controller.encryptedConfirmed && !!view.controller.session.plan?.token && (!view.controller.needsAgreement || view.controller.agreed)
+                    enabled: view.controller.session.ready && !view.controller.locked && !Object.values(view.controller.session.pending).includes("renew") && view.controller.encryptedConfirmed && !!view.controller.session.plan?.token && (!view.controller.needsAgreement || view.controller.agreed)
                     onClicked: view.controller.confirm()
+                }
+                Action {
+                    objectName: "skipUpdate"
+                    visible: view.controller.step === "install" && view.controller.session.phase === "update" && view.controller.session.activity?.name === "downloads"
+                    text: "Skip the update"
+                    enabled: view.controller.session.ready && !Object.values(view.controller.session.pending).includes("skip_update")
+                    onClicked: view.controller.send("skip_update", {})
                 }
                 Action {
                     visible: view.controller.step === "install"
@@ -746,6 +805,7 @@ Item {
                 }
                 Action {
                     visible: view.controller.step === "error" && !!view.controller.session.error?.retryable
+                    objectName: "retryInstallation"
                     text: "Try again"
                     primary: true
                     enabled: view.controller.session.ready
@@ -756,7 +816,7 @@ Item {
                     text: "Restart now"
                     primary: true
                     enabled: view.controller.session.ready
-                    onClicked: view.controller.send("reboot", {})
+                    onClicked: view.controller.requestReboot()
                 }
             }
             // One line under a grey Continue saying why.
@@ -859,7 +919,7 @@ Item {
                 objectName: "layoutSearch"
                 Component.onCompleted: forceActiveFocus()
                 width: parent.width
-                placeholderText: "Search layouts and variants"
+                placeholderText: "Search layouts"
             }
             ListView {
                 id: layoutList
@@ -867,7 +927,7 @@ Item {
                 height: Math.max(view.controller.catalog.trial ? 170 : 245, Math.floor(scroll.availableHeight - keyboardColumn.otherHeight()))
                 clip: true
                 spacing: 6
-                model: view.controller.catalog.layouts.filter(x => (x.label + " " + x.layout + " " + x.variant).toLowerCase().indexOf(layoutSearch.text.toLowerCase()) >= 0)
+                model: view.controller.catalog.layouts.filter(x => !x.variant && (x.label + " " + x.layout).toLowerCase().indexOf(layoutSearch.text.toLowerCase()) >= 0)
                 C.ScrollBar.vertical: C.ScrollBar {
                     policy: C.ScrollBar.AlwaysOn
                 }
@@ -875,15 +935,15 @@ Item {
                     required property var modelData
                     width: layoutList.width - 14
                     text: modelData.label
-                    detail: modelData.layout + (modelData.variant ? " · " + modelData.variant + " · variant unavailable in this installer" : "")
-                    enabled: !modelData.variant && (view.controller.layouts.indexOf(modelData.layout) >= 0 || view.controller.layouts.length < 4)
-                    chosen: !modelData.variant && view.controller.layouts.indexOf(modelData.layout) >= 0
+                    detail: modelData.layout
+                    enabled: view.controller.layouts.indexOf(modelData.layout) >= 0 || view.controller.layouts.length < 4
+                    chosen: view.controller.layouts.indexOf(modelData.layout) >= 0
                     onClicked: view.controller.toggleLayout(modelData.layout)
                 }
             }
             Hint {
                 width: parent.width
-                text: "This version installs base layouts. Variants are listed for reference."
+                text: "This version installs base layouts."
             }
             Action {
                 visible: view.controller.catalog.trial
@@ -902,8 +962,46 @@ Item {
         id: networkPage
         Column {
             id: netPage
-            property var selected: null
+            property string selected: ""
+            property string passwordDraft: ""
+            property var passwordState: null
+            signal capturePasswordState
+            property var networks: []
+            Component.onCompleted: networks = view.controller.network.networks || []
+            property bool restoreJoinFocus: false
+            function networkKey(network): string {
+                return JSON.stringify([network.ssid, network.security]);
+            }
+            function focusInFormOrNowhere(): bool {
+                const focused = view.Window.window?.activeFocusItem;
+                if (!focused || focused === page || focused === view.Window.window.contentItem)
+                    return true;
+                for (let item = focused; item; item = item.parent) {
+                    if (item.objectName === "wifiJoinForm")
+                        return true;
+                }
+                return false;
+            }
+            Connections {
+                target: view.controller
+                function onNetworkChanged(): void {
+                    // Capture focus before replacing the array destroys its delegates.
+                    netPage.restoreJoinFocus = netPage.focusInFormOrNowhere();
+                    netPage.capturePasswordState();
+                    netPage.networks = view.controller.network.networks || [];
+                }
+                function onClearPasswords(): void {
+                    netPage.passwordDraft = "";
+                    netPage.passwordState = null;
+                }
+            }
+            readonly property bool inlineJoinMessage: !!view.controller.joinMessage && networks.some(n => networkKey(n) === selected && !n.connected)
             spacing: 16
+            Binding {
+                target: view
+                property: "inlineNetworkJoinMessage"
+                value: netPage.inlineJoinMessage
+            }
             Heading {
                 text: "Get connected"
                 width: parent.width
@@ -931,18 +1029,143 @@ Item {
                 }
             }
             Repeater {
-                model: view.controller.network.networks || []
-                delegate: Choice {
+                model: netPage.networks
+                delegate: Column {
+                    id: networkRow
                     required property var modelData
-                    objectName: "wifiNetwork"
                     width: parent.width
-                    text: modelData.ssid
-                    detail: modelData.connected ? "Connected" : modelData.enterprise ? "Enterprise network · connect through the desktop network settings" : modelData.strength + "% signal · " + (modelData.security || "Open network")
-                    enabled: !modelData.enterprise && !view.controller.helperBusy
-                    chosen: modelData.connected || netPage.selected?.bssid === modelData.bssid
-                    onClicked: {
-                        netPage.selected = modelData;
-                        wifiPassword.clear();
+                    spacing: 10
+                    function rememberPassword(): void {
+                        if (joinForm.visible && wifiPassword.visible)
+                            netPage.passwordState = {
+                                cursor: wifiPassword.cursorPosition,
+                                start: wifiPassword.selectionStart,
+                                end: wifiPassword.selectionEnd,
+                                revealed: wifiPassword.revealed
+                            };
+                    }
+                    Connections {
+                        target: netPage
+                        function onCapturePasswordState(): void {
+                            networkRow.rememberPassword();
+                        }
+                    }
+                    Choice {
+                        objectName: "wifiNetwork"
+                        width: parent.width
+                        text: networkRow.modelData.ssid
+                        detail: networkRow.modelData.connected ? "Connected" : networkRow.modelData.enterprise ? "Enterprise network · connect through the desktop network settings" : networkRow.modelData.strength + "% signal · " + (networkRow.modelData.security || "Open network")
+                        enabled: !networkRow.modelData.enterprise && !view.controller.helperBusy
+                        chosen: networkRow.modelData.connected || netPage.selected === netPage.networkKey(networkRow.modelData)
+                        onClicked: {
+                            const key = netPage.networkKey(networkRow.modelData);
+                            if (netPage.selected !== key) {
+                                view.controller.clearJoinResult();
+                                netPage.passwordDraft = "";
+                                netPage.passwordState = null;
+                                netPage.selected = key;
+                            }
+                            Qt.callLater(joinForm.activate);
+                        }
+                    }
+                    Column {
+                        id: joinForm
+                        objectName: "wifiJoinForm"
+                        visible: netPage.selected === netPage.networkKey(networkRow.modelData) && !networkRow.modelData.connected
+                        width: parent.width
+                        spacing: 10
+                        function reveal(): void {
+                            if (!visible)
+                                return;
+                            if (netPage.focusInFormOrNowhere())
+                                scroll.revealItem(joinForm);
+                            else
+                                scroll.revealFocus();
+                        }
+                        function activate(): void {
+                            if (!visible)
+                                return;
+                            if (wifiPassword.visible)
+                                wifiPassword.forceActiveFocus();
+                            else
+                                connect.forceActiveFocus();
+                            Qt.callLater(reveal);
+                        }
+                        function restore(): void {
+                            if (!visible)
+                                return;
+                            if (visible && netPage.restoreJoinFocus && netPage.focusInFormOrNowhere()) {
+                                netPage.restoreJoinFocus = false;
+                                activate();
+                            }
+                            const state = netPage.passwordState;
+                            if (wifiPassword.visible && state) {
+                                wifiPassword.revealed = state.revealed;
+                                wifiPassword.cursorPosition = state.cursor;
+                                // select() keeps the cursor at its second argument, including a
+                                // selection extended backwards with Shift+Left.
+                                if (state.start !== state.end)
+                                    wifiPassword.select(state.cursor === state.start ? state.end : state.start, state.cursor);
+                            }
+                        }
+                        function join(): void {
+                            if (!visible || view.controller.helperBusy || (wifiPassword.visible && !netPage.passwordDraft))
+                                return;
+                            view.controller.callHelper("join", {
+                                bssid: networkRow.modelData.bssid,
+                                device: networkRow.modelData.device,
+                                password: wifiPassword.visible ? netPage.passwordDraft : ""
+                            });
+                            netPage.passwordDraft = "";
+                            netPage.passwordState = null;
+                        }
+                        // A rescan rebuilds the rows; restore only focus that belonged to the form.
+                        onVisibleChanged: if (visible)
+                            Qt.callLater(restore)
+                        Component.onCompleted: if (visible)
+                            Qt.callLater(restore)
+                        onHeightChanged: Qt.callLater(reveal)
+                        onYChanged: Qt.callLater(reveal)
+                        Connections {
+                            target: networkRow
+                            function onYChanged(): void {
+                                Qt.callLater(joinForm.reveal);
+                            }
+                        }
+                        PasswordField {
+                            id: wifiPassword
+                            objectName: "wifiPassword"
+                            passwordLabel: "Wi-Fi password"
+                            checksLayout: false
+                            width: parent.width
+                            placeholderText: "Wi-Fi password"
+                            visible: !["", "--", "OWE", "OWE-TM"].includes(networkRow.modelData.security || "")
+                            text: joinForm.visible ? netPage.passwordDraft : ""
+                            onTextEdited: netPage.passwordDraft = text
+                            Keys.onReturnPressed: event => {
+                                if (!event.isAutoRepeat)
+                                    joinForm.join();
+                            }
+                            Keys.onEnterPressed: event => {
+                                if (!event.isAutoRepeat)
+                                    joinForm.join();
+                            }
+                        }
+                        Action {
+                            id: connect
+                            objectName: "wifiConnect"
+                            text: "Connect"
+                            primary: true
+                            enabled: !view.controller.helperBusy && (!wifiPassword.visible || !!netPage.passwordDraft)
+                            onClicked: joinForm.join()
+                        }
+                        Hint {
+                            objectName: "wifiJoinMessage"
+                            width: parent.width
+                            visible: text !== ""
+                            text: view.controller.joinMessage
+                            color: view.controller.joinFailed ? view.danger : view.dim
+                        }
                     }
                 }
             }
@@ -950,33 +1173,6 @@ Item {
                 visible: !(view.controller.network.networks || []).length && !view.controller.network.wired
                 width: parent.width
                 text: "No Wi-Fi networks found. You can continue offline."
-            }
-            Column {
-                visible: !!netPage.selected && !netPage.selected.connected
-                width: parent.width
-                spacing: 10
-                PasswordField {
-                    id: wifiPassword
-                    objectName: "wifiPassword"
-                    passwordLabel: "Wi-Fi password"
-                    checksLayout: false
-                    width: parent.width
-                    placeholderText: "Wi-Fi password"
-                    visible: !!netPage.selected?.security && netPage.selected.security !== "--"
-                }
-                Action {
-                    text: "Connect"
-                    primary: true
-                    enabled: !view.controller.helperBusy
-                    onClicked: {
-                        view.controller.callHelper("join", {
-                            bssid: netPage.selected.bssid,
-                            device: netPage.selected.device,
-                            password: wifiPassword.text
-                        });
-                        wifiPassword.clear();
-                    }
-                }
             }
             Check {
                 width: parent.width
@@ -1043,6 +1239,18 @@ Item {
                         text: view.controller.applyingTimezone ? "Setting the live clock…" : "Current local time"
                     }
                 }
+            }
+            Copy {
+                objectName: "timezoneChoiceNotice"
+                width: parent.width
+                visible: !view.controller.timezoneChosen
+                text: "Choose your time zone. We could not find it automatically."
+            }
+            Action {
+                objectName: "useUtc"
+                visible: !view.controller.timezoneChosen
+                text: "Use UTC"
+                onClicked: view.controller.chooseTimezone("UTC")
             }
             TimezoneMap {
                 objectName: "timezoneMap"
@@ -1153,7 +1361,7 @@ Item {
     Component {
         id: diskPage
         Column {
-            spacing: 14
+            spacing: (view.height < 550 || view.width < 900) ? 6 : 14
             Heading {
                 width: parent.width
                 text: view.controller.manualAssignments && view.controller.mode === "manual" ? "Assign your partitions" : "Where should Emaki go?"
@@ -1168,6 +1376,13 @@ Item {
                 visible: view.controller.session.inventory && !view.controller.session.inventory.uefi
                 text: view.uefiRefusal
                 color: view.danger
+            }
+            Copy {
+                objectName: "hardwareNotice"
+                width: parent.width
+                visible: view.secureBootRefused || !!view.hardware.disk_notice || !!view.hardware.media_notice
+                text: view.secureBootRefused ? view.secureBootRefusal : (view.hardware.disk_notice || view.hardware.media_notice || "")
+                color: view.secureBootRefused || !!view.hardware.disk_notice ? view.danger : view.ink
             }
             Row {
                 objectName: "diskScanning"
@@ -1187,6 +1402,7 @@ Item {
                 model: view.controller.manualAssignments && view.controller.mode === "manual" ? [] : view.controller.session.inventory?.disks || []
                 delegate: Choice {
                     required property var modelData
+                    compact: (view.height < 550 || view.width < 900)
                     objectName: "disk-" + modelData.id
                     width: parent.width
                     text: modelData.model + " · " + view.size(modelData.size_bytes)
@@ -1196,18 +1412,17 @@ Item {
                     onClicked: view.controller.chooseDisk(modelData.id)
                 }
             }
-            Action {
-                text: view.controller.manualAssignments && view.controller.mode === "manual" ? "Change disk" : "Refresh disks"
-                implicitHeight: 40
-                enabled: !view.controller.locked
-                onClicked: {
-                    view.controller.manualAssignments = false;
-                    view.controller.probe();
-                }
+            Copy {
+                objectName: "windowsEraseWarning"
+                width: parent.width
+                visible: view.controller.mode === "erase" && !!view.controller.selectedDisk?.partitions?.some(p => p.os_hint === "windows")
+                text: "This disk holds Windows. Erasing it deletes Windows and all files on the disk."
+                color: view.danger
             }
             Choice {
                 width: parent.width
                 visible: !(view.controller.manualAssignments && view.controller.mode === "manual")
+                compact: (view.height < 550 || view.width < 900)
                 objectName: "eraseChoice"
                 text: "Erase disk"
                 detail: "Delete everything on the selected disk and install Emaki. Root needs at least " + view.size(view.controller.rootMinimum) + "."
@@ -1218,12 +1433,22 @@ Item {
             Choice {
                 width: parent.width
                 visible: !view.controller.manualAssignments
+                compact: (view.height < 550 || view.width < 900)
                 objectName: "manualChoice"
                 text: "Manual"
                 detail: Protocol.manualReason(view.controller.selectedDisk) || "Prepare partitions in GParted, then assign their mountpoints."
                 chosen: view.controller.mode === "manual"
                 enabled: !view.controller.locked && !Protocol.manualReason(view.controller.selectedDisk)
                 onClicked: view.controller.mode = "manual"
+            }
+            Action {
+                text: view.controller.manualAssignments && view.controller.mode === "manual" ? "Change disk" : "Refresh disks"
+                implicitHeight: 40
+                enabled: !view.controller.locked
+                onClicked: {
+                    view.controller.manualAssignments = false;
+                    view.controller.probe();
+                }
             }
             Choice {
                 width: parent.width
@@ -1485,7 +1710,12 @@ Item {
             Hint {
                 width: parent.width
                 visible: view.controller.encryption === "encrypted"
-                text: "If you forget the disk password, your files cannot be recovered. Startup uses an English (US) keyboard."
+                text: "If you forget the disk password, your files cannot be recovered."
+            }
+            Copy {
+                width: parent.width
+                visible: view.controller.encryption === "encrypted"
+                text: "At startup, the password screen uses an English (US) keyboard, shows no letters as you type, and takes a few seconds after Enter."
             }
             Row {
                 width: parent.width
@@ -1536,14 +1766,20 @@ Item {
                     text: "A separate disk password"
                     detail: "Keep disk access separate from your account. You must remember two passwords and use the disk password at startup."
                     chosen: view.controller.encryptionPassword === "separate"
-                    onClicked: view.controller.encryptionPassword = "separate"
+                    onClicked: {
+                        view.controller.encryptionPassword = "separate";
+                        Qt.callLater(() => diskPasswordField.forceActiveFocus());
+                    }
                 }
                 Row {
                     width: parent.width
                     spacing: 12
                     visible: view.controller.encryptionPassword === "separate"
                     PasswordField {
+                        id: diskPasswordField
                         objectName: "diskPassword"
+                        KeyNavigation.tab: diskConfirmationField
+                        nextEye: diskConfirmationField.eyeButton
                         unlock: true
                         passwordLabel: "Disk password"
                         width: (parent.width - 12) / 2
@@ -1552,7 +1788,10 @@ Item {
                         onTextEdited: view.controller.diskPassword = text
                     }
                     PasswordField {
+                        id: diskConfirmationField
                         objectName: "diskConfirmation"
+                        KeyNavigation.tab: diskPasswordField.eyeButton
+                        nextEye: continueAction
                         unlock: true
                         width: (parent.width - 12) / 2
                         placeholderText: "Confirm disk password"
@@ -1607,6 +1846,13 @@ Item {
         id: youPage
         Column {
             id: account
+            Component.onCompleted: {
+                if (view.controller.focusLogin)
+                    loginInput.forceActiveFocus();
+                else
+                    nameInput.forceActiveFocus();
+                view.controller.focusLogin = false;
+            }
             spacing: 16
             property bool submitted: false
             // Fields the person typed in; the login also changes when the name it is made from does.
@@ -1689,10 +1935,10 @@ Item {
                     text: "Login"
                 }
                 Field {
+                    id: nameInput
                     objectName: "fullName"
                     Layout.row: 1
                     Layout.column: 0
-                    Component.onCompleted: forceActiveFocus()
                     Layout.fillWidth: true
                     text: view.controller.fullName
                     onTextEdited: {
@@ -1705,6 +1951,7 @@ Item {
                     }
                 }
                 Field {
+                    id: loginInput
                     objectName: "loginField"
                     Layout.row: 1
                     Layout.column: 1
@@ -1752,6 +1999,8 @@ Item {
                 PasswordField {
                     id: password
                     objectName: "userPassword"
+                    KeyNavigation.tab: confirmation
+                    nextEye: confirmation.eyeButton
                     Layout.row: 4
                     Layout.column: 0
                     unlock: view.controller.encryption === "encrypted" && view.controller.encryptionPassword === "account"
@@ -1760,6 +2009,8 @@ Item {
                 PasswordField {
                     id: confirmation
                     objectName: "confirmPassword"
+                    KeyNavigation.tab: password.eyeButton
+                    nextEye: hostnameField
                     Layout.row: 4
                     Layout.column: 1
                     unlock: password.unlock
@@ -1821,6 +2072,7 @@ Item {
                     Layout.topMargin: 10
                 }
                 Field {
+                    id: hostnameField
                     objectName: "hostnameField"
                     Layout.row: 10
                     Layout.column: 0
@@ -1973,7 +2225,7 @@ Item {
             Hint {
                 width: parent.width
                 visible: !!view.controller.session.plan?.token
-                text: "This review expires in " + Math.min(10, Math.max(0, Math.ceil((view.controller.session.deadline - view.controller.clockMs) / 60000))) + " minutes. Changes require a new review."
+                text: "This review stays ready while this page is open. Changes require a new review."
             }
         }
     }
@@ -2018,6 +2270,13 @@ Item {
                 Hint {
                     text: "Elapsed " + view.duration(view.controller.elapsed)
                 }
+            }
+            Copy {
+                objectName: "installStep"
+                width: parent.width
+                visible: text.length > 0
+                text: Protocol.stepText(view.controller.session.step)
+                textFormat: Text.PlainText
             }
             Column {
                 width: parent.width
@@ -2118,7 +2377,7 @@ Item {
             }
             Lead {
                 width: parent.width
-                text: "Emaki is installed. Restart to begin using your new desktop, and remove the USB when the computer restarts."
+                text: "Emaki is installed. Restart to begin using your new desktop."
             }
             Copy {
                 text: "Installed in " + view.duration(Math.round(view.controller.session.seconds)) + "."

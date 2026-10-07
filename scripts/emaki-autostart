@@ -1,0 +1,21 @@
+#!/bin/sh
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# A personal marker disables only this login command; never write user configuration.
+[ "$#" -ge 2 ] || exit 64
+case "$1" in
+    wallpaper|clipboard|authentication|automount|shell|sleep-guard) ;;
+    *) exit 64 ;;
+esac
+config_home=${XDG_CONFIG_HOME:-}
+# XDG base directories must be absolute; ignore a relative override.
+case "$config_home" in /*) ;; *) config_home=${HOME:+$HOME/.config} ;; esac
+if [ -n "$config_home" ]; then
+    marker=$config_home/emaki/autostart-disabled/$1
+    if [ -e "$marker" ] || [ -L "$marker" ]; then
+        printf 'emaki-autostart: disabled by %s\n' "$marker" >&2
+        exit 0
+    fi
+fi
+shift
+exec "$@"

@@ -8,18 +8,20 @@ ISO_VM=${EMAKI_ISO_VM_DIR:-$HOME/VMs/iso-vm}
 ISO_PORT=${EMAKI_ISO_SSH_PORT:-}
 ISO_USER=live
 ISO_KEY=${EMAKI_ISO_SSH_KEY:-$HOME/VMs/emaki-vm/id_vm}
+ISO_KNOWN_HOSTS=${EMAKI_ISO_KNOWN_HOSTS:-}
 ISO_ARGS=()
 iso_die() { printf 'BAD: %s\n' "$*" >&2; exit 1; }
 iso_parse() {
     while (($#)); do
         case $1 in
-            --dir|--ssh-port|--user|--key)
+            --dir|--ssh-port|--user|--key|--known-hosts)
                 (($# >= 2)) || iso_die "missing value for $1"
                 case $1 in
                     --dir) ISO_VM=$2 ;;
                     --ssh-port) ISO_PORT=$2 ;;
                     --user) ISO_USER=$2 ;;
                     --key) ISO_KEY=$2 ;;
+                    --known-hosts) ISO_KNOWN_HOSTS=$2 ;;
                 esac
                 shift 2 ;;
             --) shift; ISO_ARGS+=("$@"); break ;;
@@ -41,6 +43,6 @@ iso_ssh_args() {
     [[ ! -f $ISO_VM/ssh-host-generation ]] || generation=$(<"$ISO_VM/ssh-host-generation")
     [[ $generation =~ ^[a-z0-9-]+$ ]] || iso_die 'invalid SSH host generation'
     ISO_SSH=(ssh -F /dev/null -p "$ISO_PORT" -i "$ISO_KEY" -o BatchMode=yes -o IdentitiesOnly=yes
-        -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$ISO_VM/known_hosts-$ISO_USER-$generation"
+        -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="${ISO_KNOWN_HOSTS:-$ISO_VM/known_hosts-$ISO_USER-$generation}"
         -o ConnectTimeout=3 -o ServerAliveInterval=15 "$ISO_USER@127.0.0.1")
 }

@@ -1,0 +1,44 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Trigger]
+Operation = Upgrade
+Type = Package
+Target = emaki-config
+
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Target = usr/lib/initcpio/*
+Target = usr/lib/firmware/*
+Target = usr/lib/modules/*/extramodules/
+Target = usr/src/*/dkms.conf
+Target = usr/lib/systemd/systemd
+Target = usr/lib/systemd/systemd-udevd
+Target = usr/bin/cryptsetup
+Target = usr/bin/lvm
+Target = usr/bin/mdadm
+Target = usr/bin/pdata_tools
+Target = usr/lib/libcryptsetup.so
+Target = usr/lib/libp11-kit.so
+Target = usr/lib/libpcsclite.so
+Target = usr/lib/modprobe.d/
+
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Target = usr/lib/modules/*/vmlinuz
+
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Target = mkinitcpio
+Target = mkinitcpio-git
+
+[Action]
+Description = Retry pending migrated initramfs presets [mkinitcpio]
+When = PostTransaction
+Exec = /usr/share/libalpm/scripts/emaki-initramfs-refresh --transaction

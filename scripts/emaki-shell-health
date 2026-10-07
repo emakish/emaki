@@ -1,0 +1,217 @@
+#!/usr/bin/python3 -I
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Bounded recovery of a personal shell after a proven QML load failure."""
+import datetime
+import filecmp
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import uuid
+from urllib.parse import unquote
+
+PACKAGED = Path('/usr/share/emaki/shell')
+SHELL_UNIT = 'emaki-shell.service'
+NOTICE_UNIT = 'emaki-shell-recovery.service'
+
+
+def runtime_dir():
+    root = Path(os.environ['XDG_RUNTIME_DIR'])
+    if not root.is_absolute():
+        raise ValueError('The runtime directory must be absolute.')
+    path = root / 'emaki-shell-health'
+    path.mkdir(mode=0o700, exist_ok=True)
+    if path.is_symlink() or path.stat().st_uid != os.getuid():
+        raise ValueError('The recovery directory is not private.')
+    return path
+
+
+def write_state(path, text):
+    temporary = path.with_name(path.name + '.' + uuid.uuid4().hex)
+    try:
+        with temporary.open('x', encoding='utf-8') as stream:
+            os.chmod(temporary, 0o600)
+            stream.write(text)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def select_shell(requested, record=False):
+    # Standalone/offscreen launches may have no login runtime or user service.
+    if not os.environ.get('XDG_RUNTIME_DIR'):
+        return requested
+    state = runtime_dir()
+    selected = str(PACKAGED) if (state / 'packaged').exists() else requested
+    if record:
+        write_state(state / 'launch.json', json.dumps({
+            'shell': os.path.abspath(selected),
+            'invocation': os.environ.get('INVOCATION_ID', ''),
+        }))
+    return selected
+
+
+def run(*arguments):
+    return subprocess.run(arguments, check=True, capture_output=True, text=True,
+                          errors='replace', timeout=10).stdout.strip()
+
+
+def clean(text):
+    # Journal messages and personal paths must not inject terminal controls.
+    text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', text)
+    return ''.join(c for c in text if c.isprintable() or c in '\n\t')
+
+
+def failed_file(log, shell):
+    if 'Failed to load configuration' not in log:
+        return None
+    # Quickshell prints the outer component first, then the deepest failing source.
+    # Do not repair an outer component if the actual cause is outside this tree.
+    causes = re.findall(r'caused by[^\S\n]+([^\n]*)', log)
+    if not causes:
+        return None
+    cause = re.fullmatch(
+        r'(file://.+?|@.+?)(?:\[-?\d+:-?\d+\]|:\d+(?::\d+)?):\s*(.*)',
+        causes[-1])
+    if not cause:
+        return None
+    source, message = cause.groups()
+    if re.search(r'is not installed|plugin\s+"[^"]*"\s+not found|'
+                 r'Script\b.*\bunavailable|Cannot load library', message, re.IGNORECASE):
+        return None
+    candidate = (shell / source[1:]) if source.startswith('@') else Path(unquote(source[7:]))
+    home = Path.home().resolve()
+    config = Path(os.environ.get('XDG_CONFIG_HOME') or home / '.config')
+    # Refuse aliases, traversal, system trees and symlinked components. In
+    # particular, never move a link into the packaged tree or a shared source.
+    if (shell != config / 'emaki/shell' or candidate.suffix not in ('.qml', '.js')
+            or not shell.is_absolute() or shell == home or not shell.is_relative_to(home)
+            or shell.resolve() != shell or candidate.resolve() != candidate
+            or not candidate.is_relative_to(shell) or candidate == shell):
+        return None
+    # A config directory can itself be a checkout, or contain nested checkouts.
+    # Git worktrees use a .git file, so refuse either kind of entry (even a link).
+    for parent in candidate.parents:
+        if not parent.is_relative_to(home):
+            break
+        if os.path.lexists(parent / '.git'):
+            return None
+    relative = candidate.relative_to(shell)
+    packaged = PACKAGED / relative
+    if (not candidate.is_file() or candidate.stat().st_uid != os.getuid()
+            or not packaged.is_file() or filecmp.cmp(candidate, packaged, shallow=False)):
+        return None
+    return candidate
+
+
+def notice():
+    run('systemctl', '--user', '--no-block', 'start', NOTICE_UNIT)
+
+
+def reconcile():
+    state = runtime_dir()
+    launch = {}
+    try:
+        launch = json.loads((state / 'launch.json').read_text())
+    except (OSError, ValueError):
+        pass
+    invocation = launch.get('invocation', '') if isinstance(launch, dict) else ''
+    current = run('systemctl', '--user', 'show', '--property=InvocationID', '--value', SHELL_UNIT)
+    trusted = (isinstance(invocation, str) and bool(re.fullmatch('[0-9a-f]{32}', invocation))
+               and current == invocation
+               and os.environ.get('MONITOR_INVOCATION_ID', invocation) == invocation)
+    query = [f'_SYSTEMD_INVOCATION_ID={invocation}'] if trusted else ['-u', SHELL_UNIT]
+    log = clean(run('journalctl', '--user', '--no-pager', '-o', 'cat', '-n', '200', *query))
+    write_state(state / 'errors.log', log + '\n')
+    print(log, flush=True)
+    candidate = None
+    if trusted and isinstance(launch.get('shell'), str) and not (state / 'packaged').exists():
+        shell = Path(launch.get('shell', ''))
+        if shell != PACKAGED:
+            candidate = failed_file(log, shell)
+    if candidate is None:
+        print('The Emaki panel could not recover automatically. Opening recovery.', flush=True)
+        notice()
+        return
+
+    # Claim the single automatic attempt before touching the override. A failed
+    # rename or restart leaves this marker in place and goes to manual recovery.
+    try:
+        with (state / 'packaged').open('x') as stream:
+            stream.write('Use the packaged shell until the login runtime is cleared.\n')
+        stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+        backup = candidate.with_name(candidate.name + '.broken-' + stamp + '-' + uuid.uuid4().hex)
+        candidate.rename(backup)
+        # Leave the personal tree usable on the next login too. Exclusive create
+        # refuses to overwrite a file the person has restored concurrently.
+        packaged = PACKAGED / candidate.relative_to(Path(launch['shell']))
+        with packaged.open('rb') as source, candidate.open('xb') as destination:
+            shutil.copyfileobj(source, destination)
+        message = clean(f'Personal shell file preserved: {backup}\nUsing the packaged shell.')
+        write_state(state / 'repair.txt', message + '\n')
+        write_state(state / 'repair-notice.json', json.dumps({
+            'backup': clean(str(backup.relative_to(Path(launch['shell'])))),
+        }))
+        print(message, flush=True)
+        run('systemctl', '--user', 'reset-failed', SHELL_UNIT)
+        # Do not wait for a job whose failure may activate this handler again.
+        run('systemctl', '--user', '--no-block', 'restart', SHELL_UNIT)
+    except (OSError, subprocess.SubprocessError):
+        print('Automatic shell recovery failed. Opening recovery.', flush=True)
+        notice()
+
+
+def repair_notice():
+    if not os.environ.get('XDG_RUNTIME_DIR'):
+        return
+    state = runtime_dir()
+    pending = state / 'repair-notice.json'
+    claimed = state / ('repair-notice.' + uuid.uuid4().hex)
+    try:
+        pending.rename(claimed)
+    except FileNotFoundError:
+        return
+    try:
+        data = json.loads(claimed.read_text())
+        print(json.dumps({'backup': clean(data['backup'])}))
+    finally:
+        claimed.unlink(missing_ok=True)
+
+
+def report():
+    state = runtime_dir()
+    for name in ('repair.txt', 'errors.log'):
+        try:
+            print(clean((state / name).read_text()))
+        except FileNotFoundError:
+            pass
+    print('Open a terminal with Ctrl+Alt+T. Open the launcher with Super+D.')
+    print('Report this failure at https://github.com/emakish/emaki/issues with these logs:')
+    print('  journalctl --user -b -u emaki-shell.service -u emaki-shell-heal.service')
+
+
+def main():
+    command = sys.argv[1]
+    try:
+        if command in ('select', 'record'):
+            print(select_shell(sys.argv[2], record=command == 'record'))
+        elif command == 'reconcile':
+            reconcile()
+        elif command == 'report':
+            report()
+        elif command == 'notice':
+            repair_notice()
+        else:
+            raise ValueError('Unknown shell recovery command.')
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+        print(clean(f'Shell recovery ({command}): {error}'), file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

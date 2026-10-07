@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Scope/fallback regression, plus offscreen production launch wiring without IPC."""
+from runtime_fixture import runtime_path
 import json
 import os
 from pathlib import Path
@@ -18,7 +19,7 @@ for name in ('r', 'c', 's', 'd/applications', 'cache', 'tmp'):
     (root / name).mkdir(parents=True, mode=0o700)
 env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
            QML_DISABLE_DISK_CACHE='1', PYTHONDONTWRITEBYTECODE='1',
-           XDG_RUNTIME_DIR=str(root / 'r'), XDG_CONFIG_HOME=str(root / 'c'),
+           XDG_RUNTIME_DIR=str(runtime_path(root)), XDG_CONFIG_HOME=str(root / 'c'),
            XDG_DATA_HOME=str(root / 'd'), XDG_DATA_DIRS=str(root / 'd'),
            XDG_STATE_HOME=str(root / 's'), XDG_CACHE_HOME=str(root / 'cache'),
            TMPDIR=str(root / 'tmp'), DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(root / 'no-bus'),
@@ -111,7 +112,7 @@ cliphist = root / 'cliphist'
 cliphist.write_text('#!/bin/sh\nprintf "private clipboard bytes"\n'); cliphist.chmod(0o700)
 copy = root / 'wl-copy'
 copy.write_text('#!/bin/sh\nexec ' + sys.executable + ' -B ' + str(copier) + '\n'); copy.chmod(0o700)
-(root / 'cache/cliphist').mkdir(); (root / 'cache/cliphist/db').touch()
+(Path(env['XDG_RUNTIME_DIR']) / 'emaki-cliphist.db').touch()
 copied = subprocess.run([sys.executable, '-B', str(ROOT / 'shell/helpers/launcher-tools.py')],
                         input=json.dumps(dict(op='clip-copy', id='1')), text=True, capture_output=True,
                         env=dict(env, EMAKI_CLIPHIST=str(cliphist), EMAKI_WL_COPY=str(copy)), timeout=10)

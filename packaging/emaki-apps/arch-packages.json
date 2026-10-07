@@ -1,7 +1,7 @@
 {
   "checked_at": "2026-10-05T04:15:25.957930+00:00",
   "source": "https://geo.mirror.pkgbuild.com/{core,extra}/os/x86_64/{core,extra}.db (sync databases; JSON API unreachable)",
-  "method": "Current core/extra API required-dependency closure; virtual providers chosen deterministically. Pacman build resolution remains authoritative.",
+  "method": "Current core/extra API required-dependency closure; virtual providers chosen deterministically. Pacman build resolution remains authoritative. Closure names updated 2026-10-06 for blueman, python-cairo and vulkan-nouveau using local core/extra sync databases. Size totals and package-version records retain the checked_at snapshot; they have not been recomputed for these additions. KDE Connect removed from direct/added records and closure on 2026-10-06; corresponding compressed totals exclude its archived size.",
   "direct": [
     {
       "pkgname": "7zip",
@@ -182,15 +182,6 @@
       "pkgrel": "1",
       "compressed_size": 453433,
       "installed_size": 738055
-    },
-    {
-      "pkgname": "kdeconnect",
-      "repo": "extra",
-      "arch": "x86_64",
-      "pkgver": "26.08.1",
-      "pkgrel": "1",
-      "compressed_size": 1529000,
-      "installed_size": 7443125
     },
     {
       "pkgname": "keepassxc",
@@ -504,6 +495,7 @@
     "bind",
     "binutils",
     "blas",
+    "blueman",
     "bluez",
     "bluez-libs",
     "bolt",
@@ -748,7 +740,6 @@
     "kcrash",
     "kdbusaddons",
     "kdeclarative",
-    "kdeconnect",
     "kdnssd",
     "kdsingleapplication",
     "kdsoap",
@@ -1275,6 +1266,7 @@
     "python",
     "python-annotated-types",
     "python-attrs",
+    "python-cairo",
     "python-certifi",
     "python-cffi",
     "python-charset-normalizer",
@@ -1494,6 +1486,7 @@
     "vulkan-icd-loader",
     "vulkan-intel",
     "vulkan-mesa-implicit-layers",
+    "vulkan-nouveau",
     "vulkan-radeon",
     "wavpack",
     "wayland",
@@ -1553,8 +1546,8 @@
     "zxing-cpp"
   ],
   "retained_gnome_apps": [],
-  "direct_compressed_bytes": 350849674,
-  "added_offline_compressed_bytes": 624281306,
+  "direct_compressed_bytes": 349320674,
+  "added_offline_compressed_bytes": 622752306,
   "added": [
     {
       "pkgname": "7zip",
@@ -2059,15 +2052,6 @@
       "pkgrel": "1",
       "compressed_size": 191484,
       "installed_size": 797652
-    },
-    {
-      "pkgname": "kdeconnect",
-      "repo": "extra",
-      "arch": "x86_64",
-      "pkgver": "26.08.1",
-      "pkgrel": "1",
-      "compressed_size": 1529000,
-      "installed_size": 7443125
     },
     {
       "pkgname": "kdsingleapplication",

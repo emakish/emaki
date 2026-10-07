@@ -2,9 +2,9 @@
 function initial() {
     return { connected: false, ready: false, serial: 0, pending: {}, version: "", greeted: false,
         inventory: null, plan: null, deadline: 0, jobId: "", lastLogSeq: 0, reservedLogins: null, consoleChars: null,
-        phase: "", phasePct: 0, totalPct: 0, indeterminate: false, activity: null,
+        phase: "", phasePct: 0, totalPct: 0, indeterminate: false, activity: null, step: null,
         running: false, confirming: false, planning: false, probing: false,
-        outcome: "", error: null, notice: "Connecting to the installer…",
+        outcome: "", error: null, rebootMessage: "", notice: "Connecting to the installer…",
         logs: [], cancelPending: false, cancelMessage: "", started: 0, seconds: 0, doneWarnings: [] };
 }
 function invalidate(s) { s.plan = null; s.deadline = 0; }
@@ -14,11 +14,19 @@ function request(s, type, fields) {
     if (type === "probe") s.probing = true;
     if (type === "confirm") s.confirming = true;
     if (type === "cancel") s.cancelPending = true;
+    if (type === "reboot") s.rebootMessage = "Restarting…";
     const id = "ui-" + (++s.serial);
     s.pending[id] = type;
     return Object.assign({ type: type, id: id }, fields || {});
 }
+function rebootTimedOut(s) {
+    for (const id of Object.keys(s.pending))
+        if (s.pending[id] === "reboot") delete s.pending[id];
+    s.rebootMessage = "Could not restart. Try again.";
+    s.notice = s.rebootMessage;
+}
 function disconnected(s) {
+    if (s.rebootMessage === "Restarting…") rebootTimedOut(s);
     s.connected = false; s.ready = false;
     s.planning = false; s.probing = false;
     s.pending = {};
@@ -77,12 +85,13 @@ function receive(s, m, now) {
         s.inventory = m; s.probing = false;
         break;
     case "plan_ack":
-        if (pending !== "plan") break;
+        if (pending !== "plan" && pending !== "renew") break;
         s.planning = false; s.plan = m;
         s.deadline = m.token ? now + m.expires_s * 1000 : 0;
         s.notice = "";
         break;
     case "reply":
+        if (pending === "reboot") s.rebootMessage = m.ok ? "Restarting…" : (m.msg || "Could not restart. Try again.");
         if (pending === "confirm") {
             s.confirming = false;
             if (m.ok) {
@@ -91,6 +100,7 @@ function receive(s, m, now) {
                 s.cancelPending = false; s.cancelMessage = ""; s.started = now;
                 s.phase = "prepare_disk"; s.phasePct = null; s.totalPct = 0; s.indeterminate = true;
                 s.activity = null;
+                s.step = null;
                 invalidate(s);
             }
         }
@@ -117,8 +127,10 @@ function receive(s, m, now) {
         s.jobId = m.job_id; s.running = true; s.confirming = false;
         s.phase = m.phase; s.phasePct = m.phase_pct; s.totalPct = m.total_pct;
         s.indeterminate = m.indeterminate;
+        if (m.notice !== undefined) s.notice = m.notice;
         // A state event has none: the count ends with the step it counted.
         s.activity = m.activity || null;
+        s.step = m.step || null;
         if (!s.started) s.started = now;
         break;
     case "log":
@@ -143,6 +155,12 @@ function receive(s, m, now) {
     if (m.id) delete s.pending[m.id];
     return out;
 }
+// The worker retains one running operation until its proven boundary. Log events
+// and elapsed-time ticks cannot replace it or invent progress.
+function stepText(step) {
+    return step && step.state === "running" && typeof step.id === "string"
+        && typeof step.text === "string" ? step.text : "";
+}
 // The current phase row while a long step runs (worker.py Worker.activity); "" for a step this
 // window does not know, which then shows its busy word.
 function activityText(a) {
@@ -160,6 +178,8 @@ function activityText(a) {
 // (installer/emaki_installer/errors.py). The worker's diagnostic goes under "Show details";
 // a code missing here shows that message as it was sent.
 function errorPresentation(error) {
+    if (error && ["bad_config", "login_name_reserved", "secure_boot", "clock_skew"].indexOf(error.code) >= 0 && error.message)
+        return {sentence: error.message, action: "", details: ""};
     const save = "Save the log below; it records what the installer did.";
     const usb = "Check that the USB stick is still connected.";
     const disk = "Check the choices on the Disk step.";
@@ -169,6 +189,7 @@ function errorPresentation(error) {
     const table = {
         bad_request: ["The installer service could not read a request from this window.", save],
         bad_config: ["The installer could not use one of the chosen settings.", save],
+        login_name_reserved: ["This login name belongs to the system.", "Choose another name; the disk has not been changed."],
         bad_dest: ["The log could not be written to the chosen removable medium.", "Choose another medium from the list."],
         busy: ["The installer service was busy with another task.", save],
         unsupported_mode: ["This type of installation is not available in this version.", disk],
@@ -206,7 +227,7 @@ function errorPresentation(error) {
     const details = error.code === "encrypted_confirmation"
         ? (error.message || "").replace(/\s*Type ERASE to confirm[^.]*\./g, "").trim()
         : error.message || "";
-    return {sentence: words[0], action: action, details: details};
+    return {sentence: error.code === "disk_busy" && error.message ? error.message : words[0], action: action, details: details};
 }
 function loginFromName(name) {
     return name.toLowerCase().replace(/[^a-z0-9 _-]/g, "").trim().replace(/\s+/g, "-").replace(/^[^a-z_]+/, "").slice(0, 32);

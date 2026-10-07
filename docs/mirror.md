@@ -15,12 +15,16 @@ Both hosts are R2 custom domains in the `emaki.sh` zone (an `r2.dev` address is 
 meant for development only). Two buckets and two tokens, so the package publishing credentials
 cannot delete or replace an ISO.
 
-Installed systems read one line, in `/etc/pacman.d/emaki-mirrorlist` (package
-`emaki-mirrorlist`):
+Installed systems select a source in `/etc/emaki/channel` [update channel]:
 
 ```
-Server = https://pkgs.emaki.sh/stable/$arch
+Include = /usr/share/emaki/mirrors/stable.conf
 ```
+
+`/etc/pacman.d/emaki-mirrorlist` includes this selector; the selected package-owned
+file supplies `https://pkgs.emaki.sh/stable/$arch` or the testing address [emaki-mirrorlist].
+The package preserves a valid stable or testing selector and repairs missing or invalid
+selectors on installation or upgrade [channel selector].
 
 ## Object layout in `emaki-pkgs`
 
@@ -80,7 +84,12 @@ before it uploads a new one.
 `packaging/mirror/pointer-worker.js`, deployed once:
 
 - R2 binding `PKGS` → bucket `emaki-pkgs`.
-- Four routes: `pkgs.emaki.sh/stable/x86_64/emaki.*`,
+- Before adding sources to an already published image, add R2 binding `DL` → bucket
+  `emaki-dl` and route `dl.emaki.sh/iso/*` to the same Worker. This deployment is required
+  for `iso-sources`; the initial 0.2.0 `iso` publication needs no new Worker deployment.
+  Image source companions redirect through `iso/<version>/source-pointer` to one immutable
+  source snapshot. Without a pointer, requests fall through to the original R2 objects.
+- Four package routes: `pkgs.emaki.sh/stable/x86_64/emaki.*`,
   `pkgs.emaki.sh/testing/x86_64/emaki.*`, `pkgs.emaki.sh/stable/x86_64/SOURCES*`,
   and `pkgs.emaki.sh/testing/x86_64/SOURCES*`. All four must be added in Cloudflare.
 - For `<channel>/x86_64/emaki.db`, `.db.sig`, `.files`, `.files.sig` it answers
@@ -104,8 +113,9 @@ Three Cache Rules, in this order:
    URI path starts with `/pointers/`, `/locks/`, `/served/` or `/released/`) → **Bypass cache**.
 2. Hostname equals `pkgs.emaki.sh` AND URI path ends with `.pkg.tar.zst` → **Eligible for
    cache**, edge TTL 1 month (package names are never reused).
-3. Hostname equals `dl.emaki.sh` AND URI path ends with `.sha256`, `.sig` or `.asc` → **Bypass
-   cache**. (The ISO is over the 512 MB cache limit and is always served from R2.)
+3. Hostname equals `dl.emaki.sh` AND (URI path ends with `.sha256`, `.sig`, `.asc`,
+   `SOURCES-ISO.txt`, `ARCH-SOURCES.json` or `MISSING-SOURCES.json`, OR URI path ends with
+   `/source-pointer`) → **Bypass cache**. (The ISO is over the 512 MB cache limit and is always served from R2.)
 
 Rule 1 matters for package signatures as well: Cloudflare caches a `404` for 3 minutes, and
 `publish.sh` uploads every package before any database names it.
@@ -118,11 +128,16 @@ through `promote`); it refuses a dirty tree, a package not signed by a key in
 `packaging/emaki-keyring`, a file name or a package version (under any file name) that was ever
 released with other bytes (`packaging/mirror/released-packages.sha256` and every `MANIFEST` on
 the mirror), a version lower than the one `testing` serves (pacman's `vercmp` order), two
-versions of one package in the directory, and a candidate whose `emaki emaki-apps` do not
-resolve against today's Arch `core`/`extra`. `packaging/build.sh` refuses an output directory
+versions of one package in the directory, and a candidate whose installer Minimal or Rich
+transaction does not resolve against today's Arch `core`/`extra`. These are separate checks
+using the installer's package lists; the live-only installer is checked against the image's
+pinned repository during image publication. `packaging/build.sh` refuses an output directory
 that is not empty. `promote` copies the current `testing` snapshot byte for byte to `stable` and
 needs the acceptance stamp (`stamp`, written from the upgrade acceptance results; valid for 24
-hours after its oldest run finished, for that exact `MANIFEST`). `promote --first` exists once,
+hours after its oldest run finished, for that exact `MANIFEST`). T1 and T2 must cover both
+screen sizes from 0.1.0 and 0.1.1 and every image version in `released/iso/`, excluding records
+for the candidate's own manifest. The records are read again at promotion: after publishing
+0.2.0, the next candidate also requires 0.2.0 upgrade runs. `promote --first` exists once,
 for the bridge release. `withdraw <channel>` serves the files of an earlier snapshot again as a new snapshot.
 `github [--tag testing] [--restore]` copies a channel to the old GitHub address during the
 bridge period. `status`, `verify <channel>`, `unlock --yes`, `sign <dir>`. A publish that dies
@@ -131,6 +146,11 @@ held, and every run repeats the stamp and the closure check right before it move
 a check that fails there closes the run and releases the lock, with nothing machines read
 changed. A database that came out unsigned (pinentry cancelled or timed out: `repo-add -s`
 then only warns) ends the run the same way; type the passphrase in the next run.
+
+For a later release, build only new package versions with repeated `build.sh --only NAME`
+arguments (runbook step 15.1). The publisher merges this partial update into testing and retains
+unchanged binaries and source records. Rebuilding an unchanged recipe is not safe reuse: its
+new bytes may violate the published version's immutability.
 
 The build output travels as one set: packages, `BUILDINFO`, `SOURCES.json`, and source archives.
 `BUILDINFO` records the clean checkout's commit and hashes the output. The publisher checks that
@@ -148,6 +168,10 @@ its source links refer to the already verified shared archives. Its description 
 successful update it removes old package assets no longer named by the new database, so legacy
 binaries without sources do not remain available beside the new release.
 
+GitHub `--restore` verifies saved source directions and archives before restoring binaries.
+An old backup without these is refused; `--allow-sourceless-restore` explicitly overrides that
+refusal for a deliberate legacy recovery.
+
 Snapshots created before source indexes existed are refused when selected: source provenance
 cannot be reconstructed from binary names. An existing mirror needs a separately verified
 migration before using those snapshots with this publisher; do not edit immutable manifests
@@ -162,50 +186,205 @@ itself, because a generic sync tool cannot make a write conditional on the objec
 
 ## dl.emaki.sh: the ISO
 
-Before publishing an image, collect its Arch GPL/LGPL sources in the disposable build VM:
+Before publishing an image, collect its Arch GPL/LGPL sources in a disposable Arch Linux VM
+with `base-devel`, `git`, `rust` (Cargo), `go`, Python 3.11 or newer, GnuPG (`gnupg`), `curl`,
+and `bsdtar` (`libarchive`) installed. Use its 250 GB data disk for input, output and temporary work. Run the collector as a non-root user in that isolated
+environment: packaging recipes execute shell code. Allow network access to
+`gitlab.archlinux.org`, Arch mirrors, upstream source hosts and their official mirrors. Cargo
+vendoring also needs the registries and Git dependency hosts in each archived Cargo.lock.
+Go vendoring uses proxy.golang.org and sum.golang.org with the pinned go.mod and go.sum.
+Copy an Emaki checkout and the image to the VM; no signing keys or publishing credentials
+are needed there. HTTP requests identify themselves as `emaki-publish`.
+
+The earlier 18-base sample extrapolated to approximately 65 GB of retained archives and six
+hours of serial collection. It overrepresented large packages; this is a planning estimate,
+not a full-closure measurement. Allow 100–200 GB of temporary space. Put the image, extracted
+repository, output, and `TMPDIR` on the VM's data disk. The laptop's `/tmp` is too small
+for source collection. For example, with that disk available as `/srv/emaki-sources` and the
+working directories owned by the collection user:
 
 ```sh
-python3 packaging/mirror/iso_sources.py --closure <build-work>/closure.txt \
-    --packages <build-work>/offline --output <arch-sources>
+mkdir -p /srv/emaki-sources/input /srv/emaki-sources/tmp /srv/emaki-sources/output
+# For the legacy 0.2.0 image, the embedded repository is the full closure.
+bsdtar -xf <image.iso> -C /srv/emaki-sources/input emaki/repo
+export TMPDIR=/srv/emaki-sources/tmp
+cd <emaki-checkout>
+python3 packaging/mirror/collect_sources.py \
+    --closure /srv/emaki-sources/input/emaki/repo/closure.txt \
+    --packages /srv/emaki-sources/input/emaki/repo \
+    --output /srv/emaki-sources/output --jobs 3
 ```
+
+For newer split-repository images, collect from the retained build directory instead:
+use `<build-work>/closure.txt` and `<build-work>/offline` for `--closure` and `--packages`.
+Do not use `target-closure.txt` or `emaki/repo/closure.txt`: those describe only the
+installer repository. The image carries the full live-and-target list as
+`emaki/live-closure.txt`, plus `emaki/live-packages.json` with source identities and
+binary hashes captured from the build archives before mastering. Keep the complete
+build cache until source collection finishes.
+Publication accepts absent live metadata only through version 0.2.0. Later image versions
+require both files and the installed `pkglist.x86_64.txt`; the full closure must equal the
+live package list plus target archives, with exact versions including epochs.
+
+That last command collects the full closure with three parallel package-base jobs. Adjust
+`--jobs` to the VM's disk, memory and network capacity. Repeating the same command resumes:
+each completed job's binary metadata, source archive size and SHA-256, archived original recipe
+and package identity, and required supplements are checked before it is skipped. Failed jobs run again. A lock prevents two runners sharing one output directory.
+`summary.json` records every base, result, byte count, elapsed seconds and log path;
+`jobs/<identity>/collect.log` retains all attempts for that base. A failed job does not stop
+the other jobs. The command exits nonzero on any refusal, and writes the final
+`ARCH-SOURCES.json` only after validating all source objects against the actual image binaries.
+Preserve the entire output directory when resuming, including `jobs/` and its Git pin records.
+The archive pool and job copies use hard links where possible.
 
 The collector reads each exact binary's licence, source package name and recorded recipe hash.
 It searches that package's Arch packaging repository for the matching recipe, checks the exact
 version, and runs `makepkg --allsource` with signature and checksum verification enabled.
-Missing historical recipes or downloads and mutable upstream sources stop collection; they
-require an exact, verified replacement before the image can be published. Run only as the
-ordinary build user in the disposable VM: packaging recipes execute shell code.
-Recipes that fetch additional inputs during preparation or compilation need a separately
-verified source supplement before release; `makepkg --allsource` covers declared sources.
+Git tags require non-SKIP recipe checksums even when signed and are recorded with their resolved commits; preserve `git-pins/` and the manifest when
+rerunning collection so a moved tag is refused. Recipe `keys/pgp` keys are imported into a
+fresh verification-only keyring; the personal keyring is never used.
+Missing historical recipes or downloads and unpinned upstream sources stop collection; they
+require an exact, verified replacement before the image can be published.
+Reviewed, recipe-hash-bound submodule mappings can derive a secondary Git commit from the
+pinned primary repository's gitlink. Only that exact secondary commit is fetched. The original
+recipe stays unchanged; the manifest records the primary URL, primary commit, gitlink path and
+secondary commit as evidence. Other moving sources remain refused. This eligibility check is
+not proof that the upstream commit remains available or its signature will verify.
+The exact GRUB recipe instead uses a fixed gnulib revision in its pinned bootstrap
+configuration; both the configuration and the bootstrap code selecting it must match their
+reviewed hashes. The exact reviewed vpnc binary permits omitting its unused wiki: its installed
+documentation matches tracked files in the pinned primary tree. The archive preserves the original
+recipe and metadata, and the manifest records the omission and binary/file evidence.
+OBS Studio's reviewed nested capture-device source is retained inside its parent mirror's
+`source-supplements/`, with parent/gitlink/commit evidence in the manifest and local URL wiring
+instructions in `README.sources`. The original PKGBUILD is unchanged. Restoring those local
+URLs is necessary for an offline rebuild; makepkg does not wire them automatically. Unknown
+recursive submodules are refused until their exact inputs are covered.
+Eleven reviewed Cargo recipe hashes require `cargo vendor --locked --versioned-dirs` supplements.
+The collector extracts verified sources without running preparation, applies reviewed dependency
+changes (including glycin's pinned cherry-picks), and vendors the prepared lock. The archive's
+`<base>/_cargo/` contains dependencies, lock, configuration and restoration instructions;
+manifest evidence records locked package identities and file hashes. Missing supplements and
+unreviewed dependency fetches refuse collection. The scan covers every recipe function and
+recognizes Cargo, Go, npm, pip and other fetch commands, options and common command aliases.
+Indirect fetches in upstream build programs still require recipe review. The reviewed
+bcachefs-tools and libimagequant workspaces require Cargo supplements too. Libimagequant's
+published 4.4.1 source has no Cargo.lock. Only the reviewed 4.4.1-2 image binary accepts a
+retained reconstruction resolved from sparse registry publications at or before its BUILDDATE;
+every application crate version named in that binary matches. The supplement records the
+lock, selected index entries, binary evidence and source manifest hashes. Historical yank
+state and unnamed dependency versions are not independently proven; an unrestricted current
+resolution is never accepted.
+Reviewed kitty and cliphist recipes require `go mod vendor` supplements under `<base>/_go/`,
+with unchanged go.mod/go.sum, module identities, vendor file hashes and offline restoration
+instructions. Missing or changed Cargo/Go supplements refuse resume and publication.
+Existing collections of bcachefs-tools, libimagequant, kitty and cliphist must be collected
+again. Other bases retain the same source archive and pin formats.
+The exact libgcrypt 1.12.4-1 exception verifies the tarball checksum and both current signatures,
+requires a listed valid primary, and records both signers while retaining the signature unchanged.
+Other signature cases retain normal makepkg verification.
+libfakekey 0.3-4 is collected from the Arch sourceball at
+`https://sources.archlinux.org/sources/packages/libfakekey-0.3-4.src.tar.gz` when its
+normal route refuses. The reviewed archive hash, exact recipe, file inventory and
+upstream tarball checksum remain required.
+GNU checksum-pinned tarballs from `/gnu/` and `/pub/gnu/`, and Savannah release files,
+can fall back to official mirrors, including FreeType's SourceForge releases; the manifest
+records each requested and final serving URL and checksums. A checksum or signature
+mismatch tries the next listed mirror and retains rejected bytes with provenance under
+`rejected/<base>/` in that job's output. Coreutils and gnulib use
+upstream project Git mirrors with exact commit checks and original tag signature verification.
+Other Savannah Git sources use full Software Heritage origin snapshots and exact revision
+git-bare bundles, restoring original annotated tag bytes only when the Git object hash matches.
+The manifest retains recipe/archive origins, snapshot, tag object and commit. A vault that
+is not already cooked refuses by default. The explicit `--cook-swh-vault` option enables
+remote cooking of that exact revision and bounded polling; this option performs a POST and
+must not be used for a collection restricted to read-only network access.
+Missing public keys and missing signing subkeys are retrieved using only full recipe-listed
+primary fingerprints. The collector checks each primary before importing into a fresh,
+verification-only keyring and includes fetched key bytes in separate
+`keys/pgp/<fingerprint>.refreshed.asc` files, preserving the recipe's original keys.
+Collected dbus-glib 0.116-1, dosfstools 4.2-5 and e2fsprogs 1.47.4-1 archives containing
+overwritten keys need re-collection. Checksums
+and normal makepkg signature verification remain required. Unresolved sources refuse and
+the full run can finish with a nonzero result.
 `--repositories <directory>` uses local Arch packaging clones for offline fixtures or a
 previously fetched history. It does not bypass source verification.
 
-The output is `ARCH-SOURCES.json` plus `sources/sha256/<sha256>/<archive>`. Archive timestamps
-and ownership are normalized so unchanged source archives share one object between releases;
-split packages from the same recipe share an archive. Transfer the entire output directory
-with the image. The publisher rechecks the manifest against the closure and actual image
-binaries and refuses missing or changed archives. These are source archives, not copies of
+For a cheap recipe-only preflight, use the same image inputs with
+`python3 packaging/mirror/audit_sources.py --closure <closure.txt> --packages <repo>
+--repositories <recipe-cache> --archives <recipe-archives> --output <audit.json>`.
+This reads binary metadata and exact Arch packaging revisions without invoking makepkg or
+downloading upstream sources. GitLab packaging archives provide a fallback when Git requests
+are throttled; the archived PKGBUILD must match the binary's recorded hash. `--offline` reuses
+the caches. `conditional_vcs` means the reviewed mapping still needs actual upstream
+evidence resolution during collection. Missing recipe metadata remains an explicit refusal.
+The audit also lists skipped binaries and their licence labels for separate inspection.
+
+The single-base collector `iso_sources.py` remains available for focused diagnostics. Its output
+is `ARCH-SOURCES.json`, persistent `git-pins/` resolutions, and
+`sources/sha256/<sha256>/<archive>`. Archive timestamps
+and ownership, including makepkg’s generated `.SRCINFO` date, are normalized so unchanged
+source archives share one object between releases;
+split packages from the same recipe share an archive. Copy the entire output directory back
+to the publishing laptop as `<arch-sources>`, preserving its relative paths. Keep it beside
+the same image used for collection, then run
+`packaging/publish.sh iso <image> --arch-sources <arch-sources>/ARCH-SOURCES.json` there.
+For the approved incomplete 0.2.0 collection, also pass
+`--missing-sources <arch-sources>/MISSING-SOURCES.json`. Keep this exact-image missing list
+beside the source manifest when copying the collection. Omit it only for a complete collection.
+The publisher rechecks the manifest against the full image list and its
+embedded inventory, cross-checks offline archives against that inventory, and refuses
+unaccounted missing sources or changed source archives. Every uncollected source must be
+explicitly accounted for in the missing list; it is published with the source directions. Live-only binaries are represented by their recorded
+hashes and source identities; their package archives do not need to be shipped. These are source archives, not copies of
 Arch binary packages or directions to a third-party download server.
 
 `iso/build.sh` writes `emaki-<version>-x86_64.iso.sha256` next to the image (and a `.sig` only
 when `EMAKI_ISO_SIGN_KEY` is set; the build VM holds no private key, so normally it is not).
 `packaging/publish.sh iso <image> --arch-sources <arch-sources>/ARCH-SOURCES.json`
-on the publishing machine:
+on the publishing machine (add `--missing-sources <arch-sources>/MISSING-SOURCES.json`
+for the approved incomplete collection):
 
-1. refuses unless `stable` already serves every Emaki package in the image's offline repository
+1. refuses unless `stable` already serves every Emaki package in the full image inventory, including the live-only installer
    with the same bytes, and the acceptance stamp names the `stable` snapshot;
 2. writes the `.sha256` and a detached signature with the package key if they are missing, and
    checks both (the signature against the key in git);
 3. uploads `iso/<version>/emaki-signing-key.asc` (the public key as it is that day: the yearly
    expiry extension changes its bytes, so each image keeps its own copy), then
    `iso/<version>/emaki-<version>-x86_64.iso` (multipart on R2: resumable, and visible only once
-   complete), then `.sig`, the image's `closure.txt`, `SOURCES-ISO.txt` and source manifest,
-   then `.sha256` **last**. Arch source objects are uploaded to the shared source pool before
-   the image completion checksum; Emaki source links reuse the package pool. Each is write-once, so a published image name is
+   complete), then `.sig`, the full image list as `closure.txt`, `SOURCES-ISO.txt` and source manifest,
+   then `.sha256` **last**. Arch and Emaki source objects are uploaded to the shared `dl.emaki.sh` source pool before
+   the image completion checksum; every image source direction points to that pool. Each is write-once, so a published image name is
    never replaced; an image left by an interrupted run is downloaded whole and must have the
    image's sha256 before `.sig` and `.sha256` are written next to it;
 4. reads back the source companions, signature, checksum, and the first and last megabyte of the image anonymously;
    `--full-check` downloads the whole image once and compares its sha256.
+
+### Adding collected sources after image publication
+
+Deploy the download Worker route and cache rule above before the first addition. For an
+already published image, run:
+
+```sh
+packaging/publish.sh iso-sources <version> \
+  --arch-sources <arch-sources>/ARCH-SOURCES.json \
+  --missing-sources <arch-sources>/MISSING-SOURCES.json
+```
+
+Both inputs are complete merged manifests for that exact image, not a delta: retain all
+previously collected records and add only bases named in its published missing list. Remove
+those bases from the missing list; keep the manifest with `bases: []` when collection is
+complete. Copy the complete collection directory so each source archive remains available
+at its recorded relative path. The command verifies source objects with the same checks as
+initial publication and refuses replacements of previously collected records.
+
+It uploads verified additions and a new immutable
+`iso/<version>/source-snapshots/<sha256>/` containing `SOURCES-ISO.txt`, `ARCH-SOURCES.json`
+and `MISSING-SOURCES.json`, then switches `iso/<version>/source-pointer` with a conditional
+write. The three public companion addresses consequently select the same source snapshot.
+The image, closure, signature, checksum and original companion objects remain unchanged.
+Use `packaging/publish.sh --dry-run iso-sources` with the same arguments to validate an addition before uploading;
+do not rerun `iso` with changed manifests.
 
 Text for the download page (the fingerprint is printed on GitHub and on emaki.sh, two hosts):
 

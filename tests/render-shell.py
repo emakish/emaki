@@ -6,6 +6,7 @@ installation. Mesa llvmpipe supplies actual shader rendering without a display,
 Wayland compositor, GPU device, or live session. The fixture's containing QML
 directory is copied into a private profile before running it.
 """
+from runtime_fixture import runtime_path
 import argparse
 import fcntl
 import hashlib
@@ -104,7 +105,7 @@ ShellRoot {
     }
 }
 ''' % (json.dumps(fixture.as_uri()), json.dumps(properties or {}), json.dumps(options)))
-        env = dict(os.environ, XDG_RUNTIME_DIR=str(profile / 'runtime'),
+        env = dict(os.environ, XDG_RUNTIME_DIR=str(runtime_path(profile)),
                    XDG_CACHE_HOME=str(profile / 'cache'), XDG_CONFIG_HOME=str(profile / 'config'),
                    XDG_STATE_HOME=str(profile / 'state'), XDG_DATA_HOME=str(profile / 'data'),
                    XDG_DATA_DIRS=str(profile / 'data'), TMPDIR=str(profile / 'tmp'),

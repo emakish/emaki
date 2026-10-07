@@ -3,8 +3,10 @@
 The output is `emaki-<version>-x86_64.iso`, volume label `EMAKI_<version>`, where `<version>`
 is the content of `iso/VERSION` (read by `iso/build.sh` and `iso/profile/profiledef.sh`).
 UEFI is supported. The releng BIOS loader is retained, but the installer requires
-UEFI. English is the live system language. Proprietary NVIDIA drivers and
-`broadcom-wl` are not included.
+UEFI. English is the live system language. The offline target repository includes
+official Arch NVIDIA open-module drivers for Turing and newer. The live desktop
+uses nouveau/Mesa; older NVIDIA cards retain that same installation path.
+`broadcom-wl` is not included.
 
 ## Source profile and current integration status
 
@@ -48,8 +50,25 @@ Emaki keeps this parameter explicit in every loader entry and in the importer.
 The following steps need the signed Emaki packages.
 The VM needs archiso 91 and its dependencies, Python, OpenSSH tools, enough disk
 space for the package cache, live root, squashfs and ISO (allow tens of GiB), and
-working Arch core/extra mirrors. These commands assume the checkout is `~/emaki`
+access to the recorded Arch Archive snapshot. These commands assume the checkout is `~/emaki`
 in the build VM, reached through the existing port-2222 harness.
+
+Build inputs are recorded beside `iso/VERSION` in `iso/ARCH-SNAPSHOT`: the Arch
+snapshot date, the audited archiso upstream version and the exact archinstall
+package version. The build also requires the installed archiso package release
+to match the snapshot, and records that full version in `BUILDINFO`.
+To advance the date deliberately, record the reviewed versions in one command:
+
+```sh
+python3 iso/snapshot.py advance YYYY-MM-DD --archiso 91 --archinstall 4.5-1
+```
+
+Replace the date and installer version with the reviewed values, then run
+`python3 tests/test-arch-snapshot.py` and validate a clean build in the disposable
+VM. A different archiso upstream version requires a review of image staging
+before this command accepts it. Archive mirrors can be slower than current Arch
+mirrors; the build has no rolling mirror fallback. Installed systems keep their
+normal Arch mirrors.
 
 All eight names in `iso/emaki-packages.txt` must be in `.cache/repo/testing/emaki.db`
 with their `.pkg.tar.zst` and `.sig` files. The build VM's **pacman verification
@@ -104,11 +123,15 @@ filenames. There is no signature-check bypass.
 
 Archiso v91 has no profile-root copy hook for arbitrary external ISO files.
 Its `_build_iso_base` sets `isofs_dir=$work_dir/iso`; `_run_once` names stamps with
-`$run_once_mode.$function`. The builder creates `iso._build_iso_image` to suppress
-only mastering in pass one. After that succeeds, it copies the repository into
-`<work>/mk/iso/emaki/repo`, removes `iso._build_iso_image` and
-`build._build_buildmode_iso`, then invokes the same `mkarchiso` command again.
-The base stages remain cached for pass two, with the recorded build date.
+`$run_once_mode.$function`. The builder creates `iso._build_iso_image` and
+`base._prepare_airootfs_image` to suppress mastering and packing the live root in
+pass one. After that succeeds, it removes the mkinitcpio wrapper that emaki-config
+wrote into the live `/etc/pacman.d/hooks` (pacstrap runs that directory for the
+target; any other live hook fails the build), copies the repository into
+`<work>/mk/iso/emaki/repo`, removes `iso._build_iso_image`,
+`build._build_buildmode_iso` and `base._prepare_airootfs_image`, then invokes the
+same `mkarchiso` command again. The other base stages remain cached for pass two,
+with the recorded build date; pass two packs the live root and masters the image.
 `-r` means **remove work**, not resume, and is intentionally absent. There is no
 `customize_airootfs.sh` hook and no patch to the system's mkarchiso.
 
@@ -138,7 +161,7 @@ scp -P 2222 -i "$HOME/VMs/emaki-vm/id_vm" \
 | `/etc/pacman.conf` in live root | Same offline-only repository configuration |
 | `/etc/emaki-live/greetd.toml` | Normal Emaki greeter plus one-time initial `live` session |
 | `/home/live/.config/emaki/niri-emaki.kdl` | Only `spawn-at-startup "emaki-install"` |
-| `/home/live/.config/wpaperd/config.toml` | Installed `/usr/share/emaki/wallpaper/ring.png` |
+| `/home/live/.config/wpaperd/config.toml` | Installed `/usr/share/emaki/wallpaper/fallback.png` (centred) |
 | `/etc/emaki-test/authorized_keys` | Test builds only; installer uses it for target SSH |
 
 The `live` account has UID/GID 1000, no password, Bash, membership in `wheel`,
@@ -239,11 +262,13 @@ protocol login, **not acceptance of the greeter UI**. Screenshots and user servi
 checks follow it. Review GRUB titles/background, greeter, wallpaper ring and shell
 visually; run the separate installer UI acceptance as well.
 
-`iso-shot.sh` uses guest grim in the active seat's Wayland session, with a monitor
-`screendump` fallback. `--monitor` skips SSH for firmware/GRUB. Virgl may return
-“no surface”; the full response is retained in the screenshot `.log`. Such a
-missing GRUB capture is reported `BAD`, and no desktop screenshot is substituted
-as GRUB evidence. Screenshots alone do not prove the menu text is correct.
+`iso-shot.sh` captures the host display through the VM's local `vnc.sock`, exposed
+by both `run-iso.sh` and `night/vm.sh`. When VNC is unavailable, or with `--monitor`,
+it uses QEMU `screendump`; it never captures through the guest session. Virgl may
+return “no surface”; the response is retained in the screenshot `.log`. Missing,
+undecodable or black captures fail, and no desktop screenshot is substituted as
+GRUB evidence. Decoded frames are reported as `SHOT`, with an unjudged `.json`
+sidecar. Screenshots alone do not prove the menu text is correct.
 
 Repeat with `erase-ext4` and a fresh directory. For `manual`, use GParted in the
 live ISO first: create GPT, a FAT32 EFI System Partition as partition 1, and a root
@@ -262,8 +287,8 @@ Windows"). The alongside check uses a synthetic Windows disk: its Microsoft
 path holds a diagnostic EFI program, so it tests chainloading only, not Windows. The last
 encrypted run on the full 0.1.2 test ISO ended rc=1.
 
-Install alongside Windows is not offered in 0.2: the 0.2 installer has no experimental
-options. On a 0.2 ISO the alongside check asks the worker for a plan only, sees the mode
+Install alongside Windows is not offered in 0.3.0: the 0.3.0 installer has no experimental
+options. On a 0.3.0 ISO the alongside check asks the worker for a plan only, sees the mode
 refused, prints `NOT APPLICABLE` and exits 77 without touching the target disk; treat 77 as
 "not run", never as a pass.
 
@@ -304,10 +329,15 @@ Ext4 has no snapshots: the tool explains this and changes nothing.
 
 The old root remains at a printed, dated `@emaki-kept-…` name. After restarting,
 `emaki-rollback list` lists kept roots and `emaki-rollback restore NAME` prepares
-an undo in the same way, preserving the currently selected root too. Cleanup is
-explicit: `emaki-rollback delete NAME --yes`. It requires a normal writable boot,
-rejects mounted copies, and always preserves the newest kept root and at least
-one undo copy. No timer or Snapper cleanup policy deletes these kept roots.
+an undo in the same way, preserving the currently selected root too. After each
+successful rollback, automatic cleanup keeps the two newest previous systems
+[retained roots], plus pinned or mounted copies. Older mounted copies are retried
+at the next rollback. The list marks each copy as newest two, pinned, pending
+cleanup, or an incomplete preparation. Use `emaki-rollback pin NAME` to keep an
+older copy and `emaki-rollback unpin NAME` to allow its cleanup. Snapper snapshots
+and manually created copies are never part of this cleanup. Explicit deletion
+with `emaki-rollback delete NAME --yes` requires a normal writable boot and also
+preserves pins, mounted copies and the two newest retained roots.
 Snapshots predating installation of the tool can lack it after restoration; use
 recovery media and the printed top-level mount instructions in that case.
 
@@ -332,8 +362,259 @@ became `@` as an incomplete preparation; `emaki-rollback delete NAME --yes` remo
 or a record whose copy was never made. Nothing removes them automatically. A staging
 copy without a record is not touched; this version never leaves one, an earlier build could.
 
+### Keep an older snapshot without the tool
+
+Snapshots made before the rollback tool was installed, including 0.1.0 and 0.1.1,
+do not contain **Keep this state**. If the updated system still starts and has the
+tool, run `sudo snapper list`, then `sudo emaki-rollback snapshot NUMBER`, replacing
+`NUMBER` with the chosen snapshot number, and restart.
+
+Otherwise boot a current Emaki or Arch recovery USB and open a terminal. The
+following manual path is for an unencrypted Emaki btrfs install with boot files
+inside `@`; it has not yet been verified in a VM. Do not use it while the installed
+system is running or hibernating. Start a root shell and identify the installed
+btrfs partition and its UUID:
+
+```sh
+sudo -i
+lsblk -f
+```
+
+In that shell, replace `YOUR-BTRFS-UUID` below with that UUID. Stop if a command
+fails. The recovery USB must provide `mv --exchange` and `grub-editenv`.
+
+```sh
+mv --help | grep -- --exchange
+command -v grub-editenv
+recovery=/mnt/emaki-recovery
+mkdir -p "$recovery"
+mount -t btrfs -o rw,subvolid=5 /dev/disk/by-uuid/YOUR-BTRFS-UUID "$recovery"
+btrfs subvolume list "$recovery"
+ls "$recovery/@snapshots"
+```
+
+Replace `7` below with the chosen snapshot number. Read its mount table and boot
+entries: `/` must use `subvol=@`, the shared mounts must use `@home`, `@log`, `@pkg`
+and `@snapshots`, and normal boot entries must use `/@/boot/` and `rootflags=subvol=@`
+(or `subvol=/@`) with the installed filesystem UUID. Stop if the layout differs.
+
+```sh
+number=7
+source="$recovery/@snapshots/$number/snapshot"
+btrfs property get -ts "$source" ro
+cat "$source/etc/fstab"
+cat "$source/boot/grub/grub.cfg"
+cat "$recovery/@snapshots/$number/info.xml"
+```
+
+The snapshot must report `ro=true`. Prepare a writable copy, clear its old boot
+selection, and remove a copied package lock only for a transaction-boundary
+snapshot (`pre` or `post`):
+
+```sh
+kept="$recovery/@manual-kept-$(date -u +%Y%m%dT%H%M%SZ)"
+test ! -e "$kept"
+btrfs subvolume snapshot "$source" "$kept"
+if test -e "$kept/var/lib/pacman/db.lck"; then
+    grep -Eq '<type>(pre|post)</type>' "$recovery/@snapshots/$number/info.xml"
+    rm -- "$kept/var/lib/pacman/db.lck"
+fi
+grub-editenv "$kept/boot/grub/grubenv" create
+btrfs filesystem sync "$recovery"
+mv --exchange --no-copy -T -- "$recovery/@" "$kept"
+btrfs filesystem sync "$recovery"
+printf 'Previous system: %s\n' "$kept"
+umount "$recovery"
+reboot
+```
+
+The exchange leaves the previous system under the printed `@manual-kept-…` name.
+Write that name down before restarting. Home files and the shared subvolumes stay
+unchanged. This manual copy is not managed or deleted by `emaki-rollback`.
+To undo, boot the recovery USB again, mount the same filesystem as above, set
+`kept` to the printed path, then run:
+
+```sh
+mv --exchange --no-copy -T -- "$recovery/@" "$kept"
+btrfs filesystem sync "$recovery"
+umount "$recovery"
+reboot
+```
+
+The restored old system still lacks the rollback tool and its update protection;
+wait for a fixed package release before updating it again.
+
 `tests/vm/rollback-check.sh` is the host-queue acceptance job. With the session's
-`VMDIR` set to its `n2-rollback-run` directory, it copies `n2-rollback-base`, uses
-KVM and SSH port 2251, boots recovery through the QEMU monitor, and tests promotion,
-reboot, Snapper/menu updates, undo and cleanup. All images and logs stay below
-`VMDIR`; the base is read-only and the test VM is stopped in a `finally` block.
+`VMDIR` set to a disposable directory below the VM work root, pass `--base DIR`,
+`--iso IMAGE`, `--candidate ID`, `--provenance JSON`, `--plan PLAN` and `--identity KEY`.
+The base must be a separate installed candidate fixture; provenance binds the ISO,
+disk, NVRAM and plan by SHA256 and records installed package versions. The checker
+copies the fixture, verifies installed packages before damage, uses KVM and SSH
+port 2251, then tests recovery, promotion, reboot, Snapper/menu updates, undo and
+cleanup. It uploads no production payload replacements. All images and logs stay
+below `VMDIR`; the base is read-only and the test VM is stopped in a `finally` block.
+Unsupported encrypted or hibernating fixtures report `NOT TESTED` (exit 77).
+
+
+The release gate (`tests/vm/release-gate.sh`) includes `rollback` and `boot-menu`
+jobs. Missing evidence is `NOT TESTED` and blocks `RESULT: SCRIPTS PASSED`.
+For rollback, supply `--candidate ID --rollback-base DIR --rollback-provenance JSON
+--rollback-plan PLAN --rollback-identity KEY`. The gate validates the candidate
+manifest against the test ISO, disk, NVRAM and plan, then runs the rollback check;
+an old PASS marker cannot substitute for that run.
+
+For boot-menu acceptance, first capture the release ISO with
+`tests/vm/check-boot-menu.py --iso IMAGE --sha256 DIGEST --out DIR`, then pass
+`--boot-menu DIR` to the release gate. The capture command leaves the pictures
+unjudged. Review each native size in `evidence.json`: 1280x800, 1366x768,
+1920x1080, 2560x1600 and 3840x2160. At least one frame at each size must record
+`judgment: "PASS"`, `reviewer`, and an ISO timestamp with timezone in `reviewed_at`.
+A `CONFUSING` frame also requires `waiver` naming a nonempty file inside that
+capture directory. Preserve each frame's recorded `sha256`; the gate checks it,
+the decoded dimensions and the release ISO digest. Missing or unjudged sizes
+remain `NOT TESTED`; broken or mismatched evidence fails. This boot-menu evidence
+is additional to the separately signed release walk.
+
+## Installed boot update acceptance
+
+`emaki-config` installs `emaki-boot-refresh`, `95-emaki-boot-refresh.hook` and
+`emaki-boot-complete.service`. Refresh stages the GRUB image, modules, artwork and
+menu, with normal entries pointing at live `/boot` kernels/initramfs. Stock
+mkinitcpio owns initramfs creation. `emaki-boot-refresh --check` reports disk
+identity without changing boot files; the regular command retries a refusal.
+Unchanged loader inputs regenerate only the menu. Kernel and initramfs updates do not
+start another trial. An exhausted candidate keeps the old loader while its menu is
+updated; changed loader inputs or a missing root manifest can offer a new candidate.
+Refresh requires the installed writable ext4/btrfs root and the fstab ESP. Secure
+Boot, BIOS, foreign/missing fallback loaders and ESPs smaller than 256 MiB refuse
+before publication. Live images, installation roots and chroots skip silently.
+
+Each image carries matching modules in its memdisk and reads the current canonical
+menu, including after root restoration. Refresh keeps both firmware paths and stages
+a separate ESP candidate. Older loaders chainload it with at most two attempts,
+counted in the FAT `EFI/Emaki/trial.env`, inside the ordinary default entry. An old
+completed boot with a zero counter disarms the trial; the next refresh reports that
+the old loader was kept. Missing or damaged counters also exhaust the trial.
+After multi-user.target, the boot-complete
+service certifies `emaki.generation` and promotes it to both firmware paths. Until
+promotion encrypted boots ask twice, first in the old loader and then the candidate.
+NVRAM is untouched. Cleanup retains only booted-good/newest GRUB generations, even
+after a refusal. The ESP's `EFI/Emaki/boot-state.json` records those generations and
+the fallback checksum; `boot-intent.json` records interrupted publication for recovery
+on the next refresh or completed boot. Do not manually remove these files or retained
+generations. Detailed update output is in `/var/log/emaki-boot-refresh.log`.
+
+Run the complete [installed boot delivery matrix](../tests/vm/boot-delivery.md),
+including 45 refreshes, kernel upgrade plus refusal, rename power cuts with
+`fsck.fat -n`, both firmware paths and snapshot rollback. FAT rename durability
+must be measured on killed guest copies; a successful ordinary rename test does
+not establish power-loss safety. The following older walkthrough also covers the
+visible installer and unlock sequence. Store every image under `.cache/evidence`.
+
+The following acceptance run needs a disposable VM host with KVM and a usable
+display. The release 0.2.0 ISO has no SSH service. Its real upgrade path starts
+with a GUI installation from that release ISO; a 0.1.x test ISO is not a substitute.
+Use a separate guest for encrypted and unencrypted installs. All `sudo` commands
+below belong inside those disposable guests.
+
+Build the candidate from a clean committed tree in the existing build VM and
+create a read-only transfer ISO on the host:
+
+```sh
+packaging/build.sh --only emaki-config --out .cache/evidence/t5g-packages
+xorriso -as mkisofs -o .cache/evidence/t5g-packages.iso .cache/evidence/t5g-packages
+export EMAKI_ISO_VM_DIR=.cache/evidence/t5g-encrypted
+mkdir -p "$EMAKI_ISO_VM_DIR"
+tests/vm/run-iso.sh --iso ~/VMs/iso/release-0.2.0/emaki-0.2.0-x86_64.iso
+```
+
+Install 0.2.0 with encrypted btrfs, keep the disk password, boot the installed
+system, and save the old unlock-screen capture. Record `pacman -Q emaki-config
+grub`, `findmnt /`, `findmnt /efi`, `/etc/default/grub`, and hashes of both EFI
+loaders and `/boot/grub/grub.cfg`. Shut down this QEMU before starting the same
+disk with a 2560×1600 display preference and the package transfer CD:
+
+```sh
+qemu-system-x86_64 -machine q35 -enable-kvm -cpu host -smp 4 -m 6G \
+  -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
+  -drive if=pflash,format=raw,file=.cache/evidence/t5g-encrypted/OVMF_VARS.4m.fd \
+  -drive file=.cache/evidence/t5g-encrypted/target.qcow2,if=none,id=target,format=qcow2,discard=unmap \
+  -device virtio-blk-pci,drive=target,serial=emaki-target \
+  -drive file=.cache/evidence/t5g-packages.iso,media=cdrom,readonly=on \
+  -device VGA,xres=2560,yres=1600 -display gtk \
+  -netdev user,id=net0 -device virtio-net-pci,netdev=net0 \
+  -monitor unix:.cache/evidence/t5g-encrypted/mon.sock,server=on,wait=off \
+  -serial file:.cache/evidence/t5g-encrypted/serial-firmware.log
+```
+
+Use the guest console to transfer and install the candidate:
+
+```sh
+sudo mkdir -p /mnt/packages
+sudo mount -o ro /dev/sr0 /mnt/packages
+sudo pacman -U /mnt/packages/emaki-config-*.pkg.tar.zst
+sudo emaki-boot-refresh --check
+sudo sha256sum /efi/EFI/Emaki/grubx64.efi /efi/EFI/BOOT/BOOTX64.EFI /boot/grub/grub.cfg
+sudo cat /boot/emaki/*/manifest.json
+```
+
+Capture the complete package transaction output. It must show the refresh hook
+and its success message. Do not run a manual refresh before the first reboot:
+that would hide a broken package hook. The 0.3.0 packages must upgrade the installed
+0.2.0 packages so ordinary `pacman -Syu` selects them. No publication is part of this check.
+
+Reboot and capture the actual framebuffer:
+
+```sh
+python3 tests/vm/iso-monitor.py --dir .cache/evidence/t5g-encrypted \
+  screendump .cache/evidence/t5g-encrypted/unlock-after.png -f png
+```
+
+The screenshot itself must be 2560×1600. An EDID preference alone does not prove
+the active GOP mode; configure the firmware display setting if it chooses another
+mode. Require the full-screen current artwork, four wrong attempts without
+`grub rescue>`, then a successful unlock and normal installed-system boot. Check
+both normal and LTS entries, and fallback initramfs entries. In the guest, record
+`uname -r`, `/proc/cmdline`, `findmnt /`, `systemctl --failed`, and the manifest.
+Select `/EFI/BOOT/BOOTX64.EFI` explicitly in firmware's Boot From File screen and
+repeat unlock/boot to cover the Mac path. Repeat the entire update and reboot
+scenario from an unencrypted ext4 0.2.0 installation under `.cache/evidence/t5g-plain`.
+
+On the encrypted btrfs guest, create a root marker before a new snapshot and
+change it afterwards. Record the snapshot number:
+
+```sh
+echo before-boot-update | sudo tee /etc/emaki-boot-marker
+sudo snapper -c root create --print-number --description boot-update-acceptance
+echo current-root | sudo tee /etc/emaki-boot-marker
+```
+
+Select that snapshot through the visible GRUB submenu on 20 boots, saving the
+console capture, `/proc/cmdline`, `findmnt /`, `emaki-rollback status --json`, and
+the marker each time. The marker must be `before-boot-update`, and the selected
+snapshot must match the mounted recovery root. A return to the timed main menu
+or ordinary root is a failure even if login works. This is the unresolved audit
+85 acceptance; direct injected kernel commands do not test menu selection.
+Also restore a snapshot from before the refresh and boot it, then restore a
+snapshot containing a generation. Verify that each uses its own kernel/module
+package set. The refresh must refuse to run from the temporary snapshot overlay.
+
+Failure checks belong on VM clones: unmount the ESP and reinstall the candidate;
+the hook must warn and leave both original loaders unchanged after remounting.
+Repeat with insufficient free ESP space, an unavailable required GRUB module,
+and a foreign fallback file. Every refusal must leave both loaders unchanged.
+Compare hashes before and after; retain the guest images and transaction logs.
+
+The rootless supplementary fixture exercises actual unlock and module loading
+without an installed kernel. It is useful where KVM is unavailable, but does not
+replace the release-to-package upgrade above:
+
+```sh
+python3 tests/vm/grub-unlock-check.py --boot-refresh \
+  --output .cache/evidence/boot-refresh-unlock --video-size 2560x1600 \
+  --native-only --wrong-attempts 4 --accel tcg
+```
+
+It requires GRUB build tools, mtools, sgdisk, QEMU, OVMF, clang and lld-link;
+`--grub-root /path/to/extracted/usr` supports an unpacked GRUB package. Its
+`RESULT.txt` distinguishes the synthetic disk menu from an installed-system boot.

@@ -57,5 +57,12 @@
     "files": [
       "usr/lib/systemd/system/grub-btrfsd.service"
     ]
+  },
+  "pacman-contrib": {
+    "source": "Arch package file list: https://archlinux.org/packages/extra/x86_64/pacman-contrib/files/",
+    "files": [
+      "/usr/lib/systemd/system/paccache.timer",
+      "/usr/lib/systemd/system/paccache.service"
+    ]
   }
 }

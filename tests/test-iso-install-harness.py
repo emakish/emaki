@@ -17,7 +17,7 @@ CACHE = ROOT / '.cache'
 CACHE.mkdir(exist_ok=True)
 
 # Answers by the remote command (the last argument). STUB_OFFER=refuse makes the worker refuse
-# the alongside mode as the 0.2 installer core does; accept makes it take the plan.
+# the alongside mode as the current installer core does; accept makes it take the plan.
 STUB_SSH = r'''#!/usr/bin/env bash
 command=${!#}
 printf '%s\n' "$command" >>"$STUB_LOG"
@@ -90,6 +90,7 @@ class IsoInstallAlongsideTests(unittest.TestCase):
     def test_erase_fixture_is_not_probed(self):
         result, calls = self.install('erase-btrfs', 'accept')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('Command-line installation evidence [CLI]:', result.stdout)
         cli = [call for call in calls if 'emaki-install-cli' in call]
         self.assertEqual(len(cli), 1)
         self.assertIn('--yes', cli[0])

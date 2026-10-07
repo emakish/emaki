@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Eyes launcher: one QEMU pass of a release walk, driven only by eyes.py (QMP + VNC).
 # Usage: eyes-vm.sh --walk DIR --run W1 --display gl|fw --res 1920x1080 [--firmware uefi|bios]
-#                   (--iso FILE | --no-cd) [--ram 4G] [--smp 2]
+#                   (--iso FILE [--usb] | --no-cd) [--ram 4G] [--smp 2]
 # Runs QEMU in the foreground; start it with setsid/& and stop it with `eyes.py quit`.
 #   gl  virtio-vga-gl + egl-headless; VNC reads the real scan-out (the desktop needs GL).
 #   fw  std VGA at the true firmware resolution; shows no desktop (that frame is stage 04).
@@ -13,7 +13,7 @@ HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(cd -- "$HERE/../../.." && pwd)
 die() { printf 'eyes-vm: %s\n' "$*" >&2; exit 1; }
 
-walk='' run='' display='' res='' firmware=uefi iso='' no_cd=0 ram=4G smp=2
+walk='' run='' display='' res='' firmware=uefi iso='' no_cd=0 usb=0 ram=4G smp=2
 while (($#)); do
     case $1 in
         --walk|--run|--display|--res|--firmware|--iso|--ram|--smp)
@@ -24,6 +24,7 @@ while (($#)); do
             esac
             shift 2 ;;
         --no-cd) no_cd=1; shift ;;
+        --usb) usb=1; shift ;;
         --help) sed -n '2,10p' "$0"; exit 0 ;;
         *) die "unknown option: $1" ;;
     esac
@@ -32,9 +33,10 @@ done
 walk=$(realpath -- "$walk")
 [[ $run =~ ^[A-Za-z0-9]+$ ]] || die '--run must be a run name such as W1'
 [[ $display == gl || $display == fw ]] || die '--display must be gl or fw'
-[[ $res =~ ^(1920x1080|2560x1600|1366x768)$ ]] || die '--res must be 1920x1080, 2560x1600 or 1366x768'
+[[ $res =~ ^(1280x800|1920x1080|2560x1600|1366x768)$ ]] || die '--res must be 1280x800, 1920x1080, 2560x1600 or 1366x768'
 [[ $firmware == uefi || $firmware == bios ]] || die '--firmware must be uefi or bios'
 [[ $ram =~ ^[0-9]+[MG]$ && $smp =~ ^[1-9][0-9]?$ ]] || die 'invalid --ram or --smp'
+((usb == 0 || no_cd == 0)) || die '--usb requires --iso; incompatible with --no-cd'
 if ((no_cd)); then
     [[ -z $iso ]] || die '--iso and --no-cd exclude each other'
 else
@@ -89,8 +91,10 @@ mkdir -p -- "$disk_dir"
 n=1
 while [[ -e $disk_dir/$display-$res-$firmware-$(printf '%02d' "$n") ]]; do n=$((n + 1)); done
 pass=$disk_dir/$display-$res-$firmware-$(printf '%02d' "$n")
-((${#pass} <= 96)) || die "pass directory path too long for unix sockets: $pass"
 mkdir -- "$pass"
+socket_runtime=$(python3 "$(dirname -- "$(readlink -f -- "$0")")/../socket_runtime.py" prepare "$pass")
+# The runtime path is ASCII; include the longest socket basename in the byte limit.
+((${#socket_runtime} + 9 <= 96)) || die "runtime path too long for unix sockets: $socket_runtime"
 [[ $pass != *,* && ${iso:-x} != *,* ]] || die 'QEMU paths must not contain commas'
 disk=$disk_dir/disk.qcow2
 [[ -f $disk ]] || qemu-img create -f qcow2 "$disk" 40G >/dev/null
@@ -102,16 +106,20 @@ if [[ $firmware == uefi ]]; then
     [[ -f $disk_dir/OVMF_VARS.4m.fd ]] || cp -- "$vars" "$disk_dir/OVMF_VARS.4m.fd"
     args+=(-drive "if=pflash,format=raw,readonly=on,file=$code" -drive "if=pflash,format=raw,file=$disk_dir/OVMF_VARS.4m.fd")
 fi
-args+=(-drive "file=$disk,if=none,id=target,format=qcow2,discard=unmap" -device "nvme,drive=target,serial=emaki-eyes-0001")
+args+=(-drive "file=$disk,if=none,id=target,format=qcow2,discard=unmap" -device "nvme,drive=target,serial=emaki-eyes-0001" -device qemu-xhci)
 if ((no_cd == 0)); then
-    args+=(-drive "if=none,id=cd,media=cdrom,readonly=on,format=raw,file=$iso" -device "ide-cd,drive=cd,bootindex=2")
+    if ((usb)); then
+        args+=(-drive "if=none,id=liveiso,format=raw,readonly=on,file=$iso" -device "usb-storage,drive=liveiso,bootindex=1")
+    else
+        args+=(-drive "if=none,id=cd,media=cdrom,readonly=on,format=raw,file=$iso" -device "ide-cd,drive=cd,bootindex=2")
+    fi
 fi
 case $display in
     gl) args+=(-device "virtio-vga-gl,xres=$x,yres=$y" -display "egl-headless,rendernode=$render") ;;
     fw) args+=(-device "VGA,xres=$x,yres=$y,vgamem_mb=64" -display none) ;;
 esac
-args+=(-vnc "unix:$pass/vnc.sock" -device qemu-xhci -device usb-tablet -nic "user,model=virtio-net-pci"
-    -qmp "unix:$pass/qmp.sock,server=on,wait=off" -monitor "unix:$pass/mon.sock,server=on,wait=off"
+args+=(-vnc "unix:$socket_runtime/vnc.sock" -device usb-tablet -nic "user,model=virtio-net-pci"
+    -qmp "unix:$socket_runtime/qmp.sock,server=on,wait=off" -monitor "unix:$socket_runtime/mon.sock,server=on,wait=off"
     -serial "file:$pass/serial.log" -pidfile "$pass/qemu.pid")
 printf '%q ' qemu-system-x86_64 "${args[@]}" >"$pass/qemu-cmdline.txt"
 printf '\n' >>"$pass/qemu-cmdline.txt"

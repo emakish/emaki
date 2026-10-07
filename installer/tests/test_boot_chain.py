@@ -1,11 +1,10 @@
 """Boot chain of an installed system: GRUB defaults, initramfs hooks and where the disk key lives."""
-import re
 import unittest
 
 from emaki_installer.constants import GIB, MIB
 from emaki_installer.errors import InstallError
 from emaki_installer.planner import make_plan
-from emaki_installer.render import grub_defaults, mkinitcpio_config, mkinitcpio_preset
+from emaki_installer.render import grub_defaults, mkinitcpio_machine_config, mkinitcpio_package_preset
 from support import config, inventory, manual
 
 
@@ -32,12 +31,9 @@ class BootChainTests(unittest.TestCase):
                         self.assertFalse(mp == '/boot' or mp.startswith('/boot/'), mp)
                     self.assertEqual([p.mountpoint for p in plan.partitions if p.esp], ['/efi'])
                     for kernel in ('linux', 'linux-lts'):
-                        paths = re.findall(r'^(?:ALL_kver|default_image|fallback_image)="([^"]*)"$',
-                                           mkinitcpio_preset(kernel), re.M)
-                        self.assertEqual(len(paths), 3)
-                        for path in paths:
-                            self.assertTrue(path.startswith('/boot/'), path)
-                    text = mkinitcpio_config(plan.btrfs, encrypted=True, hibernation=bool(plan.swap_bytes))
+                        self.assertEqual(mkinitcpio_package_preset(kernel),
+                                         f'. /usr/share/emaki/boot/{kernel}.preset\n')
+                    text = mkinitcpio_machine_config(plan.btrfs, encrypted=True, hibernation=bool(plan.swap_bytes))
                     self.assertTrue(text.startswith('umask 0077\n'))
                     self.assertIn('FILES=(/etc/cryptsetup-keys.d/emaki-root.key)', text)
                     self.assertIn('cryptkey=rootfs:/etc/cryptsetup-keys.d/emaki-root.key',
@@ -64,8 +60,8 @@ class BootChainTests(unittest.TestCase):
         # and fsck.btrfs is a stub anyway. An ext4 root keeps its check.
         for encrypted in (False, True):
             for hibernation in (False, True):
-                self.assertNotIn('fsck', hooks(mkinitcpio_config(True, encrypted, hibernation)))
-                self.assertEqual(hooks(mkinitcpio_config(False, encrypted, hibernation))[-1], 'fsck')
+                self.assertNotIn('fsck', hooks(mkinitcpio_machine_config(True, encrypted, hibernation)))
+                self.assertEqual(hooks(mkinitcpio_machine_config(False, encrypted, hibernation))[-1], 'fsck')
 
     def test_grub_loads_no_separate_microcode_image(self):
         # The microcode hook puts the CPU's microcode into every initramfs. GRUB's stock

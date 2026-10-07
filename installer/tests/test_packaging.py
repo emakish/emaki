@@ -44,7 +44,7 @@ class PackagingTests(unittest.TestCase):
         self.assertIn('Bitstream-Vera', re.search(r'license=\(([^)]+)\)', recipe)[1])
         self.assertTrue((assets / 'LICENSE-DejaVu.txt').is_file())
 
-    def test_native_unlock_artwork_is_shipped_beside_the_module(self):
+    def test_scalable_unlock_artwork_is_shipped_beside_the_module(self):
         from emaki_installer import grub_screen
         root = Path(__file__).resolve().parents[2]
         recipe = (root / 'packaging/emaki-installer/PKGBUILD').read_text()
@@ -52,7 +52,11 @@ class PackagingTests(unittest.TestCase):
         self.assertIn('$site/emaki_installer/grub_artwork/$variant/${picture##*/}', recipe)
         for variant in ('A', 'B', 'C'):
             paths = list((grub_screen.ARTWORK / variant).glob('*.png'))
-            self.assertEqual(len(paths), 9)
+            self.assertEqual({path.name for path in paths}, {
+                f'{state}-{width}x{height}.png'
+                for state in ('unlock', 'wrong', 'checking')
+                for width, height in grub_screen.SIZES
+            })
 
     def test_every_python_module_is_explicitly_listed(self):
         root = Path(__file__).resolve().parents[2]
@@ -64,7 +68,7 @@ class PackagingTests(unittest.TestCase):
         # The launcher icon lives in hicolor; its index.theme names the scalable/apps directory.
         self.assertIn('hicolor-icon-theme', re.search(r'depends=\(([^)]+)\)', recipe, re.S)[1].split())
         self.assertIn('/usr/share/icons/hicolor/scalable/apps/emaki-install.svg', recipe)
-        self.assertIn('pkgver=0.2.0', recipe)
+        self.assertIn('pkgver=0.3.0', recipe)
         self.assertIn('pkgrel=1', recipe)
         for path in ('bin/emaki-installerd', 'bin/emaki-install-cli',
                      'systemd/emaki-installerd.service', 'sysusers.d/emaki-installer.conf',

@@ -1,0 +1,157 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Unmodified entry, make_menu_entries, trim, title_format and header_menu from:
+# https://github.com/Antynea/grub-btrfs/blob/v4.14/41_snapshots-btrfs
+# Upstream written by Antynea; distributed under GPL-3.0-or-later.
+entry()
+{
+    echo "$@" >> "$grub_btrfs_directory/grub-btrfs.new"
+}
+
+## menu entries
+make_menu_entries()
+{
+## \" required for snap,kernels,init,microcode with space in their name
+    entry "submenu '${title_menu}' {
+    submenu '${title_submenu}' { echo }"
+    for k in "${name_kernel[@]}"; do
+        [ ! -f "${boot_dir}"/"${k}" ] && continue;
+        kversion=${k#*"-"}
+        for i in "${name_initramfs[@]}"; do
+            if [ "${name_initramfs}" != "x" ] ; then
+                # prefix_i=${i%%"-"*}
+                suffix_i=${i#*"-"}
+                # alt_suffix_i=${i##*"-"}
+                if   [ "${kversion}" = "${suffix_i}" ];                 then i="${i}";
+                elif [ "${kversion}.img" = "${suffix_i}" ];             then i="${i}";
+                elif [ "${kversion}-fallback.img" = "${suffix_i}" ];    then i="${i}";
+                elif [ "${kversion}.gz" = "${suffix_i}" ];              then i="${i}";
+                else continue;
+                fi
+                for u in "${name_microcode[@]}"; do
+                    if [ "${name_microcode}" != "x" ] ; then
+                    entry "
+    menuentry '  "${k}" & "${i}" & "${u}"' ${CLASS} "\$menuentry_id_option" 'gnulinux-snapshots-$boot_uuid' {"
+                    else
+                    entry "
+    menuentry '  "${k}" & "${i}"' ${CLASS} "\$menuentry_id_option" 'gnulinux-snapshots-$boot_uuid' {"
+                    fi
+                    entry "\
+        if [ x\$feature_all_video_module = xy ]; then
+        insmod all_video
+        fi
+        set gfxpayload=keep"
+        for j in "${insmods[@]}"; do
+            entry "\
+        ${j}"
+        done
+        entry "\
+        if [ x\$feature_platform_search_hint = xy ]; then
+            search --no-floppy --fs-uuid  --set=root ${boot_hs} ${boot_uuid}
+        else
+            search --no-floppy --fs-uuid  --set=root ${boot_uuid}
+        fi"
+        if [ "${SUSE_BTRFS_SNAPSHOT_BOOTING:-"false"}" = "true" ]; then
+            entry "\
+        set btrfs_subvolid=5"
+        fi
+        entry "\
+        echo 'Loading Snapshot: "${snap_date_trim}" "${snap_dir_name_trim}"'
+        echo 'Loading Kernel: "${k}" ...'
+        linux \"${boot_dir_root_grub}/"${k}"\" root="${LINUX_ROOT_DEVICE}" ${kernel_parameters} ${rootflags}subvol=\""${snap_dir_name_trim}"\""
+                    if [ "${name_microcode}" != "x" ] ; then
+                        entry "\
+        echo 'Loading Microcode & Initramfs: "${u}" "${i}" ...'
+        initrd \"${boot_dir_root_grub}/"${u}"\" \"${boot_dir_root_grub}/"${i}"\""
+                    else
+                        entry "\
+        echo 'Loading Initramfs: "${i}" ...'
+        initrd \"${boot_dir_root_grub}/"${i}"\""
+                    fi
+                    entry "    }"
+                    count_warning_menuentries=$((1+count_warning_menuentries))
+                done
+            else
+                for u in "${name_microcode[@]}"; do
+                    if [ "${name_microcode}" != "x" ] ; then
+                    entry "
+    menuentry '  "${k}" & "${u}"' ${CLASS} "\$menuentry_id_option" 'gnulinux-snapshots-$boot_uuid' {"
+                    else
+                    entry "
+    menuentry '  "${k}"' ${CLASS} "\$menuentry_id_option" 'gnulinux-snapshots-$boot_uuid' {"
+                    fi
+                    entry "\
+        if [ x\$feature_all_video_module = xy ]; then
+        insmod all_video
+        fi
+        set gfxpayload=keep
+        insmod ${boot_fs}
+        if [ x\$feature_platform_search_hint = xy ]; then
+            search --no-floppy --fs-uuid  --set=root ${boot_hs} ${boot_uuid}
+        else
+            search --no-floppy --fs-uuid  --set=root ${boot_uuid}
+        fi"
+        if [ "${SUSE_BTRFS_SNAPSHOT_BOOTING:-"false"}" = "true" ]; then
+            entry "\
+        set btrfs_subvolid=5"
+        fi
+        entry "\
+        echo 'Loading Snapshot: "${snap_date_trim}" "${snap_dir_name_trim}"'
+        echo 'Loading Kernel: "${k}" ...'
+        linux \"${boot_dir_root_grub}/"${k}"\" root="${LINUX_ROOT_DEVICE}" ${kernel_parameters} ${rootflags}subvol=\""${snap_dir_name_trim}"\""
+                    if [ "${name_microcode}" != "x" ] ; then
+                        entry "\
+        echo 'Loading Microcode: "${u}" ...'
+        initrd \"${boot_dir_root_grub}/"${u}"\""
+                    fi
+                    entry "    }"
+                    count_warning_menuentries=$((1+count_warning_menuentries))
+                done
+            fi
+        done
+    done
+    entry  "}"
+}
+
+
+trim() {
+    local var="$*"
+    var="${var#"${var%%[![:space:]]*}"}"
+    var="${var%"${var##*[![:space:]]}"}"
+    echo -n "$var"
+}
+
+declare -A title_column=( [date]=Date [snapshot]=Snapshot [type]=Type [description]=Description ) # Column title that appears in the header
+title_format()
+{
+    title_menu="|" # "|" is for visuals only
+    title_submenu="|" # "|" is for visuals only
+    [[ -z "${GRUB_BTRFS_TITLE_FORMAT}" ]] && GRUB_BTRFS_TITLE_FORMAT=("date" "snapshot" "type" "description"); # Default parameters
+    for key in "${!GRUB_BTRFS_TITLE_FORMAT[@]}"; do
+            [[ ${GRUB_BTRFS_TITLE_FORMAT[$key],,} != "${title_column[${GRUB_BTRFS_TITLE_FORMAT[$key]}],,}" ]] && continue; # User used wrong parameter
+            declare -n var="snap_${GRUB_BTRFS_TITLE_FORMAT[$key],,}" # $var is a indirect variable
+            if [[ "${#var}" -lt "${#title_column[${GRUB_BTRFS_TITLE_FORMAT[$key],,}]}" ]]; then # Add extra spaces if length of $var is smaller than the length of column, needed for pretty formatting
+                printf -v var "%-$(((${#title_column[${GRUB_BTRFS_TITLE_FORMAT[$key],,}]}-${#var})+${#var}))s" "${var}";
+            fi
+		    var="$(sed  "s/'//g"  <(echo "${var}"))"
+            title_menu+="${var}|"
+            title_submenu+=" $(trim "${var}") |"
+    done
+}
+# Adds a header to the grub-btrfs.cfg file
+header_menu()
+{
+    local header_entry=""
+    [[ -z "${GRUB_BTRFS_TITLE_FORMAT}" ]] && GRUB_BTRFS_TITLE_FORMAT=("date" "snapshot" "type" "description"); # Default parameters
+        for key in "${!GRUB_BTRFS_TITLE_FORMAT[@]}"; do
+            [[ ${GRUB_BTRFS_TITLE_FORMAT[$key],,} != "${title_column[${GRUB_BTRFS_TITLE_FORMAT[$key]}],,}" ]] && continue; # User used wrong parameter
+            declare -n var="snap_${GRUB_BTRFS_TITLE_FORMAT[$key],,}" # $var is a indirect variable
+            # Center alignment, needed for pretty formatting
+            local lenght_title_column_left=$((${#var}-${#title_column[${GRUB_BTRFS_TITLE_FORMAT[$key],,}]}))
+            ((lenght_title_column_left%2)) && lenght_title_column_left=$((lenght_title_column_left+1));  # If the difference is an odd number, add an extra space
+            lenght_title_column_left=$((((lenght_title_column_left/2)+${#title_column[${GRUB_BTRFS_TITLE_FORMAT[$key],,}]})));
+            local lenght_title_column_right=$(((${#var}-lenght_title_column_left)+1)) #+1 is necessary for extra "|" character
+            header_entry+=$(printf "%${lenght_title_column_left}s%${lenght_title_column_right}s" "${title_column[${GRUB_BTRFS_TITLE_FORMAT[$key],,}]}" "|") # Final "|" is for visuals only
+        done
+    sed -i "1imenuentry '|${header_entry}' { echo }" "$grub_btrfs_directory/grub-btrfs.new" # First "|" is for visuals only
+}

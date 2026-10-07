@@ -24,6 +24,7 @@ Item {
     property real head: 0
     property bool opened: false
     property var peekIds: []
+    property bool hidePreviewBodies: false
     property date today: new Date()
     property string time: ""
     property string date: ""
@@ -53,6 +54,8 @@ Item {
     onOpenedChanged: {
         if (opened)
             drawerContent = true;
+        else if (peekIds.length)
+            drawerContent = false;
         snapIfClosed();
         wake();
     }
@@ -386,6 +389,7 @@ Item {
                 store: panel.store
                 opened: panel.drawerContent
                 peekIds: panel.peekIds
+                hidePreviewBodies: panel.hidePreviewBodies
                 serverState: panel.serverState
                 mediaEnabled: panel.mediaEnabled
                 today: panel.today

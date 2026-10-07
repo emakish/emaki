@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import pwd
+import re
 import signal
 import stat
 import subprocess
@@ -129,19 +130,19 @@ def greetd_identity():
         return None
 
 
-def observe():
+def observe(user='arch'):
     current = greeter_processes()
-    arch = pwd.getpwnam('arch')
+    account = pwd.getpwnam(user)
     services = {}
     for unit in ('niri.service', 'niri-emaki.service', 'emaki-shell.service'):
-        result = run(['sudo', '-n', '-u', 'arch', 'env', f'XDG_RUNTIME_DIR=/run/user/{arch.pw_uid}', f'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{arch.pw_uid}/bus', 'systemctl', '--user', 'is-active', unit])
+        result = run(['sudo', '-n', '-u', user, 'env', f'XDG_RUNTIME_DIR=/run/user/{account.pw_uid}', f'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{account.pw_uid}/bus', 'systemctl', '--user', 'is-active', unit])
         services[unit] = result.stdout.strip()
     try:
         memory = json.loads(STATE.read_text())
     except (OSError, ValueError):
         memory = {}
     journal = run(['journalctl', '-b', '-u', 'greetd', '--no-pager', '-n', '100']).stdout
-    user_processes = processes(arch.pw_uid)
+    user_processes = processes(account.pw_uid)
     try:
         tty2_text = Path('/dev/vcs2').read_bytes().decode('utf-8', errors='replace')
     except OSError:
@@ -161,9 +162,12 @@ def observe():
 
 
 def dispatch(request):
+    user = request.get('user', 'arch')
+    if not isinstance(user, str) or not re.fullmatch(r'[a-z_][a-z0-9_-]*', user):
+        raise ValueError('invalid guest account')
     op = request['op']
     if op == 'inspect':
-        return observe()
+        return observe(user)
     if op == 'journal-mark':
         return {'since': '@' + format(time.time(), '.6f')}
     if op == 'journal-since':
@@ -193,9 +197,9 @@ def dispatch(request):
         finally:
             os.close(handle)
     elif op == 'logout':
-        return niri_action('arch')
+        return niri_action(user)
     elif op == 'restart-greeter':
-        assert not any(executable(item) in ('niri', 'niri-emaki') for item in processes(pwd.getpwnam('arch').pw_uid)), 'user session still active'
+        assert not any(executable(item) in ('niri', 'niri-emaki') for item in processes(pwd.getpwnam(user).pw_uid)), 'user session still active'
         return niri_action('greeter')
     elif op == 'break-qml':
         backup(QML, 'greeter.qml')
@@ -209,7 +213,7 @@ def dispatch(request):
         restore(DESKTOP, 'niri-emaki.desktop')
     elif op == 'select-emaki':
         greeter = pwd.getpwnam('greeter')
-        data = dict(version=1, last_user='arch', seeded=True, users={'arch': {'last_session': 'niri-emaki.desktop', 'failed_session': ''}}, pending_launch=None)
+        data = dict(version=1, last_user=user, seeded=True, users={user: {'last_session': 'niri-emaki.desktop', 'failed_session': ''}}, pending_launch=None)
         temporary = STATE.with_name('state.c9.json')
         temporary.write_text(json.dumps(data))
         temporary.chmod(0o600)

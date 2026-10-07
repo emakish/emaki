@@ -60,7 +60,7 @@ class FixTests(unittest.TestCase):
 
     def test_cli_without_a_worker_says_why(self):
         # copytoram: the worker's unit is skipped (ConditionPathExists) and no socket exists.
-        with tempfile.TemporaryDirectory() as temporary:
+        with tempfile.TemporaryDirectory(prefix='emi-', dir='/tmp') as temporary:
             missing = Path(temporary) / 'sock'
             for mounted in (False, True):
                 if mounted:
@@ -203,6 +203,14 @@ sys.exit(0 if signature.decode() == hashlib.sha256(package).hexdigest() else 1)
         conf = patch('emaki_installer.worker.offline_config', return_value=self.root / 'offline.conf')
         conf.start()
         self.addCleanup(conf.stop)
+        source = patch('emaki_installer.worker.package_source',
+                       side_effect=lambda *a, **kw: contextlib.nullcontext(SimpleNamespace(
+                           validate=lambda: self.root / 'offline.conf')))
+        source.start()
+        self.addCleanup(source.stop)
+        clock = patch('emaki_installer.worker.ensure_clock', return_value=False)
+        clock.start()
+        self.addCleanup(clock.stop)
 
     def test_fake_pacman_resolves_full_set_in_private_db(self):
         preflight_repo(Runner(lambda line: None), True)

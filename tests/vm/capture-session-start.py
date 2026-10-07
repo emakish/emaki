@@ -5,7 +5,7 @@ Capture starts before successful Enter, follows both guest Wayland sockets, and
 attempts independent QEMU screendumps across the DRM handoff. Exit 1 means a
 capture failure or observed visual regression; exit 2 requires frame review and
 is never a visual pass. --analyze-only reads old evidence without VM operations.
-All remote operations use fixed ssh.sh.
+All remote operations use the configured guest transport.
 """
 import argparse
 import importlib.util
@@ -91,7 +91,7 @@ def host_frames(output, stop):
             try:
                 with socket.socket(socket.AF_UNIX) as monitor:
                     monitor.settimeout(.75)
-                    monitor.connect(str(check.VM / 'mon.sock'))
+                    monitor.connect(str((check.VM / 'mon.sock').resolve()))
                     check.hmp_response(monitor)
                     monitor.sendall(('screendump ' + json.dumps(str(ppm)) + '\n').encode())
                     check.hmp_response(monitor)
@@ -437,9 +437,11 @@ def ready_line(process):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    check.add_arguments(parser)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--analyze-only', type=Path, help='read existing evidence without SSH/VM operations; write reports only under --output')
     args = parser.parse_args()
+    check.configure(args)
     output = args.output.resolve()
     output.mkdir(mode=0o700, parents=True, exist_ok=True)
     if any(output.iterdir()):
@@ -462,18 +464,23 @@ def main():
     login_started = None
     phase = 'greeter-recovery'
     fixture_attempted = False
-    remote_command = 'sudo -n python3 /tmp/c9-guest-session-start.py --token ' + token
+    remote_command = ('python3 /tmp/c9-guest-session-start.py --token ' + token
+                      + ' --user ' + shlex.quote(check.TARGET.user))
     try:
         check.recover()
         check.guest('select-emaki')
         phase = 'wallpaper-fixture'
         fixture_attempted = True
-        result['wallpaperFixture'] = json.loads(check.checked_remote(remote_command + ' --operation wallpaper-prepare'))
+        result['wallpaperFixture'] = json.loads(check.checked_remote(remote_command + ' --operation wallpaper-prepare', privileged=True))
         check.restart()
         phase = 'clock-sync'
         result['clockSync'] = clock_sync()
-        process = subprocess.Popen([str(HERE / 'ssh.sh'), remote_command], stdin=subprocess.DEVNULL,
+        command, authentication = check.TARGET.privileged_command(remote_command)
+        process = subprocess.Popen(check.TARGET.ssh_argv() + [command], stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        process.stdin.write(authentication)
+        process.stdin.close()
+        process.stdin = None
         worker = threading.Thread(target=host_frames, args=(output, stop), daemon=True)
         worker.start()
         phase = 'pre-auth-capture'
@@ -483,7 +490,7 @@ def main():
         login_started = time.monotonic()
         phase = 'uinput-login'
         result['inputBeginHostNs'] = time.time_ns()
-        check.keys('text', 'key:Return', text='arch')  # Fixed disposable credentials, stdin only.
+        check.keys('text', 'key:Return', text=check.TARGET.password)  # Disposable credentials, stdin only.
         result['inputEndHostNs'] = time.time_ns()
         phase = 'continuous-capture'
         stdout, stderr = process.communicate(timeout=45)
@@ -497,8 +504,9 @@ def main():
         phase = 'guest-export'
         archive = output / 'guest.tar'
         with archive.open('xb') as stream:
-            export = subprocess.run([str(HERE / 'ssh.sh'), remote_command + ' --operation export'],
-                                    stdin=subprocess.DEVNULL, stdout=stream, stderr=subprocess.PIPE, timeout=45)
+            command, authentication = check.TARGET.privileged_command(remote_command + ' --operation export')
+            export = subprocess.run(check.TARGET.ssh_argv() + [command], input=authentication.encode(),
+                                    stdout=stream, stderr=subprocess.PIPE, timeout=45)
         assert export.returncode == 0, 'guest capture export failed; evidence remains under /run/c9-session-start/' + token
         extract_evidence(archive, output / 'guest')
         archive.unlink()
@@ -509,7 +517,7 @@ def main():
         result['analysisSummary'] = report['summary']
         phase = 'fresh-PAM-and-session-proof'
         state = check.session('niri-emaki.service', mark)
-        result['freshPamSessionOpened'] = 'pam_unix(emaki-greetd:session): session opened for user arch' in state['journal']
+        result['freshPamSessionOpened'] = check.pam_session_opened(state['journal'])
         result['sessionServices'] = {key: state['services'].get(key) for key in ('niri-emaki.service', 'emaki-shell.service')}
     except Exception as error:
         result['errorType'] = type(error).__name__
@@ -540,11 +548,11 @@ def main():
         # diagnostics recoverable without reading a user file as root.
         if fixture_attempted:
             try:
-                result['wallpaperCleanup'] = json.loads(check.checked_remote(remote_command + ' --operation wallpaper-restore'))
+                result['wallpaperCleanup'] = json.loads(check.checked_remote(remote_command + ' --operation wallpaper-restore', privileged=True))
                 check.restart()  # The next greeter must see the restored publication.
             except Exception as error:
                 result['cleanup'] = 'wallpaper restore failed: ' + type(error).__name__
-                result['wallpaperRestoreCommand'] = remote_command + ' --operation wallpaper-restore'
+                result['wallpaperRestoreCommand'] = 'sudo -- ' + remote_command + ' --operation wallpaper-restore'
         (output / 'run.json').write_text(json.dumps(result, indent=2))
     print('Session-start evidence: ' + str(output))
     print(result.get('analysisSummary', 'INCOMPLETE: physical whole-frame continuity unavailable')

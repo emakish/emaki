@@ -497,6 +497,14 @@ if name == 'python3':
     name, args = Path(args[0]).name, args[1:]
 with (root / 'calls.jsonl').open('a') as output:
     output.write(json.dumps([name, args]) + '\n')
+if name == 'glass-target.py':
+    action, *args = args
+    if action == 'remote':
+        name = 'ssh.sh'
+    elif action == 'login':
+        name, args = 'ssh.sh', ['sudo -n python3 /tmp/guest-login.py selected ' + args[0]]
+    elif action == 'helper':
+        name, args = 'ssh.sh', ['bash -s -- glass' if args[0] != 'guest-hover-frames.sh' else 'hover']
 if name in ('ssh.sh', 'tar') and not sys.stdin.isatty():
     sys.stdin.buffer.read()
 if name == 'git':
@@ -548,7 +556,7 @@ class LoginTests(unittest.TestCase):
         self.work.cleanup()
 
     def execute(self, **environment):
-        env = dict(os.environ, LG_ROOT=str(self.base), PATH=str(self.bin) + os.pathsep + os.environ['PATH'],
+        env = dict(os.environ, LG_ROOT=str(self.base), EMAKI_GLASS_RUNNING='1', PATH=str(self.bin) + os.pathsep + os.environ['PATH'],
                    **environment)
         result = subprocess.run(['bash', str(self.vm / 'login.sh'), str(self.out)], env=env, text=True,
                                 capture_output=True, timeout=30)
@@ -569,7 +577,7 @@ class LoginTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0, result.stdout)
                 self.assertIn(check, result.stdout)
                 self.assertIn('check-bar-flicker.py', calls)
-                self.assertEqual(calls[-1], 'ssh.sh')
+                self.assertEqual(calls[-1], 'glass-target.py')
 
     def test_failing_guest_measurement_fails_and_later_steps_still_run(self):
         for call, label in (('1', 'strip-click'), ('2', 'open-timing')):

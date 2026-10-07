@@ -1,0 +1,14 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = *
+
+[Action]
+Description = Checking packages held after rollback (pacman)
+When = PreTransaction
+Exec = /bin/sh -c 'test -s /var/lib/emaki/rollback-holds.json || { cat > /dev/null; exit 0; }; /usr/share/libalpm/scripts/emaki-rollback-holds check; test $? -ne 3'
+NeedsTargets
+AbortOnFail

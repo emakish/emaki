@@ -1,5 +1,7 @@
 #!/bin/bash
-# C11/F0, INSIDE the VM (as arch, logged in): Qt windows and first frames when opening panels.
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# C11/F0, INSIDE the VM (as the selected account, logged in): Qt windows and first frames when opening panels.
 #   tests/vm/ssh.sh 'bash -s -- <desktop>' < tests/vm/guest-open-timing.sh
 # Restart the shell with QSG_RENDER_TIMING=1 (frame times for each QQuickWindow in the journal),
 # open the launcher twice, the shade and right panel once each; use the journal to identify the Qt window
@@ -9,9 +11,10 @@
 # window), with a first frame of 17–77 ms on a laptop. Prints
 # `[<desktop>] overlay-windows: ok|BAD …` and `[<desktop>] open-first-frame: ok|BAD …`.
 name=${1:-glass}
-export XDG_RUNTIME_DIR=/run/user/1000
-export WAYLAND_DISPLAY=$(ls $XDG_RUNTIME_DIR | grep -E '^wayland-[0-9]+$' | head -1)
-export NIRI_SOCKET=$(ls $XDG_RUNTIME_DIR/niri.*.sock 2>/dev/null | head -1)
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
+export WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-$(ls "$XDG_RUNTIME_DIR" | grep -E '^wayland-[0-9]+$' | head -1)}
+export NIRI_SOCKET=${NIRI_SOCKET:-$(ls "$XDG_RUNTIME_DIR"/niri.*.sock 2>/dev/null | head -1)}
 c() { emaki-shell call "$@" >/dev/null 2>&1; }
 systemctl --user set-environment QSG_RENDER_TIMING=1
 systemctl --user restart emaki-shell

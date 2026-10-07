@@ -62,6 +62,29 @@
       "indeterminate": false
     },
     {
+      "type": "progress",
+      "job_id": "fixture-preflight-job",
+      "phase": "copy_packages",
+      "phase_pct": 20,
+      "total_pct": 17,
+      "indeterminate": false,
+      "step": {
+        "id": "copy-17",
+        "name": "initramfs",
+        "state": "running",
+        "text": "Building the startup image (mkinitcpio: linux-lts: default)."
+      }
+    },
+    {
+      "type": "progress",
+      "job_id": "fixture-preflight-job",
+      "phase": "copy_packages",
+      "phase_pct": 21,
+      "total_pct": 17.6,
+      "indeterminate": false,
+      "step": null
+    },
+    {
       "type": "done",
       "job_id": "fixture-preflight-job",
       "log_path": "/var/log/emaki-install.log",

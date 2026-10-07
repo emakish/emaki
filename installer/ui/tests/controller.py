@@ -25,15 +25,16 @@ NO_WORKER = {'no-boot-medium'}
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--unix', action='store_true')
-    parser.add_argument('--output', type=Path, default=Path('/tmp/emaki-installer-controller'))
+    parser.add_argument('--output', type=Path, default=UI.parents[1] / '.cache/evidence/installer-controller')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='emaki-controller-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='emaki-controller-') as temporary, \
+            tempfile.TemporaryDirectory(prefix='eir-', dir='/tmp') as runtime:
         root = Path(temporary)
         if args.unix:
             try:
                 with socket.socket(socket.AF_UNIX) as probe:
-                    probe.bind(str(root / 'probe.sock'))
+                    probe.bind(str(Path(runtime) / 'probe.sock'))
             except PermissionError:
                 print('SKIP: this sandbox denies Unix socket binds; rerun --unix in the VM.')
                 return 77
@@ -43,10 +44,10 @@ def main():
         # Scenarios that render the page use this checkout's shell, not an installed one.
         for filename in (root / 'ui').glob('*.qml'):
             filename.write_text(filename.read_text().replace('"file:///usr/share/emaki/shell"', '"file://' + str(UI.parents[1] / 'shell') + '"'))
-        for name in ['runtime', 'cache', 'config', 'state', 'data']:
+        for name in ['cache', 'config', 'state', 'data']:
             (root / name).mkdir(mode=0o700)
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QT_QUICK_CONTROLS_STYLE='Basic', QML_DISABLE_DISK_CACHE='1',
-                   QS_DISABLE_CRASH_HANDLER='1', XDG_RUNTIME_DIR=str(root / 'runtime'), XDG_CACHE_HOME=str(root / 'cache'),
+                   QS_DISABLE_CRASH_HANDLER='1', XDG_RUNTIME_DIR=runtime, XDG_CACHE_HOME=str(root / 'cache'),
                    XDG_CONFIG_HOME=str(root / 'config'), XDG_STATE_HOME=str(root / 'state'), XDG_DATA_HOME=str(root / 'data'),
                    EMAKI_INSTALLER_TEST_UNIX='1' if args.unix else '0', EMAKI_INSTALLER_CHECKOUT=str(UI.parents[1]))
         for key in ['WAYLAND_DISPLAY', 'DISPLAY', 'NIRI_SOCKET', 'DBUS_SESSION_BUS_ADDRESS']:
@@ -59,7 +60,7 @@ def main():
             env['EMAKI_INSTALLER_SCENARIO'] = scenario
             try:
                 if args.unix:
-                    env['EMAKI_INSTALLER_SOCKET'] = str(root / (scenario + '.sock'))
+                    env['EMAKI_INSTALLER_SOCKET'] = str(Path(runtime) / (scenario + '.sock'))
                 if args.unix and scenario not in NO_WORKER:
                     worker = subprocess.Popen([sys.executable, '-B', str(UI / 'tests/mock-worker.py'), '--scenario', scenario,
                                                '--socket', env['EMAKI_INSTALLER_SOCKET'], '--delay', '0.05'],
@@ -76,7 +77,11 @@ def main():
             finally:
                 if worker:
                     worker.terminate()
-                    worker.communicate(timeout=3)
+                    try:
+                        worker.communicate(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        worker.kill()
+                        worker.communicate()
     return 0
 
 

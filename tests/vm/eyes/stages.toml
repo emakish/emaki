@@ -15,12 +15,13 @@ first_impression = ["01", "03", "19", "24", "25", "34"]
 title = "btrfs, no encryption, Rich"
 passes = "GL 1920x1080; FW 2560x1600 for stages 01, 02, 19, 22"
 stages = ["01", "02", "03", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16",
-          "17", "18", "19", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34"]
+          "17", "18", "19", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34",
+          "36", "37", "38", "39"]
 
 [runs.W2]
 title = "the encryption variant this image offers (account password, hibernation ticked if offered), or the single frame that shows it is absent"
 passes = "GL 1920x1080; FW 2560x1600 for stages 19-21"
-stages = ["09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "23", "24", "25", "31"]
+stages = ["09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "23", "24", "25", "31", "32"]
 
 [runs.W3]
 title = "negative and edge scenarios, no full install needed"
@@ -28,11 +29,15 @@ passes = "as each stage says"
 stages = ["01b", "04", "04b", "35", "09", "10", "11", "12", "13", "14", "20", "24", "29"]
 
 [stages."01"]
+configured_menu_mode = true
+resolutions = ["1280x800", "1920x1080", "2560x1600"]
 title = "Power on -> ISO boot menu, no key pressed"
 pass = "FW"
 expected = "The word Emaki and the version equal to iso/VERSION; text height at least the limit; a countdown."
 
 [stages."01b"]
+configured_menu_mode = true
+resolutions = ["1280x800", "1920x1080", "2560x1600"]
 title = "Same image booted in legacy BIOS mode -> its menu"
 pass = "FW"
 expected = "The name Emaki, no Arch logo or Arch slogan, and either no install entry or one that works. The GRUB of stage 22 belongs to the installed system and is no evidence for 01 or 01b."
@@ -43,6 +48,7 @@ pass = "FW+GL"
 expected = "No red [FAILED] line; longest unchanged interval and longest black interval printed on the tile."
 
 [stages."03"]
+resolutions = ["1280x800", "1920x1080", "2560x1600"]
 title = "First desktop frame -> settled live desktop, untouched 20 s"
 pass = "GL"
 expected = "One window titled as the installer; no second Welcome to Emaki; no Connection lost; sidebar version equal to iso/VERSION; bar present."
@@ -58,66 +64,81 @@ pass = "FW"
 expected = "After the login: the three text-session lines and a shell prompt, no second message, no black screen. After exit: the failure message and a login prompt again within 30 s."
 
 [stages."05"]
+resolutions = ["1280x800", "1366x768", "1920x1080", "2560x1600"]
 title = "Installer Welcome page"
 pass = "GL"
 expected = "The page whole inside the window; Back/Continue visible."
 
 [stages."06"]
+resolutions = ["1280x800", "1366x768", "1920x1080", "2560x1600"]
 title = "Installer Keyboard page: search rus, add, Apply, type in two layouts"
 pass = "GL"
 expected = "The page whole inside the window; Back/Continue visible; the test field shows both scripts."
 
 [stages."07"]
+resolutions = ["1280x800", "1366x768", "1920x1080", "2560x1600"]
 title = "Installer Network page"
 pass = "GL"
 expected = "The page whole inside the window; Back/Continue visible."
 
 [stages."08"]
+resolutions = ["1280x800", "1366x768", "1920x1080", "2560x1600"]
 title = "Installer Time zone page: map click, search"
 pass = "GL"
 expected = "Clock and bar clock change; the chosen zone is named."
 
 [stages."09"]
+resolutions = ["1280x800", "1366x768", "1920x1080", "2560x1600"]
 title = "Installer Disk page: untouched, greyed Continue clicked, disk chosen, hibernation ticked"
 pass = "GL"
 expected = "The disk card names the NVMe model; a visible reason when Continue is refused."
 
 [stages."10"]
+actions = ["gparted-open", "gparted-close"]
+action_expected = { gparted-open = "The partition editor [GParted] shows the target disk; the installer is hidden.", gparted-close = "After closing the partition editor [GParted], the installer returns with refreshed partition choices." }
+resolutions = ["1280x800", "1366x768", "1920x1080", "2560x1600"]
 title = "Installer Disk, Manual sub-page on a blank disk"
 pass = "GL"
 expected = "The disk card names the NVMe model; a visible reason when Continue is refused."
 
 [stages."11"]
+resolutions = ["1280x800", "1366x768", "1920x1080", "2560x1600"]
 title = "Installer File system page"
 pass = "GL"
 expected = "Errors next to the field they are about, none stale after the field is corrected."
 
 [stages."12"]
+resolutions = ["1280x800", "1366x768", "1920x1080", "2560x1600"]
 title = "Installer Encryption page: both modes, mismatch, eye"
 pass = "GL"
 expected = "Errors next to the field they are about, none stale after the field is corrected."
 
 [stages."13"]
+resolutions = ["1280x800", "1366x768", "1920x1080", "2560x1600"]
 title = "Installer You page: empty Continue, bad login, mismatch, valid"
 pass = "GL"
 expected = "Errors next to the field they are about, none stale after the field is corrected."
 
 [stages."14"]
+resolutions = ["1280x800", "1366x768", "1920x1080", "2560x1600"]
 title = "Installer Software page"
 pass = "GL"
 expected = "Errors next to the field they are about, none stale after the field is corrected."
 
 [stages."15"]
+resolutions = ["1280x800", "1366x768", "1920x1080", "2560x1600"]
 title = "Installer Review page"
 pass = "GL"
 expected = "Review lists disk, file system, encryption, account and layouts."
 
 [stages."16"]
+resolutions = ["1280x800", "1366x768", "1920x1080", "2560x1600"]
 title = "Installer progress at 3 s, mid and late"
 pass = "GL"
 expected = "Elapsed time is shown."
 
 [stages."17"]
+resolutions = ["1280x800", "1366x768", "1920x1080", "2560x1600"]
 title = "Installer Done page"
 pass = "GL"
 expected = "What the person is told to do next, including the USB stick."
@@ -128,21 +149,26 @@ pass = "GL"
 expected = "What the person is told about the USB stick; the next stable frame is the installed system."
 
 [stages."19"]
+resolutions = ["1280x800", "1920x1080", "2560x1600"]
 title = "Power on installed disk -> first frame that waits for the person"
 pass = "FW"
 expected = "Unencrypted: themed menu, title Emaki, readable help line. Encrypted: GRUB's prompt over the Emaki background, the lines \"Emaki: type your disk password and press Enter.\" and \"Nothing appears while you type.\" above GRUB's \"Enter passphrase for ...\" line, at a text height of at least the limit; the record also holds a 1:1 crop of the prompt."
 
 [stages."20"]
+resolutions = ["1280x800", "1920x1080", "2560x1600"]
 title = "Encrypted: type 3 chars; wrong passphrase + Enter; right passphrase + Enter"
 pass = "FW+GL"
 expected = "No typing feedback: GRUB shows nothing while typing, so the frame after the 3 chars equals the one before (the prompt says so). Seconds of no change after each Enter printed on the tile; after a wrong one GRUB's \"Invalid passphrase.\" and the prompt again."
 
 [stages."21"]
+resolutions = ["1280x800", "1920x1080", "2560x1600"]
 title = "Encrypted with first layout ru: prompt and typing"
 pass = "FW"
 expected = "Something tells the person which layout is active."
 
 [stages."22"]
+configured_menu_mode = true
+resolutions = ["1280x800", "1920x1080", "2560x1600"]
 title = "GRUB menu held (key) and the Emaki snapshots submenu, one level in"
 pass = "FW+GL"
 expected = "Entry names a person can choose from; no selectable header row."
@@ -153,37 +179,44 @@ pass = "FW+GL"
 expected = "A sign of life within the black-gap limit; no stray one-line messages such as Unable to resume."
 
 [stages."24"]
+resolutions = ["1280x800", "1366x768", "1920x1080", "2560x1600"]
 title = "First greeter untouched 20 s; wrong password; password typed + eye"
 pass = "GL"
 expected = "User name or a hint whose password; Wrong password text; layout indicator."
 
 [stages."25"]
+resolutions = ["1280x800", "1366x768", "1920x1080", "2560x1600"]
 title = "Enter -> series until the settled first session; tour pages 1-3; desktop after the tour"
 pass = "GL"
 expected = "Every tour sentence refers to something that exists on screen."
 
 [stages."26"]
+resolutions = ["1280x800", "1920x1080", "2560x1600"]
 title = "Launcher, clock drawer, right island pages (Wi-Fi, Bluetooth, power), Super+Escape list, dock by the bottom edge"
 pass = "GL"
 expected = "No truncated primary labels beyond the limit; one vocabulary for power actions; a wired VM shows No Wi-Fi adapter."
 
 [stages."27"]
+resolutions = ["1280x800", "1920x1080", "2560x1600"]
 title = "Terminal: emaki fetch; file manager; systemctl --failed; journalctl -p err -b tail (typed, photographed)"
 pass = "GL"
 expected = "Version and EMAKI_COMMIT read from the screen go into the record header; zero failed units."
 
 [stages."28"]
+resolutions = ["1280x800", "1920x1080", "2560x1600"]
 title = "Update: sudo pacman -Syu typed in the terminal against the real mirror"
 pass = "GL"
 expected = "Password prompt, transaction text, end state."
 
 [stages."29"]
+resolutions = ["1280x800", "1920x1080", "2560x1600"]
 title = "Lock (Super+L), wrong password, unlock - installed system and live session"
 pass = "GL"
 lock = true
 expected = "Lock within 1 s; a wrong password leaves it locked and shows the error text; in the live session a non-empty wrong string does not unlock; the input-test marker never reaches the terminal."
 
 [stages."30"]
+resolutions = ["1280x800", "1920x1080", "2560x1600"]
 title = "Sleep -> wake -> first frame"
 pass = "GL"
 lock = true
@@ -191,6 +224,7 @@ hardware_line = "H-M10 / H-N6"
 expected = "Lock screen first, judged under 5.1a. If the VM shows Display output is not active, the result is NOT TESTED with the hardware line."
 
 [stages."31"]
+resolutions = ["1280x800", "1920x1080", "2560x1600"]
 title = "Hibernate -> power on -> unlock -> first frame"
 pass = "GL"
 hardware_line = "H-M11"
@@ -202,6 +236,9 @@ pass = "GL"
 expected = "A marker file created before the snapshot is absent/present as expected, shown in a terminal on screen."
 
 [stages."33"]
+actions = ["logout", "restart", "shutdown", "lock-restart", "lock-shutdown"]
+action_expected = { logout = "Log out reaches the login screen [greeter] and shows no session content for 20 seconds.", restart = "Restart returns to the installed login screen [greeter] after a guest reset [QMP].", shutdown = "Shut down shows its last available frame and produces a guest shutdown event [QMP].", lock-restart = "Restart from the lock screen returns to the installed login screen [greeter] after a guest reset [QMP].", lock-shutdown = "Shut down from the lock screen shows its last available frame and produces a guest shutdown event [QMP]." }
+resolutions = ["1280x800", "1920x1080", "2560x1600"]
 title = "Log out -> greeter; Restart -> series; Shut down -> last frame"
 pass = "GL"
 lock = true
@@ -213,6 +250,27 @@ pass = "GL"
 expected = "Greeter with wallpaper; no first-run tour again."
 
 [stages."35"]
-title = "Installer at 1366x768: Keyboard and Disk pages (only if this resolution stays supported)"
+resolutions = ["1366x768"]
+title = "Installer at 1366x768: Keyboard and Disk pages"
 pass = "GL"
 expected = "All controls reachable."
+
+[stages."36"]
+title = "Install with online updates enabled and a slow network"
+pass = "GL"
+expected = "The update option is selected before installation. Record the applied network limit and retain the update download frames and completion message. The installed desktop opens after restart. An offline install does not cover this stage; an unavailable slow network is NOT TESTED."
+
+[stages."37"]
+title = "Select the installed long-term kernel from the boot menu [Linux LTS]"
+pass = "FW+GL"
+expected = "Select the actual menu entry with keys. Retain the selected entry, the login screen and the desktop with uname -r visible; the running kernel is the selected LTS kernel."
+
+[stages."38"]
+title = "Select each installed fallback image from the boot menu [initramfs]"
+pass = "FW+GL"
+expected = "For each offered fallback entry, retain the selected menu entry, the login screen and the desktop with uname -r visible. A configuration file or a typed kernel command is not boot evidence. If no fallback entry is offered, record NOT APPLICABLE with the menu and its configuration."
+
+[stages."39"]
+title = "Boot the release image as a USB device and capture 5, 15, 30 and 60 seconds"
+pass = "FW+GL"
+expected = "Retain host display frames at 5, 15, 30 and 60 seconds from power-on and a continuous timeline until the live desktop. Record the measured capture offsets and time to the desktop. The QEMU command names usb-storage for the release image; CD boot does not cover this stage."

@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shlex
 import subprocess
 import sys
@@ -15,6 +16,9 @@ HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('monitor', HERE / 'iso-monitor.py')
 monitor = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(monitor)
+spec = importlib.util.spec_from_file_location('encrypt_check', HERE / 'iso-encrypt-check.py')
+resume = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(resume)
 
 
 def checked_iso():
@@ -101,7 +105,7 @@ def main():
         print(result.stdout.decode(), end='', flush=True)
 
     def capture(label):
-        monitor.command(vm, 'screendump ' + str(vm / (label + '.ppm')))
+        return resume.capture_frame(vm, label)
 
     def type_text(value):
         keys = {' ': 'spc', '-': 'minus', '/': 'slash', '.': 'dot', '=': 'equal',
@@ -155,7 +159,7 @@ def main():
         start(True)
         print(run('iso-wait-ssh.sh').stdout.decode(), flush=True)
         ssh('test -d /run/archiso/bootmnt && grep -qw emaki.test=1 /proc/cmdline')
-        # 0.2 ships with alongside Windows switched off in the installer core.
+        # This release ships with alongside Windows switched off in the installer core.
         # Ask the packaged worker for a plan only (no --yes, nothing is written):
         # a refusal of the mode itself means this scenario does not apply.
         ssh('for i in $(seq 1 300); do test -S /run/emaki-installer/sock && exit 0; sleep 1; done; exit 1')
@@ -166,7 +170,7 @@ def main():
             (vm / 'NOT-APPLICABLE').write_text(
                 'The installer in this image does not offer install alongside Windows.\n' + iso_record)
             print('NOT APPLICABLE: the installer in this ISO refuses install alongside Windows '
-                  '(off in 0.2); nothing was installed or checked', flush=True)
+                  '(off in this release); nothing was installed or checked', flush=True)
             return NOT_APPLICABLE
         (vm / 'capabilities.txt').write_bytes(ssh('pacman -Q ntfs-3g ntfsprogs gptfdisk os-prober grub archinstall cryptsetup'))
         ssh('cat > /tmp/windows-efi.cfg', data=b'serial --unit=0 --speed=115200\nterminal_output console serial\necho EMAKI_SYNTHETIC_WINDOWS_EFI_OK\nsleep 3600\n')
@@ -227,24 +231,60 @@ echo OK: alongside encrypted root and RAM-sized hibernation file
         ssh('cat > /tmp/windows-disk.py', data=(HERE / 'fixtures/windows-disk.py').read_bytes(), account=user)
         (vm / 'preservation-installed.txt').write_bytes(sudo(
             'python3 /tmp/windows-disk.py check --freed ' + str(fixture['shrink_bytes']), baseline))
-        before = ssh('cat /proc/sys/kernel/random/boot_id', account=user).strip()
-        sudo('printf retained > /run/alongside-resume-proof; sync')
+        ssh('cat > /tmp/guest-login.py', data=(HERE / 'guest-login.py').read_bytes(), account=user)
+        time.sleep(10)
+        print(sudo('python3 /tmp/guest-login.py ' + user + ' niri-emaki-session', password.encode()).decode(), flush=True)
+        ssh('''export XDG_RUNTIME_DIR=/run/user/$(id -u)
+export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
+for i in $(seq 1 60); do systemctl --user is-active --quiet niri-emaki.service emaki-shell.service && exit 0; sleep 1; done
+exit 1''', account=user)
+        marker = secrets.token_hex(32)
+        ssh('printf %s ' + shlex.quote(marker) + ' > /run/user/$(id -u)/hibernate-proof', account=user)
+        def resume_probe():
+            return json.loads(ssh(resume.RESUME_PROBE, account=user, timeout=15))
+        before = resume_probe()
+        (vm / 'pre-hibernate.json').write_text(json.dumps(before, indent=2) + '\n')
         result = run('iso-ssh.sh', '--user', user, "sudo -S -p '' systemctl hibernate",
                      data=password.encode() + b'\n', timeout=120, check=False)
         (vm / 'hibernate.log').write_bytes(result.stdout + result.stderr)
         qemu.wait(timeout=180)
         (vm / 'hibernate-qemu-exit').write_text(str(qemu.returncode) + '\n')
         stop()
-        boot('resume')
-        after = ssh('cat /proc/sys/kernel/random/boot_id; cat /run/alongside-resume-proof', account=user)
-        assert after.splitlines() == [before, b'retained'], 'Cold boot instead of resume'
-        (vm / 'resume-proof.txt').write_bytes(before + b'\n' + after)
-        (vm / 'resume-journal.txt').write_bytes(sudo('journalctl -b --no-pager | grep -iE "hibernat|PM:.*(image|resume|restor)"'))
-        print('OK: encrypted alongside installation resumed the same kernel and volatile marker', flush=True)
+        try:
+            boot('resume')
+            resume.observe_resume(before, resume_probe, vm / 'resume-proof.json')
+            capture('resume-after-observation')
+            if resume_probe() != before:
+                raise RuntimeError('Session changed during post-resume screenshot capture')
+        except Exception as error:
+            proof_file = vm / 'resume-proof.json'
+            proof = json.loads(proof_file.read_text()) if proof_file.exists() else {'before': before}
+            proof.update(status='FAIL', error=str(error))
+            proof_file.write_text(json.dumps(proof, indent=2) + '\n')
+            try:
+                capture('resume-failed')
+            except Exception as capture_error:
+                (vm / 'resume-capture-failure.txt').write_text(str(capture_error) + '\n')
+            raise
+        finally:
+            try:
+                diagnostic = run('iso-ssh.sh', '--user', user,
+                                 "sudo -S -p '' journalctl --no-pager -n 2000",
+                                 data=password.encode() + b'\n', check=False, timeout=15)
+                (vm / 'resume-journal.txt').write_bytes(diagnostic.stdout)
+                (vm / 'resume-journal.stderr').write_bytes(diagnostic.stderr)
+                (vm / 'resume-journal-exit').write_text(str(diagnostic.returncode) + '\n')
+            except subprocess.TimeoutExpired as error:
+                (vm / 'resume-journal.txt').write_bytes(error.stdout or b'')
+                (vm / 'resume-journal.stderr').write_bytes((error.stderr or b'') + b'\nSSH timed out\n')
+            except Exception as error:
+                (vm / 'resume-journal.stderr').write_text(str(error) + '\n')
+        print('OK: same boot, volatile marker and desktop processes remained alive for 60 seconds after resume', flush=True)
+        print('NOT TESTED: resumed desktop appearance and real-hardware hibernation', flush=True)
         stop()
         boot('windows', windows=True)
         stop()
-        (vm / 'PASS').write_text('Resize, NTFS/ESP/MSR preservation, encrypted Emaki boot, kernel resume and synthetic Windows EFI target passed.\n' + iso_record)
+        (vm / 'PASS').write_text('Resize, NTFS/ESP/MSR preservation, encrypted Emaki boot, 60-second resume continuity and synthetic Windows EFI target passed.\nNOT TESTED: resumed desktop appearance and real-hardware hibernation.\n' + iso_record)
     finally:
         stop()
         for handle in handles:

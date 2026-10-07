@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Cold D-Bus activation must finish before the launch worker exits; private bus only."""
+from runtime_fixture import runtime_path
 import json
 import os
 from pathlib import Path
@@ -17,12 +18,12 @@ if '--inside' not in sys.argv:
     for name in ('r', 'services', 'data/applications', 'config', 'tmp'):
         (root / name).mkdir(parents=True, mode=0o700)
     config = root / 'bus.conf'
-    config.write_text(f'<busconfig><type>session</type><listen>unix:path={root}/r/bus</listen>'
+    config.write_text(f'<busconfig><type>session</type><listen>unix:path={runtime_path(root)}/bus</listen>'
                      f'<auth>EXTERNAL</auth><servicedir>{root}/services</servicedir>'
                      '<policy context="default"><allow send_destination="*"/>'
                      '<allow receive_sender="*"/><allow own="*"/></policy></busconfig>')
     env = dict(os.environ, XDG_DATA_HOME=str(root / 'data'), XDG_DATA_DIRS=str(root / 'data'),
-               XDG_CONFIG_HOME=str(root / 'config'), XDG_RUNTIME_DIR=str(root / 'r'),
+               XDG_CONFIG_HOME=str(root / 'config'), XDG_RUNTIME_DIR=str(runtime_path(root)),
                TMPDIR=str(root / 'tmp'), DBUS_SYSTEM_BUS_ADDRESS='unix:path=' + str(root / 'absent'))
     for key in ('DBUS_SESSION_BUS_ADDRESS', 'WAYLAND_DISPLAY', 'DISPLAY', 'NIRI_SOCKET'):
         env.pop(key, None)
@@ -31,7 +32,7 @@ if '--inside' not in sys.argv:
     raise SystemExit
 
 root = Path(sys.argv[-1])
-assert os.environ['DBUS_SESSION_BUS_ADDRESS'].startswith('unix:path=' + str(root / 'r/bus'))
+assert os.environ['DBUS_SESSION_BUS_ADDRESS'].startswith('unix:path=' + str(Path(os.environ['XDG_RUNTIME_DIR']) / 'bus'))
 install(root, os.environ)
 service = root / 'service.py'
 service.write_text('''import json, os, time

@@ -5,6 +5,7 @@ emaki-desktop
 emaki-installer
 emaki-keyring
 emaki-mirrorlist
+emaki-nvidia
 niri-emaki
 quickshell-emaki
 xdg-desktop-portal-gnome-emaki

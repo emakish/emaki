@@ -1,3 +1,6 @@
+#[path = "../../../tests/socket_dir.rs"]
+mod socket_dir;
+
 use std::process::{Command, Output};
 
 fn run(args: &[&str]) -> Output {
@@ -5,6 +8,7 @@ fn run(args: &[&str]) -> Output {
         .args(args)
         // Version and help must work without a desktop session or user profile.
         .env_clear()
+        .env("PATH", "/nonexistent-emaki-channel-test")
         .output()
         .expect("CLI process should start")
 }
@@ -16,23 +20,67 @@ fn version_is_available_without_session_or_home() {
         assert!(output.status.success());
         assert_eq!(
             String::from_utf8(output.stdout).unwrap(),
-            format!("emaki {}\n", emaki_core::VERSION)
+            format!("emaki {} [channel: unknown]\n", emaki_core::VERSION)
         );
         assert!(output.stderr.is_empty());
     }
 }
 
 #[test]
-fn help_only_advertises_implemented_commands() {
+fn version_reports_the_effective_channel() {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    let directory = std::env::temp_dir().join(format!("emaki-channel-test-{}", std::process::id()));
+    fs::create_dir(&directory).unwrap();
+    let helper = directory.join("emaki-update-channel");
+    for (value, status, expected) in [
+        ("stable", 0, "stable"),
+        ("testing", 0, "testing"),
+        ("custom", 0, "custom"),
+        ("mixed", 0, "mixed"),
+        ("disabled", 0, "disabled"),
+        ("unknown", 1, "unknown"),
+        ("stable", 1, "unknown"),
+        ("garbage", 0, "unknown"),
+    ] {
+        fs::write(
+            &helper,
+            format!("#!/bin/sh\nprintf '%s\\n' '{value}'\nexit {status}\n"),
+        )
+        .unwrap();
+        fs::set_permissions(&helper, fs::Permissions::from_mode(0o755)).unwrap();
+        for argument in ["version", "--version", "-V"] {
+            let result = Command::new(env!("CARGO_BIN_EXE_emaki"))
+                .arg(argument)
+                .env_clear()
+                .env("PATH", &directory)
+                .output()
+                .unwrap();
+            assert!(result.status.success());
+            assert!(result.stderr.is_empty());
+            assert_eq!(
+                String::from_utf8(result.stdout).unwrap(),
+                format!("emaki {} [channel: {expected}]\n", emaki_core::VERSION)
+            );
+        }
+    }
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn help_starts_with_desktop_guidance() {
     for args in [vec!["help"], vec!["--help"], vec!["-h"]] {
         let output = run(&args);
         assert!(output.status.success());
         let text = String::from_utf8(output.stdout).unwrap();
-        assert!(text.starts_with("Usage: emaki <command> [options]\n"));
+        assert!(text.starts_with("Usage: emaki [command]\n"));
         assert!(text.contains("version"));
-        assert!(text.contains("state [--json]"));
-        assert!(text.contains("map [--json]"));
+        assert!(text.contains("Welcome to Emaki"));
+        assert!(text.contains("emaki help --internal"));
+        assert!(!text.contains("state [--json]"));
+        assert!(!text.contains("map [--json]"));
         assert!(!text.contains("apply"));
+        assert!(!text.contains("settings"));
         assert!(output.stderr.is_empty());
     }
 }
@@ -227,7 +275,7 @@ fn non_utf8_argument_is_a_usage_error_not_a_panic() {
 /// writes `events` on the subscription. The stream stays open until the client exits, so a
 /// missing initial event ends in the client's timeout rather than in a closed connection.
 fn niri_snapshot_against(
-    name: &str,
+    _name: &str,
     query: bool,
     events: Vec<serde_json::Value>,
     timeout_ms: &str,
@@ -236,10 +284,7 @@ fn niri_snapshot_against(
     use std::io::{BufRead, BufReader, Write};
     use std::os::unix::net::UnixListener;
     use std::time::{Duration, Instant};
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../.cache/tmp")
-        .join(format!("{name}-{}", std::process::id()));
-    std::fs::create_dir_all(&root).unwrap();
+    let root = socket_dir::short_socket_dir();
     let path = root.join("n.sock");
     let listener = UnixListener::bind(&path).unwrap();
     listener.set_nonblocking(true).unwrap();
@@ -334,4 +379,20 @@ fn niri_snapshot_waits_for_the_initial_casts_event() {
     let view: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
     assert_eq!(view["connection"]["reason"], "initial_state_timeout");
     assert!(view["model"].is_null(), "{view}");
+}
+
+#[test]
+fn diagnostic_help_remains_available_without_a_session() {
+    for args in [
+        ["help", "--internal"],
+        ["map", "--help"],
+        ["state", "--help"],
+    ] {
+        let output = run(&args);
+        assert!(output.status.success());
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert!(text.contains("state [--json]"));
+        assert!(text.contains("map [--json]"));
+        assert!(output.stderr.is_empty());
+    }
 }

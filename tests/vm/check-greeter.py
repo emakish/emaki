@@ -3,8 +3,8 @@
 
 Run after run-test.sh installs a committed revision, with --greeter-only there:
   python3 tests/vm/check-greeter.py --output /path/to/evidence
-All privileged/session operations are sent through tests/vm/ssh.sh. The fixed VM
-account/password are arch/arch. Passwords reach guest-keys.py through stdin only.
+Use --fixture for the release account and transport; without it, development
+defaults apply. Passwords reach guest-keys.py through stdin only.
 """
 import argparse
 import concurrent.futures
@@ -16,18 +16,28 @@ import shlex
 import socket
 import subprocess
 import time
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from suite_target import Target, add_arguments
 
 HERE = Path(__file__).resolve().parent
-VM = Path(os.environ.get('EMAKI_VM_DIR', Path.home() / 'VMs/emaki-vm'))
+TARGET = Target()
+VM = TARGET.vm
 OUT = None
 FAILURES = []
 CAPTURE_NOTES = []
 LAST_RESTART = 0
 
 
-def remote(command, *, data=None, timeout=35):
-    return subprocess.run([str(HERE / 'ssh.sh'), command], input=data, text=True,
-                          capture_output=True, timeout=timeout)
+def configure(args):
+    global TARGET, VM
+    TARGET = Target.from_args(args)
+    VM = TARGET.vm
+
+
+def remote(command, *, data=None, timeout=35, privileged=False):
+    return TARGET.remote(command, data=data, timeout=timeout, privileged=privileged)
 
 
 def checked_remote(command, **kwargs):
@@ -46,8 +56,8 @@ def guest(op, **values):
         if remaining > 0:
             time.sleep(remaining)
         LAST_RESTART = time.monotonic()
-    payload = json.dumps(dict(op=op, **values), separators=(',', ':'))
-    return json.loads(checked_remote('sudo -n python3 /tmp/c9-guest-greeter.py ' + shlex.quote(payload)))
+    payload = json.dumps(dict(op=op, user=TARGET.user, **values), separators=(',', ':'))
+    return json.loads(checked_remote('python3 /tmp/c9-guest-greeter.py ' + shlex.quote(payload), privileged=True))
 
 
 def wait(predicate, timeout=35):
@@ -125,11 +135,11 @@ def authentication_failed(mark):
     journal = journal_since(mark)
     lines = journal.splitlines()
     return journal if any('pam_unix(emaki-greetd:auth): authentication failure' in line
-                          and re.search(r'\buser=arch(?:\s|$)', line) for line in lines) else None
+                          and re.search(r'\buser=' + re.escape(TARGET.user) + r'(?:\s|$)', line) for line in lines) else None
 
 
 def keys(*steps, text=''):
-    checked_remote('sudo -n python3 /tmp/c9-guest-keys.py ' + shlex.join(steps), data=text)
+    checked_remote('python3 /tmp/c9-guest-keys.py ' + shlex.join(steps), data=text, privileged=True)
 
 
 def hmp_response(connection):
@@ -155,7 +165,7 @@ def shot(name):
     try:
         with socket.socket(socket.AF_UNIX) as monitor:
             monitor.settimeout(2)
-            monitor.connect(str(VM / 'mon.sock'))
+            monitor.connect(str((VM / 'mon.sock').resolve()))
             hmp_response(monitor)
             monitor.sendall(('screendump ' + json.dumps(str(ppm)) + '\n').encode())
             response = hmp_response(monitor)
@@ -168,14 +178,14 @@ def shot(name):
     except (OSError, ValueError) as error:
         response = str(error)
     # Existing virgl VM can report "no surface" for HMP screendump. Preserve that
-    # fact and obtain a guest frame for review; never count it as host evidence.
+    # fact and use the shared host display capture helper for review.
     (OUT / 'host-screendump-unavailable.txt').write_text(response)
-    if 'host-screendump unavailable; guest grim used for Wayland visuals' not in CAPTURE_NOTES:
-        CAPTURE_NOTES.append('host-screendump unavailable; guest grim used for Wayland visuals')
-    result = subprocess.run([str(HERE / 'shot.sh'), str(OUT / (name + '.png'))],
+    if 'direct screendump unavailable; host display capture helper used' not in CAPTURE_NOTES:
+        CAPTURE_NOTES.append('direct screendump unavailable; host display capture helper used')
+    result = subprocess.run(TARGET.shot_argv(OUT / (name + '.png')),
                             text=True, capture_output=True, timeout=15)
     assert result.returncode == 0, result.stderr
-    return 'guest-grim (host display unavailable)'
+    return 'host-display-fallback'
 
 
 def frames(name, action, *, after=1.6):
@@ -206,7 +216,12 @@ def frames(name, action, *, after=1.6):
             time.sleep(.06)
         future.result(timeout=40)
     (OUT / (name + '-sources.json')).write_text(json.dumps(sources, indent=2))
-    assert any(row['source'].startswith(('host-screendump', 'guest-grim')) for row in sources), 'no frames captured for ' + name
+    assert any(row['source'].startswith(('host-screendump', 'host-display-fallback', 'guest-grim')) for row in sources), 'no frames captured for ' + name
+
+
+def pam_session_opened(journal):
+    return bool(re.search(r'pam_unix\(emaki-greetd:session\): session opened for user '
+                          + re.escape(TARGET.user) + r'(?=\s|\(|$)', journal))
 
 
 def session(expected, mark):
@@ -215,7 +230,7 @@ def session(expected, mark):
         if state['services'].get(expected) != 'active' or state['services'].get('emaki-shell.service') != 'active':
             return None
         journal = journal_since(mark)
-        if 'pam_unix(emaki-greetd:session): session opened for user arch' not in journal:
+        if not pam_session_opened(journal):
             return None
         state['journal'] = journal
         return state
@@ -248,7 +263,7 @@ def ui_login():
     (OUT / 'wrong-password-journal.txt').write_text(wrong_journal)
     assert greeter() == before, 'wrong password replaced the Emaki greeter'
     correct_mark = journal_mark()
-    frames('drain', lambda: keys('text', 'key:Return', text='arch'))
+    frames('drain', lambda: keys('text', 'key:Return', text=TARGET.password))
     state = session('niri-emaki.service', correct_mark)
     (OUT / 'login-journal.txt').write_text(state['journal'])
     # A deliberate early logout would trigger the specified crash heuristic.
@@ -276,7 +291,7 @@ def escape_check():
     assert healthy(after) and after['qs'] == before['qs'], 'Escape replaced or left the Emaki greeter'
     assert after.get('greetd_identity') == before['greetd_identity'], 'greetd restarted during the canceled check'
     assert not re.search(r'unable to cancel session|signal=ABRT|status=6/ABRT|start-limit-hit', wrong_journal), wrong_journal
-    assert 'pam_unix(emaki-greetd:session): session opened for user arch' not in wrong_journal, 'canceled check opened a session'
+    assert not pam_session_opened(wrong_journal), 'canceled check opened a session'
     # Idle and repeated Escape must keep the selected password screen in place.
     keys(*(['key:Escape'] * 8))
     idle = inspect()
@@ -285,7 +300,7 @@ def escape_check():
     assert idle.get('greetd_identity') == before['greetd_identity'], 'greetd changed after idle Escape'
     shot('escape-cleared-and-idle')
     correct_mark = journal_mark()
-    keys('text', 'key:Return', text='arch')
+    keys('text', 'key:Return', text=TARGET.password)
     logged_in = session('niri-emaki.service', correct_mark)
     (OUT / 'escape-next-login-journal.txt').write_text(logged_in['journal'])
     assert logged_in.get('greetd_identity') == before['greetd_identity'], 'greetd changed before the next successful login'
@@ -335,31 +350,31 @@ def early_exit():
     restart()
     before = greeter()
     first_mark = journal_mark()
-    keys('text', 'key:Return', text='arch')
+    keys('text', 'key:Return', text=TARGET.password)
     def returned():
         observed = inspect()
         return observed if healthy(observed) and observed['qs'][0] != before else None
     wait(returned)
     wait_greeter()
     first_journal = journal_since(first_mark)
-    assert 'pam_unix(emaki-greetd:session): session opened for user arch' in first_journal, first_journal
+    assert pam_session_opened(first_journal), first_journal
     (OUT / 'early-exit-first-login-journal.txt').write_text(first_journal)
     state = inspect()['memory']
-    assert state['users']['arch']['failed_session'] == 'niri-emaki.desktop', state
+    assert state['users'][TARGET.user]['failed_session'] == 'niri-emaki.desktop', state
     shot('after-immediate-session-death')
     # Restore the real Emaki command before the recovery login. That login must
     # still use stock Niri exactly once, without overwriting remembered Emaki.
     guest('restore-session')
     stock_mark = journal_mark()
-    keys('text', 'key:Return', text='arch')
+    keys('text', 'key:Return', text=TARGET.password)
     stock = session('niri.service', stock_mark)
     (OUT / 'early-exit-stock-journal.txt').write_text(stock['journal'])
     state = inspect()['memory']
-    assert state['users']['arch']['last_session'] == 'niri-emaki.desktop', state
+    assert state['users'][TARGET.user]['last_session'] == 'niri-emaki.desktop', state
     shot('stock-niri-after-early-death')
     logout()
     retry_mark = journal_mark()
-    keys('text', 'key:Return', text='arch')
+    keys('text', 'key:Return', text=TARGET.password)
     retried = session('niri-emaki.service', retry_mark)
     (OUT / 'early-exit-emaki-return-journal.txt').write_text(retried['journal'])
     shot('emaki-after-one-stock-login')
@@ -434,14 +449,16 @@ def scenario(name, operation):
 def main():
     global OUT
     parser = argparse.ArgumentParser(description=__doc__)
+    add_arguments(parser)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--scenario', action='append', choices=['ui', 'escape', 'kill', 'crash', 'broken-qml', 'early-exit', 'tty', 'hang'])
     args = parser.parse_args()
+    configure(args)
     OUT = args.output.resolve()
     OUT.mkdir(parents=True, exist_ok=True)
     if (OUT / 'results.jsonl').exists():
         parser.error('--output already contains a run; choose a fresh directory to preserve evidence')
-    # Fixed ssh.sh is the only route to session/root commands. Require QEMU before
+    # The configured guest transport is the only route to session/root commands. Require QEMU before
     # uploading or modifying anything; there is no host fallback.
     assert checked_remote('systemd-detect-virt --vm').strip() in ('qemu', 'kvm'), 'requires disposable QEMU/KVM VM'
     for source, destination in [('guest-greeter.py', '/tmp/c9-guest-greeter.py'), ('guest-keys.py', '/tmp/c9-guest-keys.py')]:

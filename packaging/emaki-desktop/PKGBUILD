@@ -6,12 +6,13 @@
 # Desktop applications and the password-only lock PAM service. Runtime helpers
 # and their dependencies are also declared by emaki-config for standalone use.
 pkgname=emaki-desktop
-pkgver=0.2.0
+pkgver=0.3.0
 pkgrel=1
 pkgdesc='Emaki desktop applications, dependencies and lock PAM configuration'
 arch=('any')
 url='https://github.com/emakish/emaki'
 license=('GPL-3.0-or-later')
+install=emaki-desktop.install
 backup=('etc/pam.d/emaki-lock')
 source=('emaki-lock.pam')
 sha256sums=('534a4fcb1caf903c9b676b6fef8796d8a0eceef5c0b79491eae95ea5cb77067c')
@@ -27,14 +28,15 @@ depends=(
     # The upstream name, which xdg-desktop-portal-gnome-emaki provides: 0.1.0/0.1.1 keep Arch's
     # portal (their [emaki] comes after [extra], so pacman never offers the fork's replaces=).
     'xdg-desktop-portal-gnome' 'xdg-desktop-portal-gtk'
-    'brightnessctl' 'power-profiles-daemon' 'networkmanager' 'upower' 'bluez'
+    'brightnessctl' 'power-profiles-daemon' 'networkmanager' 'upower' 'blueman' 'bluez'
     'pipewire' 'wireplumber' 'pipewire-pulse' 'wlsunset'
     # Same hardware support as the live USB: Intel SOF sound, Marvell Wi-Fi,
     # Vulkan and VA-API drivers. iso/test-static.py keeps the two in step.
     'sof-firmware' 'linux-firmware-marvell'
-    'vulkan-intel' 'vulkan-radeon' 'intel-media-driver'
+    'vulkan-intel' 'vulkan-nouveau' 'vulkan-radeon' 'intel-media-driver'
     'greetd' 'greetd-regreet' 'gnome-keyring'
-    'dolphin'
+    'dolphin' 'kdegraphics-thumbnailers' 'ffmpegthumbs'
+    'breeze-icons'              # KDE application icons not provided in hicolor.
     # Before firefox, so pacman resolves Firefox's ttf-font with it, not gnu-free-fonts.
     'noto-fonts'                # Broad script coverage for web pages (2026-10-03).
     'noto-fonts-emoji'          # Colour emoji outside Firefox.

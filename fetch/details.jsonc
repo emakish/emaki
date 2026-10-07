@@ -19,7 +19,7 @@
       "type": "command",
       "key": "OS",
       "keyColor": "#e05a4f",
-      "text": "[ -r /usr/lib/emaki-release ] && . /usr/lib/emaki-release; echo \"Emaki${VERSION:+ $VERSION}${LABEL:+ $LABEL}\""
+      "text": "if [ -r /usr/lib/emaki-release ]; then . /usr/lib/emaki-release; if [ -f /etc/emaki-live/greetd.toml ]; then echo \"Emaki${VERSION:+ $VERSION}${LABEL:+ $LABEL}\"; else channel=$(emaki-update-channel 2>/dev/null) || channel=unknown; case \"$channel\" in stable|testing|custom|mixed|disabled) ;; *) channel=unknown ;; esac; echo \"Emaki${VERSION:+ $VERSION}${LABEL:+ $LABEL} [channel: $channel]\"; fi; else echo Emaki; fi"
     },
     {
       "type": "host",

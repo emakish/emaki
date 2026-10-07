@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Real shared greeter surfaces: black preparation, clipped pour and late decode."""
+from runtime_fixture import runtime_path
 import os
 from pathlib import Path
 import shutil
@@ -38,7 +39,7 @@ print(json.dumps(dict(layout='EN', outputs_active=True, caps=False)), flush=True
 time.sleep(15)
 ''')
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
-                   QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(base / 'r'),
+                   QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(runtime_path(base)),
                    XDG_CACHE_HOME=str(base / 'cache'), XDG_CONFIG_HOME=str(base / 'config'),
                    XDG_STATE_HOME=str(base / 'state'), XDG_DATA_HOME=str(base / 'data'),
                    TMPDIR=str(base / 'tmp'), HOME=str(base), NIRI_SOCKET='', GREETD_SOCK='',

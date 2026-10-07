@@ -4,6 +4,7 @@
 Only Wayland window plumbing and subprocess peers are replaced in an isolated
 copy. The production cover state, entry and surface run in offscreen Qt.
 """
+from runtime_fixture import runtime_path
 import json
 import math
 import os
@@ -141,7 +142,7 @@ def run(scenario):
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QT_SCALE_FACTOR='1',
                    QML_DISABLE_DISK_CACHE='1', EMAKI_SESSION_START=TOKEN, EMAKI_SESSION_SKIP_INTRO='1',
                    PATH=str(base / 'bin') + ':' + os.environ['PATH'], RELEASE_FILE=str(base/'release'),
-                   XDG_RUNTIME_DIR=str(base/'runtime'), XDG_CONFIG_HOME=str(base/'config'),
+                   XDG_RUNTIME_DIR=str(runtime_path(base)), XDG_CONFIG_HOME=str(base/'config'),
                    XDG_STATE_HOME=str(base/'state'), XDG_CACHE_HOME=str(base/'cache'), XDG_DATA_HOME=str(base/'data'),
                    DBUS_SESSION_BUS_ADDRESS='unix:path='+str(base/'no-bus'))
         for name in ('DISPLAY','WAYLAND_DISPLAY','NIRI_SOCKET','GREETD_SOCK'):

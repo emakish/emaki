@@ -2,7 +2,7 @@
 # niri entry point without a personal config: /etc/niri/config.kdl (niri/system.kdl) and
 # “niri (Emaki)”. Installation paths are redirected to a copy of niri/ in a temporary directory;
 # system and home directories are left alone. Fork checks run only if niri-emaki is available
-# (absent in CI: the fork is optional).
+# (required in CI, optional for a local stock-only check).
 set -u
 R="$(cd "$(dirname "$0")/.." && pwd)"
 T=$(mktemp -d)
@@ -68,19 +68,19 @@ for name in emaki-shell emaki-config-path cliphist fuzzel wl-copy; do
 done
 printf 'exit "$SHELL_RC"\n' >> "$T/clip/emaki-shell"
 printf 'echo /fixture/fuzzel.ini\n' >> "$T/clip/emaki-config-path"
-printf '[ "$1" = list ] && echo "1 fixture" || cat\n' >> "$T/clip/cliphist"
+printf '[ "$5" = list ] && echo "1 fixture" || cat\n' >> "$T/clip/cliphist"
 # fuzzel: picks the first entry; FUZZEL_MODE=esc prints nothing and fails, empty prints nothing.
 printf 'case "$FUZZEL_MODE" in esc) exit 1 ;; empty) exit 0 ;; esac\nhead -n 1\n' >> "$T/clip/fuzzel"
 printf 'cat > "%s/clip.copied"\n' "$T" >> "$T/clip/wl-copy"
 chmod +x "$T"/clip/*
 clip_run() {   # clip_run <exit status of emaki-shell> [fuzzel mode]: the logged calls, one per line
     rm -f "$T/clip.log" "$T/clip.copied"
-    SHELL_RC="$1" FUZZEL_MODE="${2:-pick}" PATH="$T/clip:$PATH" sh -c "$clip" >/dev/null 2>&1
+    XDG_RUNTIME_DIR="$T/clip" SHELL_RC="$1" FUZZEL_MODE="${2:-pick}" PATH="$T/clip:$PATH" sh -c "$clip" >/dev/null 2>&1
     cat "$T/clip.log" 2>/dev/null
 }
 down=$(clip_run 255)
 missing=""
-for call in 'cliphist list' 'fuzzel --config /fixture/fuzzel.ini --dmenu' 'cliphist decode' 'wl-copy'; do
+for call in "cliphist -config-path /dev/null -db-path $T/clip/emaki-cliphist.db list" 'fuzzel --config /fixture/fuzzel.ini --dmenu' "cliphist -config-path /dev/null -db-path $T/clip/emaki-cliphist.db decode" 'wl-copy'; do
     printf '%s\n' "$down" | grep -qxF "$call" || missing="$missing [$call]"
 done
 if [ -n "$clip" ] && [ -z "$missing" ] && [ "$(cat "$T/clip.copied" 2>/dev/null)" = "1 fixture" ]; then
@@ -92,7 +92,7 @@ fi
 # empty input would replace the clipboard with an empty selection.
 for mode in esc empty; do
     calls=$(clip_run 255 "$mode")
-    if printf '%s\n' "$calls" | grep -q '^fuzzel' && ! printf '%s\n' "$calls" | grep -qE '^(cliphist decode|wl-copy)'; then
+    if printf '%s\n' "$calls" | grep -q '^fuzzel' && ! printf '%s\n' "$calls" | grep -qE '^(cliphist .* decode|wl-copy)'; then
         ok "Super+V fallback with nothing chosen ($mode) does not touch the clipboard"
     else
         bad "Super+V fallback with nothing chosen ($mode): $(printf '%s' "$calls" | tr '\n' ';')"

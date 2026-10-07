@@ -5,12 +5,18 @@
 [Unit]
 Description=Lock the Emaki session before sleep
 PartOf=graphical-session.target
-After=graphical-session.target
-Requisite=graphical-session.target
+# Stop after the compositor: the guard holds the sleep delay while confirming
+# shutdown. ExecCondition below rejects starts outside a graphical session without
+# adding the After= ordering that Requisite would need.
+Before=graphical-session.target niri-emaki.service niri.service
 ConditionUser=!root
+ConditionPathExists=!/etc/emaki-live/greetd.toml
 StartLimitIntervalSec=0
 
 [Service]
+# A false condition skips the start without triggering Restart=always.
+# Targets go straight from inactive to active (systemd target.c), and niri requests the guard after READY=1; `activating` is accepted only as a harmless extra.
+ExecCondition=/bin/sh -c 'state=$$(/usr/bin/systemctl --user show --property=ActiveState --value graphical-session.target) || exit 1; case "$$state" in active|activating) exit 0;; *) exit 1;; esac'
 # The guard sends READY=1 once it holds logind's delay inhibitor, together with
 # RESTART_RESET=1 (below). python3 is the main process, as NotifyAccess=main needs.
 Type=notify
@@ -29,10 +35,8 @@ RestartSec=1
 RestartSteps=5
 RestartMaxDelaySec=30
 TimeoutStopSec=20
-# What the guard does when the lock is not confirmed before sleep: see the policy
-# list in /usr/bin/emaki-sleep-guard. Unset = sleep (today's behaviour). Set it in
-# a drop-in (systemctl --user edit emaki-sleep-guard), never here.
-# Environment=EMAKI_SLEEP_LOCK_FAILURE=sleep
+# Failed sleep locks retry hyprlock, then terminate this session within logind's delay.
+# Optional lid handling: Environment=EMAKI_SLEEP_LOCK_FAILURE=stay-awake
 Slice=session.slice
 
 [Install]

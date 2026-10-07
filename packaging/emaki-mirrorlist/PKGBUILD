@@ -2,16 +2,27 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # shellcheck shell=bash disable=SC2034,SC2154
 pkgname=emaki-mirrorlist
-pkgver=0.2.0
+pkgver=0.3.0
 pkgrel=1
 pkgdesc='Emaki package repository channels'
 arch=('any')
 url='https://github.com/emakish/packages'
 license=('GPL-3.0-or-later')
 backup=('etc/pacman.d/emaki-mirrorlist')
-source=('emaki-mirrorlist')
-sha256sums=('0c38d1c438bf666a62ea92940c825827d3975f5ad907dc00fb99911d93f4ba9e')
+install=emaki-mirrorlist.install
+source=('emaki-mirrorlist' 'stable.conf' 'testing.conf' 'emaki-mirrorlist.install' 'channel.conf')
+sha256sums=('ba79dca4c645f0768689cc5fbb26ffca764c8ba933ebc6b0445ab5936dc51546'
+            '2ff0d5e5e994d7f429791ef83a9538bac2318245cca8a7b18ac1453758cf8b07'
+            'f5481aef42c693489bf260488d241b834e2f4059c6542d5ea850bd389c56443c'
+            '0aba77a8b8840327723e3f516c3f95d6ba869926376542b8cc12c022662e01c6'
+            '97337eb28818ee63f3cc409278de6e998704de2bddaf28b079026d368ad058c6')
 
 package() {
+    # Let pacman reject a non-directory here before running any scriptlets.
+    install -dm755 "$pkgdir/etc/emaki"
     install -Dm644 "$srcdir/emaki-mirrorlist" "$pkgdir/etc/pacman.d/emaki-mirrorlist"
+    install -Dm644 "$srcdir/emaki-mirrorlist" "$pkgdir/usr/share/emaki/mirrors/default.conf"
+    install -Dm644 "$srcdir/channel.conf" "$pkgdir/usr/share/emaki/mirrors/channel.conf"
+    install -Dm644 "$srcdir/stable.conf" "$pkgdir/usr/share/emaki/mirrors/stable.conf"
+    install -Dm644 "$srcdir/testing.conf" "$pkgdir/usr/share/emaki/mirrors/testing.conf"
 }

@@ -188,6 +188,8 @@ Item {
     property double peekUntil: 0
     property double peekCooldown: 0
     readonly property bool peekOpen: peekIds.length > 0
+    readonly property bool pairingPeekOpen: peekIds.some(id => notes.entries.some(e => e.id === id && e.critical === true && !e.batteryWarning && e.object))
+    readonly property bool batteryPeekOpen: peekIds.some(id => notes.entries.some(e => e.id === id && e.batteryWarning === true))
     readonly property bool modalOpen: launcherOpen || drawerOpen || systemOpen || privacyOpen
     property bool systemOpen: false
     property bool systemPresent: false
@@ -254,7 +256,7 @@ Item {
             closeAll();
             return;
         }
-        closeAll();
+        closePanels(true);
         if (!privacyActive)
             return;
         privacyOpen = true;
@@ -325,7 +327,7 @@ Item {
         if (!["sound", "light", "power", "wifi", "bt", "kb", "tray"].includes(page))
             return false;
         if (systemOpen && systemPage === page) {
-            closeAll();
+            closeSystem();
             return true;
         }
         if (systemOpen) {
@@ -336,7 +338,7 @@ Item {
             systemPage = page;
             return true;
         }
-        closeAll();
+        closePanels(true);
         systemPage = page;
         systemOpen = true;
         systemPresent = true;
@@ -346,6 +348,13 @@ Item {
                 systemPanel.forceActiveFocus();
         });
         return true;
+    }
+    function closeSystem(): void {
+        systemOpen = false;
+        systemExpansion = 0;
+        systemBody.reset();
+        // A pairing request remains actionable when its settings panel closes.
+        closeTimer.restart();
     }
     Behavior on systemExpansion {
         NumberAnimation {
@@ -374,11 +383,11 @@ Item {
         onArrived: id => scene.showNotification(id)
         onDndChanged: {
             if (dnd)
-                scene.endPeek();
+                scene.retainCriticalPeek();
         }
         onEntriesChanged: {
             if (scene.peekOpen) {
-                scene.peekIds = scene.peekIds.filter(id => notes.entries.some(n => n.id === id));
+                scene.peekIds = scene.peekIds.filter(id => notes.entries.some(n => n.id === id && (!n.critical || n.batteryWarning || n.object)));
                 if (!scene.peekOpen)
                     scene.endPeek();
             }
@@ -390,12 +399,12 @@ Item {
     }
     onPresentationStateChanged: {
         if (presentationState !== "clear")
-            endPeek();
+            retainCriticalPeek();
     }
     // Head of the clock panel: 36 px with the compact time in a peek, 70 px with the big
     // time in the drawer. Animated on its own so closing mirrors opening (drawerOpen flips
     // at once, the head must not).
-    readonly property real headTarget: drawerOpen ? 1 : 0
+    readonly property real headTarget: drawerOpen && !batteryPeekOpen && !pairingPeekOpen ? 1 : 0
     property real clockHeadExpansion: 0
     Behavior on clockHeadExpansion {
         NumberAnimation {
@@ -426,33 +435,49 @@ Item {
     function closeClock(): void {
         drawerOpen = false;
         endPeek();
-        clockExpansion = 0;
+        clockExpansion = pairingPeekOpen ? 1 : 0;
         closeTimer.restart();
     }
     function endPeek(): void {
         if (peekOpen)
             peekCooldown = Date.now() + Metrics.morphMs;
-        peekIds = [];
+        // A live pairing request lasts until its sender closes or expires it.
+        peekIds = peekIds.filter(id => notes.entries.some(e => e.id === id && e.critical === true && !e.batteryWarning && e.object));
         peekTimer.stop();
+        if (pairingPeekOpen)
+            return;
         if (!drawerOpen) {
             clockExpansion = 0;
             closeTimer.restart();
         }
     }
+    function retainCriticalPeek(): void {
+        peekIds = peekIds.filter(id => notes.entries.some(e => e.id === id && e.critical === true));
+        if (!peekOpen)
+            endPeek();
+    }
     function showNotification(id: int): void {
         const time = Date.now();
-        if (notes.dnd || niri.overviewOpen || presentationState !== "clear" || modalOpen || time < peekCooldown)
+        const critical = notes.entries.some(e => e.id === id && e.critical === true);
+        const pairing = notes.entries.some(e => e.id === id && e.critical === true && !e.batteryWarning && e.object);
+        if (!critical && (niri.overviewOpen || modalOpen || notes.dnd || presentationState !== "clear" || time < peekCooldown))
             return;
-        if (!peekOpen)
+        // A new pairing request replaces the current one so its actions are visible.
+        // Other arrivals remain in the drawer while a request is pending.
+        if ((pairingPeekOpen && !pairing) || (!critical && peekIds.some(peekId => notes.entries.some(e => e.id === peekId && e.critical === true))))
+            return;
+        if (critical)
+            peekIds = [];
+        if (!peekOpen || critical)
             peekStarted = time;
-        if (time >= peekStarted + 8000) {
+        if (!critical && time >= peekStarted + 8000) {
             endPeek();
             return;
         }
         peekIds = peekIds.concat([id]);
         clockPresent = true;
         clockExpansion = 1;
-        peekUntil = Math.min(time + 4000, peekStarted + 8000);
+        peekUntil = critical ? time + 15000 : Math.min(time + 4000, peekStarted + 8000);
         peekTimer.interval = Math.max(1, peekUntil - time);
         peekTimer.restart();
     }
@@ -493,7 +518,7 @@ Item {
         if (!enabled || (!output && !headless))
             return;
         if (!launcherOpen)
-            closeAll();
+            closePanels(true);
         if (launcherOpen) {
             launcherBody.takeFocus();
             return;
@@ -517,9 +542,15 @@ Item {
         closeTimer.restart();
     }
     function closeAll(): void {
+        closePanels(false);
+    }
+    function closePanels(preserveBattery: bool): void {
         tip.hide();
         closeLauncher();
-        closeClock();
+        if (!preserveBattery || !batteryPeekOpen)
+            closeClock();
+        else
+            drawerOpen = false;
         systemOpen = false;
         systemExpansion = 0;
         systemBody.reset();
@@ -535,8 +566,12 @@ Item {
         const logo = bar.logo;
         if (!launcherPresent && x >= logo.x && x < logo.x + logo.width && y >= logo.y && y < logo.y + logo.height)
             openLauncher();
-        else if (!dockPressAt(x, y, button))
-            closeAll();
+        else if (!dockPressAt(x, y, button)) {
+            if (systemOpen)
+                closeSystem();
+            else
+                closeAll();
+        }
     }
     function toggleLauncher(): void {
         if (launcherOpen)
@@ -548,7 +583,7 @@ Item {
         target: scene.niri
         function onOverviewOpenChanged(): void {
             if (scene.niri.overviewOpen)
-                scene.closeAll();
+                scene.closePanels(true);
         }
     }
     onOutputChanged: {
@@ -699,6 +734,15 @@ Item {
                 visible: dockPolicy.dockVisible,
                 reserve: dockPolicy.reserve,
                 edge_enabled: dockPolicy.edgeEnabled,
+                edge_hovered: dockPolicy.edgeHovered,
+                visible_amount: dock.visibleAmount,
+                output: outputName,
+                edge_rect: {
+                    x: dockOrigin.x + dockEdgeLocal.x,
+                    y: dockOrigin.y + dockEdgeLocal.y,
+                    width: dockEdgeLocal.width,
+                    height: dockEdgeLocal.height
+                },
                 revealed: dockPolicy.revealed,
                 dragging: dock.dragging,
                 // Desktop ID whose icon pulses while gtk-launch runs ("" otherwise).
@@ -850,13 +894,15 @@ Item {
     // (liquid-glass/clock.html): the drawer (media, month, notifications) or a peek.
     ClockPanel {
         id: clockPanel
+        z: scene.batteryPeekOpen || scene.pairingPeekOpen ? 40 : 0
         visible: scene.clockPresent
         viewportWidth: scene.viewportWidth
         viewportHeight: scene.viewportHeight
         expansion: scene.clockExpansion
         head: scene.clockHeadExpansion
-        opened: scene.drawerOpen
+        opened: scene.drawerOpen && !scene.batteryPeekOpen && !scene.pairingPeekOpen
         peekIds: scene.peekIds
+        hidePreviewBodies: scene.privacyCast
         store: notes
         serverState: notificationService.state
         mediaEnabled: !scene.headless || Quickshell.env("EMAKI_TEST_MPRIS") === "1"
@@ -894,7 +940,7 @@ Item {
         islandBubble: bar.systemGlass.bubble
         islandHoverKey: bar.systemGlass.hoverKey
         focus: scene.systemOpen
-        Keys.onEscapePressed: scene.closeAll()
+        Keys.onEscapePressed: scene.closeSystem()
         onPageRequested: page => scene.openSystem(page)
     }
 }

@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Extract the unchanged centre of the wallpaper ring for a bounded texture."""
+
+import argparse
+from pathlib import Path
+
+from PIL import Image
+
+ROOT = Path(__file__).resolve().parent.parent
+SIZE = (3840, 1200)
+
+
+def build(source, destination):
+    with Image.open(source) as ring:
+        if ring.width < SIZE[0] or ring.height != SIZE[1]:
+            raise ValueError("The wallpaper ring must be at least 3840 pixels wide and 1200 pixels high")
+        left = (ring.width - SIZE[0]) // 2
+        # No resize or colour conversion: centre mode shows these same pixels
+        # on outputs up to 3840 pixels wide, without uploading the whole ring.
+        fallback = ring.crop((left, 0, left + SIZE[0], SIZE[1]))
+        fallback.save(destination, format="PNG", optimize=False, compress_level=9)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source", type=Path, default=ROOT / "art/wallpaper/ring.png")
+    parser.add_argument("--output", type=Path, default=ROOT / "art/wallpaper/fallback.png")
+    args = parser.parse_args()
+    build(args.source, args.output)
+
+
+if __name__ == "__main__":
+    main()

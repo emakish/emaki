@@ -1,0 +1,15 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = quickshell-emaki
+Target = qt6-base
+Target = qt6-declarative
+Target = emaki-config
+
+[Action]
+Description = Checking the desktop panel's Qt build before the next start [Emaki]...
+When = PostTransaction
+Exec = /usr/bin/emaki-qt-check --hook

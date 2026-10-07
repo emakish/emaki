@@ -59,10 +59,29 @@ def trial_available():
             and bool(os.environ.get('NIRI_SOCKET')))
 
 
+def boot_removable():
+    if not BOOT_MOUNT.is_dir():
+        return False
+    result = run(['findmnt', '-n', '-o', 'SOURCE', '--mountpoint', str(BOOT_MOUNT)])
+    source = result.stdout.decode().strip().split('[', 1)[0]
+    if result.returncode or not source.startswith('/dev/'):
+        return False
+    result = run(['lsblk', '--tree', '-s', '-J', '-o', 'RM,TRAN', source])
+    def removable(rows):
+        return any(row.get('rm') in (True, 1, '1') or row.get('tran') == 'usb'
+                   or removable(row.get('children', [])) for row in rows)
+    return result.returncode == 0 and removable(json.loads(result.stdout).get('blockdevices', []))
+
+
 def catalog():
     # boot_medium: the window tells the person why the worker never answers.
+    try:
+        removable = boot_removable()
+    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
+        removable = False
     return dict(ok=True, layouts=layouts(), zones=zones(), trial=trial_available(),
-                boot_medium=BOOT_MOUNT.is_dir())
+                boot_medium=BOOT_MOUNT.is_dir(), boot_removable=removable,
+                output_scales=output_scales())
 
 
 def trial_reloads():
@@ -127,6 +146,16 @@ def niri_request(kind):
                 raise ValueError()
             data += chunk
     return json.loads(data.split(b'\n', 1)[0])['Ok']
+
+
+def output_scales():
+    """Keep the session's active output scales; disconnected outputs have no logical size."""
+    try:
+        outputs = niri_request('Outputs')['Outputs']
+        return {name: item['logical']['scale'] for name, item in outputs.items()
+                if item.get('logical') is not None}
+    except (OSError, KeyError, TypeError, ValueError):
+        return {}
 
 
 LEDS = Path('/sys/class/leds')
@@ -275,9 +304,17 @@ def join(request):
     # Like the shell's helper: bounded nmcli, fixed locale, no stderr/secret echo.
     # --ask reads the PSK from stdin; it must never be a `password ...` argv.
     result = run(['nmcli', '--ask', '--wait', '25', 'device', 'wifi', 'connect', bssid, 'ifname', device], input=(secret + '\n').encode())
-    return dict(ok=result.returncode == 0, message='Connected' if result.returncode == 0 else
-                {3: 'Connection timed out.', 4: 'Could not connect. Check the password.',
-                 8: 'NetworkManager is not running.', 10: 'Network is no longer available.'}.get(result.returncode, 'Could not connect to this network.'))
+    reply = dict(ok=result.returncode == 0, message='Connected' if result.returncode == 0 else
+                 {3: 'Connection timed out.', 4: 'Could not connect. Check the password.',
+                  8: 'NetworkManager is not running.', 10: 'Network is no longer available.'}.get(result.returncode, 'Could not connect to this network.'))
+    if reply['ok']:
+        state = run(['nmcli', '-g', 'GENERAL.CON-UUID', 'device', 'show', device])
+        uuid = state.stdout.decode().strip()
+        if state.returncode == 0 and re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}', uuid):
+            reply['wifi_uuid'] = uuid.lower()
+        else:
+            reply.update(ok=False, message='Connected, but the Wi-Fi settings could not be saved for installation. Connect again.')
+    return reply
 
 
 def media():

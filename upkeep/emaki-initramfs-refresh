@@ -1,0 +1,57 @@
+#!/usr/bin/python3 -B
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Refresh only the initramfs presets changed by the migration."""
+from pathlib import Path
+import subprocess
+import sys
+
+from emaki_boot_defaults import KERNELS, legacy_preset, safe_file
+from emaki_initramfs import RECEIPT, begin, install, stock
+
+
+def refresh(root=Path('/'), run=subprocess.run, *, in_transaction=False):
+    if in_transaction and safe_file(root / RECEIPT):
+        return
+    pending = root / 'var/lib/emaki/migrations/initramfs-pending'
+    if not safe_file(pending):
+        return
+    requested = pending.read_text().splitlines()
+    kernels = []
+    for kernel in KERNELS:
+        preset = root / f'etc/mkinitcpio.d/{kernel}.preset'
+        if (kernel in requested and safe_file(preset)
+                and preset.read_text() in (legacy_preset(kernel),
+                                          f'. /usr/share/emaki/boot/{kernel}.preset\n')
+                and (root / f'boot/vmlinuz-{kernel}').is_file()):
+            kernels.extend(['-p', kernel])
+    if kernels:
+        print('Retrying pending initramfs migration [Emaki].', flush=True)
+        try:
+            run(['mkinitcpio', *kernels], check=True)
+        except subprocess.CalledProcessError:
+            print('Initramfs migration remains pending; the next kernel or initramfs '
+                  'transaction will retry. Boot refresh is blocked until it succeeds '
+                  '[Emaki].', file=sys.stderr, flush=True)
+            raise
+    pending.unlink()
+
+
+if __name__ == '__main__':
+    try:
+        if sys.argv[1:] == ['--install-hooks']:
+            install(Path('/'))
+        elif sys.argv[1:] == ['--begin']:
+            begin(Path('/'))
+        elif sys.argv[1:] == ['--stock']:
+            stock(targets=sys.stdin.read())
+        elif sys.argv[1:] == ['--transaction']:
+            refresh(in_transaction=True)
+        elif not sys.argv[1:]:
+            refresh()
+        else:
+            raise SystemExit('Unknown initramfs refresh operation.')
+    except subprocess.CalledProcessError as error:
+        print(f'Initramfs refresh failed (exit {error.returncode}) [Emaki].',
+              file=sys.stderr)
+        raise SystemExit(error.returncode) from None

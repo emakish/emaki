@@ -5,6 +5,7 @@ No passwords enter IPC/files/logs: fixture actions select a fixed dummy password
 Every attempt owns a fresh socket; cancellation acknowledgements never enter
 a later attempt's stream. The restricted subset also tests framing in memory.
 """
+from runtime_fixture import runtime_path
 from contextlib import contextmanager
 import importlib.util
 import io
@@ -63,7 +64,7 @@ def harness(socket_mode='server'):
         (qml / 'qmldir').write_text(''.join(f'{name} 1.0 {name}.qml\n' for name in
                                           ('AuthController', 'GreeterAuth', 'LockSession', 'GreeterSession')))
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
-                   QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(profile / 'r'),
+                   QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(runtime_path(profile)),
                    XDG_CACHE_HOME=str(profile / 'cache'), XDG_CONFIG_HOME=str(profile / 'config'),
                    XDG_DATA_HOME=str(profile / 'data'), XDG_STATE_HOME=str(profile / 'state'),
                    HOME=str(profile), TMPDIR=str(profile / 'tmp'), LC_ALL='C',
@@ -74,8 +75,8 @@ def harness(socket_mode='server'):
             env.pop(key, None)
         server = None
         if socket_mode == 'server':
-            server = server_module.GreetdServer(profile / 'g.sock')
-            env['GREETD_SOCK'] = str(profile / 'g.sock')
+            server = server_module.GreetdServer(runtime_path(profile) / 'g.sock')
+            env['GREETD_SOCK'] = str(runtime_path(profile) / 'g.sock')
         elif socket_mode.startswith('scripted'):
             env['GREETD_SOCK'] = 'fixture-only'
             (qml / 'helpers/greeter-auth.py').rename(qml / 'helpers/greeter-auth-real.py')
@@ -153,15 +154,14 @@ def harness(socket_mode='server'):
                         proc.wait(timeout=3)
                 if server:
                     server.close()
-        # The restricted runner can block QS's own fixture IPC server; no other
-        # warning, helper detail or protocol diagnostic is allowed.
+        # Only the deliberate missing-helper warning is allowed.
         output = log_path.read_text()
+        assert 'Failed to start IPC server' not in output, output
         assert 'fixture-éЖ' not in output and 'bad\x00input' not in output, output
         for line in output.splitlines():
             if not any(level in line for level in ('ERROR', 'WARN')):
                 continue
             assert any(allowed in line for allowed in (
-                'quickshell.ipc: Failed to start IPC server',
                 'Process failed to start, likely because the binary could not be found. Command: QList("/fixture/no-such-auth-helper")',
             )), line
 
@@ -189,7 +189,7 @@ def session_contract():
             shutil.copy(ROOT / 'shell' / (name + '.qml'), qml)
         shutil.copy(ROOT / 'tests/fixtures/greeter/GreeterSessionTest.qml', qml / 'check.qml')
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
-                   QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(profile / 'r'),
+                   QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(runtime_path(profile)),
                    XDG_CACHE_HOME=str(profile / 'cache'), XDG_CONFIG_HOME=str(profile / 'config'),
                    XDG_DATA_HOME=str(profile / 'data'), XDG_STATE_HOME=str(profile / 'state'),
                    HOME=str(profile), TMPDIR=str(profile / 'tmp'),
@@ -201,8 +201,7 @@ def session_contract():
                                 text=True, capture_output=True, timeout=5, preexec_fn=core_limit)
         output = result.stdout + result.stderr
         assert result.returncode == 0 and 'GREETER_SESSION_CONTRACT_OK' in output, output
-        output = '\n'.join(line for line in output.splitlines()
-                           if 'quickshell.ipc: Failed to start IPC server' not in line)
+        assert 'Failed to start IPC server' not in output, output
         assert 'ERROR' not in output and 'WARN' not in output, output
     print('PASS: GreeterSession inherits real auth/attempt guards, requests handoff once and melts controls then freezes the plate with input disabled')
 
@@ -327,6 +326,9 @@ class Stream:
         raw = json.dumps(reply).encode(); self.data.extend(struct.pack('=i', len(raw)) + raw)
     def recv(self, count):
         if self.pending:
+            if worker.RETIRED and not (profile / 'retired').exists():
+                (profile / 'retired.tmp').write_text(str(os.getpid()))
+                (profile / 'retired.tmp').replace(profile / 'retired')
             if not (profile / 'release').exists(): raise socket.timeout()
             raw = json.dumps(dict(type='error', error_type='auth_error')).encode()
             self.data.extend(struct.pack('=i', len(raw)) + raw); self.pending = None
@@ -337,6 +339,15 @@ os._exit(worker.entrypoint())
         supervisor = r'''import ctypes, json, os, pathlib, signal, subprocess, sys, time
 profile = pathlib.Path(sys.argv[1]); helper = sys.argv[2]
 libc = ctypes.CDLL(None); assert libc.prctl(36, 1, 0, 0, 0) == 0
+def wait_retired(owner):
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        if (profile / 'retired').exists():
+            assert (profile / 'retired').read_text() == str(owner)
+            return
+        assert not (profile / 'closed').exists(), 'pending socket was closed on parent loss'
+        time.sleep(.01)
+    raise AssertionError('owner did not observe parent loss')
 parent_code = """import json, os, pathlib, signal, subprocess, sys, time
 p = pathlib.Path(sys.argv[1])
 child = subprocess.Popen([sys.executable, '-I', '-B', str(p / 'owner.py'), str(os.getpid()), sys.argv[2]], stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=dict(GREETD_SOCK='fixture-only'))
@@ -348,7 +359,7 @@ child.stdin.write((json.dumps(dict(op='respond', password='fixture-éЖ🔒'))+'
 while True: signal.pause()
 """
 for mode in ('parent-kill', 'parent-crash', 'process-destructor'):
-    for file in ('wire', 'pending', 'release', 'closed', 'supervisor-pid'):
+    for file in ('wire', 'pending', 'release', 'closed', 'retired', 'supervisor-pid'):
         (profile / file).unlink(missing_ok=True)
     parent = subprocess.Popen([sys.executable, '-I', '-B', '-c', parent_code, str(profile), helper])
     owner = managed = None
@@ -360,15 +371,16 @@ for mode in ('parent-kill', 'parent-crash', 'process-destructor'):
         if mode == 'process-destructor': os.kill(managed, signal.SIGKILL)
         else:
             os.kill(parent.pid, signal.SIGKILL if mode == 'parent-kill' else signal.SIGSEGV)
-            parent.wait(timeout=3)
-        time.sleep(.1)
+        # A crashing parent may still be dumping core. Release the verdict only
+        # after the real owner observes retirement, not after a scheduling delay.
+        wait_retired(owner)
         os.kill(owner, 0)
         assert not (profile / 'closed').exists(), 'pending socket was closed on parent loss'
         # A replacement greeter now owns a fresh global slot. The late auth_error
         # must be consumed without a cancel that could erase that replacement.
         (profile / 'release').write_text('replacement owns the slot')
         if parent.poll() is None: parent.kill()
-        parent.wait(timeout=2)
+        parent.wait(timeout=30)
         deadline = time.monotonic() + 3; seen_owner = False
         while time.monotonic() < deadline:
             try: pid, status = os.waitpid(-1, os.WNOHANG)
@@ -381,11 +393,15 @@ for mode in ('parent-kill', 'parent-crash', 'process-destructor'):
         events = [json.loads(line)['type'] for line in (profile / 'wire').read_text().splitlines()]
         assert events == ['create_session', 'post_auth_message_response'], events
     finally:
+        # Never release into a live attempt during failure cleanup: it may still
+        # legitimately cancel its own slot before parent loss reaches the owner.
+        if parent.poll() is None: parent.kill()
+        parent.wait(timeout=30)
+        if owner is not None and not (profile / 'closed').exists(): wait_retired(owner)
         (profile / 'release').write_text('release fixture')
-        if parent.poll() is None: parent.kill(); parent.wait()
 print('guardian-ok')
 '''
-        result = subprocess.run([sys.executable, '-I', '-B', '-c', supervisor, str(profile), str(ROOT / 'shell/helpers/greeter-auth.py')], capture_output=True, text=True, timeout=16, preexec_fn=core_limit)
+        result = subprocess.run([sys.executable, '-I', '-B', '-c', supervisor, str(profile), str(ROOT / 'shell/helpers/greeter-auth.py')], capture_output=True, text=True, timeout=120, preexec_fn=core_limit)
         assert result.returncode == 0 and result.stdout.strip() == 'guardian-ok' and not result.stderr, result
     print('PASS: parent SIGKILL/SIGSEGV and QProcess-style supervisor kill preserve pending socket; retired owner drains late auth_error without cancelling replacement, exits and reaps')
 
@@ -400,7 +416,7 @@ def acknowledge_cancel(server):
 
 def dead_client_socket_negative():
     with tempfile.TemporaryDirectory(prefix='dead-', dir=CACHE) as name:
-        server = server_module.GreetdServer(Path(name) / 'g.sock')
+        server = server_module.GreetdServer(runtime_path(name) / 'g.sock')
         expected_panic = False
         client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
@@ -661,7 +677,7 @@ if not no_socket:
     with tempfile.TemporaryDirectory(prefix='gp-', dir=CACHE) as probe_dir:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
             try:
-                probe.bind(str(Path(probe_dir) / 'g.sock'))
+                probe.bind(str(runtime_path(probe_dir) / 'g.sock'))
             except PermissionError:
                 if os.environ.get('EMAKI_TEST_SANDBOX') != '1':
                     raise

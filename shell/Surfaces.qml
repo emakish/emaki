@@ -9,6 +9,31 @@ Scope {
     id: surfaces
     required property ShellScene controller
     property SessionStartup startup: null
+    readonly property bool pairingKeyboard: controller.systemOpen && controller.systemPage === "bt" && (controller.systemBody.rows.some(r => r.action === "bt-cancel-pair") || controller.services.pendingKind === "bt-pair")
+    property bool pairingRemap: false
+    onPairingKeyboardChanged: acquirePairingKeyboard()
+    function acquirePairingKeyboard(): void {
+        if (!pairingKeyboard)
+            return;
+        // niri grants OnDemand focus on a new map or a pointer/touch press, not
+        // on a policy change. Remap once so keyboard-opened pairing has Escape.
+        pairingRemap = true;
+        Qt.callLater(() => {
+            surfaces.pairingRemap = false;
+            if (surfaces.pairingKeyboard)
+                surfaces.controller.systemPanel.forceActiveFocus();
+        });
+    }
+    Binding {
+        target: surfaces.controller.services
+        property: "pairingFocusManaged"
+        value: true
+    }
+    Binding {
+        target: surfaces.controller.services
+        property: "pairingFocusReady"
+        value: !surfaces.pairingKeyboard || (!surfaces.pairingRemap && overlay.contentItem.Window.active)
+    }
     readonly property bool barMapped: top.visible && (top.contentItem.Window.window?.visible ?? false)
     readonly property bool dockMapped: dockWindow.visible && (dockWindow.contentItem.Window.window?.visible ?? false)
     readonly property bool overlayMapped: overlay.visible && (overlay.contentItem.Window.window?.visible ?? false)
@@ -316,8 +341,9 @@ Scope {
         mask: barInput
         BackgroundEffect.blurRegion: barBlur
     }
-    // The overlay stays mapped for the whole session, transparent and without input while
-    // nothing is open (mask: the empty clockInput region, keyboard None). Quickshell deletes a
+    // Except when acquiring on-demand pairing focus, the overlay stays mapped, transparent
+    // and without input while nothing is open (mask: the empty clockInput region,
+    // keyboard None). Quickshell deletes a
     // layer-shell window on visible: false (WlrLayershell::deleteOnInvisible), so toggling
     // visibility made a new QQuickWindow and wl_surface for every panel, hint and OSD: a first
     // frame of 23–58 ms in the VM (17–77 ms on a laptop) with the bar's button already
@@ -341,7 +367,7 @@ Scope {
     PanelWindow {
         id: overlay
         screen: surfaces.controller.output
-        visible: surfaces.controller.enabled && surfaces.controller.output !== null
+        visible: surfaces.controller.enabled && surfaces.controller.output !== null && !surfaces.pairingRemap
         anchors {
             top: true
             bottom: true
@@ -355,7 +381,9 @@ Scope {
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.namespace: "emaki-test-launcher"
         WlrLayershell.layer: WlrLayer.Overlay
-        WlrLayershell.keyboardFocus: surfaces.controller.modalOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+        // Only an actual pairing releases exclusivity for the native PIN dialog.
+        // Idle Bluetooth browsing needs Exclusive, including keyboard/bar opening.
+        WlrLayershell.keyboardFocus: !surfaces.controller.modalOpen ? WlrKeyboardFocus.None : surfaces.pairingKeyboard ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive
         // The dock popup takes pointer input (outside press closes it) but never the keyboard.
         // With only the dock menu open, the overlay catches outside presses but leaves a hole
         // over the menu and the plate: those live in the dock surface underneath.

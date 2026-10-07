@@ -1,0 +1,447 @@
+#!/usr/bin/python3 -IB
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Keep rolled-away package versions out of ordinary pacman updates."""
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+
+STATE = 'var/lib/emaki/rollback-holds.json'
+MARKER = '# Emaki rollback package holds\n'
+BLOCK = 'etc/pacman.d/hooks/00-emaki-rollback-block.hook'
+HOOK = 'etc/pacman.d/hooks/00-emaki-rollback-holds.hook'
+HELPER = 'usr/share/libalpm/scripts/emaki-rollback-holds'
+FALLBACK = 'var/lib/emaki/emaki-rollback-holds'
+RELEASE_LINK = 'usr/local/bin/emaki-rollback'
+TIMER_MASK = 'etc/systemd/system/emaki-rollback-holds.timer'
+UNREADABLE = ('The holds file is unreadable (pacman). '
+              'Reset it with: sudo emaki-rollback release --all')
+UNCONFIRMED = ('Package versions could not be checked (pacman). '
+               'This transaction was refused. To release all holds, run: '
+               'sudo emaki-rollback release --all')
+NAME = re.compile(r'[a-zA-Z0-9@_+][a-zA-Z0-9@_.+:-]*')
+
+
+def safe(root, relative):
+    root = root.absolute()
+    path = root / relative
+    if any(p.is_symlink() for p in (path, *path.parents) if p != root.parent):
+        raise ValueError(f'Unsafe rollback hold path: {relative} (pacman).')
+    return path
+
+
+def write(root, relative, text, mode=0o644):
+    target = safe(root, relative)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix='.emaki-', dir=target.parent)
+    try:
+        with os.fdopen(fd, 'w') as output:
+            os.fchmod(output.fileno(), mode)
+            output.write(text)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(name, target)
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
+def version_ok(value):
+    return isinstance(value, str) and bool(value) and not any(c.isspace() for c in value)
+
+
+def load(root):
+    path = safe(root, STATE)
+    if not path.exists():
+        return {'holds': {}, 'differences': {}}
+    state = json.loads(path.read_text())
+    if not isinstance(state, dict) or not isinstance(state.get('holds'), dict):
+        raise ValueError('Invalid rollback hold record (pacman).')
+    for name, version in state['holds'].items():
+        if not NAME.fullmatch(name) or not version_ok(version):
+            raise ValueError('Invalid rollback hold record (pacman).')
+    return state
+
+
+def installed(root):
+    database = safe(root, 'var/lib/pacman/local')
+    if not database.is_dir():
+        raise ValueError('The installed package database is missing (pacman).')
+    result = {}
+    for entry in sorted(database.iterdir()):
+        if not entry.is_dir():
+            continue
+        desc = safe(root, str(entry.relative_to(root) / 'desc')).read_text().splitlines()
+        name = desc[desc.index('%NAME%') + 1]
+        version = desc[desc.index('%VERSION%') + 1]
+        if not NAME.fullmatch(name) or not version_ok(version) or name in result:
+            raise ValueError('Invalid installed package record (pacman).')
+        result[name] = version
+    return result
+
+
+def newer(candidate, previous):
+    result = subprocess.run(['/usr/bin/vercmp', candidate, previous], text=True,
+                            capture_output=True, check=True)
+    return int(result.stdout.strip()) > 0
+
+
+def remove_legacy_hook(root):
+    hook = safe(root, BLOCK)
+    if hook.exists():
+        if not hook.read_text().startswith(MARKER):
+            raise ValueError('The rollback hold hook has local changes (pacman).')
+        hook.unlink()
+
+
+def packaged_helper(root):
+    database = safe(root, 'var/lib/pacman/local')
+    if not safe(root, HELPER).is_file() or not database.is_dir():
+        return None
+    versions = installed(root)
+    for entry in database.iterdir():
+        if not entry.is_dir():
+            continue
+        files = safe(root, str(entry.relative_to(root) / 'files'))
+        if files.is_file() and HELPER in files.read_text().splitlines():
+            desc = safe(root, str(entry.relative_to(root) / 'desc')).read_text().splitlines()
+            name = desc[desc.index('%NAME%') + 1]
+            return name, versions[name]
+    return None
+
+
+def install(restored, source_root=Path('/')):
+    target_package = packaged_helper(restored)
+    if target_package:
+        source_package = packaged_helper(source_root)
+        if (not source_package or source_package[0] != target_package[0]
+                or not newer(source_package[1], target_package[1])):
+            takeover(restored)
+            return
+    # The same hook basename overrides the packaged hook, so it runs only once.
+    # A restored root may still contain the old polling unit. An empty unit
+    # masks it on the next boot without touching package-owned files.
+    if safe(restored, 'usr/lib/systemd/system/emaki-rollback-holds.timer').exists():
+        write(restored, TIMER_MASK, '')
+    source = safe(source_root, HELPER)
+    write(restored, FALLBACK, source.read_text(), 0o755)
+    hook = safe(source_root, 'usr/share/libalpm/hooks/00-emaki-rollback-holds.hook').read_text()
+    write(restored, HOOK, MARKER + hook.replace('/' + HELPER, '/' + FALLBACK))
+    # Earlier packaged commands also lack release. Forward their other actions
+    # while providing release through the carried helper until package takeover.
+    parent = safe(restored, 'usr/local/bin')
+    parent.mkdir(parents=True, exist_ok=True)
+    link = parent / 'emaki-rollback'
+    if not link.exists() and not link.is_symlink():
+        link.symlink_to('/' + FALLBACK)
+
+
+def takeover(root):
+    link = safe(root, 'usr/local/bin') / 'emaki-rollback'
+    if link.is_symlink() and os.readlink(link) == '/' + FALLBACK:
+        link.unlink()
+    if root == Path('/') and Path('/run/systemd/system').is_dir():
+        # The package transaction already owns db.lck, so the old refresh cannot
+        # own it when it is stopped. No new timer or service replaces it.
+        subprocess.run(['/usr/bin/systemctl', 'stop', 'emaki-rollback-holds.timer',
+                        'emaki-rollback-holds.service'], capture_output=True, check=False)
+    mask = safe(root, TIMER_MASK)
+    if mask.is_file() and not mask.read_bytes():
+        mask.unlink()
+    hook = safe(root, HOOK)
+    if hook.exists() and hook.read_text().startswith(MARKER):
+        hook.unlink()
+        safe(root, FALLBACK).unlink(missing_ok=True)
+    remove_legacy_hook(root)
+
+
+def save(root, state):
+    remove_legacy_hook(root)
+    write(root, STATE, json.dumps(state, indent=2) + '\n')
+
+
+def prepare(rolled_away, restored):
+    old, new = installed(rolled_away), installed(restored)
+    holds = dict(load(restored)['holds'])
+    # Keep unresolved holds across repeated rollbacks, including older snapshots.
+    for name, version in load(rolled_away)['holds'].items():
+        if name not in holds or newer(version, holds[name]):
+            holds[name] = version
+    differences = {name: {'restored': new.get(name), 'rolled_away': old.get(name)}
+                   for name in sorted(old.keys() | new.keys()) if old.get(name) != new.get(name)}
+    for name, difference in differences.items():
+        version = difference['rolled_away']
+        if (version and difference['restored'] and newer(version, difference['restored'])
+                and (name not in holds or newer(version, holds[name]))):
+            holds[name] = version
+    save(restored, {'holds': holds, 'differences': differences})
+    return holds
+
+
+_NAME = re.compile(r'[a-zA-Z0-9@_+][a-zA-Z0-9@_.+:-]*')
+_VALUE_OPTIONS = {
+    '--root', '--dbpath', '--config', '--arch', '--cachedir', '--hookdir',
+    '--logfile', '--gpgdir', '--sysroot', '--ignore', '--ignoregroup',
+    '--assume-installed', '--overwrite', '--ask',
+}
+_FLAGS = {
+    '--needed', '--nodeps', '--asdeps', '--asexplicit', '--dbonly',
+    '--noscriptlet', '--disable-download-timeout',
+    '--disable-sandbox', '--disable-sandbox-filesystem',
+    '--disable-sandbox-syscalls',
+}
+_SHORT_VALUES = {'b': '--dbpath', 'r': '--root'}
+_SHORT_FLAGS = {'u': '--sysupgrade', 'd': '--nodeps', 'v': '--verbose'}
+
+
+def readonly_arguments(argv):
+    """Return a whitelist-built query; never forward an unknown switch."""
+    operation = None
+    options, targets = [], []
+    i = 1
+    positional = False
+    while i < len(argv):
+        arg = argv[i]
+        i += 1
+        if positional or not arg.startswith('-') or arg == '-':
+            if arg == '-' or '://' in arg:
+                raise ValueError('unavailable input targets')
+            targets.append(arg)
+            continue
+        if arg == '--':
+            positional = True
+            continue
+        if arg.startswith('--'):
+            key, separator, value = arg.partition('=')
+            if key in ('--sync', '--upgrade'):
+                if separator or operation:
+                    raise ValueError('ambiguous operation')
+                operation = '-S' if key == '--sync' else '-U'
+            elif key in ('--refresh', '--downloadonly', '--print', '--confirm', '--noconfirm',
+                         '--noprogressbar', '--verbose', '--quiet'):
+                if separator:
+                    raise ValueError('unexpected option value')
+            elif key == '--debug':
+                pass
+            elif key in ('--print-format', '--ask', '--color'):
+                if not separator:
+                    if i == len(argv):
+                        raise ValueError('missing option value')
+                    i += 1
+            elif key in _VALUE_OPTIONS:
+                if not separator:
+                    if i == len(argv):
+                        raise ValueError('missing option value')
+                    value = argv[i]
+                    i += 1
+                if key == '--ask' and not value.isdecimal():
+                    raise ValueError('invalid question mask')
+                options.extend((key, value))
+            elif key in _FLAGS or key == '--sysupgrade':
+                if separator:
+                    raise ValueError('unexpected option value')
+                options.append(key)
+            else:
+                raise ValueError('unsupported option')
+            continue
+        short = arg[1:]
+        j = 0
+        while j < len(short):
+            flag = short[j]
+            j += 1
+            if flag in 'SU':
+                if operation:
+                    raise ValueError('ambiguous operation')
+                operation = '-' + flag
+            elif flag in 'ywpqv':
+                continue
+            elif flag in _SHORT_FLAGS:
+                options.append(_SHORT_FLAGS[flag])
+            elif flag in _SHORT_VALUES:
+                if j < len(short):
+                    value = short[j:]
+                    j = len(short)
+                else:
+                    if i == len(argv):
+                        raise ValueError('missing option value')
+                    value = argv[i]
+                    i += 1
+                options.extend((_SHORT_VALUES[flag], value))
+            else:
+                raise ValueError('unsupported option')
+    if operation is None or (operation == '-U' and not targets):
+        raise ValueError('no package transaction')
+    if operation == '-U' and '--sysupgrade' in options:
+        raise ValueError('invalid operation options')
+    return [operation, *options, '--noconfirm', '--print-format', '%n\t%v', '--', *targets]
+
+
+def pacman_ancestor():
+    pid = os.getppid()
+    for _ in range(12):
+        proc = Path('/proc') / str(pid)
+        # argv[0] alone is not enough to identify the running executable.
+        executable = os.readlink(proc / 'exe')
+        if executable in ('/usr/bin/pacman', '/bin/pacman'):
+            argv = [os.fsdecode(part) for part in (proc / 'cmdline').read_bytes().split(b'\0') if part]
+            return proc, executable, argv
+        # An intervening shell is allowed; other package frontends are not
+        # guessed from their arguments or from the repository database.
+        status = (proc / 'status').read_text().splitlines()
+        pid = int(next(line.split()[1] for line in status if line.startswith('PPid:')))
+        if pid <= 1:
+            break
+    raise ValueError('no pacman parent')
+
+
+def transaction_versions(actual_targets):
+    """Return versions only if a clean query reproduces all package names.
+
+    The hook must use NeedsTargets and Target = * for Install and Upgrade.
+    OSError, ValueError or SubprocessError means unknown: refuse with a release hint.
+    """
+    proc, executable, argv = pacman_ancestor()
+    arguments = readonly_arguments(argv)
+    root_fd = os.open(proc / 'root', os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        cwd_fd = os.open(proc / 'cwd', os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            def enter_parent_root():
+                os.fchdir(root_fd)
+                os.chroot('.')
+                os.fchdir(cwd_fd)
+            result = subprocess.run(
+                [executable, *arguments], stdin=subprocess.DEVNULL,
+                text=True, capture_output=True, timeout=30, check=True,
+                env={'PATH': '/usr/bin', 'LC_ALL': 'C'},
+                preexec_fn=enter_parent_root, pass_fds=(root_fd, cwd_fd),
+            )
+        finally:
+            os.close(cwd_fd)
+    finally:
+        os.close(root_fd)
+    # Provider/group questions or warnings make reconstruction uncertain.
+    if result.stderr.strip():
+        raise ValueError('query was not unambiguous')
+    candidates = {}
+    for line in result.stdout.splitlines():
+        fields = line.split('\t')
+        if (len(fields) != 2 or not _NAME.fullmatch(fields[0]) or not fields[1]
+                or any(char.isspace() for char in fields[1]) or fields[0] in candidates):
+            raise ValueError('unexpected query output')
+        candidates[fields[0]] = fields[1]
+    if set(candidates) != set(actual_targets):
+        raise ValueError('query does not reproduce transaction targets')
+    return candidates
+
+
+def notices(holds):
+    return [f'{name} version {version} was rolled back (pacman). '
+            f'To allow it again, run: sudo emaki-rollback release {name}'
+            for name, version in sorted(holds.items())]
+
+
+def require_release_root():
+    cmdline = Path('/proc/cmdline').read_text()
+    flags = [word[10:] for word in cmdline.split() if word.startswith('rootflags=')]
+    subvols = [opt[7:] for flag in flags for opt in flag.split(',') if opt.startswith('subvol=')]
+    snapshot = (len(subvols) == 1 and
+                re.fullmatch(r'/?@snapshots/[1-9][0-9]*/snapshot', subvols[0]))
+    for line in Path('/proc/self/mountinfo').read_text().splitlines():
+        mount, filesystem = line.split(' - ', 1)
+        fields = mount.split()
+        if fields[4] != '/':
+            continue
+        fstype, fsroot = filesystem.split()[0], fields[3]
+        kept = re.fullmatch(r'/@emaki-kept-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}', fsroot)
+        if ((fstype == 'btrfs' and kept) or
+                (snapshot and (fstype == 'overlay' or
+                               (fstype == 'btrfs' and fsroot == '/' + subvols[0].lstrip('/'))))):
+            raise ValueError('Restart first, then release.')
+
+
+def release(root, name):
+    if name == '--all':
+        # Reset malformed records as well, without reading them first.
+        state = {'holds': {}, 'differences': {}}
+    else:
+        if not NAME.fullmatch(name):
+            raise ValueError('Use a package name or --all (pacman).')
+        state = load(root)
+        state['holds'].pop(name, None)
+    save(root, state)
+    print('All package holds were released (pacman).' if name == '--all' else
+          f'The package hold for {name} was released (pacman).')
+
+
+def check(root, targets):
+    try:
+        state = load(root)
+    except (OSError, ValueError, KeyError, TypeError):
+        print(UNREADABLE, file=sys.stderr)
+        return 0
+    if not state['holds']:
+        return 0
+    try:
+        candidates = transaction_versions(targets)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        print(UNCONFIRMED, file=sys.stderr)
+        return 3
+    blocked = {name: version for name, version in state['holds'].items()
+               if candidates.get(name) == version}
+    for line in notices(blocked):
+        print(line, file=sys.stderr)
+    if blocked:
+        print('To upgrade the other packages, run: sudo pacman -Syu --ignore ' +
+              ','.join(sorted(blocked)), file=sys.stderr)
+        print('To release all holds, run: sudo emaki-rollback release --all', file=sys.stderr)
+        return 3
+    remaining = {name: version for name, version in state['holds'].items()
+                 if name not in candidates or not newer(candidates[name], version)}
+    if remaining != state['holds']:
+        state['holds'] = remaining
+        save(root, state)
+    return 0
+
+
+def main():
+    action = sys.argv[1:]
+    try:
+        if Path(sys.argv[0]).name == 'emaki-rollback' and action[:1] != ['release']:
+            os.execv('/usr/bin/emaki-rollback', ['/usr/bin/emaki-rollback', *action])
+        if len(action) == 3 and action[0] == 'prepare':
+            current, restored = map(Path, action[1:])
+            try:
+                result = prepare(current, restored)
+                install(restored)
+            except (OSError, ValueError, KeyError, IndexError, TypeError, subprocess.SubprocessError):
+                # The restored root must not inherit a stale refusal after failed preparation.
+                release(restored, '--all')
+                raise
+            for line in notices(result):
+                print(line)
+            return 0
+        if len(action) == 2 and action[0] == 'release':
+            require_release_root()
+            release(Path('/'), action[1])
+            return 0
+        if action == ['check']:
+            return check(Path('/'), set(sys.stdin.read().splitlines()))
+        if action == ['takeover']:
+            takeover(Path('/'))
+            return 0
+        raise ValueError('Unknown rollback hold action (pacman).')
+    except (OSError, ValueError, KeyError, IndexError, TypeError, subprocess.SubprocessError) as error:
+        if action == ['check']:
+            # A running helper refuses uncertain checks; shell startup failures remain repairable.
+            print(UNCONFIRMED, file=sys.stderr)
+            return 3
+        print(f'Rollback package protection failed (pacman): {error}', file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

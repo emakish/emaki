@@ -1,0 +1,12 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Desktop Entry]
+Type=Application
+Name=Printers
+Comment=Add and manage printers
+Exec=kcmshell6 kcm_printer_manager
+TryExec=kcmshell6
+Icon=printer
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=Printer;Printing;CUPS;

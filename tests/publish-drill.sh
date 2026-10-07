@@ -24,6 +24,16 @@ trusted=$ROOT/packaging/emaki-keyring/emaki-trusted
 publish_options=()
 fail() { printf 'DRILL ERROR: %s\n' "$*" >&2; exit 2; }
 pause() { sleep "$(awk -v i="$interval" -v n="$1" 'BEGIN { print i * n }')"; }
+wait_syncs() {
+    local target deadline
+    target=$(( $(grep -c ' sync ' "$log" || true) + $1 ))
+    deadline=$((SECONDS + 120))
+    while (( $(grep -c ' sync ' "$log" || true) < target )); do
+        kill -0 "$client_pid" 2>/dev/null || fail "client stopped before syncing; see $log"
+        ((SECONDS < deadline)) || fail "timed out waiting for client sync; see $log"
+        sleep 0.1
+    done
+}
 while (($#)); do
     case $1 in
         --packages|--url|--log|--keyring|--trusted|--interval)
@@ -41,22 +51,23 @@ done
 for tool in fakeroot pacman pacman-key python3 curl awk; do command -v "$tool" >/dev/null || fail "missing $tool"; done
 work=$(mktemp -d "${TMPDIR:-/tmp}/emaki-drill.XXXXXX")
 log=${log:-$work/drill.log}
+socket_root=$(mktemp -d /tmp/ed.XXXXXX)
 client_pid=''
 stop_client_gnupg() {
     # pacman-key ran under fakeroot, whose uid 0 has no /run/user/0/gnupg: the keyring holds its
     # GnuPG sockets itself, and only gpgconf under fakeroot finds them (a plain one exits 0).
-    fakeroot -- gpgconf --homedir "$work/client/gnupg" --kill all 2>/dev/null || true
+    fakeroot -- gpgconf --homedir "$socket_root/gnupg" --kill all 2>/dev/null || true
 }
 # shellcheck disable=SC2329  # invoked by the EXIT trap
 cleanup() {
     if [[ -n $client_pid ]]; then kill "$client_pid" 2>/dev/null || true; wait "$client_pid" 2>/dev/null || true; fi
     stop_client_gnupg
-    rm -rf -- "$work/client" "$work/t"
+    rm -rf -- "$work/client" "$socket_root"
 }
 trap cleanup EXIT
 # The publishers make their temporary homes under TMPDIR: here, so that what the killed runs
 # leave is counted at the end and removed with the client. Short: sun_path is 108 bytes.
-export TMPDIR=$work/t
+export TMPDIR=$socket_root/t
 mkdir -- "$TMPDIR"
 
 # The client: an installed machine's view of [emaki], kept between syncs.
@@ -68,18 +79,18 @@ RootDir = $client/root
 DBPath = $client/db
 CacheDir = $client/cache
 LogFile = $client/pacman.log
-GPGDir = $client/gnupg
+GPGDir = $socket_root/gnupg
 HookDir = $client/hooks
 Architecture = x86_64
 SigLevel = Required
 [emaki]
 Server = $url/testing/x86_64
 CONF
-fakeroot -- pacman-key --config "$client/pacman.conf" --gpgdir "$client/gnupg" --init >/dev/null 2>&1
-fakeroot -- pacman-key --config "$client/pacman.conf" --gpgdir "$client/gnupg" --add "$keyring" >/dev/null 2>&1
+fakeroot -- pacman-key --config "$client/pacman.conf" --gpgdir "$socket_root/gnupg" --init >/dev/null 2>&1
+fakeroot -- pacman-key --config "$client/pacman.conf" --gpgdir "$socket_root/gnupg" --add "$keyring" >/dev/null 2>&1
 while IFS=: read -r fingerprint _; do
     [[ -n $fingerprint ]] || continue
-    fakeroot -- pacman-key --config "$client/pacman.conf" --gpgdir "$client/gnupg" --lsign-key "$fingerprint" >/dev/null 2>&1
+    fakeroot -- pacman-key --config "$client/pacman.conf" --gpgdir "$socket_root/gnupg" --lsign-key "$fingerprint" >/dev/null 2>&1
 done <"$trusted"
 
 client_loop() {
@@ -103,16 +114,18 @@ publish status >>"$log" 2>&1 || fail 'publish.sh status failed; see the log'
 publish publish testing "$packages" >>"$log" 2>&1 || fail 'the initial publish failed; see the log'
 client_loop &
 client_pid=$!
-pause 1
+wait_syncs 1
 for step in 1 2 3 4 5 6; do
     printf '%s kill after step %s\n' "$(date -u +%H:%M:%S)" "$step" >>"$log"
     code=0
     EMAKI_PUBLISH_TEST_KILL_AFTER=$step publish publish testing "$packages" >>"$log" 2>&1 || code=$?
     ((code == 137)) || fail "publish was expected to die after step $step (exit $code); see $log"
-    pause 3
+    # A sync already in flight may have fetched the previous pair. Observe three completed
+    # syncs while the interrupted layout remains in place, including fresh requests.
+    wait_syncs 3
     printf '%s re-run\n' "$(date -u +%H:%M:%S)" >>"$log"
     publish publish testing "$packages" >>"$log" 2>&1 || fail "re-run after step $step failed; see $log"
-    pause 2
+    wait_syncs 2
 done
 
 printf '%s double start\n' "$(date -u +%H:%M:%S)" >>"$log"
@@ -125,7 +138,7 @@ cat "$work/second.out" >>"$log"
 second_refused=0
 if ((code == 2)) && grep -q 'locks/publish is held' "$work/second.out"; then second_refused=1; fi
 publish publish testing "$packages" >>"$log" 2>&1 || fail 'finishing the first publisher failed'
-pause 2
+wait_syncs 2
 kill "$client_pid"; wait "$client_pid" 2>/dev/null || true; client_pid=''
 
 # The client's last database must be the one the channel serves now.
@@ -137,7 +150,7 @@ failed=$(grep -c ' sync [1-9]' "$log" || true)
 # Nothing GnuPG started for the drill (the client keyring, the publishers) may still run.
 stop_client_gnupg
 daemons_left=0
-python3 "$HERE/gnupg-daemons.py" "$work" | tee -a "$log" || daemons_left=1
+python3 "$HERE/gnupg-daemons.py" "$socket_root" | tee -a "$log" || daemons_left=1
 {
     printf 'RESULT syncs=%s failed=%s second_publisher_refused=%s client_on_served_db=%s gnupg_daemons_left=%s\n' \
         "$syncs" "$failed" "$second_refused" "$([[ $served == "$held" ]] && echo yes || echo no)" "$daemons_left"

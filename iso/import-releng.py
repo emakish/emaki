@@ -42,8 +42,9 @@ def import_profile(source, destination):
     if 'bios.syslinux' not in original or 'uefi.' not in original:
         raise ValueError('unexpected releng boot mode syntax; expected archiso 91')
     shutil.copytree(source, destination, symlinks=True)
-    # Retain every bootloader and initramfs resource, but remove releng live-root,
-    # SSH, and networkd/iwd defaults which conflict with the Emaki live session.
+    # The Emaki overlay supplies GRUB for UEFI and retains Syslinux for BIOS.
+    shutil.rmtree(destination / 'efiboot', ignore_errors=True)
+    # Remove releng live-root, SSH and network defaults that conflict with the live session.
     root = destination / 'airootfs'
     removals = [
         'etc/systemd/system/getty@tty1.service.d/autologin.conf',
@@ -55,6 +56,15 @@ def import_profile(source, destination):
         # Mirror chooser (its service is masked), install guide and masked networkd units.
         'usr/local/bin/choose-mirror', 'usr/local/bin/Installation_guide',
         'etc/systemd/network',
+        'etc/systemd/system/cloud-init.target.wants',
+        'etc/systemd/system/sockets.target.wants/pcscd.socket',
+        'etc/systemd/system/multi-user.target.wants/hv_fcopy_daemon.service',
+        'etc/systemd/system/livecd-talk.service',
+        'etc/systemd/system/multi-user.target.wants/livecd-talk.service',
+        'usr/local/share/livecd-sound',
+        'usr/local/bin/livecd-sound',
+        'etc/systemd/system/livecd-alsa-unmuter.service',
+        'etc/systemd/system/sound.target.wants/livecd-alsa-unmuter.service',
     ]
     for relative in removals:
         path = root / relative
@@ -77,17 +87,20 @@ def import_profile(source, destination):
     (destination / 'VERSION').write_text(version + '\n')
     package_names = {line.split('#', 1)[0].strip() for line in (source / 'packages.x86_64').read_text().splitlines()}
     package_names.update((HERE / 'packages-extra.txt').read_text().split())
-    package_names.difference_update(('', 'iwd'))
+    package_names.difference_update(('', 'iwd', 'cloud-init', 'grim', 'espeakup', 'livecd-sounds'))
     if any(name.startswith('nvidia') or name == 'broadcom-wl' for name in package_names):
         raise ValueError('unexpected proprietary driver in the releng seed')
     (destination / 'packages.x86_64').write_text('\n'.join(sorted(package_names)) + '\n')
-    # Keep releng bootmodes, squashfs options and other fields verbatim. Appended
-    # assignments replace only Emaki identity/build fields and removed permissions.
+    # v91's single GRUB mode includes ESP and El Torito booting.
+    original = re.sub(r'bootmodes=\([^)]*\)', "bootmodes=('bios.syslinux' 'uefi.grub')", original)
+    # Preserve image options and replace Emaki identity/build fields and permissions.
     original = re.sub(r'^\s*\[["\']?/root/[^\n]+\n', '', original, flags=re.M)
-    original = re.sub(r'^\s*\[["\']?/usr/local/bin/(?:choose-mirror|Installation_guide)["\']?\][^\n]*\n',
+    original = re.sub(r'^\s*\[["\']?/usr/local/bin/(?:choose-mirror|Installation_guide|livecd-sound)["\']?\][^\n]*\n',
+                      '', original, flags=re.M)
+    original = re.sub(r'^\s*\[[\"\']?/etc/systemd/system/cloud-init\.target\.wants[\"\']?\][^\n]*\n',
                       '', original, flags=re.M)
     additions = '''
-# Emaki ISO overrides; bootmodes and image options above are releng v91's.
+# Emaki ISO overrides; GRUB handles both UEFI removable-media boot paths.
 # shellcheck disable=SC2034
 iso_name="emaki"
 _emaki_profile_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -106,7 +119,7 @@ unset _emaki_profile_dir
 '''
     (destination / 'profiledef.sh').write_text(original + additions)
     # Brand all existing boot paths while retaining archiso's substitution tokens.
-    for pattern in ('efiboot/loader/entries/*.conf', 'grub/*.cfg', 'syslinux/*.cfg'):
+    for pattern in ('grub/*.cfg', 'syslinux/*.cfg'):
         for path in destination.glob(pattern):
             text = path.read_text()
             text = text.replace('Arch Linux', f'Emaki {version}')
@@ -120,9 +133,6 @@ unset _emaki_profile_dir
                         (f'Boot the {medium} on BIOS.\n'
                          f'It allows you to install Emaki {version} or perform system maintenance.\n',
                          f'Try Emaki {version} from the USB stick on this BIOS computer.\n' + uefi),
-                        (f'Boot the {medium} on BIOS with speakup screen reader.\n'
-                         f'It allows you to install Emaki {version} or perform system maintenance with speech feedback.\n',
-                         f'Try Emaki {version} with the speakup screen reader on this BIOS computer.\n' + uefi),
                         (f'MENU LABEL {medium} (%ARCH%, BIOS)', f'MENU LABEL Try Emaki {version} (BIOS: installing needs UEFI)')):
                     text = text.replace(old, new)
             # v91 supports kernel_params_x86_64; keep this requirement explicit
@@ -139,7 +149,7 @@ unset _emaki_profile_dir
     (destination / 'RELENG-SHA256SUMS').write_text('\n'.join(manifest) + '\n')
     subprocess.run(['python3', str(HERE / 'prepare-profile.py'), str(destination),
                     '@EMAKI_OFFLINE_REPO@', version, '--template'], check=True)
-    print(f'Copied releng into {destination}; original bootmodes retained')
+    print(f'Copied releng into {destination}; UEFI GRUB and BIOS Syslinux selected')
 
 
 def main():

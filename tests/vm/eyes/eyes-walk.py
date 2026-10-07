@@ -10,6 +10,7 @@ eyes-gate.py judges.
   greeter      --run W1 --stage 24 [--next 25]      untouched 20 s, wrong password, right password
   input-test   --run W1 --stage 29 --trigger keys:meta_l-l|click:X,Y|qmp:CMD|none [--duration 5]
   session-unlock --run W1 --stage 29                wrong password, then the right one (after input-test)
+  action --run W1 --stage 33 --action logout --trigger click:X,Y [--timeout 120]
   index                                             index.html + index.txt, frame by frame
 
 Every command but init/plan takes --walk DIR (or EYES_WALK) and drives the pass that
@@ -19,6 +20,7 @@ walk.toml is rewritten when frames are recorded: edit only its values, comments 
 import argparse
 import datetime
 import html
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -151,6 +153,20 @@ class Walk:
                 target[key] = value
         target['frames'] = list(target.get('frames', [])) + [name for name, _ in frames]
         target['sha256'] = list(target.get('sha256', [])) + [digest for _, digest in frames]
+        # Leave each size unjudged. A later pass at another size cannot inherit
+        # the verdict from a smaller display.
+        for name, digest in frames:
+            with eyes.Image.open(self.dir / name) as image:
+                size = f'{image.width}x{image.height}'
+            if self.stages['stages'][stage].get('configured_menu_mode'):
+                current = Path((self.dir / 'current-pass').read_text().strip())
+                size = (current / 'res').read_text().strip()
+            item = table.setdefault('resolution_checks', {}).setdefault(
+                size, {'verdict': '', 'seen': '', 'frames': [], 'sha256': []})
+            item['frames'].append(name)
+            item['sha256'].append(digest)
+            item['verdict'] = ''
+            item['seen'] = ''
         if timing is not None:
             table.setdefault('timing', {})[label] = timing
         self.save(record)
@@ -240,6 +256,24 @@ def cmd_plan(args):
 
 
 def cmd_capture(walk, args):
+    if bool(args.menu_config) != bool(args.menu_size):
+        raise SystemExit('--menu-config and --menu-size must be supplied together')
+    if args.menu_config:
+        if not walk.stages['stages'][args.stage].get('configured_menu_mode'):
+            raise SystemExit('menu configuration is only valid for menu stages')
+        content = Path(args.menu_config).read_bytes()
+        digest = hashlib.sha256(content).hexdigest()
+        source = 'menu-config-' + digest + '.txt'
+        (walk.dir / source).write_bytes(content)
+        current = Path((walk.dir / 'current-pass').read_text().strip())
+        size = (current / 'res').read_text().strip()
+        record = walk.record
+        table = walk.stage_table(record, args.run, args.stage)
+        item = table.setdefault('resolution_checks', {}).setdefault(size, {})
+        item['menu_mode'] = dict(size=args.menu_size, source=source, sha256=digest)
+        item.setdefault('frames', [])
+        item.setdefault('sha256', [])
+        walk.save(record)
     vm = walk.pass_()
     if args.series:
         walk.series(vm, args.run, args.stage, args.label, args.interval, args.timeout, args.stable)
@@ -289,6 +323,75 @@ def trigger(vm, spec):
     elif kind != 'none':
         raise SystemExit(f'unknown trigger {spec!r}')
     vm.log(f'trigger {spec}')
+
+
+def cmd_action(walk, args):
+    """Send a real UI input; keep each outcome unjudged until its frames are read."""
+    stage = walk.stages['stages'][args.stage]
+    if args.action not in stage.get('actions', []):
+        raise SystemExit('action is not required by this stage')
+    if not (args.trigger.startswith('keys:') or args.trigger.startswith('click:')):
+        raise SystemExit('action needs a UI key or click trigger; monitor commands are not guest actions')
+    if not 0 < args.timeout <= 300:
+        raise SystemExit('action timeout must be between 0 and 300 seconds')
+    vm = walk.pass_()
+    event = {'restart': 'RESET', 'shutdown': 'SHUTDOWN',
+             'lock-restart': 'RESET', 'lock-shutdown': 'SHUTDOWN'}.get(args.action)
+    # QEMU serves one monitor client: capture, input and events share the pass connection.
+    observer = vm.qmp if event else None
+    frames = []
+    observed = []
+    complete = False
+    try:
+        frames += walk.shot(vm, args.run, args.stage, args.action + '-before')
+        if observer is not None:
+            observer.events.clear()
+        trigger(vm, args.trigger)
+        if event:
+            deadline = time.monotonic() + args.timeout
+            while time.monotonic() < deadline:
+                disconnected = False
+                try:
+                    observer.poll_events()
+                except (OSError, RuntimeError):
+                    disconnected = True
+                observed = observer.events[:]
+                complete = any(e.get('event') == event and e.get('data', {}).get('guest') is True
+                               for e in observed)
+                if complete or disconnected:
+                    break
+                try:
+                    frames += walk.shot(vm, args.run, args.stage, args.action + '-transition')
+                except (OSError, RuntimeError):
+                    # Scan-out can disappear before the final guest shutdown event.
+                    pass
+                time.sleep(.5)
+            if complete and event == 'RESET':
+                frames += walk.series(vm, args.run, args.stage, args.action + '-after',
+                                      interval=1, timeout=args.timeout, stable=20)
+        else:
+            frames += walk.series(vm, args.run, args.stage, args.action + '-after',
+                                  interval=.5, timeout=args.timeout, stable=20)
+            complete = True
+    finally:
+        record = walk.record
+        table = walk.stage_table(record, args.run, args.stage)
+        # A new attempt must never inherit an earlier successful judgement.
+        item = {'trigger': args.trigger, 'completed': complete, 'verdict': '', 'seen': '',
+                'expected': stage.get('action_expected', {}).get(args.action, stage['expected']),
+                'frames': [name for name, _ in frames], 'sha256': [digest for _, digest in frames]}
+        if event:
+            folder = walk.dir / 'frames' / args.run / args.stage
+            folder.mkdir(parents=True, exist_ok=True)
+            log = folder / (args.action + '-events.json')
+            log.write_text(json.dumps(observed, indent=2) + '\n')
+            item.update(events=str(log.relative_to(walk.dir)), events_sha256=sha256_file(log))
+        table.setdefault('action_checks', {})[args.action] = item
+        table.update(result='', verdict='', seen='')
+        walk.save(record)
+    if not complete:
+        raise SystemExit(f'{args.action}: no guest {event} event; action is not proven')
+    print(f'{args.action}: input captured; outcome needs a frame judgement')
 
 
 def cmd_input_test(walk, args):
@@ -391,16 +494,22 @@ def main(argv=None):
     init.add_argument('--walked-by')
     sub.add_parser('plan')
     sub.add_parser('index')
-    for name in ('capture', 'disk-unlock', 'greeter', 'input-test', 'session-unlock'):
+    for name in ('capture', 'disk-unlock', 'greeter', 'input-test', 'session-unlock', 'action'):
         command = sub.add_parser(name)
         command.add_argument('--run', required=True)
         command.add_argument('--stage', required=True)
         if name == 'capture':
             command.add_argument('--label', required=True)
+            command.add_argument('--menu-config', type=Path, help='configuration retained from this candidate loader')
+            command.add_argument('--menu-size', help='configured mode being checked, WIDTHxHEIGHT')
             command.add_argument('--series', action='store_true')
             command.add_argument('--interval', type=float, default=1.0)
             command.add_argument('--timeout', type=float, default=60.0)
             command.add_argument('--stable', type=float, default=5.0)
+        if name == 'action':
+            command.add_argument('--action', required=True)
+            command.add_argument('--trigger', required=True)
+            command.add_argument('--timeout', type=float, default=120)
         if name == 'greeter':
             command.add_argument('--next', default='25')
         if name == 'input-test':
@@ -417,7 +526,8 @@ def main(argv=None):
     if hasattr(args, 'label') and not re.fullmatch(r'[a-z0-9-]+', args.label):
         parser.error('--label: lowercase letters, digits and dashes')
     handler = {'capture': cmd_capture, 'disk-unlock': cmd_disk_unlock, 'greeter': cmd_greeter,
-               'input-test': cmd_input_test, 'session-unlock': cmd_session_unlock, 'index': cmd_index}
+               'input-test': cmd_input_test, 'session-unlock': cmd_session_unlock, 'index': cmd_index,
+               'action': cmd_action}
     try:
         return handler[args.command](walk, args)
     finally:

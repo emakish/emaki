@@ -17,7 +17,12 @@ Item {
     // The query, for highlighting a matched file name.
     property string term: ""
     readonly property string kind: row?.kind ?? ""
-    readonly property string icon: row?.entry?.icon ? Quickshell.iconPath(row.entry.icon, true) : ""
+    readonly property string icon: {
+        const name = row?.entry?.icon ?? "";
+        const themed = name ? Quickshell.iconPath(name, true) : "";
+        // These two KDE apps keep their icons in Breeze rather than hicolor.
+        return themed || (["accessories-character-map", "utilities-system-monitor"].includes(name) ? "file:///usr/share/icons/breeze/apps/48/" + name + ".svg" : "");
+    }
     // Results without an app icon use a symbolic icon.
     readonly property string symbol: ({
             calculator: "accessories-calculator-symbolic",
@@ -69,16 +74,16 @@ Item {
             font.weight: Font.DemiBold
             color: item.dim
         }
-        // The name lies inside the tile's bubble (one size on every tile, Metrics), 4 px in
-        // from its sides as it was from the tile's; a longer name is elided, the bubble
-        // does not grow with it (27.09).
+        // Two lines keep suite names and their distinguishing app names together.
         Text {
             width: Math.min(parent.width, Metrics.launcherTileBubble) - 8
             x: (parent.width - width) / 2
-            y: 56
-            height: 16
+            y: 50
+            height: 32
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
+            wrapMode: Text.Wrap
+            maximumLineCount: 2
             elide: Text.ElideRight
             textFormat: Text.PlainText
             text: item.row?.label ?? ""

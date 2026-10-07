@@ -13,5 +13,6 @@ if [[ -e /proc/$pid ]]; then
     if timeout 180 tail --pid="$pid" -f /dev/null >>"$ISO_VM/stop-vm.log" 2>&1; then :
     else iso_die 'QEMU did not exit within 180s; disk untouched'; fi
 fi
+python3 "$ISO_HERE/socket_runtime.py" cleanup "$ISO_VM"
 rm -f -- "$ISO_VM/qemu.pid" "$ISO_VM/mon.sock"
 echo 'OK: QEMU stopped'

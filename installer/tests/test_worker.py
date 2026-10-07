@@ -1,4 +1,5 @@
 import contextlib
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -86,14 +87,21 @@ def finishable(root):
 
 
 class WorkerLifecycleTests(unittest.TestCase):
+    def setUp(self):
+        self.active_patch = patch("emaki_installer.worker.active_wifi", return_value=None, create=True)
+        self.active_patch.start()
+        self.addCleanup(self.active_patch.stop)
+
     def execute(self, fs='btrfs', fail=None, cancel=None, changed=False, *, test_mode=False,
                 backend=None, log=None, cleanup_effect=None, live=None, disk_password=None,
                 resolved=(Path('/repo/a.pkg.tar.zst'), Path('/repo/b.pkg.tar.zst')),
                 online=False, update=None, real=(), runner_fail=None, target=None, verify=False,
-                hook_error=None, fresh_disk=None):
+                hook_error=None, fresh_disk=None, wifi_uuid=None):
         inv = FakeInventory(inventory())
         inv.data['network']['online'] = online
         settings = config(fs=fs)
+        if wifi_uuid:
+            settings['wifi_uuid'] = wifi_uuid
         settings['online_update'] = online if update is None else update
         if disk_password is not None:
             settings.update(encryption='separate', disk_password=disk_password)
@@ -135,7 +143,7 @@ class WorkerLifecycleTests(unittest.TestCase):
             log or (lambda line: None), test_mode=test_mode, backend_factory=self.factory,
             runner_factory=runner_factory, **({} if target is None else {'target': target}))
         with contextlib.ExitStack() as stack:
-            stack.enter_context(patch('emaki_installer.worker.preflight_repo',
+            self.preflight = stack.enter_context(patch('emaki_installer.worker.preflight_repo',
                                       **({} if resolved is None else {'return_value': list(resolved)})))
             if not verify:
                 stack.enter_context(patch('emaki_installer.worker.verify_packages'))
@@ -153,6 +161,23 @@ class WorkerLifecycleTests(unittest.TestCase):
         self.assertEqual(plan.config['user']['password'], '')
         return events, phases, cleanups, runners
 
+    def test_wifi_capture_failure_is_a_done_warning(self):
+        with patch('emaki_installer.worker.capture_wifi', side_effect=InstallError(
+                Code.BAD_CONFIG, 'private failure')):
+            events, phases, _, _ = self.execute(wifi_uuid='e6685942-10ed-4eaf-9741-1bfed347fc6f')
+        self.assertEqual(events[-1]['type'], 'done')
+        self.assertIn('Wi-Fi was not copied; join it again after restarting.', events[-1]['warnings'])
+        self.assertIn('prepare_disk', phases)
+
+    def test_active_wifi_is_captured_without_a_recorded_join(self):
+        uuid = 'e6685942-10ed-4eaf-9741-1bfed347fc6f'
+        with patch('emaki_installer.worker.active_wifi', return_value=uuid, create=True) as active, \
+                patch('emaki_installer.worker.capture_wifi', return_value=b'private profile') as capture:
+            events, _, _, _ = self.execute()
+        self.assertEqual(events[-1]['type'], 'done')
+        active.assert_called_once_with()
+        capture.assert_called_once_with(uuid)
+
     def test_success_all_phases_then_cleanup_then_done(self):
         events, phases, cleanups, _ = self.execute()
         self.assertEqual(phases, [p for p in PHASES if p != 'update'])
@@ -160,6 +185,56 @@ class WorkerLifecycleTests(unittest.TestCase):
         self.assertEqual(events[-2]['total_pct'], 100)
         self.assertEqual(len(cleanups), 2)
         self.assertNotIn('lazy', cleanups[-1].kwargs)
+
+    def test_active_wifi_wins_over_a_stale_installer_join(self):
+        joined = 'aaaaaaaa-1111-4111-8111-111111111111'
+        active = 'bbbbbbbb-2222-4222-8222-222222222222'
+        with patch('emaki_installer.worker.active_wifi', return_value=active), \
+                patch('emaki_installer.worker.capture_wifi', return_value=b'active profile') as capture:
+            events, _, _, _ = self.execute(wifi_uuid=joined)
+        capture.assert_called_once_with(active)
+        self.assertEqual(events[-1]['type'], 'done')
+        self.assertNotIn('Wi-Fi was not copied; join it again after restarting.', events[-1]['warnings'])
+
+    def test_recorded_wifi_is_the_fallback_without_an_active_connection(self):
+        joined = 'aaaaaaaa-1111-4111-8111-111111111111'
+        with patch('emaki_installer.worker.capture_wifi', return_value=b'joined profile') as capture:
+            events, _, _, _ = self.execute(wifi_uuid=joined)
+        capture.assert_called_once_with(joined)
+        self.assertEqual(events[-1]['type'], 'done')
+
+    def test_recorded_wifi_is_the_fallback_with_two_active_adapters(self):
+        from emaki_installer.network_profiles import active_wifi
+        joined = 'aaaaaaaa-1111-4111-8111-111111111111'
+        other = 'bbbbbbbb-2222-4222-8222-222222222222'
+        active = joined + ':802-11-wireless\n' + other + ':802-11-wireless\n'
+        with patch('emaki_installer.worker.active_wifi',
+                   side_effect=lambda: active_wifi(run=lambda argv: active)), \
+                patch('emaki_installer.worker.capture_wifi', return_value=b'joined profile') as capture:
+            events, _, _, _ = self.execute(wifi_uuid=joined)
+        capture.assert_called_once_with(joined)
+        self.assertEqual(events[-1]['type'], 'done')
+        self.assertNotIn('Wi-Fi was not copied; join it again after restarting.', events[-1]['warnings'])
+
+    def test_ambiguous_wifi_without_a_recorded_join_warns(self):
+        with patch('emaki_installer.worker.active_wifi', side_effect=InstallError(
+                Code.BAD_CONFIG, 'private failure')), \
+                patch('emaki_installer.worker.capture_wifi') as capture:
+            events, _, _, _ = self.execute()
+        capture.assert_not_called()
+        self.assertEqual(events[-1]['type'], 'done')
+        self.assertIn('Wi-Fi was not copied; join it again after restarting.', events[-1]['warnings'])
+
+    def test_reserved_login_emits_its_own_code_before_disk_work(self):
+        with patch('emaki_installer.worker.verify_account_name', side_effect=InstallError(
+                Code.LOGIN_NAME_RESERVED, 'This login name belongs to the system.')):
+            events, phases, cleanups, _ = self.execute()
+        self.assertEqual(events[-1]['type'], 'error')
+        self.assertEqual(events[-1]['code'], 'login_name_reserved')
+        self.assertTrue(events[-1]['retryable'])
+        self.assertEqual(phases, [])
+        self.assertEqual(cleanups, [])
+        self.factory.assert_not_called()
 
     def test_ext4_snapshot_is_null_and_skipped(self):
         events, phases, _, _ = self.execute('ext4')
@@ -176,7 +251,7 @@ class WorkerLifecycleTests(unittest.TestCase):
             self.assertIn('log_path', events[-1])
             self.assertEqual(phases[-1], failed)
             # The stubbed prepare_disk marks the disk as changed before failing.
-            self.assertIs(events[-1]['retryable'], False)
+            self.assertIs(events[-1]['retryable'], True)
             self.assertNotIn('lazy', cleanups[-1].kwargs)
 
     def test_cancellation_is_at_next_boundary(self):
@@ -185,7 +260,7 @@ class WorkerLifecycleTests(unittest.TestCase):
         self.assertNotIn('bootloader', phases)
         self.assertEqual(events[-2], {'type': 'cancel_ack', 'disk_changed': True})
         self.assertEqual(events[-1]['code'], 'cancelled')
-        self.assertIs(events[-1]['retryable'], False)
+        self.assertIs(events[-1]['retryable'], True)
 
     def test_the_packaged_snapshot_hook_is_read_before_the_disk_only_for_btrfs(self):
         resolved = [Path('/repo/a.pkg.tar.zst'), Path('/repo/emaki-config-0.1.2-1-x86_64.pkg.tar.zst')]
@@ -193,6 +268,7 @@ class WorkerLifecycleTests(unittest.TestCase):
             with self.subTest(fs=fs):
                 events, phases, _, runners = self.execute(fs, resolved=resolved)
                 self.assertEqual(events[-1]['type'], 'done')
+                self.assertEqual(self.preflight.call_args.kwargs['btrfs'], called)
                 if called:
                     self.hook_check.assert_called_once_with(runners[0], resolved)
                 else:
@@ -284,10 +360,12 @@ class WorkerLifecycleTests(unittest.TestCase):
         events.clear()
         self.worker.progress(50)
         self.worker.progress(None, package='filesystem')
-        self.assertEqual(events, [])
+        self.assertEqual(len(events), 1)
+        self.assertIs(events[0]['indeterminate'], True)
+        self.assertEqual(events[0]['step']['text'], 'Installing a package (pacman: filesystem).')
         self.assertEqual(self.worker.phase_pct, 0)
 
-    def test_package_progress_follows_installed_packages_not_hooks(self):
+    def test_package_and_hook_progress_accumulate_across_transactions(self):
         lines = (Path(__file__).parent / 'fixtures/pacstrap-progress.txt').read_text().splitlines()
         total = sum(line.startswith('installing ') for line in lines)
         self.assertEqual(total, 40)
@@ -303,14 +381,16 @@ class WorkerLifecycleTests(unittest.TestCase):
                 runner._line(line)
                 installed += line.startswith('installing ')
                 seen.append(worker.phase_pct)
-                self.assertEqual(worker.phase_pct, min(99, 100 * installed / total), line)
+                self.assertGreaterEqual(worker.phase_pct, 60 * installed / total, line)
                 if line.startswith('(16/16)'):
                     # The first transaction's hooks are done; 28 of 40 packages are still to come.
-                    self.assertEqual(worker.phase_pct, 30)
+                    self.assertAlmostEqual(worker.phase_pct, 18 + 10 * 15 / 16)
                     self.assertLess(worker.phase_pct, 50)
         self.assertEqual(seen, sorted(seen))
         emitted = [e['phase_pct'] for e in events]
-        self.assertEqual(emitted, [min(99, 100 * n / total) for n in range(1, total + 1)])
+        self.assertEqual(emitted, sorted(emitted))
+        self.assertEqual(worker.installed, total)
+        self.assertEqual(len([e for e in events if e['step']['name'] == 'hook']), 16)
         self.assertTrue(all(e['type'] == 'progress' and e['indeterminate'] is False for e in events))
 
     def test_signature_check_reports_its_count(self):
@@ -335,6 +415,22 @@ class WorkerLifecycleTests(unittest.TestCase):
             self.assertEqual((event['phase'], event['total_pct'], event['indeterminate']), ('prepare_disk', 0, True))
         # The phase's own events carry no activity: the window drops the count with them.
         self.assertNotIn('activity', events[first_state])
+
+    def test_skip_during_keyring_download_reaches_done_with_warning(self):
+        def skip(argv):
+            if '-Syw' in argv:
+                self.worker.skip_update.set()
+                raise InstallError(Code.CANCELLED, 'Update download stopped.')
+            return False
+
+        with tempfile.TemporaryDirectory() as temp:
+            events, phases, _, runners = self.execute(
+                online=True, real=('update',), runner_fail=skip, target=Path(temp))
+        self.assertEqual(events[-1]['type'], 'done')
+        self.assertIn('skipped', events[-1]['warnings'][0])
+        commands = [command for runner in runners for command, _ in runner.commands]
+        self.assertFalse(any('-Su' in command or '-S' in command for command in commands))
+        self.assertEqual(phases[-1], 'finish')
 
     def test_timed_out_update_download_installs_nothing_and_the_install_completes(self):
         def timeout(argv):
@@ -457,13 +553,47 @@ class WorkerLifecycleTests(unittest.TestCase):
 
         events, commands, logs, _, route = self.install_to_the_end(
             online=True, online_at_end=True, runner_fail=timeout)
-        self.assertEqual([c[c.index('pacman') + 1] for c, _ in commands], ['-Syw', '-S', '-Syuw'])
+        self.assertEqual([c[c.index('pacman') + 1] for c, _ in commands], ['-Syw', '-S', '-Sw', '-S', '-Syuw'])
         self.assertIn('WARNING: online update failed; the offline installation is retained: arch-chroot timed out.', logs)
         route.assert_not_called()
         self.assertEqual(events[-1]['type'], 'done')
-        self.assertEqual(events[-1]['warnings'], [UPGRADE_FIRST])
+        self.assertEqual(events[-1]['warnings'][-1:], [UPGRADE_FIRST])
+        self.assertIn('could not finish', events[-1]['warnings'][0])
         self.assertIs(self.worker.synced, True)
         self.assertIs(self.worker.upgraded, False)
+
+    def test_skipped_keyring_download_reports_databases_already_written(self):
+        for databases in (('core.db', 'extra.db'), ('core.db',), ('core.db.part',), ()):
+            with self.subTest(databases=databases):
+                def skip(argv):
+                    if '-Syw' in argv:
+                        directory = Path(argv[1]) / 'var/lib/pacman/sync'
+                        directory.mkdir(parents=True)
+                        for name in databases:
+                            (directory / name).write_bytes(b'updated repository database')
+                        self.worker.skip_update.set()
+                        raise InstallError(Code.CANCELLED, 'Update download stopped.')
+                    return False
+
+                events, commands, _, _, _ = self.install_to_the_end(
+                    online=True, online_at_end=True, runner_fail=skip)
+                have_lists = any(name.endswith('.db') for name in databases)
+                self.assertEqual(self.worker.synced, have_lists)
+                self.assertEqual(events[-1]['warnings'][-1], UPGRADE_FIRST if have_lists else NO_PACKAGE_LISTS)
+                self.assertFalse(any('-Su' in c or '-S' in c for c, _ in commands))
+
+    def test_failed_refresh_with_one_database_requires_upgrade_first(self):
+        def fail(argv):
+            if argv[2:] == ['pacman', '-Sy']:
+                directory = Path(argv[1]) / 'var/lib/pacman/sync'
+                directory.mkdir(parents=True)
+                (directory / 'core.db').write_bytes(b'updated repository database')
+                raise InstallError(Code.COMMAND_FAILED, 'arch-chroot timed out.')
+            return False
+
+        events, _, _, _, _ = self.install_to_the_end(
+            online=True, update=False, online_at_end=True, runner_fail=fail)
+        self.assertEqual(events[-1]['warnings'], [UPGRADE_FIRST])
 
     def test_offline_at_the_end_the_done_page_says_what_to_run(self):
         for online in (False, True):
@@ -508,7 +638,7 @@ class WorkerLifecycleTests(unittest.TestCase):
             online=True, online_at_end=True, runner_fail=lambda argv: '-Syuw' in argv or '-Syw' in argv)
         self.assertNotIn(['pacman', '-Sy'], [c for c, _ in commands])
         self.assertEqual(events[-1]['type'], 'done')
-        self.assertEqual(events[-1]['warnings'], [NO_PACKAGE_LISTS])
+        self.assertEqual(events[-1]['warnings'][-1:], [NO_PACKAGE_LISTS])
 
     def test_test_mode_without_keys_fails_before_any_disk_work(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -598,7 +728,7 @@ class EncryptedWriteBoundaryTests(unittest.TestCase):
             plan = make_plan(settings, inv.probe())
             if change_at == 'start':
                 mutate()
-            stack.enter_context(patch('emaki_installer.worker.preflight_repo', return_value=[]))
+            self.preflight = stack.enter_context(patch('emaki_installer.worker.preflight_repo', return_value=[]))
 
             def verify(*args, **kwargs):
                 order.append('signatures')
@@ -685,7 +815,8 @@ class BootAndSnapshotTests(unittest.TestCase):
 
     def boot_files(self):
         f = self.worker.files
-        f.write('/etc/default/grub-btrfs/config', '# Package defaults\nGRUB_BTRFS_SUBMENUNAME="Arch Linux snapshots"\n')
+        if self.worker.plan.btrfs:
+            f.write('/etc/default/grub-btrfs/config', '# Package defaults\nGRUB_BTRFS_SUBMENUNAME="Arch Linux snapshots"\n')
         # emaki-config's snapshot boot hook, strapped by copy_packages.
         for directory in ('hooks', 'install'):
             f.write(SNAPSHOT_HOOK.format(directory), directory)
@@ -700,6 +831,13 @@ class BootAndSnapshotTests(unittest.TestCase):
             fstab.append(f'UUID=uuid-{part.number} {mp} {part.fs} {",".join(opts)} 0 0')
         self.worker.runner.responses[('genfstab', '-U', '-f', str(self.root), str(self.root))] = '\n'.join(fstab)
 
+    def test_selected_vmd_driver_reaches_native_initramfs_config(self):
+        self.boot_files()
+        self.worker.plan.disk['_vmd'] = True
+        self.worker.bootloader()
+        self.assertIn('MODULES=(vmd)', self.worker.files.read('/etc/mkinitcpio.conf'))
+        self.assertTrue(any('mkinitcpio' in command for command, _ in self.worker.runner.commands))
+
     def test_grub_both_vendor_and_removable_on_empty_esp(self):
         self.boot_files()
         self.worker.bootloader()
@@ -711,6 +849,64 @@ class BootAndSnapshotTests(unittest.TestCase):
             self.assertIn('--efi-directory=/efi', c)
             self.assertIn('--boot-directory=/boot', c)
             self.assertIn('--bootloader-id=Emaki', c)
+
+    def test_snapshot_packages_follow_the_root_filesystem(self):
+        snapshots = {'snapper', 'snap-pac', 'grub-btrfs'}
+        for fs in ('ext4', 'btrfs'):
+            for software in ('minimal', 'rich'):
+                with self.subTest(fs=fs, software=software):
+                    settings = config(fs=fs)
+                    settings['software'] = software
+                    self.worker.plan = make_plan(settings, inventory())
+                    self.worker.api = SimpleNamespace(locale=SimpleNamespace(LocaleConfiguration=Mock()))
+                    self.worker.backend = Mock()
+                    self.worker.copy_packages()
+                    packages = self.worker.backend.instance.pacman.strap.call_args.args[0]
+                    self.assertEqual(snapshots & set(packages), snapshots if fs == 'btrfs' else set())
+                    self.assertEqual('emaki-apps' in packages, software == 'rich')
+                    self.assertEqual(packages, worker_module.software_packages(software, btrfs=fs == 'btrfs'))
+        # Default preflight callers build the ISO's complete offline closure.
+        self.assertTrue(snapshots <= set(worker_module.software_packages()))
+
+    def test_offline_preflight_matches_the_selected_snapshot_packages(self):
+        package = self.root / 'emaki-test.pkg.tar.zst'
+        package.write_bytes(b'archive')
+        Path(str(package) + '.sig').write_bytes(b'signature')
+        for btrfs in (False, True):
+            with self.subTest(btrfs=btrfs):
+                runner = SimpleNamespace(run=Mock(side_effect=['', package.as_uri() + '\n']))
+                with patch('emaki_installer.worker.offline_config', return_value='/offline.conf'):
+                    archives = worker_module.preflight_repo(runner, software='minimal', btrfs=btrfs)
+                command = runner.run.call_args.args[0]
+                self.assertEqual({'snapper', 'snap-pac', 'grub-btrfs'} & set(command),
+                                 {'snapper', 'snap-pac', 'grub-btrfs'} if btrfs else set())
+                self.assertEqual(archives, [package])
+
+    def test_ext4_boot_does_not_require_grub_btrfs_configuration(self):
+        self.worker.plan = make_plan(config(fs='ext4'), inventory())
+        self.boot_files()
+        path = self.worker.files.path('/etc/default/grub-btrfs/config')
+        self.assertFalse(path.exists())
+        self.worker.bootloader()
+        self.assertFalse(path.exists())
+        commands = [c[2:] for c, _ in self.worker.runner.commands]
+        self.assertIn(['mkinitcpio', '-p', 'linux', '-p', 'linux-lts'], commands)
+        self.assertEqual(sum('grub-install' in c for c in commands), 2)
+        self.assertIn(['grub-mkconfig', '-o', '/boot/grub/grub.cfg'], commands)
+
+    def test_unknown_grub_title_generator_warns_and_finishes_bootloader(self):
+        self.boot_files()
+        logs = []
+        self.worker.log = logs.append
+        command = ('arch-chroot', str(self.root), '/usr/share/libalpm/scripts/emaki-grub-title')
+        self.worker.runner.responses[command] = (
+            'emaki-grub-title: WARNING: expected OS line absent; left unchanged.\n')
+        self.worker.bootloader()
+        calls = self.worker.runner.commands
+        index = next(i for i, (argv, _) in enumerate(calls) if tuple(argv) == command)
+        self.assertEqual(calls[index][1], {'check': False})
+        self.assertEqual(calls[index + 1][0][2:], ['grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
+        self.assertIn('WARNING: GRUB menu title adjustment reported a problem; installation continues.', logs)
 
     def test_snapshot_hook_comes_from_emaki_config_not_the_installer(self):
         # The image build reads the packaged hook; nothing shadows it in /etc/initcpio,
@@ -812,6 +1008,26 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.assertEqual(len(grub), 3)
         self.assertIn('--no-nvram', grub[1])
         self.assertIn('--removable', grub[2])
+        self.assertIn('--no-nvram', grub[2])
+        self.assertEqual(len(self.worker.warnings), 1)
+        self.assertIn('EFI/BOOT/BOOTX64.EFI', self.worker.warnings[0])
+
+    def test_read_only_efivars_reports_the_usable_fallback(self):
+        self.boot_files()
+        original = self.worker.runner.chroot
+        events = []
+        self.worker.emit = lambda kind, **kw: events.append((kind, kw))
+
+        def readonly(command, target, **kwargs):
+            if command[0] == 'grub-install' and '--no-nvram' not in command:
+                raise InstallError(Code.COMMAND_FAILED, 'efibootmgr failed',
+                                   output='Could not prepare Boot variable: Read-only file system')
+            return original(command, target, **kwargs)
+
+        self.worker.runner.chroot = readonly
+        self.worker.bootloader()
+        self.assertIn('NVRAM/efibootmgr', events[0][1]['notice'])
+        self.assertTrue(any('--removable' in command for command, _ in self.worker.runner.commands))
 
     def test_nvram_failure_with_foreign_fallback_fails_loudly(self):
         self.boot_files()
@@ -954,6 +1170,8 @@ class BootAndSnapshotTests(unittest.TestCase):
         original = self.worker.runner.run
 
         def run(argv, **kwargs):
+            if any(option in argv for option in ('-Syw', '-Sw', '-Syuw')):
+                self.assertEqual(events[-1]['activity']['name'], 'downloads')
             result = original(argv, **kwargs)
             lines = lists if '-Syw' in argv else transaction if '-Syuw' in argv else []
             for line in lines:
@@ -962,12 +1180,13 @@ class BootAndSnapshotTests(unittest.TestCase):
 
         self.worker.runner.run = run
         self.worker.update()
-        self.assertEqual([c[1] for c, _ in self.pacman_commands()], ['-Syw', '-S', '-Syuw', '-Su'])
+        self.assertEqual([c[1] for c, _ in self.pacman_commands()], ['-Syw', '-S', '-Sw', '-S', '-Syuw', '-Su'])
         self.assertTrue(all(e['type'] == 'progress' and e['phase'] == 'update' and e['total_pct'] == 93
                             and e['indeterminate'] for e in events), events)
         counts = [(e['activity']['done'], e['activity']['total']) if e['activity'] else 'end' for e in events]
-        self.assertEqual(counts, [(None, None), 'end',
-                                  (None, None), (0, 144), *[(n, 144) for n in range(1, 145)], 'end'])
+        self.assertEqual([item for item in counts if item not in ('end', (None, None))],
+                         [(n, 144) for n in range(145)])
+        self.assertEqual(counts.count('end'), 3)
         self.assertTrue(all(e['activity']['name'] == 'downloads' for e in events if e['activity']))
 
     def test_the_download_count_reads_pacman_as_recorded(self):
@@ -1011,7 +1230,7 @@ class BootAndSnapshotTests(unittest.TestCase):
 
         self.worker.runner.run = run
         self.worker.update()
-        self.assertEqual(transactions, ['-S', '-Su'])
+        self.assertEqual(transactions, ['-S', '-S', '-Su'])
         self.assertEqual(snapshots, [])
         self.assertTrue(marker.exists())
 
@@ -1023,7 +1242,7 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.assertFalse(self.worker.update_attempted)
         self.assertTrue(any(line.startswith('WARNING: online update failed') for line in logs))
         # Nothing was installed: the person is not told to finish an update.
-        self.assertEqual(self.worker.warnings, [])
+        self.assertIn('The online update could not finish.', self.worker.warnings[0])
 
     def test_online_update_downloads_with_a_limit_then_installs_without_one(self):
         self.worker.update()
@@ -1036,10 +1255,45 @@ class BootAndSnapshotTests(unittest.TestCase):
     def test_keyring_is_refreshed_before_the_update_download(self):
         self.worker.update()
         commands = self.pacman_commands()
-        self.assertEqual([c for c, _ in commands][:2], [['pacman', '-Syw', '--needed', '--noconfirm', 'archlinux-keyring'],
-                                                        ['pacman', '-S', '--needed', '--noconfirm', 'archlinux-keyring']])
+        self.assertEqual([c for c, _ in commands][:4], [
+            ['pacman', '-Syw', '--needed', '--noconfirm', 'archlinux-keyring'],
+            ['pacman', '-S', '--needed', '--noconfirm', 'archlinux-keyring'],
+            ['pacman', '-Sw', '--needed', '--noconfirm', 'emaki-keyring'],
+            ['pacman', '-S', '--needed', '--noconfirm', 'emaki-keyring']])
         self.assertEqual(commands[0][1]['timeout'], commands[2][1]['timeout'])
         self.assertIsNone(commands[1][1].get('timeout'))
+
+    def test_emaki_keyring_failure_preserves_the_full_upgrade(self):
+        for failing in ('-Sw', '-S'):
+            with self.subTest(failing=failing):
+                logs = []
+                self.worker.log = logs.append
+                self.worker.runner = RecordingRunner()
+                original = self.worker.runner.run
+
+                def run(argv, **kwargs):
+                    result = original(argv, **kwargs)
+                    if failing in argv and 'emaki-keyring' in argv:
+                        raise pacman_failure("installing emaki-keyring breaks dependency 'emaki-keyring=0.1.1-1' required by emaki")
+                    return result
+
+                self.worker.runner.run = run
+                self.worker.update()
+                commands = [c for c, _ in self.pacman_commands()]
+                self.assertEqual([c[1] for c in commands][-2:], ['-Syuw', '-Su'])
+                self.assertTrue(self.worker.upgraded)
+                self.assertTrue(any(line.startswith('WARNING: the Emaki keyring was not refreshed') for line in logs))
+                self.assertFalse(any('--nodeps' in c or '--assume-installed' in c for c in commands))
+
+    def test_emaki_keyring_download_never_uses_arch_only_fallback(self):
+        logs, seen, _ = self.update_with_emaki_down(('-Sw', '-Syuw'))
+        commands = [c for c, _ in self.pacman_commands()]
+        self.assertTrue(any('-Sw' in c and 'emaki-keyring' in c for c in commands))
+        self.assertFalse(any('emaki-keyring' in c and '--config' in c for c in commands))
+        self.assertFalse(any('-S' in c and 'emaki-keyring' in c for c in commands))
+        self.assertTrue(any(line.startswith('WARNING: the Emaki keyring was not refreshed') for line in logs))
+        self.assertTrue(self.worker.upgraded)
+        self.assertTrue(seen)
 
     def test_failing_keyring_refresh_still_leads_to_the_download(self):
         for failing in ('-Syw', '-S'):
@@ -1152,7 +1406,7 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 10)
         self.assertIn("error: failed retrieving file 'emaki.db' from pkgs.emaki.sh : "
                       'Could not resolve host: pkgs.emaki.sh', logs)
-        self.assertEqual([argv[argv.index('pacman') + 1] for argv in calls], ['-Syw', '-S', '-Syuw'])
+        self.assertEqual([argv[argv.index('pacman') + 1] for argv in calls], ['-Syw', '-S', '-Sw', '-S', '-Syuw'])
         self.assertFalse(any('--config' in argv for argv in calls))
         self.assertIs(self.worker.update_attempted, False)
         self.assertIn('WARNING: online update failed; the offline installation is retained: sh timed out.', logs)
@@ -1203,6 +1457,74 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.assertTrue(password_call[1]['secret'])
         self.assertEqual(self.worker.plan.config['user']['password'], '')
         self.assertTrue(any(command[-3:] == ['passwd', '-l', 'root'] for command, _ in calls))
+
+    def test_arch_mirror_ranking_requires_online_update_and_connectivity(self):
+        live = self.root / 'live-mirrorlist'
+        live.write_text('Server = https://fallback.invalid/$repo/os/$arch\n')
+        ranked = '# Fresh HTTPS mirrors\n' + ''.join(
+            f'Server = https://ranked{i}.invalid/$repo/os/$arch\n' for i in range(3))
+        original = self.worker.runner.run
+
+        def run(argv, **kwargs):
+            result = original(argv, **kwargs)
+            if argv[0] == 'reflector':
+                Path(argv[argv.index('--save') + 1]).write_text(ranked)
+            return result
+
+        self.worker.runner.run = run
+        # Both Skip on the network step and the unchecked update option produce
+        # online_update=False, even if the connection subsequently comes online.
+        for scenario, online, update in (('offline', False, True),
+                                         ('network skipped', True, False),
+                                         ('update unchecked', True, False),
+                                         ('update enabled', True, True)):
+            with self.subTest(scenario=scenario):
+                self.worker.online = online
+                self.worker.plan.config['online_update'] = update
+                self.worker.runner.commands.clear()
+                self.worker.files.write('/etc/pacman.conf', TARGET_PACMAN_CONF)
+                with patch('emaki_installer.worker.Path', side_effect=lambda p: live if str(p) == '/etc/pacman.d/mirrorlist' else Path(p)):
+                    self.worker.repositories()
+                expected = ranked if online and update else live.read_text()
+                self.assertEqual(self.worker.files.read('/etc/pacman.d/mirrorlist'), expected)
+                calls = [(argv, kwargs) for argv, kwargs in self.worker.runner.commands if argv[0] == 'reflector']
+                self.assertEqual(len(calls), int(online and update))
+        command, options = calls[0]
+        self.assertEqual(options['timeout'], 60)
+        self.assertEqual(command[:11], ['reflector', '--protocol', 'https', '--latest', '10', '--sort', 'rate',
+                                       '--connection-timeout', '3', '--download-timeout', '3'])
+        self.assertNotIn('--country', command)
+        self.assertFalse(Path(command[-1]).exists())
+        self.assertEqual(live.read_text(), 'Server = https://fallback.invalid/$repo/os/$arch\n')
+
+    def test_failed_arch_mirror_ranking_keeps_the_original_list(self):
+        original = '# Full fallback list\n' + ''.join(
+            f'Server = https://fallback{i}.invalid/$repo/os/$arch\n' for i in range(10))
+        for outcome in ('timeout', 'missing', '', '# No mirrors\n',
+                        'Server = https://one.invalid/$repo/os/$arch\n',
+                        'Server = https://one.invalid/$repo/os/$arch\n'
+                        'Server = https://two.invalid/$repo/os/$arch\n',
+                        'Server = https://one.invalid/$repo/os/$arch\n' * 3,
+                        'Server = http://insecure.invalid/$repo/os/$arch\n', b'\xff'):
+            with self.subTest(outcome=outcome):
+                self.worker.files.write('/etc/pacman.d/mirrorlist', original)
+                logs, outputs = [], []
+                self.worker.log = logs.append
+
+                def run(argv, **kwargs):
+                    destination = Path(argv[argv.index('--save') + 1])
+                    outputs.append(destination)
+                    if outcome == 'timeout':
+                        destination.write_text('partial')
+                        raise InstallError(Code.COMMAND_FAILED, 'reflector timed out.')
+                    if outcome != 'missing':
+                        destination.write_bytes(outcome if isinstance(outcome, bytes) else outcome.encode())
+
+                self.worker.runner.run = run
+                self.worker.refresh_arch_mirrors()
+                self.assertEqual(self.worker.files.read('/etc/pacman.d/mirrorlist'), original)
+                self.assertTrue(any(line.startswith('WARNING: Arch mirror ranking failed') for line in logs))
+                self.assertFalse(outputs[0].exists())
 
     def test_test_mode_keys_permissions_and_preset_before_enable(self):
         self.worker.test_mode = True
@@ -1259,6 +1581,41 @@ class BootAndSnapshotTests(unittest.TestCase):
             self.worker.account()
             self.worker.settings()
         return [c[2:] for c, _ in self.worker.runner.commands if c[:2] == ['arch-chroot', str(self.root)] and c[2] == 'chown']
+
+    def test_unknown_account_ids_remain_a_general_configuration_error(self):
+        with self.assertRaises(InstallError) as caught:
+            self.run_account_and_settings(passwd='')
+        self.assertEqual(caught.exception.code, Code.BAD_CONFIG)
+        self.assertEqual(caught.exception.message, 'Cannot determine the new account UID/GID.')
+
+    def test_settings_keep_mixed_session_output_scales(self):
+        self.worker.plan.config['output_scales'] = {'eDP-1': 1.25, 'HDMI-A-1': 1.5, 'DP-1': 1}
+        self.run_account_and_settings()
+        text = (self.root / 'home/vmuser/.config/niri/config.kdl').read_text()
+        self.assertIn('output "eDP-1" {\n    scale 1.25', text)
+        self.assertIn('output "HDMI-A-1" {\n    scale 1.5', text)
+        self.assertIn('top -2.4', text)
+        self.assertNotIn('output "DP-1"', text)
+        self.assertNotIn('output ', (self.root / 'etc/emaki/niri.kdl').read_text())
+
+    def test_settings_persists_selected_wifi_and_drops_private_copy(self):
+        uuid = 'e6685942-10ed-4eaf-9741-1bfed347fc6f'
+        data = b'[connection]\nuuid=' + uuid.encode() + b'\ntype=wifi\n'
+        self.worker.plan.config['wifi_uuid'] = uuid
+        self.worker.wifi_profile = data
+        self.run_account_and_settings()
+        profile = self.root / ('etc/NetworkManager/system-connections/' + uuid + '.nmconnection')
+        self.assertEqual(profile.read_bytes(), data)
+        self.assertEqual(profile.stat().st_mode & 0o777, 0o600)
+        self.assertIsNone(self.worker.wifi_profile)
+
+    def test_wifi_write_failure_does_not_stop_settings(self):
+        self.worker.plan.config['wifi_uuid'] = 'e6685942-10ed-4eaf-9741-1bfed347fc6f'
+        self.worker.wifi_profile = b'private keyfile'
+        with patch('emaki_installer.worker.install_wifi', side_effect=OSError('private error')):
+            self.run_account_and_settings()
+        self.assertIsNone(self.worker.wifi_profile)
+        self.assertIn('Wi-Fi was not copied; join it again after restarting.', self.worker.warnings)
 
     def test_new_home_gets_no_recursive_chown(self):
         chowns = self.run_account_and_settings()
@@ -1344,8 +1701,29 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.worker.plan = make_plan(settings, inventory())
         self.run_account_and_settings()
         text = (self.root / 'home/vmuser/.config/niri/config.kdl').read_text()
-        self.assertEqual(text, 'include "/usr/share/emaki/niri/default.kdl"\n')
+        self.assertEqual(text, 'include "/etc/emaki/niri.kdl"\n\n'
+                         '// Add your settings below this line, before the installation defaults.\n\n')
         self.assertFalse((self.root / 'etc/X11').exists())
+
+    def test_installer_records_exact_home_file_hashes_root_only(self):
+        self.run_account_and_settings()
+        manifest = self.root / 'var/lib/emaki-installer/home-files.json'
+        personal = '/home/vmuser/.config/niri/config.kdl'
+        data = (self.root / personal.lstrip('/')).read_bytes()
+        self.assertEqual(json.loads(manifest.read_text()), {'version': 1, 'files': {
+            personal: {'sha256': hashlib.sha256(data).hexdigest()}}})
+        self.assertEqual(manifest.stat().st_mode & 0o777, 0o600)
+        self.assertEqual((self.root / 'etc/emaki/niri.kdl').read_text(),
+                         'include "/usr/share/emaki/niri/default.kdl"\n')
+
+    def test_installer_preserves_existing_personal_niri_file_and_does_not_claim_it(self):
+        personal = '/home/vmuser/.config/niri/config.kdl'
+        original = '// My settings\nlayout { gaps 7; }\n'
+        self.worker.files.write(personal, original)
+        self.run_account_and_settings()
+        self.assertEqual((self.root / personal.lstrip('/')).read_text(), original)
+        manifest = self.root / 'var/lib/emaki-installer/home-files.json'
+        self.assertEqual(json.loads(manifest.read_text())['files'], {})
 
     UUID = '98cf80d3-e611-4dea-b415-c2c783782a89'
     FONT = Path(__file__).resolve().parents[1] / 'assets/grub/unlock-24.pf2'
@@ -1567,3 +1945,108 @@ class BootAndSnapshotTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class RepairTests(unittest.TestCase):
+    def test_resolved_package_sysusers_name_is_rejected_before_disk_work(self):
+        runner = RecordingRunner()
+        runner.responses[('bsdtar', '-tf', '/tmp/new.pkg.tar.zst')] = 'usr/lib/sysusers.d/new.conf\netc/group\n'
+        runner.responses[('bsdtar', '-xOf', '/tmp/new.pkg.tar.zst', 'usr/lib/sysusers.d/new.conf')] = 'u fresh-service - "Service" /\n'
+        with self.assertRaises(InstallError) as caught:
+            worker_module.verify_account_name(runner, [Path('/tmp/new.pkg.tar.zst')], 'fresh-service')
+        self.assertEqual(caught.exception.code, Code.LOGIN_NAME_RESERVED)
+        self.assertIn('disk has not been changed', caught.exception.message)
+
+    def test_skip_download_does_not_start_a_package_transaction(self):
+        events = []
+        worker = Worker(None, FakeInventory(), Redactor(), lambda *a, **kw: events.append(kw), lambda s: None)
+        worker.runner = RecordingRunner()
+        worker.skip_update.set()
+        worker.update()
+        self.assertFalse(worker.runner.commands)
+        self.assertFalse(worker.update_attempted)
+        self.assertIn('skipped', worker.warnings[0])
+
+    def test_controller_skip_reaches_worker_without_job_on_backend_api(self):
+        from emaki_installer.protocol import Controller
+        import io
+        controller = Controller(FakeInventory(), None, log_stream=io.StringIO())
+        ack = controller.handle({'type': 'plan', 'id': 'p', 'config': config()})[0]
+        controller.handle({'type': 'confirm', 'id': 'c', 'plan_id': ack['plan_id'], 'token': ack['token']})
+        self.addCleanup(controller.job.history.close)
+        worker = Worker(SimpleNamespace(), controller.inventory, controller.redactor,
+                        controller.emit, controller.log, skip_update=controller.job.skip_update)
+        worker.runner = RecordingRunner()
+        response = controller.handle({'type': 'skip_update', 'id': 's'})[0]
+        self.assertTrue(response['ok'])
+        worker.update()
+        self.assertFalse(worker.runner.commands)
+        self.assertFalse(controller.job.cancelled.is_set())
+        self.assertIn('skipped', worker.warnings[0])
+
+    def test_account_scan_does_not_stream_archive_members(self):
+        runner = RecordingRunner()
+        worker_module.verify_account_name(runner, [Path('/repo/a.pkg.tar.zst')], 'vmuser')
+        self.assertTrue(runner.commands[0][1].get('quiet'))
+
+    def test_unreadable_account_archive_logs_package_and_preserves_disk_message(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            archive = Path(temporary) / 'broken-1.0-1-x86_64.pkg.tar'
+            archive.write_bytes(b'not an archive')
+            lines = []
+            with self.assertRaises(InstallError) as caught:
+                worker_module.verify_account_name(Runner(lines.append), [archive], 'vmuser')
+        self.assertEqual(caught.exception.code, Code.OFFLINE_REPO_INCOMPLETE)
+        self.assertIn(archive.name, caught.exception.message)
+        self.assertIn('The disk has not been changed.', caught.exception.message)
+        self.assertIn('bsdtar', '\n'.join(lines))
+        self.assertIn(archive.name, '\n'.join(lines))
+        self.assertIn('Unrecognized archive format', '\n'.join(lines))
+
+    def test_failed_identity_extraction_logs_diagnostic(self):
+        lines = []
+        failure = InstallError(Code.COMMAND_FAILED, 'bsdtar exited with status 1.',
+                               output='Truncated input file')
+        runner = SimpleNamespace(log=lines.append, run=Mock(side_effect=[
+            'etc/passwd\n', failure]))
+        with self.assertRaises(InstallError) as caught:
+            worker_module.verify_account_name(runner, [Path('/repo/base.pkg.tar')], 'vmuser')
+        self.assertEqual(caught.exception.code, Code.OFFLINE_REPO_INCOMPLETE)
+        self.assertIn('base.pkg.tar', caught.exception.message)
+        self.assertIn('The disk has not been changed.', caught.exception.message)
+        self.assertIn('Truncated input file', lines)
+
+    def test_large_account_scan_has_one_summary_and_no_streamed_members(self):
+        import tarfile
+        import io
+        with tempfile.TemporaryDirectory() as temporary:
+            archive = Path(temporary) / 'base.pkg.tar'
+            with tarfile.open(archive, 'w') as stream:
+                for index in range(3000):
+                    stream.addfile(tarfile.TarInfo('usr/share/fixture/' + str(index)))
+                info = tarfile.TarInfo('usr/lib/sysusers.d/fixture.conf')
+                data = b'u service-user - "Service" /\n'
+                info.size = len(data)
+                stream.addfile(info, io.BytesIO(data))
+            lines, progress = [], []
+            runner = Runner(lines.append, progress=lambda **kw: progress.append(kw))
+            worker_module.verify_account_name(runner, [archive], 'vmuser')
+            self.assertEqual(lines, ['Login name checked against 1 packages.'])
+            self.assertEqual(progress, [])
+            with self.assertRaises(InstallError):
+                worker_module.verify_account_name(runner, [archive], 'service-user')
+
+    def test_alongside_refusal_stays_nonretryable(self):
+        inv = FakeInventory()
+        plan = make_plan(config(), inv.probe())
+        plan.config['mode'] = 'alongside'
+        events = []
+        worker = Worker(None, inv, Redactor(), lambda kind, **kw: events.append({'type': kind, **kw}),
+                        lambda line: None, runner_factory=RecordingRunner)
+        with patch('emaki_installer.worker.make_plan', return_value=plan), \
+                patch('emaki_installer.worker.active_wifi', return_value=None, create=True), \
+                patch('emaki_installer.worker.preflight_repo', side_effect=InstallError(
+                    Code.UNSAFE_DISK, 'Unsafe Windows filesystem.', retryable=False)):
+            worker.run(plan, threading.Event())
+        self.assertEqual(events[-1]['code'], 'unsafe_disk')
+        self.assertFalse(events[-1]['retryable'])

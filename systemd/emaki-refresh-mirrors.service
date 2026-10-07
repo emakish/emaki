@@ -1,0 +1,21 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Refresh Arch mirrors [reflector]
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/etc/pacman.d/mirrorlist
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/emaki-refresh-mirrors
+TimeoutStartSec=90
+UMask=0077
+StateDirectory=emaki/mirror-refresh
+CacheDirectory=reflector
+Environment=XDG_CACHE_HOME=/var/cache/reflector
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/etc/pacman.d /var/lib/emaki
+PrivateTmp=yes

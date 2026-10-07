@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # Installed path (under DESTDIR) -> shipped source.
 STAGED = {
     'etc/niri/config.kdl': 'niri/system.kdl',
+    'etc/xdg/kwalletrc': 'packaging/emaki-config/kwalletrc',
     'etc/xdg/kdeglobals': 'packaging/emaki-config/kdeglobals',
     'etc/xdg/dolphinrc': 'packaging/emaki-config/dolphinrc',
     'etc/xdg/mimeapps.list': 'packaging/emaki-config/mimeapps.list',

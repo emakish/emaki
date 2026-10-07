@@ -13,4 +13,5 @@ password   include     system-local-login
 password   optional    pam_gnome_keyring.so use_authtok
 
 session    include     system-local-login
+session    optional    pam_exec.so quiet /usr/bin/python3 -I /usr/bin/emaki-greeter-provision --pam-session
 session    optional    pam_gnome_keyring.so auto_start

@@ -110,7 +110,8 @@ with tempfile.TemporaryDirectory(prefix='lv-', dir=ROOT / '.cache') as folder:
     print('PASS: VM scenarios preserve evidence, authenticate owned cleanup, and continue after failure')
     # Materialize the VM panel wrappers but forbid starting a GUI/process. Their
     # exact generated sources, including returned helper JSON evidence, must parse.
-    with patch.object(vm.subprocess, 'Popen', side_effect=RuntimeError('fixture stops before GUI start')):
+    with patch.object(vm, 'SHELL', ROOT / 'shell'), \
+            patch.object(vm.subprocess, 'Popen', side_effect=RuntimeError('fixture stops before GUI start')):
         try:
             vm.panel_sleep()
             raise AssertionError('panel fixture must not start a process')

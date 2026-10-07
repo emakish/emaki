@@ -151,8 +151,8 @@ class ConfigTests(unittest.TestCase):
         for existing in ('', 'GRUB_BTRFS_SUBMENUNAME="Arch Linux snapshots"\n',
                          '#GRUB_BTRFS_SUBMENUNAME="Arch Linux snapshots"\n',
                          ' export GRUB_BTRFS_SUBMENUNAME="Old"\n'):
-            text = grub_btrfs_config(existing + 'GRUB_BTRFS_LIMIT="50"\n')
-            self.assertIn('\nGRUB_BTRFS_SUBMENUNAME="Emaki snapshots"\n', text)
+            text = grub_btrfs_config(existing + 'GRUB_BTRFS_LIMIT="50"\n', force=True)
+            self.assertIn('. /usr/share/emaki/boot/grub-btrfs.conf; fi\n', text)
             self.assertIn('GRUB_BTRFS_LIMIT="50"', text)
             self.assertEqual(grub_btrfs_config(text), text)
 
@@ -189,7 +189,7 @@ class WorkerFixTests(unittest.TestCase):
 
         def run(argv, **kwargs):
             if 'grub-mkconfig' in argv:
-                self.assertIn('GRUB_BTRFS_SUBMENUNAME="Emaki snapshots"',
+                self.assertIn('. /usr/share/emaki/boot/grub-btrfs.conf',
                               self.worker.files.read('/etc/default/grub-btrfs/config'))
             return original(argv, **kwargs)
 

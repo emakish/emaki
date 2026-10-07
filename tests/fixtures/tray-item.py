@@ -7,7 +7,7 @@ import gi
 gi.require_version('Gio', '2.0')
 from gi.repository import Gio, GLib
 root=Path(sys.argv[1])
-assert os.environ['DBUS_SESSION_BUS_ADDRESS'].startswith('unix:path='+str(root/'r/bus'))
+assert os.environ['DBUS_SESSION_BUS_ADDRESS'].startswith('unix:path='+str(Path(os.environ['XDG_RUNTIME_DIR']) / 'bus'))
 bus=Gio.bus_get_sync(Gio.BusType.SESSION,None)
 props={
  'Category':('s','ApplicationStatus'),'Id':('s','emaki-fixture'),'Title':('s','PRIVATE_TRAY'),

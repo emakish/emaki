@@ -1,0 +1,22 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Confirm the booted Emaki loader and update the fallback
+# Avoid the implicit Before=multi-user.target of units wanted by that target.
+DefaultDependencies=no
+After=multi-user.target
+Before=shutdown.target
+Conflicts=shutdown.target
+# Recover first publication too, while excluding snapshot menu entries.
+ConditionKernelCommandLine=emaki.generation
+ConditionPathExists=|/efi/EFI/Emaki/boot-state.json
+ConditionPathExists=|/efi/EFI/Emaki/boot-intent.json
+RequiresMountsFor=/boot /efi
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/emaki-boot-refresh --mark-good
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

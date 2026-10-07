@@ -4,6 +4,7 @@
 QEMU's VNC server reads the real scan-out of virtio-vga-gl with egl-headless, which QMP
 screendump cannot do once the guest kernel owns the display (GOTCHAS: "no surface").
 """
+import os
 import socket
 import struct
 import sys
@@ -28,7 +29,7 @@ class Client:
     def __init__(self, sock_path, timeout=15):
         s = socket.socket(socket.AF_UNIX)
         s.settimeout(timeout)
-        s.connect(sock_path)
+        s.connect(os.path.realpath(sock_path))
         rd(s, 12)
         s.sendall(b'RFB 003.008\n')
         n = rd(s, 1)[0]

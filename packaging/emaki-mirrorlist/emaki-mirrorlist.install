@@ -1,0 +1,178 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# shellcheck shell=bash
+
+# The root argument supports isolated package tests. Pacman always passes /.
+_emaki_migrate_mirrorlist() {
+    local root=$1 file line entry='' count=0 channel='' temporary selector
+    file="${root%/}/etc/pacman.d/emaki-mirrorlist"
+    selector="${root%/}/etc/emaki/channel"
+    local defaults="${root%/}/usr/share/emaki/mirrors/default.conf"
+    if [[ ! -f $file || -L $file ]] || [[ $(stat -c %h -- "$file") != 1 ]]; then
+        echo 'emaki-mirrorlist: mirror list is not a regular private file [emaki-mirrorlist]; left unchanged.' >&2
+        return 0
+    fi
+    while IFS= read -r line || [[ -n $line ]]; do
+        line=${line%%#*}
+        [[ $line =~ ^[[:space:]]*$ ]] && continue
+        entry=$line
+        count=$((count + 1))
+    done < "$file"
+    if [[ $count == 1 && $entry =~ ^[[:space:]]*Include[[:space:]]*=[[:space:]]*/usr/share/emaki/mirrors/(stable|testing)\.conf[[:space:]]*$ ]]; then
+        channel=${BASH_REMATCH[1]}
+    elif [[ $count == 1 && $entry =~ ^[[:space:]]*Include[[:space:]]*=[[:space:]]*/etc/emaki/channel[[:space:]]*$ ]]; then
+        _emaki_initialize_channel "$root" || return 1
+    elif [[ $count == 1 && $entry =~ ^[[:space:]]*Server[[:space:]]*=[[:space:]]*https://pkgs\.emaki\.sh/(stable|testing)/\$arch/?[[:space:]]*$ ]]; then
+        channel=${BASH_REMATCH[1]}
+    elif [[ $count == 1 && $entry =~ ^[[:space:]]*Server[[:space:]]*=[[:space:]]*https://github\.com/emakish/packages/releases/download/(stable|testing)/?[[:space:]]*$ ]]; then
+        channel=${BASH_REMATCH[1]}
+    else
+        _emaki_initialize_channel "$root" || return 1
+        echo 'emaki-mirrorlist: custom server configuration kept; server updates require manual changes. Packaged channel definitions are in /usr/share/emaki/mirrors/ [emaki-mirrorlist].' >&2
+        return 0
+    fi
+    if [[ -n $channel ]]; then
+        _emaki_initialize_channel "$root" "$channel" || return 1
+        [[ -f $selector && ! -L $selector ]] || return 1
+        temporary=$(mktemp "${file}.tmp.XXXXXX") || return 1
+        if ! printf '%s\n' '# Copyright (C) 2026 Artur Yakymenko' \
+                '# SPDX-License-Identifier: GPL-3.0-or-later' \
+                '# Choose the update channel in /etc/emaki/channel.' \
+                'Include = /etc/emaki/channel' > "$temporary" ||
+                ! chmod --reference="$file" "$temporary" ||
+                ! chown --reference="$file" "$temporary" ||
+                ! mv -f -- "$temporary" "$file"; then
+            rm -f -- "$temporary"
+            echo 'emaki-mirrorlist: channel migration failed; check /etc/emaki/channel [update channel].' >&2
+            return 1
+        fi
+    fi
+    # Pacman may have kept the edited old server list and installed our selector here.
+    # Never remove an unrelated administrator file or an older unknown .pacnew.
+    if [[ -f $file.pacnew && ! -L $file.pacnew ]] && cmp -s -- "$file.pacnew" "$defaults"; then
+        rm -f -- "$file.pacnew" || return 1
+        echo 'emaki-mirrorlist: the packaged .pacnew was merged automatically and removed [update channel].'
+    fi
+}
+
+# The selector stays outside the payload; keep valid local channel choices verbatim.
+# This must also work before the first extraction, without any packaged templates.
+_emaki_initialize_channel() {
+    local root=$1 channel=${2:-stable} directory selector temporary other=testing line
+    directory="${root%/}/etc/emaki"
+    selector="$directory/channel"
+    [[ ! -L $directory ]] || return 1
+    if [[ -e $selector || -L $selector ]]; then
+        # Do not follow links or modify another file through a shared inode.
+        [[ -f $selector && ! -L $selector ]] || return 1
+        [[ $(stat -c %h -- "$selector") == 1 ]] || return 1
+        while IFS= read -r line || [[ -n $line ]]; do
+            line=${line%%#*}
+            if [[ $line =~ ^[[:space:]]*Include[[:space:]]*=[[:space:]]*/usr/share/emaki/mirrors/(stable|testing)\.conf[[:space:]]*$ ]]; then
+                return 0
+            fi
+        done < "$selector"
+        channel=stable
+    fi
+    mkdir -p -- "$directory" || return 1
+    [[ $channel != testing ]] || other=stable
+    temporary=$(mktemp "$directory/.channel.XXXXXX") || return 1
+    # shellcheck disable=SC2016
+    if ! printf '%s\n' '# Copyright (C) 2026 Artur Yakymenko' \
+            '# SPDX-License-Identifier: GPL-3.0-or-later' \
+            '# Choose stable or testing [update channel].' \
+            '# After switching channels, run `sudo pacman -Syyu` once.' \
+            "Include = /usr/share/emaki/mirrors/${channel}.conf" \
+            "# Include = /usr/share/emaki/mirrors/${other}.conf" > "$temporary" ||
+            ! chmod 644 "$temporary" || ! mv -f -- "$temporary" "$selector"; then
+        rm -f -- "$temporary"
+        return 1
+    fi
+}
+
+_emaki_prepare_channel() {
+    local root=$1 file line entry='' count=0 channel=stable
+    file="${root%/}/etc/pacman.d/emaki-mirrorlist"
+    if [[ -f $file && ! -L $file ]]; then
+        while IFS= read -r line || [[ -n $line ]]; do
+            line=${line%%#*}
+            [[ $line =~ ^[[:space:]]*$ ]] && continue
+            entry=$line
+            count=$((count + 1))
+        done < "$file"
+        if [[ $count == 1 ]]; then
+            if [[ $entry =~ ^[[:space:]]*Include[[:space:]]*=[[:space:]]*/usr/share/emaki/mirrors/(stable|testing)\.conf[[:space:]]*$ ]] ||
+                    [[ $entry =~ ^[[:space:]]*Server[[:space:]]*=[[:space:]]*https://pkgs\.emaki\.sh/(stable|testing)/\$arch/?[[:space:]]*$ ]] ||
+                    [[ $entry =~ ^[[:space:]]*Server[[:space:]]*=[[:space:]]*https://github\.com/emakish/packages/releases/download/(stable|testing)/?[[:space:]]*$ ]]; then
+                channel=${BASH_REMATCH[1]}
+            fi
+        fi
+    fi
+    _emaki_initialize_channel "$root" "$channel"
+}
+
+# Remove only this package's reference in [emaki], retaining other repositories
+# and any independent custom servers. An empty repository cannot synchronize.
+_emaki_remove_reference() {
+    local root=$1 file temporary line active block='' emaki=0 owned=0 server=0
+    file="${root%/}/etc/pacman.conf"
+    [[ -e $file ]] || return 0
+    [[ -f $file && ! -L $file && $(stat -c %h -- "$file") == 1 ]] || return 1
+    temporary=$(mktemp "${file}.tmp.XXXXXX") || return 1
+    # Only unlink the output on a write failure; it is never read in this loop.
+    # shellcheck disable=SC2094
+    while IFS= read -r line || [[ -n $line ]]; do
+        active=${line%%#*}
+        if [[ $active =~ ^[[:space:]]*\[([^]]+)\][[:space:]]*$ ]]; then
+            if (( ! owned || server )); then
+                printf '%s' "$block" || { rm -f -- "$temporary"; return 1; }
+            fi
+            block='' owned=0 server=0 emaki=0
+            [[ ${BASH_REMATCH[1]} != emaki ]] || emaki=1
+        fi
+        if (( emaki )); then
+            if [[ $active =~ ^[[:space:]]*Include[[:space:]]*=[[:space:]]*/etc/pacman.d/emaki-mirrorlist[[:space:]]*$ ]]; then
+                owned=1
+                continue
+            fi
+            if [[ $active =~ ^[[:space:]]*(Server|Include)[[:space:]]*= ]]; then server=1; fi
+        fi
+        block+="$line"$'\n'
+    done < "$file" > "$temporary"
+    if (( ! owned || server )); then
+        printf '%s' "$block" >> "$temporary" || { rm -f -- "$temporary"; return 1; }
+    fi
+    if ! chmod --reference="$file" "$temporary" || ! chown --reference="$file" "$temporary" ||
+            ! mv -f -- "$temporary" "$file"; then
+        rm -f -- "$temporary"
+        return 1
+    fi
+}
+
+pre_install() {
+    _emaki_initialize_channel /
+}
+
+pre_upgrade() {
+    _emaki_prepare_channel / || {
+        echo 'emaki-mirrorlist: cannot prepare /etc/emaki/channel [update channel].' >&2
+        return 1
+    }
+}
+
+post_install() {
+    _emaki_migrate_mirrorlist /
+}
+
+post_upgrade() {
+    _emaki_migrate_mirrorlist /
+}
+
+pre_remove() {
+    _emaki_remove_reference /
+}
+
+post_remove() {
+    [[ ! -L /etc/emaki ]] || return 1
+    rm -f -- /etc/emaki/channel
+}

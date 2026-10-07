@@ -5,9 +5,10 @@
 layout {
     // niri adds gaps after the panel's exclusive zone, so without compensation the gap
     // from islands to windows is 8 + gaps (10 with gaps 2), not the design's 8. struts.top = −gaps.
-    // Fractional scale needs a custom output layout: at 1.25 with gaps 2, use top -2.4
-    // (calculation in docs/shell.md, “Exclusive zone and gaps”). Output name and scale belong
-    // in the installer, not here.
+    // Initial personal output layouts carry fractional compensation (at 1.25,
+    // top -2.4). On upgrades, the managed machine file retains a global strut
+    // after these defaults, without claiming personal output blocks. Later personal
+    // layout settings can override it; see docs/shell.md for mixed-scale limits.
     struts {
         top -2
     }

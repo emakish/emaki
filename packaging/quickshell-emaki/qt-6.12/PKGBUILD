@@ -5,7 +5,7 @@
 _pkgname=quickshell
 pkgname=quickshell-emaki
 pkgver=0.3.1
-pkgrel=3
+pkgrel=1
 pkgdesc='Flexible toolkit for making desktop shells with QtQuick (Emaki patched build)'
 arch=(x86_64 aarch64)
 url="https://git.outfoxxed.me/$_pkgname/$_pkgname"
@@ -23,19 +23,20 @@ depends=(cpptrace libcpptrace.so
          mesa # libgbm.so
          pam libpam.so
          polkit
-         'qt6-base>=6.12' 'qt6-base<6.13' # libQt6Core.so libQt6DBus.so libQt6Gui.so libQt6Network.so libQt6Widgets.so
-         'qt6-declarative>=6.12' 'qt6-declarative<6.13' # libQt6Qml.so libQt6Quick.so
+         'qt6-base>=6.12.0' 'qt6-base<6.13' # libQt6Core.so libQt6DBus.so libQt6Gui.so libQt6Network.so libQt6Widgets.so
+         'qt6-declarative>=6.12.0' 'qt6-declarative<6.13' # libQt6Qml.so libQt6Quick.so
          qt6-svg
-         'qt6-wayland>=6.12' 'qt6-wayland<6.13' # libQt6WaylandClient.so
          wayland libwayland-client.so)
 makedepends=(cli11
              cmake
              ninja
+             pkgconf
              qt6-shadertools
              spirv-tools
              vulkan-headers
              wayland-protocols)
-provides=("quickshell=$pkgver")
+_qtver=6.12.0
+provides=("quickshell=$pkgver" "emaki-quickshell-qt-build=$_qtver")
 conflicts=(quickshell)
 _archive="$_pkgname-$pkgver"
 source=("$_archive.tar.gz::$url/archive/v$pkgver.tar.gz"
@@ -48,14 +49,30 @@ sha256sums=('d60592622f1aa1cbb853d4814f605dfde827bc692befbfecffaccf4c90e352d8'
             '4cb3b5acc94e0c9546568a782540ab01c1ad06946c8c7b7e290e2b9ffc21b7a2')
 
 prepare() {
-	cd "$_pkgname"
+	cd "$_pkgname" || return 1
 	patch -Np1 -i "$srcdir/0001-wlr-screencopy-raw-wl_output-for-transform.patch"
 	patch -Np1 -i "$srcdir/0002-network-nm-name-the-activation-a-connection-failure.patch"
 	patch -Np1 -i "$srcdir/0003-qt-6.12-moc-includes.patch"
 }
 
+# Keep the runtime floor equal to the Qt release used for this rebuild.
+_qt_build_version() {
+	local core qml
+	core=$(pkg-config --modversion Qt6Core) || return 1
+	qml=$(pkg-config --modversion Qt6Qml) || return 1
+	if [[ ! $core =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || $core != "$qml" || $core != "$_qtver" ]] ||
+	   [[ " ${depends[*]} " != *" qt6-base>=$core "* ||
+	      " ${depends[*]} " != *" qt6-declarative>=$core "* ]]; then
+		printf '%s\n' 'Qt build versions must agree and match both dependency lower bounds.' >&2
+		return 1
+	fi
+	printf '%s\n' "$core"
+}
+
 build() {
-	cd "$_pkgname"
+	local qt_build_version
+	qt_build_version=$(_qt_build_version) || return 1
+	cd "$_pkgname" || return 1
 	local cmake_options=(
 		-D CMAKE_BUILD_TYPE=RelWithDebInfo
 		-D DISTRIBUTOR='Emaki (Arch Linux package + patches)'
@@ -64,12 +81,19 @@ build() {
 		-D CMAKE_INSTALL_PREFIX=/usr
 		-D INSTALL_QML_PREFIX=lib/qt6/qml
 	)
-	cmake -G Ninja -B build -W no-dev "${cmake_options[@]}"
-	cmake --build build
+	cmake -G Ninja -B build -W no-dev "${cmake_options[@]}" || return 1
+	cmake --build build || return 1
+	printf '%s\n' "$qt_build_version" > build/emaki-qt-build-version
 }
 
 package() {
-	cd "$_pkgname"
-	DESTDIR="$pkgdir" cmake --install build
+	cd "$_pkgname" || return 1
+	local qt_build_version current_qt_version
+	[[ -s build/emaki-qt-build-version ]] || return 1
+	qt_build_version=$(<build/emaki-qt-build-version) || return 1
+	current_qt_version=$(_qt_build_version) || return 1
+	[[ $qt_build_version == "$current_qt_version" ]] || return 1
+	DESTDIR="$pkgdir" cmake --install build || return 1
+	install -Dm0644 build/emaki-qt-build-version "$pkgdir/usr/share/quickshell-emaki/qt-build-version" || return 1
 	install -Dm0644 -t "$pkgdir/usr/share/licenses/$pkgname/" LICENSE
 }

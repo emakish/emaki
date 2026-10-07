@@ -1723,15 +1723,15 @@ index 26f8659a..fd2dc4ee 100644
 +    farthest.map_or(0., |(_, candidate)| candidate)
 +}
 diff --git a/src/niri.rs b/src/niri.rs
-index d7d4b710..1910d1b4 100644
 --- a/src/niri.rs
 +++ b/src/niri.rs
-@@ -383,6 +383,19 @@ pub struct Niri {
+@@ -383,6 +383,20 @@
      pub lock_state: LockState,
  
      startup_cover: Option<StartupCover>,
 +    emaki_wallpaper: RefCell<crate::render_helpers::emaki_wallpaper::Wallpaper>,
 +    wallpaper_timer: Option<(RegistrationToken, Instant)>,
++    wallpaper_power_timer: Option<(RegistrationToken, Instant)>,
 +    wallpaper_decoder: Option<
 +        crate::render_helpers::emaki_wallpaper::assets::Decoder<(
 +            niri_config::EmakiWallpaper,
@@ -1746,7 +1746,7 @@ index d7d4b710..1910d1b4 100644
      // Survives texture release: a frozen shell replacement must also stop covering windows.
      startup_cover_deadline: Option<Instant>,
  
-@@ -813,6 +826,7 @@ impl State {
+@@ -813,6 +827,7 @@
  
          // Needs to be called after updating the keyboard focus.
          self.niri.refresh_layout();
@@ -1754,7 +1754,7 @@ index d7d4b710..1910d1b4 100644
  
          self.niri.cursor_manager.check_cursor_image_surface_alive();
          self.niri.refresh_pointer_outputs();
-@@ -1440,6 +1454,7 @@ impl State {
+@@ -1440,6 +1455,7 @@
          };
  
          self.niri.config_error_notification.hide();
@@ -1762,12 +1762,13 @@ index d7d4b710..1910d1b4 100644
  
          // Find & orphan removed named workspaces.
          let mut removed_workspaces: Vec<String> = vec![];
-@@ -2600,6 +2615,13 @@ impl Niri {
+@@ -2600,6 +2616,14 @@
  
              lock_state: LockState::Unlocked,
              startup_cover: None,
 +            emaki_wallpaper: RefCell::default(),
 +            wallpaper_timer: None,
++            wallpaper_power_timer: None,
 +            wallpaper_decoder: None,
 +            #[cfg(test)]
 +            emaki_wallpaper_config_clones: 0,
@@ -1776,7 +1777,7 @@ index d7d4b710..1910d1b4 100644
              startup_cover_deadline: None,
              locked_hint: None,
  
-@@ -4085,6 +4107,7 @@ impl Niri {
+@@ -4085,6 +4109,7 @@
      pub fn update_render_elements(&mut self, output: Option<&Output>) {
          self.update_xray_render_elements(output);
          self.layout.update_render_elements(output);
@@ -1784,10 +1785,12 @@ index d7d4b710..1910d1b4 100644
  
          for (out, state) in self.output_state.iter_mut() {
              if output.is_none_or(|output| out == output) {
-@@ -4174,6 +4197,24 @@ impl Niri {
+@@ -4172,6 +4197,25 @@
+             elements.push(elem)
+         });
          elements
-     }
- 
++    }
++
 +    pub(crate) fn update_emaki_wallpaper_occlusion<R: NiriRenderer>(
 +        &mut self,
 +        output: &Output,
@@ -1798,18 +1801,17 @@ index d7d4b710..1910d1b4 100644
 +            output.current_scale().fractional_scale(),
 +            elements,
 +        );
++        self.refresh_wallpaper_power_timer();
 +        // Winit decides whether to request its next frame inside backend.render(),
 +        // so publish the visibility gate here as well as after DRM rendering.
 +        self.output_state
 +            .get_mut(output)
 +            .unwrap()
 +            .unfinished_animations_remain |= self.emaki_wallpaper.borrow().animated(&output.name());
-+    }
-+
+     }
+
      /// Interactive captures keep output privacy semantics but omit the login decoration.
-     pub fn render_capture_to_vec<R: NiriRenderer>(
-         &self,
-@@ -4429,6 +4470,18 @@ impl Niri {
+@@ -4429,6 +4473,18 @@
              push_popups_from_layer!(Layer::Bottom);
              push_popups_from_layer!(Layer::Background);
              push_normal_from_layer!(Layer::Bottom);
@@ -1828,7 +1830,7 @@ index d7d4b710..1910d1b4 100644
              push_normal_from_layer!(Layer::Background);
  
              // We don't expect more than one workspace when render_above_top_layer().
-@@ -4476,6 +4529,16 @@ impl Niri {
+@@ -4476,6 +4532,16 @@
                  let ns = Some(ws.id().get() as usize);
                  let xray_pos = XrayPos::new(geo.loc, zoom);
                  push_normal_from_layer!(Layer::Bottom, ns, xray_pos, process!(geo));
@@ -1845,7 +1847,7 @@ index d7d4b710..1910d1b4 100644
                  push_normal_from_layer!(Layer::Background, ns, xray_pos, process!(geo));
  
                  process!(geo)(ws.render_background());
-@@ -4532,6 +4595,20 @@ impl Niri {
+@@ -4532,6 +4598,20 @@
          {
              let elements = buffer.elements();
              elements.clear();
@@ -1866,7 +1868,7 @@ index d7d4b710..1910d1b4 100644
              self.render_layer_normal(
                  ctx.r(),
                  None,
-@@ -4725,6 +4802,12 @@ impl Niri {
+@@ -4725,6 +4805,12 @@
  
              // Render.
              res = backend.render(self, output, target_presentation_time);
@@ -1879,7 +1881,7 @@ index d7d4b710..1910d1b4 100644
          }
  
          let is_locked = self.is_locked();
-@@ -6364,6 +6447,209 @@ impl Niri {
+@@ -6364,6 +6450,258 @@
          self.startup_cover.is_none() && self.startup_cover_layer_expired("emaki-session-cover")
      }
  
@@ -1900,8 +1902,9 @@ index d7d4b710..1910d1b4 100644
 +        }
 +    }
 +
-+    /// Worker completion and train deadlines are calloop sources. There is no polling
-+    /// decode loop or periodic wallpaper timer when the output is idle.
++    /// Worker completion and train deadlines are calloop sources. Battery checks have
++    /// their own timer only while unlocked outputs could show moving trains or smoke.
++    /// Polling never requests a frame; an actual resumed animation queues its output.
 +    fn refresh_emaki_wallpaper(&mut self, output: Option<&Output>) {
 +        use crate::render_helpers::emaki_wallpaper::assets;
 +        // Runs on every event loop turn: only a new decoder needs its own copy of the config.
@@ -1963,6 +1966,7 @@ index d7d4b710..1910d1b4 100644
 +        }
 +        let paused = self.is_locked() || self.screenshot_ui.is_open() || !self.monitors_active;
 +        let mut wallpaper = self.emaki_wallpaper.borrow_mut();
++        // Only the power timer reads sysfs. Rendering uses its cached battery state.
 +        wallpaper.clock(self.clock.now_unadjusted(), paused);
 +        let outputs = self.layout.outputs().map(|o| o.name()).collect();
 +        let workspaces = self
@@ -2030,6 +2034,53 @@ index d7d4b710..1910d1b4 100644
 +                self.wallpaper_timer = Some((token, deadline));
 +            }
 +        }
++        self.refresh_wallpaper_power_timer();
++    }
++
++    fn wallpaper_power_eligible(&self) -> bool {
++        !self.is_locked()
++            && !self.screenshot_ui.is_open()
++            && self.monitors_active
++            && self
++                .layout
++                .outputs()
++                .any(|output| self.emaki_wallpaper.borrow().trains_visible(&output.name()))
++    }
++
++    fn refresh_wallpaper_power_timer(&mut self) {
++        let eligible = self.wallpaper_power_eligible();
++        let deadline = self
++            .emaki_wallpaper
++            .borrow_mut()
++            .power
++            .deadline(Instant::now(), eligible);
++        if self.wallpaper_power_timer.as_ref().map(|(_, time)| *time) == deadline {
++            return;
++        }
++        if let Some((token, _)) = self.wallpaper_power_timer.take() {
++            self.event_loop.remove(token);
++        }
++        if let Some(deadline) = deadline {
++            let token = self
++                .event_loop
++                .insert_source(Timer::from_deadline(deadline), |_, _, state| {
++                    state.niri.wallpaper_power_timer = None;
++                    // Lock/output/visibility can change in the same dispatch cycle.
++                    if state.niri.wallpaper_power_eligible() {
++                        state
++                            .niri
++                            .emaki_wallpaper
++                            .borrow_mut()
++                            .power
++                            .refresh(Instant::now());
++                    }
++                    // State::refresh updates the frozen clock and schedules the next check.
++                    // A poll alone must never damage or redraw any output.
++                    TimeoutAction::Drop
++                })
++                .expect("wallpaper power source");
++            self.wallpaper_power_timer = Some((token, deadline));
++        }
 +    }
 +
 +    #[cfg(test)]
@@ -2089,7 +2140,7 @@ index d7d4b710..1910d1b4 100644
      pub fn install_startup_cover(&mut self, cover: StartupCover) {
          self.startup_cover_deadline = Some(cover.deadline());
          let timer = Timer::from_deadline(cover.deadline());
-@@ -6688,6 +6974,16 @@ impl ClientData for ClientState {
+@@ -6688,6 +7026,16 @@
      fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
  }
  
@@ -2106,7 +2157,7 @@ index d7d4b710..1910d1b4 100644
  fn scale_relocate_crop<E: Element>(
      elem: E,
      output_scale: Scale<f64>,
-@@ -6718,6 +7014,9 @@ niri_render_elements! {
+@@ -6718,6 +7066,9 @@
      OutputRenderElements<R> => {
          Monitor = MonitorRenderElement<R>,
          EmakiBackdrop = crate::render_helpers::shader_element::ShaderRenderElement,
@@ -2116,7 +2167,7 @@ index d7d4b710..1910d1b4 100644
          RescaledTile = RescaleRenderElement<TileRenderElement<R>>,
          LayerSurface = LayerSurfaceRenderElement<R>,
          RelocatedLayerSurface = CropRenderElement<RelocateRenderElement<RescaleRenderElement<
-@@ -6759,3 +7058,90 @@ mod emaki_redraw_tests {
+@@ -6759,3 +7110,90 @@
          }
      }
  }
@@ -3284,13 +3335,13 @@ index 00000000..5d114a4f
 +}
 diff --git a/src/render_helpers/emaki_wallpaper/mod.rs b/src/render_helpers/emaki_wallpaper/mod.rs
 new file mode 100644
-index 00000000..3ec63637
 --- /dev/null
 +++ b/src/render_helpers/emaki_wallpaper/mod.rs
-@@ -0,0 +1,838 @@
+@@ -0,0 +1,862 @@
 +//! Per-workspace indexed ring wallpaper. The compositor owns timing and geometry;
 +//! wpaperd remains underneath whenever this engine has no complete valid scene.
 +pub mod assets;
++pub mod power;
 +mod train;
 +
 +use std::collections::{HashMap, HashSet};
@@ -3436,6 +3487,8 @@ index 00000000..3ec63637
 +    sample_now: Option<f64>,
 +    last_clock: Option<Duration>,
 +    paused: bool,
++    trains_paused: bool,
++    pub power: power::PowerState,
 +}
 +impl Wallpaper {
 +    /// Called only on a successful config reload, never by frame refresh.
@@ -3505,8 +3558,9 @@ index 00000000..3ec63637
 +        self.scenes.clear();
 +    }
 +    pub fn clock(&mut self, time: Duration, paused: bool) {
++        let trains_paused = paused || self.power.on_battery();
 +        if let Some(previous) = self.last_clock {
-+            if !self.paused && !paused {
++            if !self.trains_paused && !trains_paused {
 +                self.now += time.saturating_sub(previous).as_secs_f64();
 +            }
 +        }
@@ -3516,7 +3570,8 @@ index 00000000..3ec63637
 +        self.sample_now =
 +            Some((self.now - self.last_clock.unwrap().saturating_sub(time).as_secs_f64()).max(0.));
 +        self.paused = paused;
-+        if paused {
++        self.trains_paused = trains_paused;
++        if trains_paused {
 +            for output in self.outputs.values_mut() {
 +                output.animated = false;
 +                output.deadline = None;
@@ -3529,7 +3584,7 @@ index 00000000..3ec63637
 +            .retain(|id, _| workspaces.contains(&(id & !(1 << 63))));
 +    }
 +    pub fn update_output(&mut self, name: String, active: View, views: Vec<View>) {
-+        if self.paused || self.art.is_none() {
++        if self.art.is_none() {
 +            return;
 +        }
 +        let art = self.art.as_ref().unwrap();
@@ -3557,6 +3612,10 @@ index 00000000..3ec63637
 +            scene.schedule = Schedule::default();
 +            scene.animated = false;
 +            scene.deadline = None;
++            return;
++        }
++        // Keep views and occlusion current while battery power freezes the scene.
++        if self.trains_paused {
 +            return;
 +        }
 +        scene.schedule.update(
@@ -3609,13 +3668,28 @@ index 00000000..3ec63637
 +                opaque.push(region.to_f64().to_logical(scale));
 +            }
 +        }
-+        refresh_visibility(scene, art, scene.now);
++        if !self.trains_paused {
++            refresh_visibility(scene, art, scene.now);
++        }
++    }
++    /// Whether this output could show moving trains or smoke, even while frozen.
++    pub fn trains_visible(&self, output: &str) -> bool {
++        self.gpu.is_some()
++            && self.settings.as_ref().is_some_and(|settings| {
++                settings.mode == EmakiWallpaperMode::Ring && settings.trains
++            })
++            && self.outputs.get(output).is_some_and(|scene| {
++                scene
++                    .views
++                    .iter()
++                    .any(|view| view.visible(view.rect(0., 690., view.width(), RAIL_Y + 1. - 690.)))
++            })
 +    }
 +    pub fn animated(&self, output: &str) -> bool {
-+        !self.paused && self.outputs.get(output).is_some_and(|s| s.animated)
++        !self.trains_paused && self.outputs.get(output).is_some_and(|s| s.animated)
 +    }
 +    pub fn wake_after(&self) -> Option<Duration> {
-+        if self.paused {
++        if self.trains_paused {
 +            return None;
 +        }
 +        self.outputs
@@ -4128,10 +4202,9 @@ index 00000000..3ec63637
 +pub(crate) mod tests;
 diff --git a/src/render_helpers/emaki_wallpaper/tests.rs b/src/render_helpers/emaki_wallpaper/tests.rs
 new file mode 100644
-index 00000000..11ef7ae2
 --- /dev/null
 +++ b/src/render_helpers/emaki_wallpaper/tests.rs
-@@ -0,0 +1,1186 @@
+@@ -0,0 +1,1215 @@
 +use super::assets::{upload_texture, Tile};
 +use super::train::Train;
 +use super::*;
@@ -5318,6 +5391,35 @@ index 00000000..11ef7ae2
 +        Ok((1, false))
 +    );
 +}
++
++#[test]
++fn emaki_wallpaper_power_visibility_survives_frozen_scenes() {
++    let mut renderer = renderer();
++    let mut wallpaper = engine(art(&mut renderer));
++    let view = view(500, 1200, 1., 1023.8);
++    wallpaper.clock(Duration::ZERO, false);
++    wallpaper.update_output("test".into(), view.clone(), vec![view.clone()]);
++    assert!(wallpaper.trains_visible("test"));
++    assert!(!wallpaper.trains_visible("removed-output"));
++    wallpaper.trains_paused = true;
++    let elements = wallpaper.render(&mut renderer, "test", &view);
++    assert!(!elements.is_empty(), "battery pause keeps static art");
++    assert!(wallpaper.trains_visible("test"), "AC must be detectable while frozen");
++    let mut cover = ShaderRenderElement::empty(ProgramType::EmakiWallpaper, Kind::Unspecified);
++    cover.update(view.size, Some(vec![Rectangle::from_size(view.size)]),
++                 1., 1., Rc::new([]), HashMap::new());
++    let mut covered = vec![cover];
++    covered.extend(elements.clone());
++    wallpaper.record_occlusion("test", 1., &covered);
++    assert!(!wallpaper.trains_visible("test"), "fully covered battery scene stops polling");
++    wallpaper.record_occlusion("test", 1., &elements);
++    assert!(wallpaper.trains_visible("test"), "uncover restarts power checks");
++    wallpaper.settings.as_mut().unwrap().trains = false;
++    assert!(!wallpaper.trains_visible("test"));
++    wallpaper.settings.as_mut().unwrap().trains = true;
++    wallpaper.settings.as_mut().unwrap().mode = EmakiWallpaperMode::Image;
++    assert!(!wallpaper.trains_visible("test"));
++}
 diff --git a/src/render_helpers/emaki_wallpaper/train.rs b/src/render_helpers/emaki_wallpaper/train.rs
 new file mode 100644
 index 00000000..f71212db
@@ -6237,3 +6339,76 @@ index d7b28d8a..a8c7013d 100644
  mod floating;
  mod fullscreen;
  mod layer_shell;
+diff --git a/src/render_helpers/emaki_wallpaper/power.rs b/src/render_helpers/emaki_wallpaper/power.rs
+new file mode 100644
+--- /dev/null
++++ b/src/render_helpers/emaki_wallpaper/power.rs
+@@ -0,0 +1,68 @@
++// Copyright (C) 2026 Artur Yakymenko
++// SPDX-License-Identifier: GPL-3.0-or-later
++//! Read system power supplies at a bounded rate; peripheral batteries do not pause trains.
++use std::path::Path;
++use std::time::{Duration, Instant};
++
++const CHECK_INTERVAL: Duration = Duration::from_secs(5);
++
++#[derive(Default)]
++pub struct PowerState {
++    next_check: Option<Instant>,
++    on_battery: bool,
++}
++impl PowerState {
++    /// No filesystem work here: refresh/render paths only maintain timer eligibility.
++    pub fn deadline(&mut self, now: Instant, eligible: bool) -> Option<Instant> {
++        if !eligible {
++            return None;
++        }
++        Some(*self.next_check.get_or_insert(now))
++    }
++    pub fn on_battery(&self) -> bool {
++        self.on_battery
++    }
++    /// Called only by the eligible calloop timer. One directory scan and at most
++    /// four small sysfs reads per supply, at most once every five seconds while visible.
++    pub fn refresh(&mut self, now: Instant) -> bool {
++        self.refresh_from(now, Path::new("/sys/class/power_supply"))
++    }
++    fn refresh_from(&mut self, now: Instant, root: &Path) -> bool {
++        if self.next_check.is_none_or(|deadline| now >= deadline) {
++            self.on_battery = on_battery(root);
++            self.next_check = Some(now + CHECK_INTERVAL);
++        }
++        self.on_battery
++    }
++}
++
++fn on_battery(root: &Path) -> bool {
++    let Ok(supplies) = std::fs::read_dir(root) else {
++        return false;
++    };
++    let mut battery = false;
++    let mut external = false;
++    let mut discharging = false;
++    for supply in supplies.flatten() {
++        let read = |name| std::fs::read_to_string(supply.path().join(name)).unwrap_or_default();
++        if read("scope").trim() == "Device" {
++            continue;
++        }
++        if read("type").trim() == "Battery" {
++            if read("present").trim() == "0" {
++                continue;
++            }
++            battery = true;
++            match read("status").trim() {
++                "Discharging" => discharging = true,
++                "Charging" => external = true,
++                _ => {}
++            }
++        } else {
++            external |= read("online").trim() == "1";
++        }
++    }
++    // Discharge wins over a stale/insufficient adapter's online flag. Without
++    // adapter status, a present battery is conservatively treated as unplugged.
++    discharging || (battery && !external)
++}

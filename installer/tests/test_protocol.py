@@ -1,5 +1,6 @@
 import io
 import json
+from pathlib import Path
 import unittest
 
 import emaki_installer
@@ -26,6 +27,21 @@ class ProtocolTests(unittest.TestCase):
     def confirm(self, ack):
         return self.request('confirm', plan_id=ack['plan_id'], token=ack.get('token', ''))
 
+    def test_review_renewal_rotates_token_without_resending_password(self):
+        ack = self.plan()
+        self.now += 550
+        fresh = self.request('renew', plan_id=ack['plan_id'], token=ack['token'])[0]
+        self.assertNotEqual(ack['token'], fresh['token'])
+        self.now += 550
+        self.assertTrue(self.confirm(fresh)[0]['ok'])
+
+    def test_skip_update_is_separate_from_install_cancellation(self):
+        self.confirm(self.plan())
+        response = self.request('skip_update')[0]
+        self.assertTrue(response['ok'])
+        self.assertTrue(self.controller.job.skip_update.is_set())
+        self.assertFalse(self.controller.job.cancelled.is_set())
+
     def test_frame_limit_in_bytes_including_newline(self):
         base = {'type': 'hello', 'id': '1', 'proto': 1, 'padding': ''}
         overhead = len(encode_frame(base))
@@ -46,6 +62,14 @@ class ProtocolTests(unittest.TestCase):
 
     def test_hello_reports_the_package_version(self):
         self.assertEqual(self.request('hello', proto=1)[0]['emaki_version'], emaki_installer.__version__)
+
+    # The package's check() runs from the installer source archive, which has no iso/; the
+    # checkout run (make check-installer) keeps the installer and the image version together.
+    @unittest.skipUnless((Path(__file__).resolve().parents[2] / 'iso/VERSION').is_file(),
+                         'iso/VERSION is outside the installer source archive')
+    def test_hello_reports_the_candidate_version(self):
+        expected = (Path(__file__).resolve().parents[2] / 'iso/VERSION').read_text().strip()
+        self.assertEqual(self.request('hello', proto=1)[0]['emaki_version'], expected)
 
     def test_hello_carries_the_planner_reserved_logins(self):
         # The window refuses exactly the names validate_config refuses (installer/ui/Protocol.js).
@@ -117,15 +141,28 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(self.controller.job.cancelled.is_set())
         self.assertIsNone(self.controller.job.terminal)
 
+    def test_hardware_notice_survives_phase_change_and_reconnect(self):
+        self.controller.job = Job('job-test')
+        notice = 'The firmware used the fallback startup file (NVRAM).'
+        self.controller.emit('progress', phase='bootloader', notice=notice)
+        self.controller.emit('state', phase='account')
+        result = self.request('resume', job_id='job-test', since_seq=0)
+        self.assertEqual(result[-1]['notice'], notice)
+        self.assertEqual(result[-1]['phase'], 'account')
+
     def test_resume_replays_only_new_logs_and_current_state(self):
         self.controller.job = Job('job-test')
-        self.controller.emit('state', phase='copy_packages', phase_pct=1, total_pct=5.6, indeterminate=False)
+        step = {'id': 'copy-17', 'name': 'initramfs', 'state': 'running',
+                'text': 'Building the startup image (mkinitcpio: linux-lts: default).'}
+        self.controller.emit('progress', phase='copy_packages', phase_pct=1, total_pct=5.6,
+                             indeterminate=False, step=step)
         first = self.controller.emit('log', line='first')
         second = self.controller.emit('log', line='second')
         result = self.request('resume', job_id='job-test', since_seq=first['seq'])
         self.assertEqual([r['line'] for r in result if r['type'] == 'log'], ['second'])
         self.assertEqual(result[0]['seq'], second['seq'])
         self.assertEqual(result[-1]['type'], 'state')
+        self.assertEqual(result[-1]['step'], step)
         self.controller.emit('done', seconds=1, log_path='/var/log/emaki-install.log')
         result = self.request('resume', job_id='job-test', since_seq=0)
         self.assertEqual(result[-1]['type'], 'done')

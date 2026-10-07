@@ -1,0 +1,269 @@
+#!/usr/bin/python3 -B
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Versioned adoption of installer defaults; local changes remain local."""
+import argparse
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import runpy
+import re
+import subprocess
+import tempfile
+
+LEGACY_ZRAM = '[zram0]\nzram-size = min(ram / 2, 8192)\nswap-priority = 100\n'
+LEGACY_WHEEL = '%wheel ALL=(ALL:ALL) ALL\n'
+# Preserve historical choices and ambiguous preexisting optional services.
+# Only newly introduced preset names are safe to offer without an old state ledger.
+LEGACY_UNITS = {
+    'greetd.service', 'NetworkManager.service', 'bluetooth.service', 'fstrim.timer',
+    'grub-btrfsd.service', 'snapper-timeline.timer', 'snapper-cleanup.timer',
+    'cups.service', 'cups.socket', 'cups.path',
+}
+
+
+NIRI_DEFAULTS = 'include "/usr/share/emaki/niri/default.kdl"\n'
+NIRI_OUTPUT = re.compile(
+    r'\noutput ("(?:[^"\\]|\\.)*") \{\n    scale ([0-9]+(?:\.[0-9]+)?)\n'
+    r'(?:    layout \{\n        struts \{\n            top (-?[0-9]+(?:\.[0-9]+)?)\n'
+    r'        \}\n    \}\n)?\}\n')
+
+
+def installer_outputs(text):
+    """Recognize the old renderer, never an arbitrary local output configuration."""
+    if not text.startswith(NIRI_DEFAULTS):
+        return False
+    remaining = text[len(NIRI_DEFAULTS):]
+    if not remaining:
+        return False
+    while remaining:
+        match = NIRI_OUTPUT.match(remaining)
+        if not match:
+            return False
+        try:
+            name = json.loads(match[1])
+        except ValueError:
+            return False
+        scale = float(match[2])
+        if (json.dumps(name) != match[1] or not 0.5 <= scale <= 4
+                or f'{scale:g}' != match[2]):
+            return False
+        if match[3] is not None:
+            # Scale and top were printed independently with six significant digits.
+            # Include both pixel counts when printing rounded across a half pixel.
+            precision = 5 * 10 ** (math.floor(math.log10(scale)) - 6)
+            first = math.floor(max(1, 2 * (scale - precision)) + .5)
+            last = math.floor(max(1, 2 * (scale + precision)) + .5)
+            if not any(math.isclose(-pixels / scale, float(match[3]),
+                                    rel_tol=1e-5, abs_tol=1e-5)
+                       for pixels in range(first, last + 1)):
+                return False
+        elif scale == 1:
+            return False
+        remaining = remaining[match.end():]
+    return True
+
+
+def retire_installer_outputs(root):
+    # Includes are inserted in place and outputs use first-match precedence.
+    # Retaining these blocks would still defeat every later personal override.
+    # Preserve a root-owned recovery copy; never move settings into a home file.
+    path = root / 'etc/emaki/niri.kdl'
+    if not safe(path) or not path.is_file() or path.stat().st_nlink != 1:
+        return
+    text = path.read_text()
+    if not installer_outputs(text):
+        return
+    backup = root / 'etc/emaki/niri.kdl.installer-outputs-backup'
+    if not safe(backup) or backup.exists():
+        if (not safe(backup) or not backup.is_file() or backup.stat().st_nlink != 1
+                or backup.read_text() != text):
+            raise OSError('Cannot preserve display settings (Emaki migration).')
+    else:
+        write(backup, text, path.stat().st_mode & 0o777)
+    # Keep only a global strut: unlike an output block this does not claim a
+    # connector before the person's file can configure it. At high scales the
+    # strongest fractional compensation can shrink the gap: use shared top -2.
+    outputs = list(NIRI_OUTPUT.finditer(text[len(NIRI_DEFAULTS):]))
+    scales = [float(match[2]) for match in outputs]
+    layout = ''
+    if any(match[3] is not None for match in outputs) and max(scales) < 2.5:
+        # Recalculate from every saved scale: the old six-significant-digit top
+        # may have rounded upward. Round down so ceil cannot add a physical pixel.
+        top = min(-math.floor(max(1, 2 * scale) + .5) / scale for scale in scales)
+        top = math.floor(top * 1_000_000) / 1_000_000
+        value = f'{top:.6f}'.rstrip('0').rstrip('.')
+        layout = f'\nlayout {{\n    struts {{\n        top {value}\n    }}\n}}\n'
+    write(path, NIRI_DEFAULTS + layout, path.stat().st_mode & 0o777)
+
+
+def safe(path):
+    return not any(p.is_symlink() for p in (path, *path.parents))
+
+
+def write(path, text, mode=0o600):
+    if not safe(path) or (path.exists() and (not path.is_file() or path.stat().st_nlink != 1)):
+        raise OSError(f'Unsafe path [Emaki migration]: {path}')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix='.emaki-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as output:
+            os.fchmod(fd, mode)
+            output.write(text)
+            output.flush()
+            os.fsync(fd)
+        os.replace(name, path)
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
+def adopt_defaults(root, fresh=False):
+    zram = root / 'etc/systemd/zram-generator.conf'
+    mask = root / 'etc/systemd/zram-generator.conf.d/00-emaki.conf'
+    if safe(zram) and zram.is_file() and zram.stat().st_nlink == 1 and zram.read_text() == LEGACY_ZRAM:
+        # The vendor drop-in overrides this fallback while installed. Keep the
+        # installer file usable when an older package replaces the vendor file.
+        pass
+    elif zram.exists() or zram.is_symlink() or not fresh:
+        # Vendor drop-ins beat the main file. Preserve edits and deliberate deletion.
+        if safe(mask.parent) and not mask.exists() and not mask.is_symlink():
+            mask.parent.mkdir(parents=True, exist_ok=True)
+            mask.symlink_to('/dev/null')
+    wheel = root / 'etc/sudoers.d/10-wheel'
+    optin = root / 'etc/emaki/sudoers.d/wheel'
+    if (safe(wheel) and wheel.is_file() and wheel.stat().st_nlink == 1
+            and wheel.read_text() == LEGACY_WHEEL and safe(optin.parent)
+            and not optin.exists() and not optin.is_symlink()):
+        optin.parent.mkdir(parents=True, exist_ok=True)
+        optin.symlink_to('/usr/share/emaki/defaults/wheel')
+        wheel.unlink()
+
+
+def release_defaults(root, removing=False):
+    """Detach managed settings while the outgoing package is still installed."""
+    from emaki_boot_defaults import release as release_boot
+    from emaki_initramfs import release as release_initramfs
+    release_initramfs(root)
+    ledger = root / 'var/lib/emaki/migrations/released-wheel'
+    wheel = root / 'etc/sudoers.d/10-wheel'
+    optin = root / 'etc/emaki/sudoers.d/wheel'
+    vendor = root / 'usr/share/emaki/defaults/wheel'
+    if (safe(wheel) and not wheel.exists() and safe(optin.parent)
+            and optin.is_symlink() and str(optin.readlink()) == '/usr/share/emaki/defaults/wheel'
+            and safe(vendor) and vendor.is_file()):
+        data = vendor.read_text()
+        # Persist the receipt first. Only this exact fallback may be adopted by
+        # the next upgrade; administrator changes never become package policy.
+        write(ledger, hashlib.sha256(data.encode()).hexdigest() + '\n')
+        write(wheel, data, 0o440)
+    zram = root / 'etc/systemd/zram-generator.conf'
+    mask = root / 'etc/systemd/zram-generator.conf.d/00-emaki.conf'
+    vendor_zram = root / 'usr/lib/systemd/zram-generator.conf.d/00-emaki.conf'
+    if (safe(zram) and not zram.exists() and not mask.exists() and not mask.is_symlink()
+            and safe(vendor_zram) and vendor_zram.is_file()):
+        data = vendor_zram.read_text()
+        write(root / 'var/lib/emaki/migrations/released-zram',
+              hashlib.sha256(data.encode()).hexdigest() + '\n')
+        write(zram, data, 0o644)
+    release_boot(root, removing=removing)
+
+
+def reclaim_defaults(root):
+    """Retire an unchanged transition fallback after installing new defaults."""
+    ledger = root / 'var/lib/emaki/migrations/released-wheel'
+    wheel = root / 'etc/sudoers.d/10-wheel'
+    optin = root / 'etc/emaki/sudoers.d/wheel'
+    if not safe(ledger):
+        raise OSError('Unsafe package transition state path.')
+    if ledger.is_file():
+        if (safe(wheel) and wheel.is_file() and wheel.stat().st_nlink == 1
+                and hashlib.sha256(wheel.read_bytes()).hexdigest() == ledger.read_text().strip()
+                and safe(optin.parent) and optin.is_symlink()
+                and str(optin.readlink()) == '/usr/share/emaki/defaults/wheel'):
+            wheel.unlink()
+        ledger.unlink()
+    ledger = root / 'var/lib/emaki/migrations/released-zram'
+    zram = root / 'etc/systemd/zram-generator.conf'
+    vendor = root / 'usr/lib/systemd/zram-generator.conf.d/00-emaki.conf'
+    if not safe(ledger):
+        raise OSError('Unsafe package transition state path.')
+    if ledger.is_file() and safe(vendor) and vendor.is_file():
+        # Only a fallback we created is disposable. A local mask must become
+        # effective again even if it was added while the fallback was present.
+        if (safe(zram) and zram.is_file() and zram.stat().st_nlink == 1
+                and hashlib.sha256(zram.read_bytes()).hexdigest() == ledger.read_text().strip()):
+            zram.unlink()
+        ledger.unlink()
+
+
+def services(root, state):
+    known = set(state.get('units', LEGACY_UNITS))
+    presets = [root / 'usr/lib/systemd/system-preset' / name
+               for name in ('50-emaki.preset', '45-emaki-apps.preset')]
+    enabled_cache = root / 'var/lib/emaki/migrations/paccache-enabled'
+    if enabled_cache.is_file():
+        known.discard('paccache.timer')
+    offered = {line.split()[1] for preset in presets if preset.is_file()
+               for line in preset.read_text().splitlines()
+               if line.startswith('enable ') and len(line.split()) == 2}
+    for unit in sorted(offered - known):
+        # A mask is an explicit local choice, including a mask created before first upgrade.
+        local = root / 'etc/systemd/system' / unit
+        if not local.is_symlink() or str(local.readlink()) != '/dev/null':
+            subprocess.run(['systemctl', '--root=' + str(root), 'preset',
+                            '--preset-mode=enable-only', unit], check=True)
+        known.add(unit)
+        if unit == 'paccache.timer':
+            enabled_cache.unlink(missing_ok=True)
+        state['units'] = sorted(known)
+        write(root / 'var/lib/emaki/migrations/state.json', json.dumps(state) + '\n')
+    state['units'] = sorted(known | offered)
+
+
+def apply(root, fresh=False):
+    path = root / 'var/lib/emaki/migrations/state.json'
+    if not safe(path):
+        raise OSError('Unsafe state path [Emaki migration].')
+    state = json.loads(path.read_text()) if path.exists() else {}
+    reclaim_defaults(root)
+    if state.get('version', 0) < 1:
+        adopt_defaults(root, fresh=fresh)
+        # Keep the already-tested snapshot recognizer and its per-file once marker.
+        runpy.run_path(str(Path(__file__).with_name('emaki-snapshot-policy')))['apply'](root)
+        state['version'] = 1
+        write(path, json.dumps(state) + '\n')
+    if state.get('version', 0) < 2:
+        retire_installer_outputs(root)
+        state['version'] = 2
+        write(path, json.dumps(state) + '\n')
+    from emaki_boot_defaults import apply as boot_defaults
+    boot_defaults(root)
+    services(root, state)
+    write(path, json.dumps(state) + '\n')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('root', nargs='?', default='/')
+    parser.add_argument('--fresh', action='store_true', help='Keep vendor defaults on a new installation.')
+    parser.add_argument('--mark-fresh', action='store_true', help='Queue fresh installation defaults.')
+    parser.add_argument('--transaction', action='store_true', help='Apply queued transaction defaults.')
+    parser.add_argument('--release', action='store_true', help='Detach defaults before package replacement.')
+    parser.add_argument('--remove', action='store_true', help='Detach defaults before package removal.')
+    args = parser.parse_args()
+    root = Path(args.root).absolute()
+    pending = root / 'var/lib/emaki/migrations/fresh-pending'
+    if args.release or args.remove:
+        release_defaults(root, removing=args.remove)
+    elif args.mark_fresh:
+        write(pending, 'fresh\n')
+    else:
+        if not safe(pending):
+            raise OSError('Unsafe fresh installation state path.')
+        fresh = args.fresh or (args.transaction and pending.is_file()
+                               and pending.read_text() == 'fresh\n')
+        apply(root, fresh=fresh)
+        if args.transaction:
+            pending.unlink(missing_ok=True)

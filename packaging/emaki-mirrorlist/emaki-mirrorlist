@@ -1,4 +1,4 @@
-# Emaki repository channels. Enable exactly one server.
-# After switching channels, run `sudo pacman -Syyu` once.
-Server = https://pkgs.emaki.sh/stable/$arch
-# Server = https://pkgs.emaki.sh/testing/$arch
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Safe default until the update channel in /etc/emaki/channel is prepared.
+Include = /usr/share/emaki/mirrors/stable.conf

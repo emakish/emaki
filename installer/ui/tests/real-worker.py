@@ -46,7 +46,7 @@ def main():
 
         def factory(broker):
             return Worker(None, broker.inventory, broker.redactor, broker.emit, broker.log,
-                          target=root / 'target')
+                          target=root / 'target', skip_update=broker.job.skip_update)
 
         controller = Controller(FakeInventory(), factory)
         threads = []

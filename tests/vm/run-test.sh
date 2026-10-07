@@ -1,5 +1,5 @@
 #!/bin/bash
-# F0: test Emaki on a clean VM with one command.
+# DEVELOPMENT ONLY: test checkout installation on a clean cloud VM.
 #   tests/vm/run-test.sh [ref] [--greeter-only]
 #   --greeter-only requires an explicit ref; it leaves the guest at the login screen.
 # Restore the disk to the “clean” snapshot, install Emaki from the committed repo state
@@ -22,7 +22,7 @@ on_error() {
 trap 'on_error "$?" "$LINENO" "$BASH_COMMAND"' ERR
 usage_error() {
     echo "$1" >&2
-    echo "Usage: tests/vm/run-test.sh [ref] [--greeter-only]" >&2
+    echo "Development only: tests/vm/run-test.sh [ref] [--greeter-only]" >&2
     echo "--greeter-only requires an explicit committed ref before the option." >&2
     exit 2
 }
@@ -79,7 +79,7 @@ stop_vm() {
     fi
     if [ -e "/proc/$pid" ]; then
         log "Requesting graceful QEMU quit for PID $pid; waiting up to 180 seconds"
-        if printf 'quit\n' | socat - UNIX-CONNECT:"$VM/mon.sock" >>"$OUT/stop-vm.log" 2>&1; then
+        if printf 'quit\n' | socat - UNIX-CONNECT:"$(realpath -- "$VM/mon.sock")" >>"$OUT/stop-vm.log" 2>&1; then
             :
         else
             fail "$?" "QEMU monitor quit request failed; see $OUT/stop-vm.log"

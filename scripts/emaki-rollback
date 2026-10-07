@@ -1,4 +1,6 @@
 #!/usr/bin/python3 -I
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Keep a root snapshot in Emaki's explicit subvol=@ layout.
 
 All boot files live in @. Prepare and verify them before atomically exchanging
@@ -27,6 +29,12 @@ SHARED = {'/home': '@home', '/var/log': '@log', '/var/cache/pacman/pkg': '@pkg',
 # Present only on installs with hibernation; checked like a shared one when listed.
 OPTIONAL = {'/swap': '@swap'}
 ENV = {'PATH': '/usr/bin:/usr/sbin', 'LC_ALL': 'C'}
+HOLD_HELPER = '/usr/share/libalpm/scripts/emaki-rollback-holds'
+HOLD_FALLBACK = '/var/lib/emaki/emaki-rollback-holds'
+
+
+def hold_helper():
+    return HOLD_HELPER if Path(HOLD_HELPER).is_file() else HOLD_FALLBACK
 
 
 class Refused(RuntimeError):
@@ -66,6 +74,20 @@ def boot_status(root, cmdline):
     if root['fstype'] == 'btrfs' and KEPT.fullmatch(root['fsroot'].lstrip('/')):
         return {'mode': 'pending', 'message': 'A rollback is ready. Restart before making another change.'}
     return {'mode': 'unsupported', 'message': 'Snapshots are unavailable on this root filesystem. Nothing changed.'}
+
+
+def require_release_root():
+    # After the exchange the running mount follows the retained subvolume, while
+    # a recovery overlay still uses its snapshot. Neither is the next boot's @.
+    cmdline = Path('/proc/cmdline').read_text()
+    for line in Path('/proc/self/mountinfo').read_text().splitlines():
+        mount, filesystem = line.split(' - ', 1)
+        fields = mount.split()
+        if fields[4] != '/':
+            continue
+        root = {'fsroot': fields[3], 'fstype': filesystem.split()[0]}
+        require(boot_status(root, cmdline)['mode'] not in ('pending', 'snapshot'),
+                'Restart first, then release.')
 
 
 def safe_path(root, relative):
@@ -276,7 +298,9 @@ def promote(top, source, fs_uuid, boot_id, history):
     receipt = top / '.emaki-rollback' / (kept + '.json')
     with package_guard(current) as lock_token:
         record = {'kept': kept, 'previous_id': old_id, 'source_id': source_id, 'boot_id': boot_id,
-                  'filesystem': fs_uuid, 'lock_token': lock_token, 'state': 'preparing'}
+                  'filesystem': fs_uuid, 'lock_token': lock_token, 'state': 'preparing',
+                  'sequence': max((creation_sequence(top, n, r) for n, r in history.items()
+                                   if 'sequence' in r or (top / n).exists()), default=0) + 1}
         # Recorded before the copy exists: whatever fails below leaves a receipt that
         # `list` shows as an incomplete preparation and `delete` can remove.
         write_record(receipt, record)
@@ -288,6 +312,16 @@ def promote(top, source, fs_uuid, boot_id, history):
             require(fstab_rows(safe_path(staged, 'etc/fstab').read_text(), fs_uuid) == rows,
                     'Mount layout changed during preparation. Nothing changed.')
             safe_path(staged, 'var/lib/pacman/db.lck').unlink(missing_ok=True)
+            # Capture package differences while the old root's package DB is locked.
+            # Carry the protection into snapshots that predate its installation.
+            try:
+                holds = run(hold_helper(), 'prepare', current, staged)
+            except (Refused, OSError):
+                print('Package holds could not be prepared; continuing the rollback without holds.',
+                      file=sys.stderr, flush=True)
+            else:
+                if holds:
+                    print(holds, flush=True)
             # Do not carry a one-shot snapshot selection into the normal reboot.
             run('grub-editenv', safe_path(staged, 'boot/grub/grubenv'), 'create')
             del record['state']
@@ -308,7 +342,7 @@ def promote(top, source, fs_uuid, boot_id, history):
           f'Undo after restarting: emaki-rollback restore {kept}\n'
           'From recovery media: mount this filesystem with subvolid=5, keep @ under a new name,\n'
           f'then create a writable btrfs snapshot of {kept} named @.\n'
-          'Kept roots are never deleted automatically.')
+          'The two newest previous systems are kept [retained roots]. Pinned or mounted copies also stay.')
 
 
 def task_mounts(task):
@@ -336,13 +370,61 @@ def task_mounts(task):
                   'Nothing was deleted; try again.')
 
 
-def delete_kept(top, name, history, root, fs_uuid):
-    require(root['fstype'] == 'btrfs' and root['fsroot'] == '/@' and 'rw' in root['options'].split(','),
+def creation_sequence(top, name, record):
+    if 'sequence' in record:
+        require(type(record['sequence']) is int and record['sequence'] > 0,
+                'Invalid rollback creation sequence.')
+        return record['sequence']
+    # Older receipts lack a sequence. Creation generations survive a wrong clock.
+    details = run('btrfs', 'subvolume', 'show', top / name)
+    generation = re.search(r'^\s*Gen at creation:\s*(\d+)$', details, re.M)
+    require(generation is not None, 'Cannot read the creation order of previous systems (retained roots).')
+    return int(generation[1])
+
+
+def retained(top, history):
+    """Only receipts bound to the exchanged subvolume identify an undo copy."""
+    return sorted((n for n, r in history.items() if (top / n).exists() and
+                   subvolume(top / n) == r['previous_id']),
+                  key=lambda n: (creation_sequence(top, n, history[n]),
+                                 history[n].get('new_id', history[n]['previous_id'])))
+
+
+def retention_label(name, record, kept):
+    if name not in kept:
+        return 'incomplete preparation'
+    if record.get('pinned'):
+        return 'kept: pinned'
+    return 'kept: newest two' if name in kept[-2:] else 'kept: cleanup pending'
+
+
+def pin_kept(top, name, history, pinned):
+    require(name in retained(top, history), 'Only a recorded previous system can be pinned [retained root].')
+    record = dict(history[name], pinned=pinned)
+    write_record(top / '.emaki-rollback' / (name + '.json'), record)
+    print(f'{name}: {"pinned" if pinned else "unpinned"} [retained root].')
+
+
+def prune_kept(top, history, root, fs_uuid):
+    for name in retained(top, history)[:-2]:
+        if history[name].get('pinned'):
+            continue
+        try:
+            delete_kept(top, name, history, root, fs_uuid, automatic=True)
+        except (Refused, OSError) as error:
+            # The exchange is already complete; cleanup must not report rollback failure.
+            print(f'Kept {name}; cleanup will be retried at the next rollback [retained root]: {error}',
+                  file=sys.stderr)
+
+
+def delete_kept(top, name, history, root, fs_uuid, automatic=False):
+    require(automatic or (root['fstype'] == 'btrfs' and root['fsroot'] == '/@' and 'rw' in root['options'].split(',')),
             'Cleanup requires a normal writable boot of @.')
     check_layout(top, fs_uuid)
     check_grub(top / '@', fs_uuid)
     require(name in history, 'This is not a recorded kept root.')
     require(history[name]['filesystem'] == fs_uuid, 'Kept root filesystem mismatch.')
+    require(not history[name].get('pinned'), 'Unpin this previous system before deleting it [retained root].')
     receipt = top / '.emaki-rollback' / (name + '.json')
     if not (top / name).exists():
         # The preparation failed before or at its copy command; only the receipt is left.
@@ -352,9 +434,11 @@ def delete_kept(top, name, history, root, fs_uuid):
     ident = subvolume(top / name)
     # A kept root carries the previous @ (the exchange happened). Any other recorded
     # copy is an incomplete preparation that never became @: not an undo copy, not retained.
-    kept = {n for n, r in history.items() if (top / n).exists() and subvolume(top / n) == r['previous_id']}
+    kept = retained(top, history)
     if name in kept:
-        require(len(kept) > 1 and name != sorted(kept)[-1], 'Always retain the newest kept root and at least one undo copy.')
+        require(name not in kept[-2:], 'Always keep the two newest previous systems [retained roots].')
+    elif automatic:
+        raise Refused('Automatic cleanup only removes recorded previous systems [retained roots].')
     default = run('btrfs', 'subvolume', 'get-default', top)
     require(not re.match(r'ID ' + str(ident) + r'\b', default), 'Cannot delete the default subvolume.')
     require(f'subvolid={ident}' not in root['options'].split(','), 'Cannot delete the running root.')
@@ -371,7 +455,7 @@ def delete_kept(top, name, history, root, fs_uuid):
     run('btrfs', 'filesystem', 'sync', top)
     receipt.unlink()
     if name in kept:
-        print(f'Deleted {name}. The newest kept root remains available for undo.')
+        print(f'Deleted {name}. The two newest previous systems remain available [retained roots].')
     else:
         print(f'Deleted the incomplete preparation {name}.')
 
@@ -384,10 +468,23 @@ def main():
     sub.add_parser('snapshot', help='keep a chosen Snapper root snapshot').add_argument('number')
     sub.add_parser('restore', help='undo using a kept root; preserve the current root too').add_argument('name')
     sub.add_parser('list', help='list kept roots and incomplete preparations')
-    cleanup = sub.add_parser('delete', help='explicit cleanup; always retain the newest kept root')
+    release = sub.add_parser('release', help='allow a rolled-back package version again')
+    target = release.add_mutually_exclusive_group(required=True)
+    target.add_argument('name', nargs='?')
+    target.add_argument('--all', action='store_true')
+    for action in ('pin', 'unpin'):
+        sub.add_parser(action, help=f'{action} a previous system [retained root]').add_argument('name')
+    cleanup = sub.add_parser('delete', help='delete an older previous system [retained root]')
     cleanup.add_argument('name')
     cleanup.add_argument('--yes', action='store_true', help='confirm deletion of this exact kept root')
     args = parser.parse_args()
+    if args.action == 'release':
+        require(os.geteuid() == 0, 'Run this command as root (or through pkexec).')
+        require_release_root()
+        result = run(hold_helper(), 'release', '--all' if args.all else args.name)
+        if result:
+            print(result)
+        return
     root = mount_info('/')
     cmdline = Path('/proc/cmdline').read_text()
     status = boot_status(root, cmdline)
@@ -396,7 +493,7 @@ def main():
         return
     require(os.geteuid() == 0, 'Run this command as root (or through pkexec).')
     require(status['mode'] not in ('unsupported', 'pending'), status['message'])
-    if args.action in ('restore', 'delete'):
+    if args.action in ('restore', 'delete', 'pin', 'unpin'):
         require(KEPT.fullmatch(args.name), 'Use the exact kept-root name printed by emaki-rollback list.')
     if args.action == 'delete':
         require(args.yes, 'Deletion needs --yes and an exact kept-root name. Nothing changed.')
@@ -422,14 +519,15 @@ def main():
         with top_mount('/dev/disk/by-uuid/' + fs_uuid) as top:
             directory, history = records(top)
             if args.action == 'list':
+                kept = retained(top, history)
                 for name, record in history.items():
-                    ident = subvolume(top / name) if (top / name).exists() else None
-                    state = 'kept' if ident == record['previous_id'] else 'incomplete preparation'
-                    print(f'{name}\t{state}')
+                    print(f'{name}\t{retention_label(name, record, kept)}')
                 if not history:
                     print('No kept roots. Nothing to clean up.')
             elif args.action == 'delete':
                 delete_kept(top, args.name, history, root, fs_uuid)
+            elif args.action in ('pin', 'unpin'):
+                pin_kept(top, args.name, history, args.action == 'pin')
             else:
                 if args.action == 'restore':
                     require(args.name in history, 'Unknown kept root.')
@@ -439,6 +537,12 @@ def main():
                     source = safe_path(top, '@snapshots/' + args.number + '/snapshot')
                     subvolume(source, readonly=True)
                 promote(top, source, fs_uuid, Path('/proc/sys/kernel/random/boot_id').read_text().strip(), history)
+                try:
+                    _, history = records(top)
+                    prune_kept(top, history, mount_info('/'), fs_uuid)
+                except Exception:
+                    # This entire discovery/cleanup phase follows the committed swap.
+                    print('Rollback is done; cleanup was skipped (retained roots).', file=sys.stderr)
 
 
 if __name__ == '__main__':

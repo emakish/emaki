@@ -10,11 +10,14 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import shlex
 import tempfile
 import threading
 from urllib.request import urlopen
 
 from . import constants
+from .media import discover_repo, MISSING_NOTICE
+from .hardware import disk_behind_vmd, secure_boot, vmd_present, VMD_MESSAGE
 from .constants import GIB, MIB
 from .errors import Code, InstallError, require
 
@@ -205,7 +208,7 @@ def efi_loaders(root):
 
 BOOT_MOUNT = "/run/archiso/bootmnt"
 EFI = Path("/sys/firmware/efi")
-BUSY_REASON = "This disk or one of its partitions is held or in use (LVM, RAID or an open encrypted volume)."
+BUSY_REASON = "This disk is busy [LVM, RAID or an open encrypted volume]. Close its volumes, then try again."
 ENCRYPTED_TYPES = {
     "crypto_LUKS": "encrypted Linux system (LUKS)",
     "BitLocker": "encrypted Windows drive (BitLocker)",
@@ -363,6 +366,23 @@ def _extents(size, partitions):
     return gaps
 
 
+def busy_reason(nodes, holders):
+    details = []
+    for node in nodes:
+        path = _path(node)
+        mounts = _mountpoints(node)
+        if mounts:
+            details.append(f"{path} is open at {', '.join(mounts)} [mount]. Close files there, then unmount it [umount].")
+        held = holders.get(path)
+        if isinstance(held, list) and held:
+            details.append(f"{path} is held by {', '.join('/dev/' + item for item in held)} [device mapper or RAID]. Deactivate that volume or stop that array before trying again.")
+        elif node.get('type') not in {'disk', 'part'}:
+            kind = node.get('type')
+            action = 'Close it [cryptsetup close]' if kind == 'crypt' else ('Deactivate it [lvchange -an]' if kind == 'lvm' else 'Stop it [mdadm --stop]')
+            details.append(f"{path} is active [{kind}]. {action}, then try again.")
+    return ' '.join(details) or BUSY_REASON
+
+
 def parse_lsblk(payload, *, stable_ids=None, boot_sources=(), holders=None):
     """Parse recorded lsblk JSON without reading files or running commands.
 
@@ -427,6 +447,7 @@ def parse_lsblk(payload, *, stable_ids=None, boot_sources=(), holders=None):
             "free_extents": _extents(_number(node.get("size")), parts)
             if all(p["_geometry_known"] for p in parts) else [],
             "shrink": None,
+            "_busy_reason": busy_reason(descendants, holders),
             "_busy": any(_mountpoints(item) or holders.get(_path(item))
                          or item.get("type") not in {"disk", "part"} for item in descendants),
             "_read_only": any(_truth(item.get("ro")) for item in descendants), "_identity": identity,
@@ -500,29 +521,50 @@ def _online():
 def _timezone(online):
     if not online:
         return None
-    result = []
-
-    def lookup():
-        try:
-            with urlopen("https://ipapi.co/timezone", timeout=2.5) as response:
-                value = response.read(256).decode("ascii").strip()
-            if (re.fullmatch(r"[A-Za-z0-9_+\-/]+", value) and ".." not in value
-                    and not value.startswith("/") and Path("/usr/share/zoneinfo", value).is_file()):
-                result.append(value)
-        except Exception:
-            pass
-
-    # A socket timeout alone does not bound DNS lookup or a chain of redirects.
-    # A daemon lookup gives inventory an actual three-second wall-clock limit.
-    thread = threading.Thread(target=lookup, daemon=True)
-    thread.start()
-    thread.join(3)
-    return result[0] if result and not thread.is_alive() else None
+    try:
+        with urlopen("https://ipapi.co/timezone", timeout=2.5) as response:
+            value = response.read(256).decode("ascii").strip()
+        if (re.fullmatch(r"[A-Za-z0-9_+\-/]+", value) and ".." not in value
+                and not value.startswith("/") and Path("/usr/share/zoneinfo", value).is_file()):
+            return value
+    except Exception:
+        pass
+    return None
 
 
 class Inventory:
-    def __init__(self, runner):
+    def __init__(self, runner, *, root=Path("/"), sysfs_root=None):
+        self.sysfs_root = Path(sysfs_root) if sysfs_root is not None else Path(root) / "sys"
         self.runner = runner
+        self.root = Path(root)
+        self.tz_guess = None
+        self._timezone_thread = None
+        self._timezone_lock = threading.Lock()
+        self._timezone_done = threading.Event()
+
+    def start_timezone_lookup(self):
+        """Start the session's one best-effort lookup, outside every disk probe."""
+        with self._timezone_lock:
+            if self._timezone_thread is not None or not _online():
+                return
+
+            def lookup():
+                try:
+                    self.tz_guess = _timezone(True)
+                finally:
+                    self._timezone_done.set()
+
+            # DNS and redirects can outlive the socket timeout. Never join this
+            # daemon thread: it must not hold up inventory or service shutdown.
+            self._timezone_thread = threading.Thread(target=lookup, daemon=True)
+            self._timezone_thread.start()
+
+    def timezone_guess(self):
+        self.start_timezone_lookup()
+        # Offline, no lookup has started yet: still pending (a later network starts it),
+        # but the window polls slowly instead of every half second.
+        return dict(tz_guess=self.tz_guess, pending=not self._timezone_done.is_set(),
+                    offline=self._timezone_thread is None)
 
     def _optional(self, argv):
         try:
@@ -546,10 +588,32 @@ class Inventory:
         for node in nodes:
             path = _path(node)
             try:
-                holders[path] = any((Path("/sys/class/block") / Path(path).name / "holders").iterdir())
+                holders[path] = [entry.name for entry in (Path("/sys/class/block") / Path(path).name / "holders").iterdir()]
             except OSError:
                 holders[path] = True  # Missing/unreadable safety data fails closed.
         return holders
+
+    def _boot_marker(self, nodes):
+        """Retain boot-device exclusion when copytoram has unmounted bootmnt."""
+        try:
+            tokens = shlex.split(_read(self.root / 'proc/cmdline'))
+        except ValueError:
+            return set(), False
+        markers = [token.split('=', 1)[1] for token in tokens if token.startswith('archisodevice=')]
+        labels = [token.split('=', 1)[1] for token in tokens if token.startswith('archisolabel=')]
+        matches = set()
+        for node in nodes:
+            path = _path(node)
+            for marker in markers:
+                if marker.startswith('/dev/'):
+                    resolved = os.path.realpath(self.root / marker.lstrip('/'))
+                    expected = str(self.root / path.lstrip('/'))
+                    if resolved == expected:
+                        matches.add(path)
+            if labels and node.get('label') in labels:
+                matches.add(path)
+        # Ambiguous labels or contradictory boot markers prove nothing.
+        return (matches, True) if len(matches) == 1 else (set(), False)
 
     def _boot_sources(self, nodes):
         """Resolve the exact live-medium mount and, for loop ISOs, its backing disk."""
@@ -562,7 +626,7 @@ class Inventory:
                 data = json.loads(self._optional(query))
                 mounts = data.get("filesystems", [])
                 if len(mounts) != 1:
-                    return set(), False
+                    return self._boot_marker(nodes)
                 source = mounts[0].get("source", "").split("[", 1)[0]
                 path = numbers.get(mounts[0].get("maj:min")) or os.path.realpath(source)
                 if path not in known or path in visited:
@@ -577,7 +641,7 @@ class Inventory:
                     return set(), False
                 query = ["findmnt", "--json", "--target", backing, "--output", "SOURCE,MAJ:MIN"]
             except (ValueError, TypeError, KeyError):
-                return set(), False
+                return self._boot_marker(nodes)
         return set(), False
 
     def _signature(self, path):
@@ -646,7 +710,7 @@ class Inventory:
 
     def _inspect(self, disk, part):
         fs = part["fs"]
-        if fs not in {"vfat", "ext4", "btrfs"}:
+        if fs not in {"vfat", "ext4", "btrfs", "ntfs", "ntfs3"}:
             return
         if fs == "btrfs":
             part["_btrfs_devices"] = self._btrfs_devices(part["path"])
@@ -656,12 +720,16 @@ class Inventory:
                 self._refuse(disk, self._set_reason(part["path"], "a Btrfs filesystem", part["_btrfs_devices"]))
                 return
         options = {"vfat": "ro", "ext4": "ro,noload",
-                   "btrfs": "ro,nologreplay,subvolid=5"}[fs] + ",nodev,nosuid,noexec"
+                   "btrfs": "ro,nologreplay,subvolid=5",
+                   "ntfs": "ro,norecover", "ntfs3": "ro,norecover"}[fs] + ",nodev,nosuid,noexec"
         root = Path(tempfile.mkdtemp(prefix="probe-", dir="/run/emaki-installer"))
         mounted = False
         try:
             try:
-                self.runner.run(["mount", "--types", fs, "--options", options, "--", part["path"], str(root)])
+                if fs in {"ntfs", "ntfs3"}:
+                    self.runner.run(["ntfs-3g", "-o", options, part["path"], str(root)])
+                else:
+                    self.runner.run(["mount", "--types", fs, "--options", options, "--", part["path"], str(root)])
                 mounted = True
             except (OSError, RuntimeError):
                 return
@@ -671,6 +739,8 @@ class Inventory:
                 if _has_windows(root):
                     part["os_hint"] = "windows"
                 part['_efi_loaders'] = efi_loaders(root)
+            if fs in {"ntfs", "ntfs3"} and windows_system(root):
+                part["os_hint"] = "windows"
             if fs in {"ext4", "btrfs"}:
                 part["os_hint"] = _root_hint(root)
             if fs == "btrfs":
@@ -780,6 +850,8 @@ class Inventory:
         disks = parse_lsblk(payload, stable_ids=self._stable_ids(), boot_sources=boot_sources,
                             holders=self._holders(nodes))
         for disk in disks:
+            if disk_behind_vmd(disk["path"], self.root):
+                disk["_vmd"] = True
             if not boot_known or disk["_busy"] or disk["is_boot_medium"] or disk["_read_only"]:
                 self._alongside(disk, boot_known)
                 continue
@@ -827,16 +899,35 @@ class Inventory:
             # interface words the boot medium and mounted partitions itself.
             if (disk["_busy"] and not disk["is_boot_medium"]
                     and not any(part["mountpoint"] for part in disk["partitions"])):
-                disk.setdefault("reason", BUSY_REASON)
+                disk.setdefault("reason", disk.get("_busy_reason", BUSY_REASON))
         online = _online()
-        pci = self._optional(["lspci"])
-        gpu = "; ".join(line for line in pci.splitlines()
-                        if any(kind in line for kind in ("VGA compatible controller", "3D controller", "Display controller")))
+        from .graphics import inventory as graphics_inventory
+        graphics = graphics_inventory(self.sysfs_root, root=self.root)
+        pci = ""
+        if graphics:
+            # Keep hybrid discrete GPUs asleep: even the display label uses
+            # cached attributes once NVIDIA hardware has been identified.
+            gpu = "; ".join(f"Graphics controller (PCI {row['vendor']:04x}:"
+                            + (f"{row['device']:04x}" if row['device'] is not None else "unknown") + ")"
+                            for row in graphics['_graphics']['devices'])
+        else:
+            pci = self._optional(["lspci"])
+            gpu = "; ".join(line for line in pci.splitlines()
+                            if any(kind in line for kind in ("VGA compatible controller", "3D controller", "Display controller")))
         cpu = next((line.split(":", 1)[1].strip() for line in _read("/proc/cpuinfo").splitlines()
                     if line.startswith(("model name", "Hardware")) and ":" in line), "Unknown CPU")
         uefi, uefi_bits = firmware()
-        return {"disks": disks, "gpu": gpu or "Unknown GPU", "cpu": cpu,
+        hardware = {}
+        state = secure_boot(self.root)
+        if state is not False:
+            hardware["secure_boot"] = state
+        if vmd_present(self.root, pci) and not any(not d["is_boot_medium"] for d in disks):
+            hardware["disk_notice"] = VMD_MESSAGE
+        if discover_repo(self.root) is None:
+            hardware["media_notice"] = MISSING_NOTICE if online else (
+                "The installation files are missing. Connect to the internet before installing (Ventoy or copytoram).")
+        return {**graphics, "hardware": hardware, "disks": disks, "gpu": gpu or "Unknown GPU", "cpu": cpu,
                 "memory_bytes": memory_size(),
                 "uefi": uefi, "uefi_bits": uefi_bits, "network": {"online": online},
-                "tz_guess": _timezone(online), "scale_guess": None,
+                "tz_guess": self.tz_guess, "scale_guess": None,
                 "_boot_medium_known": boot_known}

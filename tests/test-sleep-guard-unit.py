@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import select
+import shlex
 import shutil
 import socket
 import struct
@@ -19,6 +20,7 @@ import tempfile
 import threading
 import time
 import unittest
+from runtime_fixture import short_runtime
 import reaper
 reaper.guard()  # nothing this test starts outlives it
 
@@ -72,16 +74,21 @@ class UnitChecks:
 
     def exit_status(self, argv, **environ):
         """Run a start script with private directories and without any display."""
-        with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as private:
+        with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as private, short_runtime() as runtime:
             for name in ('run', 'cache', 'state', 'data', 'config'):
                 os.mkdir(os.path.join(private, name), 0o700)
             env = {key: value for key, value in os.environ.items()
                    if key not in ('WAYLAND_DISPLAY', 'WAYLAND_SOCKET', 'DISPLAY', 'NIRI_SOCKET', 'EMAKI_LOGIN_HANDOFF')}
-            env.update(XDG_RUNTIME_DIR=private + '/run', XDG_CACHE_HOME=private + '/cache',
+            env.update(XDG_RUNTIME_DIR=runtime, XDG_CACHE_HOME=private + '/cache',
                        XDG_STATE_HOME=private + '/state', XDG_DATA_HOME=private + '/data',
                        XDG_CONFIG_HOME=private + '/config', QT_QPA_PLATFORM='offscreen',
                        QS_DISABLE_CRASH_HANDLER='1')
             env.update({key: value.replace('{private}', private) for key, value in environ.items()})
+            if self.SCRIPT.name == 'emaki-shell':
+                checker = Path(private, 'run/emaki-qt-check')
+                checker.write_text('#!/bin/sh\nexit 0\n')
+                checker.chmod(0o700)
+                env['PATH'] = private + '/run:' + env.get('PATH', '')
             if callable(argv):
                 argv = argv(private)
             done = subprocess.run(argv, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
@@ -288,6 +295,55 @@ class SleepGuardRestart(UnitChecks, unittest.TestCase):
         # status may keep it down.
         self.assertEqual(self.prevented(), set())
 
+    def test_shutdown_stops_the_compositor_before_the_guard(self):
+        # The inhibitor and polling children must outlive the compositor stop.
+        # Stop ordering reverses Before/After; After=graphical-session.target
+        # would instead hold up the compositor while the guard waits for it.
+        before = set(self.unit['Unit'].get('Before', '').split())
+        after = set(self.unit['Unit'].get('After', '').split())
+        self.assertTrue({'niri-emaki.service', 'niri.service', 'graphical-session.target'} <= before)
+        self.assertNotIn('graphical-session.target', after)
+
+    def test_start_outside_a_graphical_session_is_skipped(self):
+        # ExecCondition exit 1..254 skips activation, including Restart=always.
+        # Requisite needs After=, which would reverse the required shutdown order.
+        self.assertNotIn('Requisite', self.unit['Unit'])
+        condition = shlex.split(self.unit['Service']['ExecCondition'])
+        self.assertEqual(condition[:2], ['/bin/sh', '-c'])
+        self.assertEqual(len(condition), 3)
+        command = condition[2]
+        self.assertEqual(command.count('/usr/bin/systemctl'), 1)
+        # systemd turns $$ into a literal $ before handing the command to sh.
+        self.assertNotIn('$', command.replace('$$', ''))
+        command = command.replace('$$', '$')
+        with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as private:
+            fake = Path(private) / 'systemctl'
+            args = Path(private) / 'args'
+            fake.write_text('#!/bin/sh\n'
+                            'printf "%s\\n" "$@" > "$QUERY_ARGS"\n'
+                            'printf "%s\\n" "$QUERY_STATE"\n'
+                            'exit "$QUERY_STATUS"\n')
+            fake.chmod(0o700)
+            command = command.replace('/usr/bin/systemctl', shlex.quote(str(fake)))
+            cases = [(state, 0, 0 if state in ('active', 'activating') else 1)
+                     for state in ('active', 'activating', 'inactive', 'deactivating',
+                                   'failed', 'reloading', 'unknown', '', 'active\nactivating')]
+            # Query errors must skip activation, even with misleading stdout, and
+            # must never return 255 (which makes ExecCondition fail the service).
+            cases.extend((state, status, 1) for state in ('', 'active', 'activating')
+                         for status in (1, 4, 255))
+            for state, query_status, expected in cases:
+                with self.subTest(state=state, query_status=query_status):
+                    result = subprocess.run(
+                        condition[:2] + [command],
+                        env={**os.environ, 'QUERY_ARGS': str(args), 'QUERY_STATE': state,
+                             'QUERY_STATUS': str(query_status)},
+                        stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=5)
+                    self.assertEqual(result.returncode, expected, result.stderr)
+                    self.assertEqual(args.read_text().splitlines(),
+                                     ['--user', 'show', '--property=ActiveState', '--value',
+                                      'graphical-session.target'])
+
     def test_a_guard_that_cannot_start_backs_off(self):
         # A guard that can never start (no system bus, no logind) was restarted every second
         # for the rest of the session: about 3,400 starts an hour of 60 ms CPU each (5.7 % of
@@ -334,7 +390,7 @@ class ShellRestart(UnitChecks, unittest.TestCase):
         self.assertEqual(self.unit['Service']['RestartSec'], '1')
 
     def test_exits_no_restart_can_heal_are_not_retried(self):
-        # Only 127 (qs is not installed). 255 is also every fatal Wayland error of a shell
+        # 127 (qs is not installed) needs repair; a Qt mismatch only warns and the panel still starts. 255 is a fatal Wayland error of a shell
         # that was running fine (test_a_lost_compositor_is_255_and_restarted); a shell that
         # cannot load is stopped by the start limit instead.
         self.assertEqual(self.prevented(), {'127'})
@@ -385,6 +441,9 @@ class ShellRestart(UnitChecks, unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='emaki-wl-', dir='/tmp') as private:
             for name in ('run', 'cache', 'state', 'data', 'config', 'shell'):
                 os.mkdir(os.path.join(private, name), 0o700)
+            checker = Path(private, 'run/emaki-qt-check')
+            checker.write_text('#!/bin/sh\nexit 0\n')
+            checker.chmod(0o700)
             Path(private, 'shell/shell.qml').write_text('import Quickshell\n\nShellRoot {}\n')
             loaded = threading.Event()
             compositor = FakeCompositor(os.path.join(private, 'run/wayland-test'), how, loaded)
@@ -396,7 +455,7 @@ class ShellRestart(UnitChecks, unittest.TestCase):
                        XDG_STATE_HOME=private + '/state', XDG_DATA_HOME=private + '/data',
                        XDG_CONFIG_HOME=private + '/config', EMAKI_SHELL_DIR=private + '/shell',
                        WAYLAND_DISPLAY='wayland-test', QT_QPA_PLATFORM='wayland',
-                       QT_QUICK_BACKEND='software')
+                       QT_QUICK_BACKEND='software', PATH=private + '/run:' + env.get('PATH', ''))
             shell = subprocess.Popen(['/bin/sh', str(self.SCRIPT)], env=env, stdin=subprocess.DEVNULL,
                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             output = []
@@ -448,13 +507,14 @@ class ShellRestart(UnitChecks, unittest.TestCase):
         def forever(lifetime):
             while True:
                 yield lifetime
-        # A shell that dies while loading (0.3 s) stops within the first window.
-        stopped = first_refused(forever(0.3))
-        self.assertIsNotNone(stopped)
-        self.assertLess(stopped, interval)
-        # One that lives more than two seconds each time is never stopped; a crash a
-        # minute neither.
-        for lifetime in (2.1, 5, 60, 1800):
+        # Repeated failures during fast or slow loading stop within the first window.
+        for lifetime in (0.3, 2.1, 2.5, 5):
+            stopped = first_refused(forever(lifetime))
+            self.assertIsNotNone(stopped, lifetime)
+            self.assertLess(stopped, interval, lifetime)
+        self.assertEqual(first_refused(forever(2.5)), 70.0)
+        # Occasional crashes still recover without accumulating across windows.
+        for lifetime in (10, 60, 1800):
             self.assertIsNone(first_refused(forever(lifetime)), lifetime)
         # The window starts over by itself: bursts of quick crashes with calm in between
         # never add up, unlike RestartSteps=, whose counter lives as long as the session.

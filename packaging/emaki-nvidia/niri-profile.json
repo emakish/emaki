@@ -1,0 +1,9 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+{
+  "rules": [
+    {"pattern": {"feature": "procname", "matches": "niri"}, "profile": "Emaki niri"},
+    {"pattern": {"feature": "procname", "matches": "niri-emaki"}, "profile": "Emaki niri"}
+  ],
+  "profiles": [{"name": "Emaki niri", "settings": [{"key": "GLVidHeapReuseRatio", "value": 0}]}]
+}

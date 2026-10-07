@@ -14,6 +14,15 @@ class PlannerTests(unittest.TestCase):
             make_plan(c, inv)
         self.assertEqual(raised.exception.code, code)
 
+    def test_session_output_scales_are_validated(self):
+        c = config()
+        c['output_scales'] = {'eDP-1': 1.25, 'HDMI-A-1': 1.5, 'DP-1': 1}
+        self.assertEqual(validate_config(c)['output_scales'], c['output_scales'])
+        for scales in ([], {'eDP-1': True}, {'eDP-1': float('nan')}, {'eDP-1': 0},
+                       {'eDP-1': 4.1}, {'bad\nname': 1.25}, {'': 1}, {'x' * 257: 1}):
+            with self.subTest(scales=scales), self.assertRaises(InstallError):
+                validate_config(dict(c, output_scales=scales))
+
     def test_encrypted_confirmation_matches_path_type_and_uuid(self):
         from emaki_installer.inventory import encrypted_warning, unconfirmed_identity_warning
         for kind in ('crypto_LUKS', 'BitLocker', 'cs_fvault2', 'apfs'):
@@ -72,6 +81,16 @@ class PlannerTests(unittest.TestCase):
         before = fingerprint(disk)
         disk['closed_encrypted'][0]['uuid'] = 'second'
         self.assertNotEqual(before, fingerprint(disk))
+
+    def test_review_names_the_final_update_choice(self):
+        for online_update, expected in (
+            (True, 'Update Emaki at the end: when connected.'),
+            (False, 'Update Emaki at the end: off.'),
+        ):
+            with self.subTest(online_update=online_update):
+                summary = make_plan(dict(config(), online_update=online_update), inventory()).summary
+                self.assertEqual([line for line in summary if line.startswith('Update Emaki at the end:')],
+                                 [expected])
 
     def test_review_names_the_keyboard_layouts(self):
         rules = ('! model\n  pc105 Generic\n! layout\n  us              English (US)\n  cz              Czech\n'

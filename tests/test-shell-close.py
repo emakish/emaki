@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Actual QML mouse events + emaki watch + fake niri overview; never Wayland."""
+from runtime_fixture import runtime_path
 import json
 import os
 from pathlib import Path
@@ -30,17 +31,17 @@ for app_id, name in (('fixture-anki', 'Anki'), ('fixture-qvidcap', 'Qt V4L2 vide
         f'[Desktop Entry]\nType=Application\nName={name}\nExec=/usr/bin/true\nTerminal=false\n')
 shutil.copytree(ROOT / 'shell', profile / 'qml')
 shutil.copyfile(ROOT / 'tests/fixtures/ShellCloseTest.qml', profile / 'qml/shell.qml')
-env = dict(os.environ, EMAKI_BIN=str(BINARY), NIRI_SOCKET=str(profile / 'n.sock'),
+env = dict(os.environ, EMAKI_BIN=str(BINARY), NIRI_SOCKET=str(runtime_path(profile) / 'n.sock'),
            QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QT_SCALE_FACTOR='1',
            QML_DISABLE_DISK_CACHE='1', XDG_CONFIG_HOME=str(profile / 'config'),
            XDG_STATE_HOME=str(profile / 'state'), XDG_DATA_HOME=str(profile / 'data'),
            XDG_DATA_DIRS=str(profile / 'share'), XDG_CACHE_HOME=str(profile / 'cache'),
-           XDG_RUNTIME_DIR=str(profile / 'runtime'), TMPDIR=str(profile / 'tmp'),
+           XDG_RUNTIME_DIR=str(runtime_path(profile)), TMPDIR=str(profile / 'tmp'),
            DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(profile / 'no-session'),
            DBUS_SYSTEM_BUS_ADDRESS='unix:path=' + str(profile / 'no-system'))
 for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'QT_SCREEN_SCALE_FACTORS', 'QT_LOGGING_RULES'):
     env.pop(name, None)
-server = Server(profile / 'n.sock')
+server = Server(runtime_path(profile) / 'n.sock')
 thread = threading.Thread(target=server.serve_forever, daemon=True)
 thread.start()
 log_path = profile / 'qs.log'

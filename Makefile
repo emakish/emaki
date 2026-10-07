@@ -45,27 +45,42 @@ SYSTEMD = $(DESTDIR)$(PREFIX)/lib/systemd
 # The vendor PAM directory is compiled into libpam (/usr/lib/pam.d on Arch),
 # so it does not depend on PREFIX.
 PAMDIR  = $(DESTDIR)/usr/lib/pam.d
+BOOTLIB = $(DESTDIR)$(PREFIX)/lib/emaki/boot/emaki_boot
+BOOT_SHARED = boot errors grub_screen
+BOOT_ARTWORK = $(wildcard installer/emaki_installer/grub_artwork/*/*.png)
 # niri only looks here for the system config (src/main.rs); PREFIX does not affect the path.
 NIRI_ETC = $(DESTDIR)/etc/niri/config.kdl
 # Header string from niri/system.kdl: install and uninstall use it to recognize our file
 # and leave any other /etc/niri/config.kdl alone.
 NIRI_ETC_MARK = Emaki — system niri config
 
-SCRIPTS = scripts/emaki-rollback scripts/emaki-drm-hold scripts/emaki-greeter-compositor scripts/emaki-greeter-run scripts/emaki-session-import-environment scripts/emaki-idle scripts/emaki-config-path scripts/emaki-power scripts/emaki-shell scripts/emaki-lock scripts/emaki-greeter-provision scripts/emaki-session-wallpaper scripts/emaki-sleep-guard scripts/emaki-text-session
+SCRIPTS = scripts/emaki-qt-check scripts/emaki-autostart scripts/emaki-wallet-migrate scripts/emaki-boot-refresh scripts/emaki-migrate-installer-config scripts/emaki-rollback scripts/emaki-drm-hold scripts/emaki-greeter-compositor scripts/emaki-greeter-run scripts/emaki-session-import-environment scripts/emaki-idle scripts/emaki-config-path scripts/emaki-power scripts/emaki-shell scripts/emaki-lock scripts/emaki-greeter-provision scripts/emaki-session-wallpaper scripts/emaki-sleep-guard scripts/emaki-text-session scripts/emaki-shell-health
 # Shell: QML, helpers, shader — copied as is to $(SHARE)/shell. Core: release binary
 # from `make build` (prefix/datadir paths are compiled in; see CORE_ENV below).
 SHELL_SRC = $(shell find shell -type f ! -path '*/__pycache__/*' ! -name '*.pyc' ! -name '*.pyo')
 QSB      ?= $(or $(shell command -v qsb),/usr/lib/qt6/bin/qsb)
 CORE_BIN  = $(CARGO_TARGET_DIR)/release/emaki
 
-.PHONY: render install uninstall check check-deps build
+.PHONY: render install uninstall check check-assumptions check-deps build
 
 render:
 	./scripts/render-theme
 	python scripts/render-shell-palette
 	python3 scripts/render-kde-theme
 
-check:
+check: check-assumptions
+	python3 tests/test-runtime-fixture.py
+	python3 tests/test-vm-runtime.py
+	python3 tests/test-wait-fixture.py
+	python3 scripts/check-delivery.py
+	python3 tests/test-delivery.py
+	bash iso/preflight.sh
+	python3 tests/test-iso-preflight.py
+	python3 tests/test-qt-abi.py
+	python3 tests/test-qmldir.py
+	python3 tests/test-shell-recovery.py
+	python3 tests/test-shell-health.py
+	python3 tests/test-shell-recovery-notice.py
 	niri validate -c niri/default.kdl
 	niri validate -c greetd/niri.kdl
 	@if command -v niri-emaki >/dev/null 2>&1; then \
@@ -74,12 +89,27 @@ check:
 		echo 'Skipping fork-rules.kdl: niri-emaki is not installed (stock niri lacks fork-only nodes).'; \
 	fi
 	sh tests/test-niri-entry.sh
+	python3 tests/test-autostart.py
 	sh tests/test-power.sh
 	python3 tests/test-uninstall.py
+	python3 tests/test-boot-refresh.py
+	python3 tests/test-boot-refresh-attacks.py
+	python3 tests/test-boot-delivery-guest.py
+	python3 tests/test-boot-refresh-real.py
+	python3 tests/test-resume.py
+	python3 tests/test-nvidia.py
 	python3 tests/test-boot-splash.py
 	python3 tests/test-fetch.py
 	python3 tests/test-cursors.py
 	python3 tests/test-iso-check-env.py
+	python3 tests/test-ci-forks.py ForkChecks
+	python3 tests/test-iso-boot-health.py
+	python3 tests/test-iso-shot.py
+	python3 tests/test-boot-menu-check.py
+	python3 tests/test-rollback-check.py
+	python3 tests/test-encrypt-check.py
+	python3 tests/test-install-progress-check.py
+	python3 tests/test-release-notes.py
 	python3 tests/test-status-words.py
 	python3 tests/test-iso-install-harness.py
 	EMAKI_TEST_UNIX_SOCKET=1 PYTHONPATH=installer python3 -m unittest discover -s installer/tests
@@ -87,8 +117,27 @@ check:
 	python3 tests/test-sleep-guard.py
 	sh tests/test-idle.sh
 	python3 tests/test-keyboard-single-source.py
+	python3 tests/test-desktop-bindings.py
+	python3 tests/test-shell-smalls.py
+	python3 tests/test-wallpaper-fallback.py
+	python3 tests/test-wallpaper-policy.py
 	python3 tests/test-reaper.py
 	python3 tests/test-arch-watch.py
+	python3 tests/test-vm-memory.py
+	python3 tests/test-vm-suite-target.py
+	python3 tests/test-vm-greeter-target.py
+	python3 tests/test-vm-lock-target.py
+	python3 tests/test-vm-glass-target.py
+	python3 tests/test-clipboard-runtime.py
+	python3 tests/test-live-session.py
+	python3 tests/test-kdeconnect-autostart.py
+	python3 tests/test-desktop-theme.py
+	python3 tests/test-secret-service.py
+	python3 tests/test-wallet-login.py
+
+check-assumptions:
+	python3 tests/test-fork-assumptions.py
+	python3 tests/test-lock-capture-assumptions.py
 
 # Every metapackage dependency is in the official repositories (requires the pacman -Sy database).
 check-deps:
@@ -98,6 +147,8 @@ check-deps:
 # pointer/key interactions and offscreen renders.
 .PHONY: check-installer check-iso check-updates check-all
 check-installer:
+	python3 installer/assets/grub/generate-screens.py --check
+	python3 tests/test-grub-artwork.py
 	python3 installer/ui/tests/check.py
 	python3 -m unittest discover -s installer/ui/tests -p 'test_*.py'
 	node installer/ui/tests/test-protocol.js
@@ -109,6 +160,7 @@ check-installer:
 # Static ISO profile checks and the offline tests of the release walk tools (no VM).
 check-iso:
 	bash iso/check.sh
+	python3 tests/test-installed-defaults.py
 	python3 tests/vm/eyes/test_eyes.py
 	python3 tests/test-release-gate.py
 	python3 tests/test-graphics-fallback-check.py
@@ -116,9 +168,41 @@ check-iso:
 # The package mirror: publisher, R2 client, pointer Worker, key-backup check, upgrade-check
 # helpers (no network, no Cloudflare; see docs/mirror.md).
 check-updates:
+	python3 tests/test-upkeep-transactions.py
+	python3 tests/test-update-pins.py
+	python3 tests/test-upkeep.py
+	python3 tests/test-system-migrate.py
+	python3 tests/test-boot-defaults.py
+	python3 tests/test-initramfs-refresh.py
+	python3 tests/test-initramfs-native.py
+	python3 tests/test-mirror-refresh.py
+	python3 tests/test-discover-autostart.py
+	python3 tests/test-rollback-holds.py
+	python3 tests/test-update-channel.py
+	python3 tests/test-channel-transactions.py
+	python3 tests/test-legacy-app-notice.py
+	python3 tests/test-snapshot-menu.py
+	python3 tests/test-channel-detection.py
+	python3 tests/test-arch-snapshot.py
+	python3 tests/test-qt-runtime-pins.py
+	python3 tests/test-arch-source-fallback.py
+	python3 tests/test-historical-sources.py
+	python3 tests/test-cargo-sources.py
+	python3 tests/test-go-sources.py
+	python3 tests/test-source-routes.py
+	python3 tests/test-source-keys.py
+	python3 tests/test-savannah-git.py
+	python3 tests/test-unused-sources.py
 	python3 tests/test-iso-sources.py
+	python3 tests/test-audit-sources.py
+	python3 tests/test-collect-sources.py
+	python3 tests/test-iso-source-signatures.py
 	python3 tests/test-source-archives.py
+	python3 tests/test-release-inputs.py
 	python3 tests/test-publish.py
+	python3 tests/test-publish-immutability.py
+	python3 tests/test-publish-transactions.py
+	python3 tests/test-publish-iso-transactions.py
 	python3 tests/test-r2-client.py
 	python3 tests/test-upgrade-check.py
 	node tests/test-pointer-worker.mjs
@@ -127,7 +211,30 @@ check-updates:
 # Everything a release candidate passes on the host before any VM job (tests/vm/release-gate.sh).
 check-all: check check-deps check-shell check-installer check-iso check-updates check-leaks
 
-install:
+.PHONY: install-upkeep
+install-upkeep:
+	for hook in 01-emaki-config-release 02-emaki-config-remove; do install -Dm644 upkeep/$$hook.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/$$hook.hook; done
+	install -Dm644 upkeep/99-emaki-qt-check.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/99-emaki-qt-check.hook
+	install -Dm755 upkeep/emaki-rollback-holds $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-rollback-holds
+	install -Dm644 upkeep/00-emaki-rollback-holds.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/00-emaki-rollback-holds.hook
+	install -Dm644 upkeep/99-emaki-rollback-holds.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/99-emaki-rollback-holds.hook
+	install -Dm755 upkeep/emaki-snapshot-policy $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-snapshot-policy
+	install -Dm755 upkeep/emaki-initramfs-refresh $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-initramfs-refresh
+	install -Dm644 upkeep/89-emaki-system-migrate.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/89-emaki-system-migrate.hook
+	install -Dm644 upkeep/93-emaki-initramfs-refresh.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/93-emaki-initramfs-refresh.hook
+	install -Dm755 upkeep/emaki-system-migrate $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-system-migrate
+	install -Dm755 upkeep/emaki_boot_defaults.py $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki_boot_defaults.py
+	install -Dm755 upkeep/emaki_initramfs.py $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki_initramfs.py
+	install -Dm644 upkeep/89-emaki-initramfs-begin.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/89-emaki-initramfs-begin.hook
+	for file in linux.preset linux-lts.preset grub-btrfs.conf; do install -Dm644 boot/defaults/$$file $(SHARE)/boot/$$file; done
+	install -Dm644 upkeep/defaults/00-emaki-zram.conf $(SYSTEMD)/zram-generator.conf.d/00-emaki.conf
+	install -Dm440 upkeep/defaults/10-emaki-wheel $(DESTDIR)/etc/sudoers.d/10-emaki-wheel
+	install -Dm440 upkeep/defaults/wheel $(SHARE)/defaults/wheel
+	install -d $(DESTDIR)/etc/emaki/sudoers.d
+	install -Dm755 upkeep/emaki-refresh-mirrors $(BIN)/emaki-refresh-mirrors
+	for unit in emaki-refresh-mirrors.service emaki-refresh-mirrors.timer; do install -Dm644 systemd/$$unit $(SYSTEMD)/system/$$unit; done
+
+install: install-upkeep
 	@if [ -e "$(XDG)/fastfetch/config.jsonc" ] && ! grep -qF 'Emaki fetch default.' "$(XDG)/fastfetch/config.jsonc"; then \
 		echo 'make install: existing non-Emaki fastfetch system config; not overwriting.' >&2; exit 1; fi
 	@if [ -e "$(NIRI_ETC)" ] && ! grep -qF "$(NIRI_ETC_MARK)" "$(NIRI_ETC)"; then \
@@ -148,10 +255,13 @@ install:
 	for f in $(SHADERS); do install -Dm644 "$$f" "$(SHARE)/shell/shaders/$$(basename "$$f")"; done
 	install -Dm644 -t $(SHARE)/niri niri/default.kdl niri/theme.kdl niri/shell.kdl
 	install -Dm644 niri/system.kdl $(NIRI_ETC)
-	install -Dm644 -t $(SYSTEMD)/user systemd/emaki-shell.service systemd/emaki-sleep-guard.service systemd/emaki-idle.service
+	install -Dm644 -t $(SYSTEMD)/user systemd/emaki-shell.service systemd/emaki-shell-heal.service systemd/emaki-shell-recovery.service systemd/emaki-sleep-guard.service systemd/emaki-idle.service systemd/emaki-wallet-migrate.service
 	install -Dm644 -t $(SHARE)/kitty kitty/theme.conf
 	install -Dm644 -t $(SHARE)/qt6ct qt6ct/emaki.conf
 	install -Dm644 packaging/emaki-config/kdeglobals $(XDG)/kdeglobals
+	install -Dm644 packaging/emaki-config/kwalletrc $(XDG)/kwalletrc
+	install -Dm644 packaging/emaki-config/60-emaki-xdg.conf $(DESTDIR)$(PREFIX)/lib/environment.d/60-emaki-xdg.conf
+	install -Dm644 packaging/emaki-config/org.kde.kdeconnect.daemon.desktop $(SHARE)/xdg/autostart/org.kde.kdeconnect.daemon.desktop
 	install -Dm644 packaging/emaki-config/dolphinrc $(XDG)/dolphinrc
 	install -Dm644 packaging/emaki-config/niri-portals.conf $(XDG)/xdg-desktop-portal/niri-portals.conf
 	install -Dm644 packaging/emaki-config/mimeapps.list $(XDG)/mimeapps.list
@@ -162,8 +272,27 @@ install:
 	rm -rf $(SHARE)/swayosd
 	install -Dm644 -t $(XDG)/hypr hypr/hyprlock.conf
 	install -Dm644 -t $(SHARE)/greetd greetd/config.toml greetd/niri.kdl greetd/graphics-failed.txt
+	install -Dm644 greetd/data/wayland-sessions/niri.desktop $(SHARE)/greetd/data/wayland-sessions/niri.desktop
+	install -Dm644 gtk/Emaki/gtk-3.0/gtk.css $(DESTDIR)$(PREFIX)/share/themes/Emaki/gtk-3.0/gtk.css
 	install -Dm644 art/grub/background.png $(SHARE)/grub/background.png
+	install -Dm644 grub/defaults.cfg $(SHARE)/grub/defaults.cfg
+	install -Dm644 installer/assets/grub/unlock-24.pf2 $(SHARE)/grub/unlock-24.pf2
+	install -Dm644 installer/assets/grub/LICENSE-DejaVu.txt $(DESTDIR)$(PREFIX)/share/licenses/emaki-config/LICENSE-DejaVu.txt
+	install -Dm644 -t $(BOOTLIB) grub/emaki_boot/__init__.py grub/emaki_boot/refresh.py
+	for module in $(BOOT_SHARED); do install -Dm644 "installer/emaki_installer/$$module.py" "$(BOOTLIB)/$$module.py"; done
+	for picture in $(BOOT_ARTWORK); do install -Dm644 "$$picture" "$(BOOTLIB)/$${picture#installer/emaki_installer/}"; done
+	install -Dm644 grub/95-emaki-boot-refresh.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/95-emaki-boot-refresh.hook
+	install -Dm755 systemd/emaki-boot-resume $(SYSTEMD)/system-sleep/emaki-boot-resume
+	install -Dm644 systemd/emaki-boot-complete.service $(SYSTEMD)/system/emaki-boot-complete.service
+	mkdir -p $(SYSTEMD)/system/multi-user.target.wants
+	ln -sfn ../emaki-boot-complete.service $(SYSTEMD)/system/multi-user.target.wants/emaki-boot-complete.service
+	install -Dm644 initcpio/hooks/emaki-resume $(DESTDIR)/usr/lib/initcpio/hooks/emaki-resume
+	install -Dm644 initcpio/install/emaki-resume $(DESTDIR)/usr/lib/initcpio/install/emaki-resume
 	install -Dm644 grub/90-emaki-grub-title.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/90-emaki-grub-title.hook
+	install -Dm644 grub/91-emaki-snapshot-menu.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/91-emaki-snapshot-menu.hook
+	install -Dm755 grub/emaki-snapshot-menu $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-snapshot-menu
+	install -Dm755 grub/emaki-snapshot-menu-check $(BIN)/emaki-snapshot-menu-check
+	install -Dm755 scripts/emaki-update-channel $(BIN)/emaki-update-channel
 	install -Dm755 grub/emaki-grub-title $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-grub-title
 	# Snapshot boot hook, named in HOOKS on btrfs installs. mkinitcpio's own directory, fixed
 	# whatever PREFIX is; a copy in /etc/initcpio is the administrator's and is read first.
@@ -175,6 +304,7 @@ install:
 	install -Dm644 -t $(DESTDIR)$(PREFIX)/share/libalpm/hooks os-release/50-emaki-os-release.hook os-release/50-emaki-os-release-remove.hook
 	install -Dm755 os-release/emaki-os-release $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-os-release
 	install -Dm644 packaging/emaki-config/emaki-release $(DESTDIR)$(PREFIX)/lib/emaki-release
+	install -Dm644 packaging/emaki-config/95-emaki-session-update.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/95-emaki-session-update.hook
 	@commit='$(if $(EMAKI_COMMIT),$(EMAKI_COMMIT),$(shell git rev-parse --verify HEAD))'; \
 		printf '%s\n' "$$commit" | grep -Eq '^[0-9a-f]{40}$$' || exit 1; \
 		printf 'EMAKI_COMMIT=%s\n' "$$commit" >> $(DESTDIR)$(PREFIX)/lib/emaki-release
@@ -188,7 +318,7 @@ install:
 	install -dm755 $(ICONS)/Emaki/cursors
 	cp -P --no-preserve=ownership cursors/Emaki/cursors/* $(ICONS)/Emaki/cursors/
 	# Living wallpaper for niri-emaki (emaki-wallpaper in fork-rules.kdl): ring, front layer, train.
-	install -Dm644 -t $(SHARE)/wallpaper art/wallpaper/ring.png art/wallpaper/ring-front.png art/wallpaper/train-frames.png art/wallpaper/train.json
+	install -Dm644 -t $(SHARE)/wallpaper art/wallpaper/ring.png art/wallpaper/fallback.png art/wallpaper/ring-front.png art/wallpaper/train-frames.png art/wallpaper/train.json
 	install -Dm644 -t $(SHARE)/fetch fetch/config.jsonc fetch/details.jsonc fetch/render.py fetch/wordmark.png fetch/wordmark.txt
 	install -Dm644 fetch/config.jsonc $(XDG)/fastfetch/config.jsonc
 	sed -i 's|/usr/share/emaki/fetch|$(PREFIX)/share/emaki/fetch|g' $(SHARE)/fetch/config.jsonc $(XDG)/fastfetch/config.jsonc
@@ -279,20 +409,31 @@ uninstall-niri-emaki:
 uninstall:
 	@case "$(DESTDIR)" in ""|/*) ;; *) echo "uninstall: DESTDIR must be empty or an absolute path; nothing changed." >&2; exit 1 ;; esac; \
 		case "/$(DESTDIR)/" in */../*) echo "uninstall: DESTDIR must not contain '..' components; nothing changed." >&2; exit 1 ;; esac
+	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/hooks/99-emaki-qt-check.hook
+	rm -f $(DESTDIR)$(PREFIX)/share/themes/Emaki/gtk-3.0/gtk.css
+	rm -f $(DESTDIR)$(PREFIX)/lib/environment.d/60-emaki-xdg.conf
+	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/hooks/91-emaki-snapshot-menu.hook $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-snapshot-menu $(BIN)/emaki-update-channel $(BIN)/emaki-snapshot-menu-check
 	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/hooks/90-emaki-grub-title.hook $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-grub-title
+	rm -f $(SYSTEMD)/system/emaki-boot-complete.service $(SYSTEMD)/system/multi-user.target.wants/emaki-boot-complete.service
+	rm -f $(BOOTLIB)/__init__.py $(BOOTLIB)/refresh.py $(addprefix $(BOOTLIB)/,$(addsuffix .py,$(BOOT_SHARED)))
+	for picture in $(BOOT_ARTWORK); do rm -f "$(BOOTLIB)/$${picture#installer/emaki_installer/}"; done
+	rm -f $(DESTDIR)$(PREFIX)/share/licenses/emaki-config/LICENSE-DejaVu.txt
+	rm -f $(DESTDIR)/usr/lib/initcpio/hooks/emaki-resume $(DESTDIR)/usr/lib/initcpio/install/emaki-resume
 	rm -f $(DESTDIR)/usr/lib/initcpio/hooks/emaki-snapshot-fstab $(DESTDIR)/usr/lib/initcpio/install/emaki-snapshot-fstab
 	# Point /etc/os-release back at Arch's file before removing ours (source helper, as below).
 	bash os-release/emaki-os-release --restore "$(if $(DESTDIR),$(DESTDIR),/)"
 	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/hooks/50-emaki-os-release.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/50-emaki-os-release-remove.hook
+	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/hooks/95-emaki-session-update.hook
 	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-os-release $(DESTDIR)$(PREFIX)/lib/emaki/os-release
 	[ ! -d $(DESTDIR)$(PREFIX)/lib/emaki ] || rmdir --ignore-fail-on-non-empty $(DESTDIR)$(PREFIX)/lib/emaki
 	# Use this source helper: older installed provisioners may not support purging.
 	@if ! python3 -I scripts/emaki-greeter-provision --root "$(if $(DESTDIR),$(DESTDIR),/)" --purge-published; then \
 		echo "uninstall: WARNING: published wallpaper cleanup incomplete at $(if $(DESTDIR),$(DESTDIR),)/var/lib/emaki-greeter; retained copies need administrator cleanup. Continuing removal." >&2; \
 	fi
-	rm -f $(BIN)/emaki-rollback $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.rollback.policy
+	rm -f $(BIN)/emaki-wallet-migrate $(BIN)/emaki-rollback $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.rollback.policy
+	rm -f $(BIN)/emaki-boot-refresh $(DESTDIR)$(PREFIX)/share/libalpm/hooks/95-emaki-boot-refresh.hook
 	rm -f $(BIN)/emaki-drm-hold $(BIN)/emaki-greeter-compositor $(BIN)/emaki-greeter-run $(BIN)/emaki-text-session $(BIN)/emaki-session-import-environment $(SYSTEMD)/system/emaki-drm-hold.service
-	rm -f $(BIN)/emaki-idle $(BIN)/emaki-config-path $(BIN)/emaki-power $(BIN)/emaki-shell $(BIN)/emaki-lock $(BIN)/emaki-session-cover $(BIN)/emaki-session-wallpaper $(BIN)/emaki
+	rm -f $(BIN)/emaki-autostart $(BIN)/emaki-idle $(BIN)/emaki-config-path $(BIN)/emaki-power $(BIN)/emaki-shell $(BIN)/emaki-shell-health $(BIN)/emaki-lock $(BIN)/emaki-session-cover $(BIN)/emaki-session-wallpaper $(BIN)/emaki
 	# The fork session (install-niri-emaki) goes too: its wrapper reads configs from $(SHARE).
 	rm -f $(BIN)/niri-emaki-session
 	rm -f $(SHARE)/niri/fork.kdl $(SHARE)/niri/fork-system.kdl $(SHARE)/niri/fork-rules.kdl
@@ -301,8 +442,18 @@ uninstall:
 	rm -rf $(SHARE)
 	rm -f $(DESTDIR)$(PREFIX)/share/applications/emaki-welcome.desktop $(ICONS)/hicolor/scalable/apps/emaki-welcome.svg
 	rm -rf $(ICONS)/Emaki
-	rm -f $(SYSTEMD)/user/emaki-shell.service $(SYSTEMD)/user/emaki-sleep-guard.service $(SYSTEMD)/user/emaki-idle.service
+	rm -f $(SYSTEMD)/user/emaki-shell.service $(SYSTEMD)/user/emaki-shell-heal.service $(SYSTEMD)/user/emaki-shell-recovery.service $(SYSTEMD)/user/emaki-sleep-guard.service $(SYSTEMD)/user/emaki-idle.service $(SYSTEMD)/user/emaki-wallet-migrate.service
+	rm -f $(SYSTEMD)/system-sleep/emaki-boot-resume
 	rm -f $(BIN)/emaki-sleep-guard $(DESTDIR)$(PREFIX)/lib/emaki-release
+	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-snapshot-policy $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-system-migrate $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki_boot_defaults.py
+	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/hooks/01-emaki-config-release.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/02-emaki-config-remove.hook
+	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki_initramfs.py $(DESTDIR)$(PREFIX)/share/libalpm/hooks/89-emaki-initramfs-begin.hook
+	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/hooks/89-emaki-system-migrate.hook
+	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-initramfs-refresh $(DESTDIR)$(PREFIX)/share/libalpm/hooks/93-emaki-initramfs-refresh.hook
+	rm -f $(BIN)/emaki-refresh-mirrors $(SYSTEMD)/system/emaki-refresh-mirrors.service $(SYSTEMD)/system/emaki-refresh-mirrors.timer $(SYSTEMD)/zram-generator.conf.d/00-emaki.conf
+	for pair in upkeep/defaults/10-emaki-wheel:sudoers.d/10-emaki-wheel; do \
+		source=$${pair%%:*}; target=$(DESTDIR)/etc/$${pair#*:}; if cmp -s "$$source" "$$target"; then rm -f "$$target"; fi; done
+	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-rollback-holds $(DESTDIR)$(PREFIX)/share/libalpm/hooks/00-emaki-rollback-holds.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/99-emaki-rollback-holds.hook
 	rm -f $(SYSTEMD)/system-preset/50-emaki.preset $(SYSTEMD)/logind.conf.d/50-emaki.conf
 	for f in wpaperd/config.toml kitty/kitty.conf qt6ct/qt6ct.conf; do \
 		if cmp -s "etc-skel/.config/$$f" "$(DESTDIR)/etc/skel/.config/$$f"; then \
@@ -311,6 +462,7 @@ uninstall:
 	# administrator's (the package keeps it too, backup=), so it stays and is named.
 	for pair in packaging/emaki-config/niri-portals.conf:xdg-desktop-portal/niri-portals.conf \
 		hypr/hyprlock.conf:hypr/hyprlock.conf packaging/emaki-config/kdeglobals:kdeglobals \
+		packaging/emaki-config/kwalletrc:kwalletrc \
 		packaging/emaki-config/dolphinrc:dolphinrc packaging/emaki-config/mimeapps.list:mimeapps.list \
 		packaging/emaki-config/emaki-applications.menu:menus/emaki-applications.menu \
 		etc-skel/.config/qt6ct/qt6ct.conf:qt6ct/qt6ct.conf; do \
@@ -319,7 +471,7 @@ uninstall:
 		elif [ -e "$$dst" ]; then echo "uninstall: kept $$dst (it differs from the shipped file)"; fi; done
 	if [ -f $(XDG)/fastfetch/config.jsonc ] && grep -qF 'Emaki fetch default.' $(XDG)/fastfetch/config.jsonc; then rm -f $(XDG)/fastfetch/config.jsonc; fi
 	rm -f $(PAMDIR)/emaki-greetd $(SYSTEMD)/system/greetd.service.d/emaki.conf
-	rm -f $(BIN)/emaki-greeter-provision $(DESTDIR)$(PREFIX)/lib/tmpfiles.d/emaki-greeter.conf
+	rm -f $(BIN)/emaki-migrate-installer-config $(BIN)/emaki-greeter-provision $(DESTDIR)$(PREFIX)/lib/tmpfiles.d/emaki-greeter.conf
 	rm -f $(SYSTEMD)/user/emaki-greeter-wallpaper.path $(SYSTEMD)/user/emaki-greeter-wallpaper.service $(SYSTEMD)/user/emaki-greeter-wallpaper-watch.service
 	rm -f $(SYSTEMD)/user/graphical-session.target.wants/emaki-greeter-wallpaper.path $(SYSTEMD)/user/graphical-session.target.wants/emaki-greeter-wallpaper-watch.service
 	[ ! -d $(SYSTEMD)/user/graphical-session.target.wants ] || rmdir --ignore-fail-on-non-empty $(SYSTEMD)/user/graphical-session.target.wants
@@ -386,6 +538,14 @@ check-shell: shell-shaders
 	mkdir -p "$(CURDIR)/.cache/tmp"
 	env $(CORE_ENV) TMPDIR="$(CURDIR)/.cache/tmp" cargo build -p emaki-cli --locked
 	python tests/test-shell.py
+	python3 tests/test-shell-recovery.py
+	python3 tests/test-shell-health.py
+	python3 tests/test-shell-recovery-notice.py
+	node tests/test-battery-policy.mjs
+	python3 tests/test-battery-layout.py
+	node tests/test-notification-text.mjs
+	node tests/test-pairing-policy.mjs --mutations
+	python3 tests/test-pairing-layout.py
 	python tests/test-app-scope.py
 	python tests/test-allocator-env.py
 	python tests/test-app-scope-dbus.py
@@ -409,6 +569,8 @@ check-shell: shell-shaders
 	python tests/test-session-start-harness.py
 	python tests/test-notifications.py
 	python tests/test-launcher-tools.py
+	python tests/test-launcher-details.py
+	python tests/check-launcher-inventory.py --self-test
 	python tests/test-system.py
 	python tests/test-sound-meter.py
 	python tests/test-measure-shell.py
@@ -432,6 +594,7 @@ check-shell: shell-shaders
 	# Package payloads and metadata; builds the core offline from the cargo cache filled by the
 	# cargo build above.
 	python3 tests/test-packaging.py
+	python3 tests/test-desktop-devices.py
 	python3 tests/test-kde-defaults.py
 	$(MAKE) shell-shots
 

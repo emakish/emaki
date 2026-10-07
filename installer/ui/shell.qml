@@ -51,7 +51,7 @@ ShellRoot {
             title: "Install Emaki"
             implicitWidth: 1024
             implicitHeight: 700
-            minimumSize: Qt.size(960, 640)
+            minimumSize: Qt.size(960, 480)
             color: "transparent"
             onClosed: {
                 controller.clearPasswords();

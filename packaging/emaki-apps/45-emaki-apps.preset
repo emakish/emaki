@@ -4,3 +4,5 @@
 enable cups.service
 enable cups.socket
 enable cups.path
+# Refresh firmware metadata without requiring the software centre to be open.
+enable fwupd-refresh.timer

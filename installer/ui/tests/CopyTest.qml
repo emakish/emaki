@@ -6,7 +6,7 @@ import Quickshell
 import "FakeNiri.js" as FakeNiri
 import ".." as UI
 
-// Copying out of the account and disk password fields, with real key and pointer events in the
+// Copying out of the account, disk and Wi-Fi password fields, with real key and pointer events in the
 // production view: a shown password is plain text to Qt, and the session keeps clipboard
 // history, so no Copy or Cut key reaches the clipboard, shown or not, and a shown password cannot
 // be selected with the mouse (Qt publishes a mouse selection as the primary selection).
@@ -191,7 +191,9 @@ ShellRoot {
                 input.mouseClick(test.findItem(content, "encryptYes"));
             } else if (s === 7) {
                 // The choices below appear with the first click: the second waits for the layout.
-                input.mouseClick(test.findItem(content, "encryptSeparate"));
+                test.findItem(content, "encryptSeparate").forceActiveFocus();
+                input.wait(40);
+                input.keyClick(Qt.Key_Space);
                 test.check(controller.encryptionPassword === "separate", "a separate disk password is chosen");
                 test.field("diskPassword").forceActiveFocus();
             } else if (s === 8) {
@@ -213,9 +215,41 @@ ShellRoot {
                 test.copyKeys("diskPassword");
                 test.pointer("diskPassword");
                 test.check(controller.diskPassword === "a", "the disk password is kept (" + controller.diskPassword.length + ")");
+            } else if (s === 11) {
+                controller.network = {
+                    wired: false,
+                    networks: [
+                        {
+                            ssid: "Copy test",
+                            bssid: "02:00:00:00:00:01",
+                            device: "wlan0",
+                            strength: 90,
+                            security: "WPA2",
+                            connected: false
+                        }
+                    ]
+                };
+                controller.step = "network";
+            } else if (s === 12) {
+                input.mouseClick(test.findItem(content, "wifiNetwork"));
+                input.wait(80);
+                test.check(test.field("wifiPassword").activeFocus, "Wi-Fi selection focuses its password");
+                input.keyClick(Qt.Key_A);
+                input.keyClick(Qt.Key_B);
+                test.check(test.field("wifiPassword").text === "ab", "Wi-Fi password takes typed keys");
+                test.copyKeys("wifiPassword");
+                input.mouseClick(test.findItem(content, "wifiPasswordToggle"));
+                test.check(test.shown("wifiPassword"), "the eye shows the Wi-Fi password");
+                test.field("wifiPassword").forceActiveFocus();
+            } else if (s === 13) {
+                test.copyKeys("wifiPassword");
+                const menu = test.field("wifiPassword").C.ContextMenu.menu;
+                test.check(menu && menu.count === 1 && menu.actionAt(0).text === "Paste", "the Wi-Fi menu offers Paste without Copy or Cut");
+                test.pointer("wifiPassword");
+                test.check(test.field("wifiPassword").text === "ab", "the Wi-Fi password is kept");
             } else {
                 if (!test.failed)
-                    console.log("COPY_OK Ctrl+C, Ctrl+Insert, Ctrl+X, Shift+Delete hidden and shown, drag, double click, account and disk password");
+                    console.log("COPY_OK Ctrl+C, Ctrl+Insert, Ctrl+X, Shift+Delete hidden and shown, drag, double click, account, disk and Wi-Fi password");
                 Qt.quit();
             }
             ++test.stage;

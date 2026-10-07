@@ -1,0 +1,10 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Desktop Entry]
+Type=Application
+Name=Update reminder [Discover]
+Exec=/usr/lib/DiscoverNotifier --check-delay 20
+TryExec=/usr/lib/DiscoverNotifier
+Icon=system-software-update
+OnlyShowIn=niri;
+NoDisplay=true

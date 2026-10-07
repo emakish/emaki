@@ -5,6 +5,7 @@ import Quickshell.Io
 
 Scope {
     id: controller
+    readonly property bool liveSession: Quickshell.env("EMAKI_LIVE_SESSION") === "1"
     property bool enabled: true
     property bool ready: false
     property bool loadWallpaper: true
@@ -20,7 +21,7 @@ Scope {
             present();
     }
     function present(): string {
-        if (!enabled)
+        if (!enabled || liveSession)
             return "unavailable";
         if (!ready) {
             pending = true;

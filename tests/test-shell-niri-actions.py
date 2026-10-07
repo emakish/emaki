@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Regression: real CLI serialization -> production QML parser, fake niri only."""
+from runtime_fixture import runtime_path
 import json
 import os
 from pathlib import Path
@@ -24,11 +25,11 @@ for part in ('config', 'state', 'data', 'cache', 'runtime', 'tmp', 'qml'):
 # The whole production shell: the harness also holds the system panel's keyboard page.
 shutil.copytree(ROOT / 'shell', PROFILE / 'qml', dirs_exist_ok=True)
 shutil.copy(ROOT / 'tests/fixtures/NiriActionsTest.qml', PROFILE / 'qml/shell.qml')
-ENV = dict(os.environ, EMAKI_BIN=str(BINARY), NIRI_SOCKET=str(PROFILE / 'n.sock'),
+ENV = dict(os.environ, EMAKI_BIN=str(BINARY), NIRI_SOCKET=str(runtime_path(PROFILE) / 'n.sock'),
            QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QML_DISABLE_DISK_CACHE='1',
            XDG_CONFIG_HOME=str(PROFILE / 'config'), XDG_STATE_HOME=str(PROFILE / 'state'),
            XDG_DATA_HOME=str(PROFILE / 'data'), XDG_DATA_DIRS=str(PROFILE / 'data'),
-           XDG_RUNTIME_DIR=str(PROFILE / 'runtime'), XDG_CACHE_HOME=str(PROFILE / 'cache'),
+           XDG_RUNTIME_DIR=str(runtime_path(PROFILE)), XDG_CACHE_HOME=str(PROFILE / 'cache'),
            TMPDIR=str(PROFILE / 'tmp'))
 for key in ('WAYLAND_DISPLAY', 'DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'DBUS_SYSTEM_BUS_ADDRESS'):
     ENV.pop(key, None)
@@ -169,7 +170,7 @@ def qml_check(server):
     assert all(marker not in contents for marker in ('WARN', 'ERROR', 'PRIVATE')), contents
 
 
-server = Server(PROFILE / 'n.sock')
+server = Server(runtime_path(PROFILE) / 'n.sock')
 thread = threading.Thread(target=server.serve_forever, daemon=True)
 thread.start()
 try:

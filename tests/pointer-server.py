@@ -19,11 +19,25 @@ import sys
 import threading
 
 ROUTE = re.compile(r'^/(stable|testing)/x86_64/(emaki\.(?:db|files)(?:\.sig)?|SOURCES(?:\.json)?)$')
+ISO_ROUTE = re.compile(r'^/iso/(\d+\.\d+\.\d+)/(SOURCES-ISO\.txt|ARCH-SOURCES\.json|MISSING-SOURCES\.json)$')
+SOURCE_SNAPSHOT_ID = re.compile(r'^[a-f0-9]{64}$')
 SNAPSHOT_ID = re.compile(r'^\d{8}T\d{6}Z$')
 
 
 def route(root, path):
     """(status, location or None) for a pointer path, or None to serve the file."""
+    image = ISO_ROUTE.fullmatch(path)
+    if image:
+        pointer = Path(root) / 'iso' / image.group(1) / 'source-pointer'
+        try:
+            snap_id = pointer.read_text().strip()
+        except FileNotFoundError:
+            return None
+        except (OSError, UnicodeError):
+            return 503, None
+        if not SOURCE_SNAPSHOT_ID.fullmatch(snap_id):
+            return 503, None
+        return 302, f'/iso/{image.group(1)}/source-snapshots/{snap_id}/{image.group(2)}'
     match = ROUTE.match(path)
     if not match:
         return None
@@ -56,7 +70,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.record(code)
         super().send_response(code, message)
 
+    def end_headers(self):
+        if not self.flat and ISO_ROUTE.fullmatch(self.path.split('?', 1)[0]):
+            self.send_header('X-Emaki-Source-Pointer', '1')
+        super().end_headers()
+
     def answer(self, head):
+        if self.headers.get('User-Agent', '').startswith('Python-urllib/'):
+            self.send_error(403)
+            return
         path = self.path.split('?', 1)[0]
         if path.startswith('/.') or '/.' in path or '..' in path.split('/'):
             self.send_error(404)

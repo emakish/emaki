@@ -4,9 +4,41 @@ const {execFileSync} = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const candidateVersion = fs.readFileSync(path.join(__dirname, "../../../iso/VERSION"), "utf8").trim();
+// Rendering fixtures must not silently preserve an old release title.
+function checkVersions(value, file) {
+    if (!value || typeof value !== "object") return;
+    if (value.type === "hello") assert.equal(value.emaki_version, candidateVersion, file);
+    for (const child of Object.values(value)) checkVersions(child, file);
+}
+for (const file of fs.readdirSync(path.join(__dirname, "transcripts")).filter(f => f.endsWith(".json"))) {
+    checkVersions(JSON.parse(fs.readFileSync(path.join(__dirname, "transcripts", file))), file);
+}
+
 const context = vm.createContext({});
 vm.runInContext(fs.readFileSync(path.join(__dirname, "../Protocol.js"), "utf8"), context);
 const P = context;
+// A login refusal keeps the worker's recovery instruction on the main page.
+const loginRefusal = "This login name belongs to the system. Choose another name; the disk has not been changed.";
+assert.equal(P.errorPresentation({code: "login_name_reserved", message: loginRefusal, retryable: true}).sentence, loginRefusal);
+assert.equal(P.errorPresentation({code: "login_name_reserved", message: loginRefusal, retryable: true}).action, "");
+const timedOutReboot = P.initial();
+P.request(timedOutReboot, "reboot");
+P.rebootTimedOut(timedOutReboot);
+assert.equal(timedOutReboot.rebootMessage, "Could not restart. Try again.");
+assert.equal(Object.values(timedOutReboot.pending).includes("reboot"), false);
+const disconnectedReboot = P.initial();
+P.request(disconnectedReboot, "reboot");
+P.disconnected(disconnectedReboot);
+assert.equal(disconnectedReboot.rebootMessage, "Could not restart. Try again.");
+// The removal dialog gets immediate progress and the service's failure text.
+const rebootState = P.initial();
+const rebootRequest = P.request(rebootState, "reboot");
+assert.equal(rebootState.rebootMessage, "Restarting…");
+P.receive(rebootState, {type: "reply", id: rebootRequest.id, ok: false, msg: "Could not restart. Try again."}, 1);
+assert.equal(rebootState.rebootMessage, "Could not restart. Try again.");
+assert.equal(Object.values(rebootState.pending).includes("reboot"), false);
+
 const files = fs.readdirSync(path.join(__dirname, "transcripts")).filter(f => f.endsWith(".json") && f !== "render.json");
 // As mock-worker.py's transcript(): {"base", "confirm"} is the base's rows with other job events.
 function transcript(file) {
@@ -65,7 +97,7 @@ assert.equal(P.expire(s, 99), false);
 assert.equal(P.expire(s, 100), true);
 assert.equal(s.plan, null);
 s.jobId = "known"; s.running = true; s.lastLogSeq = 9;
-const res = P.receive(s, {type: "hello", proto: 1, emaki_version: "0.1.0", busy_job: "known", seq: 900}, 1000);
+const res = P.receive(s, {type: "hello", proto: 1, emaki_version: candidateVersion, busy_job: "known", seq: 900}, 1000);
 assert.equal(res[0].since_seq, 9);
 P.receive(s, {type: "log", job_id: "known", seq: 10, line: "replayed"}, 1001);
 P.receive(s, {type: "log", job_id: "known", seq: 10, line: "replayed"}, 1002);
@@ -140,6 +172,26 @@ P.receive(job, {type: "progress", job_id: "j", seq: 6, phase: "update", phase_pc
 assert.equal(job.activity, null);
 assert.equal(P.activityText(job.activity), "");
 console.log("PASS the window shows what pacman reports while the update downloads");
+// A running sub-step survives unrelated logs and reconnect replay, then clears at
+// the explicit boundary. Its text appears even while the bar is determinate.
+const step = {id: "copy-17", name: "initramfs", state: "running",
+    text: "Building the startup image (mkinitcpio: linux-lts: default)."};
+P.receive(job, {type: "progress", job_id: "j", phase: "copy_packages", phase_pct: 20,
+    total_pct: 15, indeterminate: false, step}, 7);
+assert.equal(P.stepText(job.step), step.text);
+P.receive(job, {type: "log", job_id: "j", seq: 10, line: "work continues"}, 8);
+assert.equal(P.stepText(job.step), step.text);
+P.disconnected(job);
+assert.equal(P.stepText(job.step), step.text);
+P.receive(job, {type: "state", job_id: "j", phase: "copy_packages", phase_pct: 20,
+    total_pct: 15, indeterminate: false, step}, 9);
+assert.equal(P.stepText(job.step), step.text);
+P.receive(job, {type: "progress", job_id: "j", phase: "copy_packages", step: null}, 10);
+assert.equal(P.stepText(job.step), "");
+P.receive(job, {type: "state", job_id: "j", phase: "bootloader"}, 11);
+assert.equal(job.step, null);
+assert.equal(P.stepText({id: "copy-18", text: "wrong", state: "done"}), "");
+console.log("PASS running installation steps persist until a proven boundary");
 assert.equal(P.loginFromName("Alex Morgan"), "alex-morgan");
 const secret = "memory-" + Math.random();
 assert.equal(P.accountError("Alex", "alex", secret, secret, "emaki"), "");
@@ -273,12 +325,16 @@ console.log("PASS unlock layout matches render.unlock_layout for GRUB; layout li
 // Every worker error code has plain words on the error page; the worker's message goes to the details.
 const codes = Array.from(fs.readFileSync(path.join(__dirname, "../../emaki_installer/errors.py"), "utf8")
     .matchAll(/^\s+[A-Z_]+ = '([a-z_]+)'$/gm), match => match[1]);
-assert.equal(codes.length, 29);
+assert.equal(codes.length, 32);
+const ownSentence = ["bad_config", "login_name_reserved", "secure_boot", "clock_skew"];
 for (const code of codes) {
     const words = P.errorPresentation({code: code, message: "raw worker message"});
-    assert.ok(words.sentence && words.sentence !== "raw worker message" && /\.$/.test(words.sentence), code);
-    assert.ok(words.action && /\.$/.test(words.action), code);
-    assert.equal(words.details, "raw worker message", code);
+    if (code === "disk_busy" || ownSentence.includes(code))
+        assert.equal(words.sentence, "raw worker message");
+    else
+        assert.ok(words.sentence && words.sentence !== "raw worker message" && /\.$/.test(words.sentence), code);
+    if (!ownSentence.includes(code)) assert.ok(words.action && /\.$/.test(words.action), code);
+    assert.equal(words.details, ownSentence.includes(code) ? "" : "raw worker message", code);
 }
 // Confirmation instructions belong to Disk; the error details keep only the worker's facts.
 const encryptedWarning = "/dev/vda contains an encrypted volume. Type ERASE to confirm that all its contents will be lost.";
@@ -319,3 +375,21 @@ assert.deepEqual([unknown.sentence, unknown.action, unknown.details], ["kept as 
 assert.equal(P.errorPresentation({message: "The worker no longer has this job."}).sentence, "The worker no longer has this job.");
 assert.equal(P.errorPresentation(null).sentence, "The installer could not continue.");
 console.log("PASS plain words for all " + codes.length + " worker error codes; unknown codes keep the worker's message");
+
+// Renewal keeps the reviewed plan and rotates its token without resending credentials.
+{
+    const state = P.initial();
+    state.plan = {plan_id: "review", token: "old"};
+    state.deadline = 600000;
+    const request = P.request(state, "renew", {plan_id: "review", token: "old"});
+    assert.equal(state.plan.token, "old");
+    P.receive(state, {type: "plan_ack", id: request.id, plan_id: "review", token: "fresh", expires_s: 600, summary: [], warnings: []}, 550000);
+    assert.equal(state.plan.token, "fresh");
+    assert.equal(state.deadline, 1150000);
+    assert.equal(P.expire(state, 600001), false);
+}
+
+{
+    const message = "/dev/vda1 is mounted at /run/media/live/Files. Close its windows, unmount it, then refresh disks.";
+    assert.equal(P.errorPresentation({code: "disk_busy", message, retryable: true}).sentence, message);
+}

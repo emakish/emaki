@@ -1,0 +1,46 @@
+/* Copyright (C) 2026 Artur Yakymenko
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * GENERATED from tokens.toml — manual edits will be overwritten.
+ */
+@import url("resource:///org/gtk/libgtk/theme/Adwaita/gtk-contained.css");
+@define-color theme_bg_color #14100d;
+@define-color theme_fg_color #f2e6d8;
+@define-color theme_base_color #1c1612;
+@define-color theme_text_color #f2e6d8;
+@define-color theme_selected_bg_color #e2733f;
+@define-color theme_selected_fg_color #2a0f05;
+@define-color theme_unfocused_bg_color #14100d;
+@define-color theme_unfocused_fg_color #a39483;
+window, .background { background-color: #14100d; color: #f2e6d8; }
+label { color: inherit; }
+menu, .menu, .context-menu, popover, popover.background {
+    background-image: none;
+    background-color: #14100d;
+    color: #f2e6d8;
+}
+menu menuitem:hover, .menu menuitem:hover, .context-menu menuitem:hover,
+modelbutton.flat:hover, .menuitem.button.flat:hover {
+    background-image: none;
+    background-color: #e2733f;
+    color: #2a0f05;
+}
+entry, combobox button {
+    background-image: none;
+    background-color: #1c1612;
+    color: #f2e6d8;
+    border-color: #2c241e;
+    caret-color: #f2e6d8;
+}
+button {
+    background-image: none;
+    background-color: #2a211a;
+    color: #f2e6d8;
+    border-color: #2c241e;
+    text-shadow: none;
+    box-shadow: none;
+}
+button:hover { background-color: #1c1612; border-color: #e2733f; }
+button:active, button.suggested-action { background-color: #e2733f; color: #2a0f05; }
+entry:focus, button:focus { border-color: #e2733f; }
+*:disabled { color: #a39483; }
+* { font-family: "Adwaita Sans"; font-size: 12pt; }

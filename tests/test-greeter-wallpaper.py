@@ -4,6 +4,7 @@
 All image/config fixtures are synthetic. No root, home reads, systemd or session bus.
 The wallpaper helper's existing test remains unchanged for the C8/user code path.
 """
+from runtime_fixture import runtime_path
 import hashlib
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
 import errno
@@ -355,6 +356,9 @@ XDG = $(DESTDIR)/etc/xdg
 SYSTEMD = $(DESTDIR)$(PREFIX)/lib/systemd
 PAMDIR = $(DESTDIR)/usr/lib/pam.d
 NIRI_ETC = $(DESTDIR)/etc/niri/config.kdl
+BOOTLIB = $(DESTDIR)$(PREFIX)/lib/emaki/boot/emaki_boot
+BOOT_SHARED = boot errors grub_screen
+BOOT_ARTWORK =
 ''' + mark + '''
 .PHONY: fixture-cleanup
 fixture-cleanup:
@@ -427,10 +431,11 @@ def package_removal_checks(base):
         return subprocess.run([shutil.which('bash'), '-c', '. "$1"; ' + script, 'scriptlet', str(copy), '0.1.2-1'],
                               env=environment | extra, cwd=fixture, capture_output=True, text=True, timeout=30)
 
-    # Sourcing runs nothing; only pre_remove exists, so installs and upgrades never purge.
+    # Sourcing runs nothing; only pre_remove purges, while post_upgrade migrates settings.
     listed = scriptlet_run('declare -F')
     assert listed.returncode == 0 and not listed.stderr, listed
-    assert listed.stdout.splitlines() == ['declare -f pre_remove'], listed.stdout
+    assert listed.stdout.splitlines() == ['declare -f post_install', 'declare -f post_upgrade',
+                                      'declare -f pre_remove', 'declare -f pre_upgrade'], listed.stdout
     assert calls() == []
     warning = ('emaki-config: published wallpaper copies remain in /var/lib/emaki-greeter; '
                'an administrator can remove them\n')
@@ -563,13 +568,64 @@ def default_config_checks(base):
     published = tomllib.loads((destination / 'wpaperd/config.toml').read_text())
     image = Path(next(iter(published.values()))['path'])
     assert image.parent == destination
-    assert image.read_bytes() == (ROOT / 'art/wallpaper/ring.png').read_bytes()
+    assert image.read_bytes() == (ROOT / 'art/wallpaper/fallback.png').read_bytes()
     with patch.dict(os.environ, EMAKI_GREETER_WALLPAPER_ROOT=str(destination), XDG_CACHE_HOME=str(base / 'default-cache'),
                     XDG_CONFIG_HOME='/home/DO_NOT_READ/config', HOME='/home/DO_NOT_READ'):
         assert wallpaper.texture(80, 50, 1, 'Fixture', 'sharp')['state'] == 'ready'
 
 
+def legacy_toggle_migration_checks():
+    root = ROOT
+    path = root / 'scripts/emaki-migrate-installer-config'
+    spec = importlib.util.spec_from_loader('legacy_migration', SourceFileLoader('legacy_migration', str(path)))
+    tool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tool)
+    original = b'include "/usr/share/emaki/niri/default.kdl"\n\ninput {\n    keyboard {\n        xkb {\n            layout "us,ru"\n            options "grp:win_space_toggle"\n        }\n    }\n}\n\noutput "eDP-1" {\n    scale 1.25\n}\n'
+    with tempfile.TemporaryDirectory() as temp:
+        config = Path(temp) / '.config/niri/config.kdl'
+        config.parent.mkdir(parents=True)
+        for contents in (original, original + b'// My settings\n', original.replace(b'grp:win_space_toggle', b'grp:alt_shift_toggle'), original.replace(b'            options', b'        options')):
+            config.write_bytes(contents)
+            config.chmod(0o640)
+            tool.migrate(temp)
+            expected = contents.replace(tool.LINE, b'', 1) if contents == original else contents
+            assert config.read_bytes() == expected
+            assert config.stat().st_mode & 0o777 == 0o640
+            tool.migrate(temp)
+            assert config.read_bytes() == expected
+        config.unlink()
+        outside = Path(temp) / 'outside'
+        outside.write_bytes(original)
+        config.symlink_to(outside)
+        tool.migrate(temp)
+        assert outside.read_bytes() == original
+        config.unlink()
+        os.link(outside, config)
+        tool.migrate(temp)
+        assert outside.read_bytes() == original
+
+def pam_account_provision_checks():
+    root = ROOT
+    assert 'session    optional    pam_exec.so quiet /usr/bin/python3 -I /usr/bin/emaki-greeter-provision --pam-session' in (root / 'greetd/pam').read_text()
+    path = root / 'scripts/emaki-greeter-provision'
+    spec = importlib.util.spec_from_loader('login_provision', SourceFileLoader('login_provision', str(path)))
+    tool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tool)
+    with patch.object(tool, 'provision') as provision, patch.object(tool.sys, 'argv', ['provision', '--pam-session']):
+        for user in ('first', 'second'):
+            with patch.dict(os.environ, {'PAM_TYPE': 'open_session', 'PAM_USER': user}):
+                assert tool.main() == 0
+            provision.assert_called_with(Path('/'), user)
+        assert provision.call_count == 2
+        for event, user in (('close_session', 'second'), ('open_session', 'greeter'), ('open_session', 'root'), ('open_session', '')):
+            with patch.dict(os.environ, {'PAM_TYPE': event, 'PAM_USER': user}):
+                assert tool.main() == 0
+        assert provision.call_count == 2
+
+
 def main():
+    legacy_toggle_migration_checks()
+    pam_account_provision_checks()
     assert os.getuid() != 0, 'run publishing tests as an ordinary user'
     (ROOT / '.cache').mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='cw-', dir=ROOT / '.cache') as temporary:
@@ -926,7 +982,7 @@ Scope {
 ''')
         qml_environment = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
                                QML_DISABLE_DISK_CACHE='1', HOME=str(qml_home),
-                               XDG_RUNTIME_DIR=str(qml_home / 'r'), XDG_CACHE_HOME=str(qml_home / 'cache'),
+                               XDG_RUNTIME_DIR=str(runtime_path(qml_home)), XDG_CACHE_HOME=str(qml_home / 'cache'),
                                XDG_CONFIG_HOME=str(qml_home / 'config'), XDG_DATA_HOME=str(qml_home / 'data'),
                                XDG_STATE_HOME=str(qml_home / 'state'), EMAKI_PYTHON=sys.executable,
                                PYTHONPATH=str(injection))

@@ -29,8 +29,8 @@ confirm() {
 }
 
 lock() {
-    # Return success only after compositor confirmation and the complete pour.
-    emaki-lock --wait
+    # The passwordless ISO has no lock; installed sessions wait for the complete pour.
+    [ -f /etc/emaki-live/greetd.toml ] || emaki-lock --wait
 }
 
 can_hibernate() {
@@ -38,11 +38,12 @@ can_hibernate() {
         org.freedesktop.login1.Manager CanHibernate 2>/dev/null | grep -q '"data":\["yes"\]'
 }
 
+set -- "Sleep"
+[ -f /etc/emaki-live/greetd.toml ] || set -- "Lock" "$@"
 if can_hibernate; then
-    choice="$(menu "power  " "Lock" "Sleep" "Hibernate" "Log out" "Restart" "Shut down")" || exit 0
-else
-    choice="$(menu "power  " "Lock" "Sleep" "Log out" "Restart" "Shut down")" || exit 0
+    set -- "$@" "Hibernate"
 fi
+choice="$(menu "power  " "$@" "Log out" "Restart" "Shut down")" || exit 0
 
 case "$choice" in
     "Lock")      lock ;;

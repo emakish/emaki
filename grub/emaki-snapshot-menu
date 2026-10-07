@@ -1,0 +1,114 @@
+#!/usr/bin/python3 -B
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Make snapshot menus start with bootable entries."""
+
+import argparse
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+import tempfile
+
+
+# The supported generator calls this renderer before validating and publishing
+# its menu, including updates made directly by the snapshot watcher.
+SETTING = 'GRUB_BTRFS_SCRIPT_CHECK="emaki-snapshot-menu-check"'
+SCRIPT_CHECK = '/usr/bin/grub-script-check'
+HEADER = re.compile(r"menuentry '\|((?:\s*(?:Date|Snapshot|Type|Description)\s*\|)+)' \{ echo \}\n")
+OUTER = re.compile(r"submenu '(\|[^']*)' \{\n")
+TITLE = re.compile(r"    submenu '(\|[^']*)' \{ echo \}\n")
+
+
+def replace_file(path, original, replacement, validate=False):
+    """Preserve file permissions and replace atomically; never follow links."""
+    mode = path.lstat().st_mode
+    if not stat.S_ISREG(mode):
+        raise ValueError(f'{path}: expected a regular file')
+    if path.read_text() != original:
+        raise ValueError(f'{path}: changed during repair')
+    descriptor, temporary = tempfile.mkstemp(prefix=path.name + '.emaki.', dir=path.parent)
+    try:
+        with os.fdopen(descriptor, 'w') as stream:
+            stream.write(replacement)
+            stream.flush()
+            os.fchmod(stream.fileno(), stat.S_IMODE(mode))
+            os.fsync(stream.fileno())
+        if validate and subprocess.run([SCRIPT_CHECK, temporary], check=False).returncode:
+            raise ValueError('The snapshot menu failed its syntax check (grub-script-check).')
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def render(text):
+    """Remove only the v4.14 heading forms; preserve boot commands verbatim."""
+    lines = text.splitlines(keepends=True)
+    result = []
+    outer_title = None
+    for index, line in enumerate(lines):
+        if HEADER.fullmatch(line):
+            continue
+        title = TITLE.fullmatch(line)
+        if title and outer_title is not None:
+            if ''.join(title[1].split()) == ''.join(outer_title.split()):
+                outer_title = None
+                # A submenu must retain one command when no matching kernel
+                # and initramfs produced a boot entry in this snapshot.
+                following = []
+                for candidate in lines[index + 1:]:
+                    if candidate == '}\n':
+                        break
+                    following.append(candidate)
+                if any(candidate.startswith('    menuentry ') for candidate in following):
+                    continue
+        outer = OUTER.fullmatch(line)
+        outer_title = outer[1] if outer else None
+        result.append(line)
+    return ''.join(result)
+
+
+def repair_menu(menu):
+    if menu.is_symlink():
+        raise ValueError(f'{menu}: expected a regular file')
+    if menu.is_file():
+        text = menu.read_text()
+        replacement = render(text)
+        if replacement != text:
+            replace_file(menu, text, replacement, validate=True)
+
+
+def repair(generator, menu, defaults):
+    # Do not modify the generator or any other file owned by grub-btrfs.
+    if not generator.exists():
+        return
+    if generator.is_symlink() or not generator.is_file():
+        raise ValueError(f'{generator}: expected a regular file')
+    if defaults.is_symlink() or not defaults.is_file():
+        raise ValueError(f'{defaults}: expected a regular file')
+    text = defaults.read_text()
+    if SETTING not in text.splitlines():
+        replace_file(defaults, text, text.rstrip('\n') + '\n' + SETTING + '\n')
+    repair_menu(menu)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--generator', type=Path, default=Path('/etc/grub.d/41_snapshots-btrfs'))
+    parser.add_argument('--menu', type=Path, default=Path('/boot/grub/grub-btrfs.cfg'))
+    parser.add_argument('--defaults', type=Path, default=Path('/etc/default/grub'))
+    parser.add_argument('--check', type=Path, metavar='MENU')
+    args = parser.parse_args()
+    try:
+        if args.check is not None:
+            repair_menu(args.check)
+            return subprocess.run([SCRIPT_CHECK, str(args.check)], check=False).returncode
+        repair(args.generator, args.menu, args.defaults)
+    except (OSError, ValueError) as error:
+        parser.exit(1, f'emaki-snapshot-menu: {error}\n')
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

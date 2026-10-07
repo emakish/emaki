@@ -63,7 +63,8 @@ def resize_partition(plan, runner, changed):
         raise InstallError(Code.UNSAFE_DISK,
                            'STOP: Windows was resized but the post-shrink NTFS check failed. '
                            'No Emaki root was created or formatted. Do not retry the installer; '
-                           'boot Windows for a consistency check and inspect the installation log.') from exc
+                           'boot Windows for a consistency check and inspect the installation log.',
+                           retryable=False) from exc
     expected = dict(metadata, end=end)
     require(alongside.read_gpt(runner, disk, n) == expected, Code.UNSAFE_DISK,
             'STOP: Windows GPT metadata differs after shrink. No Emaki root was created.')
@@ -117,7 +118,7 @@ def load_archinstall():
                            'Cannot load archinstall 4.5 and its dependencies: ' + type(exc).__name__) from exc
 
 
-def offline_config(path=OFFLINE_CONF):
+def offline_config(path=OFFLINE_CONF, *, repo=OFFLINE_REPO):
     """Reject includes and additional repos, including accidental online fallback."""
     sections, active, values = [], None, {}
     try:
@@ -138,7 +139,7 @@ def offline_config(path=OFFLINE_CONF):
         raise InstallError(Code.OFFLINE_REPO, 'Offline pacman configuration is missing or unreadable.') from exc
     require(sections.count('emaki-offline') == 1 and set(sections) <= {'options', 'emaki-offline'},
             Code.OFFLINE_REPO, 'Only [emaki-offline] is permitted for pacstrap.')
-    require(values.get(('emaki-offline', 'Server')) == [OFFLINE_REPO], Code.OFFLINE_REPO,
+    require(values.get(('emaki-offline', 'Server')) == [repo], Code.OFFLINE_REPO,
             'Offline repository must be the live USB file:// repository.')
     sig = values.get(('emaki-offline', 'SigLevel'), values.get(('options', 'SigLevel'), []))
     require(len(sig) == 1 and set(sig[0].split()) == {'Required', 'DatabaseOptional', 'TrustedOnly'},
@@ -180,7 +181,8 @@ def missing_grub_modules(directory=Path('/usr/lib/grub/x86_64-efi')):
 
 
 def validate_live_plan(api, plan):
-    offline_config()
+    # The worker validates discovered media or downloads a frozen signed repository
+    # before its first disk write; planning must also work without mounted media.
     try:
         rules = Path('/usr/share/X11/xkb/rules/evdev.lst').read_text()
     except OSError as exc:
@@ -338,26 +340,26 @@ class DeviceOperations:
 
 
 class OfflinePacman:
-    def __init__(self, runner, target):
-        self.runner, self.target = runner, target
+    def __init__(self, runner, target, source=None):
+        self.runner, self.target, self.source = runner, target, source
 
     def strap(self, packages, **kwargs):
         if isinstance(packages, str):
             packages = [packages]
-        self.runner.run(['pacstrap', '-C', str(offline_config()), '-K', str(self.target),
+        self.runner.run(['pacstrap', '-C', str(self.source.validate() if self.source else offline_config()), '-K', str(self.target),
                          *sorted(set(packages)), '--noconfirm', '--needed'])
 
 
 class OfflinePacmanConfig:
     """minimal_installation must not mutate live /etc/pacman.conf or persist USB URLs."""
-    def __init__(self, target):
-        self.target = target
+    def __init__(self, target, source=None):
+        self.target, self.source = target, source
 
     def enable(self, repositories):
         require(not repositories, Code.OFFLINE_REPO, 'Online repositories are forbidden during pacstrap.')
 
     def apply(self):
-        offline_config()
+        self.source.validate() if self.source else offline_config()
 
     def persist(self):
         pass  # Keep /etc/pacman.conf supplied by the target pacman package.
@@ -370,6 +372,7 @@ class Backend:
         self.disk_config = build_disk_config(api, plan)
         self.devices = DeviceOperations(plan, runner, target)
         self.instance = None
+        self.package_source = None
 
     def prepare(self):
         fs = self.api.filesystem
@@ -427,12 +430,13 @@ class Backend:
             self.instance = EmakiInstaller(self.target, self.disk_config,
                                            base_packages=['base', 'mkinitcpio'],
                                            kernels=['linux', 'linux-lts'], silent=True)
-        self.instance.pacman = OfflinePacman(self.runner, self.target)
+        self.instance.pacman = OfflinePacman(self.runner, self.target, self.package_source)
 
         self.instance.mount_ordered_layout()
         self.instance.sanity_check(skip_ntp=True, skip_wkd=True)
 
     def minimal(self, locale):
-        with patch.object(self.api.installer, 'PacmanConfig', OfflinePacmanConfig):
+        with patch.object(self.api.installer, 'PacmanConfig',
+                          lambda target: OfflinePacmanConfig(target, self.package_source)):
             self.instance.minimal_installation(mkinitcpio=False,
                                                hostname=self.plan.config['hostname'], locale_config=locale)

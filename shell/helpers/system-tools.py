@@ -136,6 +136,8 @@ PORTAL_URL = 'http://nmcheck.gnome.org/'
 
 def lock(prepare_sleep=False):
     """Wait for compositor lock acknowledgement and full pour; process liveness is insufficient."""
+    if Path('/etc/emaki-live/greetd.toml').is_file():
+        return dict(state='unavailable')
     argv = [os.environ.get('EMAKI_LOCK', 'emaki-lock'), '--wait' if prepare_sleep else '--confirm']
     try:
         # The locker applies its own qs default; its supervisor and hyprlock
@@ -257,7 +259,7 @@ def operation(r):
         value = r.get('value')
         if value not in ('reboot', 'poweroff', 'suspend', 'logout', 'hibernate') or r.get('confirmed') is not True: return dict(state='confirmation_required')
         if value == 'hibernate' and not can_hibernate(): return dict(state='hibernate_unavailable')
-        if value in ('suspend', 'hibernate'):
+        if value in ('suspend', 'hibernate') and not Path('/etc/emaki-live/greetd.toml').is_file():
             # Never sleep before the compositor confirms the lock and the pour completes.
             locked = lock(prepare_sleep=True)
             if locked['state'] != 'locked': return locked

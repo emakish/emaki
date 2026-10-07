@@ -1,13 +1,14 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Load native-resolution unlock artwork and build the invisible terminal font."""
+"""Load scalable unlock artwork and build the invisible terminal font."""
 
 import struct
 from pathlib import Path
 
 VARIANT = 'C'  # The chosen look; A and B stay available as one-line alternatives.
 ARTWORK = Path(__file__).with_name('grub_artwork')
-SIZES = ((1024, 768), (800, 600), (640, 480))
+ARTWORK_SIZE = (2560, 1600)
+SIZES = (ARTWORK_SIZE,)
 TEXT = (
     "This computer's disk is encrypted.",
     "Type your disk password and press Enter.",
@@ -75,7 +76,7 @@ def _hidden_font():
 
 
 def assets(variant=None) -> dict[str, bytes]:
-    """Return the hidden terminal font and nine pre-rendered, unscaled RGB pictures."""
+    """Return the hidden terminal font and three pre-rendered RGB master pictures."""
     variant = VARIANT if variant is None else variant
     if variant not in ('A', 'B', 'C'):
         raise ValueError('unknown unlock artwork variant')

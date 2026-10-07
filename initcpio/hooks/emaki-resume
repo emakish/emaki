@@ -1,0 +1,15 @@
+#!/usr/bin/ash
+# shellcheck shell=dash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+run_hook() (
+    # A normal cold boot has no sleep image. The helper logs that at info level;
+    # failed writes and failed EFI-requested resumes remain warnings. An explicit
+    # diagnostic setting still wins. Keep the setting local to this one hook.
+    export SYSTEMD_LOG_LEVEL="${SYSTEMD_LOG_LEVEL:-warning}"
+    # Supplied by the matching build hook from the installed mkinitcpio package.
+    # shellcheck disable=SC1091
+    . /hooks/emaki-resume-upstream
+    run_hook "$@"
+)

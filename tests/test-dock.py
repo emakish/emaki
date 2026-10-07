@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Dock: real core + fake niri with app IDs, actual Qt clicks/drags, dock.json persistence; never Wayland."""
+from runtime_fixture import runtime_path
 import json
 import os
 from pathlib import Path
@@ -50,14 +51,14 @@ for name in ('slow', 'fail'):
     (apps / f'fixture-{name}.desktop').write_text(
         f'[Desktop Entry]\nType=Application\nName={name.title()}\nExec=/usr/bin/true\nTerminal=false\n')
 launcher.chmod(0o700)
-env = dict(os.environ, EMAKI_BIN=str(BINARY), NIRI_SOCKET=str(profile / 'n.sock'),
+env = dict(os.environ, EMAKI_BIN=str(BINARY), NIRI_SOCKET=str(runtime_path(profile) / 'n.sock'),
            EMAKI_GTK_LAUNCH=str(launcher), EMAKI_SHELL_FIXTURE=str(profile),
            QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QT_SCALE_FACTOR='1',
            QML_DISABLE_DISK_CACHE='1', PYTHONDONTWRITEBYTECODE='1', EMAKI_SETTINGS_PROFILE='',
            EMAKI_SHELL_NOTIFICATIONS='0', EMAKI_SHELL_TRAY='0', EMAKI_TEST_MPRIS='0',
            XDG_CONFIG_HOME=str(profile / 'config'), XDG_STATE_HOME=str(profile / 'state'),
            XDG_DATA_HOME=str(profile / 'data'), XDG_DATA_DIRS=str(profile / 'data'),
-           XDG_CACHE_HOME=str(profile / 'cache'), XDG_RUNTIME_DIR=str(profile / 'runtime'),
+           XDG_CACHE_HOME=str(profile / 'cache'), XDG_RUNTIME_DIR=str(runtime_path(profile)),
            TMPDIR=str(profile / 'tmp'),
            DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(profile / 'no-session'),
            DBUS_SYSTEM_BUS_ADDRESS='unix:path=' + str(profile / 'no-system'))
@@ -75,7 +76,7 @@ def windows(editor=True, cover=False):
     if cover:
         rows.append(window(9, 101, False, 'fixture-browser', 'PRIVATE_FULL', tile_size=(1536., 960.)))
     return rows
-server = Server(profile / 'n.sock')
+server = Server(runtime_path(profile) / 'n.sock')
 server.logical = dict(x=0, y=0, width=1536, height=960, scale=1.0, transform='Normal')
 with server.lock:
     server.windows = windows()

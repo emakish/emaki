@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Mic sample/lifecycle and glass policy in isolated qs, without a mic or session."""
+from runtime_fixture import runtime_path
 import os
 from pathlib import Path
 import shutil
@@ -22,7 +23,7 @@ with tempfile.TemporaryDirectory(prefix='meter-', dir=ROOT / '.cache') as tempor
     shutil.copyfile(ROOT / 'tests/fixtures/MicMeterTest.qml', qml / 'shell.qml')
     env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_SCALE_FACTOR='1',
                QT_QUICK_BACKEND='software', QML_DISABLE_DISK_CACHE='1',
-               XDG_RUNTIME_DIR=str(profile / 'runtime'), XDG_CACHE_HOME=str(profile / 'cache'),
+               XDG_RUNTIME_DIR=str(runtime_path(profile)), XDG_CACHE_HOME=str(profile / 'cache'),
                XDG_CONFIG_HOME=str(profile / 'config'), XDG_STATE_HOME=str(profile / 'state'),
                XDG_DATA_HOME=str(profile / 'data'), XDG_DATA_DIRS=str(profile / 'data'),
                TMPDIR=str(profile / 'tmp'), NIRI_SOCKET='',
@@ -35,10 +36,8 @@ with tempfile.TemporaryDirectory(prefix='meter-', dir=ROOT / '.cache') as tempor
                             text=True, capture_output=True, timeout=5)
     log = result.stdout + result.stderr
     assert result.returncode == 0 and 'MIC_METER_OK' in log and 'SYSTEM_METER_POLICY_OK' in log, log
-    # qs tries to start IPC even though this fixture never uses it. A sandbox may
-    # reject that socket; retain every other error as a failure.
+    assert 'Failed to start IPC server' not in log, log
     unexpected = [line for line in log.splitlines()
-                  if any(word in line for word in ('ERROR', 'WARN', 'Error:'))
-                  and 'ERROR quickshell.ipc: Failed to start IPC server on path ' not in line]
+                  if any(word in line for word in ('ERROR', 'WARN', 'Error:'))]
     assert not unexpected, '\n'.join(unexpected)
 print('PASS: every mic peak immediate, unchanged width, close/reopen, resize; sound cache and clipping transitions')

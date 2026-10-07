@@ -13,6 +13,7 @@ import sys
 import tempfile
 import time
 import app_scope
+import clipboard_store
 from urllib.parse import quote
 
 class Refused(Exception):
@@ -54,9 +55,8 @@ def run(argv, data=None, limit=8*1024*1024, env=None, check=True):
                 p.wait()
 
 def clip(request):
-    cache = Path(os.environ.get('XDG_CACHE_HOME') or Path.home()/'.cache')
     # Missing history is a read-only empty state; cliphist list otherwise creates a DB.
-    db = cache/'cliphist/db'
+    db = clipboard_store.runtime_db()
     if not db.is_file():
         if request['op']=='clip-list': return dict(state='ready', entries=[])
         if request['op']=='clip-clear': return dict(state='deleted')

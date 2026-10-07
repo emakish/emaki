@@ -20,9 +20,18 @@ the target's unicode font; all menus omit a background line.
 Four wrong attempts (configurable), Escape and empty input precede the right
 password. A fixture-only serial mirror counts completed attempts. Queued c/e
 keys check the keyboard drain. Review all PNGs too. --video-size changes the
-fixture's GRUB preference and verifies the actual GOP size; it does not remove
-modes from the firmware list. The missing UUID check fails while the
-non-password error loop remains.
+QEMU display preference and verifies the actual GOP size; production starts
+gfxterm afresh with its unchanged auto preference. It does not remove modes.
+--native-only uses a fixture EFI chainloader (requires clang and lld-link) to
+select the requested mode and expose only that GOP mode before starting GRUB;
+this also exercises production auto unchanged.
+--case unsupported-mode instead forces a fresh graphics startup with an invalid
+mode to exercise GRUB's internal fallback (whose actual size is recorded).
+The missing UUID check fails while the non-password error loop remains.
+
+--boot-refresh checks the installed updater's self-contained EFI module tree
+and canonical-menu fallback when its selected boot generation is absent.
+This checks the loader side of root rollback; an installed rollback needs a separate test.
 """
 
 import argparse
@@ -120,8 +129,8 @@ def encrypt_filesystem(source, target, key, offset):
 
 def build(args, out):
     usr = args.grub_root.resolve()
-    if args.video_size != '1024x768':
-        render.GRUB_GFXMODE = args.video_size + ',auto'
+    if args.case == 'unsupported-mode':
+        render.GRUB_UNLOCK_GFXMODE = '1234x567'
     version = run(tool('grub-mkimage', usr), '--version').strip()
     if not re.search(r'\b2\.16\b', version):
         raise RuntimeError(f'This check requires GRUB 2.16, found: {version}')
@@ -135,12 +144,62 @@ def build(args, out):
     font = (out / 'visible.pf2').read_bytes()
     memdisk = render.grub_unlock_memdisk(font, load_cfg, grub_uuid)
     script = render.grub_unlock_script(load_cfg, grub_uuid)
+    image_options = []
+    early_modules = list(render.GRUB_EARLY_MODULES)
+    if args.boot_refresh:
+        # The package installs this same shared source as emaki_boot.boot.
+        from emaki_installer import boot
+        sys.path.insert(0, str(ROOT / 'grub'))
+        sys.modules['emaki_boot.boot'] = boot
+        from emaki_boot import refresh
+        staged_grub = out / 'staged-grub'
+        shutil.copytree(usr / 'lib/grub/x86_64-efi', staged_grub / 'x86_64-efi')
+        (staged_grub / 'fonts').mkdir()
+        shutil.copyfile(usr / 'share/grub/unicode.pf2', staged_grub / 'fonts/unicode.pf2')
+        generation = Path('/boot/emaki/11111111111111111111111111111111')
+        prefix, early, memdisk = refresh.loader_payload(
+            staged_grub, generation, {'luks': grub_uuid, 'fsroot': ''}, load_cfg, font)
+        (out / 'early.cfg').write_bytes(early)
+        with tarfile.open(fileobj=io.BytesIO(memdisk)) as payload:
+            script = payload.extractfile('unlock.cfg').read().decode()
+            (out / 'dispatcher.cfg').write_bytes(payload.extractfile('boot/grub/grub.cfg').read())
+        image_options = ['--compression=none']
+        early_modules = list(refresh.IMAGE_MODULES)
+    # Measure the installed payload separately from fixture instrumentation.
+    production_memdisk = out / 'production-memdisk.tar'
+    production_memdisk.write_bytes(memdisk)
+    production_efi = out / 'production-BOOTX64.EFI'
+    run(tool('grub-mkimage', usr), '--directory=' + str(usr / 'lib/grub/x86_64-efi'),
+        '--format=x86_64-efi', *image_options, '--memdisk=' + str(production_memdisk),
+        '--prefix=' + prefix, '--config=' + str(out / 'early.cfg'),
+        '--output=' + str(production_efi), *early_modules)
+    if args.boot_refresh:
+        refresh.verify_image(production_efi.read_bytes(), prefix, early, memdisk, grub_uuid)
+    efi_bytes = production_efi.stat().st_size
+    # Both the vendor and fallback loaders occupy ESP space. Round each to a
+    # conservative FAT cluster boundary before comparing with the free-space gate.
+    cluster_bytes = 65536
+    copies_bytes = 2 * ((efi_bytes + cluster_bytes - 1) // cluster_bytes) * cluster_bytes
+    budget_bytes = 32 * 1024 * 1024
+    (out / 'production-sizes.json').write_text(json.dumps({
+        'memdisk_bytes': len(memdisk), 'efi_bytes': efi_bytes,
+        'installed_efi_copies': 2, 'cluster_bytes': cluster_bytes,
+        'installed_efi_allocated_bytes': copies_bytes,
+        'free_esp_budget_bytes': budget_bytes,
+    }, indent=2) + '\n')
+    if copies_bytes > budget_bytes:
+        raise RuntimeError('Production EFI copies exceed the 32 MiB free-ESP budget')
+    # Expose the actual GOP list in the fixture trace, never in the installed script.
+    inventory = ('serial --unit=0 --speed=115200\n'
+                 'terminal_output serial\n'
+                 'videoinfo\n'
+                 'terminal_output console\n')
     setup = 'while true; do\n'
     if script.count(setup) != 1:
         raise RuntimeError('Expected one retry setup for the fixture serial mirror')
     # Console fallback resets terminal_output on every retry. Reattach the mirror
     # at loop entry so every cryptomount, including the successful one, is traced.
-    traced = script.replace(setup, 'serial --unit=0 --speed=115200\n' + setup +
+    traced = inventory + script.replace(setup, 'serial --unit=0 --speed=115200\n' + setup +
                             '  terminal_output --append serial\n', 1)
     (out / 'production-unlock.cfg').write_text(script)
     (out / 'traced-unlock.cfg').write_text(traced)
@@ -149,6 +208,12 @@ def build(args, out):
             '  set gfxmode=auto\n'
             'fi\nterminal_output gfxterm\n'
             'menuentry "Emaki unlock check passed" { halt; }\n')
+    if args.boot_refresh:
+        # No module files exist on the encrypted root, and regexp is not linked
+        # into the EFI core. This menu can appear only after loading its module
+        # from the updater's memdisk and selecting the canonical fallback menu.
+        menu = menu.replace('menuentry ', 'insmod regexp\nif regexp "^module-ok$" module-ok; then\nmenuentry ')
+        menu += 'fi\n'
     root_tree = out / 'root'
     (root_tree / 'boot/grub/fonts').mkdir(parents=True)
     (root_tree / 'boot/grub/grub.cfg').write_text(menu)
@@ -160,16 +225,17 @@ def build(args, out):
               [name for name in assets(args.variant) if name.startswith('wrong-')]
               if args.case == 'missing-retry-background' else [])
     (out / 'memdisk.tar').write_bytes(append_archive(memdisk, {
-        **assets(args.variant), 'unlock.cfg': traced.encode()}, remove=remove))
-    modules = list(render.GRUB_EARLY_MODULES)
+        **{name: data for name, data in assets(args.variant).items()
+           if not name.startswith('checking-')}, 'unlock.cfg': traced.encode()}, remove=remove))
+    modules = list(early_modules)
     if args.case == 'console':
         modules = [module for module in modules if module not in
                    ('gfxterm', 'gfxterm_background', 'efi_gop')]
     run(tool('grub-mkimage', usr), '--directory=' + str(usr / 'lib/grub/x86_64-efi'),
-        '--format=x86_64-efi', '--memdisk=' + str(out / 'memdisk.tar'),
+        '--format=x86_64-efi', *image_options, '--memdisk=' + str(out / 'memdisk.tar'),
         '--prefix=' + prefix,
         '--config=' + str(out / 'early.cfg'), '--output=' + str(out / 'BOOTX64.EFI'),
-        *modules, 'halt', 'serial')
+        *modules, 'halt', 'serial', 'videoinfo')
     password = out / 'password'
     keyfile = out / 'keyfile'
     volume_key = out / 'volume-key'
@@ -191,7 +257,13 @@ def build(args, out):
         'accel': args.accel,
         'scope': 'unlock and encrypted ext4 /boot/grub/grub.cfg; no kernel boot',
         'case': args.case, 'video_size': args.video_size, 'variant': args.variant,
-        'gfxmode_preference': render.GRUB_GFXMODE,
+        'video_device': args.video_device,
+        'fixture_mode_preamble': '',
+        'unsupported_mode_override': args.case == 'unsupported-mode',
+        'gfxmode_preference': render.GRUB_UNLOCK_GFXMODE,
+        'native_only_gop': args.native_only,
+        'boot_refresh': args.boot_refresh,
+        'menu_route': 'canonical fallback; generation absent' if args.boot_refresh else 'installer prefix',
         'wrong_attempts': args.wrong_attempts, 'serial_mirror': True}, indent=2) + '\n')
     try:
         run('cryptsetup', 'luksFormat', '--batch-mode', '--type', 'luks2',
@@ -217,7 +289,19 @@ def build(args, out):
     esp = out / 'esp.img'
     run('mkfs.fat', '-F', '32', '-n', 'EMAKI', '-C', esp, '65536')
     run(tool('mmd', usr), '-i', esp, '::/EFI', '::/EFI/BOOT')
-    run(tool('mcopy', usr), '-i', esp, out / 'BOOTX64.EFI', '::/EFI/BOOT/BOOTX64.EFI')
+    if args.native_only:
+        width, height = args.video_size.split('x')
+        run('clang', '--target=x86_64-unknown-windows', '-ffreestanding', '-fshort-wchar',
+            '-mno-red-zone', '-fno-stack-protector', '-Wall', '-Wextra', '-Werror',
+            f'-DGOP_WIDTH={width}', f'-DGOP_HEIGHT={height}', '-c',
+            ROOT / 'tests/vm/native-only-gop.c', '-o', out / 'native-only-gop.obj')
+        run('lld-link', '/subsystem:efi_application', '/entry:efi_main', '/nodefaultlib',
+            f'/out:{out / "native-only-gop.efi"}', out / 'native-only-gop.obj')
+        run(tool('mcopy', usr), '-i', esp, out / 'BOOTX64.EFI', '::/EFI/BOOT/grub.efi')
+        run(tool('mcopy', usr), '-i', esp, out / 'native-only-gop.efi',
+            '::/EFI/BOOT/BOOTX64.EFI')
+    else:
+        run(tool('mcopy', usr), '-i', esp, out / 'BOOTX64.EFI', '::/EFI/BOOT/BOOTX64.EFI')
     disk = out / 'disk.img'
     with disk.open('wb') as target:
         target.truncate(396 * 1024 * 1024)
@@ -353,17 +437,86 @@ def wait_prompt(out, count, timeout):
     raise RuntimeError(f'Timed out waiting for password prompt {count}; inspect serial.log')
 
 
+def record_video_modes(out, args):
+    """Record GRUB's fresh GOP query, verifying the native-only fixture boundary."""
+    trace = (out / 'serial.log').read_text(errors='replace')
+    inventory = trace.split('Enter passphrase for ', 1)[0]
+    modes = [tuple(map(int, item)) for item in
+             re.findall(r'0x[0-9a-fA-F]+\s+(\d+)\s+x\s+(\d+)\s+x\s+(\d+)', inventory)]
+    (out / 'video-modes.json').write_text(json.dumps(modes, indent=2) + '\n')
+    if not modes or any(128 * height // 1600 < 32 for _, height, _ in modes):
+        raise RuntimeError('Selectable GOP mode leaves fewer than 32 black cursor rows')
+    if args.native_only:
+        width, height = map(int, args.video_size.split('x'))
+        if len(modes) != 1 or modes[0][:2] != (width, height):
+            raise RuntimeError('Native-only GOP inventory is not exactly the requested mode')
+
+
+def grub_stretch(source, size):
+    """Reproduce GRUB 2.16 bitmap_scale.c scale_bilinear byte for byte.
+
+    GRUB samples from the top-left using unsigned 8-bit fixed-point fractions,
+    truncates the weighted sum, and uses nearest-neighbor at the source edges.
+    Pillow's bilinear resize uses different coordinates and downsampling filters.
+    """
+    from PIL import Image
+    source = source.convert('RGB')
+    if source.size == size:
+        return source.copy()
+    sw, sh = source.size
+    dw, dh = size
+    pixels = source.tobytes()
+    result = bytearray(dw * dh * 3)
+    # The source's quotient/remainder accumulators equal floor(i * span / size).
+    columns = []
+    for x in range(dw):
+        fixed = x * sw * 256 // dw
+        columns.append(((fixed >> 8) * 3, fixed & 255))
+    stride = sw * 3
+    target = 0
+    for y in range(dh):
+        fixed = y * sh * 256 // dh
+        sy, v = fixed >> 8, fixed & 255
+        row = sy * stride
+        for offset, u in columns:
+            first = row + offset
+            if offset == stride - 3 or sy == sh - 1 or (u == 0 and v == 0):
+                result[target:target + 3] = pixels[first:first + 3]
+            else:
+                below = first + stride
+                c00, c10 = (256 - u) * (256 - v), u * (256 - v)
+                c01, c11 = (256 - u) * v, u * v
+                for channel in range(3):
+                    result[target + channel] = (
+                        c00 * pixels[first + channel]
+                        + c10 * pixels[first + 3 + channel]
+                        + c01 * pixels[below + channel]
+                        + c11 * pixels[below + 3 + channel]
+                    ) >> 16
+            target += 3
+    return Image.frombytes('RGB', size, bytes(result))
+
+
 def check_background(out, label, state, variant):
+    """Check embedded bytes and every displayed pixel against GRUB's scaler."""
     from PIL import Image, ImageChops
-    with Image.open(out / (label + '.png')) as actual:
-        name = f'{state}-{actual.width}x{actual.height}.png'
-        with tarfile.open(out / 'memdisk.tar') as archive:
-            committed = ARTWORK / variant / name
-            if archive.extractfile(name).read() != committed.read_bytes():
-                raise RuntimeError(f'{label} does not carry variant {variant} artwork')
-            with Image.open(committed) as expected:
-                if ImageChops.difference(actual.convert('RGB'), expected.convert('RGB')).getbbox():
-                    raise RuntimeError(f'{label} differs from the exact unlock artwork')
+    with Image.open(out / (label + '.png')) as frame:
+        actual = frame.convert('RGB')
+    with tarfile.open(out / 'memdisk.tar') as archive:
+        names = [name for name in archive.getnames()
+                 if name.startswith(state + '-') and name.endswith('.png')]
+        if len(names) != 1:
+            raise RuntimeError(f'Expected one stretch source for {state}')
+        name = names[0]
+        committed = ARTWORK / variant / name
+        if archive.extractfile(name).read() != committed.read_bytes():
+            raise RuntimeError(f'{label} does not carry variant {variant} artwork')
+    with Image.open(committed) as source:
+        expected = grub_stretch(source, actual.size)
+    expected.save(out / (label + '-expected.png'))
+    difference = ImageChops.difference(actual, expected)
+    if difference.getbbox():
+        raise RuntimeError(f'{label} differs from exact stretched artwork at {difference.getbbox()}')
 
 
 def check_words(words):
@@ -380,11 +533,19 @@ def main():
     parser.add_argument('--variant', choices=('A', 'B', 'C'), default=VARIANT)
     parser.add_argument('--case', choices=('normal', 'console', 'missing-background',
                                          'missing-uuid', 'missing-menu-assets',
-                                         'missing-retry-background'), default='normal')
-    parser.add_argument('--video-size', choices=('1024x768', '800x600', '640x480'),
+                                         'missing-retry-background', 'unsupported-mode'), default='normal')
+    parser.add_argument('--video-size', choices=('2560x1600', '1920x1080', '1280x800',
+                                                 '1024x768', '800x600', '640x480'),
                         default='1024x768',
-                        help='fixture GRUB preference; actual GOP size is verified from the screenshot')
+                        help='QEMU display preference; production starts graphics afresh; actual size is verified')
+    parser.add_argument('--video-device', choices=('VGA', 'virtio-vga', 'virtio-gpu-pci',
+                                                    'bochs-display', 'qxl', 'cirrus-vga', 'ramfb'), default='VGA',
+                        help='QEMU display device; cirrus and ramfb lack xres/yres properties')
+    parser.add_argument('--native-only', action='store_true',
+                        help='chainload through a fixture GOP wrapper exposing only the selected mode')
     parser.add_argument('--wrong-attempts', type=int, default=4)
+    parser.add_argument('--boot-refresh', action='store_true',
+                        help='test updater module memdisk and fallback with an absent boot generation')
     parser.add_argument('--ovmf-code', type=Path, default=Path('/usr/share/edk2/x64/OVMF_CODE.4m.fd'))
     parser.add_argument('--ovmf-vars', type=Path, default=Path('/usr/share/edk2/x64/OVMF_VARS.4m.fd'))
     calibration = parser.add_mutually_exclusive_group()
@@ -395,6 +556,8 @@ def main():
     parser.add_argument('--accel', choices=('tcg', 'kvm'), default='tcg')
     parser.add_argument('--timeout', type=float, default=600, help='seconds to wait for initial/error/menu text')
     args = parser.parse_args()
+    if args.boot_refresh and args.case != 'normal':
+        parser.error('--boot-refresh currently supports only --case normal')
     if args.argon2_iterations < 0 or 0 < args.argon2_iterations < 4:
         parser.error('Argon2 iterations must be 0 (installer cost) or at least 4')
     if args.wrong_attempts < 0:
@@ -406,10 +569,13 @@ def main():
     disk = build(args, out)
     shutil.copyfile(args.ovmf_vars, out / 'vars.fd')
     width, height = args.video_size.split('x')
+    video = args.video_device
+    if video not in ('cirrus-vga', 'ramfb'):
+        video += f',xres={width},yres={height}'
     command = ['qemu-system-x86_64', '-machine', 'q35', '-accel', args.accel,
                '-m', '1024', '-display', 'none', '-serial', f'file:{out / "serial.log"}', '-qmp', 'stdio',
                '-no-reboot', '-net', 'none', '-vga', 'none',
-               '-device', f'VGA,xres={width},yres={height}',
+               '-device', video,
                '-drive', f'if=pflash,format=raw,readonly=on,file={args.ovmf_code.resolve()}',
                '-drive', f'if=pflash,format=raw,file={out / "vars.fd"}',
                '-drive', f'format=raw,file={disk}']
@@ -434,6 +600,7 @@ def main():
                 return
             words = monitor.wait_initial(out, args.timeout,
                                          allow_errors=args.case in ('console', 'missing-background'))
+            record_video_modes(out, args)
             graphical = args.case not in ('console', 'missing-background')
 
             def check_screen(label, state, words):
@@ -453,7 +620,10 @@ def main():
             if graphical:
                 from PIL import Image
                 with Image.open(out / '01-unlock.png') as initial:
-                    if initial.size != (int(width), int(height)):
+                    (out / 'actual-video-size.txt').write_text(
+                        f'{initial.width}x{initial.height}\n')
+                    if (args.case != 'unsupported-mode' and
+                            initial.size != (int(width), int(height))):
                         raise RuntimeError('Actual GOP mode differs from the requested fixture size')
             check_screen('01-unlock', 'unlock', words)
             prompt_factor = (out / 'serial.log').read_text(errors='replace').count('Enter passphrase for ')
@@ -520,6 +690,8 @@ def main():
                 'Queued c/e keys during checking were discarded before the menu.\n'
                 f'Checking state: {checking_state}; see 05-during-check.png.\n'
                 f'Enter to unlock: {unlock_seconds:.3f} s; see unlock-timing.json.\n'
+                + ('Updater route: canonical fallback with absent generation; regexp module loaded from memdisk.\n'
+                   if args.boot_refresh else 'Installer prefix route.\n') +
                 'Each next prompt was counted through a fixture-only serial output mirror.\n'
                 'Inspect production-unlock.cfg and traced-unlock.cfg for the instrumentation.\n'
                 'The disk grub.cfg reproduces menu startup; no installed kernel/initramfs is tested.\n')

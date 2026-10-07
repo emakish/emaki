@@ -5,6 +5,7 @@ The real PAM harness copies production LockPam and changes its literal service
 in the COPY only. No production switch, IPC, factory, or environment variable
 can select a different PAM stack. permit/deny are never installed.
 """
+from runtime_fixture import runtime_path
 from contextlib import contextmanager
 import json
 import hashlib
@@ -40,7 +41,7 @@ def production_path():
         shutil.copy(ROOT / 'shell/LockPam.qml', profile)
         shutil.copy(ROOT / 'tests/fixtures/lock/LockPamProductionTest.qml', profile / 'check.qml')
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
-                   QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(profile / 'r'),
+                   QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(runtime_path(profile)),
                    XDG_CACHE_HOME=str(profile / 'cache'), XDG_CONFIG_HOME=str(profile / 'config'),
                    XDG_DATA_HOME=str(profile / 'data'), XDG_STATE_HOME=str(profile / 'state'),
                    TMPDIR=str(profile / 'tmp'))
@@ -89,7 +90,7 @@ def harness(service=None):
         shutil.copy(ROOT / 'tests/fixtures/lock/LockPam.qml', shell)
     (shell / 'qmldir').write_text('AuthController 1.0 AuthController.qml\nLockAuth 1.0 LockAuth.qml\nLockPam 1.0 LockPam.qml\n')
     env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
-               QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(profile / 'r'),
+               QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(runtime_path(profile)),
                XDG_CACHE_HOME=str(profile / 'cache'), XDG_CONFIG_HOME=str(profile / 'config'),
                XDG_DATA_HOME=str(profile / 'data'), XDG_STATE_HOME=str(profile / 'state'),
                TMPDIR=str(profile / 'tmp'), LC_ALL='C', USER='emaki-lock-not-a-user', LOGNAME='emaki-lock-not-a-user', EMAKI_AUTH_FIXTURE=str(profile))
@@ -153,7 +154,7 @@ def harness(service=None):
     if service:
         assert f'user "{pwd.getpwuid(os.getuid()).pw_name}"' in output, output
     assert 'fixture-éЖ' not in output and 'bad' not in output
-    output = '\n'.join(line for line in output.splitlines() if 'quickshell.ipc: Failed to start IPC server' not in line)
+    assert 'Failed to start IPC server' not in output, output
     assert 'ERROR' not in output and 'WARN' not in output, output
 
 
@@ -217,6 +218,18 @@ with harness() as (call, wait):
     call('notice', 'Account locked for 10 minutes', True)
     call('finish', 'rejected')
     assert state()['kind'] == 'pam-error' and state()['message'] == 'Account locked for 10 minutes'
+    # pam_faillock emits the account notice and then its remaining duration as
+    # separate informational messages. Preserve the stack's actual duration,
+    # including non-default policies, after both possible failure outcomes.
+    for outcome, duration in [('rejected', '(7 minutes left to unlock)'),
+                              ('locked', '(1 minute left to unlock)')]:
+        attempt()
+        call('notice', 'The account is locked due to 5 failed logins.', False)
+        call('notice', duration, False)
+        call('finish', outcome)
+        assert state()['message'] == duration, (outcome, state())
+        time.sleep(2.1)
+        assert state()['message'] == duration, (outcome, state())
     attempt()
     call('finish', 'technical')
     assert state()['kind'] == 'technical' and 'Wrong password' not in state()['message']

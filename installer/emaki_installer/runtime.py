@@ -97,13 +97,16 @@ class Runner:
         self.redactor = redactor or Redactor()
         self.progress = progress
 
-    def run(self, argv, *, check=True, input=None, secret=False, timeout=None, watch=None):
+    def run(self, argv, *, check=True, input=None, secret=False, timeout=None, watch=None, cancelled=None, quiet=False):
         """No shell; secret stdin AND all output of secret commands are suppressed.
 
         watch(line) sees each logged line of this command; a failing watch is ignored.
         """
         argv = [str(x) for x in argv]
-        safe_log(self.log, self.redactor.text('$ ' + shlex.join(argv)))
+        if not quiet:
+            safe_log(self.log, self.redactor.text('$ ' + shlex.join(argv)))
+        if self.progress and not secret and not quiet:
+            self.progress(command=argv)
         env = dict(os.environ, LC_ALL='C', LANG='C', SYSTEMD_COLORS='0',
                    SYSTEMD_PAGER='cat', PAGER='cat')
         chunks, pending = [], ''
@@ -126,6 +129,9 @@ class Runner:
                 with selectors.DefaultSelector() as selector:
                     selector.register(process.stdout, selectors.EVENT_READ)
                     while selector.get_map():
+                        if cancelled is not None and cancelled.is_set():
+                            stop_group(process)
+                            raise InstallError(Code.CANCELLED, 'Update download stopped.')
                         if timeout is not None and time.monotonic() - start > timeout:
                             self._timed_out(process, argv)
                         for key, _ in selector.select(0.2):
@@ -140,6 +146,8 @@ class Runner:
                             if retained < 8 * 1024 * 1024:
                                 chunks.append(decoded)
                                 retained += len(decoded)
+                            if quiet:
+                                continue
                             segments = re.split(r'[\r\n]', decoded)
                             for index, segment in enumerate(segments):
                                 if not dropping:
@@ -151,9 +159,18 @@ class Runner:
                                     if not dropping:
                                         self._line(pending, watch)
                                     pending, dropping = '', False
-                    if not dropping and not secret:
+                    if not dropping and not secret and not quiet:
                         self._line(pending + decoder.decode(b'', final=True), watch)
-                if timeout is None:
+                if cancelled is not None:
+                    while process.poll() is None:
+                        if cancelled.is_set():
+                            stop_group(process)
+                            raise InstallError(Code.CANCELLED, 'Update download stopped.')
+                        if timeout is not None and time.monotonic() - start > timeout:
+                            self._timed_out(process, argv)
+                        time.sleep(0.05)
+                    status = process.returncode
+                elif timeout is None:
                     status = process.wait()
                 else:
                     # The output can close long before the command ends.
@@ -163,7 +180,10 @@ class Runner:
                         self._timed_out(process, argv)
         except OSError as exc:
             raise InstallError(Code.COMMAND_FAILED, f'Cannot run {argv[0]}: {exc.strerror}.') from exc
-        safe_log(self.log, f'{Path(argv[0]).name}: exit {status}' + (' (private input/output)' if secret else ''))
+        if not quiet:
+            safe_log(self.log, f'{Path(argv[0]).name}: exit {status}' + (' (private input/output)' if secret else ''))
+        if self.progress and not secret and not quiet and status == 0:
+            self.progress(command_done=argv)
         if check and status:
             raise InstallError(Code.COMMAND_FAILED, f'{Path(argv[0]).name} exited with status {status}.',
                                output='' if secret else self.redactor.text(''.join(chunks)), returncode=status)
@@ -181,13 +201,7 @@ class Runner:
                 # Like the log: a progress display must never stop the command it follows.
                 safe_log(watch, self.redactor.text(line))
             if self.progress:
-                match = re.search(r'\((\d+)\s*/\s*(\d+)\)', line)
-                if match and int(match[2]):
-                    self.progress(min(99, 100 * int(match[1]) / int(match[2])))
-                # pacman announces every package of a transaction on its own line.
-                package = re.fullmatch(r'installing (\S+)\.\.\.', line)
-                if package:
-                    self.progress(None, package=package[1])
+                self.progress(line=self.redactor.text(line))
 
     def chroot(self, argv, target=TARGET, **kwargs):
         return self.run(['arch-chroot', str(target), *argv], **kwargs)

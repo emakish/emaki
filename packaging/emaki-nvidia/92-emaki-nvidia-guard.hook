@@ -1,0 +1,24 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Path
+Target = usr/lib/modules/*/pkgbase
+Target = usr/lib/modules/*/kernel/drivers/video/*
+Target = usr/lib/modules/*/extramodules/*
+Target = usr/src/*/dkms.conf
+
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Package
+Target = emaki-nvidia
+Target = nvidia*
+
+[Action]
+Description = Check graphics modules for both kernels (NVIDIA)
+When = PostTransaction
+Exec = /usr/bin/python3 -I /usr/lib/emaki/nvidia/runtime.py check

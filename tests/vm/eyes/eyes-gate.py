@@ -17,15 +17,21 @@ Result lines never mix the states. Exit 1 = FAILED, 3 = NOT TESTED, 2 = usage.
 """
 import argparse
 import hashlib
+import importlib.util
+import json
 from pathlib import Path
 import random
 import subprocess
 import sys
 import tomllib
 
+from PIL import Image
+
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
+sys.path.insert(0, str(HERE.parent))
+from menu_mode import MissingMode, configured_size
 RESULTS = ('PASS', 'FAIL', 'NOT TESTED', 'NOT APPLICABLE')
 VERDICTS = ('OK', 'CONFUSING', 'BROKEN', 'BLACK')
 MIN_SEEN = 40
@@ -88,6 +94,111 @@ def check_seen(where, table, expected, findings):
     return True
 
 
+def check_resolutions(base, where, stage, table, findings, signoff=None):
+    """A judgement at one size cannot accept controls at another size."""
+    checks = table.get('resolution_checks', {})
+    for size in stage.get('resolutions', []):
+        item = checks.get(size, {})
+        label = f'{where} at {size}'
+        if not item:
+            findings.not_tested(label, 'no separately judged frame at this resolution')
+            continue
+        run, sid = where.split('/')
+        waived = item.get('verdict') == 'CONFUSING' and any(
+            w.get('run') == run and w.get('stage') == sid and w.get('resolution') == size
+            and str(w.get('sentence', '')).strip() for w in (signoff or {}).get('waive', []))
+        if item.get('verdict') != 'OK' and not waived:
+            if item.get('verdict') in ('BROKEN', 'BLACK', 'CONFUSING'):
+                findings.fail(label, 'resolution judgement: ' + item['verdict'])
+            else:
+                findings.not_tested(label, 'frame has not been judged')
+            continue
+        if waived:
+            print(f'{label}: CONFUSING, waived by resolution on the signed sheet')
+        if not check_frames(base, label, item, findings, required=True):
+            continue
+        check_seen(label, item, stage['expected'], findings)
+        expected = tuple(map(int, size.split('x')))
+        if stage.get('configured_menu_mode'):
+            try:
+                expected = configured_size(base, item, expected)
+            except MissingMode as error:
+                findings.not_tested(label, str(error))
+                continue
+            except (OSError, ValueError, TypeError) as error:
+                findings.fail(label, str(error))
+                continue
+        for name in item['frames']:
+            try:
+                with Image.open(base / name) as frame:
+                    frame.load()
+                    if frame.size != expected:
+                        findings.fail(label, f'actual frame size {frame.size} differs from {expected}')
+            except (OSError, ValueError) as error:
+                findings.fail(label, f'frame cannot be decoded: {error}')
+
+
+def check_progress(base, where, stage, table, findings):
+    spec = importlib.util.spec_from_file_location('install_progress', HERE.parent / 'check-install-progress.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    for size in stage['resolutions']:
+        label = f'{where} progress at {size}'
+        item = table.get('progress_checks', {}).get(size, {})
+        if item.get('covers_installation') is not True or item.get('roi_reviewed') is not True:
+            findings.not_tested(label, 'review must confirm the full installation interval and progress-only region')
+            continue
+        try:
+            path = (base / item['timeline']).resolve()
+            if not path.is_relative_to(base.resolve()):
+                raise ValueError('timeline escapes walk directory')
+            if sha256_file(path) != item['sha256']:
+                raise ValueError('timeline hash differs from reviewed evidence')
+            progress = module.check(base, json.loads(path.read_text()), item['roi'], tuple(map(int, size.split('x'))),
+                                    require_complete=True)
+            if progress.get('too_short_to_see'):
+                print(f'{label}: timeline-proven, too short to see (not seen): '
+                      + ', '.join(progress['too_short_to_see']))
+        except (module.NotTested, FileNotFoundError) as error:
+            findings.not_tested(label, str(error))
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            findings.fail(label, f'invalid progress evidence: {error}')
+
+
+def check_actions(base, where, stage, table, findings):
+    for action in stage.get('actions', []):
+        label = f'{where} {action}'
+        item = table.get('action_checks', {}).get(action, {})
+        if not item:
+            findings.not_tested(label, 'no UI action and outcome recorded')
+            continue
+        if not str(item.get('trigger', '')).startswith(('keys:', 'click:')):
+            findings.fail(label, 'action requires a UI key or click trigger')
+        if item.get('completed') is not True:
+            findings.fail(label, 'action did not complete')
+        if item.get('verdict') != 'OK':
+            findings.not_tested(label, 'action outcome has not been judged')
+        check_seen(label, item, stage.get('action_expected', {}).get(action, stage['expected']), findings)
+        check_frames(base, label, item, findings, required=True)
+        event = {'restart': 'RESET', 'shutdown': 'SHUTDOWN',
+                 'lock-restart': 'RESET', 'lock-shutdown': 'SHUTDOWN'}.get(action)
+        if event != 'SHUTDOWN' and len(item.get('frames', [])) < 2:
+            findings.fail(label, 'action needs before and after frames')
+        if event:
+            try:
+                path = (base / item['events']).resolve()
+                if not path.is_relative_to(base.resolve()):
+                    raise ValueError('event log escapes walk directory')
+                if sha256_file(path) != item['events_sha256']:
+                    raise ValueError('event log hash differs from recorded evidence')
+                events = json.loads(path.read_text())
+                if not any(e.get('event') == event and e.get('data', {}).get('guest') is True
+                           for e in events):
+                    raise ValueError(f'no guest {event} event; a monitor stop or reset is not proof')
+            except (OSError, KeyError, TypeError, ValueError, AttributeError) as error:
+                findings.fail(label, f'invalid guest event evidence: {error}')
+
+
 def check_stage(base, run, sid, stage, table, signoff, findings, passes):
     where = f'{run}/{sid}'
     result = table.get('result', '')
@@ -104,6 +215,14 @@ def check_stage(base, run, sid, stage, table, signoff, findings, passes):
             return
         frames_ok = check_frames(base, where, table, findings, required=True)
         seen_ok = check_seen(where, table, stage['expected'], findings)
+        check_resolutions(base, where, stage, table, findings, signoff)
+        check_actions(base, where, stage, table, findings)
+        if sid == '16':
+            check_progress(base, where, stage, table, findings)
+        if sid == '39' and not any('usb-storage,drive=liveiso' in p.read_text()
+                                   for p in base.glob('*/*/qemu-cmdline.txt')):
+            findings.not_tested(where, 'no recorded QEMU command boots the image as usb-storage; CD boot does not cover this stage')
+            return
         if stage.get('lock'):
             test = table.get('input_test', {})
             if not (test.get('marker_absent') is True and test.get('frames')
@@ -124,7 +243,8 @@ def check_stage(base, run, sid, stage, table, signoff, findings, passes):
             check_frames(base, where, table, findings, required=True)
             check_seen(where, table, stage['expected'], findings)
         waived = verdict == 'CONFUSING' and any(
-            w.get('run') == run and w.get('stage') == sid and str(w.get('sentence', '')).strip()
+            w.get('run') == run and w.get('stage') == sid and not w.get('resolution')
+            and str(w.get('sentence', '')).strip()
             for w in signoff.get('waive', []))
         if waived:
             print(f'{where}: FAIL, waived by name on the signed sheet: {stage["title"]}')

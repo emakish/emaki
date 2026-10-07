@@ -147,7 +147,7 @@ def wallpaper_fixture(operation, token, home, publisher=PUBLISHER, publication=N
         if result.returncode or reply.get('state') not in ('published', 'unpublished'):
             raise RuntimeError('wallpaper fixture publication failed; backup retained')
         if operation == 'prepare':
-            published = Path(publication or '/var/lib/emaki-greeter/users/arch')
+            published = Path(publication or ('/var/lib/emaki-greeter/users/' + pwd.getpwuid(os.getuid()).pw_name))
             published_dir = user_directory(published / 'wpaperd')
             try:
                 published_config, _ = fixture_read(published_dir, 'config.toml')
@@ -174,11 +174,11 @@ def wallpaper_fixture(operation, token, home, publisher=PUBLISHER, publication=N
         os.close(directory)
 
 
-def fixture_as_user(operation, token):
+def fixture_as_user(operation, token, user='arch'):
     """Root dispatch performs no user-path IO; the child owns all fixture work."""
-    account = pwd.getpwnam('arch')
+    account = pwd.getpwnam(user)
     result = subprocess.run(['/usr/bin/python3', '-I', '-B', str(Path(__file__).resolve()), '--token', token,
-                             '--operation', 'wallpaper-user-' + operation],
+                             '--operation', 'wallpaper-user-' + operation, '--user', user],
                             env=dict(PATH='/usr/bin:/bin', HOME=account.pw_dir), user=account.pw_uid,
                             group=account.pw_gid, extra_groups=[], stdin=subprocess.DEVNULL,
                             capture_output=True, text=True, timeout=25)
@@ -399,7 +399,8 @@ def journal_cover_events(start_ns, end_ns, creation_times):
 
 
 class Capture:
-    def __init__(self, output, interval, seconds):
+    def __init__(self, output, interval, seconds, user='arch'):
+        self.user = user
         self.output, self.interval, self.seconds = output, interval, seconds
         self.started_ns = time.time_ns()
         self.started_mono = time.monotonic()
@@ -535,7 +536,7 @@ class Capture:
 
     def run(self):
         threads = []
-        for side, username in (('greeter', 'greeter'), ('user', 'arch')):
+        for side, username in (('greeter', 'greeter'), ('user', self.user)):
             account = pwd.getpwnam(username)
             for operation in (self.frames, self.metadata, self.config_events):
                 thread = threading.Thread(target=operation, args=(side, account), daemon=True)
@@ -592,17 +593,21 @@ class Capture:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--token', required=True)
+    parser.add_argument('--user', default='arch')
     parser.add_argument('--operation', choices=('capture', 'export', 'wallpaper-prepare', 'wallpaper-restore',
                                                 'wallpaper-user-prepare', 'wallpaper-user-restore'), default='capture')
     parser.add_argument('--interval', type=float, default=.08)
     parser.add_argument('--seconds-after-user', type=float, default=10)
     args = parser.parse_args()
+    user = args.user
+    if not re.fullmatch(r'[a-z_][a-z0-9_-]*', user):
+        parser.error('invalid guest account')
     if not TOKEN.fullmatch(args.token) or not .04 <= args.interval <= .2 or not 10 <= args.seconds_after_user <= 20:
         parser.error('invalid token or capture bounds')
     if args.operation.startswith('wallpaper-user-'):
-        account = pwd.getpwnam('arch')
+        account = pwd.getpwnam(user)
         if os.getuid() != account.pw_uid or os.geteuid() != account.pw_uid or account.pw_uid == 0:
-            raise RuntimeError('wallpaper fixture requires unprivileged arch in the disposable guest')
+            raise RuntimeError('wallpaper fixture requires the unprivileged target account in the disposable guest')
         vm = subprocess.run(['systemd-detect-virt', '--vm'], capture_output=True, text=True, timeout=3)
         if vm.returncode or vm.stdout.strip() not in ('qemu', 'kvm'):
             raise RuntimeError('wallpaper fixture requires disposable QEMU/KVM')
@@ -610,7 +615,7 @@ def main():
         return 0
     guard()  # Before directory creation, account lookup, sockets or any capture.
     if args.operation.startswith('wallpaper-'):
-        print(json.dumps(fixture_as_user(args.operation.removeprefix('wallpaper-'), args.token)))
+        print(json.dumps(fixture_as_user(args.operation.removeprefix('wallpaper-'), args.token, user)))
         return 0
     private_directory(BASE, create=True)
     output = BASE / args.token
@@ -624,7 +629,7 @@ def main():
         return 0
     output.mkdir(mode=0o700)  # Existing token is refused, never overwritten.
     (output / 'frames').mkdir(mode=0o700)
-    return Capture(output, args.interval, args.seconds_after_user).run()
+    return Capture(output, args.interval, args.seconds_after_user, user).run()
 
 
 if __name__ == '__main__':

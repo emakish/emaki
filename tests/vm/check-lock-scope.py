@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """VM ONLY: prove the real emaki-lock client escapes a shell-like service cgroup.
 
-Run as arch in the disposable guest's niri session:
+Run as the fixture account in the disposable guest's niri session:
   python3 tests/vm/check-lock-scope.py
 
 Creates/stops only a uniquely named dummy service, never emaki-shell.service.
@@ -15,7 +15,6 @@ import json
 import os
 from pathlib import Path
 import pwd
-import shutil
 import subprocess
 import sys
 import time
@@ -85,13 +84,17 @@ def load_module(name, path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--service-worker', type=Path, help=argparse.SUPPRESS)
+    parser.add_argument('--user', default='arch')
+    parser.add_argument('--credentials-stdin', action='store_true')
+    parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     if args.service_worker:
         worker(args.service_worker)
         return 0
 
+    password = json.load(sys.stdin)['password'] if args.credentials_stdin else 'arch'
     token = uuid.uuid4().hex
-    output = ROOT / '.cache' / ('lock-scope-vm-' + time.strftime('%Y%m%d-%H%M%S') + '-' + token[:8])
+    output = args.output or ROOT / '.cache' / ('lock-scope-vm-' + time.strftime('%Y%m%d-%H%M%S') + '-' + token[:8])
     output.mkdir(mode=0o700, parents=True)
     evidence = dict(scenario='real client survives caller service stop', passed=False, observations=[])
     errors = []
@@ -129,26 +132,29 @@ def main():
         now_record, now_child, _ = owned_child()
         assert now_child['pid'] == child['pid'] and now_record['identity'] == record['identity'], 'locker changed before authentication'
         evidence['authentication_submitted'] = True
-        helper.keys('key:Escape', 'text', 'key:Return', text='arch')
+        helper.keys('key:Escape', 'text', 'key:Return', text=password)
         helper.wait(lambda: helper.status().get('state') == 'unavailable', timeout=15)
         helper.wait(lambda: not identity_alive(parent), timeout=3)
         evidence['authenticated_cleanup'] = True
 
     try:
-        assert pwd.getpwuid(os.getuid()).pw_name == 'arch', 'disposable VM user arch required'
+        assert pwd.getpwuid(os.getuid()).pw_name == args.user, 'fixture guest account required'
+        assert command(['systemd-detect-virt', '--vm']).stdout.strip() in ('qemu', 'kvm'), 'disposable QEMU guest required'
         assert os.environ.get('WAYLAND_DISPLAY') and os.environ.get('NIRI_SOCKET'), 'run in the disposable VM niri session'
         helper = load_module('vm_lock_helpers', ROOT / 'tests/vm/check-lock.py')
+        helper.USER = args.user
+        helper.PASSWORD = password
         assert helper.status().get('state') == 'unavailable', 'refusing to touch an existing lock supervisor'
         # SourceFileLoader is needed because the production script has no .py suffix.
         from importlib.machinery import SourceFileLoader
-        loader = SourceFileLoader('scope_lock_protocol', str(ROOT / 'scripts/emaki-lock'))
+        locker = '/usr/bin/emaki-lock'
+        assert Path(locker).is_file(), 'installed emaki-lock is required'
+        loader = SourceFileLoader('scope_lock_protocol', str(Path(locker).resolve()))
         spec = importlib.util.spec_from_loader(loader.name, loader)
         protocol = importlib.util.module_from_spec(spec)
         loader.exec_module(protocol)
         directory = protocol.runtime_directory()
         assert not (directory / 'child.json').exists(), 'refusing to touch a recorded orphan or another test lock'
-        locker = shutil.which('emaki-lock')
-        assert locker, 'installed emaki-lock is required'
         original_layout = helper.layouts()['current_idx']
         environment = {key: os.environ[key] for key in
                        ('PATH', 'HOME', 'USER', 'XDG_RUNTIME_DIR', 'WAYLAND_DISPLAY', 'NIRI_SOCKET',

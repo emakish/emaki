@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Production QS NotificationServer, private dbus-run-session; never the desktop bus."""
+from runtime_fixture import runtime_path
 import json
 import os
 from pathlib import Path
@@ -18,12 +19,12 @@ if '--inside' not in sys.argv:
         (profile / d).mkdir(mode=0o700)
     config = profile/'dbus.conf'
     config.write_text(f'''<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
-<busconfig><type>session</type><listen>unix:path={profile}/runtime/bus</listen><auth>EXTERNAL</auth><policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>''')
+<busconfig><type>session</type><listen>unix:path={runtime_path(profile)}/bus</listen><auth>EXTERNAL</auth><policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>''')
     env=dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
              QML_DISABLE_DISK_CACHE='1', PYTHONDONTWRITEBYTECODE='1', EMAKI_BIN='',
              XDG_CONFIG_HOME=str(profile/'config'), XDG_STATE_HOME=str(profile/'state'),
              XDG_DATA_HOME=str(profile/'data'), XDG_DATA_DIRS=str(profile/'data'),
-             XDG_CACHE_HOME=str(profile/'cache'), XDG_RUNTIME_DIR=str(profile/'runtime'),
+             XDG_CACHE_HOME=str(profile/'cache'), XDG_RUNTIME_DIR=str(runtime_path(profile)),
              TMPDIR=str(profile/'tmp'), NIRI_SOCKET='', DBUS_SYSTEM_BUS_ADDRESS='unix:path='+str(profile/'missing'))
     for key in ('DISPLAY','WAYLAND_DISPLAY','DBUS_SESSION_BUS_ADDRESS','QT_SCALE_FACTOR','QT_LOGGING_RULES'):
         env.pop(key,None)
@@ -31,7 +32,7 @@ if '--inside' not in sys.argv:
     raise SystemExit
 
 profile=Path(sys.argv[-1])
-assert os.environ['DBUS_SESSION_BUS_ADDRESS'].startswith('unix:path='+str(profile/'runtime/bus'))
+assert os.environ['DBUS_SESSION_BUS_ADDRESS'].startswith('unix:path='+str(Path(os.environ['XDG_RUNTIME_DIR']) / 'bus'))
 def run(args):
     return subprocess.run(args,check=True,capture_output=True,text=True,timeout=4).stdout.strip()
 def bus(method,args=()):

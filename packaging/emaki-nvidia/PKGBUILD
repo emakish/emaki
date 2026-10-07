@@ -1,0 +1,44 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# shellcheck shell=bash disable=SC2034,SC2154
+pkgname=emaki-nvidia
+pkgver=0.3.0
+pkgrel=1
+pkgdesc='Emaki NVIDIA session policy and kernel module checks'
+arch=('any')
+url='https://github.com/emakish/emaki'
+license=('GPL-3.0-or-later' 'MIT')
+depends=('python' 'bash' 'kmod' 'mkinitcpio' 'systemd')
+makedepends=('git')
+backup=('etc/mkinitcpio.conf.d/60-emaki-nvidia.conf')
+source=()
+sha256sums=()
+
+if [[ -f $startdir/SOURCE-COMMIT ]]; then
+    _emaki_commit=$(<"$startdir/SOURCE-COMMIT")
+    [[ $_emaki_commit =~ ^[0-9a-f]{40}$ ]] || return 1
+    [[ -z ${EMAKI_SOURCE_COMMIT:-} || $EMAKI_SOURCE_COMMIT == "$_emaki_commit" ]] || return 1
+else
+    _emaki_commit=$(git -C "$startdir/../.." rev-parse --verify "${EMAKI_SOURCE_COMMIT:-HEAD}^{commit}")
+fi
+export _emaki_commit
+
+prepare() {
+    mkdir -p "$srcdir/emaki-nvidia"
+    git -C "$startdir/../.." archive --format=tar --output="$srcdir/emaki-nvidia.tar" \
+        "$_emaki_commit" packaging/emaki-nvidia installer/emaki_installer/graphics.py LICENSE
+    tar -xf "$srcdir/emaki-nvidia.tar" -C "$srcdir/emaki-nvidia"
+}
+
+package() {
+    cd "$srcdir/emaki-nvidia" || return
+    install -Dm644 installer/emaki_installer/graphics.py "$pkgdir/usr/lib/emaki/nvidia/graphics.py"
+    cd packaging/emaki-nvidia || return
+    install -Dm644 runtime.py "$pkgdir/usr/lib/emaki/nvidia/runtime.py"
+    install -Dm644 session.sh "$pkgdir/usr/share/emaki/nvidia/session.sh"
+    install -Dm644 modprobe.conf "$pkgdir/usr/lib/modprobe.d/emaki-nvidia.conf"
+    install -Dm644 mkinitcpio.conf "$pkgdir/etc/mkinitcpio.conf.d/60-emaki-nvidia.conf"
+    install -Dm644 92-emaki-nvidia-guard.hook "$pkgdir/usr/share/libalpm/hooks/92-emaki-nvidia-guard.hook"
+    install -Dm644 niri-profile.json "$pkgdir/etc/nvidia/nvidia-application-profiles-rc.d/50-emaki-niri.json"
+    install -Dm644 ../../LICENSE "$pkgdir/usr/share/licenses/emaki-nvidia/LICENSE"
+}

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Release gate for one release candidate.
 # Usage: release-gate.sh --release-iso FILE --test-iso FILE [--walk DIR] [--out DIR] [--jobs a,b,...]
+# Rollback: --candidate ID --rollback-base DIR --rollback-provenance JSON
+#           --rollback-plan JSON --rollback-identity KEY; boot menu: --boot-menu DIR
 #
 # The RELEASE image is the one people download: it is identified by its sha256, checked
-# against its .sha256 file and iso/verify-image.py (release mode), and judged only by the walk
+# against its .sha256 file and iso/verify-image.py (release mode), and judged by the boot-menu evidence and walk
 # record of that sha256 (tests/vm/eyes/eyes-gate.py). It has no ssh, so the functional VM
 # scripts (install, boot check, encryption, alongside) run on the TEST image built from the
 # same commit (iso/verify-image.py --test) and are labelled with that image's sha256. The
@@ -16,20 +18,24 @@
 set -Eeuo pipefail
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(cd -- "$HERE/../.." && pwd)
-JOBS=(release-image test-image host-checks accept-erase-btrfs accept-erase-ext4 encrypt-btrfs alongside-btrfs graphics-fallback release-walk)
+JOBS=(release-image test-image host-checks accept-erase-btrfs accept-erase-ext4 accept-erase-btrfs-minimal accept-erase-ext4-rich encrypt-btrfs alongside-btrfs graphics-fallback rollback boot-menu release-walk)
 usage() { printf 'release-gate: %s\n' "$*" >&2; exit 2; }
 
 release_iso='' test_iso='' walk='' out='' selected=''
+rollback_base='' rollback_provenance='' rollback_plan='' rollback_identity='' candidate='' boot_menu=''
 while (($#)); do
     case $1 in
-        --release-iso|--test-iso|--walk|--out|--jobs)
+        --release-iso|--test-iso|--walk|--out|--jobs|--rollback-base|--rollback-provenance|--rollback-plan|--rollback-identity|--candidate|--boot-menu)
             (($# >= 2)) || usage "missing value for $1"
             case $1 in
                 --release-iso) release_iso=$2 ;; --test-iso) test_iso=$2 ;; --walk) walk=$2 ;;
                 --out) out=$2 ;; --jobs) selected=$2 ;;
+                --rollback-base) rollback_base=$2 ;; --rollback-provenance) rollback_provenance=$2 ;;
+                --rollback-plan) rollback_plan=$2 ;; --rollback-identity) rollback_identity=$2 ;;
+                --candidate) candidate=$2 ;; --boot-menu) boot_menu=$2 ;;
             esac
             shift 2 ;;
-        --help) sed -n '2,15p' "$0"; exit 0 ;;
+        --help) sed -n '2,17p' "$0"; exit 0 ;;
         *) usage "unknown option: $1" ;;
     esac
 done
@@ -88,7 +94,7 @@ accept_job() {
     local job=$1 fixture=$2 port=$3 dir=$out/$1
     mkdir -- "$dir"
     step "$job on $(test_label)"
-    setsid -f "$HERE/run-iso.sh" --dir "$dir" --ssh-port "$port" --iso "$test_iso" >"$dir/qemu-live.log" 2>&1 </dev/null
+    setsid -f "$HERE/run-iso.sh" --dir "$dir" --ssh-port "$port" --iso "$test_iso" --usb >"$dir/qemu-live.log" 2>&1 </dev/null
     if ! timeout 600 "$HERE/iso-wait-ssh.sh" --dir "$dir" >"$dir/wait-live.log" 2>&1; then
         stop_vm "$dir"
         record "$job" FAIL "live image ssh not reachable (log $dir/wait-live.log)" "$(test_label)"
@@ -101,7 +107,7 @@ accept_job() {
         record "$job" FAIL "iso-install.sh $fixture exit $rc (log $dir/install.log)" "$(test_label)"
         return
     fi
-    "$HERE/iso-boot-check.sh" "$fixture" --dir "$dir" >"$dir/boot-check.log" 2>&1 &
+    "$HERE/iso-boot-check.sh" "$fixture" --dir "$dir" --session niri-session >"$dir/boot-check.log" 2>&1 &
     local check=$!
     sleep 1
     setsid -f "$HERE/run-iso.sh" --dir "$dir" --ssh-port "$port" --no-cd >"$dir/qemu-installed.log" 2>&1 </dev/null
@@ -111,26 +117,71 @@ accept_job() {
     if ((rc != 0)); then
         record "$job" FAIL "iso-boot-check.sh $fixture exit $rc (log $dir/boot-check.log)" "$(test_label)"
     else
-        record "$job" PASS "script passed: install + boot check; pictures are SHOT lines, not judged (log $dir/boot-check.log)" "$(test_label)"
+        record "$job" PASS "script passed: command-line installation [CLI] + boot check; pictures are SHOT lines, not judged (log $dir/boot-check.log)" "$(test_label)"
     fi
+}
+
+# Hash the source files as well as HEAD: an uncommitted edit changes the check too.
+checkout_digest() {
+    python3 - "$ROOT" <<'PYCODE'
+import hashlib, os, pathlib, subprocess, sys
+root = pathlib.Path(sys.argv[1])
+def git(*args):
+    return subprocess.check_output(['git', '-C', str(root), *args])
+if pathlib.Path(os.fsdecode(git('rev-parse', '--show-toplevel')).strip()).resolve() != root.resolve():
+    raise SystemExit('release gate needs its own checkout')
+digest = hashlib.sha256(git('rev-parse', 'HEAD'))
+for name in sorted(set(git('ls-files', '--cached', '--others', '--exclude-standard', '-z').split(b'\0')) - {b''}):
+    path = root / os.fsdecode(name)
+    digest.update(name + b'\0')
+    if not path.exists() and not path.is_symlink():
+        digest.update(b'missing\0')
+        continue
+    digest.update(str(path.lstat().st_mode).encode() + b'\0')
+    digest.update(os.fsencode(os.readlink(path)) if path.is_symlink() else path.read_bytes())
+    digest.update(b'\0')
+print(digest.hexdigest())
+PYCODE
 }
 
 encrypt_job() {
-    local job=encrypt-btrfs dir=$out/encrypt rc=0
+    local job=encrypt-btrfs dir=$out/encrypt rc=0 baseline current round name evidence
     step "$job on $(test_label)"
-    (cd -- "$ROOT" && EMAKI_CHECK_ISO=$test_iso VMDIR=$dir timeout 7200 bash "$HERE/jail.sh" "$dir" -- \
-        bash tests/vm/iso-encrypt-check.sh btrfs gate) >"$out/$job.log" 2>&1 || rc=$?
-    if ((rc == 0)) && [[ -f $dir/btrfs-gate/PASS ]]; then
-        record "$job" PASS "script passed (log $out/$job.log, evidence $dir/btrfs-gate)" "$(test_label)"
-    elif ((rc == 0)); then
-        record "$job" FAIL "exit 0 but no PASS file in $dir/btrfs-gate (log $out/$job.log)" "$(test_label)"
-    else
-        record "$job" FAIL "iso-encrypt-check exit $rc (log $out/$job.log)" "$(test_label)"
+    if ! baseline=$(checkout_digest); then
+        record "$job" FAIL "could not identify the checkout for repeated encryption checks" "$(test_label)"
+        return
     fi
+    mkdir -- "$dir"
+    printf 'checkout %s\niso %s\n' "$baseline" "$test_sha" >"$dir/identity"
+    for round in 1 2; do
+        name=gate-$round
+        evidence=$dir/btrfs-$name
+        if ! current=$(checkout_digest) || [[ $current != "$baseline" ]] ||
+                [[ $(sha256sum -- "$test_iso" | cut -d' ' -f1) != "$test_sha" ]]; then
+            record "$job" FAIL "checkout or test image changed before encryption run $round" "$(test_label)"
+            return
+        fi
+        rc=0
+        (cd -- "$ROOT" && EMAKI_CHECK_ISO=$test_iso VMDIR=$dir timeout 7200 bash "$HERE/jail.sh" "$dir" -- \
+            bash tests/vm/iso-encrypt-check.sh btrfs "$name") >"$out/$job-$round.log" 2>&1 || rc=$?
+        if ((rc != 0)); then
+            record "$job" FAIL "iso-encrypt-check exit $rc on run $round (log $out/$job-$round.log)" "$(test_label)"
+            return
+        elif [[ ! -f $evidence/PASS ]]; then
+            record "$job" FAIL "exit 0 but no PASS file in $evidence (log $out/$job-$round.log)" "$(test_label)"
+            return
+        fi
+        if ! current=$(checkout_digest) || [[ $current != "$baseline" ]] ||
+                [[ $(sha256sum -- "$test_iso" | cut -d' ' -f1) != "$test_sha" ]]; then
+            record "$job" FAIL "checkout or test image changed during encryption run $round" "$(test_label)"
+            return
+        fi
+    done
+    record "$job" PASS "two consecutive script runs passed on unchanged checkout and test image (logs $out/$job-{1,2}.log, evidence $dir)" "$(test_label)"
 }
 
 # iso-alongside-check.py only accepts VMDIR=~/VMs/n2-along; exit 77 = the image's installer
-# refuses install alongside Windows (off in 0.2 by DECISIONS 2026-10-04).
+# refuses install alongside Windows (off in this release by DECISIONS 2026-10-04).
 alongside_job() {
     local job=alongside-btrfs base=$HOME/VMs/n2-along name=gate-$stamp rc=0
     step "$job on $(test_label)"
@@ -168,6 +219,42 @@ graphics_job() {
     else
         record "$job" FAIL "check-graphics-fallback.py exit $rc: $last (log $out/$job.log)" "$(test_label)"
     fi
+}
+
+# Rollback accepts only a candidate-bound installed fixture, then runs the real acceptance.
+rollback_job() {
+    local job=rollback rc=0 log=$out/rollback.log
+    if [[ -z $candidate || ! -d $rollback_base || ! -f $rollback_provenance || ! -f $rollback_plan || ! -f $rollback_identity ]]; then
+        record "$job" 'NOT TESTED' 'missing rollback candidate fixture, provenance, plan, identity or --candidate' "$(test_label)"
+        return
+    fi
+    local args=(--iso "$test_iso" --base "$rollback_base" --provenance "$rollback_provenance" --plan "$rollback_plan" --candidate "$candidate")
+    python3 "$HERE/check-gate-evidence.py" rollback "${args[@]}" >"$log" 2>&1 || rc=$?
+    if ((rc != 0)); then
+        record "$job" FAIL "rollback provenance refused (log $log)" "$(test_label)"
+        return
+    fi
+    VMDIR=$out/rollback timeout 7200 python3 "$HERE/rollback-check.py" "${args[@]}" \
+        --identity "$rollback_identity" --work-root "$out" >>"$log" 2>&1 || rc=$?
+    case $rc in
+        0) record "$job" PASS "functional rollback acceptance exit 0; visual judgments remain in release-walk (log $log)" "$(test_label)" ;;
+        77|3) record "$job" 'NOT TESTED' "rollback acceptance exit $rc (log $log)" "$(test_label)" ;;
+        *) record "$job" FAIL "rollback acceptance exit $rc (log $log)" "$(test_label)" ;;
+    esac
+}
+
+boot_menu_job() {
+    local job=boot-menu rc=0 log=$out/boot-menu.log
+    if [[ -z $boot_menu ]]; then
+        record "$job" 'NOT TESTED' 'no candidate boot-menu evidence (--boot-menu DIR)' "$(release_label)"
+        return
+    fi
+    python3 "$HERE/check-gate-evidence.py" boot-menu --iso "$release_iso" --directory "$boot_menu" >"$log" 2>&1 || rc=$?
+    case $rc in
+        0) record "$job" PASS "candidate boot-menu provenance and recorded frame judgments passed (log $log)" "$(release_label)" ;;
+        3) record "$job" 'NOT TESTED' "boot-menu evidence incomplete or unjudged (log $log)" "$(release_label)" ;;
+        *) record "$job" FAIL "boot-menu evidence refused (log $log)" "$(release_label)" ;;
+    esac
 }
 
 walk_job() {
@@ -238,7 +325,7 @@ if selected_job host-checks && [[ -z ${state[host-checks]:-} ]]; then
     fi
 fi
 
-vm_jobs=(accept-erase-btrfs accept-erase-ext4 encrypt-btrfs alongside-btrfs graphics-fallback)
+vm_jobs=(accept-erase-btrfs accept-erase-ext4 accept-erase-btrfs-minimal accept-erase-ext4-rich encrypt-btrfs alongside-btrfs graphics-fallback rollback)
 if [[ ${state[test-image]:-} != PASS ]]; then
     not_run "not run: the test image is not usable (test-image ${state[test-image]:-not checked})" "${vm_jobs[@]}"
 elif [[ ${state[host-checks]:-} == FAIL ]]; then
@@ -246,14 +333,18 @@ elif [[ ${state[host-checks]:-} == FAIL ]]; then
 fi
 [[ -n ${state[accept-erase-btrfs]:-} ]] || accept_job accept-erase-btrfs erase-btrfs 2251
 [[ -n ${state[accept-erase-ext4]:-} ]] || accept_job accept-erase-ext4 erase-ext4 2252
+[[ -n ${state[accept-erase-btrfs-minimal]:-} ]] || accept_job accept-erase-btrfs-minimal erase-btrfs-minimal 2253
+[[ -n ${state[accept-erase-ext4-rich]:-} ]] || accept_job accept-erase-ext4-rich erase-ext4-rich 2254
 [[ -n ${state[encrypt-btrfs]:-} ]] || encrypt_job
 [[ -n ${state[alongside-btrfs]:-} ]] || alongside_job
 [[ -n ${state[graphics-fallback]:-} ]] || graphics_job
+[[ -n ${state[rollback]:-} ]] || rollback_job
+[[ -n ${state[boot-menu]:-} ]] || boot_menu_job
 [[ -n ${state[release-walk]:-} ]] || walk_job
 
 echo
 echo "Results. Functional scripts ran on the TEST image $test_iso (sha256 ${test_sha:-unknown})."
-echo "Only release-walk judges the RELEASE image $release_iso (sha256 ${release_sha:-unknown})."
+echo "Boot-menu and release-walk judge the RELEASE image $release_iso (sha256 ${release_sha:-unknown})."
 first_fail='' first_untested=''
 for job in "${JOBS[@]}"; do
     printf '%-20s %-15s %s\n' "$job" "${state[$job]}" "${detail[$job]}"

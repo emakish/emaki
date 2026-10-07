@@ -1,0 +1,13 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = grub-btrfs
+Target = emaki-config
+
+[Action]
+Description = Selecting bootable entries in the snapshot menu
+When = PostTransaction
+Exec = /usr/share/libalpm/scripts/emaki-snapshot-menu

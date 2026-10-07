@@ -33,10 +33,12 @@ class RuntimeTests(unittest.TestCase):
 
     def test_subprocess_lines_and_progress(self):
         logs, progress = [], []
-        runner = Runner(logs.append, progress=progress.append)
-        runner.run([sys.executable, '-c', 'print("(2/4) installing package"); print("finished")'])
+        runner = Runner(logs.append, progress=lambda **event: progress.append(event))
+        command = [sys.executable, '-c', 'print("(2/4) installing package"); print("finished")']
+        runner.run(command)
         self.assertIn('(2/4) installing package', logs)
-        self.assertEqual(progress, [50])
+        self.assertEqual(progress, [{'command': command}, {'line': '(2/4) installing package'},
+                                    {'line': 'finished'}, {'command_done': command}])
 
     def test_a_command_can_be_watched_line_by_line(self):
         # The update's downloads read pacman's own lines; a secret command shows nothing.
@@ -54,13 +56,26 @@ class RuntimeTests(unittest.TestCase):
         # A failing watcher never fails the command it watches.
         self.assertEqual(runner.run([sys.executable, '-c', 'print("x")'], watch=broken), 'x\n')
 
-    def test_installed_package_lines_reach_the_callback_by_keyword(self):
+    def test_raw_package_and_padded_hook_lines_reach_the_callback(self):
         calls = []
-        runner = Runner(lambda line: None, progress=lambda pct, package=None: calls.append((pct, package)))
+        runner = Runner(lambda line: None, progress=lambda **event: calls.append(event))
         for line in ('Packages (2) acl-2.4.0-1  attr-2.6.0-1', 'installing acl...', '(10/16) Arming ConditionNeedsUpdate...',
                      'installing attr...', 'reinstalling attr...', 'Optional dependencies for attr'):
             runner._line(line)
-        self.assertEqual(calls, [(None, 'acl'), (62.5, None), (None, 'attr')])
+        self.assertEqual(calls[1], {'line': 'installing acl...'})
+        self.assertEqual(calls[2], {'line': '(10/16) Arming ConditionNeedsUpdate...'})
+        runner._line('( 1/16) Generating the configured locale...')
+        self.assertEqual(calls[-1], {'line': '( 1/16) Generating the configured locale...'})
+
+    def test_failed_and_secret_commands_never_claim_step_completion(self):
+        calls = []
+        runner = Runner(lambda line: None, progress=lambda **event: calls.append(event))
+        runner.run([sys.executable, '-c', 'raise SystemExit(1)'], check=False)
+        self.assertEqual(len(calls), 1)
+        self.assertIn('command', calls[0])
+        calls.clear()
+        runner.run([sys.executable, '-c', 'print("private")'], secret=True)
+        self.assertEqual(calls, [])
 
     def test_timeout_stops_the_whole_process_group(self):
         # arch-chroot runs pacman as a grandchild; this one also ignores SIGTERM.
@@ -198,3 +213,23 @@ class RuntimeTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class DownloadCancellationTests(unittest.TestCase):
+    def test_download_can_be_stopped_even_after_stdout_closes(self):
+        import threading
+        import time
+        from emaki_installer.errors import Code, InstallError
+        cancelled = threading.Event()
+        timer = threading.Timer(0.1, cancelled.set)
+        timer.start()
+        started = time.monotonic()
+        try:
+            with self.assertRaises(InstallError) as caught:
+                Runner(lambda line: None).run(
+                    ['python', '-c', 'import os,time; os.close(1); os.close(2); time.sleep(30)'],
+                    cancelled=cancelled, timeout=60)
+            self.assertEqual(caught.exception.code, Code.CANCELLED)
+            self.assertLess(time.monotonic() - started, 5)
+        finally:
+            timer.cancel()

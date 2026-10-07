@@ -26,6 +26,10 @@ VERSION = 1
 WAIT_SECONDS = 15.0
 START_SECONDS = 6.0
 HEARTBEAT_SECONDS = 3.0
+# The loop wakes every 0.1 s. A longer gap means the supervisor itself did not run: system
+# sleep freezes user.slice with the child in it, and the monotonic clock still advances
+# while devices suspend and resume (14.8 s measured on a 2015 laptop).
+STALL_SECONDS = 1.0
 # After both lockers crashed (non-zero or signal exit, or a hang killed by the
 # heartbeat), a new quickshell->hyprlock cycle starts after these delays; then stop.
 # A refusal (hyprlock exit 0 without its locked marker) is never retried.
@@ -96,7 +100,7 @@ class Supervisor:
         self.outputs_active = True
         self.last_heartbeat = self.started = time.monotonic()
         self.fallback_buffer = b''
-        self.readiness_since = self.started
+        self.readiness_since = self.last_tick = self.started
         self.sequence = 0
         self.sleep_pending = False
         self.sleep_generation = 0
@@ -309,18 +313,28 @@ class Supervisor:
                 self.authenticated_exit = True
             return
         command = value.get('command')
-        if value.get('version') != VERSION or command not in ('lock', 'confirm', 'wait', 'status'):
+        if value.get('version') != VERSION or command not in ('lock', 'confirm', 'wait', 'fallback-wait', 'status'):
             self.respond(conn, dict(state='invalid_request'))
-        elif self.finished and command != 'status':
+        elif self.finished and command != 'status' and not (command == 'fallback-wait' and not self.stopping and self.fallback_attempts == 0):
             terminal = self.phase if self.phase in ('refused', 'failed', 'stopping') else 'finished'
             self.respond(conn, dict(state=terminal, secure=False, poured=False))
-        elif command in ('confirm', 'wait'):
+        elif command in ('confirm', 'wait', 'fallback-wait'):
+            if command == 'fallback-wait' and self.backend == 'hyprlock' and self.child is None:
+                self.respond(conn, dict(state='lock_failed', secure=False, poured=False))
+                return
+            if command == 'fallback-wait' and self.backend != 'hyprlock' and not self.secure:
+                # The compositor retains a dead lock client's surface. Retire only
+                # our child; never replace a confirmed locker or a live fallback.
+                self.retire(kill=True)
+                self.finished = False
+                self.retry_at = None
+                self.spawn(True)
             row['wait'] = True
             row['deadline'] = time.monotonic() + WAIT_SECONDS
             # Confirmation alone retains the desktop capture. Only a sleep
             # barrier requires a fresh acknowledgement after prepare-sleep.
             row['generation'] = 0
-            if command == 'wait':
+            if command in ('wait', 'fallback-wait'):
                 self.sleep_generation += 1
                 row['generation'] = self.sleep_generation
                 self.sleep_pending = True
@@ -421,10 +435,25 @@ class Supervisor:
         (self.directory / 'child.json').unlink(missing_ok=True)
         self.fallback_buffer = b''
 
+    def account_stall(self):
+        # A child frozen together with its supervisor could not have sent a heartbeat. Move its
+        # health clocks past the stall, so it gets the full budget again, instead of replacing
+        # a healthy lock screen with the fallback right after resume. Clocks never move past now:
+        # a child spawned during a slow retire() existed for only part of the gap. Returns the
+        # time the checks must use, so no freeze can fall between this read and theirs.
+        now = time.monotonic()
+        stalled = now - self.last_tick
+        self.last_tick = now
+        if stalled > STALL_SECONDS:
+            self.started = min(self.started + stalled, now)
+            self.last_heartbeat = min(self.last_heartbeat + stalled, now)
+            self.readiness_since = min(self.readiness_since + stalled, now)
+        return now
+
     def tick(self):
         if self.stopping:
             return
-        now = time.monotonic()
+        now = self.account_stall()
         if self.child is None:
             if self.retry_at is None:
                 self.fail()
@@ -476,7 +505,7 @@ class Supervisor:
             print('emaki-lock: supervisor operation failed (' + type(error).__name__ + ')', file=sys.stderr)
             self.last_error_log = now
 
-    def run(self):
+    def run(self, fallback=False):
         # Keep the flock descriptor for this supervisor's entire lifetime. Children
         # cannot inherit it and a second supervisor never starts another locker.
         descriptor = os.open(self.directory / 'supervisor.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
@@ -493,7 +522,8 @@ class Supervisor:
         self.server.setblocking(False)
         self.selector.register(self.server, selectors.EVENT_READ, 'server')
         try:
-            self.spawn(fallback=self.recover_orphan())
+            orphan = self.recover_orphan()
+            self.spawn(fallback=fallback or orphan)
             while not self.finished:
                 try:
                     events = self.selector.select(.1)
@@ -501,6 +531,9 @@ class Supervisor:
                     self.log_error(error)
                     time.sleep(.1)
                     events = []
+                # Before any status reply: a reply right after resume must not call a frozen
+                # child stale either.
+                self.account_stall()
                 for key, _ in events:
                     try:
                         if key.data == 'server':
@@ -542,13 +575,15 @@ def connect(directory):
     return conn
 
 
-def launch_supervisor(directory, scoped=True):
+def launch_supervisor(directory, scoped=True, fallback=False):
     # A new session alone does not escape emaki-shell.service's control group.
     # systemd-run moves this process tree into an independent user scope before
     # executing the supervisor. Without a user manager, a logged setsid fallback
     # still locks, but cannot survive termination of its caller's entire cgroup.
     unit = directory.name + '-' + str(os.getpid()) + '-' + str(time.monotonic_ns())
     argv = [sys.executable, str(Path(__file__).resolve()), '--supervise']
+    if fallback:
+        argv.append('--fallback')
     if scoped:
         argv = ['systemd-run', '--user', '--scope', '--quiet', '--collect',
                 '--slice=app.slice', '--property=TimeoutStopSec=5s', '--unit=' + unit, *argv]
@@ -561,7 +596,7 @@ def launch_supervisor(directory, scoped=True):
                                    close_fds=True, env=dict(os.environ))
     except OSError:
         if scoped:
-            return launch_supervisor(directory, scoped=False)
+            return launch_supervisor(directory, scoped=False, fallback=fallback)
         raise
     return process, scoped
 
@@ -569,10 +604,11 @@ def launch_supervisor(directory, scoped=True):
 def client(directory, command):
     # One overall bound includes startup and a possible finished/socket-close race.
     deadline = time.monotonic() + WAIT_SECONDS + 4
+    launch_options = {'fallback': True} if command == 'fallback-wait' else {}
     for attempt in range(2):
         conn = connect(directory)
         if not conn and command != 'status':
-            launcher, scoped = launch_supervisor(directory)
+            launcher, scoped = launch_supervisor(directory, **launch_options)
             startup = min(deadline, time.monotonic() + 3)
             while not conn and time.monotonic() < startup:
                 result = launcher.poll()
@@ -580,7 +616,7 @@ def client(directory, command):
                     conn = connect(directory)
                     if conn or result == 0 or not scoped:
                         break
-                    launcher, scoped = launch_supervisor(directory, scoped=False)
+                    launcher, scoped = launch_supervisor(directory, scoped=False, **launch_options)
                 time.sleep(.025)
                 conn = connect(directory)
         if not conn:
@@ -618,13 +654,19 @@ def client(directory, command):
 
 
 def main():
+    # The passwordless ISO cannot promise a protected session.
+    if Path("/etc/emaki-live/greetd.toml").is_file():
+        return 1
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', nargs='?', choices=('lock', 'status'), default='lock')
     confirmation = parser.add_mutually_exclusive_group()
     confirmation.add_argument('--wait', action='store_true', help='prepare for sleep and wait for confirmation and full pour (15 s deadline)')
     confirmation.add_argument('--confirm', action='store_true', help='wait for confirmation and full pour, retaining the capture (15 s deadline)')
+    parser.add_argument('--fallback', action='store_true', help='use the fallback locker for sleep [hyprlock]')
     parser.add_argument('--supervise', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.fallback and not (args.supervise or args.wait and args.command == 'lock'):
+        parser.error('--fallback requires --wait [hyprlock]')
     # Includes supervisor, qs, its PAM workers and hyprlock; secrets must not enter cores.
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     os.umask(0o077)
@@ -633,9 +675,12 @@ def main():
         if args.supervise:
             supervisor = Supervisor(directory)
             signal.signal(signal.SIGTERM, supervisor.stop)
-            supervisor.run()
+            if args.fallback:
+                supervisor.run(fallback=True)
+            else:
+                supervisor.run()
             return 0
-        result = client(directory, 'status' if args.command == 'status' else 'wait' if args.wait else 'confirm' if args.confirm else 'lock')
+        result = client(directory, 'status' if args.command == 'status' else 'fallback-wait' if args.fallback else 'wait' if args.wait else 'confirm' if args.confirm else 'lock')
     except (OSError, ValueError):
         result = dict(state='lock_failed', secure=False, poured=False)
     if args.command == 'status':

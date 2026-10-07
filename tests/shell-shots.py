@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Render production QML in isolated offscreen Qt; verify painted pixel bounds."""
+from runtime_fixture import runtime_path
 import json
 import statistics
 import math
@@ -61,7 +62,7 @@ for scale, fallback in ((1, ''), (2, ''), (1, 'config_invalid'), (1, 'image_miss
                EMAKI_FIXTURE_WALLPAPER='' if fallback else wallpaper_path.as_uri(),
                EMAKI_FIXTURE_FALLBACK=fallback,
                EMAKI_SHELL_GLASS_RENDERER='canvas', PYTHONDONTWRITEBYTECODE='1',
-               XDG_RUNTIME_DIR=str(profile / 'runtime'), XDG_CACHE_HOME=str(profile / 'cache'),
+               XDG_RUNTIME_DIR=str(runtime_path(profile)), XDG_CACHE_HOME=str(profile / 'cache'),
                XDG_CONFIG_HOME=str(profile / 'config'), XDG_STATE_HOME=str(profile / 'state'),
                XDG_DATA_HOME=str(profile / 'data'), XDG_DATA_DIRS=str(profile / 'data'),
                TMPDIR=str(profile / 'tmp'), NIRI_SOCKET='',

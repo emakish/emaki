@@ -7,6 +7,7 @@ Read tokens.toml and rewrite the files designated as generated:
   hypr/hyprlock.conf    lock screen
   kitty/theme.conf      terminal colors
   qt6ct/emaki.conf      Qt application palette (also works with qt5ct)
+  gtk/Emaki/gtk-3.0/gtk.css  administrator authentication window
   os-release/os-release system identity; ANSI_COLOR colours "Welcome to Emaki!"
 
 Manual edits to these files are overwritten. Change all values
@@ -114,9 +115,9 @@ prompt={rgba("text_muted")}
 placeholder={rgba("text_muted")}
 input={rgba("text")}
 match={rgba("accent")}
-selection={rgba("surface_high")}
-selection-text={rgba("text")}
-selection-match={rgba("accent")}
+selection={rgba("accent")}
+selection-text={rgba("on_accent")}
+selection-match={rgba("on_accent")}
 border={rgba("accent")}
 
 [border]
@@ -283,12 +284,61 @@ HOME_URL="https://github.com/emakish/emaki"
 BUG_REPORT_URL="https://github.com/emakish/emaki/issues"
 """
 
+gtk = f"""/* Copyright (C) 2026 Artur Yakymenko
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * {WARNING}.
+ */
+@import url("resource:///org/gtk/libgtk/theme/Adwaita/gtk-contained.css");
+@define-color theme_bg_color #{C['background']};
+@define-color theme_fg_color #{C['text']};
+@define-color theme_base_color #{C['surface']};
+@define-color theme_text_color #{C['text']};
+@define-color theme_selected_bg_color #{C['accent']};
+@define-color theme_selected_fg_color #{C['on_accent']};
+@define-color theme_unfocused_bg_color #{C['background']};
+@define-color theme_unfocused_fg_color #{C['text_muted']};
+window, .background {{ background-color: #{C['background']}; color: #{C['text']}; }}
+label {{ color: inherit; }}
+menu, .menu, .context-menu, popover, popover.background {{
+    background-image: none;
+    background-color: #{C['background']};
+    color: #{C['text']};
+}}
+menu menuitem:hover, .menu menuitem:hover, .context-menu menuitem:hover,
+modelbutton.flat:hover, .menuitem.button.flat:hover {{
+    background-image: none;
+    background-color: #{C['accent']};
+    color: #{C['on_accent']};
+}}
+entry, combobox button {{
+    background-image: none;
+    background-color: #{C['surface']};
+    color: #{C['text']};
+    border-color: #{C['border_inactive']};
+    caret-color: #{C['text']};
+}}
+button {{
+    background-image: none;
+    background-color: #{C['surface_high']};
+    color: #{C['text']};
+    border-color: #{C['border_inactive']};
+    text-shadow: none;
+    box-shadow: none;
+}}
+button:hover {{ background-color: #{C['surface']}; border-color: #{C['accent']}; }}
+button:active, button.suggested-action {{ background-color: #{C['accent']}; color: #{C['on_accent']}; }}
+entry:focus, button:focus {{ border-color: #{C['accent']}; }}
+*:disabled {{ color: #{C['text_muted']}; }}
+* {{ font-family: "{F['ui']}"; font-size: {F['size']}pt; }}
+"""
+
 for path, content in (
     ("niri/theme.kdl", niri),
     ("fuzzel/fuzzel.ini", fuzzel),
     ("hypr/hyprlock.conf", hyprlock),
     ("kitty/theme.conf", kitty),
     ("qt6ct/emaki.conf", qt6ct),
+    ("gtk/Emaki/gtk-3.0/gtk.css", gtk),
     ("os-release/os-release", os_release),
 ):
     (ROOT / path).parent.mkdir(parents=True, exist_ok=True)

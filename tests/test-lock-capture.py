@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Memory-only cross-window image handoff and capture preflight failure paths."""
+from runtime_fixture import runtime_path
 import os
 import json
 from pathlib import Path
@@ -58,7 +59,7 @@ def main():
                 with module.open('a') as output:
                     output.write('LockCapture 1.0 LockCapture.qml\n')
             env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
-                       QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(profile / 'r'),
+                       QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(runtime_path(profile)),
                        XDG_CACHE_HOME=str(profile / 'cache'), XDG_CONFIG_HOME=str(profile / 'config'),
                        XDG_STATE_HOME=str(profile / 'state'), XDG_DATA_HOME=str(profile / 'data'),
                        TMPDIR=str(profile / 'tmp'), PYTHONDONTWRITEBYTECODE='1', NIRI_SOCKET='',

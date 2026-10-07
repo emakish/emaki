@@ -18,6 +18,7 @@ EMAKI_GLASS_MOTION=1: frames of drops in flight instead (GlassShots.qml motionSt
 also rendered without dispersion, and the numbers of the colour fringe per sequence
 (.cache/glass-shots/motion/, report.json).
 """
+from runtime_fixture import runtime_path
 import base64
 import json
 import os
@@ -193,7 +194,7 @@ def main():
                QT_SCALE_FACTOR=SCALE, EMAKI_SHELL_TRAY='0', EMAKI_TEST_SYSTEM='0', EMAKI_BIN='', EMAKI_SETTINGS_PROFILE='',
                EMAKI_TEST_MPRIS='0', EMAKI_SHELL_NOTIFICATIONS='0', EMAKI_GLASS_SHOT_DIR=str(profile / 'out'),
                EMAKI_SHELL_GLASS_RENDERER='canvas', PYTHONDONTWRITEBYTECODE='1', QS_ICON_THEME=os.environ.get('QS_ICON_THEME', 'Adwaita'),
-               XDG_RUNTIME_DIR=str(profile / 'runtime'), XDG_CACHE_HOME=str(profile / 'cache'),
+               XDG_RUNTIME_DIR=str(runtime_path(profile)), XDG_CACHE_HOME=str(profile / 'cache'),
                XDG_CONFIG_HOME=str(profile / 'config'), XDG_STATE_HOME=str(profile / 'state'),
                XDG_DATA_HOME=str(profile / 'data'), XDG_DATA_DIRS=os.environ.get('EMAKI_GLASS_DATA_DIRS', '/usr/local/share:/usr/share'),
                TMPDIR=str(profile / 'tmp'), NIRI_SOCKET='',

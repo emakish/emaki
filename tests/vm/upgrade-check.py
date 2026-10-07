@@ -8,8 +8,9 @@ and press Enter at every question. This check does that and nothing else, by key
 kitty window on the guest's real desktop (QEMU monitor sendkey), screenshots every state a person
 sees, then reads the result over SSH.
 
-  T1  mirrorlist switched to the old GitHub `testing` line (the documented way to test);
-      pacman downloads the candidate from the real github.com testing release.
+  T1  mirrorlist switched to its own `testing` line (the documented way to test): on 0.1.x the
+      old GitHub address, pacman downloads the candidate from the real github.com testing
+      release; from 0.2.0 on https://pkgs.emaki.sh/testing/$arch (t1_via).
   T2  the candidate is the testing snapshot; how it is reached depends on the mirror (t2_via):
       the bridge (stable already serves the candidate after `publish.sh promote --first`):
           nothing pacman reads is changed; github.com is answered by tests/vm/old-address-proxy.py
@@ -50,6 +51,8 @@ import urllib.error
 import urllib.request
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import socket_runtime
 ROOT = HERE.parents[1]
 
 
@@ -67,12 +70,16 @@ GITHUB = 'https://github.com/emakish/packages/releases/download'
 PKGS_TESTING = 'Server = https://pkgs.emaki.sh/testing/$arch'
 # How each run reaches the candidate; `edited`: the run itself changed the mirrorlist.
 VIAS = {'github-testing': {'edited': True}, 'old-address': {'edited': False},
-        'pkgs-testing': {'edited': True}, 'github-stable': {'edited': False}}
+        'pkgs-testing': {'edited': True}, 'pkgs-testing-swap': {'edited': True},
+        'github-stable': {'edited': False}}
 GUESTFWD_IP = '10.0.2.100'
 HTOP = 'https://archive.archlinux.org/packages/h/htop/htop-3.5.3-1-x86_64.pkg.tar.zst'
 KDL_MARK = '// emaki-upgrade-check: a line the person added'
 WALLET = ('emaki-upgrade-check', 'marker')
 SIZES = {'1920x1080': (1920, 1080, 1), '2560x1600': (2560, 1600, 2)}
+CHANNEL_SCREEN = ('cat /etc/pacman.d/emaki-mirrorlist /etc/emaki/channel\n'
+                  'pacman-conf --repo emaki Server\n'
+                  'emaki-update-channel\n')
 
 # QEMU monitor `sendkey` names for every character this check types.
 KEYS = {' ': 'spc', '-': 'minus', '_': 'shift-minus', '/': 'slash', '.': 'dot', ':': 'shift-semicolon',
@@ -122,6 +129,14 @@ def snapshot_manifest(mirror, channel):
     if manifest is None:
         raise SystemExit(f'BAD: {mirror}/snap/{channel}/{snap}/MANIFEST is missing')
     return snap, manifest
+
+
+def t1_via(start):
+    """How T1 reaches the candidate: the start's packaged mirrorlist with its two Server lines
+    swapped. 0.1.x name the old GitHub address; 0.2.0 and later name https://pkgs.emaki.sh, so
+    their T1 never reads GitHub and its candidate is the testing snapshot itself."""
+    version = start.removesuffix('-release').removesuffix('-full')
+    return 'github-testing' if tuple(map(int, version.split('.'))) < (0, 2, 0) else 'pkgs-testing-swap'
 
 
 def t2_via(mirror):
@@ -307,14 +322,23 @@ def prepare_old_state(guest, via):
     if stored.returncode:
         guest.screenshot('wallet-store-failed')
     (guest.vm / 'wallet-setup.txt').write_text(f'exit {stored.returncode}\n{stored.stderr.decode()}')
-    if via == 'github-testing':
-        # The documented way to follow testing on 0.1.x: swap the two Server lines.
-        guest.run(r"sed -i -e 's|^Server = \(.*\)/stable$|# Server = \1/stable|' "
-                  r"-e 's|^# Server = \(.*\)/testing$|Server = \1/testing|' /etc/pacman.d/emaki-mirrorlist", root=True)
+    if via in ('github-testing', 'pkgs-testing-swap'):
+        # The documented way to follow testing: swap the two Server lines. 0.1.x end in
+        # /stable (GitHub), 0.2.0 in /stable/$arch (pkgs.emaki.sh).
+        guest.run(r"sed -i -e 's|^Server = \(.*\)/stable\(/\$arch\)\{0,1\}$|# Server = \1/stable\2|' "
+                  r"-e 's|^# Server = \(.*\)/testing\(/\$arch\)\{0,1\}$|Server = \1/testing\2|' "
+                  "/etc/pacman.d/emaki-mirrorlist", root=True)
     elif via == 'pkgs-testing':
         # After the bridge: the candidate is served by pkgs.emaki.sh/testing only.
         guest.run("sed -i -e 's|^Server = |# Server = |' /etc/pacman.d/emaki-mirrorlist && "
                   f"printf '%s\\n' {shlex.quote(PKGS_TESTING)} >> /etc/pacman.d/emaki-mirrorlist", root=True)
+    if VIAS[via]['edited']:
+        # A switch that matched nothing would upgrade from stable and only fail much later.
+        mirrorlist = guest.run('cat /etc/pacman.d/emaki-mirrorlist')
+        active = [line.split('#', 1)[0].strip() for line in mirrorlist.splitlines()
+                  if line.split('#', 1)[0].strip()]
+        if len(active) != 1 or not re.fullmatch(r'Server = \S+/testing(/\$arch)?', active[0]):
+            raise RuntimeError(f'the mirrorlist was not switched to testing:\n{mirrorlist}')
     return guest.run('cat /etc/pacman.d/emaki-mirrorlist; pacman -Q', root=False)
 
 
@@ -327,19 +351,46 @@ def redirect_old_address(guest, certs):
     guest.run(f"printf '%s %s\\n' {GUESTFWD_IP} {shlex.quote(names)} >> /etc/hosts", root=True)
 
 
-def checks_after_upgrade(guest, via, cand, before_marker, start):
+def check_start_version(guest, start, cand):
+    installed = guest.run('pacman -Q emaki').split()
+    expected = start.removesuffix('-release').removesuffix('-full')
+    if len(installed) != 2 or installed[0] != 'emaki':
+        raise RuntimeError('Cannot read the starting version [pacman].')
+    version = installed[1]
+    upstream = version.split(':', 1)[-1].rsplit('-', 1)[0]
+    if upstream != expected:
+        raise RuntimeError(f'Starting version differs [pacman]: expected {expected}, found {version}.')
+    if version == cand['versions'].get('emaki'):
+        raise RuntimeError('The starting version is already the candidate [pacman].')
+    return version
+
+
+def personal_config(guest):
+    result = guest.run('cat ~/.config/niri/config.kdl', check=False)
+    if result.returncode:
+        raise RuntimeError('Cannot read the personal configuration [config.kdl].')
+    return result.stdout
+
+
+def checks_after_upgrade(guest, via, cand, before_log, start, before_version, before_config):
     result = {}
 
     def check(name, ok, detail=''):
         result[name] = {'ok': bool(ok), 'detail': str(detail)[-2000:]}
         print(('OK  ' if ok else 'BAD ') + name + (f': {detail}' if detail and not ok else ''), flush=True)
 
+    check('Personal configuration unchanged after upgrade [config.kdl]',
+          personal_config(guest) == before_config)
     installed = dict(line.split()[:2] for line in guest.run('pacman -Q').splitlines())
     check('emaki is the candidate', installed.get('emaki') == cand['versions'].get('emaki'),
           f'installed {installed.get("emaki")}, candidate {cand["versions"].get("emaki")}')
     log = guest.run('cat /var/log/pacman.log', root=True)
-    tail = log[log.rfind(before_marker):] if before_marker in log else log
-    check('transaction completed', 'transaction completed' in tail, tail[-800:])
+    tail = log[len(before_log):] if log.startswith(before_log) else ''
+    check('Previous log retained [pacman]', log.startswith(before_log))
+    transition = f"[ALPM] upgraded emaki ({before_version} -> {cand['versions'].get('emaki')})"
+    upgraded = tail.find(transition)
+    completed = tail.find('[ALPM] transaction completed', upgraded) if upgraded >= 0 else -1
+    check('Candidate upgrade completed [pacman]', completed > upgraded >= 0, tail[-800:])
     # 0.1.0/0.1.1 keep Arch's portal: their [emaki] follows [extra], so pacman never offers the
     # fork's replaces=, and nothing requires the fork by name (tests/test-packaging.py,
     # PortalResolutionTests). Installs that already have the fork move to the candidate's.
@@ -351,27 +402,41 @@ def checks_after_upgrade(guest, via, cand, before_marker, start):
         check('portal fork is the candidate', 'xdg-desktop-portal-gnome' not in installed
               and installed.get('xdg-desktop-portal-gnome-emaki') == cand['versions']['xdg-desktop-portal-gnome-emaki'],
               portals)
+    expected = 'testing' if VIAS[via]['edited'] else 'stable'
     mirrorlist = guest.run('cat /etc/pacman.d/emaki-mirrorlist')
-    pacnew = guest.run('cat /etc/pacman.d/emaki-mirrorlist.pacnew 2>/dev/null || true')
-    if VIAS[via]['edited']:
-        check('edited mirrorlist kept, new one as .pacnew (B5)',
-              '/testing' in mirrorlist and 'pkgs.emaki.sh/stable' in pacnew, mirrorlist + pacnew)
-    else:
-        check('mirrorlist replaced by the packaged one', 'Server = https://pkgs.emaki.sh/stable/$arch' in mirrorlist
-              and not pacnew, mirrorlist + pacnew)
-    check('emaki-config files all present', guest.run('pacman -Qk emaki-config', check=False).returncode == 0,
-          guest.run('pacman -Qk emaki-config', check=False).stdout.decode())
+    selector = guest.run('cat /etc/emaki/channel')
+
+    def entries(text):
+        return [line.split('#', 1)[0].strip() for line in text.splitlines()
+                if line.split('#', 1)[0].strip()]
+
+    check('channel selector connected [pacman]', entries(mirrorlist) == ['Include = /etc/emaki/channel'],
+          mirrorlist)
+    check('selected channel preserved [update channel]',
+          entries(selector) == [f'Include = /usr/share/emaki/mirrors/{expected}.conf'], selector)
+    check('no pending mirror list [pacnew]',
+          guest.run('test ! -e /etc/pacman.d/emaki-mirrorlist.pacnew', check=False).returncode == 0)
+    servers = guest.run('pacman-conf --repo emaki Server').splitlines()
+    check('effective server matches channel [pacman]',
+          servers == [f'https://pkgs.emaki.sh/{expected}/x86_64'], '\n'.join(servers))
+    channel = guest.run('emaki-update-channel').strip()
+    check('reported channel matches server [update channel]', channel == expected, channel)
+    # As root: 0.3.0 ships /etc/sudoers.d/10-emaki-wheel (0440 in a 0750 directory), which
+    # pacman -Qk run by the person counts as a missing file (Permission denied).
+    files = guest.run('pacman -Qk emaki-config', root=True, check=False)
+    check('emaki-config files all present', files.returncode == 0, files.stdout.decode() + files.stderr.decode())
     return result
 
 
-def checks_after_restart(guest, result, cand):
+def checks_after_restart(guest, result, cand, before_config):
     def check(name, ok, detail=''):
         result[name] = {'ok': bool(ok), 'detail': str(detail)[-2000:]}
         print(('OK  ' if ok else 'BAD ') + name + (f': {detail}' if detail and not ok else ''), flush=True)
 
     check('shell running after restart', guest.desktop('systemctl --user is-active emaki-shell.service',
                                                        check=False).returncode == 0)
-    check('config.kdl line kept', KDL_MARK in guest.run('cat ~/.config/niri/config.kdl'))
+    check('Personal configuration unchanged after restart [config.kdl]',
+          personal_config(guest) == before_config)
     check('htop kept', guest.run('pacman -Q htop', check=False).returncode == 0)
     check('bluetooth stays disabled', guest.run('systemctl is-enabled bluetooth.service', check=False)
           .stdout.decode().strip() == 'disabled')
@@ -406,7 +471,7 @@ def qemu_command(vm, port, size, guestfwd):
             '-device', 'virtio-blk-pci,drive=target,serial=emaki-target', '-boot', 'order=c',
             '-nic', network, '-device', f'virtio-vga-gl,max_outputs=1,xres={width},yres={height}',
             '-display', 'egl-headless,rendernode=/dev/dri/renderD128',
-            '-monitor', f'unix:{vm / "mon.sock"},server=on,wait=off',
+            '-monitor', f'unix:{socket_runtime.runtime(vm) / "mon.sock"},server=on,wait=off',
             '-serial', f'file:{vm / "serial.log"}', '-pidfile', str(vm / 'qemu.pid')]
 
 
@@ -414,7 +479,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0],
                                      formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     parser.add_argument('--run', required=True, choices=('T1', 'T2', 'T3'))
-    parser.add_argument('--start', required=True, help='0.1.0, 0.1.1, 0.1.2-release or 0.1.2-full')
+    parser.add_argument('--start', required=True, help='0.1.0, 0.1.1, 0.1.2-release, 0.1.2-full or 0.2.0')
     parser.add_argument('--base', required=True, help='directory with target.qcow2 and OVMF_VARS.4m.fd of a fresh install')
     parser.add_argument('--vm-dir', default=os.environ.get('VMDIR'), help='this job\'s directory (default $VMDIR)')
     parser.add_argument('--ssh-port', type=int, default=2261)
@@ -434,7 +499,7 @@ def main():
     if rehearsal and args.run != 'T2':
         raise SystemExit('BAD: --rehearsal-bucket is a T2 rehearsal')
     if args.run == 'T1':
-        via = 'github-testing'
+        via = t1_via(args.start)
     elif args.run == 'T3':
         via = 'github-stable'
     else:
@@ -449,7 +514,7 @@ def main():
 
     if via == 'old-address':
         github_db = (Path(args.github_dir) / 'emaki.db').read_bytes()
-    elif via == 'pkgs-testing':
+    elif via in ('pkgs-testing', 'pkgs-testing-swap'):
         github_db = None
     else:
         request = urllib.request.Request(f'{GITHUB}/{"stable" if args.run == "T3" else "testing"}/emaki.db',
@@ -502,18 +567,21 @@ def main():
     try:
         guest.wait()
         guest.login()
+        before_version = check_start_version(guest, args.start, cand)
+        result['start_package_version'] = before_version
         before = prepare_old_state(guest, via)
         (vm / 'before.txt').write_text(before)
+        before_config = personal_config(guest)
+        (vm / 'config-before.kdl').write_bytes(before_config)
         if via == 'old-address':
             redirect_old_address(guest, vm / 'certs')
-        marker = guest.run('tail -n 1 /var/log/pacman.log', root=True).strip()
+        before_log = guest.run('cat /var/log/pacman.log', root=True)
+        (vm / 'pacman-before.log').write_text(before_log)
         guest.screenshot('desktop-before')
         open_terminal(guest, args.size)
         result['questions'] = upgrade_in_terminal(guest, 'upgrade')
-        checks = checks_after_upgrade(guest, via, cand, marker, args.start)
-        guest.type('cat /etc/pacman.d/emaki-mirrorlist\n')
-        if VIAS[via]['edited']:
-            guest.type('cat /etc/pacman.d/emaki-mirrorlist.pacnew\n')
+        checks = checks_after_upgrade(guest, via, cand, before_log, args.start, before_version, before_config)
+        guest.type(CHANNEL_SCREEN)
         time.sleep(1)
         guest.screenshot('mirrorlist')  # B3 / B5
         upgrade_in_terminal(guest, 'second')
@@ -527,7 +595,7 @@ def main():
         guest.type('pacman -Q emaki\n')
         time.sleep(1)
         guest.screenshot('version-after-restart')
-        checks_after_restart(guest, checks, cand)
+        checks_after_restart(guest, checks, cand, before_config)
         result['checks'] = checks
         result['passed'] = all(c['ok'] for c in checks.values())
         result['arch'] = dict(line.split()[:2] for line in guest.run('pacman -Q qt6-base niri pacman',

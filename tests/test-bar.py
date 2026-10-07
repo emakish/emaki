@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Real QML hover/timers/overview policy; offscreen, no real services or commands."""
+from runtime_fixture import runtime_path
 import json
 import os
 from pathlib import Path
@@ -18,7 +19,7 @@ q=root/'q';shutil.copytree(ROOT/'shell',q);shutil.copyfile(ROOT/'tests/fixtures/
 env=dict(os.environ,QT_QPA_PLATFORM='offscreen',QT_QUICK_BACKEND='software',QML_DISABLE_DISK_CACHE='1',PYTHONDONTWRITEBYTECODE='1',
          EMAKI_BIN='',EMAKI_SETTINGS_PROFILE='',EMAKI_TEST_SYSTEM='0',EMAKI_TEST_MPRIS='0',EMAKI_SHELL_TRAY='0',EMAKI_SHELL_NOTIFICATIONS='0',
          EMAKI_SHELL_BAR_AUTOHIDE='0',EMAKI_SHELL_OVERVIEW_WORKSPACES='1',
-         XDG_RUNTIME_DIR=str(root/'r'),XDG_CACHE_HOME=str(root/'cache'),XDG_CONFIG_HOME=str(root/'config'),XDG_STATE_HOME=str(root/'state'),XDG_DATA_HOME=str(root/'data'),XDG_DATA_DIRS=str(root/'data'),TMPDIR=str(root/'tmp'),
+         XDG_RUNTIME_DIR=str(runtime_path(root)),XDG_CACHE_HOME=str(root/'cache'),XDG_CONFIG_HOME=str(root/'config'),XDG_STATE_HOME=str(root/'state'),XDG_DATA_HOME=str(root/'data'),XDG_DATA_DIRS=str(root/'data'),TMPDIR=str(root/'tmp'),
          DBUS_SESSION_BUS_ADDRESS='unix:path='+str(root/'none'),DBUS_SYSTEM_BUS_ADDRESS='unix:path='+str(root/'none-system'),NIRI_SOCKET='')
 for k in ('DISPLAY','WAYLAND_DISPLAY','QT_SCALE_FACTOR','QT_LOGGING_RULES'):env.pop(k,None)
 def ipc(method,*args):
@@ -47,7 +48,7 @@ with (root/'qs.log').open('w') as log:
             ipc('hover',*xy);wait(lambda s:s['bar_policy']['tooltip'])
             assert json.loads(ipc('tipText'))==dict(text=label,key=key)
             ipc('hover',800,400);assert not state()['bar_policy']['tooltip']
-        for page,label,key in [('tray','Background apps',''),('wifi','Wi-Fi',''),('bt','Bluetooth',''),('sound','Sound · scroll to change',''),('light','Brightness · scroll to change',''),('power','Battery and power','Super+Escape')]:
+        for page,label,key in [('tray','Background apps',''),('wifi','Wi-Fi',''),('bt','Bluetooth',''),('sound','Sound · scroll to change',''),('light','Brightness · scroll to change',''),('power','Battery and power','')]:
             ipc('hoverSystem',page);wait(lambda s:s['bar_policy']['tooltip'])
             assert json.loads(ipc('tipText'))==dict(text=label,key=key)
             ipc('hover',800,400)
@@ -132,7 +133,7 @@ entry=entry[:entry.rfind('}')]+'    BarMaskDriver {\n        scene: scene\n     
 (mq/'check.qml').write_text(entry)
 menv=dict(env,EMAKI_SHELL_BORDER='soft',EMAKI_SHELL_HEADLESS='0',EMAKI_SHELL_TEST_WIDTH='1280',EMAKI_SHELL_TEST_HEIGHT='800',
           EMAKI_SESSION_START='',EMAKI_SESSION_SKIP_INTRO='',HOME=str(m),EMAKI_PYTHON='/usr/bin/python3',
-          XDG_RUNTIME_DIR=str(m/'r'),XDG_CACHE_HOME=str(m/'cache'),XDG_CONFIG_HOME=str(m/'config'),XDG_STATE_HOME=str(m/'state'),
+          XDG_RUNTIME_DIR=str(runtime_path(m)),XDG_CACHE_HOME=str(m/'cache'),XDG_CONFIG_HOME=str(m/'config'),XDG_STATE_HOME=str(m/'state'),
           XDG_DATA_HOME=str(m/'data'),XDG_DATA_DIRS=str(m/'data'),TMPDIR=str(m/'tmp'))
 r=subprocess.run(['qs','-p',str(mq/'check.qml'),'--no-color'],env=menv,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=20)
 assert r.returncode==0 and 'BAR_MASK_OK' in r.stdout,r.stdout

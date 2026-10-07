@@ -4,6 +4,7 @@
 Every temporary profile/image stays in the worktree. No Wayland, bus, socket IPC,
 GPU, password, screen capture, browser, or additional JavaScript runtime is used.
 """
+from runtime_fixture import runtime_path
 import json
 import os
 from pathlib import Path
@@ -82,7 +83,7 @@ def main():
         (qml / 'qmldir').write_text('LockWordmark 1.0 LockWordmark.qml\n')
         (qml / 'WordmarkReference.js').write_text(golden)
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
-                   QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(profile / 'r'),
+                   QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(runtime_path(profile)),
                    XDG_CACHE_HOME=str(profile / 'cache'), XDG_CONFIG_HOME=str(profile / 'config'),
                    XDG_STATE_HOME=str(profile / 'state'), XDG_DATA_HOME=str(profile / 'data'),
                    TMPDIR=str(profile / 'tmp'), PYTHONDONTWRITEBYTECODE='1', NIRI_SOCKET='',
@@ -99,8 +100,8 @@ def main():
             except subprocess.TimeoutExpired as error:
                 raise AssertionError(error.stdout.decode() if isinstance(error.stdout, bytes) else error.stdout) from error
             assert result.returncode == 0 and 'LOCK_WORDMARK_COMPLETE' in result.stdout, result.stdout
-            output = '\n'.join(line for line in result.stdout.splitlines()
-                               if 'quickshell.ipc: Failed to start IPC server' not in line)
+            output = result.stdout
+            assert 'Failed to start IPC server' not in output, output
             assert 'ERROR' not in output and 'WARN' not in output, output
             if scale == 1:
                 print('\n'.join(line[line.index('LOCK_WORDMARK_PASS '):] for line in output.splitlines()

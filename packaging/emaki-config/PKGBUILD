@@ -4,30 +4,32 @@
 # makepkg supplies build paths and consumes package metadata.
 # shellcheck disable=SC2034,SC2154
 pkgname=emaki-config
-pkgver=0.2.0
+pkgver=0.3.0
 pkgrel=1
 pkgdesc='Emaki shell, CLI, system defaults, session, greeter and themes'
 arch=('x86_64')
 url='https://github.com/emakish/emaki'
-license=('GPL-3.0-or-later')
+license=('GPL-3.0-or-later' 'Bitstream-Vera')
 depends=(
+    'pacman-contrib' 'reflector'
     'glibc' 'libgcc' 'bash' 'coreutils' 'dbus' 'procps-ng' 'systemd' 'util-linux'
-    'niri-emaki>=26.04-6' 'quickshell-emaki>=0.3.1-2'
+    'niri-emaki>=26.04-6' 'quickshell-emaki>=0.3.1-4'
     'python' 'python-gobject' 'python-pillow' 'gtk3'
     'wpaperd' 'wl-clipboard' 'cliphist' 'polkit-gnome' 'udiskie'
     'kitty' 'fastfetch>=2.68.1' 'imagemagick' 'hyprlock' 'playerctl' 'fuzzel' 'qt6ct'
     'adwaita-cursors' 'adwaita-fonts' 'adwaita-icon-theme'
     'xdg-desktop-portal-gnome' 'xdg-desktop-portal-gtk'  # Upstream name; see emaki-desktop.
-    'brightnessctl' 'power-profiles-daemon' 'networkmanager' 'upower' 'bluez'
+    'brightnessctl' 'power-profiles-daemon' 'networkmanager' 'upower' 'blueman' 'bluez'
     'pipewire' 'wireplumber' 'pipewire-pulse' 'wlsunset'
-    'greetd' 'greetd-regreet' 'gnome-keyring'
+    'greetd' 'greetd-regreet' 'gnome-keyring' 'kwallet>=6.30'
 )
 makedepends=('git' 'make' 'python' 'rust' 'qt6-shadertools')
-checkdepends=('niri')
+checkdepends=('niri' 'nodejs')  # nodejs: shell JavaScript tests in make check
 optdepends=('swayidle: optional emaki-idle policy')
 conflicts=('emaki-core')
-backup=('etc/niri/config.kdl' 'etc/xdg/hypr/hyprlock.conf' 'etc/xdg/fastfetch/config.jsonc'
-        'etc/xdg/mimeapps.list' 'etc/xdg/kdeglobals' 'etc/xdg/dolphinrc' 'etc/xdg/qt6ct/qt6ct.conf'
+backup=('etc/sudoers.d/10-emaki-wheel'
+        'etc/niri/config.kdl' 'etc/xdg/hypr/hyprlock.conf' 'etc/xdg/fastfetch/config.jsonc'
+        'etc/xdg/kwalletrc' 'etc/xdg/mimeapps.list' 'etc/xdg/kdeglobals' 'etc/xdg/dolphinrc' 'etc/xdg/qt6ct/qt6ct.conf'
         'etc/xdg/menus/emaki-applications.menu' 'etc/xdg/xdg-desktop-portal/niri-portals.conf')
 options=('!debug' '!lto')
 install=emaki-config.install

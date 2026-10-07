@@ -9,7 +9,7 @@ var pages = [
         diagram: "Windows continue to the left and right",
         actions: [
             { title: "Open an app", pointer: "Click the Emaki button at the top left, then choose an app.", keys: "Super + D", keyboard: "Type an app name, then press Enter.", binds: { "Mod+D": "spawn" } },
-            { title: "Find another window", pointer: "Click its icon in the dock at the bottom. On a trackpad, swipe sideways with three fingers.", keys: "Super + ← / →", keyboard: "Move to the column on either side.", binds: { "Mod+Left": "focus-column-left", "Mod+Right": "focus-column-right" } }
+            { title: "Find another window", pointer: "Move the pointer to the bottom edge to show the dock, then click the window’s icon. On a trackpad, swipe sideways with three fingers.", keys: "Super + ← / →", keyboard: "Move to the column on either side.", binds: { "Mod+Left": "focus-column-left", "Mod+Right": "focus-column-right" } }
         ]
     },
     {

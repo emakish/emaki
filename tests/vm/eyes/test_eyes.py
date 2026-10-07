@@ -16,12 +16,15 @@ import threading
 import time
 import tomllib
 import unittest
+from unittest import mock
 
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+import socket_runtime
 ROOT = HERE.parents[2]
-CACHE = ROOT / '.cache'
-CACHE.mkdir(exist_ok=True)
+CACHE = ROOT / '.cache/evidence'
+CACHE.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(HERE))
 import eyes  # noqa: E402
 
@@ -33,12 +36,13 @@ def short_tempdir():
     return tempfile.TemporaryDirectory(prefix='e-', dir=CACHE)
 
 
-class FakeQMP(socketserver.ThreadingUnixStreamServer):
-    """Records every QMP command; answers screendump by writing the current fake frame."""
-    daemon_threads = True
+class FakeQMP(socketserver.UnixStreamServer):
+    """Like QEMU, greet and serve only one monitor client at a time."""
 
     def __init__(self, path, frames):
         self.calls = []
+        self.input_event = None
+        self.event_after_reply = False
         self.frames = frames
         super().__init__(str(path), FakeQMPHandler)
 
@@ -51,7 +55,12 @@ class FakeQMPHandler(socketserver.StreamRequestHandler):
             self.server.calls.append(request)
             if request['execute'] == 'screendump':
                 self.server.frames.current().save(request['arguments']['filename'])
-            self.wfile.write(b'{"return": {}}\n')
+            event = self.server.input_event if request['execute'] == 'send-key' else None
+            reply = b'{"return": {}}\n'
+            if event:
+                payload = (json.dumps(event) + '\n').encode()
+                reply = reply + payload if self.server.event_after_reply else payload + reply
+            self.wfile.write(reply)
 
 
 class FakeVNC(socketserver.ThreadingUnixStreamServer):
@@ -122,10 +131,11 @@ class FakeGuest:
         self.dir.mkdir(parents=True, exist_ok=True)
         (self.dir / 'res').write_text(res + '\n')
         self.frames = Frames(colours)
-        self.qmp = FakeQMP(self.dir / 'qmp.sock', self.frames)
+        runtime = socket_runtime.prepare(self.dir)
+        self.qmp = FakeQMP(runtime / 'qmp.sock', self.frames)
         self.servers = [self.qmp]
         if vnc:
-            self.servers.append(FakeVNC(self.dir / 'vnc.sock', self.frames))
+            self.servers.append(FakeVNC(runtime / 'vnc.sock', self.frames))
         for server in self.servers:
             threading.Thread(target=server.serve_forever, daemon=True).start()
 
@@ -133,6 +143,7 @@ class FakeGuest:
         for server in self.servers:
             server.shutdown()
             server.server_close()
+        socket_runtime.cleanup(self.dir)
 
 
 class MetricsTests(unittest.TestCase):
@@ -158,12 +169,61 @@ class MetricsTests(unittest.TestCase):
                 eyes.qcode(character)
 
 
+class EventTests(unittest.TestCase):
+    def test_command_and_poll_share_buffered_events(self):
+        monitor = eyes.QMP.__new__(eyes.QMP)
+        monitor.events = []
+        monitor._buffer = b''
+        monitor.s = mock.Mock()
+        monitor.s.recv.return_value = (
+            b'{"event":"RESET","data":{"guest":true}}\n'
+            b'{"return":{}}\n'
+            b'{"event":"SHUTDOWN","data":{"guest":true}}\n')
+        self.assertEqual(monitor.cmd('send-key'), {'return': {}})
+        self.assertEqual([e['event'] for e in monitor.events], ['RESET'])
+        with mock.patch.object(eyes.select, 'select') as ready:
+            monitor.poll_events()
+            ready.assert_not_called()
+        self.assertEqual([e['event'] for e in monitor.events], ['RESET', 'SHUTDOWN'])
+        monitor.s.recv.assert_called_once()
+
+    def test_command_finishes_event_partially_read_by_poll(self):
+        monitor = eyes.QMP.__new__(eyes.QMP)
+        monitor.events = []
+        monitor._buffer = b''
+        monitor.s = mock.Mock()
+        monitor.s.recv.side_effect = [b'{"event":"RESET","data":',
+                                      b'{"guest":true}}\n{"return":{}}\n']
+        with mock.patch.object(eyes.select, 'select', return_value=([monitor.s], [], [])):
+            monitor.poll_events()
+        self.assertEqual(monitor.events, [])
+        self.assertEqual(monitor.cmd('screendump'), {'return': {}})
+        self.assertEqual(monitor.events, [{'event': 'RESET', 'data': {'guest': True}}])
+
+    def test_guest_shutdown_event_is_retained_before_eof(self):
+        monitor = eyes.QMP.__new__(eyes.QMP)
+        monitor.events = []
+        monitor._buffer = b''
+        monitor.s = mock.Mock()
+        monitor.s.recv.side_effect = [b'{"event":"SHUTDOWN","data":{"guest":', b'true}}\n', b'']
+        with mock.patch.object(eyes.select, 'select', return_value=([monitor.s], [], [])):
+            monitor.poll_events()
+            self.assertEqual(monitor.events, [])
+            monitor.poll_events()
+            with self.assertRaises(RuntimeError):
+                monitor.poll_events()
+        self.assertEqual(monitor.events, [{'event': 'SHUTDOWN', 'data': {'guest': True}}])
+        monitor.s.sendall.assert_not_called()
+
+
 class PassTests(unittest.TestCase):
     def setUp(self):
         self.work = short_tempdir()
         self.base = Path(self.work.name)
 
     def tearDown(self):
+        for link in self.base.rglob('.socket-runtime'):
+            subprocess.run([sys.executable, str(HERE.parent / 'socket_runtime.py'), 'cleanup', str(link.parent)], check=True)
         self.work.cleanup()
 
     def guest(self, colours, vnc=True):
@@ -172,6 +232,18 @@ class PassTests(unittest.TestCase):
         vm = eyes.Pass(guest.dir, {'secret': 'Ab1|', 'marker': 'm1'})
         self.addCleanup(vm.close)
         return guest, vm
+
+    def test_monitor_serves_one_client_at_a_time(self):
+        guest, vm = self.guest(['black'], vnc=False)
+        vm.cmd('query-status')
+        with socket.socket(socket.AF_UNIX) as second:
+            second.settimeout(.1)
+            second.connect(str((guest.dir / 'qmp.sock').resolve()))
+            with self.assertRaises(TimeoutError):
+                second.recv(4096)
+            vm.close()
+            second.settimeout(2)
+            self.assertIn(b'"QMP"', second.recv(4096))
 
     def test_input_is_qmp_only_and_scaled_to_the_pass_resolution(self):
         guest, vm = self.guest(['black'])
@@ -225,6 +297,15 @@ class PassTests(unittest.TestCase):
         self.assertTrue(result['timed_out'])
         self.assertTrue(timeline[-1]['file'])
 
+    def test_interrupted_series_preserves_captured_interval(self):
+        vm = object.__new__(eyes.Pass)
+        vm.grab = lambda: (Image.new('RGB', (8, 8), 'grey'), 'vnc')
+        with mock.patch.object(eyes.time, 'sleep', side_effect=KeyboardInterrupt):
+            timeline, result = vm.series(lambda img, t: 'kept.png')
+        self.assertEqual(len(timeline), 1)
+        self.assertEqual(timeline[0]['file'], 'kept.png')
+        self.assertTrue(result['interrupted'])
+
     def test_burst_keeps_every_frame_and_measures_the_interval(self):
         guest, vm = self.guest(['black'])
         saved = []
@@ -268,6 +349,7 @@ class LauncherTests(unittest.TestCase):
         (self.repo / 'tests/vm/eyes').mkdir(parents=True)
         (self.repo / 'iso').mkdir()
         shutil.copy(HERE / 'eyes-vm.sh', self.repo / 'tests/vm/eyes/eyes-vm.sh')
+        shutil.copy(HERE.parent / 'socket_runtime.py', self.repo / 'tests/vm/socket_runtime.py')
         self.bin = self.base / 'bin'
         self.bin.mkdir()
         for path, text in ((self.bin / 'qemu-system-x86_64', STUB_QEMU), (self.bin / 'qemu-img', STUB_QEMU_IMG),
@@ -292,6 +374,8 @@ class LauncherTests(unittest.TestCase):
         (self.walk / 'iso.sha256').write_text(self.sha + '\n')
 
     def tearDown(self):
+        for link in self.base.rglob('.socket-runtime'):
+            subprocess.run([sys.executable, str(HERE.parent / 'socket_runtime.py'), 'cleanup', str(link.parent)], check=True)
         self.work.cleanup()
 
     def launch(self, *args, verify_rc=0):
@@ -313,7 +397,7 @@ class LauncherTests(unittest.TestCase):
         [qemu] = self.qemu_calls(calls)
         passdir = self.walk / 'W1/gl-1920x1080-uefi-01'
         for part in ('-m 4G', '-smp 2', 'nvme,drive=target', 'usb-tablet', 'virtio-vga-gl,xres=1920,yres=1080',
-                     f'-vnc unix:{passdir}/vnc.sock', f'unix:{passdir}/qmp.sock', f'file={self.iso}'):
+                     f'-vnc unix:{(passdir / "vnc.sock").resolve()}', f'unix:{(passdir / "qmp.sock").resolve()}', f'file={self.iso}'):
             self.assertIn(part, qemu)
         self.assertNotIn('hostfwd', qemu)
         self.assertEqual((self.walk / 'current-pass').read_text().strip(), str(passdir))
@@ -336,6 +420,21 @@ class LauncherTests(unittest.TestCase):
         qemu = self.qemu_calls(calls)[-1]
         self.assertNotIn('cdrom', qemu)
         self.assertIn('pflash', qemu)
+
+    def test_required_plain_resolution_and_usb_boot(self):
+        result, calls = self.launch('--display', 'gl', '--res', '1280x800', '--usb', '--iso', str(self.iso))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        [qemu] = self.qemu_calls(calls)
+        self.assertIn('virtio-vga-gl,xres=1280,yres=800', qemu)
+        self.assertIn('usb-storage,drive=liveiso,bootindex=1', qemu)
+        self.assertLess(qemu.index('qemu-xhci'), qemu.index('usb-storage'))
+        self.assertIn(f'if=none,id=liveiso,format=raw,readonly=on,file={self.iso}', qemu)
+        self.assertNotIn('ide-cd', qemu)
+        self.assertNotIn('hostfwd', qemu)
+
+    def test_usb_requires_live_image(self):
+        result, calls = self.launch('--display', 'gl', '--res', '1920x1080', '--usb', '--no-cd')
+        self.assert_refused(result, calls, '--usb requires --iso')
 
     def assert_refused(self, result, calls, words):
         self.assertNotEqual(result.returncode, 0)
@@ -389,6 +488,11 @@ class GateTests(unittest.TestCase):
         self.sha = hashlib.sha256(self.iso.read_bytes()).hexdigest()
         self.walk = self.base / 'walk'
         (self.walk / 'frames').mkdir(parents=True)
+        # Stage 39 needs a recorded USB boot of the image, as eyes-vm.sh --usb writes it.
+        self.usb_cmdline = self.walk / 'disk-usb' / 'gtk-1280x800-uefi-01' / 'qemu-cmdline.txt'
+        self.usb_cmdline.parent.mkdir(parents=True)
+        self.usb_cmdline.write_text('qemu-system-x86_64 -device qemu-xhci -drive if=none,id=liveiso,format=raw,'
+                                    'readonly=on,file=release.iso -device usb-storage,drive=liveiso,bootindex=1\n')
         self.record = self.complete_record()
         self.signoff = {'iso_sha256': self.sha, 'signed_by': 'owner', 'date': '2026-10-05',
                         'fixed_frames_seen': True, 'picked': [], 'picked_agree': True,
@@ -398,15 +502,46 @@ class GateTests(unittest.TestCase):
         self.waivers = []
 
     def tearDown(self):
+        for link in self.base.rglob('.socket-runtime'):
+            subprocess.run([sys.executable, str(HERE.parent / 'socket_runtime.py'), 'cleanup', str(link.parent)], check=True)
         self.work.cleanup()
 
-    def frame(self, name, colour='grey'):
+    def frame(self, name, colour='grey', size=(8, 8)):
         path = self.walk / 'frames' / f'{name}.png'
-        Image.new('RGB', (8, 8), colour).save(path)
+        Image.new('RGB', size, colour).save(path)
         return f'frames/{name}.png', hashlib.sha256(path.read_bytes()).hexdigest()
 
     def complete_record(self):
         runs = {}
+        sizes = {}
+        progress = {}
+        for size in ('1280x800', '1366x768', '1920x1080', '2560x1600'):
+            name, digest = self.frame(size, size=tuple(map(int, size.split('x'))))
+            config = self.walk / (size + '.cfg')
+            config.write_text('set gfxmode=' + size + '\n')
+            sizes[size] = {'menu_mode': {'size': size, 'source': config.name,
+                           'sha256': hashlib.sha256(config.read_bytes()).hexdigest()}, 'verdict': 'OK', 'seen': SEEN, 'frames': [name], 'sha256': [digest]}
+            alternate, _ = self.frame(size + '-changed', colour='white', size=tuple(map(int, size.split('x'))))
+            entries = []
+            phases = ['prepare_disk', 'copy_packages', 'bootloader', 'account', 'settings',
+                      'snapshot', 'update', 'finish', 'complete']
+            starts = [0, 1, 13, 14, 15, 16, 17, 18, 19]
+            events = self.walk / f'install-{size}.ndjson'
+            events.write_text(''.join(json.dumps({'type': 'done' if phase == 'complete' else 'state',
+                                                  'phase': phase, 'seq': i}) + '\n'
+                                      for i, phase in enumerate(phases)))
+            for second in range(20):
+                frame = alternate if second % 2 else name
+                with Image.open(self.walk / frame) as img:
+                    pixels = hashlib.sha256(img.convert('RGB').tobytes()).hexdigest()
+                entries.append({'t': second, 'source': 'vnc', 'file': frame, 'sha256': pixels, 'changed': True,
+                                'phase_text': phases[max(i for i, t in enumerate(starts) if t <= second)]})
+            timeline = self.walk / f'progress-{size}.json'
+            timeline.write_text(json.dumps({'timeline': entries, 'install_events': {
+                'file': events.name, 'sha256': hashlib.sha256(events.read_bytes()).hexdigest(),
+                'host_offsets': {str(i): t for i, t in enumerate(starts)}}}))
+            progress[size] = {'timeline': timeline.name, 'sha256': hashlib.sha256(timeline.read_bytes()).hexdigest(),
+                              'roi': [0, 0, 8, 8], 'roi_reviewed': True, 'covers_installation': True}
         for run, spec in STAGES['runs'].items():
             tables = runs.setdefault(run, {'stages': {}})['stages']
             for sid in spec['stages']:
@@ -417,14 +552,82 @@ class GateTests(unittest.TestCase):
                              'hardware_line': stage['hardware_line'], 'frames': [name], 'sha256': [digest]}
                 else:
                     table = {'result': 'PASS', 'verdict': 'OK', 'seen': SEEN, 'frames': [name], 'sha256': [digest]}
+                    table['resolution_checks'] = {size: dict(sizes[size]) for size in stage.get('resolutions', [])}
+                    if sid == '16':
+                        table['progress_checks'] = {size: dict(item) for size, item in progress.items()}
                 if stage.get('lock') and table['result'] == 'PASS':
                     burst, burst_sha = self.frame(f'{run}-{sid}-burst')
                     table['input_test'] = {'marker_absent': True, 'frames': [burst], 'sha256': [burst_sha],
                                            'grab_interval_ms': 80.5}
+                if stage.get('actions') and table['result'] == 'PASS':
+                    table['action_checks'] = {}
+                    for action in stage['actions']:
+                        after, after_sha = self.frame(f'{run}-{sid}-{action}-after', colour='white')
+                        item = {'trigger': 'click:400,300', 'completed': True, 'verdict': 'OK',
+                                'seen': SEEN, 'frames': [name, after], 'sha256': [digest, after_sha]}
+                        event = {'restart': 'RESET', 'shutdown': 'SHUTDOWN',
+                                 'lock-restart': 'RESET', 'lock-shutdown': 'SHUTDOWN'}.get(action)
+                        if event:
+                            log = self.walk / f'{run}-{sid}-{action}.json'
+                            log.write_text(json.dumps([{'event': event, 'data': {'guest': True}}]))
+                            item.update(events=log.name, events_sha256=hashlib.sha256(log.read_bytes()).hexdigest())
+                        table['action_checks'][action] = item
                 tables[sid] = table
         return {'walk': {'iso_path': str(self.iso), 'iso_sha256': self.sha, 'date': '2026-10-05',
                          'walked_by': 'walker', 'reviewed_by': 'reviewer', 'qemu': ['qemu-system-x86_64 ...']},
                 'runs': runs}
+
+    def test_each_real_action_is_required(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('eyes_gate', HERE / 'eyes-gate.py')
+        gate = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gate)
+        for sid, action in [('10', 'gparted-open'), ('10', 'gparted-close'),
+                            ('33', 'logout'), ('33', 'restart'), ('33', 'shutdown'),
+                            ('33', 'lock-restart'), ('33', 'lock-shutdown')]:
+            with self.subTest(action=action):
+                table = self.record['runs']['W1']['stages'][sid]
+                item = table['action_checks'].pop(action)
+                findings = gate.Findings()
+                gate.check_actions(self.walk, f'W1/{sid}', STAGES['stages'][sid], table, findings)
+                self.assertIn(('NOT TESTED', f'W1/{sid} {action}', 'no UI action and outcome recorded'),
+                              findings.items)
+                table['action_checks'][action] = item
+
+    def test_monitor_shutdown_is_not_guest_poweroff(self):
+        item = self.record['runs']['W1']['stages']['33']['action_checks']['shutdown']
+        log = self.walk / item['events']
+        log.write_text(json.dumps([{'event': 'SHUTDOWN', 'data': {'guest': False, 'reason': 'host-qmp-quit'}}]))
+        item['events_sha256'] = hashlib.sha256(log.read_bytes()).hexdigest()
+        result = self.gate()
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn('no guest SHUTDOWN event', result.stdout)
+
+    def test_shutdown_event_cannot_prove_restart(self):
+        item = self.record['runs']['W1']['stages']['33']['action_checks']['restart']
+        log = self.walk / item['events']
+        log.write_text(json.dumps([{'event': 'SHUTDOWN', 'data': {'guest': True}}]))
+        item['events_sha256'] = hashlib.sha256(log.read_bytes()).hexdigest()
+        result = self.gate()
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn('no guest RESET event', result.stdout)
+
+    def test_gparted_action_needs_observed_outcome_and_two_frames(self):
+        item = self.record['runs']['W1']['stages']['10']['action_checks']['gparted-open']
+        item.update(verdict='', frames=item['frames'][:1], sha256=item['sha256'][:1])
+        result = self.gate()
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn('action outcome has not been judged', result.stdout)
+        self.assertIn('action needs before and after frames', result.stdout)
+
+    def test_1366_is_required_for_every_installer_page_greeter_and_welcome(self):
+        for sid in [f'{i:02d}' for i in range(5, 18)] + ['24', '25']:
+            with self.subTest(stage=sid):
+                self.assertIn('1366x768', STAGES['stages'][sid]['resolutions'])
+        del self.record['runs']['W1']['stages']['24']['resolution_checks']['1366x768']
+        result = self.gate()
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn('W1/24 at 1366x768: NOT TESTED', result.stdout)
 
     def gate(self, *extra, iso=None, script=HERE / 'eyes-gate.py', verified=True):
         (self.walk / 'walk.toml').write_text(eyes.dump_toml(self.record))
@@ -459,6 +662,62 @@ class GateTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertEqual(result.stdout.splitlines()[-1], f'RESULT: PASSED (walk record of {self.sha[:12]})')
 
+    def test_usb_stage_needs_a_recorded_usb_boot(self):
+        self.accepted()
+        self.usb_cmdline.write_text('qemu-system-x86_64 -drive media=cdrom,file=release.iso\n')
+        result = self.gate()
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn('W1/39: NOT TESTED: no recorded QEMU command boots the image as usb-storage', result.stdout)
+
+    def test_missing_online_update_kernel_and_usb_runs_are_not_accepted(self):
+        self.accepted()
+        for sid in ('36', '37', '38', '39'):
+            with self.subTest(stage=sid):
+                self.assertIn(sid, STAGES['runs']['W1']['stages'])
+                saved = self.record['runs']['W1']['stages'].pop(sid)
+                try:
+                    result = self.gate()
+                    self.assertNotEqual(result.returncode, 0, result.stdout)
+                    self.assertIn(f'W1/{sid}', result.stdout)
+                finally:
+                    self.record['runs']['W1']['stages'][sid] = saved
+
+    def test_encrypted_rollback_stage_is_required(self):
+        self.accepted()
+        self.assertIn('32', STAGES['runs']['W2']['stages'])
+        del self.record['runs']['W2']['stages']['32']
+        result = self.gate()
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn('W2/32', result.stdout)
+
+    def test_menu_stages_accept_recorded_configured_mode(self):
+        self.accepted()
+        config = self.walk / 'menu.cfg'
+        config.write_text('set gfxmode="1024x768,800x600,auto"\n')
+        name, digest = self.frame('menu-moderate', size=(1024, 768))
+        for run, sid in (('W1', '01'), ('W3', '01b'), ('W1', '22')):
+            for item in self.stage(run, sid)['resolution_checks'].values():
+                item.update(frames=[name], sha256=[digest], menu_mode={
+                    'size': '1024x768', 'source': config.name,
+                    'sha256': hashlib.sha256(config.read_bytes()).hexdigest()})
+        result = self.gate()
+        self.assertEqual(result.returncode, 0, result.stdout)
+
+    def test_menu_missing_mode_is_not_tested(self):
+        self.accepted()
+        del self.stage('W1', '01')['resolution_checks']['1280x800']['menu_mode']
+        result = self.gate()
+        self.assertEqual(result.returncode, 3, result.stdout)
+        self.assertIn('no recorded menu mode', result.stdout)
+
+    def test_menu_configured_mode_must_match_pixels(self):
+        self.accepted()
+        item = self.stage('W1', '22')['resolution_checks']['1280x800']
+        item['frames'], item['sha256'] = map(list, zip(self.frame('wrong-menu', size=(1024, 768))))
+        result = self.gate()
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn('actual frame size', result.stdout)
+
     def test_missing_stage_fails(self):
         self.accepted()
         del self.record['runs']['W2']['stages']['19']
@@ -478,6 +737,65 @@ class GateTests(unittest.TestCase):
         result = self.gate(iso=other)
         self.assertEqual(result.returncode, 1)
         self.assertIn('header: FAIL: record sha256', result.stdout)
+
+    def test_owner_resolution_missing_blocks(self):
+        self.accepted()
+        del self.stage('W1', '29')['resolution_checks']['2560x1600']
+        result = self.gate()
+        self.assertEqual(result.returncode, 3)
+        self.assertIn('W1/29 at 2560x1600', result.stdout)
+
+    def test_wrong_resolution_pixels_fail(self):
+        self.accepted()
+        checks = self.stage('W1', '29')['resolution_checks']
+        checks['2560x1600'] = checks['1280x800']
+        self.assertEqual(self.gate().returncode, 1)
+
+    def test_progress_interval_missing_blocks(self):
+        self.accepted()
+        self.stage('W1', '16')['progress_checks'] = {}
+        self.assertEqual(self.gate().returncode, 3)
+
+    def test_frozen_progress_fails_gate(self):
+        self.accepted()
+        item = self.stage('W1', '16')['progress_checks']['1280x800']
+        path = self.walk / item['timeline']
+        data = json.loads(path.read_text())
+        first = data['timeline'][0]
+        data['timeline'] = [dict(entry, file=first['file'], sha256=first['sha256'])
+                            for entry in data['timeline']]
+        path.write_text(json.dumps(data))
+        item['sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
+        # Both install records use this timeline; update its digest in both.
+        self.stage('W2', '16')['progress_checks']['1280x800']['sha256'] = item['sha256']
+        result = self.gate()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('unchanged for more than 10 seconds', result.stdout)
+
+    def test_coverage_flag_cannot_accept_partial_installation(self):
+        self.accepted()
+        item = self.stage('W1', '16')['progress_checks']['1280x800']
+        path = self.walk / item['timeline']
+        data = json.loads(path.read_text())
+        data['timeline'] = data['timeline'][:14]
+        path.write_text(json.dumps(data))
+        for run in ('W1', 'W2'):
+            self.stage(run, '16')['progress_checks']['1280x800']['sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
+        result = self.gate()
+        self.assertEqual(result.returncode, 3, result.stdout)
+        self.assertIn('full installation needs every phase', result.stdout)
+
+    def test_resolution_confusing_needs_specific_waiver(self):
+        self.accepted()
+        item = self.stage('W1', '29')['resolution_checks']['2560x1600']
+        item['verdict'] = 'CONFUSING'
+        self.waivers.append({'run': 'W1', 'stage': '29', 'sentence': 'Accept the label spacing.'})
+        self.assertEqual(self.gate().returncode, 1)
+        self.waivers[-1]['resolution'] = '2560x1600'
+        result = self.gate()
+        self.assertEqual(result.returncode, 0, result.stdout)
+        item['verdict'] = 'BROKEN'
+        self.assertEqual(self.gate().returncode, 1)
 
     def test_not_tested_without_hardware_line_fails(self):
         self.accepted()
@@ -595,6 +913,8 @@ class GateTests(unittest.TestCase):
         (repo / 'iso').mkdir()
         for name in ('eyes-gate.py', 'stages.toml'):
             shutil.copy(HERE / name, repo / 'tests/vm/eyes' / name)
+        shutil.copy(HERE.parent / 'check-install-progress.py', repo / 'tests/vm/check-install-progress.py')
+        shutil.copy(HERE.parent / 'menu_mode.py', repo / 'tests/vm/menu_mode.py')
         (repo / 'iso/verify-image.py').write_text(
             'import sys\nsys.exit("ERROR: mastered image verification failed: test kernel argument in release loader")\n')
         result = self.gate(script=repo / 'tests/vm/eyes/eyes-gate.py', verified=False)
@@ -631,6 +951,8 @@ class WalkTests(unittest.TestCase):
         self.walk_mod = load_walk_module()
 
     def tearDown(self):
+        for link in self.base.rglob('.socket-runtime'):
+            subprocess.run([sys.executable, str(HERE.parent / 'socket_runtime.py'), 'cleanup', str(link.parent)], check=True)
         self.work.cleanup()
 
     def init(self, verify_rc=0):
@@ -643,6 +965,108 @@ class WalkTests(unittest.TestCase):
         result = self.init()
         self.assertEqual(result.returncode, 0, result.stderr)
         return Path(result.stdout.strip().split('=', 1)[1])
+
+    def test_action_sends_real_input_and_leaves_outcome_unjudged(self):
+        from types import SimpleNamespace
+        walk = self.walk_mod.Walk(self.new_walk())
+        vm = mock.Mock()
+        walk._vm = vm
+        frames = [('before.png', 'a'), ('after.png', 'b')]
+        walk.shot = mock.Mock(return_value=frames[:1])
+        walk.series = mock.Mock(return_value=frames[1:])
+        args = SimpleNamespace(run='W1', stage='10', action='gparted-open',
+                               trigger='click:400,300', timeout=120)
+        self.walk_mod.cmd_action(walk, args)
+        vm.click.assert_called_once_with(400.0, 300.0)
+        walk.series.assert_called_once()
+        item = walk.record['runs']['W1']['stages']['10']['action_checks']['gparted-open']
+        self.assertTrue(item['completed'])
+        self.assertEqual(item['frames'], ['before.png', 'after.png'])
+        self.assertEqual(item['verdict'], '')
+        self.assertEqual(walk.record['runs']['W1']['stages']['10']['result'], '')
+
+    def test_action_refuses_monitor_and_noop_triggers(self):
+        from types import SimpleNamespace
+        walk = self.walk_mod.Walk(self.new_walk())
+        for trigger in ('qmp:quit', 'qmp:system_reset', 'none'):
+            with self.subTest(trigger=trigger), self.assertRaises(SystemExit):
+                self.walk_mod.cmd_action(walk, SimpleNamespace(run='W1', stage='33', action='shutdown',
+                                                              trigger=trigger, timeout=120))
+
+    def test_power_actions_share_capture_and_input_monitor(self):
+        from types import SimpleNamespace
+        walk = self.walk_mod.Walk(self.new_walk())
+        guest = FakeGuest(self.base / 'p', ['blue'], vnc=False)
+        self.addCleanup(guest.close)
+        vm = eyes.Pass(guest.dir)
+        self.addCleanup(vm.close)
+        walk._vm = vm
+        # Keep real QMP screendumps, but avoid unrelated evidence-directory setup.
+        def shot(*args, **kwargs):
+            image, source = vm.grab()
+            self.assertEqual(source, 'screendump')
+            self.assertEqual(image.getpixel((0, 0)), (0, 0, 255))
+            return [('frame.png', 'a')]
+        walk.shot = shot
+        walk.series = mock.Mock(side_effect=shot)
+        for action in ('restart', 'shutdown', 'lock-restart', 'lock-shutdown'):
+            for after_reply in (False, True):
+                with self.subTest(action=action, after_reply=after_reply):
+                    guest.qmp.input_event = {
+                        'event': 'RESET' if 'restart' in action else 'SHUTDOWN',
+                        'data': {'guest': True}}
+                    guest.qmp.event_after_reply = after_reply
+                    self.walk_mod.cmd_action(walk, SimpleNamespace(
+                        run='W1', stage='33', action=action, trigger='keys:ret', timeout=2))
+                    item = walk.record['runs']['W1']['stages']['33']['action_checks'][action]
+                    self.assertTrue(item['completed'])
+                    self.assertEqual(json.loads((walk.dir / item['events']).read_text()),
+                                     [guest.qmp.input_event])
+        names = [call['execute'] for call in guest.qmp.calls]
+        self.assertEqual(names.count('qmp_capabilities'), 1)
+        self.assertEqual(names.count('send-key'), 8)
+        self.assertEqual(names.count('screendump'), 12)
+
+    def test_shutdown_without_guest_event_is_not_completed(self):
+        from types import SimpleNamespace
+        walk = self.walk_mod.Walk(self.new_walk())
+        vm = mock.Mock()
+        vm.dir = walk.dir
+        walk._vm = vm
+        walk.shot = mock.Mock(return_value=[('last.png', 'a')])
+        observer = vm.qmp
+        observer.events = []
+        def stopped():
+            observer.events.append({'event': 'SHUTDOWN', 'data': {'guest': False}})
+            raise RuntimeError('QMP connection closed')
+        observer.poll_events.side_effect = stopped
+        with self.assertRaises(SystemExit):
+            self.walk_mod.cmd_action(walk, SimpleNamespace(run='W1', stage='33', action='shutdown',
+                                                          trigger='click:400,300', timeout=120))
+        item = walk.record['runs']['W1']['stages']['33']['action_checks']['shutdown']
+        self.assertFalse(item['completed'])
+        self.assertEqual(item['verdict'], '')
+        vm.click.assert_called_once()
+
+    def test_guest_shutdown_event_survives_monitor_disconnect(self):
+        from types import SimpleNamespace
+        walk = self.walk_mod.Walk(self.new_walk())
+        vm = mock.Mock()
+        vm.dir = walk.dir
+        walk._vm = vm
+        walk.shot = mock.Mock(return_value=[('last.png', 'a')])
+        observer = vm.qmp
+        observer.events = []
+        def stopped():
+            observer.events.append({'event': 'SHUTDOWN', 'data': {'guest': True}})
+            raise RuntimeError('QMP connection closed')
+        observer.poll_events.side_effect = stopped
+        self.walk_mod.cmd_action(walk, SimpleNamespace(run='W1', stage='33', action='shutdown',
+                                                      trigger='click:400,300', timeout=120))
+        item = walk.record['runs']['W1']['stages']['33']['action_checks']['shutdown']
+        self.assertTrue(item['completed'])
+        self.assertEqual(item['verdict'], '')
+        self.assertTrue((walk.dir / item['events']).is_file())
 
     def test_init_makes_a_fresh_directory_per_image_sha(self):
         first = self.new_walk()
@@ -668,6 +1092,40 @@ class WalkTests(unittest.TestCase):
         Path(str(self.iso) + '.sha256').write_text('0' * 64 + '  emaki.iso\n')
         self.assertNotEqual(self.init().returncode, 0)
         self.assertFalse((self.base / 'y' / self.sha[:12]).exists() and any((self.base / 'y' / self.sha[:12]).iterdir()))
+
+    def test_menu_capture_keeps_advertised_display_separate_from_pixels(self):
+        directory = self.new_walk()
+        walk = self.walk_mod.Walk(directory)
+        current = directory / 'pass'
+        current.mkdir()
+        (current / 'res').write_text('2560x1600')
+        (directory / 'current-pass').write_text(str(current))
+        frame = directory / 'menu.png'
+        Image.new('RGB', (1024, 768), 'grey').save(frame)
+        walk.record_frames('W1', '01', [('menu.png', hashlib.sha256(frame.read_bytes()).hexdigest())])
+        checks = walk.record['runs']['W1']['stages']['01']['resolution_checks']
+        self.assertIn('2560x1600', checks)
+        self.assertNotIn('1024x768', checks)
+        self.assertEqual(checks['2560x1600']['verdict'], '')
+
+    def test_new_frames_require_fresh_resolution_judgement(self):
+        directory = self.new_walk()
+        walk = self.walk_mod.Walk(directory)
+        frame = directory / 'native.png'
+        Image.new('RGB', (2560, 1600), 'grey').save(frame)
+        digest = hashlib.sha256(frame.read_bytes()).hexdigest()
+        walk.record_frames('W1', '29', [('native.png', digest)])
+        record = walk.record
+        item = record['runs']['W1']['stages']['29']['resolution_checks']['2560x1600']
+        self.assertEqual(item['frames'], ['native.png'])
+        self.assertEqual(item['sha256'], [digest])
+        self.assertEqual(item['verdict'], '')
+        item.update(verdict='OK', seen=SEEN)
+        walk.save(record)
+        walk.record_frames('W1', '29', [('native.png', digest)])
+        item = walk.record['runs']['W1']['stages']['29']['resolution_checks']['2560x1600']
+        self.assertEqual(item['verdict'], '')
+        self.assertEqual(item['seen'], '')
 
     def guest_for(self, walk, colours):
         guest = FakeGuest(self.base / 'p', colours)  # short socket path; the walk may be deep

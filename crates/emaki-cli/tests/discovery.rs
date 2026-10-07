@@ -1,3 +1,6 @@
+#[path = "../../../tests/socket_dir.rs"]
+mod socket_dir;
+
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -12,10 +15,11 @@ static COUNTER: AtomicU64 = AtomicU64::new(0);
 
 struct Fixture {
     root: PathBuf,
+    runtime: PathBuf,
 }
 impl Fixture {
     fn new() -> Self {
-        // Test writes are always inside this checkout, including without TMPDIR.
+        // Evidence stays in the checkout; sockets use a separate short directory.
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../.cache/tmp")
             .join(format!(
@@ -33,7 +37,10 @@ impl Fixture {
             fs::write(&file, source).unwrap();
             fs::set_permissions(file, fs::Permissions::from_mode(0o700)).unwrap();
         }
-        Self { root }
+        Self {
+            root,
+            runtime: socket_dir::short_socket_dir(),
+        }
     }
 
     fn command(&self) -> Command {
@@ -52,8 +59,8 @@ impl Fixture {
             .env("HOME", self.root.join("home"))
             .env("XDG_CONFIG_HOME", self.root.join("config"))
             .env("XDG_STATE_HOME", self.root.join("state"))
-            .env("XDG_RUNTIME_DIR", self.root.join("runtime"))
-            .env("NIRI_SOCKET", self.root.join("niri.sock"));
+            .env("XDG_RUNTIME_DIR", &self.runtime)
+            .env("NIRI_SOCKET", self.runtime.join("niri.sock"));
         command
     }
 
@@ -75,7 +82,7 @@ impl Fixture {
     }
 
     fn server(&self, responses: Vec<Vec<u8>>) -> std::thread::JoinHandle<()> {
-        let listener = UnixListener::bind(self.root.join("niri.sock")).unwrap();
+        let listener = UnixListener::bind(self.runtime.join("niri.sock")).unwrap();
         listener.set_nonblocking(true).unwrap();
         std::thread::spawn(move || {
             let deadline = Instant::now() + Duration::from_secs(5);
@@ -112,6 +119,7 @@ impl Fixture {
 impl Drop for Fixture {
     fn drop(&mut self) {
         fs::remove_dir_all(&self.root).unwrap();
+        fs::remove_dir_all(&self.runtime).unwrap();
     }
 }
 

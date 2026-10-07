@@ -25,13 +25,17 @@ Item {
         return player ? player.perform(action) : false;
     }
     property var peekIds: []
+    property bool hidePreviewBodies: false
     property string serverState: "disabled"
     property date today: new Date()
     property string time: ""
     property string longDate: ""
     // The panel may not grow past this (the screen minus margins): fewer notification rows.
     property real maxHeight: 10000
-    readonly property var peekNotes: peekIds.map(id => store.entries.find(n => n.id === id)).filter(Boolean)
+    readonly property var peekNotes: peekIds.map(id => store.entries.find(n => n.id === id)).filter(Boolean).map(n => hidePreviewBodies ? Object.assign({}, n, {
+            body: "",
+            actions: []
+        }) : n)
     readonly property var peekApps: [...new Set(peekNotes.map(n => n.app))]
     readonly property alias calendar: calendar
     readonly property color ink: glass ? glass.ink : LiquidPalette.inkOnDark
@@ -69,8 +73,46 @@ Item {
     function actionsOf(note: var): var {
         return (note?.actions ?? []).filter(a => a.id !== "default");
     }
-    function noteHeight(note: var): int {
-        return actionsOf(note).length ? 78 : 50;
+    // Measure with the same Qt text layout and width as the visible body. Character
+    // counts cannot predict wrapping for device names, Unicode or a changed UI font.
+    Component {
+        id: bodyMeasure
+        Text {
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            font.family: ShellPalette.uiFont
+            font.pixelSize: 13
+            font.weight: Font.Medium
+        }
+    }
+    property var bodyHeights: ({})
+    Component.onCompleted: Qt.callLater(measureBodies)
+    onInnerChanged: Qt.callLater(measureBodies)
+    Connections {
+        target: body.store
+        function onEntriesChanged(): void {
+            Qt.callLater(body.measureBodies);
+        }
+    }
+    function measureBodies(): void {
+        const heights = {};
+        for (const note of store.entries) {
+            if (!note.critical || !note.body)
+                continue;
+            const measure = bodyMeasure.createObject(null, {
+                width: Math.max(1, inner - 130),
+                text: note.body
+            }) as Text;
+            heights[note.id] = Math.max(20, Math.ceil(measure.implicitHeight));
+            measure.destroy();
+        }
+        bodyHeights = heights;
+    }
+    function noteBodyHeight(note: var): real {
+        return note.critical && note.body ? (bodyHeights[note.id] ?? 20) : 20;
+    }
+    function noteHeight(note: var): real {
+        return 30 + noteBodyHeight(note) + (actionsOf(note).length ? 28 : 0);
     }
     function notePlan(cap: int): var {
         const items = [];
@@ -341,14 +383,16 @@ Item {
             color: body.ink
         }
         Text {
+            id: message
             x: 50
-            y: 25 + 10 - 10
-            width: row.width - 130
-            height: 20
-            verticalAlignment: Text.AlignVCenter
-            elide: Text.ElideRight
-            maximumLineCount: 1
-            text: (row.note.body || "").replace(/\s+/g, " ")
+            y: 25
+            width: Math.max(1, row.width - 130)
+            height: body.noteBodyHeight(row.note)
+            verticalAlignment: row.note.critical ? Text.AlignTop : Text.AlignVCenter
+            elide: row.note.critical ? Text.ElideNone : Text.ElideRight
+            wrapMode: row.note.critical ? Text.Wrap : Text.NoWrap
+            maximumLineCount: row.note.critical ? 2147483647 : 1
+            text: row.note.critical ? (row.note.body || "") : (row.note.body || "").replace(/\s+/g, " ")
             textFormat: Text.PlainText
             font.family: ShellPalette.uiFont
             font.pixelSize: 13
@@ -403,7 +447,7 @@ Item {
         }
         Row {
             x: 40
-            y: 50
+            y: message.y + message.height + 5
             height: 26
             spacing: 2
             Repeater {

@@ -18,9 +18,16 @@ Item {
     property string fullName: ""
     property string login: ""
     property bool loginEdited: false
+    property bool focusLogin: false
     property string hostname: "emaki"
     property string timezone: "UTC"
     property bool timezoneEdited: false
+    property bool timezoneGuessPending: false
+    property bool timezoneGuessOffline: false
+    property bool timezoneGuessRequest: false
+    readonly property bool timezoneChosen: timezoneEdited || !!session.inventory?.tz_guess
+    property string joinedWifiUuid: ""
+    property bool removeUsbPrompt: false
     property string applyingTimezone: ""
     property var timezoneInfo: null
     property string timezoneMessage: ""
@@ -55,6 +62,9 @@ Item {
     property var media: []
     property string helperMessage: ""
     property bool helperFailed: false
+    // A join is followed by a scan; that scan must not replace the join's result.
+    property string joinMessage: ""
+    property bool joinFailed: false
     property string helperOp: ""
     property string helperInput: ""
     // The live session types in the chosen layouts before any password is typed: each change of
@@ -232,6 +242,8 @@ Item {
         publish();
     }
     function receive(message: var): void {
+        const guessReply = session.pending[message.for_id || message.id] === "get_timezone_guess";
+        const rebootPrepared = session.pending[message.for_id || message.id] === "prepare_reboot";
         const timezoneReply = session.pending[message.for_id || message.id] === "set_timezone";
         // Only one probe is in flight at a time: this answers the one Open GParted waits for.
         const editorReply = editorProbing && session.pending[message.for_id || message.id] === "probe";
@@ -240,6 +252,21 @@ Item {
         const replies = Protocol.receive(session, message, Date.now());
         publish();
         replies.forEach(m => write(m));
+        if (message.type === "hello")
+            timezoneGuessPending = message.timezone_guess === true;
+        if (guessReply && message.type === "reply") {
+            timezoneGuessRequest = false;
+            timezoneGuessPending = message.ok && message.pending === true;
+            timezoneGuessOffline = message.ok && message.offline === true;
+            if (message.ok)
+                acceptTimezoneGuess(message.tz_guess);
+        }
+        if (rebootPrepared && message.type === "reply" && message.ok) {
+            if (catalog.boot_removable === true)
+                removeUsbPrompt = true;
+            else
+                reboot();
+        }
         if (timezoneReply && message.type === "reply") {
             const applied = applyingTimezone;
             applyingTimezone = "";
@@ -267,8 +294,7 @@ Item {
             }
         }
         if (message.type === "inventory" && session.inventory) {
-            if (!timezoneEdited)
-                timezone = message.tz_guess || "UTC";
+            acceptTimezoneGuess(message.tz_guess);
             if (!selectedDisk)
                 diskId = "";
             mounts = [];
@@ -294,6 +320,8 @@ Item {
         messageReceived(message);
     }
     function lost(): void {
+        timezoneGuessPending = false;
+        timezoneGuessRequest = false;
         applyingTimezone = "";
         timezoneInfo = null;
         editorProbing = false;
@@ -331,7 +359,7 @@ Item {
             return;
         if (step === "encryption" && (!encryptionReady || !secretsChecked))
             return;
-        if (step === "timezone" && (!timezoneInfo || timezoneInfo.timezone !== timezone || applyingTimezone))
+        if (step === "timezone" && (!timezoneChosen || !timezoneInfo || timezoneInfo.timezone !== timezone || applyingTimezone))
             return;
         if (step === "disk" && !encryptedConfirmed)
             return;
@@ -578,6 +606,34 @@ Item {
             }
         ]);
     }
+    function acceptTimezoneGuess(name: var): void {
+        if (!name || timezoneEdited || locked)
+            return;
+        if (session.inventory && session.inventory.tz_guess !== name) {
+            session.inventory = Object.assign({}, session.inventory, {
+                tz_guess: name
+            });
+            publish();
+        }
+        if (timezone !== name) {
+            timezone = name;
+            Protocol.invalidate(session);
+            agreed = false;
+            publish();
+            if (step === "review") {
+                clearPasswords();
+                step = "you";
+            }
+        }
+        if (timezoneInfo?.timezone !== timezone)
+            applyTimezone();
+    }
+    function pollTimezoneGuess(): void {
+        if (!timezoneGuessPending || timezoneGuessRequest || timezoneEdited || locked || !session.ready)
+            return;
+        timezoneGuessRequest = true;
+        send("get_timezone_guess", {});
+    }
     function chooseTimezone(name: string): void {
         if (locked)
             return;
@@ -669,8 +725,11 @@ Item {
             software: software,
             encryption: encryption === "none" ? "none" : encryptionPassword,
             hibernation: hibernation,
-            online_update: onlineUpdate
+            online_update: onlineUpdate,
+            output_scales: catalog.output_scales || ({})
         };
+        if (joinedWifiUuid)
+            config.wifi_uuid = joinedWifiUuid;
         if (config.encryption === "separate")
             config.disk_password = diskPassword;
         if (mode === "manual")
@@ -692,7 +751,7 @@ Item {
         clearPasswords();
     }
     function confirm(): void {
-        if (locked || !session.ready || !encryptedConfirmed || !session.plan || !session.plan.token || (needsAgreement && !agreed))
+        if (locked || !session.ready || Object.values(session.pending).includes("renew") || !encryptedConfirmed || !session.plan || !session.plan.token || (needsAgreement && !agreed))
             return;
         if (Protocol.expire(session, Date.now())) {
             publish();
@@ -705,17 +764,36 @@ Item {
         });
         step = "install";
     }
+    function reboot(): void {
+        if (Object.values(session.pending).includes("reboot"))
+            return;
+        if (!session.ready) {
+            session.rebootMessage = "Could not restart. Try again.";
+            publish();
+            return;
+        }
+        send("reboot", {});
+    }
+    function requestReboot(): void {
+        if (Object.values(session.pending).includes("prepare_reboot"))
+            return;
+        session.rebootMessage = "";
+        send("prepare_reboot", {});
+    }
     function retry(): void {
         if (!session.error || !session.error.retryable || session.running)
             return;
+        const accountError = session.error.code === "login_name_reserved";
+        focusLogin = accountError;
         session.outcome = "";
         session.error = null;
         session.jobId = "";
         session.cancelMessage = "";
-        session.notice = "Check the disk and enter your password again for a new review.";
+        session.notice = accountError ? "Check your account settings and enter your password again for a new review." : "Check the disk and enter your password again for a new review.";
         publish();
-        step = "disk";
-        probe();
+        step = accountError ? "you" : "disk";
+        if (!accountError)
+            probe();
     }
     function openGparted(): void {
         if (locked || !gpartedWarning || !session.ready)
@@ -756,9 +834,17 @@ Item {
         helperFailed = code !== 0;
         probe();
     }
+    function clearJoinResult(): void {
+        if (helperMessage === joinMessage)
+            helperMessage = "";
+        joinMessage = "";
+        joinFailed = false;
+    }
     function callHelper(op: string, fields: var): void {
         if (helper.running || mockTransport || !helpersEnabled)
             return;
+        if (op === "join")
+            clearJoinResult();
         helperOp = op;
         helperInput = JSON.stringify(Object.assign({
             op: op
@@ -767,6 +853,12 @@ Item {
     }
     function helperResult(result: var): void {
         helperFailed = !result.ok;
+        if (helperOp === "join") {
+            if (result.ok && result.wifi_uuid)
+                joinedWifiUuid = result.wifi_uuid;
+            joinFailed = !result.ok;
+            joinMessage = result.message || "";
+        }
         if (helperOp === "catalog" && result.ok) {
             catalog = result;
             if (result.boot_medium === false) {
@@ -793,6 +885,7 @@ Item {
     }
     onStepChanged: {
         helperMessage = "";
+        clearJoinResult();
         keyboardDiscarded = false;
         secretPasteRefused = false;
         if (step !== "software")
@@ -848,6 +941,11 @@ Item {
         repeat: true
         onTriggered: {
             root.clockMs = Date.now();
+            if (root.step === "review" && root.session.ready && root.session.plan?.token && root.session.deadline > root.clockMs && root.session.deadline - root.clockMs < 60000 && !Object.values(root.session.pending).includes("renew"))
+                root.send("renew", {
+                    plan_id: root.session.plan.plan_id,
+                    token: root.session.plan.token
+                });
             if (Protocol.expire(root.session, root.clockMs)) {
                 root.agreed = false;
                 root.publish();
@@ -857,10 +955,24 @@ Item {
         }
     }
     Timer {
+        interval: root.timezoneGuessOffline ? 5000 : 500
+        running: root.timezoneGuessPending && !root.timezoneEdited && !root.locked && root.session.ready
+        repeat: true
+        onTriggered: root.pollTimezoneGuess()
+    }
+    Timer {
         interval: 60000
         running: root.step === "timezone" && root.session.ready
         repeat: true
         onTriggered: root.applyTimezone()
+    }
+    Timer {
+        interval: 20000
+        running: root.session.rebootMessage === "Restarting…"
+        onTriggered: {
+            Protocol.rebootTimedOut(root.session);
+            root.publish();
+        }
     }
     Timer {
         id: reconnect
@@ -921,6 +1033,10 @@ Item {
                 } catch (_) {
                     root.helperMessage = "This operation is unavailable. Please try again.";
                     root.helperFailed = true;
+                    if (root.helperOp === "join") {
+                        root.joinFailed = true;
+                        root.joinMessage = root.helperMessage;
+                    }
                 }
             }
         }

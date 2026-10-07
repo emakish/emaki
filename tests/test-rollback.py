@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Rollback safety tests; no mounts, privilege changes or host system writes."""
 import importlib.machinery
 import importlib.util
 import json
+import io
 import shutil
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -59,6 +63,56 @@ class Safety(unittest.TestCase):
             with self.assertRaisesRegex(m.Refused, 'Snapshots are unavailable'):
                 m.main()
             mount.assert_not_called()
+
+    def test_release_needs_root_but_no_mounts_and_prefers_packaged_helper(self):
+        for exists, helper in ((True, m.HOLD_HELPER), (False, m.HOLD_FALLBACK)):
+            for target in ('tzdata', '--all'):
+                with self.subTest(helper=helper, target=target), \
+                        patch.object(m.os, 'geteuid', return_value=0) as uid, \
+                        patch.object(m.Path, 'is_file', return_value=exists), \
+                        patch.object(m, 'mount_info') as mount, patch.object(m, 'run', return_value='') as run, \
+                        patch('sys.argv', ['emaki-rollback', 'release', target]):
+                    m.main()
+                    run.assert_called_once_with(helper, 'release', target)
+                    mount.assert_not_called()
+                    run.reset_mock()
+                    uid.return_value = 1000
+                    with self.assertRaisesRegex(m.Refused, 'as root'):
+                        m.main()
+                    run.assert_not_called()
+
+    def test_release_refuses_before_restart_without_changing_holds(self):
+        roots = (
+            ('/@emaki-kept-20260101T000000Z-12345678', 'btrfs', 'rootflags=subvol=@'),
+            ('/@snapshots/7/snapshot', 'btrfs', 'rootflags=subvol=@snapshots/7/snapshot'),
+            ('/', 'overlay', 'rootflags=subvol=/@snapshots/7/snapshot'),
+        )
+        for fsroot, fstype, cmdline in roots:
+            for target in ('tzdata', '--all'):
+                with self.subTest(fsroot=fsroot, target=target), \
+                        patch.object(m.os, 'geteuid', return_value=0), \
+                        patch.object(m, 'run') as run, \
+                        patch('sys.argv', ['emaki-rollback', 'release', target]):
+                    def read(path, **kwargs):
+                        return (f'1 0 0:1 {fsroot} / rw - {fstype} /dev/test rw\n'
+                                if str(path) == '/proc/self/mountinfo' else cmdline)
+                    with patch.object(m.Path, 'read_text', autospec=True, side_effect=read):
+                        with self.assertRaisesRegex(m.Refused, '^Restart first, then release\\.$'):
+                            m.main()
+                    run.assert_not_called()
+
+    def test_retention_order_survives_clock_reversal_and_legacy_receipts(self):
+        names = [f'@emaki-kept-2026010{i}T000000Z-12345678' for i in (3, 2, 1)]
+        history = {name: {'previous_id': 256 + i, 'sequence': i + 9}
+                   for i, name in enumerate(names)}
+        for name in names:
+            (self.top / name).mkdir()
+        with patch.object(m, 'subvolume', side_effect=lambda p: history[p.name]['previous_id']):
+            self.assertEqual(m.retained(self.top, history), names)
+            del history[names[0]]['sequence']
+            with patch.object(m, 'run', return_value='Gen at creation: 8'):
+                self.assertEqual(m.retained(self.top, history), names)
+                self.assertEqual(m.creation_sequence(self.top, names[0], history[names[0]]), 8)
 
     def test_fstab_contract(self):
         self.assertEqual(len(m.fstab_rows(FSTAB, UUID)), 6)
@@ -149,6 +203,31 @@ class Safety(unittest.TestCase):
             exchange.assert_not_called()
         self.assertTrue(self.current.exists())
 
+    def test_hold_preparation_failure_warns_and_still_exchanges(self):
+        (self.top / '.emaki-rollback').mkdir()
+        seen = []
+        def command(*args):
+            if args[:3] == ('btrfs', 'subvolume', 'snapshot'):
+                shutil.copytree(args[3], args[4])
+            if args[0] in (m.HOLD_HELPER, '/var/lib/emaki/emaki-rollback-holds'):
+                self.assertEqual(args[1:3], ('prepare', self.current))
+                self.assertTrue((self.current / 'var/lib/pacman/db.lck').exists())
+                self.assertFalse((args[3] / 'var/lib/pacman/db.lck').exists())
+                seen.append(args)
+                raise m.Refused('hold preparation failed')
+            return ''
+        with patch.object(m, 'check_layout', return_value=m.fstab_rows(FSTAB, UUID)), \
+                patch.object(m, 'run', side_effect=command), \
+                patch.object(m, 'subvolume', side_effect=lambda p, **kw: p.stat().st_ino), \
+                patch.object(m, 'atomic_exchange') as exchange, \
+                patch.object(m.signal, 'pthread_sigmask'), patch('sys.stderr', new_callable=io.StringIO) as error:
+            m.promote(self.top, self.source, UUID, 'boot', {})
+            exchange.assert_called_once()
+            self.assertEqual(error.getvalue(),
+                             'Package holds could not be prepared; continuing the rollback without holds.\n')
+        self.assertEqual(len(seen), 1)
+        self.assertFalse((self.current / 'var/lib/pacman/db.lck').exists())
+
     def test_package_guard_follows_kept_root(self):
         with m.package_guard(self.current):
             self.assertTrue((self.current / 'var/lib/pacman/db.lck').exists())
@@ -231,11 +310,11 @@ class Safety(unittest.TestCase):
             self.assertFalse(any(c.args[:3] == ('btrfs', 'subvolume', 'snapshot') for c in command.call_args_list))
 
     def test_cleanup_protects_latest_only_and_mounted(self):
-        names = ['@emaki-kept-20260101T000000Z-12345678', '@emaki-kept-20260102T000000Z-12345678']
+        names = [f'@emaki-kept-2026010{i}T000000Z-12345678' for i in range(1, 4)]
         history = {}
         for i, name in enumerate(names):
             (self.top / name).mkdir()
-            history[name] = {'previous_id': i + 256, 'filesystem': UUID}
+            history[name] = {'previous_id': i + 256, 'filesystem': UUID, 'sequence': i + 1}
         root = {'fstype': 'btrfs', 'fsroot': '/@', 'options': 'rw', 'maj:min': '0:99'}
         with patch.object(m, 'check_layout'), patch.object(m, 'check_grub'), \
                 patch.object(m, 'subvolume', side_effect=lambda p: history[p.name]['previous_id']), \
@@ -248,6 +327,123 @@ class Safety(unittest.TestCase):
             mountinfo.write_text('1 2 0:123 /' + names[0] + ' / rw - btrfs /dev/test rw\n')
             with patch.object(m.Path, 'glob', return_value=[mountinfo]), self.assertRaisesRegex(m.Refused, 'still mounted'):
                 m.delete_kept(self.top, names[0], history, root, UUID)
+            self.assertFalse(any(c.args[:3] == ('btrfs', 'subvolume', 'delete') for c in command.call_args_list))
+
+    def test_successful_promotion_runs_automatic_cleanup(self):
+        from contextlib import nullcontext
+        root = {'fstype': 'btrfs', 'fsroot': '/@', 'uuid': UUID}
+        snapshots = dict(root, fsroot='/@snapshots')
+        events = []
+        with patch.object(m, 'mount_info', side_effect=lambda p: snapshots if p == '/.snapshots' else root), \
+                patch.object(m.os, 'geteuid', return_value=0), \
+                patch.object(m.Path, 'read_text', return_value='rootflags=subvol=@'), \
+                patch.object(m, 'open', unittest.mock.mock_open()), patch.object(m.os, 'umask'), \
+                patch.object(m.fcntl, 'flock'), patch.object(m, 'top_mount', return_value=nullcontext(self.top)), \
+                patch.object(m, 'records', return_value=(self.top, {})), patch.object(m, 'subvolume'), \
+                patch.object(m, 'promote', side_effect=lambda *a: events.append('promote')) as promote, \
+                patch.object(m, 'prune_kept', side_effect=lambda *a: events.append('prune')), \
+                patch('sys.argv', ['emaki-rollback', 'snapshot', '7']):
+            m.main()
+            self.assertEqual(events, ['promote', 'prune'])
+            events.clear()
+            promote.side_effect = m.Refused('failed preparation')
+            with self.assertRaises(m.Refused):
+                m.main()
+            self.assertEqual(events, [])
+
+    def test_post_swap_discovery_failures_keep_success(self):
+        from contextlib import nullcontext
+        root = {'fstype': 'btrfs', 'fsroot': '/@', 'uuid': UUID}
+        snapshots = dict(root, fsroot='/@snapshots')
+        for failure in ('records', 'mount_info', 'retained', 'task_mounts'):
+            with self.subTest(failure=failure), \
+                    patch.object(m, 'mount_info', side_effect=lambda p: snapshots if p == '/.snapshots' else root) as mount, \
+                    patch.object(m.os, 'geteuid', return_value=0), \
+                    patch.object(m.Path, 'read_text', return_value='rootflags=subvol=@'), \
+                    patch.object(m, 'open', unittest.mock.mock_open()), patch.object(m.os, 'umask'), \
+                    patch.object(m.fcntl, 'flock'), patch.object(m, 'top_mount', return_value=nullcontext(self.top)), \
+                    patch.object(m, 'records', return_value=(self.top, {})) as records, \
+                    patch.object(m, 'subvolume'), patch.object(m, 'promote') as promote, \
+                    patch.object(m, 'prune_kept') as prune, \
+                    patch('sys.stderr', new_callable=io.StringIO) as error, \
+                    patch('sys.argv', ['emaki-rollback', 'snapshot', '7']):
+                if failure == 'records':
+                    records.side_effect = [(self.top, {}), ValueError('broken receipt')]
+                elif failure == 'mount_info':
+                    mount.side_effect = [root, snapshots, OSError('unreadable mounts')]
+                elif failure == 'retained':
+                    prune.side_effect = lambda *a: m.retained(*a[:2])
+                else:
+                    prune.side_effect = lambda *a: m.task_mounts(self.top)
+                with patch.object(m, 'retained', side_effect=m.Refused('unreadable subvolume')), \
+                        patch.object(m, 'task_mounts', side_effect=OSError('unreadable mounts')):
+                    m.main()
+                promote.assert_called_once()
+                self.assertEqual(error.getvalue(), 'Rollback is done; cleanup was skipped (retained roots).\n')
+
+    def test_retention_keeps_two_newest_pins_and_unrecorded_copies(self):
+        names = [f'@emaki-kept-2026010{i}T000000Z-12345678' for i in range(1, 7)]
+        directory = self.top / '.emaki-rollback'
+        directory.mkdir()
+        history = {}
+        for i, name in enumerate(names):
+            (self.top / name).mkdir()
+            record = {'kept': name, 'previous_id': 300 + i, 'filesystem': UUID, 'sequence': i + 1}
+            history[name] = record
+            (directory / (name + '.json')).write_text(json.dumps(record))
+        history[names[1]]['pinned'] = True
+        # An interrupted preparation and a manually created snapshot are not undo copies.
+        history[names[2]]['previous_id'] = 999
+        unrecorded = self.top / '@manual-kept-20260101'
+        unrecorded.mkdir()
+        ids = {n: 300 + i for i, n in enumerate(names)}
+        root = {'fstype': 'overlay', 'options': 'rw'}
+        deleted = []
+        def command(*args):
+            if args[:3] == ('btrfs', 'subvolume', 'delete'):
+                deleted.append(args[3].name)
+                args[3].rmdir()
+            return 'ID 5 (FS_TREE)' if args[:3] == ('btrfs', 'subvolume', 'get-default') else ''
+        with patch.object(m, 'check_layout'), patch.object(m, 'check_grub'), \
+                patch.object(m, 'empty_children', return_value=[]), \
+                patch.object(m, 'subvolume', side_effect=lambda p: ids[p.name]), \
+                patch.object(m, 'run', side_effect=command), patch.object(m.Path, 'glob', return_value=[]):
+            kept = m.retained(self.top, history)
+            self.assertEqual(m.retention_label(names[1], history[names[1]], kept), 'kept: pinned')
+            self.assertEqual(m.retention_label(names[2], history[names[2]], kept), 'incomplete preparation')
+            self.assertEqual(m.retention_label(names[-1], history[names[-1]], kept), 'kept: newest two')
+            self.assertEqual(m.retention_label(names[0], history[names[0]], kept), 'kept: cleanup pending')
+            m.prune_kept(self.top, history, root, UUID)
+            self.assertEqual(deleted, [names[0], names[3]])
+            self.assertTrue(unrecorded.exists())
+            self.assertTrue((self.top / names[2]).exists())
+            self.assertTrue((self.top / names[1]).exists())
+            m.pin_kept(self.top, names[1], history, False)
+            self.assertFalse(json.loads((directory / (names[1] + '.json')).read_text())['pinned'])
+            with self.assertRaisesRegex(m.Refused, 'Unpin'):
+                m.delete_kept(self.top, names[1], history, root, UUID, automatic=True)
+
+    def test_automatic_cleanup_protects_running_default_and_mounted_roots(self):
+        names = [f'@emaki-kept-2026010{i}T000000Z-12345678' for i in range(1, 4)]
+        history = {n: {'previous_id': 300 + i, 'filesystem': UUID, 'sequence': i + 1} for i, n in enumerate(names)}
+        for name in names:
+            (self.top / name).mkdir()
+        root = {'fstype': 'overlay', 'options': 'rw'}
+        mountinfo = self.top / 'mountinfo'
+        mountinfo.write_text('1 2 0:123 /' + names[0] + ' / rw - btrfs /dev/test rw\n')
+        with patch.object(m, 'check_layout'), patch.object(m, 'check_grub'), \
+                patch.object(m, 'subvolume', side_effect=lambda p: history[p.name]['previous_id']), \
+                patch.object(m, 'run', return_value='ID 300 gen 9 top level 5 path ' + names[0]) as command:
+            with self.assertRaisesRegex(m.Refused, 'default subvolume'):
+                m.delete_kept(self.top, names[0], history, root, UUID, automatic=True)
+            command.return_value = 'ID 5 (FS_TREE)'
+            with self.assertRaisesRegex(m.Refused, 'running root'):
+                m.delete_kept(self.top, names[0], history, dict(root, options='rw,subvolid=300'), UUID, automatic=True)
+            with patch.object(m.Path, 'glob', return_value=[mountinfo]):
+                with self.assertRaisesRegex(m.Refused, 'still mounted'):
+                    m.delete_kept(self.top, names[0], history, root, UUID, automatic=True)
+                # Deferred cleanup cannot turn a completed rollback into a failure.
+                m.prune_kept(self.top, history, root, UUID)
             self.assertFalse(any(c.args[:3] == ('btrfs', 'subvolume', 'delete') for c in command.call_args_list))
 
     def test_failed_preparation_is_recorded_and_can_be_retried(self):
@@ -282,14 +478,15 @@ class Safety(unittest.TestCase):
                     if p.stem != record['kept']]
             self.assertEqual(len(done), 1)
             self.assertNotIn('state', done[0])
+            self.assertEqual(done[0]['sequence'], record['sequence'] + 1)
             self.assertEqual(done[0]['new_id'], (self.top / done[0]['kept']).stat().st_ino)
 
     def incomplete_fixture(self):
         kept = '@emaki-kept-20260101T000000Z-12345678'
         staged = '@emaki-kept-20260102T000000Z-12345678'
         gone = '@emaki-kept-20260103T000000Z-12345678'
-        history = {kept: {'kept': kept, 'previous_id': 256, 'new_id': 290, 'filesystem': UUID},
-                   staged: {'kept': staged, 'previous_id': 257, 'new_id': 300, 'filesystem': UUID},
+        history = {kept: {'kept': kept, 'previous_id': 256, 'new_id': 290, 'filesystem': UUID, 'sequence': 1},
+                   staged: {'kept': staged, 'previous_id': 257, 'new_id': 300, 'filesystem': UUID, 'sequence': 2},
                    gone: {'kept': gone, 'previous_id': 257, 'filesystem': UUID, 'state': 'preparing'}}
         (self.top / '.emaki-rollback').mkdir()
         for name, record in history.items():
@@ -405,6 +602,20 @@ class Safety(unittest.TestCase):
                     m.delete_kept(self.top, staged, history, root, UUID)
                 self.assertFalse(any(c.args[:3] == ('btrfs', 'subvolume', 'delete') for c in command.call_args_list))
                 self.assertTrue((self.top / '.emaki-rollback' / (staged + '.json')).exists())
+
+
+class RecoveryShell(unittest.TestCase):
+    def test_manual_recovery_error_keeps_interactive_shell_open(self):
+        instructions = (ROOT / 'docs/iso.md').read_text().split(
+            'In that shell, replace `YOUR-BTRFS-UUID`', 1)[1]
+        block = instructions.split('```sh\n', 1)[1].split('```', 1)[0]
+        prelude = block.split('mv --help', 1)[0]
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(['bash', '--noprofile', '--norc', '-i'],
+                                    input=prelude + "false\nprintf 'shell-still-open\\n'\nexit\n",
+                                    text=True, capture_output=True,
+                                    env={'PATH': '/usr/bin', 'HISTFILE': str(Path(tmp) / 'history')})
+        self.assertIn('shell-still-open', result.stdout)
 
 
 if __name__ == '__main__':

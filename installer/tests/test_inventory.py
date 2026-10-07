@@ -4,6 +4,7 @@ import copy
 import json
 from pathlib import Path
 import tempfile
+import threading
 import unittest
 from unittest.mock import Mock, patch
 
@@ -143,6 +144,51 @@ class ProbeSafetyTests(unittest.TestCase):
         inventory = Inventory(runner)
         self.assertEqual(inventory._boot_sources(list(_walk(fixture("blank")["blockdevices"]))), ({"/dev/sr0"}, True))
 
+    def test_loop_iso_resolves_backing_partition_and_refuses_its_disk(self):
+        data = fixture("windows")
+        data["blockdevices"].append({"path": "/dev/loop0", "type": "loop", "maj:min": "7:0"})
+        runner = Mock()
+        runner.run.side_effect = [
+            json.dumps({"filesystems": [{"source": "/dev/loop0", "maj:min": "7:0"}]}),
+            json.dumps({"filesystems": [{"source": "/dev/nvme0n1p3[/images]", "maj:min": "259:3"}]}),
+        ]
+        with patch("emaki_installer.inventory._read", return_value="/media/USB/images/emaki.iso\n"):
+            sources, known = Inventory(runner)._boot_sources(list(_walk(data["blockdevices"])))
+        self.assertTrue(known)
+        self.assertEqual(sources, {"/dev/nvme0n1p3"})
+        self.assertTrue(parse_lsblk(data, boot_sources=sources)[0]["is_boot_medium"])
+        self.assertEqual(runner.run.call_args_list[1].args[0],
+                         ["findmnt", "--json", "--target", "/media/USB/images/emaki.iso",
+                          "--output", "SOURCE,MAJ:MIN"])
+
+    def test_mapper_iso_marks_its_physical_disk_by_device_number(self):
+        # A device-mapper ISO source can have a different path in findmnt and lsblk.
+        data = fixture("windows")
+        data["blockdevices"][0]["children"][2]["children"] = [
+            {"path": "/dev/mapper/ventoy", "type": "dm", "maj:min": "253:0"}]
+        runner = Mock()
+        runner.run.return_value = json.dumps({"filesystems": [{"source": "/dev/dm-0", "maj:min": "253:0"}]})
+        sources, known = Inventory(runner)._boot_sources(list(_walk(data["blockdevices"])))
+        self.assertTrue(known)
+        self.assertEqual(sources, {"/dev/mapper/ventoy"})
+        self.assertTrue(parse_lsblk(data, boot_sources=sources)[0]["is_boot_medium"])
+
+    def test_loop_iso_unresolved_backing_and_cycles_fail_closed(self):
+        nodes = [{"path": "/dev/loop0", "type": "loop", "maj:min": "7:0"}]
+        for backing, second in (
+            ("", {}), ("relative/emaki.iso", {}),
+            ("/media/emaki.iso", {"source": "/dev/unknown", "maj:min": "8:99"}),
+            ("/media/emaki.iso", {"source": "/dev/loop0", "maj:min": "7:0"}),
+        ):
+            with self.subTest(backing=backing, second=second):
+                runner = Mock()
+                runner.run.side_effect = [
+                    json.dumps({"filesystems": [{"source": "/dev/loop0", "maj:min": "7:0"}]}),
+                    json.dumps({"filesystems": [second]}),
+                ]
+                with patch("emaki_installer.inventory._read", return_value=backing):
+                    self.assertEqual(Inventory(runner)._boot_sources(nodes), (set(), False))
+
     def test_probe_skips_boot_and_busy_and_unknown(self):
         for known, boot, busy in [(False, False, False), (True, True, False), (True, False, True)]:
             with self.subTest(known=known, boot=boot, busy=busy):
@@ -179,7 +225,8 @@ class ProbeSafetyTests(unittest.TestCase):
         def lvm(disk):
             disk["children"][2]["children"] = [{"path": "/dev/dm-0", "type": "lvm"}]
         public = self.busy_probe(lvm)
-        self.assertEqual(public["reason"], BUSY_REASON)
+        self.assertIn("/dev/dm-0", public["reason"])
+        self.assertIn("lvchange -an", public["reason"])
         self.assertFalse([key for key in public if key.startswith("_")])
 
     def test_mounted_and_free_disks_carry_no_busy_reason(self):
@@ -249,6 +296,36 @@ class ProbeSafetyTests(unittest.TestCase):
             root = Path(temp)
             (root / "etc").symlink_to("/etc")
             self.assertIsNone(_root_hint(root))
+
+    def test_ntfs_windows_layout_is_found_without_esp_on_gpt_and_mbr(self):
+        for table in ('gpt', 'dos'):
+            for fs in ('ntfs', 'ntfs3'):
+                with self.subTest(table=table, fs=fs), tempfile.TemporaryDirectory() as temp:
+                    probe = Path(temp) / 'probe'
+                    hive = probe / 'windows/System32/config/SYSTEM'
+                    hive.parent.mkdir(parents=True)
+                    hive.write_bytes(b'system hive')
+                    disk = parse_lsblk(fixture('windows'))[0]
+                    disk['_pttype'] = table
+                    disk['partitions'] = [disk['partitions'][2]]
+                    part = disk['partitions'][0]
+                    part.update(fs=fs, esp=False, os_hint=None)
+                    runner = Mock()
+                    def command(argv):
+                        if argv[0] == 'umount':
+                            hive.unlink()
+                            for directory in (hive.parent, hive.parent.parent, hive.parent.parent.parent):
+                                directory.rmdir()
+                        return ''
+                    runner.run.side_effect = command
+                    with patch('emaki_installer.inventory.tempfile.mkdtemp', return_value=str(probe)):
+                        Inventory(runner)._inspect(disk, part)
+                    self.assertEqual(part['os_hint'], 'windows')
+                    commands = [call.args[0] for call in runner.run.call_args_list]
+                    self.assertEqual(commands[0], ['ntfs-3g', '-o',
+                                     'ro,norecover,nodev,nosuid,noexec', part['path'], str(probe)])
+                    self.assertEqual(commands[-1], ['umount', '--', str(probe)])
+                    self.assertFalse(probe.exists())
 
     def test_ro_ext4_mount_disables_journal_replay_and_cleanup_runs(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -329,6 +406,68 @@ class ProbeSafetyTests(unittest.TestCase):
         self.assertTrue(disk["_busy"])
         self.assertIsNone(part["_btrfs_devices"])
 
+    def test_timezone_lookup_is_once_background_and_never_in_probe(self):
+        runner = Mock()
+        runner.run.side_effect = lambda argv: '{"blockdevices": []}' if argv[0] == "lsblk" else ""
+        inventory = Inventory(runner)
+        entered, release = threading.Event(), threading.Event()
+
+        def lookup(online):
+            self.assertTrue(online)
+            entered.set()
+            release.wait(5)
+            return "Europe/Berlin"
+
+        with patch("emaki_installer.inventory._timezone", side_effect=lookup) as request, \
+                patch("emaki_installer.inventory._online", return_value=True), \
+                patch.object(inventory, "_boot_sources", return_value=(set(), False)), \
+                patch.object(inventory, "_stable_ids", return_value={}):
+            try:
+                # Probes before startup must not perform a lookup either.
+                self.assertIsNone(inventory.probe()["tz_guess"])
+                request.assert_not_called()
+                inventory.start_timezone_lookup()
+                self.assertTrue(entered.wait(1))
+                inventory.start_timezone_lookup()
+                self.assertTrue(inventory._timezone_thread.daemon)
+                self.assertEqual(inventory.timezone_guess(), dict(tz_guess=None, pending=True, offline=False))
+                for _ in range(2):
+                    self.assertIsNone(inventory.probe()["tz_guess"])
+                request.assert_called_once_with(True)
+            finally:
+                release.set()
+                if getattr(inventory, "_timezone_thread", None):
+                    inventory._timezone_thread.join(1)
+            self.assertEqual(inventory.timezone_guess(), dict(tz_guess="Europe/Berlin", pending=False, offline=False))
+            self.assertEqual(inventory.probe()["tz_guess"], "Europe/Berlin")
+            inventory.start_timezone_lookup()
+            request.assert_called_once_with(True)
+
+    def test_offline_start_waits_for_network_before_single_lookup(self):
+        inventory = Inventory(Mock())
+        with patch("emaki_installer.inventory._online", return_value=False), \
+                patch("emaki_installer.inventory._timezone") as request:
+            inventory.start_timezone_lookup()
+            self.assertEqual(inventory.timezone_guess(), dict(tz_guess=None, pending=True, offline=True))
+            request.assert_not_called()
+            self.assertIsNone(inventory._timezone_thread)
+        with patch("emaki_installer.inventory._online", return_value=True), \
+                patch("emaki_installer.inventory._timezone", return_value="Europe/Berlin") as request:
+            inventory.timezone_guess()
+            inventory._timezone_thread.join(1)
+            self.assertEqual(inventory.timezone_guess(), dict(tz_guess="Europe/Berlin", pending=False, offline=False))
+            request.assert_called_once_with(True)
+
+    def test_failed_background_timezone_lookup_is_not_retried(self):
+        inventory = Inventory(Mock())
+        with patch("emaki_installer.inventory._online", return_value=True), \
+                patch("emaki_installer.inventory.urlopen", side_effect=OSError("offline")) as request:
+            inventory.start_timezone_lookup()
+            inventory._timezone_thread.join(1)
+            inventory.start_timezone_lookup()
+            self.assertEqual(inventory.timezone_guess(), dict(tz_guess=None, pending=False, offline=False))
+            request.assert_called_once()
+
     def test_timezone_offline_never_contacts_service(self):
         with patch("emaki_installer.inventory.urlopen") as request:
             self.assertIsNone(_timezone(False))
@@ -343,7 +482,8 @@ class MembershipTests(unittest.TestCase):
     """A device that is one of several in a set must never be offered for erasing."""
 
     READ_ONLY = (["lsblk"], ["blkid", "--probe"], ["btrfs", "filesystem", "show"],
-                 ["pvs", "--readonly"], ["mdadm", "--examine"], ["lspci"], ["mount"])
+                 ["pvs", "--readonly"], ["mdadm", "--examine"], ["lspci"], ["mount"],
+                 ["ntfs-3g", "-o", "ro,norecover,nodev,nosuid,noexec"])
 
     def probe(self, name, answers=None, counts=2, edit=None, holders=None):
         """Probe a fixture. blkid repeats the fixture's FSTYPE unless overridden.
@@ -378,7 +518,7 @@ class MembershipTests(unittest.TestCase):
                 return f"  {counts}\n"
             if tool == "mdadm":
                 return f"MD_LEVEL=raid0\nMD_DEVICES={counts}\nMD_METADATA=1.2\nMD_EVENTS=0\n"
-            if tool == "mount":
+            if tool in {"mount", "ntfs-3g"}:
                 raise failed(32)
             return ""
 
@@ -512,7 +652,8 @@ class MembershipTests(unittest.TestCase):
         disk = next(d for d in result["disks"] if d["path"] == "/dev/sdf")
         self.assertTrue(disk["_busy"])
         self.assertNotIn("/dev/sdf2", [argv[-1] for argv in self.commands])
-        self.assertEqual(disk["reason"], BUSY_REASON)
+        self.assertIn("/dev/mapper/open", disk["reason"])
+        self.assertIn("cryptsetup close", disk["reason"])
 
     def encrypted(self, result, path, device, kind='crypto_LUKS'):
         disk = next(d for d in result['disks'] if d['path'] == path)

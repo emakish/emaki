@@ -1,0 +1,15 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Trigger]
+Operation = Upgrade
+Type = Package
+Target = emaki-config
+Target = niri
+Target = niri-emaki
+Target = quickshell-emaki
+Target = qt6-*
+
+[Action]
+Description = Sign out and sign in again to finish updating the desktop [Emaki].
+When = PostTransaction
+Exec = /usr/bin/true

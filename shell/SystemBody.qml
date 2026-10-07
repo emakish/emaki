@@ -43,7 +43,7 @@ Item {
             invalid_password: "Password must be 8–63 characters, or leave it empty for an open network.",
             activation_failed: "Couldn’t connect. Check the name and password.",
             network_not_found: "No network with that name was found.",
-            nm_not_running: "Networking isn’t running.",
+            nm_not_running: "Networking isn’t running (NetworkManager).",
             password_required: "This network needs a password.",
             timeout: "The connection attempt timed out.",
             no_handler: "No browser is set for http links.",
@@ -430,7 +430,7 @@ Item {
     function stateNote(what: string, s: string): string {
         switch (what) {
         case "night":
-            return s === "on" ? "On · warmer colors" : s === "off" ? "Off" : s === "not_installed" ? "Night Light isn’t installed" : s === "starting" ? "Starting…" : s === "checking" ? "Checking…" : s === "disabled" ? "Not available in this session" : "Unavailable";
+            return s === "on" ? "On · warmer colors" : s === "off" ? "Off" : s === "not_installed" ? "Night Light isn’t installed (wlsunset)." : s === "starting" ? "Starting…" : s === "checking" ? "Checking…" : s === "disabled" ? "Not available in this session" : "Unavailable";
         case "brightness":
             return s === "ready" ? "Built-in display" : s === "unavailable" ? "No brightness control" : "Brightness can’t be changed right now.";
         case "tray":
@@ -464,11 +464,11 @@ Item {
                 lock_failed: "The screen lock was not confirmed. Sleep was cancelled.",
                 confirmation_timeout: "The service did not confirm the change yet.",
                 pairing_failed: "Couldn’t pair.",
-                disabled: "Not available in this mode.",
+                disabled: "This control is off in this session.",
                 unavailable: "The service is unavailable."
             })[s] ?? "The change didn’t go through.";
     }
-    readonly property string note: page === "wifi" ? stateNote("vpn", service.vpn.state) : page === "bt" && rows.some(r => r.action === "bt-pair" || r.action === "bt-cancel-pair") ? "Devices that ask to type or compare a code need a Bluetooth agent; this shell has none yet." : page === "kb" ? layoutNote(layoutState, niri.actionState) : page === "tray" && selectedSub ? "Deeper menus than one level are not shown." : ""
+    readonly property string note: page === "wifi" ? stateNote("vpn", service.vpn.state) : page === "bt" && rows.some(r => r.action === "bt-pair" || r.action === "bt-cancel-pair") ? "Confirm Bluetooth codes in the notification at the top of the screen; enter PINs in the Bluetooth dialog. While sharing your screen, open the notification drawer to read the request." : page === "kb" ? layoutNote(layoutState, niri.actionState) : page === "tray" && selectedSub ? "Deeper menus than one level are not shown." : ""
 
     // ---- Parts (system.js drawItem) ----
     component Label: Text {
@@ -1567,6 +1567,7 @@ Item {
                 Row {
                     width: body.inner
                     Round {
+                        visible: Quickshell.env("EMAKI_LIVE_SESSION") !== "1"
                         key: "act-lock"
                         kind: "lock"
                         text: "Lock"

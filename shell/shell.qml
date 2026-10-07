@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "OutputSelection.js" as OutputSelection
 
 ShellRoot {
     id: root
@@ -12,7 +13,7 @@ ShellRoot {
     readonly property int testWidth: Number(Quickshell.env("EMAKI_SHELL_TEST_WIDTH") || "0")
     readonly property int testHeight: Number(Quickshell.env("EMAKI_SHELL_TEST_HEIGHT") || "0")
     readonly property bool valid: ["soft", "full"].includes(borderMode) && reservedSpace >= 0 && testWidth >= 0 && testHeight >= 0 && (!headless || (testWidth > 0 && testHeight > 0))
-    readonly property ShellScreen selectedOutput: requestedOutput ? Quickshell.screens.find(s => s.name === requestedOutput) ?? null : Quickshell.screens[0] ?? null
+    readonly property ShellScreen selectedOutput: OutputSelection.select(Quickshell.screens, requestedOutput)
     readonly property Surfaces surfaceWindows: surfacesLoader.item as Surfaces
     // The lowercase standalone entry has no named QML type for a typed Loader cast.
     readonly property var coverController: coverLoader.item
@@ -56,6 +57,10 @@ ShellRoot {
         enabled: root.valid && !root.headless
         ready: !startup.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
         onOpening: scene.closeAll()
+    }
+    ShellRecoveryNotice {
+        store: scene.notifications
+        ready: root.valid && !root.headless && !startup.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
     }
     IpcHandler {
         target: "workspaces"

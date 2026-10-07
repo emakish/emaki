@@ -162,6 +162,37 @@ def run():
             assert replacements == [True] and s.child is None
             assert child.killed == (condition in ('hang', 'unconfirmed'))
             print('PASS', condition, 'reaps old child before fallback')
+        for frozen in (True, False):
+            s = lock.Supervisor(directory, start_seconds=1, heartbeat_seconds=1)
+            s.child = Child(); child = s.child
+            s.secure = s.poured = s.established = True; s.phase = 'locked'
+            before = time.monotonic() - 15
+            s.started = s.readiness_since = before - 5
+            s.last_heartbeat = before - .2
+            if frozen:
+                s.last_tick = before  # supervisor and child frozen together for 15 s (system sleep)
+            replacements = []
+            s.spawn = lambda fallback=False: replacements.append(fallback)
+            s.tick()
+            assert (replacements, child.killed) == (([], False) if frozen else ([True], True)), frozen
+            if frozen:
+                # Shifted by the stall, not reset to now: the heartbeat keeps its age from before it.
+                assert .1 < time.monotonic() - s.last_heartbeat < .5, time.monotonic() - s.last_heartbeat
+        print('PASS a lock screen frozen with its supervisor in sleep is kept; a real hang is replaced')
+        s = lock.Supervisor(directory, start_seconds=1, heartbeat_seconds=1)
+        s.child = Child(); s.secure = s.poured = s.established = True; s.phase = 'locked'
+        s.last_tick = time.monotonic() - 15
+        s.last_heartbeat = s.last_tick - .2
+        assert not s.snapshot()['secure']
+        s.account_stall()  # what the loop does after select(), before any status reply
+        assert s.snapshot()['secure'] and s.snapshot()['state'] == 'locked'
+        print('PASS a status reply right after resume does not call the frozen lock screen stale')
+        s = lock.Supervisor(directory, start_seconds=1, heartbeat_seconds=1)
+        s.last_tick = time.monotonic() - 2  # a slow retire() before this child was spawned
+        s.started = s.last_heartbeat = s.readiness_since = time.monotonic() - .1
+        now = s.account_stall()
+        assert max(s.started, s.last_heartbeat, s.readiness_since) <= now
+        print('PASS a child spawned during a slow retire() gets no clock in the future')
         s = lock.Supervisor(directory); s.child = Child()
         s.secure = s.poured = True; s.phase = 'locked'
         s.last_heartbeat -= 10
@@ -211,6 +242,51 @@ def run():
                     assert lock.main() == expected
                     client.assert_called_once_with(directory, mode[2:])
         print('PASS confirm retains capture, waits for full pour, and shares wait failure/deadline/CLI semantics')
+        for backend, secure, poured, terminal, attempts, expected in (
+                ('quickshell', False, False, False, 0, True),
+                ('quickshell', False, False, True, 0, True),
+                ('quickshell', True, True, False, 0, False),
+                ('quickshell', True, False, False, 0, False),
+                ('hyprlock', False, False, False, 1, False),
+                ('hyprlock', True, True, False, 1, False),
+                ('hyprlock', False, False, True, 1, False)):
+            s = lock.Supervisor(directory); child = s.child = Child()
+            s.backend = backend; s.secure = secure; s.poured = poured
+            s.phase = 'locked' if secure else 'failed' if terminal else 'starting'
+            s.finished = terminal; s.fallback_attempts = attempts
+            public, peer = socket.socketpair()
+            s.connections[public] = dict(trusted=False, buffer=b'', wait=False, deadline=0)
+            starts = []; replies = []
+            s.respond = lambda conn, value: replies.append(value)
+            def start_fallback(fallback=False):
+                assert child.killed and s.child is None, 'replacement started before retiring primary'
+                starts.append(fallback); s.backend = 'hyprlock'; s.phase = 'starting'
+            with patch.object(s, 'spawn', start_fallback), patch.object(s, 'prepare_sleep') as prepare:
+                s.handle(public, dict(version=1, command='fallback-wait'))
+                assert starts == ([True] if expected else [])
+                assert child.killed is expected
+                if terminal and attempts:
+                    assert replies == [dict(state='failed', secure=False, poured=False)]
+                else:
+                    assert s.connections[public]['wait'] and s.connections[public]['generation'] == 1
+                    assert s.sleep_pending and not s.finished
+                    prepare.assert_called_once_with()
+            public.close(); peer.close(); s.selector.close()
+        s = lock.Supervisor(directory); s.backend = 'hyprlock'; s.phase = 'recovering'
+        s.fallback_attempts = 1; s.retry_at = time.monotonic() + 2
+        public, peer = socket.socketpair()
+        s.connections[public] = dict(trusted=False, buffer=b'', wait=False, deadline=0)
+        replies = []; s.respond = lambda conn, value: replies.append(value)
+        s.handle(public, dict(version=1, command='fallback-wait'))
+        assert replies == [dict(state='lock_failed', secure=False, poured=False)]
+        assert not s.connections[public]['wait'], 'fallback retry must not wait for a new primary cycle'
+        public.close(); peer.close(); s.selector.close()
+        with patch.object(sys, 'argv', ['emaki-lock', '--fallback', '--wait']), \
+                patch.object(lock, 'runtime_directory', return_value=directory), \
+                patch.object(lock, 'client', return_value=dict(state='locked', secure=True, poured=True)) as client:
+            assert lock.main() == 0
+            client.assert_called_once_with(directory, 'fallback-wait')
+        print('PASS sleep fallback retires only an unconfirmed primary, preserves confirmed locks, and never duplicates hyprlock')
         s = lock.Supervisor(directory); s.child = Child()
         trusted, trusted_peer = socket.socketpair(); public, public_peer = socket.socketpair()
         s.connections[trusted] = dict(trusted=True, buffer=b'', wait=False)
@@ -457,6 +533,16 @@ def run():
         assert calls[1][1]['start_new_session'] and 'cgroup isolation' in log.getvalue()
         assert 'private exception text' not in log.getvalue()
         print('PASS missing systemd-run starts a logged setsid supervisor')
+        calls.clear()
+        with contextlib.redirect_stderr(log), patch.object(lock.subprocess, 'Popen', absent_scope):
+            _, scoped = lock.launch_supervisor(directory, fallback=True)
+        assert not scoped and len(calls) == 2
+        assert all('--fallback' in argv for argv, _ in calls)
+        with patch.object(lock, 'connect', side_effect=[None, Reply(lock.wire(dict(state='locked', secure=True, poured=True)))]), \
+                patch.object(lock, 'launch_supervisor', return_value=(Child(), True)) as launch:
+            assert lock.client(directory, 'fallback-wait')['state'] == 'locked'
+            launch.assert_called_once_with(directory, fallback=True)
+        print('PASS fallback request starts hyprlock directly with or without a user scope')
         failed = Child(); failed.returncode = 1
         starts = []
         def scope_launch(directory, scoped=True):

@@ -1,0 +1,227 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Move legacy wallets through KWallet, with bounded automatic login attempts."""
+import argparse
+import fcntl
+import json
+import os
+from pathlib import Path
+import select
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from urllib.parse import unquote_to_bytes
+
+LIMIT_SECONDS = 300
+GROUP = 'Migration'
+KEY = 'WalletsMigratedToSecretService'
+NOTICE = 'Your old KDE passwords were not moved. Run emaki-wallet-migrate to move them later.'
+
+
+def config_read(key, env):
+    return subprocess.check_output([
+        'kreadconfig6', '--file', 'kwalletrc', '--group', GROUP, '--key', key,
+    ], env=env, text=True).removesuffix('\n')
+
+
+def config_write(key, value, env):
+    subprocess.run([
+        'kwriteconfig6', '--file', 'kwalletrc', '--group', GROUP, '--key', key, value,
+    ], env=env, check=True)
+
+
+def attempt(env, wait, launch=subprocess.Popen, migrated=None, ready=None):
+    # A temporary configuration inherits all personal and vendor wallet settings.
+    # Only this login attempt can see the migration opt-in.
+    config_home = env.get('XDG_CONFIG_HOME') or str(Path(env['HOME']) / '.config')
+    with tempfile.TemporaryDirectory(prefix='emaki-wallet-') as temporary:
+        overlay = dict(env, XDG_CONFIG_HOME=temporary,
+                       XDG_CONFIG_DIRS=config_home + ':' +
+                       (env.get('XDG_CONFIG_DIRS') or '/etc/xdg'))
+        config_write('MigrateTo3rdParty', 'true', overlay)
+        if migrated is not None:
+            config_write(KEY, migrated, overlay)
+        # The native warning is emitted after migrateData has read its gate.
+        # Consume the gate there so later backend-change callbacks cannot retry.
+        overlay.update(QT_LOGGING_TO_CONSOLE='1', QT_FORCE_STDERR_LOGGING='1',
+                       QT_MESSAGE_PATTERN='%{category}: %{message}',
+                       QT_LOGGING_RULES='kf.wallet.kwalletd.warning=true')
+        daemon = launch(['timeout', '--foreground', '--signal=TERM', '--kill-after=5',
+                         str(LIMIT_SECONDS), 'kwalletd6'], env=overlay,
+                        stderr=subprocess.PIPE, text=True)
+
+        def consume_gate():
+            for line in daemon.stderr:
+                if line.startswith('kf.wallet.kwalletd: Migrating '):
+                    config_write('MigrateTo3rdParty', 'false', overlay)
+                    # Keep draining the pipe; a blocked logger can stop KWallet.
+
+        watcher = threading.Thread(target=consume_gate, daemon=True)
+        watcher.start()
+        try:
+            if ready is not None:
+                while daemon.poll() is None:
+                    if wallet_running(env):
+                        break
+                    time.sleep(.05)
+                ready()
+            if wait is None:
+                daemon.wait(timeout=LIMIT_SECONDS + 7)
+            else:
+                wait()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            daemon.terminate()
+            try:
+                daemon.wait(timeout=7)
+            except subprocess.TimeoutExpired:
+                daemon.kill()
+                daemon.wait(timeout=7)
+            watcher.join(timeout=7)
+            daemon.stderr.close()
+            # Keep the opaque KConfig encoding in Emaki's state, never in a
+            # person's kwalletrc. This includes escaped comma/backslash names.
+            result = config_read(KEY, overlay)
+        return result
+
+
+def wallet_running(env):
+    return subprocess.check_output([
+        'busctl', '--user', 'call', 'org.freedesktop.DBus', '/org/freedesktop/DBus',
+        'org.freedesktop.DBus', 'NameHasOwner', 's', 'org.kde.kwalletd6',
+    ], env=env, text=True, timeout=20).strip() == 'b true'
+
+
+def list_entries(encoded):
+    """Decode the escaping of a KConfig QStringList after readEntry."""
+    entries, item, escaped = [], '', False
+    for char in encoded:
+        if escaped:
+            item += char
+            escaped = False
+        elif char == '\\':
+            escaped = True
+        elif char == ',':
+            entries.append(item)
+            item = ''
+        else:
+            item += char
+    if item or encoded:
+        entries.append(item + ('\\' if escaped else ''))
+    return entries
+
+
+def remaining_wallets(env, migrated):
+    directory = Path(env.get('XDG_DATA_HOME') or Path(env['HOME']) / '.local/share') / 'kwalletd'
+    completed = set(list_entries(migrated))
+    return [path for path in directory.glob('*.kwl') if path.is_file() and
+            unquote_to_bytes(path.stem.replace('%', '%25').replace(';', '%')).decode(
+                'utf-8', errors='replace') not in completed]
+
+
+def notify(message):
+    # `--` ends busctl's options: otherwise the trailing timeout -1 is read as an option.
+    subprocess.run(['busctl', '--user', 'call', '--', 'org.freedesktop.Notifications',
+                    '/org/freedesktop/Notifications', 'org.freedesktop.Notifications',
+                    'Notify', 'susssasa{sv}i', 'Emaki', '0', '', 'Old KDE passwords',
+                    message, '0', '0', '-1'], check=True, capture_output=True, timeout=20)
+
+
+def run_login(env, run_attempt, send_notice=notify, explicit=False):
+    directory = Path(env.get('XDG_STATE_HOME') or Path(env['HOME']) / '.local/state') / 'emaki'
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if directory.is_symlink():
+        raise SystemExit('The Emaki state directory must not be a symbolic link.')
+    path = directory / 'wallet-migration.json'
+    if path.is_symlink():
+        raise SystemExit('The wallet migration state must not be a symbolic link.')
+    with os.fdopen(os.open(directory / 'wallet-migration.lock',
+                           os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600), 'w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        state = json.loads(path.read_text()) if path.exists() else dict(
+            version=1, attempts=0, session='', notified=False, migrated=config_read(KEY, env))
+        if state.get('version') != 1:
+            raise SystemExit('This wallet migration state needs a newer Emaki version.')
+
+        def save():
+            with tempfile.NamedTemporaryFile(mode='w', dir=directory, delete=False) as output:
+                json.dump(state, output)
+                temporary = output.name
+            os.replace(temporary, path)
+
+        def notice_if_finished():
+            if (not explicit and state['attempts'] >= 3 and not state['notified'] and
+                    remaining_wallets(env, state['migrated'])):
+                send_notice(NOTICE)
+                state['notified'] = True
+                save()
+
+        if not remaining_wallets(env, state['migrated']):
+            return
+        session = env.get('EMAKI_WALLET_SESSION')
+        if not explicit:
+            if not session or state['session'] == session or state['attempts'] >= 3:
+                notice_if_finished()
+                return
+            # Reserve before launch: crashes and daemon restarts cannot spend a
+            # second attempt in this login. An interrupted attempt counts too.
+            state['session'] = session
+            state['attempts'] += 1
+            save()
+        state['migrated'] = run_attempt(env, state['migrated'])
+        save()
+        notice_if_finished()
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description='Move old KDE passwords to the login keyring.',
+        epilog='Login attempts run automatically, at most once per login and at most three times. '
+               'Cancel skips an attempt. Run emaki-wallet-migrate to retry later. '
+               'Original wallet files are kept. Read /usr/share/doc/emaki/ZONES.md for instructions.')
+    parser.add_argument('--automatic', action='store_true', help=argparse.SUPPRESS)
+    args = parser.parse_args(argv)
+    if not args.automatic and not sys.stdin.isatty():
+        raise SystemExit('Run this command in a terminal.')
+    env = os.environ.copy()
+
+    def ready():
+        if args.automatic and env.get('NOTIFY_SOCKET'):
+            subprocess.run(['systemd-notify', '--ready'], env=env, check=True, timeout=20)
+
+    if wallet_running(env):
+        if args.automatic:
+            ready()
+            return
+        raise SystemExit('KWallet is already running. Log out, log in, then run this command before opening KDE apps.')
+    if not args.automatic:
+        print('Enter the old wallet password in the migration dialog. Cancel skips this attempt.\n'
+          'After all dialogs close, press Enter here to finish. This attempt ends after five minutes.\n'
+          'Original wallet files are kept.', flush=True)
+
+    def wait():
+        if select.select([sys.stdin], [], [], LIMIT_SECONDS)[0]:
+            sys.stdin.readline()
+
+    def interrupted(_signal, _frame):
+        raise KeyboardInterrupt()
+
+    signal.signal(signal.SIGTERM, interrupted)
+
+    try:
+        run_login(env, lambda attempt_env, migrated: attempt(
+            attempt_env, None if args.automatic else wait, migrated=migrated,
+            ready=ready if args.automatic else None),
+                  explicit=not args.automatic)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        ready()
+
+
+if __name__ == '__main__':
+    main()

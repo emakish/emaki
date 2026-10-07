@@ -1,7 +1,8 @@
+# Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 # shellcheck shell=bash
-# The preset file enables CUPS only through the installer's preset-all. On a running
-# system nothing is enabled or started here: "never enabled" and "switched off by the
+# Historical printing presets enable CUPS only through the installer's preset-all. On a running
+# system printing is not enabled or started here: "never enabled" and "switched off by the
 # person" look the same, so the person gets the one command instead.
 _emaki_printing_hint() {
     # Silent when enabled, or masked on purpose (a link to /dev/null).

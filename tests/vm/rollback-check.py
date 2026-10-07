@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Permanent rollback acceptance on a fresh copy of the installed btrfs fixture."""
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
@@ -11,6 +12,7 @@ import shlex
 import sys
 import subprocess
 import time
+import tempfile
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -19,22 +21,72 @@ monitor = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(monitor)
 
 
-def acceptance(remote, upload, evidence, reboot, vm, user, password, ssh):
-    upload(ROOT / 'scripts/emaki-rollback', '/usr/bin/emaki-rollback', '755')
-    evidence('tool-sha256', remote('sha256sum /usr/bin/emaki-rollback'))
-    upload(ROOT / 'polkit/org.emaki.rollback.policy', '/usr/share/polkit-1/actions/org.emaki.rollback.policy')
-    for name in ('SnapshotRecovery.qml', 'SnapshotPrompt.qml', 'shell.qml', 'qmldir'):
-        upload(ROOT / 'shell' / name, '/usr/share/emaki/shell/' + name)
-    # The supplied 0.1.1 baseline predates the first-run overlay fstab fix.
-    # Apply that existing installer output before creating the test snapshot.
-    sys.path.insert(0, str(ROOT / 'installer'))
-    from emaki_installer import render
-    # The hook ships in emaki-config under /usr/lib/initcpio; the baseline lacks it.
-    for kind in ('hooks', 'install'):
-        remote('install -Dm644 /dev/stdin /usr/lib/initcpio/%s/emaki-snapshot-fstab' % kind,
-               (ROOT / 'initcpio' / kind / 'emaki-snapshot-fstab').read_bytes(), privileged=True)
-    remote('install -Dm644 /dev/stdin /etc/mkinitcpio.conf', render.mkinitcpio_config(True).encode(), privileged=True)
-    evidence('prepare-initramfs', remote('mkinitcpio -P', privileged=True))
+# The release runner supplies this manifest from its installed candidate fixture.
+# No acceptance run may repair the production payload it is about to test.
+PAYLOAD = {
+    '/usr/bin/emaki-rollback': 'emaki-config',
+    '/usr/share/polkit-1/actions/org.emaki.rollback.policy': 'emaki-config',
+    '/usr/share/emaki/shell/SnapshotRecovery.qml': 'emaki-config',
+    '/usr/share/emaki/shell/SnapshotPrompt.qml': 'emaki-config',
+    '/usr/share/emaki/shell/shell.qml': 'emaki-config',
+    '/usr/share/emaki/shell/qmldir': 'emaki-config',
+    '/usr/lib/initcpio/hooks/emaki-snapshot-fstab': 'emaki-config',
+    '/usr/lib/initcpio/install/emaki-snapshot-fstab': 'emaki-config',
+}
+
+
+def digest(path):
+    with path.open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def validate_fixture(base, iso, manifest, candidate):
+    if manifest.get('candidate') != candidate or not candidate.strip():
+        raise ValueError('Installed fixture does not identify the requested candidate')
+    for label, path in [('iso', iso), ('target.qcow2', base / 'target.qcow2'),
+                        ('OVMF_VARS.4m.fd', base / 'OVMF_VARS.4m.fd')]:
+        if manifest.get('sha256', {}).get(label) != digest(path):
+            raise ValueError('Candidate fixture checksum mismatch: ' + label)
+    packages = manifest.get('packages', {})
+    if not {'emaki', 'emaki-config', 'emaki-desktop'} <= packages.keys():
+        raise ValueError('Candidate manifest lacks required installed packages')
+    for name, version in packages.items():
+        if not re.fullmatch(r'[a-zA-Z0-9@_.+:-]+', name) or not isinstance(version, str) or not version:
+            raise ValueError('Invalid candidate package identity')
+    return packages
+
+
+def validate_area(area, base, work_root):
+    if not area.is_relative_to(work_root) or area == work_root:
+        raise ValueError('VMDIR must be strictly inside the chosen VM work root')
+    if area == base or area.is_relative_to(base) or base.is_relative_to(area):
+        raise ValueError('Candidate fixture and disposable run area must be separate')
+
+
+def verify_installed(remote, evidence, packages):
+    for name, version in packages.items():
+        actual = remote('pacman -Q ' + shlex.quote(name)).strip()
+        if actual != name + ' ' + version:
+            raise ValueError('Installed candidate version mismatch: ' + actual)
+        evidence('package-' + name, actual)
+        # A nonzero integrity result fails before snapshots or test mutations.
+        evidence('integrity-' + name, remote('pacman -Qkk ' + shlex.quote(name), privileged=True))
+    for path, owner in PAYLOAD.items():
+        actual = remote('pacman -Qqo ' + shlex.quote(path)).strip()
+        if actual != owner:
+            raise ValueError('Unexpected payload owner: ' + path + ': ' + actual)
+    evidence('installed-payload', remote('sha256sum ' + ' '.join(map(shlex.quote, PAYLOAD))))
+    # An old override would shadow the installed package while passing its checksum.
+    remote('test ! -e /etc/initcpio/hooks/emaki-snapshot-fstab; '
+           'test ! -e /etc/initcpio/install/emaki-snapshot-fstab', privileged=True)
+
+
+def supported_plan(config):
+    return (config.get('fs') == 'btrfs' and config.get('encryption') == 'none'
+            and config.get('hibernation') is False)
+
+
+def acceptance(remote, evidence, reboot, vm, user, password, ssh):
     evidence('normal-status', remote('emaki-rollback status --json'))
     remote("sh -ec 'printf good > /etc/emaki-rollback-marker; printf shared > /home/rollback-home-marker'", privileged=True)
     # A real pre snapshot with pacman's lock present exercises snap-pac's shape.
@@ -142,22 +194,41 @@ def acceptance(remote, upload, evidence, reboot, vm, user, password, ssh):
     evidence('final-root', remote('findmnt -n -o FSTYPE,FSROOT,OPTIONS /; test -z "$(systemctl --failed --no-legend)"; emaki-rollback list; btrfs property get -ts / ro', privileged=True))
     time.sleep(8)
     evidence('final-grub-entry', remote('grep -F rollback-final /boot/grub/grub-btrfs.cfg', privileged=True))
-    print('OK: full rollback, snapshot boot, polkit authentication, normal reboot, snapper, GRUB, undo and cleanup', flush=True)
+    print('PASS: functional rollback, snapshot boot, polkit authentication, normal reboot, snapper, GRUB, undo and cleanup', flush=True)
+    print('NOT TESTED: visual recovery and authentication appearance; captured frames need review at owner screen sizes', flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--inspect', action='store_true')
+    parser.add_argument('--base', required=True, type=Path, help='Installed candidate fixture directory')
+    parser.add_argument('--iso', required=True, type=Path, help='Image used to install the fixture')
+    parser.add_argument('--provenance', required=True, type=Path, help='JSON: candidate, sha256, packages')
+    parser.add_argument('--candidate', required=True, help='Expected candidate build identity')
+    parser.add_argument('--identity', required=True, type=Path, help='Disposable guest SSH identity')
+    parser.add_argument('--plan', required=True, type=Path, help='Installation plan used for this fixture')
+    parser.add_argument('--work-root', type=Path, default=Path.home() / 'VMs')
     args = parser.parse_args()
     area = Path(os.environ['VMDIR']).resolve()
-    assert area.name == 'n2-rollback-run'
-    base = area.parent / 'n2-rollback-base'
-    vm = area / time.strftime('check-%Y%m%d-%H%M%S')
-    vm.mkdir(mode=0o700)
+    base = args.base.resolve()
+    validate_area(area, base, args.work_root.resolve())
+    manifest = json.loads(args.provenance.read_text())
+    packages = validate_fixture(base, args.iso.resolve(), manifest, args.candidate)
+    if manifest.get('sha256', {}).get('plan') != digest(args.plan):
+        raise ValueError('Candidate fixture checksum mismatch: plan')
+    fixture = json.loads(args.plan.read_text())
+    config = fixture.get('config', fixture)
+    if not supported_plan(config):
+        print('NOT TESTED: rollback requires an unencrypted btrfs fixture without hibernation', flush=True)
+        return 77
+    print('NOT TESTED: encrypted rollback and swap/resume preservation with hibernation', flush=True)
+    area.mkdir(parents=True, exist_ok=True)
+    vm = Path(tempfile.mkdtemp(prefix='rollback-', dir=area))
+    (vm / 'candidate.json').write_text(json.dumps(manifest, indent=2) + '\n')
     for name in ('target.qcow2', 'OVMF_VARS.4m.fd'):
         subprocess.run(['cp', '--reflink=auto', '--sparse=always', str(base / name), str(vm / name)], check=True)
-    fixture = json.loads((ROOT / 'installer/fixtures/plan-erase-btrfs.json').read_text())
-    config = fixture.get('config', fixture)
+        if digest(vm / name) != manifest['sha256'][name]:
+            raise ValueError('Candidate changed while copying: ' + name)
     user = config['user']['login']
     password = config['user']['password']
     common = ['--dir', str(vm), '--ssh-port', '2251', '--user', user]
@@ -165,7 +236,7 @@ def main():
     # The queue's user namespace cannot trust host-owned SSH configuration.
     # Use only the explicit test identity and a job-owned known_hosts file.
     key = vm / 'id_vm'
-    shutil.copyfile(Path.home() / 'VMs/emaki-vm/id_vm', key)
+    shutil.copyfile(args.identity, key)
     key.chmod(0o600)
     ssh = ['ssh', '-F', '/dev/null', '-p', '2251', '-i', str(key),
            '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes',
@@ -184,7 +255,7 @@ def main():
 
     def evidence(name, text):
         (vm / (name + '.log')).write_text(text)
-        print(f'OK: {name}', flush=True)
+        print(f'EVIDENCE: {name}', flush=True)
 
     def wait_ssh():
         deadline = time.monotonic() + 240
@@ -232,10 +303,6 @@ def main():
         assert state['mode'] == ('snapshot' if label == 'snapshot' else 'normal'), state
         evidence(label + '-boot', remote('cat /proc/cmdline; findmnt /; emaki-rollback status --json'))
 
-    def upload(source, target, mode='644'):
-        remote('install -Dm' + mode + ' /dev/stdin ' + shlex.quote(target),
-               Path(source).read_bytes(), privileged=True)
-
     log = (vm / 'qemu.log').open('w')
     qemu = subprocess.Popen([str(HERE / 'run-iso.sh'), '--no-cd', *common], stdout=log, stderr=subprocess.STDOUT, env=env)
     try:
@@ -243,20 +310,23 @@ def main():
         out = remote("sh -ec 'cat /proc/cmdline; findmnt -o TARGET,SOURCE,FSTYPE,FSROOT,UUID; cat /etc/fstab /etc/default/grub; cat /boot/grub/grub.cfg; btrfs subvolume list /; snapper --no-dbus -c root list; systemctl --failed'", privileged=True)
         (vm / 'baseline.log').write_text(out)
         print(out, flush=True)
-        if not args.inspect:
-            acceptance(remote, upload, evidence, reboot, vm, user, password, ssh)
-
-        print(f'OK: baseline evidence: {vm}', flush=True)
+        verify_installed(remote, evidence, packages)
+        if args.inspect:
+            print('NOT TESTED: rollback actions (--inspect only)', flush=True)
+            return 77
+        acceptance(remote, evidence, reboot, vm, user, password, ssh)
+        print(f'EVIDENCE: rollback run: {vm}', flush=True)
+        return 0
     finally:
         if qemu.poll() is None:
             monitor.command(vm, 'quit')
         qemu.wait(timeout=30)
         (vm / 'qemu.pid').unlink(missing_ok=True)
         (vm / 'mon.sock').unlink(missing_ok=True)
-        print('OK: test VM stopped', flush=True)
+        print('INFO: test VM stopped', flush=True)
         log.close()
 
 
 if __name__ == '__main__':
     os.umask(0o077)
-    main()
+    sys.exit(main())

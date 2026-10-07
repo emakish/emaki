@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Isolated real sockets/processes; never connects to Wayland, PAM or a session bus."""
+from runtime_fixture import runtime_path
 import importlib.machinery
 import importlib.util
 import json
@@ -30,7 +31,7 @@ loader.exec_module(lock)
 subprocess.run([sys.executable, str(ROOT / 'tests/test-lock-supervisor-unit.py')], check=True)
 try:
     with socket.socket(socket.AF_UNIX) as probe:
-        probe_path = Path(tempfile.gettempdir()) / ('emaki-lock-probe-' + str(os.getpid()))
+        probe_path = runtime_path('lock-probe') / 'probe.sock'
         probe.bind(str(probe_path))
     probe_path.unlink()
 except PermissionError:

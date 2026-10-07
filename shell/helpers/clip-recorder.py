@@ -11,11 +11,14 @@ import select
 import signal
 import subprocess
 import sys
+import clipboard_store
 
 
 def main():
+    clipboard_store.prepare()
     argv = [os.environ.get('EMAKI_WL_PASTE') or 'wl-paste', '--watch',
-            os.environ.get('EMAKI_CLIPHIST') or 'cliphist', 'store']
+            os.environ.get('EMAKI_CLIPHIST') or 'cliphist', '-config-path', '/dev/null',
+            '-db-path', str(clipboard_store.runtime_db()), 'store']
     with open(os.devnull, 'wb') as null:
         child = subprocess.Popen(argv, stdin=null, stdout=null, stderr=null)
     def stop(*_):

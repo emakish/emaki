@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""VM ONLY: C8 acceptance, run as arch inside the disposable VM checkout.
+"""VM ONLY: C8 acceptance, run inside the disposable VM session.
 
   python3 tests/vm/check-lock.py
   python3 tests/vm/check-lock.py --two-outputs
 
 Requires installed committed C8, python-evdev, grim and sudo for uinput. Password
-is the VM fixture `arch`; it is passed only over stdin to the keyboard injector.
+defaults to the development fixture; --credentials-stdin reads fixture JSON securely.
 Screenshots are VM evidence only, never production lock captures. This script
 never suspends; the panel path uses a fake systemctl that verifies lock status.
 """
 import argparse
 import json
 import os
+import pwd
 from pathlib import Path
 import shutil
 import signal
@@ -20,9 +21,12 @@ import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[2]
+SHELL = Path('/usr/share/emaki/shell')
 KEYS = ROOT / 'tests/vm/guest-keys.py'
 FRAMES = ROOT / 'tests/vm/guest-frames.sh'
 OUT = ROOT / '.cache' / ('lock-vm-' + time.strftime('%Y%m%d-%H%M%S'))
+USER = 'arch'
+PASSWORD = 'arch'
 FAILURES = []
 SKIPS = []
 OWNED = []
@@ -41,7 +45,7 @@ def run(argv, **kwargs):
 
 
 def status():
-    result = run(['emaki-lock', 'status'])
+    result = run(['/usr/bin/emaki-lock', 'status'])
     return json.loads(result.stdout or '{}')
 
 
@@ -73,6 +77,9 @@ def wait(predicate, timeout=12):
 
 
 def keys(*steps, text=''):
+    # Validate separately so sudo never consumes the injector's text payload.
+    authenticated = run(['sudo', '-S', '-p', '', '-v'], input=PASSWORD + '\n')
+    assert authenticated.returncode == 0, 'guest sudo authentication failed'
     result = run(['sudo', '-n', 'python3', str(KEYS), *steps], input=text)
     assert result.returncode == 0, result.stderr
 
@@ -80,7 +87,7 @@ def keys(*steps, text=''):
 def start(preserve_capture=False, **environment):
     assert status().get('state') == 'unavailable', 'start with no existing VM lock supervisor'
     # Keep the exact owner pid, so crash tests never signal an unrelated locker.
-    owner = subprocess.Popen(['emaki-lock', '--supervise'], env=dict(os.environ, **environment),
+    owner = subprocess.Popen(['/usr/bin/emaki-lock', '--supervise'], env=dict(os.environ, **environment),
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     OWNED.append(owner)
     LOCK_OWNERS.append(owner)
@@ -88,10 +95,10 @@ def start(preserve_capture=False, **environment):
     assert owner.poll() is None, 'test owner did not acquire supervision; status=' + status_evidence()
     if preserve_capture:
         # The panel's confirm-only path retains the image; --wait prepares sleep.
-        result = run(['emaki-lock', '--confirm'])
+        result = run(['/usr/bin/emaki-lock', '--confirm'])
         assert result.returncode == 0, 'capture-preserving confirmation failed; status=' + status_evidence()
     else:
-        result = run(['emaki-lock', '--wait'])
+        result = run(['/usr/bin/emaki-lock', '--wait'])
         assert result.returncode == 0, 'lock confirmation failed; status=' + status_evidence()
     require_quickshell(owner.pid)
     return owner
@@ -121,7 +128,7 @@ def unlock(owner, expected_backend=None):
     english = next(i for i, name in enumerate(current['names']) if 'English' in name)
     select_layout(english)
     AUTH_SUBMITTED.add(owner)
-    keys('key:Escape', 'text', 'key:Return', text='arch')
+    keys('key:Escape', 'text', 'key:Return', text=PASSWORD)
     owner.wait(timeout=12)
     wait(lambda: status().get('state') == 'unavailable')
     select_layout(original)
@@ -219,7 +226,7 @@ def basic():
 def wrong():
     owner = start()
     recording = burst('wrong-attempt')
-    keys('text', 'key:Return', text='wrong-once')
+    keys('text', 'key:Return', text=PASSWORD + '-wrong-once')
     time.sleep(2.5); shot('wrong-password')
     end_burst(recording)
     assert owner.poll() is None and status()['secure']
@@ -362,7 +369,7 @@ def dpms():
                 owner = start()
             else:
                 before = child(owner)
-                confirmation = run(['emaki-lock', '--wait'])
+                confirmation = run(['/usr/bin/emaki-lock', '--wait'])
                 assert confirmation.returncode == 0, confirmation.stdout + confirmation.stderr
                 assert child(owner) == before, 'DPMS must not kill a healthy QS locker'
             state, _ = require_quickshell(owner.pid)
@@ -379,7 +386,7 @@ def dpms():
 def panel_sleep():
     # Production SystemBody.session/confirmSession + SystemService, isolated fixture
     # window; the real already-running shell is never restarted or reconfigured.
-    directory = OUT / 'panel'; shutil.copytree(ROOT / 'shell', directory)
+    directory = OUT / 'panel'; shutil.copytree(SHELL, directory)
     shutil.copyfile(ROOT / 'tests/fixtures/ClockTest.qml', directory / 'shell.qml')
     shutil.copyfile(ROOT / 'tests/fixtures/SystemFixture.qml', directory / 'SystemFixture.qml')
     with (directory / 'qmldir').open('a') as handle: handle.write('\nSystemFixture 1.0 SystemFixture.qml\n')
@@ -387,9 +394,9 @@ def panel_sleep():
     evidence = OUT / 'suspend-confirmation.json'
     lock_result = OUT / 'panel-lock-result.json'
     locker = OUT / 'panel-lock'
-    locker.write_text('#!/usr/bin/env python3\nimport json,subprocess,sys,time\nfrom pathlib import Path\nassert sys.argv[1:]==["--wait"]\nr=subprocess.run(["emaki-lock","--wait"])\nPath(' + repr(str(lock_result)) + ').write_text(json.dumps(dict(returncode=r.returncode,returned_ns=time.monotonic_ns())))\nsys.exit(r.returncode)\n')
+    locker.write_text('#!/usr/bin/env python3\nimport json,subprocess,sys,time\nfrom pathlib import Path\nassert sys.argv[1:]==["--wait"]\nr=subprocess.run(["/usr/bin/emaki-lock","--wait"])\nPath(' + repr(str(lock_result)) + ').write_text(json.dumps(dict(returncode=r.returncode,returned_ns=time.monotonic_ns())))\nsys.exit(r.returncode)\n')
     locker.chmod(0o700)
-    fake.write_text('#!/usr/bin/env python3\nimport json,subprocess,sys,time\nfrom pathlib import Path\ncalled=time.monotonic_ns()\nr=subprocess.run(["emaki-lock","status"],capture_output=True,text=True)\ns=json.loads(r.stdout)\nlocked=json.loads(Path(' + repr(str(lock_result)) + ').read_text())\nassert sys.argv[1:]==["suspend"] and s.get("secure") and s.get("poured")\nassert locked["returncode"]==0 and locked["returned_ns"]<called\nPath(' + repr(str(evidence)) + ').write_text(json.dumps(dict(lock=locked,systemctl_ns=called,coverage=s)))\n')
+    fake.write_text('#!/usr/bin/env python3\nimport json,subprocess,sys,time\nfrom pathlib import Path\ncalled=time.monotonic_ns()\nr=subprocess.run(["/usr/bin/emaki-lock","status"],capture_output=True,text=True)\ns=json.loads(r.stdout)\nlocked=json.loads(Path(' + repr(str(lock_result)) + ').read_text())\nassert sys.argv[1:]==["suspend"] and s.get("secure") and s.get("poured")\nassert locked["returncode"]==0 and locked["returned_ns"]<called\nPath(' + repr(str(evidence)) + ').write_text(json.dumps(dict(lock=locked,systemctl_ns=called,coverage=s)))\n')
     fake.chmod(0o700)
     original = directory / 'helpers/system-tools-original.py'
     (directory / 'helpers/system-tools.py').rename(original)
@@ -439,14 +446,16 @@ def frames():
     require_quickshell(owner.pid)
     recording = burst('drain', count=120, cadence='.035')
     AUTH_SUBMITTED.add(owner)
-    keys('text', 'key:Return', text='arch')
+    keys('text', 'key:Return', text=PASSWORD)
     end_burst(recording)
     owner.wait(timeout=15)
     return 'pour.tar/drain.tar; visual edge/coverage judgement required'
 
 
 def scope_isolation():
-    result = run([sys.executable, str(ROOT / 'tests/vm/check-lock-scope.py')], timeout=90)
+    result = run([sys.executable, str(ROOT / 'tests/vm/check-lock-scope.py'),
+                  '--user', USER, '--credentials-stdin', '--output', str(OUT / 'scope')],
+                 input=json.dumps({'password': PASSWORD}), timeout=90)
     evidence = OUT / 'scope-check.log'
     evidence.write_text(result.stdout + result.stderr)
     assert result.returncode == 0, ('scope check failed; evidence: ' + str(evidence)
@@ -456,10 +465,20 @@ def scope_isolation():
 
 
 def main():
+    global USER, PASSWORD, OUT
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--two-outputs', action='store_true')
+    parser.add_argument('--user', default='arch')
+    parser.add_argument('--credentials-stdin', action='store_true')
+    parser.add_argument('--output', type=Path)
     args = parser.parse_args()
-    assert os.environ.get('USER') == 'arch', 'disposable VM user arch required'
+    USER = args.user
+    if args.credentials_stdin:
+        PASSWORD = json.load(sys.stdin)['password']
+    if args.output:
+        OUT = args.output
+    assert pwd.getpwuid(os.getuid()).pw_name == USER, 'fixture guest account required'
+    assert run(['systemd-detect-virt', '--vm']).stdout.strip() in ('qemu', 'kvm'), 'disposable QEMU guest required'
     assert os.environ.get('WAYLAND_DISPLAY') and os.environ.get('NIRI_SOCKET'), 'run in VM niri session'
     OUT.mkdir(parents=True)
     scenario('lock/unlock', basic)

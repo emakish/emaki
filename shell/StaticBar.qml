@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
+import Quickshell.Io
 
 Item {
     id: bar
@@ -26,7 +27,14 @@ Item {
     property DockBackdrop backdrop: null
     // Morph of the launcher panel (0..1): the workspaces island fades as it arrives.
     property real launcherExpansion: 0
-    property date dateTime: time.date
+    // Keep second-level wake/time-change detection, but publish only changed
+    // minutes to the calendar and glass. SystemClock has no resume hook.
+    readonly property double minuteTime: Math.floor(time.date.getTime() / 60000) * 60000
+    property date dateTime: new Date(minuteTime)
+    function refreshTimeZone(): void {
+        Date.timeZoneUpdated();
+        dateTimeChanged();
+    }
     readonly property string clockTime: Qt.formatDateTime(dateTime, "HH:mm")
     // The island's short date and the panel's long one (clock.js shortDate/longDate). English
     // names from fixed lists: the island's width is measured on them (ClockCompactRow).
@@ -75,6 +83,18 @@ Item {
     SystemClock {
         id: time
         precision: SystemClock.Seconds
+    }
+
+    FileView {
+        // Watch the directory: replacing the localtime symlink does not change
+        // its old zoneinfo target. No file contents or periodic reads are needed.
+        // "/etc/." because FileView also watches the path's parent, and the parent
+        // of "/etc" is an empty path to Quickshell (a warning at every start).
+        path: "/etc/."
+        preload: false
+        watchChanges: true
+        printErrors: false
+        onFileChanged: bar.refreshTimeZone()
     }
 
     // The clock island on liquid glass (liquid-glass/clock.html); ClockPanel grows out of it.

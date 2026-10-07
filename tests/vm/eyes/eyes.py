@@ -21,6 +21,7 @@ import os
 import re
 from pathlib import Path
 import socket
+import select
 import sys
 import tempfile
 import threading
@@ -94,26 +95,49 @@ def dump_toml(data, header=''):
 
 class QMP:
     def __init__(self, path, timeout=20):
+        self.events = []
         self.s = socket.socket(socket.AF_UNIX)
         self.s.settimeout(timeout)
-        self.s.connect(str(path))
-        self.f = self.s.makefile('rw')
-        self.f.readline()
+        self.s.connect(str(Path(path).resolve()))
+        self._buffer = b''
+        self._read_reply()
         self.cmd('qmp_capabilities')
 
-    def cmd(self, name, **arguments):
-        self.f.write(json.dumps({'execute': name, 'arguments': arguments}) + '\n')
-        self.f.flush()
-        while True:
-            line = self.f.readline()
-            if not line:
+    def _read_reply(self):
+        while b'\n' not in self._buffer:
+            data = self.s.recv(65536)
+            if not data:
                 raise RuntimeError('QMP connection closed')
-            reply = json.loads(line)
+            self._buffer += data
+        line, self._buffer = self._buffer.split(b'\n', 1)
+        return json.loads(line)
+
+    def cmd(self, name, **arguments):
+        request = json.dumps({'execute': name, 'arguments': arguments}) + '\n'
+        self.s.sendall(request.encode())
+        while True:
+            reply = self._read_reply()
+            if 'event' in reply:
+                self.events.append(reply)
             if 'return' in reply or 'error' in reply:
                 return reply
 
+    def poll_events(self, timeout=.5):
+        """Collect queued events on the command connection, including buffered replies."""
+        if b'\n' not in self._buffer:
+            if not select.select([self.s], [], [], timeout)[0]:
+                return
+            data = self.s.recv(65536)
+            if not data:
+                raise RuntimeError('QMP connection closed')
+            self._buffer += data
+        while b'\n' in self._buffer:
+            line, self._buffer = self._buffer.split(b'\n', 1)
+            reply = json.loads(line)
+            if 'event' in reply:
+                self.events.append(reply)
+
     def close(self):
-        self.f.close()
         self.s.close()
 
 
@@ -266,22 +290,29 @@ class Pass:
         timeline = []
         previous = None
         last_change = 0.0
-        while True:
-            img, source = self.grab()
-            t = round(time.monotonic() - start, 3)
-            digest, luminance = stats(img)
-            changed = digest != previous
-            entry = {'t': t, 'sha256': digest, 'luminance': round(luminance, 4), 'changed': changed,
-                     'source': source, 'file': None}
-            if changed:
-                entry['file'] = save(img, t)
-                last_change = t
-                previous = digest
-            timeline.append(entry)
-            if t - last_change >= stable or t >= timeout:
-                break
-            time.sleep(max(0.0, interval - (time.monotonic() - start - t)))
+        interrupted = False
+        try:
+            while True:
+                img, source = self.grab()
+                t = round(time.monotonic() - start, 3)
+                digest, luminance = stats(img)
+                changed = digest != previous
+                entry = {'t': t, 'sha256': digest, 'luminance': round(luminance, 4), 'changed': changed,
+                         'source': source, 'file': None}
+                if changed:
+                    entry['file'] = save(img, t)
+                    last_change = t
+                    previous = digest
+                timeline.append(entry)
+                if t - last_change >= stable or t >= timeout:
+                    break
+                time.sleep(max(0.0, interval - (time.monotonic() - start - t)))
+        except KeyboardInterrupt:
+            if not timeline:
+                raise
+            interrupted = True
         result = metrics(timeline)
+        result['interrupted'] = interrupted
         result['timed_out'] = timeline[-1]['t'] >= timeout and timeline[-1]['t'] - last_change < stable
         return timeline, result
 

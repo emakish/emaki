@@ -6,6 +6,7 @@ import re
 from zoneinfo import ZoneInfo
 
 from .errors import Code, require
+from .render import wireless_regdom
 
 
 def validate_timezone(name, root=Path('/usr/share/zoneinfo')):
@@ -30,13 +31,23 @@ def validate_timezone(name, root=Path('/usr/share/zoneinfo')):
 
 def set_live_timezone(name, runner, *, root=Path('/usr/share/zoneinfo'),
                       boot=Path('/run/archiso/bootmnt'),
-                      release=Path('/etc/os-release')):
+                      release=Path('/etc/os-release'),
+                      wireless=Path('/sys/class/ieee80211')):
     # Check at each request, not just daemon startup. timedated changes the live
     # /etc/localtime through the system bus, outside the worker's mount namespace.
     require(os.geteuid() == 0 and boot.is_dir() and release.is_file()
             and 'IMAGE_ID=emaki' in release.read_text().splitlines(),
             Code.BAD_REQUEST, 'Live clock changes are available only on the Emaki ISO.')
     zone = validate_timezone(name, root)
+    table = root / 'zone.tab'
+    regdom = wireless_regdom(name, table.read_text()) if table.is_file() else None
+    # A wired-only VM has no nl80211 radio; it must still be able to set its clock.
+    if regdom and wireless.is_dir() and any(wireless.iterdir()):
+        country = re.search(r'WIRELESS_REGDOM="([A-Z]{2})"', regdom).group(1)
+        try:
+            runner.run(['iw', 'reg', 'set', country])
+        except (OSError, RuntimeError):
+            runner.log('Wi-Fi country could not be set; continuing with the time zone.')
     runner.run(['timedatectl', 'set-timezone', name])
     now = datetime.now(zone)
     return dict(timezone=name, unix_ms=int(now.timestamp() * 1000),

@@ -20,6 +20,19 @@ from support import FakeInventory, RecordingRunner, config, inventory
 
 
 class TimezoneTests(unittest.TestCase):
+    def test_timezone_guess_request_uses_cache_without_probing_disks(self):
+        inventory = Mock()
+        inventory.timezone_guess.side_effect = [dict(tz_guess=None, pending=True),
+                                               dict(tz_guess="Europe/Berlin", pending=False)]
+        broker = Controller(inventory, None)
+        first = broker.handle(dict(type='get_timezone_guess', id='guess-1'))[0]
+        second = broker.handle(dict(type='get_timezone_guess', id='guess-2'))[0]
+        self.assertTrue(first['pending'])
+        self.assertIsNone(first['tz_guess'])
+        self.assertFalse(second['pending'])
+        self.assertEqual(second['tz_guess'], 'Europe/Berlin')
+        inventory.probe.assert_not_called()
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -35,11 +48,13 @@ class TimezoneTests(unittest.TestCase):
         self.boot.mkdir()
         self.release = self.root / 'os-release'
         self.release.write_text('ID=arch\nIMAGE_ID=emaki\n')
+        self.wireless = self.root / 'ieee80211'
+        (self.wireless / 'phy0').mkdir(parents=True)
         self.runner = RecordingRunner()
 
     def change(self, name):
         return set_live_timezone(name, self.runner, root=self.zones,
-                                 boot=self.boot, release=self.release)
+                                 boot=self.boot, release=self.release, wireless=self.wireless)
 
     def test_table_union_and_utc(self):
         for zone in ('UTC', 'Europe/Berlin', 'Asia/Kathmandu'):
@@ -93,6 +108,38 @@ class TimezoneTests(unittest.TestCase):
             self.assertEqual(reply['unix_ms'], int(instant.timestamp() * 1000))
             self.assertEqual(self.runner.commands[-1][0], ['timedatectl', 'set-timezone', zone])
 
+    def test_live_country_uses_single_country_zone_table_and_preserves_utc(self):
+        with patch('emaki_installer.timezones.os.geteuid', return_value=0):
+            self.change('Europe/Berlin')
+            self.assertIn((['iw', 'reg', 'set', 'DE'], {}), self.runner.commands)
+            self.runner.commands.clear()
+            self.change('UTC')
+            self.assertEqual([cmd for cmd, _ in self.runner.commands], [['timedatectl', 'set-timezone', 'UTC']])
+
+    def test_failed_regulatory_change_still_sets_timezone(self):
+        for error in (OSError('missing iw'), InstallError(Code.COMMAND_FAILED, 'iw failed')):
+            with self.subTest(error=error):
+                self.runner = RecordingRunner(log=Mock())
+                original = self.runner.run
+                def run(argv, **kwargs):
+                    if argv[0] == 'iw':
+                        raise error
+                    return original(argv, **kwargs)
+                self.runner.run = run
+                with patch('emaki_installer.timezones.os.geteuid', return_value=0):
+                    reply = self.change('Europe/Berlin')
+                self.assertEqual(reply['timezone'], 'Europe/Berlin')
+                self.assertEqual(self.runner.commands[-1][0],
+                                 ['timedatectl', 'set-timezone', 'Europe/Berlin'])
+                self.runner.log.assert_called_once()
+
+    def test_wired_only_machine_can_set_timezone_without_a_radio(self):
+        (self.wireless / 'phy0').rmdir()
+        with patch('emaki_installer.timezones.os.geteuid', return_value=0):
+            self.change('Europe/Berlin')
+        self.assertEqual([cmd for cmd, _ in self.runner.commands],
+                         [['timedatectl', 'set-timezone', 'Europe/Berlin']])
+
     def test_worker_invalidates_plan_rejects_busy_and_propagates_failure(self):
         callback = Mock(return_value=dict(timezone='UTC', offset_seconds=0, unix_ms=0, abbreviation='UTC'))
         stream = io.StringIO()
@@ -136,6 +183,33 @@ class SoftwareTests(unittest.TestCase):
             packages = worker.backend.instance.pacman.strap.call_args.args[0]
             self.assertEqual('emaki-apps' in packages, value == 'rich')
             self.assertIn('emaki-desktop', packages)
+
+    def test_snapshot_packages_follow_root_filesystem_through_copy_and_preflight(self):
+        snapshots = {'snapper', 'snap-pac', 'grub-btrfs'}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = root / 'package.pkg.tar.zst'
+            archive.write_bytes(b'fixture')
+            Path(str(archive) + '.sig').write_bytes(b'fixture signature')
+            for fs in ('btrfs', 'ext4'):
+                for software in ('rich', 'minimal'):
+                    with self.subTest(fs=fs, software=software):
+                        worker = Worker(SimpleNamespace(locale=Mock()), None, Redactor(), Mock(), Mock(),
+                                        target=root / fs / software)
+                        worker.plan = make_plan(dict(config(fs=fs), software=software), inventory())
+                        worker.backend = Mock()
+                        worker.populate_keyring = Mock()
+                        worker.copy_packages()
+                        installed = worker.backend.instance.pacman.strap.call_args.args[0]
+                        expected = snapshots if fs == 'btrfs' else set()
+                        self.assertEqual(snapshots.intersection(installed), expected)
+                        runner = Mock()
+                        runner.run.return_value = archive.as_uri() + '\n'
+                        with patch('emaki_installer.worker.offline_config', return_value=root / 'offline.conf'):
+                            preflight_repo(runner, software=software, btrfs=worker.plan.btrfs)
+                        resolved = runner.run.call_args.args[0]
+                        self.assertEqual(snapshots.intersection(resolved), expected)
+                        self.assertTrue(set(installed) <= set(resolved))
 
     def test_preflight_resolves_selected_set_and_missing_rich_never_touches_target(self):
         with tempfile.TemporaryDirectory() as temporary:

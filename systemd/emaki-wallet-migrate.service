@@ -1,0 +1,16 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Move legacy KDE passwords to the login keyring
+PartOf=graphical-session.target
+After=niri-emaki.service
+Before=xdg-desktop-autostart.target emaki-shell.service
+ConditionEnvironment=EMAKI_WALLET_SESSION
+
+[Service]
+Type=notify
+NotifyAccess=all
+ExecStart=/usr/bin/emaki-wallet-migrate --automatic
+TimeoutStartSec=320
+TimeoutStopSec=15
+Slice=session.slice

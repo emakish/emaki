@@ -211,8 +211,20 @@ def main():
     parser.add_argument('--root', type=Path, default=Path('/'))
     operation = parser.add_mutually_exclusive_group()
     operation.add_argument('--user', default=os.environ.get('SUDO_USER', ''))
+    operation.add_argument('--pam-session', action='store_true', help='provision the authenticated login account')
     operation.add_argument('--purge-published', action='store_true', help='remove only published copies during uninstall')
     options = parser.parse_args()
+    if options.pam_session:
+        if os.environ.get('PAM_TYPE') != 'open_session':
+            return 0
+        user = os.environ.get('PAM_USER', '')
+        if not user or user in ('root', 'greeter'):
+            return 0
+        try:
+            provision(Path('/'), user)
+        except (OSError, ValueError, KeyError, IndexError):
+            return 1
+        return 0
     if options.purge_published:
         try:
             purge_published(options.root)

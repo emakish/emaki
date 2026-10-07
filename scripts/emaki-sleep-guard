@@ -1,51 +1,13 @@
 #!/usr/bin/python3 -I
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Hold logind's sleep delay until this graphical session's locker is ready.
+"""Hold logind's sleep delay until a locker confirms this session is locked.
 
-Also lock when logind asks this session to (loginctl lock-session, lock-sessions).
-logind's Unlock is never acted on: only the password opens the session.
-
-What happens when the lock is NOT confirmed before sleep is one switch,
-FAILURE_POLICIES, read from EMAKI_SLEEP_LOCK_FAILURE (a drop-in of this unit);
-the default is DEFAULT_FAILURE_POLICY. A delay inhibitor can neither refuse nor
-extend sleep beyond logind's InhibitDelayMaxSec (20 s in systemd/logind.conf.d),
-so every value acts inside that window:
-
-  sleep         log, flag and release; the machine sleeps with an unlocked
-                desktop (today's behaviour), and the shell's notice says so.
-  sleep-relock  as above, but the monitors go off first, and after wake the
-                guard runs the locker before anything else. A key press at
-                wake can still reach the desktop until that lock holds.
-  end-session   the session is ended (niri quits; the greeter asks for the
-                password after wake). Unsaved work in open applications is lost.
-                Whether it ended is read from niri's IPC socket, which niri
-                removes when it exits; if the socket stays until one second
-                before logind's deadline, the session goes on unlocked and the
-                notice says so. A NIRI_SOCKET that is not there when the lock
-                fails names no niri to quit: nothing is quit, the session goes
-                on unlocked and the notice says so.
-  stay-awake    the guard owns the lid: it holds a handle-lid-switch block
-                inhibitor, and on lid close locks first and suspends only after
-                a confirmed lock. On failure the machine stays on. Sleep asked
-                for by other means (systemctl suspend) still goes the delay path
-                and cannot be refused.
-
-Flags for a notice by the shell: an ended session writes
-$XDG_STATE_HOME/emaki/sleep-lock-failed (survives the session) with the boot
-and the niri socket of the session that ended, so that only a shell of a later
-session shows it; everything else writes $XDG_RUNTIME_DIR/emaki-sleep-lock-failed.
-The first line holds the policy name, or end-session-failed (SESSION_NOT_ENDED)
-when end-session could not end the session. Whoever shows the notice deletes
-the flag. When niri was asked to quit and its socket outlived the wait, niri
-may still go later (the runtime directory goes with the session), so
-end-session-failed is written to both places; LATE_END_WAIT later, if niri is
-still there and a shell has taken the runtime flag, the guard deletes the
-other one again.
-
-No value here sleeps the machine by itself: a suspend is issued only by
-stay-awake, only on a lid close (the gesture logind would otherwise act on),
-and only after the lock was confirmed.
+Retry with hyprlock inside logind's reported delay budget. If neither locker
+confirms, request termination of this graphical session before releasing the
+inhibitor. A persistent Emaki flag explains the closure at the next login.
+The optional stay-awake lid policy locks before asking logind to suspend;
+all PrepareForSleep requests use the same fallback and termination path.
 """
 import os
 from pathlib import Path
@@ -66,21 +28,14 @@ LOGIN_INTERFACE = 'org.freedesktop.login1.Manager'
 SESSION_INTERFACE = 'org.freedesktop.login1.Session'
 USER_PATH = '/org/freedesktop/login1/user/self'
 USER_INTERFACE = 'org.freedesktop.login1.User'
-LOCK_TIMEOUT = 18
-# A policy that acts after a failed lock needs time inside logind's 20 s.
+# Leave time for fallback confirmation and session termination.
 ACTION_LOCK_TIMEOUT = 12
 ACTION_TIMEOUT = 5
-# logind's InhibitDelayMaxSec (systemd/logind.conf.d/50-emaki.conf): how long a delay
-# inhibitor can hold sleep back, counted from PrepareForSleep.
-DELAY_WINDOW = 20
-FAILURE_POLICIES = ('sleep', 'sleep-relock', 'end-session', 'stay-awake')
-DEFAULT_FAILURE_POLICY = 'sleep'
-# The flag's name when end-session asked niri to quit and the session went on.
-SESSION_NOT_ENDED = 'end-session-failed'
-# Seconds after an end-session that did not end the session until the guard decides
-# that it went on. GLib counts them on the monotonic clock, which stops during sleep:
-# niri, asked to quit before the release, has that much awake time more to go.
-LATE_END_WAIT = 20
+END_SESSION_TIMEOUT = 2
+POLL_INTERVAL = 0.05
+FAILURE_POLICIES = ('end-session', 'stay-awake')
+DEFAULT_FAILURE_POLICY = 'end-session'
+LOGINCTL = '/usr/bin/loginctl'
 LOCK = '/usr/bin/emaki-lock'
 SYSTEMCTL = '/usr/bin/systemctl'
 BOOT_ID = '/proc/sys/kernel/random/boot_id'
@@ -104,11 +59,23 @@ def session_path(proxy, environ, user_display):
     if session:
         path, = proxy.call_sync('GetSession', GLib.Variant('(s)', (session,)),
                                 Gio.DBusCallFlags.NONE, 5000, None).unpack()
-        return path
-    # A user service has XDG_SESSION_ID only when the session imported it into the
-    # manager; the user's display session is the graphical one.
-    session, path = user_display()
-    return path if session else None
+    else:
+        # A user service has XDG_SESSION_ID only when the session imported it.
+        session, path = user_display()
+    if not session:
+        return None
+    connection = proxy.get_connection()
+
+    def property_value(name):
+        value, = connection.call_sync(
+            LOGIN_NAME, path, 'org.freedesktop.DBus.Properties', 'Get',
+            GLib.Variant('(ss)', (SESSION_INTERFACE, name)), GLib.VariantType('(v)'),
+            Gio.DBusCallFlags.NONE, 5000, None).unpack()
+        return value
+
+    if property_value('Type') != 'wayland' or property_value('User')[0] != os.getuid():
+        raise ValueError('The graphical session must be a Wayland session of this user [logind].')
+    return path
 
 
 def subscribe_lock(connection, path, callback):
@@ -118,37 +85,24 @@ def subscribe_lock(connection, path, callback):
         lambda _connection, _sender, _path, _interface, name, _parameters: callback(name))
 
 
-def run(argv, timeout):
+def run(argv, timeout, quiet=False, capture=False):
     """Run one command; the result is 'ok', or a logged failure word."""
+    if timeout <= 0:
+        return 'failed'
     try:
         result = subprocess.run(argv, stdin=subprocess.DEVNULL, close_fds=True,
-                                timeout=timeout, check=False)
+                                timeout=timeout, check=False, capture_output=capture)
         if result.returncode == 0:
             return 'ok'
-        log(f'{argv[0]} failed (exit {result.returncode})')
+        if not quiet:
+            log(f'{argv[0]} failed (exit {result.returncode})')
     except subprocess.TimeoutExpired:
-        log(f'{argv[0]} timed out after {timeout} seconds')
+        if not quiet:
+            log(f'{argv[0]} timed out after {timeout} seconds')
     except OSError as error:
-        log(f'could not start {argv[0]}: {error}')
+        if not quiet:
+            log(f'could not start {argv[0]}: {error}')
     return 'failed'
-
-
-def session_ended(socket, wait):
-    """True once niri's IPC socket is gone, waiting up to `wait` seconds. The caller
-    has seen the socket before it asked niri to quit: a path that was never there
-    proves nothing.
-
-    niri removes the socket when it exits. Its answer to `quit` cannot tell: niri
-    stops its loop before it replies, so `niri msg action quit` exits 1 ("error
-    communicating with niri") even when the session ends."""
-    if not socket:
-        return False
-    deadline = time.monotonic() + wait
-    while os.path.lexists(socket):
-        if time.monotonic() >= deadline:
-            return False
-        time.sleep(0.1)
-    return True
 
 
 def notify_ready():
@@ -181,18 +135,17 @@ def session_identity(environ):
 
 
 class SleepGuard:
-    def __init__(self, proxy, policy=DEFAULT_FAILURE_POLICY, environ=os.environ, later=None):
+    def __init__(self, proxy, policy=DEFAULT_FAILURE_POLICY, environ=os.environ):
         self.proxy = proxy
         self.policy = policy
         self.environ = environ
-        # later(seconds, callback): a timer on the main loop; the callback returns False.
-        self.later = later or GLib.timeout_add_seconds
         self.inhibitor = None
         self.lid_inhibitor = None
         self.sleeping = False
-        self.relock = False
-        self.lock_timeout = LOCK_TIMEOUT if policy == 'sleep' else ACTION_LOCK_TIMEOUT
-        self.delay_window = DELAY_WINDOW
+        self.session_id = environ.get('XDG_SESSION_ID', '')
+        self.lock_timeout = ACTION_LOCK_TIMEOUT
+        self.delay_window = 0.0
+        self.release_margin = 0.0
         self.window_end = 0.0
 
     def inhibit(self, what, mode, why):
@@ -214,6 +167,10 @@ class SleepGuard:
                 os.close(descriptor)
 
     def acquire(self):
+        delay = self.proxy.get_cached_property('InhibitDelayMaxUSec')
+        if delay is None or type(delay.unpack()) is not int or delay.unpack() <= 0:
+            raise ValueError('Sleep delay must be greater than zero [logind].')
+        self.delay_window = delay.unpack() / 1_000_000
         if self.inhibitor is None:
             self.inhibitor = self.inhibit('sleep', 'delay', 'Lock the session before sleep')
         if self.policy == 'stay-awake' and self.lid_inhibitor is None:
@@ -264,84 +221,97 @@ class SleepGuard:
         self.write_flag(self.state_flag(), text)
         return text
 
-    def session_went_on(self, text):
-        """LATE_END_WAIT after an end-session that did not end the session. If niri is still
-        there and a shell of this session has taken the runtime flag, the person was told:
-        the flag for the next session goes. Otherwise it stays, and the next session tells."""
-        socket = self.environ.get('NIRI_SOCKET', '')
-        if socket and os.path.lexists(socket) and not os.path.lexists(self.runtime_flag()):
-            path = self.state_flag()
-            try:
-                if path.read_text() == text:
-                    path.unlink()
-            except OSError:
-                pass
-        return False
-
     def session_signal(self, name):
         if name != 'Lock':
             return
         if run([LOCK], self.lock_timeout) != 'ok':
             log('lock requested by logind was not confirmed')
 
-    def lock_failed(self):
-        """The lock is not confirmed and sleep is coming. Apply the policy, then release."""
-        log(f'warning: the screen is not locked before sleep; policy {self.policy}')
-        if self.policy == 'sleep-relock':
-            self.flag()
-            self.relock = True
-            run(['niri', 'msg', 'action', 'power-off-monitors'], ACTION_TIMEOUT)
-        elif self.policy == 'end-session':
-            if self.end_session():
-                # The session has ended; systemd stops this service with it and main()
-                # releases then, so the sleep follows the end of the session. logind's
-                # InhibitDelayMaxSec bounds the wait if the stop does not come.
-                return
-        elif self.policy in ('sleep', 'stay-awake'):
-            self.flag()
-        self.release()
+    def remaining(self):
+        return max(0.0, self.window_end - self.release_margin - time.monotonic())
 
     def end_session(self):
-        """Ask niri to quit; True once its socket, seen before the quit, is gone. Otherwise
-        the session goes on, and the flags say it was not ended."""
-        socket = self.environ.get('NIRI_SOCKET', '')
-        if not socket or not os.path.lexists(socket):
-            # No niri answers there (a stale environment, another niri), and the socket's
-            # absence after a quit would prove nothing: nothing is quit.
-            log("niri's socket is not there: the session cannot be ended")
-            self.flag(SESSION_NOT_ENDED)
+        # A premature exit must never leave a claim that termination succeeded.
+        self.flag_next_session('end-session-failed')
+        ended = False
+        try:
+            log('Screen lock failed before sleep; closing this session [loginctl].')
+            if not self.session_id:
+                raise ValueError('No graphical session ID is available [loginctl].')
+            terminated = run([LOGINCTL, 'terminate-session', self.session_id],
+                             self.remaining() * 0.25) == 'ok'
+            # The login scope only contains the session wrapper. Its normal cleanup
+            # never runs after logind kills it; stop the user session units explicitly.
+            # Do not wait for the target job: it also stops this guard.
+            shutdown = run([SYSTEMCTL, '--user', 'start', '--no-block',
+                            '--job-mode=replace-irreversibly', 'niri-shutdown.target'],
+                           self.remaining() * 0.25) == 'ok'
+            gone = self.wait_for_session_exit()
+            if terminated and shutdown and gone:
+                ended = True
+                self.flag_next_session('end-session')
+                return True
+            log('Session closure before sleep could not be confirmed.')
             return False
-        # The exit code says nothing (see session_ended); the delay is held while niri
-        # goes, up to one second before logind would sleep anyway.
-        run(['niri', 'msg', 'action', 'quit', '--skip-confirmation'], ACTION_TIMEOUT)
-        if session_ended(socket, self.window_end - 1 - time.monotonic()):
-            self.flag()
-            return True
-        log("niri's socket is still there: the session was not ended")
-        self.flag(SESSION_NOT_ENDED)
-        # niri may still go after the release, and the runtime flag with the session.
-        text = self.flag_next_session(SESSION_NOT_ENDED)
-        self.later(LATE_END_WAIT, lambda: self.session_went_on(text))
+        finally:
+            # A surviving shell watches runtime flags. Do not defer its warning to
+            # another login; the provisional state flag only covers interrupted teardown.
+            if not ended:
+                self.flag('end-session-failed')
+            stale = self.runtime_flag() if ended else self.state_flag()
+            try:
+                stale.unlink(missing_ok=True)
+            except OSError as error:
+                log(f'could not remove the notice flag: {error}')
+
+    def wait_for_session_exit(self):
+        """Observe both supported compositors: either can own this session."""
+        while self.remaining() > 0:
+            try:
+                result = subprocess.run(
+                    [SYSTEMCTL, '--user', 'show', '--property=ActiveState', '--value',
+                     'niri-emaki.service', 'niri.service', 'graphical-session.target'],
+                    stdin=subprocess.DEVNULL, close_fds=True, capture_output=True,
+                    text=True, timeout=self.remaining(), check=False)
+                states = result.stdout.split()
+                if (result.returncode == 0 and len(states) == 3
+                        and all(state in ('inactive', 'failed') for state in states)):
+                    return True
+            except (subprocess.TimeoutExpired, OSError) as error:
+                log(f'could not check session closure: {error}')
+                return False
+            time.sleep(min(POLL_INTERVAL, self.remaining()))
         return False
 
     def prepare_for_sleep(self, sleeping):
         if not sleeping:
             self.sleeping = False
-            if self.relock:
-                self.relock = False
-                run([LOCK], self.lock_timeout)
             self.acquire()
             return
         if self.sleeping:
             return
         self.sleeping = True
         self.window_end = time.monotonic() + self.delay_window
-        # emaki-lock puts the supervisor/locker in their own scope. Only the
-        # short-lived readiness client belongs to this service's cgroup.
-        if run([LOCK, '--wait'], self.lock_timeout) == 'ok':
+        self.release_margin = min(0.25, self.delay_window * 0.05)
+        usable = self.remaining()
+        termination_reserve = min(END_SESSION_TIMEOUT, usable * 0.25)
+        try:
+            # Only the readiness client is in this service's cgroup. Its timeout
+            # leaves the supervisor alive so it can accept the fallback request.
+            if run([LOCK, '--wait'], min(ACTION_LOCK_TIMEOUT, usable * 0.60), quiet=True) == 'ok':
+                return
+            if run([LOCK, '--fallback', '--wait'],
+                   self.remaining() - termination_reserve, quiet=True) == 'ok':
+                log('Primary screen lock was not confirmed; hyprlock fallback succeeded.')
+                return
+            # A fallback can confirm just as its readiness client times out.
+            if run([LOCK, 'status'], min(0.2, self.remaining() * 0.1),
+                   quiet=True, capture=True) == 'ok':
+                return
+            self.end_session()
+        finally:
+            # logind will sleep at its deadline even if a command failed or hung.
             self.release()
-        else:
-            self.lock_failed()
 
     def lid_closed(self, closed, docked):
         """stay-awake only: the guard does what logind would have done, lock first."""
@@ -355,6 +325,8 @@ class SleepGuard:
 
 
 def main():
+    if Path("/etc/emaki-live/greetd.toml").is_file():
+        return 0
     loop = GLib.MainLoop()
     guard = None
     failed = False
@@ -396,8 +368,6 @@ def main():
         proxy.connect('g-signal', on_signal)
         proxy.connect('g-properties-changed', on_properties_changed)
         proxy.connect('notify::g-name-owner', on_owner_changed)
-        guard.acquire()
-        notify_ready()
         connection = proxy.get_connection()
 
         def user_display():
@@ -407,21 +377,26 @@ def main():
                 Gio.DBusCallFlags.NONE, 5000, None).unpack()
             return value
 
-        try:
-            path = session_path(proxy, os.environ, user_display)
-            if path is None:
-                log('no graphical session known to logind; lock requests from logind are not handled')
-            else:
-                subscribe_lock(connection, path, guard.session_signal)
-        except (GLib.Error, ValueError, TypeError) as error:
-            # The sleep delay matters more than lock-session: keep running.
-            log(f'cannot follow lock requests from logind: {error}')
+        # Lookup can block or fail; hold logind's delay throughout it.
+        guard.acquire()
+        path = session_path(proxy, os.environ, user_display)
+        if path is None:
+            raise ValueError('No graphical session was found [logind].')
+        session, = connection.call_sync(
+            LOGIN_NAME, path, 'org.freedesktop.DBus.Properties', 'Get',
+            GLib.Variant('(ss)', (SESSION_INTERFACE, 'Id')), GLib.VariantType('(v)'),
+            Gio.DBusCallFlags.NONE, 5000, None).unpack()
+        if not session:
+            raise ValueError('No graphical session ID was returned [logind].')
+        guard.session_id = session
+        subscribe_lock(connection, path, guard.session_signal)
+        notify_ready()
+        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, stop)
+        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, stop)
         # Cover startup during an already-announced sleep, as well as future signals.
         preparing = proxy.get_cached_property('PreparingForSleep')
         if preparing is not None and preparing.unpack():
             guard.prepare_for_sleep(True)
-        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, stop)
-        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, stop)
         loop.run()
     except (GLib.Error, OSError, ValueError) as error:
         log(f'startup failed: {error}')

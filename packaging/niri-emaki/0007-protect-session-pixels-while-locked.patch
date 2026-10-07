@@ -1,0 +1,666 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Emaki contributors <emaki@localhost>
+Date: Wed, 7 Oct 2026 12:00:00 +0000
+Subject: [PATCH 7/7] Protect session pixels while locked
+
+Copyright (C) 2026 Artur Yakymenko
+SPDX-License-Identifier: GPL-3.0-or-later
+
+Blank window screencasts in both output and PipeWire redraw callbacks before
+accessing the window. Reject direct window screenshots while locked.
+
+Return lock surfaces before session overlays and cached transitions for all
+render targets. Keep the focused exit confirmation above the lock.
+Skip session xray preparation, suppress drag icons and accept
+surface cursors only from the lock client. Output screencasts, screencopy and
+portal screenshots then share the lock-screen composition.
+
+Add headless pixel regressions for transitions, session overlays and pointer
+surfaces, including a real session-lock client and unlock recovery.
+
+This applies to Locking and Locked. Pixels captured or queued before locking
+cannot be revoked; the existing unconfirmed wait for lock surfaces is unchanged.
+---
+diff --git a/src/niri.rs b/src/niri.rs
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -3740,6 +3740,17 @@
+         match render_cursor {
+             RenderCursor::Hidden => (),
+             RenderCursor::Surface { surface, hotspot } => {
++                let lock = match &self.lock_state {
++                    LockState::Locking(confirmation) => Some(confirmation.ext_session_lock()),
++                    LockState::Locked(lock) => Some(lock),
++                    _ => None,
++                };
++                if let Some(lock) = lock {
++                    if !lock.id().same_client_as(&surface.id()) {
++                        return;
++                    }
++                }
++
+                 let pointer_pos =
+                     (pointer_pos - hotspot.to_f64()).to_physical_precise_round(output_scale);
+
+@@ -3770,6 +3781,11 @@
+                     }
+                 }
+             }
++        }
++
++        // A drag icon belongs to the session, not the lock screen.
++        if self.is_locked() {
++            return;
+         }
+
+         if let Some(dnd_icon) = self.dnd_icon.as_ref() {
+@@ -4261,6 +4277,12 @@
+             }
+         }
+
++        // Locked rendering must not prepare any session content, including xray buffers.
++        if self.is_locked() {
++            self.render_inner(ctx, output, include_pointer, include_startup_cover, push);
++            return;
++        }
++
+         self.fill_xray_elements_with_startup_cover(ctx.as_gles(), output, include_startup_cover);
+
+         // Reborrow to shorten lifetime to be able to put in xray.
+@@ -4298,35 +4320,9 @@
+             self.render_pointer(ctx.renderer, output, &mut |elem| push(elem.into()));
+         }
+
+-        // Next, the exit confirm dialog.
++        // The exit dialog keeps keyboard focus while locked. Its fixed text must stay visible.
+         self.exit_confirm_dialog
+             .render(ctx.renderer, output, &mut |elem| push(elem.into()));
+-
+-        // Next, the config error notification too.
+-        if let Some(element) = self.config_error_notification.render(ctx.renderer, output) {
+-            push(element.into());
+-        }
+-
+-        // This decoration must never enter screencopy or screencasts: the shell prepares
+-        // its glass from the real desktop underneath. Locks and screenshot UI take priority.
+-        if include_startup_cover
+-            && ctx.target == RenderTarget::Output
+-            && !self.is_locked()
+-            && !self.screenshot_ui.is_open()
+-        {
+-            if let Some(cover) = &self.startup_cover {
+-                if let Some(element) = cover.render(output) {
+-                    push(element.into());
+-                }
+-            }
+-        }
+-
+-        // Next, the screen transition texture.
+-        {
+-            if let Some(transition) = &state.screen_transition {
+-                push(transition.render(ctx.target).into());
+-            }
+-        }
+
+         // If the session is locked, draw the lock surface.
+         if self.is_locked() {
+@@ -4354,6 +4350,32 @@
+             );
+
+             return;
++        }
++
++        // Next, the config error notification too.
++        if let Some(element) = self.config_error_notification.render(ctx.renderer, output) {
++            push(element.into());
++        }
++
++        // This decoration must never enter screencopy or screencasts: the shell prepares
++        // its glass from the real desktop underneath. Locks and screenshot UI take priority.
++        if include_startup_cover
++            && ctx.target == RenderTarget::Output
++            && !self.is_locked()
++            && !self.screenshot_ui.is_open()
++        {
++            if let Some(cover) = &self.startup_cover {
++                if let Some(element) = cover.render(output) {
++                    push(element.into());
++                }
++            }
++        }
++
++        // Next, the screen transition texture.
++        {
++            if let Some(transition) = &state.screen_transition {
++                push(transition.render(ctx.target).into());
++            }
+         }
+
+         // Prepare the background elements.
+@@ -5781,6 +5803,8 @@
+         path: Option<String>,
+     ) -> anyhow::Result<()> {
+         let _span = tracy_client::span!("Niri::screenshot_window");
++
++        anyhow::ensure!(!self.is_locked(), "cannot screenshot a window while locked");
+
+         let scale = Scale::from(output.current_scale().fractional_scale());
+         let alpha =
+diff --git a/src/screencasting/mod.rs b/src/screencasting/mod.rs
+--- a/src/screencasting/mod.rs
++++ b/src/screencasting/mod.rs
+@@ -140,6 +140,8 @@
+     fn redraw_cast(&mut self, stream_id: CastStreamId) {
+         let _span = tracy_client::span!("State::redraw_cast");
+
++        let is_locked = self.niri.is_locked();
++
+         let casts = &mut self.niri.casting.casts;
+         let Some(idx) = casts.iter().position(|cast| cast.stream_id == stream_id) else {
+             warn!("cast to redraw is missing");
+@@ -164,6 +166,18 @@
+             }
+             CastTarget::Window { id } => *id,
+         };
++
++        // This path is also called directly by PipeWire, without an output redraw.
++        if is_locked {
++            if !cast.is_blank() {
++                self.backend.with_primary_renderer(|renderer| {
++                    if cast.dequeue_buffer_and_clear(renderer) {
++                        cast.last_frame_time = get_monotonic_time();
++                    }
++                });
++            }
++            return;
++        }
+
+         // Lack of partial borrowing strikes again...
+         let mut casts = mem::take(&mut self.niri.casting.casts);
+@@ -643,6 +657,17 @@
+                 continue;
+             };
+
++            // Keep the stream alive without reading the window or its cursor.
++            if self.is_locked() {
++                if !cast.is_blank()
++                    && !cast.check_time_and_schedule(output, target_presentation_time)
++                    && cast.dequeue_buffer_and_clear(renderer)
++                {
++                    cast.last_frame_time = target_presentation_time;
++                }
++                continue;
++            }
++
+             let mut windows = self.layout.windows_for_output(output);
+             let Some(mapped) = windows.find(|win| win.id().get() == id) else {
+                 continue;
+diff --git a/src/screencasting/pw_utils.rs b/src/screencasting/pw_utils.rs
+--- a/src/screencasting/pw_utils.rs
++++ b/src/screencasting/pw_utils.rs
+@@ -107,6 +107,8 @@
+ #[derive(Debug)]
+ struct CastInner {
+     is_active: bool,
++    /// The latest queued frame is blank, including frames waiting for GPU completion.
++    is_blank: bool,
+     node_id: Option<u32>,
+     state: CastState,
+     refresh: u32,
+@@ -324,6 +326,7 @@
+         // Like in good old wayland-rs times...
+         let inner = Rc::new(RefCell::new(CastInner {
+             is_active: false,
++            is_blank: false,
+             node_id: None,
+             state: CastState::ResizePending { pending_size },
+             refresh,
+@@ -376,6 +379,7 @@
+                         StreamState::Connecting => (),
+                         StreamState::Streaming => {
+                             inner.is_active = true;
++                            inner.is_blank = false;
+                             redraw();
+                         }
+                     }
+@@ -756,6 +760,7 @@
+
+                         let fd = (*(*spa_buffer).datas).fd;
+                         assert!(inner.dmabufs.insert(fd, dmabuf).is_none());
++                        inner.is_blank = false;
+                     }
+
+                     // During size re-negotiation, the stream sometimes just keeps running, in
+@@ -771,6 +776,8 @@
+                     trace!(%stream_id, "remove_buffer");
+                     let mut inner = inner.borrow_mut();
+
++                    // A pending blank frame may be among the buffers being removed.
++                    inner.is_blank = false;
+                     inner
+                         .rendering_buffers
+                         .retain(|(buf, _)| buf.as_ptr() != buffer);
+@@ -829,6 +836,10 @@
+         self.inner.borrow().is_active
+     }
+
++    pub fn is_blank(&self) -> bool {
++        self.inner.borrow().is_blank
++    }
++
+     pub fn node_id(&self) -> Option<u32> {
+         self.inner.borrow().node_id
+     }
+@@ -854,6 +865,7 @@
+         *state = CastState::ResizePending {
+             pending_size: new_size,
+         };
++        inner.is_blank = false;
+
+         let params;
+         make_params!(
+@@ -1159,6 +1171,7 @@
+
+             match res {
+                 Ok(sync_point) => {
++                    self.inner.borrow_mut().is_blank = false;
+                     mark_buffer_as_good(pw_buffer, &mut self.sequence_counter);
+                     trace!("queueing buffer with seq={}", self.sequence_counter);
+                     self.queue_after_sync(pw_buffer, sync_point);
+@@ -1206,6 +1219,7 @@
+
+             match clear_dmabuf(renderer, dmabuf) {
+                 Ok(sync_point) => {
++                    self.inner.borrow_mut().is_blank = true;
+                     mark_buffer_as_good(pw_buffer, &mut self.sequence_counter);
+                     trace!("queueing clear buffer with seq={}", self.sequence_counter);
+                     self.queue_after_sync(pw_buffer, sync_point);
+diff --git a/src/tests/mod.rs b/src/tests/mod.rs
+--- a/src/tests/mod.rs
++++ b/src/tests/mod.rs
+@@ -9,6 +9,7 @@
+ mod floating;
+ mod fullscreen;
+ mod layer_shell;
++mod lock_capture;
+ mod remove_output;
+ mod screencopy;
+ mod startup_cover;
+diff --git a/src/tests/lock_capture.rs b/src/tests/lock_capture.rs
+new file mode 100644
+--- /dev/null
++++ b/src/tests/lock_capture.rs
+@@ -0,0 +1,373 @@
++// Copyright (C) 2026 Artur Yakymenko
++// SPDX-License-Identifier: GPL-3.0-or-later
++
++//! Session pixels must not enter output rendering or captures while locked.
++
++use std::sync::atomic::{AtomicBool, Ordering};
++use std::sync::Arc;
++
++use niri_config::Config;
++use smithay::backend::allocator::Fourcc;
++use smithay::desktop::layer_map_for_output;
++use smithay::input::pointer::{CursorImageStatus, CursorImageSurfaceData};
++use smithay::reexports::wayland_protocols::ext::session_lock::v1::client::{
++    ext_session_lock_manager_v1::ExtSessionLockManagerV1,
++    ext_session_lock_surface_v1::{self, ExtSessionLockSurfaceV1},
++    ext_session_lock_v1::{self, ExtSessionLockV1},
++};
++use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::{
++    zwlr_layer_shell_v1::Layer, zwlr_layer_surface_v1::Anchor,
++};
++use smithay::utils::{Scale, Transform};
++use smithay::wayland::compositor::with_states;
++use wayland_client::protocol::wl_registry::WlRegistry;
++use wayland_client::protocol::wl_surface::WlSurface;
++use wayland_client::{Connection, Dispatch, Proxy as _, QueueHandle};
++
++use super::client::{self, ClientId, LayerConfigureProps};
++use super::Fixture;
++use crate::niri::{DndIcon, LockState};
++use crate::render_helpers::{render_to_vec, RenderCtx, RenderTarget};
++
++const SIZE: (u16, u16) = (32, 24);
++const SESSION_PIXEL: [u8; 4] = [255, 0, 0, 255];
++const LOCK_PIXEL: [u8; 4] = [0, 0, 255, 255];
++const TARGETS: [RenderTarget; 3] = [
++    RenderTarget::Output,
++    RenderTarget::ScreenCapture,
++    RenderTarget::Screencast,
++];
++
++struct LockRegistry;
++
++struct Lock {
++    client: ClientId,
++    lock: ExtSessionLockV1,
++    lock_surface: ExtSessionLockSurfaceV1,
++    surface: WlSurface,
++}
++
++fn fixture() -> Fixture {
++    let config = Config::parse_mem("hotkey-overlay { skip-at-startup; }").unwrap();
++    let mut f = Fixture::with_config(config);
++    f.niri_state().backend.headless().add_renderer().unwrap();
++    f.add_output(1, SIZE);
++    let id = f.add_client();
++    let layer = f.client(id).create_layer(None, Layer::Overlay, "session");
++    let surface = layer.surface.clone();
++    layer.set_configure_props(LayerConfigureProps {
++        anchor: Some(Anchor::Top | Anchor::Left),
++        size: Some((u32::from(SIZE.0), u32::from(SIZE.1))),
++        ..Default::default()
++    });
++    layer.commit();
++    f.roundtrip(id);
++    let layer = f.client(id).layer(&surface);
++    let buffer = layer
++        .spbm
++        .create_u32_rgba_buffer(u32::MAX, 0, 0, u32::MAX, &layer.qh, ());
++    layer.surface.attach(Some(&buffer), 0, 0);
++    layer.set_size(SIZE.0, SIZE.1);
++    layer.ack_last_and_commit();
++    f.double_roundtrip(id);
++    f
++}
++
++fn lock(f: &mut Fixture) -> Lock {
++    let id = f.add_client();
++    f.roundtrip(id);
++    let client = f.client(id);
++    let registry = client.display.get_registry(&client.qh, LockRegistry);
++    let global = client
++        .state
++        .globals
++        .iter()
++        .find(|g| g.interface == ExtSessionLockManagerV1::interface().name)
++        .unwrap();
++    let manager: ExtSessionLockManagerV1 = registry.bind(global.name, 1, &client.qh, ());
++    let locked = Arc::new(AtomicBool::new(false));
++    let lock = manager.lock(&client.qh, locked.clone());
++    let surface = client
++        .state
++        .compositor
++        .as_ref()
++        .unwrap()
++        .create_surface(&client.qh, ());
++    let lock_surface =
++        lock.get_lock_surface(&surface, &client.output("headless-1"), &client.qh, ());
++    let viewport = client
++        .state
++        .viewporter
++        .as_ref()
++        .unwrap()
++        .get_viewport(&surface, &client.qh, ());
++    f.roundtrip(id);
++    let client = f.client(id);
++    let buffer = client.state.spbm.as_ref().unwrap().create_u32_rgba_buffer(
++        0,
++        0,
++        u32::MAX,
++        u32::MAX,
++        &client.qh,
++        (),
++    );
++    viewport.set_destination(i32::from(SIZE.0), i32::from(SIZE.1));
++    surface.attach(Some(&buffer), 0, 0);
++    surface.commit();
++    f.double_roundtrip(id);
++    assert!(f.niri().is_locked());
++    assert!(locked.load(Ordering::Relaxed), "lock was not acknowledged");
++    Lock {
++        client: id,
++        lock,
++        lock_surface,
++        surface,
++    }
++}
++
++fn pixels(f: &mut Fixture, target: RenderTarget) -> Vec<u8> {
++    let output = f.niri_output(1);
++    let state = f.niri_state();
++    state
++        .backend
++        .with_primary_renderer(|renderer| {
++            let elements = state.niri.render_to_vec(
++                RenderCtx {
++                    renderer,
++                    target,
++                    xray: None,
++                    capture_client: None,
++                },
++                &output,
++                false,
++            );
++            render_to_vec(
++                renderer,
++                output.current_mode().unwrap().size,
++                Scale::from(1.),
++                Transform::Normal,
++                Fourcc::Abgr8888,
++                elements.iter().rev(),
++            )
++            .unwrap()
++        })
++        .unwrap()
++}
++
++fn pointer_element_count(f: &mut Fixture) -> usize {
++    let output = f.niri_output(1);
++    let state = f.niri_state();
++    state
++        .backend
++        .with_primary_renderer(|renderer| {
++            let mut count = 0;
++            state
++                .niri
++                .render_pointer(renderer, &output, &mut |_| count += 1);
++            count
++        })
++        .unwrap()
++}
++
++#[test]
++fn egl_lock_without_client_hides_session_elements() {
++    use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
++    use smithay::reexports::wayland_server::{backend::ObjectId, Resource as _};
++
++    let config = Config::parse_mem(
++        r##"hotkey-overlay { skip-at-startup; }
++layout { background-color "#ff0000"; }"##,
++    )
++    .unwrap();
++    let mut f = Fixture::with_config(config);
++    f.niri_state().backend.headless().add_renderer().unwrap();
++    f.add_output(1, SIZE);
++    let session = SESSION_PIXEL.repeat(usize::from(SIZE.0) * usize::from(SIZE.1));
++    for target in TARGETS {
++        assert_eq!(pixels(&mut f, target), session);
++    }
++
++    // A dead resource represents a locked session after its locker has disconnected.
++    // No client connection is needed to exercise the shared rendering path.
++    let lock = ExtSessionLockV1::from_id(&f.niri().display_handle, ObjectId::null()).unwrap();
++    f.niri().lock_state = LockState::Locked(lock.clone());
++    let background = pixels(&mut f, RenderTarget::Output);
++    assert!(background.chunks_exact(4).all(|px| px == &background[..4]));
++    assert_ne!(&background[..4], SESSION_PIXEL);
++
++    f.niri().lock_state = LockState::Unlocked;
++    let state = f.niri_state();
++    state.backend.with_primary_renderer(|renderer| {
++        state.niri.do_screen_transition(renderer, Some(u16::MAX));
++    });
++    f.niri().lock_state = LockState::Locked(lock.clone());
++    for target in TARGETS {
++        assert_eq!(
++            pixels(&mut f, target),
++            background,
++            "cached session transition leaked into {target:?}"
++        );
++    }
++
++    f.niri().config_error_notification.show();
++    f.niri_complete_animations();
++    for target in TARGETS {
++        assert_eq!(
++            pixels(&mut f, target),
++            background,
++            "session notification leaked into {target:?}"
++        );
++    }
++
++    // An exit dialog opened before locking retains focus and must remain visible.
++    f.niri().lock_state = LockState::Unlocked;
++    assert!(f.niri().exit_confirm_dialog.show());
++    f.niri_complete_animations();
++    f.niri().lock_state = LockState::Locked(lock);
++    for target in TARGETS {
++        assert_ne!(
++            pixels(&mut f, target),
++            background,
++            "exit dialog hidden in {target:?}"
++        );
++    }
++}
++
++#[test]
++fn egl_lock_excludes_cached_screen_transition() {
++    let mut f = fixture();
++    let session = SESSION_PIXEL.repeat(usize::from(SIZE.0) * usize::from(SIZE.1));
++    for target in TARGETS {
++        assert_eq!(pixels(&mut f, target), session);
++    }
++    let state = f.niri_state();
++    state.backend.with_primary_renderer(|renderer| {
++        state.niri.do_screen_transition(renderer, Some(u16::MAX));
++    });
++    let lock = lock(&mut f);
++    for target in TARGETS {
++        assert_eq!(
++            pixels(&mut f, target),
++            LOCK_PIXEL.repeat(usize::from(SIZE.0) * usize::from(SIZE.1)),
++            "session transition leaked into {target:?}"
++        );
++    }
++    lock.lock.unlock_and_destroy();
++    f.double_roundtrip(lock.client);
++    assert!(!f.niri().is_locked());
++    for target in TARGETS {
++        assert_eq!(pixels(&mut f, target), session);
++    }
++}
++
++#[test]
++fn egl_lock_without_surface_excludes_session_ui() {
++    let mut f = fixture();
++    let lock = lock(&mut f);
++    lock.lock_surface.destroy();
++    lock.surface.destroy();
++    f.double_roundtrip(lock.client);
++    assert!(f.niri().is_locked());
++    let background = pixels(&mut f, RenderTarget::Output);
++    assert!(background.chunks_exact(4).all(|px| px == &background[..4]));
++    assert_ne!(&background[..4], SESSION_PIXEL);
++    assert_ne!(&background[..4], LOCK_PIXEL);
++    f.niri().config_error_notification.show();
++    f.niri_complete_animations();
++    for target in TARGETS {
++        assert_eq!(pixels(&mut f, target), background);
++    }
++
++    // Quit can also open the dialog after locking; its keyboard focus must be visible.
++    assert!(f.niri().exit_confirm_dialog.show());
++    f.niri_complete_animations();
++    for target in TARGETS {
++        assert_ne!(
++            pixels(&mut f, target),
++            background,
++            "exit dialog hidden in {target:?}"
++        );
++    }
++}
++
++#[test]
++fn egl_lock_excludes_session_pointer_surfaces() {
++    let mut f = fixture();
++    let output = f.niri_output(1);
++    let surface = layer_map_for_output(&output)
++        .layers()
++        .next()
++        .unwrap()
++        .wl_surface()
++        .clone();
++    f.niri()
++        .cursor_manager
++        .set_cursor_image(CursorImageStatus::Hidden);
++    f.niri().dnd_icon = Some(DndIcon {
++        surface: surface.clone(),
++        offset: (0, 0).into(),
++    });
++    assert!(pointer_element_count(&mut f) > 0);
++    let _lock = lock(&mut f);
++    f.niri()
++        .cursor_manager
++        .set_cursor_image(CursorImageStatus::Hidden);
++    assert_eq!(pointer_element_count(&mut f), 0);
++    // A session client may still try to update its cursor after the lock starts.
++    f.niri().dnd_icon = None;
++    with_states(&surface, |states| {
++        states
++            .data_map
++            .insert_if_missing(CursorImageSurfaceData::default);
++    });
++    f.niri()
++        .cursor_manager
++        .set_cursor_image(CursorImageStatus::Surface(surface));
++    assert_eq!(pointer_element_count(&mut f), 0);
++}
++
++wayland_client::delegate_noop!(client::State: ignore ExtSessionLockManagerV1);
++
++impl Dispatch<WlRegistry, LockRegistry> for client::State {
++    fn event(
++        _state: &mut Self,
++        _proxy: &WlRegistry,
++        _event: <WlRegistry as wayland_client::Proxy>::Event,
++        _data: &LockRegistry,
++        _conn: &Connection,
++        _qh: &QueueHandle<Self>,
++    ) {
++    }
++}
++
++impl Dispatch<ExtSessionLockV1, Arc<AtomicBool>> for client::State {
++    fn event(
++        _state: &mut Self,
++        _proxy: &ExtSessionLockV1,
++        event: ext_session_lock_v1::Event,
++        data: &Arc<AtomicBool>,
++        _conn: &Connection,
++        _qh: &QueueHandle<Self>,
++    ) {
++        match event {
++            ext_session_lock_v1::Event::Locked => data.store(true, Ordering::Relaxed),
++            ext_session_lock_v1::Event::Finished => panic!("session lock refused"),
++            _ => (),
++        }
++    }
++}
++
++impl Dispatch<ExtSessionLockSurfaceV1, ()> for client::State {
++    fn event(
++        _state: &mut Self,
++        proxy: &ExtSessionLockSurfaceV1,
++        event: ext_session_lock_surface_v1::Event,
++        _data: &(),
++        _conn: &Connection,
++        _qh: &QueueHandle<Self>,
++    ) {
++        if let ext_session_lock_surface_v1::Event::Configure { serial, .. } = event {
++            proxy.ack_configure(serial);
++        }
++    }
++}

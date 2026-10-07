@@ -13,6 +13,7 @@ patched='  OS="${GRUB_DISTRIBUTOR}"'
 if ! grep -Fxq -- "$original" "$target"; then
     if ! grep -Fxq -- "$patched" "$target"; then
         printf 'emaki-grub-title: WARNING: expected OS line absent in %s; left unchanged.\n' "$target" >&2
+        exit 1
     fi
     exit 0
 fi

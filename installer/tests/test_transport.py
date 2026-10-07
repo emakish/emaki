@@ -1,4 +1,6 @@
 import asyncio
+import errno
+import socket
 import os
 from pathlib import Path
 import tempfile
@@ -14,7 +16,7 @@ from support import FakeInventory, config
 
 class TransportCases:
     async def asyncSetUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix='emi-')
+        self.temp = tempfile.TemporaryDirectory(prefix='emi-', dir='/tmp')
         self.path = str(Path(self.temp.name) / 'sock')
         self.controller = Controller(FakeInventory(), None)
         self.handler = Server(self.controller, os.getgid())
@@ -113,10 +115,64 @@ class TransportCases:
         self.assertEqual([m['line'] for m in messages if m['type'] == 'log'], [f'long-{i}' for i in range(2200)])
 
 
-@unittest.skipUnless(os.environ.get('EMAKI_TEST_UNIX_SOCKET') == '1',
-                     'Set EMAKI_TEST_UNIX_SOCKET=1 where AF_UNIX bind is permitted')
+def require_unix_socket():
+    """Skip only when the host denies the real transport's required facility."""
+    if not hasattr(socket, 'AF_UNIX') or not hasattr(socket, 'SO_PEERCRED'):
+        raise unittest.SkipTest('Real installer socket unavailable: AF_UNIX and SO_PEERCRED are required')
+    try:
+        with tempfile.TemporaryDirectory(prefix='emi-probe-', dir='/tmp') as temporary:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+                probe.bind(str(Path(temporary) / 'sock'))
+                probe.listen(1)
+    except OSError as error:
+        if error.errno == errno.ENAMETOOLONG or 'AF_UNIX path too long' in str(error):
+            raise AssertionError('Real installer socket unavailable: shorten TMPDIR (AF_UNIX path limit)') from error
+        if error.errno not in {errno.EPERM, errno.EACCES, errno.EAFNOSUPPORT,
+                               errno.EPROTONOSUPPORT, errno.ENOSYS}:
+            raise
+        raise unittest.SkipTest(f'Real installer socket unavailable: AF_UNIX bind/listen: {error}') from error
+
+
 class SocketTests(TransportCases, unittest.IsolatedAsyncioTestCase):
-    pass
+    @classmethod
+    def setUpClass(cls):
+        require_unix_socket()
+
+
+class SocketAvailabilityTests(unittest.TestCase):
+    def test_probe_path_ignores_inherited_temp_directory(self):
+        long_path = str(Path(__file__).resolve().parent / ('long-checkout-' * 12))
+        with patch.object(tempfile, 'tempdir', long_path), patch('socket.socket') as factory:
+            require_unix_socket()
+        path = Path(factory.return_value.__enter__.return_value.bind.call_args.args[0])
+        self.assertEqual(path.parent.parent, Path('/tmp'))
+        self.assertLess(len(os.fsencode(path)), 108)
+        self.assertFalse(path.parent.exists())
+
+    def test_supported_host_runs_without_opt_in(self):
+        with patch.dict(os.environ, {}, clear=True), patch('socket.socket') as factory:
+            SocketTests.setUpClass()
+            self.assertFalse(getattr(SocketTests, '__unittest_skip__', False))
+        factory.return_value.__enter__.return_value.bind.assert_called_once()
+        factory.return_value.__enter__.return_value.listen.assert_called_once_with(1)
+
+    def test_denied_host_reports_the_actual_reason(self):
+        for number in (errno.EPERM, errno.EACCES, errno.EAFNOSUPPORT):
+            with self.subTest(number=number), patch('socket.socket', side_effect=OSError(number, 'denied')):
+                with self.assertRaisesRegex(unittest.SkipTest, 'AF_UNIX bind/listen:.*denied'):
+                    require_unix_socket()
+
+    def test_unexpected_socket_failure_is_not_skipped(self):
+        with patch('socket.socket', side_effect=OSError(errno.EMFILE, 'too many files')):
+            with self.assertRaises(OSError):
+                require_unix_socket()
+
+    def test_long_socket_path_reports_how_to_fix_it(self):
+        for error in (OSError('AF_UNIX path too long'), OSError(errno.ENAMETOOLONG, 'path too long')):
+            with self.subTest(error=error), patch('socket.socket') as factory:
+                factory.return_value.__enter__.return_value.bind.side_effect = error
+                with self.assertRaisesRegex(AssertionError, r'shorten TMPDIR \(AF_UNIX path limit\)'):
+                    require_unix_socket()
 
 
 class MemoryTransportTests(TransportCases, unittest.IsolatedAsyncioTestCase):

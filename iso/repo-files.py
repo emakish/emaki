@@ -8,6 +8,7 @@ substitute for carrying each package's original detached signature.
 import argparse
 import base64
 from pathlib import Path
+import shutil
 import subprocess
 import tarfile
 
@@ -21,7 +22,7 @@ def records(database):
                        if (lines := field.strip().splitlines()) and len(lines) > 1}
 
 
-def check_input(repo, names):
+def check_input(repo, names, verify=True):
     database = repo / 'emaki.db'
     if not database.is_file():
         raise ValueError(f'missing {database}')
@@ -35,7 +36,8 @@ def check_input(repo, names):
         package = repo / filename
         if not package.is_file() or not Path(str(package) + '.sig').is_file():
             raise ValueError(f'missing package or detached signature: {package}')
-        subprocess.run(['pacman-key', '--verify', str(package) + '.sig', str(package)], check=True)
+        if verify:
+            subprocess.run(['pacman-key', '--verify', str(package) + '.sig', str(package)], check=True)
 
 
 def check_closure(manifest):
@@ -66,6 +68,50 @@ def signatures(cache, db):
     print(f'OK: {len(packages)} signed offline packages')
 
 
+def stage(cache, manifest, db, destination):
+    """Copy only the transaction into a new repository, leaving the cache intact."""
+    names = manifest.read_text().splitlines()
+    if not names or len(names) != len(set(names)) or any(
+            Path(name).name != name or not name.endswith('.pkg.tar.zst') for name in names):
+        raise ValueError('unexpected package transaction manifest')
+    if destination.exists() or destination.is_symlink():
+        raise ValueError(f'repository staging path already exists: {destination}')
+    # Reject missing input before creating the stage, including symlinks to external files.
+    for name in names:
+        package = cache / name
+        if package.is_symlink() or not package.is_file():
+            raise ValueError(f'missing or unsafe downloaded package: {name}')
+        signature = cache / (name + '.sig')
+        if signature.is_symlink():
+            raise ValueError(f'unsafe detached signature: {name}')
+    destination.mkdir()
+    try:
+        for name in names:
+            shutil.copyfile(cache / name, destination / name)
+            signature = cache / (name + '.sig')
+            if signature.is_file():
+                shutil.copyfile(signature, destination / signature.name)
+        signatures(destination, db)
+    except Exception:
+        shutil.rmtree(destination)
+        raise
+
+
+def prune(cache, manifest):
+    """Keep only the resolved transaction and its signatures in the download cache."""
+    names = manifest.read_text().splitlines()
+    if not names or len(names) != len(set(names)) or any(
+            Path(name).name != name or not name.endswith('.pkg.tar.zst') for name in names):
+        raise ValueError('unexpected package transaction manifest')
+    # Do not discard reusable downloads when the current transaction is incomplete.
+    if any(not (cache / name).is_file() or (cache / name).is_symlink() for name in names):
+        raise ValueError('incomplete or unsafe downloaded transaction')
+    keep = set(names) | {name + '.sig' for name in names}
+    for path in cache.iterdir():
+        if path.name.endswith(('.pkg.tar.zst', '.pkg.tar.zst.sig')) and path.name not in keep:
+            path.unlink()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='action', required=True)
@@ -77,11 +123,21 @@ def main():
     sigs = sub.add_parser('signatures')
     sigs.add_argument('cache', type=Path)
     sigs.add_argument('db', type=Path)
+    staged = sub.add_parser('stage')
+    for name in ('cache', 'manifest', 'db', 'destination'):
+        staged.add_argument(name, type=Path)
+    pruned = sub.add_parser('prune')
+    pruned.add_argument('cache', type=Path)
+    pruned.add_argument('manifest', type=Path)
     args = parser.parse_args()
     if args.action == 'check-input':
         check_input(args.repo, args.names)
     elif args.action == 'check-closure':
         check_closure(args.manifest)
+    elif args.action == 'prune':
+        prune(args.cache, args.manifest)
+    elif args.action == 'stage':
+        stage(args.cache, args.manifest, args.db, args.destination)
     else:
         signatures(args.cache, args.db)
 

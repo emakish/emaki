@@ -1,4 +1,4 @@
-# Emaki 0.2.0 packages
+# Emaki 0.3.0 packages
 
 Copyright (C) 2026 Artur Yakymenko. Emaki packaging is GPL-3.0-or-later;
 the Quickshell fork retains its upstream LGPL-3.0-only license.
@@ -80,11 +80,12 @@ resume and a second suspend, plus logind restart recovery.
 `emaki-keyring` installs the public signing key and trust/revocation lists;
 its install/upgrade hook runs `pacman-key --populate emaki`. The installer
 initializes pacman's keyring first. Add `[emaki]` to pacman.conf with
-`Include = /etc/pacman.d/emaki-mirrorlist`. The mirrorlist (`emaki-mirrorlist`)
-defaults to `https://pkgs.emaki.sh/stable/$arch`; switch its single active
-server to the commented `https://pkgs.emaki.sh/testing/$arch` for that channel,
-then run `sudo pacman -Syyu` once. The package-owned `/usr/lib/emaki-release`
-describes the default release channel.
+`Include = /etc/pacman.d/emaki-mirrorlist`. The mirror list includes `/etc/emaki/channel` [channel selector].
+This file selects `/usr/share/emaki/mirrors/stable.conf` by default; select
+`testing.conf` and run `sudo pacman -Syyu` once to switch [update channel].
+The package creates the selector once and never replaces it [emaki-mirrorlist].
+Run `emaki-update-channel` to read the effective update source [update channel].
+`/usr/lib/emaki-release` records the release version and label [release metadata].
 
 Local checks: `make build`, `make check`, `python3 tests/test-packaging.py`.
 The packaging tests stage into a temporary root, reject any host package or
@@ -113,3 +114,25 @@ the new package before building. `scripts/check-arch-apps.py` checks current Arc
 core/extra names and records API package sizes in `emaki-apps/arch-packages.json`.
 Its size calculation is an estimate; `iso/build.sh` resolves the complete transaction
 with pacman and checks it again with only the offline repository available.
+
+
+### Optional NVIDIA policy and offline inputs
+
+`emaki-nvidia` is built with the release packages but is not a desktop metapackage
+dependency. The installer selects it for Turing and newer NVIDIA hardware only.
+It archives its shared detector from `installer/emaki_installer/graphics.py` and
+ships configuration, session policy, module checks, an application profile and notices.
+
+Only `emaki-nvidia` must come from the signed Emaki input repository. All driver
+packages come from the official Arch repositories at the pinned ISO snapshot:
+`nvidia-open`, `nvidia-open-lts`, `nvidia-open-dkms`, `nvidia-utils`,
+`libva-nvidia-driver`, DKMS and the two kernel headers. Installed systems receive
+these packages through normal Arch updates. No legacy proprietary driver is seeded.
+
+`iso/nvidia-seeds.py` selects prebuilt modules when both kernels are available,
+otherwise DKMS with both sets of headers. It repeats the selected transaction
+against only the staged target repository with a fresh database and empty cache. Missing inputs
+or unresolved dependencies fail the build. Prebuilt modules need no DKMS build;
+the fallback uses DKMS for both installed kernels and checks module availability
+before installation completes. Custom kernels are not selected by the installer;
+manual custom-kernel use needs matching headers and a successful DKMS build.
