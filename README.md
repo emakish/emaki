@@ -53,6 +53,10 @@ Beta here is the stage of Emaki as a whole, not a pre-release: every new version
 
 ## The ISO
 
+Download: https://dl.emaki.sh/iso/0.3.1/emaki-0.3.1-x86_64.iso (5.0 GB). Its checksum and
+signature are at the same address with `.sha256` and `.sig` added; the key that signed it is
+https://dl.emaki.sh/iso/0.3.1/emaki-signing-key.asc.
+
 `emaki-0.3.1-x86_64.iso` boots into a live Emaki session with the installer open. Emaki
 needs a computer with 64-bit UEFI; legacy BIOS computers are refused by the installer. If
 Windows on the computer uses BitLocker or device encryption, save its recovery key first:
@@ -100,8 +104,6 @@ Installed Emaki on another machine? Reports are welcome in the issues.
 
 ### Known issues in 0.3.1
 
-- The 0.3.1 image is not published yet. Install from the 0.3.0 image and update the whole system
-  with `sudo pacman -Syu`; that update brings 0.3.1.
 - Hibernation: on the tested MacBook the session does not respond after resuming. Do not use
   hibernation.
 - Wi-Fi joined in the installer has to be joined again after installing.
