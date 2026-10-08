@@ -1,10 +1,15 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Keep the KWallet API for KDE applications, backed by the login keyring.
-[KSecretD]
-Enabled=false
+# Native KWallet provides KDE passwords, Secret Service and the Secret portal.
+[Wallet]
+Enabled=true
 
-# The login service enables one bounded migration attempt in a private overlay.
-# Ordinary daemon starts do not repeat an attempt after cancellation.
+[KSecretD]
+Enabled=true
+
+[org.freedesktop.secrets]
+apiEnabled=true
+
+# Never export existing KDE wallets into a third-party service at login.
 [Migration]
 MigrateTo3rdParty=false

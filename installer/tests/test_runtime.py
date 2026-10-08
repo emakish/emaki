@@ -7,10 +7,12 @@ import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from emaki_installer.errors import InstallError
-from emaki_installer.runtime import Redactor, Runner, TargetFiles, cleanup, mounts_under, stop_target_processes
+from emaki_installer.runtime import (
+    Redactor, Runner, TargetFiles, cleanup, command_process, mounts_under, stop_target_processes,
+)
 from support import RecordingRunner
 
 
@@ -93,6 +95,46 @@ class RuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(InstallError, 'sh timed out'):
             Runner(lambda line: None).run(['sh', '-c', 'exec >/dev/null 2>&1; sleep 5'], timeout=1)
         self.assertLess(time.monotonic() - started, 4)
+
+    def test_restart_timeout_has_one_small_cleanup_budget(self):
+        logs = []
+        started = time.monotonic()
+        with self.assertRaisesRegex(InstallError, 'timed out'):
+            Runner(logs.append).run(
+                [sys.executable, '-c',
+                 'import os, signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); '
+                 'print(os.getpid(), flush=True); time.sleep(60)'],
+                timeout=0.3, termination_timeout=0.3)
+        self.assertLess(time.monotonic() - started, 1.5)
+        child = int(next(line for line in logs if line.isdigit()))
+        self.addCleanup(self.kill_quietly, child)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(child, 0)
+
+    def test_unreapable_restart_child_never_enters_blocking_context(self):
+        process = Mock(pid=123456789, stdin=None, stdout=None, stderr=None)
+        process.poll.return_value = None
+        started = time.monotonic()
+        with patch('emaki_installer.runtime.subprocess.Popen', return_value=process), \
+                patch('emaki_installer.runtime.os.killpg') as killpg:
+            with self.assertRaisesRegex(RuntimeError, 'deadline'):
+                with command_process(['unused'], termination_timeout=0.05):
+                    raise RuntimeError('deadline')
+        self.assertLess(time.monotonic() - started, 0.5)
+        self.assertEqual(killpg.call_args_list[0].args, (process.pid, signal.SIGTERM))
+        self.assertEqual(killpg.call_args_list[1].args, (process.pid, signal.SIGKILL))
+        process.wait.assert_not_called()
+
+    def test_restart_cleanup_kills_descendants_even_if_leader_has_exited(self):
+        process = Mock(pid=123456789, stdin=None, stdout=None, stderr=None)
+        process.poll.return_value = 0
+        with patch('emaki_installer.runtime.subprocess.Popen', return_value=process), \
+                patch('emaki_installer.runtime.os.killpg') as killpg:
+            with self.assertRaises(RuntimeError):
+                with command_process(['unused'], termination_timeout=0.01):
+                    raise RuntimeError('deadline')
+        self.assertIn((process.pid, signal.SIGKILL), [call.args for call in killpg.call_args_list])
+        process.wait.assert_not_called()
 
     @staticmethod
     def kill_quietly(pid):

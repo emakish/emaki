@@ -128,6 +128,77 @@ class ResumeContinuity(unittest.TestCase):
         self.assertIn('timed out', record['error'])
         self.assertEqual(record['samples'][0]['identity'], self.before)
 
+    def test_inactive_resume_display_is_not_tested_after_continuity(self):
+        output = self.evidence.parent / 'resume.png'
+        words = [{'text': 'Display output is not active.'}]
+        events = []
+        def capture(label):
+            self.assertEqual(json.loads(self.evidence.read_text())['status'], 'PASS')
+            events.append(label)
+            return output
+        original = CHECK.observe_resume
+        def observed(before, probe, evidence):
+            events.append('continuity')
+            original(before, probe, evidence, clock=lambda: self.now, sleep=self.sleep)
+        with patch.object(CHECK, 'observe_resume', side_effect=observed), \
+                patch.object(CHECK.frames, 'read_words', return_value=words), \
+                patch.object(CHECK, 'assess_frame') as assess:
+            visual = CHECK.complete_resume(self.before, lambda: self.before, capture, self.evidence)
+        self.assertEqual(events, ['continuity', 'resume-after-observation'])
+        self.assertEqual(visual['status'], 'NOT TESTED')
+        self.assertEqual(json.loads(output.with_suffix('.assessment.json').read_text()), visual)
+        assess.assert_not_called()
+
+    def test_unknown_resume_frame_still_fails_and_retains_continuity(self):
+        original = CHECK.observe_resume
+        with patch.object(CHECK, 'observe_resume', side_effect=lambda before, probe, evidence:
+                          original(before, probe, evidence, clock=lambda: self.now, sleep=self.sleep)), \
+                patch.object(CHECK.frames, 'read_words', return_value=[{'text': 'boot error'}]), \
+                patch.object(CHECK, 'assess_frame', side_effect=RuntimeError('wrong screen')):
+            with self.assertRaisesRegex(RuntimeError, 'wrong screen'):
+                CHECK.complete_resume(self.before, lambda: self.before,
+                                      lambda label: self.evidence.parent / 'resume.png', self.evidence)
+        self.assertEqual(json.loads(self.evidence.read_text())['status'], 'PASS')
+
+    def test_resume_unlock_defers_greeter_assessment(self):
+        tree = ast.parse(Path(CHECK.__file__).read_text())
+        main = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'main')
+        unlock = next(node for node in main.body if isinstance(node, ast.FunctionDef) and node.name == 'unlock')
+        import types
+        assessed = []
+        namespace = dict(CHECK.__dict__, vm=self.evidence.parent, user='fixture', disk_password='fixture',
+                         time=types.SimpleNamespace(sleep=lambda seconds: None),
+                         monitor=types.SimpleNamespace(command=lambda *args: None),
+                         type_text=lambda text: None, capture=lambda label: label,
+                         assess_frame=lambda *args, **kwargs: assessed.append((args, kwargs)),
+                         run=lambda *args, **kwargs: types.SimpleNamespace(returncode=0, stdout=b'', stderr=b''))
+        exec(compile(ast.Module(body=[unlock], type_ignores=[]), '<unlock>', 'exec'), namespace)
+        namespace['unlock']('resume', assess_greeter=False)
+        self.assertEqual(assessed, [(('resume-prompt', 'prompt'), {})])
+        assessed.clear()
+        namespace['unlock']('snapshot', {'indices': [2, 2, 1]})
+        menu_rows = [(args, kwargs) for args, kwargs in assessed if args[1] == 'menu']
+        self.assertEqual(menu_rows, [(('snapshot-menu', 'menu'), {}),
+                                    (('snapshot-menu-0', 'menu'), {'selected_index': 2}),
+                                    (('snapshot-menu-1', 'menu'), {'selected_index': 2}),
+                                    (('snapshot-menu-2', 'menu'), {'selected_index': 1})])
+
+    def test_inactive_result_has_no_pass_marker(self):
+        tree = ast.parse(Path(CHECK.__file__).read_text())
+        main = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'main')
+        cleanup = next(node for node in main.body if isinstance(node, ast.Try) and node.finalbody)
+        outcome = next(node for node in cleanup.body if isinstance(node, ast.If)
+                       and ast.unparse(node.test) == "visual['status'] == 'NOT TESTED'")
+        following = cleanup.body[cleanup.body.index(outcome) + 1]
+        namespace = dict(CHECK.__dict__, vm=self.evidence.parent,
+                         visual={'status': 'NOT TESTED'}, iso_record='ISO: fixture\n')
+        code = compile(ast.Module(body=[outcome, following], type_ignores=[]), '<result>', 'exec')
+        with self.assertRaises(SystemExit) as result:
+            exec(code, namespace)
+        self.assertEqual(result.exception.code, 77)
+        self.assertTrue((self.evidence.parent / 'NOT-TESTED').exists())
+        self.assertFalse((self.evidence.parent / 'PASS').exists())
+
 
 class SnapshotMenuSelection(unittest.TestCase):
     MAIN = """function load_video {
@@ -166,7 +237,8 @@ submenu '| latest | 42 |' {
 
     def test_real_sibling_indices_include_headers_but_not_nested_main_entries(self):
         selected = CHECK.snapshot_selection(self.MAIN, self.SNAPSHOTS)
-        self.assertEqual(selected, {'indices': [2, 2, 1], 'snapshot': '42', 'title': 'Linux'})
+        self.assertEqual(selected, {'indices': [2, 2, 1], 'snapshot': '42', 'title': 'Linux',
+                                    'titles': ['Recovery snapshots', '| latest | 42 |', 'Linux']})
         commands, frames = [], []
         CHECK.select_snapshot_menu(selected, commands.append, frames.append, sleep=lambda _: None)
         self.assertEqual(commands, ['sendkey home', 'sendkey down', 'sendkey down', 'sendkey ret',

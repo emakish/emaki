@@ -127,7 +127,7 @@ Scope {
             app: (n.appName || "Application").slice(0, 128),
             // Pairing confirmation, authorization and displayed PINs use persistent
             // blueman notices. Match protocol fields, not translated summaries.
-            critical: n.appName === "blueman" && n.appIcon === "blueman" && n.expireTimeout === 0,
+            critical: (n.appName === "blueman" && n.appIcon === "blueman" && n.expireTimeout === 0) || (n.appName === "Desktop update" && n.summary === "Sign out and sign in again to finish updating the desktop."),
             // The app's icon for the panel's row: the one it sent, else its desktop entry's.
             // Memory only: not saved with the history (a sent icon may be a private path).
             icon: String(n.appIcon || (n.desktopEntry ? DesktopEntries.byId(n.desktopEntry)?.icon ?? "" : "")).slice(0, 1024),
@@ -144,6 +144,12 @@ Scope {
     }
     function accept(n: var): void {
         n.tracked = true;
+        // The transaction hook also reaches shells that predate the observer.
+        // Both captured and installed-file panels have their own critical notice.
+        if ((Quickshell.env("EMAKI_SESSION_GENERATION") || (Quickshell.env("EMAKI_SESSION_SOURCE") && Quickshell.env("EMAKI_SESSION_WATCHER")) || Quickshell.env("EMAKI_LIVE_SESSION") === "1") && n.appName === "Desktop update" && n.summary === "Sign out and sign in again to finish updating the desktop.") {
+            n.dismiss();
+            return;
+        }
         const id = n.id;
         entries = [snapshot(n, Date.now())].concat(entries);
         function update() {
@@ -173,16 +179,17 @@ Scope {
     property int systemId: -1
     // A notice from the shell itself (no D-Bus object): negative IDs, no actions.
     function local(app: string, summary: string, body: string): int {
-        return localNotice(app, summary, body, false);
+        return localNotice(app, summary, body, false, false);
     }
-    function localNotice(app: string, summary: string, body: string, batteryWarning: bool): int {
+    function localNotice(app: string, summary: string, body: string, batteryWarning: bool, sessionUpdate: bool): int {
         const id = systemId--;
         entries = [
             {
                 id: id,
                 app: app.slice(0, 128),
-                critical: batteryWarning,
+                critical: batteryWarning || sessionUpdate,
                 batteryWarning: batteryWarning,
+                sessionUpdate: sessionUpdate,
                 summary: summary.slice(0, 512),
                 body: body.slice(0, 4096),
                 time: Date.now(),
@@ -197,7 +204,7 @@ Scope {
         return id;
     }
     function systemBattery(percent: int): void {
-        localNotice(percent <= 5 ? "Battery critical" : "Battery low", percent + "% left — plug in soon.", "", true);
+        localNotice(percent <= 5 ? "Battery critical" : "Battery low", percent + "% left — plug in soon.", "", true, false);
     }
     // The sleep guard's policy names (scripts/emaki-sleep-guard). Only what the policy is
     // known to have done: the guard does not report whether its second attempt locked.

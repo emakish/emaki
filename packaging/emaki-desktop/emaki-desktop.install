@@ -3,23 +3,45 @@
 # shellcheck shell=bash
 
 post_upgrade() {
-    # Include machines that already passed through 0.1.2 or 0.2.0 without this notice.
-    (( $(vercmp "$2" '0.2.0-2') < 0 )) || return 0
+    (( $(vercmp "$2" '0.3.1-1') < 0 )) || return 0
 
     local orphans package
     local -a leftovers=()
-    orphans=$(pacman -Qdtq 2>/dev/null) || return 0
+    orphans=$(pacman -Qdtq 2>/dev/null) || orphans=''
+    # Include machines that already passed through 0.1.2 or 0.2.0 without this notice.
+    if (( $(vercmp "$2" '0.2.0-2') < 0 )); then
+        for package in $orphans; do
+            case "$package" in
+                nautilus|loupe|file-roller|papers) leftovers+=("$package") ;;
+            esac
+        done
+        if ((${#leftovers[@]})); then
+            printf 'Optional cleanup: unused applications from earlier Emaki releases remain installed:\n'
+            printf '  %s\n' "${leftovers[*]}"
+            printf 'If you no longer use them, review the removal transaction before confirming:\n'
+            printf '  pacman -R'
+            printf ' %s' "${leftovers[@]}"
+            printf '\n'
+            printf 'The desktop portal is required [xdg-desktop-portal-gnome].\n'
+        fi
+    fi
+
     for package in $orphans; do
-        case "$package" in
-            nautilus|loupe|file-roller|papers) leftovers+=("$package") ;;
-        esac
+        if [[ "$package" == polkit-gnome ]]; then
+            printf 'Optional cleanup: the old authorization agent is no longer required.\n'
+            printf 'If you no longer use it, review the removal transaction before confirming:\n'
+            printf '  pacman -R polkit-gnome\n'
+        fi
     done
-    ((${#leftovers[@]})) || return 0
-    printf 'Optional cleanup: unused applications from earlier Emaki releases remain installed:\n'
-    printf '  %s\n' "${leftovers[*]}"
-    printf 'If you no longer use them, review the removal transaction before confirming:\n'
-    printf '  pacman -R'
-    printf ' %s' "${leftovers[@]}"
-    printf '\n'
-    printf 'The desktop portal is required [xdg-desktop-portal-gnome].\n'
+    if pacman -Qq gnome-keyring >/dev/null 2>&1; then
+        printf 'Emaki now uses the password wallet [KWallet]. Your old keyring files are untouched.\n'
+        printf 'Saved passwords and application master keys are copied at the first graphical login.\n'
+        printf 'A failed copy does not stop login; the login notice lists what still needs recovery.\n'
+        printf 'Keep the old password service [gnome-keyring] until every account has copied and verified all its secrets.\n'
+        printf 'To retry failed items or unlock other collections, run: emaki-keyring-recover\n'
+        printf 'Only after every account has verified its copies may an administrator review this removal transaction:\n'
+        printf '  pacman -R gnome-keyring\n'
+        printf 'Do not remove the old password service [gnome-keyring] while any account still needs its old secrets.\n'
+    fi
+    return 0
 }

@@ -527,57 +527,94 @@ headers or signatures remain unchanged in 6.12. Compile and runtime validation
 against extra-testing remain release gates; do not remove the fences based on
 this source audit alone.
 
-#### Activate on the host, then build the reviewed commit in the disposable VM
+#### Current mirror audit and clean-chroot rehearsal (2026-10-07)
 
-On the host, start with a clean checkout on a release preparation branch. Stage
-activation and verify the recipe, patch checksums, Qt fences and marker pin:
+The [extra database](https://geo.mirror.pkgbuild.com/extra/os/x86_64/extra.db)
+and [extra-testing database](https://geo.mirror.pkgbuild.com/extra-testing/os/x86_64/extra-testing.db)
+were read again on October 7 before the stable move; this table is historical
+rehearsal evidence. Recheck the selected mirror for the current stable versions:
 
-```sh
-python3 packaging/activate-qt612.py
-python3 tests/test-packaging.py
-git add packaging/quickshell-emaki/PKGBUILD packaging/quickshell-emaki/0003-qt-6.12-moc-includes.patch packaging/emaki/PKGBUILD
-git commit -m 'Build Quickshell against Qt 6.12'
-```
+| Package | extra | extra-testing |
+|---|---|---|
+| qt6-base | 6.11.2-3 | 6.12.0-2 |
+| qt6-declarative | 6.11.2-2 | 6.12.0-1 |
+| qt6-svg | 6.11.2-1 | 6.12.0-1 |
+| qt6-shadertools | 6.11.2-1 | 6.12.0-1 |
+| qt6-wayland | 6.11.2-1 | 6.12.0-1 |
 
-The helper copies the candidate recipe and patch 0003, increments the active
-`pkgrel`, and changes the `emaki` marker pin to that version. Repeated activation
-is idempotent. The packaging tests exercise activation
-in a temporary tree as well as checking the current active recipe. Have the
-activation commit reviewed and made available through the normal release
-process before any VM build. Record its full commit hash as `REVIEWED_COMMIT`.
+The retrieved v0.3.1 archive still hashes to
+`d60592622f1aa1cbb853d4814f605dfde827bc692befbfecffaccf4c90e352d8`.
+All three local patch checksums match the recipe; sequential `patch --fuzz=0 -Np1`
+applies without offsets. Patch 0003's source changes still match all 15 source
+files in the upstream commit linked above. No checksum replacement is needed.
+The extra-testing file manifest puts `Qt6WaylandClient` and its private headers
+in **qt6-base**; no new qt6-wayland dependency is needed. The staged recipe now
+fences SVG and ShaderTools too and checks Core, QML, SVG, ShaderTools and
+WaylandClient against `_qtver=6.12.0`. Package release suffixes are Arch rebuilds,
+not pkg-config versions. The active recipe and its versions remain unchanged.
 
-In the disposable VM, fetch that reviewed commit and check it out without local
-changes; do not create or amend a commit in the VM. The release engineer enables
-`[core-testing]` and `[extra-testing]` above their stable counterparts and
-performs a full VM upgrade first. Confirm Qt base, declarative, wayland, svg and
-shadertools all belong to the 6.12 series. As the unprivileged build user:
+Run the following **only in the disposable build VM**, from a clean reviewed
+checkout, as its build user. Install `devtools` in that VM first. Privileged
+commands below create only the disposable chroot. The VM's installed Qt is not
+used by this rehearsal. The candidate still has a placeholder release: keep
+these artifacts offline and never sign or publish them.
 
-```sh
-# Set REVIEWED_COMMIT to the full hash approved on the host.
-: "${REVIEWED_COMMIT:?Set the reviewed activation commit hash}"
-git checkout --detach "$REVIEWED_COMMIT"
-test "$(git rev-parse HEAD)" = "$REVIEWED_COMMIT"
+```bash
+set -euo pipefail
+checkout=$PWD
 test -z "$(git status --porcelain)"
-python3 tests/test-packaging.py
-pacman -Q qt6-base qt6-declarative qt6-wayland qt6-svg qt6-shadertools cmake
-packaging/build.sh --only quickshell-emaki --out /tmp/emaki-qt612-out
+mkdir -p "$checkout/.cache/evidence"
+job=$(mktemp -d "$checkout/.cache/evidence/qt612-build.XXXXXX")
+mkdir -p "$job/quickshell-emaki" "$job/chroot"
+cp packaging/quickshell-emaki/qt-6.12/PKGBUILD "$job/quickshell-emaki/"
+cp packaging/quickshell-emaki/000[12]-*.patch "$job/quickshell-emaki/"
+cp packaging/quickshell-emaki/qt-6.12/0003-*.patch "$job/quickshell-emaki/"
+git rev-parse HEAD > "$job/source-commit"
+cat > "$job/pacman.conf" <<'CONF'
+[options]
+Architecture = auto
+SigLevel = Required DatabaseOptional
+[core-testing]
+Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch
+[extra-testing]
+Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch
+[core]
+Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch
+[extra]
+Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch
+CONF
+sudo mkarchroot -C "$job/pacman.conf" "$job/chroot/root" base-devel
+cd "$job/quickshell-emaki"
+makepkg --verifysource 2>&1 | tee "$job/source-check.log"
+makechrootpkg -c -u -r "$job/chroot" -l qt612 2>&1 | tee "$job/build.log"
+for package in quickshell-emaki-*.pkg.tar.zst; do
+    bsdtar -xOf "$package" .PKGINFO > "$job/$package.PKGINFO"
+    bsdtar -xOf "$package" .BUILDINFO > "$job/$package.BUILDINFO"
+done
+sudo arch-nspawn "$job/chroot/qt612" pacman -Q \
+    qt6-base qt6-declarative qt6-svg qt6-shadertools cmake > "$job/installed.txt"
+cd "$checkout"
 ```
 
-The recorded `BUILDINFO` source commit must equal `REVIEWED_COMMIT`. The marker
-package must also be rebuilt from that commit for the switch-day repository so
-its exact Quickshell pin selects release 3.
+Confirm the installed list and package `.BUILDINFO` record the testing versions above; inspect `.PKGINFO`
+for both base/QML bounds and `emaki-quickshell-qt-build=6.12.0`. If the mirror
+has moved to a later Qt patch release, stop and update `_qtver` and all staged
+lower bounds before rebuilding. Do not downgrade individual dependencies.
+The [makechrootpkg manual](https://man.archlinux.org/man/makechrootpkg.1)
+describes the clean working copy and dependency installation. Both testing
+repositories are explicitly enabled above; no host Qt packages are injected.
 
-The output directory must be absent or empty. Inspect the resulting package's
-`.PKGINFO` fences and `.BUILDINFO` Qt versions, keep the build log and `BUILDINFO`,
-and test the installed package in the VM. In a separate source build with the
-same three patches, enable `-D BUILD_TESTING=ON`; run
-`ctest --test-dir build -R connectionfailure --output-on-failure`. The existing
-`popupwindow` offscreen baseline failure is documented above. Exercise actual
-niri capture and greeter/shell/lock startup on Qt 6.12; the source-only checks
-performed here cannot establish those results. Follow “A fenced dependency
-moved” in `docs/updates-runbook.md` for switch-day testing publication,
-acceptance, and stable promotion. No package build or publication was performed
-as part of this preparation.
+The rehearsal is a compile gate, not acceptance or a publishable source bundle.
+Prepare and review activation before switch day using `docs/updates-runbook.md`,
+“Qt 6.12 day zero”; after the stable move, recheck the release numbers and build
+the release bundle in a fresh stable VM as that procedure requires. The supported release builder
+archives prepared sources before compiling and produces `SOURCES.json` and
+`BUILDINFO`; a bare chroot package must not be passed to the publisher.
+Keep both builds' logs and package `.BUILDINFO` files. In a separate source build
+with the same three patches, enable `-D BUILD_TESTING=ON` and run
+`ctest --test-dir build -R connectionfailure --output-on-failure`.
+Greeter/login, shell, capture, lock and network-failure checks remain required.
+No compile or runtime acceptance is claimed by this source audit.
 
 
 ## Executable source review gates (2026-10-06)

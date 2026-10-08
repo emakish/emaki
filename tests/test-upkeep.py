@@ -98,6 +98,22 @@ class UpkeepTests(unittest.TestCase):
         self.assertNotIn('emaki-snapshot-policy', ''.join(
             path.read_text() for path in (ROOT / 'systemd').rglob('*') if path.is_file()))
 
+    def test_staged_sudo_policy_matches_native_directory_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            staged = Path(tmp)
+            directory = staged / 'etc/sudoers.d'
+            for existing in (False, True):
+                with self.subTest(existing=existing):
+                    if existing:
+                        directory.chmod(0o755)
+                    subprocess.run(['make', '-s', 'install-upkeep', f'DESTDIR={tmp}'],
+                                   cwd=ROOT, check=True, capture_output=True)
+                    self.assertEqual(directory.stat().st_mode & 0o777, 0o750)
+                    gateway = directory / '10-emaki-wheel'
+                    self.assertEqual(gateway.stat().st_mode & 0o777, 0o440)
+                    self.assertEqual(gateway.read_bytes(),
+                                     (ROOT / 'upkeep/defaults/10-emaki-wheel').read_bytes())
+
 
     @unittest.skipUnless(shutil.which('paccache') and shutil.which('pacsort'),
                          'pacman-contrib is required for native cache-retention proof')

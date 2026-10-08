@@ -76,6 +76,7 @@ files = ["tests/vm/*.sh", "tests/vm/*.py", "tests/vm/eyes/*.sh", "tests/vm/eyes/
 required = ["tests/vm/release-gate.sh", "tests/vm/eyes/eyes-gate.py"]
 result_lines = [
     '^RESULT: SCRIPTS PASSED(: .+)?$',
+    '^RESULT: FUNCTIONAL SCRIPTS PASSED; HUMAN REVIEW REQUIRED$',
     '^RESULT: FAILED at .+$',
     '^RESULT: NOT TESTED .+$',
     '^RESULT: PASSED \(walk record of .+\)$',   # eyes-gate.py: a judged walk record of one image

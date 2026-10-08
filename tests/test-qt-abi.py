@@ -177,7 +177,8 @@ class QtAbiTests(unittest.TestCase):
             result = subprocess.run(['sh', str(ROOT / 'scripts/emaki-shell')], env=env,
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(log.read_text().splitlines(), ['qt-check', 'qs'])
+            self.assertEqual(log.read_text().splitlines(),
+                             ['qt-check'] * (1 if status == '0' else 2) + ['qs'])
             self.assertEqual((self.work / 'warning').exists(), status == '1')
         log.unlink()
         result = subprocess.run(['sh', str(ROOT / 'scripts/emaki-shell'), 'recover'], env=env,
@@ -187,6 +188,54 @@ class QtAbiTests(unittest.TestCase):
         unit = configparser.ConfigParser(interpolation=None)
         unit.read(ROOT / 'systemd/emaki-shell.service')
         self.assertNotIn('78', unit['Service']['RestartPreventExitStatus'].split())
+
+    def test_transient_check_failure_does_not_open_empty_warning(self):
+        self.run_startup_checks(['cold media query failed', None])
+
+    def test_persistent_failure_displays_captured_confirmation_without_recheck(self):
+        self.run_startup_checks(['initial failure', 'confirmed mismatch', None])
+
+    def test_warning_diagnostic_is_data_not_shell_code(self):
+        sentinel = self.work / 'unexpected'
+        diagnostic = f'Qt mismatch; $(touch {sentinel}) `touch {sentinel}`'
+        self.run_startup_checks([diagnostic, diagnostic, None])
+        self.assertFalse(sentinel.exists())
+
+    def run_startup_checks(self, outcomes):
+        for index, diagnostic in enumerate(outcomes):
+            if diagnostic is not None:
+                (self.work / f'diagnostic-{index}').write_text(diagnostic)
+        for name, body in {
+            'emaki-qt-check': '''count=0
+test ! -f "$CHECK_STATE" || count=$(cat "$CHECK_STATE")
+echo $((count + 1)) > "$CHECK_STATE"
+if test -f "$CHECK_FIXTURES/diagnostic-$count"; then
+    cat "$CHECK_FIXTURES/diagnostic-$count" >&2
+    exit 1
+fi''',
+            'qs': 'echo panel-started',
+            'kitty': 'echo visible-warning; shift 2; exec "$@"',
+        }.items():
+            script = self.work / name
+            script.write_text('#!/bin/sh\n' + body + '\n')
+            script.chmod(0o755)
+        state = self.work / 'check-count'
+        result = subprocess.run(['sh', str(ROOT / 'scripts/emaki-shell')],
+                                env=dict(os.environ, PATH=str(self.work) + ':' + os.environ['PATH'],
+                                         CHECK_STATE=str(state), CHECK_FIXTURES=str(self.work)),
+                                stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(state.read_text().strip(), '2')
+        self.assertIn('panel-started', result.stdout)
+        self.assertIn(outcomes[0], result.stderr)
+        if outcomes[1] is None:
+            self.assertNotIn('visible-warning', result.stdout)
+            self.assertNotIn('Press Enter', result.stdout)
+        else:
+            self.assertIn('visible-warning', result.stdout)
+            self.assertIn(outcomes[1], result.stdout)
+            self.assertIn(outcomes[1], result.stderr)
+            self.assertIn('Press Enter', result.stdout)
 
 
 if __name__ == '__main__':

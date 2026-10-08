@@ -10,6 +10,10 @@ import shutil
 import subprocess
 from pathlib import Path
 import tempfile
+import sys
+import threading
+from contextlib import contextmanager, ExitStack
+from types import SimpleNamespace
 import unittest
 import unittest.mock
 from unittest.mock import patch
@@ -19,6 +23,11 @@ loader = importlib.machinery.SourceFileLoader('rollback', str(ROOT / 'scripts/em
 spec = importlib.util.spec_from_loader(loader.name, loader)
 m = importlib.util.module_from_spec(spec)
 loader.exec_module(m)
+sys.path[:0] = [str(ROOT / name) for name in ('installer', 'grub', 'upkeep')]
+from emaki_installer import boot
+sys.modules['emaki_boot.boot'] = boot
+from emaki_boot import refresh
+
 UUID = '11111111-2222-3333-4444-555555555555'
 FSTAB = ''.join(f'UUID={UUID} {target} btrfs rw,subvol={name} 0 0\n'
                 for target, name in {'/': '@', **m.SHARED}.items()) + 'UUID=1234-ABCD /efi vfat defaults 0 2\n'
@@ -32,6 +41,13 @@ class Safety(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.top = Path(self.tmp.name)
+        self.run = self.top / 'run'
+        self.run.mkdir()
+        def private_open(path, *args, **kwargs):
+            if str(path).startswith('/run/'):
+                path = self.run / Path(path).name
+            return open(path, *args, **kwargs)
+        self.enterContext(patch.object(m, 'open', side_effect=private_open, create=True))
         self.current = self.top / '@'
         self.source = self.top / '@snapshots/7/snapshot'
         for root in (self.current, self.source):
@@ -296,6 +312,293 @@ class Safety(unittest.TestCase):
                 # The boot guard is after snapshot validation, before copying.
                 with self.assertRaisesRegex(m.Refused, 'Restart'):
                     m.promote(self.top, self.source, UUID, 'boot', {'kept': {'boot_id': 'boot'}})
+
+    def test_refresh_lock_in_timeline_or_kept_root_is_removed_only_from_copy(self):
+        (self.top / '.emaki-rollback').mkdir()
+        (self.source.parent / 'info.xml').write_text('<snapshot><type>single</type></snapshot>')
+        kept = self.top / '@emaki-kept-20260101T000000Z-12345678'
+        shutil.copytree(self.source, kept)
+        token = 'emaki-boot-refresh:' + UUID
+
+        def commands(*args):
+            if args[:3] == ('btrfs', 'subvolume', 'snapshot'):
+                shutil.copytree(args[3], args[4])
+            return ''
+
+        for source in (self.source, kept):
+            for boot_id in (UUID, 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'):
+                with self.subTest(source=source.name, boot_id=boot_id):
+                    lock = source / 'var/lib/pacman/db.lck'
+                    lock.write_text(token)
+                    with patch.object(m, 'check_layout', return_value=m.fstab_rows(FSTAB, UUID)), \
+                            patch.object(m, 'run', side_effect=commands), \
+                            patch.object(m, 'subvolume', side_effect=lambda p, **kw: p.stat().st_ino), \
+                            patch.object(m.signal, 'pthread_sigmask'):
+                        m.promote(self.top, source, UUID, boot_id, {})
+                    self.assertEqual(lock.read_text(), token)
+                    self.assertFalse((self.current / 'var/lib/pacman/db.lck').exists())
+
+    def test_timeline_refuses_foreign_or_malformed_refresh_lock(self):
+        (self.source.parent / 'info.xml').write_text('<snapshot><type>single</type></snapshot>')
+        lock = self.source / 'var/lib/pacman/db.lck'
+        tokens = ('', 'pacman', 'emaki-boot-refresh:', 'emaki-boot-refresh:boot',
+                  'emaki-boot-refresh:' + UUID + '\n', 'emaki-boot-refresh:' + UUID + ':extra',
+                  'emaki-boot-refresh:AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE')
+        with patch.object(m, 'check_layout', return_value=m.fstab_rows(FSTAB, UUID)), \
+                patch.object(m, 'run', return_value='') as command:
+            for token in tokens:
+                with self.subTest(token=token):
+                    lock.write_text(token)
+                    with self.assertRaisesRegex(m.Refused, 'selected root contains a package lock'):
+                        m.promote(self.top, self.source, UUID, UUID, {})
+                    self.assertEqual(lock.read_text(), token)
+            self.assertFalse(any(c.args[:3] == ('btrfs', 'subvolume', 'snapshot')
+                                 for c in command.call_args_list))
+
+    def test_package_guard_preserves_a_live_refresh_lock(self):
+        lock = self.current / 'var/lib/pacman/db.lck'
+        token = 'emaki-boot-refresh:' + UUID
+        lock.write_text(token)
+        with self.assertRaisesRegex(m.Refused, 'package transaction'):
+            with m.package_guard(self.current, UUID):
+                self.fail('entered while refresh owns the package lock')
+        self.assertEqual(lock.read_text(), token)
+
+    @contextmanager
+    def refresh_fixture(self, work):
+        def mapped(value):
+            path = Path(value)
+            if path.is_absolute() and not path.is_relative_to(self.top):
+                if str(path).startswith('/run/'):
+                    return self.run / path.name
+                return self.current / str(path).lstrip('/')
+            return path
+
+        def private_open(path, *args, **kwargs):
+            return open(mapped(path), *args, **kwargs)
+
+        boot_id = mapped('/proc/sys/kernel/random/boot_id')
+        boot_id.parent.mkdir(parents=True)
+        boot_id.write_text(UUID)
+        pending = mapped(refresh.PENDING)
+        pending.parent.mkdir(parents=True)
+        pending.write_text('{"boots": 0}')
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(refresh, 'Path', side_effect=mapped))
+            stack.enter_context(patch.object(refresh, 'open', side_effect=private_open, create=True))
+            stack.enter_context(patch.object(refresh.os, 'geteuid', return_value=0))
+            stack.enter_context(patch.object(refresh.subprocess, 'run',
+                                            return_value=SimpleNamespace(returncode=1)))
+            stack.enter_context(patch.object(refresh, 'run', return_value=''))
+            stack.enter_context(patch.object(refresh, 'discover', return_value={'fsroot': '/@'}))
+            stack.enter_context(patch.object(refresh, 'check_refresh_storage'))
+            stack.enter_context(patch.object(refresh, 'refresh', side_effect=work))
+            yield pending
+
+    def test_rollback_recovery_excludes_retry_before_unlink(self):
+        lock = self.current / 'var/lib/pacman/db.lck'
+        stale = 'emaki-boot-refresh:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        lock.write_text(stale)
+        inspected, resume, entered, finish = (threading.Event() for _ in range(4))
+        errors, work_calls = [], []
+        unlink = m.os.unlink
+
+        def paused_unlink(path, *args, **kwargs):
+            if path == 'db.lck' and not inspected.is_set():
+                inspected.set()
+                if not resume.wait(5):
+                    raise AssertionError('rollback recovery was not resumed')
+            return unlink(path, *args, **kwargs)
+
+        def rollback():
+            try:
+                with m.package_guard(self.current, UUID):
+                    entered.set()
+                    if not finish.wait(5):
+                        raise AssertionError('rollback body was not released')
+            except BaseException as error:
+                errors.append(error)
+                entered.set()
+
+        def work(identity):
+            work_calls.append(identity)
+            resume.set()
+            self.assertTrue(entered.wait(5))
+            self.assertEqual(lock.read_text(), 'emaki-boot-refresh:' + UUID)
+
+        with self.refresh_fixture(work) as pending, patch.object(m.os, 'unlink', side_effect=paused_unlink):
+            worker = threading.Thread(target=rollback)
+            worker.start()
+            try:
+                self.assertTrue(inspected.wait(5))
+                self.assertEqual(refresh.main(['--retry']), 0)
+                self.assertEqual(lock.read_text(), stale)
+                self.assertEqual(json.loads(pending.read_text()), {'boots': 0})
+                self.assertEqual(work_calls, [])
+            finally:
+                resume.set()
+                entered.wait(5)
+                finish.set()
+                worker.join(5)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(errors, [])
+        self.assertFalse(lock.exists())
+
+    def test_retry_recovery_excludes_rollback_before_unlink(self):
+        lock = self.current / 'var/lib/pacman/db.lck'
+        stale = 'emaki-boot-refresh:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        lock.write_text(stale)
+        ready, finish = threading.Event(), threading.Event()
+        entered, refused, errors, work_calls = [], [], [], []
+        unlink = Path.unlink
+        workers, observed = [], []
+
+        def rollback():
+            try:
+                with m.package_guard(self.current, UUID):
+                    entered.append(True)
+                    ready.set()
+                    if not finish.wait(5):
+                        raise AssertionError('rollback body was not released')
+            except m.Refused as error:
+                refused.append(str(error))
+            except BaseException as error:
+                errors.append(error)
+            finally:
+                ready.set()
+
+        def paused_unlink(path, *args, **kwargs):
+            if path == lock and not workers:
+                worker = threading.Thread(target=rollback)
+                workers.append(worker)
+                worker.start()
+                self.assertTrue(ready.wait(5))
+                observed.append(lock.read_text())
+            return unlink(path, *args, **kwargs)
+
+        def work(identity):
+            work_calls.append(identity)
+            self.assertEqual(lock.read_text(), 'emaki-boot-refresh:' + UUID)
+
+        with self.refresh_fixture(work), patch.object(Path, 'unlink', autospec=True, side_effect=paused_unlink):
+            try:
+                self.assertEqual(refresh.main(['--retry']), 0)
+            finally:
+                finish.set()
+                for worker in workers:
+                    worker.join(5)
+            self.assertTrue(workers)
+            self.assertTrue(all(not worker.is_alive() for worker in workers))
+            self.assertEqual(entered, [])
+            self.assertEqual(observed, [stale])
+            self.assertEqual(errors, [])
+            self.assertEqual(refused, ['A boot loader operation is running; try rollback again later.'])
+            self.assertEqual(len(work_calls), 1)
+        self.assertFalse(lock.exists())
+
+    def test_layout_accepts_previous_boot_refresh_without_removing_it(self):
+        mounts = {target: {'uuid': UUID, 'fsroot': '/' + name, 'fstype': 'btrfs'}
+                  for target, name in m.SHARED.items()}
+        mounts['/efi'] = {'uuid': '1234-ABCD', 'fsroot': '/', 'fstype': 'vfat'}
+        lock = self.current / 'var/lib/pacman/db.lck'
+        previous = 'emaki-boot-refresh:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        with patch.object(m, 'mount_info', side_effect=mounts.__getitem__), \
+                patch.object(m, 'subvolume', return_value=256), patch.object(m, 'empty_children'), \
+                patch.object(m, 'run', return_value='Total devices 1 FS bytes used 1.00GiB'), \
+                patch.object(m.subprocess, 'run', return_value=unittest.mock.Mock(returncode=1)):
+            lock.write_text(previous)
+            self.assertEqual(len(m.check_layout(self.top, UUID, UUID)), 6)
+            self.assertEqual(lock.read_text(), previous)
+            for token in ('pacman', 'emaki-boot-refresh:' + UUID):
+                lock.write_text(token)
+                with self.assertRaises(m.Refused):
+                    m.check_layout(self.top, UUID, UUID)
+                self.assertEqual(lock.read_text(), token)
+
+    def test_recovered_refresh_lock_still_requires_exclusive_acquisition(self):
+        lock = self.current / 'var/lib/pacman/db.lck'
+        lock.write_text('emaki-boot-refresh:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee')
+        open_file = m.os.open
+        def raced_open(path, flags, *args, **kwargs):
+            if path == 'db.lck' and flags & m.os.O_CREAT:
+                lock.write_text('pacman')
+            return open_file(path, flags, *args, **kwargs)
+        with patch.object(m.os, 'open', side_effect=raced_open):
+            with self.assertRaises(m.Refused):
+                with m.package_guard(self.current, UUID):
+                    self.fail('entered after another transaction acquired the lock')
+        self.assertEqual(lock.read_text(), 'pacman')
+
+    def test_package_guard_recovers_only_previous_boot_refresh_lock(self):
+        lock = self.current / 'var/lib/pacman/db.lck'
+        previous = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        lock.write_text('emaki-boot-refresh:' + previous)
+        with m.package_guard(self.current, UUID) as token:
+            self.assertTrue(token.startswith('emaki-rollback:'))
+            self.assertEqual(lock.read_text(), token)
+            with self.assertRaises(m.Refused):
+                with m.package_guard(self.current, UUID):
+                    self.fail('second guard entered')
+        self.assertFalse(lock.exists())
+
+    def test_package_guard_refuses_foreign_malformed_and_symlink_locks(self):
+        lock = self.current / 'var/lib/pacman/db.lck'
+        tokens = ('', 'pacman', 'emaki-rollback:1234', 'emaki-boot-refresh:',
+                  'emaki-boot-refresh:boot', 'emaki-boot-refresh:' + UUID,
+                  'emaki-boot-refresh:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\n',
+                  'emaki-boot-refresh:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee:extra',
+                  'emaki-boot-refresh:AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE')
+        for token in tokens:
+            with self.subTest(token=token):
+                lock.write_text(token)
+                with self.assertRaises(m.Refused):
+                    with m.package_guard(self.current, UUID):
+                        self.fail('unsafe lock accepted')
+                self.assertEqual(lock.read_text(), token)
+        lock.unlink()
+        target = lock.with_name('other')
+        for dangling in (False, True):
+            with self.subTest(dangling=dangling):
+                if not dangling:
+                    target.write_text('emaki-boot-refresh:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee')
+                lock.symlink_to(target)
+                with self.assertRaises(m.Refused):
+                    with m.package_guard(self.current, UUID):
+                        self.fail('symlink lock accepted')
+                self.assertTrue(lock.is_symlink())
+                lock.unlink()
+                target.unlink(missing_ok=True)
+
+    def test_package_guard_refuses_replaced_stale_lock(self):
+        lock = self.current / 'var/lib/pacman/db.lck'
+        token = 'emaki-boot-refresh:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        inspect = m.previous_refresh_lock
+        for replacement in (token, 'pacman'):
+            with self.subTest(replacement=replacement):
+                lock.write_text(token)
+                calls = 0
+                def replace(directory, boot_id):
+                    nonlocal calls
+                    calls += 1
+                    if calls == 2:
+                        temp = lock.with_name('replacement')
+                        temp.write_text(replacement)
+                        temp.replace(lock)
+                    return inspect(directory, boot_id)
+                with patch.object(m, 'previous_refresh_lock', side_effect=replace):
+                    with self.assertRaises(m.Refused):
+                        with m.package_guard(self.current, UUID):
+                            self.fail('replaced lock accepted')
+                self.assertEqual(lock.read_text(), replacement)
+
+    def test_package_guard_keeps_replacement_on_exit(self):
+        lock = self.current / 'var/lib/pacman/db.lck'
+        with self.assertRaisesRegex(m.Refused, 'lock changed'):
+            with m.package_guard(self.current, UUID):
+                replacement = lock.with_name('replacement')
+                replacement.write_text('pacman')
+                replacement.replace(lock)
+        self.assertEqual(lock.read_text(), 'pacman')
 
     def test_unknown_nested_subvolumes_refused(self):
         with patch.object(m, 'run', return_value='ID 400 gen 1 top level 256 path var/lib/other'):

@@ -112,6 +112,7 @@ shot() {
     local result
     if result=$("$HERE/shot.sh" "$OUT/$1.png"); then
         log "$result"
+        log "SHOT: $OUT/$1.png (not judged); HUMAN REVIEW REQUIRED"
     else
         fail "$?" "screenshot $1 failed"
     fi
@@ -185,4 +186,5 @@ else
     log "logging in to Niri"
     "$HERE/login.sh" "$OUT" | tee -a "$OUT/summary.txt"
 fi
+log "HUMAN REVIEW REQUIRED: inspect boot, greeter and desktop frames in $OUT; script success is functional coverage only"
 log "RESULT: SCRIPTS PASSED: $OUT"

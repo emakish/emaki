@@ -62,6 +62,10 @@ elif n=='busctl':
 elif n=='niri':
  if a != ['msg','action','quit','--skip-confirmation']: sys.exit(9)
  (r/'session').write_text('logout')
+elif n=='emaki-wallet-start':
+ if a != ['--flush']: sys.exit(9)
+ if (r/'wallet-fail').exists(): sys.exit(1)
+ (r/'wallet-flushed').write_text('1')
 elif n=='emaki-lock':
  import time
  if (r/'lock-fail').exists(): sys.exit(1)
@@ -80,10 +84,10 @@ elif n=='nmcli':
 ''')
 fixture.chmod(0o700)
 (root/'brightness').write_text('70'); (root/'profile').write_text('balanced')
-for name in ('brightnessctl','powerprofilesctl','systemctl','nmcli','emaki-lock','busctl','niri'): (root/name).symlink_to(fixture)
+for name in ('brightnessctl','powerprofilesctl','systemctl','nmcli','emaki-lock','busctl','niri','emaki-wallet-start'): (root/name).symlink_to(fixture)
 # Fake wlsunset: records pid/argv and waits for SIGTERM (the guard's stdin pipe or a stop).
 (root/'wlsunset').write_text('#!/usr/bin/python3\nimport os,sys,time,json\nfrom pathlib import Path\nPath('+repr(str(root/'wlsunset.json'))+').write_text(json.dumps([os.getpid(),sys.argv[1:]]))\nwhile True: time.sleep(1)\n');(root/'wlsunset').chmod(0o700)
-os.environ.update(EMAKI_BUSCTL=str(root/'busctl'), EMAKI_NIRI=str(root/'niri'), EMAKI_SYSTEM_TEST=str(root), EMAKI_BRIGHTNESSCTL=str(root/'brightnessctl'), EMAKI_POWERPROFILESCTL=str(root/'powerprofilesctl'), EMAKI_SYSTEMCTL=str(root/'systemctl'), EMAKI_NMCLI=str(root/'nmcli'), EMAKI_LOCK=str(root/'emaki-lock'), EMAKI_WLSUNSET=str(root/'wlsunset'))
+os.environ.update(EMAKI_EMAKI_WALLET_START=str(root/'emaki-wallet-start'), EMAKI_BUSCTL=str(root/'busctl'), EMAKI_NIRI=str(root/'niri'), EMAKI_SYSTEM_TEST=str(root), EMAKI_BRIGHTNESSCTL=str(root/'brightnessctl'), EMAKI_POWERPROFILESCTL=str(root/'powerprofilesctl'), EMAKI_SYSTEMCTL=str(root/'systemctl'), EMAKI_NMCLI=str(root/'nmcli'), EMAKI_LOCK=str(root/'emaki-lock'), EMAKI_WLSUNSET=str(root/'wlsunset'))
 # Portal sign-in opens the default http handler through GIO: a fixture browser, never a real one.
 (root/'data/applications').mkdir()
 web=root/'web.py';web.write_text('import sys,json\nfrom pathlib import Path\nPath('+repr(str(root/'web.json'))+').write_text(json.dumps(sys.argv[1:]))\n')
@@ -285,6 +289,12 @@ try:
     assert helper({'op':'session','value':'logout'})['state'] == 'confirmation_required'
     assert helper({'op':'session','value':'logout','confirmed':True})['state'] == 'requested'
     assert (root/'session').read_text() == 'logout'
+    assert (root/'wallet-flushed').exists()
+    (root/'wallet-fail').touch()
+    for session_action in ('logout', 'reboot', 'poweroff'):
+        assert helper({'op':'session','value':session_action,'confirmed':True})['state'] == 'requested'
+        assert (root/'session').read_text() == session_action
+    (root/'wallet-fail').unlink()
     (root/'session').unlink()
     (root/'hibernate').write_text('yes')
     assert helper({'op':'brightness-set','value':'40; touch x'})['state']=='invalid_brightness'

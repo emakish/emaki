@@ -4,7 +4,7 @@ function initial() {
         inventory: null, plan: null, deadline: 0, jobId: "", lastLogSeq: 0, reservedLogins: null, consoleChars: null,
         phase: "", phasePct: 0, totalPct: 0, indeterminate: false, activity: null, step: null,
         running: false, confirming: false, planning: false, probing: false,
-        outcome: "", error: null, rebootMessage: "", notice: "Connecting to the installer…",
+        outcome: "", error: null, restartState: "", forcedDeadline: 0, preparingSince: 0, rebootMessage: "", notice: "Connecting to the installer…",
         logs: [], cancelPending: false, cancelMessage: "", started: 0, seconds: 0, doneWarnings: [] };
 }
 function invalidate(s) { s.plan = null; s.deadline = 0; }
@@ -14,6 +14,11 @@ function request(s, type, fields) {
     if (type === "probe") s.probing = true;
     if (type === "confirm") s.confirming = true;
     if (type === "cancel") s.cancelPending = true;
+    if (type === "prepare_reboot") {
+        s.restartState = "preparing";
+        s.preparingSince = Date.now();
+        s.notice = "Preparing to restart. Keep the USB stick connected. This can take up to two and a half minutes. If preparation cannot finish, the computer restarts by itself.";
+    }
     if (type === "reboot") s.rebootMessage = "Restarting…";
     const id = "ui-" + (++s.serial);
     s.pending[id] = type;
@@ -22,11 +27,33 @@ function request(s, type, fields) {
 function rebootTimedOut(s) {
     for (const id of Object.keys(s.pending))
         if (s.pending[id] === "reboot") delete s.pending[id];
-    s.rebootMessage = "Could not restart. Try again.";
+    s.rebootMessage = recoveryText();
     s.notice = s.rebootMessage;
 }
+function recoveryText() {
+    return "Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again.";
+}
+function forcedTick(s, now) {
+    if (!s.forcedDeadline) return;
+    if (now >= s.forcedDeadline + 20000) {
+        s.forcedDeadline = 0;
+        s.rebootMessage = recoveryText();
+        return;
+    }
+    const seconds = Math.max(0, Math.ceil((s.forcedDeadline - now) / 1000));
+    s.rebootMessage = "Restart preparation could not finish. Your installation is safe. Remove the USB stick if it is still connected. " +
+        (seconds ? "Restarting in " + seconds + (seconds === 1 ? " second…" : " seconds…") + " Press Enter to restart now." : "Restarting…");
+}
+function disconnectedReboot(s) {
+    if (s.restartState !== "forced") s.rebootMessage = recoveryText();
+}
+function preparationTimedOut(s) {
+    // Preserve the pending request so a late preparation reply can still open the prompt.
+    s.preparingSince = 0;
+    s.notice = "Restart preparation has not been confirmed. " + recoveryText();
+}
 function disconnected(s) {
-    if (s.rebootMessage === "Restarting…") rebootTimedOut(s);
+    if (s.rebootMessage === "Restarting…" && s.restartState !== "forced") rebootTimedOut(s);
     s.connected = false; s.ready = false;
     s.planning = false; s.probing = false;
     s.pending = {};
@@ -34,6 +61,7 @@ function disconnected(s) {
     // Keep that intent until hello tells us whether there is a running job.
     invalidate(s);
     if (s.greeted) s.notice = "Connection lost. Reconnecting…";
+
 }
 // Copied to RAM, the live system has no boot medium: the worker's unit starts only while it is
 // mounted (installer/systemd/emaki-installerd.service), and the offline packages live on it.
@@ -68,6 +96,21 @@ function receive(s, m, now) {
         if (m.console_chars && typeof m.console_chars === "object" && !Array.isArray(m.console_chars) &&
             Object.values(m.console_chars).every(r => Array.isArray(r) && r.length === 5 && typeof r[0] === "boolean" && r.slice(1).every(x => typeof x === "string")))
             s.consoleChars = m.console_chars;
+        if (m.restart && m.restart.state) {
+            s.restartState = m.restart.state;
+            s.jobId = m.restart.job_id;
+            s.running = false; s.outcome = "done"; s.probing = false;
+            s.preparingSince = 0;
+            if (s.restartState === "forced") {
+                s.forcedDeadline = now + m.restart.remaining_s * 1000;
+                forcedTick(s, now);
+            } else {
+                s.forcedDeadline = 0;
+                s.rebootMessage = "";
+                if (s.restartState === "failed") s.notice = recoveryText();
+            }
+            break;
+        }
         if (m.busy_job || s.jobId) {
             if (m.busy_job && m.busy_job !== s.jobId) {
                 s.jobId = m.busy_job; s.lastLogSeq = 0; s.logs = [];
@@ -91,7 +134,29 @@ function receive(s, m, now) {
         s.notice = "";
         break;
     case "reply":
-        if (pending === "reboot") s.rebootMessage = m.ok ? "Restarting…" : (m.msg || "Could not restart. Try again.");
+        if (pending === "prepare_reboot") {
+            s.preparingSince = 0;
+            s.restartState = m.ok ? (m.forced_reboot ? "forced" : "ready") : "failed";
+            if (m.ok && m.forced_reboot === true) {
+                s.forcedDeadline = now + (typeof m.remaining_s === "number" ? m.remaining_s : 15) * 1000;
+                forcedTick(s, now);
+            }
+        }
+        if (pending === "reboot") {
+            if (m.ok) s.rebootMessage = "Restarting…";
+            else if (m.restart_state === "forced") {
+                s.restartState = "forced";
+                s.forcedDeadline = now + m.remaining_s * 1000;
+                forcedTick(s, now);
+            } else {
+                s.restartState = m.restart_state || "ready";
+                s.forcedDeadline = 0;
+                // A generic worker message still gets the way out; the target is already safe here.
+                const recovery = "Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe.";
+                s.rebootMessage = !m.msg ? "Could not restart. " + recovery
+                    : m.msg.indexOf("hold the power button") >= 0 ? m.msg : m.msg + " " + recovery;
+            }
+        }
         if (pending === "confirm") {
             s.confirming = false;
             if (m.ok) {
@@ -118,9 +183,10 @@ function receive(s, m, now) {
                 s.outcome = "error";
                 s.error = {message: "The worker no longer has this job. Inspect the installation log before starting again.", retryable: false};
             }
-            if (m.code === "busy") out.push(request(s, "hello", {proto: 1}));
+            if (m.code === "busy" && pending !== "save_log") out.push(request(s, "hello", {proto: 1}));
         } else if (pending === "save_log") s.notice = "Log saved to the selected removable medium.";
         else if (pending === "reboot") s.notice = "Restart requested…";
+        else if (pending === "prepare_reboot") s.notice = "";
         break;
     case "state": case "progress":
         if (!m.job_id) break;
@@ -192,6 +258,7 @@ function errorPresentation(error) {
         login_name_reserved: ["This login name belongs to the system.", "Choose another name; the disk has not been changed."],
         bad_dest: ["The log could not be written to the chosen removable medium.", "Choose another medium from the list."],
         busy: ["The installer service was busy with another task.", save],
+        restart_pending: ["A previous restart is still pending.", "Wait for it to finish, then try again."],
         unsupported_mode: ["This type of installation is not available in this version.", disk],
         unsupported_version: ["The installer's parts on this USB stick do not match each other.", save],
         uefi_required: ["Installing needs a computer started in 64-bit UEFI mode.", "If the computer's boot menu offers a UEFI entry for the USB stick, choose it there."],

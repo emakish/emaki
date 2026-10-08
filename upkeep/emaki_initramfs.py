@@ -35,6 +35,10 @@ def release(root):
 
 def install(root):
     """Wrap stock triggers without replacing an administrator's hook."""
+    # Use the image marker: arch-chroot shares the live /run with installed targets.
+    if (root / 'etc/emaki-live/greetd.toml').is_file():
+        release(root)
+        return
     hook, ledger = root / HOOK, root / LEDGER
     stock_hook = root / 'usr/share/libalpm/hooks/90-mkinitcpio-install.hook'
     if not safe_file(stock_hook):

@@ -500,12 +500,32 @@ Item {
         closePolicy: C.Popup.NoAutoClose
         visible: view.controller.removeUsbPrompt
         padding: 28
-        contentItem: Copy {
-            objectName: "removeUsbMessage"
-            text: view.controller.session.rebootMessage || "Remove the USB stick, then press Enter to restart."
-            focus: true
-            Keys.onReturnPressed: view.controller.reboot()
-            Keys.onEnterPressed: view.controller.reboot()
+        background: Rectangle {
+            objectName: "removeUsbBackground"
+            radius: 16
+            color: Qt.rgba(Shell.LiquidPalette.flatPanel.r, Shell.LiquidPalette.flatPanel.g, Shell.LiquidPalette.flatPanel.b, 1)
+            border.color: Shell.LiquidPalette.flatDropRim
+        }
+        contentItem: ColumnLayout {
+            spacing: 20
+            Copy {
+                objectName: "removeUsbMessage"
+                Layout.fillWidth: true
+                font.pixelSize: 20
+                font.weight: Font.DemiBold
+                text: view.controller.session.rebootMessage || view.controller.preparedRestartPrompt
+                focus: true
+                Keys.onReturnPressed: view.controller.reboot()
+                Keys.onEnterPressed: view.controller.reboot()
+            }
+            Action {
+                objectName: "restartPrepared"
+                Layout.alignment: Qt.AlignRight
+                text: "Restart now"
+                primary: true
+                enabled: view.controller.session.ready && !Object.values(view.controller.session.pending).includes("reboot")
+                onClicked: view.controller.reboot()
+            }
         }
     }
     GlassPane {
@@ -2355,7 +2375,7 @@ Item {
                 required property string modelData
                 required property int index
                 text: "Save log · " + modelData.split("/").pop()
-                enabled: view.controller.session.ready
+                enabled: view.controller.logSaveEnabled
                 onClicked: view.controller.saveLog(index)
             }
         }

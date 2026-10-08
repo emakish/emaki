@@ -105,7 +105,7 @@ lines=12
 horizontal-pad=24
 vertical-pad=18
 inner-pad=10
-icon-theme=Adwaita
+icon-theme=breeze
 terminal=kitty -e
 
 [colors]

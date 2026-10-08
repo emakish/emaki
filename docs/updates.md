@@ -3,16 +3,20 @@
 ## The one command
 
 ```
-sudo pacman -Syu
+sudo emaki-update
 ```
 
 Type your password, read the list, and press Enter at each question. Emaki's packages come from
 `[emaki]` at `https://pkgs.emaki.sh/stable/x86_64`; everything else comes from Arch Linux as
-usual. Nothing on the screen tells you that updates exist yet; a notice and an `emaki update`
-command come later, as an ordinary update. Plain `sudo pacman -Syu` keeps working after that.
+usual. The command explains common update refusals in plain English and keeps the technical
+details in brackets. It runs a full update with the same package checks and confirmation
+questions [pacman]. Plain `sudo pacman -Syu` still works and keeps its native messages.
+The desktop does not yet check whether updates are available.
 
-When it has finished, restart the computer: the desktop that is running keeps using the old
-shell and compositor until you do. Nothing restarts by itself.
+After a desktop update, an on-screen notice asks you to save your work, sign out and sign in
+again. The running panel keeps its own copy of its files until it restarts, so an update cannot
+replace its helpers while it is running. Nothing restarts by itself. Restart the computer
+after a kernel update.
 
 ## What is signed
 
@@ -124,23 +128,28 @@ not change the upstream Qt ABI version being compared.
 
 ### When the Qt alarm fires (release engineer)
 
-1. In a disposable Arch build environment, enable the testing repositories and fully upgrade
-   to the candidate from `extra-testing`. Wait for `qt6-base` and `qt6-declarative` to carry
-   the same upstream `x.y.z` version. Check the alarm for both Emaki channels.
-2. Set Quickshell's `_qtver` and both dependency lower bounds to that version (for example `>=6.11.3`),
-   retain the minor upper bounds, increment `pkgrel`, and update the release marker's exact
+1. Check the alarm for both Emaki channels. Before Arch's stable move, rehearse in a
+   disposable Arch environment with both testing repositories enabled and a full upgrade.
+   Wait for the required Qt components to carry the same upstream `x.y.z` version.
+   Keep this rehearsal package offline; it is not a publishable release bundle.
+2. Set Quickshell's `_qtver` and every dependency lower bound to that version (for example
+   `>=6.11.3`): two Qt bounds in the active recipe, four after Qt 6.12 activation.
+   Retain the minor upper bounds, increment `pkgrel`, and update the release marker's exact
    Quickshell pin and increment the marker's `pkgrel`. The build records its actual Qt version as
    `emaki-quickshell-qt-build=x.y.z` in package metadata and refuses a different build version.
-   For Qt 6.12, use `packaging/activate-qt612.py`; it assigns the next active package release
-   and increments the marker release instead of reserving release numbers that a patch
-   rebuild could consume. Re-running activation does not increment either release again.
-3. Build the reviewed commit against `extra-testing`, run the packaging and upgrade checks,
-   and check greeter, shell and lock startup in the matching VM. Publish the rebuilt set to
-   Emaki `testing` through the normal release approval process.
-4. When Arch moves that Qt patch to `extra`, run the stable upgrade check and promote the
-   tested Emaki release through the normal release approval process. Rerun `packaging/arch-watch`
-   to confirm each channel's recorded build version matches Arch. A testing build newer than
-   `extra` intentionally keeps the version-difference alarm pending until Arch catches up.
+   Prepare and review this change before the stable move. For Qt 6.12, use
+   `packaging/activate-qt612.py`; it assigns the next active package release and increments
+   the marker release instead of reserving release numbers that a patch rebuild could
+   consume. Re-running activation does not increment either release again.
+3. After all required dependencies reach Arch stable, build the reviewed release commit
+   in a fresh, fully upgraded stable build VM that never had testing repositories enabled.
+   Run the packaging and upgrade checks and check greeter, shell and lock startup on the
+   exact release packages. Publish the complete rebuilt set to Emaki `testing` through the
+   normal release approval process. See `docs/updates-runbook.md`, “Qt 6.12 day zero”, for
+   package selection, source records, signing and acceptance requirements.
+4. After the required VM and hardware acceptance, promote the same tested Emaki snapshot
+   through the normal release approval process. Rerun `packaging/arch-watch` to confirm
+   each channel's recorded build version matches Arch and refresh the watch's source pin.
 
 
 ## Disk upkeep

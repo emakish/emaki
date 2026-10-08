@@ -68,7 +68,7 @@ class PackagingTests(unittest.TestCase):
         # The launcher icon lives in hicolor; its index.theme names the scalable/apps directory.
         self.assertIn('hicolor-icon-theme', re.search(r'depends=\(([^)]+)\)', recipe, re.S)[1].split())
         self.assertIn('/usr/share/icons/hicolor/scalable/apps/emaki-install.svg', recipe)
-        self.assertIn('pkgver=0.3.0', recipe)
+        self.assertIn('pkgver=0.3.1', recipe)
         self.assertIn('pkgrel=1', recipe)
         for path in ('bin/emaki-installerd', 'bin/emaki-install-cli',
                      'systemd/emaki-installerd.service', 'sysusers.d/emaki-installer.conf',
@@ -81,7 +81,7 @@ class PackagingTests(unittest.TestCase):
         service = (root / 'systemd/emaki-installerd.service').read_text()
         for field in ('ConditionPathExists=/run/archiso/bootmnt', 'UMask=0022',
                       'RuntimeDirectory=emaki-installer', 'RuntimeDirectoryMode=0750',
-                      'PrivateMounts=yes', 'KillMode=mixed'):
+                      'PrivateMounts=yes', 'KillMode=mixed', 'LimitMEMLOCK=infinity'):
             self.assertIn(field, service)
         self.assertNotIn('Group=', service)
         self.assertEqual((root / 'sysusers.d/emaki-installer.conf').read_text(), 'g emaki-install -\n')

@@ -2,10 +2,11 @@ import io
 import json
 from pathlib import Path
 import unittest
+import threading
 
 import emaki_installer
 from emaki_installer.constants import GIB, MAX_FRAME
-from emaki_installer.errors import InstallError
+from emaki_installer.errors import Code, InstallError
 from emaki_installer.latin_layouts import CONSOLE_CHARS
 from emaki_installer.planner import RESERVED_LOGINS
 from emaki_installer.protocol import Controller, Job, decode_frame, encode_frame
@@ -115,6 +116,74 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(callable(responses[1]))
         self.assertEqual(self.confirm(ack)[0]['code'], 'busy')
         self.assertEqual(self.request('plan', config=config())[0]['code'], 'busy')
+
+    def test_pending_restart_blocks_installation_but_keeps_recovery_available(self):
+        blocked = True
+        checks, probes, exports, workers = [], [], [], []
+        message = ('A previous restart is still pending. '
+                   'Wait for it to finish before starting another installation.')
+
+        def check():
+            checks.append(1)
+            if blocked:
+                raise InstallError(Code.RESTART_PENDING, message)
+
+        class Worker:
+            def __init__(self, controller):
+                workers.append('created')
+
+            def run(self, plan, cancelled):
+                workers.append('ran')
+
+        self.controller = Controller(FakeInventory(), Worker, check_installation=check,
+                                     save_log=lambda dest: exports.append(dest))
+        self.controller.inventory.probe = lambda: probes.append(1) or inventory()
+        for reply in (self.plan(), self.request('confirm', plan_id='old', token='old')[0]):
+            self.assertFalse(reply['ok'])
+            self.assertEqual(reply['code'], 'restart_pending')
+            self.assertEqual(reply['msg'], message)
+        self.assertIsNone(self.controller.pending)
+        self.assertIsNone(self.controller.job)
+        self.assertEqual(probes, [])
+        self.assertEqual(workers, [])
+        self.assertEqual(len(checks), 2)
+        self.assertEqual(self.request('hello', proto=1)[0]['type'], 'hello')
+        self.assertEqual(self.request('probe')[0]['type'], 'inventory')
+        self.assertTrue(self.request('save_log', dest='usb')[0]['ok'])
+        self.assertEqual(exports, ['usb'])
+        self.assertEqual(len(checks), 2)
+
+        blocked = False
+        ack = self.plan()
+        self.assertEqual(ack['errors'], [])
+        reply, launch = self.confirm(ack)
+        self.assertTrue(reply['ok'])
+        thread = launch()
+        thread.join(2)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(workers, ['created', 'ran'])
+        self.assertEqual(len(checks), 4)
+
+    def test_confirm_rechecks_pending_restart_after_successful_plan(self):
+        blocked = False
+        checks = []
+
+        def check():
+            checks.append(1)
+            if blocked:
+                raise InstallError(Code.RESTART_PENDING, 'A previous restart is still pending.')
+
+        self.controller.check_installation_fn = check
+        ack = self.plan()
+        blocked = True
+        responses = self.confirm(ack)
+        self.assertEqual(len(responses), 1)
+        self.assertEqual(responses[0]['code'], 'restart_pending')
+        self.assertIsNone(self.controller.job)
+        self.assertIsNotNone(self.controller.pending)
+        blocked = False
+        self.assertTrue(self.confirm(ack)[0]['ok'])
+        self.assertEqual(len(checks), 3)
 
     def test_invalid_plan_has_errors_and_no_token(self):
         c = config()
@@ -290,6 +359,81 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(result['code'], 'job_not_found')
         self.assertIn('log_path', result)
         self.assertEqual(self.request('unknown')[0]['code'], 'bad_request')
+
+    def test_save_log_finishes_before_preparation_and_is_then_blocked(self):
+        entered, release = threading.Event(), threading.Event()
+        calls = []
+        def save(dest):
+            entered.set()
+            self.assertTrue(release.wait(2))
+            calls.append('saved')
+        self.controller.save_log_fn = save
+        self.controller.prepare_reboot_fn = lambda: calls.append('prepared')
+        self.controller.job = Job('finished')
+        self.controller.emit('done', seconds=1)
+        saver = threading.Thread(target=lambda: self.request('save_log', dest='usb'))
+        preparer = threading.Thread(target=lambda: self.request('prepare_reboot'))
+        saver.start()
+        self.assertTrue(entered.wait(2))
+        preparer.start()
+        self.assertEqual(calls, [])
+        release.set()
+        saver.join(2)
+        preparer.join(2)
+        self.assertFalse(saver.is_alive() or preparer.is_alive())
+        self.assertEqual(calls, ['saved', 'prepared'])
+        self.assertEqual(self.request('save_log', dest='usb')[0]['code'], 'busy')
+        self.assertEqual(calls, ['saved', 'prepared'])
+
+    def test_failed_preparation_allows_log_export_without_reopening_installation(self):
+        calls = []
+        def fail():
+            raise RuntimeError('preparation failed')
+        self.controller.prepare_reboot_fn = fail
+        self.controller.save_log_fn = lambda dest: calls.append(dest)
+        self.controller.job = Job('finished')
+        self.controller.emit('done', seconds=1)
+        self.assertFalse(self.request('prepare_reboot')[0]['ok'])
+        self.assertEqual(self.controller.restart_state, 'failed')
+        self.assertTrue(self.controller.stopping)
+        self.assertTrue(self.request('save_log', dest='usb')[0]['ok'])
+        self.assertEqual(calls, ['usb'])
+        self.assertEqual(self.request('probe')[0]['code'], 'busy')
+
+    def test_log_export_refusal_describes_current_restart_state(self):
+        calls = []
+        self.controller.save_log_fn = lambda dest: calls.append(dest)
+        self.controller.stopping = True
+        for state, message in (
+                ('preparing', 'Log export is unavailable during restart preparation.'),
+                ('ready', 'Log export is unavailable after restart preparation.'),
+                ('forced', 'Log export is unavailable after restart preparation.'),
+                (None, 'Log export is unavailable while the worker is stopping.')):
+            with self.subTest(state=state):
+                self.controller.restart_state = state
+                reply = self.request('save_log', dest='usb')[0]
+                self.assertEqual(reply['code'], 'busy')
+                self.assertEqual(reply['msg'], message)
+        self.assertEqual(calls, [])
+
+    def test_hello_retains_restart_state_and_original_deadline(self):
+        self.controller.job = Job('finished')
+        self.controller.emit('done', seconds=1)
+        self.controller.prepare_reboot_fn = lambda: True
+        self.controller.restart_deadline_fn = lambda: 23
+        self.assertEqual(self.request('prepare_reboot')[0]['remaining_s'], 13)
+        self.now = 15
+        state = self.request('hello', proto=1)[0]['restart']
+        self.assertEqual(state, {'state': 'forced', 'job_id': 'finished', 'remaining_s': 8})
+        self.assertEqual(self.request('prepare_reboot')[0]['remaining_s'], 8)
+
+    def test_missing_forced_deadline_does_not_invent_another_countdown(self):
+        self.controller.job = Job('finished')
+        self.controller.emit('done', seconds=1)
+        self.controller.prepare_reboot_fn = lambda: True
+        self.controller.restart_deadline_fn = lambda: None
+        self.assertEqual(self.request('prepare_reboot')[0]['remaining_s'], 0)
+        self.assertEqual(self.request('hello', proto=1)[0]['restart']['remaining_s'], 0)
 
     def test_reboot_only_after_done_and_blocks_new_jobs(self):
         calls = []

@@ -9,10 +9,14 @@ Before=graphical-session.target
 Wants=graphical-session-pre.target
 After=graphical-session-pre.target
 
-Wants=xdg-desktop-autostart.target emaki-wallet-migrate.service
+Wants=xdg-desktop-autostart.target emaki-wallet-start.service emaki-wallet-migrate.service
 Before=xdg-desktop-autostart.target
 
 [Service]
 Slice=session.slice
 Type=notify
+ExecStartPre=-/usr/bin/emaki-wallet-start --prepare
+TimeoutStartSec=150
 ExecStart=/usr/bin/niri-emaki-session --compositor
+ExecStopPost=-/usr/bin/emaki-wallet-start --stop
+ExecStopPost=-/usr/bin/systemctl --user unset-environment PAM_KWALLET5_LOGIN

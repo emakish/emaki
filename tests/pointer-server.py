@@ -5,8 +5,10 @@
 
 <channel>/x86_64/emaki.{db,files}[.sig] -> 302 into snap/<channel>/<id>/ named by
 pointers/<channel> (same rule as packaging/mirror/pointer-worker.js); everything else is a
-static file with Last-Modified and If-Modified-Since, as the bucket answers. --flat serves the
-directory as it is (the old in-place layout), for the self-check that must go red.
+static file with Last-Modified and If-Modified-Since, as the bucket answers. The image
+(iso/<version>/emaki-<version>-x86_64.iso) is answered as by the Worker: X-Emaki-Image: 1 on
+every answer, a strong ETag, and If-Range honoured. --flat serves the directory as it is (the
+old in-place layout), for the self-check that must go red.
 Each request is appended to --log as one JSON line.
 """
 import argparse
@@ -20,6 +22,7 @@ import threading
 
 ROUTE = re.compile(r'^/(stable|testing)/x86_64/(emaki\.(?:db|files)(?:\.sig)?|SOURCES(?:\.json)?)$')
 ISO_ROUTE = re.compile(r'^/iso/(\d+\.\d+\.\d+)/(SOURCES-ISO\.txt|ARCH-SOURCES\.json|MISSING-SOURCES\.json)$')
+IMAGE_ROUTE = re.compile(r'^/iso/(\d+\.\d+\.\d+)/emaki-\1-x86_64\.iso$')
 SOURCE_SNAPSHOT_ID = re.compile(r'^[a-f0-9]{64}$')
 SNAPSHOT_ID = re.compile(r'^\d{8}T\d{6}Z$')
 
@@ -55,6 +58,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     flat = False
     log_path = None
     lock = threading.Lock()
+    status = None
+    image_worker = True  # the image is answered as by the Worker: X-Emaki-Image, If-Range
 
     def log_message(self, format, *args):
         pass
@@ -68,12 +73,33 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def send_response(self, code, message=None):
         self.record(code)
+        self.status = code
         super().send_response(code, message)
 
     def end_headers(self):
-        if not self.flat and ISO_ROUTE.fullmatch(self.path.split('?', 1)[0]):
+        path = self.path.split('?', 1)[0]
+        if not self.flat and ISO_ROUTE.fullmatch(path):
             self.send_header('X-Emaki-Source-Pointer', '1')
+        tag = self.image_etag(path)
+        if tag and self.status in (200, 206, 304):
+            self.send_header('ETag', tag)
+            self.send_header('Accept-Ranges', 'bytes')
+        # Every Worker answer for the image is marked, a missing image included; the 403 for a
+        # default client identity comes from the edge in front of the Worker.
+        if (not self.flat and self.image_worker and IMAGE_ROUTE.fullmatch(path)
+                and self.status != 403):
+            self.send_header('X-Emaki-Image', '1')
         super().end_headers()
+
+    def image_etag(self, path):
+        """The image's strong ETag (the Worker sends R2's; here from mtime and size), or None."""
+        if self.flat or not IMAGE_ROUTE.fullmatch(path):
+            return None
+        try:
+            info = Path(self.translate_path(path)).stat()
+        except OSError:
+            return None
+        return f'"{info.st_mtime_ns:x}-{info.st_size:x}"'
 
     def answer(self, head):
         if self.headers.get('User-Agent', '').startswith('Python-urllib/'):
@@ -101,14 +127,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             super().do_GET()
 
     def ranged(self, path):
-        """One byte range, as R2 answers it (resumed downloads, the ISO read-back)."""
-        match = re.fullmatch(r'bytes=(\d+)-(\d*)', self.headers['Range'].strip())
+        """One byte range a-b, a- or -n, as R2 and the Worker answer it (resumed downloads, the
+        ISO read-back); False serves the whole file. On the image a stale If-Range (neither its
+        ETag nor its Last-Modified) gets the whole file, as from the Worker."""
+        match = re.fullmatch(r'bytes=(\d*)-(\d*)', self.headers['Range'].strip())
         target = Path(self.translate_path(path))
-        if not match or not target.is_file():
+        if not match or match.group(0) == 'bytes=-' or not target.is_file():
             return False
         size = target.stat().st_size
-        start = int(match.group(1))
-        end = min(int(match.group(2)) if match.group(2) else size - 1, size - 1)
+        modified = self.date_time_string(int(target.stat().st_mtime))
+        tag = self.image_etag(path)
+        validator = self.headers.get('If-Range')
+        if (tag and self.image_worker and validator is not None
+                and validator.strip() not in (tag, modified)):
+            return False
+        first, last = match.groups()
+        if first:
+            start = int(first)
+            if last and int(last) < start:
+                return False
+            end = min(int(last) if last else size - 1, size - 1)
+        else:
+            suffix = int(last)
+            start, end = max(0, size - suffix), (size - 1 if suffix else -1)
         if start > end:
             self.send_response(416)
             self.send_header('Content-Range', f'bytes */{size}')
@@ -121,7 +162,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_response(206)
         self.send_header('Content-Range', f'bytes {start}-{end}/{size}')
         self.send_header('Content-Length', str(len(data)))
-        self.send_header('Last-Modified', self.date_time_string(int(target.stat().st_mtime)))
+        self.send_header('Last-Modified', modified)
         self.end_headers()
         self.wfile.write(data)
         return True
@@ -137,9 +178,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return None
 
 
-def serve(root, port=0, flat=False, log=None):
-    handler = partial(type('BoundHandler', (Handler,), {'flat': flat, 'log_path': log}), directory=str(root))
-    server = http.server.ThreadingHTTPServer(('127.0.0.1', port), handler)
+class Server(http.server.ThreadingHTTPServer):
+    def handle_error(self, request, client_address):
+        if isinstance(sys.exc_info()[1], ConnectionError):
+            return  # the client stopped reading, as a refused read-back of a whole image does
+        super().handle_error(request, client_address)
+
+
+def serve(root, port=0, flat=False, log=None, base=None):
+    """base: a Handler subclass, for a test that imitates another server."""
+    handler = partial(type('BoundHandler', (base or Handler,), {'flat': flat, 'log_path': log}),
+                      directory=str(root))
+    server = Server(('127.0.0.1', port), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server

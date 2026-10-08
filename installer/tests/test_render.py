@@ -278,6 +278,8 @@ class RenderTests(unittest.TestCase):
             text = vconsole_conf(layouts)
             for word in ('XKBOPTIONS', 'XKBMODEL', 'grp:'):
                 self.assertNotIn(word, text)
+            self.assertEqual(text.count('FONT='), 0)
+            self.assertIn('FONT=ter-124b\n', vconsole_conf(layouts, 'ter-124b'))
             self.assertEqual(text.count('KEYMAP='), 1)
             self.assertEqual(text.count('XKBLAYOUT='), 1)
 

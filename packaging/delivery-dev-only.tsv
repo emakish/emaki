@@ -83,6 +83,7 @@ installer/ui/tests/transcripts/update-progress.json	Recorded update-progress sce
 packaging/emaki-config/PKGBUILD	Package build recipe; packages contain its resulting payload.	packaging/emaki-config/PKGBUILD:package
 packaging/emaki-config/expected-files.list	Reviewed package payload assertion used during packaging.	packaging/emaki-config/PKGBUILD:diff actual-files.list
 packaging/emaki-config/preset-unit-files.json	Recorded upstream unit inventory for preset regression tests.	tests/test-packaging.py
+packaging/emaki-config/terminus-font-files.json	Recorded upstream font inventory for console font regression tests.	tests/test-packaging.py
 scripts/build-boot-splash	Build tool for the unshipped UKI splash prototype.	Makefile:boot-splash
 scripts/build-cursors	Build tool producing the installed checked-in cursor theme.	Makefile:cursors
 scripts/build-fetch	Build tool producing the installed checked-in fetch assets.	Makefile:fetch-assets

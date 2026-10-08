@@ -54,7 +54,6 @@ AuthController {
         prompt = "Password";
         message = "";
         messageKind = "";
-        messageTimer.stop();
         ++attemptId;
         _attempt = pamFactory.createObject(root, {
             attemptId: attemptId
@@ -125,7 +124,6 @@ AuthController {
             } else {
                 message = "Wrong password";
                 messageKind = "wrong";
-                messageTimer.restart();
             }
             rejected();
         } else {
@@ -156,7 +154,6 @@ AuthController {
         queued = false;
         _awaitingInput = false;
         watchdog.stop();
-        messageTimer.stop();
         wipe(true);
         release();
         prompt = "Password";
@@ -186,15 +183,6 @@ AuthController {
     }
     readonly property Component pamFactory: Component {
         LockPam {}
-    }
-    readonly property Timer messageTimer: Timer {
-        interval: 2000
-        onTriggered: {
-            if (root.messageKind === "wrong") {
-                root.message = "";
-                root.messageKind = "";
-            }
-        }
     }
     readonly property Timer watchdog: Timer {
         interval: 60000

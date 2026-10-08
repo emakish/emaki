@@ -43,4 +43,4 @@ button:hover { background-color: #1c1612; border-color: #e2733f; }
 button:active, button.suggested-action { background-color: #e2733f; color: #2a0f05; }
 entry:focus, button:focus { border-color: #e2733f; }
 *:disabled { color: #a39483; }
-* { font-family: "Adwaita Sans"; font-size: 12pt; }
+* { font-family: "Noto Sans"; font-size: 12pt; }

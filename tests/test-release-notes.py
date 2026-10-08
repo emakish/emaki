@@ -96,6 +96,22 @@ class ReleaseNotesTest(unittest.TestCase):
             '## New\n\n- Search is available.\n\n'
             '## Fixed\n\n- Search results stay visible.\n'))
 
+    def test_exact_prior_note_can_be_replaced_without_rewriting_history(self):
+        old = self.commit('Old\n\nNote: Removed: Theme dependencies.\n'
+                          'Note: Changed: Theme dependencies.')
+        self.commit('Correct\n\nNote-Replaces: Removed: Theme dependencies.\n'
+                    'Note: Removed: Cursor dependency.')
+        self.assert_result(self.notes(), output='## Changed\n\n- Theme dependencies.\n\n'
+                           '## Removed\n\n- Cursor dependency.\n')
+        self.assert_result(self.notes(old=old), output='## Removed\n\n- Cursor dependency.\n')
+
+    def test_replacement_requires_valid_note_and_new_text(self):
+        for trailers in ('Note-Replaces: Removed: Old feature.',
+                         'Note-Replaces: Old feature.\nNote: Changed: New feature.'):
+            old = self.git('rev-parse', 'HEAD')
+            self.commit('Invalid correction\n\n' + trailers)
+            self.assert_result(self.notes(old=old), code=2)
+
     def test_merge_trailer_alone_satisfies_check(self):
         self.git('checkout', '--quiet', '-b', 'feature')
         self.commit('Feature', {'shell/search': 'new'})

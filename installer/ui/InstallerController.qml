@@ -261,8 +261,12 @@ Item {
             if (message.ok)
                 acceptTimezoneGuess(message.tz_guess);
         }
+        if (message.type === "hello" && message.restart) {
+            step = "install";
+            removeUsbPrompt = ["ready", "forced"].includes(session.restartState);
+        }
         if (rebootPrepared && message.type === "reply" && message.ok) {
-            if (catalog.boot_removable === true)
+            if (catalog.boot_removable === true || message.forced_reboot === true)
                 removeUsbPrompt = true;
             else
                 reboot();
@@ -311,7 +315,7 @@ Item {
             step = "install";
         else if (session.outcome)
             step = session.outcome;
-        if (message.type === "reply" && !message.ok && wasPlanning)
+        if (message.type === "reply" && !message.ok && wasPlanning && message.code !== "restart_pending")
             clearPasswords();
         if (step === "done" || step === "error")
             callHelper("media", {});
@@ -768,7 +772,7 @@ Item {
         if (Object.values(session.pending).includes("reboot"))
             return;
         if (!session.ready) {
-            session.rebootMessage = "Could not restart. Try again.";
+            Protocol.disconnectedReboot(session);
             publish();
             return;
         }
@@ -779,6 +783,10 @@ Item {
             return;
         session.rebootMessage = "";
         send("prepare_reboot", {});
+    }
+    function preparationTimedOut(): void {
+        Protocol.preparationTimedOut(session);
+        publish();
     }
     function retry(): void {
         if (!session.error || !session.error.retryable || session.running)
@@ -876,6 +884,8 @@ Item {
         else if (helperOp !== "network")
             helperMessage = "";
     }
+    readonly property bool logSaveEnabled: session.ready && session.restartState !== "preparing"
+    readonly property string preparedRestartPrompt: catalog.boot_removable === true ? "Remove the USB stick, then press Enter to restart." : "Press Enter to restart."
     function saveLog(index: int): void {
         if (index < 0 || index >= media.length)
             return;
@@ -965,6 +975,21 @@ Item {
         running: root.step === "timezone" && root.session.ready
         repeat: true
         onTriggered: root.applyTimezone()
+    }
+    Timer {
+        objectName: "restartPreparationTimer"
+        interval: 135000
+        running: root.session.preparingSince > 0
+        onTriggered: root.preparationTimedOut()
+    }
+    Timer {
+        interval: 1000
+        running: root.session.restartState === "forced" && root.session.forcedDeadline > 0
+        repeat: true
+        onTriggered: {
+            Protocol.forcedTick(root.session, Date.now());
+            root.publish();
+        }
     }
     Timer {
         interval: 20000

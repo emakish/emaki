@@ -6,6 +6,7 @@ import configparser
 import json
 import os
 from pathlib import Path
+import select
 import shutil
 import subprocess
 import tempfile
@@ -174,7 +175,15 @@ for (const name of ['LVDS-1', 'LVDS1', 'DSI-1']) {
             state.mkdir()
             (state / 'packaged').write_text('one attempt claimed\n')
             qs = base / 'qs'
-            qs.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CALLS"\n')
+            qs.write_text('''#!/usr/bin/python3
+import os
+from pathlib import Path
+import sys
+Path(os.environ['CALLS']).write_text('\\n'.join(sys.argv[1:]) + '\\n')
+if 'ipc' not in sys.argv:
+    print('READY', flush=True)
+    sys.stdin.read(1)
+''')
             qs.chmod(0o700)
             qt_check = base / 'emaki-qt-check'
             qt_check.write_text('#!/bin/sh\nexit 0\n')
@@ -182,19 +191,36 @@ for (const name of ['LVDS-1', 'LVDS1', 'DSI-1']) {
             env = dict(os.environ, PATH=str(base) + os.pathsep + os.environ['PATH'],
                        XDG_RUNTIME_DIR=str(base), EMAKI_SHELL_DIR=str(base / 'override'),
                        INVOCATION_ID='a' * 32, CALLS=str(base / 'calls'))
-            for args in ([], ['call', 'launcher', 'status']):
-                result = subprocess.run([str(ROOT / 'scripts/emaki-shell'), *args],
+            process = subprocess.Popen([str(ROOT / 'scripts/emaki-shell')], env=env,
+                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE, text=True)
+            try:
+                self.assertTrue(select.select([process.stdout], [], [], 5)[0],
+                                'shell did not become ready')
+                self.assertEqual(process.stdout.readline(), 'READY\n')
+                launch = json.loads((state / 'launch.json').read_text())
+                self.assertIn(launch.get('runtime_shell', '/usr/share/emaki/shell'),
+                              (base / 'calls').read_text().splitlines())
+                self.assertNotIn(env['EMAKI_SHELL_DIR'], (base / 'calls').read_text())
+                result = subprocess.run([str(ROOT / 'scripts/emaki-shell'),
+                                         'call', 'launcher', 'status'],
                                         env=env, capture_output=True, text=True, timeout=5)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertIn('/usr/share/emaki/shell', (base / 'calls').read_text().splitlines())
+                self.assertIn(launch.get('runtime_shell', '/usr/share/emaki/shell'),
+                              (base / 'calls').read_text().splitlines())
                 self.assertNotIn(env['EMAKI_SHELL_DIR'], (base / 'calls').read_text())
-            self.assertEqual(json.loads((state / 'launch.json').read_text()),
-                             {'shell': '/usr/share/emaki/shell', 'invocation': 'a' * 32})
+            finally:
+                process.kill()
+                process.communicate(timeout=5)
+            self.assertEqual(launch['shell'], '/usr/share/emaki/shell')
+            self.assertEqual(launch['invocation'], 'a' * 32)
 
     def test_ipc_selection_never_invokes_health_helper(self):
         with tempfile.TemporaryDirectory(prefix='shell-ipc-') as directory:
             base = Path(directory)
             shutil.copyfile(ROOT / 'scripts/emaki-shell', base / 'emaki-shell')
+            shutil.copy2(ROOT / 'scripts/emaki-session-files', base / 'emaki-session-files')
+            shutil.copy2(ROOT / 'scripts/emaki_session_state.py', base / 'emaki_session_state.py')
             for name, body in [('emaki-shell-health', 'echo unexpected > "$HEALTH_CALL"; exit 1'),
                                ('qs', 'printf "%s\\n" "$@" > "$CALLS"')]:
                 script = base / name

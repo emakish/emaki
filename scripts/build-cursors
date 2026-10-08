@@ -42,7 +42,6 @@ ALIASES = {
 INDEX = """[Icon Theme]
 Name=Emaki
 Comment=Emaki pixel cursors (Haze)
-Inherits=Adwaita
 """
 
 

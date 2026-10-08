@@ -4,12 +4,14 @@
 This is a size estimate, not the ISO builder's authoritative pacman transaction.
 Only core/extra x86_64/any packages and required dependencies are counted.
 """
+import argparse
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
 import subprocess
+import tarfile
 import urllib.parse
 import urllib.request
 import urllib.error
@@ -36,13 +38,48 @@ def dependencies(recipe):
     return [line for line in result.stdout.splitlines() if line]
 
 
+def sync_records(directory):
+    """Read an explicitly selected, already synchronized core/extra database."""
+    records = []
+    for repo in ('core', 'extra'):
+        with tarfile.open(directory / (repo + '.db')) as archive:
+            for member in archive:
+                if not member.name.endswith('/desc'):
+                    continue
+                fields = {}
+                for block in archive.extractfile(member).read().decode().split('\n\n'):
+                    if block:
+                        lines = block.splitlines()
+                        fields[lines[0].strip('%')] = lines[1:]
+                if fields['ARCH'][0] not in ('x86_64', 'any'):
+                    continue
+                version, release = fields['VERSION'][0].rsplit('-', 1)
+                records.append(dict(
+                    pkgname=fields['NAME'][0], repo=repo, arch=fields['ARCH'][0],
+                    pkgver=version.split(':', 1)[-1], pkgrel=release,
+                    compressed_size=int(fields['CSIZE'][0]), installed_size=int(fields['ISIZE'][0]),
+                    depends=fields.get('DEPENDS', []), provides=fields.get('PROVIDES', [])))
+    return records
+
+
 def main():
-    query = {'repo': ['Core', 'Extra'], 'arch': ['x86_64', 'any']}
-    first = fetch(query)
-    records = first['results']
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        for page in pool.map(lambda n: fetch(dict(query, page=n)), range(2, first['num_pages'] + 1)):
-            records.extend(page['results'])
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--sync-db', type=Path,
+                        help='use existing core.db and extra.db instead of the Arch API')
+    args = parser.parse_args()
+    if args.sync_db:
+        records = sync_records(args.sync_db)
+        source = str(args.sync_db.resolve())
+        method = 'Selected cached core/extra sync databases'
+    else:
+        query = {'repo': ['Core', 'Extra'], 'arch': ['x86_64', 'any']}
+        first = fetch(query)
+        records = first['results']
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            for page in pool.map(lambda n: fetch(dict(query, page=n)), range(2, first['num_pages'] + 1)):
+                records.extend(page['results'])
+        source = API
+        method = 'Current core/extra API'
     packages = {p['pkgname']: p for p in records}
     local = {p.parent.name: dependencies(p) for p in ROOT.glob('packaging/*/PKGBUILD')}
     providers = {}
@@ -88,12 +125,12 @@ def main():
     added = rich - baseline - local.keys()
     fields = ('pkgname', 'repo', 'arch', 'pkgver', 'pkgrel', 'compressed_size', 'installed_size')
     report = {
-        'checked_at': datetime.now(timezone.utc).isoformat(), 'source': API,
-        'method': 'Current core/extra API required-dependency closure; virtual providers chosen deterministically. Pacman build resolution remains authoritative.',
+        'checked_at': datetime.now(timezone.utc).isoformat(), 'source': source,
+        'method': method + ' required-dependency closure; virtual providers chosen deterministically. Pacman build resolution remains authoritative.',
         'direct': [{k: packages[name][k] for k in fields} for name in direct],
         'minimal': [{k: packages[name][k] for k in fields} for name in ('dolphin', 'firefox', 'kitty')],
         'infrastructure': [{k: packages[name][k] for k in (*fields, 'depends')}
-                           for name in ('gnome-keyring', 'polkit-gnome', 'xdg-desktop-portal-gnome',
+                           for name in ('kwallet', 'kwallet-pam', 'polkit-kde-agent', 'xdg-desktop-portal-gnome',
                                         'xdg-desktop-portal-gtk')],
         'local_portal': {'name': 'xdg-desktop-portal-gnome-emaki',
                          'depends': local['xdg-desktop-portal-gnome-emaki']},

@@ -46,7 +46,8 @@ class Client:
         rd(s, nl)
         # 32bpp, depth 24, little endian, truecolor, shifts r16 g8 b0
         s.sendall(struct.pack('>BxxxBBBBHHHBBBxxx', 0, 32, 24, 0, 1, 255, 255, 255, 16, 8, 0))
-        s.sendall(struct.pack('>BxHi', 2, 1, 0))  # raw only
+        # RichCursor keeps the pointer out of raw scan-out pixels.
+        s.sendall(struct.pack('>BxHii', 2, 2, 0, -239))
         self.sock = s
 
     def frame(self):
@@ -62,6 +63,10 @@ class Client:
                 nr = struct.unpack('>H', rd(s, 2))[0]
                 for _ in range(nr):
                     x, y, rw, rh, enc = struct.unpack('>HHHHi', rd(s, 12))
+                    if enc == -239:
+                        # Cursor pixels and one-bit transparency mask are separate.
+                        rd(s, rw * rh * 4 + ((rw + 7) // 8) * rh)
+                        continue
                     if enc != 0:
                         raise RuntimeError(f'unexpected vnc encoding {enc}')
                     data = rd(s, rw * rh * 4)

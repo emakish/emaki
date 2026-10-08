@@ -60,7 +60,7 @@ spawn-at-startup "emaki-autostart" "clipboard" "python3" "-B" "/usr/share/emaki/
 
 // polkit authentication service. Without it, graphical applications cannot request
 // an administrator password: requests are silently denied.
-spawn-at-startup "emaki-autostart" "authentication" "env" "GTK_THEME=Emaki" "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"
+spawn-at-startup "emaki-autostart" "authentication" "env" "QT_QUICK_CONTROLS_STYLE=Fusion" "/usr/lib/polkit-kde-authentication-agent-1"
 
 // Mount USB drives on request; insertion must not mount behind the lock.
 spawn-at-startup "emaki-autostart" "automount" "udiskie" "--no-automount"

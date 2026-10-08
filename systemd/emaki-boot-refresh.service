@@ -1,0 +1,21 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Retry a pending Emaki boot loader update [GRUB]
+# Match the completion unit's ordering without creating a target cycle.
+DefaultDependencies=no
+After=multi-user.target emaki-boot-complete.service
+Before=shutdown.target
+Conflicts=shutdown.target
+ConditionPathExists=|/var/lib/emaki/boot-refresh-pending
+ConditionPathExists=|/var/lib/pacman/db.lck
+RequiresMountsFor=/boot /efi
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/emaki-boot-refresh --retry
+TimeoutStartSec=5min
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

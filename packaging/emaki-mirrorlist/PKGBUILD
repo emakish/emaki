@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # shellcheck shell=bash disable=SC2034,SC2154
 pkgname=emaki-mirrorlist
-pkgver=0.3.0
+pkgver=0.3.1
 pkgrel=1
 pkgdesc='Emaki package repository channels'
 arch=('any')

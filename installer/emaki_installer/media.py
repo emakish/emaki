@@ -8,7 +8,7 @@ import re
 import tempfile
 from urllib.parse import unquote, urlsplit
 
-from .constants import OFFLINE_CONF, WORK
+from .constants import OFFLINE_CONF, OFFLINE_REPO, WORK
 from .errors import Code, InstallError, require
 
 MISSING_NOTICE = ('The installation files were not found on the live medium. '
@@ -54,14 +54,21 @@ class PackageSource:
     config: Path
     repo: Path
     archives: list | None = None
+    hookdir: Path | None = None
 
     def validate(self):
         from .arch_backend import offline_config
-        return offline_config(self.config, repo=self.repo.as_uri())
+        require(self.hookdir is not None
+                and not any(char.isspace() for char in str(self.hookdir))
+                and self.hookdir.is_dir()
+                and not self.hookdir.is_symlink() and not any(self.hookdir.iterdir()),
+                Code.OFFLINE_REPO, 'The package hook directory is not empty or is unavailable [pacman].')
+        return offline_config(self.config, repo=self.repo.as_uri(), hookdir=self.hookdir)
 
 
-def _config(path, repo):
+def _config(path, repo, hookdir):
     path.write_text('[options]\nArchitecture = auto\n'
+                    f'HookDir = {hookdir}\n'
                     'SigLevel = Required DatabaseOptional TrustedOnly\n'
                     'LocalFileSigLevel = Required TrustedOnly\n\n'
                     '[emaki-offline]\nSigLevel = Required DatabaseOptional TrustedOnly\n'
@@ -69,7 +76,7 @@ def _config(path, repo):
     return path
 
 
-def _download(runner, work, packages, root):
+def _download(runner, work, packages, root, hookdir):
     """Resolve against an empty database, fetch every archive and its detached signature."""
     db = work / 'db'
     cache = work / 'repo'
@@ -77,6 +84,7 @@ def _download(runner, work, packages, root):
     cache.mkdir()
     conf = work / 'online.conf'
     conf.write_text('[options]\nArchitecture = auto\n'
+                    f'HookDir = {hookdir}\n'
                     'SigLevel = Required DatabaseOptional TrustedOnly\n'
                     'LocalFileSigLevel = Required TrustedOnly\n\n'
                     f'[emaki]\nInclude = {root / "etc/pacman.d/emaki-mirrorlist"}\n\n'
@@ -119,15 +127,33 @@ def _download(runner, work, packages, root):
 
 
 @contextmanager
+def offline_source(config=OFFLINE_CONF, *, repo=OFFLINE_REPO, work_parent=None):
+    """Validate shipped input before replacing it with a private transaction config."""
+    from .arch_backend import offline_config
+    offline_config(config, repo=repo)
+    repository = Path(unquote(urlsplit(repo).path))
+    if work_parent is not None:
+        Path(work_parent).mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='packages-', dir=work_parent) as temporary:
+        work = Path(temporary)
+        hooks = work / 'hooks'
+        hooks.mkdir(mode=0o700)
+        source = PackageSource(_config(work / 'offline.conf', repository, hooks), repository,
+                               hookdir=hooks)
+        source.validate()
+        yield source
+
+
+@contextmanager
 def package_source(runner, packages, *, online, root=Path('/'), mount_roots=None,
                    notice=lambda message: None, work_parent=WORK):
     """Keep the selected repository alive until pacstrap and all package phases finish."""
     root = Path(root).resolve()
     repo = discover_repo(root, mount_roots)
     if repo == root / 'run/archiso/bootmnt/emaki/repo':
-        source = PackageSource(root / str(OFFLINE_CONF).lstrip('/'), repo)
-        source.validate()
-        yield source
+        with offline_source(root / str(OFFLINE_CONF).lstrip('/'), repo=repo.as_uri(),
+                            work_parent=work_parent) as source:
+            yield source
         return
     if repo is None:
         notice(MISSING_NOTICE)
@@ -137,15 +163,17 @@ def package_source(runner, packages, *, online, root=Path('/'), mount_roots=None
     Path(work_parent).mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='packages-', dir=work_parent) as temporary:
         work = Path(temporary)
+        hooks = work / 'hooks'
+        hooks.mkdir(mode=0o700)
         archives = None
         if repo is None:
             try:
-                repo, archives = _download(runner, work, packages, root)
+                repo, archives = _download(runner, work, packages, root, hooks)
             except (OSError, InstallError) as exc:
                 raise InstallError(Code.OFFLINE_REPO_INCOMPLETE,
                                    'The installation files could not be downloaded and checked. '
                                    'Check the internet connection and free space in the live session, then try again; your disk has not been changed. '
                                    + str(exc)) from exc
-        source = PackageSource(_config(work / 'offline.conf', repo), repo, archives)
+        source = PackageSource(_config(work / 'offline.conf', repo, hooks), repo, archives, hooks)
         source.validate()
         yield source

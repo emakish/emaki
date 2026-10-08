@@ -18,6 +18,7 @@ from .constants import GRUB_VISIBLE_FONT, OFFLINE_CONF, OFFLINE_REPO, TARGET, WO
 from . import inventory as alongside
 from .errors import Code, InstallError, require
 from .runtime import TargetFiles
+from .graphics import console_font
 from .render import GRUB_EARLY_MODULES, validate_xkb_layouts, vconsole_conf
 
 
@@ -118,13 +119,13 @@ def load_archinstall():
                            'Cannot load archinstall 4.5 and its dependencies: ' + type(exc).__name__) from exc
 
 
-def offline_config(path=OFFLINE_CONF, *, repo=OFFLINE_REPO):
+def offline_config(path=OFFLINE_CONF, *, repo=OFFLINE_REPO, hookdir=None):
     """Reject includes and additional repos, including accidental online fallback."""
     sections, active, values = [], None, {}
     try:
         for line in path.read_text().splitlines():
-            line = line.split('#', 1)[0].strip()
-            if not line:
+            line = line.strip()
+            if not line or line.startswith('#'):
                 continue
             if line.startswith('[') and line.endswith(']'):
                 active = line[1:-1]
@@ -132,13 +133,19 @@ def offline_config(path=OFFLINE_CONF, *, repo=OFFLINE_REPO):
                 continue
             key, _, value = line.partition('=')
             key, value = key.strip(), value.strip()
-            require(key not in ('Include', 'XferCommand', 'HookDir', 'GPGDir', 'DBPath', 'RootDir', 'CacheServer'),
+            require(key not in ('Include', 'XferCommand', 'GPGDir', 'DBPath', 'RootDir', 'CacheServer'),
                     Code.OFFLINE_REPO, f'Unsafe offline pacman directive: {key}.')
+            if key == 'HookDir':
+                require(hookdir is not None and active == 'options' and value == str(hookdir)
+                        and not any(char.isspace() for char in value),
+                        Code.OFFLINE_REPO, 'Unsafe offline pacman directive: HookDir.')
             values.setdefault((active, key), []).append(value)
     except OSError as exc:
         raise InstallError(Code.OFFLINE_REPO, 'Offline pacman configuration is missing or unreadable.') from exc
     require(sections.count('emaki-offline') == 1 and set(sections) <= {'options', 'emaki-offline'},
             Code.OFFLINE_REPO, 'Only [emaki-offline] is permitted for pacstrap.')
+    require(values.get(('options', 'HookDir'), []) == ([] if hookdir is None else [str(hookdir)]),
+            Code.OFFLINE_REPO, 'Unsafe offline pacman directive: HookDir.')
     require(values.get(('emaki-offline', 'Server')) == [repo], Code.OFFLINE_REPO,
             'Offline repository must be the live USB file:// repository.')
     sig = values.get(('emaki-offline', 'SigLevel'), values.get(('options', 'SigLevel'), []))
@@ -346,7 +353,12 @@ class OfflinePacman:
     def strap(self, packages, **kwargs):
         if isinstance(packages, str):
             packages = [packages]
-        self.runner.run(['pacstrap', '-C', str(self.source.validate() if self.source else offline_config()), '-K', str(self.target),
+        if self.source is None:
+            from .media import offline_source
+            with offline_source() as source:
+                OfflinePacman(self.runner, self.target, source).strap(packages, **kwargs)
+            return
+        self.runner.run(['pacstrap', '-C', str(self.source.validate()), '-K', str(self.target),
                          *sorted(set(packages)), '--noconfirm', '--needed'])
 
 
@@ -369,6 +381,7 @@ class Backend:
     def __init__(self, api, plan, runner, target=TARGET):
         self.api, self.plan, self.runner, self.target = api, plan, runner, target
         self.files = TargetFiles(target)
+        self.console_font = console_font(plan)
         self.disk_config = build_disk_config(api, plan)
         self.devices = DeviceOperations(plan, runner, target)
         self.instance = None
@@ -409,7 +422,7 @@ class Backend:
             def set_vconsole(self, locale):
                 # 4.5 calls this before strapping the kernels, whose mkinitcpio hook builds
                 # images from the file: write it whole, from the one producer.
-                backend.files.write('/etc/vconsole.conf', vconsole_conf(backend.plan.config['layouts']))
+                backend.files.write('/etc/vconsole.conf', vconsole_conf(backend.plan.config['layouts'], backend.console_font))
 
             def set_locale(self, locale):
                 backend.files.write('/etc/locale.gen', 'en_US.UTF-8 UTF-8\n')
@@ -428,7 +441,7 @@ class Backend:
 
         with patch.object(module, 'accessibility_tools_in_use', return_value=False):
             self.instance = EmakiInstaller(self.target, self.disk_config,
-                                           base_packages=['base', 'mkinitcpio'],
+                                           base_packages=['base', 'mkinitcpio', 'terminus-font'],
                                            kernels=['linux', 'linux-lts'], silent=True)
         self.instance.pacman = OfflinePacman(self.runner, self.target, self.package_source)
 

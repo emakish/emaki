@@ -92,7 +92,9 @@ class FakeVNCHandler(socketserver.BaseRequestHandler):
         self.read(1)
         self.request.sendall(struct.pack('>HH', w, h) + bytes(16) + struct.pack('>I', 4) + b'fake')
         self.read(20)  # SetPixelFormat
-        self.read(8)  # SetEncodings with one encoding
+        _, count = struct.unpack('>BxH', self.read(4))
+        encodings = struct.unpack('>' + 'i' * count, self.read(4 * count))
+        assert 0 in encodings
         try:
             while True:
                 if self.read(1) != b'\x03':
@@ -144,6 +146,28 @@ class FakeGuest:
             server.shutdown()
             server.server_close()
         socket_runtime.cleanup(self.dir)
+
+
+class CursorCaptureTests(unittest.TestCase):
+    def test_cursor_encoding_is_requested_and_excluded_from_pixels(self):
+        from io import BytesIO
+        # Non-byte-aligned cursor width exercises the rounded mask stride.
+        cursor = struct.pack('>HHHHi', 1, 1, 9, 2, -239) + b'\xff' * (9 * 2 * 4 + 2 * 2)
+        raw = struct.pack('>HHHHi', 0, 0, 2, 2, 0) + bytes((0, 0, 255, 0)) * 4
+        data = BytesIO(b'RFB 003.008\n' + b'\x01\x01' + struct.pack('>I', 0)
+                       + struct.pack('>HH', 2, 2) + bytes(16) + struct.pack('>I', 4) + b'fake'
+                       + b'\x00\x00\x00\x02' + cursor + raw)
+        transport = mock.Mock()
+        transport.recv.side_effect = data.read
+        with mock.patch.object(eyes.vncshot.socket, 'socket', return_value=transport):
+            client = eyes.vncshot.Client('/tmp/unused-vnc-socket')
+            try:
+                image = client.frame()
+                self.assertEqual(set(image.getdata()), {(255, 0, 0)})
+                transport.sendall.assert_any_call(struct.pack('>BxHii', 2, 2, 0, -239))
+                self.assertEqual(data.read(), b'')
+            finally:
+                client.close()
 
 
 class MetricsTests(unittest.TestCase):

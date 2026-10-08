@@ -6,7 +6,7 @@ Emaki is an Arch-based desktop built around **niri-emaki**, a fork of the
 pixel-art wallpaper: a looping valley at sunset that scrolls with your workspaces, with
 steam trains running through it.
 
-**Status: 0.3.0 alpha — not for everyday use.** See [Release stages](#release-stages). It is
+**Status: 0.3.1 alpha — not for everyday use.** See [Release stages](#release-stages). It is
 tested in QEMU with UEFI firmware (OVMF) and has been installed on one real machine so far, see
 [Tested hardware](#tested-hardware).
 
@@ -53,7 +53,7 @@ Beta here is the stage of Emaki as a whole, not a pre-release: every new version
 
 ## The ISO
 
-`emaki-0.3.0-x86_64.iso` boots into a live Emaki session with the installer open. Emaki
+`emaki-0.3.1-x86_64.iso` boots into a live Emaki session with the installer open. Emaki
 needs a computer with 64-bit UEFI; legacy BIOS computers are refused by the installer. If
 Windows on the computer uses BitLocker or device encryption, save its recovery key first:
 changing firmware security settings can make Windows ask for it.
@@ -72,7 +72,7 @@ installer offers two software sets. **Minimal** is the desktop with Dolphin, Fir
 **Rich** (preselected) adds LibreOffice, Thunderbird, Okular, Kate, Gwenview, Ark, Haruna,
 Elisa, Spectacle, OBS Studio, qBittorrent, KeePassXC, Discover with Flatpak, Partition Manager,
 Filelight, System Monitor, ISO Image Writer, KCharSelect, Skanlite, printing and
-media codecs. Not in 0.3.0: BIOS boot, installing alongside Windows.
+media codecs. Not in 0.3.1: BIOS boot, installing alongside Windows.
 
 ## Security notes
 
@@ -94,15 +94,19 @@ session without your password.
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.1.1 | Live session from USB, installation (erase disk, btrfs), boot, login, desktop, Wi-Fi on 2.4 GHz, screen lock on lid close | 5 GHz Wi-Fi networks are not listed (Broadcom BCM43602); the GRUB menu text is very small on the Retina display |
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.2.0 | Installation from USB with disk encryption, disk unlock in about 5 s, boot, desktop, updates from the Emaki mirror | The disk-password screen is drawn small in a corner of the Retina display; Wi-Fi joined in the installer has to be joined again after installing |
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.3.0 | Update from 0.2.0 with `pacman -Syu`, screen lock after closing and opening the lid, installation from USB with disk encryption, wrong and right disk password, boot, login, desktop | After "Restart now" the "remove the USB stick" message is almost unreadable (dark text on a black box); shutting down the live session reports "Failed to start Generate shutdown ramfs"; the disk-password screen does not yet match the boot menu |
+| MacBook Pro (Retina, 13-inch, Early 2015) | 0.3.1 | Update from 0.3.0 with `pacman -Syu`, boot with disk encryption, login, desktop, wrong and right password on the lock screen | After hibernation the session does not respond; Wi-Fi joined in the installer has to be joined again after installing |
 
 Installed Emaki on another machine? Reports are welcome in the issues.
 
-### Known issues in 0.3.0
+### Known issues in 0.3.1
 
-- Systems installed **without** disk encryption print "The boot loader update did not finish"
-  during updates. They keep starting with their current boot loader; 0.3.1 fixes the update.
-- After installing from the USB stick, run `sudo pacman -Syu` once before installing software;
-  the installer says so on its last page. A later version will do this for you.
+- The 0.3.1 image is not published yet. Install from the 0.3.0 image and update the whole system
+  with `sudo pacman -Syu`; that update brings 0.3.1.
+- Hibernation: on the tested MacBook the session does not respond after resuming. Do not use
+  hibernation.
+- Wi-Fi joined in the installer has to be joined again after installing.
+- Systems updated from earlier versions print `warning: directory permissions differ on
+  /etc/sudoers.d/` during updates. Administrator rights keep working.
 - Machines that still update from the old GitHub address print
   "emaki: missing required signature" once after moving to `pkgs.emaki.sh`; the next update is
   clean.

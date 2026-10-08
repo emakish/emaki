@@ -4,8 +4,8 @@
 # makepkg supplies build paths and consumes package metadata.
 # shellcheck disable=SC2034,SC2154
 pkgname=emaki-config
-pkgver=0.3.0
-pkgrel=1
+pkgver=0.3.1
+pkgrel=2
 pkgdesc='Emaki shell, CLI, system defaults, session, greeter and themes'
 arch=('x86_64')
 url='https://github.com/emakish/emaki'
@@ -15,13 +15,13 @@ depends=(
     'glibc' 'libgcc' 'bash' 'coreutils' 'dbus' 'procps-ng' 'systemd' 'util-linux'
     'niri-emaki>=26.04-6' 'quickshell-emaki>=0.3.1-4'
     'python' 'python-gobject' 'python-pillow' 'gtk3'
-    'wpaperd' 'wl-clipboard' 'cliphist' 'polkit-gnome' 'udiskie'
-    'kitty' 'fastfetch>=2.68.1' 'imagemagick' 'hyprlock' 'playerctl' 'fuzzel' 'qt6ct'
-    'adwaita-cursors' 'adwaita-fonts' 'adwaita-icon-theme'
+    'wpaperd' 'wl-clipboard' 'cliphist' 'polkit-kde-agent' 'udiskie'
+    'kitty' 'fastfetch>=2.68.1' 'imagemagick' 'hyprlock' 'playerctl' 'fuzzel' 'qt6ct' 'noto-fonts' 'breeze-icons' 'adwaita-icon-theme'
+    'terminus-font'
     'xdg-desktop-portal-gnome' 'xdg-desktop-portal-gtk'  # Upstream name; see emaki-desktop.
     'brightnessctl' 'power-profiles-daemon' 'networkmanager' 'upower' 'blueman' 'bluez'
     'pipewire' 'wireplumber' 'pipewire-pulse' 'wlsunset'
-    'greetd' 'greetd-regreet' 'gnome-keyring' 'kwallet>=6.30'
+    'greetd' 'greetd-regreet' 'kwallet-pam' 'kwallet>=6.30'
 )
 makedepends=('git' 'make' 'python' 'rust' 'qt6-shadertools')
 checkdepends=('niri' 'nodejs')  # nodejs: shell JavaScript tests in make check

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Token-derived GTK theme and the administrator prompt’s scoped theme."""
+"""Token-derived GTK and Qt themes, including the administrator prompt."""
 from pathlib import Path
 from runtime_fixture import runtime_path
 import json
@@ -19,10 +19,69 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ThemeTests(unittest.TestCase):
-    def test_administrator_prompt_selects_emaki_only_for_its_process(self):
-        self.assertIn('spawn-at-startup "emaki-autostart" "authentication" "env" "GTK_THEME=Emaki" '
-                      '"/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"',
+    def test_administrator_prompt_selects_fusion_only_for_its_process(self):
+        self.assertIn('spawn-at-startup "emaki-autostart" "authentication" "env" "QT_QUICK_CONTROLS_STYLE=Fusion" '
+                      '"/usr/lib/polkit-kde-authentication-agent-1"',
                       (ROOT / 'niri/default.kdl').read_text())
+
+    def test_administrator_controls_use_readable_emaki_palette(self):
+        # Match the agent's QApplication and Kirigami/QtQuick Controls, without
+        # opening a session bus or submitting a real authorization request.
+        with tempfile.TemporaryDirectory(prefix='emaki-polkit-') as directory:
+            home = Path(directory)
+            config = home / 'config/qt6ct'
+            config.mkdir(parents=True)
+            source = (ROOT / 'etc-skel/.config/qt6ct/qt6ct.conf').read_text()
+            (config / 'qt6ct.conf').write_text(source.replace(
+                '/usr/share/emaki/qt6ct/emaki.conf', str(ROOT / 'qt6ct/emaki.conf')))
+            (home / 'config/kdeglobals').write_text(
+                (ROOT / 'packaging/emaki-config/kdeglobals').read_text())
+            fixture = home / 'prompt.qml'
+            fixture.write_text("""
+import QtQuick
+import QtQuick.Controls
+import org.kde.kirigami as Kirigami
+Kirigami.AbstractApplicationWindow {
+    visible: true
+    width: 500; height: 300
+    Label { id: label; text: "Authentication required" }
+    TextField { id: password; echoMode: TextInput.Password }
+    ComboBox { id: identities; model: ["First administrator", "Second administrator"] }
+    Timer {
+        interval: 50; running: true
+        onTriggered: {
+            console.log("PALETTE:" + JSON.stringify({
+                labelText: label.color.toString(),
+                text: password.color.toString(),
+                base: password.palette.base.toString(),
+                menuText: identities.palette.text.toString(),
+                menuBase: identities.palette.base.toString(),
+                window: Kirigami.Theme.backgroundColor.toString(),
+                windowText: Kirigami.Theme.textColor.toString()
+            }));
+            Qt.quit();
+        }
+    }
+}
+""")
+            env = dict(os.environ, HOME=directory, XDG_CONFIG_HOME=str(home / 'config'),
+                       XDG_CONFIG_DIRS=str(home / 'empty'), XDG_CACHE_HOME=str(home / 'cache'),
+                       XDG_RUNTIME_DIR=directory, QT_QPA_PLATFORM='offscreen',
+                       QT_QPA_PLATFORMTHEME='qt6ct', QT_QUICK_CONTROLS_STYLE='Fusion',
+                       QT_QUICK_BACKEND='software', QT_LOGGING_RULES='qml.debug=true', QT_FORCE_STDERR_LOGGING='1',
+                       DBUS_SESSION_BUS_ADDRESS='disabled:')
+            result = subprocess.run(['qml6', '--apptype', 'widget', str(fixture)],
+                                    env=env, text=True, capture_output=True, timeout=15)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            lines = [line.split('PALETTE:', 1)[1] for line in result.stderr.splitlines()
+                     if 'PALETTE:' in line]
+            self.assertEqual(len(lines), 1, result.stdout + result.stderr)
+            samples = json.loads(lines[0])
+        tokens = tomllib.loads((ROOT / 'tokens.toml').read_text())['color']
+        for key in ('labelText', 'text', 'menuText', 'windowText'):
+            self.assertEqual(samples[key], '#' + tokens['text'], (key, samples))
+        for key in ('base', 'menuBase', 'window'):
+            self.assertEqual(samples[key], '#' + tokens['background'], (key, samples))
 
     def test_popup_surfaces_and_selection_have_readable_contrast(self):
         # Broadway gives GTK a real display without opening a window on the
@@ -109,7 +168,7 @@ def gtk_colours():
     from gi.repository import Gtk, Gdk
     Gtk.init([])
     Gtk.Settings.get_default().set_property('gtk-enable-animations', False)
-    # The theme is selected the way the session starts the prompt (GTK_THEME=Emaki, found in
+    # Apply the GTK theme directly for this independent GTK application fixture (found in
     # the temporary XDG_DATA_HOME/themes), so GTK applies it exactly as on an installed system.
     # GTK_THEME does not change the gtk-theme-name setting; the colours below show it applied.
     window = Gtk.Window()

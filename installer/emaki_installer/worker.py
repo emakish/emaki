@@ -15,11 +15,10 @@ from .arch_backend import Backend, offline_config
 from . import inventory as alongside
 from .constants import GRUB_VISIBLE_FONT, LOG, MARKER, PACKAGES, PHASES, SNAPSHOT_PACKAGES, TARGET, TEST_PACKAGES, WORK
 from .errors import Code, InstallError, require
+from .update_errors import details as update_error_details
 from .copy_progress import CopyProgress
 from .clock import ensure_clock
 from .media import discover_repo, package_source
-# The inventory's "online": a default route, read again at the end of the installation.
-from .inventory import _online as default_route
 from .network_profiles import active_wifi, capture_wifi, install_wifi
 from .planner import make_plan
 from .render import (GRUB_EARLY_MODULES, console_keymap,
@@ -32,8 +31,6 @@ from .runtime import Runner, TargetFiles, cleanup, processes_under, safe_log
 # Seconds for the optional update's downloads: a captive portal or a dead mirror
 # must not hold the installation. Installing is never limited (never cut in half).
 UPDATE_TIMEOUT = 900
-# A refresh-only -Sy downloads a few MiB of package lists; Cancel is disabled in that phase.
-REFRESH_TIMEOUT = 120
 # Ten HTTPS probes plus the mirror-status request must not hold up installation.
 MIRROR_TIMEOUT = 60
 # The update's pacman configuration without [emaki], used only when that repository
@@ -53,16 +50,11 @@ UPDATE_PACMAN = ['env', 'SNAP_PAC_SKIP=y', 'pacman']
 DOWNLOAD_PACMAN = ['env', 'SNAP_PAC_SKIP=y', 'stdbuf', '-oL', 'pacman']
 # emaki-config's snapshot boot hook, as named inside its archive; a btrfs image runs it.
 SNAPSHOT_HOOK = ('usr/lib/initcpio/hooks/emaki-snapshot-fstab', 'usr/lib/initcpio/install/emaki-snapshot-fstab')
-# Sent with `done` when the update's install step failed: pacman may have replaced
-# some packages before it stopped. finish() still rebuilds the boot images.
-PARTIAL_UPDATE = ('The online update stopped part-way; some packages may be newer than others. '
-                  'Run `sudo pacman -Syu` after the first login.')
-# Sent with `done` when the installed system has no package lists (pacman's sync databases):
-# the offline copy leaves none, and its first `pacman -S` fails until they are downloaded.
-NO_PACKAGE_LISTS = 'Run `sudo pacman -Syu` once you are online.'
-# Sent with `done` when the package lists are there but no full upgrade ran: lists newer than
-# the USB's packages make the first `pacman -S` a partial upgrade, which Arch does not support.
-UPGRADE_FIRST = 'Run `sudo pacman -Syu` before installing software.'
+# Completion advice never asks for a refresh-only or individual package update.
+UPGRADE_FIRST = ('Emaki needs one full update before you install apps; when online, '
+                 'use the terminal to update the whole system [pacman].')
+PARTIAL_UPDATE = ('The online update did not finish; use the terminal to update '
+                  'the whole system before installing apps [pacman].')
 WIFI_NOT_COPIED = 'Wi-Fi was not copied; join it again after restarting.'
 
 
@@ -279,10 +271,8 @@ class Worker:
         self.wifi_profile = None
         self.update_attempted = False
         self.skip_update = skip_update if skip_update is not None else threading.Event()
-        # Whether a limited download ran, whether a download or the refresh at the end synced
-        # the package lists, and whether the update's full upgrade (-Su) completed.
+        # Track synchronized package lists separately from a completed full upgrade.
         self.online = False
-        self.download_tried = False
         self.synced = False
         self.upgraded = False
         # What the person must know after a successful installation; sent with `done`.
@@ -491,7 +481,8 @@ class Worker:
         self.backend.minimal(locale)
         # The minimal install leaves the console map alone in this file. The whole text must
         # be there before the first mkinitcpio run (bootloader phase) reads it for the image.
-        self.files.write('/etc/vconsole.conf', vconsole_conf(layouts))
+        font = getattr(self.backend, 'console_font', None)
+        self.files.write('/etc/vconsole.conf', vconsole_conf(layouts, font))
         packages = software_packages(self.plan.config.get('software', 'rich'), btrfs=self.plan.btrfs,
                                      graphics=self.plan.graphics_packages)
         if self.plan.config['mode'] == 'alongside':
@@ -716,7 +707,8 @@ class Worker:
             self.populate_keyring()
         self.files.write('/etc/locale.gen', 'en_US.UTF-8 UTF-8\n')
         self.files.write('/etc/locale.conf', 'LANG=en_US.UTF-8\n')
-        self.files.write('/etc/vconsole.conf', vconsole_conf(c['layouts']))
+        font = getattr(getattr(self, 'backend', None), 'console_font', None)
+        self.files.write('/etc/vconsole.conf', vconsole_conf(c['layouts'], font))
         self.files.write('/etc/hostname', c['hostname'] + '\n')
         # A target-relative absolute symlink is correct after boot/chroot.
         parent = self.files.path('/etc')
@@ -912,23 +904,24 @@ class Worker:
             try:
                 self.download(['-Syuw', '--noconfirm'])
             except InstallError as exc:
-                self.warnings.append('The online update was skipped. Update after your first login.' if exc.code == Code.CANCELLED
-                                     else 'The online update could not finish. Check your connection and update after your first login.')
                 self.log('WARNING: online update failed; the offline installation is retained: ' + exc.message)
                 self.release_pacman_lock()
+                return
+            # Excluding a repository cannot establish a fully upgraded system.
+            if self.update_options:
+                self.log('WARNING: the full update is deferred until every repository is reachable.')
                 return
             # From here on the target changes: finish() rebuilds the boot images.
             self.update_attempted = True
             try:
-                self.runner.chroot([*UPDATE_PACMAN, '-Su', '--noconfirm', *self.update_options], self.target)
+                output = self.runner.chroot([*UPDATE_PACMAN, '-Su', '--noconfirm'], self.target)
+                if re.search(r'^error: command failed to execute correctly\s*$', output, re.M):
+                    raise InstallError(Code.COMMAND_FAILED, 'Package setup did not finish [pacman].', output=output)
             except InstallError as exc:
-                self.warnings.append(PARTIAL_UPDATE)
+                self.warnings.append(PARTIAL_UPDATE + ' ' + update_error_details(exc.output or exc.message))
                 self.log(f'WARNING: {PARTIAL_UPDATE} ({exc.message})')
                 return
             self.upgraded = True
-            if self.update_options:
-                self.log("Emaki's own repository was unreachable; Arch packages were updated, "
-                         'Emaki packages stay at the USB version.')
         finally:
             if self.update_options:
                 try:
@@ -942,7 +935,6 @@ class Worker:
         The target's /etc/pacman.conf keeps [emaki]: the installed system tries it again
         on its own first update.
         """
-        self.download_tried = True
         if self.skip_update.is_set():
             raise InstallError(Code.CANCELLED, 'Update download stopped.')
         self.activity('downloads')
@@ -1018,29 +1010,10 @@ class Worker:
                for path in self.files.path('/var/lib/pacman/sync').glob('*.db')):
             self.synced = True
 
-    def package_lists(self):
-        """Leave pacman its sync databases, and tell the person when the system is not upgraded.
-
-        The update's download syncs them. Without it they are downloaded here, refresh only,
-        when the machine is online now, with a short limit; -Sy runs no transaction,
-        so snap-pac has nothing to skip. A download that already failed is not repeated.
-        Synced lists are newer than the packages the USB installed: unless the update's -Su
-        completed, the person is told to upgrade before installing software, or to upgrade
-        once online when there are no lists. A partial update has already said so.
-        """
-        if self.upgraded or PARTIAL_UPDATE in self.warnings:
-            return
-        self.record_package_lists()
-        if not self.synced and not self.download_tried and default_route():
-            try:
-                self.runner.chroot(['pacman', '-Sy'], self.target, timeout=REFRESH_TIMEOUT)
-                self.synced = True
-            except InstallError as exc:
-                self.log('WARNING: the package lists were not downloaded: ' + exc.message)
-                self.release_pacman_lock()
-            finally:
-                self.record_package_lists()
-        self.warnings.append(UPGRADE_FIRST if self.synced else NO_PACKAGE_LISTS)
+    def update_notice(self):
+        """Explain the full update needed before installing apps, without changing packages."""
+        if not self.upgraded and not any(warning.startswith(PARTIAL_UPDATE) for warning in self.warnings):
+            self.warnings.append(UPGRADE_FIRST)
 
     def finish(self):
         if self.plan.graphics_packages:
@@ -1058,7 +1031,7 @@ class Worker:
             # configuration is independently fatal at the final verification.
             self.runner.chroot(['mkinitcpio', '-p', 'linux', '-p', 'linux-lts'], self.target)
             self.grub_config()
-        self.package_lists()
+        self.update_notice()
         self.files.path(MARKER).unlink(missing_ok=True)
         self.log('Installation complete; syncing and unmounting target filesystems.')
         destination = '/var/log/emaki-install/install-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '.log'

@@ -137,29 +137,17 @@ Scope {
         exclusiveZone: surfaces.controller.dockPolicy.reserve
         exclusionMode: ExclusionMode.Normal
         WlrLayershell.namespace: "emaki-test-dock"
-        WlrLayershell.layer: WlrLayer.Top
+        // Raise the reveal strip only over fullscreen windows; ordinary docks
+        // stay below launcher and panel overlays regardless of mapping order.
+        WlrLayershell.layer: surfaces.controller.dockPolicy.fullscreen ? WlrLayer.Overlay : WlrLayer.Top
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
-        mask: Region {
-            Region {
-                item: surfaces.controller.dockEdge
-                intersection: surfaces.controller.dockPolicy.edgeEnabled ? Intersection.Combine : Intersection.Subtract
-            }
-            Region {
-                readonly property rect r: surfaces.controller.dock.plateHitRect
-                x: r.x
-                y: r.y
-                width: r.width
-                height: r.height
-                intersection: surfaces.controller.dock.visibleAmount > .08 ? Intersection.Combine : Intersection.Subtract
-            }
-            Region {
-                readonly property rect r: surfaces.controller.dock.popupContent
-                x: r.x
-                y: r.y
-                width: r.width
-                height: r.height
-                intersection: surfaces.controller.dock.popupInteractive ? Intersection.Combine : Intersection.Subtract
-            }
+        mask: DockInputRegion {
+            edge: surfaces.controller.dockEdge
+            edgeEnabled: surfaces.controller.dockPolicy.edgeEnabled
+            plateRect: surfaces.controller.dock.plateHitRect
+            plateEnabled: surfaces.controller.dock.visibleAmount > .08
+            popupRect: surfaces.controller.dock.popupContent
+            popupEnabled: surfaces.controller.dock.popupInteractive
         }
     }
     // What the dock glass refracts: a live capture on Emaki's niri, else the wallpaper.

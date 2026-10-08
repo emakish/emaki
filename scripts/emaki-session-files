@@ -1,0 +1,196 @@
+#!/usr/bin/python3 -IB
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Keep QML, lazy components, helpers and the core from one installed generation."""
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import sys
+import tempfile
+import time
+
+sys.path.insert(0, '/usr/libexec/emaki')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import emaki_session_state as state
+
+SCHEMA = 1
+PACKAGES = Path('/var/lib/pacman/local')
+TRANSACTION = Path('/var/lib/pacman/db.lck')
+UPDATE = Path('/run/emaki-session-update')
+START_WAIT = 2
+RUNTIMES = Path('/run/user')
+
+
+def digest(path):
+    value = hashlib.sha256()
+    with path.open('rb') as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b''):
+            value.update(block)
+    return value.hexdigest()
+
+
+def tree(path):
+    return {str(file.relative_to(path)): digest(file)
+            for file in sorted(path.rglob('*')) if file.is_file()
+            and '__pycache__' not in file.parts and file.suffix not in ('.pyc', '.pyo')}
+
+
+def installed():
+    versions = {}
+    for entry in PACKAGES.glob('*/desc'):
+        if entry.parent.name.startswith(('emaki-config-', 'niri-', 'quickshell-', 'qt6-')):
+            # The record also includes the install reason, changed by pacman -D
+            # without replacing files. Only package versions identify payloads.
+            versions[entry.parent.name] = True
+    marker = state.marker_value(UPDATE)
+    if marker is not None:
+        versions['transaction'] = marker
+    return versions
+
+
+def identity(source):
+    # A compositor's socket name changes on a new login; shell restarts retain it.
+    session = os.environ.get('NIRI_SOCKET') or os.environ.get('WAYLAND_DISPLAY', 'offscreen')
+    return hashlib.sha256((session + '\0' + str(source)).encode()).hexdigest()[:24]
+
+
+def runtime(source, create=True):
+    base = Path(os.environ.get('XDG_RUNTIME_DIR', str(RUNTIMES / str(os.getuid())))) / 'emaki-session-files' / identity(source)
+    if create:
+        base.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return base
+
+
+def write_json(path, value):
+    temporary = path.with_suffix('.new')
+    temporary.write_text(json.dumps(value, sort_keys=True))
+    temporary.replace(path)
+
+
+def record_active(source, shell, pid):
+    value = dict(source=str(source), shell=str(shell), pid=pid, start=state.process_start(pid))
+    write_json(runtime(source) / 'active.json', value)
+    write_json(runtime(source).parent / 'current.json', value)
+
+
+def prepare(source, binary, wait=False, pid=None):
+    source, binary = source.absolute(), binary.absolute()
+    pid = os.getpid() if pid is None else pid
+    base = runtime(source)
+    # Record the compositor's first observed state even when capture cannot finish.
+    # In particular, waiting for a transaction must not move this baseline forward.
+    baseline = base / 'session.json'
+    if not baseline.exists():
+        before = installed()
+        if state.transaction_running(TRANSACTION):
+            # Files may already be replaced: a first observation inside a running
+            # transaction cannot establish what the compositor originally loaded.
+            before['baseline-incomplete'] = True
+        write_json(baseline, before)
+    deadline = time.monotonic() + (START_WAIT if wait else 0)
+    while state.transaction_running(TRANSACTION):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            print('A system update is running. Starting the panel with installed files [pacman].',
+                  file=sys.stderr, flush=True)
+            record_active(source, source, pid)
+            return source
+        time.sleep(min(0.1, remaining))
+    before = installed()
+    files, core = tree(source), digest(binary)
+    version = hashlib.sha256(json.dumps([SCHEMA, files, core, digest(Path(__file__)),
+                                        digest(Path(state.__file__))], sort_keys=True).encode()).hexdigest()
+    target = base / version
+    if not target.exists():
+        stage = Path(tempfile.mkdtemp(prefix='preparing-', dir=base))
+        try:
+            shutil.copytree(source, stage / 'shell', ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '*.pyo'))
+            shutil.copy2(binary, stage / 'emaki')
+            shutil.copy2(Path(__file__), stage / 'watch.py')
+            shutil.copy2(Path(state.__file__), stage / 'emaki_session_state.py')
+            if tree(stage / 'shell') != files or digest(stage / 'emaki') != core:
+                raise RuntimeError('Desktop files changed while the panel was starting [Emaki].')
+            write_json(stage / 'generation.json', dict(schema=SCHEMA, source=str(source), binary=str(binary),
+                       files=files, core=core, version=version))
+            stage.rename(target)
+        finally:
+            if stage.exists():
+                shutil.rmtree(stage)
+    if state.transaction_running(TRANSACTION) or installed() != before or tree(source) != files or digest(binary) != core:
+        raise RuntimeError('Desktop files changed while the panel was starting [Emaki].')
+    record_active(source, target / 'shell', pid)
+    return target / 'shell'
+
+
+def active(source):
+    try:
+        # SSH and text consoles have no compositor socket. A per-user record
+        # names the selected panel and rejects exits and PID reuse.
+        local = bool(os.environ.get('NIRI_SOCKET'))
+        base = runtime(source, create=False)
+        record = base / 'active.json' if local else base.parent / 'current.json'
+        value = json.loads(record.read_text())
+        selected = Path(value['shell'])
+        if ((not local or value['source'] == str(source)) and selected.is_dir() and value['start'] is not None
+                and state.process_start(value['pid']) == value['start']):
+            return selected
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return source
+
+
+def changed(generation):
+    if state.LIVE.exists() or state.transaction_running(TRANSACTION):
+        return False
+    value = json.loads((generation / 'generation.json').read_text())
+    if value['schema'] != SCHEMA:
+        return True
+    baseline = json.loads((generation.parent / 'session.json').read_text())
+    stale = (installed() != baseline or tree(Path(value['source'])) != value['files']
+             or digest(Path(value['binary'])) != value['core'])
+    return stale and not state.transaction_running(TRANSACTION)
+
+
+def changed_installed(source):
+    if state.LIVE.exists() or state.transaction_running(TRANSACTION):
+        return False
+    baseline = json.loads((runtime(source, create=False) / 'session.json').read_text())
+    stale = installed() != baseline
+    return stale and not state.transaction_running(TRANSACTION)
+
+
+def watch(generation, installed_source=False):
+    while True:
+        try:
+            stale = changed_installed(generation) if installed_source else changed(generation)
+        except (OSError, ValueError, KeyError):
+            stale = not state.LIVE.exists() and not state.transaction_running(TRANSACTION)
+        if stale:
+            print(json.dumps(dict(schema=SCHEMA, restart=True)), flush=True)
+            return
+        time.sleep(5)
+
+
+def main():
+    command = sys.argv[1]
+    if command == 'prepare':
+        print(prepare(Path(sys.argv[2]), Path(sys.argv[3]), wait=True,
+                      pid=int(sys.argv[4]) if len(sys.argv) > 4 else os.getppid()))
+    elif command == 'active':
+        print(active(Path(sys.argv[2]).absolute()))
+    elif command == 'watch':
+        watch(Path(sys.argv[2]))
+    elif command == 'watch-installed':
+        watch(Path(sys.argv[2]).absolute(), installed_source=True)
+    else:
+        raise ValueError('Unknown session files command.')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError, KeyError, RuntimeError) as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(75)

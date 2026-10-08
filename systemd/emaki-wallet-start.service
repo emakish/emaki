@@ -1,0 +1,16 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Connect the login password to KWallet
+PartOf=graphical-session.target
+After=niri.service niri-emaki.service
+Before=xdg-desktop-autostart.target emaki-shell.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/emaki-wallet-start
+ExecStop=/usr/bin/emaki-wallet-start --stop
+RemainAfterExit=yes
+TimeoutStartSec=45
+TimeoutStopSec=10
+Slice=session.slice

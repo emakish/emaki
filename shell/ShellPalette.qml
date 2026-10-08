@@ -13,5 +13,5 @@ QtObject {
     readonly property color accentText: "#2a0f05"
     readonly property color shadow: "#000000"
     readonly property color critical: "#f0435a"
-    readonly property string uiFont: "Adwaita Sans"
+    readonly property string uiFont: "Noto Sans"
 }

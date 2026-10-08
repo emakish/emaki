@@ -94,7 +94,7 @@ Item {
         }
         Accessible.role: Accessible.EditableText
         Accessible.name: input.auth.prompt || "Password"
-        Accessible.description: input.auth.message
+        Accessible.description: input.auth.displayMessage
         Accessible.onPressAction: input.takeFocus()
     }
     PasswordToggle {

@@ -64,6 +64,8 @@ class RealGrub(unittest.TestCase):
         execute([tool('grub-script-check'), path])
 
     def test_real_install_to_scratch_esp(self):
+        # Ordinary directories do not reproduce separate ESP/root partitions on
+        # one disk. That discovery and firmware behavior require the VM matrix.
         if not MODULES.is_dir():
             self.skipTest('Missing real x86_64-efi GRUB module directory: ' + str(MODULES))
         esp, stage = self.work / 'esp', self.work / 'generation'
@@ -86,25 +88,43 @@ class RealGrub(unittest.TestCase):
         self.assertTrue(image.startswith(b'MZ'))
         for path in MODULES.glob('*.mod'):
             self.assertEqual((stage / 'grub/x86_64-efi' / path.name).read_bytes(), path.read_bytes())
-        load_cfg = (stage / 'grub/x86_64-efi/load.cfg').read_text()
-        self.assertIn('search.fs_uuid ', load_cfg)
-        self.check_script('installed-load.cfg', load_cfg)
+        load_cfg = stage / 'grub/x86_64-efi/load.cfg'
+        if load_cfg.exists():
+            self.check_script('installed-load.cfg', load_cfg.read_text())
 
     def test_real_plain_and_encrypted_images_and_menus(self):
         if not MODULES.is_dir():
             self.skipTest('Missing real x86_64-efi GRUB module directory: ' + str(MODULES))
-        for encrypted in (False, True):
-            with self.subTest(encrypted=encrypted):
-                stage = self.work / ('encrypted' if encrypted else 'plain')
+        cases = [('plain-ext4-fixed', False, '', False),
+                 ('plain-btrfs-fixed', False, '/@', False),
+                 ('plain-ext4-search', False, '', True),
+                 ('plain-btrfs-search', False, '/@', True),
+                 ('encrypted', True, '/@', True)]
+        for name, encrypted, fsroot, has_load_cfg in cases:
+            with self.subTest(layout=name):
+                stage = self.work / name
                 platform = stage / 'grub/x86_64-efi'
                 shutil.copytree(MODULES, platform)
                 identity = {'uuid': FSUUID, 'luks': LUKS if encrypted else None,
-                            'fsroot': '/@' if encrypted else ''}
-                # grub-install discovery is tested separately: a sandbox has no
-                # encrypted installation to discover, so its load.cfg is a fixture.
+                            'fsroot': fsroot}
+                # Discovery is a fixture. Same-disk plain installations may
+                # embed only a partition prefix and produce no load.cfg.
                 load_cfg = (f'cryptomount -u {LUKS}\n' if encrypted else '')
                 load_cfg += f'search.fs_uuid {FSUUID} root\n'
                 load_cfg += f'set prefix=($root){identity["fsroot"]}{GENERATION}/grub\n'
+                if has_load_cfg:
+                    (platform / 'load.cfg').write_text(load_cfg)
+                else:
+                    fixed_prefix = f'(,gpt2){fsroot}{GENERATION}/grub'
+                    installed = stage / 'installed.efi'
+                    execute([tool('grub-mkimage'), '--directory=' + str(MODULES),
+                             '--format=x86_64-efi', '--compression=none',
+                             '--prefix=' + fixed_prefix, '--output=' + str(installed),
+                             *refresh.IMAGE_MODULES])
+                    self.assertIn(fixed_prefix.encode() + b'\0', installed.read_bytes())
+                    self.assertFalse((platform / 'load.cfg').exists())
+                if not encrypted:
+                    load_cfg = refresh.plain_load_config(identity, GENERATION)
                 font = (ROOT / 'installer/assets/grub/unlock-24.pf2').read_bytes()
                 prefix, early, memdisk = refresh.loader_payload(stage / 'grub', GENERATION,
                                                                identity, load_cfg, font)
@@ -119,6 +139,10 @@ class RealGrub(unittest.TestCase):
                 execute([tool('grub-file'), '--is-x86_64-efi', image])
                 self.check_script('early.cfg', early.decode())
                 with tarfile.open(fileobj=io.BytesIO(memdisk)) as archive:
+                    if not encrypted:
+                        self.assertEqual(archive.extractfile('start.cfg').read(),
+                                         (f'search.fs_uuid {FSUUID} root\n'
+                                          f'set prefix=($root){fsroot}{GENERATION}/grub\n').encode())
                     for member in archive:
                         if member.name.endswith('.cfg'):
                             self.check_script('embedded.cfg', archive.extractfile(member).read().decode())

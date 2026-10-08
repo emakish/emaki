@@ -1,0 +1,15 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Watch Arch dependency changes for Emaki development
+OnFailure=emaki-arch-watch-failure.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/emaki-arch-watch.conf
+ExecStart=/usr/bin/python3 ${EMAKI_WATCH_CHECKOUT}/packaging/arch-watch-notify
+StateDirectory=emaki-arch-watch
+TimeoutStartSec=11min
+# Expected incomplete checks are recorded in status; unexpected failures use OnFailure.
+SuccessExitStatus=1
+UMask=0077

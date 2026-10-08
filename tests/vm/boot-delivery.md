@@ -18,6 +18,136 @@ conversion and an ESP copy per crash trial. Use explicit qcow2 copies/overlays, 
 
 ## Candidate and ordinary boot
 
+### Plain-root upgrade and retry regression
+
+Use separate copies of **base-0.1.1 and base-0.2.0**, with an unencrypted btrfs
+root in partition 2 and an ESP in partition 1 of the same disk, using a GUID
+partition table. Also retain the plain ext4 and encrypted btrfs checks below.
+Record `lsblk -o NAME,TYPE,FSTYPE,UUID,PARTUUID,MOUNTPOINTS`, `findmnt /`,
+`findmnt /efi`, and `grub-install --version` before installing the candidate.
+An ESP directory on the root filesystem is not this layout.
+
+Run these three paths from separate copies:
+
+1. Upgrade directly from each base to the candidate. Its package hook must finish
+   and create `/efi/EFI/Emaki/boot-state.json` and a generation under `/boot/emaki`.
+2. Upgrade each base to the affected 0.3.0 package first. Retain the failed log,
+   missing state and empty generation directory as evidence. Upgrade to the fixed
+   candidate; the existing package hook must retry successfully.
+3. Exercise a transient candidate-hook failure on a copy with no boot state.
+   Install candidate GRUB dependencies first, then temporarily replace
+   `grub-mkimage` in this disposable guest with a wrapper that exits nonzero,
+   retaining the original in the guest evidence directory. Install only the
+   candidate emaki-config package, so a GRUB package cannot restore the executable
+   before its hook runs. After the expected failure, restore it before rebooting.
+   Confirm boot state is absent and `/var/lib/emaki/boot-refresh-pending` exists.
+   Boot without another package transaction or manual refresh. The enabled
+   `emaki-boot-refresh.service` must run after `emaki-boot-complete.service` and
+   stage a generation, then remove the pending marker. A second boot must load
+   and confirm the staged generation. Later boots must skip the retry condition.
+
+On separate fresh plain and encrypted installations, require no pending marker,
+no boot-time refresh and no candidate trial over the first two boots. The encrypted
+installation must retain one disk-unlock prompt per ordinary boot. Preserve clean
+`systemctl --failed` output and run the encrypted, alongside and rollback gates.
+
+On disposable failure copies, retain the marker JSON before and after every boot:
+
+- Leave the failing image wrapper in place for three boot attempts. Require no
+  fourth image-generation attempt, no unbounded log growth (at most 1 MiB), and a
+  new hook/manual attempt to reset the budget. Restore the executable afterward.
+- Repeat with a wrapper that hangs: verify `TimeoutStartSec=5min`, interruption
+  consumes an attempt, and later boots cannot retry indefinitely. A start timeout
+  always leaves the unit failed with `Result=timeout`, even when SIGTERM cleanup
+  exits zero. Verify `TimeoutStopSec=90s` and separately confirm that SIGTERM
+  cleanup releases the package lock and restores paused services.
+- Exercise a foreign fallback loader, an ESP smaller than 256 MiB, and a permanent
+  refusal. Each must end pending retry with a recorded explanation; subsequent
+  boots must not repeat it. Permanent refusal must not leave the unit failed.
+- Hold pacman's database lock across a retry: no GRUB tool may run and the retry
+  must not remove that lock. During an active retry, confirm a package transaction
+  cannot acquire `/var/lib/pacman/db.lck`. Contention consumes one boot attempt.
+- Hold `/run/emaki-boot-refresh.lock` in another process, then run `--retry`.
+  Require exit zero, no GRUB invocation, and byte-identical pending marker with
+  no attempt consumed. Release the run lock and retry on the next boot.
+- Pause an active retry after it acquires the package lock. Record its 0600 mode
+  and exact `emaki-boot-refresh:<boot UUID>` content, then SIGKILL the refresh.
+  The same boot must retain the lock. Cold boot and require the next retry to
+  remove only that previous-boot owned lock and proceed. Repeat by cutting power
+  after the token is fsynced, retaining the untouched cut image. Repeat after
+  consuming the final allowed attempt: the next boot must clean the stale lock
+  without a fourth refresh attempt. Verify pacman can acquire its lock afterward.
+- After killing a retry, clear pending in that same boot by completing a manual
+  refresh; separately restart the final retry to exhaust its budget. In both cases
+  retain the current-boot lock, then require recovery on the next boot even with
+  no pending marker. Check package and rollback access over two subsequent boots.
+  Also recover a previous-boot token through manual and hook refreshes. Cut power
+  between lock removal and pending removal and verify the lock cannot reappear
+  after pending removal has been persisted.
+- Repeat stale-lock recovery with an empty foreign lock, a foreign nonempty lock,
+  a current-boot token, and a replacement file introduced before unlink. Require
+  all of those locks to remain. Take a timeline snapshot during a paused retry;
+  after releasing the live lock, require rollback to accept its refresh token
+  and remove it only from the prepared writable snapshot copy.
+- Change a packaged module while a controlled image-generation wrapper is paused.
+  Require the post-generation comparison to prevent publication. Restore the
+  packaged module and wrapper before further acceptance checks.
+- On separate plain LVM/mdraid and non-GPT layouts, require an explained refusal
+  before publication. Attach a disk clone carrying the root UUID before refresh;
+  require the duplicate-UUID explanation and unchanged firmware entry points.
+- Refresh a btrfs root spanning two devices. Record the root UUID's `blkid`
+  results and `grub-probe --target=device /boot`; matching device sets, including
+  equivalent device aliases, must be accepted. Attach an extra cloned member
+  and require refusal before publication. On an encrypted copy, attach a clone
+  with the same LUKS UUID but leave it locked; refresh must still refuse it.
+- With a tagged candidate already booted, attach a clone and run `--mark-good`
+  and `--check` under command tracing. Neither may run the storage/UUID scan;
+  confirmation must promote the booted candidate despite the extra disk. On a
+  separate copy, hang a boot-completion command and require a five-minute start
+  timeout, `Result=timeout`, and release of the run lock after the 90-second stop
+  timeout. Preserve failure evidence before restoring the command and retrying.
+
+Keep the complete update output, `/var/log/emaki-boot-refresh.log`, and
+`journalctl -b -u emaki-boot-refresh.service -u emaki-boot-complete.service` for
+each boot. Capture `systemctl is-enabled emaki-boot-refresh.service` and
+`systemctl show emaki-boot-refresh.service -p Result -p ConditionResult`.
+For timeout rows also retain `systemctl show` for both services with `Result`,
+`ExecMainStatus`, `TimeoutStartUSec` and `TimeoutStopUSec`; a zero process exit
+does not turn the service's start timeout into success.
+Preserve the generation's `manifest.json`, `grub/grub.cfg`,
+`grub/x86_64-efi/emaki-early.cfg`, `grub/x86_64-efi/emaki-early.tar`, and
+`grub/x86_64-efi/emaki-early.efi`, plus the ESP's boot-state.json and trial.env.
+Inspect the embedded plain startup script with:
+
+```sh
+tar -xOf /boot/emaki/GENERATION/grub/x86_64-efi/emaki-early.tar start.cfg
+cat /proc/cmdline
+cat /efi/EFI/Emaki/boot-state.json
+```
+
+Replace GENERATION with the recorded directory name. The script must search the
+root filesystem UUID and set the prefix under `/@/boot/emaki/GENERATION/grub`
+for btrfs, or `/boot/emaki/GENERATION/grub` for ext4. It must contain no disk-number
+hint. The optional installed `load.cfg` may be absent. Require exactly one kernel
+generation tag, confirmation of that generation, and promotion to both firmware
+entry points; run the ordinary `collect` and fallback-only checks below.
+
+Finally cold boot with an additional disk placed before the system disk in the
+virtual disk order. Preserve the changed disk inventory, loaded firmware path,
+kernel command line and confirmation state. Both firmware paths must still load
+the intended root. Use a distinct filesystem UUID on the added disk: this verifies
+search after disk renumbering, not clone disambiguation. Also record the behavior
+when a clone is attached after staging; duplicate detection at refresh cannot
+prevent that later ambiguity.
+
+The rootless real-image fixture covers plain ext4 and btrfs, absent load.cfg with
+a fixed partition prefix, and an optional search configuration. It builds and
+verifies real images, but does not reproduce grub-install's same-disk discovery.
+In the restricted test environment, mtools and loop/FUSE devices are absent, and
+the scratch filesystem's backing block device is unavailable to grub-probe.
+The same-disk installation and actual firmware execution therefore remain VM
+checks; an ordinary scratch-directory install is not evidence for either.
+
 Inside each guest, substitute the checkout and package paths once:
 
 ```sh

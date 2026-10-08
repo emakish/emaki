@@ -136,4 +136,5 @@ fi
 if [ "${#FAILED[@]}" -ne 0 ]; then
     printf 'FAILED: %s\n' "${FAILED[@]}"
 fi
+echo "HUMAN REVIEW REQUIRED: desktop composition and text in $OUT; pixel checks cover only their named regions and effects"
 [ "${#FAILED[@]}" -eq 0 ] && [ "$NOT_TESTED" -eq 0 ] || exit 1

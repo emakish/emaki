@@ -136,8 +136,8 @@ FocusScope {
             right: parent.right
             leftMargin: welcome.inset
             rightMargin: welcome.inset
-            topMargin: 20
-            bottomMargin: 16
+            topMargin: 16
+            bottomMargin: 12
         }
         clip: true
         contentWidth: width
@@ -147,7 +147,7 @@ FocusScope {
         Column {
             id: content
             width: body.width - 12
-            spacing: 14
+            spacing: 10
             Copy {
                 text: welcome.current.title
                 width: parent.width
@@ -227,7 +227,7 @@ FocusScope {
                         id: action
                         required property var modelData
                         width: content.width >= 620 ? (content.width - 16) / 2 : content.width
-                        spacing: 9
+                        spacing: 5
                         Copy {
                             width: parent.width
                             text: action.modelData.title

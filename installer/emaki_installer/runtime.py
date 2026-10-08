@@ -1,5 +1,6 @@
 """Subprocess logging, secret handling, and confined target file writes."""
 import codecs
+from contextlib import contextmanager
 import os
 from pathlib import Path
 import re
@@ -91,17 +92,69 @@ def stop_group(process):
         time.sleep(0.05)
 
 
+def stop_group_bounded(process, budget):
+    """Allow one total TERM/KILL budget, without waiting for an unkillable child.
+
+    Used only after target cleanup, when a resident restart guardian supplies the
+    final fallback. Disk-writing commands retain the stricter stop_group path.
+    """
+    deadline = time.monotonic() + budget
+    for sig, until in ((signal.SIGTERM, deadline - budget / 2),
+                       (signal.SIGKILL, deadline)):
+        try:
+            os.killpg(process.pid, sig)
+        except ProcessLookupError:
+            process.poll()
+            return True
+        # Do not reap the leader until both signals have been sent: its group ID
+        # must not become available for an unrelated process in the meantime.
+        while time.monotonic() < until:
+            time.sleep(min(0.05, max(0, until - time.monotonic())))
+    process.poll()  # WNOHANG, including for a child stuck in uninterruptible I/O.
+    try:
+        os.killpg(process.pid, 0)
+    except ProcessLookupError:
+        return True
+    return False
+
+
+@contextmanager
+def command_process(argv, termination_timeout=None, **kwargs):
+    process = subprocess.Popen(argv, **kwargs)
+    if termination_timeout is None:
+        with process:
+            yield process
+        return
+    completed = False
+    try:
+        yield process
+        completed = True
+    finally:
+        # Popen.__exit__ calls wait() without a deadline even after SIGKILL.
+        # This optional path must return to the guardian while I/O is stuck.
+        if not completed:
+            stop_group_bounded(process, termination_timeout)
+        for stream in (process.stdin, process.stdout, process.stderr):
+            if stream is not None:
+                stream.close()
+
+
 class Runner:
     def __init__(self, log, redactor=None, progress=None):
         self.log = log
         self.redactor = redactor or Redactor()
         self.progress = progress
 
-    def run(self, argv, *, check=True, input=None, secret=False, timeout=None, watch=None, cancelled=None, quiet=False):
+    def run(self, argv, *, check=True, input=None, secret=False, timeout=None, watch=None, cancelled=None, quiet=False,
+            termination_timeout=None):
         """No shell; secret stdin AND all output of secret commands are suppressed.
 
         watch(line) sees each logged line of this command; a failing watch is ignored.
+        termination_timeout bounds extra cleanup time for post-install restart only;
+        it may leave an unkillable process behind and is unsuitable for disk writes.
         """
+        if termination_timeout is not None and (timeout is None or termination_timeout <= 0 or input is not None):
+            raise ValueError("Bounded termination requires a timeout, a positive budget and no stdin.")
         argv = [str(x) for x in argv]
         if not quiet:
             safe_log(self.log, self.redactor.text('$ ' + shlex.join(argv)))
@@ -115,9 +168,10 @@ class Runner:
         decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
         try:
             # Its own session: a timeout reaches every process the command started.
-            with subprocess.Popen(argv, stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
-                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env,
-                                  start_new_session=True) as process:
+            with command_process(argv, termination_timeout=termination_timeout,
+                                 stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env,
+                                 start_new_session=True) as process:
                 if input is not None:
                     data = input.encode() if isinstance(input, str) else input
                     try:
@@ -130,10 +184,11 @@ class Runner:
                     selector.register(process.stdout, selectors.EVENT_READ)
                     while selector.get_map():
                         if cancelled is not None and cancelled.is_set():
-                            stop_group(process)
+                            if termination_timeout is None:
+                                stop_group(process)
                             raise InstallError(Code.CANCELLED, 'Update download stopped.')
                         if timeout is not None and time.monotonic() - start > timeout:
-                            self._timed_out(process, argv)
+                            self._timed_out(process, argv, termination_timeout)
                         for key, _ in selector.select(0.2):
                             data = os.read(key.fd, 16384)
                             if not data:
@@ -164,10 +219,11 @@ class Runner:
                 if cancelled is not None:
                     while process.poll() is None:
                         if cancelled.is_set():
-                            stop_group(process)
+                            if termination_timeout is None:
+                                stop_group(process)
                             raise InstallError(Code.CANCELLED, 'Update download stopped.')
                         if timeout is not None and time.monotonic() - start > timeout:
-                            self._timed_out(process, argv)
+                            self._timed_out(process, argv, termination_timeout)
                         time.sleep(0.05)
                     status = process.returncode
                 elif timeout is None:
@@ -177,7 +233,7 @@ class Runner:
                     try:
                         status = process.wait(max(0, timeout - (time.monotonic() - start)))
                     except subprocess.TimeoutExpired:
-                        self._timed_out(process, argv)
+                        self._timed_out(process, argv, termination_timeout)
         except OSError as exc:
             raise InstallError(Code.COMMAND_FAILED, f'Cannot run {argv[0]}: {exc.strerror}.') from exc
         if not quiet:
@@ -189,8 +245,8 @@ class Runner:
                                output='' if secret else self.redactor.text(''.join(chunks)), returncode=status)
         return '' if secret else ''.join(chunks)
 
-    def _timed_out(self, process, argv):
-        if not stop_group(process):
+    def _timed_out(self, process, argv, termination_timeout=None):
+        if termination_timeout is None and not stop_group(process):
             safe_log(self.log, f'{Path(argv[0]).name}: processes of the stopped command are still running.')
         raise InstallError(Code.COMMAND_FAILED, f'{argv[0]} timed out.')
 

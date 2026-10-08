@@ -17,12 +17,13 @@ EMAKI_LIVE_SESSION=0
 export EMAKI_LIVE_SESSION
 shell="${EMAKI_SHELL_DIR:-/usr/share/emaki/shell}"
 case "$0" in
-    */*) health="${0%/*}/emaki-shell-health" ;;
-    *) health=emaki-shell-health ;;
+    */*) health="${0%/*}/emaki-shell-health"; session_files="${0%/*}/emaki-session-files" ;;
+    *) health=emaki-shell-health; session_files=emaki-session-files ;;
 esac
 
 if [ "${1:-}" = "call" ]; then
     [ ! -e "${XDG_RUNTIME_DIR:-/nonexistent}/emaki-shell-health/packaged" ] || shell=/usr/share/emaki/shell
+    shell=$("$session_files" active "$shell") || exit 75
     shift
     if [ "$#" -eq 2 ] && [ "$1" = "launcher" ] && [ "$2" = "toggle" ]; then
         qs -p "$shell" ipc call "$@" && exit 0
@@ -49,14 +50,21 @@ fi
 shell=$("$health" record "$shell") || shell=/usr/share/emaki/shell
 
 # Metadata can be absent on older packages; even a version mismatch is not proof
-# of a crash. Keep the panel available and show diagnostics outside Quickshell.
-if ! emaki-qt-check; then
-    kitty --title 'Emaki panel compatibility warning' sh -c '
-        emaki-qt-check || true
-        printf "\nThe panel will still start. Press Enter to close this warning.\n"
-        IFS= read -r reply
-    ' &
+# of a crash. Confirm a failure once: a bounded package query can time out while
+# live media is cold. Keep both failed attempts in the service journal, and show
+# the captured confirmation rather than running a third, possibly successful check.
+if ! qt_diagnostic=$(emaki-qt-check 2>&1); then
+    printf '%s\n' "$qt_diagnostic" >&2
+    if ! qt_diagnostic=$(emaki-qt-check 2>&1); then
+        printf '%s\n' "$qt_diagnostic" >&2
+        kitty --title 'Emaki panel compatibility warning' sh -c '
+            printf "%s\n" "$1"
+            printf "\nThe panel will still start. Press Enter to close this warning.\n"
+            IFS= read -r reply
+        ' emaki-qt-warning "$qt_diagnostic" &
+    fi
 fi
+unset qt_diagnostic
 
 # Keep the session value for application launches: 0 means absent, 1 prefixes
 # the original value (including empty). Never accept an inherited stale marker.
@@ -69,6 +77,20 @@ fi
 export MALLOC_CONF="${MALLOC_CONF:-thp:never}"
 
 export EMAKI_BIN="${EMAKI_BIN:-/usr/bin/emaki}"
+unset EMAKI_SESSION_GENERATION EMAKI_SESSION_SOURCE EMAKI_SESSION_WATCHER
+if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$shell" ] && [ -f "$EMAKI_BIN" ]; then
+    source_shell=$shell
+    export EMAKI_SESSION_SOURCE="$source_shell" EMAKI_SESSION_WATCHER="$session_files"
+    if ! shell=$("$session_files" prepare "$shell" "$EMAKI_BIN" "$$"); then
+        printf '%s\n' 'Desktop files could not be captured. Starting the panel with installed files [Emaki].' >&2
+        shell=$source_shell
+    fi
+    if [ "$shell" != "$source_shell" ]; then
+        export EMAKI_BIN="${shell%/shell}/emaki"
+        export EMAKI_SESSION_GENERATION="${shell%/shell}"
+    fi
+    "$health" record "$source_shell" "$shell" >/dev/null || :
+fi
 export EMAKI_SHELL_BORDER="${EMAKI_SHELL_BORDER:-soft}"
 # The shell owns the notification server and tray (mako and waybar are no longer autostarted).
 export EMAKI_SHELL_NOTIFICATIONS="${EMAKI_SHELL_NOTIFICATIONS:-1}"

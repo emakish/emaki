@@ -2,10 +2,13 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Window
 import Quickshell
+import Quickshell.Wayland
+import InputMaskProbe 1.0
 
 // Real Dock release/return/menu sequence, with no IPC, compositor or live service.
 ShellRoot {
     id: root
+    property int testedDockLayer: 0
     property int stage: 0
     property double since: 0
     property int returnFrames: 0
@@ -19,9 +22,37 @@ ShellRoot {
         stage = value;
         since = Date.now();
     }
+    function setFullscreen(value: bool): void {
+        const state = JSON.parse(JSON.stringify(service.model));
+        state.windows["501"].layout.tile_size = value ? [1536, 960] : [800, 600];
+        service.model = state;
+    }
     NiriService {
         id: service
         binary: ""
+    }
+    InputMaskProbe {
+        id: maskProbe
+    }
+    FloatingWindow {
+        id: inputWindow
+        visible: true
+        implicitWidth: scene.dockWindowWidth
+        implicitHeight: scene.dockWindowHeight
+        mask: DockInputRegion {
+            edge: inputEdge
+            edgeEnabled: scene.dockPolicy.edgeEnabled
+            plateRect: scene.dock.plateHitRect
+            plateEnabled: scene.dock.visibleAmount > .08
+            popupRect: scene.dock.popupContent
+            popupEnabled: scene.dock.popupInteractive
+        }
+        Item {
+            id: inputEdge
+            y: inputWindow.height - 2
+            width: inputWindow.width
+            height: 2
+        }
     }
     Window {
         visible: true
@@ -54,6 +85,22 @@ ShellRoot {
             const dock = scene.dock, now = Date.now(), elapsed = now - root.since;
             if (root.stage === 0) {
                 scene.wallpaper.enabled = false;
+                if (dock.animating || dock.visibleAmount !== 0)
+                    return;
+                const x = Math.floor(inputWindow.width / 2), y = inputWindow.height - 1;
+                root.check(dock.plateHitRect.y < y, "hidden plate padding overlaps reveal strip");
+                for (const edgeX of [0, x, inputWindow.width - 1])
+                    root.check(maskProbe.contains(inputWindow.contentItem, edgeX, y), "hidden dock keeps the complete bottom edge in native input mask");
+                root.check(!maskProbe.contains(inputWindow.contentItem, x, y - 2), "hidden dock does not steal input above its two-pixel edge");
+                root.check(scene.dockPolicy.reserve === 0, "hidden dock reserves no workspace space");
+                maskProbe.move(scene, x, scene.height - 1);
+                root.next(-1);
+            } else if (root.stage === -1 && elapsed > 150 && !dock.animating && dock.visibleAmount === 1) {
+                root.check(scene.dockPolicy.edgeHovered && scene.dockPolicy.revealed, "real edge hover reveals the dock");
+                maskProbe.move(scene, 0, 0);
+                root.next(-2);
+            } else if (root.stage === -2 && elapsed > 150 && !dock.animating && dock.visibleAmount === 0) {
+                root.check(!scene.dockPolicy.edgeHovered && !scene.dockPolicy.revealed, "leaving the edge hides the dock");
                 scene.dockStore.autoHide = false;
                 scene.dockStore.pinned = [];
                 scene.dockLabels.values = {
@@ -65,10 +112,21 @@ ShellRoot {
                 service.model = {
                     focused_output: "Fixture",
                     overview_open: false,
+                    outputs: {
+                        "Fixture": {
+                            logical: {
+                                width: 1536,
+                                height: 960
+                            }
+                        }
+                    },
                     windows: {
                         "501": {
                             id: 501,
-                            workspace_id: 101
+                            workspace_id: 101,
+                            layout: {
+                                tile_size: [800, 600]
+                            }
                         }
                     },
                     workspaces: {
@@ -83,6 +141,10 @@ ShellRoot {
                 service.connection = "connected";
                 root.next(1);
             } else if (root.stage === 1 && elapsed > 200 && !dock.animating && dock.visibleAmount === 1) {
+                root.check(scene.dockPolicy.reserve === 77, "pinned dock reserves only its band");
+                const r = dock.plateHitRect;
+                root.check(maskProbe.contains(inputWindow.contentItem, Math.floor(r.x + r.width / 2), Math.floor(r.y + 20)), "visible plate receives input");
+                root.check(!maskProbe.contains(inputWindow.contentItem, 0, inputWindow.height - 1), "pinned dock releases unused edge");
                 root.check(!bounds.expanded, "idle must start cropped");
                 const entry = dock.entryOf("fixture-editor");
                 root.check(entry !== null && !entry.pinned && entry.windows.length === 1, "fixture must be a running unpinned app");
@@ -134,13 +196,44 @@ ShellRoot {
                         region_reclaims_after_drag: root.changes,
                         regular_reach_at_dpr1: bounds.blurReach
                     }));
-                    Qt.quit();
+                    root.check(root.testedDockLayer === WlrLayer.Top, "ordinary pinned dock stays below overlays");
+                    root.setFullscreen(true);
+                    root.next(8);
                 }
+            } else if (root.stage === 8 && elapsed > 200 && !dock.animating && dock.visibleAmount === 0) {
+                root.check(root.testedDockLayer === WlrLayer.Overlay, "fullscreen raises the reveal strip");
+                root.check(maskProbe.contains(inputWindow.contentItem, 0, inputWindow.height - 1), "fullscreen preserves native edge input");
+                scene.dockStore.on = false;
+                root.next(9);
+            } else if (root.stage === 9 && elapsed > 100) {
+                root.check(root.testedDockLayer === WlrLayer.Overlay, "disable keeps fullscreen layer selection");
+                root.check(!maskProbe.contains(inputWindow.contentItem, 0, inputWindow.height - 1), "disabled dock releases native edge input");
+                scene.dockStore.on = true;
+                scene.dockStore.autoHide = true;
+                root.next(10);
+            } else if (root.stage === 10 && elapsed > 100) {
+                root.check(root.testedDockLayer === WlrLayer.Overlay, "reenabled autohide dock stays above fullscreen");
+                root.check(maskProbe.contains(inputWindow.contentItem, 0, inputWindow.height - 1), "reenabled dock restores native edge input");
+                root.setFullscreen(false);
+                root.next(11);
+            } else if (root.stage === 11 && elapsed > 100) {
+                root.check(root.testedDockLayer === WlrLayer.Top, "leaving fullscreen restores normal stacking");
+                scene.dockStore.on = false;
+                root.next(12);
+            } else if (root.stage === 12 && elapsed > 100) {
+                scene.dockStore.on = true;
+                scene.dockStore.autoHide = false;
+                root.next(13);
+            } else if (root.stage === 13 && elapsed > 100 && !dock.animating && dock.visibleAmount === 1) {
+                root.check(root.testedDockLayer === WlrLayer.Top, "remapped pinned dock remains below panels and launcher");
+                root.check(!maskProbe.contains(inputWindow.contentItem, 0, inputWindow.height - 1), "ordinary pinned dock still releases unused edge");
+                console.log("DOCK_LAYER_OK");
+                Qt.quit();
             }
         }
     }
     Timer {
-        interval: 8000
+        interval: 10000
         running: true
         onTriggered: {
             throw new Error("Dock region sequence timed out at stage " + root.stage);

@@ -510,7 +510,7 @@ def watch_quickshell_qt(qt_builds, databases):
     return result
 
 
-def watch_stock_niri(fences, databases, root):
+def watch_stock_niri(fences, databases, root, scheduled=False):
     baselines = [required for fence in fences
                  for name, operator, required in [dependency(fence.value)]
                  if name == 'niri' and operator == '>=']
@@ -528,6 +528,13 @@ def watch_stock_niri(fences, databases, root):
                   f'the stock baseline {", ".join(sorted(set(baselines)))}; configuration validation required')
             result = max(result, 1)
             if package.version not in checked:
+                if scheduled:
+                    print(f'NIRI NOT CHECKED: {package.repo}/niri {package.version}: '
+                          'scheduled watch does not validate release candidates; run arch-watch '
+                          'without --scheduled in a disposable Arch environment with this '
+                          'stock niri package installed')
+                    checked[package.version] = 1
+                    continue
                 try:
                     checked[package.version] = validate_stock_niri(package, root)
                 except CandidateUnavailable as exc:
@@ -551,6 +558,8 @@ def main(argv=None):
     parser.add_argument('--db-dir', type=Path, help='offline directory with four REPO.db files and quickshell-release.json')
     parser.add_argument('--mirror', default='https://geo.mirror.pkgbuild.com', help='HTTPS Arch mirror root')
     parser.add_argument('--arch', default='x86_64')
+    parser.add_argument('--scheduled', action='store_true',
+                        help='report new niri candidates as attention without local validation')
     parser.add_argument('--emaki-db', type=Path, help='published Emaki database saved locally')
     parser.add_argument('--channel', choices=('stable', 'testing'), default='stable',
                         help='published Emaki channel (default: stable); offline mode uses DB_DIR/emaki.db')
@@ -579,7 +588,7 @@ def main(argv=None):
             result = max(result, watch_pacman(databases))
             result = max(result, watch_quickshell_qt(qt_builds, databases))
             result = max(result, watch_stock_niri(
-                fences, databases, args.packaging_dir.resolve().parent))
+                fences, databases, args.packaging_dir.resolve().parent, args.scheduled))
         print(output.getvalue(), end='', flush=True)
         # A release transport failure must not hide completed dependency alarms.
         release_output = io.StringIO()

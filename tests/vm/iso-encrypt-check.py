@@ -17,6 +17,10 @@ ROOT = HERE.parents[1]
 spec = importlib.util.spec_from_file_location('monitor', HERE / 'iso-monitor.py')
 monitor = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(monitor)
+spec = importlib.util.spec_from_file_location('frame_assessment', HERE / 'frame_assessment.py')
+frames = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(frames)
+assess_frame = frames.assess_frame
 
 
 def checked_iso():
@@ -114,6 +118,28 @@ def observe_resume(before, probe, evidence, *, clock=time.monotonic, sleep=time.
         evidence.write_text(json.dumps(record, indent=2) + '\n')
 
 
+def assess_resume_frame(path):
+    """Keep QEMU inactive output distinct from visible lock-screen acceptance."""
+    path = Path(path)
+    text = frames.normalized(' '.join(word['text'] for word in frames.read_words(path)))
+    if text == 'display output is not active':
+        record = {'status': 'NOT TESTED', 'stage': 'after-resume', 'frame': path.name,
+                  'reason': 'Known VM display limitation: Display output is not active.',
+                  'scope': 'Resume appearance only; continuity is recorded separately.'}
+        path.with_suffix('.assessment.json').write_text(json.dumps(record, indent=2) + '\n')
+        return record
+    return assess_frame(path, 'after-unlock', ('Password',))
+
+
+def complete_resume(before, probe, capture, evidence):
+    """Collect continuity before attempting any visual acceptance after S4."""
+    observe_resume(before, probe, evidence)
+    visual = assess_resume_frame(capture('resume-after-observation'))
+    if probe() != before:
+        raise RuntimeError('Session changed during post-resume screenshot capture')
+    return visual
+
+
 def capture_frame(vm, label):
     """Require a fresh decoded host frame; guest desktop buffers are not scan-out."""
     from argparse import Namespace
@@ -181,7 +207,12 @@ def snapshot_selection(main_config, snapshot_config):
             match = re.fullmatch(r'/?@snapshots/(\d+)/snapshot', subvols[0])
             if match and any(row[0] == 'initrd' for row in entry['commands']):
                 return {'indices': list(menus[0][0] + path), 'snapshot': match[1],
-                        'title': entry['title']}
+                        'title': entry['title'],
+                        'titles': [next(node['title'] for node_path, node in walk(grub_entries(main_config))
+                                        if node_path == menus[0][0][:depth])
+                                   for depth in range(1, len(menus[0][0]) + 1)] + [
+                            next(node['title'] for node_path, node in walk(grub_entries(snapshot_config))
+                                 if node_path == path[:depth]) for depth in range(1, len(path) + 1)]}
     raise ValueError('No bootable snapshot entry [GRUB]')
 
 
@@ -266,9 +297,9 @@ def main():
             monitor.command(vm, 'sendkey ' + key + ' 30')
             time.sleep(.07)
 
-    def unlock(label, selection=None):
+    def unlock(label, selection=None, *, assess_greeter=True):
         time.sleep(15)
-        capture(label + '-prompt')
+        assess_frame(capture(label + '-prompt'), 'prompt')
         # Public disposable fixture, never a user's password. No monitor transcript.
         type_text(disk_password)
         monitor.command(vm, 'sendkey ret')
@@ -278,16 +309,23 @@ def main():
             for _ in range(300):
                 monitor.command(vm, 'sendkey up')
                 time.sleep(.2)
-            capture('snapshot-menu')
-            select_snapshot_menu(selection, lambda command: monitor.command(vm, command), capture)
+            assess_frame(capture('snapshot-menu'), 'menu')
+            def menu_frame(label):
+                level = int(label.rsplit('-', 1)[1])
+                assess_frame(capture(label), 'menu', selected_index=selection['indices'][level])
+            select_snapshot_menu(selection, lambda command: monitor.command(vm, command), menu_frame)
         else:
             time.sleep(12)
-        capture(label + '-after-unlock')
         result = run('iso-wait-ssh.sh', '--user', user, timeout=600, check=False)
         (vm / (label + '-ssh.log')).write_bytes(result.stdout + result.stderr)
         if result.returncode:
             capture(label + '-failed')
             raise RuntimeError('Installed SSH did not become ready after GRUB unlock')
+        # Ordinary boots require visible greeter success. After S4, collect the
+        # independent continuity proof before examining the VM display.
+        if assess_greeter:
+            time.sleep(5)
+            assess_frame(capture(label + '-after-unlock'), 'after-unlock', ('Password',))
 
     fixture = json.loads((ROOT / 'installer/fixtures' / f'plan-erase-{fs}.json').read_text())
     fixture.update(encryption='account' if fs == 'btrfs' else 'separate', hibernation=True,
@@ -328,6 +366,9 @@ def main():
     try:
         if snapshot_only:
             assert (vm / 'installed-checks.txt').is_file(), 'Requires a previously installed test disk'
+        # Arguments, the image and the disk are refused first; the frame tools only before a VM starts.
+        frames.require_tools()
+        if snapshot_only:
             (vm / 'ssh-host-generation').write_text(str(time.time_ns()) + '\n')
             start(False)
             unlock('snapshot-source')
@@ -432,18 +473,19 @@ exit 1''', user=user)
         stop()
         start(False)
         try:
-            unlock('resume')
-            observe_resume(before, resume_probe, vm / 'resume-proof.json')
-            # Framebuffer capture remains available even if the desktop or SSH has died.
-            capture('resume-after-observation')
-            # A reboot during screenshot collection must also fail the run.
-            if resume_probe() != before:
-                raise RuntimeError('Session changed during post-resume screenshot capture')
+            unlock('resume', assess_greeter=False)
+            visual = complete_resume(before, resume_probe, capture, vm / 'resume-proof.json')
+            (vm / 'resume-visual.json').write_text(json.dumps(visual, indent=2) + '\n')
+            if visual['status'] == 'NOT TESTED':
+                print('NOT TESTED: resumed VM display is inactive; continuity recorded separately',
+                      flush=True)
         except Exception as error:
             (vm / 'resume-failure.txt').write_text(str(error) + '\n')
             proof_file = vm / 'resume-proof.json'
             proof = json.loads(proof_file.read_text()) if proof_file.exists() else {'before': before}
-            proof.update(status='FAIL', error=str(error))
+            # A later display failure must not erase the completed continuity proof.
+            if proof.get('status') != 'PASS':
+                proof.update(status='FAIL', error=str(error))
             proof_file.write_text(json.dumps(proof, indent=2) + '\n')
             try:
                 capture('resume-failed')
@@ -468,6 +510,13 @@ exit 1''', user=user)
         print('NOT TESTED: resumed desktop appearance; inspect the saved frames on target resolutions', flush=True)
         if fs == 'btrfs':
             snapshot_boot()
+        if visual['status'] == 'NOT TESTED':
+            (vm / 'NOT-TESTED').write_text(
+                'NOT TESTED: resumed VM display is inactive.\n'
+                'Encrypted installation, login and 60-second resume continuity passed.\n'
+                'See resume-proof.json and resume-visual.json; hardware hibernation remains untested.\n'
+                + iso_record)
+            sys.exit(77)
         (vm / 'PASS').write_text('Encrypted installation, login and 60-second resume continuity passed.\n'
                                 'NOT TESTED: resumed desktop appearance and real-hardware hibernation.\n' + iso_record)
     finally:

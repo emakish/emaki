@@ -80,7 +80,6 @@ AuthController {
         _pamMessageError = false;
         message = "";
         messageKind = "";
-        messageTimer.stop();
         checking = true;
         _pendingPassword = buffer;
         wipe(false);
@@ -121,7 +120,6 @@ AuthController {
             } else {
                 message = "Wrong password";
                 messageKind = "wrong";
-                messageTimer.restart();
             }
             rejected();
         } else {
@@ -156,7 +154,6 @@ AuthController {
         watchdog.stop();
         startGuard.stop();
         _starting = false;
-        messageTimer.stop();
         checking = false;
         queued = false;
         _recovering = false;
@@ -177,7 +174,6 @@ AuthController {
         ++attemptId;
         checking = false;
         queued = false;
-        messageTimer.stop();
         wipe(true);
         message = "";
         messageKind = "";
@@ -409,15 +405,6 @@ AuthController {
     readonly property Timer startGuard: Timer {
         interval: 1000
         onTriggered: root.startFailed()
-    }
-    readonly property Timer messageTimer: Timer {
-        interval: 2000
-        onTriggered: {
-            if (root.messageKind === "wrong") {
-                root.message = "";
-                root.messageKind = "";
-            }
-        }
     }
     readonly property Timer watchdog: Timer {
         interval: 60000

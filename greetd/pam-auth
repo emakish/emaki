@@ -1,0 +1,9 @@
+#%PAM-1.0
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Inner authentication stack for emaki-greetd. A refused system password must
+# stop this stack before either optional wallet module receives its token.
+auth       include     system-local-login
+auth       [success=ignore ignore=ignore default=2] pam_exec.so quiet /usr/bin/python3 -I -B /usr/bin/emaki-wallet-start --password-account
+auth       optional    pam_kwallet5.so
+auth       optional    pam_exec.so quiet expose_authtok /usr/bin/python3 -I /usr/bin/emaki-wallet-migrate --pam-unlock

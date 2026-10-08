@@ -1,331 +1,346 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Check KConfig defaults; --runtime exercises the real bridge on a private bus.
-
-The runtime check supplies a nonempty throwaway keyring password so it can
-create and unlock its login keyring without a display. Encrypted legacy-wallet migration still needs the VM check.
-"""
+"""Check native password-provider defaults and startup using isolated fixtures."""
+import configparser
 import os
-import io
-import runpy
-import shlex
 from pathlib import Path
+import runpy
 import shutil
 import subprocess
-import sys
 import tempfile
-import time
 import unittest
 from unittest import mock
-import reaper
-
-reaper.guard()
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG = ROOT / 'packaging/emaki-config/kwalletrc'
-
-
-def run(*command, **kwargs):
-    return subprocess.run(command, check=True, text=True, capture_output=True,
-                          timeout=20, **kwargs).stdout.strip()
 
 
 def private_environment(base):
-    env = os.environ.copy()
+    env = dict(os.environ, HOME=str(base / 'home'), XDG_CONFIG_HOME=str(base / 'config'),
+               XDG_DATA_HOME=str(base / 'data'), XDG_RUNTIME_DIR=str(base / 'runtime'),
+               XDG_CONFIG_DIRS=str(ROOT / 'packaging/emaki-config'),
+               QT_QPA_PLATFORM='offscreen', GSETTINGS_BACKEND='memory')
     for key in ('DBUS_SESSION_BUS_ADDRESS', 'GNOME_KEYRING_CONTROL',
                 'SECRET_SERVICE_BUS_NAME', 'DISPLAY', 'WAYLAND_DISPLAY'):
         env.pop(key, None)
-    env.update(HOME=str(base / 'home'), XDG_CONFIG_HOME=str(base / 'home/config'),
-               XDG_DATA_HOME=str(base / 'home/data'), XDG_CACHE_HOME=str(base / 'home/cache'),
-               XDG_RUNTIME_DIR=str(base / 'runtime'),
-               XDG_CONFIG_DIRS=str(CONFIG.parent), QT_QPA_PLATFORM='offscreen',
-               GSETTINGS_BACKEND='memory')
-    for key in ('HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR'):
-        Path(env[key]).mkdir(parents=True, exist_ok=True, mode=0o700)
+    for key in ('HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_RUNTIME_DIR'):
+        Path(env[key]).mkdir(parents=True, mode=0o700)
     return env
 
 
-class Defaults(unittest.TestCase):
-    def test_real_kwallet_settings_keep_consumed_gate_after_snapshot_save(self):
-        # Compile the installed schema with the same KConfig generator as KWallet.
-        # A stale migration snapshot must not restore the consumed one-shot gate.
-        with tempfile.TemporaryDirectory(prefix='emaki-wallet-skeleton-') as tmp:
-            base = Path(tmp)
-            env = private_environment(base)
-            schema = Path('/usr/share/config.kcfg/kwalletsettings.kcfg')
-            compiler = '/usr/lib/kf6/kconfig_compiler_kf6'
-            self.assertTrue(schema.is_file(), 'The installed KWallet schema is required')
-            self.assertTrue(Path(compiler).is_file(), 'The KConfig compiler is required')
-            shutil.copyfile(schema, base / schema.name)
-            (base / 'kwalletsettings.kcfgc').write_text(
-                'File=kwalletsettings.kcfg\nClassName=KWalletSettings\nMutators=true\n')
-            run(compiler, str(base / schema.name), str(base / 'kwalletsettings.kcfgc'),
-                '-d', str(base), env=env)
-            source = base / 'probe.cpp'
-            source.write_text(r'''// Copyright (C) 2026 Artur Yakymenko
-// SPDX-License-Identifier: GPL-3.0-or-later
-#include <QCoreApplication>
-#include <QProcess>
-#include "kwalletsettings.h"
+class NativeProvider(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory(prefix='emaki-secret-')
+        self.addCleanup(tmp.cleanup)
+        self.env = private_environment(Path(tmp.name))
+        self.runtime = Path(self.env['XDG_RUNTIME_DIR'])
+        self.helper = runpy.run_path(str(ROOT / 'scripts/emaki-wallet-start'))
 
-int main(int argc, char **argv)
-{
-    QCoreApplication app(argc, argv);
-    const QStringList original = {QStringLiteral("work,wallet"),
-                                  QStringLiteral("path\\wallet")};
-    for (const bool completed : {false, true}) {
-        {
-            KWalletSettings seed;
-            seed.setMigrateTo3rdParty(true);
-            seed.setWalletsMigratedToSecretService(original);
-            if (!seed.save()) return 1;
-        }
-        {
-            KWalletSettings migration;
-            if (!migration.migrateTo3rdParty()) return 2;
-            if (QProcess::execute(QStringLiteral("kwriteconfig6"), {
-                    QStringLiteral("--file"), QStringLiteral("kwalletrc"),
-                    QStringLiteral("--group"), QStringLiteral("Migration"),
-                    QStringLiteral("--key"), QStringLiteral("MigrateTo3rdParty"),
-                    QStringLiteral("false")}) != 0) return 3;
-            QStringList progress = migration.walletsMigratedToSecretService();
-            if (completed) progress.append(QStringLiteral("new-wallet"));
-            migration.setWalletsMigratedToSecretService(progress);
-            if (!migration.save()) return 4;
-        }
-        {
-            KWalletSettings next;
-            if (next.migrateTo3rdParty()) return 5;
-            QStringList expected = original;
-            if (completed) expected.append(QStringLiteral("new-wallet"));
-            if (next.walletsMigratedToSecretService() != expected) return 6;
-        }
-    }
-    return 0;
-}
-''')
-            flags = shlex.split(run('pkg-config', '--cflags', '--libs', 'Qt6Core', 'Qt6Gui'))
-            run('c++', '-fPIC', str(source), str(base / 'kwalletsettings.cpp'),
-                '-I/usr/include/KF6/KConfigGui', '-I/usr/include/KF6/KConfigCore',
-                '-I/usr/include/KF6/KConfig', *flags, '-lKF6ConfigCore', '-lKF6ConfigGui',
-                '-o', str(base / 'probe'), env=env)
-            run(str(base / 'probe'), env=env)
-            self.assertEqual(run('kreadconfig6', '--file', 'kwalletrc', '--group',
-                                 'Migration', '--key', 'MigrateTo3rdParty', env=env), 'false')
+    def read_config(self, group, key):
+        return subprocess.check_output(['kreadconfig6', '--file', 'kwalletrc', '--group',
+            group, '--key', key, '--default', 'missing'], env=self.env, text=True).strip()
 
-    def test_real_kconfig_selects_one_provider_without_writing_user_config(self):
-        with tempfile.TemporaryDirectory(prefix='emaki-secret-config-') as tmp:
-            env = private_environment(Path(tmp))
-            personal = Path(env['XDG_CONFIG_HOME']) / 'kwalletrc'
-            personal.write_text('[Wallet]\nDefault Wallet=existing-wallet\n')
-            before = personal.read_bytes()
-            for group, key, expected in (('KSecretD', 'Enabled', 'false'),
-                                          ('Migration', 'MigrateTo3rdParty', 'false'),
-                                          ('Wallet', 'Default Wallet', 'existing-wallet')):
-                self.assertEqual(run('kreadconfig6', '--file', 'kwalletrc', '--group', group,
-                                     '--key', key, '--default', 'missing', env=env), expected)
-            self.assertEqual(personal.read_bytes(), before)
+    @unittest.skipUnless(shutil.which('kreadconfig6'), 'needs KDE KConfig reader')
+    def test_real_kconfig_enables_native_provider_without_migration(self):
+        for group, key, expected in (('Wallet', 'Enabled', 'true'),
+                                     ('KSecretD', 'Enabled', 'true'),
+                                     ('org.freedesktop.secrets', 'apiEnabled', 'true'),
+                                     ('Migration', 'MigrateTo3rdParty', 'false')):
+            self.assertEqual(self.read_config(group, key), expected)
+        self.assertFalse((Path(self.env['XDG_CONFIG_HOME']) / 'kwalletrc').exists())
 
-    def test_explicit_attempt_preserves_settings_and_bounds_cancel(self):
-        helper = runpy.run_path(str(ROOT / 'scripts/emaki-wallet-migrate'))
-        for cancelled in (False, True):
-            with self.subTest(cancelled=cancelled), tempfile.TemporaryDirectory() as tmp:
-                env = private_environment(Path(tmp))
-                helper['config_write'](helper['KEY'], 'already,work\\,wallet,path\\\\wallet', env)
-                run('kwriteconfig6', '--file', 'kwalletrc', '--group', 'Wallet',
-                    '--key', 'Default Wallet', 'personal-wallet', env=env)
-                personal = Path(env['XDG_CONFIG_HOME']) / 'kwalletrc'
-                original = personal.read_bytes()
-                overlays = []
-                daemon = mock.Mock()
-                daemon.stderr = io.StringIO('')
+    @unittest.skipUnless(shutil.which('kreadconfig6'), 'needs KDE KConfig reader')
+    def test_real_kconfig_preserves_personal_choices(self):
+        personal = Path(self.env['XDG_CONFIG_HOME']) / 'kwalletrc'
+        personal.write_text('[Wallet]\nDefault Wallet=work\n[KSecretD]\nEnabled=false\n'
+                            '[org.freedesktop.secrets]\napiEnabled=false\n')
+        before = personal.read_bytes()
+        self.assertEqual(self.read_config('Wallet', 'Default Wallet'), 'work')
+        self.assertEqual(self.read_config('KSecretD', 'Enabled'), 'false')
+        self.assertEqual(self.read_config('org.freedesktop.secrets', 'apiEnabled'), 'false')
+        self.assertEqual(self.read_config('Migration', 'MigrateTo3rdParty'), 'false')
+        with self.assertRaisesRegex(RuntimeError, 'disabled by your effective'):
+            self.helper['check_settings'](self.env)
+        self.assertEqual(personal.read_bytes(), before)
 
-                def launch(command, **kwargs):
-                    self.assertEqual(command, ['timeout', '--foreground', '--signal=TERM',
-                                              '--kill-after=5', '300', 'kwalletd6'])
-                    overlay = kwargs['env']
-                    overlays.append(overlay)
-                    self.assertEqual(kwargs.get('stderr'), subprocess.PIPE)
-                    self.assertTrue(kwargs.get('text'))
-                    self.assertEqual(helper['config_read']('MigrateTo3rdParty', overlay), 'true')
-                    self.assertEqual(run('kreadconfig6', '--file', 'kwalletrc', '--group',
-                                         'Wallet', '--key', 'Default Wallet', env=overlay),
-                                     'personal-wallet')
-                    self.assertEqual(helper['config_read']('MigrateTo3rdParty', env), 'false')
-                    return daemon
+    def test_pam_unlock_and_secret_portal_select_native_wallet(self):
+        pam = (ROOT / 'greetd/pam').read_text() + (ROOT / 'greetd/pam-auth').read_text()
+        self.assertIn('auth       optional    pam_kwallet5.so', pam)
+        self.assertIn('pam_kwallet5.so kwalletd=/usr/bin/ksecretd', pam)
+        self.assertNotIn('auto_start', pam)
+        self.assertNotIn('force_run', pam)
+        self.assertIn('[success=ignore ignore=ignore default=2]', pam)
+        self.assertIn('--password-account', pam)
+        self.assertIn('expose_authtok', pam)
+        self.assertNotIn('pam_gnome_keyring', pam)
+        portal = configparser.ConfigParser()
+        portal.read(ROOT / 'packaging/emaki-config/niri-portals.conf')
+        self.assertEqual(portal['preferred']['org.freedesktop.impl.portal.Secret'], 'kwallet;')
+        self.assertEqual(portal['preferred']['org.freedesktop.impl.portal.ScreenCast'], 'gnome;')
 
-                def wait():
-                    if cancelled:
-                        raise KeyboardInterrupt()
-                    helper['config_write'](helper['KEY'], 'already,work\\,wallet,path\\\\wallet,new', overlays[0])
+    def test_pam_init_precedes_activation_reload_and_owner_verification(self):
+        events = []
+        def call(method, *args):
+            events.append((method, *args))
+            if method == 'ReloadConfig':
+                path = self.helper['activation_path'](self.runtime)
+                self.assertEqual(path.read_text(), self.helper['ACTIVATION'])
+                return ''
+            return 's ":1.42"'
+        def run(argv, **kwargs):
+            events.append(('run', *argv))
+            self.assertTrue(kwargs['check'])
+            self.assertEqual(kwargs['env']['PAM_KWALLET5_LOGIN'], '/private/login.sock')
+        self.env['PAM_KWALLET5_LOGIN'] = '/private/login.sock'
+        self.helper['start'](self.env, self.runtime, run, call, mock.Mock())
+        self.assertEqual(events[:2], [('ReloadConfig',), ('run', '/usr/lib/pam_kwallet_init')])
+        self.assertEqual([event[-1] for event in events[2:]], [
+            'org.kde.ksecretd', 'org.freedesktop.secrets',
+            'org.freedesktop.impl.portal.desktop.kwallet'])
 
-                result = helper['attempt'](env, wait, launch)
-                daemon.terminate.assert_called_once()
-                daemon.wait.assert_called_once_with(timeout=7)
-                self.assertFalse(Path(overlays[0]['XDG_CONFIG_HOME']).exists())
-                self.assertEqual(helper['config_read']('MigrateTo3rdParty', env), 'false')
-                self.assertEqual(result, 'already,work\\,wallet,path\\\\wallet' +
-                                 ('' if cancelled else ',new'))
-                self.assertEqual(personal.read_bytes(), original)
+    def test_terminal_login_activates_portal_without_pam_password(self):
+        self.env.pop('PAM_KWALLET5_LOGIN', None)
+        call = mock.Mock(return_value='s ":1.42"')
+        run = mock.Mock()
+        self.helper['start'](self.env, self.runtime, run, call, mock.Mock())
+        self.assertEqual(run.call_args.args[0][-1], '/usr/bin/ksecretd')
+        self.assertEqual(call.call_args_list[0], mock.call('ReloadConfig'))
 
-    def test_native_migration_warning_consumes_gate_before_progress_save(self):
-        helper = runpy.run_path(str(ROOT / 'scripts/emaki-wallet-migrate'))
-        with tempfile.TemporaryDirectory(prefix='emaki-wallet-warning-') as tmp:
-            base = Path(tmp)
-            env = private_environment(base)
-            personal = Path(env['XDG_CONFIG_HOME']) / 'kwalletrc'
-            personal.write_text('[Wallet]\nDefault Wallet=personal-wallet\n')
-            migrated = 'already,work\\,wallet,path\\\\wallet'
-            helper['config_write'](helper['KEY'], migrated, env)
-            original = personal.read_bytes()
-            child = base / 'migration.py'
-            child.write_text('''# Copyright (C) 2026 Artur Yakymenko
-# SPDX-License-Identifier: GPL-3.0-or-later
-import subprocess
-import sys
-import time
+    def test_gnome_owner_collision_is_not_success(self):
+        def call(method, *args):
+            return 's ":1.17"' if args[-1] == 'org.freedesktop.secrets' else 's ":1.42"'
+        self.assertFalse(self.helper['same_provider'](call))
+        failure = mock.Mock(side_effect=subprocess.CalledProcessError(1, 'busctl'))
+        self.assertFalse(self.helper['same_provider'](failure))
 
-def read(key):
-    return subprocess.check_output(['kreadconfig6', '--file', 'kwalletrc',
-        '--group', 'Migration', '--key', key], text=True).removesuffix('\\n')
+    def test_startup_timeout_keeps_provider_selection(self):
+        self.env['PAM_KWALLET5_LOGIN'] = '/private/login.sock'
+        def call(method, *args):
+            if method == 'ReloadConfig':
+                return ''
+            raise subprocess.CalledProcessError(1, 'busctl')
+        sleep = mock.Mock()
+        with self.assertRaisesRegex(RuntimeError, 'old password files are untouched'):
+            self.helper['start'](self.env, self.runtime, mock.Mock(), call, sleep)
+        self.assertEqual(sleep.call_count, 100)
+        self.assertTrue(self.helper['activation_path'](self.runtime).exists())
+        unit = (ROOT / 'systemd/emaki-wallet-start.service').read_text()
+        self.assertIn('ExecStop=/usr/bin/emaki-wallet-start --stop', unit)
+        self.assertNotIn('ExecStopPost=', unit)
 
-assert read('MigrateTo3rdParty') == 'true'
-progress = read('WalletsMigratedToSecretService')
-print('kf.wallet.kwalletd: Migrating "legacy-wallet"', file=sys.stderr, flush=True)
-deadline = time.monotonic() + 5
-while read('MigrateTo3rdParty') != 'false':
-    assert time.monotonic() < deadline, 'The native migration gate stayed open'
-    time.sleep(.01)
-subprocess.run(['kwriteconfig6', '--file', 'kwalletrc', '--group', 'Migration',
-    '--key', 'WalletsMigratedToSecretService', progress + ',new-wallet'], check=True)
-''')
-            processes = []
-            overlays = []
+    def test_disabled_provider_discards_pending_pam(self):
+        self.env['PAM_KWALLET5_LOGIN'] = '/private/login.sock'
+        run = mock.Mock()
+        discard = mock.Mock()
+        with mock.patch.dict(self.helper['start'].__globals__,
+                check_settings=mock.Mock(side_effect=RuntimeError('disabled')),
+                discard_pending_pam=discard):
+            with self.assertRaisesRegex(RuntimeError, 'disabled'):
+                self.helper['start'](self.env, self.runtime, run, mock.Mock(), mock.Mock())
+        run.assert_not_called()
+        discard.assert_called_once_with(self.env)
+        self.assertTrue(self.helper['activation_path'](self.runtime).exists())
 
-            def launch(command, **kwargs):
-                overlays.append(kwargs['env'])
-                process = subprocess.Popen(command[:-1] + [sys.executable, str(child)], **kwargs)
-                processes.append(process)
-                return process
+    def test_prepare_migrates_before_compositor_and_stops_old_owner_first(self):
+        events = []
+        def run(argv, **kw):
+            events.append(argv)
+            return subprocess.CompletedProcess(argv, 0, 'loaded')
+        self.helper['prepare'](self.env, self.runtime, run, mock.Mock())
+        self.assertEqual(events[2][:4], ['systemctl', '--user', 'mask', '--runtime'])
+        self.assertEqual(events[2][4:], ['gnome-keyring-daemon.socket', 'gnome-keyring-daemon.service'])
+        self.assertEqual(events[3], ['systemctl', '--user', 'stop', 'gnome-keyring-daemon.socket'])
+        self.assertEqual(events[4], ['systemctl', '--user', 'stop', 'gnome-keyring-daemon.service'])
+        self.assertEqual(events[5], ['/usr/bin/emaki-wallet-migrate', '--snapshot'])
+        for unit in ('systemd/niri-emaki.service', 'systemd/niri-wallet.conf'):
+            self.assertIn('ExecStartPre=-/usr/bin/emaki-wallet-start --prepare', (ROOT / unit).read_text())
+        self.assertIn('Exec=/usr/bin/emaki-wallet-start --wait', self.helper['ACTIVATION'])
+        self.assertNotIn('Exec=/usr/bin/ksecretd', self.helper['ACTIVATION'])
 
-            result = helper['attempt'](env, lambda: processes[0].wait(timeout=10),
-                                       launch)
-            self.assertEqual(processes[0].returncode, 0)
-            self.assertEqual(result, migrated + ',new-wallet')
-            self.assertEqual(personal.read_bytes(), original)
-            for key, expected in (('QT_FORCE_STDERR_LOGGING', '1'),
-                                  ('QT_LOGGING_TO_CONSOLE', '1'),
-                                  ('QT_MESSAGE_PATTERN', '%{category}: %{message}'),
-                                  ('QT_LOGGING_RULES', 'kf.wallet.kwalletd.warning=true')):
-                self.assertEqual(overlays[0][key], expected)
+    def test_fresh_install_does_not_stop_absent_old_units(self):
+        run = mock.Mock(return_value=subprocess.CompletedProcess([], 0, 'not-found'))
+        self.helper['prepare'](self.env, self.runtime, run, mock.Mock())
+        self.assertFalse(any('stop' in call.args[0] for call in run.call_args_list))
+        self.assertEqual(run.call_args.args[0], ['/usr/bin/emaki-wallet-migrate', '--snapshot'])
 
-    def test_attempt_timeout_stops_child_without_terminal_input(self):
-        helper = runpy.run_path(str(ROOT / 'scripts/emaki-wallet-migrate'))
-        with tempfile.TemporaryDirectory() as tmp:
-            env = private_environment(Path(tmp))
-            stopped = Path(tmp) / 'stopped'
-            processes = []
+    def test_failure_preserves_matching_file_not_created_by_this_session(self):
+        path = self.helper['activation_path'](self.runtime)
+        path.write_text(self.helper['ACTIVATION'])
+        run = mock.Mock(side_effect=subprocess.CalledProcessError(1, 'systemctl'))
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.helper['prepare'](self.env, self.runtime, run, mock.Mock())
+        self.assertEqual(path.read_text(), self.helper['ACTIVATION'])
 
-            def launch(command, **kwargs):
-                command = command[:-2] + ['0.2', sys.executable, '-c',
-                    'import signal,time,pathlib,sys; '
-                    'signal.signal(signal.SIGTERM, lambda *_: '
-                    '(pathlib.Path(sys.argv[1]).write_text("terminated"), sys.exit(0))); '
-                    'time.sleep(20)', str(stopped)]
-                daemon = subprocess.Popen(command, **kwargs)
-                processes.append(daemon)
-                return daemon
+    def test_prepare_failure_keeps_activation_override(self):
+        run = mock.Mock(side_effect=subprocess.CalledProcessError(1, 'systemctl'))
+        call = mock.Mock()
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.helper['prepare'](self.env, self.runtime, run, call)
+        self.assertTrue(self.helper['activation_path'](self.runtime).exists())
+        self.assertEqual(call.call_args_list, [mock.call('ReloadConfig')])
 
-            helper['attempt'](env, lambda: processes[0].wait(timeout=5), launch)
-            self.assertEqual(stopped.read_text(), 'terminated')
-            self.assertEqual(processes[0].returncode, 124)
-            self.assertEqual(helper['config_read']('MigrateTo3rdParty', env), 'false')
+    def test_disabled_provider_keeps_activation_blocked(self):
+        check = self.helper['prepare'].__globals__
+        with mock.patch.dict(check, check_settings=mock.Mock(side_effect=RuntimeError('disabled'))):
+            with self.assertRaisesRegex(RuntimeError, 'disabled'):
+                self.helper['prepare'](self.env, self.runtime, mock.Mock(), mock.Mock())
+        self.assertTrue(self.helper['activation_path'](self.runtime).exists())
 
-    def test_migration_refuses_running_wallet_using_installed_busctl(self):
-        helper = runpy.run_path(str(ROOT / 'scripts/emaki-wallet-migrate'))
-        attempt = mock.Mock()
-        with mock.patch('sys.stdin.isatty', return_value=True), \
-                mock.patch.dict(helper['main'].__globals__, {'attempt': attempt}), \
-                mock.patch('subprocess.check_output', return_value='b true\n') as query, \
-                mock.patch('subprocess.Popen') as launch:
-            with self.assertRaisesRegex(SystemExit, 'KWallet is already running'):
-                helper['main']([])
-        self.assertEqual(query.call_args.args[0], [
-            'busctl', '--user', 'call', 'org.freedesktop.DBus', '/org/freedesktop/DBus',
-            'org.freedesktop.DBus', 'NameHasOwner', 's', 'org.kde.kwalletd6',
-        ])
-        launch.assert_not_called()
-        attempt.assert_not_called()
+    def test_stop_releases_pam_before_status_checks(self):
+        self.env['PAM_KWALLET5_LOGIN'] = '/private/login.sock'
+        (self.runtime / 'emaki').mkdir()
+        (self.runtime / 'emaki/wallet-start-error').symlink_to(self.runtime / 'private')
+        release = mock.Mock()
+        with mock.patch.dict(os.environ, self.env, clear=True), \
+                mock.patch('sys.argv', ['emaki-wallet-start', '--stop']), \
+                mock.patch.dict(self.helper['main'].__globals__, release_pending_pam=release):
+            self.assertEqual(self.helper['main'](), 0)
+        release.assert_called_once()
 
-    def test_runtime_worker_supplies_a_password_before_closing_stdin(self):
-        daemon = mock.Mock()
-        daemon.poll.return_value = None
-        with mock.patch.dict(os.environ, {'EMAKI_SECRET_TEST': os.environ['HOME']}), \
-                mock.patch('subprocess.Popen', return_value=daemon), \
-                mock.patch(__name__ + '.run', side_effect=RuntimeError('stop after unlock')):
-            with self.assertRaisesRegex(RuntimeError, 'stop after unlock'):
-                runtime_worker()
-        daemon.stdin.write.assert_called_once()
-        self.assertTrue(daemon.stdin.write.call_args.args[0])
-        self.assertEqual(daemon.stdin.method_calls[-1], mock.call.close())
+    def test_status_setup_failure_still_releases_pam(self):
+        self.env['PAM_KWALLET5_LOGIN'] = '/private/login.sock'
+        (self.runtime / 'emaki').write_text('not a directory')
+        release = mock.Mock()
+        with mock.patch.dict(os.environ, self.env, clear=True), \
+                mock.patch('sys.argv', ['emaki-wallet-start']), \
+                mock.patch.dict(self.helper['main'].__globals__, release_pending_pam=release), \
+                mock.patch('sys.stderr'):
+            self.assertEqual(self.helper['main'](), 1)
+        release.assert_called_once()
 
-    def test_existing_gnome_login_unlock_and_secret_portal_are_kept(self):
-        self.assertIn('pam_gnome_keyring.so auto_start', (ROOT / 'greetd/pam').read_text())
-        self.assertIn('org.freedesktop.impl.portal.Secret=gnome-keyring;',
-                      (ROOT / 'packaging/emaki-config/niri-portals.conf').read_text())
+    def test_stale_pam_socket_cleanup_never_unlocks_wallet(self):
+        run = mock.Mock()
+        self.helper['release_pending_pam']({'PAM_KWALLET5_LOGIN': '/gone'}, run)
+        run.assert_not_called()
+        for unit in ('systemd/niri-emaki.service', 'systemd/niri-wallet.conf'):
+            contents = (ROOT / unit).read_text()
+            self.assertIn('ExecStopPost=-/usr/bin/emaki-wallet-start --stop', contents)
+            self.assertIn('ExecStopPost=-/usr/bin/systemctl --user unset-environment PAM_KWALLET5_LOGIN', contents)
 
+    def test_discard_identifies_only_the_pending_socket_holder(self):
+        proc = self.runtime / 'proc'
+        (proc / 'net').mkdir(parents=True)
+        address = self.runtime / 'pam.sock'
+        address.touch()
+        (proc / 'net/unix').write_text('header\n0: 0 0 0 0 0 654 ' + str(address) + '\n')
+        for pid, inode in (('101', '654'), ('102', '655')):
+            directory = proc / pid
+            (directory / 'fd').mkdir(parents=True)
+            (directory / 'cmdline').write_bytes(b'\0'.join((b'/usr/bin/ksecretd', b'--pam-login', b'4', b'5', b'')))
+            (directory / 'exe').symlink_to('/usr/bin/ksecretd')
+            (directory / 'fd/5').symlink_to('socket:[' + inode + ']')
+        with mock.patch('os.pidfd_open', return_value=999) as pidfd, \
+                mock.patch('signal.pidfd_send_signal') as kill, mock.patch('os.close'):
+            self.helper['discard_pending_pam']({'PAM_KWALLET5_LOGIN': str(address)}, proc)
+        pidfd.assert_called_once_with(101)
+        kill.assert_called_once_with(999, 9)
 
-def runtime_worker():
-    # Only the caller's throwaway environment and private bus may reach this path.
-    assert os.environ.get('EMAKI_SECRET_TEST') == os.environ['HOME']
-    daemon = subprocess.Popen(['gnome-keyring-daemon', '--foreground', '--unlock',
-                               '--components=secrets'], stdin=subprocess.PIPE,
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    # EOF without any bytes means no password, so no login keyring is created.
-    daemon.stdin.write(b'emaki-disposable-test-password')
-    daemon.stdin.close()
-    try:
-        for _ in range(100):
-            if run('qdbus6', 'org.freedesktop.DBus', '/org/freedesktop/DBus',
-                   'org.freedesktop.DBus.NameHasOwner', 'org.freedesktop.secrets') == 'true':
-                break
-            assert daemon.poll() is None, 'Keyring exited before owning Secret Service'
-            time.sleep(.05)
-        else:
-            raise AssertionError('Keyring did not start')
-        run('secret-tool', 'store', '--label=Existing browser secret',
-            'application', 'emaki-old-browser', input='old-secret')
-        svc = ('qdbus6', 'org.kde.kwalletd6', '/modules/kwalletd6')
-        wallet = run(*svc, 'org.kde.KWallet.networkWallet')
-        handle = run(*svc, 'org.kde.KWallet.open', wallet, '0', 'emaki-test')
-        assert int(handle) >= 0, handle
-        assert run(*svc, 'org.kde.KWallet.writePassword', handle, 'emaki-test',
-                   'new-key', 'new-secret', 'emaki-test') == '0'
-        assert run('secret-tool', 'lookup', 'server', 'emaki-test', 'user', 'new-key') == 'new-secret'
-        assert run(*svc, 'org.kde.KWallet.readPassword', handle, 'emaki-test',
-                   'new-key', 'emaki-test') == 'new-secret'
-        assert run('secret-tool', 'lookup', 'application', 'emaki-old-browser') == 'old-secret'
-        assert run('qdbus6', 'org.freedesktop.DBus', '/org/freedesktop/DBus',
-                   'org.freedesktop.DBus.NameHasOwner', 'org.kde.secretservicecompat') == 'false'
-        print('PASS: KWallet and libsecret use one provider; existing keyring secret is readable')
-    finally:
-        daemon.terminate()
-        daemon.wait(timeout=5)
+    def test_empty_password_and_locked_accounts_skip_optional_auth(self):
+        shadow = self.runtime / 'shadow'
+        shadow.write_text('empty::1::::::\nlocked:!hash:1::::::\nregular:$y$hash:1::::::\n')
+        for user, expected in [('empty', False), ('locked', False), ('regular', True), ('missing', False)]:
+            self.assertEqual(self.helper['password_account']({'PAM_USER': user}, shadow), expected)
+        session = (ROOT / 'scripts/niri-emaki-session').read_text()
+        self.assertIn('unset-environment PAM_KWALLET5_LOGIN', session)
+
+    def test_flush_locks_default_collection_without_activation(self):
+        # KWallet 6.30 Secret Service: ReadAlias(s)->o and Lock(ao)->(ao,o).
+        collection = '/org/freedesktop/secrets/collection/kdewallet'
+        run = mock.Mock(side_effect=[subprocess.CompletedProcess([], 0, 'b true'),
+            subprocess.CompletedProcess([], 0, 'o "' + collection + '"'),
+            subprocess.CompletedProcess([], 0, 'v b false'),
+            subprocess.CompletedProcess([], 0, '')])
+        self.helper['flush'](run)
+        self.assertEqual(run.call_args_list[-1].args[0][-7:],
+            ['org.freedesktop.secrets', '/org/freedesktop/secrets',
+             'org.freedesktop.Secret.Service', 'Lock', 'ao', '1', collection])
+        for request in run.call_args_list:
+            self.assertIn('--auto-start=no', request.args[0])
+            self.assertLessEqual(request.kwargs['timeout'], 1.2)
+        run = mock.Mock(return_value=subprocess.CompletedProcess([], 0, 'b false'))
+        self.helper['flush'](run)
+        self.assertEqual(run.call_count, 1)
+
+    def test_flush_already_locked_collection_is_saved_without_second_lock(self):
+        collection = '/org/freedesktop/secrets/collection/kdewallet'
+        run = mock.Mock(side_effect=[subprocess.CompletedProcess([], 0, 'b true'),
+            subprocess.CompletedProcess([], 0, 'o "' + collection + '"'),
+            subprocess.CompletedProcess([], 0, 'v b true')])
+        self.helper['flush'](run)
+        self.assertEqual(run.call_count, 3)
+        self.assertEqual(run.call_args.args[0][-7:],
+            ['org.freedesktop.secrets', collection, 'org.freedesktop.DBus.Properties',
+             'Get', 'ss', 'org.freedesktop.Secret.Collection', 'Locked'])
+
+    def test_locked_or_unread_legacy_keys_gate_all_activation_names(self):
+        old = Path(self.env['XDG_DATA_HOME']) / 'keyrings'
+        old.mkdir()
+        (old / 'login.keyring').touch()
+        self.env['PAM_KWALLET5_LOGIN'] = '/private/login.sock'
+        run = mock.Mock()
+        discard = mock.Mock()
+        with mock.patch.dict(self.helper['start'].__globals__, discard_pending_pam=discard):
+            with self.assertRaisesRegex(RuntimeError, 'Saved application keys'):
+                self.helper['start'](self.env, self.runtime, run, mock.Mock())
+        run.assert_not_called()
+        discard.assert_called_once_with(self.env)
+        services = self.helper['activation_path'](self.runtime).parent
+        for name in ('org.freedesktop.secrets', 'org.freedesktop.impl.portal.desktop.kwallet',
+                     'org.kde.secretservicecompat'):
+            content = (services / (name + '.service')).read_text()
+            self.assertIn('Name=' + name, content)
+            self.assertIn('Exec=/usr/bin/emaki-wallet-start --wait', content)
+        for name in ('org.gnome.keyring', 'org.freedesktop.impl.portal.Secret'):
+            legacy = (services / (name + '.service')).read_text()
+            self.assertIn('Name=' + name, legacy)
+            self.assertIn('Exec=/usr/bin/false', legacy)
+        self.env['XDG_STATE_HOME'] = str(self.runtime / 'state')
+        report = Path(self.env['XDG_STATE_HOME']) / 'emaki/wallet-migration-v1.json'
+        report.parent.mkdir(parents=True)
+        report.write_text('{"portal_keys_safe": true, "complete": false}')
+        self.assertTrue(self.helper['migration_allowed'](self.env))
+
+    def test_active_private_writer_prevents_public_start(self):
+        run = mock.Mock()
+        with self.helper['writer_lock'](self.env):
+            with self.assertRaisesRegex(RuntimeError, 'still stopping'):
+                self.helper['start'](self.env, self.runtime, run, mock.Mock())
+        run.assert_not_called()
+
+    def test_stop_keeps_all_runtime_activation_overrides(self):
+        self.helper['select_provider'](self.runtime, mock.Mock())
+        with mock.patch.dict(os.environ, self.env, clear=True), \
+                mock.patch('sys.argv', ['emaki-wallet-start', '--stop']):
+            self.assertEqual(self.helper['main'](), 0)
+        self.assertEqual(len(list(self.helper['activation_path'](self.runtime).parent.glob('*.service'))), 5)
+
+    def test_personal_activation_file_or_symlink_is_not_clobbered(self):
+        path = self.helper['activation_path'](self.runtime)
+        personal = self.runtime / 'personal.service'
+        personal.write_text('personal provider')
+        for symlink in (False, True):
+            with self.subTest(symlink=symlink):
+                if symlink:
+                    path.symlink_to(personal)
+                else:
+                    path.write_text('personal provider')
+                call = mock.Mock()
+                with self.assertRaisesRegex(RuntimeError, 'personal Secret Service'):
+                    self.helper['select_provider'](self.runtime, call)
+                self.assertEqual(path.read_text(), 'personal provider')
+                self.assertEqual(path.is_symlink(), symlink)
+                call.assert_not_called()
+                path.unlink()
+        self.assertEqual(personal.read_text(), 'personal provider')
+
+    def test_personal_runtime_directory_symlink_is_not_used(self):
+        personal = self.runtime / 'personal'
+        personal.mkdir()
+        (self.runtime / 'dbus-1').symlink_to(personal, target_is_directory=True)
+        with self.assertRaisesRegex(RuntimeError, 'not owned by this session'):
+            self.helper['select_provider'](self.runtime, mock.Mock())
+        self.assertEqual(list(personal.iterdir()), [])
 
 
 if __name__ == '__main__':
-    if '--worker' in sys.argv:
-        runtime_worker()
-    elif '--runtime' in sys.argv:
-        for program in ('dbus-run-session', 'gnome-keyring-daemon', 'secret-tool', 'qdbus6'):
-            if not shutil.which(program):
-                raise SystemExit(f'Missing runtime dependency: {program}')
-        with tempfile.TemporaryDirectory(prefix='emaki-secret-runtime-') as tmp:
-            env = private_environment(Path(tmp))
-            env['EMAKI_SECRET_TEST'] = env['HOME']
-            result = subprocess.run(['dbus-run-session', '--', sys.executable,
-                                     str(Path(__file__).resolve()), '--worker'], env=env, timeout=60)
-            raise SystemExit(result.returncode)
-    else:
-        unittest.main()
+    unittest.main()

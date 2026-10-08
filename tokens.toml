@@ -50,7 +50,7 @@ border_width = 2   # border thickness
 gaps         = 2   # gaps between windows
 
 [font]
-ui   = "Adwaita Sans"
+ui   = "Noto Sans"
 mono = "Iosevka Nerd Font Mono"
 size = 12
 

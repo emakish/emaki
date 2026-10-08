@@ -1,0 +1,13 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Check Arch dependency changes every two hours
+
+[Timer]
+OnCalendar=*-*-* 00/2:00:00
+OnStartupSec=2min
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

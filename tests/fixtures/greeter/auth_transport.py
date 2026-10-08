@@ -11,6 +11,7 @@ class Stream:
         self.data = bytearray()
         self.delay = 0
         self.exited = False
+        self.hold_verdict = False
     def __enter__(self): return self
     def __exit__(self, *_args): pass
     def settimeout(self, _value): pass
@@ -29,6 +30,9 @@ class Stream:
             if mode == "cancel-after-prompt":
                 (profile / "cancel-now").write_text("go")
             self.delay = .35
+            if mode == "queued-verdict" and not (profile / "verdict-held").exists():
+                self.hold_verdict = True
+                (profile / "verdict-held").write_text("pending")
             if mode == "reject-once" and not (profile / "rejected-once").exists():
                 (profile / "rejected-once").write_text("done")
                 self.exited = True
@@ -48,6 +52,13 @@ class Stream:
         data = json.dumps(reply).encode()
         self.data.extend(struct.pack("=i", len(data)) + data)
     def recv(self, count):
+        if self.hold_verdict:
+            deadline = time.monotonic() + 5
+            while not (profile / "release-verdict").exists():
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("pending verdict was not released")
+                time.sleep(.005)
+            self.hold_verdict = False
         if self.delay:
             time.sleep(self.delay)
             self.delay = 0

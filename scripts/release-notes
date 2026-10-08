@@ -33,18 +33,31 @@ def collect(revision_range):
     # Git recognizes the final trailer block, so examples in prose are not notes.
     values = git(
         'log', '--reverse', '--topo-order', '-z',
-        '--format=%(trailers:key=Note,valueonly,separator=%x00)', revision_range, '--',
+        '--format=%(trailers:key=Note-Replaces,valueonly,separator=%x00)%x1f'
+        '%(trailers:key=Note,valueonly,separator=%x00)%x1e', revision_range, '--',
     )
     notes = {kind: [] for kind in KINDS}
     seen = set()
-    for value in values.split('\0'):
-        match = NOTE.fullmatch(value.strip())
-        if not match:
+    for record in values.split('\x1e'):
+        if '\x1f' not in record:
             continue
-        kind, sentence = match.groups()
-        if (kind, sentence) not in seen:
-            notes[kind].append(sentence)
-            seen.add((kind, sentence))
+        replaced, added = record.split('\x1f', 1)
+        replacements = [NOTE.fullmatch(value.strip('\0\n '))
+                        for value in replaced.split('\0') if value.strip('\0\n ')]
+        additions = [match for value in added.split('\0')
+                     if (match := NOTE.fullmatch(value.strip()))]
+        if replacements and (not additions or not all(replacements)):
+            raise ValueError('Note-Replaces requires an exact note and a replacement Note trailer')
+        for match in replacements:
+            kind, sentence = match.groups()
+            if (kind, sentence) in seen:
+                notes[kind].remove(sentence)
+                seen.remove((kind, sentence))
+        for match in additions:
+            kind, sentence = match.groups()
+            if (kind, sentence) not in seen:
+                notes[kind].append(sentence)
+                seen.add((kind, sentence))
     return notes
 
 

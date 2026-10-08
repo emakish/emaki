@@ -1,0 +1,337 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Prepare password migration before clients and finish graphical PAM startup."""
+import argparse
+import contextlib
+import fcntl
+import json
+import os
+import signal
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+ACTIVATION = ('# Emaki session Secret Service\n[D-BUS Service]\n'
+              'Name=org.freedesktop.secrets\nExec=/usr/bin/emaki-wallet-start --wait\n')
+
+
+def bus_call(method, *args):
+    return subprocess.check_output([
+        'busctl', '--user', '--timeout=2', 'call', 'org.freedesktop.DBus',
+        '/org/freedesktop/DBus', 'org.freedesktop.DBus', method, *args,
+    ], text=True, stderr=subprocess.DEVNULL, timeout=3).strip()
+
+
+def owned_directory(path):
+    path.mkdir(mode=0o700, exist_ok=True)
+    if path.is_symlink() or path.stat().st_uid != os.getuid():
+        raise RuntimeError('The wallet runtime directory is not owned by this session.')
+    return path
+
+
+def activation_path(runtime):
+    directory = owned_directory(runtime / 'dbus-1')
+    return owned_directory(directory / 'services') / 'org.freedesktop.secrets.service'
+
+
+def select_provider(runtime, call=bus_call):
+    paths = []
+    for name in ('org.freedesktop.secrets', 'org.freedesktop.impl.portal.desktop.kwallet',
+                 'org.kde.secretservicecompat', 'org.gnome.keyring',
+                 'org.freedesktop.impl.portal.Secret'):
+        path = activation_path(runtime).with_name(name + '.service')
+        content = ACTIVATION.replace('Name=org.freedesktop.secrets', 'Name=' + name)
+        if name in ('org.gnome.keyring', 'org.freedesktop.impl.portal.Secret'):
+            content = content.replace('/usr/bin/emaki-wallet-start --wait', '/usr/bin/false')
+        if path.is_symlink() or (path.exists() and path.read_text() != content):
+            raise RuntimeError('A personal Secret Service activation file takes precedence. Check your wallet settings.')
+        paths.append((path, content))
+    created = False
+    for path, content in paths:
+        if not path.exists():
+            with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), 'w') as output:
+                output.write(content)
+            created = True
+    # These overrides survive graphical logout, like the runtime unit masks.
+    call('ReloadConfig')
+    return created
+
+
+def migration_allowed(env):
+    home = Path(env.get('HOME', str(Path.home())))
+    old = Path(env.get('XDG_DATA_HOME') or home / '.local/share') / 'keyrings'
+    if old.is_symlink():
+        return False
+    if not old.exists():
+        return True
+    if not old.is_dir():
+        return False
+    try:
+        with os.scandir(old) as entries:
+            if not any(entry.name.endswith('.keyring') for entry in entries):
+                return True
+    except OSError:
+        return False
+    report = Path(env.get('XDG_STATE_HOME') or home / '.local/state') / 'emaki/wallet-migration-v1.json'
+    try:
+        data = json.loads(report.read_text())
+        return bool(data.get('portal_keys_safe') or data.get('complete'))
+    except (OSError, ValueError):
+        return False
+
+
+@contextlib.contextmanager
+def writer_lock(env):
+    home = Path(env.get('HOME', str(Path.home())))
+    directory = home / '.cache/emaki-wallet-login'
+    directory.parent.mkdir(mode=0o700, exist_ok=True)
+    owned_directory(directory)
+    with os.fdopen(os.open(directory / 'stage.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600), 'w') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RuntimeError('Password copying is still stopping. Log out and retry before opening the wallet.')
+        yield
+
+
+def discard_pending_pam(env, proc=Path('/proc')):
+    # PAM creates the listening socket before launching the daemon: peer
+    # credentials can describe its parent, so identify the inherited socket fd.
+    address = env.get('PAM_KWALLET5_LOGIN')
+    if not address:
+        return
+    try:
+        if Path(address).stat().st_uid != os.getuid():
+            return
+        sockets = set()
+        for line in (proc / 'net/unix').read_text().splitlines()[1:]:
+            fields = line.split(maxsplit=7)
+            if len(fields) == 8 and fields[7] == address:
+                sockets.add('socket:[' + fields[6] + ']')
+        for process in proc.iterdir():
+            if not process.name.isdigit():
+                continue
+            try:
+                if process.stat().st_uid != os.getuid():
+                    continue
+                args = (process / 'cmdline').read_bytes().split(b'\0')
+                if b'--pam-login' not in args or (process / 'exe').resolve() != Path('/usr/bin/ksecretd'):
+                    continue
+                index = args.index(b'--pam-login')
+                descriptor = args[index + 2].decode()
+                if not descriptor.isdigit() or os.readlink(process / 'fd' / descriptor) not in sockets:
+                    continue
+                fd = os.pidfd_open(int(process.name))
+                try:
+                    signal.pidfd_send_signal(fd, signal.SIGKILL)
+                finally:
+                    os.close(fd)
+            except (OSError, IndexError, ValueError):
+                continue
+    except OSError:
+        pass
+
+
+def same_provider(call=bus_call):
+    try:
+        owners = [call('GetNameOwner', 's', name) for name in (
+            'org.kde.ksecretd', 'org.freedesktop.secrets',
+            'org.freedesktop.impl.portal.desktop.kwallet')]
+        return bool(owners[0]) and len(set(owners)) == 1
+    except (subprocess.SubprocessError, OSError):
+        return False
+
+
+def check_settings(env):
+    for group, key in (('Wallet', 'Enabled'), ('Wallet', 'apiEnabled'),
+                       ('KSecretD', 'Enabled'), ('org.freedesktop.secrets', 'apiEnabled')):
+        result = subprocess.run([
+            'kreadconfig6', '--file', 'kwalletrc', '--group', group, '--key', key,
+            '--default', 'true', '--type', 'bool',
+        ], env=env, capture_output=True, timeout=2)
+        # KConfig's boolean reader returns the value through its exit status.
+        if result.returncode != 0:
+            raise RuntimeError('KWallet is disabled by your effective kwalletrc settings. '
+                               'Review your personal configuration and /etc/xdg/kwalletrc.pacnew. '
+                               'Run emaki-keyring-recover to recover saved passwords. Your old password files are untouched.')
+
+    result = subprocess.run(['kreadconfig6', '--file', 'kwalletrc', '--group', 'Migration',
+        '--key', 'MigrateTo3rdParty', '--default', 'false', '--type', 'bool'],
+        env=env, capture_output=True, timeout=2)
+    if result.returncode != 1:
+        raise RuntimeError('The native password service is disabled by wallet migration settings [KWallet]. '
+                           'Review kwalletrc and run emaki-keyring-recover to recover saved passwords.')
+
+
+
+
+def owning_process(call=bus_call):
+    try:
+        owner = call('GetNameOwner', 's', 'org.freedesktop.secrets').split('"')[1]
+        pid = call('GetConnectionUnixProcessID', 's', owner).split()[-1]
+        command = Path('/proc', pid, 'comm').read_text().strip()
+        return f'{command} (PID {pid})'
+    except (IndexError, OSError, subprocess.SubprocessError):
+        return 'an unavailable process'
+
+
+def wait_provider(call=bus_call, sleep=time.sleep):
+    for _ in range(100):
+        if same_provider(call):
+            return
+        sleep(.2)
+    raise RuntimeError('The password service could not start [KWallet]. '
+        f'The current Secret Service owner is {owning_process(call)}. '
+        'A previously started password provider may still be running; close other sessions and retry. '
+        'Run emaki-keyring-recover to recover saved passwords. Your old password files are untouched.')
+
+
+def prepare(env, runtime, run=subprocess.run, call=bus_call):
+    try:
+        select_provider(runtime, call)
+        check_settings(env)
+        # A lingering user manager can retain the old owner between logins.
+        # Stop it before copying so its pending changes reach the original files.
+        # Mask names even when the old package was never installed. Explicit
+        # stop only loaded units: systemctl --now treats absent units as errors.
+        units = ('gnome-keyring-daemon.socket', 'gnome-keyring-daemon.service')
+        present = []
+        for unit in units:
+            loaded = run(['systemctl', '--user', 'show', '--property=LoadState',
+                          '--value', unit], env=env, check=True, capture_output=True,
+                         text=True, timeout=3)
+            if loaded.stdout.strip() != 'not-found':
+                present.append(unit)
+        run(['systemctl', '--user', 'mask', '--runtime', *units],
+            env=env, check=True, capture_output=True, timeout=5)
+        for unit in present:
+            run(['systemctl', '--user', 'stop', unit], env=env, check=True,
+                capture_output=True, timeout=10)
+        run(['/usr/bin/emaki-wallet-migrate', '--snapshot'], env=env,
+            check=True, timeout=110)
+    except (RuntimeError, OSError, subprocess.SubprocessError):
+        raise
+
+
+def start(env, runtime, run=subprocess.run, call=bus_call, sleep=time.sleep):
+    select_provider(runtime, call)
+    if not migration_allowed(env):
+        discard_pending_pam(env)
+        raise RuntimeError('Saved application keys still need recovery. Password storage is paused to preserve them. '
+                           'Run emaki-keyring-recover, then log out and log in again.')
+    with writer_lock(env):
+        try:
+            check_settings(env)
+        except (RuntimeError, OSError, subprocess.SubprocessError):
+            discard_pending_pam(env)
+            raise
+        if env.get('PAM_KWALLET5_LOGIN'):
+            run(['/usr/lib/pam_kwallet_init'], env=env, check=True,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+        else:
+            run(['systemd-run', '--user', '--collect', '--quiet',
+                 '--unit=emaki-wallet-daemon', '/usr/bin/ksecretd'], env=env, check=True,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+        wait_provider(call, sleep)
+
+
+def release_pending_pam(env, run=None):
+    # An unfinished PAM handoff must not open a wallet during failure cleanup.
+    discard_pending_pam(env)
+
+
+def password_account(env, shadow=Path('/etc/shadow')):
+    # pam_unix may authenticate an empty-password account without setting AUTHTOK.
+    # Skip both optional password consumers so neither starts a second conversation.
+    user = env.get('PAM_USER', '')
+    for line in shadow.read_text().splitlines():
+        fields = line.split(':')
+        if fields[0] == user and len(fields) > 1:
+            return bool(fields[1]) and not fields[1].startswith(('!', '*'))
+    return False
+
+
+def flush(run=subprocess.run):
+    # Calls are bounded, never activate a daemon, and never prevent a power action.
+    base = ['busctl', '--user', '--timeout=1', '--auto-start=no', 'call']
+    owner = run([*base, 'org.freedesktop.DBus', '/org/freedesktop/DBus',
+        'org.freedesktop.DBus', 'NameHasOwner', 's', 'org.freedesktop.secrets'],
+        capture_output=True, text=True, timeout=1.2)
+    owner.check_returncode()
+    if owner.stdout.strip() == 'b false':
+        return
+    result = run([*base, 'org.freedesktop.secrets', '/org/freedesktop/secrets',
+        'org.freedesktop.Secret.Service', 'ReadAlias', 's', 'default'],
+        check=True, capture_output=True, text=True, timeout=1.2)
+    collection = json.loads(result.stdout.strip()[2:])
+    if collection == '/':
+        return
+    locked = run([*base, 'org.freedesktop.secrets', collection,
+        'org.freedesktop.DBus.Properties', 'Get', 'ss',
+        'org.freedesktop.Secret.Collection', 'Locked'],
+        check=True, capture_output=True, text=True, timeout=1.2)
+    if locked.stdout.strip() == 'v b true':
+        return
+    run([*base, 'org.freedesktop.secrets', '/org/freedesktop/secrets',
+        'org.freedesktop.Secret.Service', 'Lock', 'ao', '1', collection],
+        check=True, capture_output=True, timeout=1.2)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    actions = parser.add_mutually_exclusive_group()
+    for action in ('stop', 'prepare', 'wait', 'flush', 'password-account'):
+        actions.add_argument('--' + action, action='store_true')
+    args = parser.parse_args()
+    if args.password_account:
+        try:
+            return 0 if password_account(os.environ) else 1
+        except OSError:
+            return 1
+    if args.flush:
+        try:
+            flush()
+            return 0
+        except (OSError, ValueError, subprocess.SubprocessError):
+            print('Saved passwords could not be written to disk [KWallet].', file=sys.stderr)
+            return 0
+    if args.wait:
+        try:
+            wait_provider()
+            return 0
+        except RuntimeError as error:
+            print(str(error), file=sys.stderr)
+            return 1
+    state = None
+    if args.stop:
+        release_pending_pam(os.environ.copy())
+    try:
+        runtime = Path(os.environ['XDG_RUNTIME_DIR'])
+        if args.stop:
+            return 0
+        state = owned_directory(runtime / 'emaki') / 'wallet-start-error'
+        if state.is_symlink():
+            raise RuntimeError('The wallet status must not be a symbolic link.')
+        if args.prepare:
+            state.unlink(missing_ok=True)
+            prepare(os.environ.copy(), runtime)
+        else:
+            start(os.environ.copy(), runtime)
+    except (KeyError, RuntimeError, OSError, subprocess.SubprocessError) as error:
+        if not args.prepare:
+            release_pending_pam(os.environ.copy())
+        message = str(error) if isinstance(error, RuntimeError) else 'Password startup failed [KWallet]. Run emaki-keyring-recover to recover saved passwords.'
+        if state is not None and not state.is_symlink():
+            try:
+                state.write_text(message)
+            except OSError:
+                pass
+        print(message, file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

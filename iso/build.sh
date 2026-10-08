@@ -180,6 +180,9 @@ install -Dm644 "$ROOT/art/grub/background.png" "$work/profile/grub/background.pn
 # -r means DELETE work, not resume, and must not be used in either pass.
 touch "$work/mk/iso._build_iso_image" "$work/mk/base._prepare_airootfs_image"
 mkarchiso -v -w "$work/mk" -o "$out" "$work/profile"
+# Pin v91's rewrite: pacstrap uses live-root admin hooks, not build-host hooks.
+hookdirs=$(grep -E '^[[:space:]]*HookDir[[:space:]]*=' "$work/mk/iso.pacman.conf") || fail 'archiso v91 HookDir missing'
+[[ $hookdirs == "HookDir = $work/mk/x86_64/airootfs/etc/pacman.d/hooks/" ]] || fail 'archiso v91 HookDir changed'
 [[ -d $work/mk/iso/emaki && -f $work/mk/build._build_buildmode_iso ]] || fail 'archiso v91 stage layout changed'
 [[ ! -e $work/mk/base._mkairootfs_squashfs ]] || fail 'archiso v91 packed the live root before its hooks were released'
 # pacstrap runs the live system's /etc/pacman.d/hooks for the target. emaki-config's

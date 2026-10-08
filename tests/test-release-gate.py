@@ -38,7 +38,7 @@ case $name in
     iso-alongside-check.sh)
         rc=${!var:-77}
         mkdir -p "$VMDIR/btrfs-$2"
-        if ((rc == 77)); then : >"$VMDIR/btrfs-$2/NOT-APPLICABLE"; elif ((rc == 0)); then : >"$VMDIR/btrfs-$2/PASS"; fi ;;
+        if ((rc == 77)); then : >"$VMDIR/btrfs-$2/NOT-APPLICABLE"; elif ((rc == 0)); then : >"$VMDIR/btrfs-$2/PASS"; : >"$VMDIR/btrfs-$2/desktop.png"; fi ;;
     bwrap)
         while (($#)) && [[ $1 != -- ]]; do shift; done
         shift
@@ -212,7 +212,7 @@ sys.exit(int(os.environ.get('STUB_RC_rollback', '0')))
 
     def test_all_jobs_pass_and_name_their_image(self):
         result = self.gate()
-        self.assert_last(result, 'RESULT: SCRIPTS PASSED', 0)
+        self.assert_last(result, 'RESULT: FUNCTIONAL SCRIPTS PASSED; HUMAN REVIEW REQUIRED', 0)
         for job in ('release-image', 'test-image', 'host-checks', 'accept-erase-btrfs', 'accept-erase-ext4',
                     'accept-erase-btrfs-minimal', 'accept-erase-ext4-rich',
                     'encrypt-btrfs', 'rollback', 'boot-menu', 'release-walk'):
@@ -235,7 +235,7 @@ sys.exit(int(os.environ.get('STUB_RC_rollback', '0')))
         self.assertIn(f'--iso {self.release}', walk)
         self.assertIn('--image-verified', walk)
         self.assertIn(f'make check-all', [c.split(' EMAKI')[0] for c in self.calls])
-        self.assertTrue((self.base / 'out/gate.log').read_text().endswith('RESULT: SCRIPTS PASSED\n'))
+        self.assertTrue((self.base / 'out/gate.log').read_text().endswith('RESULT: FUNCTIONAL SCRIPTS PASSED; HUMAN REVIEW REQUIRED\n'))
 
     def test_acceptance_boots_usb_and_covers_both_software_sets_on_each_filesystem(self):
         result = self.gate()
@@ -275,6 +275,11 @@ sys.exit(int(os.environ.get('STUB_RC_rollback', '0')))
         self.assert_last(result, 'RESULT: FAILED at encrypt-btrfs', 1)
         self.assertEqual(sum(c.startswith('iso-encrypt-check.sh') for c in self.calls), 1)
 
+    def test_encryption_inactive_resume_stays_not_tested(self):
+        result = self.gate(iso_encrypt_check=77)
+        self.assert_last(result, 'RESULT: NOT TESTED at encrypt-btrfs', 3)
+        self.assertIn('encryption acceptance incomplete', self.line(result, 'encrypt-btrfs'))
+
     def test_encryption_refuses_changed_image_or_checkout(self):
         for mutation in ('image', 'checkout'):
             with self.subTest(mutation=mutation):
@@ -308,6 +313,17 @@ sys.exit(int(os.environ.get('STUB_RC_rollback', '0')))
     def test_alongside_failure_is_not_hidden(self):
         result = self.gate(iso_alongside_check=1)
         self.assert_last(result, 'RESULT: FAILED at alongside-btrfs', 1)
+
+    def test_success_still_lists_frames_requiring_human_review(self):
+        result = self.gate(iso_alongside_check=0)
+        self.assert_last(result, 'RESULT: FUNCTIONAL SCRIPTS PASSED; HUMAN REVIEW REQUIRED', 0)
+        summary = result.stdout.split('Results. Functional scripts ran', 1)[1]
+        self.assertIn('HUMAN REVIEW REQUIRED: alongside-btrfs:', summary)
+        self.assertIn('unlock, menu and desktop frames', summary)
+        self.assertIn('HUMAN REVIEW REQUIRED: rollback:', summary)
+        self.assertIn('recovery and authorization dialog frames', summary)
+        self.assertIn('HUMAN REVIEW REQUIRED: accept-erase-btrfs:', summary)
+        self.assertRegex(summary, r'REVIEW FRAME: .*/btrfs-gate-[^/]+/desktop\.png')
 
     def test_no_walk_record_is_not_tested(self):
         result = self.gate(walk=False)
@@ -465,7 +481,7 @@ sys.exit(int(os.environ.get('STUB_RC_rollback', '0')))
         (self.menu / 'waiver.txt').write_text('Accepted readability limitation for this candidate.')
         self.menu_record['frames'][0]['waiver'] = 'waiver.txt'
         self.save_menu()
-        self.assert_last(self.gate('--out', str(self.base / 'out2')), 'RESULT: SCRIPTS PASSED', 0)
+        self.assert_last(self.gate('--out', str(self.base / 'out2')), 'RESULT: FUNCTIONAL SCRIPTS PASSED; HUMAN REVIEW REQUIRED', 0)
 
     def test_tiny_capitals_fail_even_with_waiver(self):
         from PIL import Image, ImageDraw
@@ -499,7 +515,7 @@ sys.exit(int(os.environ.get('STUB_RC_rollback', '0')))
         Path(str(self.release) + '.sha256').write_text(f'{self.sha(self.release)}  {self.release.name}\n')
         self.menu_record['sha256'] = self.sha(self.release)
         self.legacy_menu()
-        self.assert_last(self.gate(), 'RESULT: SCRIPTS PASSED', 0)
+        self.assert_last(self.gate(), 'RESULT: FUNCTIONAL SCRIPTS PASSED; HUMAN REVIEW REQUIRED', 0)
 
     def test_manifest_cannot_downgrade_grub_to_systemd_boot(self):
         self.menu_record['bootloader'] = 'systemd-boot'

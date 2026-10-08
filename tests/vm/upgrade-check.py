@@ -20,6 +20,10 @@ sees, then reads the result over SSH.
           only Server line becomes https://pkgs.emaki.sh/testing/$arch, the address the
           moved machines' mirrorlist offers for testing; pacman upgrades through the real
           pkgs.emaki.sh Worker and its signed database.
+  T1 and T2 from 0.3.0 on (the mirrorlist only includes /etc/emaki/channel): the documented
+      channel switch (docs/updates.md, Channels) is the only way such a machine follows testing,
+      so both runs swap the commented Include in /etc/emaki/channel, leave the mirrorlist alone
+      and type `sudo pacman -Syyu` for the first upgrade, as documented (via channel-testing).
   T3  nothing changed at all: the real GitHub stable after `publish.sh github`.
   --rehearsal  T2 of the bridge with pkgs.emaki.sh also answered locally from a bucket
       directory; never acceptance (publish.sh stamp refuses its results).
@@ -71,11 +75,90 @@ PKGS_TESTING = 'Server = https://pkgs.emaki.sh/testing/$arch'
 # How each run reaches the candidate; `edited`: the run itself changed the mirrorlist.
 VIAS = {'github-testing': {'edited': True}, 'old-address': {'edited': False},
         'pkgs-testing': {'edited': True}, 'pkgs-testing-swap': {'edited': True},
-        'github-stable': {'edited': False}}
+        'channel-testing': {'edited': True}, 'github-stable': {'edited': False}}
+# From 0.3.0 on the mirrorlist only includes the channel selector, which includes one of these.
+CHANNEL_INCLUDE = 'Include = /etc/emaki/channel'
+SELECTOR = 'Include = /usr/share/emaki/mirrors/{}.conf'
 GUESTFWD_IP = '10.0.2.100'
 HTOP = 'https://archive.archlinux.org/packages/h/htop/htop-3.5.3-1-x86_64.pkg.tar.zst'
 KDL_MARK = '// emaki-upgrade-check: a line the person added'
 WALLET = ('emaki-upgrade-check', 'marker')
+
+# Real Secret Service/portal calls, including the binary fixture used by the
+# KWallet 6.30 persistence probe. A lookup alone cannot identify the provider.
+WALLET_PROBE = r'''
+import os
+from pathlib import Path
+import select
+import sys
+import time
+from gi.repository import Gio, GLib
+bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+name = 'org.freedesktop.secrets'
+root = '/org/freedesktop/secrets'
+service = 'org.freedesktop.Secret.Service'
+app = 'org.emaki.UpgradeCheck'
+raw = bytes(range(128, 192))
+def call(destination, path, interface, method, signature=None, args=()):
+    return bus.call_sync(destination, path, interface, method,
+                         GLib.Variant(signature, args) if signature else None,
+                         None, Gio.DBusCallFlags.NONE, 10000, None).unpack()
+if sys.argv[1] == 'seed':
+    session = call(name, root, service, 'OpenSession', '(sv)',
+                   ('plain', GLib.Variant('s', '')))[1]
+    collection = call(name, root, service, 'ReadAlias', '(s)', ('default',))[0]
+    assert collection != '/', 'No default collection'
+    props = {'org.freedesktop.Secret.Item.Label': GLib.Variant('s', 'Upgrade portal key'),
+             'org.freedesktop.Secret.Item.Attributes': GLib.Variant('a{ss}', {
+                 'app_id': app, 'xdg:schema': 'org.freedesktop.portal.Secret'})}
+    item, prompt = call(name, collection, 'org.freedesktop.Secret.Collection',
+                        'CreateItem', '(a{sv}(oayays)b)',
+                        (props, (session, b'', raw, 'application/octet-stream'), False))
+    assert prompt == '/', 'Portal fixture needs an unlocked collection'
+    secret = call(name, item, 'org.freedesktop.Secret.Item', 'GetSecret', '(o)', (session,))[0]
+    assert bytes(secret[2]) == raw, 'Portal fixture was not stored exactly'
+    print('portal fixture stored: 64 bytes')
+elif sys.argv[1] == 'owner':
+    dbus = 'org.freedesktop.DBus'
+    pid = call(dbus, '/org/freedesktop/DBus', dbus,
+               'GetConnectionUnixProcessID', '(s)', (name,))[0]
+    assert Path(os.readlink('/proc/' + str(pid) + '/exe')).name == 'ksecretd'
+    owner = call(dbus, '/org/freedesktop/DBus', dbus, 'GetNameOwner', '(s)', (name,))[0]
+    for other in ('org.kde.ksecretd', 'org.freedesktop.impl.portal.desktop.kwallet'):
+        assert call(dbus, '/org/freedesktop/DBus', dbus, 'GetNameOwner', '(s)', (other,))[0] == owner
+    print('ksecretd owns Secret Service and the Secret portal')
+else:
+    read_fd, write_fd = os.pipe()
+    fds = Gio.UnixFDList.new()
+    index = fds.append(write_fd)
+    os.close(write_fd)
+    reply, _ = bus.call_with_unix_fd_list_sync(
+        'org.freedesktop.impl.portal.desktop.kwallet', '/org/freedesktop/portal/desktop',
+        'org.freedesktop.impl.portal.Secret', 'RetrieveSecret',
+        GLib.Variant('(osha{sv})', ('/org/freedesktop/portal/desktop/request/1_1/upgrade',
+                                  app, index, {})),
+        None, Gio.DBusCallFlags.NONE, 10000, fds, None)
+    fds = None
+    assert reply.unpack()[0] == 0, 'Portal request failed'
+    actual = b''
+    deadline = time.monotonic() + 10
+    while True:
+        remaining = deadline - time.monotonic()
+        assert remaining > 0 and select.select([read_fd], [], [], remaining)[0], 'Portal key read timed out'
+        part = os.read(read_fd, 4096)
+        if not part:
+            break
+        actual += part
+        assert len(actual) <= len(raw), 'Portal key has an unexpected length'
+    os.close(read_fd)
+    assert actual == raw, 'Portal key changed across the upgrade'
+    print('portal key retained: 64 bytes')
+'''
+
+
+def wallet_probe(guest, mode):
+    return guest.desktop('timeout 30 python3 -IB -c ' + shlex.quote(WALLET_PROBE)
+                         + ' ' + shlex.quote(mode), check=False)
 SIZES = {'1920x1080': (1920, 1080, 1), '2560x1600': (2560, 1600, 2)}
 CHANNEL_SCREEN = ('cat /etc/pacman.d/emaki-mirrorlist /etc/emaki/channel\n'
                   'pacman-conf --repo emaki Server\n'
@@ -152,6 +235,16 @@ def t2_via(mirror):
     if stable is None:
         raise SystemExit('BAD: stable serves nothing; T2 of the bridge needs `publish.sh promote --first` first')
     return 'old-address' if stable == testing else 'pkgs-testing'
+
+
+def selector_via(guest, via):
+    """From 0.3.0 on the start's mirrorlist only includes /etc/emaki/channel: its T1 and T2 follow
+    testing the one documented way, through the selector (channel-testing). Older starts keep via."""
+    if via not in ('pkgs-testing-swap', 'pkgs-testing'):
+        return via
+    mirrorlist = guest.run('cat /etc/pacman.d/emaki-mirrorlist')
+    active = [line.split('#', 1)[0].strip() for line in mirrorlist.splitlines() if line.split('#', 1)[0].strip()]
+    return 'channel-testing' if active == [CHANNEL_INCLUDE] else via
 
 
 def candidate(mirror, channel, github_db=None):
@@ -232,7 +325,8 @@ class Guest:
             (self.vm / f'{name}.png').write_bytes(image.stdout)
         else:
             monitor.command(self.vm, f'screendump {self.vm / (name + ".png")} -f png')
-        print(f'screenshot: {self.vm / (name + ".png")}', flush=True)
+        path = self.vm / (name + '.png')
+        print(f'SHOT: {path} (not judged); HUMAN REVIEW REQUIRED', flush=True)
 
     def type(self, text):
         for command in sendkeys(text):
@@ -281,9 +375,9 @@ def answer_sudo(guest):
             return
 
 
-def upgrade_in_terminal(guest, label, timeout=3600):
+def upgrade_in_terminal(guest, label, timeout=3600, command='sudo pacman -Syu'):
     """`sudo pacman -Syu`, the password, then Enter at every question and nothing else."""
-    guest.type('sudo pacman -Syu\n')
+    guest.type(command + '\n')
     answer_sudo(guest)
     deadline = time.monotonic() + timeout
     questions = 0
@@ -322,6 +416,15 @@ def prepare_old_state(guest, via):
     if stored.returncode:
         guest.screenshot('wallet-store-failed')
     (guest.vm / 'wallet-setup.txt').write_text(f'exit {stored.returncode}\n{stored.stderr.decode()}')
+    portal = wallet_probe(guest, 'seed')
+    (guest.vm / 'portal-setup.txt').write_text(
+        f'exit {portal.returncode}\n{portal.stdout.decode()}{portal.stderr.decode()}')
+    if portal.returncode:
+        # A fresh 0.1.x names a login collection in its default alias that was never created, so
+        # neither secret-tool nor the portal seed can store anything: nothing can be lost there.
+        missing = b'Object does not exist at path' in portal.stdout + portal.stderr
+        if not (stored.returncode and missing):
+            raise RuntimeError('The old portal key fixture could not be stored; migration acceptance cannot continue')
     if via in ('github-testing', 'pkgs-testing-swap'):
         # The documented way to follow testing: swap the two Server lines. 0.1.x end in
         # /stable (GitHub), 0.2.0 in /stable/$arch (pkgs.emaki.sh).
@@ -332,6 +435,24 @@ def prepare_old_state(guest, via):
         # After the bridge: the candidate is served by pkgs.emaki.sh/testing only.
         guest.run("sed -i -e 's|^Server = |# Server = |' /etc/pacman.d/emaki-mirrorlist && "
                   f"printf '%s\\n' {shlex.quote(PKGS_TESTING)} >> /etc/pacman.d/emaki-mirrorlist", root=True)
+    elif via == 'channel-testing':
+        # From 0.3.0 on (docs/updates.md, Channels): swap which Include of /etc/emaki/channel is
+        # commented; the packaged mirrorlist, which only includes the selector, stays untouched.
+        mirrorlist = guest.run('cat /etc/pacman.d/emaki-mirrorlist')
+        guest.run(r"sed -i -e 's|^Include = /usr/share/emaki/mirrors/stable\.conf$|# &|' "
+                  r"-e 's|^# \(Include = /usr/share/emaki/mirrors/testing\.conf\)$|\1|' /etc/emaki/channel",
+                  root=True)
+        selector = guest.run('cat /etc/emaki/channel')
+
+        def active(text):
+            return [line.split('#', 1)[0].strip() for line in text.splitlines() if line.split('#', 1)[0].strip()]
+
+        if active(selector) != [SELECTOR.format('testing')]:
+            raise RuntimeError(f'the channel selector was not switched to testing:\n{selector}')
+        after = guest.run('cat /etc/pacman.d/emaki-mirrorlist')
+        if after != mirrorlist or active(after) != [CHANNEL_INCLUDE]:
+            raise RuntimeError(f'the mirrorlist changed or does not include the selector:\n{after}')
+        return guest.run('cat /etc/pacman.d/emaki-mirrorlist /etc/emaki/channel; pacman -Q', root=False)
     if VIAS[via]['edited']:
         # A switch that matched nothing would upgrade from stable and only fail much later.
         mirrorlist = guest.run('cat /etc/pacman.d/emaki-mirrorlist')
@@ -440,6 +561,22 @@ def checks_after_restart(guest, result, cand, before_config):
     check('htop kept', guest.run('pacman -Q htop', check=False).returncode == 0)
     check('bluetooth stays disabled', guest.run('systemctl is-enabled bluetooth.service', check=False)
           .stdout.decode().strip() == 'disabled')
+    owner = wallet_probe(guest, 'owner')
+    check('ksecretd owns Secret Service', owner.returncode == 0,
+          owner.stdout.decode() + owner.stderr.decode())
+    portal_setup = guest.vm / 'portal-setup.txt'
+    if portal_setup.is_file() and portal_setup.read_text().startswith('exit 0\n'):
+        portal = wallet_probe(guest, 'verify')
+        check('portal master key kept', portal.returncode == 0,
+              portal.stdout.decode() + portal.stderr.decode())
+    elif portal_setup.is_file():
+        # prepare_old_state continued only when the start version has no usable default collection.
+        detail = portal_setup.read_text()
+        result['portal not checked'] = {'ok': True, 'detail': f'the start version could not store a key: {detail}'}
+        print(f'--  portal not checked: the start version could not store a key ({detail.splitlines()[0]})',
+              flush=True)
+    else:
+        check('portal master key kept', False, 'No successful pre-upgrade portal fixture record')
     setup = (guest.vm / 'wallet-setup.txt').read_text()
     if setup.startswith('exit 0\n'):
         wallet = guest.desktop(f'timeout 30 secret-tool lookup {WALLET[0]} {WALLET[1]}', check=False)
@@ -475,11 +612,19 @@ def qemu_command(vm, port, size, guestfwd):
             '-serial', f'file:{vm / "serial.log"}', '-pidfile', str(vm / 'qemu.pid')]
 
 
+def visual_evidence(vm):
+    """Name and bind each unjudged capture, including partial failed runs."""
+    frames = [{'path': str(path), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+               'judgment': 'NOT TESTED'} for path in sorted(vm.glob('*.png'))]
+    return {'status': 'NOT TESTED', 'frames': frames,
+            'reason': 'HUMAN REVIEW REQUIRED' if frames else 'No frames captured'}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0],
                                      formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     parser.add_argument('--run', required=True, choices=('T1', 'T2', 'T3'))
-    parser.add_argument('--start', required=True, help='0.1.0, 0.1.1, 0.1.2-release, 0.1.2-full or 0.2.0')
+    parser.add_argument('--start', required=True, help='0.1.0, 0.1.1, 0.1.2-release, 0.1.2-full, 0.2.0 or 0.3.0')
     parser.add_argument('--base', required=True, help='directory with target.qcow2 and OVMF_VARS.4m.fd of a fresh install')
     parser.add_argument('--vm-dir', default=os.environ.get('VMDIR'), help='this job\'s directory (default $VMDIR)')
     parser.add_argument('--ssh-port', type=int, default=2261)
@@ -569,6 +714,7 @@ def main():
         guest.login()
         before_version = check_start_version(guest, args.start, cand)
         result['start_package_version'] = before_version
+        via = result['via'] = selector_via(guest, via)
         before = prepare_old_state(guest, via)
         (vm / 'before.txt').write_text(before)
         before_config = personal_config(guest)
@@ -579,7 +725,10 @@ def main():
         (vm / 'pacman-before.log').write_text(before_log)
         guest.screenshot('desktop-before')
         open_terminal(guest, args.size)
-        result['questions'] = upgrade_in_terminal(guest, 'upgrade')
+        # After a selector switch the documented first update is -Syyu: the two channels'
+        # databases are not in time order.
+        result['questions'] = upgrade_in_terminal(
+            guest, 'upgrade', command='sudo pacman -Syyu' if via == 'channel-testing' else 'sudo pacman -Syu')
         checks = checks_after_upgrade(guest, via, cand, before_log, args.start, before_version, before_config)
         guest.type(CHANNEL_SCREEN)
         time.sleep(1)
@@ -605,6 +754,7 @@ def main():
         print(f'BAD: {result["error"]}', flush=True)
     finally:
         result['finished'] = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
+        result['visual_assessment'] = visual_evidence(vm)
         (vm / 'result.json').write_text(json.dumps(result, indent=1, sort_keys=True) + '\n')
         if qemu.poll() is None:
             try:
@@ -615,8 +765,10 @@ def main():
         if proxy:
             proxy.terminate()
         log.close()
-    print(('PASS' if result['passed'] else 'FAIL') + f': {vm / "result.json"} — look at every screenshot '
-          'before calling it green', flush=True)
+    for frame in result['visual_assessment']['frames']:
+        print(f'HUMAN REVIEW REQUIRED: {frame["path"]}', flush=True)
+    print(('FUNCTIONAL PASS' if result['passed'] else 'FAIL') + f': {vm / "result.json"}; '
+          'visual assessment NOT TESTED (see frame list above)', flush=True)
     return 0 if result['passed'] else 1
 
 

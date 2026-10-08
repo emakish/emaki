@@ -53,13 +53,16 @@ class Job:
 class Controller:
     def __init__(self, inventory, worker_factory, *, test_mode=False, version='4.5',
                  clock=time.monotonic, log_stream=None, save_log=None, reboot=None,
-                 validate_plan=None, set_timezone=None, prepare_reboot=None):
+                 validate_plan=None, set_timezone=None, prepare_reboot=None, restart_deadline=None,
+                 check_installation=None):
         self.inventory, self.worker_factory = inventory, worker_factory
         self.test_mode, self.version, self.clock = test_mode, version, clock
         self.log_stream, self.save_log_fn, self.reboot_fn = log_stream, save_log, reboot
         self.validate_plan = validate_plan
         self.set_timezone_fn = set_timezone
+        self.restart_deadline_fn = restart_deadline
         self.prepare_reboot_fn = prepare_reboot
+        self.check_installation_fn = check_installation
         self.redactor = Redactor()
         self.lock = threading.RLock()
         self.operation_lock = threading.Lock()
@@ -67,6 +70,9 @@ class Controller:
         self.pending = None
         self.job = None
         self.stopping = False
+        self.restart_requested = False
+        self.restart_state = None
+        self.restart_deadline = 0
         self.listeners = set()
 
     @property
@@ -150,11 +156,19 @@ class Controller:
                 return self._handle(msg)
             except InstallError as exc:
                 return [self.reply(msg['id'], False, code=exc.code.value,
-                                   msg=self.redactor.text(exc.message), log_path=str(LOG))]
+                                   msg=self.redactor.text(exc.message), log_path=str(LOG),
+                                   **self.restart_reply_fields(msg))]
             except Exception as exc:
                 self.log('Request failed: ' + type(exc).__name__)
                 return [self.reply(msg['id'], False, code=Code.INTERNAL.value,
-                                   msg='Request failed; inspect the worker log.', log_path=str(LOG))]
+                                   msg='Request failed; inspect the worker log.', log_path=str(LOG),
+                                   **self.restart_reply_fields(msg))]
+
+    def restart_reply_fields(self, msg):
+        if msg['type'] != 'reboot':
+            return {}
+        return {'restart_state': self.restart_state,
+                'remaining_s': max(0, self.restart_deadline - self.clock())}
 
     def _handle(self, msg):
         kind, ident = msg['type'], msg['id']
@@ -167,6 +181,9 @@ class Controller:
             return [self.message('hello', ident, proto=1, archinstall_version=self.version,
                                  emaki_version=__version__, emaki_label=__label__, test_mode=self.test_mode,
                                  busy_job=self.job.id if self.busy else None,
+                                 restart=({'state': self.restart_state, 'job_id': self.job.id,
+                                           'remaining_s': max(0, self.restart_deadline - self.clock())}
+                                          if self.restart_state else None),
                                  timezone_guess=hasattr(self.inventory, "timezone_guess"),
                                  reserved_logins=list(RESERVED_LOGINS),
                                  console_chars={name: list(record) for name, record in CONSOLE_CHARS.items()})]
@@ -183,6 +200,8 @@ class Controller:
             with self.lock:
                 self.invalidate()
                 require(not self.busy and not self.stopping, Code.BUSY, 'The worker is busy or stopping.')
+                if kind == 'plan' and self.check_installation_fn:
+                    self.check_installation_fn()
             if kind == 'probe':
                 return [self.message('inventory', ident, **public_inventory(self.inventory.probe()))]
             config = msg.get('config')
@@ -234,6 +253,8 @@ class Controller:
         if kind == 'confirm':
             with self.lock:
                 require(not self.busy and not self.stopping, Code.BUSY, 'The worker is busy or stopping.')
+                if self.check_installation_fn:
+                    self.check_installation_fn()
                 pending = self.pending
                 require(pending is not None, Code.TOKEN_INVALID, 'No outstanding installation plan.')
                 if self.clock() >= pending['deadline']:
@@ -277,6 +298,14 @@ class Controller:
                                                   if k not in ('type', 'id', 'seq', 'job_id')}))
                 return result
         if kind == 'save_log':
+            if self.restart_state == 'preparing':
+                unavailable = 'Log export is unavailable during restart preparation.'
+            elif self.restart_state in ('ready', 'forced'):
+                unavailable = 'Log export is unavailable after restart preparation.'
+            else:
+                unavailable = 'Log export is unavailable while the worker is stopping.'
+            require(not self.stopping or self.restart_state == 'failed', Code.BUSY,
+                    unavailable)
             require(self.save_log_fn is not None, Code.BAD_DEST, 'Log export unavailable.')
             self.save_log_fn(msg.get('dest'))
             return [self.reply(ident)]
@@ -286,15 +315,34 @@ class Controller:
                     'Reboot is only available after a completed installation.')
             if kind == 'prepare_reboot':
                 require(self.prepare_reboot_fn is not None, Code.BAD_REQUEST, 'Reboot is unavailable.')
-                self.prepare_reboot_fn()
-                return [self.reply(ident)]
+                # Once sent, the guardian can restart without another request.
+                # Do not let any client mount or change the target again, even
+                # if the reply is lost. Preparation and reboot retries remain OK.
+                self.restart_requested = self.stopping = True
+                self.invalidate()
+                self.restart_state = 'preparing'
+                try:
+                    forced = self.prepare_reboot_fn() is True
+                except Exception:
+                    self.restart_state = 'failed'
+                    raise
+                self.restart_state = 'forced' if forced else 'ready'
+                if forced and not self.restart_deadline:
+                    self.restart_deadline = ((self.restart_deadline_fn() or self.clock()) if self.restart_deadline_fn
+                                             else self.clock() + 15)
+                return [self.reply(ident, forced_reboot=forced,
+                                   remaining_s=max(0, self.restart_deadline - self.clock()))]
             require(self.reboot_fn is not None, Code.BAD_REQUEST, 'Reboot is unavailable.')
             self.stopping = True
             self.invalidate()
             try:
                 self.reboot_fn()
             except Exception:
-                self.stopping = False
+                self.stopping = self.restart_requested
+                if self.restart_requested:
+                    if self.restart_deadline_fn:
+                        self.restart_deadline = self.restart_deadline_fn() or 0
+                    self.restart_state = 'forced' if self.restart_deadline else 'ready'
                 raise
             return [self.reply(ident)]
         raise InstallError(Code.BAD_REQUEST, 'Unknown request type.')

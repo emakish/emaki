@@ -15,11 +15,11 @@ import subprocess
 import tempfile
 from PIL import Image
 from xml.sax.saxutils import escape
-from render_content import validate_frame
+from render_content import validate_frame, validate_restart
 
 UI = Path(__file__).resolve().parents[1]
 ROOT = UI.parents[1]
-SCREENS = ['welcome', 'welcome-bios', 'welcome-no-boot-medium', 'keyboard', 'network', 'timezone', 'timezone-search', 'timezone-empty', 'disk', 'alongside', 'alongside-review', 'manual', 'manual-empty', 'disk-mbr', 'disk-none', 'filesystem', 'encryption', 'encryption-none', 'encryption-account', 'encryption-separate', 'encryption-separate-empty', 'encryption-manual', 'encryption-alongside', 'encryption-mismatch', 'encryption-invalid', 'encryption-revealed', 'encryption-caps', 'encryption-numlock', 'live-keyboard-you', 'live-keyboard-encryption', 'live-keyboard-failed', 'live-keyboard-second', 'disk-hibernation', 'manual-hibernation', 'alongside-hibernation', 'you', 'you-empty', 'you-console', 'you-paste', 'you-caps', 'you-numlock', 'software', 'software-minimal', 'review', 'review-encrypted', 'plan-errors', 'install', 'install-signatures', 'install-updates', 'install-step', 'done', 'done-warning', 'done-no-package-lists', 'done-wifi-not-copied', 'error-login-name', 'error', 'error-details', 'error-real']
+SCREENS = ['welcome', 'welcome-bios', 'welcome-no-boot-medium', 'keyboard', 'network', 'timezone', 'timezone-search', 'timezone-empty', 'disk', 'alongside', 'alongside-review', 'manual', 'manual-empty', 'disk-mbr', 'disk-none', 'filesystem', 'encryption', 'encryption-none', 'encryption-account', 'encryption-separate', 'encryption-separate-empty', 'encryption-manual', 'encryption-alongside', 'encryption-mismatch', 'encryption-invalid', 'encryption-revealed', 'encryption-caps', 'encryption-numlock', 'live-keyboard-you', 'live-keyboard-encryption', 'live-keyboard-failed', 'live-keyboard-second', 'disk-hibernation', 'manual-hibernation', 'alongside-hibernation', 'you', 'you-empty', 'you-console', 'you-paste', 'you-caps', 'you-numlock', 'software', 'software-minimal', 'review', 'review-encrypted', 'plan-errors', 'install', 'install-signatures', 'install-updates', 'install-step', 'done', 'done-restart', 'done-restart-removable', 'done-warning', 'done-no-package-lists', 'done-wifi-not-copied', 'error-login-name', 'error', 'error-details', 'error-real']
 MODE_TARGETS = {'disk-hibernation': 'hibernationCheck', 'manual-hibernation': 'hibernationCheck', 'alongside-hibernation': 'hibernationCheck'}
 
 
@@ -27,7 +27,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=ROOT / '.cache/evidence/installer-render')
     parser.add_argument('--repo-shell', action='store_true')
-    parser.add_argument('--iso-fonts', action='store_true', help='restrict Fontconfig to Adwaita Sans/Mono')
+    parser.add_argument('--iso-fonts', action='store_true', help='restrict Fontconfig to Noto Sans/Mono')
     parser.add_argument('--scroll-bottom', action='store_true', help='capture the end of the step body')
     parser.add_argument('--width', type=int, default=1024)
     parser.add_argument('--height', type=int, default=700)
@@ -65,10 +65,10 @@ def main():
             families = set()
             for line in available.splitlines():
                 family, filename = line.split('\t', 1)
-                if family in ('Adwaita Sans', 'Adwaita Mono'):
+                if family in ('Noto Sans', 'Noto Sans Mono'):
                     shutil.copy2(filename, fonts / Path(filename).name)
                     families.add(family)
-            assert 'Adwaita Sans' in families, 'ISO interface font is unavailable on this host'
+            assert 'Noto Sans' in families, 'ISO interface font is unavailable on this host'
             fontconfig = root / 'fonts.conf'
             fontconfig.write_text('<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">'
                                   '<fontconfig><dir>' + escape(str(fonts)) + '</dir><cachedir>' +
@@ -92,7 +92,7 @@ def main():
                         assert frame.getpixel((round(x * ratio), round(y * ratio)))[3] > 128, 'Window corner is hollow'
                     assert frame.getpixel((0, 0))[3] == 0, 'Window corner is square'
             if args.iso_fonts:
-                assert 'FONT_OK Adwaita Sans' in log, log
+                assert 'FONT_OK Noto Sans' in log, log
             for diagnostic in ['ReferenceError', 'TypeError', 'Binding loop', 'Unable to assign', 'Cannot assign', 'failed to load', 'Renderer timeout']:
                 assert diagnostic not in log, log
             hello = json.loads((UI / 'tests/transcripts/render.json').read_text())['hello']
@@ -103,6 +103,11 @@ def main():
                 sys.path.insert(0, str(ROOT / 'installer'))
                 from emaki_installer import __version__, __label__
                 version = __version__ + (' ' + __label__ if __label__ else '')
+            if screen.startswith('done-restart'):
+                validate_restart(args.output / (screen + '.png'), log, args.width, args.height,
+                                 removable=screen == 'done-restart-removable')
+                print('PASS render ' + screen, flush=True)
+                continue
             validate_frame(args.output / (screen + '.png'), log, screen, args.width, args.height,
                            version, scrolled=args.scroll_bottom)
             if screen == 'error-details':

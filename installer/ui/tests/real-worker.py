@@ -9,6 +9,7 @@ itself emits (log lines, then the error with its code and retryable flag).
 Requests and passwords are never printed or saved.
 """
 import json
+from functools import partial
 import os
 from pathlib import Path
 import sys
@@ -22,6 +23,8 @@ sys.path[:0] = [str(CHECKOUT / 'installer'), str(CHECKOUT / 'installer/tests')]
 
 from emaki_installer.protocol import Controller  # noqa: E402
 from emaki_installer.worker import Worker  # noqa: E402
+from emaki_installer.constants import OFFLINE_CONF, OFFLINE_REPO  # noqa: E402
+from emaki_installer.media import package_source  # noqa: E402
 from support import FakeInventory  # noqa: E402
 
 PACMAN = '''#!/bin/sh
@@ -37,6 +40,12 @@ def main():
         (root / 'bin/pacman').write_text(PACMAN)
         (root / 'bin/pacman').chmod(0o755)
         os.environ['PATH'] = str(root / 'bin') + os.pathsep + os.environ['PATH']
+        repo = root / 'run/archiso/bootmnt/emaki/repo'
+        repo.mkdir(parents=True)
+        config = root / str(OFFLINE_CONF).lstrip('/')
+        config.parent.mkdir(parents=True)
+        shipped = CHECKOUT / 'iso/profile/airootfs' / str(OFFLINE_CONF).lstrip('/')
+        config.write_text(shipped.read_text().replace(OFFLINE_REPO, repo.as_uri()))
         out, lock = sys.stdout.buffer, threading.Lock()
 
         def send(message):
@@ -48,9 +57,12 @@ def main():
             return Worker(None, broker.inventory, broker.redactor, broker.emit, broker.log,
                           target=root / 'target', skip_update=broker.job.skip_update)
 
-        controller = Controller(FakeInventory(), factory)
+        inventory = FakeInventory()
+        inventory.root = root
+        controller = Controller(inventory, factory)
         threads = []
-        with patch('emaki_installer.worker.offline_config', return_value=root / 'offline.conf'):
+        with patch('emaki_installer.worker.package_source',
+                   partial(package_source, work_parent=root / 'work')):
             for frame in sys.stdin.buffer:
                 request = json.loads(frame)
                 if request['type'] == 'confirm' and send not in controller.listeners:

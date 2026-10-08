@@ -15,7 +15,7 @@ from emaki_installer.planner import make_plan
 from emaki_installer.render import GRUB_EARLY_MODULES, grub_early_config, grub_unlock_memdisk
 from emaki_installer.runtime import Redactor, Runner, TargetFiles, cleanup
 from emaki_installer import worker as worker_module
-from emaki_installer.worker import REFRESH_TIMEOUT, UPDATE_TIMEOUT, Worker
+from emaki_installer.worker import UPDATE_TIMEOUT, Worker
 from support import FakeInventory, RecordingRunner, alongside_on, config, inventory
 
 SNAPSHOT_HOOK = '/usr/lib/initcpio/{}/emaki-snapshot-fstab'
@@ -63,10 +63,8 @@ Include = /etc/pacman.d/emaki-mirrorlist
 '''
 
 
-PARTIAL_UPDATE = ('The online update stopped part-way; some packages may be newer than others. '
-                  'Run `sudo pacman -Syu` after the first login.')
-NO_PACKAGE_LISTS = 'Run `sudo pacman -Syu` once you are online.'
-UPGRADE_FIRST = 'Run `sudo pacman -Syu` before installing software.'
+PARTIAL_UPDATE = ('The online update did not finish; use the terminal to update the whole system before installing apps [pacman].')
+UPGRADE_FIRST = 'Emaki needs one full update before you install apps; when online, use the terminal to update the whole system [pacman].'
 
 
 def pacman_failure(output):
@@ -423,14 +421,10 @@ class WorkerLifecycleTests(unittest.TestCase):
                 raise InstallError(Code.CANCELLED, 'Update download stopped.')
             return False
 
-        with tempfile.TemporaryDirectory() as temp:
-            events, phases, _, runners = self.execute(
-                online=True, real=('update',), runner_fail=skip, target=Path(temp))
+        events, commands, _, _ = self.install_to_the_end(online=True, runner_fail=skip)
         self.assertEqual(events[-1]['type'], 'done')
-        self.assertIn('skipped', events[-1]['warnings'][0])
-        commands = [command for runner in runners for command, _ in runner.commands]
-        self.assertFalse(any('-Su' in command or '-S' in command for command in commands))
-        self.assertEqual(phases[-1], 'finish')
+        self.assertEqual(events[-1]['warnings'], [UPGRADE_FIRST])
+        self.assertFalse(any('-Su' in command or '-S' in command for command, _ in commands))
 
     def test_timed_out_update_download_installs_nothing_and_the_install_completes(self):
         def timeout(argv):
@@ -469,7 +463,8 @@ class WorkerLifecycleTests(unittest.TestCase):
         finish = [e for e in events if e['type'] == 'state' and e['phase'] == 'finish']
         self.assertEqual(finish[-1]['phase_pct'], 100)
         self.assertEqual(events[-1]['type'], 'done')
-        self.assertEqual(events[-1]['warnings'], [PARTIAL_UPDATE])
+        self.assertEqual(len(events[-1]['warnings']), 1)
+        self.assertEqual(events[-1]['warnings'][0], PARTIAL_UPDATE + ' [pacman returned no details]')
         self.assertFalse(any('offline installation is retained' in line for line in logs), logs)
 
     def test_a_lock_kept_for_a_live_pacman_is_removed_once_it_is_gone(self):
@@ -510,11 +505,10 @@ class WorkerLifecycleTests(unittest.TestCase):
         self.assertEqual(events[-1]['type'], 'done')
         self.assertEqual(events[-1]['warnings'], [])
 
-    def install_to_the_end(self, *, online_at_end, **kwargs):
+    def install_to_the_end(self, **kwargs):
         """The real update and finish phases on a finishable target; the rest is stubbed."""
         logs = []
-        with tempfile.TemporaryDirectory() as temp, patch('emaki_installer.worker.LOG') as log, \
-                patch('emaki_installer.worker.default_route', return_value=online_at_end) as route:
+        with tempfile.TemporaryDirectory() as temp, patch('emaki_installer.worker.LOG') as log:
             log.read_bytes.return_value = b'log\n'
             target = Path(temp)
             finishable(target)
@@ -523,25 +517,17 @@ class WorkerLifecycleTests(unittest.TestCase):
             lock = (target / 'var/lib/pacman/db.lck').exists()
         commands = [(c[2:], kwargs) for runner in runners for c, kwargs in runner.commands
                     if c[:1] == ['arch-chroot'] and 'pacman' in c]
-        return events, commands, logs, lock, route
+        return events, commands, logs, lock
 
-    def test_without_the_update_an_online_install_still_gets_package_lists(self):
-        # B4/C1 of the VM walk: "Update Emaki at the end" off left no sync databases, and the
-        # installed system's first `pacman -S` failed until `pacman -Sy`. Lists newer than the
-        # USB's packages make that first `pacman -S` a partial upgrade: the done page says to
-        # upgrade first. Also with the update on but no network while it would have run.
+    def test_skipped_update_defers_without_refreshing_databases(self):
         for online, update in ((True, False), (False, True)):
             with self.subTest(online_at_start=online, update=update):
-                events, commands, _, _, route = self.install_to_the_end(
-                    online=online, update=update, online_at_end=True)
-                self.assertEqual([c for c, _ in commands], [['pacman', '-Sy']])
-                self.assertEqual(commands[0][1]['timeout'], REFRESH_TIMEOUT)
-                route.assert_called_once_with()
+                events, commands, _, _ = self.install_to_the_end(
+                    online=online, update=update)
+                self.assertEqual(commands, [])
                 self.assertEqual(events[-1]['type'], 'done')
                 self.assertEqual(events[-1]['warnings'], [UPGRADE_FIRST])
-                self.assertIs(self.worker.upgraded, False)
-                update = [e for e in events if e['type'] == 'state' and e['phase'] == 'update']
-                self.assertIsNone(update[-1]['phase_pct'], 'the update itself stays skipped')
+                self.assertFalse(self.worker.upgraded)
 
     def test_lists_synced_by_the_keyring_alone_still_say_to_upgrade(self):
         # The small archlinux-keyring download synced the lists; the update's own download then
@@ -551,14 +537,12 @@ class WorkerLifecycleTests(unittest.TestCase):
                 raise InstallError(Code.COMMAND_FAILED, 'arch-chroot timed out.')
             return False
 
-        events, commands, logs, _, route = self.install_to_the_end(
-            online=True, online_at_end=True, runner_fail=timeout)
+        events, commands, logs, _ = self.install_to_the_end(
+            online=True, runner_fail=timeout)
         self.assertEqual([c[c.index('pacman') + 1] for c, _ in commands], ['-Syw', '-S', '-Sw', '-S', '-Syuw'])
         self.assertIn('WARNING: online update failed; the offline installation is retained: arch-chroot timed out.', logs)
-        route.assert_not_called()
         self.assertEqual(events[-1]['type'], 'done')
         self.assertEqual(events[-1]['warnings'][-1:], [UPGRADE_FIRST])
-        self.assertIn('could not finish', events[-1]['warnings'][0])
         self.assertIs(self.worker.synced, True)
         self.assertIs(self.worker.upgraded, False)
 
@@ -575,70 +559,39 @@ class WorkerLifecycleTests(unittest.TestCase):
                         raise InstallError(Code.CANCELLED, 'Update download stopped.')
                     return False
 
-                events, commands, _, _, _ = self.install_to_the_end(
-                    online=True, online_at_end=True, runner_fail=skip)
+                events, commands, _, _ = self.install_to_the_end(
+                    online=True, runner_fail=skip)
                 have_lists = any(name.endswith('.db') for name in databases)
                 self.assertEqual(self.worker.synced, have_lists)
-                self.assertEqual(events[-1]['warnings'][-1], UPGRADE_FIRST if have_lists else NO_PACKAGE_LISTS)
+                self.assertEqual(events[-1]['warnings'][-1], UPGRADE_FIRST)
                 self.assertFalse(any('-Su' in c or '-S' in c for c, _ in commands))
 
-    def test_failed_refresh_with_one_database_requires_upgrade_first(self):
-        def fail(argv):
-            if argv[2:] == ['pacman', '-Sy']:
-                directory = Path(argv[1]) / 'var/lib/pacman/sync'
-                directory.mkdir(parents=True)
-                (directory / 'core.db').write_bytes(b'updated repository database')
-                raise InstallError(Code.COMMAND_FAILED, 'arch-chroot timed out.')
-            return False
-
-        events, _, _, _, _ = self.install_to_the_end(
-            online=True, update=False, online_at_end=True, runner_fail=fail)
-        self.assertEqual(events[-1]['warnings'], [UPGRADE_FIRST])
-
-    def test_offline_at_the_end_the_done_page_says_what_to_run(self):
+    def test_offline_done_explains_full_update_without_commands(self):
         for online in (False, True):
             with self.subTest(online_at_start=online):
-                events, commands, _, _, _ = self.install_to_the_end(online=online, update=False, online_at_end=False)
+                events, commands, _, _ = self.install_to_the_end(online=online, update=False)
                 self.assertEqual(commands, [])
                 self.assertEqual(events[-1]['type'], 'done')
-                self.assertEqual(events[-1]['warnings'], [NO_PACKAGE_LISTS])
-
-    def test_a_failed_refresh_only_warns_and_leaves_no_lock(self):
-        def refused(argv):
-            if argv[2:] == ['pacman', '-Sy']:
-                # A stopped pacman keeps its lock: the installed pacman would refuse to run.
-                lock = Path(argv[1]) / 'var/lib/pacman/db.lck'
-                lock.parent.mkdir(parents=True, exist_ok=True)
-                lock.write_text('')
-                raise InstallError(Code.COMMAND_FAILED, 'arch-chroot timed out.')
-            return False
-
-        events, commands, logs, lock, _ = self.install_to_the_end(
-            online=True, update=False, online_at_end=True, runner_fail=refused)
-        self.assertEqual([c for c, _ in commands], [['pacman', '-Sy']])
-        self.assertIn('WARNING: the package lists were not downloaded: arch-chroot timed out.', logs)
-        self.assertFalse(lock)
-        self.assertEqual(events[-1]['type'], 'done')
-        self.assertEqual(events[-1]['warnings'], [NO_PACKAGE_LISTS])
+                self.assertEqual(events[-1]['warnings'], [UPGRADE_FIRST])
+                self.assertNotIn('sudo', ' '.join(events[-1]['warnings']))
 
     def test_an_update_that_downloaded_needs_no_second_refresh(self):
         # The happy path: the full upgrade completed, so the done page has nothing to add.
-        events, commands, _, _, route = self.install_to_the_end(online=True, online_at_end=True)
+        events, commands, _, _ = self.install_to_the_end(online=True)
         self.assertNotIn(['pacman', '-Sy'], [c for c, _ in commands])
         self.assertTrue(any('-Syuw' in c for c, _ in commands), commands)
         self.assertTrue(any('-Su' in c for c, _ in commands), commands)
-        route.assert_not_called()
         self.assertEqual(events[-1]['type'], 'done')
         self.assertEqual(events[-1]['warnings'], [])
         self.assertIs(self.worker.upgraded, True)
 
     def test_a_failed_update_download_is_not_retried_at_the_end(self):
         # The limited download already waited for this network; the person is told instead.
-        events, commands, _, _, _ = self.install_to_the_end(
-            online=True, online_at_end=True, runner_fail=lambda argv: '-Syuw' in argv or '-Syw' in argv)
+        events, commands, _, _ = self.install_to_the_end(
+            online=True, runner_fail=lambda argv: '-Syuw' in argv or '-Syw' in argv)
         self.assertNotIn(['pacman', '-Sy'], [c for c, _ in commands])
         self.assertEqual(events[-1]['type'], 'done')
-        self.assertEqual(events[-1]['warnings'][-1:], [NO_PACKAGE_LISTS])
+        self.assertEqual(events[-1]['warnings'][-1:], [UPGRADE_FIRST])
 
     def test_test_mode_without_keys_fails_before_any_disk_work(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -859,7 +812,7 @@ class BootAndSnapshotTests(unittest.TestCase):
                     settings['software'] = software
                     self.worker.plan = make_plan(settings, inventory())
                     self.worker.api = SimpleNamespace(locale=SimpleNamespace(LocaleConfiguration=Mock()))
-                    self.worker.backend = Mock()
+                    self.worker.backend = Mock(console_font=None)
                     self.worker.copy_packages()
                     packages = self.worker.backend.instance.pacman.strap.call_args.args[0]
                     self.assertEqual(snapshots & set(packages), snapshots if fs == 'btrfs' else set())
@@ -1241,8 +1194,9 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.worker.update()
         self.assertFalse(self.worker.update_attempted)
         self.assertTrue(any(line.startswith('WARNING: online update failed') for line in logs))
-        # Nothing was installed: the person is not told to finish an update.
-        self.assertIn('The online update could not finish.', self.worker.warnings[0])
+        # Nothing was installed: completion still explains the full update needed before apps.
+        self.worker.update_notice()
+        self.assertEqual(self.worker.warnings, [UPGRADE_FIRST])
 
     def test_online_update_downloads_with_a_limit_then_installs_without_one(self):
         self.worker.update()
@@ -1292,7 +1246,8 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.assertFalse(any('emaki-keyring' in c and '--config' in c for c in commands))
         self.assertFalse(any('-S' in c and 'emaki-keyring' in c for c in commands))
         self.assertTrue(any(line.startswith('WARNING: the Emaki keyring was not refreshed') for line in logs))
-        self.assertTrue(self.worker.upgraded)
+        self.assertFalse(self.worker.upgraded)
+        self.assertFalse(self.worker.update_attempted)
         self.assertTrue(seen)
 
     def test_failing_keyring_refresh_still_leads_to_the_download(self):
@@ -1329,40 +1284,25 @@ class BootAndSnapshotTests(unittest.TestCase):
             self.worker.update()
         return logs, seen, run_dir
 
-    def test_unreachable_emaki_repository_retries_once_without_it(self):
-        logs, seen, run_dir = self.update_with_emaki_down(('-Syw', '-Syuw'))
-        commands = [c for c, _ in self.pacman_commands()]
-        config = ['--config', str(run_dir / 'update-pacman.conf')]
-        self.assertEqual(commands, [
-            ['pacman', '-Syw', '--needed', '--noconfirm', 'archlinux-keyring'],
-            ['pacman', '-Syw', '--needed', '--noconfirm', 'archlinux-keyring', *config],
-            ['pacman', '-S', '--needed', '--noconfirm', 'archlinux-keyring', *config],
-            ['pacman', '-Syuw', '--noconfirm', *config],
-            ['pacman', '-Su', '--noconfirm', *config]])
-        retried = [kwargs for c, kwargs in self.pacman_commands() if c[1] in ('-Syw', '-Syuw')]
-        self.assertTrue(all(kwargs['timeout'] > 0 for kwargs in retried))
-        self.assertTrue(seen)
-        for text in seen:
-            self.assertNotIn('[emaki]', text)
-            self.assertNotIn('emaki-mirrorlist', text)
-            self.assertIn('[core]\nInclude = /etc/pacman.d/mirrorlist', text)
-            self.assertIn('[extra]\nInclude = /etc/pacman.d/mirrorlist', text)
-            self.assertIn('SigLevel    = Required DatabaseOptional', text)
-        self.assertEqual(self.worker.files.read('/etc/pacman.conf'), TARGET_PACMAN_CONF)
-        self.assertFalse((run_dir / 'update-pacman.conf').exists())
-        self.assertTrue(self.worker.update_attempted)
-        self.assertIn("Emaki's own repository was unreachable; Arch packages were updated, "
-                      'Emaki packages stay at the USB version.', logs)
-
-    def test_emaki_repository_lost_after_the_keyring_step_is_retried_at_the_download(self):
-        logs, seen, run_dir = self.update_with_emaki_down(('-Syuw',))
-        commands = [c[1:] for c, _ in self.pacman_commands()]
-        config = ['--config', str(run_dir / 'update-pacman.conf')]
-        self.assertEqual(commands[-3:], [['-Syuw', '--noconfirm'], ['-Syuw', '--noconfirm', *config],
-                                         ['-Su', '--noconfirm', *config]])
-        self.assertEqual(len(seen), 2)
-        self.assertIn("Emaki's own repository was unreachable; Arch packages were updated, "
-                      'Emaki packages stay at the USB version.', logs)
+    def test_unreachable_emaki_repository_never_applies_an_arch_only_upgrade(self):
+        for failing in (('-Syw', '-Syuw'), ('-Syuw',)):
+            with self.subTest(failing=failing):
+                with tempfile.TemporaryDirectory() as temp:
+                    old_root = self.root
+                    self.root = Path(temp)
+                    try:
+                        self.worker.files = TargetFiles(self.root)
+                        self.worker.runner = RecordingRunner()
+                        logs, seen, run_dir = self.update_with_emaki_down(failing)
+                        commands = [c for c, _ in self.pacman_commands()]
+                        self.assertFalse(any('-Su' in c for c in commands))
+                        self.assertFalse(self.worker.upgraded)
+                        self.assertFalse(self.worker.update_attempted)
+                        self.assertTrue(seen)
+                        self.assertEqual(self.worker.files.read('/etc/pacman.conf'), TARGET_PACMAN_CONF)
+                        self.assertFalse((run_dir / 'update-pacman.conf').exists())
+                    finally:
+                        self.root = old_root
 
     def test_no_retry_when_more_than_the_emaki_repository_is_unreachable(self):
         logs, seen, _ = self.update_with_emaki_down(('-Syw', '-Syuw'), ALL_DOWN)
@@ -1426,6 +1366,36 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.assertIn(['grub-mkconfig', '-o', '/boot/grub/grub.cfg'], rebuilt)
         self.assertFalse((self.root / MARKER.lstrip('/')).exists())
 
+    def test_success_after_mirror_retry_is_a_completed_update(self):
+        original = self.worker.runner.run
+
+        def run(argv, **kwargs):
+            output = original(argv, **kwargs)
+            return 'error: failed retrieving file from one mirror\n' if '-Su' in argv else output
+
+        self.worker.runner.run = run
+        self.worker.update()
+        self.worker.update_notice()
+        self.assertTrue(self.worker.upgraded)
+        self.assertEqual(self.worker.warnings, [])
+
+    def test_success_status_with_failed_package_hook_warns_about_incomplete_update(self):
+        original = self.worker.runner.run
+
+        def run(argv, **kwargs):
+            output = original(argv, **kwargs)
+            return 'error: command failed to execute correctly\n' if '-Su' in argv else output
+
+        self.worker.runner.run = run
+        self.worker.update()
+        self.worker.update_notice()
+        self.assertFalse(self.worker.upgraded)
+        self.assertTrue(self.worker.update_attempted)
+        self.assertEqual(len(self.worker.warnings), 1)
+        self.assertTrue(self.worker.warnings[0].startswith(PARTIAL_UPDATE + ' '))
+        self.assertEqual(self.worker.warnings[0],
+                         PARTIAL_UPDATE + ' [error: command failed to execute correctly]')
+
     def test_a_partial_update_says_so_and_never_claims_the_offline_installation(self):
         logs = []
         self.worker.log = logs.append
@@ -1433,7 +1403,8 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.worker.update()
         self.assertFalse(any('offline installation is retained' in line for line in logs), logs)
         self.assertIn('WARNING: ' + PARTIAL_UPDATE + ' (injected command failure)', logs)
-        self.assertEqual(self.worker.warnings, [PARTIAL_UPDATE])
+        self.assertTrue(self.worker.warnings[0].startswith(PARTIAL_UPDATE + ' '))
+        self.assertIn('[pacman returned no details]', self.worker.warnings[0])
 
     def test_stale_pacman_lock_is_removed_only_without_a_pacman_in_the_target(self):
         lock = self.root / 'var/lib/pacman/db.lck'
@@ -1666,7 +1637,7 @@ class BootAndSnapshotTests(unittest.TestCase):
                       '(wallpaper copy: refused, image_limit).', logs)
         self.assertTrue(any('preset-all' in c for c, _ in self.worker.runner.commands))
 
-    def keyboard_install(self, layouts):
+    def keyboard_install(self, layouts, font=None):
         settings = config()
         settings['layouts'] = layouts
         self.worker.plan = make_plan(settings, inventory())
@@ -1674,7 +1645,7 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.worker.api = SimpleNamespace(locale=SimpleNamespace(
             LocaleConfiguration=lambda keymap, language, encoding: SimpleNamespace(kb_layout=keymap)))
         # Like the real backend: the minimal install writes the console map archinstall hands it.
-        self.worker.backend = Mock()
+        self.worker.backend = Mock(console_font=font)
         self.worker.backend.minimal.side_effect = lambda locale: files.write(
             '/etc/vconsole.conf', 'KEYMAP=' + locale.kb_layout + '\n')
         self.worker.copy_packages()
@@ -1694,6 +1665,10 @@ class BootAndSnapshotTests(unittest.TestCase):
                 self.worker.files = type(self.worker.files)(self.root)
                 self.worker.runner = RecordingRunner()
                 self.assertEqual(self.keyboard_install(layouts), [expected, expected])
+
+    def test_selected_font_survives_package_copy_and_final_settings(self):
+        self.assertEqual(self.keyboard_install(['us'], 'ter-124b'),
+                         [b'KEYMAP=us\nXKBLAYOUT=us\nFONT=ter-124b\n'] * 2)
 
     def test_no_keyboard_settings_are_written_into_the_home(self):
         settings = config()
@@ -1965,7 +1940,8 @@ class RepairTests(unittest.TestCase):
         worker.update()
         self.assertFalse(worker.runner.commands)
         self.assertFalse(worker.update_attempted)
-        self.assertIn('skipped', worker.warnings[0])
+        worker.update_notice()
+        self.assertEqual(worker.warnings, [UPGRADE_FIRST])
 
     def test_controller_skip_reaches_worker_without_job_on_backend_api(self):
         from emaki_installer.protocol import Controller
@@ -1982,7 +1958,8 @@ class RepairTests(unittest.TestCase):
         worker.update()
         self.assertFalse(worker.runner.commands)
         self.assertFalse(controller.job.cancelled.is_set())
-        self.assertIn('skipped', worker.warnings[0])
+        worker.update_notice()
+        self.assertEqual(worker.warnings, [UPGRADE_FIRST])
 
     def test_account_scan_does_not_stream_archive_members(self):
         runner = RecordingRunner()

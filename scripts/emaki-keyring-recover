@@ -1,0 +1,450 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Recover saved secrets from an isolated copy of an old keyring."""
+import argparse
+import base64
+from contextlib import contextmanager
+import errno
+import fcntl
+import getpass
+import json
+import os
+from pathlib import Path
+import shutil
+import runpy
+import signal
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+
+
+def copy_keyrings(source, destination):
+    """Copy only regular files without following links or blocking on pipes."""
+    if source.is_symlink() or not source.is_dir():
+        raise ValueError('The keyring directory must be a real directory.')
+    destination.mkdir(parents=True, mode=0o700)
+    for path in sorted(source.iterdir()):
+        if not stat.S_ISREG(path.lstat().st_mode):
+            continue
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        except OSError as error:
+            if error.errno in (errno.ELOOP, errno.ENOENT):
+                continue
+            raise
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            os.close(fd)
+            continue
+        with os.fdopen(fd, 'rb') as incoming:
+            target = destination / path.name
+            with target.open('xb') as outgoing:
+                os.chmod(target, 0o600)
+                shutil.copyfileobj(incoming, outgoing)
+
+
+def prepare(source, root, environment):
+    for name in ('home', 'data', 'config', 'runtime', 'control'):
+        (root / name).mkdir(mode=0o700)
+    copy_keyrings(source, root / 'data/keyrings')
+    config = root / 'bus.conf'
+    config.write_text('''<busconfig>
+<type>session</type><listen>unix:tmpdir=''' + str(root / 'runtime') + '''</listen>
+<auth>EXTERNAL</auth>
+<policy context="default"><allow own="*"/><allow send_destination="*"/>
+<allow receive_sender="*"/></policy>
+</busconfig>
+''')
+    env = environment.copy()
+    for key in ('DBUS_SESSION_BUS_ADDRESS', 'DBUS_STARTER_ADDRESS', 'DBUS_STARTER_BUS_TYPE',
+                'GNOME_KEYRING_CONTROL', 'PAM_KWALLET5_LOGIN'):
+        env.pop(key, None)
+    env.update(HOME=str(root / 'home'), XDG_DATA_HOME=str(root / 'data'),
+               XDG_CONFIG_HOME=str(root / 'config'), XDG_RUNTIME_DIR=str(root / 'runtime'),
+               XDG_CONFIG_DIRS=str(root / 'config'), XDG_DATA_DIRS=str(root / 'data'))
+    command = ['dbus-run-session', '--config-file', str(config), '--',
+               sys.executable, str(Path(__file__).resolve()), '--worker', str(root)]
+    return command, env
+
+
+def stop(process, group=False):
+    if group:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    elif process.poll() is None:
+        process.terminate()
+    try:
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        if group:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        else:
+            process.kill()
+        process.wait()
+    if group:
+        # Reap the leader first, then ensure no inherited wallet writer survives it.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def display_item(item):
+    attributes = dict(item.get_attributes())
+    print('Label:', json.dumps(item.get_label(), ensure_ascii=True))
+    print('Attributes:', json.dumps(attributes, ensure_ascii=True, sort_keys=True))
+    if attributes.get('xdg:schema') == 'org.freedesktop.portal.Secret' or 'app_id' in attributes:
+        print('This may be an application master key. Re-entering an application password '
+              'does not replace it. Preserve the encrypted application data and this old '
+              'keyring until the key has been copied and recovery verified.')
+    item.load_secret_sync(None)
+    value = item.get_secret()
+    if value is None:
+        raise RuntimeError('The selected secret could not be read.')
+    raw = bytes(value.get())
+    print('Content type:', json.dumps(value.get_content_type()))
+    try:
+        print('Secret (JSON-quoted UTF-8):', json.dumps(raw.decode('utf-8'), ensure_ascii=True))
+    except UnicodeDecodeError:
+        print('Secret (base64):', base64.b64encode(raw).decode('ascii'))
+
+
+def unlock_collection(bus, collection, password, Gio, GLib):
+    """Unlock only the temporary collection over its private bus."""
+    session = bus.call_sync(
+        'org.freedesktop.secrets', '/org/freedesktop/secrets',
+        'org.freedesktop.Secret.Service', 'OpenSession',
+        GLib.Variant('(sv)', ('plain', GLib.Variant('s', ''))),
+        None, Gio.DBusCallFlags.NONE, 5000, None).unpack()[1]
+    try:
+        bus.call_sync(
+            'org.freedesktop.secrets', '/org/freedesktop/secrets',
+            'org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface',
+            'UnlockWithMasterPassword',
+            GLib.Variant('(o(oayays))', (collection.get_object_path(),
+                         (session, b'', password.encode('utf-8'), 'text/plain'))),
+            None, Gio.DBusCallFlags.NONE, 5000, None)
+    finally:
+        bus.call_sync('org.freedesktop.secrets', session,
+                      'org.freedesktop.Secret.Session', 'Close', None,
+                      None, Gio.DBusCallFlags.NONE, 5000, None)
+
+
+def reveal_items(items):
+    print('Revealing a secret leaves it in terminal scrollback. Do not share this '
+          'terminal, its output, screenshots, or clipboard contents.')
+    while True:
+        answer = input('Item number to reveal, or Enter to finish: ').strip()
+        if not answer:
+            return
+        if not answer.isdecimal() or not 1 <= int(answer) <= len(items):
+            print('No such item number.')
+            continue
+        display_item(items[int(answer) - 1])
+
+
+def readable_reason(reason):
+    """Keep transport diagnostics and terminal control sequences out of recovery text."""
+    reason = str(reason)
+    if ('GDBus.Error' in reason or 'org.freedesktop.' in reason
+            or any(ord(char) < 32 for char in reason)):
+        return 'The password stores could not be read or saved; retry recovery.'
+    return reason
+
+
+@contextmanager
+def recovery_target(Gio, migration):
+    address = os.environ.get('EMAKI_RECOVERY_BUS')
+    if address:
+        destination = Gio.DBusConnection.new_for_address_sync(
+            address, Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT |
+            Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION, None, None)
+        try:
+            owned = migration['call'](destination, 'org.freedesktop.DBus',
+                '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'NameHasOwner',
+                '(s)', ('org.freedesktop.secrets',))[0]
+            if owned:
+                owners = [migration['call'](destination, 'org.freedesktop.DBus',
+                    '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'GetNameOwner',
+                    '(s)', (name,))[0] for name in (
+                        'org.freedesktop.secrets', 'org.kde.ksecretd',
+                        'org.freedesktop.impl.portal.desktop.kwallet')]
+                if not owners[0] or len(set(owners)) != 1:
+                    raise RuntimeError('The desktop password service is not the expected wallet provider.')
+                yield destination, False
+                return
+        finally:
+            destination.close_sync(None)
+    settings = json.loads(os.environ.get('EMAKI_RECOVERY_TARGET', '{}'))
+    if not settings.get('HOME'):
+        raise RuntimeError('No desktop wallet connection is available.')
+    print('The desktop wallet is unavailable. Recovery will open it privately; '
+          'log out and log in again after recovery to enable application access.')
+    password = getpass.getpass('Destination wallet password (Ctrl+C cancels): ')
+    env = os.environ.copy()
+    for key in ('HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_STATE_HOME',
+                'XDG_RUNTIME_DIR', 'XDG_CONFIG_DIRS', 'XDG_DATA_DIRS',
+                'DBUS_SESSION_BUS_ADDRESS', 'PAM_KWALLET5_LOGIN', 'GNOME_KEYRING_CONTROL',
+                'EMAKI_RECOVERY_BUS', 'EMAKI_RECOVERY_REPORT', 'EMAKI_RECOVERY_TARGET'):
+        env.pop(key, None)
+    env.update(settings)
+    env['EMAKI_DESKTOP_BUS'] = address or ''
+    with tempfile.TemporaryDirectory(prefix='emaki-wallet-recovery-') as directory:
+        root = Path(directory)
+        process = subprocess.Popen(
+            [sys.executable, '-I', '-B', str(Path(__file__).with_name('emaki-wallet-stage')), str(root)],
+            env=env, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, start_new_session=True)
+        destination = None
+        try:
+            process.stdin.write(password.encode('utf-8'))
+            process.stdin.close()
+            del password
+            deadline = time.monotonic() + 20
+            while not (root / 'ready').is_file():
+                if process.poll() is not None or time.monotonic() >= deadline:
+                    raise RuntimeError('The destination wallet could not be unlocked. '
+                                       'Retry with its original wallet password.')
+                time.sleep(.1)
+            ready = json.loads((root / 'ready').read_text())
+            destination = Gio.DBusConnection.new_for_address_sync(
+                ready['address'], Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT |
+                Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION, None, None)
+            yield destination, True
+        finally:
+            failed = sys.exc_info()[0] is not None
+            try:
+                if destination is not None:
+                    destination.close_sync(None)
+                (root / 'done').touch(mode=0o600)
+                try:
+                    status = process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    status = None
+                if status != 0 and not failed:
+                    raise RuntimeError('The private wallet did not finish saving; retry recovery.')
+            finally:
+                stop(process, group=True)
+
+
+@contextmanager
+def recovery_lock(report):
+    directory = Path(report).parent
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with os.fdopen(os.open(directory / 'wallet-migration.lock',
+            os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600), 'w') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RuntimeError('Another password migration is running. Retry recovery after it finishes.')
+        yield
+
+
+def migrate_unlocked(bus, Gio, replace_portal_keys=False):
+    report = os.environ.get('EMAKI_RECOVERY_REPORT')
+    if not report:
+        print('No desktop wallet connection is available. Secrets can be inspected, '
+              'but they have not been copied to the wallet [KWallet].')
+        return False
+    migration = runpy.run_path(str(Path(__file__).with_name('emaki-wallet-migrate')))
+    result = None
+    with recovery_lock(report):
+        try:
+            with recovery_target(Gio, migration) as (destination, private):
+                result = migration['transfer'](bus, destination, Path(report), flush=private,
+                                               replace_portal_keys=replace_portal_keys)
+        except BaseException as error:
+            if result is None:
+                raise
+            result.update(complete=False, portal_keys_safe=False, saved=False)
+            result.setdefault('errors', []).append(
+                'The private wallet did not finish saving; retry recovery.')
+            migration['write_json'](Path(report), result)
+            if not isinstance(error, Exception):
+                raise
+    copied = sum(item.get('status') == 'migrated' for item in result['items'].values())
+    pending = sum(item.get('status') != 'migrated' for item in result['items'].values())
+    print(f'Saved items copied to the wallet [KWallet]: {copied}.')
+    if result['items']:
+        print(f'Items still needing recovery: {pending}.')
+    elif not result['complete']:
+        print('The number of items needing recovery is unknown; no saved items were read.')
+    for error in result.get('errors', []):
+        print('Recovery error:', readable_reason(error))
+    for item in result['items'].values():
+        if item.get('status') != 'migrated' and item.get('reason'):
+            print('Item', json.dumps(item.get('label', ''), ensure_ascii=True) + ':',
+                  readable_reason(item['reason']))
+    for collection in result.get('collections', {}).values():
+        if collection.get('status') != 'read' and collection.get('reason'):
+            print('Collection', json.dumps(collection.get('label', ''), ensure_ascii=True) + ':',
+                  readable_reason(collection['reason']))
+    if not result['complete']:
+        print('Recovery is incomplete. The results file lists failed items and locked collections. '
+              'Keep the original files and retry recovery.')
+    print('Recovery results were recorded in:', report)
+    return bool(result['complete'])
+
+
+def worker(root, replace_portal_keys=False):
+    import gi
+    gi.require_version('Secret', '1')
+    from gi.repository import Gio, GLib, Secret
+    password = getpass.getpass('Old login keyring password (Ctrl+C cancels): ')
+    daemon_env = os.environ.copy()
+    daemon_env.pop('EMAKI_RECOVERY_BUS', None)
+    daemon_env.pop('EMAKI_RECOVERY_REPORT', None)
+    daemon_env.pop('EMAKI_RECOVERY_TARGET', None)
+    daemon = subprocess.Popen(['gnome-keyring-daemon', '--foreground', '--components=secrets',
+                               '--control-directory', str(root / 'control'), '--unlock'],
+                              stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL, env=daemon_env)
+    try:
+        daemon.stdin.write(password.encode('utf-8'))
+        daemon.stdin.close()
+        del password
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        deadline = time.monotonic() + 10
+        while True:
+            owned = bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
+                                  'org.freedesktop.DBus', 'NameHasOwner',
+                                  GLib.Variant('(s)', ('org.freedesktop.secrets',)),
+                                  None, Gio.DBusCallFlags.NONE, 1000, None).unpack()[0]
+            if owned:
+                break
+            if daemon.poll() is not None or time.monotonic() >= deadline:
+                raise RuntimeError('The old keyring service did not become ready.')
+            time.sleep(0.1)
+        service = Secret.Service.get_sync(Secret.ServiceFlags.OPEN_SESSION |
+                                          Secret.ServiceFlags.LOAD_COLLECTIONS, None)
+        items = []
+        locked = 0
+        login = bus.call_sync(
+            'org.freedesktop.secrets', '/org/freedesktop/secrets',
+            'org.freedesktop.Secret.Service', 'ReadAlias',
+            GLib.Variant('(s)', ('login',)), None, Gio.DBusCallFlags.NONE,
+            5000, None).unpack()[0]
+        for collection in service.get_collections():
+            if collection.get_locked():
+                if collection.get_object_path() == login:
+                    print('Wrong password: the old login keyring is still locked.')
+                print('Locked collection:', json.dumps(collection.get_label(), ensure_ascii=True))
+                answer = input('Unlock this collection and copy its secrets to the wallet? [y/N] ').strip().lower()
+                if answer == 'y':
+                    password = getpass.getpass('Collection password (Ctrl+C cancels): ')
+                    try:
+                        unlock_collection(bus, collection, password, Gio, GLib)
+                    except GLib.Error as error:
+                        if (Gio.DBusError.get_remote_error(error) or '').endswith(('.Denied', '.IsLocked')):
+                            print('Wrong password: this collection is still locked.')
+                        else:
+                            print('This collection could not be unlocked. Keep the original files and retry recovery.')
+                    finally:
+                        del password
+                else:
+                    locked += 1
+                    continue
+                # Read the property directly; proxy change signals may still be pending.
+                still_locked = bus.call_sync(
+                    'org.freedesktop.secrets', collection.get_object_path(),
+                    'org.freedesktop.DBus.Properties', 'Get',
+                    GLib.Variant('(ss)', ('org.freedesktop.Secret.Collection', 'Locked')),
+                    None, Gio.DBusCallFlags.NONE, 5000, None).unpack()[0]
+                if still_locked:
+                    locked += 1
+                    continue
+            collection.load_items_sync(None)
+            for item in collection.get_items():
+                items.append(item)
+                # Items discovered while locked may still have stale proxy properties.
+                label = bus.call_sync(
+                    'org.freedesktop.secrets', item.get_object_path(),
+                    'org.freedesktop.DBus.Properties', 'Get',
+                    GLib.Variant('(ss)', ('org.freedesktop.Secret.Item', 'Label')),
+                    None, Gio.DBusCallFlags.NONE, 5000, None).unpack()[0]
+                print(f'{len(items)}. {json.dumps(label, ensure_ascii=True)}')
+        if locked:
+            print('Some collections remain locked. Their secrets have not been copied. '
+                  'Run this recovery command again with their passwords to copy them. '
+                  'Keep the old password service [GNOME Keyring] and every original keyring file.')
+        complete = False
+        try:
+            complete = migrate_unlocked(bus, Gio, replace_portal_keys=replace_portal_keys)
+        except (OSError, ValueError, RuntimeError, GLib.Error):
+            print('Copying saved secrets to the wallet failed. Keep the original files and retry recovery.')
+        if not items:
+            print('No unlocked saved secrets were found. Original files are unchanged.')
+            return 1
+        reveal_items(items)
+        return 0 if complete and not locked else 1
+    finally:
+        stop(daemon)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__, epilog=(
+        'Run in a private terminal. Enter the old login keyring password, then unlock '
+        'any other collections you want to recover. Unlocked secrets are copied to '
+        'the wallet [KWallet], including application master keys. You can reveal several '
+        'items in one run. Binary secrets are shown as base64. Keep the old password '
+        'service [GNOME Keyring] and the original files until every account, collection '
+        'and application has been verified. This command never removes a package.'))
+    parser.add_argument('--worker', help=argparse.SUPPRESS)
+    parser.add_argument('--replace-portal-keys', action='store_true', help=(
+        'Restore application master keys from the old keyring even when a different '
+        'key is already in the wallet. Close affected applications first and preserve '
+        'a backup of their data and both password stores.'))
+    args = parser.parse_args(argv)
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        parser.error('Recovery requires an interactive terminal for input and output.')
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
+    try:
+        if args.worker:
+            return worker(Path(args.worker), replace_portal_keys=args.replace_portal_keys)
+        source = Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local/share'))) / 'keyrings'
+        print('This opens a temporary copy. Your original keyring files remain untouched. '
+              'Unlocked secrets will be copied to the wallet [KWallet].')
+        if args.replace_portal_keys:
+            print('Application master keys will be restored only when the old keyring '
+                  'contains their secret. Data encrypted with a newer key may become '
+                  'unreadable. Keep backups and close affected applications before recovery.')
+        # A short private path also keeps the temporary D-Bus socket below Unix limits.
+        with tempfile.TemporaryDirectory(prefix='emaki-keyring-') as directory:
+            command, env = prepare(source, Path(directory), os.environ)
+            if args.replace_portal_keys:
+                command.append('--replace-portal-keys')
+            env['EMAKI_RECOVERY_BUS'] = os.environ.get('DBUS_SESSION_BUS_ADDRESS', '')
+            target = {key: os.environ[key] for key in (
+                'HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_STATE_HOME',
+                'XDG_RUNTIME_DIR', 'XDG_CONFIG_DIRS', 'XDG_DATA_DIRS') if key in os.environ}
+            target.setdefault('HOME', str(Path.home()))
+            env['EMAKI_RECOVERY_TARGET'] = json.dumps(target)
+            state_home = Path(os.environ.get('XDG_STATE_HOME', str(Path.home() / '.local/state')))
+            env['EMAKI_RECOVERY_REPORT'] = str(state_home / 'emaki/wallet-migration-v1.json')
+            process = subprocess.Popen(command, env=env, start_new_session=True)
+            try:
+                result = process.wait(timeout=900)
+                if result == 130:
+                    print('Recovery cancelled. Original files are unchanged.', file=sys.stderr)
+                return result
+            finally:
+                stop(process, group=True)
+    except (KeyboardInterrupt, EOFError):
+        if not args.worker:
+            print('\nRecovery cancelled. Original files are unchanged.', file=sys.stderr)
+        return 130
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+        print('Recovery stopped:', readable_reason(error),
+              'Original keyring files are unchanged.', file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -223,7 +224,7 @@ def records(top):
     return directory, found
 
 
-def check_layout(top, fs_uuid):
+def check_layout(top, fs_uuid, boot_id=None):
     current = top / '@'
     subvolume(current, readonly=False)
     empty_children(current)
@@ -242,51 +243,111 @@ def check_layout(top, fs_uuid):
     for target in ('/boot', '/usr', '/etc', '/var', '/var/lib', '/var/lib/pacman'):
         result = subprocess.run(['findmnt', '--mountpoint', target], env=ENV, capture_output=True)
         require(result.returncode == 1, f'Separate or uninspectable mount at {target}.')
-    require(not safe_path(current, 'var/lib/pacman/db.lck').exists(), 'A package transaction is active or unfinished.')
+    directory = os.open(safe_path(current, 'var/lib/pacman'), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        previous_refresh_lock(directory, boot_id)
+    finally:
+        os.close(directory)
     return rows
 
 
-@contextmanager
-def package_guard(current):
-    directory = os.open(safe_path(current, 'var/lib/pacman'), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+def previous_refresh_lock(directory, boot_id):
+    """Inspect a stale refresh token without changing the package database."""
+    message = 'A package transaction is active or unfinished.'
+    def identity(info):
+        return (info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
     try:
+        before = os.stat('db.lck', dir_fd=directory, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
+    require(stat.S_ISREG(before.st_mode), message)
+    before = identity(before)
+    if boot_id is None:
+        boot_id = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+    require(re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', boot_id), message)
+    try:
+        lock = os.open('db.lck', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
         try:
-            lock = os.open('db.lck', os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600, dir_fd=directory)
-        except FileExistsError:
-            raise Refused('A package transaction is active or unfinished.') from None
-        try:
-            try:
-                token = 'emaki-rollback:' + uuid.uuid4().hex
-                os.write(lock, token.encode())
-                os.fsync(lock)
-            finally:
-                os.close(lock)
-            yield token
+            require(identity(os.fstat(lock)) == before, message)
+            token = os.read(lock, 128)
+            require(identity(os.fstat(lock)) == before, message)
         finally:
-            # The directory descriptor still refers to the previous root after
-            # the exchange. Never remove a new root's unrelated package lock.
-            os.unlink('db.lck', dir_fd=directory)
-    finally:
-        os.close(directory)
+            os.close(lock)
+        require(identity(os.stat('db.lck', dir_fd=directory, follow_symlinks=False)) == before, message)
+    except OSError:
+        raise Refused(message) from None
+    match = re.fullmatch(
+        rb'emaki-boot-refresh:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', token)
+    require(match is not None and match[1].decode() != boot_id, message)
+    return before
+
+
+@contextmanager
+def package_guard(current, boot_id=None):
+    # Lock order: rollback's run lock, then refresh's run lock, then db.lck.
+    # Keep recovery and cleanup mutually exclusive with every refresh operation.
+    with open('/run/emaki-boot-refresh.lock', 'a') as refresh_lock:
+        # Owner-only, as refresh makes it: whoever can open the file can hold the lock.
+        os.fchmod(refresh_lock.fileno(), 0o600)
+        try:
+            fcntl.flock(refresh_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise Refused('A boot loader operation is running; try rollback again later.') from None
+        directory = os.open(safe_path(current, 'var/lib/pacman'), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            previous = previous_refresh_lock(directory, boot_id)
+            if previous is not None:
+                # Recheck both identity and contents before removing a previous boot's
+                # refresh token, then acquire our own lock exclusively as usual.
+                require(previous_refresh_lock(directory, boot_id) == previous,
+                        'The package lock changed during recovery.')
+                os.unlink('db.lck', dir_fd=directory)
+            try:
+                lock = os.open('db.lck', os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600, dir_fd=directory)
+            except FileExistsError:
+                raise Refused('A package transaction is active or unfinished.') from None
+            owned = os.fstat(lock)
+            try:
+                try:
+                    token = 'emaki-rollback:' + uuid.uuid4().hex
+                    os.write(lock, token.encode())
+                    os.fsync(lock)
+                finally:
+                    os.close(lock)
+                yield token
+            finally:
+                # The directory descriptor still refers to the previous root after
+                # the exchange. Never remove a new root's unrelated package lock.
+                present = os.stat('db.lck', dir_fd=directory, follow_symlinks=False)
+                require((present.st_dev, present.st_ino) == (owned.st_dev, owned.st_ino),
+                        'The package lock changed during rollback.')
+                os.unlink('db.lck', dir_fd=directory)
+        finally:
+            os.close(directory)
 
 
 def promote(top, source, fs_uuid, boot_id, history):
     current = top / '@'
-    rows = check_layout(top, fs_uuid)
+    rows = check_layout(top, fs_uuid, boot_id)
     require(fstab_rows(safe_path(source, 'etc/fstab').read_text(), fs_uuid) == rows,
             'The selected root has a different mount layout. Nothing changed.')
     empty_children(source)
     if safe_path(source, 'var/lib/pacman/db.lck').exists():
-        # snap-pac's pre/post hooks run while pacman owns db.lck. Only those
-        # transaction-boundary snapshots may carry a stale lock into preparation.
+        # snap-pac's pre/post hooks run while pacman owns db.lck. A refresh
+        # guard may also be captured in a timeline snapshot or a kept root.
         info = safe_path(top, str(source.parent.relative_to(top) / 'info.xml'))
         boundary = (source.parent.parent == top / '@snapshots' and info.is_file() and
                     ET.fromstring(info.read_text()).findtext('type') in ('pre', 'post'))
         receipt = history.get(source.name, {})
+        token = safe_path(source, 'var/lib/pacman/db.lck').read_bytes()
         interrupted_guard = (receipt.get('boot_id') != boot_id and receipt.get('lock_token') and
-                             safe_path(source, 'var/lib/pacman/db.lck').read_text() == receipt['lock_token'])
-        require(boundary or interrupted_guard,
-                'The selected root contains a package lock outside a pre/post snapshot or recorded rollback.')
+                             token == receipt['lock_token'].encode())
+        # Snapshot tokens from this boot are safe too: package_guard below excludes
+        # live refresh work, and only the prepared writable copy loses its lock.
+        refresh_guard = re.fullmatch(
+            rb'emaki-boot-refresh:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', token)
+        require(boundary or interrupted_guard or refresh_guard,
+                'The selected root contains a package lock outside a pre/post snapshot, recorded rollback or boot refresh.')
     check_grub(source, fs_uuid)
     source_id = subvolume(source)
     old_id = subvolume(current, readonly=False)
@@ -296,7 +357,7 @@ def promote(top, source, fs_uuid, boot_id, history):
     kept = '@emaki-kept-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ-') + uuid.uuid4().hex[:8]
     staged = top / kept
     receipt = top / '.emaki-rollback' / (kept + '.json')
-    with package_guard(current) as lock_token:
+    with package_guard(current, boot_id) as lock_token:
         record = {'kept': kept, 'previous_id': old_id, 'source_id': source_id, 'boot_id': boot_id,
                   'filesystem': fs_uuid, 'lock_token': lock_token, 'state': 'preparing',
                   'sequence': max((creation_sequence(top, n, r) for n, r in history.items()

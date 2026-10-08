@@ -163,6 +163,22 @@ class WatchTests(unittest.TestCase):
             self.assertIn('NIRI NOT CHECKED:', output.getvalue())
             self.assertEqual('NIRI INCOMPLETE:' in output.getvalue(), installed is None)
 
+    def test_scheduled_new_niri_is_attention_without_local_validation(self):
+        self.recipe('shell', "depends=('niri>=26.04')")
+        self.write_db('extra', [('niri', '26.05-1', [])])
+        self.write_db('extra-testing', [('niri', '26.06-1', [])])
+        with patch.object(watch, 'validate_stock_niri',
+                          side_effect=watch.CandidateUnavailable('not installed')) as validate, \
+                redirect_stdout(io.StringIO()) as output:
+            status = watch.main(['--scheduled', '--packaging-dir', str(self.recipes),
+                                 '--db-dir', str(self.dbs)])
+        self.assertEqual(status, 1)
+        validate.assert_not_called()
+        self.assertEqual(output.getvalue().count('NIRI NOT CHECKED:'), 2)
+        self.assertIn('scheduled watch does not validate release candidates', output.getvalue())
+        self.assertIn('stock niri package installed', output.getvalue())
+        self.assertNotIn('NIRI INCOMPLETE:', output.getvalue())
+
     def test_niri_validation_error_is_not_hidden_by_another_candidate(self):
         fences = [watch.Fence('recipe', 'shell', 'depends', 'niri>=26.04')]
         databases = {repo: {} for repo in watch.REPOS}
@@ -693,8 +709,8 @@ package_shell-tools() {
             'emaki-config': {'fastfetch>=2.68.1', 'niri-emaki>=26.04-6', 'quickshell-emaki>=0.3.1-4', 'kwallet>=6.30'},
             'emaki-desktop': {'fastfetch>=2.68.1', 'niri-emaki>=26.04-6'},
             'emaki-installer': {'archinstall=4.5-1'},
-            'emaki': {'emaki-config=0.3.0-1', 'emaki-desktop=0.3.0-1', 'emaki-keyring>=0.3.0-1',
-                      'emaki-mirrorlist>=0.3.0-1', 'niri-emaki=26.04-11', f'quickshell-emaki=0.3.1-{release}'},
+            'emaki': {'emaki-config=0.3.1-2', 'emaki-desktop=0.3.1-1', 'emaki-keyring>=0.3.1-1',
+                      'emaki-mirrorlist>=0.3.1-1', 'niri-emaki=26.04-11', f'quickshell-emaki=0.3.1-{release}'},
             'niri-emaki': {'libdisplay-info.so=3-64', 'libinput.so=10-64', 'libpipewire-0.3.so=0-64',
                            'libseat.so=1-64', 'libxkbcommon.so=0-64', 'niri>=26.04'},
             'quickshell-emaki': {'libEGL.so', 'libOpenGL.so', 'libcpptrace.so', 'libgcc_s.so',
@@ -704,11 +720,305 @@ package_shell-tools() {
                 for bound in (f'>={lower}', f'<{upper}')},
             'xdg-desktop-portal-gnome-emaki': {'xdg-desktop-portal-gtk>=1.10.0-2'},
         }
-        self.assertEqual({(f.package, f.kind, f.value) for f in fences},
-                         {(package, 'depends', value) for package, values in expected.items()
-                          for value in values})
-        self.assertEqual(len(fences), 33)
+        expected_fences = {(package, 'depends', value) for package, values in expected.items()
+                           for value in values}
+        if activated:
+            # The Qt 6.12 build also bounds SVG at run time and ShaderTools at build time.
+            expected_fences |= {('quickshell-emaki', kind, package + bound)
+                                for kind, package in (('depends', 'qt6-svg'),
+                                                      ('makedepends', 'qt6-shadertools'))
+                                for bound in (f'>={lower}', f'<{upper}')}
+        self.assertEqual({(f.package, f.kind, f.value) for f in fences}, expected_fences)
+        self.assertEqual(len(fences), 37 if activated else 33)
         self.assertTrue(set(expected) <= names)
+
+
+class ScheduledWatch(unittest.TestCase):
+    def setUp(self):
+        loader = importlib.machinery.SourceFileLoader(
+            'arch_watch_notify', str(ROOT / 'packaging/arch-watch-notify'))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        self.notify = importlib.util.module_from_spec(spec)
+        loader.exec_module(self.notify)
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.directory = Path(self.temp.name)
+        env = patch.dict(self.notify.os.environ, {'STATE_DIRECTORY': self.temp.name})
+        env.start()
+        self.addCleanup(env.stop)
+        self.now = 100000
+
+    def state(self):
+        return json.loads((self.directory / 'alarms.json').read_text())
+
+    def status(self):
+        text = (self.directory / 'status').read_text()
+        self.assertEqual(len(text.splitlines()), 1)
+        return json.loads(text)
+
+    def check(self, status=0, output='', delivery_error=None, argv=None):
+        alarms = self.notify.attention_alarms(output)
+        with patch.object(self.notify, 'run_watch', return_value=(status, output, alarms)) as watch_run, \
+                patch.object(self.notify.time, 'time', return_value=self.now), \
+                patch.object(self.notify.subprocess, 'run', side_effect=delivery_error) as send, \
+                redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            returned = self.notify.main(argv or [])
+        if argv:
+            watch_run.assert_not_called()
+        else:
+            self.assertIn(output, (self.directory / 'latest.log').read_text())
+        return returned, [call.args[0] for call in send.call_args_list]
+
+    def test_clean_watch_is_quiet_and_records_last_complete(self):
+        returned, calls = self.check(output='All fences hold.')
+        self.assertEqual((returned, calls), (0, []))
+        self.assertEqual(self.status(), dict(checked_at=self.now, last_complete=self.now,
+                         result='current', incomplete_runs=0, notification_pending=False))
+        self.assertEqual((self.directory / 'last-complete').read_text(), f'{self.now}\n')
+
+    def test_attention_changes_notify_once_and_prioritize_stable(self):
+        output = ('BREAK testing: future Qt fence\nBREAK stable: Qt moved\n'
+                  'REBUILD: extra/qt6-base 6.11.3\nREBUILD: extra-testing/qt6-base 6.12.0\n'
+                  'UPDATE upstream: new release\n')
+        returned, calls = self.check(1, output)
+        self.assertEqual(returned, 1)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(len({args[-2] for args in calls}), 3)
+        self.assertIn('stable updates blocked', calls[2][-2])
+        self.assertIn('stable Qt rebuild required', calls[1][-2])
+        self.assertIn('shell crashes', calls[1][-1])
+        for args in calls[1:]:
+            self.assertIn('--urgency=critical', args)
+        self.assertIn('--urgency=normal', calls[0])
+        for text in ('BREAK testing:', 'REBUILD: extra-testing/', 'UPDATE upstream:'):
+            self.assertIn(text, calls[0][-1])
+        for args in calls:
+            self.assertGreater(int(next(a.split('=')[1] for a in args
+                                       if a.startswith('--expire-time='))), 0)
+        self.assertEqual(self.check(1, output)[1], [])
+        self.assertEqual(self.check(1, '\n'.join(reversed(output.splitlines())))[1], [])
+        changed = output.replace('Qt moved', 'Qt moved again')
+        self.assertEqual(len(self.check(1, changed)[1]), 1)
+        self.check(0)
+        self.assertEqual(len(self.check(1, changed)[1]), 3)
+
+    def test_incomplete_threshold_and_recovery_reset(self):
+        self.check(0)
+        last_complete = self.now
+        for count in range(1, 5):
+            self.now += 60
+            returned, calls = self.check(2, 'ERROR: network unavailable')
+            self.assertEqual(returned, 1)
+            self.assertEqual(len(calls), int(count == 3))
+            self.assertEqual(self.status()['incomplete_runs'], count)
+            self.assertEqual(self.status()['last_complete'], last_complete)
+        self.check(0)
+        self.assertEqual(self.status()['incomplete_runs'], 0)
+        self.assertEqual(self.check(2)[1], [])
+        self.assertEqual(self.check(2)[1], [])
+        self.assertEqual(len(self.check(2)[1]), 1)
+
+    def test_incomplete_alert_when_last_complete_is_six_hours_old(self):
+        self.check(0)
+        self.now += 6 * 60 * 60
+        self.assertEqual(len(self.check(2)[1]), 1)
+        self.assertEqual(self.status()['incomplete_runs'], 1)
+
+    def test_first_check_age_counts_when_no_complete_check_exists(self):
+        self.assertEqual(self.check(2)[1], [])
+        self.now += 6 * 60 * 60
+        self.assertEqual(len(self.check(2)[1]), 1)
+        self.assertIsNone(self.status()['last_complete'])
+
+    def test_stopped_notification_server_keeps_pending_until_delivery(self):
+        for error in (FileNotFoundError('notify-send missing'),
+                      subprocess.CalledProcessError(1, ['notify-send'])):
+            with self.subTest(error=error):
+                self.check(0)
+                returned, calls = self.check(1, 'BREAK stable: Qt moved', error)
+                self.assertEqual((returned, len(calls)), (1, 1))
+                self.assertTrue(self.status()['notification_pending'])
+                self.assertFalse(self.state()['delivered'])
+                self.assertIn('stable', self.state()['pending'])
+                self.assertEqual(self.check(delivery_error=error, argv=['--deliver'])[0], 1)
+                self.assertFalse(self.state()['delivered'])
+                self.assertEqual(self.check(argv=['--deliver'])[0], 0)
+                self.assertFalse(self.status()['notification_pending'])
+                self.assertIn('stable', self.state()['delivered'])
+                self.assertEqual(self.check(1, 'BREAK stable: Qt moved')[1], [])
+
+    def test_partial_alarm_alerts_immediately_and_incomplete_does_not_clear_it(self):
+        self.assertEqual(len(self.check(2, 'BREAK stable: Qt moved')[1]), 1)
+        self.assertEqual(self.check(2)[1], [])
+        self.assertNotIn('stable', self.state()['delivered'])
+        self.assertIn('BREAK stable: Qt moved', self.state()['delivered_lines']['stable'])
+        self.assertEqual(len(self.check(2, 'BREAK stable: Qt moved')[1]), 1)
+        self.assertIn('incomplete', self.state()['delivered'])
+
+    def test_unexpected_errors_exit_outside_unit_success_statuses(self):
+        for mode in ([], ['--failure'], ['--deliver']):
+            with self.subTest(mode=mode):
+                (self.directory / 'alarms.json').write_text('{"first_check": 1}')
+                result = subprocess.run([sys.executable, str(ROOT / 'packaging/arch-watch-notify'),
+                                         *mode], capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn('incomplete alarm state', result.stderr)
+        (self.directory / 'alarms.json').unlink()
+        for error in (PermissionError('state denied'), OSError(28, 'No space left on device')):
+            with self.subTest(error=error), patch.object(self.notify, 'atomic_write', side_effect=error), \
+                    patch.object(self.notify, 'run_watch', return_value=(0, '', {})), \
+                    redirect_stderr(io.StringIO()):
+                self.assertEqual(self.notify.main([]), 2)
+        blocked = self.directory / 'not-a-directory'
+        blocked.touch()
+        with patch.dict(self.notify.os.environ, {'STATE_DIRECTORY': str(blocked)}):
+            result = subprocess.run([sys.executable, str(ROOT / 'packaging/arch-watch-notify')],
+                                    capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        for unit in ('emaki-arch-watch.service', 'emaki-arch-watch-failure.service'):
+            text = (ROOT / 'packaging/systemd' / unit).read_text()
+            self.assertIn('SuccessExitStatus=1\n', text)
+            self.assertNotIn('SuccessExitStatus=2', text)
+
+    def test_stable_fence_suppresses_duplicate_testing_fence(self):
+        output = ('BREAK testing: shell depends [qt<6.12] (recipe): extra-testing/qt 6.13\n'
+                  'BREAK stable: shell depends [qt<6.12] (recipe): extra/qt 6.12\n')
+        calls = self.check(1, output)[1]
+        self.assertEqual(len(calls), 1)
+        self.assertIn('stable updates blocked', calls[0][-2])
+        self.assertNotIn('BREAK testing:', calls[0][-1])
+
+    def test_partial_changes_do_not_replace_complete_signature_or_pending_body(self):
+        full = 'BREAK testing: future fence\nUPDATE upstream: new release\n'
+        partial = 'BREAK testing: future fence\n'
+        for error in (None, FileNotFoundError('notification server unavailable')):
+            with self.subTest(error=error):
+                self.check(0)
+                self.check(1, full, error)
+                before = self.state()
+                calls = self.check(2, partial, error)[1]
+                self.assertEqual(self.state()['delivered'], before['delivered'])
+                self.assertEqual(self.state()['pending'], before['pending'])
+                self.assertEqual(len(calls), int(error is not None))
+                if calls:
+                    self.assertIn('UPDATE upstream:', calls[0][-1])
+                self.assertEqual(len(self.check(1, full)[1]), int(error is not None))
+
+    def test_partial_critical_evidence_preserves_complete_signature(self):
+        full = 'BREAK stable: first fence\nBREAK stable: second fence\n'
+        self.check(1, full)
+        signature = self.state()['delivered']['stable']
+        self.assertEqual(self.check(2, 'BREAK stable: first fence\n')[1], [])
+        self.assertEqual(len(self.check(2, 'BREAK stable: new fence\n')[1]), 1)
+        self.assertEqual(self.state()['delivered']['stable'], signature)
+        self.assertEqual(self.check(1, full)[1], [])
+
+    def test_partial_critical_evidence_retains_pending_complete_signature(self):
+        full = 'BREAK stable: first fence\nBREAK stable: second fence\n'
+        error = FileNotFoundError('notification server unavailable')
+        self.check(1, full, error)
+        signature = self.state()['pending']['stable']['signature']
+        self.check(2, 'BREAK stable: new fence\n', error)
+        pending = self.state()['pending']['stable']
+        self.assertEqual(pending['signature'], signature)
+        self.assertIn('second fence', pending['body'])
+        self.assertIn('new fence', pending['body'])
+        self.check(argv=['--deliver'])
+        self.assertEqual(self.state()['delivered']['stable'], signature)
+        self.assertEqual(self.check(1, full)[1], [])
+
+    def test_health_pending_survives_recovery_and_next_incident_notifies(self):
+        error = FileNotFoundError('notification server unavailable')
+        for key in ('service', 'incomplete'):
+            with self.subTest(key=key):
+                self.check(0)
+                if key == 'service':
+                    self.check(argv=['--failure'], delivery_error=error)
+                else:
+                    for _ in range(3):
+                        self.check(2, delivery_error=error)
+                self.assertIn(key, self.state()['pending'])
+                self.check(0, delivery_error=error)
+                self.assertIn(key, self.state()['pending'])
+                calls = self.check(argv=['--deliver'])[1]
+                self.assertEqual(len(calls), 1)
+                self.assertLess(calls[0][-1].index('failed.' if key == 'service' else 'Repeated'),
+                                calls[0][-1].index('Read'))
+                self.assertNotIn(key, self.state()['delivered'])
+                self.assertFalse(self.state()['pending'])
+                if key == 'service':
+                    self.assertEqual(len(self.check(argv=['--failure'])[1]), 1)
+                else:
+                    self.check(2)
+                    self.check(2)
+                    self.assertEqual(len(self.check(2)[1]), 1)
+
+    def test_delivery_retry_sends_critical_last_after_state_reload(self):
+        output = ('BREAK stable: moved\nREBUILD: extra/qt6-base 6.12.0\n'
+                  'UPDATE upstream: new release\n')
+        self.check(1, output, FileNotFoundError('notification server unavailable'))
+        self.check(argv=['--failure'], delivery_error=FileNotFoundError('unavailable'))
+        calls = self.check(argv=['--deliver'])[1]
+        self.assertEqual(len(calls), 4)
+        self.assertTrue(all('--urgency=normal' in call for call in calls[:2]))
+        self.assertTrue(all('--urgency=critical' in call for call in calls[2:]))
+        self.assertIn('stable updates blocked', calls[-1][-2])
+
+    def test_service_failure_is_persisted_and_deduplicated(self):
+        self.check(0)
+        completed = self.now
+        self.now += 60
+        returned, calls = self.check(argv=['--failure'])
+        self.assertEqual(returned, 0)
+        self.assertEqual(len(calls), 1)
+        self.assertIn('service failed', calls[0][-2])
+        self.assertEqual(self.status()['result'], 'failed')
+        self.assertEqual(self.status()['last_complete'], completed)
+        self.assertEqual(self.check(argv=['--failure'])[1], [])
+        self.check(0)
+        self.assertEqual(len(self.check(argv=['--failure'])[1]), 1)
+
+    def attempts(self, responses):
+        elapsed = [0]
+        def sleep(seconds):
+            elapsed[0] += seconds
+        def run(args, **kwargs):
+            response = responses.pop(0)
+            if isinstance(response, Exception):
+                elapsed[0] += kwargs['timeout']
+                raise response
+            return response
+        with patch.object(self.notify.time, 'monotonic', side_effect=lambda: elapsed[0]), \
+                patch.object(self.notify.time, 'sleep', side_effect=sleep) as backoff, \
+                patch.object(self.notify.subprocess, 'run', side_effect=run) as process:
+            result = self.notify.run_watch(ROOT)
+        self.assertLessEqual(elapsed[0], 600)
+        for call in process.call_args_list:
+            self.assertIn('--scheduled', call.args[0])
+            self.assertLessEqual(call.kwargs['timeout'], 180)
+            self.assertEqual(call.kwargs['stderr'], subprocess.STDOUT)
+        return result, process, backoff
+
+    def test_transient_failure_recovers_on_third_attempt(self):
+        result, process, backoff = self.attempts([
+            subprocess.CompletedProcess([], 2, 'ERROR: unavailable\n'),
+            subprocess.CompletedProcess([], 2, 'ERROR: unavailable\n'),
+            subprocess.CompletedProcess([], 0, 'All fences hold.\n')])
+        self.assertEqual(result[0], 0)
+        self.assertEqual(result[2], {})
+        self.assertEqual(process.call_count, 3)
+        self.assertEqual([c.args[0] for c in backoff.call_args_list], [10, 30])
+        self.assertIn('Attempt 3 exit=0', result[1])
+
+    def test_three_timeouts_preserve_partial_alarm_within_budget(self):
+        result, process, backoff = self.attempts([
+            subprocess.TimeoutExpired(['arch-watch'], 180,
+                                      output=b'BREAK stable: Qt moved\n') for _ in range(3)])
+        self.assertEqual(result[0], 2)
+        self.assertEqual(process.call_count, 3)
+        self.assertEqual(backoff.call_count, 2)
+        self.assertIn('stable', result[2])
+        self.assertIn('timed out', result[1])
 
 
 if __name__ == '__main__':

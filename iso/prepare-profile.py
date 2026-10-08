@@ -11,6 +11,8 @@ def prepare(profile, repo, version, key=None, template=False):
         raise ValueError('invalid version')
     (profile / 'VERSION').write_text(version + '\n')
     if not template:
+        # mkarchiso v91 replaces HookDir with the live-root admin hook path;
+        # build.sh asserts that generated setting after pass one.
         # No network fallback while constructing the live root; all packages have
         # already been resolved into this one signed offline repository.
         (profile / 'pacman.conf').write_text(f'''[options]
@@ -73,6 +75,8 @@ Server = file://{repo}
             mode = '0700'
         elif relative == '/etc/shadow':
             mode = '0400'
+        elif relative == '/etc/sudoers.d':
+            mode = '0750'
         elif relative == '/etc/sudoers.d/10-live':
             mode = '0440'
         elif relative in ('/home/live', '/home/live/.ssh', '/etc/emaki-test'):

@@ -16,7 +16,7 @@ WRAPPER = ROOT / 'scripts/emaki-autostart'
 COMMANDS = {
     'wallpaper': ['emaki-session-wallpaper'],
     'clipboard': ['python3', '-B', '/usr/share/emaki/shell/helpers/clipboard_store.py', '--watch'],
-    'authentication': ['env', 'GTK_THEME=Emaki', '/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1'],
+    'authentication': ['env', 'QT_QUICK_CONTROLS_STYLE=Fusion', '/usr/lib/polkit-kde-authentication-agent-1'],
     'automount': ['udiskie', '--no-automount'],
     'shell': ['systemctl', '--user', 'start', '--no-block', 'emaki-shell.service'],
     'sleep-guard': ['systemctl', '--user', 'start', '--no-block', 'emaki-sleep-guard.service'],

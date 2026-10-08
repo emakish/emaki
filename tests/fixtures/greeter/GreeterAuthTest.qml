@@ -54,6 +54,8 @@ ShellRoot {
             ready: auth.fieldReady,
             prompt: auth.prompt,
             message: auth.message,
+            displayMessage: auth.displayMessage,
+            lockoutRemaining: auth.lockoutRemaining,
             kind: auth.messageKind,
             attempt: auth.attemptId,
             successes: successes,
@@ -87,7 +89,10 @@ ShellRoot {
             session.go("locked");
         } else if (name === "cancel")
             auth.cancel();
-        else if (name === "reset")
+        else if (name === "expireLockout") {
+            auth._lockoutUntil = Date.now() - 1;
+            auth.updateLockoutTime();
+        } else if (name === "reset")
             auth.reset();
         else if (name === "suspend")
             auth.suspend();
@@ -114,6 +119,18 @@ ShellRoot {
         else if (name === "unknownUser") {
             auth.message = "Unknown user";
             auth.messageKind = "username";
+        } else if (name === "lockoutNotice") {
+            // Exercise the production message receiver without a socket server.
+            auth.checking = true;
+            auth._workerAttempt = auth.attemptId;
+            auth._outcome = "pending";
+            auth.workerEvent(JSON.stringify({
+                event: "message",
+                attempt: auth.attemptId,
+                message: "(7 minutes left to unlock)",
+                error: false
+            }));
+            auth.complete("rejected");
         } else if (name === "disable")
             auth.enabled = false;
         else if (name === "enable")

@@ -413,16 +413,75 @@ def http_last_modified(url):
     return email.utils.parsedate_to_datetime(value) if value else None
 
 
-def http_range(url, start, end):
-    """Bytes start..end (inclusive) of url; the server must answer 206 (resumable downloads)."""
+# Every answer the download Worker gives for an image carries this header. The bucket's own
+# domain ignores If-Range and, depending on its cache state, answers a range of the image with
+# the whole file, so a 206 without the header proves nothing about resumed downloads.
+IMAGE_MARKER = 'X-Emaki-Image'
+
+
+def worker_answer(response, what, marker):
+    if marker and response.headers.get(marker) != '1':
+        raise Refused(f'{what} was not answered by the download Worker (no {marker}: 1, HTTP '
+                      f'{response.status}); add its DL binding and the dl.emaki.sh/iso/* route '
+                      '(docs/mirror.md, "The pointer Worker")')
+
+
+def http_range(url, start, end, if_range=None, marker=None):
+    """Bytes start..end (inclusive) of url; the server must answer 206 (resumable downloads).
+    With if_range (the ETag a browser kept), this is the request a browser resumes with; with
+    marker, the answer must carry that header set to 1."""
     request = urllib.request.Request(url, headers={'User-Agent': 'emaki-publish', 'Range': f'bytes={start}-{end}'})
+    if if_range is not None:
+        request.add_header('If-Range', if_range)
+    sent = 'Range' if if_range is None else f'Range and If-Range: {if_range}'
     try:
         with urllib.request.urlopen(request, timeout=120) as response:
+            worker_answer(response, f'GET {url} with {sent}', marker)
             if response.status != 206:
-                raise Refused(f'GET {url} with Range answered {response.status}, not 206')
+                raise Refused(f'GET {url} with {sent} answered {response.status}, not 206')
             return response.read()
     except urllib.error.HTTPError as error:
-        raise Refused(f'GET {url} with Range: HTTP {error.code}') from None
+        with error:
+            worker_answer(error, f'GET {url} with {sent}', marker)
+        raise Refused(f'GET {url} with {sent}: HTTP {error.code}') from None
+
+
+def http_etag(url, marker=None):
+    """The strong ETag a HEAD of url answers: the validator a browser resumes a download with."""
+    request = urllib.request.Request(url, method='HEAD', headers={'User-Agent': 'emaki-publish'})
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            worker_answer(response, f'HEAD {url}', marker)
+            value = response.headers.get('ETag')
+    except urllib.error.HTTPError as error:
+        with error:
+            worker_answer(error, f'HEAD {url}', marker)
+        raise Refused(f'HEAD {url}: HTTP {error.code}') from None
+    except urllib.error.URLError as error:
+        raise Refused(f'HEAD {url}: {error.reason}') from None
+    if not value or not re.fullmatch(r'"[^"]*"', value):
+        raise Refused(f'HEAD {url} answered no strong ETag ({value!r}); a browser could not resume')
+    return value
+
+
+def check_image_route(address):
+    """Refused unless the download Worker answers the image address (uploaded or not), before
+    anything is uploaded. The HEAD carries a query string: if the bucket's own domain answered a
+    missing image, its 404 would be cached for hours under the plain address."""
+    url = f'{address}?publish-check'
+    request = urllib.request.Request(url, method='HEAD', headers={'User-Agent': 'emaki-publish'})
+    try:
+        try:
+            response = urllib.request.urlopen(request, timeout=60)
+        except urllib.error.HTTPError as error:
+            response = error
+        with response:
+            worker_answer(response, f'HEAD {url}', IMAGE_MARKER)
+            # A marked 503 means the Worker cannot read its bucket: refuse before uploading.
+            if response.status not in (200, 404):
+                raise Refused(f'HEAD {url} answered {response.status} from the download Worker')
+    except urllib.error.URLError as error:
+        raise Refused(f'HEAD {url}: {error.reason}') from None
 
 
 def http_sha256(url):
@@ -1958,6 +2017,8 @@ def iso_publish(publisher, path, full_check):
     dl = open_backend(args.dl_backend, dry_run)
     public = args.dl_public_url.rstrip('/')
     key = f'iso/{version}/{image.name}'
+    # Without the download Worker a browser cannot resume the image: refuse before any upload.
+    check_image_route(f'{public}/{key}')
     # Sources must exist before an image or its download directions can become public.
     for source_key_, source_path in arch_objects.items():
         upload_image_source(publisher, dl, source_key_, source_path)
@@ -2057,14 +2118,27 @@ def iso_publish(publisher, path, full_check):
         head = stream.read(1048576)
         stream.seek(max(0, size - 1048576))
         tail = stream.read()
-    if http_range(f'{public}/{key}', 0, len(head) - 1) != head or \
-            http_range(f'{public}/{key}', size - len(tail), size - 1) != tail:
+    # Every read of the image must come from the download Worker (IMAGE_MARKER): the bucket's
+    # own domain mostly answers 206 too, but ignores If-Range and after a cache miss answers a
+    # range with the whole file.
+    if http_range(f'{public}/{key}', 0, len(head) - 1, marker=IMAGE_MARKER) != head or \
+            http_range(f'{public}/{key}', size - len(tail), size - 1, marker=IMAGE_MARKER) != tail:
         raise Refused('the first or last megabyte of the published image differs')
+    # A browser resumes an interrupted download with If-Range naming the ETag it kept; any other
+    # answer than 206 starts the download again from zero.
+    middle = size // 2
+    with image.open('rb') as stream:
+        stream.seek(middle)
+        resumed = stream.read(1048576)
+    if http_range(f'{public}/{key}', middle, middle + len(resumed) - 1, marker=IMAGE_MARKER,
+                  if_range=http_etag(f'{public}/{key}', marker=IMAGE_MARKER)) != resumed:
+        raise Refused('a resumed download of the published image (Range with If-Range) differs')
     if full_check:
         if http_sha256(f'{public}/{key}') != digest:
             raise Refused('the full anonymous download differs from the image')
         say('full anonymous download: sha256 identical')
-    say(f'published {public}/{key} (+ .sig, .sha256); first and last megabyte read back identical')
+    say(f'published {public}/{key} (+ .sig, .sha256); first and last megabyte read back identical; '
+        'a resumed download (If-Range) answers 206')
 
 
 IMAGE_SOURCE_FILES = ('SOURCES-ISO.txt', 'ARCH-SOURCES.json', 'MISSING-SOURCES.json')

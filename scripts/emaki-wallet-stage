@@ -1,0 +1,186 @@
+#!/usr/bin/python3 -I
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Open the migration destination on a private bus before desktop clients start."""
+import fcntl
+import hashlib
+import json
+import os
+import resource
+import signal
+from pathlib import Path
+import socket
+import stat
+import subprocess
+import sys
+import time
+
+
+def derive_key(password, salt):
+    if len(salt) != 56:
+        raise RuntimeError('Invalid wallet salt.')
+    return hashlib.pbkdf2_hmac('sha512', password, salt, 50000, dklen=56)
+
+
+def secret_call(path, interface, method, *args):
+    return subprocess.check_output(['busctl', '--user', '--timeout=2', '--auto-start=no',
+        'call', 'org.freedesktop.secrets', path, interface, method, *args],
+        text=True, stderr=subprocess.DEVNULL, timeout=3).strip()
+
+
+def wallet_salt():
+    # kwallet-pam's default kdehome is .local/share even with a custom XDG path.
+    salt_path = Path.home() / '.local/share/kwalletd/kdewallet.salt'
+    if not salt_path.exists() and not salt_path.is_symlink():
+        data = Path(os.environ.get('XDG_DATA_HOME') or Path.home() / '.local/share')
+        wallets = data / 'kwalletd'
+        if wallets.exists():
+            with os.scandir(wallets) as entries:
+                if any(entry.name.endswith('.kwl') for entry in entries):
+                    raise RuntimeError('The existing wallet salt is missing; restore its backup before recovery.')
+        salt_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        try:
+            with os.fdopen(os.open(salt_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), 'wb') as output:
+                output.write(os.urandom(56))
+                output.flush()
+                os.fsync(output.fileno())
+        except FileExistsError:
+            pass
+    with os.fdopen(os.open(salt_path, os.O_RDONLY | os.O_NOFOLLOW), 'rb') as source:
+        return source.read(57)
+
+
+def stage_unlocked(root, lock_fd):
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    info = root.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise RuntimeError('Invalid migration directory.')
+    salt = wallet_salt()
+    password = sys.stdin.buffer.read(4097)
+    if not password or len(password) > 4096:
+        raise RuntimeError('Missing login password.')
+    key = derive_key(password, salt)
+    del password
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(str(root / 'environment'))
+    listener.listen(1)
+    read_fd, write_fd = os.pipe()
+    process = None
+    collection = '/'
+    saved = False
+    try:
+        env = dict(os.environ, PAM_KWALLET5_LOGIN=str(root / 'environment'),
+                   QT_QPA_PLATFORM='offscreen')
+        process = subprocess.Popen(['/usr/bin/ksecretd', '--pam-login', str(read_fd),
+            str(listener.fileno())], env=env, pass_fds=(read_fd, listener.fileno(), lock_fd),
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        os.close(read_fd)
+        read_fd = -1
+        os.write(write_fd, key)
+        del key
+        os.close(write_fd)
+        write_fd = -1
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.settimeout(3)
+            connection.connect(str(root / 'environment'))
+            connection.sendall(b'QT_QPA_PLATFORM=offscreen\n')
+        listener.close()
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline and process.poll() is None:
+            try:
+                collection = json.loads(secret_call('/org/freedesktop/secrets',
+                    'org.freedesktop.Secret.Service', 'ReadAlias', 's', 'default')[2:])
+                if collection != '/' and secret_call(collection, 'org.freedesktop.DBus.Properties',
+                        'Get', 'ss', 'org.freedesktop.Secret.Collection', 'Locked') == 'v b false':
+                    break
+            except (OSError, ValueError, subprocess.SubprocessError):
+                pass
+            time.sleep(.1)
+        else:
+            raise RuntimeError('The migration destination could not be unlocked.')
+        ready = root / 'ready.pending'
+        with os.fdopen(os.open(ready, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), 'w') as output:
+            json.dump({'address': os.environ['DBUS_SESSION_BUS_ADDRESS'], 'collection': collection}, output)
+        ready.replace(root / 'ready')
+        deadline = time.monotonic() + 90
+        while not (root / 'done').exists():
+            if time.monotonic() >= deadline or process.poll() is not None:
+                raise RuntimeError('The migration destination timed out.')
+            time.sleep(.1)
+        if secret_call(collection, 'org.freedesktop.DBus.Properties', 'Get', 'ss',
+                       'org.freedesktop.Secret.Collection', 'Locked') != 'v b true':
+            secret_call('/org/freedesktop/secrets', 'org.freedesktop.Secret.Service',
+                        'Lock', 'ao', '1', collection)
+        saved = True
+    finally:
+        listener.close()
+        for descriptor in (read_fd, write_fd):
+            if descriptor >= 0:
+                os.close(descriptor)
+        if process is not None and process.poll() is None:
+            if not saved and collection != '/':
+                try:
+                    if secret_call(collection, 'org.freedesktop.DBus.Properties', 'Get', 'ss',
+                                   'org.freedesktop.Secret.Collection', 'Locked') != 'v b true':
+                        secret_call('/org/freedesktop/secrets', 'org.freedesktop.Secret.Service',
+                            'Lock', 'ao', '1', collection)
+                except (OSError, subprocess.SubprocessError):
+                    pass
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=3)
+
+
+def stage(root):
+    info = root.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise RuntimeError('Invalid migration directory.')
+    directory = Path.home() / '.cache/emaki-wallet-login'
+    directory.parent.mkdir(mode=0o700, exist_ok=True)
+    directory.mkdir(mode=0o700, exist_ok=True)
+    info = directory.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise RuntimeError('Invalid migration lock directory.')
+    with os.fdopen(os.open(directory / 'stage.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600), 'w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if root.name == 'target' and (root.parent / 'done').exists():
+            raise RuntimeError('Password copying was cancelled.')
+        address = os.environ.get('EMAKI_DESKTOP_BUS')
+        if address:
+            # A daemon can register its own name before Secret Service is ready.
+            for name in ('org.kde.ksecretd', 'org.freedesktop.secrets',
+                         'org.freedesktop.impl.portal.desktop.kwallet'):
+                owner = subprocess.check_output(['busctl', '--address=' + address,
+                    '--timeout=2', '--auto-start=no', 'call', 'org.freedesktop.DBus',
+                    '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'NameHasOwner',
+                    's', name], text=True, stderr=subprocess.DEVNULL, timeout=3)
+                if owner.strip() != 'b false':
+                    raise RuntimeError('A session wallet is already running; use recovery in that session.')
+        stage_unlocked(root, lock.fileno())
+
+
+def main():
+    if len(sys.argv) == 2:
+        if os.environ.get('DBUS_SESSION_BUS_ADDRESS'):
+            os.environ.setdefault('EMAKI_DESKTOP_BUS', os.environ['DBUS_SESSION_BUS_ADDRESS'])
+        os.execvp('dbus-run-session', ['dbus-run-session', '--', '/usr/bin/python3', '-I', '-B',
+            str(Path(__file__).resolve()), '--inside', sys.argv[1]])
+    if len(sys.argv) != 3 or sys.argv[1] != '--inside':
+        return 2
+    def interrupted(signum, frame):
+        raise RuntimeError('Migration was interrupted.')
+    signal.signal(signal.SIGTERM, interrupted)
+    signal.signal(signal.SIGINT, interrupted)
+    try:
+        stage(Path(sys.argv[2]))
+    except (RuntimeError, OSError, ValueError, subprocess.SubprocessError):
+        print('Saved passwords could not be copied to the new wallet [KWallet].', file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

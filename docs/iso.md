@@ -153,11 +153,16 @@ scp -P 2222 -i "$HOME/VMs/emaki-vm/id_vm" \
 
 ## Live and installer layout
 
+mkarchiso v91 replaces profile `HookDir` settings with the live root's
+`etc/pacman.d/hooks/` path before pacstrap runs. Build-host admin hooks are not
+used. After pass one, `build.sh` asserts that the generated `iso.pacman.conf`
+contains exactly this single `HookDir`; a changed setting stops the build.
+
 | Path | Purpose |
 |---|---|
 | `/emaki/repo` on ISO | Signed, complete offline package repository outside squashfs |
 | `/run/archiso/bootmnt/emaki/repo` | Repository location after live boot |
-| `/etc/emaki-installer/pacman-offline.conf` | Pacstrap configuration containing only `[emaki-offline]` |
+| `/etc/emaki-installer/pacman-offline.conf` | Validated input containing only `[emaki-offline]`; pacstrap uses a generated private configuration with an empty `HookDir` |
 | `/etc/pacman.conf` in live root | Same offline-only repository configuration |
 | `/etc/emaki-live/greetd.toml` | Normal Emaki greeter plus one-time initial `live` session |
 | `/home/live/.config/emaki/niri-emaki.kdl` | Only `spawn-at-startup "emaki-install"` |
@@ -287,8 +292,8 @@ Windows"). The alongside check uses a synthetic Windows disk: its Microsoft
 path holds a diagnostic EFI program, so it tests chainloading only, not Windows. The last
 encrypted run on the full 0.1.2 test ISO ended rc=1.
 
-Install alongside Windows is not offered in 0.3.0: the 0.3.0 installer has no experimental
-options. On a 0.3.0 ISO the alongside check asks the worker for a plan only, sees the mode
+Install alongside Windows is not offered in 0.3.1: the 0.3.1 installer has no experimental
+options. On a 0.3.1 ISO the alongside check asks the worker for a plan only, sees the mode
 refused, prints `NOT APPLICABLE` and exits 77 without touching the target disk; treat 77 as
 "not run", never as a pass.
 
@@ -446,20 +451,38 @@ wait for a fixed package release before updating it again.
 
 `tests/vm/rollback-check.sh` is the host-queue acceptance job. With the session's
 `VMDIR` set to a disposable directory below the VM work root, pass `--base DIR`,
-`--iso IMAGE`, `--candidate ID`, `--provenance JSON`, `--plan PLAN` and `--identity KEY`.
+`--iso IMAGE`, `--candidate EMAKI_COMMIT`, `--provenance JSON`, `--plan PLAN` and `--identity KEY`.
+The candidate must be the full 40-character `EMAKI_COMMIT` recorded in the image's
+`/usr/lib/emaki-release`; abbreviated commits and free-form build IDs are not accepted.
 The base must be a separate installed candidate fixture; provenance binds the ISO,
 disk, NVRAM and plan by SHA256 and records installed package versions. The checker
 copies the fixture, verifies installed packages before damage, uses KVM and SSH
 port 2251, then tests recovery, promotion, reboot, Snapper/menu updates, undo and
 cleanup. It uploads no production payload replacements. All images and logs stay
 below `VMDIR`; the base is read-only and the test VM is stopped in a `finally` block.
-Unsupported encrypted or hibernating fixtures report `NOT TESTED` (exit 77).
+For encrypted Btrfs with hibernation, use a fresh installation instead of `--base`:
+
+```sh
+VMDIR="$PWD/.cache/evidence/u7d/rollback-runs" python3 tests/vm/rollback-check.py --install-encrypted-hibernation --work-root "$PWD/.cache/evidence/u7d" --iso "$ISO" --candidate "$EMAKI_COMMIT" --iso-sha256 "$ISO_SHA256" --package "emaki=$EMAKI_VERSION" --package "emaki-config=$CONFIG_VERSION" --package "emaki-desktop=$DESKTOP_VERSION" --identity "$VM_KEY"
+```
+
+Supply the digest, full 40-character `EMAKI_COMMIT` and package versions from the candidate's independently
+verified build records. This mode builds its plan from `plan-erase-btrfs.json`, enables
+account-password encryption and hibernation, selects minimal software and disables online
+updates. Packages come from the ISO's offline repository. It assesses each boot's unlock,
+menu and greeter frames and compares the real swap block device, offset and initramfs
+configuration across rollback and undo. It does not hibernate the guest. Actual resume and
+the recovery/authorization dialog appearance still need separate acceptance. Other
+encrypted or hibernating fixtures remain `NOT TESTED` (exit 77).
 
 
 The release gate (`tests/vm/release-gate.sh`) includes `rollback` and `boot-menu`
-jobs. Missing evidence is `NOT TESTED` and blocks `RESULT: SCRIPTS PASSED`.
-For rollback, supply `--candidate ID --rollback-base DIR --rollback-provenance JSON
---rollback-plan PLAN --rollback-identity KEY`. The gate validates the candidate
+jobs. Missing evidence is `NOT TESTED` and blocks a successful script result. The final
+summary names functional captures still requiring human review; a functional script pass
+does not accept their appearance.
+For rollback, supply `--candidate EMAKI_COMMIT --rollback-base DIR --rollback-provenance JSON
+--rollback-plan PLAN --rollback-identity KEY`, using the full 40-character image commit.
+The gate validates the candidate
 manifest against the test ISO, disk, NVRAM and plan, then runs the rollback check;
 an old PASS marker cannot substitute for that run.
 
@@ -477,17 +500,51 @@ is additional to the separately signed release walk.
 
 ## Installed boot update acceptance
 
-`emaki-config` installs `emaki-boot-refresh`, `95-emaki-boot-refresh.hook` and
-`emaki-boot-complete.service`. Refresh stages the GRUB image, modules, artwork and
-menu, with normal entries pointing at live `/boot` kernels/initramfs. Stock
+`emaki-config` installs `emaki-boot-refresh`, `95-emaki-boot-refresh.hook`,
+`emaki-boot-complete.service` and `emaki-boot-refresh.service`. Refresh stages
+the GRUB image, modules, artwork and menu, with normal entries pointing at live
+`/boot` kernels/initramfs. Stock
 mkinitcpio owns initramfs creation. `emaki-boot-refresh --check` reports disk
 identity without changing boot files; the regular command retries a refusal.
 Unchanged loader inputs regenerate only the menu. Kernel and initramfs updates do not
 start another trial. An exhausted candidate keeps the old loader while its menu is
 updated; changed loader inputs or a missing root manifest can offer a new candidate.
 Refresh requires the installed writable ext4/btrfs root and the fstab ESP. Secure
-Boot, BIOS, foreign/missing fallback loaders and ESPs smaller than 256 MiB refuse
-before publication. Live images, installation roots and chroots skip silently.
+Boot, BIOS and missing fallback loaders refuse before publication; foreign fallback
+loaders and ESPs smaller than 256 MiB keep the existing loader. Plain roots require
+an empty GRUB abstraction and GPT partition map. The root UUID's `blkid` device
+set must match `grub-probe --target=device /boot` after resolving device aliases:
+multiple btrfs members are valid, but an additional cloned device refuses refresh.
+An encrypted root's LUKS UUID must identify exactly one device, including closed
+containers. These storage checks run only on the refresh path; `--check` and
+`--mark-good` do not scan all devices or reject confirmation because of a clone.
+Live images, installation roots and chroots skip silently.
+
+A real hook or manual refresh writes `/var/lib/emaki/boot-refresh-pending` before
+discovery and resets its budget to three boot attempts. Fresh installation skips
+create no marker, so the first installed boot does not stage an unsolicited trial.
+After multi-user.target and boot completion, `emaki-boot-refresh.service` runs
+`emaki-boot-refresh --retry` with that marker or a package lock. Without the marker,
+it only recovers a recognized previous-boot refresh lock. Each boot attempt consumes its
+budget before refresh work, including package-lock contention or interruption.
+A held run lock defers retry with exit zero and leaves the marker and attempt
+count unchanged. Success, a kept
+loader or a permanent refusal clears pending retry; kept/refused outcomes are
+recorded and reported once, without a failed unit for permanent refusal. Transient
+command or I/O failures get at most three boot attempts, then stop. A subsequent
+hook or manual refresh can start a new budget. Both retry and boot completion have
+a five-minute start timeout and a 90-second stop timeout. A start timeout always
+leaves the unit failed with `Result=timeout`, even if SIGTERM cleanup exits zero.
+Retry exclusively creates pacman's `/var/lib/pacman/db.lck` for its refresh work,
+writes and fsyncs `emaki-boot-refresh:<boot UUID>`, and removes its lock on normal
+exit. After a crash, a later boot removes only a recognized previous-boot token
+with same-file checks, even when the retry budget is exhausted or the marker has
+already been cleared. Manual and hook refreshes run the same recovery before work.
+Lock removal is synced before clearing pending retry. Foreign and
+current-boot locks remain untouched. Rollback also recovers an exact previous-boot
+refresh token in the live root before acquiring its own package lock. In snapshots,
+it removes the copied token only from the prepared writable root. Refresh checks
+staged modules against packaged modules again after `grub-mkimage`.
 
 Each image carries matching modules in its memdisk and reads the current canonical
 menu, including after root restoration. Refresh keeps both firmware paths and stages
@@ -502,7 +559,8 @@ NVRAM is untouched. Cleanup retains only booted-good/newest GRUB generations, ev
 after a refusal. The ESP's `EFI/Emaki/boot-state.json` records those generations and
 the fallback checksum; `boot-intent.json` records interrupted publication for recovery
 on the next refresh or completed boot. Do not manually remove these files or retained
-generations. Detailed update output is in `/var/log/emaki-boot-refresh.log`.
+generations. Detailed update output is in `/var/log/emaki-boot-refresh.log`,
+retaining at most the latest 1 MiB.
 
 Run the complete [installed boot delivery matrix](../tests/vm/boot-delivery.md),
 including 45 refreshes, kernel upgrade plus refusal, rename power cuts with
@@ -560,7 +618,7 @@ sudo cat /boot/emaki/*/manifest.json
 
 Capture the complete package transaction output. It must show the refresh hook
 and its success message. Do not run a manual refresh before the first reboot:
-that would hide a broken package hook. The 0.3.0 packages must upgrade the installed
+that would hide a broken package hook. The 0.3.1 packages must upgrade the installed
 0.2.0 packages so ordinary `pacman -Syu` selects them. No publication is part of this check.
 
 Reboot and capture the actual framebuffer:

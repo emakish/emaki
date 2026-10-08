@@ -236,6 +236,7 @@ def uninstall_recipe_checks(base):
         'usr/lib/systemd/user/emaki-greeter-wallpaper.service',
         'usr/lib/systemd/user/emaki-greeter-wallpaper-watch.service',
         'usr/lib/tmpfiles.d/emaki-greeter.conf', 'usr/lib/pam.d/emaki-greetd',
+        'usr/lib/pam.d/emaki-greetd-auth',
         'etc/xdg/hypr/hyprlock.conf', 'etc/niri/config.kdl', 'etc/skel/.config/kitty/kitty.conf',
         # The fork session (install-niri-emaki): its wrapper reads the fork configs under share.
         'usr/bin/niri-emaki-session', 'usr/share/emaki/niri/fork.kdl',

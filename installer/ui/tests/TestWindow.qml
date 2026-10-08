@@ -44,7 +44,7 @@ ShellRoot {
         }
         console.log("LAYOUT_OK " + content.width + "x" + content.height);
         if (Quickshell.env("EMAKI_INSTALLER_ISO_FONTS") === "1") {
-            if (copy.fontInfo.family !== "Adwaita Sans")
+            if (copy.fontInfo.family !== "Noto Sans")
                 return false;
             console.log("FONT_OK " + copy.fontInfo.family);
         }
@@ -120,6 +120,7 @@ ShellRoot {
         id: controller
         mockTransport: true
         catalog: ({
+                boot_removable: test.screenName === "done-restart-removable",
                 layouts: [
                     {
                         layout: "us",
@@ -213,7 +214,7 @@ ShellRoot {
                     controller.login = "demo";
                     controller.layouts = ["us", "ru"];
                     controller.media = ["/run/media/live/LOGS"];
-                    if (["review", "alongside-review", "review-encrypted", "plan-errors", "install", "install-signatures", "install-updates", "install-step", "done", "done-warning", "done-no-package-lists", "done-wifi-not-copied", "error-login-name", "error", "error-details", "error-real"].indexOf(test.screenName) >= 0) {
+                    if (["review", "alongside-review", "review-encrypted", "plan-errors", "install", "install-signatures", "install-updates", "install-step", "done", "done-restart", "done-restart-removable", "done-warning", "done-no-package-lists", "done-wifi-not-copied", "error-login-name", "error", "error-details", "error-real"].indexOf(test.screenName) >= 0) {
                         if (test.screenName === "review-encrypted") {
                             controller.encryption = "encrypted";
                             controller.hibernation = true;
@@ -335,12 +336,14 @@ ShellRoot {
                         shot.restart();
                     }
                 } else if (message.type === "plan_ack") {
-                    if (["install", "install-signatures", "install-updates", "install-step", "done", "done-warning", "done-no-package-lists", "done-wifi-not-copied", "error-login-name", "error", "error-details", "error-real"].indexOf(test.screenName) >= 0) {
+                    if (["install", "install-signatures", "install-updates", "install-step", "done", "done-restart", "done-restart-removable", "done-warning", "done-no-package-lists", "done-wifi-not-copied", "error-login-name", "error", "error-details", "error-real"].indexOf(test.screenName) >= 0) {
                         controller.agreed = true;
                         controller.confirm();
                     } else
                         shot.restart();
                 } else if (message.type === "done" || message.type === "error" || (message.type === "state" && test.screenName === "install") || (message.type === "progress" && test.screenName.indexOf("install-") === 0)) {
+                    if (test.screenName.indexOf("done-restart") === 0)
+                        controller.removeUsbPrompt = true;
                     if (test.screenName === "error-details")
                         (test.findItem(content, "errorDetailsToggle") as C.CheckBox).toggle();
                     shot.restart();
@@ -353,10 +356,14 @@ ShellRoot {
         implicitWidth: Number(Quickshell.env("EMAKI_INSTALLER_WIDTH") || 1180)
         implicitHeight: Number(Quickshell.env("EMAKI_INSTALLER_HEIGHT") || 820)
         color: "#fff8f3"
-        UI.InstallerView {
-            id: content
+        Item {
+            id: captureRoot
             anchors.fill: parent
-            controller: controller
+            UI.InstallerView {
+                id: content
+                anchors.fill: parent
+                controller: controller
+            }
         }
     }
     Timer {
@@ -517,7 +524,9 @@ ShellRoot {
             }
             if (test.screenName === "done-warning" || test.screenName === "done-no-package-lists") {
                 const warning = test.findItem(content, "doneWarnings") as Text;
-                if (!warning || !warning.visible || warning.text.indexOf("sudo pacman -Syu") < 0) {
+                const body = test.findItem(content, "installerBody");
+                const area = warning ? warning.mapToItem(body, 0, 0, warning.width, warning.height) : null;
+                if (!area || !warning.visible || warning.text !== controller.session.doneWarnings.join("\n") || warning.text.length === 0 || warning.text.indexOf("sudo") >= 0 || warning.truncated || area.x < 0 || area.x + area.width > body.width + .5 || area.y < 0 || area.y + area.height > body.height + .5) {
                     console.error("Done warning not shown: " + (warning ? warning.visible + " " + warning.text : "missing"));
                     Qt.quit();
                     return;
@@ -579,7 +588,27 @@ ShellRoot {
                 console.log("CONSOLE_WARNING " + warning.text);
             }
             test.contentEvidence(test.screenName);
-            content.grabToImage(function (result) {
+            if (test.screenName.indexOf("done-restart") === 0) {
+                const message = test.findItem(content.Window.window.contentItem, "removeUsbMessage") as Text;
+                const background = test.findItem(content.Window.window.contentItem, "removeUsbBackground") as Rectangle;
+                // Qt creates the overlay without a QML engine. Retain its scene
+                // under a QML-owned root so grabToImage includes the actual popup.
+                message.parent.parent.parent = captureRoot;
+                const bounds = message.mapToItem(content, 0, 0, message.width, message.height);
+                console.log("RESTART_FRAME " + JSON.stringify({
+                    text: message.text,
+                    color: String(message.color),
+                    background: String(background.color),
+                    x: bounds.x,
+                    y: bounds.y,
+                    width: bounds.width,
+                    height: bounds.height,
+                    truncated: message.truncated,
+                    focused: message.activeFocus
+                }));
+            }
+            const capture = test.screenName.indexOf("done-restart") === 0 ? captureRoot : content;
+            capture.grabToImage(function (result) {
                 if (!result.saveToFile(test.screenshot)) {
                     console.error("Screenshot failed");
                     Qt.quit();

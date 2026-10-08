@@ -146,6 +146,45 @@ class RefreshTests(unittest.TestCase):
         transaction.release(self.root)
         self.assertFalse(hook.exists())
 
+    def test_live_marker_prevents_wrapper_installation_and_transaction_refresh(self):
+        stock_path = 'usr/share/libalpm/hooks/90-mkinitcpio-install.hook'
+        stock = transaction.STOCK_EXEC + 'NeedsTargets\n'
+        self.put(stock_path, stock)
+        self.put('etc/emaki-live/greetd.toml', '# Live session\n')
+        # Image construction has the marker before the runtime directory exists.
+        for runtime in (False, True):
+            with self.subTest(runtime=runtime):
+                if runtime:
+                    (self.root / 'run/archiso').mkdir(parents=True)
+                for action in (transaction.install, transaction.begin):
+                    action(self.root)
+                    self.assertFalse((self.root / transaction.HOOK).exists())
+                    self.assertFalse((self.root / transaction.LEDGER).exists())
+                    self.assertEqual((self.root / stock_path).read_text(), stock)
+
+    def test_installed_target_with_shared_live_run_keeps_wrapper(self):
+        self.put('usr/share/libalpm/hooks/90-mkinitcpio-install.hook',
+                 transaction.STOCK_EXEC + 'NeedsTargets\n')
+        # arch-chroot exposes the live /run even for an installed target.
+        (self.root / 'run/archiso').mkdir(parents=True)
+        for action in (transaction.install, transaction.begin):
+            action(self.root)
+            self.assertIn(transaction.WRAPPER_EXEC, (self.root / transaction.HOOK).read_text())
+            self.assertEqual((self.root / transaction.HOOK).read_text(),
+                             (self.root / transaction.LEDGER).read_text())
+
+    def test_live_system_releases_only_unchanged_owned_wrapper(self):
+        self.put('usr/share/libalpm/hooks/90-mkinitcpio-install.hook',
+                 transaction.STOCK_EXEC + 'NeedsTargets\n')
+        transaction.install(self.root)
+        self.put('etc/emaki-live/greetd.toml', '# Live session\n')
+        transaction.begin(self.root)
+        self.assertFalse((self.root / transaction.HOOK).exists())
+        self.assertFalse((self.root / transaction.LEDGER).exists())
+        self.put(transaction.HOOK, '# Local override\n')
+        transaction.install(self.root)
+        self.assertEqual((self.root / transaction.HOOK).read_text(), '# Local override\n')
+
     def test_local_override_and_changed_generated_override_survive(self):
         self.put('usr/share/libalpm/hooks/90-mkinitcpio-install.hook',
                  transaction.STOCK_EXEC + 'NeedsTargets\n')

@@ -3,15 +3,16 @@
 # greetd/config.toml selects this service. /etc/pam.d/greetd stays package-owned;
 # an administrator's /etc/pam.d/emaki-greetd overrides this vendor file.
 # Fingerprint login was deferred on 2026-10-01. The password from this
-# conversation also unlocks gnome-keyring through its optional PAM module.
-auth       include     system-local-login
-auth       optional    pam_gnome_keyring.so
+# conversation also unlocks KWallet through its optional PAM module.
+# Keep wallet authentication inside the failed-password short circuit, while
+# the outer observer always checks the lockout duration without changing it.
+auth       substack    emaki-greetd-auth
+auth       [default=ignore] pam_faillock.so preauth
 
 account    include     system-local-login
 
 password   include     system-local-login
-password   optional    pam_gnome_keyring.so use_authtok
 
 session    include     system-local-login
 session    optional    pam_exec.so quiet /usr/bin/python3 -I /usr/bin/emaki-greeter-provision --pam-session
-session    optional    pam_gnome_keyring.so auto_start
+session    optional    pam_kwallet5.so kwalletd=/usr/bin/ksecretd

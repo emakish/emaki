@@ -50,7 +50,7 @@ ShellRoot {
         check(item.activeFocus, message);
         input.wait(40); // Allow focus scrolling and the page layout to settle.
         const viewport = (find("installerBody") as C.ScrollView).contentItem as Flickable;
-        check(inside(item, viewport), message + " and the whole control is inside the visible page");
+        check(inside(item, viewport), message + " and the whole control is inside the visible page (" + item.objectName + ", " + JSON.stringify(item.mapToItem(viewport, 0, 0, item.width, item.height)) + ", viewport=" + viewport.width + "x" + viewport.height + ", contentY=" + viewport.contentY + ", contentHeight=" + viewport.contentHeight + ")");
     }
     // A button that erases, formats, installs, cancels, opens the partition editor or restarts.
     function isDestructive(item: var): bool {
@@ -125,9 +125,19 @@ ShellRoot {
     // Scroll the step body so the item is in view, as a person would before clicking it.
     function reveal(item: Item): void {
         const flick = (findItem(content, "installerBody") as C.ScrollView).contentItem as Flickable;
-        const top = item.mapToItem(flick.contentItem, 0, 0).y;
-        flick.contentY = Math.max(0, Math.min(top - 12, flick.contentHeight - flick.height));
-        input.wait(30);
+        // A page that has just changed (a mode switch adds rows) is laid out on the next pass;
+        // scrolling before that clamps to the old, shorter content and leaves the item below
+        // the body, where a click lands on the footer instead.
+        for (let attempt = 0; attempt < 10; attempt++) {
+            input.wait(30);
+            const top = item.mapToItem(flick.contentItem, 0, 0).y;
+            flick.contentY = Math.max(0, Math.min(top - 12, flick.contentHeight - flick.height));
+            input.wait(30);
+            const area = item.mapToItem(flick, 0, 0, item.width, item.height);
+            if (area.y >= -0.5 && area.y + area.height <= flick.height + 0.5)
+                return;
+        }
+        check(false, "scrolled into view: " + item.objectName);
     }
     // The line under a grey main button, as shown ("" when hidden).
     function reason(): string {
@@ -528,6 +538,7 @@ ShellRoot {
                     const field = test.findItem(content, name) as C.TextField;
                     field.forceActiveFocus();
                     input.keyClick(Qt.Key_A);
+                    input.wait(100); // Let password validation lay out before changing focus.
                     const toggle = test.findItem(content, name + "Toggle") as C.AbstractButton;
                     if (name === "diskPassword") {
                         input.keyClick(Qt.Key_Tab);
@@ -2002,14 +2013,20 @@ ShellRoot {
                 const before = test.sent.filter(x => x === "reboot").length;
                 controller.requestReboot();
                 test.check(!controller.removeUsbPrompt && test.sent.filter(x => x === "reboot").length === before, "USB removal waits for restart preparation");
+                test.check(controller.session.notice.indexOf("Keep the USB stick connected") >= 0, "restart preparation displays progress before the removal prompt");
+                test.check(!controller.logSaveEnabled, "log export is disabled while preparation runs");
+                controller.preparationTimedOut();
+                test.check(controller.session.notice.indexOf("hold the power button") >= 0 && !controller.removeUsbPrompt, "preparation timeout gives recovery text without claiming a prepared restart");
+                test.check(test.sent.filter(x => x === "reboot").length === before, "preparation timeout does not request an unprepared reboot");
                 let prepareId = Object.keys(controller.session.pending).find(id => controller.session.pending[id] === "prepare_reboot");
                 controller.receive({
                     type: "reply",
                     id: prepareId,
                     ok: false,
-                    msg: "Could not prepare to restart. Keep the USB stick connected and try again."
+                    msg: "Automatic restart is unavailable. Your installation is safe. If the computer has not restarted by itself, hold the power button to turn it off, then start it again."
                 });
-                test.check(!controller.removeUsbPrompt && controller.session.notice.indexOf("Keep the USB stick connected") >= 0, "failed preparation keeps the USB connected and gives feedback");
+                test.check(!controller.removeUsbPrompt && controller.session.notice.indexOf("hold the power button") >= 0, "failed preparation gives a usable manual restart instruction");
+                test.check(controller.logSaveEnabled, "log export is enabled after failed preparation");
                 controller.requestReboot();
                 prepareId = Object.keys(controller.session.pending).find(id => controller.session.pending[id] === "prepare_reboot");
                 controller.receive({
@@ -2030,10 +2047,10 @@ ShellRoot {
                     type: "reply",
                     id: rebootId,
                     ok: false,
-                    msg: "Could not restart. Try again."
+                    msg: "Could not restart. Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe."
                 });
             } else if (test.stage === 81) {
-                test.check((test.findItem(content.Window.window.contentItem, "removeUsbMessage") as Text).text === "Could not restart. Try again.", "the removal prompt shows a reboot failure");
+                test.check((test.findItem(content.Window.window.contentItem, "removeUsbMessage") as Text).text === "Could not restart. Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe.", "the removal prompt shows a reboot failure and manual recovery");
                 const failedCount = test.sent.filter(x => x === "reboot").length;
                 input.keyClick(Qt.Key_Return);
                 test.check(test.sent.filter(x => x === "reboot").length === failedCount + 1, "Enter retries a failed reboot");
@@ -2042,7 +2059,7 @@ ShellRoot {
                     type: "reply",
                     id: rebootId,
                     ok: false,
-                    msg: "Could not restart. Try again."
+                    msg: "Could not restart. Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe."
                 });
                 controller.removeUsbPrompt = false;
                 controller.catalog = Object.assign({}, controller.catalog, {
@@ -2058,6 +2075,47 @@ ShellRoot {
                 });
                 test.check(!controller.removeUsbPrompt && test.sent.filter(x => x === "reboot").length === before + 1, "non-removable boot restarts without a USB prompt");
             } else if (test.stage === 82) {
+                controller.session.pending = {};
+                controller.requestReboot();
+                const prepareId = Object.keys(controller.session.pending).find(id => controller.session.pending[id] === "prepare_reboot");
+                const before = test.sent.filter(x => x === "reboot").length;
+                controller.receive({
+                    type: "reply",
+                    id: prepareId,
+                    ok: true,
+                    forced_reboot: true
+                });
+                test.check(controller.removeUsbPrompt && controller.session.rebootMessage.indexOf("Restarting in 15 seconds") >= 0, "forced preparation displays the automatic restart and conditional USB removal instruction");
+                test.check(test.sent.filter(x => x === "reboot").length === before, "forced preparation allows time to read the restart message");
+                controller.session.ready = false;
+                controller.reboot();
+                test.check(controller.session.rebootMessage.indexOf("Restarting in") >= 0, "disconnected Enter preserves the automatic restart countdown");
+                controller.session.ready = true;
+                controller.receive({
+                    type: "hello",
+                    proto: 1,
+                    restart: {
+                        state: "forced",
+                        job_id: controller.session.jobId,
+                        remaining_s: 10
+                    }
+                });
+                const restartButton = test.findItem(content.Window.window.contentItem, "restartPrepared");
+                test.check(controller.removeUsbPrompt && restartButton.enabled, "reopened restart screen has an enabled Restart button");
+                controller.receive({
+                    type: "hello",
+                    proto: 1,
+                    restart: {
+                        state: "ready",
+                        job_id: controller.session.jobId,
+                        remaining_s: 0
+                    }
+                });
+                test.check((test.findItem(content.Window.window.contentItem, "removeUsbMessage") as Text).text === "Press Enter to restart.", "reopened non-removable boot does not request USB removal");
+                test.check(controller.removeUsbPrompt, "reopened prepared boot waits for the person's restart request");
+                input.mouseClick(restartButton);
+                test.check(test.sent.filter(x => x === "reboot").length === before + 1, "reopened Restart button supports an immediate restart");
+                controller.removeUsbPrompt = false;
                 controller.session.error = {
                     type: "error",
                     code: "login_name_reserved",

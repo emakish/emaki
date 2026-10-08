@@ -1,5 +1,4 @@
 import asyncio
-import ctypes
 import fcntl
 import grp
 import json
@@ -18,48 +17,9 @@ from .constants import LOG, MAX_FRAME, SOCKET, TARGET, WORK
 from .errors import Code, InstallError, require
 from .inventory import Inventory
 from .protocol import Controller, decode_frame, encode_frame, read_test_mode
-from .runtime import Runner, cleanup, secure_log
+from .runtime import Runner, cleanup, safe_log, secure_log
+from .restart import ResidentReboot, RestartGuard
 from .worker import Worker
-
-
-class ResidentReboot:
-    """Keep the restart path in memory before the live medium is removed."""
-    def __init__(self, *, libc=None):
-        libc = libc if libc is not None else ctypes.CDLL(None, use_errno=True)
-        self.sync, self.lock = libc.sync, libc.mlockall
-        self.signal, self.sleep, self.restart = libc.kill, libc.sleep, libc.reboot
-        self.sync.argtypes, self.sync.restype = [], None
-        self.lock.argtypes, self.lock.restype = [ctypes.c_int], ctypes.c_int
-        self.signal.argtypes, self.signal.restype = [ctypes.c_int, ctypes.c_int], ctypes.c_int
-        self.sleep.argtypes, self.sleep.restype = [ctypes.c_uint], ctypes.c_uint
-        self.restart.argtypes, self.restart.restype = [ctypes.c_int], ctypes.c_int
-        self.reboot_signal = signal.SIGRTMIN + 5
-        self.ready = False
-
-    def prepare(self):
-        self.ready = False
-        # The completed worker has unmounted the target. Sync before removal:
-        # doing this afterwards can wait forever for the missing live medium.
-        self.sync()
-        # MCL_CURRENT faults in and pins code, stack, heap and shared libraries.
-        # Do not use MCL_ONFAULT or merely warm the evictable file cache.
-        require(self.lock(1) == 0, Code.COMMAND_FAILED,
-                'Could not prepare to restart. Keep the USB stick connected and try again.')
-        self.ready = True
-
-    def __call__(self):
-        require(self.ready, Code.BAD_REQUEST,
-                'Could not prepare to restart. Keep the USB stick connected and try again.')
-        # Ask PID 1 for its normal reboot target without launching an executable.
-        # The service's unlimited stop timeout lets this resident fallback finish.
-        self.signal(1, self.reboot_signal)
-        remaining = 8
-        while remaining:
-            remaining = self.sleep(remaining)
-        # RB_AUTOBOOT: equivalent to a forced reboot, with the target already safe.
-        # A successful kernel reboot never returns; any return must reach the UI.
-        self.restart(0x01234567)
-        raise InstallError(Code.COMMAND_FAILED, 'Could not restart. Try again.')
 
 
 def make_worker(api, inventory, broker):
@@ -267,27 +227,35 @@ def main():
             require(stat.S_ISSOCK(SOCKET.lstat().st_mode), Code.UNSAFE_DISK, 'Socket path is not a socket.')
             SOCKET.unlink()
         with secure_log(LOG) as log:
-            api = load_archinstall()  # Exact version assertion before any job.
             initial = Runner(lambda line: print(line, file=log, flush=True))
-            cleanup(initial, [TARGET, WORK / 'btrfs-top'], lazy=True)
-            controller = None
-            inventory = Inventory(initial)
+            boot_device = os.stat('/run/archiso/bootmnt').st_dev
+            medium_size = Path(f'/sys/dev/block/{os.major(boot_device)}:{os.minor(boot_device)}/size')
+            restart = RestartGuard(ResidentReboot(initial, medium_size=medium_size),
+                                   close_fds=(lock_fd,))
+            try:
+                api = load_archinstall()  # Exact version assertion before any job.
+                cleanup(initial, [TARGET, WORK / 'btrfs-top'], lazy=True)
+                controller = None
+                inventory = Inventory(initial)
 
-            def factory(broker):
-                return make_worker(api, inventory, broker)
+                def factory(broker):
+                    return make_worker(api, inventory, broker)
 
-            controller = Controller(inventory, factory, version=api.version,
-                                    test_mode=read_test_mode(), log_stream=log,
-                                    validate_plan=lambda plan: validate_live_plan(api, plan))
-            runner = Runner(controller.log, controller.redactor)
-            controller.set_timezone_fn = lambda name: set_live_timezone(name, runner)
-            inventory.runner = runner
-            inventory.start_timezone_lookup()
-            controller.save_log_fn = lambda dest: export_log(dest, runner, controller.redactor)
-            restart = ResidentReboot()
-            controller.prepare_reboot_fn = restart.prepare
-            controller.reboot_fn = restart
-            asyncio.run(Server(controller, gid).run())
+                controller = Controller(inventory, factory, version=api.version,
+                                        test_mode=read_test_mode(), log_stream=log,
+                                        restart_deadline=lambda: restart.forced_deadline,
+                                        check_installation=restart.check_installation,
+                                        validate_plan=lambda plan: validate_live_plan(api, plan))
+                runner = Runner(controller.log, controller.redactor)
+                controller.set_timezone_fn = lambda name: set_live_timezone(name, runner)
+                inventory.runner = runner
+                inventory.start_timezone_lookup()
+                controller.save_log_fn = lambda dest: export_log(dest, runner, controller.redactor)
+                controller.prepare_reboot_fn = restart.prepare
+                controller.reboot_fn = restart
+                asyncio.run(Server(controller, gid).run())
+            finally:
+                restart.close()
         return 0
     except (InstallError, OSError, KeyError) as exc:
         message = {'type': 'error', 'id': '', 'seq': 1, 'code': getattr(exc, 'code', Code.INTERNAL).value,

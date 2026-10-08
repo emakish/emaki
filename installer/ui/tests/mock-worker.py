@@ -98,8 +98,7 @@ class Replay:
             if kind == 'confirm' and self.screen == 'done-warning':
                 # The worker's PARTIAL_UPDATE warning (installer/emaki_installer/worker.py).
                 responses[-1] = dict(responses[-1], warnings=[
-                    'The online update stopped part-way; some packages may be newer than others. '
-                    'Run `sudo pacman -Syu` after the first login.'])
+                    'The online update did not finish; use the terminal to update the whole system before installing apps [pacman].'])
             if kind == 'confirm' and self.screen == 'done-wifi-not-copied':
                 responses[-1] = dict(responses[-1], warnings=[
                     'Wi-Fi was not copied; join it again after restarting.'])
@@ -122,8 +121,8 @@ class Replay:
                                                 phase='update', phase_pct=0, total_pct=93, indeterminate=True,
                                                 activity=dict(name='downloads', done=37, total=144))]
             if kind == 'confirm' and self.screen == 'done-no-package-lists':
-                # The worker's NO_PACKAGE_LISTS warning: installed offline, no sync databases.
-                responses[-1] = dict(responses[-1], warnings=['Run `sudo pacman -Syu` once you are online.'])
+                # An offline installation needs a full update before adding apps.
+                responses[-1] = dict(responses[-1], warnings=['Emaki needs one full update before you install apps; when online, use the terminal to update the whole system [pacman].'])
             if kind == 'confirm' and self.screen.startswith('error'):
                 responses[-1:-1] = self.recorded['logs']
             if kind == 'plan' and self.screen == 'plan-errors':

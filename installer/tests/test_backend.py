@@ -25,11 +25,32 @@ class BackendTests(unittest.TestCase):
             for bad in (valid + '[core]\nServer = https://example.org\n',
                         valid.replace('Required', 'Never'),
                         valid.replace(OFFLINE_REPO, 'https://example.org'),
+                        valid.replace('Architecture = auto', 'HookDir = /etc/pacman.d/hooks'),
                         valid + 'Include = /etc/pacman.conf\n',
                         valid + 'XferCommand = malicious\n'):
                 path.write_text(bad)
                 with self.assertRaises(InstallError):
                     offline_config(path)
+
+    def test_generated_config_accepts_exactly_one_private_hook_directory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path, hooks = Path(temp) / 'pacman.conf', Path(temp) / 'hooks'
+            directive = f'HookDir = {hooks}\n'
+            valid = ('[options]\n' + directive + '[emaki-offline]\n'
+                     'SigLevel = Required DatabaseOptional TrustedOnly\n'
+                     f'Server = {OFFLINE_REPO}\n')
+            path.write_text(valid)
+            self.assertEqual(offline_config(path, hookdir=hooks), path)
+            for bad in (valid.replace(directive, ''),
+                        valid.replace(directive, directive * 2),
+                        valid.replace(directive, directive + 'HookDir = /etc/pacman.d/hooks\n'),
+                        valid.replace(str(hooks), str(hooks) + ' /etc/pacman.d/hooks'),
+                        valid.replace(str(hooks), str(hooks) + ' # /etc/pacman.d/hooks'),
+                        valid.replace(directive, '') + directive):
+                with self.subTest(config=bad):
+                    path.write_text(bad)
+                    with self.assertRaises(InstallError):
+                        offline_config(path, hookdir=hooks)
 
     def test_pacstrap_explicit_config_and_keyring_no_shell(self):
         runner = RecordingRunner()
@@ -170,7 +191,8 @@ class ConsoleFileTests(unittest.TestCase):
         # must not leave a KEYMAP-only file for the kernels' image build in its strap.
         from emaki_installer.arch_backend import Backend
         from emaki_installer.render import console_keymap, vconsole_conf
-        for layouts in (['cz', 'ru'], ['dvorak', 'ua'], ['us']):
+        for layouts, font in ((layouts, font) for layouts in (['cz', 'ru'], ['dvorak', 'ua'], ['us'])
+                              for font in (None, 'ter-124b')):
             with self.subTest(layouts=layouts), tempfile.TemporaryDirectory() as temp:
                 settings = config()
                 settings['layouts'] = layouts
@@ -182,13 +204,16 @@ class ConsoleFileTests(unittest.TestCase):
                                                FilesystemHandler=lambda disk_config: handler),
                     installer=SimpleNamespace(Installer=Installer45, PacmanConfig=None,
                                               accessibility_tools_in_use=None))
-                with patch('emaki_installer.arch_backend.build_disk_config'), \
+                with patch('emaki_installer.arch_backend.console_font', return_value=font), \
+                        patch('emaki_installer.arch_backend.build_disk_config'), \
                         patch('emaki_installer.arch_backend.offline_config', return_value=Path('/offline.conf')):
                     backend = Backend(api, plan, runner, target)
                     backend.prepare()
                     backend.minimal(SimpleNamespace(kb_layout=console_keymap(layouts[0])))
-                expected = vconsole_conf(layouts)
+                expected = vconsole_conf(layouts, font)
                 self.assertEqual(runner.at_strap, [expected])
+                self.assertEqual(backend.instance.packages,
+                                 ['base', 'mkinitcpio', 'terminus-font', 'linux', 'linux-lts'])
                 self.assertEqual((target / 'etc/vconsole.conf').read_text(), expected)
 
 

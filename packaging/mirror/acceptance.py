@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Upgrade acceptance coverage for the images already released to users."""
+"""Functional upgrade coverage for the images already released to users.
+
+This validates named run coverage, not screenshot contents. The upgrade-check
+frames require human review; a complete run list or publication stamp does not
+establish visual acceptance. Review the live desktop, upgrade prompts, terminal
+results and rebooted desktop in each run's evidence before release signoff.
+"""
 import json
 import re
 

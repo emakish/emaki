@@ -57,8 +57,13 @@ class LiveSession(unittest.TestCase):
             base = Path(temp)
             marker = base / 'live-marker'
             log = base / 'calls'
+            shell = base / 'shell'
+            shell.mkdir()
+            binary = base / 'emaki'
+            binary.write_text('fixture core\n')
             env = dict(os.environ, PATH=str(base) + ':' + os.environ['PATH'],
-                       XDG_RUNTIME_DIR=str(runtime_path(temp)), EMAKI_LIVE_SESSION='1')
+                       XDG_RUNTIME_DIR=str(runtime_path(temp)), EMAKI_LIVE_SESSION='1',
+                       EMAKI_SHELL_DIR=str(shell), EMAKI_BIN=str(binary))
             commands = {
                 'emaki-config-path': 'echo /unused',
                 'emaki-qt-check': 'exit 0',
@@ -68,6 +73,14 @@ class LiveSession(unittest.TestCase):
                 'emaki-lock': f'echo lock >> "{log}"',
                 'swayidle': f'printf "%s\\n" "$@" > "{base}/idle"',
                 'qs': f'echo "$EMAKI_LIVE_SESSION" > "{base}/flag"',
+                'emaki-shell-health': '[ "$1" = record ] || exit 1; printf "%s\\n" "$2"',
+                # Generation copying has its own suite; preserve its launch
+                # contract here without reading the host package database.
+                'emaki-session-files': f'''[ "$#" = 4 ] && [ "$1" = prepare ] || exit 1
+[ "$2" = "$EMAKI_SHELL_DIR" ] && [ "$3" = "$EMAKI_BIN" ] || exit 1
+kill -0 "$4" || exit 1
+echo prepare > "{base}/generation"
+printf "%s\\n" "$2"''',
             }
             for name, content in commands.items():
                 target = base / name
@@ -78,12 +91,19 @@ class LiveSession(unittest.TestCase):
             for live in (False, True):
                 marker.touch() if live else marker.unlink(missing_ok=True)
                 log.unlink(missing_ok=True)
+                (base / 'generation').unlink(missing_ok=True)
                 for name in ('emaki-power', 'emaki-idle', 'emaki-shell'):
                     subprocess.run(['sh', str(base / ('test-' + name))], env=env, check=True, capture_output=True)
                 self.assertEqual('Lock' in (base / 'menu').read_text().splitlines(), not live)
                 self.assertEqual('emaki-lock' in (base / 'idle').read_text(), not live)
                 self.assertEqual(log.read_text().splitlines(), ['suspend'] if live else ['lock', 'suspend'])
                 self.assertEqual((base / 'flag').read_text().strip(), '1' if live else '0')
+                self.assertEqual((base / 'generation').read_text().strip(), 'prepare')
+            # A full or unwritable runtime directory must not keep the panel from starting.
+            (base / 'emaki-shell-health').write_text('#!/bin/sh\nexit 1\n')
+            (base / 'flag').unlink()
+            subprocess.run(['sh', str(base / 'test-emaki-shell')], env=env, check=True, capture_output=True)
+            self.assertTrue((base / 'flag').exists())
 
     def test_live_welcome_blocks_startup_and_explicit_open(self):
         with tempfile.TemporaryDirectory(prefix='emaki-live-welcome-') as temp:

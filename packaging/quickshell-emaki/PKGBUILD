@@ -5,7 +5,7 @@
 _pkgname=quickshell
 pkgname=quickshell-emaki
 pkgver=0.3.1
-pkgrel=5
+pkgrel=6
 pkgdesc='Flexible toolkit for making desktop shells with QtQuick (Emaki patched build)'
 arch=(x86_64 aarch64)
 url="https://git.outfoxxed.me/$_pkgname/$_pkgname"
@@ -23,38 +23,41 @@ depends=(cpptrace libcpptrace.so
          mesa # libgbm.so
          pam libpam.so
          polkit
-         'qt6-base>=6.11.2' 'qt6-base<6.12' # libQt6Core.so libQt6DBus.so libQt6Gui.so libQt6Network.so libQt6Widgets.so
-         'qt6-declarative>=6.11.2' 'qt6-declarative<6.12' # libQt6Qml.so libQt6Quick.so
-         qt6-svg
+         'qt6-base>=6.12.0' 'qt6-base<6.13' # libQt6Core.so libQt6DBus.so libQt6Gui.so libQt6Network.so libQt6Widgets.so
+         'qt6-declarative>=6.12.0' 'qt6-declarative<6.13' # libQt6Qml.so libQt6Quick.so
+         'qt6-svg>=6.12.0' 'qt6-svg<6.13'
          wayland libwayland-client.so)
 makedepends=(cli11
              cmake
              ninja
              pkgconf
-             qt6-shadertools
+             'qt6-shadertools>=6.12.0' 'qt6-shadertools<6.13'
              spirv-tools
              vulkan-headers
              wayland-protocols)
-_qtver=6.11.2
+_qtver=6.12.0
 provides=("quickshell=$pkgver" "emaki-quickshell-qt-build=$_qtver")
 conflicts=(quickshell)
 _archive="$_pkgname-$pkgver"
 source=("$_archive.tar.gz::$url/archive/v$pkgver.tar.gz"
         0001-wlr-screencopy-raw-wl_output-for-transform.patch
-        0002-network-nm-name-the-activation-a-connection-failure.patch)
+        0002-network-nm-name-the-activation-a-connection-failure.patch
+        0003-qt-6.12-moc-includes.patch)
 sha256sums=('d60592622f1aa1cbb853d4814f605dfde827bc692befbfecffaccf4c90e352d8'
             'b32f0be7920e0dd10cf89bb0fecdd0a7c0ac73f0f113fc93e3b235ad36e894c7'
-            'a01afe049a5eec79752ecbb57b705fb672a34bb7b5eff20c43e68c544f70ea65')
+            'a01afe049a5eec79752ecbb57b705fb672a34bb7b5eff20c43e68c544f70ea65'
+            '4cb3b5acc94e0c9546568a782540ab01c1ad06946c8c7b7e290e2b9ffc21b7a2')
 
 prepare() {
 	cd "$_pkgname" || return 1
 	patch -Np1 -i "$srcdir/0001-wlr-screencopy-raw-wl_output-for-transform.patch"
 	patch -Np1 -i "$srcdir/0002-network-nm-name-the-activation-a-connection-failure.patch"
+	patch -Np1 -i "$srcdir/0003-qt-6.12-moc-includes.patch"
 }
 
 # Keep the runtime floor equal to the Qt release used for this rebuild.
 _qt_build_version() {
-	local core qml
+	local core qml module version
 	core=$(pkg-config --modversion Qt6Core) || return 1
 	qml=$(pkg-config --modversion Qt6Qml) || return 1
 	if [[ ! $core =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || $core != "$qml" || $core != "$_qtver" ]] ||
@@ -63,6 +66,14 @@ _qt_build_version() {
 		printf '%s\n' 'Qt build versions must agree and match both dependency lower bounds.' >&2
 		return 1
 	fi
+	# WaylandClient is supplied by qt6-base in Arch's Qt 6.12 packages.
+	for module in Qt6Svg Qt6ShaderTools Qt6WaylandClient; do
+		version=$(pkg-config --modversion "$module") || return 1
+		if [[ $version != "$_qtver" ]]; then
+			printf 'Qt module %s must match build version %s (found %s).\n' "$module" "$_qtver" "$version" >&2
+			return 1
+		fi
+	done
 	printf '%s\n' "$core"
 }
 

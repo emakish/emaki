@@ -205,13 +205,24 @@ Item {
             textFormat: Text.PlainText
         }
         Text {
+            id: feedback
             x: Math.max(12, (surface.width - 440) / 2)
             y: surface.height / 2 + 43
             width: Math.min(440, surface.width - 24)
-            text: surface.auth.message || (surface.environment.capsLock ? "Caps Lock is on" : "")
+            Rectangle {
+                anchors.centerIn: parent
+                width: Math.min(feedback.width, feedback.contentWidth + 16)
+                height: feedback.contentHeight + 8
+                radius: 4
+                z: -1
+                visible: surface.auth.messageKind === "wrong" || surface.auth._lockoutUntil > 0
+                // Keep refusal ink readable independently of the wallpaper.
+                color: Qt.rgba(LiquidPalette.flatPlate.r, LiquidPalette.flatPlate.g, LiquidPalette.flatPlate.b, 1)
+            }
+            text: surface.auth.displayMessage || (surface.environment.capsLock ? "Caps Lock is on" : "")
             opacity: surface.life
             color: ["technical", "pam-error", "wrong", "username"].indexOf(surface.auth.messageKind) >= 0 ? LiquidPalette.dangerOnLight : LiquidPalette.dimOnLight
-            font.pixelSize: 13
+            font.pixelSize: surface.auth._lockoutUntil > 0 ? 16 : 13
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
             textFormat: Text.PlainText

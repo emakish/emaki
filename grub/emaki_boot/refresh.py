@@ -7,7 +7,8 @@ boot generation. Restoring an older root can remove that generation, so the
 embedded menu also understands the conventional menu in the restored root.
 """
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
+import errno
 import fcntl
 import hashlib
 import io
@@ -17,6 +18,8 @@ from pathlib import Path
 import re
 import shlex
 import shutil
+import signal
+import stat
 import struct
 import subprocess
 import sys
@@ -33,6 +36,9 @@ IMAGE_MODULES = (*boot.GRUB_EARLY_MODULES, 'search_fs_uuid')
 MIB = 1024 * 1024
 LOG = None
 LOG_PATH = '/var/log/emaki-boot-refresh.log'
+LOG_LIMIT = MIB
+PENDING = '/var/lib/emaki/boot-refresh-pending'
+BOOT_RETRIES = 3
 FOREIGN = 'The existing boot loaders were kept because the fallback loader is not recognized as Emaki.'
 TRIAL_FAILED = 'The new boot loader did not complete a boot; the old loader was kept.'
 UUID = r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
@@ -57,6 +63,165 @@ class Kept(Refuse):
     """An expected refusal which does not fail a package transaction."""
 
 
+class Transient(Refuse):
+    """An incomplete operation eligible for a bounded boot retry."""
+
+
+class BoundedLog:
+    """Keep the latest output, including output from the isolated generator."""
+
+    def __init__(self, path):
+        self.path = path
+        self.write('')
+
+    def write(self, text):
+        data = text.encode('utf-8')[-LOG_LIMIT:]
+        fd = os.open(self.path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, 'r+b') as output:
+            fcntl.flock(output, fcntl.LOCK_EX)
+            size = output.seek(0, os.SEEK_END)
+            if size + len(data) > LOG_LIMIT:
+                output.seek(max(0, size - (LOG_LIMIT - len(data))))
+                tail = output.read()
+                output.seek(0)
+                output.write(tail + data)
+                output.truncate()
+            else:
+                output.write(data)
+
+    def flush(self):
+        pass
+
+    def close(self):
+        pass
+
+
+def remove_previous_boot_lock(path, boot_id):
+    try:
+        if not stat.S_ISREG(path.lstat().st_mode):
+            return
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError as error:
+        if error.errno in (errno.ENOENT, errno.ELOOP):
+            return
+        raise
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            return
+        token = os.read(fd, 128)
+        match = re.fullmatch(rb'emaki-boot-refresh:([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})', token)
+        if match and match[1].decode() != boot_id:
+            unlink_same_file(path, fd)
+    finally:
+        os.close(fd)
+
+
+def unlink_same_file(path, fd):
+    try:
+        current = path.lstat()
+    except FileNotFoundError:
+        return
+    owned = os.fstat(fd)
+    if (current.st_dev, current.st_ino) == (owned.st_dev, owned.st_ino):
+        path.unlink()
+        sync_directory(path.parent)
+
+
+def open_run_lock(mode):
+    """The shared run lock, owner-only whatever umask the caller (sleep hook, sudo) has.
+
+    Anyone who can open the file can hold the lock, and rollback refuses while it is held.
+    """
+    previous = os.umask(0o077)
+    try:
+        lock = open('/run/emaki-boot-refresh.lock', mode)
+    finally:
+        os.umask(previous)
+    os.fchmod(lock.fileno(), 0o600)
+    return lock
+
+
+def current_boot_id():
+    boot_id = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+    require(re.fullmatch(UUID, boot_id) and boot_id == boot_id.lower(),
+            'Cannot identify the current boot for the package lock.')
+    return boot_id
+
+
+@contextmanager
+def pacman_lock():
+    path = Path('/var/lib/pacman/db.lck')
+    boot_id = current_boot_id()
+    remove_previous_boot_lock(path, boot_id)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except FileExistsError as error:
+        raise Transient('The package database is locked; the boot loader update will wait.') from error
+    try:
+        os.write(fd, ('emaki-boot-refresh:' + boot_id).encode())
+        os.fsync(fd)
+        yield
+    finally:
+        try:
+            unlink_same_file(path, fd)
+        finally:
+            os.close(fd)
+
+
+def clear_pending():
+    path = Path(PENDING)
+    path.unlink(missing_ok=True)
+    sync_directory(path.parent)
+
+
+def refresh_attempt(retry):
+    # The caller holds the run lock; a cleared marker must not strand an old lock.
+    remove_previous_boot_lock(Path('/var/lib/pacman/db.lck'), current_boot_id())
+    pending = Path(PENDING)
+    if retry and not pending.exists():
+        return 0
+    attempts = 0
+    try:
+        if retry:
+            record = json.loads(regular(pending))
+            require(isinstance(record, dict) and 'boots' in record,
+                    'The boot loader retry record is invalid; run emaki-boot-refresh again.')
+            attempts = record['boots']
+            require(type(attempts) is int and 0 <= attempts <= BOOT_RETRIES,
+                    'The boot loader retry count is invalid; run emaki-boot-refresh again.')
+            if attempts == BOOT_RETRIES:
+                # A killed final attempt can leave its lock even with no budget left.
+                with pacman_lock():
+                    pass
+                raise Kept('The boot loader retry limit was reached; run emaki-boot-refresh to try again.')
+            attempts += 1
+        # Persist the budget before work, so interrupted boots also consume it.
+        atomic(pending, json.dumps({'boots': attempts}) + '\n')
+        with pacman_lock() if retry else nullcontext():
+            identity = discover()
+            if identity is not None:
+                check_refresh_storage(identity)
+                with pause_snapshots():
+                    refresh(identity)
+        clear_pending()
+        return 0
+    except (OSError, Transient) as error:
+        LOG.write(str(error) + '\n')
+        if retry and attempts >= BOOT_RETRIES:
+            clear_pending()
+            message = 'The boot loader retry limit was reached; run emaki-boot-refresh to try again.'
+        else:
+            message = f'The boot loader update did not finish; details are in {LOG_PATH}.'
+        LOG.write(message + '\n')
+        print(message, file=sys.stderr)
+        return 0 if retry else 1
+    except (Refuse, ValueError) as error:
+        clear_pending()
+        LOG.write(str(error) + '\n')
+        print(str(error), file=sys.stderr if not isinstance(error, Kept) else sys.stdout)
+        return 0 if retry or isinstance(error, Kept) else 1
+
+
 def require(condition, message):
     if not condition:
         raise Refuse(message)
@@ -71,7 +236,7 @@ def run(argv):
         LOG.write(result.stdout + result.stderr)
         LOG.flush()
     if result.returncode:
-        raise Refuse(f'{Path(argv[0]).name} failed: {result.stderr.strip()[-1800:]}')
+        raise Transient(f'{Path(argv[0]).name} failed: {result.stderr.strip()[-1800:]}')
     return result.stdout.strip()
 
 
@@ -203,6 +368,14 @@ def verify_image(image, prefix, early=None, memdisk=None, luks=None):
                 'The staged EFI image does not contain the verified unlock payload and disk UUID.')
 
 
+def plain_load_config(identity, generation):
+    """Search the verified root UUID regardless of the ESP's disk or partition."""
+    require(re.fullmatch(UUID, identity['uuid']) and identity['fsroot'] in ('', '/@'),
+            'The staged loader searches for the wrong root.')
+    return (f'search.fs_uuid {identity["uuid"]} root\n'
+            f'set prefix=($root){identity["fsroot"]}{generation / "grub"}\n')
+
+
 def loader_payload(grub, generation, identity, load_cfg, font):
     """Keep module ABI independent of both package upgrades and root rollback.
 
@@ -287,7 +460,7 @@ def discover():
     require(len(luks) <= 1 and all(re.fullmatch(UUID, item) for item in luks),
             'Cannot identify one supported LUKS disk for /boot.')
     luks = luks[0] if luks else None
-    require(run(['grub-probe', '--target=fs_uuid', '/boot']).lower() == root['uuid'].lower(),
+    require(set(run(['grub-probe', '--target=fs_uuid', '/boot']).lower().split()) == {root['uuid'].lower()},
             'GRUB and the mounted root disagree about the filesystem UUID.')
     settings = assignments(Path('/etc/default/grub').read_text())
     configured = re.findall(r'cryptdevice=UUID=(' + UUID + r'):emaki-root',
@@ -296,6 +469,25 @@ def discover():
             'The configured encrypted disk and the mounted root disagree.')
     return {'fsroot': fsroot, 'luks': luks, 'uuid': root['uuid'], 'fstype': root['fstype'],
             'esp_uuid': esp['uuid']}
+
+
+def check_refresh_storage(identity):
+    # Full device scans belong to image preparation, never boot confirmation.
+    if not identity['luks']:
+        require(not run(['grub-probe', '--target=abstraction', '/boot']).strip(),
+                'A plain root on LVM or software RAID is not supported.')
+        require(set(run(['grub-probe', '--target=partmap', '/boot']).split()) == {'gpt'},
+                'A plain root must use a GPT partition table.')
+    def devices(arguments):
+        return {os.path.realpath(device) for device in run(arguments).splitlines() if device}
+    members = devices(['grub-probe', '--target=device', '/boot'])
+    found = devices(['blkid', '-c', '/dev/null', '-t', 'UUID=' + identity['uuid'], '-o', 'device'])
+    require(members and found == members,
+            'The root filesystem UUID must match its mounted block devices; check for cloned disks.')
+    if identity['luks']:
+        encrypted = devices(['blkid', '-c', '/dev/null', '-t', 'UUID=' + identity['luks'], '-o', 'device'])
+        require(len(encrypted) == 1,
+                'The LUKS UUID must belong to exactly one block device; check for cloned disks.')
 
 
 def bind(source, target):
@@ -910,19 +1102,18 @@ def _refresh(identity):
             command += ['--modules=part_gpt cryptodisk luks2 argon2 gcry_rijndael gcry_sha256 pbkdf2']
         run(command)
         platform = generation / 'grub/x86_64-efi'
-        for path in MODULES.glob('*.mod'):
-            require(regular(platform / path.name) == path.read_bytes(),
-                    f'The staged GRUB module {path.name} differs from its package.')
-        load_cfg = regular(platform / 'load.cfg').decode()
+        verify_modules(platform)
         expected_path = identity['fsroot'] + str(generation / 'grub')
         if identity['luks']:
+            load_cfg = regular(platform / 'load.cfg').decode()
             expected = '(cryptouuid/' + identity['luks'].replace('-', '') + ')' + expected_path
             require(expected.encode() + b'\0' in regular(esp_stage / 'EFI/Emaki/grubx64.efi'),
                     'grub-install did not use the expected encrypted root prefix.')
         else:
-            # Use grub-install's search-by-filesystem-UUID early configuration.
-            require(re.search(r'(?m)^search.fs_uuid ' + re.escape(identity['uuid']) + r' root(?: |$)', load_cfg)
-                    and expected_path in load_cfg, 'The staged loader searches for the wrong root.')
+            # On one disk grub-install can omit load.cfg and use a partition prefix.
+            # Build our published image from the UUID verified by discover(),
+            # without disk hints; verify_image checks this exact payload below.
+            load_cfg = plain_load_config(identity, generation)
         prefix, early, memdisk = loader_payload(
             generation / 'grub', generation, identity, load_cfg,
             regular(Path('/usr/share/emaki/grub/unlock-24.pf2')))
@@ -933,6 +1124,7 @@ def _refresh(identity):
              '--compression=none', '--memdisk=' + str(platform / 'emaki-early.tar'),
              '--prefix=' + prefix, '--config=' + str(platform / 'emaki-early.cfg'),
              '--output=' + str(image_path), *IMAGE_MODULES])
+        verify_modules(platform)
         image = regular(image_path)
         verify_image(image, prefix, early, memdisk, identity['luks'])
         # Copy local GRUB additions into the isolated prefix; never follow links.
@@ -985,24 +1177,38 @@ def _refresh(identity):
             shutil.rmtree(esp_stage)
 
 
+def verify_modules(platform):
+    require({path.name for path in platform.glob('*.mod')} == {path.name for path in MODULES.glob('*.mod')},
+            'The staged GRUB module set differs from its package.')
+    for path in MODULES.glob('*.mod'):
+        require(regular(platform / path.name) == regular(path),
+                f'The staged GRUB module {path.name} differs from its package.')
+
+
 def main(argv=None):
     global LOG
     parser = argparse.ArgumentParser(description='Safely refresh the installed Emaki boot loader and menu.')
     parser.add_argument('--hook', action='store_true')
+    parser.add_argument('--retry', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--sleep-phase', choices=('pre', 'post'), help=argparse.SUPPRESS)
     parser.add_argument('--mark-good', action='store_true', help='promote the successfully booted loader')
     parser.add_argument('--check', action='store_true', help='check the installed disk identity without writing')
     parser.add_argument('--generate', help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    previous_sigterm = None
     try:
         if (Path('/.emaki-install-incomplete').exists() or Path('/run/archiso').exists()
                 or subprocess.run(['systemd-detect-virt', '--chroot', '--quiet'],
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0):
             return 0
         require(os.geteuid() == 0, 'Run emaki-boot-refresh as root on the installed system.')
+        if args.retry or args.mark_good:
+            def interrupted(signum, frame):
+                raise TimeoutError('The boot loader operation was interrupted.')
+            previous_sigterm = signal.signal(signal.SIGTERM, interrupted)
         log_path = Path(LOG_PATH)
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        LOG = log_path.open('a', encoding='utf-8')
+        LOG = BoundedLog(log_path)
         if args.generate:
             require(re.fullmatch(r'/boot/emaki/[0-9a-f]{32}', args.generate), 'Invalid staging path.')
             generate(args.generate)
@@ -1012,19 +1218,24 @@ def main(argv=None):
             if identity is not None:
                 print(json.dumps(identity, indent=2))
             return 0
-        with open('/run/emaki-boot-refresh.lock', 'w') as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX | (0 if args.sleep_phase else fcntl.LOCK_NB))
+        with open_run_lock('w') as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | (0 if args.sleep_phase else fcntl.LOCK_NB))
+            except BlockingIOError:
+                if args.retry:
+                    LOG.write('Another boot loader operation is running; retry at the next boot.\n')
+                    return 0
+                raise
             if args.sleep_phase:
                 sleep_trial(args.sleep_phase)
                 return 0
+            if not args.mark_good:
+                return refresh_attempt(args.retry)
             identity = discover()
             if identity is None:
                 return 0
             with pause_snapshots():
-                if args.mark_good:
-                    mark_good(identity)
-                else:
-                    refresh(identity)
+                mark_good(identity)
         return 0
     except Kept as error:
         if LOG is not None:
@@ -1039,6 +1250,8 @@ def main(argv=None):
             print('The boot loader update did not finish because its log could not be opened.', file=sys.stderr)
         return 1
     finally:
+        if previous_sigterm is not None:
+            signal.signal(signal.SIGTERM, previous_sigterm)
         if LOG is not None:
             LOG.close()
             LOG = None

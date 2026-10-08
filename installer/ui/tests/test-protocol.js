@@ -25,19 +25,175 @@ assert.equal(P.errorPresentation({code: "login_name_reserved", message: loginRef
 const timedOutReboot = P.initial();
 P.request(timedOutReboot, "reboot");
 P.rebootTimedOut(timedOutReboot);
-assert.equal(timedOutReboot.rebootMessage, "Could not restart. Try again.");
+assert.equal(timedOutReboot.rebootMessage, P.recoveryText());
 assert.equal(Object.values(timedOutReboot.pending).includes("reboot"), false);
 const disconnectedReboot = P.initial();
 P.request(disconnectedReboot, "reboot");
 P.disconnected(disconnectedReboot);
-assert.equal(disconnectedReboot.rebootMessage, "Could not restart. Try again.");
+assert.equal(disconnectedReboot.rebootMessage, P.recoveryText());
+// Preparation stays visible until the worker replies, including a failed retry.
+const preparing = P.initial();
+for (const ok of [false, true]) {
+    const request = P.request(preparing, "prepare_reboot");
+    assert.equal(preparing.notice, "Preparing to restart. Keep the USB stick connected. This can take up to two and a half minutes. If preparation cannot finish, the computer restarts by itself.");
+    P.receive(preparing, {type: "reply", id: request.id, ok, msg: "Preparation failed."}, 1);
+    assert.equal(preparing.notice, ok ? "" : "Preparation failed.");
+    assert.equal(Object.values(preparing.pending).includes("prepare_reboot"), false);
+}
+// A missing reply keeps recovery text visible and permits a late successful reply.
+const latePreparation = P.initial();
+const lateRequest = P.request(latePreparation, "prepare_reboot");
+P.preparationTimedOut(latePreparation);
+assert.match(latePreparation.notice, /hold the power button/);
+assert.equal(latePreparation.pending[lateRequest.id], "prepare_reboot");
+assert.equal(latePreparation.rebootMessage, "");
+P.receive(latePreparation, {type: "reply", id: lateRequest.id, ok: true, forced_reboot: true}, 1);
+assert.match(latePreparation.rebootMessage, /Your installation is safe/);
+assert.match(latePreparation.rebootMessage, /15 seconds/);
+assert.equal(Object.values(latePreparation.pending).includes("prepare_reboot"), false);
+const disconnectedPreparation = P.initial();
+disconnectedPreparation.greeted = true;
+P.request(disconnectedPreparation, "prepare_reboot");
+P.disconnected(disconnectedPreparation);
+assert.equal(disconnectedPreparation.notice, "Connection lost. Reconnecting…");
+assert.ok(disconnectedPreparation.preparingSince > 0);
+assert.equal(disconnectedPreparation.rebootMessage, "");
 // The removal dialog gets immediate progress and the service's failure text.
 const rebootState = P.initial();
 const rebootRequest = P.request(rebootState, "reboot");
 assert.equal(rebootState.rebootMessage, "Restarting…");
-P.receive(rebootState, {type: "reply", id: rebootRequest.id, ok: false, msg: "Could not restart. Try again."}, 1);
-assert.equal(rebootState.rebootMessage, "Could not restart. Try again.");
+P.receive(rebootState, {type: "reply", id: rebootRequest.id, ok: false, msg: "Could not restart. Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe."}, 1);
+assert.equal(rebootState.rebootMessage, "Could not restart. Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe.");
+// A generic worker refusal still names the way out, once.
+const genericReboot = P.request(rebootState, "reboot");
+P.receive(rebootState, {type: "reply", id: genericReboot.id, ok: false, msg: "Reboot is unavailable."}, 2);
+assert.equal(rebootState.rebootMessage, "Reboot is unavailable. Try again, or hold the power button to turn the computer off, then start it again. Your installation is safe.");
 assert.equal(Object.values(rebootState.pending).includes("reboot"), false);
+
+// Full worker recovery messages appear once, including a dead guardian and a timed-out reply.
+for (const message of [P.recoveryText(), "Automatic restart is unavailable. " + P.recoveryText()]) {
+    const state = P.initial();
+    const req = P.request(state, "reboot");
+    P.receive(state, {type: "reply", id: req.id, ok: false, msg: message}, 1);
+    assert.equal(state.rebootMessage, message);
+    assert.equal(state.rebootMessage.split(P.recoveryText()).length, 2);
+}
+const exporting = P.initial();
+const exportRequest = P.request(exporting, "save_log", {dest: "usb"});
+assert.equal(P.receive(exporting, {type: "reply", id: exportRequest.id, ok: false,
+    code: "busy", msg: "Log export is unavailable during restart preparation."}, 1).length, 0);
+assert.equal(exporting.notice, "Log export is unavailable during restart preparation.");
+// A pending earlier restart refuses the plan; its sentence stays on screen (no hello clears it).
+const pendingRestart = "A previous restart is still pending. Wait for it to finish before starting another installation.";
+const waiting = P.initial();
+const waitingPlan = P.request(waiting, "plan", {config: {}});
+assert.equal(P.receive(waiting, {type: "reply", id: waitingPlan.id, ok: false,
+    code: "restart_pending", msg: pendingRestart}, 1).length, 0);
+assert.equal(waiting.notice, pendingRestart);
+assert.equal(waiting.planning, false);
+
+// Fresh windows consume the real controller's restart state instead of probing
+// a permanently stopping worker. No fixture invents the hello contract.
+const restartTranscript = JSON.parse(execFileSync("python3", ["-c", `
+import json
+from emaki_installer.protocol import Controller, Job
+class Inventory: pass
+forcings = []
+for forced in (False, True):
+    calls = []
+    c = Controller(Inventory(), None, prepare_reboot=lambda: forced,
+                   reboot=lambda: calls.append('restart'), clock=lambda: 20)
+    c.job = Job('finished')
+    c.emit('done', seconds=1)
+    c.handle({'type':'prepare_reboot', 'id':'first'})
+    hello = c.handle({'type':'hello', 'id':'reopened', 'proto':1})[0]
+    export = c.handle({'type':'save_log', 'id':'export', 'dest':'usb'})[0]
+    result = c.handle({'type':'reboot', 'id':'button'})[0]
+    forcings.append({'hello':hello, 'export':export, 'result':result, 'calls':calls})
+print(json.dumps(forcings))
+`], {env: {...process.env, PYTHONPATH: path.join(__dirname, "../..")}, encoding: "utf8"}));
+for (const row of restartTranscript) {
+    const fresh = P.initial();
+    const requests = P.receive(fresh, row.hello, 1000);
+    assert.equal(requests.length, 0);
+    assert.equal(fresh.outcome, "done");
+    assert.equal(fresh.jobId, "finished");
+    assert.ok(["ready", "forced"].includes(fresh.restartState));
+    assert.equal(fresh.ready, true);
+    const save = P.request(fresh, "save_log", {dest: "usb"});
+    P.receive(fresh, {...row.export, id:save.id, for_id:save.id}, 1001);
+    assert.equal(fresh.notice, "Log export is unavailable after restart preparation.");
+    const restart = P.request(fresh, "reboot");
+    P.receive(fresh, {...row.result, id:restart.id, for_id:restart.id}, 1001);
+    assert.equal(fresh.rebootMessage, "Restarting…");
+    assert.deepEqual(row.calls, ["restart"]);
+}
+// A matched restart failure disarms the countdown; a request timeout with a
+// surviving guardian deadline must keep the automatic restart visible.
+const failureTranscript = JSON.parse(execFileSync("python3", ["-c", `
+import json
+from emaki_installer.protocol import Controller, Job
+from emaki_installer.errors import Code, InstallError
+from emaki_installer.restart import RESTART_ERROR
+class Inventory: pass
+rows = []
+for remaining in (None, 35):
+    deadline = [35]
+    def restart():
+        deadline[0] = remaining
+        raise InstallError(Code.INTERNAL, RESTART_ERROR)
+    c = Controller(Inventory(), None, prepare_reboot=lambda: True,
+                   reboot=restart, restart_deadline=lambda: deadline[0], clock=lambda: 20)
+    c.job = Job('finished')
+    c.emit('done', seconds=1)
+    c.handle({'type':'prepare_reboot', 'id':'prepare'})
+    before = c.handle({'type':'hello', 'id':'before', 'proto':1})[0]
+    failure = c.handle({'type':'reboot', 'id':'restart'})[0]
+    after = c.handle({'type':'hello', 'id':'after', 'proto':1})[0]
+    rows.append({'before':before, 'failure':failure, 'after':after})
+print(json.dumps(rows))
+`], {env: {...process.env, PYTHONPATH: path.join(__dirname, "../..")}, encoding: "utf8"}));
+for (const [index, row] of failureTranscript.entries()) {
+    const current = P.initial();
+    P.receive(current, row.before, 1000);
+    const restart = P.request(current, "reboot");
+    P.receive(current, {...row.failure, id:restart.id, for_id:restart.id}, 2000);
+    const reopened = P.initial();
+    assert.equal(P.receive(reopened, row.after, 2000).length, 0);
+    if (index === 0) {
+        const failureMessage = current.rebootMessage;
+        assert.match(failureMessage, /Could not restart/);
+        assert.match(failureMessage, /hold the power button/);
+        for (const state of [current, reopened]) {
+            assert.equal(state.restartState, "ready");
+            assert.equal(state.forcedDeadline, 0);
+            P.forcedTick(state, 3000);
+            assert.doesNotMatch(state.rebootMessage, /Restarting in/);
+        }
+        assert.equal(current.rebootMessage, failureMessage);
+    } else {
+        for (const state of [current, reopened]) {
+            assert.equal(state.restartState, "forced");
+            assert.equal(state.forcedDeadline, 17000);
+            P.forcedTick(state, 3000);
+            assert.match(state.rebootMessage, /14 seconds/);
+            assert.doesNotMatch(state.rebootMessage, /Could not restart/);
+        }
+    }
+}
+P.forcedTick(latePreparation, 5001);
+assert.match(latePreparation.rebootMessage, /10 seconds/);
+assert.match(latePreparation.rebootMessage, /Remove the USB stick if it is still connected/);
+P.disconnected(latePreparation);
+P.disconnectedReboot(latePreparation);
+assert.match(latePreparation.rebootMessage, /10 seconds/);
+P.forcedTick(latePreparation, 14001);
+assert.match(latePreparation.rebootMessage, /Restarting in 1 second…/);
+P.forcedTick(latePreparation, 15001);
+assert.match(latePreparation.rebootMessage, /Restarting…/);
+P.forcedTick(latePreparation, 35001);
+assert.equal(latePreparation.rebootMessage, P.recoveryText());
+console.log("PASS reopened restart state, real controller, countdown and disconnected Enter");
 
 const files = fs.readdirSync(path.join(__dirname, "transcripts")).filter(f => f.endsWith(".json") && f !== "render.json");
 // As mock-worker.py's transcript(): {"base", "confirm"} is the base's rows with other job events.
@@ -117,7 +273,7 @@ assert.equal(refused.plan.errors[0].msg, "/home cannot be FAT; choose ext4 or bt
 assert.equal(refused.notice, "");
 // The worker's done carries warnings for the done page (installer/emaki_installer/worker.py).
 assert.deepEqual(Array.from(P.initial().doneWarnings), []);
-const partial = "The online update stopped part-way; some packages may be newer than others. Run `sudo pacman -Syu` after the first login.";
+const partial = "The online update did not finish; use the terminal to update the whole system before installing apps [pacman].";
 P.receive(s, {type: "done", job_id: "known", seconds: 5, warnings: [partial]}, 1004);
 assert.equal(s.outcome, "done");
 assert.deepEqual(Array.from(s.doneWarnings), [partial]);
@@ -325,7 +481,7 @@ console.log("PASS unlock layout matches render.unlock_layout for GRUB; layout li
 // Every worker error code has plain words on the error page; the worker's message goes to the details.
 const codes = Array.from(fs.readFileSync(path.join(__dirname, "../../emaki_installer/errors.py"), "utf8")
     .matchAll(/^\s+[A-Z_]+ = '([a-z_]+)'$/gm), match => match[1]);
-assert.equal(codes.length, 32);
+assert.equal(codes.length, 33);
 const ownSentence = ["bad_config", "login_name_reserved", "secure_boot", "clock_skew"];
 for (const code of codes) {
     const words = P.errorPresentation({code: code, message: "raw worker message"});

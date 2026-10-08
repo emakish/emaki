@@ -78,12 +78,13 @@ class CheckIsoTests(unittest.TestCase):
         self.log = self.base / 'calls.log'
         for folder in (self.home, self.bin, self.copy, self.base / 'repo/installer'):
             folder.mkdir(parents=True)
-        for name in ('iso-alongside-check.py', 'iso-encrypt-check.py', 'iso-monitor.py'):
+        for name in ('iso-alongside-check.py', 'iso-encrypt-check.py', 'iso-monitor.py',
+                     'frame_assessment.py'):
             shutil.copy(VM / name, self.copy / name)
         shutil.copytree(VM / 'fixtures', self.copy / 'fixtures')
         shutil.copytree(ROOT / 'installer/fixtures', self.base / 'repo/installer/fixtures')
         for folder, names in ((self.copy, ('run-iso.sh', 'iso-wait-ssh.sh', 'iso-ssh.sh', 'iso-stop.sh')),
-                              (self.bin, ('qemu-img',))):
+                              (self.bin, ('qemu-img', 'tesseract'))):
             for name in names:
                 (folder / name).write_text(STUB)
                 (folder / name).chmod(0o755)

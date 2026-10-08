@@ -12,8 +12,8 @@ import reaper
 reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
-CACHE = ROOT / '.cache'
-CACHE.mkdir(exist_ok=True)
+CACHE = ROOT / '.cache/evidence'
+CACHE.mkdir(parents=True, exist_ok=True)
 
 
 def main():
@@ -48,10 +48,12 @@ time.sleep(15)
                    EMAKI_VISUAL_OUTPUT=str(base), QS_DISABLE_CRASH_HANDLER='1')
         for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'QT_LOGGING_RULES', 'EMAKI_PYTHON'):
             env.pop(name, None)
-        for late in (False, True):
+        for late, rejection, real_wallpaper in ((False, False, False), (True, False, False), (False, True, False), (False, True, True)):
+            if real_wallpaper:
+                shutil.copy2(ROOT / 'art/wallpaper/fallback.png', base / 'wallpaper.png')
             result = subprocess.run(['qs', '-p', str(base / 'qml/check.qml'), '--no-color'],
-                                    env=dict(env, EMAKI_VISUAL_LATE=str(int(late))), text=True,
-                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=12)
+                                    env=dict(env, EMAKI_VISUAL_LATE=str(int(late)), EMAKI_VISUAL_REJECTION=str(int(rejection))), text=True,
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=20)
             assert result.returncode == 0 and 'GREETER_VISUAL_PASS' in result.stdout, result.stdout
             assert not any(text in result.stdout for text in ('ReferenceError', 'TypeError', 'Binding loop')), result.stdout
             for name in ('before-selection', 'decoding'):
@@ -59,12 +61,27 @@ time.sleep(15)
                     assert image.convert('RGB').getbbox() is None, (name, image.getpixel((20, 20)))
             with Image.open(base / 'pour.png') as image:
                 top, bottom = image.getpixel((20, 20)), image.getpixel((20, 460))
-                assert top[0] > 200 and bottom[:3] == (0, 0, 0), (late, top, bottom)
+                assert (real_wallpaper or top[0] > 200) and bottom[:3] == (0, 0, 0), (late, top, bottom)
             with Image.open(base / 'locked.png') as image:
                 pixel = image.getpixel((20, 20))
                 # A timed-out decode remains the flat palette after the helper
                 # eventually succeeds; a timely image tints the actual plate.
-                assert (pixel[1] > 230 if late else pixel[1] < 200), (late, pixel)
+                assert real_wallpaper or (pixel[1] > 230 if late else pixel[1] < 200), (late, pixel)
+            if rejection:
+                with Image.open(base / 'rejected.png') as image:
+                    # The real error label below the field: red Emaki ink, six
+                    # seconds after refusal, still visible while a retry is typed.
+                    region = image.convert('RGB').crop((100, 282, 540, 310))
+                    assert sum(r > g * 1.7 and r > b * 1.2 and r < 190 for r, g, b in (region.getpixel((x, y)) for y in range(region.height) for x in range(region.width))) > 30
+                    # The fully opaque plate fixes contrast even on a real image.
+                    assert image.convert('RGB').getpixel((320, 280)) == (255, 248, 243)
+                    def luminance(rgb):
+                        linear = [v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4 for v in (channel / 255 for channel in rgb)]
+                        return sum(v * weight for v, weight in zip(linear, (.2126, .7152, .0722)))
+                    assert (160, 27, 69) in region.getdata()
+                    assert (luminance((255, 248, 243)) + .05) / (luminance((160, 27, 69)) + .05) > 7
+                shutil.copy2(base / 'rejected.png', CACHE / ('u3b-greeter-real-wallpaper.png' if real_wallpaper else 'u3b-greeter-rejected.png'))
+                print('PASS: greeter rejection remains visible after six seconds and while typing')
             with Image.open(base / 'finished.png') as image:
                 assert image.getpixel((20, 20))[:3] == (0, 0, 0)
             print('PASS: greeter black preparation/pour/drain; late decode =', late)

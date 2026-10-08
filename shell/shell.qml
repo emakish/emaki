@@ -62,6 +62,10 @@ ShellRoot {
         store: scene.notifications
         ready: root.valid && !root.headless && !startup.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
     }
+    SessionUpdateNotice {
+        store: scene.notifications
+        ready: root.valid && !root.headless && !startup.coverActive && !scene.pairingPeekOpen && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
+    }
     IpcHandler {
         target: "workspaces"
         function focus(id: string): bool {

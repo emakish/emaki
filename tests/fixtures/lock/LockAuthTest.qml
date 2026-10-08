@@ -37,6 +37,8 @@ ShellRoot {
                 awaiting: auth.awaitingResponse,
                 prompt: auth.prompt,
                 message: auth.message,
+                displayMessage: auth.displayMessage,
+                lockoutRemaining: auth.lockoutRemaining,
                 kind: auth.messageKind,
                 attempt: auth.attemptId,
                 successes: root.successes,
@@ -65,7 +67,10 @@ ShellRoot {
                 auth.cancel();
             else if (name === "suspend")
                 auth.suspend();
-            else if (name === "reset")
+            else if (name === "expireLockout") {
+                auth._lockoutUntil = Date.now() - 1;
+                auth.updateLockoutTime();
+            } else if (name === "reset")
                 auth.reset();
             else if (name === "disable")
                 auth.enabled = false;

@@ -8,6 +8,8 @@ Scope {
     property int stage: 0
     property bool capturing: false
     property bool selected: false
+    property real rejectedAt: 0
+    readonly property bool rejection: Quickshell.env("EMAKI_VISUAL_REJECTION") === "1"
     readonly property bool late: Quickshell.env("EMAKI_VISUAL_LATE") === "1"
     function capture(name: string): void {
         capturing = true;
@@ -18,14 +20,15 @@ Scope {
             stage += 1;
         });
     }
-    AuthController {
+    GreeterAuth {
         id: auth
+        user: "fixture-user"
     }
     LockEnvironment {
         id: environment
         isolateHelper: true
     }
-    LockSession {
+    GreeterSession {
         id: session
         auth: auth
         secure: true
@@ -70,18 +73,33 @@ Scope {
                     Qt.exit(1);
                 root.capture("locked");
             } else if (root.stage === 5) {
+                if (!root.rejection) {
+                    root.stage += 1;
+                    return;
+                }
+                if (!root.rejectedAt) {
+                    auth.checking = true;
+                    auth.complete("rejected");
+                    root.rejectedAt = Date.now();
+                }
+                if (Date.now() - root.rejectedAt < 6200)
+                    return;
+                if (auth.message !== "Wrong password" || auth.messageKind !== "wrong" || !auth.edit("fixture") || auth.message !== "Wrong password")
+                    Qt.exit(1);
+                root.capture("rejected");
+            } else if (root.stage === 6) {
                 session.phase = "finished";
                 root.stage += 1;
-            } else if (root.stage === 6) {
-                root.capture("finished");
             } else if (root.stage === 7) {
+                root.capture("finished");
+            } else if (root.stage === 8) {
                 console.log("GREETER_VISUAL_PASS");
                 Qt.quit();
             }
         }
     }
     Timer {
-        interval: 9000
+        interval: 18000
         running: true
         onTriggered: {
             console.error("GREETER_VISUAL_TIMEOUT", root.stage, session.phase, session.elapsed);

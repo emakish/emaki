@@ -1,3 +1,5 @@
 #%PAM-1.0
 # Password-only authentication, matching the distribution's hyprlock stack.
-auth include login
+# Keep a failure verdict while allowing the read-only notice below to run.
+auth substack login
+auth [default=ignore] pam_faillock.so preauth

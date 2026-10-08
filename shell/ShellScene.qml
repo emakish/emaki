@@ -387,7 +387,7 @@ Item {
         }
         onEntriesChanged: {
             if (scene.peekOpen) {
-                scene.peekIds = scene.peekIds.filter(id => notes.entries.some(n => n.id === id && (!n.critical || n.batteryWarning || n.object)));
+                scene.peekIds = scene.peekIds.filter(id => notes.entries.some(n => n.id === id && (!n.critical || n.batteryWarning || n.sessionUpdate || n.object)));
                 if (!scene.peekOpen)
                     scene.endPeek();
             }

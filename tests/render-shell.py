@@ -18,6 +18,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
+from xml.sax.saxutils import escape
 import reaper
 reaper.guard()  # nothing this test starts outlives it
 
@@ -61,6 +63,42 @@ def _build_plugin(output_root, module):
     return output_root.resolve()
 
 
+def shipped_font_config(profile):
+    """Limit renders to installed fonts from the target's Noto packages."""
+    tokens = tomllib.loads((ROOT / 'tokens.toml').read_text())['font']
+    fonts = profile / 'fonts'
+    fonts.mkdir()
+    inventory = subprocess.check_output(
+        ['fc-list', '--format', '%{file}\t%{family}\n'], text=True)
+    families = set()
+    paths = set()
+    for line in inventory.splitlines():
+        filename, names = line.split('\t', 1)
+        names = set(names.split(','))
+        if any(name.startswith('Noto ') for name in names):
+            families.update(names)
+            paths.add(filename)
+    for family in (tokens['ui'], 'Noto Sans Mono'):
+        if family not in families:
+            raise RuntimeError(f'Render requires the shipped font: {family}')
+    for index, filename in enumerate(sorted(paths)):
+        source = Path(filename)
+        (fonts / f'{index}{source.suffix}').symlink_to(source)
+    config = profile / 'fonts.conf'
+    aliases = ''.join(
+        f'<match target="pattern"><test name="family"><string>{name}</string></test>'
+        f'<edit name="family" mode="assign" binding="strong"><string>{escape(family)}</string></edit></match>'
+        for name, family in [('sans', tokens['ui']), ('sans-serif', tokens['ui']),
+                             ('Sans Serif', tokens['ui']), ('serif', 'Noto Serif'),
+                             ('mono', 'Noto Sans Mono'), ('monospace', 'Noto Sans Mono'),
+                             (tokens['mono'], 'Noto Sans Mono')])
+    config.write_text('<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">'
+                      f'<fontconfig><dir>{escape(str(fonts))}</dir>'
+                      f'<cachedir>{escape(str(profile / "cache" / "fonts"))}</cachedir>'
+                      + aliases + '</fontconfig>')
+    return config
+
+
 def render(qml, png=None, stats=None, properties=None, width=640, height=480, scale=1,
            warmup=500, milliseconds=1000, shader_dir=None, extra_env=None, screen_scale=1,
            ready_property=''):
@@ -79,6 +117,7 @@ def render(qml, png=None, stats=None, properties=None, width=640, height=480, sc
         profile = Path(temporary)
         for name in ('runtime', 'cache', 'config', 'state', 'data', 'tmp'):
             (profile / name).mkdir(mode=0o700)
+        font_config = shipped_font_config(profile)
         target = profile / 'qml'
         shutil.copytree(qml.parent, target, ignore=shutil.ignore_patterns('*.so', '*.o', '*.moc'))
         fixture = target / qml.name
@@ -109,6 +148,7 @@ ShellRoot {
                    XDG_CACHE_HOME=str(profile / 'cache'), XDG_CONFIG_HOME=str(profile / 'config'),
                    XDG_STATE_HOME=str(profile / 'state'), XDG_DATA_HOME=str(profile / 'data'),
                    XDG_DATA_DIRS=str(profile / 'data'), TMPDIR=str(profile / 'tmp'),
+                   FONTCONFIG_FILE=str(font_config),
                    QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='rhi', QML_DISABLE_DISK_CACHE='1',
                    QML_IMPORT_PATH=str(imports), EGL_PLATFORM='surfaceless', LIBGL_ALWAYS_SOFTWARE='1',
                    GALLIUM_DRIVER='llvmpipe', LP_NUM_THREADS='1', QS_DISABLE_CRASH_HANDLER='1', NIRI_SOCKET='',

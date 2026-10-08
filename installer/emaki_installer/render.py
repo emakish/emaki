@@ -36,7 +36,7 @@ def console_keymap(layout):
     return CONSOLE.get(layout, 'us')
 
 
-def vconsole_conf(layouts):
+def vconsole_conf(layouts, font=None):
     """The whole text of /etc/vconsole.conf; nothing else produces that file.
 
     KEYMAP is the console map of the first layout (text console, getty, and the keymap baked
@@ -44,13 +44,17 @@ def vconsole_conf(layouts):
     systemd-localed serves it, and niri (login screen, session, lock screen) follows localed
     while its own xkb section is empty. No XKBOPTIONS: a grp: toggle would switch a second
     time next to niri's switch-layout bind. No XKBMODEL.
+    FONT, when selected from the boot display, applies in initramfs and to every
+    text console after boot through systemd-vconsole-setup. An absent FONT lets
+    the kernel choose its font again when a native framebuffer takes over.
     """
     names = ['us' if x in US_VARIANTS else x for x in layouts]
     variants = [x if x in US_VARIANTS else '' for x in layouts]
     text = f'KEYMAP={console_keymap(layouts[0])}\nXKBLAYOUT={",".join(names)}\n'
     if any(variants):
         text += f'XKBVARIANT={",".join(variants)}\n'
-    return text
+    # 12x24 is larger than 8x16, but smaller than the kernel's HiDPI 16x32.
+    return text + (f'FONT={font}\n' if font else '')
 
 
 def unlock_layout(layouts, prompt):

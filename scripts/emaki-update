@@ -1,0 +1,77 @@
+#!/usr/bin/python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Run a full update and explain failures, keeping all package protections."""
+import argparse
+import os
+from pathlib import Path
+import re
+import signal
+import subprocess
+import sys
+
+sys.path.insert(0, '/usr/libexec/emaki')
+try:
+    from emaki_update_errors import error_lines, explain
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'installer'))
+    from emaki_installer.update_errors import error_lines, explain
+
+
+def run(command):
+    # Keep stdin attached for confirmation prompts. Bound retained diagnostics;
+    # the complete output still reaches the terminal as it arrives.
+    tail = b''
+    # A caught handler resets to SIG_DFL on exec; SIG_IGN would be inherited
+    # by pacman. Keep draining while pacman handles the terminal's interrupt.
+    interrupted = False
+    transaction_started = False
+
+    def interrupt(signum, frame):
+        nonlocal interrupted
+        interrupted = True
+
+    previous = signal.signal(signal.SIGINT, interrupt)
+    try:
+        with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              env=dict(os.environ, LC_ALL='C')) as process:
+            while chunk := os.read(process.stdout.fileno(), 4096):
+                sys.stdout.buffer.write(chunk)
+                sys.stdout.buffer.flush()
+                combined = tail + chunk
+                # Hooks can change the system before the first package changes.
+                # Remember this boundary even after it leaves the retained tail.
+                transaction_started |= any(marker in combined for marker in (
+                    b'Running pre-transaction hooks', b'Processing package changes',
+                    b'Running post-transaction hooks'))
+                tail = combined[-65536:]
+            status = process.wait()
+    finally:
+        signal.signal(signal.SIGINT, previous)
+    output = tail.decode('utf-8', errors='replace')
+    # Post-transaction hook errors can accompany a successful pacman exit.
+    if status or any(line.lower() == 'error: command failed to execute correctly'
+                     for line in error_lines(output)):
+        declined = status == 1 and re.search(
+            r':: Proceed with installation\? \[Y/n\]\s*(?:[nN]\s*)?$', output)
+        cancelled = (status in (-signal.SIGINT, 128 + signal.SIGINT)
+                     or (interrupted and status == 1) or declined)
+        if cancelled and not transaction_started and not error_lines(output):
+            message = 'The update was cancelled. No installed packages were changed.'
+        else:
+            message = explain(output)
+        print('\n' + message, file=sys.stderr)
+    return status if status >= 0 else 128 - status
+
+
+def main():
+    argparse.ArgumentParser(description='Update all installed packages [pacman].').parse_args()
+    try:
+        return run(['/usr/bin/pacman', '-Syu'])
+    except OSError as error:
+        print(explain(str(error)), file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

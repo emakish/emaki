@@ -15,6 +15,7 @@ mk fuzzel 'printf "%s\n" "$*" >> "'"$T"'/fuzzel-args"; cat > "'"$T"'/menu-items"
 cp "$(dirname "$S")/emaki-config-path" "$T/emaki-config-path"
 # The test runner's personal files must not affect the result.
 export XDG_CONFIG_HOME="$T/config"
+mk emaki-wallet-start 'echo "wallet $*" >> "'"$LOG"'"; if [ -f "'"$T"'/wallet-stall" ]; then trap "" TERM; while :; do sleep 1; done; fi; [ ! -f "'"$T"'/wallet-fail" ]'
 mk systemctl 'echo "systemctl $*" >> "'"$LOG"'"'
 # logind's CanHibernate answer, as busctl --json=short prints it; "yes" unless the test says otherwise.
 mk busctl 'echo "busctl $*" >> "'"$T"'/busctl-args"; printf "{\"type\":\"s\",\"data\":[\"%s\"]}\n" "$(cat "'"$T"'/can-hibernate")"'
@@ -40,12 +41,20 @@ run "Hibernate cancelled on lock failure" "Hibernate|Yes" "emaki-lock --wait"
 rm "$T/lock-fail"
 run "Hibernate + No"          "Hibernate|No"        ""
 run "Hibernate + Esc"         "Hibernate|"          ""
-run "Log out + Yes"           "Log out|Yes"         "niri msg action quit --skip-confirmation"
+run "Log out + Yes"           "Log out|Yes"         "wallet --flush|niri msg action quit --skip-confirmation"
 run "Log out + No"            "Log out|No"          ""
-run "Reboot + Yes"            "Restart|Yes"         "systemctl reboot"
+run "Reboot + Yes"            "Restart|Yes"         "wallet --flush|systemctl reboot"
 run "Reboot + No"             "Restart|No"          ""
-run "Shut down + Yes"         "Shut down|Yes"       "systemctl poweroff"
+run "Shut down + Yes"         "Shut down|Yes"       "wallet --flush|systemctl poweroff"
 run "Shut down + Esc"         "Shut down|"          ""
+: > "$T/wallet-fail"
+run "Logout proceeds when saving fails" "Log out|Yes" "wallet --flush|niri msg action quit --skip-confirmation"
+run "Reboot proceeds when saving fails" "Restart|Yes" "wallet --flush|systemctl reboot"
+run "Power off proceeds when saving fails" "Shut down|Yes" "wallet --flush|systemctl poweroff"
+rm "$T/wallet-fail"
+: > "$T/wallet-stall"
+run "Logout proceeds after a stalled flush" "Log out|Yes" "wallet --flush|niri msg action quit --skip-confirmation"
+rm "$T/wallet-stall"
 run "garbage answer"          "whatever"            ""
 
 # The main menu lists Hibernate only when logind says the machine can (same rule as

@@ -105,9 +105,6 @@ if systemctl --user -q is-active niri-emaki.service || systemctl --user -q is-ac
 fi
 
 systemctl --user reset-failed
-# A login gets a fresh token; restarting the shell or wallet keeps this token.
-export EMAKI_WALLET_SESSION
-EMAKI_WALLET_SESSION=$(cat /proc/sys/kernel/random/uuid)
 # Preserve every login-profile export without systemctl's nameless-import warning.
 # Values never pass through shell parsing (including newlines and metacharacters).
 if declare -F emaki_nvidia_clear_activation >/dev/null; then
@@ -124,7 +121,7 @@ systemctl --user --wait start niri-emaki.service
 # Force stop of graphical-session.target (niri-shutdown.target comes with the niri package).
 systemctl --user start --job-mode=replace-irreversibly niri-shutdown.target
 
-systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_MENU_PREFIX NIRI_SOCKET EMAKI_SHELL_DOCK_BACKDROP EMAKI_LOGIN_HANDOFF EMAKI_WALLET_SESSION
+systemctl --user unset-environment PAM_KWALLET5_LOGIN WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_MENU_PREFIX NIRI_SOCKET EMAKI_SHELL_DOCK_BACKDROP EMAKI_LOGIN_HANDOFF
 if declare -F emaki_nvidia_clear_activation >/dev/null; then
     emaki_nvidia_clear_activation
 fi

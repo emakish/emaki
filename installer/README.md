@@ -31,7 +31,7 @@ encryption and a RAM-sized hibernation file. BIOS installation is unsupported.
 
 ## Alongside Windows
 
-**Not offered in 0.3.0.** Installing alongside Windows returns only after a check
+**Not offered in 0.3.1.** Installing alongside Windows returns only after a check
 on a real Windows (a real shrink of its partition, BitLocker); see DECISIONS,
 2026-10-04 "No experimental options". One switch controls it: `ALONGSIDE` in
 `emaki_installer/constants.py`, `False`. With it off the inventory does not
@@ -120,7 +120,7 @@ not Windows. This tests chainloading only. All files and evidence stay under
 the dedicated VM directory, and the guest is stopped on success or failure.
 Before it touches the target disk, the job asks the ISO's worker for a plan
 only; when the worker refuses the mode itself (`unsupported_mode`, as every
-0.3.0 image does), it prints `NOT APPLICABLE`, writes `NOT-APPLICABLE` into the
+0.3.1 image does), it prints `NOT APPLICABLE`, writes `NOT-APPLICABLE` into the
 run directory and exits 77: neither a pass nor a failure.
 
 ### First real Windows laptop checklist
@@ -210,7 +210,7 @@ The render set includes every step, encryption choices and password states,
 hibernation in every layout mode, a selected map region, active and empty
 time zone searches, and both software choices, at the default 1024 × 700 size.
 The `alongside*` screens replay a worker offer recorded with the alongside
-switch on; a 0.3.0 worker never sends one.
+switch on; a 0.3.1 worker never sends one.
 Use `--width 960 --height 640` for the minimum window, and `--iso-fonts` to limit
 the test to the ISO's Adwaita fonts. `controller.py --unix` additionally exercises
 the real socket; it returns 77 when the sandbox cannot bind Unix sockets.
@@ -303,7 +303,7 @@ Only root is encrypted; the ESP remains plain at `/efi`. Manual encryption
 requires formatting root and preserves the existing GPT and ESP. Any other
 data partitions stay unencrypted, as stated in the UI and review. The common
 `storage_layout` planner function applies these options after a layout builder;
-the alongside builder (off in 0.3.0) calls it without duplicating storage policy.
+the alongside builder (off in 0.3.1) calls it without duplicating storage policy.
 
 The shipped Arch GRUB 2:2.16-1 includes `luks2`, `argon2`, `cryptodisk` and
 `pbkdf2` modules, verified in the test ISO. Root uses LUKS2/Argon2id with a
@@ -386,7 +386,7 @@ confirming it. **Adding `--yes` authorizes disk writes.** `--plan FILE --yes`
 streams the job; adding `--follow` is accepted as a no-op. `--follow` alone attaches to
 the active job. A completed last job can be replayed with `--follow --job-id ID`;
 `--since-seq N` resumes after a recorded sequence. Exit codes: 0 success/review,
-2 request/job failure, 3 invalid plan, 4 busy. JSON event lines go to stdout;
+2 request/job failure (including a pending earlier restart), 3 invalid plan, 4 busy. JSON event lines go to stdout;
 neither the password nor the plan token is printed by the CLI.
 
 Closed LUKS, BitLocker and FileVault 2 volumes appear in the selected disk's
@@ -486,7 +486,9 @@ when manual subvolumes belong to multiple filesystems.
 `minimal_installation` is the upstream method. A narrow `PacmanConfig` adapter
 prevents it editing the live pacman configuration or saving USB URLs in the
 target. Its `Pacman.strap` is replaced by a logged, noninteractive
-`pacstrap -C /etc/emaki-installer/pacman-offline.conf -K ...`. Both signed keys
+`pacstrap -C <private-package-workspace>/offline.conf -K ...`. The shipped
+`/etc/emaki-installer/pacman-offline.conf` is validated as input; each package
+source gets a generated configuration with its own empty `HookDir`. Both signed keys
 are populated in the target. `mkinitcpio` is an explicit additional package so
 the kernel dependency cannot select a different initramfs generator.
 
@@ -497,7 +499,51 @@ leftovers. After pacman-key, GnuPG helpers are stopped in the chroot. Normal
 cleanup stops only processes rooted inside the target, syncs, settles udev,
 and attempts each unmount up to ten times with 0.5–2 second backoff. Exhausted
 retries log fuser and target-rooted processes and remain fatal. The service has a private mount
-namespace and defers SIGTERM to a phase boundary.
+namespace and defers SIGTERM to a phase boundary. At startup, a separate restart
+guardian moves into `emaki-installer-restart.scope` and verifies its cgroup before
+pinning its current and future memory. This happens before installation can start.
+The scope has no lifetime dependency on the daemon, so the daemon's `KillMode=mixed`
+cleanup cannot kill it. Normal shutdown dependencies and default SIGTERM handling
+let desktop power-off stop a forced countdown. Failed scope adoption logs degraded
+isolation and keeps the installer reachable with a pinned guardian in the inherited
+cgroup. After failed adoption, plan and confirm poll the fixed scope's `cgroup.procs`:
+another occupant blocks installation until it leaves; an empty or removed scope
+permits installation immediately on the next request. Unreadable membership blocks
+those requests until it can be checked. The new guardian's own PID is excluded if
+a timed-out adoption completes later. Probing and log export remain available.
+Failure to pin memory still prevents startup.
+Only a completed job may request restart preparation: target sync, non-lazy
+unmounts and storage-device close must have succeeded before the worker emits done.
+The window asks the person to keep the USB connected during preparation.
+A disposable child checks the boot block device's presence/capacity, starts the
+shutdown ramfs service (120-second command timeout plus a bounded two-second total
+TERM/KILL cleanup budget), syncs, and checks the medium
+again. Missing shutdown artifacts alone still use the established resident fallback.
+The guardian bounds the whole child operation to 125 seconds, without waiting for
+a process stuck in storage I/O. On success, the usual removal/Enter prompt and
+PID 1 request followed by an eight-second syscall fallback remain unchanged.
+Immediately before its own normal PID 1 reboot request, the guardian ignores
+SIGTERM so stopping the scope cannot cancel that fallback. If the syscall returns,
+the previous signal handling is restored. A forced countdown retains default
+SIGTERM handling so a desktop power-off still wins.
+The normal client call waits up to 12 seconds for the guardian: this must outlast
+the eight-second fallback. Replies carry request numbers, so a late preparation
+reply cannot incorrectly finish that wait. Neither path waits for a killed child.
+On failure or timeout, the prepare reply carries `forced_reboot: true`; the window
+shows the installation is safe and offers Enter, and the guardian forces reboot
+after 15 seconds even if the window or daemon no longer responds. The window counts
+down from the guardian's deadline and asks for USB removal if still connected. This path does
+no further disk I/O. A returning reboot syscall is reported as a retryable failure.
+The window reports connection loss immediately, retaining that notice until an
+unanswered preparation request reaches 135 seconds. Until the guardian receives
+the prepare command, no automatic fallback is armed. Unconfirmed preparation or
+an unavailable guardian gives the safe manual power-off/restart next step; plugging
+the USB back in cannot restore the removed live block-device mounts.
+Hello includes restart state so a reopened window restores preparation or the
+restart prompt and button. Log export is serialized with preparation and rejected
+while preparing or after an armed result, with wording that identifies the current
+state. Failed preparation permits log export again; new disk work remains blocked
+for the daemon lifetime once preparation has been requested.
 
 Safety revalidation checks UEFI, the boot-medium ancestor, mount/holder/readonly
 state, disk size, identity, partition UUIDs/geometry and kernel disk sequence.

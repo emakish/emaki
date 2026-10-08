@@ -10,6 +10,6 @@ Target = quickshell-emaki
 Target = qt6-*
 
 [Action]
-Description = Sign out and sign in again to finish updating the desktop [Emaki].
+Description = Recording the desktop update [Emaki].
 When = PostTransaction
-Exec = /usr/bin/true
+Exec = /usr/bin/emaki-session-update

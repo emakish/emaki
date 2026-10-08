@@ -5,6 +5,7 @@ import QtQuick
 // each backend owns its conversation and success transition. The lock keeps its
 // literal LockPam factory, with no production injection point.
 QtObject {
+    id: auth
     property string buffer: ""
     property int dotCount: 0
     property bool checking: false
@@ -14,6 +15,32 @@ QtObject {
     property string prompt: "Password"
     property string message: ""
     property string messageKind: ""
+    // PAM reports a rounded-up minute count. This is a display estimate only;
+    // neither the timer nor its expiry authenticates or blocks an attempt.
+    property real _lockoutUntil: 0
+    property int lockoutRemaining: 0
+    readonly property string displayMessage: _lockoutUntil > 0 ? (lockoutRemaining > 0 ? "Too many wrong passwords. Try again in about " + Math.floor(lockoutRemaining / 60) + ":" + String(lockoutRemaining % 60).padStart(2, "0") + "." : "Wait time has ended. Try again.") : message
+    onMessageChanged: {
+        const duration = /^\((\d+) minutes? left to unlock\)$/.exec(message.trim());
+        const minutes = duration ? Number(duration[1]) : 0;
+        if (minutes > 0 && minutes <= 525600) {
+            _lockoutUntil = Date.now() + minutes * 60000;
+            updateLockoutTime();
+        } else {
+            _lockoutUntil = 0;
+            lockoutRemaining = 0;
+        }
+    }
+    function updateLockoutTime(): void {
+        // Recalculate after delayed frames or sleep; never count timer ticks.
+        lockoutRemaining = Math.max(0, Math.ceil((_lockoutUntil - Date.now()) / 1000));
+    }
+    readonly property Timer lockoutClock: Timer {
+        interval: 250
+        repeat: true
+        running: auth._lockoutUntil > 0 && auth.lockoutRemaining > 0
+        onTriggered: auth.updateLockoutTime()
+    }
     property int attemptId: 0
     readonly property bool awaitingResponse: _awaitingInput
     readonly property bool succeeded: _terminal

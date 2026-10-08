@@ -1,0 +1,13 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Report an unexpected Emaki dependency watch failure
+
+[Service]
+Type=oneshot
+# Independent of the watch checkout and its EnvironmentFile.
+ExecStart=/usr/bin/python3 %h/.local/lib/emaki-arch-watch/arch-watch-notify --failure
+StateDirectory=emaki-arch-watch
+TimeoutStartSec=1min
+SuccessExitStatus=1
+UMask=0077

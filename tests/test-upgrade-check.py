@@ -41,7 +41,7 @@ def curl(*arguments):
 class Keys(unittest.TestCase):
     def test_every_typed_text_has_keys(self):
         fixture = json.loads((HERE / 'vm/fixtures/plan-upgrade.json').read_text())
-        for text in ('sudo pacman -Syu\n', 'cat /etc/pacman.d/emaki-mirrorlist\n',
+        for text in ('sudo pacman -Syu\n', 'sudo pacman -Syyu\n', 'cat /etc/pacman.d/emaki-mirrorlist\n',
                      check.CHANNEL_SCREEN, 'pacman -Q emaki\n',
                      fixture['user']['password'] + '\n'):
             self.assertTrue(check.sendkeys(text))
@@ -135,15 +135,31 @@ class MirrorSwitch(unittest.TestCase):
                   '# Server = https://pkgs.emaki.sh/testing/$arch\n'),
     }
 
+    # packaging/emaki-mirrorlist at v0.3.0: the mirrorlist and the channel selector it includes.
+    SELECTOR = ('# Copyright (C) 2026 Artur Yakymenko\n'
+                '# SPDX-License-Identifier: GPL-3.0-or-later\n'
+                '# Choose stable or testing [update channel].\n'
+                '# After switching channels, run `sudo pacman -Syyu` once.\n'
+                'Include = /usr/share/emaki/mirrors/stable.conf\n'
+                '# Include = /usr/share/emaki/mirrors/testing.conf\n')
+    INCLUDING = ('# Copyright (C) 2026 Artur Yakymenko\n'
+                 '# SPDX-License-Identifier: GPL-3.0-or-later\n'
+                 '# Choose the update channel in /etc/emaki/channel.\n'
+                 'Include = /etc/emaki/channel\n')
+
     class Guest:
-        def __init__(self, directory, mirrorlist):
+        def __init__(self, directory, mirrorlist, selector=None):
             self.vm = Path(directory)
             self.file = self.vm / 'emaki-mirrorlist'
             self.file.write_text(mirrorlist)
+            self.selector = self.vm / 'channel'
+            if selector is not None:
+                self.selector.write_text(selector)
 
         def run(self, command, data=b'', root=False, check=True):
-            if '/etc/pacman.d/emaki-mirrorlist' in command:
+            if '/etc/pacman.d/emaki-mirrorlist' in command or '/etc/emaki/channel ' in command + ' ':
                 command = command.replace('/etc/pacman.d/emaki-mirrorlist', str(self.file))
+                command = re.sub(r'/etc/emaki/channel(?=\s|$|;)', str(self.selector), command)
                 command = command.removesuffix('; pacman -Q')
                 result = subprocess.run(['sh', '-ec', command], capture_output=True)
             else:
@@ -169,6 +185,7 @@ class MirrorSwitch(unittest.TestCase):
         self.assertEqual(check.t1_via('0.1.0'), 'github-testing')
         self.assertEqual(check.t1_via('0.1.2-full'), 'github-testing')
         self.assertEqual(check.t1_via('0.2.0'), 'pkgs-testing-swap')
+        self.assertEqual(check.t1_via('0.3.0'), 'pkgs-testing-swap')
         self.assertEqual(self.active(check.t1_via('0.1.1'), self.PACKAGED['0.1.1']),
                          ['Server = https://github.com/emakish/packages/releases/download/testing'])
         self.assertEqual(self.active(check.t1_via('0.2.0'), self.PACKAGED['0.2.0']),
@@ -184,8 +201,51 @@ class MirrorSwitch(unittest.TestCase):
             with self.subTest(via=via), self.assertRaises(RuntimeError):
                 self.active(via, 'Server = https://mirror.example/emaki/stable/$arch/extra\n')
 
+    def test_from_0_3_0_t1_and_t2_switch_the_selector_and_leave_the_mirrorlist(self):
+        with tempfile.TemporaryDirectory() as directory:
+            guest = self.Guest(directory, self.INCLUDING, self.SELECTOR)
+            for via in ('pkgs-testing-swap', 'pkgs-testing'):
+                self.assertEqual(check.selector_via(guest, via), 'channel-testing')
+            for via in ('github-testing', 'old-address', 'github-stable'):
+                self.assertEqual(check.selector_via(guest, via), via)
+            check.prepare_old_state(guest, 'channel-testing')
+            self.assertEqual(guest.file.read_text(), self.INCLUDING)
+            selector = guest.selector.read_text()
+            self.assertEqual([line for line in selector.splitlines() if not line.startswith('#')],
+                             ['Include = /usr/share/emaki/mirrors/testing.conf'])
+            self.assertIn('\n# Include = /usr/share/emaki/mirrors/stable.conf\n', selector)
+
+    def test_older_starts_keep_their_mirrorlist_switch(self):
+        for start, mirrorlist in self.PACKAGED.items():
+            with self.subTest(start=start), tempfile.TemporaryDirectory() as directory:
+                guest = self.Guest(directory, mirrorlist)
+                for via in ('pkgs-testing-swap', 'pkgs-testing'):
+                    self.assertEqual(check.selector_via(guest, via), via)
+
+    def test_a_selector_switch_that_matched_nothing_stops_the_run(self):
+        for selector in ('Include = /usr/share/emaki/mirrors/custom.conf\n',
+                         'Server = https://mirror.example/emaki/stable/$arch\n'):
+            with self.subTest(selector=selector), tempfile.TemporaryDirectory() as directory, \
+                    self.assertRaises(RuntimeError):
+                check.prepare_old_state(self.Guest(directory, self.INCLUDING, selector), 'channel-testing')
+
 
 class UpgradeEvidence(unittest.TestCase):
+    def test_visual_evidence_lists_and_binds_unjudged_frames(self):
+        with tempfile.TemporaryDirectory() as directory:
+            vm = Path(directory)
+            self.assertEqual(check.visual_evidence(vm)['reason'], 'No frames captured')
+            (vm / 'desktop-before.png').write_bytes(b'first capture')
+            (vm / 'desktop-after.png').write_bytes(b'second capture')
+            evidence = check.visual_evidence(vm)
+            self.assertEqual(evidence['status'], 'NOT TESTED')
+            self.assertEqual([Path(f['path']).name for f in evidence['frames']],
+                             ['desktop-after.png', 'desktop-before.png'])
+            self.assertTrue(all(f['judgment'] == 'NOT TESTED' for f in evidence['frames']))
+            previous = evidence['frames'][0]['sha256']
+            (vm / 'desktop-after.png').write_bytes(b'changed capture')
+            self.assertNotEqual(check.visual_evidence(vm)['frames'][0]['sha256'], previous)
+
     def test_current_transaction_must_upgrade_emaki(self):
         fixtures = ChannelMigration()
         for log in (
@@ -224,8 +284,11 @@ class PersonalConfiguration(unittest.TestCase):
             class Guest:
                 vm = Path(directory)
                 content = before
+                failed_probe = None
 
                 def run(self, command, root=False, check=True):
+                    if self.failed_probe and command.endswith(' ' + self.failed_probe):
+                        return subprocess.CompletedProcess(command, 1, b'', b'probe failed')
                     if command == 'cat ~/.config/niri/config.kdl':
                         if self.content is None:
                             return subprocess.CompletedProcess(command, 1, b'', b'missing')
@@ -244,12 +307,25 @@ class PersonalConfiguration(unittest.TestCase):
 
             guest = Guest()
             (guest.vm / 'wallet-setup.txt').write_text('exit 1\nfixture')
+            (guest.vm / 'portal-setup.txt').write_text('exit 0\nfixture')
             for after in (before, before + b'// Added setting\n', before.replace(b'\n', b'\r\n')):
                 with self.subTest(after=after):
                     guest.content = after
                     results = {}
                     check.checks_after_restart(guest, results, {'db_sha256': 'database'}, before)
                     self.assertEqual(all(v['ok'] for v in results.values()), after == before)
+            guest.content = before
+            for mode, key in (('owner', 'ksecretd owns Secret Service'),
+                              ('verify', 'portal master key kept')):
+                guest.failed_probe = mode
+                results = {}
+                check.checks_after_restart(guest, results, {'db_sha256': 'database'}, before)
+                self.assertFalse(results[key]['ok'])
+            guest.failed_probe = None
+            (guest.vm / 'portal-setup.txt').unlink()
+            results = {}
+            check.checks_after_restart(guest, results, {'db_sha256': 'database'}, before)
+            self.assertFalse(results['portal master key kept']['ok'])
             guest.content = None
             with self.assertRaises(RuntimeError):
                 check.checks_after_restart(guest, {}, {'db_sha256': 'database'}, before)

@@ -63,7 +63,7 @@ const local = vm.createContext({systemId: -1, entries: [], Date, arrived(id) {
     assert.equal(local.entries[0].id, id);
     assert.equal(local.entries[0].batteryWarning, true);
 }});
-local.localNotice = vm.runInContext('(function(app,summary,body,batteryWarning){' + body('NotificationStore.qml', 'localNotice') + '})', local);
+local.localNotice = vm.runInContext('(function(app,summary,body,batteryWarning,sessionUpdate){' + body('NotificationStore.qml', 'localNotice') + '})', local);
 const systemBattery = vm.runInContext('(function(percent){' + body('NotificationStore.qml', 'systemBattery') + '})', local);
 systemBattery(10); systemBattery(5);
 assert.deepEqual(Array.from(local.entries, e => [e.app, e.critical, e.batteryWarning]),

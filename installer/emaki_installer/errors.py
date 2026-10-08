@@ -7,6 +7,7 @@ class Code(StrEnum):
     LOGIN_NAME_RESERVED = 'login_name_reserved'
     BAD_DEST = 'bad_dest'
     BUSY = 'busy'
+    RESTART_PENDING = 'restart_pending'
     UNSUPPORTED_MODE = 'unsupported_mode'
     UNSUPPORTED_VERSION = 'unsupported_version'
     CLOCK_SKEW = 'clock_skew'

@@ -1,227 +1,668 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Move legacy wallets through KWallet, with bounded automatic login attempts."""
+"""Copy saved passwords before the first updated graphical session starts."""
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
-import select
+import pwd
+import resource
+import shutil
+import runpy
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
-import threading
 import time
-from urllib.parse import unquote_to_bytes
 
-LIMIT_SECONDS = 300
-GROUP = 'Migration'
-KEY = 'WalletsMigratedToSecretService'
-NOTICE = 'Your old KDE passwords were not moved. Run emaki-wallet-migrate to move them later.'
+SECRET = 'org.freedesktop.secrets'
+SERVICE = 'org.freedesktop.Secret.Service'
+COLLECTION = 'org.freedesktop.Secret.Collection'
+ITEM = 'org.freedesktop.Secret.Item'
+ROOT = '/org/freedesktop/secrets'
+WALLET = 'org.kde.ksecretd'
+HELP = '''Saved passwords are copied to the wallet [KWallet] at the first graphical login.
+Account passwords keep their labels and attributes. Application master keys are copied
+as raw bytes so sandboxed applications can keep reading their encrypted data.
+The original keyring files are never changed or removed.
+If old application keys cannot be copied, password storage stays paused until recovery.
+Recovery can open the destination privately; log out and log in again afterwards.
+Use emaki-keyring-recover --replace-portal-keys only to restore an existing old key
+over a different key created after the update. Close affected applications first.
+
+Results for each item are in ~/.local/state/emaki/wallet-migration-v1.json (or
+$XDG_STATE_HOME/emaki/wallet-migration-v1.json). A failed copy does not stop login.
+Run emaki-keyring-recover in a private terminal to retry with the old password and
+unlock other collections. Locked collections need their own old password.
+Keep the old password service [GNOME Keyring] and the original files until every account has
+verified its saved passwords and application data. Do not remove old files during
+package cleanup. See /usr/share/doc/emaki/ZONES.md.
+
+Changing the account password does not change the wallet password. No wallet
+password editor is shipped; an administrator can install the wallet editor [KWallet Manager].
+Personal wallet settings are preserved. If the native wallet is disabled, review
+kwalletrc and /etc/xdg/kwalletrc.pacnew before retrying recovery.
+The old user service and socket [gnome-keyring-daemon] are disabled for this account
+when the native wallet takes over, including units enabled globally by the package.
+'''
+FAILURE = ('Some saved passwords could not be copied to the wallet [KWallet]. '
+           'Your original files are unchanged. Run emaki-keyring-recover in a private '
+           'terminal to retry and unlock other collections. Keep the old package '
+           '[GNOME Keyring] until every account has verified its passwords and application data.')
+SUCCESS = ('Your saved passwords and application master keys were copied to the wallet '
+           '[KWallet]. Your original keyring files are unchanged. Keep the old package '
+           '[GNOME Keyring] until every account has verified its passwords and application data.')
 
 
-def config_read(key, env):
-    return subprocess.check_output([
-        'kreadconfig6', '--file', 'kwalletrc', '--group', GROUP, '--key', key,
-    ], env=env, text=True).removesuffix('\n')
+def private_directory(path):
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    info = path.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid():
+        raise RuntimeError('The password migration directory must be owned by this account.')
+    os.chmod(path, 0o700)
+    return path
 
 
-def config_write(key, value, env):
-    subprocess.run([
-        'kwriteconfig6', '--file', 'kwalletrc', '--group', GROUP, '--key', key, value,
-    ], env=env, check=True)
+def write_json(path, value):
+    private_directory(path.parent)
+    if path.is_symlink():
+        raise RuntimeError('The password migration report must not be a symbolic link.')
+    fd, temporary = tempfile.mkstemp(prefix='.wallet-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as output:
+            json.dump(value, output, ensure_ascii=True, sort_keys=True, indent=2)
+            output.write('\n')
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
 
 
-def attempt(env, wait, launch=subprocess.Popen, migrated=None, ready=None):
-    # A temporary configuration inherits all personal and vendor wallet settings.
-    # Only this login attempt can see the migration opt-in.
-    config_home = env.get('XDG_CONFIG_HOME') or str(Path(env['HOME']) / '.config')
-    with tempfile.TemporaryDirectory(prefix='emaki-wallet-') as temporary:
-        overlay = dict(env, XDG_CONFIG_HOME=temporary,
-                       XDG_CONFIG_DIRS=config_home + ':' +
-                       (env.get('XDG_CONFIG_DIRS') or '/etc/xdg'))
-        config_write('MigrateTo3rdParty', 'true', overlay)
-        if migrated is not None:
-            config_write(KEY, migrated, overlay)
-        # The native warning is emitted after migrateData has read its gate.
-        # Consume the gate there so later backend-change callbacks cannot retry.
-        overlay.update(QT_LOGGING_TO_CONSOLE='1', QT_FORCE_STDERR_LOGGING='1',
-                       QT_MESSAGE_PATTERN='%{category}: %{message}',
-                       QT_LOGGING_RULES='kf.wallet.kwalletd.warning=true')
-        daemon = launch(['timeout', '--foreground', '--signal=TERM', '--kill-after=5',
-                         str(LIMIT_SECONDS), 'kwalletd6'], env=overlay,
-                        stderr=subprocess.PIPE, text=True)
+def report_path(env):
+    return Path(env.get('XDG_STATE_HOME') or Path(env['HOME']) / '.local/state') / 'emaki/wallet-migration-v1.json'
 
-        def consume_gate():
-            for line in daemon.stderr:
-                if line.startswith('kf.wallet.kwalletd: Migrating '):
-                    config_write('MigrateTo3rdParty', 'false', overlay)
-                    # Keep draining the pipe; a blocked logger can stop KWallet.
 
-        watcher = threading.Thread(target=consume_gate, daemon=True)
-        watcher.start()
+def read_report(path):
+    if path.is_symlink():
+        raise RuntimeError('The password migration report must not be a symbolic link.')
+    if path.exists():
+        return json.loads(path.read_text())
+    return {'version': 1, 'items': {}, 'collections': {}, 'errors': [], 'complete': False}
+
+
+def dbus_modules():
+    from gi.repository import Gio, GLib
+    return Gio, GLib
+
+
+def connect(address):
+    Gio, _ = dbus_modules()
+    return Gio.DBusConnection.new_for_address_sync(
+        address, Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT |
+        Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION, None, None)
+
+
+def call(bus, name, path, interface, method, signature=None, args=()):
+    Gio, GLib = dbus_modules()
+    return bus.call_sync(name, path, interface, method,
+                         GLib.Variant(signature, args) if signature else None,
+                         None, Gio.DBusCallFlags.NONE, 5000, None).unpack()
+
+
+def prop(bus, path, interface, key):
+    return call(bus, SECRET, path, 'org.freedesktop.DBus.Properties', 'Get',
+                '(ss)', (interface, key))[0]
+
+
+class MigrationInterrupted(BaseException):
+    """A deadline must bypass per-item error handling and reach process cleanup."""
+
+
+def recorded_reason(reason):
+    reason = str(reason)
+    if ('GDBus.Error' in reason or 'org.freedesktop.' in reason
+            or any(ord(char) < 32 for char in reason)):
+        return 'The password stores could not be read or saved; retry recovery.'
+    return reason
+
+
+def safe_reason(error, fallback):
+    # Transport diagnostics can contain item data. Only our plain errors are shown.
+    return recorded_reason(error) if type(error) is RuntimeError else fallback
+
+
+def open_session(bus):
+    _, GLib = dbus_modules()
+    return call(bus, SECRET, ROOT, SERVICE, 'OpenSession', '(sv)',
+                ('plain', GLib.Variant('s', '')))[1]
+
+
+def secret(bus, path, session):
+    value = call(bus, SECRET, path, ITEM, 'GetSecret', '(o)', (session,))[0]
+    return bytes(value[2]), value[3]
+
+
+def create_verified(bus, destination, session, label, attributes, raw, content_type):
+    """Remove even the partial object left by a failed CreateItem in KWallet 6.30."""
+    _, GLib = dbus_modules()
+    before = set(prop(bus, destination, COLLECTION, 'Items'))
+    created = None
+    try:
+        properties = {ITEM + '.Label': GLib.Variant('s', label),
+                      ITEM + '.Attributes': GLib.Variant('a{ss}', attributes)}
+        created, prompt = call(bus, SECRET, destination, COLLECTION, 'CreateItem',
+                               '(a{sv}(oayays)b)', (properties,
+                               (session, b'', raw, content_type), False))
+        if prompt != '/' or created == '/':
+            raise RuntimeError('The destination wallet needs to be unlocked.')
+        if (secret(bus, created, session)[0] != raw
+                or prop(bus, created, ITEM, 'Attributes') != attributes
+                or prop(bus, created, ITEM, 'Label') != label):
+            raise RuntimeError('The saved password could not be verified.')
+        return created
+    except BaseException as failure:
         try:
-            if ready is not None:
-                while daemon.poll() is None:
-                    if wallet_running(env):
-                        break
-                    time.sleep(.05)
-                ready()
-            if wait is None:
-                daemon.wait(timeout=LIMIT_SECONDS + 7)
-            else:
-                wait()
-        except KeyboardInterrupt:
-            pass
-        finally:
-            daemon.terminate()
+            # CreateItem may fail after inserting an empty item, before returning its path.
+            candidates = [created] if created and created != '/' else [
+                item for item in set(prop(bus, destination, COLLECTION, 'Items')) - before
+                if prop(bus, item, ITEM, 'Label') == label
+                and prop(bus, item, ITEM, 'Attributes') == attributes]
+            for item in candidates:
+                if call(bus, SECRET, item, ITEM, 'Delete')[0] != '/':
+                    raise RuntimeError('An incomplete saved item could not be removed; retry recovery.')
+        except Exception:
+            if not isinstance(failure, Exception):
+                raise failure
+            raise RuntimeError('An incomplete saved item could not be removed; retry recovery.') from None
+        raise
+
+
+def transfer(source_bus, destination_bus, path, *, flush=True, replace_portal_keys=False):
+    """Copy and verify bytes; lock only the isolated destination to save it to disk."""
+    report = read_report(path)
+    report.update(errors=[], complete=False, portal_keys_safe=False, source_read=False, saved=False,
+                  items={}, collections={})
+    source_session = target_session = None
+    pending = []
+    readable = True
+    try:
+        source_session = open_session(source_bus)
+        target_session = open_session(destination_bus)
+        destination = call(destination_bus, SECRET, ROOT, SERVICE, 'ReadAlias', '(s)', ('default',))[0]
+        if destination == '/' or prop(destination_bus, destination, COLLECTION, 'Locked'):
+            raise RuntimeError('The destination wallet is locked or unavailable.')
+        # Include labels separately: portal lookup uses the native folder/key, not attributes.
+        existing = {}
+        labels = {}
+        for other in prop(destination_bus, destination, COLLECTION, 'Items'):
+            label = prop(destination_bus, other, ITEM, 'Label')
+            key = (tuple(sorted(prop(destination_bus, other, ITEM, 'Attributes').items())), label)
+            existing.setdefault(key, []).append(other)
+            labels.setdefault(label, []).append(other)
+        collections = prop(source_bus, ROOT, SERVICE, 'Collections')
+        for collection in collections:
+            label = prop(source_bus, collection, COLLECTION, 'Label')
+            record = {'label': label, 'status': 'read'}
+            report['collections'][collection] = record
+            if prop(source_bus, collection, COLLECTION, 'Locked'):
+                record.update(status='locked', reason='Unlock this collection with emaki-keyring-recover.')
+                readable = False
+                write_json(path, report)
+                continue
+            for item in prop(source_bus, collection, COLLECTION, 'Items'):
+                identity = hashlib.sha256((collection + '\0' + item).encode()).hexdigest()
+                entry = {'collection': label, 'source': item, 'label': '', 'status': 'failed'}
+                report['items'][identity] = entry
+                try:
+                    entry['label'] = prop(source_bus, item, ITEM, 'Label')
+                    attributes = prop(source_bus, item, ITEM, 'Attributes')
+                    raw, content_type = secret(source_bus, item, source_session)
+                    entry['kind'] = 'portal' if attributes.get('xdg:schema') == 'org.freedesktop.portal.Secret' else 'password'
+                    # The old service reports text/plain even for arbitrary binary secrets.
+                    try:
+                        raw.decode('utf-8')
+                    except UnicodeDecodeError:
+                        content_type = 'application/octet-stream'
+                    target_label = entry['label'] or 'Saved password'
+                    target_attributes = attributes
+                    if entry['kind'] == 'portal':
+                        app_id = attributes.get('app_id', '')
+                        if not app_id or '/' in app_id or '\0' in app_id or len(raw) != 64:
+                            raise RuntimeError('The application master key or its application identifier is invalid.')
+                        target_label = 'xdg-desktop-portal/' + app_id
+                        target_attributes = {}
+                        content_type = 'application/octet-stream'
+                        matches = labels.get(target_label, [])
+                        if len(matches) > 1:
+                            raise RuntimeError('More than one application master key exists; check the wallet before recovery.')
+                        if matches:
+                            previous = secret(destination_bus, matches[0], target_session)
+                            if previous[0] != raw:
+                                if not replace_portal_keys:
+                                    raise RuntimeError('A different application master key exists. Close the application and use emaki-keyring-recover --replace-portal-keys to restore its old key.')
+                                try:
+                                    call(destination_bus, SECRET, matches[0], ITEM, 'SetSecret',
+                                         '((oayays))', ((target_session, b'', raw, content_type),))
+                                    if secret(destination_bus, matches[0], target_session)[0] != raw:
+                                        raise RuntimeError('The application master key could not be verified.')
+                                except BaseException as failure:
+                                    try:
+                                        call(destination_bus, SECRET, matches[0], ITEM, 'SetSecret',
+                                             '((oayays))', ((target_session, b'', previous[0], previous[1]),))
+                                    except Exception:
+                                        if not isinstance(failure, Exception):
+                                            raise failure
+                                        raise RuntimeError('The application master key could not be restored; keep its old keyring and retry recovery.') from None
+                                    raise
+                    else:
+                        matches = existing.get((tuple(sorted(attributes.items())), target_label), [])
+                        if matches and not any(secret(destination_bus, other, target_session)[0] == raw for other in matches):
+                            raise RuntimeError('A different saved password already exists; it was kept.')
+                    if not matches:
+                        created = create_verified(destination_bus, destination, target_session,
+                                                  target_label, target_attributes, raw, content_type)
+                        if entry['kind'] == 'portal':
+                            labels.setdefault(target_label, []).append(created)
+                    entry['status'] = 'pending'
+                    pending.append(identity)
+                except Exception as error:
+                    if 'kind' not in entry:
+                        readable = False
+                    entry['reason'] = safe_reason(error, 'The saved item could not be copied; retry recovery.')
+                write_json(path, report)
+        report['source_read'] = readable
+        if flush:
+            locked, prompt = call(destination_bus, SECRET, ROOT, SERVICE, 'Lock', '(ao)', ([destination],))
+            if prompt != '/' or destination not in locked or not prop(destination_bus, destination, COLLECTION, 'Locked'):
+                raise RuntimeError('The destination wallet could not be saved and locked.')
+            report['saved'] = True
+        # Live recovery verifies memory and leaves the normal save timer running.
+        for identity in pending:
+            report['items'][identity]['status'] = 'migrated'
+        report['complete'] = readable and all(item['status'] == 'migrated' for item in report['items'].values())
+        report['portal_keys_safe'] = readable and all(
+            item['status'] == 'migrated' for item in report['items'].values() if item.get('kind') == 'portal')
+    except Exception as error:
+        report['errors'].append(safe_reason(error, 'The password stores could not be read or saved; retry recovery.'))
+    finally:
+        for bus, session in ((source_bus, source_session), (destination_bus, target_session)):
+            if session:
+                try:
+                    call(bus, SECRET, session, 'org.freedesktop.Secret.Session', 'Close')
+                except Exception:
+                    pass
+        write_json(path, report)
+    return report
+
+
+def legacy_present(env):
+    path = Path(env.get('XDG_DATA_HOME') or Path(env['HOME']) / '.local/share') / 'keyrings'
+    try:
+        return path.is_symlink() or any(path.iterdir())
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+
+
+def bridge_directory(home):
+    # This location is available during authentication, before pam_systemd creates
+    # the runtime directory. Each login has a fresh child directory and a deadline.
+    return private_directory(Path(home) / '.cache/emaki-wallet-login')
+
+
+def process_identity(pid):
+    try:
+        fields = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()
+        return [Path('/proc/sys/kernel/random/boot_id').read_text().strip(), fields[19]]
+    except (OSError, IndexError):
+        return None
+
+
+def live_worker(current):
+    pid = current.get('pid')
+    return isinstance(pid, int) and current.get('identity') is not None and process_identity(pid) == current['identity']
+
+
+def cleanup_bridges(directory):
+    """Remove encrypted scratch copies left by a crash, never an active writer's files."""
+    with os.fdopen(os.open(directory / 'stage.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600), 'w') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        for root in directory.glob('login-*'):
+            if root.is_symlink() or not root.is_dir():
+                continue
             try:
-                daemon.wait(timeout=7)
+                owner = json.loads((root / 'owner').read_text())
+            except (OSError, ValueError):
+                # Allow the creating PAM process time to write its ownership record.
+                if time.time() - root.stat().st_mtime < 300:
+                    continue
+                owner = {}
+            if not live_worker(owner):
+                shutil.rmtree(root)
+        current = directory / 'current'
+        if current.is_file() and not current.is_symlink():
+            try:
+                owner = json.loads(current.read_text())
+            except ValueError:
+                owner = {}
+            if not live_worker(owner):
+                current.unlink()
+
+
+def wait_file(path, timeout, process=None):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if path.is_file():
+            return json.loads(path.read_text())
+        if path.name != 'done' and (path.parent / 'done').exists():
+            raise RuntimeError('Password migration was cancelled; retry recovery.')
+        if process is not None and process.poll() is not None:
+            break
+        time.sleep(.1)
+    raise RuntimeError('The password migration service did not become ready; retry recovery.')
+
+
+def stop(process, group=False):
+    if group:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    elif process.poll() is None:
+        process.terminate()
+    try:
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+    if group:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def source_worker(root):
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    password = sys.stdin.buffer.read(4096)
+    daemon = subprocess.Popen(['gnome-keyring-daemon', '--foreground', '--components=secrets',
+                               '--control-directory', str(root / 'control'), '--unlock'],
+                              stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        daemon.stdin.write(password)
+        daemon.stdin.close()
+        del password
+        bus = connect(os.environ['DBUS_SESSION_BUS_ADDRESS'])
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if call(bus, 'org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus',
+                    'NameHasOwner', '(s)', (SECRET,))[0]:
+                if (root / 'data/keyrings/login.keyring').exists():
+                    login = call(bus, SECRET, ROOT, SERVICE, 'ReadAlias', '(s)', ('login',))[0]
+                    if login == '/':
+                        raise RuntimeError('The old login keyring could not be read; retry recovery.')
+                write_json(root / 'ready', {'address': os.environ['DBUS_SESSION_BUS_ADDRESS']})
+                wait_file(root / 'done', 90)
+                return
+            time.sleep(.1)
+        raise RuntimeError('The old password store could not be unlocked; retry recovery.')
+    finally:
+        stop(daemon)
+
+
+def bridge_scratch(env):
+    runtime = Path(env['XDG_RUNTIME_DIR'])
+    info = runtime.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise RuntimeError('The password migration runtime must be private and owned by this account.')
+    # The bus appends its random socket name and accepts at most 99 pathname bytes.
+    longest = runtime / ('emaki-wallet-' + 'x' * 8) / 'source/runtime/dbus-XXXXXXXXXX'
+    if len(os.fsencode(longest)) > 99:
+        raise RuntimeError('The password migration runtime path is too long.')
+    return Path(tempfile.mkdtemp(prefix='emaki-wallet-', dir=runtime))
+
+
+def bridge_worker(root):
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    password = sys.stdin.buffer.read(4096)
+    source_process = target_process = None
+    scratch = None
+    result = {'complete': False, 'error': 'Automatic password migration could not finish; run emaki-keyring-recover.'}
+    phase = 'waiting for the graphical login'
+    try:
+        request = wait_file(root / 'request', 120)
+        env = request['environment']
+        signal.alarm(40)
+        phase = 'preparing the private password runtime'
+        scratch = bridge_scratch(env)
+        (scratch / 'done').symlink_to(root / 'done')
+        phase = 'copying the old password files'
+        recovery = runpy.run_path(str(Path(__file__).with_name('emaki-keyring-recover')))
+        source = private_directory(scratch / 'source')
+        old_directory = Path(env.get('XDG_DATA_HOME') or Path(env['HOME']) / '.local/share') / 'keyrings'
+        skipped = sum(path.suffix == '.keyring' and not stat.S_ISREG(path.lstat().st_mode)
+                      for path in old_directory.iterdir())
+        command, isolated = recovery['prepare'](old_directory, source, env)
+        command[-3:] = [str(Path(__file__).resolve()), '--source', str(source)]
+        source_process = subprocess.Popen(command, env=isolated, stdin=subprocess.PIPE,
+                                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        source_process.stdin.write(password)
+        source_process.stdin.close()
+        phase = 'unlocking the old password store'
+        source_ready = wait_file(source / 'ready', 15, source_process)
+        phase = 'unlocking the destination wallet'
+        target = private_directory(scratch / 'target')
+        target_process = subprocess.Popen([sys.executable, '-I', '-B', str(Path(__file__).with_name('emaki-wallet-stage')), str(target)],
+                                          env=env, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        target_process.stdin.write(password)
+        target_process.stdin.close()
+        password = None
+        target_ready = wait_file(target / 'ready', 15, target_process)
+        old_bus = connect(source_ready['address'])
+        new_bus = connect(target_ready['address'])
+        phase = 'copying saved items'
+        try:
+            result = transfer(old_bus, new_bus, report_path(env))
+            if skipped:
+                result['complete'] = result['portal_keys_safe'] = False
+                result['errors'].append('Some old keyring files are not regular files and were skipped; check the originals before removing the old package.')
+                write_json(report_path(env), result)
+        finally:
+            old_bus.close_sync(None)
+            new_bus.close_sync(None)
+        phase = 'saving the destination wallet'
+        write_json(target / 'done', {})
+        target_process.wait(timeout=10)
+        if target_process.returncode:
+            raise RuntimeError('The destination wallet did not shut down safely; retry recovery.')
+    except (Exception, MigrationInterrupted):
+        result = {'complete': False, 'portal_keys_safe': False, 'error': f'Automatic password migration stopped while {phase}. Run emaki-keyring-recover.'}
+    finally:
+        signal.alarm(0)
+        del password
+        if target_process is not None and target_process.poll() is None:
+            write_json(scratch / 'target/done', {})
+            try:
+                target_process.wait(timeout=10)
             except subprocess.TimeoutExpired:
-                daemon.kill()
-                daemon.wait(timeout=7)
-            watcher.join(timeout=7)
-            daemon.stderr.close()
-            # Keep the opaque KConfig encoding in Emaki's state, never in a
-            # person's kwalletrc. This includes escaped comma/backslash names.
-            result = config_read(KEY, overlay)
-        return result
+                pass
+        for process in (target_process, source_process):
+            if process is not None:
+                stop(process, group=True)
+        if scratch is not None:
+            shutil.rmtree(scratch)
+        write_json(root / 'result', result)
+        try:
+            wait_file(root / 'done', 5)
+        except RuntimeError:
+            pass
+        shutil.rmtree(root)
 
 
-def wallet_running(env):
-    return subprocess.check_output([
-        'busctl', '--user', 'call', 'org.freedesktop.DBus', '/org/freedesktop/DBus',
-        'org.freedesktop.DBus', 'NameHasOwner', 's', 'org.kde.kwalletd6',
-    ], env=env, text=True, timeout=20).strip() == 'b true'
+def pam_unlock(env):
+    # Never inherit a user-supplied interpreter search path in the privileged PAM call.
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    password = sys.stdin.buffer.read(4096).split(b'\0', 1)[0]
+    if not password or env.get('PAM_TYPE') != 'auth':
+        return
+    account = pwd.getpwnam(env['PAM_USER'])
+    if account.pw_uid == 0:
+        return
+    if os.getuid() == 0:
+        os.initgroups(account.pw_name, account.pw_gid)
+        os.setgid(account.pw_gid)
+        os.setuid(account.pw_uid)
+    if os.getuid() != account.pw_uid:
+        return
+    account_env = {'HOME': account.pw_dir}
+    old_bridge = Path(account.pw_dir) / '.cache/emaki-wallet-login'
+    if old_bridge.is_dir() and not old_bridge.is_symlink():
+        cleanup_bridges(bridge_directory(account.pw_dir))
+    if not legacy_present(account_env) or read_report(report_path(account_env)).get('complete'):
+        return
+    directory = bridge_directory(account.pw_dir)
+    root = Path(tempfile.mkdtemp(prefix='login-', dir=directory))
+    # No login password, key, or secret value is written to the filesystem.
+    process = subprocess.Popen([sys.executable, '-I', '-B', str(Path(__file__).resolve()), '--bridge', str(root)],
+                               env={'PATH': '/usr/bin', 'HOME': account.pw_dir}, stdin=subprocess.PIPE,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    process.stdin.write(password)
+    process.stdin.close()
+    del password
+    current = {'directory': root.name, 'pid': process.pid, 'identity': process_identity(process.pid)}
+    write_json(root / 'owner', current)
+    write_json(directory / 'current', current)
 
 
-def list_entries(encoded):
-    """Decode the escaping of a KConfig QStringList after readEntry."""
-    entries, item, escaped = [], '', False
-    for char in encoded:
-        if escaped:
-            item += char
-            escaped = False
-        elif char == '\\':
-            escaped = True
-        elif char == ',':
-            entries.append(item)
-            item = ''
-        else:
-            item += char
-    if item or encoded:
-        entries.append(item + ('\\' if escaped else ''))
-    return entries
-
-
-def remaining_wallets(env, migrated):
-    directory = Path(env.get('XDG_DATA_HOME') or Path(env['HOME']) / '.local/share') / 'kwalletd'
-    completed = set(list_entries(migrated))
-    return [path for path in directory.glob('*.kwl') if path.is_file() and
-            unquote_to_bytes(path.stem.replace('%', '%25').replace(';', '%')).decode(
-                'utf-8', errors='replace') not in completed]
+def snapshot(env):
+    if not legacy_present(env):
+        return
+    path = report_path(env)
+    private_directory(path.parent)
+    with os.fdopen(os.open(path.parent / 'wallet-migration.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600), 'w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        report = read_report(path)
+        if report.get('complete'):
+            return
+        report['attempted'] = True
+        report['complete'] = report['portal_keys_safe'] = False
+        report['notified'] = False
+        write_json(path, report)
+        try:
+            if env.get('DBUS_SESSION_BUS_ADDRESS'):
+                bus = connect(env['DBUS_SESSION_BUS_ADDRESS'])
+                try:
+                    if call(bus, 'org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus',
+                            'NameHasOwner', '(s)', (WALLET,))[0]:
+                        raise RuntimeError('An existing wallet service is still running; close other sessions and run emaki-keyring-recover.')
+                finally:
+                    bus.close_sync(None)
+            directory = bridge_directory(env['HOME'])
+            cleanup_bridges(directory)
+            if not (directory / 'current').is_file():
+                raise RuntimeError('The login password was not available for migration; run emaki-keyring-recover.')
+            owner = json.loads((directory / 'current').read_text())
+            if not live_worker(owner):
+                raise RuntimeError('The login password is no longer available; run emaki-keyring-recover.')
+            current = owner['directory']
+            if Path(current).name != current or not current.startswith('login-'):
+                raise ValueError('Invalid login directory')
+            root = directory / current
+            if not root.is_dir() or root.is_symlink():
+                raise RuntimeError('The login password is no longer available; run emaki-keyring-recover.')
+            # Only the graphical login's environment decides XDG store locations.
+            write_json(root / 'request', {'environment': dict(env)})
+            result = wait_file(root / 'result', 70)
+            if result.get('error'):
+                raise RuntimeError(result['error'])
+        except Exception as error:
+            report = read_report(path)
+            report['complete'] = report['portal_keys_safe'] = False
+            report['errors'].append(safe_reason(error, 'Automatic password migration could not finish; run emaki-keyring-recover.'))
+            write_json(path, report)
+        finally:
+            if 'root' in locals():
+                # The worker owns its processes; never remove live control files.
+                write_json(root / 'done', {})
 
 
 def notify(message):
-    # `--` ends busctl's options: otherwise the trailing timeout -1 is read as an option.
     subprocess.run(['busctl', '--user', 'call', '--', 'org.freedesktop.Notifications',
                     '/org/freedesktop/Notifications', 'org.freedesktop.Notifications',
-                    'Notify', 'susssasa{sv}i', 'Emaki', '0', '', 'Old KDE passwords',
-                    message, '0', '0', '-1'], check=True, capture_output=True, timeout=20)
+                    'Notify', 'susssasa{sv}i', 'Emaki', '0', '', 'Saved passwords',
+                    message, '0', '0', '-1'], check=True, capture_output=True, timeout=3)
 
 
-def run_login(env, run_attempt, send_notice=notify, explicit=False):
-    directory = Path(env.get('XDG_STATE_HOME') or Path(env['HOME']) / '.local/state') / 'emaki'
-    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-    if directory.is_symlink():
-        raise SystemExit('The Emaki state directory must not be a symbolic link.')
-    path = directory / 'wallet-migration.json'
-    if path.is_symlink():
-        raise SystemExit('The wallet migration state must not be a symbolic link.')
-    with os.fdopen(os.open(directory / 'wallet-migration.lock',
-                           os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600), 'w') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        state = json.loads(path.read_text()) if path.exists() else dict(
-            version=1, attempts=0, session='', notified=False, migrated=config_read(KEY, env))
-        if state.get('version') != 1:
-            raise SystemExit('This wallet migration state needs a newer Emaki version.')
-
-        def save():
-            with tempfile.NamedTemporaryFile(mode='w', dir=directory, delete=False) as output:
-                json.dump(state, output)
-                temporary = output.name
-            os.replace(temporary, path)
-
-        def notice_if_finished():
-            if (not explicit and state['attempts'] >= 3 and not state['notified'] and
-                    remaining_wallets(env, state['migrated'])):
-                send_notice(NOTICE)
-                state['notified'] = True
-                save()
-
-        if not remaining_wallets(env, state['migrated']):
-            return
-        session = env.get('EMAKI_WALLET_SESSION')
-        if not explicit:
-            if not session or state['session'] == session or state['attempts'] >= 3:
-                notice_if_finished()
-                return
-            # Reserve before launch: crashes and daemon restarts cannot spend a
-            # second attempt in this login. An interrupted attempt counts too.
-            state['session'] = session
-            state['attempts'] += 1
-            save()
-        state['migrated'] = run_attempt(env, state['migrated'])
-        save()
-        notice_if_finished()
+def run_login(env, send_notice=notify):
+    error = Path(env.get('XDG_RUNTIME_DIR', '/nonexistent')) / 'emaki/wallet-start-error'
+    if error.is_file():
+        send_notice(error.read_text())
+    path = report_path(env)
+    if not legacy_present(env) and not path.exists():
+        return
+    report = read_report(path)
+    if report.get('notified'):
+        return
+    copied = sum(item['status'] == 'migrated' for item in report['items'].values())
+    remaining = len(report['items']) - copied
+    locked = sum(item['status'] == 'locked' for item in report['collections'].values())
+    message = SUCCESS if report['complete'] else FAILURE
+    message += f' Copied items: {copied}.'
+    if report.get('source_read') or report['items']:
+        message += f' Items needing recovery: {remaining}.'
+    else:
+        message += ' The number of items needing recovery is not known yet.'
+    message += f' Locked collections: {locked}.'
+    if report['errors']:
+        message += ' ' + ' '.join(recorded_reason(error) for error in report['errors'])
+    message += f' Per-item results: {path}.'
+    send_notice(message)
+    report['notified'] = True
+    write_json(path, report)
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description='Move old KDE passwords to the login keyring.',
-        epilog='Login attempts run automatically, at most once per login and at most three times. '
-               'Cancel skips an attempt. Run emaki-wallet-migrate to retry later. '
-               'Original wallet files are kept. Read /usr/share/doc/emaki/ZONES.md for instructions.')
-    parser.add_argument('--automatic', action='store_true', help=argparse.SUPPRESS)
+    for signum in (signal.SIGTERM, signal.SIGALRM):
+        signal.signal(signum, lambda *_: (_ for _ in ()).throw(MigrationInterrupted('Password migration was interrupted.')))
+    parser = argparse.ArgumentParser(description=HELP, formatter_class=argparse.RawDescriptionHelpFormatter)
+    for flag in ('automatic', 'pam-unlock', 'snapshot'):
+        parser.add_argument('--' + flag, action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--bridge', help=argparse.SUPPRESS)
+    parser.add_argument('--source', help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
-    if not args.automatic and not sys.stdin.isatty():
-        raise SystemExit('Run this command in a terminal.')
-    env = os.environ.copy()
-
-    def ready():
-        if args.automatic and env.get('NOTIFY_SOCKET'):
-            subprocess.run(['systemd-notify', '--ready'], env=env, check=True, timeout=20)
-
-    if wallet_running(env):
-        if args.automatic:
-            ready()
-            return
-        raise SystemExit('KWallet is already running. Log out, log in, then run this command before opening KDE apps.')
-    if not args.automatic:
-        print('Enter the old wallet password in the migration dialog. Cancel skips this attempt.\n'
-          'After all dialogs close, press Enter here to finish. This attempt ends after five minutes.\n'
-          'Original wallet files are kept.', flush=True)
-
-    def wait():
-        if select.select([sys.stdin], [], [], LIMIT_SECONDS)[0]:
-            sys.stdin.readline()
-
-    def interrupted(_signal, _frame):
-        raise KeyboardInterrupt()
-
-    signal.signal(signal.SIGTERM, interrupted)
-
-    try:
-        run_login(env, lambda attempt_env, migrated: attempt(
-            attempt_env, None if args.automatic else wait, migrated=migrated,
-            ready=ready if args.automatic else None),
-                  explicit=not args.automatic)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        ready()
+    if args.pam_unlock:
+        pam_unlock(os.environ)
+    elif args.bridge:
+        bridge_worker(Path(args.bridge))
+    elif args.source:
+        source_worker(Path(args.source))
+    elif args.snapshot:
+        snapshot(os.environ)
+    elif args.automatic:
+        for attempt in range(120):
+            try:
+                run_login(os.environ.copy())
+                return
+            except subprocess.SubprocessError:
+                if attempt == 119:
+                    raise
+                time.sleep(1)
+    else:
+        print(HELP)
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError, MigrationInterrupted):
+        print('Password migration could not finish. Run emaki-keyring-recover in a private terminal.', file=sys.stderr)
+        sys.exit(1)

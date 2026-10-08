@@ -1,5 +1,3 @@
-adwaita-cursors
-adwaita-fonts
 adwaita-icon-theme
 alsa-utils
 amd-ucode
@@ -48,7 +46,6 @@ foot-terminfo
 fsarchiver
 fuzzel
 ghostty-terminfo
-gnome-keyring
 gpart
 gparted
 gpm
@@ -72,6 +69,7 @@ kdegraphics-thumbnailers
 kitty
 kitty-terminfo
 kmscon-terminfo
+kwallet-pam
 ldns
 less
 lftp
@@ -126,7 +124,7 @@ pcsclite
 pipewire
 pipewire-pulse
 playerctl
-polkit-gnome
+polkit-kde-agent
 power-profiles-daemon
 ppp
 pptpclient

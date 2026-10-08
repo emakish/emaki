@@ -602,6 +602,38 @@ class StaticTests(unittest.TestCase):
         self.assertIn('-extract_boot_images', calls[1])
         self.assertEqual(calls[-1][1], '-ll')
 
+    def test_builder_asserts_generated_hookdir_after_pass_one(self):
+        builder = (HERE / 'build.sh').read_text()
+        start = builder.index('hookdirs=$(grep')
+        end = builder.index("\n", builder.index("|| fail 'archiso v91 HookDir changed'", start))
+        block = builder[start:end]
+        first_pass = builder.index('mkarchiso -v -w')
+        self.assertLess(first_pass, start)
+        self.assertLess(end, builder.index('mkarchiso -v -w', first_pass + 1))
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            (work / 'mk').mkdir()
+            config = work / 'mk/iso.pacman.conf'
+            expected = f'HookDir = {work}/mk/x86_64/airootfs/etc/pacman.d/hooks/'
+            cases = ((expected, 0), ('', 1), ('HookDir = /etc/pacman.d/hooks/', 1),
+                     (expected + '\n' + expected, 1),
+                     (expected + '\n  HookDir = /tmp/extra', 1),
+                     (expected + ' /tmp/extra', 1), (expected.rstrip('/'), 1))
+            for content, status in cases:
+                with self.subTest(content=content):
+                    config.write_text('[options]\n' + content + '\n')
+                    result = subprocess.run(
+                        ['bash', '-eu', '-c',
+                         'work=$1; fail() { echo "$*" >&2; exit 1; };\n' + block,
+                         '_', temporary], capture_output=True, text=True)
+                    self.assertEqual(result.returncode, status, result.stderr)
+            config.unlink()
+            result = subprocess.run(
+                ['bash', '-eu', '-c',
+                 'work=$1; fail() { exit 1; };\n' + block, '_', temporary],
+                capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+
     def test_builder_window_requirement_is_release_only(self):
         text = (HERE / 'build.sh').read_text()
         block = text[text.index('if [[ ! -f $work/mk/x86_64/airootfs/usr/bin/emaki-install'):]
@@ -622,11 +654,12 @@ class StaticTests(unittest.TestCase):
             self.assertTrue(module.journal_errors_ok('-- No entries --\n'))
             self.assertTrue(module.journal_errors_ok('i8042: PNP: No PS/2 controller found.\n'))
             for line in ('virt/tdx: TDX not supported by the host platform',
-                         "gkr-pam: couldn't unlock the login keyring."):
+                         "Ignoring duplicate name 'org.freedesktop.secrets' in service file '/usr/share/dbus-1/services/org.freedesktop.secrets.service'"):
                 self.assertTrue(module.journal_errors_ok(line + '\n'))
                 self.assertFalse(module.journal_errors_ok(line + ' unexpected\n'))
                 self.assertFalse(module.journal_errors_ok('prefix ' + line + '\n'))
                 self.assertFalse(module.journal_errors_ok(line + '\nI/O error\n'))
+            self.assertFalse(module.journal_errors_ok("gkr-pam: couldn't unlock the login keyring.\n"))
             self.assertFalse(module.journal_errors_ok('Failed to start greetd.service\n'))
             self.assertFalse(module.journal_errors_ok('i8042: PNP: No PS/2 controller found.\nI/O error\n'))
 

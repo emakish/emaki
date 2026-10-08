@@ -41,17 +41,20 @@ def write_state(path, text):
         temporary.unlink(missing_ok=True)
 
 
-def select_shell(requested, record=False):
+def select_shell(requested, record=False, runtime_shell=None):
     # Standalone/offscreen launches may have no login runtime or user service.
     if not os.environ.get('XDG_RUNTIME_DIR'):
         return requested
     state = runtime_dir()
     selected = str(PACKAGED) if (state / 'packaged').exists() else requested
     if record:
-        write_state(state / 'launch.json', json.dumps({
+        launch = {
             'shell': os.path.abspath(selected),
             'invocation': os.environ.get('INVOCATION_ID', ''),
-        }))
+        }
+        if runtime_shell:
+            launch['runtime_shell'] = runtime_shell
+        write_state(state / 'launch.json', json.dumps(launch))
     return selected
 
 
@@ -66,7 +69,7 @@ def clean(text):
     return ''.join(c for c in text if c.isprintable() or c in '\n\t')
 
 
-def failed_file(log, shell):
+def failed_file(log, shell, runtime_shell=None):
     if 'Failed to load configuration' not in log:
         return None
     # Quickshell prints the outer component first, then the deepest failing source.
@@ -83,7 +86,13 @@ def failed_file(log, shell):
     if re.search(r'is not installed|plugin\s+"[^"]*"\s+not found|'
                  r'Script\b.*\bunavailable|Cannot load library', message, re.IGNORECASE):
         return None
-    candidate = (shell / source[1:]) if source.startswith('@') else Path(unquote(source[7:]))
+    candidate = (Path(runtime_shell or shell) / source[1:]) if source.startswith('@') else Path(unquote(source[7:]))
+    if runtime_shell and candidate.is_relative_to(Path(runtime_shell)):
+        original = shell / candidate.relative_to(Path(runtime_shell))
+        # Never repair a personal file changed since the running copy was made.
+        if not original.is_file() or not filecmp.cmp(candidate, original, shallow=False):
+            return None
+        candidate = original
     home = Path.home().resolve()
     config = Path(os.environ.get('XDG_CONFIG_HOME') or home / '.config')
     # Refuse aliases, traversal, system trees and symlinked components. In
@@ -132,7 +141,7 @@ def reconcile():
     if trusted and isinstance(launch.get('shell'), str) and not (state / 'packaged').exists():
         shell = Path(launch.get('shell', ''))
         if shell != PACKAGED:
-            candidate = failed_file(log, shell)
+            candidate = failed_file(log, shell, launch.get('runtime_shell'))
     if candidate is None:
         print('The Emaki panel could not recover automatically. Opening recovery.', flush=True)
         notice()
@@ -198,7 +207,8 @@ def main():
     command = sys.argv[1]
     try:
         if command in ('select', 'record'):
-            print(select_shell(sys.argv[2], record=command == 'record'))
+            print(select_shell(sys.argv[2], record=command == 'record',
+                               runtime_shell=sys.argv[3] if len(sys.argv) > 3 else None))
         elif command == 'reconcile':
             reconcile()
         elif command == 'report':

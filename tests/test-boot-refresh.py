@@ -5,11 +5,14 @@
 from pathlib import Path
 from contextlib import ExitStack, contextmanager, nullcontext, redirect_stderr, redirect_stdout
 import io
+import errno
 import json
 import os
 import runpy
+import shlex
 import signal
 import shutil
+import stat
 import struct
 import subprocess
 import sys
@@ -30,6 +33,7 @@ from emaki_boot import refresh
 
 LUKS = '01234567-89ab-cdef-0123-456789abcdef'
 FSUUID = 'abcdef01-2345-6789-abcd-ef0123456789'
+BOOT_ID = '12345678-1234-5678-9abc-123456789abc'
 GENERATION = Path('/boot/emaki') / ('a' * 32)
 
 
@@ -296,11 +300,18 @@ class LoaderPayloadChecks(unittest.TestCase):
         self.assertEqual(self.unpack(second[2])['boot/grub/x86_64-efi/normal.mod'], updated)
         self.assertEqual(files['boot/grub/x86_64-efi/normal.mod'], self.contents['x86_64-efi/normal.mod'])
 
+    def test_plain_startup_rejects_unverified_identity(self):
+        for key, value in (('uuid', ''), ('uuid', FSUUID + '\nreboot'),
+                           ('fsroot', '/@snapshots/1/snapshot')):
+            identity = {'uuid': FSUUID, 'fsroot': '/@', key: value}
+            with self.subTest(key=key, value=value), self.assertRaises(refresh.Refuse):
+                refresh.plain_load_config(identity, GENERATION)
+
 
 class RefreshOrchestrationChecks(unittest.TestCase):
     """Real staging/publication on private files; external generators are fakes."""
     @contextmanager
-    def fixture(self, encrypted, foreign=False, fail=None):
+    def fixture(self, encrypted, foreign=False, fail=None, plain_fsroot='', plain_search=False):
         evidence = ROOT / '.cache/evidence'
         evidence.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='boot-orchestration-', dir=evidence) as directory:
@@ -314,8 +325,9 @@ class RefreshOrchestrationChecks(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(data.encode() if isinstance(data, str) else data)
 
-            identity = {'fsroot': '/@' if encrypted else '', 'luks': LUKS if encrypted else None,
-                        'uuid': FSUUID, 'fstype': 'btrfs' if encrypted else 'ext4', 'esp_uuid': 'ABCD-1234'}
+            identity = {'fsroot': '/@' if encrypted else plain_fsroot, 'luks': LUKS if encrypted else None,
+                        'uuid': FSUUID, 'fstype': 'btrfs' if encrypted or plain_fsroot else 'ext4',
+                        'esp_uuid': 'ABCD-1234'}
             originals = {
                 '/efi/EFI/Emaki/grubx64.efi': image('/old-prefix'),
                 '/efi/EFI/BOOT/BOOTX64.EFI': b'foreign EFI loader' if foreign else image('/old-prefix'),
@@ -326,6 +338,7 @@ class RefreshOrchestrationChecks(unittest.TestCase):
             }
             for name, data in originals.items():
                 put(mapped(name), data)
+            put(mapped('/proc/sys/kernel/random/boot_id'), BOOT_ID + '\n')
             put(mapped('/usr/share/emaki/grub/defaults.cfg'), (ROOT / 'grub/defaults.cfg').read_bytes())
             put(mapped('/usr/share/emaki/grub/unlock-24.pf2'),
                 (ROOT / 'installer/assets/grub/unlock-24.pf2').read_bytes())
@@ -343,7 +356,7 @@ class RefreshOrchestrationChecks(unittest.TestCase):
                 command = args[0]
                 commands.append(args)
                 if command == fail:
-                    raise refresh.Refuse('injected ' + command + ' failure')
+                    raise refresh.Transient('injected ' + command + ' failure')
                 options = dict(arg.split('=', 1) for arg in args[1:] if arg.startswith('--') and '=' in arg)
                 if command == 'grub-install' and '--version' in args:
                     return 'grub-install test-version'
@@ -358,9 +371,13 @@ class RefreshOrchestrationChecks(unittest.TestCase):
                     if encrypted:
                         expected = '(cryptouuid/' + LUKS.replace('-', '') + ')' + expected
                         cfg = f'cryptomount -u {LUKS}\n'
-                    else:
+                    elif plain_search:
                         cfg = f'search.fs_uuid {FSUUID} root\nset prefix=($root){expected}\n'
-                    put(generation / 'grub/x86_64-efi/load.cfg', cfg)
+                    else:
+                        # Same-disk EFI installs use a partition prefix and no load.cfg.
+                        expected = '(,gpt2)' + expected
+                    if encrypted or plain_search:
+                        put(generation / 'grub/x86_64-efi/load.cfg', cfg)
                     put(staged_esp / 'EFI/Emaki/grubx64.efi', image(expected))
                 elif command == 'grub-mkimage':
                     self.assertIn('--compression=none', args)
@@ -434,6 +451,48 @@ class RefreshOrchestrationChecks(unittest.TestCase):
         for encrypted in (True, False):
             with self.subTest(encrypted=encrypted):
                 self.exercise(encrypted)
+
+    def test_plain_same_disk_and_cross_disk_publish_uuid_search(self):
+        for fsroot in ('', '/@'):
+            for search in (False, True):
+                with self.subTest(fsroot=fsroot, search=search), self.fixture(
+                        False, plain_fsroot=fsroot, plain_search=search) as f:
+                    refresh.refresh(f.identity)
+                    generation, = f.mapped('/boot/emaki').iterdir()
+                    platform = generation / 'grub/x86_64-efi'
+                    self.assertEqual((platform / 'load.cfg').exists(), search)
+                    with tarfile.open(platform / 'emaki-early.tar') as archive:
+                        start = archive.extractfile('start.cfg').read()
+                        menu = archive.extractfile('boot/grub/grub.cfg').read()
+                    self.assertEqual(start, (f'search.fs_uuid {FSUUID} root\n'
+                                            f'set prefix=($root){fsroot}{generation}/grub\n').encode())
+                    self.assertIn(f'configfile ($root){fsroot}/boot/grub/grub.cfg\n'.encode(), menu)
+                    candidate = f.mapped('/efi/EFI/Emaki') / ('loader-' + generation.name + '.efi')
+                    self.assertIn(start, candidate.read_bytes())
+                    self.assertNotIn(b'(,gpt2)', candidate.read_bytes())
+                    for name in ('/efi/EFI/Emaki/grubx64.efi', '/efi/EFI/BOOT/BOOTX64.EFI'):
+                        self.assertEqual(f.mapped(name).read_bytes(), f.originals[name])
+
+    def test_encrypted_missing_or_symlinked_load_config_still_refuses(self):
+        for symlink in (False, True):
+            with self.subTest(symlink=symlink), self.fixture(True) as f:
+                original = refresh.run
+
+                def damage(arguments):
+                    result = original(arguments)
+                    if arguments[0] == 'grub-install' and '--version' not in arguments:
+                        generation, = f.mapped('/boot/emaki').iterdir()
+                        config = generation / 'grub/x86_64-efi/load.cfg'
+                        config.unlink()
+                        if symlink:
+                            config.symlink_to('missing')
+                    return result
+
+                with patch.object(refresh, 'run', side_effect=damage), self.assertRaisesRegex(
+                        refresh.Refuse, 'load.cfg is missing or is a symbolic link'):
+                    refresh.refresh(f.identity)
+                for name, expected in f.originals.items():
+                    self.assertEqual(f.mapped(name).read_bytes(), expected)
 
     def test_foreign_fallback_refuses_without_changes(self):
         for encrypted in (True, False):
@@ -882,21 +941,489 @@ class RefreshOrchestrationChecks(unittest.TestCase):
             self.assertIn(b'emaki_trial=0\n', counter)
             self.assertIn(b'emaki_trial_source=(hd0,gpt1)/EFI/BOOT\n', counter)
 
-    def hook(self, f):
+    def hook(self, f, argv=None, discover=None, flock=None, pause=None):
         errors = io.StringIO()
         builtin_open = open
         def private_open(path, *args, **kwargs):
             return builtin_open(f.mapped(path), *args, **kwargs)
         f.mapped('/run').mkdir(exist_ok=True)
+        f.mapped('/var/lib/pacman').mkdir(parents=True, exist_ok=True)
         f.mapped('/var/log').mkdir(parents=True, exist_ok=True)
         with patch.object(refresh.os, 'geteuid', return_value=0), \
                 patch.object(refresh.subprocess, 'run', return_value=SimpleNamespace(returncode=1)), \
-                patch.object(refresh, 'discover', return_value=f.identity), \
-                patch.object(refresh, 'pause_snapshots', return_value=nullcontext()), \
+                patch.object(refresh, 'discover', side_effect=discover, return_value=f.identity), \
+                patch.object(refresh, 'check_refresh_storage'), \
+                patch.object(refresh, 'pause_snapshots', side_effect=pause, return_value=nullcontext()), \
                 patch.object(refresh, 'open', side_effect=private_open, create=True), \
-                patch.object(refresh.fcntl, 'flock'), redirect_stderr(errors):
-            status = refresh.main(['--hook'])
+                patch.object(refresh.fcntl, 'flock', side_effect=flock), redirect_stderr(errors):
+            status = refresh.main(['--hook'] if argv is None else argv)
         return status, f.output.getvalue() + errors.getvalue()
+
+    def test_first_refresh_failure_retries_at_boot_without_a_package_transaction(self):
+        service = (ROOT / 'systemd/emaki-boot-refresh.service').read_text()
+        conditions = [line for line in service.splitlines() if line.startswith('Condition')]
+        self.assertEqual(conditions, ['ConditionPathExists=|/var/lib/emaki/boot-refresh-pending',
+                                      'ConditionPathExists=|/var/lib/pacman/db.lck'])
+        self.assertIn('After=multi-user.target emaki-boot-complete.service\n', service)
+        self.assertIn('DefaultDependencies=no\n', service)
+        self.assertIn('RequiresMountsFor=/boot /efi\n', service)
+        self.assertIn('WantedBy=multi-user.target\n', service)
+        command, = [shlex.split(line.partition('=')[2]) for line in service.splitlines()
+                    if line.startswith('ExecStart=')]
+        self.assertEqual(command, ['/usr/bin/emaki-boot-refresh', '--retry'])
+        self.assertIn('TimeoutStartSec=5min\n', service)
+        hook = (ROOT / 'grub/95-emaki-boot-refresh.hook').read_text()
+        self.assertIn('Operation = Upgrade\n', hook)
+        self.assertIn('Target = emaki-config\n', hook)
+        with self.fixture(False, plain_fsroot='/@') as f:
+            with patch.object(refresh, 'plain_load_config',
+                              side_effect=refresh.Transient('injected build failure')):
+                status, _ = self.hook(f)
+            self.assertEqual(status, 1)
+            state = f.mapped('/efi/EFI/Emaki/boot-state.json')
+            self.assertFalse(state.exists())
+            self.assertFalse(list(f.mapped('/boot/emaki').iterdir()))
+            for name, expected in f.originals.items():
+                self.assertEqual(f.mapped(name).read_bytes(), expected)
+            status, _ = self.hook(f, command[1:])
+            self.assertEqual(status, 0)
+            self.assertTrue(state.is_file())
+            generation, = f.mapped('/boot/emaki').iterdir()
+            self.assertEqual(json.loads(state.read_text())['newest'], generation.name)
+            self.assertIsNone(json.loads(state.read_text())['good'])
+            self.assertIn('injected build failure', f.mapped('/var/log/emaki-boot-refresh.log').read_text())
+            self.assertFalse(f.mapped(refresh.PENDING).exists())
+            commands = list(f.commands)
+            self.assertEqual(self.hook(f, ['--retry'])[0], 0)
+            self.assertEqual(f.commands, commands)
+
+    def test_fresh_install_boots_do_not_stage_a_candidate(self):
+        for encrypted in (False, True):
+            with self.subTest(encrypted=encrypted), self.fixture(encrypted) as f:
+                for _ in range(2):
+                    self.assertEqual(self.hook(f, ['--retry'])[0], 0)
+                self.assertEqual(f.commands, [])
+                self.assertFalse(f.mapped(refresh.PENDING).exists())
+                self.assertFalse(f.mapped('/efi/EFI/Emaki/boot-state.json').exists())
+
+    def test_pending_is_written_before_discovery_and_failure(self):
+        with self.fixture(False) as f:
+            def fail():
+                self.assertEqual(json.loads(f.mapped(refresh.PENDING).read_text()), {'boots': 0})
+                raise OSError('temporary storage failure')
+            self.assertEqual(self.hook(f, discover=fail)[0], 1)
+            self.assertTrue(f.mapped(refresh.PENDING).is_file())
+
+    def test_permanent_boot_outcomes_are_reported_once_and_clear_pending(self):
+        for outcome in ('foreign', 'small-esp', 'refused'):
+            with self.subTest(outcome=outcome), self.fixture(False, foreign=outcome == 'foreign') as f:
+                f.put(f.mapped(refresh.PENDING), '{"boots": 0}\n')
+                with ExitStack() as stack:
+                    if outcome == 'small-esp':
+                        stack.enter_context(patch.object(refresh.os, 'statvfs', return_value=SimpleNamespace(
+                            f_blocks=255, f_frsize=refresh.MIB)))
+                    if outcome == 'refused':
+                        stack.enter_context(patch.object(refresh, 'refresh', side_effect=refresh.Refuse('Unsupported disk.')))
+                    status, output = self.hook(f, ['--retry'])
+                self.assertEqual(status, 0)
+                self.assertEqual(len(output.strip().splitlines()), 1)
+                self.assertFalse(f.mapped(refresh.PENDING).exists())
+                log = f.mapped(refresh.LOG_PATH).read_bytes()
+                self.assertEqual(self.hook(f, ['--retry'])[0], 0)
+                self.assertEqual(f.mapped(refresh.LOG_PATH).read_bytes(), log)
+
+    def test_failed_builds_stop_after_three_boots_and_explicit_hook_rearms(self):
+        for command in ('grub-mkimage', 'unshare', 'grub-script-check'):
+            with self.subTest(command=command), self.fixture(False, fail=command) as f:
+                self.assertEqual(self.hook(f)[0], 1)
+                for attempt in range(1, 4):
+                    self.assertEqual(self.hook(f, ['--retry'])[0], 0)
+                    pending = f.mapped(refresh.PENDING)
+                    if attempt < 3:
+                        self.assertEqual(json.loads(pending.read_text())['boots'], attempt)
+                    else:
+                        self.assertFalse(pending.exists())
+                count = len(f.commands)
+                self.assertEqual(self.hook(f, ['--retry'])[0], 0)
+                self.assertEqual(len(f.commands), count)
+                self.assertEqual(sum(c[0] == 'grub-install' for c in f.commands), 4)
+                self.assertEqual(self.hook(f)[0], 1)
+                self.assertEqual(json.loads(pending.read_text())['boots'], 0)
+
+    def test_pacman_contention_consumes_budget_without_touching_its_lock(self):
+        with self.fixture(False) as f:
+            f.put(f.mapped(refresh.PENDING), '{"boots": 0}\n')
+            lock = f.mapped('/var/lib/pacman/db.lck')
+            f.put(lock, 'other transaction')
+            for _ in range(4):
+                self.assertEqual(self.hook(f, ['--retry'])[0], 0)
+                self.assertEqual(lock.read_text(), 'other transaction')
+            self.assertEqual(f.commands, [])
+            self.assertFalse(f.mapped(refresh.PENDING).exists())
+
+    def test_run_lock_contention_defers_without_consuming_a_boot_attempt(self):
+        for record in (None, '{"boots": 0}\n', '{"boots": 2}\n', '{"boots": 3}\n'):
+            with self.subTest(record=record), self.fixture(False) as f:
+                pending = f.mapped(refresh.PENDING)
+                if record is not None:
+                    f.put(pending, record)
+                package_lock = f.mapped('/var/lib/pacman/db.lck')
+                f.put(package_lock, 'emaki-boot-refresh:' + FSUUID)
+                run_lock = f.mapped('/run/emaki-boot-refresh.lock')
+                run_lock.parent.mkdir(parents=True)
+                with run_lock.open('w') as holder:
+                    real_flock = refresh.fcntl.flock
+                    real_flock(holder, refresh.fcntl.LOCK_EX | refresh.fcntl.LOCK_NB)
+                    self.assertEqual(self.hook(f, ['--retry'], flock=real_flock)[0], 0)
+                    self.assertEqual(pending.read_text() if pending.exists() else None, record)
+                    self.assertEqual(package_lock.read_text(), 'emaki-boot-refresh:' + FSUUID)
+                    self.assertEqual(f.commands, [])
+
+    def test_nonregular_package_locks_preserve_bounded_retry(self):
+        for kind in ('symlink', 'dangling-symlink', 'directory', 'fifo'):
+            with self.subTest(kind=kind), self.fixture(False) as f:
+                lock = f.mapped('/var/lib/pacman/db.lck')
+                lock.parent.mkdir(parents=True)
+                target = lock.with_name('target')
+                if 'symlink' in kind:
+                    if kind == 'symlink':
+                        f.put(target, 'emaki-boot-refresh:' + FSUUID)
+                    lock.symlink_to(target)
+                elif kind == 'directory':
+                    lock.mkdir()
+                else:
+                    os.mkfifo(lock)
+                before = lock.lstat()
+                pending = f.mapped(refresh.PENDING)
+                f.put(pending, '{"boots": 0}\n')
+                for attempt in range(1, 5):
+                    self.assertEqual(self.hook(f, ['--retry'], flock=refresh.fcntl.flock)[0], 0)
+                    if attempt < 3:
+                        self.assertEqual(json.loads(pending.read_text()), {'boots': attempt})
+                    else:
+                        self.assertFalse(pending.exists())
+                    self.assertEqual(lock.lstat().st_ino, before.st_ino)
+                self.assertEqual(f.commands, [])
+                if kind == 'symlink':
+                    self.assertEqual(target.read_text(), 'emaki-boot-refresh:' + FSUUID)
+                elif kind == 'dangling-symlink':
+                    self.assertFalse(target.exists())
+
+    def test_symlink_package_lock_does_not_block_manual_or_hook_refresh(self):
+        for argv in ([], ['--hook']):
+            with self.subTest(argv=argv), self.fixture(False) as f:
+                lock = f.mapped('/var/lib/pacman/db.lck')
+                target = lock.with_name('target')
+                f.put(target, 'emaki-boot-refresh:' + FSUUID)
+                lock.symlink_to(target)
+                before = lock.lstat()
+                with patch.object(refresh, 'refresh') as work:
+                    self.assertEqual(self.hook(f, argv, flock=refresh.fcntl.flock)[0], 0)
+                    work.assert_called_once_with(f.identity)
+                self.assertFalse(f.mapped(refresh.PENDING).exists())
+                self.assertTrue(lock.is_symlink())
+                self.assertEqual(lock.lstat().st_ino, before.st_ino)
+                self.assertEqual(target.read_text(), 'emaki-boot-refresh:' + FSUUID)
+
+    def test_recovery_does_not_open_nonregular_file_types(self):
+        for mode in (stat.S_IFSOCK, stat.S_IFCHR, stat.S_IFBLK):
+            with self.subTest(mode=mode), \
+                    patch.object(Path, 'lstat', return_value=SimpleNamespace(st_mode=mode)), \
+                    patch.object(refresh.os, 'open', side_effect=OSError(errno.ENXIO, 'Cannot open')) as opened:
+                refresh.remove_previous_boot_lock(Path('/unused/db.lck'), BOOT_ID)
+                opened.assert_not_called()
+
+    def test_recovery_ignores_symlink_replacement_before_open(self):
+        with self.fixture(False) as f:
+            lock = f.mapped('/var/lib/pacman/db.lck')
+            f.put(lock, 'emaki-boot-refresh:' + FSUUID)
+            target = lock.with_name('target')
+            f.put(target, 'emaki-boot-refresh:' + FSUUID)
+            real_open = os.open
+            def replace(path, flags, *args, **kwargs):
+                if path == lock and not flags & os.O_CREAT:
+                    lock.unlink()
+                    lock.symlink_to(target)
+                return real_open(path, flags, *args, **kwargs)
+            with patch.object(refresh.os, 'open', side_effect=replace):
+                refresh.remove_previous_boot_lock(lock, BOOT_ID)
+            self.assertTrue(lock.is_symlink())
+            self.assertEqual(target.read_text(), 'emaki-boot-refresh:' + FSUUID)
+
+    def test_boot_confirmation_has_bounded_service_time(self):
+        service = (ROOT / 'systemd/emaki-boot-complete.service').read_text()
+        self.assertIn('TimeoutStartSec=5min\n', service)
+        self.assertIn('TimeoutStopSec=90s\n', service)
+
+    def test_killed_retry_recovers_owned_lock_only_after_reboot(self):
+        for attempts in (0, 2):
+            with self.subTest(attempts=attempts), self.fixture(False) as f:
+                pending = f.mapped(refresh.PENDING)
+                f.put(pending, json.dumps({'boots': attempts}))
+                lock = f.mapped('/var/lib/pacman/db.lck')
+                child = os.fork()
+                if child == 0:
+                    def kill(identity):
+                        os.kill(os.getpid(), signal.SIGKILL)
+                    with patch.object(refresh, 'refresh', side_effect=kill):
+                        self.hook(f, ['--retry'])
+                    os._exit(99)
+                _, status = os.waitpid(child, 0)
+                self.assertTrue(os.WIFSIGNALED(status))
+                self.assertEqual(os.WTERMSIG(status), signal.SIGKILL)
+                self.assertEqual(lock.read_text(), 'emaki-boot-refresh:' + BOOT_ID)
+                self.assertEqual(lock.stat().st_mode & 0o777, 0o600)
+                self.assertEqual(json.loads(pending.read_text())['boots'], attempts + 1)
+                if attempts == 0:
+                    self.assertEqual(self.hook(f, ['--retry'])[0], 0)
+                    self.assertEqual(lock.read_text(), 'emaki-boot-refresh:' + BOOT_ID)
+                f.put(f.mapped('/proc/sys/kernel/random/boot_id'), FSUUID + '\n')
+                self.assertEqual(self.hook(f, ['--retry'])[0], 0)
+                self.assertFalse(lock.exists())
+                self.assertFalse(pending.exists())
+                self.assertEqual(f.mapped('/efi/EFI/Emaki/boot-state.json').exists(), attempts == 0)
+
+    def test_retry_preserves_foreign_and_malformed_package_locks(self):
+        for token in ('', 'pacman', 'emaki-rollback:' + BOOT_ID,
+                      'emaki-boot-refresh:invalid', 'emaki-boot-refresh:' + FSUUID + '\n'):
+            with self.subTest(token=token), self.fixture(False) as f:
+                f.put(f.mapped(refresh.PENDING), '{"boots": 0}\n')
+                lock = f.mapped('/var/lib/pacman/db.lck')
+                f.put(lock, token)
+                self.assertEqual(self.hook(f, ['--retry'])[0], 0)
+                self.assertEqual(lock.read_text(), token)
+                self.assertEqual(f.commands, [])
+
+    def test_killed_retry_recovers_after_same_boot_pending_removal(self):
+        for completion in ('manual', 'exhausted'):
+            with self.subTest(completion=completion), self.fixture(False) as f:
+                pending = f.mapped(refresh.PENDING)
+                f.put(pending, '{"boots": 2}\n')
+                lock = f.mapped('/var/lib/pacman/db.lck')
+                child = os.fork()
+                if child == 0:
+                    with patch.object(refresh, 'refresh',
+                                      side_effect=lambda identity: os.kill(os.getpid(), signal.SIGKILL)):
+                        self.hook(f, ['--retry'])
+                    os._exit(99)
+                _, status = os.waitpid(child, 0)
+                self.assertTrue(os.WIFSIGNALED(status))
+                self.assertEqual(os.WTERMSIG(status), signal.SIGKILL)
+                self.assertEqual(self.hook(f, [] if completion == 'manual' else ['--retry'])[0], 0)
+                self.assertFalse(pending.exists())
+                self.assertEqual(lock.read_text(), 'emaki-boot-refresh:' + BOOT_ID)
+                commands = list(f.commands)
+                for boot_id in (FSUUID, LUKS):
+                    f.put(f.mapped('/proc/sys/kernel/random/boot_id'), boot_id + '\n')
+                    self.assertEqual(self.hook(f, ['--retry'])[0], 0)
+                    self.assertFalse(lock.exists())
+                    self.assertFalse(pending.exists())
+                    self.assertEqual(f.commands, commands)
+
+    def test_explicit_refresh_recovers_previous_boot_lock_before_discovery(self):
+        for argv in ([], ['--hook']):
+            with self.subTest(argv=argv), self.fixture(False) as f:
+                lock = f.mapped('/var/lib/pacman/db.lck')
+                f.put(lock, 'emaki-boot-refresh:' + FSUUID)
+                def discover():
+                    self.assertFalse(lock.exists())
+                    return f.identity
+                self.assertEqual(self.hook(f, argv, discover=discover)[0], 0)
+                self.assertFalse(lock.exists())
+
+    def test_lock_recovery_without_pending_preserves_unowned_locks(self):
+        for token in ('', 'pacman', 'emaki-rollback:' + BOOT_ID,
+                      'emaki-boot-refresh:invalid', 'emaki-boot-refresh:' + FSUUID + '\n',
+                      'emaki-boot-refresh:' + BOOT_ID):
+            with self.subTest(token=token), self.fixture(False) as f:
+                lock = f.mapped('/var/lib/pacman/db.lck')
+                f.put(lock, token)
+                self.assertEqual(self.hook(f, ['--retry'])[0], 0)
+                self.assertEqual(lock.read_text(), token)
+                self.assertFalse(f.mapped(refresh.PENDING).exists())
+                self.assertEqual(f.commands, [])
+
+    def test_package_lock_unlink_is_synced_before_pending_clear(self):
+        for argv in (['--retry'], ['--hook']):
+            with self.subTest(argv=argv), self.fixture(False) as f:
+                lock = f.mapped('/var/lib/pacman/db.lck')
+                f.put(lock, 'emaki-boot-refresh:' + FSUUID)
+                pending = f.mapped(refresh.PENDING)
+                f.put(pending, '{"boots": 0}\n')
+                synced = []
+                real_sync = refresh.sync_directory
+                def sync(path):
+                    if path == lock.parent:
+                        self.assertFalse(lock.exists())
+                        self.assertTrue(pending.exists())
+                        synced.append(path)
+                    if path == pending.parent and not pending.exists():
+                        self.assertEqual(synced, [lock.parent] * (2 if argv == ['--retry'] else 1))
+                    real_sync(path)
+                with patch.object(refresh, 'sync_directory', side_effect=sync):
+                    self.assertEqual(self.hook(f, argv)[0], 0)
+                self.assertFalse(pending.exists())
+
+    def test_package_lock_token_is_fsynced_before_work(self):
+        with self.fixture(False) as f:
+            lock = f.mapped('/var/lib/pacman/db.lck')
+            lock.parent.mkdir(parents=True)
+            synced = []
+            real_fsync = os.fsync
+            def fsync(fd):
+                synced.append(os.fstat(fd).st_ino)
+                real_fsync(fd)
+            with patch.object(refresh.os, 'fsync', side_effect=fsync):
+                with refresh.pacman_lock():
+                    self.assertEqual(lock.read_text(), 'emaki-boot-refresh:' + BOOT_ID)
+                    self.assertIn(lock.stat().st_ino, synced)
+
+    def test_package_lock_replacements_and_symlinks_are_never_removed(self):
+        with self.fixture(False) as f:
+            lock = f.mapped('/var/lib/pacman/db.lck')
+            f.put(lock, 'emaki-boot-refresh:' + FSUUID)
+            replacement = lock.with_name('replacement')
+            f.put(replacement, 'foreign')
+            real_stat = os.lstat
+            inspections = 0
+            def stat(path, *args, **kwargs):
+                nonlocal inspections
+                if Path(path) == lock:
+                    inspections += 1
+                    if inspections == 2:
+                        replacement.replace(lock)
+                return real_stat(path, *args, **kwargs)
+            with patch.object(refresh.os, 'lstat', side_effect=stat):
+                with self.assertRaises(refresh.Transient):
+                    with refresh.pacman_lock():
+                        self.fail('replacement lock was acquired')
+            self.assertEqual(lock.read_text(), 'foreign')
+            lock.unlink()
+            f.put(replacement, 'emaki-boot-refresh:' + FSUUID)
+            lock.symlink_to(replacement)
+            with self.assertRaises(refresh.Transient):
+                with refresh.pacman_lock():
+                    self.fail('symlink lock was acquired')
+            self.assertTrue(lock.is_symlink())
+            self.assertEqual(replacement.read_text(), 'emaki-boot-refresh:' + FSUUID)
+            lock.unlink()
+            with refresh.pacman_lock():
+                lock.unlink()
+                f.put(lock, 'foreign')
+            self.assertEqual(lock.read_text(), 'foreign')
+
+    def test_invalid_retry_record_stops_without_a_failed_unit(self):
+        for record in ('[]', '{}', 'null', '{"boots": -1}', '{"boots": true}', '{"boots": "2"}'):
+            with self.subTest(record=record), self.fixture(False) as f:
+                f.put(f.mapped(refresh.PENDING), record)
+                self.assertEqual(self.hook(f, ['--retry'])[0], 0)
+                self.assertFalse(f.mapped(refresh.PENDING).exists())
+                self.assertEqual(f.commands, [])
+
+    def test_boot_run_holds_pacman_lock_through_publication_and_releases_on_error(self):
+        for fail in (False, True):
+            with self.subTest(fail=fail), self.fixture(False) as f:
+                f.put(f.mapped(refresh.PENDING), '{"boots": 0}\n')
+                lock = f.mapped('/var/lib/pacman/db.lck')
+                original_run = refresh.run
+                original_publish = refresh.Transaction.publish
+                def check_lock():
+                    with self.assertRaises(FileExistsError):
+                        os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                def run(args):
+                    check_lock()
+                    if fail:
+                        raise refresh.Transient('build failed')
+                    return original_run(args)
+                def discover():
+                    check_lock()
+                    return f.identity
+                def publish(transaction):
+                    check_lock()
+                    return original_publish(transaction)
+                with patch.object(refresh, 'run', side_effect=run), \
+                        patch.object(refresh.Transaction, 'publish', publish):
+                    self.assertEqual(self.hook(f, ['--retry'], discover=discover)[0], 0)
+                self.assertFalse(lock.exists())
+
+    def test_interrupted_run_consumes_budget_and_releases_pacman_lock(self):
+        with self.fixture(False) as f:
+            f.put(f.mapped(refresh.PENDING), '{"boots": 0}\n')
+            def interrupt(identity):
+                os.kill(os.getpid(), signal.SIGTERM)
+            previous = signal.getsignal(signal.SIGTERM)
+            with patch.object(refresh, 'refresh', side_effect=interrupt):
+                self.assertEqual(self.hook(f, ['--retry'])[0], 0)
+            self.assertIs(signal.getsignal(signal.SIGTERM), previous)
+            self.assertFalse(f.mapped('/var/lib/pacman/db.lck').exists())
+            self.assertEqual(json.loads(f.mapped(refresh.PENDING).read_text())['boots'], 1)
+            f.put(f.mapped(refresh.PENDING), '{"boots": 3}\n')
+            self.assertEqual(self.hook(f, ['--retry'])[0], 0)
+            self.assertFalse(f.mapped(refresh.PENDING).exists())
+            self.assertEqual(f.commands, [])
+
+    def test_interrupted_confirmation_restarts_snapshots_and_releases_run_lock(self):
+        with self.fixture(False) as f:
+            events = f.root / 'snapshot-events'
+            result = f.root / 'confirmation-result'
+            original_pause = refresh.pause_snapshots
+            @contextmanager
+            def pause():
+                with patch.object(refresh.subprocess, 'run', return_value=SimpleNamespace(returncode=0)):
+                    with original_pause():
+                        yield
+            def run(args):
+                with events.open('a') as output:
+                    output.write(' '.join(args) + '\n')
+                return ''
+            child = os.fork()
+            if child == 0:
+                previous = signal.getsignal(signal.SIGTERM)
+                with patch.object(refresh, 'run', side_effect=run), \
+                        patch.object(refresh, 'mark_good',
+                                     side_effect=lambda identity: os.kill(os.getpid(), signal.SIGTERM)):
+                    status, _ = self.hook(f, ['--mark-good'], pause=pause, flock=refresh.fcntl.flock)
+                result.write_text(json.dumps({'status': status,
+                                              'handler_restored': signal.getsignal(signal.SIGTERM) is previous,
+                                              'log_closed': refresh.LOG is None}))
+                os._exit(0)
+            _, status = os.waitpid(child, 0)
+            self.assertTrue(os.WIFEXITED(status), 'confirmation died without running cleanup')
+            self.assertEqual(os.WEXITSTATUS(status), 0)
+            self.assertEqual(events.read_text().splitlines(), [
+                'systemctl stop grub-btrfsd.service', 'systemctl start grub-btrfsd.service'])
+            self.assertEqual(json.loads(result.read_text()),
+                             {'status': 1, 'handler_restored': True, 'log_closed': True})
+            with f.mapped('/run/emaki-boot-refresh.lock').open('w') as lock:
+                refresh.fcntl.flock(lock, refresh.fcntl.LOCK_EX | refresh.fcntl.LOCK_NB)
+
+    def test_modules_changed_during_mkimage_refuse_before_publication(self):
+        with self.fixture(False) as f:
+            original_run = refresh.run
+            def run(args):
+                result = original_run(args)
+                if args[0] == 'grub-mkimage':
+                    (refresh.MODULES / 'normal.mod').write_bytes(b'replaced package module')
+                return result
+            with patch.object(refresh, 'run', side_effect=run):
+                with self.assertRaisesRegex(refresh.Refuse, 'differs from its package'):
+                    refresh.refresh(f.identity)
+            for name, expected in f.originals.items():
+                self.assertEqual(f.mapped(name).read_bytes(), expected)
+            self.assertFalse(any(c[0] == 'unshare' for c in f.commands))
+
+    def test_module_set_removed_during_mkimage_refuses_before_publication(self):
+        with self.fixture(False) as f:
+            original_run = refresh.run
+            def run(args):
+                result = original_run(args)
+                if args[0] == 'grub-mkimage':
+                    (refresh.MODULES / 'normal.mod').unlink()
+                return result
+            with patch.object(refresh, 'run', side_effect=run):
+                with self.assertRaisesRegex(refresh.Refuse, 'module set differs'):
+                    refresh.refresh(f.identity)
+            self.assertFalse(f.mapped('/efi/EFI/Emaki/boot-state.json').exists())
 
     def test_foreign_fallback_hook_is_one_plain_sentence_and_success_status(self):
         with self.fixture(False, foreign=True) as f:
@@ -947,7 +1474,7 @@ class RefreshOrchestrationChecks(unittest.TestCase):
             self.assertTrue(pending.exists())
             status, output = self.hook(f)
             self.assertEqual(status, 1)
-            self.assertIn('/var/log/emaki-boot-refresh.log', output)
+            self.assertIn('emaki-initramfs-refresh', output)
             self.assertIn('emaki-initramfs-refresh',
                           f.mapped('/var/log/emaki-boot-refresh.log').read_text())
             self.assertEqual(f.commands, [])
@@ -1008,6 +1535,18 @@ class RefreshOrchestrationChecks(unittest.TestCase):
 
 
 class OutputChecks(unittest.TestCase):
+    def test_log_bounds_old_and_single_large_generator_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'refresh.log'
+            path.write_bytes(b'old\n' * refresh.LOG_LIMIT)
+            log = refresh.BoundedLog(path)
+            self.assertLessEqual(path.stat().st_size, refresh.LOG_LIMIT)
+            result = SimpleNamespace(returncode=0, stdout='x' * (2 * refresh.LOG_LIMIT), stderr='last line\n')
+            with patch.object(refresh.subprocess, 'run', return_value=result), patch.object(refresh, 'LOG', log):
+                refresh.run(['grub-mkconfig'])
+            self.assertEqual(path.stat().st_size, refresh.LOG_LIMIT)
+            self.assertTrue(path.read_bytes().endswith(b'last line\n'))
+
     def test_generator_output_goes_to_log_and_never_to_terminal(self):
         result = SimpleNamespace(returncode=0, stdout='menu generated\n',
                                  stderr='Found snapshot: private-name\n')
@@ -1043,6 +1582,8 @@ class DiscoveryChecks(unittest.TestCase):
             mounted_root = {'target': '/', 'uuid': FSUUID, 'fstype': 'btrfs' if encrypted else 'ext4',
                             'source': '/dev/mapper/emaki-root' if encrypted else '/dev/vda2',
                             'partuuid': None, 'fsroot': '/@' if encrypted else '/', 'options': 'rw,relatime'}
+            if fault in ('btrfs-members', 'btrfs-clone'):
+                mounted_root['fstype'] = 'btrfs'
             if fault == 'snapshot':
                 mounted_root['fsroot'] = '/@snapshots/12/snapshot'
             if fault == 'overlay':
@@ -1069,7 +1610,34 @@ class DiscoveryChecks(unittest.TestCase):
                                        else [mount]})
                 if args == ['grub-probe', '--target=cryptodisk_uuid', '/boot']:
                     return (LUKS + ' ' + FSUUID) if fault == 'multiple-disks' else LUKS if encrypted else ''
+                if args == ['grub-probe', '--target=abstraction', '/boot']:
+                    self.assertFalse(encrypted)
+                    return {'lvm': 'lvm', 'mdraid': 'diskfilter raid'}.get(fault, '')
+                if args == ['grub-probe', '--target=partmap', '/boot']:
+                    self.assertFalse(encrypted)
+                    if fault in ('btrfs-members', 'btrfs-clone'):
+                        return 'gpt\ngpt'
+                    return 'msdos' if fault == 'non-gpt' else 'gpt'
+                if args == ['grub-probe', '--target=device', '/boot']:
+                    if fault in ('btrfs-members', 'btrfs-clone'):
+                        return '/dev/vda2\n/dev/vdb2'
+                    return '/dev/dm-0' if encrypted else '/dev/vda2'
+                if args[0] == 'blkid':
+                    self.assertEqual(args[:4], ['blkid', '-c', '/dev/null', '-t'])
+                    self.assertEqual(args[5:], ['-o', 'device'])
+                    if args[4] == 'UUID=' + LUKS:
+                        self.assertTrue(encrypted)
+                        return '/dev/vda2\n/dev/vdb2' if fault == 'duplicate-luks' else '/dev/vda2'
+                    self.assertEqual(args[4], 'UUID=' + FSUUID)
+                    if fault == 'btrfs-members':
+                        return '/dev/vdb2\n/dev/vda2'
+                    if fault == 'btrfs-clone':
+                        return '/dev/vda2\n/dev/vdb2\n/dev/vdc2'
+                    device = '/dev/dm-0' if encrypted else '/dev/vda2'
+                    return device + '\n/dev/vdb2' if fault == 'duplicate-uuid' else device
                 self.assertEqual(args, ['grub-probe', '--target=fs_uuid', '/boot'])
+                if fault in ('btrfs-members', 'btrfs-clone'):
+                    return FSUUID + '\n' + FSUUID
                 return LUKS if fault == 'root-uuid' else FSUUID
 
             builtin_open = open
@@ -1078,6 +1646,8 @@ class DiscoveryChecks(unittest.TestCase):
                 return builtin_open(mapped(path), *args, **kwargs)
 
             mapped('/run').mkdir()
+            mapped('/proc/sys/kernel/random').mkdir(parents=True)
+            mapped('/proc/sys/kernel/random/boot_id').write_text(BOOT_ID + '\n')
             with ExitStack() as stack:
                 stack.enter_context(patch.object(refresh, 'Path', side_effect=mapped))
                 commands = stack.enter_context(patch.object(refresh, 'run', side_effect=probe))
@@ -1098,9 +1668,31 @@ class DiscoveryChecks(unittest.TestCase):
                             self.assertEqual(output.getvalue(), '')
                             self.assertEqual(errors.getvalue(), '')
                     self.assertEqual([call.args[0][-1] for call in commands.call_args_list], ['/'] * 4)
+                elif fault in ('lvm', 'mdraid', 'non-gpt', 'duplicate-uuid',
+                               'duplicate-luks', 'btrfs-members', 'btrfs-clone'):
+                    self.assertIsNotNone(refresh.discover())
+                    for mode in ('--check', '--mark-good'):
+                        commands.reset_mock()
+                        self.assertEqual(refresh.main([mode]), 0)
+                        self.assertFalse(any(call.args[0][0] == 'blkid' or call.args[0][1] in (
+                            '--target=abstraction', '--target=partmap', '--target=device')
+                            for call in commands.call_args_list))
+                    marker.assert_called_once()
+                    marker.reset_mock()
+                    snapshots.reset_mock()
+                    status = refresh.main(['--hook'])
+                    self.assertEqual(status, 0 if fault == 'btrfs-members' else 1)
+                    if fault == 'btrfs-members':
+                        updater.assert_called_once()
+                        updater.reset_mock()
+                        snapshots.reset_mock()
+                    elif fault in ('duplicate-uuid', 'duplicate-luks', 'btrfs-clone'):
+                        self.assertIn('check for cloned disks', mapped(refresh.LOG_PATH).read_text())
                 elif fault:
-                    with self.assertRaises(refresh.Refuse):
+                    with self.assertRaises(refresh.Refuse) as refused:
                         refresh.discover()
+                    if fault == 'duplicate-uuid':
+                        self.assertIn('check for cloned disks', str(refused.exception))
                     self.assertEqual(refresh.main(['--check']), 1)
                     self.assertIn('/var/log/emaki-boot-refresh.log', errors.getvalue())
                     self.assertNotIn('WARNING', errors.getvalue())
@@ -1125,6 +1717,40 @@ class DiscoveryChecks(unittest.TestCase):
                       'readonly-root', 'secure-boot', 'malformed-secure-boot'):
             with self.subTest(fault=fault):
                 self.exercise(fault=fault)
+
+    def test_plain_lvm_mdraid_and_non_gpt_roots_are_refused(self):
+        for fault in ('lvm', 'mdraid', 'non-gpt'):
+            with self.subTest(fault=fault):
+                self.exercise(encrypted=False, fault=fault)
+
+    def test_duplicate_root_uuid_is_refused_for_plain_and_encrypted_roots(self):
+        for encrypted in (False, True):
+            with self.subTest(encrypted=encrypted):
+                self.exercise(encrypted=encrypted, fault='duplicate-uuid')
+
+    def test_btrfs_members_are_accepted_but_an_extra_clone_is_refused(self):
+        for fault in ('btrfs-members', 'btrfs-clone'):
+            with self.subTest(fault=fault):
+                self.exercise(encrypted=False, fault=fault)
+
+    def test_duplicate_luks_uuid_is_refused_even_when_clone_is_locked(self):
+        self.exercise(encrypted=True, fault='duplicate-luks')
+
+    def test_storage_device_aliases_match_but_a_different_single_device_does_not(self):
+        with tempfile.TemporaryDirectory(prefix='boot-devices-') as directory:
+            device = Path(directory) / 'device'
+            device.touch()
+            alias = Path(directory) / 'alias'
+            alias.symlink_to(device)
+            identity = {'uuid': FSUUID, 'luks': LUKS}
+            for found in (str(device), str(device) + '-other', ''):
+                with self.subTest(found=found), patch.object(refresh, 'run', side_effect=[
+                        str(alias), found, '/dev/vda2']):
+                    if found == str(device):
+                        refresh.check_refresh_storage(identity)
+                    else:
+                        with self.assertRaises(refresh.Refuse):
+                            refresh.check_refresh_storage(identity)
 
     def test_snapshot_and_overlay_roots_skip_silently_before_boot_and_esp_discovery(self):
         for fault in ('snapshot', 'overlay'):
@@ -1264,6 +1890,32 @@ class PublicationChecks(unittest.TestCase):
             transaction.publish()
         self.assertFalse(self.targets[0].exists())
         transaction.cleanup()
+
+
+class RunLockMode(unittest.TestCase):
+    def test_run_lock_is_owner_only_under_a_permissive_umask(self):
+        # The sleep hook and sudo create it with umask 0022 or looser; another user who can
+        # open it could hold it and keep rollback refused.
+        builtin_open = open
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'emaki-boot-refresh.lock'
+            path.touch(0o666)
+            path.chmod(0o666)
+
+            def private_open(name, *args, **kwargs):
+                self.assertEqual(name, '/run/emaki-boot-refresh.lock')
+                return builtin_open(path, *args, **kwargs)
+            previous = os.umask(0)
+            try:
+                with patch.object(refresh, 'open', side_effect=private_open, create=True):
+                    with refresh.open_run_lock('w'):
+                        self.assertEqual(os.umask(0), 0)
+                    path.unlink()
+                    with refresh.open_run_lock('w'):
+                        pass
+            finally:
+                os.umask(previous)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
 
 if __name__ == '__main__':

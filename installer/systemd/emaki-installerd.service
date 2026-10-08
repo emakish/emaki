@@ -1,7 +1,8 @@
 [Unit]
 Description=Emaki live ISO installer worker
 ConditionPathExists=/run/archiso/bootmnt
-After=systemd-udev-settle.service
+After=systemd-udev-settle.service dbus.socket
+Wants=dbus.socket
 
 [Service]
 Type=simple
@@ -16,6 +17,9 @@ RestartSec=3
 # Do not let stop/restart kill a formatting command before it can finish.
 TimeoutStopSec=infinity
 KillMode=mixed
+# The guardian tries emaki-installer-restart.scope, then pins its memory.
+# If adoption fails, installation stays available with inherited cgroup lifetime.
+LimitMEMLOCK=infinity
 
 [Install]
 WantedBy=multi-user.target

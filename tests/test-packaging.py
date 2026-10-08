@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import tempfile
 import tomllib
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import reaper
@@ -64,25 +65,55 @@ class MetadataTests(unittest.TestCase):
     def setUpClass(cls):
         cls.recipes = {p.parent.name: metadata(p) for p in sorted(ROOT.glob('packaging/*/PKGBUILD'))}
 
-    def test_release_versions(self, marker_release='1'):
+    def test_greeter_inner_auth_stack_is_delivered(self):
+        expected = (ROOT / 'packaging/emaki-config/expected-files.list').read_text().splitlines()
+        makefile = (ROOT / 'Makefile').read_text()
+        for source, service in [('pam', 'emaki-greetd'), ('pam-auth', 'emaki-greetd-auth')]:
+            self.assertIn('/usr/lib/pam.d/' + service, expected)
+            self.assertIn(f'install -Dm644 greetd/{source} $(PAMDIR)/{service}', makefile)
+        self.assertIn('auth       substack    emaki-greetd-auth', (ROOT / 'greetd/pam').read_text())
+        self.assertIn('auth       include     system-local-login', (ROOT / 'greetd/pam-auth').read_text())
+
+    def test_release_versions(self, marker_release='2'):
         for name in ('emaki', 'emaki-config', 'emaki-desktop', 'emaki-apps', 'emaki-keyring', 'emaki-mirrorlist', 'emaki-installer', 'emaki-nvidia'):
             with self.subTest(package=name):
                 info = self.recipes[name]
                 self.assertEqual(info['pkgname'], [name])
-                self.assertEqual(info['pkgver'], ['0.3.0'])
-                self.assertEqual(info['pkgrel'], [marker_release] if name == 'emaki' else ['1'])
+                self.assertEqual(info['pkgver'], ['0.3.1'])
+                self.assertEqual(info['pkgrel'], [marker_release] if name == 'emaki' else ['2'] if name == 'emaki-config' else ['1'])
                 # emaki-installer also ships the zone map (ODbL) and the GRUB unlock-screen fonts (DejaVu, Bitstream Vera).
-                self.assertEqual(info['license'], ['GPL-3.0-or-later', 'MIT', 'ODbL-1.0', 'Bitstream-Vera']
+                self.assertEqual(info['license'], ['GPL-3.0-or-later', 'ODbL-1.0', 'Bitstream-Vera']
                                  if name == 'emaki-installer' else ['GPL-3.0-or-later', 'Bitstream-Vera']
-                                 if name == 'emaki-config' else ['GPL-3.0-or-later', 'MIT']
+                                 if name == 'emaki-config' else ['GPL-3.0-or-later']
                                  if name == 'emaki-nvidia' else ['GPL-3.0-or-later'])
         cargo = tomllib.loads((ROOT / 'Cargo.toml').read_text())
-        self.assertEqual(cargo['workspace']['package']['version'], '0.3.0')
+        self.assertEqual(cargo['workspace']['package']['version'], '0.3.1')
         packages = tomllib.loads((ROOT / 'Cargo.lock').read_text())['package']
-        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.3.0'})
+        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.3.1'})
         self.assertEqual(self.recipes['emaki']['depends'], [
-            'emaki-config=0.3.0-1', 'emaki-desktop=0.3.0-1', 'niri-emaki=26.04-11',
-            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.3.0-1', 'emaki-mirrorlist>=0.3.0-1'])
+            'emaki-config=0.3.1-2', 'emaki-desktop=0.3.1-1', 'niri-emaki=26.04-11',
+            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.3.1-1', 'emaki-mirrorlist>=0.3.1-1'])
+
+    def test_early_console_font_reaches_targets_and_updates(self):
+        self.assertIn('terminus-font', self.recipes['emaki-config']['depends'])
+        targets = runpy.run_path(str(ROOT / 'installer/emaki_installer/constants.py'))['PACKAGES']
+        self.assertIn('terminus-font', targets)
+        for relative in ('iso/target-packages.txt', 'iso/profile/packages.x86_64'):
+            self.assertIn('terminus-font', (ROOT / relative).read_text().split())
+
+    def test_selected_console_font_exists_in_terminus_package(self):
+        evidence = json.loads((ROOT / 'packaging/emaki-config/terminus-font-files.json').read_text())
+        paths = evidence['terminus-font']['files']
+        graphics = runpy.run_path(str(ROOT / 'installer/emaki_installer/graphics.py'))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            connector = root / 'class/drm/card0-eDP-1'
+            connector.mkdir(parents=True)
+            (connector / 'status').write_text('connected\n')
+            (connector / 'modes').write_text('1920x1200\n')
+            selected = graphics['console_font'](SimpleNamespace(graphics_packages=(), config={}), root)
+        self.assertEqual(selected, graphics['CONSOLE_FONT'])
+        self.assertIn(f'usr/share/kbd/consolefonts/{selected}.psf.gz', paths)
 
     def test_preset_units_have_shipped_providers(self):
         # Cached upstream file-list evidence keeps this gate usable off Arch.
@@ -142,16 +173,20 @@ class MetadataTests(unittest.TestCase):
             'etc/niri/config.kdl', 'etc/xdg/hypr/hyprlock.conf', 'etc/xdg/fastfetch/config.jsonc',
             'etc/xdg/kwalletrc', 'etc/xdg/mimeapps.list', 'etc/xdg/kdeglobals', 'etc/xdg/dolphinrc', 'etc/xdg/qt6ct/qt6ct.conf',
             'etc/xdg/menus/emaki-applications.menu', 'etc/xdg/xdg-desktop-portal/niri-portals.conf'})
+        for package in ('emaki-config', 'emaki-desktop'):
+            self.assertFalse(set(self.recipes[package]['depends']) & {
+                'gnome-keyring', 'polkit-gnome', 'adwaita-cursors',
+                'adwaita-fonts'})
         self.assertEqual(info['conflicts'], ['emaki-core'])
         self.assertEqual(set(info['makedepends']), {'git', 'make', 'python', 'rust', 'qt6-shadertools'})
         self.assertEqual(set(info['checkdepends']), {'niri', 'nodejs'})
         required = {
             'niri-emaki>=26.04-6', 'quickshell-emaki>=0.3.1-4', 'python', 'python-gobject', 'python-pillow',
-            'gtk3', 'wpaperd', 'wl-clipboard', 'cliphist', 'polkit-gnome', 'udiskie', 'kitty',
+            'gtk3', 'wpaperd', 'wl-clipboard', 'cliphist', 'polkit-kde-agent', 'udiskie', 'kitty',
             'fastfetch>=2.68.1', 'imagemagick', 'hyprlock', 'playerctl', 'fuzzel', 'qt6ct',
-            'adwaita-cursors', 'adwaita-fonts', 'adwaita-icon-theme', 'brightnessctl',
+            'noto-fonts', 'breeze-icons', 'adwaita-icon-theme', 'brightnessctl',
             'power-profiles-daemon', 'networkmanager', 'bluez', 'upower', 'pipewire', 'wireplumber',
-            'pipewire-pulse', 'wlsunset', 'greetd', 'greetd-regreet', 'gnome-keyring', 'kwallet>=6.30',
+            'pipewire-pulse', 'wlsunset', 'greetd', 'greetd-regreet', 'kwallet-pam', 'kwallet>=6.30',
             'coreutils', 'dbus', 'procps-ng', 'systemd', 'util-linux', 'bash',
         }
         self.assertTrue(required <= set(info['depends']), required - set(info['depends']))
@@ -210,8 +245,33 @@ class MetadataTests(unittest.TestCase):
         qs = self.recipes['quickshell-emaki']
         self.assertEqual('0003-qt-6.12-moc-includes.patch' in qs['source'], 'qt6-base<6.13' in qs['depends'])
 
+    def test_qt612_build_rejects_missing_or_mixed_modules(self):
+        recipe = ROOT / 'packaging/quickshell-emaki/qt-6.12/PKGBUILD'
+        command = ['bash', '-c', r'''
+            source "$1"
+            pkg-config() {
+                if [[ $2 == "$BAD_MODULE" ]]; then
+                    [[ $BAD_VERSION != missing ]] || return 1
+                    printf '%s\n' "$BAD_VERSION"
+                else
+                    printf '%s\n' 6.12.0
+                fi
+            }
+            _qt_build_version
+        ''', 'qt-build-check', str(recipe)]
+        result = run(command, env=dict(os.environ, BAD_MODULE='', BAD_VERSION=''))
+        self.assertEqual((result.returncode, result.stdout), (0, '6.12.0\n'), result.stderr)
+        for module in ('Qt6Core', 'Qt6Qml', 'Qt6Svg', 'Qt6ShaderTools', 'Qt6WaylandClient'):
+            for version in ('6.11.2', '6.12.1', 'missing'):
+                with self.subTest(module=module, version=version):
+                    result = run(command, env=dict(os.environ, BAD_MODULE=module,
+                                                   BAD_VERSION=version))
+                    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_qt612_activation(self):
         activate = runpy.run_path(str(ROOT / 'packaging/activate-qt612.py'))['activate']
+        # An activated tree is final: activating it again allocates no release.
+        step = 0 if '0003-qt-6.12-moc-includes.patch' in self.recipes['quickshell-emaki']['source'] else 1
         with tempfile.TemporaryDirectory(prefix='qt612-') as directory:
             checkout = Path(directory)
             shutil.copytree(ROOT / 'packaging', checkout / 'packaging')
@@ -225,14 +285,16 @@ class MetadataTests(unittest.TestCase):
                 for name in ('emaki', 'quickshell-emaki'):
                     instance.recipes[name] = metadata(checkout / 'packaging' / name / 'PKGBUILD')
                 instance.test_release_versions(
-                    str(int(self.recipes['emaki']['pkgrel'][0]) + 1))
+                    str(int(self.recipes['emaki']['pkgrel'][0]) + step))
                 instance.test_desktop_and_fork_constraints()
                 instance.test_staged_qt612_recipe()
                 instance.test_local_source_checksums()
-            self.assertEqual(metadata(checkout / 'packaging/quickshell-emaki/PKGBUILD')['pkgrel'], [str(int(self.recipes['quickshell-emaki']['pkgrel'][0]) + 1)])
+            self.assertEqual(metadata(checkout / 'packaging/quickshell-emaki/PKGBUILD')['pkgrel'], [str(int(self.recipes['quickshell-emaki']['pkgrel'][0]) + step)])
 
     def test_qt612_activation_after_patch_rebuilds(self):
         activate = runpy.run_path(str(ROOT / 'packaging/activate-qt612.py'))['activate']
+        # Patch rebuilds of an activated recipe keep their releases when activation runs again.
+        step = 0 if '0003-qt-6.12-moc-includes.patch' in self.recipes['quickshell-emaki']['source'] else 1
         for release in (4, 5, 99):
             with self.subTest(release=release), tempfile.TemporaryDirectory() as directory:
                 checkout = Path(directory)
@@ -245,9 +307,9 @@ class MetadataTests(unittest.TestCase):
                                                             f'quickshell-emaki=0.3.1-{release}'))
                 marker_release = int(metadata(marker)['pkgrel'][0])
                 activate(checkout)
-                self.assertEqual(metadata(marker)['pkgrel'], [str(marker_release + 1)])
-                self.assertEqual(metadata(active)['pkgrel'], [str(release + 1)])
-                self.assertIn(f'quickshell-emaki=0.3.1-{release + 1}', marker.read_text())
+                self.assertEqual(metadata(marker)['pkgrel'], [str(marker_release + step)])
+                self.assertEqual(metadata(active)['pkgrel'], [str(release + step)])
+                self.assertIn(f'quickshell-emaki=0.3.1-{release + step}', marker.read_text())
                 snapshot = (active.read_bytes(), marker.read_bytes())
                 activate(checkout)
                 self.assertEqual((active.read_bytes(), marker.read_bytes()), snapshot)
@@ -626,6 +688,137 @@ class PortalResolutionTests(unittest.TestCase):
         self.assertFalse({PORTAL, 'nautilus'} & self.installed(target).keys())
 
 
+@unittest.skipUnless(all(map(shutil.which, ('pacman', 'repo-add', 'bsdtar')))
+                     and (os.geteuid() == 0 or shutil.which('fakeroot')),
+                     'needs pacman, repo-add, bsdtar and fakeroot')
+class QtResolutionTests(unittest.TestCase):
+    """Real transactions on local empty-package repositories, never the host database.
+
+    The recipe supplies dependency expressions; pacman alone decides whether they
+    are satisfiable. A repository has only one version of each package: publishing
+    both builds in different repositories does not provide dependency fallback.
+    """
+
+    pacman = PortalResolutionTests.pacman
+    installed = PortalResolutionTests.installed
+    modules = ('qt6-base', 'qt6-declarative', 'qt6-svg', 'qt6-shadertools')
+
+    @classmethod
+    def setUpClass(cls):
+        evidence = ROOT / '.cache/evidence'
+        evidence.mkdir(parents=True, exist_ok=True)
+        cls.work = Path(cls.enterClassContext(tempfile.TemporaryDirectory(
+            prefix='qt-resolution-', dir=evidence)))
+        checkout = cls.work / 'checkout'
+        shutil.copytree(ROOT / 'packaging', checkout / 'packaging')
+        cls.recipes = {'old': metadata(checkout / 'packaging/quickshell-emaki/PKGBUILD')}
+        cls.markers = {'old': metadata(checkout / 'packaging/emaki/PKGBUILD')}
+        cls.active_is_old = 'qt6-base<6.12' in cls.recipes['old']['depends']
+        activate = runpy.run_path(str(ROOT / 'packaging/activate-qt612.py'))['activate']
+        activate(checkout)
+        cls.recipes['new'] = metadata(checkout / 'packaging/quickshell-emaki/PKGBUILD')
+        cls.markers['new'] = metadata(checkout / 'packaging/emaki/PKGBUILD')
+        cls.extra = {}
+        for state, version in (('old', '6.11.2-3'), ('new', '6.12.0-2')):
+            cls.extra[state] = stub_repository(cls.work / f'extra-{state}', 'extra', [
+                {'name': module, 'version': version} for module in cls.modules])
+        cls.emaki = {}
+        for state, recipe in cls.recipes.items():
+            marker = cls.markers[state]
+            cls.emaki[state] = stub_repository(cls.work / f'emaki-{state}', 'emaki', [
+                {'name': 'quickshell-emaki',
+                 'version': recipe['pkgver'][0] + '-' + recipe['pkgrel'][0],
+                 'depends': [dep for dep in recipe['depends']
+                             if re.split(r'[<>=]', dep)[0] in cls.modules]},
+                {'name': 'emaki', 'version': marker['pkgver'][0] + '-' + marker['pkgrel'][0],
+                 'depends': [dep for dep in marker['depends']
+                             if dep.startswith('quickshell-emaki=')]},
+                {'name': 'qt-build-dependencies', 'version': '1-1',
+                 'depends': [dep for dep in recipe['makedepends']
+                             if re.split(r'[<>=]', dep)[0] in cls.modules]}])
+
+    def repos(self, arch, emaki):
+        return [('extra', self.extra[arch]), ('emaki', self.emaki[emaki])]
+
+    def test_matching_and_mismatching_installations(self):
+        for arch in ('old', 'new'):
+            for candidate in ('old', 'new'):
+                with self.subTest(arch=arch, candidate=candidate):
+                    system = self.work / f'install-{arch}-{candidate}'
+                    code, output = self.pacman(system, self.repos(arch, candidate),
+                                               '-Sy', 'emaki', 'qt-build-dependencies')
+                    compatible = arch == (candidate if self.active_is_old else 'new')
+                    self.assertEqual(code == 0, compatible, output)
+                    if compatible:
+                        installed = self.installed(system)
+                        self.assertEqual(installed['quickshell-emaki'],
+                                         self.recipes[candidate]['pkgver'][0] + '-' +
+                                         self.recipes[candidate]['pkgrel'][0])
+                    else:
+                        self.assertEqual(self.installed(system), {}, output)
+
+    def test_skewed_updates_block_and_coordinated_update_succeeds(self):
+        if not self.active_is_old:
+            self.skipTest('Qt 6.12 activation already applied; no active 6.11 recipe remains')
+        for arch, candidate in (('old', 'new'), ('new', 'old'), ('new', 'new')):
+            with self.subTest(arch=arch, candidate=candidate):
+                system = self.work / f'upgrade-{arch}-{candidate}'
+                code, output = self.pacman(system, self.repos('old', 'old'), '-Sy', 'emaki')
+                self.assertEqual(code, 0, output)
+                before = self.installed(system)
+                code, output = self.pacman(system, self.repos(arch, candidate), '-Syyu')
+                if arch != candidate:
+                    self.assertNotEqual(code, 0, output)
+                    self.assertEqual(self.installed(system), before, output)
+                else:
+                    self.assertEqual(code, 0, output)
+                    installed = self.installed(system)
+                    self.assertEqual(installed['qt6-base'], '6.12.0-2')
+                    self.assertEqual(installed['quickshell-emaki'],
+                                     self.recipes['new']['pkgver'][0] + '-' +
+                                     self.recipes['new']['pkgrel'][0])
+
+    def test_repository_priority_does_not_select_a_compatible_older_build(self):
+        if not self.active_is_old:
+            self.skipTest('Qt 6.12 activation already applied; no active 6.11 recipe remains')
+        # repo-add databases identify packages independently of the configured repo name.
+        for arch, wrong, right in (('old', 'new', 'old'), ('new', 'old', 'new')):
+            with self.subTest(arch=arch):
+                preferred = self.work / f'preferred-{arch}'
+                preferred.mkdir()
+                shutil.copyfile(self.emaki[wrong] / 'emaki.db', preferred / 'preferred.db')
+                system = self.work / f'priority-{arch}'
+                code, output = self.pacman(system, [('extra', self.extra[arch]),
+                                                   ('preferred', preferred),
+                                                   ('emaki', self.emaki[right])],
+                                           '-Sy', 'quickshell-emaki')
+                self.assertNotEqual(code, 0, output)
+                self.assertIn('unable to satisfy dependency', output)
+                self.assertEqual(self.installed(system), {}, output)
+
+    def test_every_qt_module_rejects_outside_its_build_range(self):
+        for state, inside, outside in (('old', '6.11.2-3', ('6.11.1-1', '6.12.0-2')),
+                                        ('new', '6.12.0-2', ('6.11.2-3', '6.13.0-1'))):
+            if state == 'old' and not self.active_is_old:
+                continue
+            # The already released recipe fences the private-ABI modules only.
+            modules = self.modules[:2] if state == 'old' else self.modules
+            for module in modules:
+                for version in outside:
+                    with self.subTest(state=state, module=module, version=version):
+                        name = f'{state}-{module}-{version}'
+                        extra = stub_repository(self.work / f'mixed-{name}', 'extra', [
+                            {'name': dep, 'version': version if dep == module else inside}
+                            for dep in self.modules])
+                        system = self.work / f'module-{name}'
+                        code, output = self.pacman(system, [('extra', extra),
+                                                   ('emaki', self.emaki[state])],
+                                                   '-Sy', 'emaki', 'qt-build-dependencies')
+                        self.assertNotEqual(code, 0, output)
+                        self.assertIn(module, output)
+                        self.assertEqual(self.installed(system), {}, output)
+
+
 class GrubTitleTests(unittest.TestCase):
     def test_hook_fields(self):
         sections = {}
@@ -891,14 +1084,14 @@ class PayloadTests(unittest.TestCase):
         binary = self.dest / 'usr/bin/emaki'
         # Keep this payload check independent of the host's installed channel helper.
         self.assertEqual(run([str(binary), 'version'], env={**os.environ, 'PATH': ''}).stdout,
-                         'emaki 0.3.0 [channel: unknown]\n')
+                         'emaki 0.3.1 [channel: unknown]\n')
         result = run(['python3', 'scripts/core-package.py', 'verify-build-paths', '--binary', str(binary)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_defaults_and_presets(self):
         commit = run(['git', 'rev-parse', 'HEAD']).stdout.strip()
         self.assertEqual((self.dest / 'usr/lib/emaki-release').read_text(),
-                         f'VERSION=0.3.0\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
+                         f'VERSION=0.3.1\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
         expected = {'greetd.service', 'NetworkManager.service', 'bluetooth.service', 'grub-btrfsd.service',
                     'snapper-timeline.timer', 'snapper-cleanup.timer', 'fstrim.timer', 'paccache.timer', 'emaki-refresh-mirrors.timer'}
         preset = (self.dest / 'usr/lib/systemd/system-preset/50-emaki.preset').read_text().splitlines()
@@ -953,6 +1146,7 @@ class PayloadTests(unittest.TestCase):
                 ('usr/share/libalpm/hooks/93-emaki-initramfs-refresh.hook', 'upkeep/93-emaki-initramfs-refresh.hook'),
                 ('usr/share/libalpm/scripts/emaki-initramfs-refresh', 'upkeep/emaki-initramfs-refresh'),
                 ('usr/lib/systemd/system/emaki-boot-complete.service', 'systemd/emaki-boot-complete.service'),
+                ('usr/lib/systemd/system/emaki-boot-refresh.service', 'systemd/emaki-boot-refresh.service'),
                 ('usr/bin/emaki-boot-refresh', 'scripts/emaki-boot-refresh')):
             self.assertEqual((self.dest / target).read_bytes(), (ROOT / source).read_bytes())
         for directory in ('hooks', 'install'):
@@ -962,6 +1156,8 @@ class PayloadTests(unittest.TestCase):
         self.assertFalse((self.dest / 'boot').exists())
         wants = self.dest / 'usr/lib/systemd/system/multi-user.target.wants/emaki-boot-complete.service'
         self.assertEqual(wants.readlink(), Path('../emaki-boot-complete.service'))
+        retry = wants.with_name('emaki-boot-refresh.service')
+        self.assertEqual(retry.readlink(), Path('../emaki-boot-refresh.service'))
 
     def test_skel_templates_name_only_shipped_files(self):
         # useradd copies these into a new home once; the copies are the person's (zone 3) and

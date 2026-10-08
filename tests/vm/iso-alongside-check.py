@@ -105,7 +105,9 @@ def main():
         print(result.stdout.decode(), end='', flush=True)
 
     def capture(label):
-        return resume.capture_frame(vm, label)
+        frame = resume.capture_frame(vm, label)
+        print(f'SHOT: {frame} (not judged); HUMAN REVIEW REQUIRED', flush=True)
+        return frame
 
     def type_text(value):
         keys = {' ': 'spc', '-': 'minus', '/': 'slash', '.': 'dot', '=': 'equal',
@@ -284,7 +286,7 @@ exit 1''', account=user)
         stop()
         boot('windows', windows=True)
         stop()
-        (vm / 'PASS').write_text('Resize, NTFS/ESP/MSR preservation, encrypted Emaki boot, 60-second resume continuity and synthetic Windows EFI target passed.\nNOT TESTED: resumed desktop appearance and real-hardware hibernation.\n' + iso_record)
+        (vm / 'PASS').write_text('Resize, NTFS/ESP/MSR preservation, encrypted Emaki boot, 60-second resume continuity and synthetic Windows EFI target passed.\nHUMAN REVIEW REQUIRED: unlock, boot menus, target screens and resumed desktop frames are not judged.\nNOT TESTED: real-hardware hibernation.\n' + iso_record)
     finally:
         stop()
         for handle in handles:

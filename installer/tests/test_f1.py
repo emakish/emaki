@@ -136,9 +136,8 @@ class FixTests(unittest.TestCase):
             worker.plan = make_plan(config(), inventory())
             for name in ('/', '/etc', '/usr', '/var', '/boot'):
                 worker.files.mkdir(name).chmod(0o755)
-            # Offline at the end: finish() leaves the package lists to the person (NO-SYNC-DB).
-            with patch('emaki_installer.worker.LOG') as log, \
-                    patch('emaki_installer.worker.default_route', return_value=False):
+            # Final verification checks directory modes without refreshing package lists.
+            with patch('emaki_installer.worker.LOG') as log:
                 log.read_bytes.return_value = b'log\n'
                 for name in ('/', '/etc', '/usr', '/var', '/boot'):
                     path = worker.files.path(name)

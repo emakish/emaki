@@ -292,7 +292,10 @@ def run(scenario):
         core.write_text('#!/usr/bin/python3\nimport json,time\ntime.sleep(.25)\nprint(' + repr(json.dumps(MODEL)) + ', flush=True)\ntime.sleep(12)\n')
         core.chmod(0o700)
         surfaces = (qml / 'Surfaces.qml').read_text()
-        surfaces = remove_block(surfaces, '        mask: Region {')
+        # Window has no input-mask property. Remove the entire object binding,
+        # including custom region types, before stripping simple properties.
+        for mask in re.findall(r'^        mask:\s*[\w.]+\s*\{', surfaces, re.MULTILINE):
+            surfaces = remove_block(surfaces, mask)
         surfaces = remove_block(surfaces, '        anchors {')
         surfaces = re.sub(r'^        (?:screen|exclusiveZone|exclusionMode|WlrLayershell\.[A-Za-z]+|BackgroundEffect.blurRegion|mask):[^\n]*\n', '', surfaces, flags=re.MULTILINE)
         surfaces = re.sub(r'^        implicit(?:Width|Height):[^\n]*\n', '', surfaces, flags=re.MULTILINE)

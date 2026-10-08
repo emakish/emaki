@@ -38,6 +38,10 @@ can_hibernate() {
         org.freedesktop.login1.Manager CanHibernate 2>/dev/null | grep -q '"data":\["yes"\]'
 }
 
+flush_wallet() {
+    timeout --kill-after=1s 3s emaki-wallet-start --flush || :
+}
+
 set -- "Sleep"
 [ -f /etc/emaki-live/greetd.toml ] || set -- "Lock" "$@"
 if can_hibernate; then
@@ -49,8 +53,8 @@ case "$choice" in
     "Lock")      lock ;;
     "Sleep")     lock && systemctl suspend ;;
     "Hibernate") confirm "Hibernate" && { lock && systemctl hibernate; } ;;
-    "Log out")   confirm "Log out"   && niri msg action quit --skip-confirmation ;;
-    "Restart")   confirm "Restart"   && systemctl reboot ;;
-    "Shut down") confirm "Shut down" && systemctl poweroff ;;
+    "Log out")   confirm "Log out"   && { flush_wallet; niri msg action quit --skip-confirmation; } ;;
+    "Restart")   confirm "Restart"   && { flush_wallet; systemctl reboot; } ;;
+    "Shut down") confirm "Shut down" && { flush_wallet; systemctl poweroff; } ;;
     *)           exit 0 ;;
 esac

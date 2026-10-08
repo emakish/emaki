@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Release gate for one release candidate.
 # Usage: release-gate.sh --release-iso FILE --test-iso FILE [--walk DIR] [--out DIR] [--jobs a,b,...]
-# Rollback: --candidate ID --rollback-base DIR --rollback-provenance JSON
+# Rollback: --candidate EMAKI_COMMIT --rollback-base DIR --rollback-provenance JSON
+# EMAKI_COMMIT is the full 40-character commit in the image's /usr/lib/emaki-release.
 #           --rollback-plan JSON --rollback-identity KEY; boot menu: --boot-menu DIR
 #
 # The RELEASE image is the one people download: it is identified by its sha256, checked
@@ -12,7 +13,8 @@
 # two can never be read as one thing: every job line names the image it ran on.
 #
 # Job results: PASS, FAIL, NOT TESTED (it applies but did not run here), NOT APPLICABLE (the
-# image does not offer it, with its reference). The last line is "RESULT: SCRIPTS PASSED",
+# image does not offer it, with its reference). Successful functional runs explicitly
+# retain HUMAN REVIEW REQUIRED when their captured frames have not been judged.
 # "RESULT: FAILED at <job>" (exit 1) or "RESULT: NOT TESTED at <job>" (exit 3); usage errors
 # exit 2. Nothing is built here; the images must exist.
 set -Eeuo pipefail
@@ -60,6 +62,7 @@ out=$(realpath -- "$out")
 exec > >(tee -a "$out/gate.log") 2>&1
 
 declare -A state=() detail=() image=()
+declare -A review=() review_dir=()
 release_sha='' test_sha=''
 step() { printf '== %s %s\n' "$(date +%T)" "$*"; }
 record() { state[$1]=$2; detail[$1]=$3; image[$1]=$4; printf '%s: %s - %s\n' "$1" "$2" "$3"; }
@@ -92,6 +95,8 @@ stop_vm() { "$HERE/iso-stop.sh" --dir "$1" >>"$1/stop.log" 2>&1 || true; }
 # Install a fixture from the live test image, then boot the installed disk and check it.
 accept_job() {
     local job=$1 fixture=$2 port=$3 dir=$out/$1
+    review[$job]="$dir (installer, greeter and desktop frames)"
+    review_dir[$job]=$dir
     mkdir -- "$dir"
     step "$job on $(test_label)"
     setsid -f "$HERE/run-iso.sh" --dir "$dir" --ssh-port "$port" --iso "$test_iso" --usb >"$dir/qemu-live.log" 2>&1 </dev/null
@@ -146,6 +151,8 @@ PYCODE
 
 encrypt_job() {
     local job=encrypt-btrfs dir=$out/encrypt rc=0 baseline current round name evidence
+    review[$job]="$dir (unlock, menus and resumed display frames)"
+    review_dir[$job]=$dir
     step "$job on $(test_label)"
     if ! baseline=$(checkout_digest); then
         record "$job" FAIL "could not identify the checkout for repeated encryption checks" "$(test_label)"
@@ -164,7 +171,10 @@ encrypt_job() {
         rc=0
         (cd -- "$ROOT" && EMAKI_CHECK_ISO=$test_iso VMDIR=$dir timeout 7200 bash "$HERE/jail.sh" "$dir" -- \
             bash tests/vm/iso-encrypt-check.sh btrfs "$name") >"$out/$job-$round.log" 2>&1 || rc=$?
-        if ((rc != 0)); then
+        if ((rc == 77 || rc == 3)); then
+            record "$job" 'NOT TESTED' "encryption acceptance incomplete on run $round (exit $rc; log $out/$job-$round.log, evidence $evidence)" "$(test_label)"
+            return
+        elif ((rc != 0)); then
             record "$job" FAIL "iso-encrypt-check exit $rc on run $round (log $out/$job-$round.log)" "$(test_label)"
             return
         elif [[ ! -f $evidence/PASS ]]; then
@@ -192,7 +202,9 @@ alongside_job() {
     if ((rc == 77)) && [[ -f $evidence/NOT-APPLICABLE ]]; then
         record "$job" 'NOT APPLICABLE' "the image's installer refuses install alongside Windows (DECISIONS.md 2026-10-04 \"No experimental options\"; evidence $evidence/offer.ndjson)" "$(test_label)"
     elif ((rc == 0)) && [[ -f $evidence/PASS ]]; then
-        record "$job" PASS "script passed (log $out/$job.log, evidence $evidence)" "$(test_label)"
+        review[$job]="$evidence (unlock, menu and desktop frames)"
+        review_dir[$job]=$evidence
+        record "$job" PASS "functional script passed; HUMAN REVIEW REQUIRED for unlock, menu and desktop frames (log $out/$job.log, evidence $evidence)" "$(test_label)"
     else
         record "$job" FAIL "iso-alongside-check exit $rc without its PASS or NOT-APPLICABLE file (log $out/$job.log)" "$(test_label)"
     fi
@@ -236,6 +248,8 @@ rollback_job() {
     fi
     VMDIR=$out/rollback timeout 7200 python3 "$HERE/rollback-check.py" "${args[@]}" \
         --identity "$rollback_identity" --work-root "$out" >>"$log" 2>&1 || rc=$?
+    review[$job]="$out/rollback (recovery and authorization dialog frames)"
+    review_dir[$job]=$out/rollback
     case $rc in
         0) record "$job" PASS "functional rollback acceptance exit 0; visual judgments remain in release-walk (log $log)" "$(test_label)" ;;
         77|3) record "$job" 'NOT TESTED' "rollback acceptance exit $rc (log $log)" "$(test_label)" ;;
@@ -354,6 +368,16 @@ for job in "${JOBS[@]}"; do
         'NOT TESTED') first_untested=${first_untested:-$job} ;;
     esac
 done
+for job in "${JOBS[@]}"; do
+    if [[ -n ${review[$job]:-} ]]; then
+        printf 'HUMAN REVIEW REQUIRED: %s: %s; inspect every SHOT path in its log.\n' "$job" "${review[$job]}"
+        if [[ -d ${review_dir[$job]} ]]; then
+            while IFS= read -r -d '' frame; do
+                printf 'REVIEW FRAME: %s\n' "$frame"
+            done < <(find "${review_dir[$job]}" -type f -name '*.png' -print0 | sort -z)
+        fi
+    fi
+done
 if [[ -n $first_fail ]]; then
     echo "RESULT: FAILED at $first_fail"
     exit 1
@@ -362,5 +386,9 @@ if [[ -n $first_untested ]]; then
     echo "RESULT: NOT TESTED at $first_untested"
     exit 3
 fi
-echo 'RESULT: SCRIPTS PASSED'
+if ((${#review[@]})); then
+    echo 'RESULT: FUNCTIONAL SCRIPTS PASSED; HUMAN REVIEW REQUIRED'
+else
+    echo 'RESULT: SCRIPTS PASSED'
+fi
 exit 0

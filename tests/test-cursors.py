@@ -88,7 +88,7 @@ for path in (THEME / 'cursors').iterdir():
     if path.is_symlink():
         target = os.readlink(path)
         assert '/' not in target and target in drawn, (path.name, target)
-assert 'Inherits=Adwaita' in (THEME / 'index.theme').read_text()
+assert 'Inherits=' not in (THEME / 'index.theme').read_text()
 
 for kdl in ('niri/default.kdl', 'greetd/niri.kdl'):
     block = re.search(r'cursor \{(.*?)\}', (ROOT / kdl).read_text(), re.S).group(1)

@@ -10,7 +10,9 @@ interruption cases can fail: the old in-place procedure must break a syncing mac
 """
 import base64
 import datetime
+import email.message
 import importlib.util
+import io
 import json
 import os
 import re
@@ -22,6 +24,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import unittest
 from unittest import mock
 from types import SimpleNamespace
@@ -340,6 +343,111 @@ class LiveMetadata(unittest.TestCase):
                 publish.check_live_metadata(image, 'emaki/live-packages.json\n', '0.2.0', root)
 
 
+class BucketDomain(pointer_server.Handler):
+    """dl.emaki.sh without the image Worker, as measured on the 0.3.0 image (2026-10-07): no
+    X-Emaki-Image; If-Range is ignored (even a stale validator gets 206); and the first ranged
+    GET after a HEAD that the edge answered with cf-cache-status MISS gets the whole image (200),
+    the next one 206 again. A browser that gets 200 for its resume starts again from zero."""
+    image_worker = False
+    missed = False
+
+    def do_HEAD(self):
+        type(self).missed = True
+        super().do_HEAD()
+
+    def ranged(self, path):
+        if type(self).missed:
+            type(self).missed = False
+            return False
+        return super().ranged(path)
+
+
+class ResumedDownloadReadBack(unittest.TestCase):
+    """The read-back of an image asks the way a browser resumes: Range with If-Range = ETag."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.data = os.urandom(3 << 20)
+        image = self.root / 'iso/9.9.9/emaki-9.9.9-x86_64.iso'
+        image.parent.mkdir(parents=True)
+        image.write_bytes(self.data)
+        (self.root / 'iso/9.9.9/closure.txt').write_text('closure\n')
+
+    def serve(self, base=None):
+        server = pointer_server.serve(self.root, base=base)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return f'http://127.0.0.1:{server.server_address[1]}/iso/9.9.9/'
+
+    def test_resume_with_the_published_etag_answers_the_bytes(self):
+        url = self.serve() + 'emaki-9.9.9-x86_64.iso'
+        marker = publish.IMAGE_MARKER
+        etag = publish.http_etag(url, marker=marker)
+        self.assertRegex(etag, r'^"[^"]+"$')
+        middle = len(self.data) // 2
+        self.assertEqual(publish.http_range(url, middle, middle + 99, if_range=etag, marker=marker),
+                         self.data[middle:middle + 100])
+        with self.assertRaisesRegex(publish.Refused, r'If-Range: "stale" answered 200, not 206'):
+            publish.http_range(url, middle, middle + 99, if_range='"stale"', marker=marker)
+        with self.assertRaisesRegex(publish.Refused, 'HTTP 416'):
+            publish.http_range(url, len(self.data), len(self.data) + 9, marker=marker)
+
+    def test_the_bucket_domain_is_refused_although_it_answers_206(self):
+        url = self.serve(BucketDomain) + 'emaki-9.9.9-x86_64.iso'
+        marker = publish.IMAGE_MARKER
+        # A 206 proves nothing: the bucket's domain ignores even a stale If-Range...
+        self.assertEqual(publish.http_range(url, 0, 9, if_range='"stale"'), self.data[:10])
+        # ...and right after a HEAD (a cache miss) a plain range gets the whole image.
+        publish.http_etag(url)
+        with self.assertRaisesRegex(publish.Refused, 'with Range answered 200, not 206'):
+            publish.http_range(url, 0, 9)
+        self.assertEqual(publish.http_range(url, 0, 9), self.data[:10])
+        for read in (lambda: publish.http_range(url, 0, 9, marker=marker),
+                     lambda: publish.http_etag(url, marker=marker),
+                     lambda: publish.check_image_route(url)):
+            with self.assertRaisesRegex(publish.Refused, 'not answered by the download Worker '
+                                        r'\(no X-Emaki-Image: 1, HTTP 20[06]\)'):
+                read()
+        with self.assertRaisesRegex(publish.Refused, r'no X-Emaki-Image: 1, HTTP 404'):
+            publish.check_image_route(url.replace('9.9.9', '9.9.8'))
+
+    def test_the_image_route_check_accepts_the_worker_before_and_after_the_upload(self):
+        base = self.serve()
+        with mock.patch.object(publish.urllib.request, 'urlopen', wraps=publish.urllib.request.urlopen) as opened:
+            publish.check_image_route(base + 'emaki-9.9.9-x86_64.iso')
+            publish.check_image_route(base.replace('9.9.9', '9.9.8') + 'emaki-9.9.8-x86_64.iso')
+        for call in opened.call_args_list:
+            request = call.args[0]
+            # Never the plain address of an image that may not exist yet (its 404 is cached).
+            self.assertEqual((request.get_method(), request.full_url.rsplit('?', 1)[1]), ('HEAD', 'publish-check'))
+        with self.assertRaisesRegex(publish.Refused, 'not answered by the download Worker'):
+            publish.check_image_route(base + 'emaki-9.9.8-x86_64.iso')  # not an image address
+        with self.assertRaisesRegex(publish.Refused, 'HEAD http://127.0.0.1:1/'):
+            publish.check_image_route('http://127.0.0.1:1/iso/9.9.9/emaki-9.9.9-x86_64.iso')
+        # The Worker answering 503 cannot read its bucket: refused before anything is uploaded.
+        headers = email.message.Message()
+        headers['X-Emaki-Image'] = '1'
+        unreadable = urllib.error.HTTPError(base + 'emaki-9.9.9-x86_64.iso', 503, 'Service Unavailable',
+                                            headers, io.BytesIO(b''))
+        with mock.patch.object(publish.urllib.request, 'urlopen', side_effect=unreadable):
+            with self.assertRaisesRegex(publish.Refused, 'answered 503 from the download Worker'):
+                publish.check_image_route(base + 'emaki-9.9.9-x86_64.iso')
+
+    def test_an_answer_without_a_strong_etag_is_refused(self):
+        base = self.serve()
+        with self.assertRaisesRegex(publish.Refused, 'no strong ETag'):
+            publish.http_etag(base + 'closure.txt')
+        with self.assertRaisesRegex(publish.Refused, 'HTTP 404'):
+            publish.http_etag(base + 'emaki-9.9.8-x86_64.iso')
+        response = mock.MagicMock()
+        response.__enter__.return_value.headers = {'ETag': 'W/"weak"'}
+        with mock.patch.object(publish.urllib.request, 'urlopen', return_value=response), \
+                self.assertRaisesRegex(publish.Refused, 'no strong ETag'):
+            publish.http_etag(base + 'emaki-9.9.9-x86_64.iso')
+
+
 class PublishedAcceptance(unittest.TestCase):
     def test_publication_preserves_020_stamp_but_next_candidate_requires_020(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -636,6 +744,14 @@ class SourceProvenance(unittest.TestCase):
                 self.assertEqual(routed[0], 302)
                 path = routed[1]
             return (dl / path.lstrip('/')).read_bytes()
+        etag = '"fixture-etag"'
+        resumed = []
+        def ranged(url, start, end, if_range=None, marker=None):
+            self.assertIn(if_range, (None, etag))
+            self.assertEqual(marker, publish.IMAGE_MARKER)
+            if if_range is not None:
+                resumed.append(url)
+            return fetch(url)[start:end + 1]
         writes = []
         put_new = publish.LocalBackend.put_new
         def put(backend, key, data):
@@ -646,7 +762,9 @@ class SourceProvenance(unittest.TestCase):
                 mock.patch.object(publish, 'http_get', side_effect=fetch), \
                 mock.patch.object(publish, 'http_head', return_value=200), \
                 mock.patch.object(publish, 'http_sha256', side_effect=lambda url: publish.sha256(fetch(url))), \
-                mock.patch.object(publish, 'http_range', side_effect=lambda url, start, end: fetch(url)[start:end + 1]), \
+                mock.patch.object(publish, 'http_etag', return_value=etag), \
+                mock.patch.object(publish, 'check_image_route') as route, \
+                mock.patch.object(publish, 'http_range', side_effect=ranged), \
                 mock.patch.object(publish.LocalBackend, 'put_new', put), \
                 mock.patch.object(publish.LocalBackend, 'put_large', put):
             publisher.args.arch_sources = None
@@ -721,6 +839,8 @@ class SourceProvenance(unittest.TestCase):
             publisher.dry_run = False
             publisher.backend = backend
             publish.iso_publish(publisher, image, False)
+            self.assertEqual(resumed, [f'https://download.invalid/iso/{image_version}/{image.name}'])
+            route.assert_called_with(f'https://download.invalid/iso/{image_version}/{image.name}')
             if legacy:
                 non_sources = [key for key in writes if not key.startswith('sources/')]
                 key = f'iso/{image_version}/{image.name}'
@@ -1654,6 +1774,35 @@ class PublishTests(unittest.TestCase):
         finally:
             server.shutdown()
             server.server_close()
+
+    def test_iso_publication_proves_that_a_broken_browser_download_resumes(self):
+        world = self.world
+        dl = world.base / 'dl-bucket'
+        dl.mkdir()
+        packages = self.candidate('1-1')
+        self.ok(world.publish('publish', 'testing', packages))
+        self.ok(world.publish('promote', '--first'))
+        self.ok(world.publish('stamp', *self.stamp_results(self.manifest_of_testing())))
+        image = self.fake_iso('9.9.9', packages)
+        port = 0
+        # The same address both times: the source directions name it. Without the Worker in front
+        # of the image nothing is uploaded; with it the same command publishes.
+        for base, works in ((BucketDomain, False), (None, True)):
+            server = pointer_server.serve(dl, port=port, base=base)
+            port = server.server_address[1]
+            try:
+                world.extra_args = ['--dl-backend', f'local:{dl}',
+                                    '--dl-public-url', f'http://127.0.0.1:{server.server_address[1]}']
+                result = world.publish('iso', image)
+                if works:
+                    self.assertIn('a resumed download (If-Range) answers 206', self.ok(result).stdout)
+                else:
+                    self.refused(result, 'was not answered by the download Worker (no X-Emaki-Image: 1')
+                    self.assertEqual(list(dl.iterdir()), [])
+                    self.assertFalse((world.bucket / 'released/iso/9.9.9').exists())
+            finally:
+                server.shutdown()
+                server.server_close()
 
     def test_an_image_left_by_an_interrupted_run_is_compared_whole(self):
         world = self.world

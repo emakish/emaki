@@ -2,12 +2,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # shellcheck shell=bash disable=SC2034,SC2154
 pkgname=emaki-nvidia
-pkgver=0.3.0
+pkgver=0.3.1
 pkgrel=1
 pkgdesc='Emaki NVIDIA session policy and kernel module checks'
 arch=('any')
 url='https://github.com/emakish/emaki'
-license=('GPL-3.0-or-later' 'MIT')
+license=('GPL-3.0-or-later')
 depends=('python' 'bash' 'kmod' 'mkinitcpio' 'systemd')
 makedepends=('git')
 backup=('etc/mkinitcpio.conf.d/60-emaki-nvidia.conf')

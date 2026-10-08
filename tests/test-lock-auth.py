@@ -28,6 +28,25 @@ QS = shutil.which('qs')
 assert QS, 'qs is required'
 
 
+_ipc_limit_reported = False
+
+
+def checked_output(output):
+    """Permit only the unavailable optional IPC listener in restricted tests."""
+    global _ipc_limit_reported
+    if os.environ.get('EMAKI_TEST_SANDBOX') == '1':
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+                probe.bind('\0emaki-auth-' + str(os.getpid()))
+        except PermissionError:
+            if not _ipc_limit_reported:
+                print('BLOCKED: Quickshell IPC listener denied; file-transport assertions run, IPC remains unproven')
+                _ipc_limit_reported = True
+            output = '\n'.join(line for line in output.splitlines()
+                               if not line.startswith(' ERROR quickshell.ipc: Failed to start IPC server on path '))
+    return output
+
+
 def core_limit():
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
@@ -150,7 +169,7 @@ def harness(service=None):
                 except subprocess.TimeoutExpired:
                     proc.kill()
                     proc.wait(timeout=3)
-    output = log_path.read_text()
+    output = checked_output(log_path.read_text())
     if service:
         assert f'user "{pwd.getpwuid(os.getuid()).pw_name}"' in output, output
     assert 'fixture-éЖ' not in output and 'bad' not in output
@@ -184,9 +203,13 @@ with harness() as (call, wait):
     call('finish', 'rejected')
     assert state()['kind'] == 'wrong' and state()['message'] == 'Wrong password'
     assert state()['dotCount'] == 0 and state()['failures'] == 1
-    time.sleep(1.1)
+    time.sleep(3.1)
     assert state()['kind'] == 'wrong'
-    wait(lambda s: s['message'] == '', 2)
+    assert action('early')
+    assert state()['message'] == 'Wrong password'
+    action('submit')
+    assert state()['message'] == '' and state()['checking']
+    action('cancel')
     assert action('cap') and state()['bufferLength'] == 1024
     assert not action('excess') and state()['bufferLength'] == 1024
     assert state()['kind'] == 'input'
@@ -227,9 +250,21 @@ with harness() as (call, wait):
         call('notice', 'The account is locked due to 5 failed logins.', False)
         call('notice', duration, False)
         call('finish', outcome)
-        assert state()['message'] == duration, (outcome, state())
+        current = state()
+        minutes = int(duration.split()[0][1:])
+        assert current['message'] == duration, (outcome, current)
+        assert current['lockoutRemaining'] in range(minutes * 60 - 2, minutes * 60 + 1), current
+        assert current['displayMessage'] == ('Too many wrong passwords. Try again in about '
+                                           + str(current['lockoutRemaining'] // 60) + ':'
+                                           + str(current['lockoutRemaining'] % 60).zfill(2) + '.'), current
         time.sleep(2.1)
+        assert state()['lockoutRemaining'] < current['lockoutRemaining'], state()
         assert state()['message'] == duration, (outcome, state())
+        action('expireLockout')
+        assert state()['displayMessage'] == 'Wait time has ended. Try again.'
+        assert state()['successes'] == 0 and not state()['checking']
+        action('cancel')
+        assert state()['displayMessage'] == '' and state()['lockoutRemaining'] == 0
     attempt()
     call('finish', 'technical')
     assert state()['kind'] == 'technical' and 'Wrong password' not in state()['message']
@@ -283,7 +318,7 @@ with harness() as (call, wait):
     action('cancel')
     action('ready')  # Escape cancels an early queued Enter too
     assert not state()['checking'] and not state()['queued']
-print('LockAuth: early Unicode, cap, queued Enter, wrong 2 s, prompts, error, cancel, suspend, stale callbacks, timeout, relock: OK')
+print('LockAuth: early Unicode, cap, queued Enter, persistent rejection, prompts, error, cancel, suspend, stale callbacks, timeout, relock: OK')
 
 # Linux-PAM audits even pam_permit. The restricted worker denies audit socket
 # creation, and libpam returns PAM_SYSTEM_ERR (4) before reporting the result.

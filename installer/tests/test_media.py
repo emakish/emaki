@@ -3,10 +3,11 @@
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from emaki_installer.arch_backend import OfflinePacman
+from emaki_installer.arch_backend import OfflinePacman, offline_config
 from emaki_installer.errors import InstallError
-from emaki_installer.media import discover_repo, mounted_roots, package_source
+from emaki_installer.media import PackageSource, discover_repo, mounted_roots, offline_source, package_source
 
 
 class Runner:
@@ -46,7 +47,7 @@ class MediaTests(unittest.TestCase):
             copied.mkdir(parents=True)
             self.assertEqual(discover_repo(root), standard)
 
-    def test_standard_media_keeps_existing_config_and_never_downloads(self):
+    def test_standard_media_validates_then_isolates_config_and_never_downloads(self):
         with tempfile.TemporaryDirectory() as temporary:
             root, runner = Path(temporary), Runner()
             repo = root / 'run/archiso/bootmnt/emaki/repo'
@@ -58,11 +59,16 @@ class MediaTests(unittest.TestCase):
                               f'Server = {repo.as_uri()}\n')
             with package_source(runner, ['base'], online=True, root=root,
                                 work_parent=root / 'work') as source:
-                self.assertEqual(source.config, config)
+                self.assertNotEqual(source.config, config)
+                self.assertIn(f'HookDir = {source.hookdir}\n', source.config.read_text())
+                self.assertEqual(list(source.hookdir.iterdir()), [])
                 self.assertIsNone(source.archives)
+                private = source.config
             self.assertTrue(config.is_file())
+            self.assertNotIn('HookDir', config.read_text())
+            self.assertFalse(private.exists())
             self.assertEqual(runner.commands, [])
-            self.assertFalse((root / 'work').exists())
+            self.assertEqual(list((root / 'work').iterdir()), [])
 
     def test_corrupt_standard_media_never_falls_back_online(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -73,6 +79,72 @@ class MediaTests(unittest.TestCase):
                                     work_parent=root / 'work'):
                     self.fail('corrupt media accepted')
             self.assertEqual(runner.commands, [])
+
+    def test_hook_directory_must_stay_private_and_empty(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'run/archiso/copytoram/emaki/repo').mkdir(parents=True)
+            runner = Runner()
+            with package_source(runner, ['base'], online=False, root=root,
+                                work_parent=root / 'work') as source:
+                stray = source.hookdir / '90-mkinitcpio-install.hook'
+                stray.write_text('# Unexpected hook\n')
+                with self.assertRaises(InstallError):
+                    OfflinePacman(runner, root / 'target', source).strap(['base'])
+                stray.unlink()
+                source.hookdir.rmdir()
+                with self.assertRaises(InstallError):
+                    source.validate()
+                empty = root / 'other-hooks'
+                empty.mkdir()
+                source.hookdir.symlink_to(empty, target_is_directory=True)
+                with self.assertRaises(InstallError):
+                    source.validate()
+            self.assertEqual(runner.commands, [])
+
+    def test_hook_directory_cannot_contain_whitespace(self):
+        for whitespace in (' ', '\t', '\n', '\r', '\v', '\f'):
+            with self.subTest(whitespace=repr(whitespace)), tempfile.TemporaryDirectory() as temporary:
+                root, runner = Path(temporary), Runner()
+                hooks = root / f'private{whitespace}hooks'
+                hooks.mkdir()
+                config = root / 'offline.conf'
+                config.write_text('[options]\nArchitecture = auto\n'
+                                  f'HookDir = {hooks}\n'
+                                  '[emaki-offline]\nSigLevel = Required DatabaseOptional TrustedOnly\n'
+                                  f'Server = {root.as_uri()}\n')
+                source = PackageSource(config, root, hookdir=hooks)
+                with self.assertRaises(InstallError):
+                    source.validate()
+                with self.assertRaises(InstallError):
+                    offline_config(config, repo=root.as_uri(), hookdir=hooks)
+                with self.assertRaises(InstallError):
+                    OfflinePacman(runner, root / 'target', source).strap(['linux'])
+                self.assertEqual(runner.commands, [])
+
+    def test_pacstrap_without_prepared_source_also_isolates_hooks(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root, runner = Path(temporary), Runner()
+            config = root / 'shipped.conf'
+            # The package check archives installer/ without the ISO profile.
+            shipped = ('[options]\nArchitecture = auto\n'
+                       'SigLevel = Required DatabaseOptional TrustedOnly\n'
+                       'LocalFileSigLevel = Required TrustedOnly\n\n'
+                       '[emaki-offline]\nSigLevel = Required DatabaseOptional TrustedOnly\n'
+                       'Server = file:///run/archiso/bootmnt/emaki/repo\n')
+            iso_config = (Path(__file__).resolve().parents[2] / 'iso/profile/airootfs/etc/'
+                          'emaki-installer/pacman-offline.conf')
+            if iso_config.exists():
+                self.assertEqual(shipped, iso_config.read_text())
+            config.write_text(shipped)
+            with offline_source(config, work_parent=root / 'work') as source:
+                # Select a fixture shipped config without changing the fallback behavior.
+                from contextlib import nullcontext
+                with patch('emaki_installer.media.offline_source', return_value=nullcontext(source)):
+                    OfflinePacman(runner, root / 'target').strap(['linux'])
+                self.assertEqual(runner.commands[0][2], str(source.config))
+                self.assertIn(f'HookDir = {source.hookdir}\n', source.config.read_text())
+            self.assertEqual(config.read_text(), shipped)
 
     def test_fixture_root_does_not_follow_outside_symlink(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -119,6 +191,9 @@ class MediaTests(unittest.TestCase):
                 self.assertIn('linux', runner.commands[1])
                 self.assertNotIn('https://', source.config.read_text())
                 self.assertIn('Required', source.config.read_text())
+                online = source.config.parent / 'online.conf'
+                self.assertIn(f'HookDir = {source.hookdir}\n', online.read_text())
+                self.assertIn(f'HookDir = {source.hookdir}\n', source.config.read_text())
                 repo = source.repo
             self.assertFalse(repo.exists())
 

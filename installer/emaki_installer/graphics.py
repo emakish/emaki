@@ -6,6 +6,7 @@ import re
 import tarfile
 
 
+CONSOLE_FONT = 'ter-124b'
 NVIDIA = 0x10de
 HEADERS = ('linux-headers', 'linux-lts-headers')
 PREBUILT = ('nvidia-open', 'nvidia-open-lts')
@@ -91,3 +92,43 @@ def planned_packages(inventory):
     if not graphics:
         return ()
     return package_selection(graphics['devices'], graphics['available'])
+
+
+def console_font(plan, sysfs_root=Path('/sys')):
+    """Choose from native panel modes without shrinking the kernel's HiDPI font.
+
+    Internal panels take precedence over detachable displays. With no internal panel,
+    every connected display must be known and below the kernel's 16x32 threshold.
+    NVIDIA with resume may keep the GRUB/GOP framebuffer during initramfs; a
+    hybrid system may instead use its integrated GPU. Preserve automatic selection
+    because the live mode cannot establish the installed early framebuffer.
+    """
+    if 'emaki-nvidia' in plan.graphics_packages and plan.config.get('hibernation'):
+        return None
+    panels, external = [], []
+    for connector in sorted((Path(sysfs_root) / 'class/drm').glob('card*-*')):
+        try:
+            if (connector / 'status').read_text().strip() != 'connected':
+                continue
+        except (OSError, UnicodeError):
+            continue
+        try:
+            first = (connector / 'modes').read_text().splitlines()[0]
+            match = re.fullmatch(r'([1-9][0-9]*)x([1-9][0-9]*)', first)
+            mode = tuple(map(int, match.groups())) if match else None
+        except (OSError, IndexError, UnicodeError):
+            mode = None
+        output = connector.name.split('-', 1)[1]
+        # Firmware framebuffers report the boot loader's mode, not panel geometry.
+        driver = connector.parent / connector.name.split('-', 1)[0] / 'device/driver'
+        firmware_drivers = ('simple-framebuffer', 'simpledrm', 'efi-framebuffer', 'vesa-framebuffer')
+        if output.startswith('Unknown-') or driver.resolve().name in firmware_drivers:
+            mode = None
+        (panels if output.startswith(('eDP-', 'LVDS-', 'DSI-')) else external).append(mode)
+    modes = panels or external
+    # Linux get_default_font uses integer division at each step. Unknown geometry
+    # must not force a smaller font onto a high-resolution framebuffer.
+    if not modes or any(mode is None or (mode[0] // 8) * (mode[1] // 16) // 1000 >= 22
+                        for mode in modes):
+        return None
+    return CONSOLE_FONT

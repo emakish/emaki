@@ -263,6 +263,11 @@ def operation(r):
             # Never sleep before the compositor confirms the lock and the pour completes.
             locked = lock(prepare_sleep=True)
             if locked['state'] != 'locked': return locked
+        if value in ('logout', 'reboot', 'poweroff'):
+            try:
+                run('timeout', ['--kill-after=1s', '3s', os.environ.get('EMAKI_EMAKI_WALLET_START', 'emaki-wallet-start'), '--flush'])
+            except (shared.Refused, OSError, subprocess.TimeoutExpired):
+                pass
         if value == 'logout':
             run('niri', ['msg', 'action', 'quit', '--skip-confirmation'])
         else:

@@ -84,11 +84,38 @@ before it uploads a new one.
 `packaging/mirror/pointer-worker.js`, deployed once:
 
 - R2 binding `PKGS` → bucket `emaki-pkgs`.
-- Before adding sources to an already published image, add R2 binding `DL` → bucket
-  `emaki-dl` and route `dl.emaki.sh/iso/*` to the same Worker. This deployment is required
-  for `iso-sources`; the initial 0.2.0 `iso` publication needs no new Worker deployment.
-  Image source companions redirect through `iso/<version>/source-pointer` to one immutable
-  source snapshot. Without a pointer, requests fall through to the original R2 objects.
+- R2 binding `DL` → bucket `emaki-dl`, and route `dl.emaki.sh/iso/*` to the same Worker. Both
+  are required for image downloads, and `iso-sources` needs them for the source pointer.
+  Without either one the image silently falls through to the bucket's domain, so
+  `publish.sh iso` checks for the Worker's `X-Emaki-Image: 1` before it uploads anything and
+  on every read-back (step 4 of the ISO list below): a missing binding or route refuses the
+  publication.
+- The image itself, `iso/<version>/emaki-<version>-x86_64.iso`, is answered from `DL` by the
+  Worker instead of being passed to the bucket's domain. The image is above the 512 MB cache
+  limit (`cf-cache-status: BYPASS`), and for it that domain ignores `If-Range` (even a stale
+  validator gets `206`) and its answer to a range depends on the cache: right after a `HEAD`
+  answered with `cf-cache-status: MISS`, the next ranged `GET` got the whole file (`200`), the
+  one after it `206` again (measured 2026-10-07 on the 0.3.0 image; this is what refused the
+  first 0.3.0 publication, "with Range answered 200, not 206"). A browser that gets `200` for
+  its resume request starts the download again from zero. Every answer of the Worker for the
+  image (`200`, `206`, `304`, `404`, `405`, `412`, `416`, `503`) carries `X-Emaki-Image: 1`;
+  a `206` without it proves nothing. The Worker answers `GET` and `HEAD` (any other method:
+  `405` with `Allow: GET, HEAD`) with the object's `ETag` (R2's quoted etag), `Last-Modified`,
+  `Accept-Ranges: bytes`, `Content-Length` and the object's stored HTTP metadata
+  (`Content-Type`; `Cache-Control` only when the object has one). One range `bytes=a-b`, `a-`
+  or `-n` answers `206` with `Content-Range`, an unsatisfiable one `416` with
+  `Content-Range: bytes */<size>`, several ranges or a malformed `Range` the whole image.
+  `If-Range` must be the ETag (strong comparison) or exactly the `Last-Modified` date, otherwise
+  the whole image is sent. `If-None-Match` and `If-Modified-Since` answer `304`, a failed
+  `If-Match` or `If-Unmodified-Since` `412`, in the order of RFC 9110. A missing image is a `404`
+  and an unreadable bucket a `503`, both `Cache-Control: no-store`; an answer the Worker makes
+  itself is never stored in the zone cache, unlike a `404` of the bucket's domain. The
+  `cache-control: max-age=14400` the bucket's domain adds to the image (the zone's browser
+  cache time) is not in the Worker's answer; that is harmless for a download. Without the
+  `DL` binding the image falls through to the bucket's domain as before, unmarked.
+- Image source companions redirect through `iso/<version>/source-pointer` to one immutable
+  source snapshot. Without a pointer, requests fall through to the original R2 objects, as
+  every other path under `/iso/` does (checksum, signature, key, `closure.txt`).
 - Four package routes: `pkgs.emaki.sh/stable/x86_64/emaki.*`,
   `pkgs.emaki.sh/testing/x86_64/emaki.*`, `pkgs.emaki.sh/stable/x86_64/SOURCES*`,
   and `pkgs.emaki.sh/testing/x86_64/SOURCES*`. All four must be added in Cloudflare.
@@ -97,13 +124,23 @@ before it uploads a new one.
   pointer, or an unreadable bucket, answers `503`. `SOURCES` and `SOURCES.json` follow the
   same pointer. Any other path is passed to the bucket. Channel confirmation fetches `SOURCES`
   through the public channel address, so a missing source route stops verification.
-- Unit tests: `node --test tests/test-pointer-worker.mjs`. The route table in
+- Unit tests: `node --test tests/test-pointer-worker.mjs`, with a fake R2 binding that follows
+  the Workers R2 API (`head`, `get` with `range` and `onlyIf`). The route table in
   `tests/fixtures/pointer-routes.json` is also checked against the local server
-  `tests/pointer-server.py`, which the publish tests use in its place.
+  `tests/pointer-server.py`, which the publish tests use in its place; it serves the image
+  with `X-Emaki-Image`, an ETag and `If-Range` as the Worker does.
 
 Workers Free allows 100,000 requests a day; each `pacman -Sy` costs two (database and
-signature). Over the limit, `pacman -Sy` fails with a retrieve error; it never receives a mixed
-pair.
+signature), and every request under `dl.emaki.sh/iso/` costs one (a download, each resumed
+piece of it, a checksum or signature). Over the limit, a route answers by its request limit
+failure mode, set per route:
+
+- the four `pkgs.emaki.sh` routes: **Fail closed**. `pacman -Sy` then fails with a retrieve
+  error (Cloudflare error 1027); it never receives a mixed pair.
+- `dl.emaki.sh/iso/*`: **Fail open**. Requests then reach the bucket's domain as if there were
+  no Worker: the image stays downloadable, but a resumed download may start again from zero,
+  and the source companions are the original files of the image's first publication instead
+  of the snapshot `source-pointer` selects.
 
 ## Cache rules (zone `emaki.sh`)
 
@@ -346,7 +383,10 @@ on the publishing machine (add `--missing-sources <arch-sources>/MISSING-SOURCES
 for the approved incomplete collection):
 
 1. refuses unless `stable` already serves every Emaki package in the full image inventory, including the live-only installer
-   with the same bytes, and the acceptance stamp names the `stable` snapshot;
+   with the same bytes, and the acceptance stamp names the `stable` snapshot; and, before any
+   upload, unless a `HEAD` of the image address answers with `X-Emaki-Image: 1` (the download
+   Worker with its `DL` binding; the `HEAD` carries a query string, so a `404` of the bucket's
+   domain is never cached under the plain address);
 2. writes the `.sha256` and a detached signature with the package key if they are missing, and
    checks both (the signature against the key in git);
 3. uploads `iso/<version>/emaki-signing-key.asc` (the public key as it is that day: the yearly
@@ -357,8 +397,12 @@ for the approved incomplete collection):
    the image completion checksum; every image source direction points to that pool. Each is write-once, so a published image name is
    never replaced; an image left by an interrupted run is downloaded whole and must have the
    image's sha256 before `.sig` and `.sha256` are written next to it;
-4. reads back the source companions, signature, checksum, and the first and last megabyte of the image anonymously;
-   `--full-check` downloads the whole image once and compares its sha256.
+4. reads back the source companions, signature, checksum, and the first and last megabyte of the image anonymously,
+   then one megabyte from the middle the way a browser resumes a download: `Range` with
+   `If-Range` set to the ETag a `HEAD` answers, which must be `206` with the same bytes. Every
+   read of the image must carry `X-Emaki-Image: 1`;
+   `--full-check` downloads the whole image once and compares its sha256. A refused read-back
+   leaves the uploads in place; the same command finishes once the address answers.
 
 ### Adding collected sources after image publication
 
@@ -411,7 +455,12 @@ example signatures; the R2 backend against a local S3 endpoint that verifies eve
 
 Never run against Cloudflare: the bucket, the custom domains, the cache rules, the Worker route
 in front of the R2 domain, R2's conditional writes, path-style requests to the R2 endpoint, and
-`Last-Modified` / `If-Modified-Since` through the custom domain. Each of them is checked on the
+`Last-Modified` / `If-Modified-Since` through the custom domain. The image answers of the Worker
+are checked against the fake binding only: after the route is added, check that the image's
+answers carry `X-Emaki-Image: 1`, that its `ETag`, `Last-Modified` and `Content-Length` are
+the ones the bucket's domain served before (downloads started earlier resume with them), and
+that `If-Range` with the ETag answers `206` while a stale `If-Range` answers `200`
+(`docs/updates-runbook.md`, section 2, step 5). Each of them is checked on the
 real mirror (with `curl`, `publish.sh verify testing` and `tests/publish-drill.sh`) before
 anything reaches `stable`.
 

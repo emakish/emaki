@@ -158,7 +158,7 @@ of `~/.config`.
 | --- | --- |
 | `wallpaper` | Desktop wallpaper [emaki-session-wallpaper] |
 | `clipboard` | Clipboard history recording [wl-paste, cliphist] |
-| `authentication` | Administrator password prompts [polkit-gnome] |
+| `authentication` | Administrator password prompts [polkit-kde-agent] |
 | `automount` | Drive mounting on request (udiskie) |
 | `shell` | Panel, launcher and notifications [emaki-shell] |
 | `sleep-guard` | Locking before sleep [emaki-sleep-guard] |
@@ -190,17 +190,54 @@ Package-owned cleanup code supplies this repair to existing systems; the configu
 remains machine-owned. A symlink or a customized number limit opts out of this migration.
 
 
-## Old KDE passwords
+## Saved passwords after the KWallet transition
 
-At login, Emaki automatically asks KWallet to move old KDE passwords to the login keyring.
-Wallets with an empty password move without a prompt.
-If an old wallet needs a password, KWallet asks for it; Cancel skips that attempt.
-Automatic attempts run at most once per login and stop after three logins with passwords still unmoved; interrupted attempts count too.
-Each attempt lasts at most five minutes.
-A single notification then gives the retry command: `emaki-wallet-migrate`.
+KWallet provides password storage, Secret Service and the Secret portal.
+A typed graphical login password unlocks the default Blowfish wallet when its password matches.
+Changing the account password does not change the wallet password.
+Emaki does not ship a wallet password editor; an administrator can install `kwalletmanager` to change it separately.
+Existing wallets need their original wallet password until then.
 
-To retry later, log out and back in, then run `emaki-wallet-migrate` in a terminal before opening KDE applications.
-Enter the old wallet password in KWallet's dialog, then press Enter in the terminal after all dialogs close.
-Run `emaki-wallet-migrate --help` for help.
-Original wallet files are kept, and migration records belong to `~/.local/state/emaki/wallet-migration.json` (or `$XDG_STATE_HOME/emaki/wallet-migration.json`).
-An empty-looking wallet in a KDE application does not mean the old passwords were deleted.
+On the first password login after an update from 0.1.x, 0.2.0 or 0.3.0, Emaki migrates an isolated copy of the old login keyring before session applications start.
+Generic items keep their attributes and labels.
+Secret portal master keys keep their exact bytes in KWallet's `xdg-desktop-portal` folder, under the application id, so sandboxed applications can keep decrypting their data.
+Every original file under `~/.local/share/keyrings/` (or `$XDG_DATA_HOME/keyrings/`) remains untouched.
+Migration writes the destination `kwalletd/kdewallet.kwl`; other old wallet files remain available with their original password.
+The private per-item record at `~/.local/state/emaki/wallet-migration-v1.json` (or `$XDG_STATE_HOME/emaki/wallet-migration-v1.json`) reports what was copied and what failed; a failure does not block login.
+The desktop notice explains failures and how to recover.
+Keep `gnome-keyring` installed until recovery is complete for every account.
+If old keyrings exist and their application keys have not been safely accounted for,
+the desktop still opens, but password storage and the Secret portal remain paused.
+This prevents applications from generating replacement keys before recovery.
+
+1. Keep a protected backup of old keyrings, `~/.local/share/kwalletd/`, and sandboxed application data, together with the old passwords.
+2. Use `emaki-keyring-recover` in a private terminal to retry failed migration or unlock other collections with their own passwords.
+   It reads isolated encrypted copies and leaves the originals untouched.
+   Collections that remain locked cannot be migrated until you supply their password.
+   Recovery leaves the live wallet unlocked.
+   If password storage is paused, recovery uses a private destination and asks for
+   its wallet password. It saves and stops that destination before returning.
+   After recovery succeeds, log out and log in again to enable password storage.
+3. Close and reopen affected applications, then verify saved passwords and encrypted data still work.
+   A delivered notice or an empty-looking wallet does not prove migration succeeded.
+4. Only after every account has verified every secret and affected application's data may an administrator review `pacman -R gnome-keyring`.
+   Keep the original files even after removing the package.
+
+If an application obtained a new master key after the update, ordinary recovery preserves it and reports the conflict.
+To restore access to old encrypted application data, first close affected applications and back up both password stores and the application data.
+Then run `emaki-keyring-recover --replace-portal-keys`.
+This option replaces a conflicting application master key only when its old key is available in the old keyring.
+Data encrypted with the newer key may become unreadable; keep the backups until both sets of data have been recovered.
+
+Personal settings remain yours.
+Modified `/etc/xdg/kwalletrc` and `/etc/xdg/xdg-desktop-portal/niri-portals.conf` files can leave `.pacnew` files after upgrade.
+Review them together with personal `kwalletrc` settings: the native defaults enable `Wallet/Enabled`, `KSecretD/Enabled` and `org.freedesktop.secrets/apiEnabled`, disable `Migration/MigrateTo3rdParty`, and select `kwallet` for the Secret portal.
+Arch globally enables `gnome-keyring-daemon.socket`; the old daemon can survive logout while the user manager remains alive, including during another session or with linger enabled.
+The transition retires the old user's service and socket before the native provider starts; a competing owner is identified in the failure notice.
+Runtime masks alone do not stop the package's direct D-Bus activation command.
+Emaki retains its runtime activation overrides for Secret Service, the Secret portal and the compatibility service for the user manager's lifetime, including between graphical sessions.
+Activation waits for the migration result; it cannot bypass paused password storage.
+No original keyring files are removed.
+
+The old polkit agent can be removed after the upgrade notice lists it as unused.
+The GNOME screencast portal remains required for screen sharing.

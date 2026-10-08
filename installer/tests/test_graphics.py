@@ -18,17 +18,92 @@ from emaki_installer.inventory import Inventory
 from emaki_installer.worker import Worker, preflight_repo, software_packages
 from support import FakeInventory, config, inventory
 
+class ConsoleFontTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.plan = SimpleNamespace(graphics_packages=(), config={})
+
+    def connector(self, name, modes, status='connected'):
+        path = self.root / 'class/drm' / name
+        path.mkdir(parents=True, exist_ok=True)
+        (path / 'status').write_text(status)
+        if modes is not None:
+            (path / 'modes').write_text(modes)
+
+    def font(self):
+        return graphics.console_font(self.plan, self.root)
+
+    def test_native_mode_threshold_and_integer_boundary(self):
+        for mode, expected in [('1024x768', 'ter-124b'), ('1280x800', 'ter-124b'),
+                               ('1920x1080', 'ter-124b'), ('2560x1600', None),
+                               ('1752x1600', 'ter-124b'), ('1760x1600', None)]:
+            with self.subTest(mode=mode):
+                self.connector('card0-eDP-1', mode + '\n1024x768\n')
+                self.assertEqual(self.font(), expected)
+
+    def test_internal_panel_precedes_external_display(self):
+        self.connector('card0-HDMI-A-1', '3840x2160\n')
+        self.connector('card0-eDP-1', '1280x800\n')
+        self.assertEqual(self.font(), 'ter-124b')
+        self.connector('card1-LVDS-1', '2560x1600\n')
+        self.assertIsNone(self.font())
+
+    def test_external_displays_must_all_be_known_and_below_threshold(self):
+        self.connector('card0-DP-1', '1920x1080\n')
+        self.connector('card0-HDMI-A-1', '1280x800\n')
+        self.assertEqual(self.font(), 'ter-124b')
+        self.connector('card0-HDMI-A-1', '3840x2160\n')
+        self.assertIsNone(self.font())
+        self.connector('card0-HDMI-A-1', '3840x2160\n', 'disconnected')
+        self.assertEqual(self.font(), 'ter-124b')
+
+    def test_unknown_geometry_keeps_kernel_default(self):
+        self.assertIsNone(self.font())
+        for mode in (None, '', 'invalid\n', '0x800\n'):
+            with self.subTest(mode=mode):
+                self.connector('card0-eDP-1', mode)
+                self.assertIsNone(self.font())
+
+    def test_firmware_framebuffer_modes_are_not_panel_geometry(self):
+        self.connector('card0-Unknown-1', '1024x768\n')
+        self.assertIsNone(self.font())
+        self.connector('card0-Unknown-1', '1024x768\n', 'disconnected')
+        self.connector('card0-HDMI-A-1', '1024x768\n')
+        device = self.root / 'class/drm/card0/device'
+        device.mkdir(parents=True)
+        driver = device / 'driver'
+        for name in ('simple-framebuffer', 'simpledrm', 'efi-framebuffer', 'vesa-framebuffer'):
+            with self.subTest(driver=name):
+                driver.symlink_to(self.root / 'bus/platform/drivers' / name)
+                self.assertIsNone(self.font())
+                driver.unlink()
+        driver.symlink_to(self.root / 'bus/pci/drivers/i915')
+        self.assertEqual(self.font(), graphics.CONSOLE_FONT)
+
+    def test_nvidia_resume_does_not_guess_installed_gop_mode(self):
+        self.connector('card0-eDP-1', '1280x800\n')
+        self.plan.graphics_packages = ('emaki-nvidia',)
+        self.assertEqual(self.font(), 'ter-124b')
+        self.plan.config['hibernation'] = True
+        self.assertIsNone(self.font())
+        self.plan.graphics_packages = ()
+        self.assertEqual(self.font(), 'ter-124b')
+
+
 # Serialized protocol plan fields and ordered packages from the unmodified checkout
 # 8afb2e864657f840075ec24daa7f3914aeb41e44, using the deterministic keyboard fixture below.
+# Package hashes include the common terminus-font addition from 4daab6f; plan hashes stay fixed.
 BASELINE = {
     'btrfs-minimal': ('135423acba4a58851f74b9fd2d52f138f120221d4e16bc7fcdbf8c1658d3d568',
-                     '9b581882e49d289732101f280f586142d5c258feb459eb7514949a971ab3bd75'),
+                     'd317feee47e2119c760957ff19c3e2b82147aaf402e926e3808cb820561563df'),
     'btrfs-rich': ('12b4cb778eca3cead0b03d3efcaa6d066172a336e660a9c492ae2120f9138d9b',
-                  '3a0881f2686a9b28b311ea7a32d2e0b019683eacb3a925428c5495e101a7c059'),
+                  '48037390883451e5dc6d3a7fcac5267e7c3ca92715698b02ee8b2dc20e8cc938'),
     'ext4-minimal': ('ab33a9debe3b1892c98ba04998d50486f2e229528f5bd8aee776ce8e77ad5e00',
-                    'ca3cad72f71e31df1ec1fad48b0734399c4725457b40e6b65736fd11b2a7f04a'),
+                    'e1cc27f59e7545956bd3bc4504ba10b3afff9ca0d2ec6daba77ad6f517297fe6'),
     'ext4-rich': ('b861d7f51bcddb7f998325c9cf149c9dac7350dcc428a0705e294535e17e0033',
-                 'cf473884ebaee1d3d80d47d8a541a5295f588c37d8aacf89014b0fd01d19fcef'),
+                 'a5a6791ed558c610ef8a7a4134cda446d33c88ade784e94cca2c4ce3cf6a9888'),
 }
 
 

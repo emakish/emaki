@@ -1,0 +1,249 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Development-only scheduled dependency watch with persistent, deduplicated alerts."""
+
+import argparse
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+import traceback
+
+BUDGET = 600
+ATTEMPT_TIMEOUT = 180
+BACKOFF = (10, 30)
+INCOMPLETE_LIMIT = 3
+STALE_AFTER = 6 * 60 * 60
+
+
+def atomic_write(path, text):
+    pending = path.with_name(path.name + '.new')
+    pending.write_text(text)
+    pending.replace(path)
+
+
+def load_state(directory):
+    path = directory / 'alarms.json'
+    if path.exists():
+        try:
+            return json.loads(path.read_text())
+        except ValueError as exc:
+            print(f'ERROR: cannot read alarm state: {exc}', file=sys.stderr)
+    last_complete = directory / 'last-complete'
+    try:
+        completed = int(last_complete.read_text()) if last_complete.exists() else None
+    except ValueError:
+        completed = None
+    return {'first_check': int(time.time()), 'last_complete': completed,
+            'incomplete_runs': 0, 'delivered': {}, 'pending': {}}
+
+
+def save_state(directory, state):
+    atomic_write(directory / 'alarms.json', json.dumps(state, sort_keys=True) + '\n')
+    status = {key: state.get(key) for key in
+              ('checked_at', 'last_complete', 'result', 'incomplete_runs')}
+    status['notification_pending'] = bool(state['pending'])
+    atomic_write(directory / 'status', json.dumps(status, sort_keys=True) + '\n')
+
+
+def alarm(title, lines, urgency='normal'):
+    lines = list(dict.fromkeys(lines))
+    signature = hashlib.sha256('\n'.join([title, *sorted(lines)]).encode()).hexdigest()
+    return {'signature': signature, 'title': title, 'body': '\n'.join(lines),
+            'urgency': urgency}
+
+
+def attention_alarms(output):
+    groups = {'stable': [], 'rebuild': [], 'changes': []}
+    stable_fences = {line.removeprefix('BREAK stable:').split('): ', 1)[0]
+                     for line in output.splitlines() if line.startswith('BREAK stable:')}
+    for line in output.splitlines():
+        if (line.startswith('BREAK testing:') and
+                line.removeprefix('BREAK testing:').split('): ', 1)[0] in stable_fences):
+            continue
+        if line.startswith('BREAK stable:'):
+            groups['stable'].append(line)
+        elif line.startswith('REBUILD: extra/'):
+            groups['rebuild'].append(line)
+        elif line.startswith(('BREAK testing:', 'REBUILD:', 'UPDATE ', 'REVIEW ',
+                              'RELEASE ', 'NIRI NOT CHECKED:', 'NIRI FAIL:')):
+            groups['changes'].append(line)
+    result = {}
+    if groups['stable']:
+        result['stable'] = alarm('Emaki: stable updates blocked', groups['stable'], 'critical')
+    if groups['rebuild']:
+        result['rebuild'] = alarm('Emaki: stable Qt rebuild required',
+                                 ['Arch extra Qt differs from the shell build; rebuild before '
+                                  'promotion to avoid shell crashes.', *groups['rebuild']], 'critical')
+    if groups['changes']:
+        result['changes'] = alarm('Emaki dependency watch: changes to review', groups['changes'])
+    return result
+
+
+def queue_alarms(state, alarms, complete):
+    delivered_lines = state.setdefault('delivered_lines', {})
+    if complete:
+        # A cleared condition may notify again if it recurs after a complete check.
+        for field in ('delivered', 'delivered_lines'):
+            state[field] = {key: value for key, value in state[field].items() if key in alarms}
+        state['pending'] = {key: value for key, value in state['pending'].items()
+                            if key in alarms or key in ('service', 'incomplete')}
+        for key in ('service', 'incomplete'):
+            if key in state['pending'] and key not in alarms:
+                # Deliver the past incident without acknowledging a future recurrence.
+                state['pending'][key]['resolved'] = True
+    for key, value in alarms.items():
+        if not complete and key in ('stable', 'rebuild', 'changes'):
+            # Normal summaries need all sources. Confirmed critical lines can still
+            # warn immediately, but cannot replace a complete check's signature.
+            if key == 'changes':
+                continue
+            pending = state['pending'].get(key, {})
+            known = set(delivered_lines.get(key, [])) | set(pending.get('body', '').splitlines())
+            if set(value['body'].splitlines()) <= known:
+                continue
+            value = dict(value)
+            value.pop('signature')
+            if pending:
+                value['body'] = '\n'.join(dict.fromkeys(
+                    [*pending['body'].splitlines(), *value['body'].splitlines()]))
+                if 'signature' in pending:
+                    value['signature'] = pending['signature']
+            state['pending'][key] = value
+            continue
+        if state['delivered'].get(key) != value['signature']:
+            state['pending'][key] = value
+        else:
+            state['pending'].pop(key, None)
+            if complete and key in ('stable', 'rebuild'):
+                state['delivered_lines'][key] = value['body'].splitlines()
+
+
+def deliver(directory, state):
+    # The popup and collapsed drawer show the most recent arrival.
+    for key, value in sorted(state['pending'].items(),
+                             key=lambda item: (item[1]['urgency'] == 'critical',
+                                               item[0] == 'stable', item[0])):
+        try:
+            subprocess.run(['notify-send', '--app-name=Emaki development',
+                            '--urgency=' + value['urgency'], '--expire-time=30000', '--',
+                            value['title'], value['body'] + f'\nFull report: {directory / "latest.log"}'],
+                           timeout=10, check=True)
+        except (OSError, subprocess.SubprocessError) as exc:
+            # Do not acknowledge an alarm until the notification server accepts it.
+            print(f'ERROR: desktop notification pending: {exc}', file=sys.stderr)
+            break
+        if 'signature' in value and not value.get('resolved'):
+            state['delivered'][key] = value['signature']
+        if key in ('stable', 'rebuild'):
+            lines = state.setdefault('delivered_lines', {})
+            previous = lines.get(key, []) if 'signature' not in value else []
+            lines[key] = list(dict.fromkeys([*previous, *value['body'].splitlines()]))
+        del state['pending'][key]
+        save_state(directory, state)
+    save_state(directory, state)
+
+
+def run_watch(checkout):
+    deadline = time.monotonic() + BUDGET
+    reports = []
+    partial_alarms = {}
+    for attempt in range(3):
+        if attempt:
+            delay = BACKOFF[attempt - 1]
+            if deadline - time.monotonic() <= delay:
+                break
+            time.sleep(delay)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            result = subprocess.run([sys.executable, str(checkout / 'packaging/arch-watch'),
+                                     '--scheduled'], cwd=checkout, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, text=True,
+                                    timeout=min(ATTEMPT_TIMEOUT, remaining))
+            status, output = result.returncode, result.stdout
+        except subprocess.TimeoutExpired as exc:
+            partial = exc.stdout or b''
+            output = partial.decode(errors='replace') if isinstance(partial, bytes) else partial
+            output += '\nERROR: arch-watch incomplete: attempt timed out\n'
+            status = 2
+        except OSError as exc:
+            status, output = 2, f'ERROR: arch-watch incomplete: {exc}\n'
+        reports.append(f'Attempt {attempt + 1} exit={status}\n{output}')
+        if status in (0, 1):
+            return status, ''.join(reports), attention_alarms(output)
+        partial_alarms.update(attention_alarms(output))
+    return 2, ''.join(reports), partial_alarms
+
+
+def run(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--failure', action='store_true', help='report an unexpected unit failure')
+    mode.add_argument('--deliver', action='store_true', help='retry pending desktop alerts only')
+    args = parser.parse_args(argv)
+    directory = Path(os.environ.get('STATE_DIRECTORY') or
+                     str(Path(os.environ.get('XDG_STATE_HOME', Path.home() / '.local/state'))
+                         / 'emaki-arch-watch'))
+    directory.mkdir(parents=True, exist_ok=True)
+    state = load_state(directory)
+    required = {'first_check', 'last_complete', 'incomplete_runs', 'delivered', 'pending'}
+    if not isinstance(state, dict) or not required <= state.keys():
+        raise ValueError('incomplete alarm state')
+    if args.deliver:
+        deliver(directory, state)
+        return 1 if state['pending'] else 0
+    if args.failure:
+        state.update(checked_at=int(time.time()), result='failed')
+        alarms = {'service': alarm('Emaki dependency watch: service failed',
+                                  ['The scheduled service failed. Silence is not health.',
+                                   'Read: journalctl --user -u emaki-arch-watch.service'])}
+        queue_alarms(state, alarms, complete=False)
+        save_state(directory, state)
+        deliver(directory, state)
+        return 1 if state['pending'] else 0
+
+    checkout = Path(__file__).resolve().parent.parent
+    status, output, alarms = run_watch(checkout)
+    now = int(time.time())
+    state['checked_at'] = now
+    state['result'] = {0: 'current', 1: 'attention', 2: 'incomplete'}[status]
+    complete = status != 2
+    if complete:
+        state.update(last_complete=now, incomplete_runs=0)
+        atomic_write(directory / 'last-complete', str(now) + '\n')
+    else:
+        state['incomplete_runs'] += 1
+        age = now - (state['last_complete'] or state['first_check'])
+        if state['incomplete_runs'] >= INCOMPLETE_LIMIT or age >= STALE_AFTER:
+            alarms['incomplete'] = alarm('Emaki dependency watch: check incomplete',
+                                        ['Repeated incomplete checks or no complete check for six hours.',
+                                         'Read status and latest.log; silence is not health.'])
+    text = f'{datetime.now(timezone.utc).isoformat()} exit={status}\n{output}'
+    atomic_write(directory / 'latest.log', text)
+    print(text, end='', flush=True)
+    queue_alarms(state, alarms, complete)
+    save_state(directory, state)
+    deliver(directory, state)
+    # Expected incomplete checks and pending delivery are tracked attention, not
+    # service crashes. OnFailure must not bypass their threshold or deduplication.
+    return 1 if status or state['pending'] else 0
+
+
+def main(argv=None):
+    try:
+        return run(argv)
+    except Exception:
+        # Exit 1 is expected attention in the units; crashes must trigger OnFailure.
+        traceback.print_exc()
+        return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main())

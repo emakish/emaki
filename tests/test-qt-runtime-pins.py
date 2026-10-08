@@ -12,7 +12,9 @@ import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
 HELPERS = runpy.run_path(str(ROOT / 'tests/test-packaging.py'))
-RECIPES = ((ROOT / 'packaging/quickshell-emaki/PKGBUILD', '6.11.2'),
+ACTIVE = ROOT / 'packaging/quickshell-emaki/PKGBUILD'
+# packaging/activate-qt612.py moves the active recipe to the staged Qt 6.12 build.
+RECIPES = ((ACTIVE, '6.12.0' if '0003-qt-6.12-moc-includes.patch' in ACTIVE.read_text() else '6.11.2'),
            (ROOT / 'packaging/quickshell-emaki/qt-6.12/PKGBUILD', '6.12.0'))
 
 
@@ -55,7 +57,12 @@ class QtDependencyTests(unittest.TestCase):
                     self.assertIn(component + '>=' + minor, dependencies)
                     self.assertIn(component + '<' + upper, dependencies)
                 self.assertFalse(any(dep.startswith('qt6-wayland') for dep in dependencies))
-                self.assertIn('qt6-svg', dependencies)
+                # The Qt 6.12 build also bounds SVG to its minor series (DECISIONS 2026-10-07).
+                if minor == '6.11.2':
+                    self.assertIn('qt6-svg', dependencies)
+                else:
+                    self.assertIn('qt6-svg>=' + minor, dependencies)
+                    self.assertIn('qt6-svg<' + upper, dependencies)
                 self.assertIn('libpipewire-0.3.so', dependencies)
 
     def test_build_metadata_tracks_validated_qt_release(self):

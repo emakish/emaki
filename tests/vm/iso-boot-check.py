@@ -19,12 +19,12 @@ shot = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(shot)
 
 
-# Exact QEMU hardware limitations and the first raw-greetd login before a
-# keyring exists. All other error messages fail acceptance.
+# Exact QEMU hardware limitations and the duplicate packaged activation name
+# shadowed by the native runtime override. All other errors fail acceptance.
 JOURNAL_ERROR_ALLOWLIST = tuple(re.compile(re.escape(line)) for line in (
     'i8042: PNP: No PS/2 controller found.',
     'virt/tdx: TDX not supported by the host platform',
-    "gkr-pam: couldn't unlock the login keyring.",
+    "Ignoring duplicate name 'org.freedesktop.secrets' in service file '/usr/share/dbus-1/services/org.freedesktop.secrets.service'",
 ))
 
 
