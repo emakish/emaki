@@ -8,7 +8,7 @@ steam trains running through it.
 
 **Status: 0.4.0 alpha — not for everyday use.** See [Release stages](#release-stages). It is
 tested in QEMU with UEFI firmware (OVMF) and has been installed on one real machine so far, see
-[Tested hardware](#tested-hardware).
+[Tested hardware](#tested-hardware). Where the project is heading: [PLANS.md](PLANS.md).
 
 ![The Emaki desktop](docs/screenshots/desktop.png)
 
