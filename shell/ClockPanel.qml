@@ -1,6 +1,8 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Window
 import "Liquid.js" as Liquid
+import "Keyboard.js" as Keyboard
 
 // The clock panel on liquid glass (docs/mockups/liquid-glass/clock.html): one Regular plate
 // that grows out of the bar's clock island, 560 wide for the drawer (media, month,
@@ -14,6 +16,47 @@ import "Liquid.js" as Liquid
 // the overlay's input and blur regions and the status read it.
 Item {
     id: panel
+    readonly property bool keyboardBoundary: true
+    property alias keyboardMode: body.keyboardMode
+    KeyboardFocusKeeper {
+        scope: panel
+        enabled: panel.opened && body.keyboardMode
+    }
+    property bool keyboardFocusPending: false
+    property bool keyboardNewest: false
+    function takeFocus(): void {
+        body.keyboardMode = true;
+        keyboardNewest = false;
+        keyboardFocusPending = true;
+        applyKeyboardFocus();
+    }
+    function focusNewest(): void {
+        body.keyboardMode = true;
+        keyboardNewest = true;
+        keyboardFocusPending = true;
+        applyKeyboardFocus();
+    }
+    function applyKeyboardFocus(): void {
+        if (!keyboardFocusPending || !opened || contentAlpha <= .001)
+            return;
+        Qt.callLater(() => {
+            if (!panel.opened || !panel.keyboardFocusPending || panel.contentAlpha <= .001)
+                return;
+            panel.keyboardFocusPending = false;
+            if (panel.keyboardNewest)
+                body.focusNewest();
+            else
+                Keyboard.focusFirst(panel);
+        });
+    }
+    onContentAlphaChanged: applyKeyboardFocus()
+    Keys.onPressed: event => {
+        if (event.key === Qt.Key_Delete) {
+            body.dismissFocused((event.modifiers & Qt.ControlModifier) !== 0);
+            event.accepted = true;
+        } else
+            Keyboard.handle(panel, event);
+    }
     required property NotificationStore store
     property string serverState: "disabled"
     property bool mediaEnabled: false
@@ -56,6 +99,10 @@ Item {
             drawerContent = true;
         else if (peekIds.length)
             drawerContent = false;
+        if (!opened) {
+            body.keyboardMode = false;
+            keyboardFocusPending = false;
+        }
         snapIfClosed();
         wake();
     }
@@ -502,5 +549,21 @@ Item {
                 color: panel.store.dnd ? LiquidPalette.text : panel.dim
             }
         }
+    }
+    FocusRing {
+        anchors.fill: null
+        readonly property Item focused: panel.Window.window?.activeFocusItem ?? null
+        readonly property bool belongs: focused !== null && focused !== panel && Keyboard.boundary(focused) === panel
+        readonly property point position: {
+            panel.tick;
+            body.scroller.contentY;
+            return belongs ? focused.mapToItem(panel, 0, 0) : Qt.point(0, 0);
+        }
+        x: position.x
+        y: position.y
+        width: belongs ? focused.width : 0
+        height: belongs ? focused.height : 0
+        shown: panel.opened && panel.glassReady && belongs
+        radius: 10
     }
 }

@@ -25,7 +25,7 @@ RUNTIME_ROOTS = (
     'installer/ui', 'installer/assets/grub', 'packaging/emaki-config',
     'packaging/emaki-apps', 'packaging/emaki-desktop', 'packaging/emaki-keyring',
     'packaging/emaki-mirrorlist', 'packaging/emaki-installer', 'packaging/emaki-nvidia',
-    'iso/profile/airootfs', 'crates',
+    'iso/profile/airootfs', 'crates', 'update-manager',
 )
 LOCAL_PACKAGES = ('emaki-installer', 'emaki-apps', 'emaki-desktop',
                   'emaki-keyring', 'emaki-mirrorlist', 'emaki-nvidia')

@@ -7,6 +7,48 @@ import "Liquid.js" as Liquid
 // Queries and titles live only in this scene; status never returns their contents.
 Item {
     id: body
+    property bool keyboardBoundary: true
+    property bool keyboardMode: false
+    TapHandler {
+        acceptedButtons: Qt.AllButtons
+        onPressedChanged: if (pressed)
+            body.keyboardMode = false
+    }
+    function keyboardControls(): var {
+        let controls = [query, closeButton];
+        for (let i = 0; i < modesRepeater.count; ++i)
+            controls.push(modesRepeater.itemAt(i));
+        for (let i = 0; i < categoryRepeater.count; ++i)
+            controls.push(categoryRepeater.itemAt(i));
+        if (list.footerItem && clipActions)
+            controls = controls.concat((list.footerItem as ClipboardFooter).controls);
+        return controls.filter(item => item && item.visible && item.enabled);
+    }
+    function moveKeyboardFocus(step: int): void {
+        keyboardMode = true;
+        const controls = keyboardControls();
+        const index = controls.findIndex(item => item.activeFocus);
+        const next = controls[(index + step + controls.length) % controls.length];
+        next.forceActiveFocus(Qt.TabFocusReason);
+        if (list.footerItem && (list.footerItem as ClipboardFooter).controls.indexOf(next) >= 0)
+            list.contentY = Math.max(0, list.contentHeight - list.height);
+    }
+    Keys.onPressed: event => {
+        keyboardMode = true;
+        if (event.key === Qt.Key_Escape) {
+            dismissed();
+        } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+            moveKeyboardFocus(event.key === Qt.Key_Backtab || (event.modifiers & Qt.ShiftModifier) ? -1 : 1);
+        } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Up) {
+            moveKeyboardFocus(-1);
+        } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down) {
+            moveKeyboardFocus(1);
+        } else {
+            event.accepted = true;
+            return;
+        }
+        event.accepted = true;
+    }
     property bool liquid: false
     property string wallpaperState: "unknown"
     property string wallpaperTexture: ""
@@ -21,22 +63,33 @@ Item {
     required property real expansion
     required property bool opened
     required property NiriService niri
+    property ClipboardHistory sharedClipboard: null
     readonly property alias clipboard: clips
     // For tests/glass-shots.py: the glass draw and the layers under and on it.
     readonly property alias panelGlass: panelGlass
     readonly property alias contentLayer: layer
     readonly property alias onGlassLayer: onGlass
     readonly property alias arrowOnGlass: arrowOnGlass
-    readonly property alias appCatalog: apps
+    property AppCatalog sharedCatalog: null
+    readonly property AppCatalog apps: sharedCatalog ?? localCatalog
+    readonly property AppCatalog localCatalog: sharedCatalog ? null : (catalogFactory.createObject(body) as AppCatalog)
+    readonly property AppCatalog appCatalog: apps
     signal dismissed
-    AppCatalog {
-        id: apps
-        // The dock launches through the same catalog; only launcher rows set pendingRecentApp.
-        onLaunched: {
-            if (body.pendingRecentApp)
+    Component {
+        id: catalogFactory
+        AppCatalog {}
+    }
+    Connections {
+        target: body.apps
+        function onLaunched(): void {
+            // Only the originating launcher records its pending recent entry.
+            if (body.pendingRecentApp) {
                 recent.record("app", body.pendingRecentApp);
-            body.pendingRecentApp = "";
-            body.dismissed();
+                body.pendingRecentApp = "";
+                body.dismissed();
+            } else if (!body.sharedCatalog || body.opened) {
+                body.dismissed();
+            }
         }
     }
     RecentFiles {
@@ -48,6 +101,7 @@ Item {
     // opened from here before, so the history is not touched without reason).
     ClipboardHistory {
         id: clips
+        recorderSource: body.sharedClipboard
         active: body.opened && (body.modeIndex === 4 || (body.recentMode && recent.entries.some(e => e.kind === "clip")))
         onCopied: body.dismissed()
     }
@@ -557,8 +611,9 @@ Item {
             return stateNote("labels", labels.state);
         return "";
     }
-    function takeFocus(): void {
-        query.forceActiveFocus(Qt.OtherFocusReason);
+    function takeFocus(keyboard): void {
+        keyboardMode = keyboard === true;
+        query.forceActiveFocus(keyboard ? Qt.TabFocusReason : Qt.OtherFocusReason);
     }
     function reset(): void {
         query.text = "";
@@ -930,11 +985,21 @@ Item {
             onClicked: body.clipboard.perform(line.modelData.id, true)
         }
     }
+    component ClipboardFooter: Item {
+        property var controls: []
+    }
     component ActionText: Item {
         id: action
         required property string text
         property color color: body.ink
         signal clicked
+        activeFocusOnTab: true
+        Keys.onReturnPressed: clicked()
+        Keys.onEnterPressed: clicked()
+        Keys.onSpacePressed: clicked()
+        FocusRing {
+            shown: body.keyboardMode && action.activeFocus && !body.glassReady
+        }
         width: actionLabel.implicitWidth + 24
         height: 30
         Text {
@@ -995,6 +1060,14 @@ Item {
                 visible: opacity > .001
                 // Header: the arrow (a click closes, 23.09), the modes, a hairline.
                 Icon {
+                    id: closeButton
+                    activeFocusOnTab: true
+                    Keys.onReturnPressed: body.dismissed()
+                    Keys.onEnterPressed: body.dismissed()
+                    Keys.onSpacePressed: body.dismissed()
+                    FocusRing {
+                        shown: body.keyboardMode && closeButton.activeFocus && !body.glassReady
+                    }
                     x: 20
                     y: 20
                     width: 20
@@ -1026,6 +1099,16 @@ Item {
                         model: body.modes
                         Item {
                             id: modeItem
+                            activeFocusOnTab: true
+                            function activate(): void {
+                                body.modeIndex = index;
+                            }
+                            Keys.onReturnPressed: activate()
+                            Keys.onEnterPressed: activate()
+                            Keys.onSpacePressed: activate()
+                            FocusRing {
+                                shown: body.keyboardMode && modeItem.activeFocus && !body.glassReady
+                            }
                             required property int index
                             required property string modelData
                             width: modeLabel.implicitWidth + 22
@@ -1112,6 +1195,16 @@ Item {
                         model: body.categoriesShown ? body.categories : []
                         Item {
                             id: chip
+                            activeFocusOnTab: true
+                            function activate(): void {
+                                body.category = modelData;
+                            }
+                            Keys.onReturnPressed: activate()
+                            Keys.onEnterPressed: activate()
+                            Keys.onSpacePressed: activate()
+                            FocusRing {
+                                shown: body.keyboardMode && chip.activeFocus && !body.glassReady
+                            }
                             required property string modelData
                             readonly property bool current: body.category === modelData
                             width: chipLabel.implicitWidth + 22
@@ -1195,7 +1288,8 @@ Item {
                         height: body.rowHeight
                     }
                     // Clipboard: clear everything, pause the recorder (when the shell owns it).
-                    footer: Item {
+                    footer: ClipboardFooter {
+                        controls: [clearClips, recordClips]
                         width: list.width
                         height: body.clipActions ? 50 : 0
                         visible: body.clipActions
@@ -1203,11 +1297,13 @@ Item {
                             y: 8
                             spacing: 8
                             ActionText {
+                                id: clearClips
                                 text: "Clear all"
                                 color: body.danger
                                 onClicked: body.clipboard.clear()
                             }
                             ActionText {
+                                id: recordClips
                                 visible: body.clipboard.recorderOwned
                                 text: body.clipboard.recorder === "recording" ? "Pause recording" : "Resume recording"
                                 onClicked: body.clipboard.setRecording(body.clipboard.recorder !== "recording")
@@ -1303,6 +1399,19 @@ Item {
         }
         TextInput {
             id: query
+            TapHandler {
+                acceptedButtons: Qt.AllButtons
+                onPressedChanged: if (pressed)
+                    body.keyboardMode = false
+            }
+            Keys.onPressed: event => {
+                body.keyboardMode = true;
+                event.accepted = false;
+            }
+            activeFocusOnTab: true
+            FocusRing {
+                shown: body.keyboardMode && query.activeFocus && !body.glassReady
+            }
             x: 56
             y: 14
             width: Math.max(40, modesRow.x - x - 14)
@@ -1322,9 +1431,10 @@ Item {
             onTextChanged: {
                 body.selectionKey = "";
                 if (body.opened)
-                    apps.launchState = "idle";
+                    body.apps.launchState = "idle";
             }
             Keys.onDeletePressed: event => {
+                body.keyboardMode = true;
                 if (body.modeIndex === 4) {
                     event.accepted = true;
                     body.deleteSelectedClip();
@@ -1332,22 +1442,27 @@ Item {
                     event.accepted = false;
             }
             Keys.onReturnPressed: event => {
+                body.keyboardMode = true;
                 event.accepted = true;
                 body.activate();
             }
             Keys.onEnterPressed: event => {
+                body.keyboardMode = true;
                 event.accepted = true;
                 body.activate();
             }
             Keys.onDownPressed: event => {
+                body.keyboardMode = true;
                 event.accepted = true;
                 body.moveVertical(1);
             }
             Keys.onUpPressed: event => {
+                body.keyboardMode = true;
                 event.accepted = true;
                 body.moveVertical(-1);
             }
             Keys.onLeftPressed: event => {
+                body.keyboardMode = true;
                 if (body.horizontalMoves) {
                     event.accepted = true;
                     body.moveSelection(-1);
@@ -1355,6 +1470,7 @@ Item {
                     event.accepted = false;
             }
             Keys.onRightPressed: event => {
+                body.keyboardMode = true;
                 if (body.horizontalMoves) {
                     event.accepted = true;
                     body.moveSelection(1);
@@ -1371,17 +1487,42 @@ Item {
                 color: body.faint
             }
             Keys.onEscapePressed: event => {
+                body.keyboardMode = true;
                 event.accepted = true;
                 body.dismissed();
             }
             Keys.onTabPressed: event => {
+                body.keyboardMode = true;
                 event.accepted = true;
-                body.modeIndex = (body.modeIndex + 1) % body.modes.length;
+                if (event.modifiers & Qt.ControlModifier)
+                    body.moveKeyboardFocus(1);
+                else
+                    body.modeIndex = (body.modeIndex + 1) % body.modes.length;
             }
             Keys.onBacktabPressed: event => {
+                body.keyboardMode = true;
                 event.accepted = true;
-                body.modeIndex = (body.modeIndex + body.modes.length - 1) % body.modes.length;
+                if (event.modifiers & Qt.ControlModifier)
+                    body.moveKeyboardFocus(-1);
+                else
+                    body.modeIndex = (body.modeIndex + body.modes.length - 1) % body.modes.length;
             }
         }
+    }
+    // Draw the outline once, above the glass, without refracting its edges.
+    FocusRing {
+        anchors.fill: undefined
+        readonly property Item focused: body.Window.window?.activeFocusItem ?? null
+        readonly property bool belongs: focused !== null && body.keyboardControls().includes(focused)
+        readonly property point position: {
+            body.tick;
+            list.contentY;
+            return belongs ? focused.mapToItem(body, 0, 0) : Qt.point(0, 0);
+        }
+        x: position.x
+        y: position.y
+        width: belongs ? focused.width : 0
+        height: belongs ? focused.height : 0
+        shown: body.keyboardMode && body.opened && body.glassReady && belongs
     }
 }

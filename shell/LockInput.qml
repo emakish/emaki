@@ -11,6 +11,13 @@ Item {
     property real toggleY: height / 2 - 16
     onShowToggleChanged: if (!showToggle)
         revealed = false
+    Keys.onEscapePressed: event => {
+        if (auth.enabled)
+            auth.cancel();
+        revealed = false;
+        takeFocus();
+        event.accepted = true;
+    }
     signal engaged
     signal edited
     function takeFocus(): void {

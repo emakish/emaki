@@ -14,6 +14,7 @@ Item {
     property bool muted: false
     property string label: ""
     property bool shown: false
+    property double deadline: 0
     // What the glass refracts (Surfaces sets it; headless: flat stand-in).
     property DockBackdrop backdrop: null
     readonly property bool glassReady: backdrop !== null && backdrop.ready && GraphicsInfo.api !== GraphicsInfo.Software
@@ -27,11 +28,37 @@ Item {
         muted = isMuted;
         label = text;
         shown = true;
+        deadline = Date.now() + 1400;
+        hide.interval = 1400;
         hide.restart();
     }
     function dismiss(): void {
         hide.stop();
         shown = false;
+    }
+    function exportState(): var {
+        const state = {
+            shown: shown,
+            kind: kind,
+            value: value,
+            muted: muted,
+            label: label,
+            deadline: deadline
+        };
+        dismiss();
+        return state;
+    }
+    function importState(state: var): void {
+        if (!state?.shown || state.deadline <= Date.now())
+            return;
+        kind = state.kind;
+        value = state.value;
+        muted = state.muted;
+        label = state.label;
+        deadline = state.deadline;
+        shown = true;
+        hide.interval = Math.max(1, deadline - Date.now());
+        hide.restart();
     }
     Timer {
         id: hide

@@ -1,5 +1,5 @@
 use super::*;
-use crate::transport::helper;
+use crate::transport::{helper, helper_with_lock};
 use rustix::fs::{FlockOperation, OFlags, flock};
 use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::{Read, Write};
@@ -123,10 +123,31 @@ pub(super) struct Profile {
     pub(super) config: PathBuf,
     pub(super) state: PathBuf,
     pub(super) runtime: PathBuf,
+    pub(super) installed: bool,
 }
 impl Profile {
-    fn open(root: Option<&Path>) -> Result<Self> {
-        let root = root.ok_or_else(|| err("isolated_profile_required"))?;
+    pub(super) fn open(root: Option<&Path>) -> Result<Self> {
+        let Some(root) = root else {
+            let home = std::env::var_os("HOME").map(PathBuf::from);
+            let base = |key: &str, fallback: &str| -> Result<PathBuf> {
+                if let Some(path) = std::env::var_os(key).map(PathBuf::from)
+                    && path.is_absolute()
+                {
+                    return Ok(path);
+                }
+                home.as_ref()
+                    .filter(|path| path.is_absolute())
+                    .map(|path| path.join(fallback))
+                    .ok_or_else(|| err("home_unavailable"))
+            };
+            return Self::installed(
+                &base("XDG_CONFIG_HOME", ".config")?,
+                &base("XDG_STATE_HOME", ".local/state")?,
+                std::env::var_os("XDG_RUNTIME_DIR")
+                    .map(PathBuf::from)
+                    .as_deref(),
+            );
+        };
         private_dir(root)?;
         if root == Path::new("/")
             || std::env::var_os("HOME").is_some_and(|home| {
@@ -153,7 +174,42 @@ impl Profile {
             config: root.join("config/emaki"),
             state: root.join("state/emaki"),
             runtime: root.join("runtime"),
+            installed: false,
         })
+    }
+    fn installed(config: &Path, state: &Path, runtime: Option<&Path>) -> Result<Self> {
+        safe_path(config)?;
+        safe_path(state)?;
+        let config = config.join("emaki");
+        let state = state.join("emaki");
+        let runtime = match runtime.filter(|path| path.is_absolute()) {
+            Some(path) => {
+                private_dir(path)?;
+                path.join("emaki-settings")
+            }
+            None => state.join("runtime"),
+        };
+        Ok(Self {
+            config,
+            state,
+            runtime,
+            installed: true,
+        })
+    }
+    fn initialize(&self) -> Result<()> {
+        fn parents(path: &Path) -> Result<()> {
+            safe_path(path)?;
+            if !path.exists() {
+                parents(path.parent().ok_or_else(|| err("unsafe_profile_path"))?)?;
+                mkdir(path)?;
+            }
+            Ok(())
+        }
+        for path in [&self.config, &self.state, &self.runtime] {
+            parents(path)?;
+            private_dir(path)?;
+        }
+        Ok(())
     }
     pub(super) fn source(&self) -> PathBuf {
         self.config.join("settings.toml")
@@ -181,7 +237,44 @@ impl Profile {
         }
         Ok(true)
     }
-    fn lock(&self) -> Result<File> {
+    fn lock(&self, timeout: Duration) -> Result<File> {
+        if self.installed {
+            // Persistent inode: deleting a lock file could split concurrent writers.
+            let path = self.state.join("settings.lock");
+            safe_path(&path)?;
+            let file = io(OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .mode(0o600)
+                .custom_flags((OFlags::NOFOLLOW | OFlags::NONBLOCK).bits() as i32)
+                .open(&path))?;
+            let meta = io(file.metadata())?;
+            if !meta.is_file()
+                || meta.nlink() != 1
+                || meta.uid() != rustix::process::geteuid().as_raw()
+                || meta.mode() & 0o077 != 0
+            {
+                return Err(err("unsafe_settings_file"));
+            }
+            let deadline = Instant::now() + timeout;
+            loop {
+                match flock(&file, FlockOperation::NonBlockingLockExclusive) {
+                    Ok(()) => return Ok(file),
+                    Err(e) if e == rustix::io::Errno::WOULDBLOCK => {
+                        if Instant::now() >= deadline {
+                            return Err(err("settings_busy"));
+                        }
+                        std::thread::sleep(
+                            Duration::from_millis(10)
+                                .min(deadline.saturating_duration_since(Instant::now())),
+                        );
+                    }
+                    Err(_) => return Err(err("lock_failed")),
+                }
+            }
+        }
         // Lock the existing directory, avoiding a persistent lock-file on rejection.
         let file = io(File::open(&self.runtime))?;
         flock(&file, FlockOperation::NonBlockingLockExclusive).map_err(|e| {
@@ -229,10 +322,17 @@ fn write_generation(dir: &Path, files: &[(&str, String)]) -> Result<Temporary> {
     sync_dir(dir)?;
     Ok(guard)
 }
-fn validate(stage: &Path, timeout: Duration) -> Result<()> {
+fn validate(profile: &Profile, stage: &Path, timeout: Duration) -> Result<()> {
     let deadline = Instant::now() + timeout;
     let niri = option_env!("EMAKI_NIRI").unwrap_or("niri");
-    let call = |args: &[&str]| helper(niri, args, deadline).map_err(|e| err(e.reason));
+    let call = |args: &[&str]| {
+        if profile.installed {
+            helper_with_lock(niri, args, deadline, &profile.state.join("helper.lock"))
+        } else {
+            helper(niri, args, deadline)
+        }
+        .map_err(|e| err(e.reason))
+    };
     let version = call(&["--version"])?;
     if !version.success
         || std::str::from_utf8(&version.stdout)
@@ -277,6 +377,33 @@ pub(super) fn checkpoint(_profile: &Profile, _point: &str) -> Result<()> {
     Ok(())
 }
 
+// History stores semantic undo data independently of derived generations.
+fn prune_generations(profile: &Profile, current: &Document) -> Result<()> {
+    let mut ids = match fs::read_dir(profile.generations()) {
+        Ok(entries) => entries
+            .map(|entry| io(entry).map(|entry| entry.file_name()))
+            .collect::<Result<Vec<_>>>()?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return io(Err(e)),
+    };
+    ids.retain(|id| id.to_str().is_some_and(journal::valid_id));
+    ids.sort();
+    let old = ids.len().saturating_sub(16);
+    for id in ids.into_iter().take(old) {
+        if current.generation.as_deref() != id.to_str() {
+            journal::remove_generation(&profile.generations().join(&id))?;
+            for prefix in ["session", "settings"] {
+                journal::remove_file(
+                    &profile
+                        .runtime
+                        .join(format!("{prefix}-{}.kdl", id.to_string_lossy())),
+                )?;
+            }
+        }
+    }
+    sync_dir(&profile.generations())
+}
+
 struct Commit<'a> {
     before: &'a [u8],
     original: &'a Document,
@@ -300,14 +427,14 @@ fn apply(
         kind,
         undo_of,
     } = commit;
-    if desired == original && profile.prepared(desired, gaps)? {
-        return Ok(("unchanged", "already_prepared", None));
+    if desired == original && (profile.installed || profile.prepared(desired, gaps)?) {
+        return Ok(("unchanged", "settings_unchanged", None));
     }
     desired.generation = Some(id());
     let files = desired.files(gaps);
     let stage = write_generation(&profile.runtime.join("emaki-settings-staging"), &files)?;
     checkpoint(profile, "after_stage")?;
-    validate(&stage.path, timeout)?;
+    validate(profile, &stage.path, timeout)?;
     checkpoint(profile, "after_validation")?;
     if read(&profile.source())?.as_deref().unwrap_or_default() != before {
         return Err(err("settings_conflict"));
@@ -333,6 +460,10 @@ fn apply(
         checkpoint(profile, "after_generation")?;
         write_new(&temporary_path, desired.text().as_bytes())?;
         checkpoint(profile, "before_rename")?;
+        if profile.installed {
+            live::apply(profile, original, desired, gaps, timeout)?;
+            checkpoint(profile, "after_session_apply")?;
+        }
         if read(&profile.source())?.as_deref().unwrap_or_default() != before {
             return Err(err("settings_conflict"));
         }
@@ -341,10 +472,14 @@ fn apply(
         checkpoint(profile, "after_rename")?;
         sync_dir(&profile.config)?;
         sync_dir(profile.config.parent().expect("config parent"))?;
+        if profile.installed {
+            live::finish(profile)?;
+        }
         journal.append(profile, &entry)?;
         checkpoint(profile, "after_history")?;
         journal::remove_file(&profile.pending())?;
         sync_dir(&profile.history())?;
+        prune_generations(profile, desired)?;
         Ok(())
     })();
     match transaction {
@@ -359,6 +494,11 @@ fn apply(
             Some(entry.id),
         )),
         Err(e) => {
+            if profile.installed && live::pending(profile)? {
+                // Keep failed live compensation for a later session retry, but release
+                // the uncommitted storage transaction so reads remain available.
+                let _ = live::recover(profile, timeout, false);
+            }
             // This process knows rename did not happen; preserve a racing manual edit.
             // On cleanup failure retain pending so the next invocation cannot ignore it.
             journal::remove_file(&temporary_path)?;
@@ -377,13 +517,80 @@ pub(super) fn run(
 ) -> Result<Reply> {
     let profile = Profile::open(root)?;
     let gaps = default_gaps()?;
-    // Reads also observe manual edits and finish pending transactions under this lock.
-    let _lock = profile.lock()?;
+    let reading = profile.installed
+        && matches!(
+            operation,
+            Operation::List | Operation::Get { .. } | Operation::History
+        );
+    let _lock = if reading {
+        None
+    } else {
+        if profile.installed {
+            profile.initialize()?;
+        }
+        Some(profile.lock(timeout)?)
+    };
+    if profile.installed && !reading {
+        live::recover(&profile, timeout, false)?;
+    }
     let mut journal = journal::Journal::load(&profile)?;
-    let recovery = journal::recover(&profile, &mut journal)?;
-    let before = read(&profile.source())?;
-    let original = Document::parse(before.as_deref())?;
-    let manual_changes_recorded = journal.observe(&profile, &original)?.into_iter().collect();
+    let recovery = if reading {
+        if live::pending(&profile)? {
+            vec!["session_recovery_pending".into()]
+        } else {
+            vec![]
+        }
+    } else {
+        journal::recover(&profile, &mut journal)?
+    };
+    let mut before = read(&profile.source())?;
+    let mut original = Document::parse(before.as_deref())?;
+    if profile.installed && before.is_none() && journal.entries.is_empty() {
+        // Import only deviations, and persist them together with the first change.
+        if let Some(bytes) = read(&profile.state.join("dock.json"))? {
+            if let Ok(legacy) = serde_json::from_slice::<Value>(&bytes) {
+                if legacy.get("version").and_then(Value::as_u64) == Some(1) {
+                    let defaults = rows(&Document::default(), gaps);
+                    for (legacy_key, key) in [("on", DOCK_ON), ("auto_hide", DOCK_AUTO_HIDE)] {
+                        if let Some(value) =
+                            legacy.get(legacy_key).filter(|value| value.is_boolean())
+                        {
+                            let default = &defaults
+                                .iter()
+                                .find(|row| row.key == key)
+                                .expect("dock key")
+                                .default;
+                            if value != default {
+                                original.restore(key, value)?;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if !reading && before.is_none() && original != Document::default() {
+        // Save the migrated baseline before attempting live changes. A failed first
+        // change must not turn a legacy preference back into the package default.
+        let temporary = Temporary {
+            path: profile.config.join(format!(".import-{}.tmp", id())),
+            directory: false,
+            keep: false,
+        };
+        let bytes = original.text().into_bytes();
+        write_new(&temporary.path, &bytes)?;
+        if read(&profile.source())?.is_some() {
+            return Err(err("settings_conflict"));
+        }
+        io(fs::rename(&temporary.path, profile.source()))?;
+        sync_dir(&profile.config)?;
+        before = Some(bytes);
+    }
+    let manual_changes_recorded = if reading {
+        vec![]
+    } else {
+        journal.observe(&profile, &original)?.into_iter().collect()
+    };
     let mut document = original.clone();
     let (mut status, mut reason, mut change_id) = ("read", "settings_read", None);
     let mut conflicts = vec![];
@@ -470,7 +677,7 @@ pub(super) fn run(
         schema_version: 1,
         status,
         reason,
-        session_applied: false,
+        session_applied: profile.installed && status.starts_with("committed"),
         generation_status: if prepared {
             "prepared"
         } else {
@@ -489,4 +696,176 @@ pub(super) fn run(
         manual_changes_recorded,
         recovery,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn fixture() -> (Temporary, Profile) {
+        let path = std::env::temp_dir().join(format!("emaki-store-{}", id()));
+        mkdir(&path).unwrap();
+        let profile = Profile::installed(&path.join("config"), &path.join("state"), None).unwrap();
+        profile.initialize().unwrap();
+        (
+            Temporary {
+                path,
+                directory: true,
+                keep: false,
+            },
+            profile,
+        )
+    }
+
+    #[test]
+    fn installed_store_starts_empty_and_uses_private_files() {
+        let (_directory, profile) = fixture();
+        assert!(profile.installed);
+        let bytes = read(&profile.source()).unwrap();
+        assert!(bytes.is_none());
+        let document = Document::parse(bytes.as_deref()).unwrap();
+        assert_eq!(document.schema_version, 1);
+        write_new(&profile.source(), document.text().as_bytes()).unwrap();
+        assert_eq!(
+            Document::parse(read(&profile.source()).unwrap().as_deref()).unwrap(),
+            document
+        );
+        assert_eq!(
+            fs::metadata(profile.source()).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(
+            fs::metadata(&profile.config).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+    }
+
+    #[test]
+    fn old_derived_generations_are_bounded_without_pruning_history() {
+        let (_directory, profile) = fixture();
+        mkdir(&profile.generations()).unwrap();
+        let mut current = Document::default();
+        for i in 0..22 {
+            current.generation = Some(format!("g-{i:04x}-1-1"));
+            let mut generated =
+                write_generation(&profile.generation(&current).unwrap(), &current.files(8))
+                    .unwrap();
+            generated.keep = true;
+        }
+        prune_generations(&profile, &current).unwrap();
+        assert_eq!(fs::read_dir(profile.generations()).unwrap().count(), 16);
+        assert!(profile.prepared(&current, 8).unwrap());
+    }
+
+    #[test]
+    fn corrupt_and_future_documents_are_preserved() {
+        let (_directory, profile) = fixture();
+        for (bytes, reason) in [
+            (b"not valid = [".as_slice(), "invalid_settings"),
+            (
+                b"schema_version = 99\n".as_slice(),
+                "unsupported_settings_schema",
+            ),
+        ] {
+            fs::write(profile.source(), bytes).unwrap();
+            assert_eq!(
+                Document::parse(read(&profile.source()).unwrap().as_deref())
+                    .unwrap_err()
+                    .reason,
+                reason
+            );
+            assert_eq!(read(&profile.source()).unwrap().unwrap(), bytes);
+        }
+    }
+
+    #[test]
+    fn managed_lock_waits_and_times_out_without_replacing_inode() {
+        let (_directory, profile) = fixture();
+        let held = profile.lock(Duration::ZERO).unwrap();
+        let inode = fs::metadata(profile.state.join("settings.lock"))
+            .unwrap()
+            .ino();
+        assert_eq!(
+            profile.lock(Duration::from_millis(20)).unwrap_err().reason,
+            "settings_busy"
+        );
+        drop(held);
+        let _next = profile.lock(Duration::ZERO).unwrap();
+        assert_eq!(
+            fs::metadata(profile.state.join("settings.lock"))
+                .unwrap()
+                .ino(),
+            inode
+        );
+    }
+
+    #[test]
+    fn concurrent_writers_serialize_atomic_replacements() {
+        let (directory, profile) = fixture();
+        write_new(&profile.source(), b"0").unwrap();
+        let mut threads = vec![];
+        for _ in 0..8 {
+            let root = directory.path.clone();
+            threads.push(std::thread::spawn(move || {
+                let profile =
+                    Profile::installed(&root.join("config"), &root.join("state"), None).unwrap();
+                for _ in 0..10 {
+                    let _lock = profile.lock(Duration::from_secs(5)).unwrap();
+                    let bytes = read(&profile.source()).unwrap().unwrap();
+                    let value = std::str::from_utf8(&bytes).unwrap().parse::<u32>().unwrap();
+                    let candidate = profile.config.join(format!("{}.tmp", id()));
+                    write_new(&candidate, (value + 1).to_string().as_bytes()).unwrap();
+                    assert_eq!(read(&profile.source()).unwrap().unwrap(), bytes);
+                    fs::rename(candidate, profile.source()).unwrap();
+                    sync_dir(&profile.config).unwrap();
+                }
+            }));
+        }
+        for thread in threads {
+            thread.join().unwrap();
+        }
+        assert_eq!(read(&profile.source()).unwrap().unwrap(), b"80");
+    }
+
+    #[test]
+    fn managed_store_rejects_redirected_paths_and_shared_lock_files() {
+        let (directory, profile) = fixture();
+        let alias = directory.path.join("alias");
+        std::os::unix::fs::symlink(&profile.config, &alias).unwrap();
+        assert!(Profile::installed(&alias, &directory.path.join("other"), None).is_err());
+        let lock = profile.state.join("settings.lock");
+        write_new(&lock, b"").unwrap();
+        fs::hard_link(&lock, directory.path.join("lock-copy")).unwrap();
+        assert_eq!(
+            profile.lock(Duration::ZERO).unwrap_err().reason,
+            "unsafe_settings_file"
+        );
+    }
+}
+
+/// Prepare the selected derived wrapper before starting a compositor.
+pub(super) fn session_config(timeout: Duration) -> Result<PathBuf> {
+    let profile = Profile::open(None)?;
+    profile.initialize()?;
+    let _lock = profile.lock(timeout)?;
+    let recovery: Result<()> = (|| {
+        live::recover(&profile, timeout, true)?;
+        let mut journal = journal::Journal::load(&profile)?;
+        journal::recover(&profile, &mut journal)?;
+        Ok(())
+    })();
+    let document = Document::parse(read(&profile.source())?.as_deref())?;
+    if let Err(error) = recovery {
+        eprintln!(
+            "Settings recovery is pending ({}); using your current managed overrides.",
+            error.reason
+        );
+    } else if let Err(error) = live::migrate_mime(&profile, &document) {
+        eprintln!(
+            "Default application recovery is pending ({}); using your current compositor overrides.",
+            error.reason
+        );
+    }
+    live::config(&profile, &document)
 }

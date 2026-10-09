@@ -51,7 +51,7 @@ const PACKAGE_ETC: Rules = Rules {
     on_update: "replaced_unless_edited",
     history: "none",
 };
-/// `emaki settings` files; not connected to the session yet (lifecycle says so).
+/// Files maintained by installed `emaki settings` transactions.
 const MANAGED: Rules = Rules {
     zone: "managed",
     change_via: "emaki_settings",
@@ -205,7 +205,25 @@ pub fn collect() -> Map {
         &config,
         "emaki/settings.toml",
         &config_source,
-        "isolated_profile_only",
+        "installed",
+        MANAGED,
+    );
+    add(
+        "legacy_managed_mimeapps",
+        "emaki_generator",
+        &config,
+        "niri-mimeapps.list",
+        &config_source,
+        "installed",
+        MANAGED,
+    );
+    add(
+        "managed_mimeapps",
+        "emaki_generator",
+        &state,
+        "emaki/defaults/mimeapps.list",
+        &state_source,
+        "installed",
         MANAGED,
     );
     add(
@@ -223,7 +241,7 @@ pub fn collect() -> Map {
         &state,
         "emaki/generations",
         &state_source,
-        "isolated_profile_only",
+        "installed",
         MANAGED,
     );
     add(
@@ -232,7 +250,7 @@ pub fn collect() -> Map {
         &state,
         "emaki/history",
         &state_source,
-        "isolated_profile_only",
+        "installed",
         MANAGED,
     );
     add(

@@ -9,30 +9,136 @@ Scope {
     id: surfaces
     required property ShellScene controller
     property SessionStartup startup: null
+    property bool sharedFocus: false
+    property bool reportFrames: true
+    signal painted(string name)
+    readonly property bool pairingReady: !pairingKeyboard || (surfaces.pendingLayer !== "panel" && overlay.contentItem.Window.active)
+    readonly property bool keyboardPanel: controller.modalOpen && controller.keyboardSurface !== ""
+    property string pendingLayer: ""
+    property string armedLayer: ""
+    readonly property int barKeyboardFocus: top.WlrLayershell.keyboardFocus
+    readonly property int dockKeyboardFocus: dockWindow.WlrLayershell.keyboardFocus
+    readonly property int panelKeyboardFocus: overlay.WlrLayershell.keyboardFocus
+    // Exclusive requests focus on the retained surface. Once acknowledged, the
+    // fork preserves that focus across OnDemand so outside focus actions can yield.
+    function layerActive(layer: string): bool {
+        return layer === "bar" ? top.contentItem.Window.active : layer === "dock" ? dockWindow.contentItem.Window.active : overlay.contentItem.Window.active;
+    }
+    function acquireKeyboard(layer: string): void {
+        armedLayer = "";
+        if (!controller.niri.layerFocusSupported || !controller.focusedOutput) {
+            pendingLayer = "";
+            return;
+        }
+        pendingLayer = layer;
+        if (layerActive(layer))
+            keyboardActiveChanged(layer, true);
+    }
+    function releaseKeyboard(layer: string): void {
+        if (pendingLayer === layer)
+            pendingLayer = "";
+        if (armedLayer === layer)
+            armedLayer = "";
+    }
+    Connections {
+        target: surfaces.controller.niri
+        function onLayerFocusSupportedChanged(): void {
+            if (!surfaces.controller.niri.layerFocusSupported) {
+                surfaces.pendingLayer = "";
+                surfaces.armedLayer = "";
+            } else if (surfaces.keyboardPanel || surfaces.pairingKeyboard) {
+                surfaces.acquireKeyboard("panel");
+            }
+        }
+    }
+    function keyboardActiveChanged(layer: string, active: bool): void {
+        if (!controller.niri.layerFocusSupported)
+            return;
+        const wanted = layer === "bar" ? controller.barKeyboardActive : layer === "dock" ? controller.dock.keyboardActive : keyboardPanel;
+        if (active && (wanted || (layer === "panel" && pairingKeyboard))) {
+            if (pendingLayer === layer)
+                pendingLayer = "";
+            armedLayer = layer;
+            if (layer === "bar")
+                controller.bar.takeFocus();
+            else if (layer === "dock")
+                controller.dock.takeFocus();
+            else if (controller.launcherOpen)
+                controller.input.takeFocus(true);
+            else if (controller.systemOpen) {
+                if (wanted)
+                    controller.systemPanel.takeFocus(true);
+                else
+                    controller.systemPanel.forceActiveFocus();
+            } else if (controller.privacyOpen)
+                controller.privacyPopup.takeFocus(true);
+            else if (controller.shortcutsOpen)
+                controller.shortcuts.takeFocus();
+            else if (controller.drawerOpen) {
+                if (controller.keyboardSurface === "notifications")
+                    controller.clockPanel.focusNewest();
+                else
+                    controller.clockPanel.takeFocus();
+            }
+        } else if (!active && armedLayer === layer) {
+            armedLayer = "";
+            // The native pairing prompt owns focus until its reply. Its panel
+            // remains available without stealing focus back.
+            if (wanted && !(layer === "panel" && pairingKeyboard))
+                controller.closeAll();
+        }
+    }
+    onKeyboardPanelChanged: {
+        if (keyboardPanel)
+            acquireKeyboard("panel");
+        else if (!pairingKeyboard)
+            releaseKeyboard("panel");
+    }
+    Connections {
+        target: surfaces.controller
+        function onFocusedOutputChanged(): void {
+            if (!surfaces.controller.focusedOutput) {
+                surfaces.pendingLayer = "";
+                surfaces.armedLayer = "";
+            } else if (surfaces.pairingKeyboard) {
+                surfaces.acquirePairingKeyboard();
+            }
+        }
+        function onBarKeyboardActiveChanged(): void {
+            if (surfaces.controller.barKeyboardActive)
+                surfaces.acquireKeyboard("bar");
+            else
+                surfaces.releaseKeyboard("bar");
+        }
+    }
+    Connections {
+        target: surfaces.controller.dock
+        function onKeyboardActiveChanged(): void {
+            if (surfaces.controller.dock.keyboardActive)
+                surfaces.acquireKeyboard("dock");
+            else
+                surfaces.releaseKeyboard("dock");
+        }
+    }
     readonly property bool pairingKeyboard: controller.systemOpen && controller.systemPage === "bt" && (controller.systemBody.rows.some(r => r.action === "bt-cancel-pair") || controller.services.pendingKind === "bt-pair")
-    property bool pairingRemap: false
     onPairingKeyboardChanged: acquirePairingKeyboard()
     function acquirePairingKeyboard(): void {
-        if (!pairingKeyboard)
-            return;
-        // niri grants OnDemand focus on a new map or a pointer/touch press, not
-        // on a policy change. Remap once so keyboard-opened pairing has Escape.
-        pairingRemap = true;
-        Qt.callLater(() => {
-            surfaces.pairingRemap = false;
-            if (surfaces.pairingKeyboard)
-                surfaces.controller.systemPanel.forceActiveFocus();
-        });
+        if (pairingKeyboard)
+            acquireKeyboard("panel");
+        else if (!keyboardPanel)
+            releaseKeyboard("panel");
     }
     Binding {
         target: surfaces.controller.services
+        when: !surfaces.sharedFocus
         property: "pairingFocusManaged"
         value: true
     }
     Binding {
         target: surfaces.controller.services
+        when: !surfaces.sharedFocus
         property: "pairingFocusReady"
-        value: !surfaces.pairingKeyboard || (!surfaces.pairingRemap && overlay.contentItem.Window.active)
+        value: surfaces.pairingReady
     }
     readonly property bool barMapped: top.visible && (top.contentItem.Window.window?.visible ?? false)
     readonly property bool dockMapped: dockWindow.visible && (dockWindow.contentItem.Window.window?.visible ?? false)
@@ -68,20 +174,35 @@ Scope {
     }
     Connections {
         target: top.contentItem.Window.window
+        function onActiveChanged(): void {
+            surfaces.keyboardActiveChanged("bar", top.contentItem.Window.active);
+        }
         function onFrameSwapped(): void {
-            surfaces.startup?.painted("bar");
+            surfaces.painted("bar");
+            if (surfaces.reportFrames)
+                surfaces.startup?.painted("bar");
         }
     }
     Connections {
         target: dockWindow.contentItem.Window.window
+        function onActiveChanged(): void {
+            surfaces.keyboardActiveChanged("dock", dockWindow.contentItem.Window.active);
+        }
         function onFrameSwapped(): void {
-            surfaces.startup?.painted("dock");
+            surfaces.painted("dock");
+            if (surfaces.reportFrames)
+                surfaces.startup?.painted("dock");
         }
     }
     Connections {
         target: overlay.contentItem.Window.window
+        function onActiveChanged(): void {
+            surfaces.keyboardActiveChanged("panel", overlay.contentItem.Window.active);
+        }
         function onFrameSwapped(): void {
-            surfaces.startup?.painted("overlay");
+            surfaces.painted("overlay");
+            if (surfaces.reportFrames)
+                surfaces.startup?.painted("overlay");
         }
     }
     Component.onCompleted: {
@@ -93,6 +214,7 @@ Scope {
         controller.panel.parent = overlay.contentItem;
         controller.clockPanel.parent = overlay.contentItem;
         controller.systemPanel.parent = overlay.contentItem;
+        controller.shortcuts.parent = overlay.contentItem;
         controller.osd.parent = overlay.contentItem;
         controller.dock.parent = dockWindow.contentItem;
         controller.dockEdge.parent = dockWindow.contentItem;
@@ -140,7 +262,7 @@ Scope {
         // Raise the reveal strip only over fullscreen windows; ordinary docks
         // stay below launcher and panel overlays regardless of mapping order.
         WlrLayershell.layer: surfaces.controller.dockPolicy.fullscreen ? WlrLayer.Overlay : WlrLayer.Top
-        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: surfaces.controller.enabled && surfaces.controller.dockPolicy.dockVisible && surfaces.controller.dock.keyboardActive && surfaces.controller.niri.layerFocusSupported ? (surfaces.pendingLayer === "dock" ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand) : WlrKeyboardFocus.None
         mask: DockInputRegion {
             edge: surfaces.controller.dockEdge
             edgeEnabled: surfaces.controller.dockPolicy.edgeEnabled
@@ -155,6 +277,7 @@ Scope {
     // candidate, but reducing it changes fine-detail refraction (opt round 1 renders).
     WallpaperSource {
         id: dockWallpaper
+        refreshManaged: true
         variant: "sharp"
         outputWidth: Math.round(surfaces.controller.viewportWidth)
         outputHeight: Math.round(surfaces.controller.viewportHeight)
@@ -325,11 +448,11 @@ Scope {
         exclusionMode: ExclusionMode.Normal
         WlrLayershell.namespace: "emaki-test-bar"
         WlrLayershell.layer: WlrLayer.Top
-        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: surfaces.controller.enabled && surfaces.controller.barPolicy.barVisible && (!surfaces.controller.barPolicy.fullscreen || surfaces.controller.niri.overviewOpen) && surfaces.controller.barKeyboardActive && surfaces.controller.niri.layerFocusSupported ? (surfaces.pendingLayer === "bar" ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand) : WlrKeyboardFocus.None
         mask: barInput
         BackgroundEffect.blurRegion: barBlur
     }
-    // Except when acquiring on-demand pairing focus, the overlay stays mapped, transparent
+    // The overlay stays mapped, transparent
     // and without input while nothing is open (mask: the empty clockInput region,
     // keyboard None). Quickshell deletes a
     // layer-shell window on visible: false (WlrLayershell::deleteOnInvisible), so toggling
@@ -342,20 +465,22 @@ Scope {
             if (surfaces.controller.modalOpen)
                 Qt.callLater(() => {
                     if (surfaces.controller.launcherOpen)
-                        surfaces.controller.input.takeFocus();
+                        surfaces.controller.input.takeFocus(surfaces.controller.keyboardSurface === "launcher");
                     else if (surfaces.controller.systemOpen)
-                        surfaces.controller.systemPanel.forceActiveFocus();
+                        surfaces.controller.systemPanel.takeFocus(surfaces.keyboardPanel);
                     else if (surfaces.controller.drawerOpen)
                         surfaces.controller.clockPanel.forceActiveFocus();
                     else if (surfaces.controller.privacyOpen)
-                        surfaces.controller.privacyPopup.forceActiveFocus();
+                        surfaces.controller.privacyPopup.takeFocus(surfaces.keyboardPanel);
+                    else if (surfaces.controller.shortcutsOpen)
+                        surfaces.controller.shortcuts.takeFocus();
                 });
         }
     }
     PanelWindow {
         id: overlay
         screen: surfaces.controller.output
-        visible: surfaces.controller.enabled && surfaces.controller.output !== null && !surfaces.pairingRemap
+        visible: surfaces.controller.enabled && surfaces.controller.output !== null
         anchors {
             top: true
             bottom: true
@@ -369,9 +494,9 @@ Scope {
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.namespace: "emaki-test-launcher"
         WlrLayershell.layer: WlrLayer.Overlay
-        // Only an actual pairing releases exclusivity for the native PIN dialog.
-        // Idle Bluetooth browsing needs Exclusive, including keyboard/bar opening.
-        WlrLayershell.keyboardFocus: !surfaces.controller.modalOpen ? WlrKeyboardFocus.None : surfaces.pairingKeyboard ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive
+        // Pointer-opened panels retain their existing modal policy. Keyboard
+        // openings and native pairing yield when niri focuses another surface.
+        WlrLayershell.keyboardFocus: !surfaces.controller.enabled || !surfaces.controller.modalOpen ? WlrKeyboardFocus.None : !surfaces.controller.niri.layerFocusSupported ? (surfaces.pairingKeyboard ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive) : surfaces.pairingKeyboard || surfaces.keyboardPanel ? (surfaces.pendingLayer === "panel" ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand) : WlrKeyboardFocus.Exclusive
         // The dock popup takes pointer input (outside press closes it) but never the keyboard.
         // With only the dock menu open, the overlay catches outside presses but leaves a hole
         // over the menu and the plate: those live in the dock surface underneath.

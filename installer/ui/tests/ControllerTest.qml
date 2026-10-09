@@ -188,7 +188,15 @@ ShellRoot {
             controller.encryptionPassword = "separate";
             controller.diskPassword = secret;
             controller.diskConfirmation = secret;
-            controller.hibernation = true;
+            let refused = false;
+            try {
+                Object.assign(controller, {
+                    hibernation: true
+                });
+            } catch (error) {
+                refused = true;
+            }
+            test.check(refused && controller.hibernation === false, "hibernation cannot be enabled through controller state");
         }
         ++plans;
         controller.reviewSoftware();
@@ -365,8 +373,9 @@ ShellRoot {
                 test.check(JSON.stringify(message.config.output_scales) === JSON.stringify(controller.catalog.output_scales), "plan keeps both fractional session output scales");
                 test.check(message.config.software === (test.scenario === "choices" ? "minimal" : "rich"), "plan carries software selection");
                 test.check(message.config.encryption === (test.scenario === "choices" ? "separate" : "none"), "plan carries explicit encryption choice");
+                test.check(message.config.hibernation === false, "every UI plan explicitly disables hibernation");
                 if (test.scenario === "choices")
-                    test.check(!!message.config.disk_password && message.config.hibernation, "plan carries separate password and hibernation");
+                    test.check(!!message.config.disk_password, "plan carries separate password");
                 test.check(JSON.stringify(controller.session).indexOf(message.config.user.password) === -1, "shared state never contains secrets");
                 if (test.scenario === "alongside") {
                     test.check(message.config.partition_id === "/dev/vda2", "alongside partition ID");

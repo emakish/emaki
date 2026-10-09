@@ -24,9 +24,11 @@ import struct
 import subprocess
 import sys
 import tarfile
+import time
 import uuid
 
 from . import boot
+from . import update_menu
 
 OLD_INCLUDE = '. /usr/share/emaki/grub/defaults.cfg'
 INCLUDE = ('if [ -r /usr/share/emaki/grub/defaults.cfg ]; then '
@@ -39,6 +41,8 @@ LOG_PATH = '/var/log/emaki-boot-refresh.log'
 LOG_LIMIT = MIB
 PENDING = '/var/lib/emaki/boot-refresh-pending'
 BOOT_RETRIES = 3
+SLEEP_LOCK_TIMEOUT = 2.0
+SLEEP_STATE = Path('/run/emaki-boot-sleep.json')
 FOREIGN = 'The existing boot loaders were kept because the fallback loader is not recognized as Emaki.'
 TRIAL_FAILED = 'The new boot loader did not complete a boot; the old loader was kept.'
 UUID = r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
@@ -139,6 +143,39 @@ def open_run_lock(mode):
         os.umask(previous)
     os.fchmod(lock.fileno(), 0o600)
     return lock
+
+
+def wait_run_lock(lock, timeout=0):
+    """Acquire without ever entering a blocking flock syscall."""
+    end = time.monotonic() + timeout
+    while True:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except BlockingIOError:
+            remaining = end - time.monotonic()
+            if remaining <= 0:
+                raise
+            time.sleep(min(0.1, remaining))
+
+
+@contextmanager
+def sleep_run_lock(phase, saved, label='Boot loader trial'):
+    # Both commands run sequentially with user.slice frozen. Never wait for a
+    # full refresh (which includes image generation) or for its file log lock.
+    with open_run_lock('a') as lock:
+        try:
+            wait_run_lock(lock, timeout=SLEEP_LOCK_TIMEOUT)
+        except BlockingIOError:
+            # A receipt belongs only to this sleep cycle, including when post
+            # is skipped. Removing volatile state needs no ESP/package lock.
+            saved.unlink(missing_ok=True)
+            print(f'{label}: sleep {phase} bookkeeping skipped: boot maintenance is busy '
+                  f'after {SLEEP_LOCK_TIMEOUT:g} seconds; continuing sleep or wake.',
+                  file=sys.stderr, flush=True)
+            yield False
+        else:
+            yield True
 
 
 def current_boot_id():
@@ -598,7 +635,7 @@ def trial_block(values):
 
 def sleep_trial(phase):
     """A restored kernel did not boot the candidate: return its trial attempt."""
-    saved = Path('/run/emaki-boot-sleep.json')
+    saved = Path(SLEEP_STATE)
     trial = trial_state()
     if phase == 'pre':
         # /run is restored with the hibernation image, unlike the ESP counter.
@@ -682,6 +719,8 @@ def refresh_menu(identity, state, recovery=False):
         text = rewrite_menu(regular(stage / 'grub/grub.cfg').decode(), generation, identity['fsroot'])
         if generation and state['newest'] != state['good'] and not failed_trial(state):
             text = trial_menu(state['newest'], identity['esp_uuid'], text)
+        if identity['fstype'] == 'btrfs':
+            text = update_menu.wrap_menu(text, identity['esp_uuid'])
         verify_menu(text, identity, generation, kernels)
         atomic(stage / 'grub/grub.cfg', text)
         run(['grub-script-check', stage / 'grub/grub.cfg'])
@@ -1137,6 +1176,8 @@ def _refresh(identity):
         config = generation / 'grub/grub.cfg'
         text = rewrite_menu(regular(config).decode(), generation, identity['fsroot'])
         text = trial_menu(tag, identity['esp_uuid'], text)
+        if identity['fstype'] == 'btrfs':
+            text = update_menu.wrap_menu(text, identity['esp_uuid'])
         verify_menu(text, identity, generation, kernels)
         atomic(config, text)
         run(['grub-script-check', config])
@@ -1202,6 +1243,11 @@ def main(argv=None):
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0):
             return 0
         require(os.geteuid() == 0, 'Run emaki-boot-refresh as root on the installed system.')
+        if args.sleep_phase:
+            with sleep_run_lock(args.sleep_phase, Path(SLEEP_STATE)) as acquired:
+                if acquired:
+                    sleep_trial(args.sleep_phase)
+            return 0
         if args.retry or args.mark_good:
             def interrupted(signum, frame):
                 raise TimeoutError('The boot loader operation was interrupted.')
@@ -1220,15 +1266,12 @@ def main(argv=None):
             return 0
         with open_run_lock('w') as lock:
             try:
-                fcntl.flock(lock, fcntl.LOCK_EX | (0 if args.sleep_phase else fcntl.LOCK_NB))
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 if args.retry:
                     LOG.write('Another boot loader operation is running; retry at the next boot.\n')
                     return 0
                 raise
-            if args.sleep_phase:
-                sleep_trial(args.sleep_phase)
-                return 0
             if not args.mark_good:
                 return refresh_attempt(args.retry)
             identity = discover()
@@ -1243,7 +1286,10 @@ def main(argv=None):
         print(str(error))
         return 0
     except (OSError, ValueError, RuntimeError) as error:
-        if LOG is not None:
+        if args.sleep_phase:
+            print(f'Sleep {args.sleep_phase} bookkeeping did not finish: {error}',
+                  file=sys.stderr, flush=True)
+        elif LOG is not None:
             LOG.write(str(error) + '\n')
             print(f'The boot loader update did not finish; details are in {LOG_PATH}.', file=sys.stderr)
         else:

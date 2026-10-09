@@ -1,0 +1,16 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Emaki full repository update
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/emaki-update --noninteractive
+TimeoutStartSec=infinity
+StandardInput=null
+StandardOutput=journal
+StandardError=journal
+Environment=LC_ALL=C
+UMask=0022
+# Pre/post-transaction pacman hooks remain the common snapshot and recovery
+# integration point for graphical and terminal updates.

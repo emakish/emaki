@@ -7,8 +7,7 @@ zone says who changes the file, how, and what an Emaki update does to it.
    On update: replaced. An edit there is lost without a warning.
 2. Managed settings. Settings changed with `emaki settings`.
    On update: never touched.
-   NOT CONNECTED YET: in this release `emaki settings` does not change
-   your settings or your session (see zone 2).
+   The CLI and keyboard menu use the installed store (see zone 2).
 3. Your zone. Your files in your home, and the machine's own settings.
    On update: never written by Emaki in your home.
 
@@ -59,27 +58,47 @@ of the package named:
 
 ## 2. Managed settings
 
-NOT CONNECTED YET. In this release `emaki settings` works only in a
-separate test profile (`--profile-root`). It does not read or change
-your own settings and does not change the running session. Until it is
-connected, change settings in your own files (zone 3).
-
 Owner: Emaki, on your command.
-How to change: only with `emaki settings`, never by hand.
+How to change: `emaki settings` opens a keyboard menu; `list`, `get`, `set`,
+`reset`, `history` and `undo` use the same core. The menu's texts and look are drafts.
 On update: never touched. A changed Emaki default reaches every
 setting you have not set yourself.
 
-- ~/.config/emaki/settings.toml  (the settings you set; not created in
-  this release)
-- ~/.local/state/emaki/generations/**, ~/.local/state/emaki/history/**
-  (files built from it, and the record of changes)
+- ~/.config/emaki/settings.toml (`$XDG_CONFIG_HOME/emaki/settings.toml`): versioned canonical overrides.
+- ~/.local/state/emaki/generations/** (`$XDG_STATE_HOME/emaki/generations/**`): immutable derived files.
+- ~/.local/state/emaki/history/** (`$XDG_STATE_HOME/emaki/history/**`): durable changes, undo and recovery journals.
+- ~/.local/state/emaki/settings.lock (`$XDG_STATE_HOME/emaki/settings.lock`): serializes shell and CLI transactions.
+- ~/.local/state/emaki/helper.lock: keeps interrupted helpers from racing with recovery.
+- `$XDG_RUNTIME_DIR/emaki-settings/**`: generated session configuration, rebuilt as needed.
+- ~/.local/state/emaki/defaults/mimeapps.list: derived default browser/file-manager
+  associations. The session prepends this directory to `XDG_CONFIG_DIRS`, below
+  personal configuration and above packaged defaults. Personal default choices win.
+- ~/.config/niri-mimeapps.list: an older managed location, migrated only when
+  carrying Emaki's managed header. Personal files are never adopted or overwritten.
 
-The shell keeps a few choices of its own, changed by clicking in the
-shell (dock, night light, the welcome window). They are in this zone,
-but they are not in the `emaki settings` history and have no undo:
+Unset config/state variables use `~/.config` and `~/.local/state`. A missing
+settings file means package defaults. New managed files are 0600 and directories
+0700. Without an absolute runtime directory, staging uses
+`$XDG_STATE_HOME/emaki/runtime/`. The canonical source is committed by atomic rename; history survives login
+and reboot. Derived generations retain the newest 16 plus the selected generation if older;
+semantic history remains available for undo. Installed reads create no files and do not
+run pending recovery. Read the transaction and recovery contract in [settings.md](settings.md).
 
-- ~/.local/state/emaki/{dock,apps,recent,notifications,night-light,
-  welcome}.json
+Gaps and the floating shortcut use an Emaki-owned runtime niri wrapper; wallpaper
+and terminal choices use session helpers; bar and dock values use acknowledged
+shell bindings. A failed application restores previous managed values. Emaki never
+writes personal compositor configuration (see zone 3) or the personal fork include.
+
+Keyboard remains machine-owned through localed and the console configuration (zone 3).
+Installed mutations of `keyboard.layouts` and `keyboard.switch_key` are refused
+with `keyboard_requires_machine_settings`. These two keys are not connected: N5's
+requirement that all twelve keys apply is incomplete. An explicit isolated test
+profile can still store them without affecting a session.
+
+The shell also keeps application use, recent items, notifications, night light and
+welcome state under `$XDG_STATE_HOME/emaki/`; these are outside settings history:
+
+- ~/.local/state/emaki/{dock,apps,recent,notifications,night-light,welcome}.json
 
 
 ## 3. Your zone

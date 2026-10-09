@@ -9,8 +9,10 @@ the reason this exists: a generic sync tool cannot refuse to overwrite an object
 import datetime
 import hashlib
 import hmac
+import http.client
 import os
 from pathlib import Path
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -189,7 +191,8 @@ class S3Client:
             token = root.findtext(S3_NS + 'NextContinuationToken')
 
     # Multipart (the ISO: resumable, and visible only once complete) ---------------------
-    def upload_large(self, key, path, part_size=64 * 1024 * 1024, content_type='application/octet-stream'):
+    def upload_large(self, key, path, part_size=64 * 1024 * 1024, content_type='application/octet-stream',
+                     attempts=6, pause=time.sleep):
         _, _, body = self.request('POST', key, query={'uploads': ''}, headers={'Content-Type': content_type})
         upload_id = ET.fromstring(body).findtext(S3_NS + 'UploadId')
         parts = []
@@ -197,8 +200,7 @@ class S3Client:
             with open(path, 'rb') as stream:
                 number = 1
                 while chunk := stream.read(part_size):
-                    _, headers, _ = self.request('PUT', key, query={'partNumber': str(number), 'uploadId': upload_id},
-                                                 body=chunk)
+                    headers = self._put_part(key, upload_id, number, chunk, attempts, pause)
                     parts.append((number, headers.get('ETag') or headers.get('etag')))
                     number += 1
             document = '<CompleteMultipartUpload>' + ''.join(
@@ -211,6 +213,20 @@ class S3Client:
         except BaseException:
             self.request('DELETE', key, query={'uploadId': upload_id}, ok=(200, 204, 404))
             raise
+
+    def _put_part(self, key, upload_id, number, chunk, attempts, pause):
+        # A part is sent again under the same number: a dropped connection (2026-10-08, 37 minutes
+        # into the 0.3.1 image) costs one part, not the whole upload. A refusal is not retried.
+        for attempt in range(1, attempts + 1):
+            try:
+                _, headers, _ = self.request('PUT', key, query={'partNumber': str(number), 'uploadId': upload_id},
+                                             body=chunk)
+                return headers
+            except (OSError, http.client.HTTPException, S3Error) as error:
+                transient = not isinstance(error, S3Error) or error.status >= 500 or error.status == 429
+                if not transient or attempt == attempts:
+                    raise
+                pause(min(10 * 2 ** (attempt - 1), 300))
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):

@@ -22,8 +22,8 @@
 //  monitor, the first output block for its connector wins; Emaki ships none.
 //  Put personal output blocks in the marked slot before initial installer blocks.
 //
-//  Zone 2, managed settings (`emaki settings`), is not connected to the session
-//  yet: nothing here reads it.
+//  Zone 2 overrides are loaded after this configuration through a managed
+//  session wrapper. Personal files are never rewritten by settings commands.
 //
 //  Rule: nothing here may depend on a specific machine —
 //  no scale, monitor names, keyboard layouts, or home directory paths.
@@ -234,7 +234,7 @@ binds {
     Mod+Shift+0 { move-column-to-workspace 10; }
 
     // ── Launching ──────────────────────────────────────────────────────────
-    Mod+T hotkey-overlay-title="Open terminal" { spawn "kitty"; }
+    Mod+T hotkey-overlay-title="Open terminal" { spawn "emaki-terminal"; }
 
     // Launcher. Do not bind Super alone: niri triggers that binding on ANY
     // combination with Super — open niri bug #605. Mod+D is niri's own default
@@ -242,6 +242,24 @@ binds {
     Mod+D hotkey-overlay-title="Open launcher" { spawn "emaki-shell" "call" "launcher" "toggle"; }
     // Clock shade: notifications, calendar, music.
     Mod+N hotkey-overlay-title="Notifications, calendar and music" { spawn "emaki-shell" "call" "drawer" "toggle"; }
+
+    // Shell surfaces: Super+Ctrl selects a system page; Tab/arrows move inside it.
+    // Escape releases the shell focus back to the application.
+    Mod+B hotkey-overlay-title="Focus top bar" { spawn "emaki-shell" "call" "keyboard" "open" "bar"; }
+    Mod+J hotkey-overlay-title="Focus dock" { spawn "emaki-shell" "call" "keyboard" "open" "dock"; }
+    Mod+Ctrl+N hotkey-overlay-title="Focus newest notification" { spawn "emaki-shell" "call" "drawer" "newest"; }
+    Mod+Ctrl+S hotkey-overlay-title="Sound and app volume" { spawn "emaki-shell" "call" "system" "open" "sound"; }
+    Mod+Ctrl+L hotkey-overlay-title="Brightness and night light" { spawn "emaki-shell" "call" "system" "open" "light"; }
+    Mod+Ctrl+W hotkey-overlay-title="Wi-Fi and VPN" { spawn "emaki-shell" "call" "system" "open" "wifi"; }
+    Mod+Ctrl+B hotkey-overlay-title="Bluetooth" { spawn "emaki-shell" "call" "system" "open" "bt"; }
+    Mod+Ctrl+P hotkey-overlay-title="Battery, profiles and session" { spawn "emaki-shell" "call" "system" "open" "power"; }
+    Mod+Ctrl+K hotkey-overlay-title="Keyboard layouts" { spawn "emaki-shell" "call" "system" "open" "kb"; }
+    Mod+Ctrl+T hotkey-overlay-title="Tray applications" { spawn "emaki-shell" "call" "system" "open" "tray"; }
+    Mod+Ctrl+I hotkey-overlay-title="Privacy and capture activity" { spawn "emaki-shell" "call" "keyboard" "open" "privacy"; }
+    Mod+Ctrl+H hotkey-overlay-title="Welcome to Emaki" { spawn "emaki-shell" "call" "welcome" "present"; }
+    // RU emits period on the US slash key; niri keeps ASCII symbols in the active layout.
+    Mod+Slash hotkey-overlay-title="Search keyboard shortcuts" { spawn "emaki-shell" "call" "keyboard" "open" "shortcuts"; }
+    Mod+Period hotkey-overlay-title="Search keyboard shortcuts" { spawn "emaki-shell" "call" "keyboard" "open" "shortcuts"; }
 
     // Emergency terminal WITHOUT Super: if something intercepts Super,
     // this binding still works. The path is absolute because spawn does not
@@ -279,6 +297,7 @@ binds {
 
     // Show all key bindings on screen instead of digging through the config.
     Mod+Shift+Slash { show-hotkey-overlay; }
+    Mod+Shift+Period { show-hotkey-overlay; }
 
     // ── Laptop keys ────────────────────────────────────────────────────────
     // Apple media F3/F4: KEY_SCALE/KEY_DASHBOARD become these XKB keysyms.

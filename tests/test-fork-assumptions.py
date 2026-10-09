@@ -82,6 +82,13 @@ class RebaseGuardTests(unittest.TestCase):
         self.change('src/new_capture.rs', 'niri.render_pointer(renderer);\n')
         self.assertTrue(any('inventory changed' in failure for failure in guard.check(self.source)))
 
+    def test_layer_focus_transition_requires_review(self):
+        for relative in ('src/handlers/layer_shell.rs', 'src/layer/mapped.rs', 'src/niri.rs'):
+            with self.subTest(relative=relative):
+                self.change(relative, '// changed layer focus policy\n')
+                self.assertTrue(any(failure.startswith(relative + ':') and 'N6c' in failure
+                                    for failure in guard.check(self.source)))
+
     def test_missing_source_is_not_a_pass(self):
         (self.source / 'src/layout/scrolling.rs').unlink()
         self.assertTrue(any('missing reviewed source' in failure for failure in guard.check(self.source)))
@@ -95,7 +102,7 @@ class RebaseGuardTests(unittest.TestCase):
         recipe = (ROOT / 'packaging/niri-emaki/PKGBUILD').read_text()
         invocation = 'python "$srcdir/check-assumptions.py" . || return 1'
         self.assertIn(invocation, recipe)
-        self.assertLess(recipe.index('patch -Np1 -i ../0008'), recipe.index(invocation))
+        self.assertLess(recipe.index('patch -Np1 -i ../0009'), recipe.index(invocation))
         self.assertLess(recipe.index(invocation), recipe.index('cargo fetch'))
         self.assertIn('        check-assumptions.py)', recipe)
         self.assertIn('  python\n', recipe)

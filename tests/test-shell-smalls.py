@@ -25,6 +25,50 @@ def contrast(a, b):
 
 
 class DesktopSmalls(unittest.TestCase):
+    def test_update_indicator_tracks_valid_cached_status(self):
+        qml = """import QtQuick
+import Quickshell
+import "SHELL_PATH"
+Scope {
+    NiriService { id: niri; binary: "" }
+    SystemService { id: services }
+    SystemCompactRow { id: row; niri: niri; services: services }
+    Icon { id: updateIcon; kind: row.fallbackOf("updates") }
+    function check(ok, why) { if (!ok) throw new Error(why); }
+    Component.onCompleted: {
+        check(!UpdateService.enabled, "polling must be opt-in");
+        check(row.pages.indexOf("updates") === -1, "empty indicator");
+        check(UpdateService.acceptStatus(JSON.stringify({pending: 3, checkedAt: "2026-10-07", error: ""})), "valid status");
+        check(row.pages[0] === "updates", "pending indicator");
+        check(row.cell("updates").text === "3", "visible count");
+        check(row.cell("updates").activeFocusOnTab, "keyboard focus");
+        check(updateIcon.kind === "restart" && !!updateIcon.paths[updateIcon.kind], "available update fallback icon");
+        for (const bad of ["{", "null", "{}", JSON.stringify({pending: -1, checkedAt: "", error: ""}), JSON.stringify({pending: 1.5, checkedAt: "", error: ""}), JSON.stringify({pending: "9", checkedAt: "", error: ""})])
+            check(!UpdateService.acceptStatus(bad) && UpdateService.pending === 3, "bad cache replaced status");
+        check(UpdateService.acceptStatus(JSON.stringify({pending: 0, checkedAt: "2026-10-08", error: ""})), "cleared status");
+        check(row.pages.indexOf("updates") === -1, "indicator did not clear");
+        console.log("UPDATE_INDICATOR_PASS");
+        Qt.quit();
+    }
+    Timer { interval: 1000; running: true; onTriggered: Qt.quit() }
+}
+""".replace('SHELL_PATH', (ROOT / 'shell').as_uri())
+        with tempfile.TemporaryDirectory(prefix='updates-') as directory, short_runtime() as runtime:
+            work = Path(directory)
+            path = work / 'test.qml'
+            path.write_text(qml)
+            env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
+                       QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=runtime,
+                       XDG_CACHE_HOME=str(work / 'cache'), XDG_CONFIG_HOME=str(work / 'config'),
+                       XDG_DATA_HOME=str(work / 'data'), XDG_STATE_HOME=str(work / 'state'))
+            for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'NIRI_SOCKET', 'DBUS_SESSION_BUS_ADDRESS'):
+                env.pop(name, None)
+            result = subprocess.run(['qs', '-p', str(path), '--no-color'], env=env,
+                                    capture_output=True, text=True, timeout=10)
+            output = result.stdout + result.stderr
+            self.assertIn('UPDATE_INDICATOR_PASS', output)
+            self.assertNotIn('TypeError', output)
+
     def test_power_selection(self):
         parser = configparser.ConfigParser()
         parser.read_string('[main]\n' + (ROOT / 'fuzzel/fuzzel.ini').read_text())

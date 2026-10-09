@@ -285,10 +285,13 @@ class PersonalConfiguration(unittest.TestCase):
                 vm = Path(directory)
                 content = before
                 failed_probe = None
+                portal_answer = b''
 
                 def run(self, command, root=False, check=True):
                     if self.failed_probe and command.endswith(' ' + self.failed_probe):
                         return subprocess.CompletedProcess(command, 1, b'', b'probe failed')
+                    if command.endswith(' read'):
+                        return subprocess.CompletedProcess(command, 0, self.portal_answer, b'')
                     if command == 'cat ~/.config/niri/config.kdl':
                         if self.content is None:
                             return subprocess.CompletedProcess(command, 1, b'', b'missing')
@@ -322,6 +325,14 @@ class PersonalConfiguration(unittest.TestCase):
                 check.checks_after_restart(guest, results, {'db_sha256': 'database'}, before)
                 self.assertFalse(results[key]['ok'])
             guest.failed_probe = None
+            # From 0.3.1 the key ksecretd handed the app before the upgrade is the fixture.
+            (guest.vm / 'portal-setup.txt').write_text('exit 0\nportal key: 00ff\n')
+            for answer, ok in ((b'portal key: 00ff\n', True), (b'portal key: 0100\n', False), (b'', False)):
+                with self.subTest(answer=answer):
+                    guest.portal_answer = answer
+                    results = {}
+                    check.checks_after_restart(guest, results, {'db_sha256': 'database'}, before)
+                    self.assertEqual(results['portal master key kept']['ok'], ok)
             (guest.vm / 'portal-setup.txt').unlink()
             results = {}
             check.checks_after_restart(guest, results, {'db_sha256': 'database'}, before)

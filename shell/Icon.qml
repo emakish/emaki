@@ -20,6 +20,7 @@ Image {
             // launcher button.
             logo: '<defs><linearGradient id="hot" gradientUnits="userSpaceOnUse" x1="3" y1="24" x2="21" y2="0"><stop offset="0" stop-color="#b01e78"/><stop offset="0.3" stop-color="#ec2a55"/><stop offset="0.62" stop-color="#ff6a2a"/><stop offset="1" stop-color="#ffb62e"/></linearGradient></defs><path fill="url(#hot)" d="M3 22L7.161 22L12.896 2L8.735 2ZM5.735 4L20 4L24 0L9.735 0ZM2.867 14L17.133 14L21.133 10L6.867 10ZM0 24L14.265 24L18.265 20L4 20Z"/>',
             corner: '<path d="M1.25 26V13.25a12 12 0 0 1 12-12H26"/>',
+            close: '<path d="m6 6 12 12M18 6 6 18"/>',
             tray: '<path d="m6 15 6-6 6 6"/>',
             file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
             wifi: '<path d="M1.42 9a16 16 0 0 1 21.16 0M5 12.55a11 11 0 0 1 14.08 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/>',

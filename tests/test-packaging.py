@@ -74,25 +74,25 @@ class MetadataTests(unittest.TestCase):
         self.assertIn('auth       substack    emaki-greetd-auth', (ROOT / 'greetd/pam').read_text())
         self.assertIn('auth       include     system-local-login', (ROOT / 'greetd/pam-auth').read_text())
 
-    def test_release_versions(self, marker_release='2'):
+    def test_release_versions(self, marker_release='1'):
         for name in ('emaki', 'emaki-config', 'emaki-desktop', 'emaki-apps', 'emaki-keyring', 'emaki-mirrorlist', 'emaki-installer', 'emaki-nvidia'):
             with self.subTest(package=name):
                 info = self.recipes[name]
                 self.assertEqual(info['pkgname'], [name])
-                self.assertEqual(info['pkgver'], ['0.3.1'])
-                self.assertEqual(info['pkgrel'], [marker_release] if name == 'emaki' else ['2'] if name == 'emaki-config' else ['1'])
+                self.assertEqual(info['pkgver'], ['0.4.0'])
+                self.assertEqual(info['pkgrel'], [marker_release] if name == 'emaki' else ['1'])
                 # emaki-installer also ships the zone map (ODbL) and the GRUB unlock-screen fonts (DejaVu, Bitstream Vera).
                 self.assertEqual(info['license'], ['GPL-3.0-or-later', 'ODbL-1.0', 'Bitstream-Vera']
                                  if name == 'emaki-installer' else ['GPL-3.0-or-later', 'Bitstream-Vera']
                                  if name == 'emaki-config' else ['GPL-3.0-or-later']
                                  if name == 'emaki-nvidia' else ['GPL-3.0-or-later'])
         cargo = tomllib.loads((ROOT / 'Cargo.toml').read_text())
-        self.assertEqual(cargo['workspace']['package']['version'], '0.3.1')
+        self.assertEqual(cargo['workspace']['package']['version'], '0.4.0')
         packages = tomllib.loads((ROOT / 'Cargo.lock').read_text())['package']
-        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.3.1'})
+        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.4.0'})
         self.assertEqual(self.recipes['emaki']['depends'], [
-            'emaki-config=0.3.1-2', 'emaki-desktop=0.3.1-1', 'niri-emaki=26.04-11',
-            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.3.1-1', 'emaki-mirrorlist>=0.3.1-1'])
+            'emaki-config=0.4.0-1', 'emaki-desktop=0.4.0-1', 'niri-emaki=26.04-12',
+            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.4.0-1', 'emaki-mirrorlist>=0.4.0-1'])
 
     def test_early_console_font_reaches_targets_and_updates(self):
         self.assertIn('terminus-font', self.recipes['emaki-config']['depends'])
@@ -181,7 +181,7 @@ class MetadataTests(unittest.TestCase):
         self.assertEqual(set(info['makedepends']), {'git', 'make', 'python', 'rust', 'qt6-shadertools'})
         self.assertEqual(set(info['checkdepends']), {'niri', 'nodejs'})
         required = {
-            'niri-emaki>=26.04-6', 'quickshell-emaki>=0.3.1-4', 'python', 'python-gobject', 'python-pillow',
+            'niri-emaki>=26.04-12', 'quickshell-emaki>=0.3.1-4', 'python', 'python-gobject', 'python-pillow',
             'gtk3', 'wpaperd', 'wl-clipboard', 'cliphist', 'polkit-kde-agent', 'udiskie', 'kitty',
             'fastfetch>=2.68.1', 'imagemagick', 'hyprlock', 'playerctl', 'fuzzel', 'qt6ct',
             'noto-fonts', 'breeze-icons', 'adwaita-icon-theme', 'brightnessctl',
@@ -200,7 +200,7 @@ class MetadataTests(unittest.TestCase):
 
     def test_desktop_and_fork_constraints(self):
         desktop = self.recipes['emaki-desktop']
-        self.assertTrue({'emaki-config', 'niri-emaki>=26.04-6', 'quickshell-emaki', 'hyprlock',
+        self.assertTrue({'emaki-config', 'niri-emaki>=26.04-12', 'quickshell-emaki', 'hyprlock',
                          'firefox', 'noto-fonts', 'dolphin', 'kitty',
                          'kdegraphics-thumbnailers', 'ffmpegthumbs', 'breeze-icons'} <= set(desktop['depends']))
         # niri runs X11 clients only through xwayland-satellite found on PATH.
@@ -213,9 +213,11 @@ class MetadataTests(unittest.TestCase):
         self.assertTrue(any(d.startswith('swayidle:') for d in desktop['optdepends']))
         self.assertFalse(any(d.startswith('niri-emaki:') for d in desktop['optdepends']))
         niri = self.recipes['niri-emaki']
-        self.assertEqual((niri['pkgver'], niri['pkgrel']), (['26.04'], ['11']))
+        self.assertEqual((niri['pkgver'], niri['pkgrel']), (['26.04'], ['12']))
         self.assertTrue({'niri>=26.04', 'libdisplay-info.so=3-64', 'libinput.so=10-64',
                          'libseat.so=1-64', 'mesa'} <= set(niri['depends']))
+        self.assertIn('export NIRI_BUILD_COMMIT="v$pkgver+emaki.$pkgrel"',
+                      (ROOT / 'packaging/niri-emaki/PKGBUILD').read_text())
         self.assertNotIn('libgbm.so=1-64', niri['depends'])  # Arch mesa does not provide it
         qs = self.recipes['quickshell-emaki']
         self.assertEqual(qs['pkgver'], ['0.3.1'])
@@ -1079,19 +1081,21 @@ class PayloadTests(unittest.TestCase):
                 mode = path.stat().st_mode & 0o7777
                 executable = path.parent in (self.dest / 'usr/bin', self.dest / 'usr/share/libalpm/scripts',
                                              self.dest / 'usr/lib/systemd/system-sleep')
+                executable |= path.relative_to(self.dest).as_posix() in (
+                    'usr/libexec/emaki/update-manager-backend', 'usr/libexec/emaki/emaki-update-apply')
                 readonly = path.relative_to(self.dest).as_posix() in ('etc/sudoers.d/10-emaki-wheel', 'usr/share/emaki/defaults/wheel')
                 self.assertEqual(mode, 0o440 if readonly else 0o755 if executable else 0o644, str(path))
         binary = self.dest / 'usr/bin/emaki'
         # Keep this payload check independent of the host's installed channel helper.
         self.assertEqual(run([str(binary), 'version'], env={**os.environ, 'PATH': ''}).stdout,
-                         'emaki 0.3.1 [channel: unknown]\n')
+                         'emaki 0.4.0 [channel: unknown]\n')
         result = run(['python3', 'scripts/core-package.py', 'verify-build-paths', '--binary', str(binary)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_defaults_and_presets(self):
         commit = run(['git', 'rev-parse', 'HEAD']).stdout.strip()
         self.assertEqual((self.dest / 'usr/lib/emaki-release').read_text(),
-                         f'VERSION=0.3.1\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
+                         f'VERSION=0.4.0\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
         expected = {'greetd.service', 'NetworkManager.service', 'bluetooth.service', 'grub-btrfsd.service',
                     'snapper-timeline.timer', 'snapper-cleanup.timer', 'fstrim.timer', 'paccache.timer', 'emaki-refresh-mirrors.timer'}
         preset = (self.dest / 'usr/lib/systemd/system-preset/50-emaki.preset').read_text().splitlines()

@@ -95,6 +95,12 @@ ShellRoot {
                 equal(lockInput.revealed, true);
                 keyClick(Qt.Key_Return);
                 equal(lockInput.revealed, false);
+                keyClick(Qt.Key_Enter);
+                equal(lockInput.revealed, true);
+                keyClick(Qt.Key_Escape);
+                equal(lockInput.revealed, false);
+                equal(toggle.activeFocus, false);
+                equal(auth.succeeded, false);
                 mouseClick(toggle);
                 equal(lockInput.revealed, true);
                 auth.buffer = "";

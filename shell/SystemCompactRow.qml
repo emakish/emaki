@@ -22,7 +22,7 @@ Item {
     signal clicked(string page)
     readonly property var backend: services.backend
     readonly property int layoutCount: niri.layouts?.names.length ?? 0
-    readonly property var pages: ["tray"].concat(layoutCount > 1 ? ["kb"] : []).concat(["wifi", "bt", "sound", "light", "power"])
+    readonly property var pages: (UpdateService.pending > 0 ? ["updates", "tray"] : ["tray"]).concat(layoutCount > 1 ? ["kb"] : []).concat(["wifi", "bt", "sound", "light", "power"])
     readonly property real cellsWidth: cellRow.implicitWidth
     readonly property alias cells: cells
     function cell(page: string): Item {
@@ -58,6 +58,8 @@ Item {
     readonly property string batteryText: services.batteryPercent >= 0 ? services.batteryPercent + "%" : ""
     function iconOf(page: string): string {
         switch (page) {
+        case "updates":
+            return "software-update-available-symbolic";
         case "tray":
             return "pan-up-symbolic";
         case "wifi":
@@ -78,6 +80,7 @@ Item {
         if (page === "sound")
             return soundReady && !services.sinkMuted ? "sound" : "muted";
         return ({
+                updates: "restart",
                 tray: "tray",
                 wifi: backend?.wiredConnected ? "wired" : "wifi",
                 bt: "bt",
@@ -86,6 +89,7 @@ Item {
             })[page] ?? "";
     }
     readonly property var tips: ({
+            updates: "Updates available · " + UpdateService.pending,
             tray: "Background apps",
             kb: "Keyboard layout",
             wifi: "Wi-Fi",
@@ -110,7 +114,7 @@ Item {
                 required property string modelData
                 readonly property string page: modelData
                 readonly property string icon: row.iconOf(page)
-                readonly property string text: page === "kb" ? row.niri.layoutLabel : page === "power" ? row.batteryText : ""
+                readonly property string text: page === "updates" ? String(UpdateService.pending) : page === "kb" ? row.niri.layoutLabel : page === "power" ? row.batteryText : ""
                 glass: row.glass
                 key: "cell-" + page
                 label: row.tips[page] ?? ""
@@ -129,7 +133,20 @@ Item {
                     if (row.glass && row.glass.wake)
                         row.glass.wake();
                 }
-                onClicked: row.clicked(page)
+                onClicked: {
+                    if (page === "updates")
+                        UpdateService.open();
+                    else
+                        row.clicked(page);
+                }
+                Rectangle {
+                    anchors.fill: parent
+                    visible: cell.page === "updates" && cell.activeFocus
+                    color: "transparent"
+                    radius: 7
+                    border.width: 2
+                    border.color: row.ink
+                }
                 // Under the cell's MouseArea: its TapHandler would otherwise take the press
                 // (instance children lie above GlassTarget's own MouseArea). A press opens or
                 // switches the panel, which hides the tip itself.

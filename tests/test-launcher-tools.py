@@ -39,6 +39,12 @@ core_profile=root/'core';core_profile.mkdir()
 for d in ('config','state','runtime'):(core_profile/d).mkdir(mode=0o700)
 os.environ['EMAKI_SETTINGS_PROFILE']=str(core_profile)
 os.environ['EMAKI_BIN']=str(ROOT/'.cache/target/debug/emaki')
+# Normal settings requests preserve the session's XDG paths and omit test flags.
+settings_probe = root/'bin/settings-probe'
+settings_probe.write_text('#!/usr/bin/python3\nimport json, os, sys\nfrom pathlib import Path\nPath(' + repr(str(root/'settings-request.json')) + ').write_text(json.dumps([sys.argv[1:], os.environ["XDG_CONFIG_HOME"]]))\nprint(json.dumps(dict(reason="ready", status="ok", session_applied=False)))\n')
+settings_probe.chmod(0o700)
+assert helper(dict(op='settings', action='list', binary=str(settings_probe)))['state'] == 'ready'
+assert json.loads((root/'settings-request.json').read_text()) == [['settings', 'list', '--json'], str(root/'c')]
 assert helper({'op':'clip-list'})['entries']==[]
 assert not (root/'cache/cliphist').exists()
 clip=['cliphist','-config-path','/dev/null','-db-path',str(Path(os.environ['XDG_RUNTIME_DIR'])/'emaki-cliphist.db')]
@@ -76,6 +82,16 @@ for _ in range(2):assert helper({'op':'frequent-record','id':'fixture-term'})['s
 assert helper({'op':'frequent-list'})['counts']=={'fixture-term':2}
 # Real QML: enter copies, delete removes; terminal launch records frequency, web row.
 qml=root/'q';shutil.copytree(ROOT/'shell',qml);shutil.copyfile(ROOT/'tests/fixtures/ClockTest.qml',qml/'shell.qml')
+# Two per-output catalog instances must share the one IPC-applied snapshot.
+fixture = (qml/'shell.qml').read_text().replace('    id: root', '\n'.join([
+    '    id: root',
+    '    SettingsCatalog { id: secondSettings; active: false }',
+    '    IpcHandler {',
+    '        target: "second-settings"',
+    '        function value(key: string): string { return JSON.stringify(secondSettings.value(key)); }',
+    '    }'
+]), 1)
+(qml/'shell.qml').write_text(fixture)
 def ipc(method,*args):return run(['qs','-p',str(qml),'ipc','call','test',method,*map(str,args)]).decode().strip()
 def state():
     try:return json.loads(ipc('status'))
@@ -126,7 +142,25 @@ try:
     wait_for(lambda: state()['search']['selected_kind'] == 'web')
     assert ipc('resultKinds') == 'web'
     assert 'settings' not in state()['search'] and 'page' not in state()['search']
-    # The retained core still owns dock keys when an isolated profile is configured.
+    # IPC applies all managed shell values synchronously, with no core callback.
+    wait_for(lambda: not json.loads(ipc('settingsStatus'))['busy'])
+    rows = helper(dict(op='settings', action='list', profile=str(core_profile), binary=os.environ['EMAKI_BIN']))['settings']
+    def apply_rows(values):
+        return run(['qs', '-p', str(qml), 'ipc', 'call', 'settings', 'apply', json.dumps(dict(rows=values))]).decode().strip()
+    before = state()
+    assert apply_rows([]) == 'invalid_settings'
+    assert state()['dock']['on'] == before['dock']['on']
+    changed = [dict(row, value=not row['value']) if row['key'] in ('bar.autohide', 'bar.overview_workspaces', 'dock.on', 'dock.auto_hide') else row for row in rows]
+    assert apply_rows(changed) == 'applied'
+    for row in changed:
+        if row['key'] in ('bar.autohide', 'bar.overview_workspaces', 'dock.on', 'dock.auto_hide'):
+            shared = run(['qs', '-p', str(qml), 'ipc', 'call', 'second-settings', 'value', row['key']])
+            assert json.loads(shared) == row['value']
+    now = state()
+    for key, path in [('bar.autohide', ('bar_policy', 'auto_hide')), ('dock.on', ('dock', 'on')), ('dock.auto_hide', ('dock', 'auto_hide'))]:
+        assert now[path[0]][path[1]] == next(row['value'] for row in changed if row['key'] == key)
+    assert apply_rows(rows) == 'applied'
+    # Dock commands route through the same durable core.
     toml = lambda: (core_profile/'config/emaki/settings.toml').read_text()
     run(['qs','-p',str(qml),'ipc','call','dock','autoHide','false'])
     wait_for(lambda: not state()['dock']['auto_hide'])
@@ -135,6 +169,7 @@ try:
     wait_for(lambda: state()['dock']['auto_hide'])
     wait_for(lambda: not json.loads(ipc('settingsStatus'))['busy'])
     run([os.environ['EMAKI_BIN'], 'settings', 'set', 'bar.autohide', 'true', '--profile-root', str(core_profile), '--json'], env=dict(os.environ, XDG_CONFIG_HOME=str(core_profile/'config'), XDG_STATE_HOME=str(core_profile/'state'), XDG_RUNTIME_DIR=str(core_profile/'runtime')))
+    wait_for(lambda: state()['bar_policy']['auto_hide'])
     # Stale saved settings-page history must not produce a launcher result.
     assert helper(dict(op='recent-record',kind='page',ref='bar'))['state'] == 'ready'
     ipc('close'); ipc('launcher'); ipc('mode','All'); ipc('query','')

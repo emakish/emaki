@@ -8,6 +8,7 @@ Item {
     property bool autoHide: true
     property bool overview: false
     property string presentation: "unknown"
+    property bool keyboardActive: false
     property bool popupOpen: false
     property bool dragging: false
     property bool pointerInside: false
@@ -20,10 +21,10 @@ Item {
     // The edge remains reachable over fullscreen windows, including a pinned dock.
     readonly property bool edgeEnabled: on && (autoHide || fullscreen) && !overview
     // Overview and fullscreen slide the dock away in the mockup regardless of auto-hide.
-    readonly property bool dockVisible: on && !overview && ((!autoHide && !fullscreen) || revealed || popupOpen || dragging)
+    readonly property bool dockVisible: on && (!overview || keyboardActive) && (keyboardActive || (!autoHide && !fullscreen) || revealed || popupOpen || dragging)
     readonly property int reserve: on && !autoHide ? thickness : 0
     function scheduleHide(): void {
-        if (!popupOpen && !dragging && !pointerInside && !edgeHovered)
+        if (!keyboardActive && !popupOpen && !dragging && !pointerInside && !edgeHovered)
             hideDelay.restart();
     }
     onEdgeHoveredChanged: {
@@ -37,6 +38,12 @@ Item {
     }
     onPointerInsideChanged: {
         if (pointerInside)
+            hideDelay.stop();
+        else
+            scheduleHide();
+    }
+    onKeyboardActiveChanged: {
+        if (keyboardActive)
             hideDelay.stop();
         else
             scheduleHide();
@@ -85,7 +92,7 @@ Item {
         id: hideDelay
         interval: 100
         onTriggered: {
-            if (!policy.popupOpen && !policy.dragging && !policy.pointerInside && !policy.edgeHovered)
+            if (!policy.keyboardActive && !policy.popupOpen && !policy.dragging && !policy.pointerInside && !policy.edgeHovered)
                 policy.revealed = false;
         }
     }

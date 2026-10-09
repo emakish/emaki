@@ -277,8 +277,10 @@ ShellRoot {
             })
         onOutbound: message => {
             test.sent = test.sent.concat([message.type]);
-            if (message.type === "plan")
+            if (message.type === "plan") {
+                test.check(message.config.hibernation === false, "mouse and keyboard interactions never send a hibernation plan");
                 test.lastPlan = JSON.parse(JSON.stringify(message.config));
+            }
             if (test.luksRecovery && message.type === "probe" && controller.editorProbing) {
                 Qt.callLater(function () {
                     controller.receive(Object.assign({}, controller.session.inventory, {
@@ -572,16 +574,22 @@ ShellRoot {
             } else if (test.stage === 13) {
                 for (const mode of ["erase", "manual", "alongside"]) {
                     controller.mode = mode;
-                    const check = test.findItem(content, "hibernationCheck") as C.CheckBox;
-                    test.check(check.visible && check.text.indexOf("4.0 GiB") >= 0, "hibernation and reserved RAM shown in every mode (" + mode + ": " + check.visible + ", " + check.text + ", step " + controller.step + ")");
-                    const before = controller.hibernation;
-                    // The checkbox follows the mode choices; a small window scrolls to it first.
-                    test.reveal(check);
-                    input.mouseClick(check, 12, check.height / 2);
-                    test.check(controller.hibernation !== before, "hibernation checkbox changes plan state");
+                    input.wait(30);
+                    test.check(test.findItem(content, "hibernationCheck") === null, "hibernation has no mouse or keyboard target in " + mode);
+                    test.check(test.visibleTextsContaining(content, "Enable hibernation") === 0, "hibernation is not offered in " + mode);
+                    for (let tab = 0; tab < 40; ++tab) {
+                        input.keyClick(Qt.Key_Tab);
+                        test.check(controller.hibernation === false, "Tab navigation cannot enable hibernation in " + mode);
+                    }
+                    const erase = test.find("eraseChoice");
+                    test.reveal(erase);
+                    input.mouseClick(erase, erase.width / 2, erase.height / 2);
+                    test.check(controller.mode === "erase" && controller.hibernation === false, "mouse selection keeps hibernation disabled");
+                    erase.forceActiveFocus();
+                    input.keyClick(Qt.Key_Space);
+                    test.check(controller.hibernation === false, "keyboard selection keeps hibernation disabled");
                 }
                 test.check(!test.findItem(content, "alongsideChoice").visible, "no alongside choice without a worker offer");
-                controller.hibernation = false;
                 // A Windows disk as the 0.2 worker publishes it: alongside is off
                 // in the installer core, so no partition carries a shrink offer.
                 controller.session.inventory = {
@@ -675,10 +683,9 @@ ShellRoot {
                 input.keyClick(Qt.Key_Right);
                 test.check(controller.shrinkBytes === before + 1048576, "keyboard changes shrink by one MiB");
                 controller.shrinkBytes = 32 * 1073741824;
-                controller.hibernation = true;
                 input.wait(30);
-                test.check(controller.shrinkBytes === 36 * 1073741824 + 16 * 1048576, "RAM reservation raises the alongside minimum");
-                test.check(controller.alongsideSizeValid, "RAM-sized swap and optional encryption fit the extent");
+                test.check(controller.shrinkBytes === 32 * 1073741824, "alongside reserves no hibernation space");
+                test.check(controller.alongsideSizeValid, "alongside minimum fits without a RAM reservation");
                 const refused = JSON.parse(JSON.stringify(controller.session.inventory));
                 refused.disks[0].partitions[0].shrink.reason = "Windows is hibernated";
                 controller.session.inventory = refused;
@@ -686,7 +693,6 @@ ShellRoot {
                 input.wait(30);
                 test.check(!choice.visible && !controller.alongsideSizeValid, "refused worker offer hides alongside and blocks progress");
             } else if (test.stage === 15) {
-                controller.hibernation = false;
                 // Install alongside on a Windows disk, then a disk without Windows: the mode does
                 // not stay on alongside, and the grey Continue gives no hibernation reason (INST-13).
                 const offered = JSON.parse(JSON.stringify(controller.session.inventory));
@@ -741,9 +747,7 @@ ShellRoot {
                 controller.mode = "erase";
                 const erase = test.find("eraseChoice");
                 test.check(erase.detail.indexOf("Root needs at least 20.0 GiB.") >= 0, "the erase card names the root minimum (" + erase.detail + ")");
-                controller.hibernation = true;
-                test.check(erase.detail.indexOf("Root needs at least 36.0 GiB.") >= 0, "hibernation adds the RAM to the root minimum (" + erase.detail + ")");
-                controller.hibernation = false;
+                test.check(controller.rootMinimum === 20 * 1073741824 + (controller.encryption !== "none" ? 16 * 1048576 : 0), "root minimum reserves no hibernation space despite 16 GiB RAM");
                 controller.session.inventory = {
                     memory_bytes: 16 * 1073741824,
                     uefi: true,
@@ -795,9 +799,6 @@ ShellRoot {
                     return test.check(false, "the root minimum line is named rootMinimum-<partition>");
                 test.check(rootRule.visible && rootRule.text === "Root needs at least 20.0 GiB." && !Qt.colorEqual(rootRule.color, content.danger), "the root row names the minimum (" + rootRule.text + ")");
                 test.check(!test.find("rootMinimum-/dev/vdb1").visible, "only the root row names it");
-                controller.hibernation = true;
-                test.check(rootRule.text === "Root needs at least 36.0 GiB.", "hibernation raises the root row's minimum (" + rootRule.text + ")");
-                controller.hibernation = false;
                 controller.assign(disks[0].partitions[0], "/", "ext4", true);
                 const smallRoot = test.find("rootMinimum-/dev/vdb1");
                 test.check(smallRoot.visible && Qt.colorEqual(smallRoot.color, content.danger), "a root smaller than the minimum is marked");

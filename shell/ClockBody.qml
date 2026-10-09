@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
+import "Keyboard.js" as Keyboard
 
 // What the clock panel shows (docs/mockups/liquid-glass/clock.js buildView()), in the
 // panel's frame: (0, 0) is its top left once grown, 560 wide in the drawer, 440 in a peek.
@@ -11,6 +12,51 @@ import Quickshell
 // The functions are the shell's (NotificationStore, MPRIS, the calendar); the look is new.
 Item {
     id: body
+    property bool keyboardMode: false
+    readonly property alias scroller: list
+    function findTarget(item: var, key: string): var {
+        if (item.key === key)
+            return item;
+        for (const child of item.children) {
+            const found = findTarget(child, key);
+            if (found)
+                return found;
+        }
+        return null;
+    }
+    function focusNewest(): void {
+        keyboardMode = true;
+        for (const group of store.groups())
+            store.expand(group.key, true);
+        Qt.callLater(() => {
+            const newest = store.entries.slice().sort((a, b) => b.time - a.time)[0];
+            const target = newest ? findTarget(body, "note-" + newest.id) : null;
+            if (target) {
+                target.forceActiveFocus(Qt.TabFocusReason);
+                Keyboard.reveal(target);
+            } else
+                Keyboard.focusFirst(body);
+        });
+    }
+    function focusedKey(item: var): string {
+        for (const child of item.children) {
+            const found = focusedKey(child);
+            if (found)
+                return found;
+        }
+        return item.activeFocus ? item.key ?? "" : "";
+    }
+    function dismissFocused(all: bool): void {
+        const key = focusedKey(body);
+        const match = /^note-(-?\d+)/.exec(key);
+        if (all)
+            store.dismiss(store.entries.map(n => n.id));
+        else if (match)
+            store.dismiss([Number(match[1])]);
+        else
+            return;
+        Qt.callLater(focusNewest);
+    }
     required property NotificationStore store
     // The ClockPanel: colours, drops. Null in tests of the body alone.
     property var glass: null
@@ -59,6 +105,8 @@ Item {
     // The panel is not a page (clock.js): at most six rows, fewer if the screen is short;
     // the rest is a count.
     readonly property var plan: {
+        if (keyboardMode)
+            return notePlan(Math.max(1, store.count));
         let chosen = null;
         for (let cap = 6; cap >= 1; --cap) {
             chosen = notePlan(cap);
@@ -67,7 +115,7 @@ Item {
         }
         return chosen;
     }
-    readonly property real drawerHeight: listTop + plan.height + (actionNote ? 22 : 0) + 14
+    readonly property real drawerHeight: Math.min(maxHeight, listTop + plan.height + (actionNote ? 22 : 0) + 14)
     readonly property real peekHeight: peekNotes.length === 1 ? 40 + noteHeight(peekNotes[0]) + 10 : peekNotes.length > 1 ? 120 : 36
     readonly property real desiredHeight: opened ? drawerHeight : peekHeight
     function actionsOf(note: var): var {
@@ -139,7 +187,7 @@ Item {
                 y += 22;
                 lastBucket = g.bucket;
             }
-            for (const n of g.notes.slice(0, g.expanded ? cap - rows : 1)) {
+            for (const n of g.notes.slice(0, (g.expanded || keyboardMode) ? cap - rows : 1)) {
                 items.push({
                     kind: "note",
                     y: y,
@@ -334,7 +382,7 @@ Item {
         property bool peek: false
         readonly property var actions: body.actionsOf(note)
         // The row or one of its own targets (close, an action) holds the hover drop.
-        readonly property bool open: body.glass ? body.glass.hoverKey === key || body.glass.hoverKey.startsWith(key + ":") : false
+        readonly property bool open: activeFocus || dismiss.activeFocus || body.focusedKey(row).length > 0 || (body.glass ? body.glass.hoverKey === key || body.glass.hoverKey.startsWith(key + ":") : false)
         key: (peek ? "peek-" : "note-") + note.id
         label: note.summary
         glass: body.glass
@@ -501,12 +549,16 @@ Item {
             color: word.color
         }
     }
-    Item {
+    Flickable {
         id: list
         visible: body.opened
         y: body.listTop
         width: parent.width
-        height: body.plan.height
+        height: body.keyboardMode ? Math.max(48, body.maxHeight - body.listTop - 14 - (body.actionNote ? 22 : 0)) : body.plan.height
+        contentHeight: body.plan.height
+        contentWidth: width
+        clip: body.keyboardMode
+        interactive: body.keyboardMode
         Repeater {
             model: body.opened ? body.plan.items : []
             Item {

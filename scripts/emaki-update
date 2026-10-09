@@ -18,7 +18,7 @@ except ModuleNotFoundError:
     from emaki_installer.update_errors import error_lines, explain
 
 
-def run(command):
+def run(command, fail_on_hook_error=False):
     # Keep stdin attached for confirmation prompts. Bound retained diagnostics;
     # the complete output still reaches the terminal as it arrives.
     tail = b''
@@ -50,8 +50,9 @@ def run(command):
         signal.signal(signal.SIGINT, previous)
     output = tail.decode('utf-8', errors='replace')
     # Post-transaction hook errors can accompany a successful pacman exit.
-    if status or any(line.lower() == 'error: command failed to execute correctly'
-                     for line in error_lines(output)):
+    hook_failed = any(line.lower() == 'error: command failed to execute correctly'
+                      for line in error_lines(output))
+    if status or hook_failed:
         declined = status == 1 and re.search(
             r':: Proceed with installation\? \[Y/n\]\s*(?:[nN]\s*)?$', output)
         cancelled = (status in (-signal.SIGINT, 128 + signal.SIGINT)
@@ -61,13 +62,19 @@ def run(command):
         else:
             message = explain(output)
         print('\n' + message, file=sys.stderr)
+    if not status and hook_failed and fail_on_hook_error:
+        return 1
     return status if status >= 0 else 128 - status
 
 
 def main():
-    argparse.ArgumentParser(description='Update all installed packages [pacman].').parse_args()
+    parser = argparse.ArgumentParser(description='Update all installed packages [pacman].')
+    parser.add_argument('--noninteractive', action='store_true',
+                        help='use the default answers for the authorized graphical update')
+    args = parser.parse_args()
     try:
-        return run(['/usr/bin/pacman', '-Syu'])
+        return run(['/usr/bin/pacman', '-Syu'] + (['--noconfirm'] if args.noninteractive else []),
+                   fail_on_hook_error=args.noninteractive)
     except OSError as error:
         print(explain(str(error)), file=sys.stderr)
         return 1

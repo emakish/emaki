@@ -22,8 +22,6 @@ def heading_for(screen):
         return 'Refresh removable media'
     if screen.endswith(('-caps', '-numlock')):
         return 'Caps Lock is on'
-    if screen == 'manual-hibernation':
-        return HEADINGS['disk']
     if screen in ('alongside-review', 'plan-errors'):
         return HEADINGS['review']
     if screen == 'live-keyboard-encryption':
@@ -39,6 +37,7 @@ def validate_frame(path, log, screen, width, height, version, *, scrolled=False)
     evidence = json.loads(matches[0])
     assert (evidence['width'], evidence['height']) == (width, height), evidence
     texts = evidence['texts']
+    assert not any('Enable hibernation' in item['text'] for item in texts), f'Hibernation option returned [{screen}]'
     body = [item for item in texts if item['body'] and not item['clipped'] and not item['truncated']]
     assert body, f'No readable page content [{screen}]'
     for item in body:

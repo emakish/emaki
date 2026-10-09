@@ -1,0 +1,32 @@
+#!/bin/bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -eu
+umask 077
+ulimit -c 0
+if (( $# )); then
+    if (( $# == 1 )) && [[ $1 == --status || $1 == --check ]]; then
+        exec /usr/libexec/emaki/update-manager-backend "$1"
+    fi
+    printf 'Usage: emaki-update-manager [--status|--check]\n' >&2
+    exit 2
+fi
+if (( EUID == 0 )); then
+    printf 'Open Emaki updates as a regular user.\n' >&2
+    exit 1
+fi
+: "${XDG_RUNTIME_DIR:?Emaki updates needs a user runtime directory}"
+config=/usr/share/emaki-update-manager/ui/shell.qml
+exec 9>"$XDG_RUNTIME_DIR/emaki-update-manager.lock"
+if ! flock -n 9; then
+    reply=''
+    for _ in {1..50}; do
+        if reply=$(qs ipc -p "$config" call updates present 2>&1) && [[ ${reply##*$'\n'} == presented ]]; then
+            exit 0
+        fi
+        sleep 0.1
+    done
+    printf 'The update window could not be shown: %s\n' "${reply:-(no reply)}" >&2
+    exit 1
+fi
+qs -p "$config" 9>&-

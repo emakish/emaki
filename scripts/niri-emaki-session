@@ -25,10 +25,28 @@ export XDG_MENU_PREFIX=emaki-
 # Packaged autostart overrides precede upstream defaults, without changing user files.
 # environment.d supplies this to user generators first; keep direct session launches
 # consistent too. Imports alone cannot change the environment seen by generators.
-case "${XDG_CONFIG_DIRS:-/etc/xdg}" in
-    /usr/share/emaki/xdg|/usr/share/emaki/xdg:*) ;;
-    *) export XDG_CONFIG_DIRS="/usr/share/emaki/xdg:${XDG_CONFIG_DIRS:-/etc/xdg}" ;;
+case "${XDG_STATE_HOME:-}" in
+    /*) emaki_defaults_root="$XDG_STATE_HOME/emaki/defaults" ;;
+    *) emaki_defaults_root="$HOME/.local/state/emaki/defaults" ;;
 esac
+IFS=: read -r -a emaki_config_dirs <<< "${XDG_CONFIG_DIRS:-/etc/xdg}"
+XDG_CONFIG_DIRS=/usr/share/emaki/xdg
+# Personal config remains above this search list. Repeated wrapper entry keeps
+# each owned layer once, with managed defaults above packaged defaults.
+case "$emaki_defaults_root" in
+    /*) case "$emaki_defaults_root" in
+        *:*) ;;
+        *) XDG_CONFIG_DIRS="$emaki_defaults_root:$XDG_CONFIG_DIRS" ;;
+    esac ;;
+esac
+for emaki_config_dir in "${emaki_config_dirs[@]}"; do
+    case "$emaki_config_dir" in
+        ""|/usr/share/emaki/xdg|"$emaki_defaults_root") ;;
+        *) XDG_CONFIG_DIRS="$XDG_CONFIG_DIRS:$emaki_config_dir" ;;
+    esac
+done
+export XDG_CONFIG_DIRS
+unset emaki_defaults_root emaki_config_dir emaki_config_dirs
 
 # Config selection. Same order as stock niri 26.04 (src/main.rs):
 # if a personal ~/.config/niri/config.kdl exists, use fork.kdl (includes it entirely); otherwise,
@@ -60,6 +78,11 @@ start_compositor() {
     if [ -n "$cover_png" ]; then
         export EMAKI_STARTUP_COVER="$cover_png"
         export EMAKI_SESSION_TAKEOVER=1
+    fi
+    # Rebuild only the managed wrapper; a damaged store does not prevent login.
+    managed_config=$(emaki settings session-config) || managed_config=
+    if [ -n "$managed_config" ] && [ -f "$managed_config" ]; then
+        exec niri-emaki --session -c "$managed_config"
     fi
     exec niri-emaki --session -c "$(fork_config)"
 }

@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import "Keyboard.js" as Keyboard
 import "Liquid.js" as Liquid
 
 // The system panel on liquid glass (docs/mockups/liquid-glass/system.html): one Regular
@@ -20,6 +21,42 @@ import "Liquid.js" as Liquid
 // overlay's input and blur regions and the status read it.
 Item {
     id: panel
+    property bool keyboardBoundary: true
+    property bool keyboardMode: false
+    readonly property bool drawsKeyboardFocus: true
+    readonly property alias focusRing: focusRing
+    TapHandler {
+        acceptedButtons: Qt.AllButtons
+        onPressedChanged: if (pressed)
+            panel.keyboardMode = false
+    }
+    KeyboardFocusKeeper {
+        scope: panel
+        enabled: panel.opened
+    }
+    Keys.onPressed: event => {
+        panel.keyboardMode = true;
+        Keyboard.handle(panel, event);
+    }
+    property bool keyboardFocusPending: false
+    function takeFocus(keyboard): void {
+        if (!opened)
+            return;
+        keyboardMode = keyboard !== false;
+        keyboardFocusPending = true;
+        applyKeyboardFocus();
+    }
+    function applyKeyboardFocus(): void {
+        if (!keyboardFocusPending || !opened || contentAlpha <= .001)
+            return;
+        Qt.callLater(() => {
+            if (!panel.opened || !panel.keyboardFocusPending || panel.contentAlpha <= .001)
+                return;
+            panel.keyboardFocusPending = false;
+            Keyboard.focusFirst(Keyboard.targets(body.pages).length ? body.pages : panel);
+        });
+    }
+    onContentAlphaChanged: applyKeyboardFocus()
     required property SystemService service
     required property NiriService niri
     property HoverTip tip: null
@@ -72,6 +109,8 @@ Item {
         ++tick;
     }
     onOpenedChanged: {
+        if (!opened)
+            keyboardFocusPending = false;
         snapIfClosed();
         wake();
     }
@@ -418,6 +457,7 @@ Item {
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.AllButtons
+        onPressed: panel.keyboardMode = false
     }
     HoverHandler {
         onHoveredChanged: {
@@ -681,5 +721,24 @@ Item {
                 color: dot.modelData.item?.on ? LiquidPalette.text : panel.dim
             }
         }
+    }
+    // Focus stays crisp above the refracting content texture.
+    FocusRing {
+        id: focusRing
+        anchors.fill: null
+        readonly property Item focused: panel.Window.window?.activeFocusItem ?? null
+        readonly property bool belongs: focused !== null && Keyboard.boundary(focused) === panel
+        readonly property point position: {
+            panel.tick;
+            body.scroller.contentY;
+            return belongs ? focused.mapToItem(panel, 0, 0) : Qt.point(0, 0);
+        }
+        x: position.x
+        y: position.y
+        width: belongs ? focused.width : 0
+        height: belongs ? focused.height : 0
+        shown: panel.opened && belongs
+        radius: 10
+        z: 100
     }
 }

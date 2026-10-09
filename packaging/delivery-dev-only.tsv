@@ -224,3 +224,16 @@ installer/ui/tests/HardwareTest.qml	Installer hardware-notice regression test wi
 installer/ui/tests/fixtures/hardware.json	Installer hardware-notice test fixture.	installer/ui/tests/test_hardware.py
 installer/ui/tests/test_hardware.py	Installer hardware-notice unit tests.	Makefile:unittest discovery in installer/ui/tests
 installer/ui/tests/test_render_cleanup.py	Installer renderer cleanup regression tests.	Makefile:unittest discovery in installer/ui/tests
+update-manager/tests/test_updates.py	Update catalog and privilege-boundary regression tests.	Makefile:check
+update-manager/tests/fixtures.py	Package metadata fixtures.	Makefile:check
+update-manager/tests/mutants.py	Mutation checks for update parsing and privilege validation.	Makefile:check
+update-manager/ui/tests/InteractionTest.qml	Keyboard-only update-window interaction fixture.	update-manager/ui/tests/interactions.py
+update-manager/ui/tests/interactions.py	Update-window interaction and mutation test runner.	Makefile:check-shell
+update-manager/ui/tests/controller.py	Update-window process protocol test runner.	Makefile:check-shell
+update-manager/ui/tests/ControllerTest.qml	Update-window process protocol fixture.	update-manager/ui/tests/controller.py
+crates/emaki-core/src/settings/live.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-core/src/settings/niri_live.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-cli/src/settings_tui.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-cli/tests/settings_tui.rs	Core regression test or fixture; not part of the installed executable.	cargo test --workspace
+crates/emaki-core/src/settings/live_tests.rs	Core regression tests for durable session rollback; excluded from installed executable.	cargo test -p emaki-core
+crates/emaki-core/src/settings/mime.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py

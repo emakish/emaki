@@ -1,16 +1,16 @@
 # Maintainer: Yakyman <246958375+Yakyman@users.noreply.github.com>
 #
-# Upstream v26.04 plus Emaki's capture, login handoff, overview, cursor, wallpaper and lock privacy patches.
+# Upstream v26.04 plus Emaki's capture, login handoff, overview, cursor, wallpaper, lock privacy and keyboard focus patches.
 # Installs only /usr/bin/niri-emaki alongside stock niri; install the session
 # files through make install-niri-emaki after make install. The dedicated greeter
-# prefers this fork, with stock niri as a recovery fallback. Rebase all eight patches on updates.
+# prefers this fork, with stock niri as a recovery fallback. Rebase all nine patches on updates.
 # Patch 0006 makes the fork exit with status 3 when it has no primary renderer (software EGL,
 # failed driver): emaki-greeter-compositor shows its text failure screen on that status.
 
 pkgname=niri-emaki
 _pkgname=niri
 pkgver=26.04
-pkgrel=11
+pkgrel=12
 pkgdesc="niri with Emaki glass capture, login handoff, overview backdrop, crisp cursors and living wallpaper"
 arch=(x86_64)
 url="https://github.com/niri-wm/niri"
@@ -53,6 +53,7 @@ source=("$_pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
         0006-exit-without-primary-renderer.patch
         0007-protect-session-pixels-while-locked.patch
         0008-account-for-static-blur-occlusion.patch
+        0009-preserve-mapped-layer-keyboard-focus.patch
         check-assumptions.py)
 sha512sums=('ae30446fbf529155907726cf2cba7402bcfc5be2032370d66f9f980efb257f29353b47d495f1218b81ac32c643f15bbb74834dc35882849a4479021b4b9fa97f'
         'de1dbca747b46acdc3c97ec8f7b8686d517f3306e5bf550f5e51873ef2f3620979a87c92a5de425ad1f1962784480fbabdaa76efded2610dae33fbbd6f3bb429'
@@ -63,7 +64,8 @@ sha512sums=('ae30446fbf529155907726cf2cba7402bcfc5be2032370d66f9f980efb257f29353
         'cc07be9095d34ef952cff6b0d449e36bc6c9d459381e6a8895275b418e24275a16d3f0acc424df7998cdc8c1896a34714253e3479171b9abc4109e6743f027b4'
         '00377d375eb2a315e87f3d3aed500fe303a5e2c60efa419db9a9e6038e60f51972a77be0d0babbe1d9677c7fc30d41f722f913d2fd8ab52f76a20dd903105776'
         '061a12ef6c0c35afc41848765c2eb414dcfc98678f9190f0d6ee1cf9c02e982c191b4326131cac59c4261c83bfae8e80ce5e069b0976e68ec5b9eccbbe6b546f'
-        '67aa9ea3325c4e74f40cc91f85a8254323fb309428b25dbd618a222230d8c04adebf55e3228d9b58bba2079936aeb1a4a409e4225298a67acc0ce0fc8c0bc7f4')
+        '5c564f0e9569043a893e39ed7765f6623937ec1fd029f7a1309d36f024ad9ff49ef13dfe870549529992957b63310b2309346096d01b1d7b011ee2a1cdef4508'
+        '3948406f7b5d7d631e295bc514c60f456834ff50baccec8b0e563ae1cb41a4dcf348b72404f7a06308f192764f345cd980a8920460d9561a71473e65b2d82d4d')
 b2sums=('65fc4df85ab40c1a7a82900a9812c542a8a00467a0f1742f2dede50c0e323bd8957149e91b181a6c71ad077735f6a4db53451bbad0deb768f7d4840ebe798a20'
         '66244823b80fb158ee0623df0989a3090b4b42e12be147a859b50e8badfaa8677d57eda85d324658813d030e71c9d7f765dfef2206e83b32c302fb49437817f8'
         '68022cee01623d211cf7f399f1d5f0fdaec915637f1b7d9b096a1a0896e9c6a89b0b543eb2d2d5a64c99c4156182e6633724ad83e41eaf44ad4bce3e89524fa9'
@@ -73,7 +75,8 @@ b2sums=('65fc4df85ab40c1a7a82900a9812c542a8a00467a0f1742f2dede50c0e323bd8957149e
         'ddb729c4dbeb7c149d322d86478ea99ab8d22b815f0ae3a89d4ecec984334e575b5ac396272e1166d85ef30a82ab366dd43d70fe847d29f14d271b7b7febe9ad'
         '44c0737438f4c6108d87d7d1cf70b2c0e93cdcb7a71a4cd758162263ab60d458de9f633c57ddc6f8ec41942631620c5413f783d21f0974f35a1b28b957175f69'
         '0ecba41fa58cd2f99cc33f4bb35b5f215d4ea87258cacad0984ad4b2a1d7a53c1eb94da0b47950ddeea2189ff851b3ec6a3e34bdec0beef334713d8ba8e2e05d'
-        'e38a62d170fb05676129296af08b32eeef9cd07a5899d017ef04e492725dd007525b0965a5f38d2c37ae129ba61515eb36f80d9156c42fe36d072974ee7d0b15')
+        '3c029c7099675e1670e2f44f76d3fe1c8ca481d2b87da644263e76996e55a31f4be63ae52886332891d5a6ef8b3713b5fb706293e90058742a15aaead174c518'
+        'df1f7d5ba20c1064bbc335173e810336ac4a05612b37d8c88aae36d0712e1aee986d94181ee17ae1a94d67ddb20af962b54ee71343787cae750b8f1aac70fc04')
 
 # Keep the cargo cache inside $srcdir: makepkg remaps $srcdir paths in the binary
 # (--remap-path-prefix); otherwise the builder's ~/.cargo leaks into panic messages —
@@ -92,6 +95,7 @@ prepare() {
   patch -Np1 -i ../0006-exit-without-primary-renderer.patch
   patch -Np1 -i ../0007-protect-session-pixels-while-locked.patch
   patch -Np1 -i ../0008-account-for-static-blur-occlusion.patch
+  patch -Np1 -i ../0009-preserve-mapped-layer-keyboard-focus.patch
   python "$srcdir/check-assumptions.py" . || return 1
   cargo fetch --locked --target "$(rustc --print host-tuple)"
 }
@@ -99,7 +103,7 @@ prepare() {
 build() {
   _cargo_home
   cd $_pkgname-$pkgver
-  export NIRI_BUILD_COMMIT="v$pkgver+emaki"
+  export NIRI_BUILD_COMMIT="v$pkgver+emaki.$pkgrel"
   CFLAGS+=(' -ffat-lto-objects')
   cargo build --frozen --release --features default
 }
@@ -110,6 +114,7 @@ check() {
   export XDG_RUNTIME_DIR="$(mktemp -d)"
   export RAYON_NUM_THREADS=1
   # Only test the patch: the official package runs the full niri suite.
+  cargo test --frozen --release --lib tests::layer_shell
   cargo test --frozen --release --lib screencopy
   cargo test --frozen --release --lib startup_cover
   cargo test --frozen --release --lib keep_frame

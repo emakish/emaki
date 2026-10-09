@@ -296,11 +296,8 @@ fn map_resolves_xdg_and_marks_planned_paths_without_creating_them() {
         find("personal_niri")["path"],
         json!(f.root.join("config/niri/config.kdl"))
     );
-    assert_eq!(
-        find("managed_generations")["lifecycle"],
-        "isolated_profile_only"
-    );
-    assert_eq!(find("history")["lifecycle"], "isolated_profile_only");
+    assert_eq!(find("managed_generations")["lifecycle"], "installed");
+    assert_eq!(find("history")["lifecycle"], "installed");
     assert_eq!(find("adapters")["lifecycle"], "planned");
     assert!(!f.root.join("state").exists());
     let out = f
@@ -349,11 +346,7 @@ fn every_map_entry_names_one_of_three_zones_and_its_attributes() {
     let settings = text.split("\nemaki_settings: ").nth(1).unwrap();
     let settings = settings.split_once("\n  owner: ").unwrap();
     assert!(settings.0.ends_with("zone: managed; on update: never_touched; change via: emaki_settings; history: emaki_settings"));
-    assert!(
-        settings
-            .1
-            .contains("isolated_profile_only, not connected yet;")
-    );
+    assert!(settings.1.contains("installed;"));
 }
 
 /// Path patterns that docs/ZONES.md lists under each zone's heading, `{a,b}` groups expanded.

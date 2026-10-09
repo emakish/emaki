@@ -19,7 +19,7 @@ from urllib.parse import quote
 class Refused(Exception):
     pass
 
-def run(argv, data=None, limit=8*1024*1024, env=None, check=True):
+def run(argv, data=None, limit=8*1024*1024, env=None, check=True, timeout=3):
     # Drain stdout with a bound; never log child output or inherit its protocol pipe.
     with subprocess.Popen(argv, stdin=subprocess.PIPE if data is not None else subprocess.DEVNULL,
                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True, env=env) as p:
@@ -29,7 +29,7 @@ def run(argv, data=None, limit=8*1024*1024, env=None, check=True):
         if data is not None:
             os.set_blocking(p.stdin.fileno(), False)
             sel.register(p.stdin, selectors.EVENT_WRITE)
-        output = bytearray(); offset = 0; deadline = time.monotonic()+3
+        output = bytearray(); offset = 0; deadline = time.monotonic()+timeout
         try:
             while sel.get_map():
                 if time.monotonic() >= deadline:
@@ -103,14 +103,16 @@ def terminal(request):
     key=GLib.KeyFile(); key.load_from_file(app.get_filename(),GLib.KeyFileFlags.NONE)
     if not key.get_boolean('Desktop Entry','Terminal'): raise Refused('not_terminal_app')
     command=key.get_string('Desktop Entry','Exec')
-    executable=request.get('terminal','kitty')
+    executable=request.get('terminal','emaki-terminal')
     if not isinstance(executable,str) or not executable or '\x00' in executable: raise Refused('terminal_missing')
     import shutil
     if not shutil.which(executable): raise Refused('terminal_missing')
     # GIO performs field-code/argv expansion on the original entry, without a shell.
     # The in-memory clone has no filename: preserve %k explicitly, leaving %%k literal.
     command=re.sub(r'%%|%k', lambda m: '%%' if m[0]=='%%' else desktop_quote(app.get_filename()), command)
-    key.set_string('Desktop Entry','Exec',desktop_quote(executable)+' -e '+command)
+    # The wrapper resolves defaults.terminal from the managed settings store.
+    separator = ' -- ' if Path(executable).name == 'emaki-terminal' else ' -e '
+    key.set_string('Desktop Entry','Exec',desktop_quote(executable)+separator+command)
     key.set_boolean('Desktop Entry','Terminal',False)
     key.set_boolean('Desktop Entry','DBusActivatable',False)
     launch=Gio.DesktopAppInfo.new_from_keyfile(key)
@@ -205,11 +207,15 @@ def handle(request):
     if op in ('recent-list','recent-record'): return recent(request)
     if op=='settings':
         profile=request.get('profile','')
-        if not profile or not os.path.isabs(profile): raise Refused('isolated_profile_required')
+        if profile and not os.path.isabs(profile): raise Refused('isolated_profile_required')
         action=request.get('action'); args=request.get('args',[])
-        if action not in ('list','get','history','undo','set') or not isinstance(args,list) or not all(isinstance(a,str) for a in args): raise Refused('invalid_request')
-        env=dict(os.environ,XDG_CONFIG_HOME=profile+'/config',XDG_STATE_HOME=profile+'/state',XDG_RUNTIME_DIR=profile+'/runtime')
-        value=json.loads(run([request.get('binary') or 'emaki','settings',action,*args,'--profile-root',profile,'--json'],env=env,check=False,limit=1024*1024))
+        if action not in ('list','get','history','undo','set','reset') or not isinstance(args,list) or not all(isinstance(a,str) for a in args): raise Refused('invalid_request')
+        env = dict(os.environ)
+        command = [request.get('binary') or 'emaki', 'settings', action, *args, '--json']
+        if profile:
+            env.update(XDG_CONFIG_HOME=profile+'/config', XDG_STATE_HOME=profile+'/state', XDG_RUNTIME_DIR=profile+'/runtime')
+            command += ['--profile-root', profile]
+        value=json.loads(run(command,env=env,check=False,limit=1024*1024,timeout=30))
         return dict(state=value['reason'],status=value['status'],settings=value.get('settings',[]),history=value.get('history',[]),change_id=value.get('change_id'),session_applied=value['session_applied'])
     if op=='defaults':
         # Roles with a core key list the installed candidates (GIO handlers of the MIME,

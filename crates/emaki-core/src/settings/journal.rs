@@ -127,7 +127,14 @@ impl Journal {
                 .file_name()
                 .and_then(|s| s.to_str())
                 .ok_or_else(|| err("history_corrupt"))?;
-            if ["pending.json", ".record.tmp", ".pending.tmp"].contains(&name) {
+            if [
+                "pending.json",
+                "live-pending.json",
+                ".record.tmp",
+                ".pending.tmp",
+            ]
+            .contains(&name)
+            {
                 continue;
             }
             if !name.ends_with(".json") || files.len() >= 4096 {
@@ -435,7 +442,9 @@ pub(super) fn recover(profile: &Profile, journal: &mut Journal) -> Result<Vec<St
             remove_generation(&profile.generations().join(&pending.entry.id))?;
             notes.push(format!("aborted:{}", pending.entry.id));
         } else {
-            return Err(err("recovery_conflict"));
+            // An external edit wins over an uncommitted candidate.
+            remove_generation(&profile.generations().join(&pending.entry.id))?;
+            notes.push(format!("kept_personal_edit:{}", pending.entry.id));
         }
         remove_file(&profile.config.join(format!(".{}.tmp", pending.entry.id)))?;
         remove_file(&profile.pending())?;

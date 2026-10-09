@@ -20,6 +20,7 @@ Item {
     width: naturalWidth
     height: Metrics.islandHeight
     Rectangle {
+        visible: line.kinds.length > 0
         x: 10
         y: (line.height - 7) / 2
         width: 7

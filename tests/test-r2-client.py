@@ -68,6 +68,7 @@ class FakeS3(http.server.BaseHTTPRequestHandler):
     lock = threading.Lock()
     uploads = {}
     seen = []
+    drop_parts = set()
 
     def log_message(self, format, *args):
         pass
@@ -129,6 +130,11 @@ class FakeS3(http.server.BaseHTTPRequestHandler):
                 self.reply(200, ('<InitiateMultipartUploadResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
                                  f'<UploadId>{upload}</UploadId></InitiateMultipartUploadResult>').encode())
             elif self.command == 'PUT' and 'partNumber' in query:
+                if int(query['partNumber']) in self.drop_parts:
+                    # The connection ends without an answer, as R2's did on 2026-10-08.
+                    self.drop_parts.discard(int(query['partNumber']))
+                    self.close_connection = True
+                    return
                 self.uploads[query['uploadId']][int(query['partNumber'])] = body
                 self.reply(200, headers={'ETag': f'"{hashlib.md5(body).hexdigest()}"'})
             elif self.command == 'POST' and 'uploadId' in query:
@@ -184,7 +190,7 @@ class FakeS3(http.server.BaseHTTPRequestHandler):
 
 
 def start_fake(root):
-    handler = type('Fake', (FakeS3,), {'root': Path(root), 'uploads': {}, 'seen': []})
+    handler = type('Fake', (FakeS3,), {'root': Path(root), 'uploads': {}, 'seen': [], 'drop_parts': set()})
     server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, handler
@@ -239,6 +245,20 @@ class ClientAgainstFake(unittest.TestCase):
             with self.assertRaises(r2.S3Error):
                 self.client.upload_large('iso/0.1.3/emaki.iso', big, part_size=1024 * 1024)
             self.assertFalse(self.handler.uploads, 'the refused upload was aborted')
+        finally:
+            big.unlink()
+
+    def test_a_dropped_part_is_sent_again(self):
+        big = self.root.parent / f'{self.root.name}-iso'
+        big.write_bytes(os.urandom(3 * 1024 * 1024 + 7))
+        self.handler.drop_parts.add(2)
+        pauses = []
+        try:
+            self.client.upload_large('iso/0.3.1/emaki.iso', big, part_size=1024 * 1024, pause=pauses.append)
+            self.assertEqual(self.client.get('iso/0.3.1/emaki.iso')[0], big.read_bytes())
+            numbers = [q['partNumber'] for c, k, q in self.handler.seen if 'partNumber' in q]
+            self.assertEqual(numbers, ['1', '2', '2', '3', '4'])
+            self.assertEqual(pauses, [10])
         finally:
             big.unlink()
 

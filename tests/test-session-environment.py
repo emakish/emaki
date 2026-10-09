@@ -63,10 +63,16 @@ print('PASS TTY/invalid handoff leaves takeover unset; prepared fresh handoff en
 # The session owns an earlier XDG layer, keeping package/user files untouched.
 xdg_start = source.index('# Packaged autostart overrides')
 xdg_end = source.index('\n# Config selection.', xdg_start)
-for value in ('', '/etc/xdg', '/custom:/etc/xdg', '/usr/share/emaki/xdg:/etc/xdg'):
-    env = {'PATH': '/usr/bin', 'XDG_CONFIG_DIRS': value}
-    result = subprocess.run(['/bin/bash', '-c', source[xdg_start:xdg_end] + '\nprintf %s "$XDG_CONFIG_DIRS"'],
-                            env=env, text=True, capture_output=True, check=True)
-    expected = value if value.startswith('/usr/share/emaki/xdg:') else '/usr/share/emaki/xdg:' + (value or '/etc/xdg')
-    assert result.stdout == expected, result.stdout
-print('PASS packaged autostart layer precedes upstream defaults and preserves custom directories')
+for state in ('', '/fixture/state', 'relative-state'):
+    for value in ('', '/etc/xdg', '/custom:/etc/xdg', '/usr/share/emaki/xdg:/etc/xdg'):
+        env = {'PATH': '/usr/bin', 'HOME': '/fixture/home',
+               'XDG_CONFIG_DIRS': value, 'XDG_STATE_HOME': state}
+        managed = (state if state.startswith('/') else '/fixture/home/.local/state') + '/emaki/defaults'
+        inherited = value if value.startswith('/usr/share/emaki/xdg:') else '/usr/share/emaki/xdg:' + (value or '/etc/xdg')
+        expected = managed + ':' + inherited
+        for _ in range(2):
+            result = subprocess.run(['/bin/bash', '-c', source[xdg_start:xdg_end] + '\nprintf %s "$XDG_CONFIG_DIRS"'],
+                                    env=env, text=True, capture_output=True, check=True)
+            assert result.stdout == expected, result.stdout
+            env['XDG_CONFIG_DIRS'] = result.stdout
+print('PASS managed and packaged layers keep their order once, preserving custom directories')

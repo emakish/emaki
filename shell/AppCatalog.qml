@@ -101,7 +101,7 @@ Scope {
             terminal.start({
                 op: "terminal",
                 id: entry.id,
-                terminal: Quickshell.env("EMAKI_TERMINAL") || ShellTools.terminal
+                terminal: Quickshell.env("EMAKI_TERMINAL") || "emaki-terminal"
             });
             return true;
         }

@@ -62,6 +62,13 @@ def run_tests():
     for im in textures[1:]:
         assert max(abs(a-b) for a,b in zip(im.getpixel((100,100)), textures[0].getpixel((100,100)))) <= 2
     assert before == {p: p.read_bytes() for p in profile.rglob('*') if p.is_file()}
+    managed = profile / 'config/emaki/settings.toml'
+    managed.parent.mkdir()
+    for broken in ('not [toml', 'schema_version = 99', 'schema_version = 1\nappearance = 42',
+                   'schema_version = 1\n[appearance]\nwallpaper = 42'):
+        managed.write_text(broken)
+        assert run()['state'] == 'ready', 'invalid managed settings must preserve the plain wallpaper'
+    managed.unlink()
     sharp = run(variant='sharp')
     cached = Path(unquote(urlparse(sharp['texture']).path))
     assert cached.parent == profile / 'cache/emaki/wallpaper-sharp'

@@ -38,16 +38,18 @@ ShellRoot {
             const strip = scene.bar.workspaceStrip;
             const cells = [];
             // The cells are the strip's children that carry a workspace position; inside a
-            // cell: the digit Text, the mark Rectangle, the MouseArea.
+            // cell: locate the digit and its mark independently of focus targets.
             for (const item of strip.children) {
                 if (item.position === undefined)
                     continue;
                 const p = item.mapToItem(null, 0, 0);
-                const glyph = item.children[0].mapToItem(null, 0, 0);
-                const mark = item.children[1].mapToItem(null, 0, 0);
+                const digit = item.children.find(child => child.text !== undefined);
+                const marker = item.children.find(child => child.radius !== undefined && child.color !== undefined);
+                const glyph = digit.mapToItem(null, 0, 0);
+                const mark = marker.mapToItem(null, 0, 0);
                 cells.push({
-                    glyph: [glyph.x, glyph.y, item.children[0].width, item.children[0].height],
-                    mark: [mark.x, mark.y, item.children[1].width, item.children[1].height],
+                    glyph: [glyph.x, glyph.y, digit.width, digit.height],
+                    mark: [mark.x, mark.y, marker.width, marker.height],
                     x: p.x,
                     y: p.y,
                     width: item.width,

@@ -13,10 +13,17 @@ from pathlib import Path
 import re
 import sys
 
-# Reviewed source: v26.04 with this package's eight patches. Whole-file hashes
+# Reviewed source: v26.04 with this package's nine patches. Whole-file hashes
 # deliberately reject even benign edits: a new width-changing layout path or
 # a new action/render path must not slip past a narrow text-pattern check.
 REVIEWED = {
+    'src/handlers/layer_shell.rs': (
+        '3c0136bcf386537c49551fc33045599dbd57dfe7123e7c8274b1f066476a4a03',
+        'persistent layer keyboard focus (N6c)'),
+    'src/layer/mapped.rs': (
+        '94a3c9fb9c39f3828dba0860bf5423e950855435c4bc530d4f9872f55801b561',
+        'persistent layer keyboard focus (N6c)'),
+
     'src/layout/scrolling.rs': (
         '96205fdf0b376d3321648b083f91ca89df380cd5d05b06d19b3b2fa0e397984d',
         'wallpaper camera assignments and width changes (465)'),
@@ -34,7 +41,7 @@ REVIEWED = {
         'geometry, damage and opaque-region output scales (754)'),
     'src/niri.rs': (
         'f7198fba63a335443c03e443e32ef659300522b33324c72b80915985f2ffa4c2',
-        'own-layer exclusion, cursor scales, locked rendering and static blur (230, 464, 754)'),
+        'own-layer exclusion, cursor scales, locked rendering static blur and keyboard arbitration (230, 464, 754, N6c)'),
     'src/render_helpers/xray.rs': (
         'dac33e39cf6f79142cab756d6f93f2b61aab5a6ed980f49bbd32a114707d22c1',
         'static blur opaque coverage and geometry tests (230)'),
@@ -88,7 +95,7 @@ def main(argv):
         print('See packaging/REBASE.md, Silent-break places; do not refresh hashes without review.',
               file=sys.stderr)
         return 1
-    print('niri rebase guards passed (capture, wallpaper camera, navigation actions, cursor scale)')
+    print('niri rebase guards passed (capture, wallpaper camera, navigation actions, cursor scale, layer focus)')
     return 0
 
 

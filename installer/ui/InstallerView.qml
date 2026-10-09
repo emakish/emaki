@@ -100,7 +100,7 @@ Item {
         if (!c.encryptedConfirmed)
             return "Type ERASE to confirm erasing the listed volumes.";
         if (c.mode === "alongside" && !c.alongsideSizeValid)
-            return "Not enough space for this hibernation reservation. Turn off hibernation or free more space in Windows, then refresh.";
+            return "Windows shrink is unavailable. Refresh the disk list.";
         if (c.mode === "manual")
             return Protocol.manualReason(c.selectedDisk) || (c.manualAssignments && !c.manualReady ? "Exactly one / and one /efi are required." : "");
         return "";
@@ -1519,19 +1519,6 @@ Item {
                     Accessible.name: "Confirm erasing the listed volumes"
                 }
             }
-            Check {
-                objectName: "hibernationCheck"
-                width: parent.width
-                text: (view.controller.session.inventory?.memory_bytes || 0) > 0 ? "Enable hibernation · reserves " + view.size(view.controller.session.inventory.memory_bytes) + " (same as RAM)" : "Hibernation unavailable: firmware did not report the RAM size"
-                checked: view.controller.hibernation
-                enabled: !view.controller.locked && (view.controller.session.inventory?.memory_bytes || 0) > 0
-                onToggled: view.controller.hibernation = checked
-            }
-            Hint {
-                width: parent.width
-                visible: view.controller.hibernation && view.controller.encryption !== "encrypted"
-                text: "Without encryption, hibernation writes memory, including passwords, to the disk unencrypted."
-            }
             Copy {
                 width: parent.width
                 visible: !!view.controller.selectedDisk?.shrink?.reason
@@ -1564,7 +1551,7 @@ Item {
             Copy {
                 width: parent.width
                 visible: view.controller.mode === "alongside" && !view.controller.alongsideSizeValid
-                text: "Not enough space for this hibernation reservation. Turn off hibernation or free more space in Windows, then refresh."
+                text: "Windows shrink is unavailable. Refresh the disk list."
                 color: view.danger
             }
             Column {
@@ -1854,11 +1841,6 @@ Item {
                     visible: view.controller.mode === "alongside"
                     text: "Only Emaki is encrypted. Its password is needed before the startup menu appears, including the Windows choice."
                 }
-            }
-            Hint {
-                width: parent.width
-                visible: view.controller.hibernation && view.controller.encryption === "none"
-                text: "Hibernation writes memory, including passwords, to the disk unencrypted."
             }
         }
     }

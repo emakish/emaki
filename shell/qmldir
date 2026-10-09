@@ -59,6 +59,10 @@ IslandGlass 1.0 IslandGlass.qml
 LauncherItem 1.0 LauncherItem.qml
 SymbolIcon 1.0 SymbolIcon.qml
 GlassTarget 1.0 GlassTarget.qml
+FocusRing 1.0 FocusRing.qml
+KeyboardTarget 1.0 KeyboardTarget.qml
+KeyboardFocusKeeper 1.0 KeyboardFocusKeeper.qml
+ShortcutSheet 1.0 ShortcutSheet.qml
 ClockIsland 1.0 ClockIsland.qml
 ClockPanel 1.0 ClockPanel.qml
 SystemIsland 1.0 SystemIsland.qml
@@ -92,3 +96,7 @@ WelcomeWindow 1.0 WelcomeWindow.qml
 WelcomeController 1.0 WelcomeController.qml
 SnapshotPrompt 1.0 SnapshotPrompt.qml
 SnapshotRecovery 1.0 SnapshotRecovery.qml
+singleton UpdateService 1.0 UpdateService.qml
+singleton SettingsBridge 1.0 SettingsBridge.qml
+ShellOutputs 1.0 ShellOutputs.qml
+ShellServices 1.0 ShellServices.qml

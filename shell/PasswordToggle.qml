@@ -4,6 +4,7 @@ import QtQuick
 Item {
     id: toggle
     property bool revealed: false
+    property bool focusRingEnabled: true
     property color ink: "white"
     signal toggled
     width: 32
@@ -27,12 +28,13 @@ Item {
             toggled();
         event.accepted = true;
     }
-    Rectangle {
-        anchors.fill: parent
-        radius: 8
-        color: "transparent"
-        border.width: toggle.activeFocus ? 1 : 0
-        border.color: toggle.ink
+    Keys.onEnterPressed: event => {
+        if (!event.isAutoRepeat)
+            toggled();
+        event.accepted = true;
+    }
+    FocusRing {
+        shown: toggle.activeFocus && toggle.focusRingEnabled
     }
     Canvas {
         id: eye

@@ -77,6 +77,10 @@ Item {
             x: strip.cellX(index)
             width: strip.cell
             height: strip.height
+            KeyboardTarget {
+                label: "Workspace " + cell.position
+                onActivated: strip.choose(cell.position)
+            }
             // Optical centre: the glyph's ink box (TextMetrics.tightBoundingRect), not the
             // advance box with its side bearings, sits on the cell centre; the mark hangs a
             // fixed gap under the ink, centred on the same axis. All on device pixels.

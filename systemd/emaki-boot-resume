@@ -2,6 +2,10 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Save across every sleep mode: suspend-then-hibernate may choose either path.
+# Each command waits at most two seconds for boot maintenance; user.slice is frozen.
 case "$1" in
-    pre|post) exec /usr/bin/emaki-boot-refresh --sleep-phase "$1" ;;
+    pre|post)
+        /usr/bin/emaki-update-boot "sleep-$1"
+        exec /usr/bin/emaki-boot-refresh --sleep-phase "$1"
+        ;;
 esac

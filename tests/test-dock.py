@@ -53,6 +53,7 @@ for name in ('slow', 'fail'):
 launcher.chmod(0o700)
 env = dict(os.environ, EMAKI_BIN=str(BINARY), NIRI_SOCKET=str(runtime_path(profile) / 'n.sock'),
            EMAKI_GTK_LAUNCH=str(launcher), EMAKI_SHELL_FIXTURE=str(profile),
+           EMAKI_SHELL_DIR=str(profile / "qml"), PATH=str(ROOT / "scripts") + os.pathsep + os.environ["PATH"],
            QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QT_SCALE_FACTOR='1',
            QML_DISABLE_DISK_CACHE='1', PYTHONDONTWRITEBYTECODE='1', EMAKI_SETTINGS_PROFILE='',
            EMAKI_SHELL_NOTIFICATIONS='0', EMAKI_SHELL_TRAY='0', EMAKI_TEST_MPRIS='0',
@@ -289,11 +290,10 @@ def first(call, state, wait, center):
     s = wait(lambda s: s['notifications']['presentation'] == 'covered')
     assert not s['dock']['visible']
     call('dock', 'autoHide', 'true')
-    time.sleep(.1)
+    # Dock IPC goes through a settings transaction; wait for it instead of a fixed delay.
+    wait(lambda s: s['dock']['auto_hide'])
     call('test', 'hover', 700, EDGE_Y)
-    time.sleep(.3)
-    s = state()
-    assert s['dock']['edge_enabled'] and s['dock']['visible'] and s['dock']['revealed']
+    s = wait(lambda s: s['dock']['edge_enabled'] and s['dock']['visible'] and s['dock']['revealed'])
     call('test', 'hover', 700, 300)
     wait(lambda s: not s['dock']['visible'])
     server.set_windows(windows())
@@ -415,7 +415,7 @@ NEWER_APPS = json.dumps(dict(version=2, map={'PRIVATE_UNKNOWN_APP': 'fixture-edi
 
 def newer(call, state, wait, center):
     s = wait(lambda s: s['niri']['connection'] == 'connected' and s['dock']['labels'] == 'ready')
-    assert s['dock']['on'] and s['dock']['auto_hide'] and s['dock']['pinned'] == [] and s['dock']['learned'] == 0, s['dock']
+    assert s['dock']['on'] and not s['dock']['auto_hide'] and s['dock']['pinned'] == [] and s['dock']['learned'] == 0, s['dock']
     assert call('dock', 'pin', 'fixture-files') == 'true' and call('dock', 'assign', 'PRIVATE_UNKNOWN_APP', 'fixture-editor') == 'true'
     wait(lambda s: s['dock']['pinned'] == ['fixture-files'] and s['dock']['learned'] == 1)
     time.sleep(.9)  # past the 500 ms save timers
@@ -431,16 +431,16 @@ try:
     run(third)
     run(fourth)
     (profile / 'state/emaki/dock.json').write_text('{broken')
-    run(lambda call, state, wait, center: wait(lambda s: s['dock']['labels'] == 'ready' and s['dock']['pinned'] == [] and s['dock']['auto_hide']))
+    run(lambda call, state, wait, center: wait(lambda s: s['dock']['labels'] == 'ready' and s['dock']['pinned'] == [] and not s['dock']['auto_hide']))
     (profile / 'state/emaki/dock.json').write_text(NEWER_DOCK)
     (profile / 'state/emaki/apps.json').write_text(NEWER_APPS)
     run(newer)
     contents = log_path.read_text()
     assert not any(w in contents for w in ('WARN', 'ERROR', 'FAIL!', 'PRIVATE', 'ReferenceError', 'TypeError')), contents
     assert not server.errors, server.errors
-    written = sorted(p.name for p in (profile / 'state').rglob('*') if p.is_file())
+    written = sorted(p.name for p in (profile / 'state/emaki').iterdir() if p.is_file())
     # notifications.json: the failed-launch notice from fixture-fail lives in the drawer history.
-    assert written == ['apps.json', 'dock.json', 'frequent.json', 'frequent.lock', 'notifications.json'], written
+    assert written == ['apps.json', 'dock.json', 'frequent.json', 'frequent.lock', 'helper.lock', 'notifications.json', 'settings.lock'], written
 finally:
     server.stop.set()
     server.shutdown()

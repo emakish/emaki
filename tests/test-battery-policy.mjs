@@ -92,7 +92,7 @@ store.n.appName = 'blueman'; store.n.appIcon = 'other'; assert.equal(snapshot().
 
 let now = 100000;
 const popup = vm.createContext({notes: {dnd: true, entries: [{id: 1, critical: true, batteryWarning: true}, {id: 2}, pairing]},
-    systemOpen: false, launcherOpen: false, drawerOpen: false, privacyOpen: false,
+    focusedOutput: true, systemOpen: false, launcherOpen: false, drawerOpen: false, privacyOpen: false,
     niri: {overviewOpen: false}, presentationState: 'covered', modalOpen: false,
     Date: {now: () => now}, peekCooldown: 0, peekStarted: 0, peekUntil: 0,
     peekIds: [], peekTimer: {restart() {}}, endPeek() { popup.peekIds = []; }});
@@ -157,7 +157,7 @@ for (const active of [false, true]) {
 // The overview closes modal panels but retains a running battery timer and warning.
 const transition = vm.createContext({batteryPeekOpen: true, pairingPeekOpen: false, drawerOpen: true,
     tip: {hide() {}}, closeLauncher() {}, closeClock() { throw Error('battery peek was closed'); },
-    systemBody: {reset() {}}, dock: {closePopup() {}}, closeAllRequested() {}});
+    systemBody: {reset() {}}, dock: {closePopup() {}, leaveKeyboard() {}}, closeAllRequested() {}});
 const closePanels = vm.runInContext('(function(preserveBattery){' + body('ShellScene.qml', 'closePanels') + '})', transition);
 closePanels(true); assert.equal(transition.drawerOpen, false);
 let closed = 0; transition.closeClock = () => closed++;
@@ -165,7 +165,7 @@ closePanels(false); assert.equal(closed, 1, 'explicit dismissal still works');
 transition.batteryPeekOpen = false; closePanels(true); assert.equal(closed, 2);
 assert.match(source('ShellScene.qml'), /onOverviewOpenChanged\(\)[\s\S]*?scene\.closePanels\(true\)/);
 const openedHandler = source('ClockPanel.qml').match(/onOpenedChanged: \{([\s\S]*?)\n    \}/)[1];
-const clock = {opened: false, drawerContent: true, peekIds: [1], snapIfClosed() {}, wake() {}};
+const clock = {body: {keyboardMode: false}, opened: false, drawerContent: true, peekIds: [1], snapIfClosed() {}, wake() {}};
 vm.runInNewContext(openedHandler, clock); assert.equal(clock.drawerContent, false);
 clock.opened = true; vm.runInNewContext(openedHandler, clock); assert.equal(clock.drawerContent, true);
 console.log('Battery discharge/recharge, private marker, overlay/modal gates, drawer and overview state: PASS');

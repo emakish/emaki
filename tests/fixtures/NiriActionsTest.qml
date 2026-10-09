@@ -54,9 +54,27 @@ ShellRoot {
         function closeAllThenFocus(first: int, second: int, focus: int): string {
             return JSON.stringify([service.closeWindow(first), service.closeWindow(second), service.focusWindow(focus)]);
         }
+        function supportsVersion(text: string): bool {
+            return service.supportsLayerFocus(text.slice(1));
+        }
+        function reconnect(): void {
+            const snapshot = {
+                schema_version: 1,
+                ipc_release: "26.04",
+                generation: service.generation,
+                connection: {
+                    status: "connected",
+                    reason: "fixture"
+                },
+                model: service.model
+            };
+            service.invalidate("fixture_disconnect");
+            service.receive(JSON.stringify(snapshot));
+        }
         function status(): string {
             return JSON.stringify({
                 windows: service.windows.length,
+                layer_focus: service.layerFocusSupported,
                 keyboard_note: keyboard.note,
                 connection: service.connection,
                 connection_reason: service.reason,

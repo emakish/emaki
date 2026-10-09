@@ -68,6 +68,18 @@ def boot_status(root, cmdline):
     snapshot = SNAPSHOT.fullmatch('/' + subvols[0].lstrip('/')) if len(subvols) == 1 else None
     if snapshot and (root['fstype'] == 'overlay' or
                      (root['fstype'] == 'btrfs' and root['fsroot'] == snapshot[0])):
+        returned = [word.partition('=')[2] for word in cmdline.split() if word.startswith('emaki.auto_return=')]
+        dates = [word.partition('=')[2] for word in cmdline.split() if word.startswith('emaki.snapshot_date=')]
+        valid_date = len(dates) == 1 and re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', dates[0])
+        if valid_date:
+            try:
+                datetime.strptime(dates[0], '%Y-%m-%d')
+            except ValueError:
+                valid_date = False
+        if len(returned) == 1 and re.fullmatch(r'[0-9a-f]{32}', returned[0]) and valid_date:
+            return {'mode': 'snapshot', 'snapshot': snapshot[1], 'automatic': True,
+                    'message': 'The update did not start correctly, so Emaki returned to the system '
+                               f'from before the update ({dates[0]}). Your files are safe.'}
         return {'mode': 'snapshot', 'snapshot': snapshot[1],
                 'message': 'You are using a recovery snapshot.'}
     if root['fstype'] == 'btrfs' and root['fsroot'] == '/@':

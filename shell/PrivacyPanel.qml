@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import "Keyboard.js" as Keyboard
 import "Liquid.js" as Liquid
 
 // What the privacy pill opens, on liquid glass: one Regular plate that grows out of the pill
@@ -12,6 +13,13 @@ import "Liquid.js" as Liquid
 // overlay's input and blur regions and the status read it.
 Item {
     id: panel
+    property bool keyboardBoundary: true
+    property bool keyboardMode: false
+    Keys.onPressed: event => Keyboard.handle(panel, event)
+    function takeFocus(keyboard): void {
+        keyboardMode = keyboard !== false;
+        closeTarget.forceActiveFocus(Qt.TabFocusReason);
+    }
     property var rows: []
     property bool opened: false
     // The scene's morph (0..1).
@@ -132,12 +140,14 @@ Item {
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.AllButtons
+        onPressed: panel.keyboardMode = false
     }
     MouseArea {
         x: panel.islandX - panel.shownX
         width: panel.islandWidth
         height: Metrics.islandHeight
         cursorShape: Qt.PointingHandCursor
+        onPressed: panel.keyboardMode = false
         onClicked: panel.toggle()
     }
 
@@ -201,7 +211,7 @@ Item {
                     y: (Metrics.islandHeight - height) / 2
                     height: 20
                     verticalAlignment: Text.AlignVCenter
-                    text: "IN USE RIGHT NOW"
+                    text: panel.rows.length ? "IN USE RIGHT NOW" : "NO ACTIVE CAPTURE"
                     textFormat: Text.PlainText
                     font.family: ShellPalette.uiFont
                     font.pixelSize: 11
@@ -323,5 +333,23 @@ Item {
             opacity: panel.islandAlpha
             visible: opacity > .001
         }
+    }
+    KeyboardTarget {
+        id: closeTarget
+        anchors.fill: undefined
+        x: panel.islandX - panel.shownX
+        width: panel.islandWidth
+        height: Metrics.islandHeight
+        label: "Close privacy activity"
+        onActivated: panel.toggle()
+        Icon {
+            anchors.centerIn: parent
+            width: 16
+            height: 16
+            kind: "close"
+            ink: panel.ink
+            visible: panel.kinds.length === 0
+        }
+        z: 100
     }
 }

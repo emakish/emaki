@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import "Keyboard.js" as Keyboard
 
 // Something pressable on the clock panel's glass (docs/mockups/liquid-glass/clock.js): the
 // panel's one hover drop flows to it, and while a drop covers it the target's own drawing fades
@@ -25,6 +26,25 @@ Item {
     property var owner: null
     property string label: ""
     signal clicked
+    activeFocusOnTab: activeFocus || (pressable && enabled && visible)
+    Keys.onPressed: event => {
+        const scope = Keyboard.boundary(target);
+        if (scope && scope.keyboardMode !== undefined)
+            scope.keyboardMode = true;
+        if ([Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space].includes(event.key) && pressable) {
+            if (!event.isAutoRepeat)
+                clicked();
+            event.accepted = true;
+        } else {
+            Keyboard.handle(Keyboard.boundary(target), event);
+        }
+    }
+    onActiveFocusChanged: if (activeFocus)
+        Keyboard.reveal(target)
+    FocusRing {
+        shown: target.activeFocus && !(target.glass && (target.glass.glassReady || target.glass.drawsKeyboardFocus === true))
+        radius: target.bubbleRadius
+    }
     readonly property bool pointerInside: hoverHandler.hovered
     // The glass says how much of the target lies on it (onGlassOf: the alpha of the drop that
     // goes to or rests on it, or as much as a drop covers it, Liquid.cover); the rest of it is
@@ -47,6 +67,11 @@ Item {
     MouseArea {
         anchors.fill: parent
         enabled: target.pressable && target.enabled
+        onPressed: {
+            const scope = Keyboard.boundary(target);
+            if (scope && scope.keyboardMode !== undefined)
+                scope.keyboardMode = false;
+        }
         onClicked: target.clicked()
     }
     // A list rebuilt under a resting pointer (a notification arrived): the new delegate with

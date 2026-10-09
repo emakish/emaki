@@ -1,0 +1,106 @@
+#!/usr/bin/python3 -I
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Apply and verify wallpaper changes; the settings transaction owns rollback."""
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+import tomllib
+
+
+def command(*args):
+    result = subprocess.run(['wpaperctl', *args], capture_output=True, text=True, timeout=3)
+    if result.returncode:
+        raise ValueError('wallpaper_command_failed')
+    return result.stdout
+
+
+def validate(mapping):
+    if not isinstance(mapping, dict) or not mapping or len(mapping) > 64:
+        raise ValueError('wallpaper_outputs_unavailable')
+    for output, path in mapping.items():
+        if (not isinstance(output, str) or not output or len(output) > 256
+                or output.startswith('-') or '\0' in output
+                or not isinstance(path, str) or not Path(path).is_absolute() or '\0' in path):
+            raise ValueError('wallpaper_response_invalid')
+    return mapping
+
+
+def snapshot():
+    entries = json.loads(command('get-all', '-j'))
+    if not isinstance(entries, list) or len(entries) > 64:
+        raise ValueError('wallpaper_response_invalid')
+    mapping = {}
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != {'display', 'path'}:
+            raise ValueError('wallpaper_response_invalid')
+        if not isinstance(entry['display'], str) or entry['display'] in mapping:
+            raise ValueError('wallpaper_response_invalid')
+        mapping[entry['display']] = entry['path']
+    return validate(mapping)
+
+
+def verify(expected):
+    for attempt in range(10):
+        if snapshot() == expected:
+            return
+        if attempt < 9:
+            time.sleep(.1)
+    raise ValueError('wallpaper_verification_failed')
+
+
+def restore(mapping):
+    validate(mapping)
+    for output, path in mapping.items():
+        command('set', path, output)
+    verify(mapping)
+
+
+def personal(outputs):
+    root = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
+    with (root / 'wpaperd/config.toml').open('rb') as stream:
+        raw = stream.read(65537)
+    if len(raw) > 65536:
+        raise ValueError('wallpaper_config_invalid')
+    config = tomllib.loads(raw.decode())
+    if any(key not in ('default', 'any', *outputs) for key in config):
+        raise ValueError('wallpaper_output_selection_unsupported')
+    result = {}
+    for output in outputs:
+        options = dict(config.get('default', {}), **config.get(output, config.get('any', {})))
+        path = Path(options.get('path', '')).expanduser()
+        if not path.is_absolute() or not path.is_file():
+            raise ValueError('wallpaper_static_path_required')
+        result[output] = str(path.resolve(strict=True))
+    return result
+
+
+def main(args):
+    if args == ['snapshot']:
+        print(json.dumps(snapshot(), separators=(',', ':')))
+    elif len(args) == 2 and args[0] == 'restore':
+        restore(json.loads(args[1]))
+    elif len(args) == 2 and args[0] == 'apply':
+        previous = snapshot()
+        if args[1]:
+            path = Path(args[1])
+            if not path.is_absolute() or not path.is_file():
+                raise ValueError('wallpaper_static_path_required')
+            path = str(path.resolve(strict=True))
+            command('set', path)
+            verify(dict.fromkeys(previous, path))
+        else:
+            restore(personal(previous))
+    else:
+        raise ValueError('wallpaper_invalid_arguments')
+
+
+if __name__ == '__main__':
+    try:
+        main(sys.argv[1:])
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+        print('emaki-settings-wallpaper: wallpaper apply or verification failed', file=sys.stderr)
+        raise SystemExit(1)

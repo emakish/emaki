@@ -149,11 +149,16 @@ else:
         if not part:
             break
         actual += part
-        assert len(actual) <= len(raw), 'Portal key has an unexpected length'
+        assert len(actual) <= 4096, 'Portal key has an unexpected length'
     os.close(read_fd)
-    assert actual == raw, 'Portal key changed across the upgrade'
-    print('portal key retained: 64 bytes')
+    if sys.argv[1] == 'read':
+        assert actual, 'Portal returned an empty key'
+        print('portal key: ' + actual.hex())
+    else:
+        assert actual == raw, 'Portal key changed across the upgrade'
+        print('portal key retained: 64 bytes')
 '''
+PORTAL_KEY = re.compile(r'^portal key: ([0-9a-f]+)$', re.M)
 
 
 def wallet_probe(guest, mode):
@@ -346,6 +351,23 @@ class Guest:
         return bool(state) and state[-1] in ('n_tty_read', 'wait_woken') and len(state) < 2
 
 
+def wait_desktop(guest, timeout=180):
+    """Keys typed while the shell's session cover is up reach no window: from 0.3.1 the cover
+    stays after login until the panel is ready (2026-10-08, T1 from 0.3.1 typed into it and
+    never upgraded). Wait for the bar and for the cover to go, as a person waits to see them."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            names = {layer.get('namespace') for layer in json.loads(guest.desktop('niri msg -j layers'))}
+        except (RuntimeError, ValueError):
+            names = set()
+        if 'emaki-test-bar' in names and 'emaki-session-cover' not in names:
+            time.sleep(2)
+            return
+        time.sleep(2)
+    raise RuntimeError('the desktop did not finish starting: no panel, or the session cover stayed')
+
+
 def open_terminal(guest, size):
     width, height, scale = SIZES[size]
     if scale != 1:
@@ -416,7 +438,12 @@ def prepare_old_state(guest, via):
     if stored.returncode:
         guest.screenshot('wallet-store-failed')
     (guest.vm / 'wallet-setup.txt').write_text(f'exit {stored.returncode}\n{stored.stderr.decode()}')
-    portal = wallet_probe(guest, 'seed')
+    # From 0.3.1 on ksecretd serves the portal itself. It keeps each app's master key in its own
+    # wallet folder and never reads a Secret Service item, so a seeded item is never what it
+    # returns (2026-10-08: "changed" on 0.3.1 even without an upgrade). Record the key it hands
+    # the app now instead; the GNOME Keyring item stays the fixture for older starts.
+    kwallet_portal = wallet_probe(guest, 'owner').returncode == 0
+    portal = wallet_probe(guest, 'read' if kwallet_portal else 'seed')
     (guest.vm / 'portal-setup.txt').write_text(
         f'exit {portal.returncode}\n{portal.stdout.decode()}{portal.stderr.decode()}')
     if portal.returncode:
@@ -566,9 +593,11 @@ def checks_after_restart(guest, result, cand, before_config):
           owner.stdout.decode() + owner.stderr.decode())
     portal_setup = guest.vm / 'portal-setup.txt'
     if portal_setup.is_file() and portal_setup.read_text().startswith('exit 0\n'):
-        portal = wallet_probe(guest, 'verify')
-        check('portal master key kept', portal.returncode == 0,
-              portal.stdout.decode() + portal.stderr.decode())
+        recorded = PORTAL_KEY.search(portal_setup.read_text())
+        portal = wallet_probe(guest, 'read' if recorded else 'verify')
+        now = PORTAL_KEY.search(portal.stdout.decode())
+        kept = portal.returncode == 0 and (not recorded or (now is not None and now[1] == recorded[1]))
+        check('portal master key kept', kept, portal.stdout.decode() + portal.stderr.decode())
     elif portal_setup.is_file():
         # prepare_old_state continued only when the start version has no usable default collection.
         detail = portal_setup.read_text()
@@ -723,6 +752,7 @@ def main():
             redirect_old_address(guest, vm / 'certs')
         before_log = guest.run('cat /var/log/pacman.log', root=True)
         (vm / 'pacman-before.log').write_text(before_log)
+        wait_desktop(guest)
         guest.screenshot('desktop-before')
         open_terminal(guest, args.size)
         # After a selector switch the documented first update is -Syyu: the two channels'
@@ -739,6 +769,7 @@ def main():
         guest.wait()
         guest.login()
         time.sleep(8)
+        wait_desktop(guest)
         guest.screenshot('desktop-after-restart')  # B4
         open_terminal(guest, args.size)
         guest.type('pacman -Q emaki\n')

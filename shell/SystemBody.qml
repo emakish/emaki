@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import "Keyboard.js" as Keyboard
 import Quickshell
 import "SystemIcons.js" as SystemIcons
 
@@ -694,17 +695,7 @@ Item {
     // A word in the accent (system.js button()).
     component Word: GlassTarget {
         id: word
-        activeFocusOnTab: body.opened && key.startsWith("confirm-")
-        Keys.onReturnPressed: clicked()
-        Keys.onEnterPressed: clicked()
-        Keys.onSpacePressed: clicked()
-        Rectangle {
-            anchors.fill: parent
-            color: "transparent"
-            radius: 10
-            border.width: word.activeFocus ? 2 : 0
-            border.color: body.accent
-        }
+        activeFocusOnTab: activeFocus || (body.opened && pressable && enabled)
         property color color: body.accent
         property bool strong: false
         glass: body.glass
@@ -745,6 +736,56 @@ Item {
         signal stepped(int delta)
         width: body.inner
         height: 36
+        activeFocusOnTab: activeFocus || (body.opened && available)
+        onActiveFocusChanged: if (activeFocus)
+            Keyboard.reveal(slider)
+        function setFromKey(next: real): void {
+            const value = Math.round(Math.max(minimum, Math.min(100, next)));
+            pendingValue = value;
+            settle.restart();
+            committed(value);
+        }
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+                Keyboard.handle(Keyboard.boundary(slider), event);
+                return;
+            }
+            if (!available)
+                return;
+            let next = shown;
+            switch (event.key) {
+            case Qt.Key_Left:
+            case Qt.Key_Down:
+                next -= 1;
+                break;
+            case Qt.Key_Right:
+            case Qt.Key_Up:
+                next += 1;
+                break;
+            case Qt.Key_PageDown:
+                next -= 10;
+                break;
+            case Qt.Key_PageUp:
+                next += 10;
+                break;
+            case Qt.Key_Home:
+                next = minimum;
+                break;
+            case Qt.Key_End:
+                next = 100;
+                break;
+            default:
+                return;
+            }
+            event.accepted = true;
+            if (body.glass)
+                body.glass.keyboardMode = true;
+            setFromKey(next);
+        }
+        FocusRing {
+            shown: slider.activeFocus && !(body.glass && (body.glass.glassReady || body.glass.drawsKeyboardFocus === true))
+            radius: 10
+        }
         property real dragValue: -1
         property real pendingValue: -1
         readonly property real shown: dragValue >= 0 ? dragValue : pendingValue >= 0 ? pendingValue : Math.max(0, Math.min(100, value))
@@ -864,7 +905,11 @@ Item {
                 function valueAt(x: real): int {
                     return Math.round(Math.max(0, Math.min(1, (x + hitArea.x - slider.trackX) / slider.trackWidth)) * 100);
                 }
-                onPressed: mouse => slider.dragValue = valueAt(mouse.x)
+                onPressed: mouse => {
+                    if (body.glass)
+                        body.glass.keyboardMode = false;
+                    slider.dragValue = valueAt(mouse.x);
+                }
                 onPositionChanged: mouse => {
                     if (pressed)
                         slider.dragValue = valueAt(mouse.x);
@@ -957,6 +1002,18 @@ Item {
         color: body.faint
         TextInput {
             id: input
+            activeFocusOnTab: activeFocus || body.opened
+            Keys.onPressed: event => {
+                if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)
+                    Keyboard.handle(Keyboard.boundary(input), event);
+            }
+            TapHandler {
+                acceptedButtons: Qt.AllButtons
+                onPressedChanged: if (pressed && body.glass)
+                    body.glass.keyboardMode = false
+            }
+            onActiveFocusChanged: if (activeFocus)
+                Keyboard.reveal(input)
             x: 12
             width: parent.width - (field.secret ? 56 : 24)
             height: parent.height
@@ -977,7 +1034,12 @@ Item {
             onTextChanged: if (!text.length)
                 field.revealed = false
         }
+        FocusRing {
+            shown: input.activeFocus && !(body.glass && (body.glass.glassReady || body.glass.drawsKeyboardFocus === true))
+            radius: field.radius
+        }
         PasswordToggle {
+            focusRingEnabled: !(body.glass && (body.glass.glassReady || body.glass.drawsKeyboardFocus === true))
             anchors.right: parent.right
             anchors.rightMargin: 3
             anchors.verticalCenter: parent.verticalCenter
@@ -1007,10 +1069,7 @@ Item {
         GlassTarget {
             glass: body.glass
             key: round.key
-            activeFocusOnTab: body.opened && body.page === "power"
-            Keys.onReturnPressed: round.clicked()
-            Keys.onEnterPressed: round.clicked()
-            Keys.onSpacePressed: round.clicked()
+            activeFocusOnTab: activeFocus || (body.opened && body.page === "power")
             label: round.text
             x: (round.width - 52) / 2
             width: 52
@@ -1021,8 +1080,6 @@ Item {
             Rectangle {
                 anchors.fill: parent
                 radius: 26
-                border.width: parent.activeFocus ? 2 : 0
-                border.color: body.accent
                 color: body.faint
             }
             Icon {

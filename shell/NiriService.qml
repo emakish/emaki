@@ -14,6 +14,87 @@ Scope {
     property string actionState: "idle"
     property string actionReason: ""
     readonly property bool connected: connection === "connected" && model !== null
+    // Only the compositor answering IPC can prove support: the installed CLI may be newer.
+    readonly property bool layerFocusSupported: connected && _layerFocusSupported
+    property bool _layerFocusSupported: false
+    property int _versionEpoch: 0
+    property int _versionReadEpoch: -1
+    property bool _versionCandidate: false
+    property bool _versionTimedOut: false
+    function supportsLayerFocus(text: string): bool {
+        try {
+            const version = JSON.parse(text)?.compositor;
+            if (typeof version !== "string")
+                return false;
+            // A future upstream release needs an explicit compatibility decision.
+            const match = /^26\.04 \(v26\.04\+emaki\.([1-9][0-9]*)\)$/.exec(version);
+            return !!match && Number.isSafeInteger(Number(match[1])) && Number(match[1]) >= 12;
+        } catch (_) {
+            return false;
+        }
+    }
+    onConnectedChanged: {
+        ++_versionEpoch;
+        _layerFocusSupported = false;
+        versionDeadline.stop();
+        versionRetry.stop();
+        if (versionProbe.running)
+            versionProbe.signal(9);
+        if (connected) {
+            versionRetry.interval = 100;
+            versionRetry.restart();
+        }
+    }
+    Timer {
+        id: versionRetry
+        interval: 100
+        onTriggered: {
+            if (!service.connected)
+                return;
+            if (versionProbe.running) {
+                versionRetry.restart();
+                return;
+            }
+            service._versionReadEpoch = service._versionEpoch;
+            service._versionCandidate = false;
+            service._versionTimedOut = false;
+            versionProbe.running = true;
+            versionDeadline.restart();
+        }
+    }
+    Timer {
+        id: versionDeadline
+        interval: 1500
+        onTriggered: {
+            service._versionTimedOut = true;
+            if (versionProbe.running)
+                versionProbe.signal(9);
+            // Failed executable startup may not emit exited either.
+            if (service.connected) {
+                versionRetry.interval = 5000;
+                versionRetry.restart();
+            }
+        }
+    }
+    Process {
+        id: versionProbe
+        command: ["niri", "msg", "-j", "version"]
+        stdout: StdioCollector {
+            onStreamFinished: service._versionCandidate = service.supportsLayerFocus(text)
+        }
+        stderr: StdioCollector {}
+        onExited: (code, status) => {
+            versionDeadline.stop();
+            if (service._versionReadEpoch !== service._versionEpoch)
+                return;
+            service._layerFocusSupported = service.connected && !service._versionTimedOut && code === 0 && status === 0 && service._versionCandidate;
+            // A transient IPC error must not permanently disable keyboard entry.
+            if (service.connected && !service._layerFocusSupported) {
+                versionRetry.interval = 5000;
+                versionRetry.restart();
+            }
+        }
+    }
     readonly property bool overviewOpen: connected && model.overview_open
     readonly property var workspaces: connected ? Object.values(model.workspaces) : []
     readonly property var windows: connected ? Object.values(model.windows) : []

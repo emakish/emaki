@@ -452,6 +452,21 @@ class RefreshOrchestrationChecks(unittest.TestCase):
             with self.subTest(encrypted=encrypted):
                 self.exercise(encrypted)
 
+    def test_full_and_menu_refresh_retain_update_guard_only_on_btrfs(self):
+        for encrypted, fsroot in ((True, '/@'), (False, '/@'), (False, '')):
+            with self.subTest(encrypted=encrypted, fsroot=fsroot), self.fixture(
+                    encrypted, plain_fsroot=fsroot) as f:
+                for publication in range(2):
+                    refresh.refresh(f.identity)
+                    menu = f.mapped('/boot/grub/grub.cfg').read_text()
+                    if fsroot:
+                        self.assertEqual(menu.count('# BEGIN Emaki update guard'), 1)
+                        self.assertEqual(menu.count('\n    emaki_update_attempt\n'), 4)
+                        self.assertLess(menu.index('chainloader '), menu.index('\n    emaki_update_attempt\n'))
+                        self.assertIn('source ($emaki_update_esp)/EFI/Emaki/update.cfg', menu)
+                    else:
+                        self.assertNotIn('emaki_update', menu)
+
     def test_plain_same_disk_and_cross_disk_publish_uuid_search(self):
         for fsroot in ('', '/@'):
             for search in (False, True):

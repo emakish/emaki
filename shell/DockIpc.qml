@@ -7,50 +7,48 @@ import Quickshell.Io
 Scope {
     id: wrapper
     required property ShellScene scene
-    // With a settings profile the core owns dock.on/auto_hide: a direct store write
-    // would be reverted by the next `settings list` (ShellScene mirrors the core), so the
-    // IPC goes through the core key. pinned stays in dock.json.
-    function apply(key: string, value: string, local: var): void {
-        const settings = wrapper.scene.settings;
-        if (settings.profile)
-            settings.set(key, value);
-        else
-            local();
-    }
+    property ShellServices shared: null
+    readonly property SettingsCatalog settings: shared?.settings ?? scene?.settings ?? null
+    readonly property DockStore store: shared?.dockStore ?? scene?.dockStore ?? null
+    readonly property AppIdentity identity: shared?.identity ?? scene?.identity ?? null
     IpcHandler {
         target: "dock"
+        function focus(): void {
+            wrapper.scene.closeAll();
+            wrapper.scene.dock.takeFocus();
+        }
         function toggle(): bool {
-            const on = !wrapper.scene.dockStore.on;
-            wrapper.apply("dock.on", String(on), () => wrapper.scene.dockStore.on = on);
+            const on = !wrapper.store.on;
+            wrapper.settings.set("dock.on", String(on));
             return on;
         }
         function show(): void {
-            wrapper.apply("dock.on", "true", () => wrapper.scene.dockStore.on = true);
+            wrapper.settings.set("dock.on", "true");
         }
         function hide(): void {
-            wrapper.apply("dock.on", "false", () => wrapper.scene.dockStore.on = false);
+            wrapper.settings.set("dock.on", "false");
         }
         function pin(id: string): bool {
-            return wrapper.scene.dockStore.pin(id);
+            return wrapper.store.pin(id);
         }
         function unpin(id: string): bool {
-            return wrapper.scene.dockStore.unpin(id);
+            return wrapper.store.unpin(id);
         }
         // Window identity: which desktop entry an app_id belongs to (apps.json).
         function assign(appId: string, id: string): bool {
-            return wrapper.scene.identity.learn(appId, id);
+            return wrapper.identity.learn(appId, id);
         }
         function forget(appId: string): bool {
-            return wrapper.scene.identity.forget(appId);
+            return wrapper.identity.forget(appId);
         }
         function apps(): string {
-            return JSON.stringify(wrapper.scene.identity.learned);
+            return JSON.stringify(wrapper.identity.learned);
         }
         function autoHide(value: bool): void {
-            wrapper.apply("dock.auto_hide", String(value), () => wrapper.scene.dockStore.autoHide = value);
+            wrapper.settings.set("dock.auto_hide", String(value));
         }
         function status(): string {
-            return wrapper.scene.status();
+            return wrapper.scene?.status() ?? "{}";
         }
     }
 }

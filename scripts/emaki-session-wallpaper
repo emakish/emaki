@@ -5,6 +5,8 @@ import hashlib
 import os
 from pathlib import Path
 import stat
+import re
+import tomllib
 import sys
 
 
@@ -39,10 +41,47 @@ def claim_file(environment):
         os.close(directory)
 
 
+def wallpaper_arguments(environment):
+    """Use the selected generated wallpaper without changing personal configuration."""
+    config = Path(environment.get('XDG_CONFIG_HOME') or Path.home() / '.config')
+    source = config / 'emaki/settings.toml'
+    if not source.exists():
+        return ['wpaperd']
+    with source.open('rb') as stream:
+        raw = stream.read(65537)
+    if len(raw) > 65536:
+        raise ValueError('settings too large')
+    settings = tomllib.loads(raw.decode())
+    wallpaper = settings.get('appearance', {}).get('wallpaper')
+    if not wallpaper:
+        return ['wpaperd']
+    generation = settings.get('generation', '')
+    if (settings.get('schema_version') != 1 or not isinstance(generation, str)
+            or len(generation) >= 100 or not re.fullmatch(r'g-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+', generation)
+            or not isinstance(wallpaper, str) or not Path(wallpaper).is_absolute()):
+        raise ValueError('invalid managed wallpaper')
+    state = Path(environment.get('XDG_STATE_HOME') or Path.home() / '.local/state')
+    selected = state / 'emaki/generations' / generation / 'wpaperd.toml'
+    with selected.open('rb') as stream:
+        raw = stream.read(65537)
+    if len(raw) > 65536:
+        raise ValueError('generated wallpaper too large')
+    rendered = tomllib.loads(raw.decode())
+    if rendered.get('default', {}).get('path') != wallpaper:
+        raise ValueError('managed wallpaper differs')
+    return ['wpaperd', '--config', str(selected)]
+
+
 def main():
     environment = dict(os.environ)
     descriptor = None
     try:
+        try:
+            arguments = wallpaper_arguments(environment)
+        except (OSError, ValueError, TypeError, AttributeError):
+            print('emaki-session-wallpaper: managed wallpaper unavailable; using default',
+                  file=sys.stderr)
+            arguments = ['wpaperd']
         descriptor = claim_file(environment)
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -56,7 +95,7 @@ def main():
         os.write(descriptor, b'1')
         os.set_inheritable(descriptor, True)
         try:
-            os.execvpe('wpaperd', ['wpaperd'], environment)
+            os.execvpe('wpaperd', arguments, environment)
         except OSError:
             os.ftruncate(descriptor, 0)  # A failed exec may be retried.
             raise

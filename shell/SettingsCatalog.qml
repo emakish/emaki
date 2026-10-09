@@ -1,12 +1,13 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
+import Quickshell.Io
 
 Scope {
     id: settings
     required property bool active
     readonly property string profile: Quickshell.env("EMAKI_SETTINGS_PROFILE")
-    property var values: []
+    readonly property var values: SettingsBridge.values
     property var history: []
     property var defaults: []
     property var xkbLayouts: []
@@ -14,12 +15,10 @@ Scope {
     property string state: "idle"
     property string lastAction: "idle"
     property var queue: []
+    readonly property int applyEpoch: SettingsBridge.applyEpoch
+    property int readEpoch: 0
     readonly property bool busy: core.busy || queue.length > 0
     function send(action: string, args: var): void {
-        if (!profile) {
-            state = "isolated_profile_required";
-            return;
-        }
         queue = queue.concat([
             {
                 action: action,
@@ -32,6 +31,7 @@ Scope {
         if (!core.busy && queue.length) {
             const next = queue[0];
             queue = queue.slice(1);
+            readEpoch = applyEpoch;
             core.start({
                 op: "settings",
                 action: next.action,
@@ -72,15 +72,40 @@ Scope {
         if (active)
             refresh();
     }
-    // bar.* / dock.* are read once at start so the shell applies them without opening Settings.
-    Component.onCompleted: {
-        if (profile)
-            send("list", []);
+    // Start from the durable store without opening a settings page.
+    Component.onCompleted: send("list", [])
+    // Atomic source replacement is the durable commit notification. The root
+    // watch also catches creation of the emaki directory on the first change.
+    readonly property string configRoot: profile ? profile + "/config" : (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config")
+    FileView {
+        path: settings.configRoot + "/."
+        preload: false
+        watchChanges: true
+        printErrors: false
+        onFileChanged: {
+            source.watchChanges = false;
+            source.watchChanges = true;
+            changed.restart();
+        }
+    }
+    FileView {
+        id: source
+        path: settings.configRoot + "/emaki/settings.toml"
+        preload: false
+        watchChanges: true
+        printErrors: false
+        onFileChanged: changed.restart()
+    }
+    Timer {
+        id: changed
+        interval: 50
+        onTriggered: settings.send("list", [])
     }
     // A set/undo the core committed: the page shows "Applied · Undo in History".
     signal applied
     PrivateJob {
         id: core
+        timeoutMs: 35000
         onCompleted: value => {
             settings.state = value.state;
             if (value.status === "rejected")
@@ -92,14 +117,18 @@ Scope {
                 settings.send("list", []);
                 settings.send("history", []);
             }
-            if (value.settings?.length)
-                settings.values = value.settings;
+            // A list already in flight must not overwrite a newer IPC apply.
+            if (value.settings?.length && settings.readEpoch === settings.applyEpoch)
+                SettingsBridge.values = value.settings;
             if (value.history)
                 settings.history = value.history;
         }
         onBusyChanged: {
-            if (!busy)
+            if (!busy) {
+                if (settings.state === "idle")
+                    settings.state = core.state;
                 settings.drain();
+            }
         }
     }
     PrivateJob {

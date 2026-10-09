@@ -19,8 +19,7 @@ from render_content import validate_frame, validate_restart
 
 UI = Path(__file__).resolve().parents[1]
 ROOT = UI.parents[1]
-SCREENS = ['welcome', 'welcome-bios', 'welcome-no-boot-medium', 'keyboard', 'network', 'timezone', 'timezone-search', 'timezone-empty', 'disk', 'alongside', 'alongside-review', 'manual', 'manual-empty', 'disk-mbr', 'disk-none', 'filesystem', 'encryption', 'encryption-none', 'encryption-account', 'encryption-separate', 'encryption-separate-empty', 'encryption-manual', 'encryption-alongside', 'encryption-mismatch', 'encryption-invalid', 'encryption-revealed', 'encryption-caps', 'encryption-numlock', 'live-keyboard-you', 'live-keyboard-encryption', 'live-keyboard-failed', 'live-keyboard-second', 'disk-hibernation', 'manual-hibernation', 'alongside-hibernation', 'you', 'you-empty', 'you-console', 'you-paste', 'you-caps', 'you-numlock', 'software', 'software-minimal', 'review', 'review-encrypted', 'plan-errors', 'install', 'install-signatures', 'install-updates', 'install-step', 'done', 'done-restart', 'done-restart-removable', 'done-warning', 'done-no-package-lists', 'done-wifi-not-copied', 'error-login-name', 'error', 'error-details', 'error-real']
-MODE_TARGETS = {'disk-hibernation': 'hibernationCheck', 'manual-hibernation': 'hibernationCheck', 'alongside-hibernation': 'hibernationCheck'}
+SCREENS = ['welcome', 'welcome-bios', 'welcome-no-boot-medium', 'keyboard', 'network', 'timezone', 'timezone-search', 'timezone-empty', 'disk', 'alongside', 'alongside-review', 'manual', 'manual-empty', 'disk-mbr', 'disk-none', 'filesystem', 'encryption', 'encryption-none', 'encryption-account', 'encryption-separate', 'encryption-separate-empty', 'encryption-manual', 'encryption-alongside', 'encryption-mismatch', 'encryption-invalid', 'encryption-revealed', 'encryption-caps', 'encryption-numlock', 'live-keyboard-you', 'live-keyboard-encryption', 'live-keyboard-failed', 'live-keyboard-second', 'you', 'you-empty', 'you-console', 'you-paste', 'you-caps', 'you-numlock', 'software', 'software-minimal', 'review', 'review-encrypted', 'plan-errors', 'install', 'install-signatures', 'install-updates', 'install-step', 'done', 'done-restart', 'done-restart-removable', 'done-warning', 'done-no-package-lists', 'done-wifi-not-copied', 'error-login-name', 'error', 'error-details', 'error-real']
 
 
 def main():
@@ -148,12 +147,6 @@ def main():
                         'type digits on the main row.') in log, log
             if screen == 'you-paste':
                 assert 'PASTE_REFUSED Pasted text cannot be used for this password. Type it key by key.' in log, log
-            if screen in MODE_TARGETS:
-                # The top frame shows the disks and the modes; a second frame shows the hibernation checkbox after them.
-                assert 'TARGET_VISIBLE ' + MODE_TARGETS[screen] in log, log
-                assert 'SCREENSHOT_OK ' + screen + '-mode' in log, log
-                validate_frame(args.output / (screen + '-mode.png'), log, screen + '-mode',
-                               args.width, args.height, version, scrolled=True)
             print('PASS render ' + screen, flush=True)
     print(args.output)
 

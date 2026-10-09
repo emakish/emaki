@@ -524,8 +524,9 @@ class ShellRestart(UnitChecks, unittest.TestCase):
     def test_a_terminal_opens_without_the_shell(self):
         # With the shell stopped the person still has Mod+T (a niri bind, not the shell) to
         # read `journalctl --user -u emaki-shell` and run `emaki-shell restart`.
+        # The helper resolves the selected terminal and falls back to kitty if removed.
         binds = (ROOT / 'niri/default.kdl').read_text()
-        self.assertRegex(binds, re.compile(r'^\s*Mod\+T [^{\n]*\{ spawn "kitty"; \}', re.M))
+        self.assertRegex(binds, re.compile(r'^\s*Mod\+T [^{\n]*\{ spawn "emaki-terminal"; \}', re.M))
 
 
 class IdleRestart(UnitChecks, unittest.TestCase):

@@ -29,6 +29,7 @@ one linear stack on top of tag `v26.04`.
 | `0006-exit-without-primary-renderer.patch` | `fix/exit` (only in the clone with the `fix/*` branches, see below) | `fix/wp` (in place of `emaki-wallpaper`) |
 | `0007-protect-session-pixels-while-locked.patch` | patch delivered in the distribution tree | `v26.04` with `0001`–`0006` applied |
 | `0008-account-for-static-blur-occlusion.patch` | patch delivered in the distribution tree | `v26.04` with `0001`–`0007` applied |
+| `0009-preserve-mapped-layer-keyboard-focus.patch` | patch delivered in the distribution tree | `v26.04` with `0001`–`0008` applied |
 
 Check that the stack is linear (in the niri fork clone):
 
@@ -123,6 +124,7 @@ described above, keep its header, and pass the `diff -r` stack check.
    ```sh
    export XDG_RUNTIME_DIR="$(mktemp -d)"
    export RAYON_NUM_THREADS=1
+   cargo test --frozen --release --lib tests::layer_shell
    cargo test --frozen --release --lib screencopy
    cargo test --frozen --release --lib startup_cover
    cargo test --frozen --release --lib keep_frame
@@ -642,3 +644,38 @@ output list: default xray blur hides trains, while plain translucent surfaces an
 the compositor regression compares pixels and visible train counts for each path.
 The guard fingerprints `xray.rs` and `postprocess.frag` alongside the compositor source. Revisit both
 when changing the xray shader's alpha composition or static wallpaper input.
+
+### Persistent layer keyboard focus (2026-10-08)
+
+Patch `0009` lets a mapped layer retain its acquired keyboard focus when it
+commits Exclusive → OnDemand. Exclusive is the explicit request specified by
+wlr-layer-shell; OnDemand alone never activates an already mapped, unfocused
+surface. The shell acknowledges keyboard enter through Window.active before
+relaxing the mode. None returns to the layout's retained window. Outside pointer
+focus and native navigation can leave OnDemand without a subsequent commit
+reacquiring it. Visibility, buffer attachment and exclusive zones stay unchanged.
+
+On rebase, inspect `MappedLayer`'s committed mode tracking, the layer commit
+handler and `update_keyboard_focus()`. Preserve session-lock precedence,
+fullscreen Top/Overlay ordering, backdrop exclusion and normal focus clearing.
+The existing compositor source fingerprint also guards this arbitration; the
+handler and mapped-layer files now have fingerprints. Run
+`cargo test --frozen --release --lib tests::layer_shell`: these Wayland fixture
+tests cover repeated mapped requests, unchanged surface identity and application
+size, return to the prior window, unrequested OnDemand, outside focus, fullscreen,
+and both Locking and Locked. A mode change must not attach a null buffer or
+require a new configure. The other package checks remain required.
+
+The shell enables bar and dock keyboard visits only for a compositor version it
+knows carries `0009` (`shell/NiriService.qml`, the compositor version check). A
+rebase that changes the version string or pkgrel must update that check in the
+same commit; otherwise those visits silently switch off.
+
+In the VM, install the package containing `0009` together with the matching shell
+before testing. From the logged-in `login.sh` session run
+`tests/vm/guest-open-timing.sh` and require `overlay-windows: ok` (one window across
+four openings) and `open-first-frame: ok` (best repeat frame below 16 ms).
+Also repeat Super+B with a maximized application: the bar must stay visible and
+the application's height must remain constant. Verify Escape, outside clicks,
+native focus navigation, native pairing, lock, fullscreen, and US/RU shortcuts.
+These VM checks are separate from the source tests.

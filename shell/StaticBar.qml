@@ -1,10 +1,39 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Window
 import Quickshell
 import Quickshell.Io
+import "Keyboard.js" as Keyboard
 
 Item {
     id: bar
+    property bool keyboardBoundary: false
+    signal leaveKeyboard
+    function takeFocus(): void {
+        Keyboard.focusFirst(bar);
+    }
+    Keys.onPressed: event => {
+        if (event.key === Qt.Key_Escape) {
+            leaveKeyboard();
+            event.accepted = true;
+        } else {
+            Keyboard.handle(bar, event);
+            event.accepted = true;
+        }
+    }
+    readonly property Item keyboardItem: {
+        const item = Window.window ? Window.window.activeFocusItem : null;
+        return keyboardBoundary && item && Keyboard.boundary(item) === bar ? item : null;
+    }
+    FocusRing {
+        anchors.fill: undefined
+        shown: bar.keyboardItem !== null
+        readonly property rect targetRect: bar.keyboardItem ? bar.keyboardItem.mapToItem(bar, 0, 0, bar.keyboardItem.width, bar.keyboardItem.height) : Qt.rect(0, 0, 0, 0)
+        x: targetRect.x
+        y: targetRect.y
+        width: targetRect.width
+        height: targetRect.height
+    }
     property bool skipIntro: false
     required property BarPolicy policy
     required property HoverTip tip
@@ -115,6 +144,11 @@ Item {
         onClicked: bar.clockClicked()
     }
     readonly property alias dateLabel: clockIsland.dateLabel
+    KeyboardTarget {
+        parent: clockIsland.hit
+        label: "Calendar and notifications"
+        onActivated: bar.clockClicked()
+    }
     // The system island on liquid glass (liquid-glass/system.html); SystemPanel grows out of it.
     // `systemIsland` is its rectangle (input mask, status, the privacy pill's anchor).
     readonly property alias systemIsland: systemGlass.hit

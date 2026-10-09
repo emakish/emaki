@@ -72,6 +72,47 @@ class Safety(unittest.TestCase):
         pending = {'fstype': 'btrfs', 'fsroot': '/@emaki-kept-20260101T000000Z-12345678'}
         self.assertEqual(m.boot_status(pending, '')['mode'], 'pending')
 
+    def test_automatic_return_status_names_the_snapshot_date(self):
+        flags = ('rootflags=subvol=/@snapshots/7/snapshot emaki.auto_return=' + 'a' * 32
+                 + ' emaki.snapshot_date=2026-10-07')
+        message = ('The update did not start correctly, so Emaki returned to the system '
+                   'from before the update (2026-10-07). Your files are safe.')
+        for root in ({'fstype': 'overlay', 'fsroot': '/'},
+                     {'fstype': 'btrfs', 'fsroot': '/@snapshots/7/snapshot'}):
+            with self.subTest(root=root):
+                self.assertEqual(m.boot_status(root, flags),
+                                 dict(mode='snapshot', snapshot='7', automatic=True, message=message))
+
+    def test_automatic_return_flags_do_not_change_other_roots(self):
+        flags = ' emaki.auto_return=' + 'a' * 32 + ' emaki.snapshot_date=2026-10-07'
+        cases = (
+            ({'fstype': 'btrfs', 'fsroot': '/@'}, 'rootflags=subvol=@'),
+            ({'fstype': 'ext4', 'fsroot': '/'}, ''),
+            ({'fstype': 'overlay', 'fsroot': '/'}, 'rootflags=subvol=@'),
+            ({'fstype': 'btrfs', 'fsroot': '/@emaki-kept-20260101T000000Z-12345678'}, ''),
+        )
+        for root, cmdline in cases:
+            with self.subTest(root=root):
+                self.assertEqual(m.boot_status(root, cmdline + flags), m.boot_status(root, cmdline))
+
+    def test_manual_snapshot_and_malformed_return_details_keep_manual_notice(self):
+        root = {'fstype': 'overlay', 'fsroot': '/'}
+        flags = 'rootflags=subvol=/@snapshots/7/snapshot'
+        token = 'emaki.auto_return=' + 'a' * 32
+        date = 'emaki.snapshot_date=2026-10-07'
+        expected = dict(mode='snapshot', snapshot='7', message='You are using a recovery snapshot.')
+        details = (
+            '', token, date, token + 'x ' + date, token.upper() + ' ' + date,
+            'emaki.auto_return=../bad ' + date, token + ' emaki.snapshot_date=2026-1-07',
+            token + ' emaki.snapshot_date=2026-99-99', token + ' emaki.snapshot_date=2026-02-30',
+            token + ' ' + token + ' ' + date, token + ' ' + date + ' ' + date,
+            token + ' emaki.auto_return=bad ' + date,
+            token + ' ' + date + ' emaki.snapshot_date=bad',
+        )
+        for detail in details:
+            with self.subTest(detail=detail):
+                self.assertEqual(m.boot_status(root, flags + ' ' + detail), expected)
+
     def test_ext4_refuses_without_mounting(self):
         with patch.object(m, 'mount_info', return_value={'fstype': 'ext4'}), \
                 patch.object(m.os, 'geteuid', return_value=0), patch.object(m, 'top_mount') as mount, \

@@ -4,6 +4,7 @@ import QtQuick
 FocusScope {
     id: prompt
     property string snapshot: ""
+    property string automaticMessage: ""
     property bool busy: false
     property bool succeeded: false
     property string error: ""
@@ -16,6 +17,10 @@ FocusScope {
     }
     onBusyChanged: if (!busy)
         Qt.callLater(takeFocus)
+    Keys.onLeftPressed: later.forceActiveFocus()
+    Keys.onUpPressed: later.forceActiveFocus()
+    Keys.onRightPressed: (keep.visible && keep.enabled ? keep : later).forceActiveFocus()
+    Keys.onDownPressed: (keep.visible && keep.enabled ? keep : later).forceActiveFocus()
     Keys.onEscapePressed: event => {
         if (!busy)
             dismissed();
@@ -47,7 +52,7 @@ FocusScope {
         }
         Text {
             width: parent.width
-            text: prompt.succeeded ? "Restart to use the restored system. Your previous system has been kept for undo." : "Snapshot " + prompt.snapshot + " is temporary until you keep it. Keeping it restores the original snapshot, including apps and system settings. Changes made during this recovery session are discarded. Your home files stay as they are."
+            text: prompt.succeeded ? "Restart to use the restored system. Your previous system has been kept for undo." : (prompt.automaticMessage ? prompt.automaticMessage + "\n\n" : "") + "Snapshot " + prompt.snapshot + " is temporary until you keep it. Keeping it restores the original snapshot, including apps and system settings. Changes made during this recovery session are discarded. Your home files stay as they are."
             wrapMode: Text.WordWrap
             font.family: ShellPalette.uiFont
             font.pixelSize: 14
@@ -96,10 +101,13 @@ FocusScope {
         implicitHeight: 40
         radius: 11
         activeFocusOnTab: true
+        FocusRing {
+            shown: action.activeFocus
+        }
         opacity: enabled ? 1 : .5
         color: accent ? ShellPalette.accent : LiquidPalette.flatDrop
-        border.color: activeFocus ? LiquidPalette.inkOnLight : LiquidPalette.flatDropRim
-        border.width: activeFocus ? 2 : 1
+        border.color: LiquidPalette.flatDropRim
+        border.width: 1
         Accessible.role: Accessible.Button
         Accessible.name: label
         Accessible.onPressAction: if (enabled)

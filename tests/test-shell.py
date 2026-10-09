@@ -41,6 +41,7 @@ report = json.loads(lint.stdout)
 (CACHE / 'shell-qmllint.json').write_text(lint.stdout)
 known = []
 additional_metadata = {
+    ('NiriService.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('SessionUpdateNotice.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('WelcomeController.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('SnapshotRecovery.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
@@ -69,7 +70,7 @@ for file in report['files']:
         else:
             raise AssertionError((file['filename'], warning))
 # Exact Quickshell metadata gaps; runtime tests exercise these handlers.
-assert len(known) <= 21, known
+assert len(known) <= 22, known
 assert lint.returncode == 0 or known, (lint.returncode, lint.stderr)
 print(f'QML format OK; qmllint raw rc={lint.returncode}, {len(known)} documented QS metadata diagnostics, no others')
 

@@ -128,8 +128,9 @@ surf=surf.replace('PanelWindow {','FloatingWindow {\n        implicitWidth: surf
 surf=surf.replace('surfaces.controller.output !== null','true')
 assert surf.count('FloatingWindow {')==3 and surf.count('        mask: ')==3,surf
 (mq/'Surfaces.qml').write_text(surf)
-entry=(mq/'shell.qml').read_text().replace('headless: root.headless','headless: true')
-entry=entry[:entry.rfind('}')]+'    BarMaskDriver {\n        scene: scene\n        surfaces: root.surfaceWindows\n    }\n}\n'
+(mq/'ShellOutputs.qml').write_text((mq/'ShellOutputs.qml').read_text().replace('headless: outputs.headless', 'headless: true').replace('live: !outputs.headless', 'live: false'))
+entry=(mq/'shell.qml').read_text()
+entry=entry[:entry.rfind('}')]+'    BarMaskDriver {\n        scene: root.scene\n        surfaces: root.surfaceWindows\n    }\n}\n'
 (mq/'check.qml').write_text(entry)
 menv=dict(env,EMAKI_SHELL_BORDER='soft',EMAKI_SHELL_HEADLESS='0',EMAKI_SHELL_TEST_WIDTH='1280',EMAKI_SHELL_TEST_HEIGHT='800',
           EMAKI_SESSION_START='',EMAKI_SESSION_SKIP_INTRO='',HOME=str(m),EMAKI_PYTHON='/usr/bin/python3',

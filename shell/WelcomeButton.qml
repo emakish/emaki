@@ -11,10 +11,16 @@ Rectangle {
     implicitHeight: 42
     radius: 12
     color: primary || selected ? LiquidPalette.selectedDrop : pointer.containsMouse ? LiquidPalette.flatDropRim : LiquidPalette.flatDrop
-    border.width: activeFocus ? 2 : 1
-    border.color: activeFocus ? LiquidPalette.inkOnLight : LiquidPalette.flatDropRim
+    border.width: 1
+    border.color: LiquidPalette.flatDropRim
     opacity: enabled ? 1 : .4
     activeFocusOnTab: true
+    readonly property alias focusRing: focusRing
+    FocusRing {
+        id: focusRing
+        shown: button.activeFocus
+        radius: button.radius
+    }
     Accessible.role: Accessible.Button
     Accessible.name: text
     Accessible.onPressAction: if (enabled)

@@ -177,7 +177,7 @@ class PrivatePythonBytecode(unittest.TestCase):
 
     def test_cold_boot_entry_point_imports_without_writing_bytecode(self):
         library = self.root / 'usr/lib/emaki/boot'
-        for module in ('__init__', 'refresh'):
+        for module in ('__init__', 'refresh', 'update_menu', 'update', 'usable'):
             self.stage(f'grub/emaki_boot/{module}.py',
                        f'usr/lib/emaki/boot/emaki_boot/{module}.py')
         for module in ('boot', 'errors', 'grub_screen'):
@@ -189,6 +189,12 @@ class PrivatePythonBytecode(unittest.TestCase):
                                 text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('--mark-good', result.stdout)
+        entry = self.stage('scripts/emaki-update-boot', 'usr/bin/emaki-update-boot')
+        entry.write_text(entry.read_text().replace('/usr/lib/emaki/boot', str(library)))
+        result = subprocess.run([str(entry), '--help'], env=self.environment,
+                                text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('accept', result.stdout)
         self.assert_no_bytecode()
 
     def test_cold_package_hooks_import_without_writing_bytecode(self):

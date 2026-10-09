@@ -15,8 +15,9 @@ Scope {
     // (EMAKI_SHELL_CLIPBOARD_RECORDER=1). Otherwise an external `wl-paste --watch
     // cliphist store` is assumed and Pause/Resume are not offered.
     readonly property bool recorderOwned: Quickshell.env("EMAKI_SHELL_CLIPBOARD_RECORDER") === "1"
+    property ClipboardHistory recorderSource: null
     property bool paused: false
-    readonly property string recorder: !recorderOwned ? "external" : watcher.running ? "recording" : paused ? "paused" : "failed"
+    readonly property string recorder: recorderSource ? recorderSource.recorder : !recorderOwned ? "external" : watcher.running ? "recording" : paused ? "paused" : "failed"
     signal copied
     function refresh(): void {
         if (active && !reader.busy) {
@@ -43,6 +44,8 @@ Scope {
     // Resume starts a new watcher; wl-paste also runs the command once for the
     // selection present at start, which cliphist deduplicates.
     function setRecording(value: bool): bool {
+        if (recorderSource)
+            return recorderSource.setRecording(value);
         if (!recorderOwned)
             return false;
         paused = !value;
@@ -60,7 +63,7 @@ Scope {
             refresh();
     }
     Component.onCompleted: {
-        if (recorderOwned)
+        if (recorderOwned && !recorderSource)
             setRecording(true);
     }
     PrivateJob {

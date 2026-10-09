@@ -43,7 +43,7 @@ def content_contract():
     main = (ROOT / 'shell/shell.qml').read_text()
     assert 'enabled: root.valid && !root.headless' in main
     assert 'ready: !startup.coverActive' in main
-    assert 'onOpening: scene.closeAll()' in main
+    assert 'onOpening: outputs.closeAll()' in main
     print('PASS: displayed shortcuts match shipped bindings; launcher and startup hooks')
 
 

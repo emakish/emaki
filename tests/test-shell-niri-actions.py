@@ -56,16 +56,40 @@ def command(server, args, code, outcome):
 
 
 def qml_check(server):
+    # Control only the IPC version client. An installed binary can be new while the
+    # compositor still runs the previous build; the service must inspect its reply.
+    tools = PROFILE / 'bin'
+    tools.mkdir()
+    scenario = PROFILE / 'version.json'
+    calls = PROFILE / 'version-calls'
+    scenario.write_text(json.dumps({'compositor': '26.04 (v26.04+emaki.11)'}))
+    probe = tools / 'niri'
+    probe.write_text("""#!/usr/bin/python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+import json, pathlib, sys, time
+root = pathlib.Path(__file__).resolve().parent.parent
+assert sys.argv[1:] == ['msg', '-j', 'version'], sys.argv
+value = json.loads((root / 'version.json').read_text())
+with (root / 'version-calls').open('a') as log:
+    log.write('probe\\n')
+time.sleep(value.pop('delay', 0))
+code = value.pop('code', 0)
+print(json.dumps(value), flush=True)
+sys.exit(code)
+""")
+    probe.chmod(0o755)
+    probe_env = dict(ENV, PATH=str(tools) + os.pathsep + os.environ['PATH'])
     qs = shutil.which('qs')
     assert qs, 'qs required'
     with (PROFILE / 'qs.log').open('w') as log:
-        proc = subprocess.Popen([qs, '-p', str(PROFILE / 'qml'), '--no-color'], env=ENV,
+        proc = subprocess.Popen([qs, '-p', str(PROFILE / 'qml'), '--no-color'], env=probe_env,
                                 stdout=log, stderr=subprocess.STDOUT)
         def ipc(*args):
             return subprocess.run([qs, 'ipc', '--pid', str(proc.pid), 'call', 'test', *args],
                                   env=ENV, capture_output=True, text=True, timeout=3)
-        def wait_status(predicate):
-            deadline = time.monotonic() + 5
+        def wait_status(predicate, timeout=5):
+            deadline = time.monotonic() + timeout
             last = None
             while time.monotonic() < deadline:
                 assert proc.poll() is None, (PROFILE / 'qs.log').read_text()
@@ -83,6 +107,77 @@ def qml_check(server):
             wait_status(lambda value: len(server.actions) == before + 1 and value['action'] == expected and value['reason'] == reason)
         try:
             wait_status(lambda value: value['connection'] == 'connected')
+            # Parser accepts only a running compositor identity with the known patch.
+            for version, expected in (
+                ('26.04 (v26.04+emaki.11)', False),
+                ('26.04 (v26.04+emaki)', False),
+                ('26.04 (v26.04)', False),
+                ('26.04 (v26.04+emaki.12)', True),
+                ('26.04 (v26.04+emaki.13)', True),
+                ('26.05 (v26.05+emaki.12)', False),
+                ('26.04 (v26.04+emaki.12-dirty)', False),
+                ('26.04 (v26.04+emaki.9007199254740992)', False),
+                (None, False),
+            ):
+                reply = ipc('supportsVersion', 'x' + json.dumps({'compositor': version, 'cli': '26.04 (v26.04+emaki.12)'}))
+                assert reply.returncode == 0 and reply.stdout.strip() == str(expected).lower(), (version, reply)
+            for invalid in ('broken', '{}', 'null', '[]', '"26.04 (v26.04+emaki.12)"'):
+                reply = ipc('supportsVersion', 'x' + invalid)
+                assert reply.stdout.strip() == 'false', (invalid, reply)
+
+            def set_probe(value):
+                temporary = scenario.with_suffix('.new')
+                temporary.write_text(json.dumps(value))
+                temporary.replace(scenario)
+            def probe_count():
+                return len(calls.read_text().splitlines()) if calls.exists() else 0
+            def wait_probe(before):
+                deadline = time.monotonic() + 3
+                while time.monotonic() < deadline and probe_count() <= before:
+                    time.sleep(.02)
+                assert probe_count() > before, (before, probe_count())
+            wait_probe(0)
+            time.sleep(.15)
+            assert not json.loads(ipc('status').stdout)['layer_focus']
+            set_probe({'compositor': '26.04 (v26.04+emaki.12)'})
+            ipc('reconnect')
+            wait_status(lambda value: value['layer_focus'])
+            # A successful previous connection cannot authorize the next one.
+            set_probe({'compositor': '26.04 (v26.04+emaki.11)'})
+            before = probe_count()
+            ipc('reconnect')
+            assert not json.loads(ipc('status').stdout)['layer_focus']
+            wait_probe(before)
+            time.sleep(.15)
+            assert not json.loads(ipc('status').stdout)['layer_focus']
+            # A delayed success from the old connection must not authorize a new one.
+            set_probe({'compositor': '26.04 (v26.04+emaki.12)', 'delay': .8})
+            before = probe_count()
+            ipc('reconnect')
+            wait_probe(before)
+            set_probe({'compositor': '26.04 (v26.04+emaki.11)'})
+            ipc('reconnect')
+            time.sleep(1)
+            assert not json.loads(ipc('status').stdout)['layer_focus']
+            # A hung helper expires; a transient failure can recover without reconnect.
+            set_probe({'compositor': '26.04 (v26.04+emaki.12)', 'delay': 10})
+            before = probe_count()
+            ipc('reconnect')
+            wait_probe(before)
+            time.sleep(1.7)
+            assert not json.loads(ipc('status').stdout)['layer_focus']
+            set_probe({'compositor': '26.04 (v26.04+emaki.12)'})
+            wait_status(lambda value: value['layer_focus'], timeout=8)
+            # Even a plausible payload from a failed command is not proof.
+            set_probe({'compositor': '26.04 (v26.04+emaki.12)', 'code': 1})
+            before = probe_count()
+            ipc('reconnect')
+            wait_probe(before)
+            time.sleep(.15)
+            assert not json.loads(ipc('status').stdout)['layer_focus']
+            set_probe({'compositor': '26.04 (v26.04+emaki.12)'})
+            ipc('reconnect')
+            wait_status(lambda value: value['layer_focus'])
             action('window', 2, 'confirmed', 'postcondition_observed')
             assert server.windows[1]['is_focused']
             action('workspace', 202, 'confirmed', 'postcondition_observed')

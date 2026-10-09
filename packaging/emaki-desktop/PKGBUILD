@@ -6,7 +6,7 @@
 # Desktop applications and the password-only lock PAM service. Runtime helpers
 # and their dependencies are also declared by emaki-config for standalone use.
 pkgname=emaki-desktop
-pkgver=0.3.1
+pkgver=0.4.0
 pkgrel=1
 pkgdesc='Emaki desktop applications, dependencies and lock PAM configuration'
 arch=('any')
@@ -17,7 +17,7 @@ backup=('etc/pam.d/emaki-lock')
 source=('emaki-lock.pam')
 sha256sums=('43c3e514896042888cbaa613ac807c64045a23ba24d5df04ac40e8c9ea965371')
 depends=(
-    'emaki-config' 'niri-emaki>=26.04-6' 'quickshell-emaki' 'niri'
+    'emaki-config' 'niri-emaki>=26.04-12' 'quickshell-emaki' 'niri'
     'python' 'python-gobject' 'python-pillow' 'gtk3'
     'wpaperd' 'wl-clipboard' 'cliphist' 'polkit-kde-agent' 'udiskie'
     'kitty' 'fastfetch>=2.68.1' 'imagemagick'

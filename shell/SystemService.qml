@@ -236,8 +236,8 @@ Item {
             check = () => {
                 if (!service.pairingFocusReady)
                     return false;
-                // Start only after the compositor focuses the remapped panel, so
-                // that remap cannot steal focus from a fast native PIN dialog.
+                // Start after the compositor acknowledges the panel's focus request
+                // and the panel releases exclusivity for the native PIN dialog.
                 service.pairingQueued = false;
                 const started = service.backend.act(kind, value);
                 service.pendingCheck = typeof started === "function" ? started : () => started;

@@ -6,6 +6,7 @@ import Quickshell.Io
 Scope {
     id: recovery
     property string snapshot: ""
+    property string automaticMessage: ""
     property bool opened: false
     property bool succeeded: false
     property string error: ""
@@ -19,6 +20,7 @@ Scope {
                     const status = JSON.parse(text);
                     if (status.mode === "snapshot" && /^[1-9][0-9]*$/.test(status.snapshot)) {
                         recovery.snapshot = status.snapshot;
+                        recovery.automaticMessage = status.automatic === true ? status.message : "";
                         recovery.opened = true;
                     }
                 } catch (_) {}
@@ -50,6 +52,7 @@ Scope {
                 id: prompt
                 anchors.fill: parent
                 snapshot: recovery.snapshot
+                automaticMessage: recovery.automaticMessage
                 busy: keep.running
                 succeeded: recovery.succeeded
                 error: recovery.error

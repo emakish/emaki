@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
 
-const files = ['ShellScene.qml', 'Surfaces.qml', 'ClockPanel.qml', 'ClockBody.qml', 'NotificationStore.qml', 'SystemService.qml'];
+const files = ['ShellScene.qml', 'ShellOutputs.qml', 'Surfaces.qml', 'ClockPanel.qml', 'ClockBody.qml', 'NotificationStore.qml', 'SystemService.qml'];
 const original = Object.fromEntries(files.map(file => [file,
     fs.readFileSync(new URL('../shell/' + file, import.meta.url), 'utf8')]));
 function run(sources) {
@@ -50,18 +50,21 @@ function run(sources) {
     }
     function fixture(open, typedPin = false) {
         const state = vm.createContext({notes: {dnd: false, entries: [request(typedPin), {id: 2}]},
-            niri: {overviewOpen: false, casts: []}, presentationState: 'clear',
-            systemOpen: open, systemPage: 'bt', systemExpansion: open ? 1 : 0,
-            launcherOpen: false, drawerOpen: false, privacyOpen: false,
+            niri: {overviewOpen: false, casts: [], layerFocusSupported: true}, presentationState: 'clear',
+            keyboardSurface: '', systemOpen: open, systemPage: 'bt', systemExpansion: open ? 1 : 0,
+            launcherOpen: false, drawerOpen: false, privacyOpen: false, shortcutsOpen: false,
             Date: {now: () => 1000}, peekIds: [], peekCooldown: 0, peekStarted: 0,
             Metrics: {morphMs: 350}, peekTimer: {restart() {}, stop() {}}, closeTimer: {restart() {}}, systemBody: {rows: [], reset() {}}, services: {pendingKind: ''},
-            enabled: true, output: {},
+            enabled: true, output: {}, focusedOutput: true,
             WlrKeyboardFocus: {None: 'none', OnDemand: 'on-demand', Exclusive: 'exclusive'}});
         state.scene = state;
-        state.surfaces = {controller: state};
+        state.surfaces = {controller: state, pendingLayer: ''};
         const surface = vm.createContext({controller: state});
         Object.defineProperty(state.surfaces, 'pairingKeyboard', {get() {
             return binding('Surfaces.qml', 'readonly property bool pairingKeyboard', surface);
+        }});
+        Object.defineProperty(state.surfaces, 'keyboardPanel', {get() {
+            return binding('Surfaces.qml', 'readonly property bool keyboardPanel', surface);
         }});
         Object.defineProperty(state, 'modalOpen', {get() {
             return binding('ShellScene.qml', 'readonly property bool modalOpen', state);
@@ -94,46 +97,130 @@ function run(sources) {
         state.systemBody.rows = []; state.services.pendingKind = '';
         assert.equal(keyboard(state), 'exclusive', 'completed or cancelled pairing');
     }
-    // Execute the real remap function and readiness binding with a controllable event queue.
+    // Execute the production acquisition and acknowledgement against retained windows.
     function focusFixture() {
         const state = fixture(true), later = [];
         let focused = 0;
-        state.systemPanel = {forceActiveFocus() { focused++; }};
-        const surface = vm.createContext({controller: state, pairingRemap: false,
-            overlay: {contentItem: {Window: {active: false}}}, Qt: {callLater: fn => later.push(fn)}});
+        state.systemPanel = {forceActiveFocus() { focused++; }, takeFocus() { focused++; }};
+        state.bar = {takeFocus() { focused++; }};
+        state.barKeyboardActive = false;
+        state.barPolicy = {barVisible: true, fullscreen: false};
+        state.dockStore = {on: true};
+        state.dockPolicy = {dockVisible: true};
+        state.dock = {keyboardActive: false, takeFocus() { focused++; }};
+        state.closeAll = () => {
+            state.barKeyboardActive = false;
+            state.dock.keyboardActive = false;
+            state.keyboardSurface = '';
+            state.systemOpen = false;
+        };
+        const window = () => ({contentItem: {Window: {active: false}}});
+        const surface = vm.createContext({controller: state, pendingLayer: '', armedLayer: '',
+            top: window(), dockWindow: window(), overlay: window(),
+            WlrKeyboardFocus: state.WlrKeyboardFocus, Qt: {callLater: fn => later.push(fn)}});
         surface.surfaces = surface;
-        Object.defineProperty(surface, 'pairingKeyboard', {get() { return state.surfaces.pairingKeyboard; }});
-        const readySource = sources['Surfaces.qml'].split('property: "pairingFocusReady"')[1].match(/value: (.*)/)[1];
-        const acquire = production('Surfaces.qml', 'acquirePairingKeyboard', '', surface);
-        return {state, surface, acquire, later, focused: () => focused,
-            ready: () => vm.runInContext(readySource, surface),
-            visible: () => vm.runInContext(overlaySources.match(/visible: (.*)/)[1], surface)};
+        for (const property of ['pairingKeyboard', 'keyboardPanel', 'pairingReady'])
+            Object.defineProperty(surface, property, {get() {
+                return binding('Surfaces.qml', 'readonly property bool ' + property, surface);
+            }});
+        state.surfaces = surface;
+        for (const [name, parameters] of [['layerActive', 'layer'], ['acquireKeyboard', 'layer'], ['releaseKeyboard', 'layer'],
+            ['keyboardActiveChanged', 'layer,active'], ['acquirePairingKeyboard', '']])
+            surface[name] = production('Surfaces.qml', name, parameters, surface);
+        const outputs = vm.createContext({headless: false,
+            instances: [{surfaces: {pairingKeyboard: false, pairingReady: true}}, {surfaces: surface}]});
+        outputs.outputs = outputs;
+        Object.defineProperty(outputs, 'pairingOwner', {get() {
+            return binding('ShellOutputs.qml', 'readonly property var pairingOwner', outputs);
+        }});
+        function sharedBinding(property) {
+            const block = sources['ShellOutputs.qml'].match(new RegExp('Binding \\{\\s+target: shared.services\\s+property: "' + property + '"\\s+value: ([^\\n]+)'));
+            assert.ok(block, 'shared service binding ' + property);
+            return vm.runInContext(block[1], outputs);
+        }
+        const layerSources = {bar: sources['Surfaces.qml'].split('id: top')[1],
+            dock: sources['Surfaces.qml'].split('id: dockWindow')[1], panel: overlaySources};
+        return {state, surface, outputs, acquire: surface.acquirePairingKeyboard, later, focused: () => focused,
+            ready: () => sharedBinding('pairingFocusReady'),
+            managed: () => sharedBinding('pairingFocusManaged'),
+            policy: layer => vm.runInContext(layerSources[layer].match(/WlrLayershell.keyboardFocus: (.*)/)[1], surface),
+            visible: layer => vm.runInContext(layerSources[layer].match(/visible: (.*)/)[1], surface)};
     }
+    function assertRetained(focus) {
+        for (const layer of ['bar', 'dock', 'panel'])
+            assert.equal(focus.visible(layer), true, layer + ' stays mapped throughout acquisition');
+    }
+    for (const layer of ['bar', 'dock', 'panel']) {
+        const focus = focusFixture();
+        if (layer === 'bar') focus.state.barKeyboardActive = true;
+        else if (layer === 'dock') focus.state.dock.keyboardActive = true;
+        else focus.state.keyboardSurface = 'system';
+        assertRetained(focus);
+        focus.surface.acquireKeyboard(layer);
+        assertRetained(focus);
+        assert.equal(focus.policy(layer), 'exclusive', layer + ' requests compositor focus');
+        focus.surface.keyboardActiveChanged(layer, false);
+        assertRetained(focus);
+        assert.equal(focus.surface.pendingLayer, layer, 'pre-activation loss does not cancel acquisition');
+        focus.surface[{bar: 'top', dock: 'dockWindow', panel: 'overlay'}[layer]].contentItem.Window.active = true;
+        focus.surface.keyboardActiveChanged(layer, true);
+        assertRetained(focus);
+        assert.equal(focus.surface.pendingLayer, '', layer + ' acknowledgement clears request');
+        assert.equal(focus.policy(layer), 'on-demand', layer + ' yields exclusivity after acknowledgement');
+        focus.surface.keyboardActiveChanged(layer, false);
+        assertRetained(focus);
+        assert.equal(focus.policy(layer), 'none', layer + ' releases ownership after focus loss');
+    }
+    const legacy = focusFixture();
+    legacy.state.niri.layerFocusSupported = false;
+    legacy.state.services.pendingKind = 'bt-pair';
+    legacy.acquire();
+    assert.equal(legacy.surface.pendingLayer, '', 'older compositor never arms an exclusive request');
+    assert.equal(legacy.policy('panel'), 'on-demand', 'older pairing retains its native-dialog policy');
+    legacy.state.services.pendingKind = '';
+    legacy.state.keyboardSurface = 'sound';
+    legacy.surface.acquireKeyboard('panel');
+    legacy.surface.keyboardActiveChanged('panel', true);
+    assert.equal(legacy.policy('panel'), 'exclusive', 'older ordinary panel retains its original policy');
+    for (const layer of ['bar', 'dock']) {
+        legacy.state.barKeyboardActive = true;
+        legacy.state.dock.keyboardActive = true;
+        legacy.surface.acquireKeyboard(layer);
+        assert.equal(legacy.policy(layer), 'none', 'older compositor never captures ' + layer);
+    }
+    assertRetained(legacy);
     const focus = focusFixture();
     assert.equal(focus.ready(), true);
+    assert.equal(focus.managed(), true, 'live outputs manage shared readiness');
+    focus.outputs.headless = true;
+    assert.equal(focus.managed(), false, 'headless outputs do not await native focus');
+    focus.outputs.headless = false;
     focus.acquire();
-    assert.equal(focus.later.length, 0, 'idle browsing does not remap');
+    assert.equal(focus.surface.pendingLayer, '', 'idle browsing does not request focus');
     focus.state.services.pendingKind = 'bt-pair';
     assert.equal(focus.ready(), false, 'unfocused overlay is not ready');
-    focus.surface.overlay.contentItem.Window.active = true;
     focus.acquire();
-    assert.equal(focus.visible(), false, 'pairing unmaps overlay');
-    assert.equal(focus.ready(), false, 'old focus during remap is not ready');
-    focus.surface.overlay.contentItem.Window.active = false;
-    focus.later.shift()();
-    assert.equal(focus.visible(), true, 'next turn maps overlay');
-    assert.equal(focus.focused(), 1, 'remap restores panel keyboard handler');
-    assert.equal(focus.ready(), false, 'mapping alone does not prove compositor focus');
+    assertRetained(focus);
+    assert.equal(focus.policy('panel'), 'exclusive');
     focus.surface.overlay.contentItem.Window.active = true;
+    assert.equal(focus.ready(), false, 'active window waits for acknowledgement');
+    focus.surface.keyboardActiveChanged('panel', true);
+    assert.equal(focus.policy('panel'), 'on-demand');
     assert.equal(focus.ready(), true);
-    focus.state.systemOpen = false;
+    assert.equal(focus.focused(), 1, 'acknowledgement restores panel keyboard handler');
+    assertRetained(focus);
+    focus.surface.overlay.contentItem.Window.active = false;
+    focus.surface.keyboardActiveChanged('panel', false);
+    assert.equal(focus.state.systemOpen, true, 'native prompt keeps pairing panel open');
+    assert.equal(focus.ready(), false, 'native prompt owns focus');
+    assertRetained(focus);
+    focus.surface.overlay.contentItem.Window.active = true;
     focus.acquire();
-    focus.state.systemOpen = true;
-    focus.acquire();
-    assert.equal(focus.visible(), false, 'reopening pending pairing remaps');
-    focus.state.systemOpen = false;
-    focus.later.shift()();
-    assert.equal(focus.focused(), 1, 'closing during remap does not refocus settings');
+    assert.equal(focus.surface.pendingLayer, '', 'already-active layer acknowledges immediately');
+    assert.equal(focus.ready(), true);
+    assert.equal(focus.later.length, 0, 'acquisition never schedules a remap');
+    focus.outputs.instances = [];
+    assert.equal(focus.ready(), true, 'removed pairing owner releases readiness');
     assert.match(sources['Surfaces.qml'], /onPairingKeyboardChanged: acquirePairingKeyboard\(\)/);
     assert.match(sources['Surfaces.qml'], /property: "pairingFocusManaged"\s+value: true/);
 
@@ -165,19 +252,19 @@ function run(sources) {
         assert.equal(calls.length, 0, 'no native request before focus handoff');
         state.tick();
         assert.equal(calls.length, 0, 'unfocused confirmation tick waits');
-        focus.surface.overlay.contentItem.Window.active = true;
         focus.acquire();
+        assertRetained(focus);
         state.tick();
-        assert.equal(calls.length, 0, 'remap waits even with stale active state');
-        focus.surface.overlay.contentItem.Window.active = false;
-        focus.later.shift()();
+        assert.equal(calls.length, 0, 'exclusive request alone does not launch native pairing');
+        focus.surface.overlay.contentItem.Window.active = true;
         state.tick();
-        assert.equal(calls.length, 0, 'newly mapped but unfocused surface waits');
+        assert.equal(calls.length, 0, 'active state still waits for focus acknowledgement');
         if (outcome === 'cancel') {
             assert.equal(state.act('bt-cancel-pair', 'device'), true);
             assert.equal(state.pairingQueued, false);
         }
-        focus.surface.overlay.contentItem.Window.active = true;
+        focus.surface.keyboardActiveChanged('panel', true);
+        assertRetained(focus);
         state.tick();
         assert.equal(calls.length, outcome === 'cancel' ? 0 : 1);
         assert.equal(state.actionState, outcome === 'failed' ? 'unavailable' :
@@ -214,7 +301,9 @@ function run(sources) {
 
     const waiting = serviceFixture(() => false);
     waiting.state.act('bt-pair', 'device');
+    waiting.focus.acquire();
     waiting.focus.surface.overlay.contentItem.Window.active = true;
+    waiting.focus.surface.keyboardActiveChanged('panel', true);
     waiting.state.tick(); waiting.state.tick(); waiting.state.tick();
     assert.deepEqual(waiting.calls, [['bt-pair', 'device']], 'confirmation polls never restart native pairing');
     for (const open of [false, true]) {
@@ -276,7 +365,7 @@ function run(sources) {
     assert.deepEqual(Array.from(retained.peekIds), [1], 'presentation and DND preserve request');
     // Execute the production entry-change handler: expired copies remain in history,
     // while answered requests are removed entirely by NotificationStore.
-    sources = {...sources, 'entry-handler': sources['ShellScene.qml'].split('onEntriesChanged:')[1]
+    sources = {...sources, 'entry-handler': sources['ShellScene.qml'].split('function onEntriesChanged(): void')[1]
         .replace(/^\s*{/, 'function entriesChanged() {')};
     const changed = production('entry-handler', 'entriesChanged', '', retained);
     retained.notes.entries[0].object = null;
@@ -336,11 +425,26 @@ if (process.argv.includes('--mutations')) {
         ['battery replacement', 'ShellScene.qml', '(pairingPeekOpen && !pairing)', 'false'],
         ['second pairing request', 'ShellScene.qml', '(pairingPeekOpen && !pairing)', 'pairingPeekOpen'],
         ['pairing lifetime', 'ShellScene.qml', 'if (pairingPeekOpen)\n            return;', 'if (false)\n            return;'],
-        ['PIN keyboard', 'Surfaces.qml', 'surfaces.pairingKeyboard ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive', 'surfaces.pairingKeyboard ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.Exclusive'],
-        ['idle Bluetooth exclusivity', 'Surfaces.qml', 'surfaces.pairingKeyboard ? WlrKeyboardFocus.OnDemand', 'surfaces.controller.systemPage === "bt" ? WlrKeyboardFocus.OnDemand'],
-        ['remap visibility', 'Surfaces.qml', '&& !surfaces.pairingRemap', '&& true'],
+        ...['bar', 'dock', 'panel'].map(layer => [layer + ' stuck exclusive', 'Surfaces.qml',
+            'surfaces.pendingLayer === "' + layer + '" ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand',
+            'surfaces.pendingLayer === "' + layer + '" ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.Exclusive']),
+        ['idle Bluetooth exclusivity', 'Surfaces.qml', 'surfaces.pairingKeyboard || surfaces.keyboardPanel ?', 'surfaces.controller.systemPage === "bt" ?'],
+        ...['bar', 'dock', 'panel'].map(layer => {
+            const id = {bar: 'top', dock: 'dockWindow', panel: 'overlay'}[layer];
+            const scope = original['Surfaces.qml'].split('id: ' + id)[1];
+            const prefix = 'id: ' + id + scope.slice(0, scope.indexOf('visible: '));
+            const visible = scope.match(/visible: (.*)/)[0];
+            return [layer + ' remap', 'Surfaces.qml', prefix + visible,
+                prefix + visible + ' && surfaces.pendingLayer !== "' + layer + '"'];
+        }),
         ['active readiness', 'Surfaces.qml', '&& overlay.contentItem.Window.active', '&& true'],
-        ['remap readiness', 'Surfaces.qml', '!surfaces.pairingRemap && overlay.contentItem.Window.active', 'overlay.contentItem.Window.active'],
+        ['pending readiness', 'Surfaces.qml', 'surfaces.pendingLayer !== "panel" && overlay.contentItem.Window.active', 'overlay.contentItem.Window.active'],
+        ['missing acknowledgement', 'Surfaces.qml', 'if (pendingLayer === layer)\n                pendingLayer = "";', 'if (false)\n                pendingLayer = "";'],
+        ['missing exclusive request', 'Surfaces.qml', 'pendingLayer = layer;', 'pendingLayer = "";'],
+        ['shared readiness', 'ShellOutputs.qml', 'outputs.pairingOwner?.surfaces.pairingReady ?? true', 'true'],
+        ['shared owner selection', 'ShellOutputs.qml', 'instances.find(i => i.surfaces?.pairingKeyboard) ?? null', 'instances[0] ?? null'],
+        ['missing pairing owner', 'ShellOutputs.qml', 'outputs.pairingOwner?.surfaces.pairingReady ?? true', 'outputs.pairingOwner?.surfaces.pairingReady ?? false'],
+        ['shared focus management', 'ShellOutputs.qml', 'value: !outputs.headless', 'value: false'],
         ['deferred native request', 'SystemService.qml', 'if (!service.pairingFocusReady)', 'if (false)'],
         ['preview stacking', 'ShellScene.qml', 'z: scene.batteryPeekOpen || scene.pairingPeekOpen ? 40 : 0', 'z: 0'],
         ['panel closing', 'ShellScene.qml', 'closeTimer.restart();\n    }\n    Behavior on systemExpansion', 'peekIds = [];\n        closeTimer.restart();\n    }\n    Behavior on systemExpansion'],
@@ -353,4 +457,4 @@ if (process.argv.includes('--mutations')) {
         console.log('Rejected mutation: ' + name);
     }
 }
-console.log('Pairing: idle exclusivity, focus remap/readiness, deferred native requests, cancellation/errors, notification gates and sharing: PASS');
+console.log('Pairing: idle exclusivity, persistent focus acquisition/readiness, deferred native requests, cancellation/errors, notification gates and sharing: PASS');

@@ -140,10 +140,18 @@ pub(crate) fn read_reply(stream: &mut UnixStream, deadline: Instant) -> Result<V
 struct ChildGuard {
     child: Child,
     reaped: bool,
+    supervised: bool,
 }
 impl Drop for ChildGuard {
     fn drop(&mut self) {
         if self.reaped {
+            return;
+        }
+        if self.supervised {
+            // EOF asks the guardian to kill and reap its worker before releasing
+            // the transaction lock. Waiting here orders rollback after cleanup.
+            drop(self.child.stdin.take());
+            let _ = self.child.wait();
             return;
         }
         // Helpers get their own group. Also stop descendants holding pipe FDs.
@@ -190,13 +198,129 @@ pub(crate) fn helper(
     args: &[&str],
     deadline: Instant,
 ) -> Result<HelperOutput, Failure> {
-    remaining(deadline)?;
-    let child = Command::new(program)
+    let mut command = Command::new(program);
+    command.args(args).stdin(Stdio::null());
+    run_helper(command, deadline, false)
+}
+
+fn helper_lock(path: &Path, create: bool) -> Result<Option<std::fs::File>, Failure> {
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    let unsafe_lock = || Failure::new(Status::Denied, "unsafe_helper_lock");
+    // Refuse redirected parent directories as well as the final lock name.
+    let mut component_path = std::path::PathBuf::new();
+    for component in path.components() {
+        component_path.push(component);
+        match std::fs::symlink_metadata(&component_path) {
+            Ok(meta) if meta.file_type().is_symlink() => return Err(unsafe_lock()),
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io_failure(error)),
+        }
+    }
+    let valid = |meta: &std::fs::Metadata| {
+        meta.is_file() && meta.nlink() == 1 && meta.uid() == rustix::process::geteuid().as_raw()
+    };
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if !valid(&meta) => return Err(unsafe_lock()),
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(io_failure(error)),
+    }
+    let file = match std::fs::OpenOptions::new()
+        .read(true)
+        .write(create)
+        .create(create)
+        .mode(0o600)
+        .custom_flags((OFlags::NOFOLLOW | OFlags::NONBLOCK).bits() as i32)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(error) if !create && error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(io_failure(error)),
+    };
+    if !valid(&file.metadata().map_err(io_failure)?) {
+        return Err(unsafe_lock());
+    }
+    Ok(Some(file))
+}
+
+/// Serialize recovery with a surviving guardian before touching live resources.
+pub(crate) fn helper_wait(lock_path: &Path, deadline: Instant) -> Result<(), Failure> {
+    use rustix::fs::{FlockOperation, flock};
+    let Some(file) = helper_lock(lock_path, false)? else {
+        return Ok(());
+    };
+    loop {
+        match flock(&file, FlockOperation::NonBlockingLockExclusive) {
+            Ok(()) => return Ok(()),
+            Err(rustix::io::Errno::WOULDBLOCK | rustix::io::Errno::INTR) => pause(deadline)?,
+            Err(error) => return Err(errno_failure(error)),
+        }
+    }
+}
+
+/// Keep the helper's lifetime inside the durable transaction, even after SIGKILL.
+pub(crate) fn helper_with_lock(
+    program: &str,
+    args: &[&str],
+    deadline: Instant,
+    lock_path: &Path,
+) -> Result<HelperOutput, Failure> {
+    let lock_timeout = remaining(deadline)?.as_secs_f64().to_string();
+    let _validated_lock = helper_lock(lock_path, true)?;
+    let mut command = Command::new("/bin/sh");
+    command
+        .args([
+            "-c",
+            r#"
+umask 077
+[ ! -L "$1" ] && [ -f "$1" ] || exit 126
+exec 4<>"$1" || exit 126
+flock -x -w "$2" 4 || exit 126
+shift 2
+printf 'ready\n'
+IFS= read -r start || exit 125
+[ "$start" = go ] || exit 125
+worker=
+watcher=
+cleanup() {
+    trap '' TERM
+    [ -z "$worker" ] || kill -KILL -- -"$worker" 2>/dev/null
+    [ -z "$worker" ] || wait "$worker" 2>/dev/null
+    [ -z "$watcher" ] || kill "$watcher" 2>/dev/null
+    [ -z "$watcher" ] || wait "$watcher" 2>/dev/null
+}
+trap 'cleanup; exit 125' TERM
+exec 3<&0
+setsid "$@" 3<&- 4>&- </dev/null &
+worker=$!
+( IFS= read -r lease <&3; kill -TERM "$$" ) 4>&- </dev/null >/dev/null 2>&1 &
+watcher=$!
+wait "$worker"
+result=$?
+cleanup
+exit "$result"
+"#,
+            "emaki-helper",
+        ])
+        .arg(lock_path)
+        .arg(lock_timeout)
+        .arg(program)
         .args(args)
+        .stdin(Stdio::piped());
+    run_helper(command, deadline, true)
+}
+
+fn run_helper(
+    mut command: Command,
+    deadline: Instant,
+    supervised: bool,
+) -> Result<HelperOutput, Failure> {
+    remaining(deadline)?;
+    let child = command
         .env("LC_ALL", "C")
         .env("SYSTEMD_COLORS", "0")
         .env("SYSTEMD_PAGER", "")
-        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .process_group(0)
@@ -211,11 +335,36 @@ pub(crate) fn helper(
     let mut child = ChildGuard {
         child,
         reaped: false,
+        supervised,
     };
     let mut stdout = child.child.stdout.take().expect("piped stdout");
     let mut stderr = child.child.stderr.take().expect("piped stderr");
     nonblocking(&stdout)?;
     nonblocking(&stderr)?;
+    if supervised {
+        // Do not grant permission to start until the guardian holds the lock.
+        // If we die before this handshake, EOF makes it exit without any work.
+        let mut ready = Vec::new();
+        loop {
+            if drain(&mut stdout, &mut ready, deadline)? {
+                return Err(Failure::new(Status::Error, "helper_guard_failed"));
+            }
+            if ready == b"ready\n" {
+                break;
+            }
+            if ready.len() >= 6 {
+                return Err(Failure::new(Status::Error, "helper_guard_failed"));
+            }
+            pause(deadline)?;
+        }
+        child
+            .child
+            .stdin
+            .as_mut()
+            .expect("lease stdin")
+            .write_all(b"go\n")
+            .map_err(io_failure)?;
+    }
     let (mut out, mut err) = (Vec::new(), Vec::new());
     loop {
         let out_closed = drain(&mut stdout, &mut out, deadline)?;
@@ -225,6 +374,9 @@ pub(crate) fn helper(
             && let Some(status) = child.child.try_wait().map_err(io_failure)?
         {
             child.reaped = true;
+            if supervised && status.code() == Some(127) {
+                return Err(Failure::new(Status::Error, "helper_missing"));
+            }
             return Ok(HelperOutput {
                 success: status.success(),
                 stdout: out,
@@ -371,6 +523,169 @@ mod tests {
         );
         assert_eq!(result.err().unwrap().status, Status::Timeout);
         assert!(start.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    #[ignore = "subprocess entry point for the killed caller test"]
+    fn supervised_helper_caller() {
+        let root = std::env::var("EMAKI_HELPER_TEST_ROOT").unwrap();
+        let lock = Path::new(&root).join("helper.lock");
+        let _ = helper_with_lock(
+            "/bin/sh",
+            &[
+                "-c",
+                r#"
+(sleep 1; printf late >"$1/late") &
+printf started >"$1/started"
+wait
+"#,
+                "helper",
+                &root,
+            ],
+            Instant::now() + Duration::from_secs(10),
+            &lock,
+        );
+    }
+
+    #[test]
+    fn killed_caller_stops_helper_descendants_before_recovery() {
+        let dir = SocketDir::new("helper-lifetime");
+        let mut caller = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "transport::tests::supervised_helper_caller",
+                "--ignored",
+            ])
+            .env("EMAKI_HELPER_TEST_ROOT", &dir.0)
+            .stdout(Stdio::null())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !dir.0.join("started").exists() {
+            assert!(
+                caller.try_wait().unwrap().is_none(),
+                "caller exited before helper started"
+            );
+            assert!(Instant::now() < deadline, "helper did not start");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        caller.kill().unwrap();
+        caller.wait().unwrap();
+        helper_wait(&dir.0.join("helper.lock"), deadline).unwrap();
+        // Recovery can now replace live files without a stale worker writing later.
+        std::thread::sleep(Duration::from_millis(1200));
+        assert!(!dir.0.join("late").exists());
+    }
+
+    #[test]
+    fn supervised_timeout_reaps_worker_and_preserves_output() {
+        let dir = SocketDir::new("helper-timeout");
+        let lock = dir.0.join("helper.lock");
+        let result = helper_with_lock(
+            "/bin/sh",
+            &["-c", "printf out; printf err >&2; exit 7"],
+            Instant::now() + Duration::from_secs(2),
+            &lock,
+        )
+        .unwrap();
+        assert!(!result.success);
+        assert_eq!(result.stdout, b"out");
+        assert_eq!(result.stderr, b"err");
+        let result = helper_with_lock(
+            "/bin/sh",
+            &["-c", "sleep 20 & wait"],
+            Instant::now() + Duration::from_millis(100),
+            &lock,
+        );
+        assert_eq!(result.err().unwrap().status, Status::Timeout);
+        helper_wait(&lock, Instant::now() + Duration::from_secs(1)).unwrap();
+    }
+
+    #[test]
+    fn guardian_lock_wait_is_bounded_and_cannot_start_expired_work() {
+        use rustix::fs::{FlockOperation, flock};
+        let dir = SocketDir::new("helper-lock");
+        let lock = dir.0.join("helper.lock");
+        let held = std::fs::File::create(&lock).unwrap();
+        flock(&held, FlockOperation::LockExclusive).unwrap();
+        let start = Instant::now();
+        let result = helper_with_lock(
+            "/bin/sh",
+            &[
+                "-c",
+                "touch \"$1/started\"",
+                "helper",
+                dir.0.to_str().unwrap(),
+            ],
+            start + Duration::from_millis(100),
+            &lock,
+        );
+        assert!(result.is_err());
+        assert!(start.elapsed() < Duration::from_secs(1));
+        drop(held);
+        helper_wait(&lock, Instant::now() + Duration::from_secs(1)).unwrap();
+        assert!(!dir.0.join("started").exists());
+    }
+
+    #[test]
+    fn helper_locks_refuse_redirection_and_nonregular_files() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        let dir = SocketDir::new("helper-lock-safety");
+        let sentinel = dir.0.join("personal");
+        std::fs::write(&sentinel, b"personal content").unwrap();
+        let redirected = dir.0.join("redirected.lock");
+        symlink(&sentinel, &redirected).unwrap();
+        let linked = dir.0.join("linked.lock");
+        std::fs::hard_link(&sentinel, &linked).unwrap();
+        let directory = dir.0.join("directory.lock");
+        std::fs::create_dir(&directory).unwrap();
+        let fifo = dir.0.join("fifo.lock");
+        rustix::fs::mknodat(
+            rustix::fs::CWD,
+            &fifo,
+            rustix::fs::FileType::Fifo,
+            rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
+            0,
+        )
+        .unwrap();
+        let redirected_parent = dir.0.join("redirected-parent");
+        symlink(&dir.0, &redirected_parent).unwrap();
+        for path in [
+            redirected,
+            linked,
+            directory,
+            fifo,
+            redirected_parent.join("another.lock"),
+        ] {
+            let start = Instant::now();
+            assert!(
+                helper_with_lock("/bin/true", &[], start + Duration::from_secs(1), &path).is_err()
+            );
+            assert!(helper_wait(&path, start + Duration::from_secs(1)).is_err());
+            assert!(start.elapsed() < Duration::from_secs(1));
+            assert_eq!(std::fs::read(&sentinel).unwrap(), b"personal content");
+        }
+        let ordinary = dir.0.join("ordinary.lock");
+        helper_with_lock(
+            "/bin/true",
+            &[],
+            Instant::now() + Duration::from_secs(1),
+            &ordinary,
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::metadata(&ordinary).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        std::fs::write(&ordinary, b"preserve lock contents").unwrap();
+        helper_with_lock(
+            "/bin/true",
+            &[],
+            Instant::now() + Duration::from_secs(1),
+            &ordinary,
+        )
+        .unwrap();
+        assert_eq!(std::fs::read(&ordinary).unwrap(), b"preserve lock contents");
     }
 
     #[test]

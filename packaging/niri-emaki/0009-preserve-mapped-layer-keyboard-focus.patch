@@ -1,0 +1,338 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Emaki contributors <emaki@localhost>
+Date: Thu, 8 Oct 2026 04:00:00 +0000
+Subject: [PATCH 9/9] Preserve acquired layer focus when relaxing to on-demand
+
+Copyright (C) 2026 Artur Yakymenko
+SPDX-License-Identifier: GPL-3.0-or-later
+
+A mapped layer can request Exclusive focus without a remap. After keyboard
+enter, retain its focus when it commits OnDemand so normal outside focus
+actions can leave it. Require the Exclusive transition and current ownership;
+a plain OnDemand commit must not activate or reacquire an unfocused surface.
+Keep lock and fullscreen arbitration in the existing focus policy. Exercise
+persistent surfaces, stable application size, focus return and priority rules.
+
+---
+diff --git a/src/handlers/layer_shell.rs b/src/handlers/layer_shell.rs
+--- a/src/handlers/layer_shell.rs
++++ b/src/handlers/layer_shell.rs
+@@ -146,6 +146,19 @@
+             } else {
+                 // The surface remains mapped.
+                 if let Some(mapped) = self.niri.mapped_layer_surfaces.get_mut(layer) {
++                    // A persistent surface can request focus with Exclusive, then relax to
++                    // OnDemand after receiving keyboard enter. Keep its acquired focus so the
++                    // user can now leave it normally, without a null-buffer commit or remap.
++                    // Merely changing None to OnDemand is not an activation request.
++                    let previous = mapped.update_keyboard_interactivity();
++                    if previous == wlr_layer::KeyboardInteractivity::Exclusive
++                        && layer.cached_state().keyboard_interactivity
++                            == wlr_layer::KeyboardInteractivity::OnDemand
++                        && self.niri.keyboard_focus.surface() == Some(surface)
++                    {
++                        self.niri.layer_shell_on_demand_focus = Some(layer.clone());
++                    }
++
+                     // Check if the layer changed.
+                     if mapped.take_recompute_rules_on_commit() {
+                         let config = self.niri.config.borrow();
+diff --git a/src/layer/mapped.rs b/src/layer/mapped.rs
+--- a/src/layer/mapped.rs
++++ b/src/layer/mapped.rs
+@@ -6,7 +6,7 @@
+ use smithay::reexports::wayland_server::Resource as _;
+ use smithay::utils::{Logical, Point, Rectangle, Scale, Size};
+ use smithay::wayland::compositor::{remove_pre_commit_hook, HookId};
+-use smithay::wayland::shell::wlr_layer::{ExclusiveZone, Layer};
++use smithay::wayland::shell::wlr_layer::{ExclusiveZone, KeyboardInteractivity, Layer};
+ 
+ use super::ResolvedLayerRules;
+ use crate::animation::Clock;
+@@ -28,6 +28,9 @@
+ 
+     /// Pre-commit hook that we have on all mapped layer surfaces.
+     pre_commit_hook: HookId,
++
++    /// Keyboard interactivity from the last handled commit.
++    keyboard_interactivity: KeyboardInteractivity,
+ 
+     /// Up-to-date rules.
+     rules: ResolvedLayerRules,
+@@ -81,6 +84,7 @@
+         shadow_config.merge_with(&rules.shadow);
+ 
+         Self {
++            keyboard_interactivity: surface.cached_state().keyboard_interactivity,
+             surface,
+             pre_commit_hook,
+             rules,
+@@ -92,6 +96,14 @@
+             blur_config: config.blur,
+             clock,
+         }
++    }
++
++    /// Record committed keyboard interactivity and return its previous value.
++    pub fn update_keyboard_interactivity(&mut self) -> KeyboardInteractivity {
++        std::mem::replace(
++            &mut self.keyboard_interactivity,
++            self.surface.cached_state().keyboard_interactivity,
++        )
+     }
+ 
+     pub fn update_config(&mut self, config: &Config) {
+diff --git a/src/tests/layer_shell.rs b/src/tests/layer_shell.rs
+--- a/src/tests/layer_shell.rs
++++ b/src/tests/layer_shell.rs
+@@ -256,3 +256,250 @@
+     // Configure with new size.
+     assert_snapshot!(layer.format_recent_configures(), @"size: 1920 × 50");
+ }
++
++// A mapped shell surface requests Exclusive focus, then switches to OnDemand
++// after keyboard enter so an outside click or a compositor action can leave it.
++fn keyboard_fixture(
++    layer_kind: Layer,
++) -> (
++    Fixture,
++    client::ClientId,
++    wayland_client::protocol::wl_surface::WlSurface,
++) {
++    let mut f = Fixture::new();
++    f.add_output(1, (1920, 1080));
++    let id = f.add_client();
++    let window = f.client(id).create_window();
++    let window_surface = window.surface.clone();
++    window.commit();
++    f.roundtrip(id);
++    let window = f.client(id).window(&window_surface);
++    window.attach_new_buffer();
++    window.set_size(100, 100);
++    window.ack_last_and_commit();
++    f.double_roundtrip(id);
++
++    let layer = f.client(id).create_layer(None, layer_kind, "keyboard-test");
++    let surface = layer.surface.clone();
++    layer.set_configure_props(LayerConfigureProps {
++        anchor: Some(Anchor::Top | Anchor::Left | Anchor::Right),
++        size: Some((0, 50)),
++        exclusive_zone: Some(50),
++        kb_interactivity: Some(KeyboardInteractivity::None),
++        ..Default::default()
++    });
++    layer.commit();
++    f.roundtrip(id);
++    let layer = f.client(id).layer(&surface);
++    layer.attach_new_buffer();
++    layer.set_size(1920, 50);
++    layer.ack_last_and_commit();
++    f.double_roundtrip(id);
++    assert!(f.niri().keyboard_focus.is_layout());
++    (f, id, surface)
++}
++
++fn keyboard_commit(
++    f: &mut Fixture,
++    id: client::ClientId,
++    surface: &wayland_client::protocol::wl_surface::WlSurface,
++    mode: KeyboardInteractivity,
++) {
++    let layer = f.client(id).layer(surface);
++    layer.layer_surface.set_keyboard_interactivity(mode);
++    layer.commit();
++    f.double_roundtrip(id);
++}
++
++#[test]
++fn mapped_keyboard_focus_handoff_and_return() {
++    let (mut f, id, surface) = keyboard_fixture(Layer::Top);
++    let window_focus = f.niri().keyboard_focus.clone();
++    let mapped_surface = f
++        .niri()
++        .mapped_layer_surfaces
++        .keys()
++        .next()
++        .unwrap()
++        .clone();
++    let layer_focus = crate::niri::KeyboardFocus::LayerShell {
++        surface: mapped_surface.wl_surface().clone(),
++    };
++    let _ = f.client(id).layer(&surface).format_recent_configures();
++
++    // Finish the application's initial resize for the reserved bar area. Focus
++    // changes may configure activation states, but must never resize it again.
++    let window = &mut f.client(id).state.windows[0];
++    let window_size = window.configures_received.last().unwrap().1.size;
++    window.set_size(
++        window_size.0.try_into().unwrap(),
++        window_size.1.try_into().unwrap(),
++    );
++    window.ack_last_and_commit();
++    f.double_roundtrip(id);
++    let _ = f.client(id).state.windows[0].recent_configures().count();
++
++    for _ in 0..3 {
++        keyboard_commit(&mut f, id, &surface, KeyboardInteractivity::Exclusive);
++        assert_eq!(f.niri().keyboard_focus, layer_focus);
++        keyboard_commit(&mut f, id, &surface, KeyboardInteractivity::OnDemand);
++        assert_eq!(f.niri().keyboard_focus, layer_focus);
++        assert_eq!(
++            f.niri().layer_shell_on_demand_focus.as_ref(),
++            Some(&mapped_surface)
++        );
++        keyboard_commit(&mut f, id, &surface, KeyboardInteractivity::None);
++        assert_eq!(f.niri().keyboard_focus, window_focus);
++        assert!(f.niri().layer_shell_on_demand_focus.is_none());
++        assert!(f.niri().unmapped_layer_surfaces.is_empty());
++        assert_eq!(f.niri().mapped_layer_surfaces.len(), 1);
++        assert!(f.niri().mapped_layer_surfaces.contains_key(&mapped_surface));
++        assert_eq!(f.client(id).layer(&surface).format_recent_configures(), "");
++        for configure in f.client(id).state.windows[0].recent_configures() {
++            assert_eq!(
++                configure.size, window_size,
++                "keyboard handoff resized the application"
++            );
++        }
++    }
++}
++
++#[test]
++fn mapped_on_demand_does_not_activate_or_reacquire() {
++    let (mut f, id, surface) = keyboard_fixture(Layer::Top);
++    let window_focus = f.niri().keyboard_focus.clone();
++    keyboard_commit(&mut f, id, &surface, KeyboardInteractivity::OnDemand);
++    assert_eq!(f.niri().keyboard_focus, window_focus);
++    assert!(f.niri().layer_shell_on_demand_focus.is_none());
++
++    for pointer in [true, false] {
++        keyboard_commit(&mut f, id, &surface, KeyboardInteractivity::Exclusive);
++        keyboard_commit(&mut f, id, &surface, KeyboardInteractivity::OnDemand);
++        assert!(matches!(
++            f.niri().keyboard_focus,
++            crate::niri::KeyboardFocus::LayerShell { .. }
++        ));
++        if pointer {
++            // The pointer-focus path clears the layer target on an outside click.
++            f.niri().focus_layer_surface_if_on_demand(None);
++        } else {
++            // A native navigation action yields even if this is the only column.
++            f.niri_state()
++                .do_action(niri_config::Action::FocusColumnFirst, false);
++        }
++        f.double_roundtrip(id);
++        assert_eq!(f.niri().keyboard_focus, window_focus);
++        f.client(id).layer(&surface).commit();
++        f.double_roundtrip(id);
++        assert_eq!(f.niri().keyboard_focus, window_focus);
++        assert!(f.niri().layer_shell_on_demand_focus.is_none());
++    }
++}
++
++#[test]
++fn mapped_keyboard_focus_respects_fullscreen_layers() {
++    for layer_kind in [Layer::Top, Layer::Overlay] {
++        let (mut f, id, surface) = keyboard_fixture(layer_kind);
++        let window_focus = f.niri().keyboard_focus.clone();
++        let window = f.niri().layout.windows().next().unwrap().1.window.clone();
++        f.niri().layout.set_fullscreen(&window, true);
++        f.double_roundtrip(id);
++        let window = &f.client(id).state.windows[0];
++        window.set_size(1920, 1080);
++        window.ack_last_and_commit();
++        f.double_roundtrip(id);
++        f.niri_complete_animations();
++        assert!(f
++            .niri()
++            .layout
++            .active_workspace()
++            .unwrap()
++            .render_above_top_layer());
++
++        keyboard_commit(&mut f, id, &surface, KeyboardInteractivity::Exclusive);
++        if layer_kind == Layer::Top {
++            assert_eq!(f.niri().keyboard_focus, window_focus);
++        } else {
++            assert!(matches!(
++                f.niri().keyboard_focus,
++                crate::niri::KeyboardFocus::LayerShell { .. }
++            ));
++        }
++        keyboard_commit(&mut f, id, &surface, KeyboardInteractivity::OnDemand);
++        if layer_kind == Layer::Top {
++            assert_eq!(f.niri().keyboard_focus, window_focus);
++            assert!(f.niri().layer_shell_on_demand_focus.is_none());
++        } else {
++            assert!(matches!(
++                f.niri().keyboard_focus,
++                crate::niri::KeyboardFocus::LayerShell { .. }
++            ));
++        }
++        keyboard_commit(&mut f, id, &surface, KeyboardInteractivity::None);
++        assert_eq!(f.niri().keyboard_focus, window_focus);
++    }
++}
++
++#[test]
++fn mapped_keyboard_focus_respects_session_lock() {
++    use std::sync::atomic::AtomicBool;
++    use std::sync::Arc;
++
++    use smithay::reexports::wayland_protocols::ext::session_lock::v1::client::ext_session_lock_manager_v1::ExtSessionLockManagerV1;
++    use wayland_client::Proxy as _;
++
++    use crate::niri::{KeyboardFocus, LockState};
++
++    for locked in [false, true] {
++        let (mut f, id, surface) = keyboard_fixture(Layer::Overlay);
++        keyboard_commit(&mut f, id, &surface, KeyboardInteractivity::Exclusive);
++        let client = f.client(id);
++        let registry = client.display.get_registry(&client.qh, ());
++        let global = client
++            .state
++            .globals
++            .iter()
++            .find(|g| g.interface == ExtSessionLockManagerV1::interface().name)
++            .unwrap();
++        let manager: ExtSessionLockManagerV1 = registry.bind(global.name, 1, &client.qh, ());
++        let _lock = manager.lock(&client.qh, Arc::new(AtomicBool::new(false)));
++        f.double_roundtrip(id);
++        let LockState::WaitingForSurfaces {
++            confirmation,
++            deadline_token,
++        } = std::mem::take(&mut f.niri().lock_state)
++        else {
++            panic!("expected a lock waiting for surfaces");
++        };
++        f.niri().event_loop.remove(deadline_token);
++        f.niri().lock_state = if locked {
++            let resource = confirmation.ext_session_lock().clone();
++            confirmation.lock();
++            LockState::Locked(resource)
++        } else {
++            LockState::Locking(confirmation)
++        };
++        f.niri_state().update_keyboard_focus();
++        assert!(matches!(
++            f.niri().keyboard_focus,
++            KeyboardFocus::LockScreen { .. }
++        ));
++
++        keyboard_commit(&mut f, id, &surface, KeyboardInteractivity::OnDemand);
++        assert!(matches!(
++            f.niri().keyboard_focus,
++            KeyboardFocus::LockScreen { .. }
++        ));
++        assert!(f.niri().layer_shell_on_demand_focus.is_none());
++        keyboard_commit(&mut f, id, &surface, KeyboardInteractivity::Exclusive);
++        assert!(matches!(
++            f.niri().keyboard_focus,
++            KeyboardFocus::LockScreen { .. }
++        ));
++        keyboard_commit(&mut f, id, &surface, KeyboardInteractivity::None);
++        assert!(matches!(
++            f.niri().keyboard_focus,
++            KeyboardFocus::LockScreen { .. }
++        ));
++    }
++}

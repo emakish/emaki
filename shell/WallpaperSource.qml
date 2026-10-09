@@ -16,6 +16,7 @@ Scope {
     // reads a published copy, under a root derived from a validated system user.
     property string publishedRoot: ""
     property bool isolateHelper: false
+    property bool refreshManaged: false
     property bool enabled: true
     property string state: "idle"
     property string texture: ""
@@ -58,6 +59,37 @@ Scope {
         }
         state = "loading";
         schedule.restart();
+    }
+    readonly property string configRoot: Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config"
+    readonly property bool watchManaged: refreshManaged && enabled && publishedRoot === ""
+    FileView {
+        path: wallpaper.watchManaged ? wallpaper.configRoot + "/." : ""
+        preload: false
+        watchChanges: wallpaper.watchManaged
+        printErrors: false
+        onFileChanged: {
+            managed.watchChanges = false;
+            managed.watchChanges = Qt.binding(() => wallpaper.watchManaged);
+            plain.watchChanges = false;
+            plain.watchChanges = Qt.binding(() => wallpaper.watchManaged);
+            wallpaper.reload();
+        }
+    }
+    FileView {
+        id: managed
+        path: wallpaper.watchManaged ? wallpaper.configRoot + "/emaki/settings.toml" : ""
+        preload: false
+        watchChanges: wallpaper.watchManaged
+        printErrors: false
+        onFileChanged: wallpaper.reload()
+    }
+    FileView {
+        id: plain
+        path: wallpaper.watchManaged ? wallpaper.configRoot + "/wpaperd/config.toml" : ""
+        preload: false
+        watchChanges: wallpaper.watchManaged
+        printErrors: false
+        onFileChanged: wallpaper.reload()
     }
     Timer {
         id: schedule

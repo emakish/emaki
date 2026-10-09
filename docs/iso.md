@@ -292,8 +292,8 @@ Windows"). The alongside check uses a synthetic Windows disk: its Microsoft
 path holds a diagnostic EFI program, so it tests chainloading only, not Windows. The last
 encrypted run on the full 0.1.2 test ISO ended rc=1.
 
-Install alongside Windows is not offered in 0.3.1: the 0.3.1 installer has no experimental
-options. On a 0.3.1 ISO the alongside check asks the worker for a plan only, sees the mode
+Install alongside Windows is not offered in 0.4.0: the 0.4.0 installer has no experimental
+options. On a 0.4.0 ISO the alongside check asks the worker for a plan only, sees the mode
 refused, prints `NOT APPLICABLE` and exits 77 without touching the target disk; treat 77 as
 "not run", never as a pass.
 
@@ -500,6 +500,9 @@ is additional to the separately signed release walk.
 
 ## Installed boot update acceptance
 
+For automatic return after a failed updated system, also run the separate
+[automatic update return procedure](#automatic-update-return-acceptance).
+
 `emaki-config` installs `emaki-boot-refresh`, `95-emaki-boot-refresh.hook`,
 `emaki-boot-complete.service` and `emaki-boot-refresh.service`. Refresh stages
 the GRUB image, modules, artwork and menu, with normal entries pointing at live
@@ -618,7 +621,7 @@ sudo cat /boot/emaki/*/manifest.json
 
 Capture the complete package transaction output. It must show the refresh hook
 and its success message. Do not run a manual refresh before the first reboot:
-that would hide a broken package hook. The 0.3.1 packages must upgrade the installed
+that would hide a broken package hook. The 0.4.0 packages must upgrade the installed
 0.2.0 packages so ordinary `pacman -Syu` selects them. No publication is part of this check.
 
 Reboot and capture the actual framebuffer:
@@ -676,3 +679,98 @@ python3 tests/vm/grub-unlock-check.py --boot-refresh \
 It requires GRUB build tools, mtools, sgdisk, QEMU, OVMF, clang and lld-link;
 `--grub-root /path/to/extracted/usr` supports an unpacked GRUB package. Its
 `RESULT.txt` distinguishes the synthetic disk menu from an installed-system boot.
+
+## Automatic update return acceptance
+
+Not run for this change. Run each case on a disposable installed btrfs VM twice:
+once unencrypted, once encrypted, with a working baseline built from the tested
+commit. Install the feature, reboot, and confirm a usable greeter before the
+fixture transaction. Keep the same virtual disk, firmware variables and display
+size across the failure and return; record the image hash, package versions,
+source commit and every host-side power action. Do not substitute a new install
+for recovery of the failed disk.
+
+1. Save `findmnt / /.snapshots /efi`, `/proc/cmdline`, `snapper -c root list`,
+   `systemctl show greetd -p ActiveState -p SubState -p MainPID`, and a host-frame
+   greeter screenshot. Confirm that `systemctl list-dependencies multi-user.target`
+   includes `emaki-update-boot.service`, and inspect
+   `systemctl show emaki-update-boot.service -p LoadState -p ActiveState -p Result`
+   plus `journalctl -b -u emaki-update-boot.service`. The package supplies the
+   target dependency; `systemctl is-enabled` may print `disabled` because its
+   link is under `/usr/lib/systemd/system`, rather than an administrator enablement.
+2. Build the following unsigned local fixture inside the disposable VM. Verify
+   `/etc/pam.d/greetd-greeter` does not exist first; if it does, create the fixture
+   from a clean disk without an administrator override. This package deliberately
+   denies the greeter's PAM session while leaving text-console access available.
+
+   ```sh
+   test ! -e /etc/pam.d/greetd-greeter
+   mkdir -p /tmp/n1-fixture/etc/pam.d
+   cat > /tmp/n1-fixture/.PKGINFO <<'PKG'
+   pkgname = emaki-n1-greeter-failure
+   pkgbase = emaki-n1-greeter-failure
+   pkgver = 1-1
+   pkgdesc = Disposable automatic recovery acceptance fixture
+   builddate = 1791331200
+   size = 100
+   arch = any
+   license = GPL-3.0-or-later
+   PKG
+   cat > /tmp/n1-fixture/etc/pam.d/greetd-greeter <<'PAM'
+   auth required pam_permit.so
+   account required pam_permit.so
+   session required pam_deny.so
+   PAM
+   bsdtar -C /tmp/n1-fixture -caf /tmp/emaki-n1-greeter-failure-1-1-any.pkg.tar.zst .PKGINFO etc
+   sudo pacman -U /tmp/emaki-n1-greeter-failure-1-1-any.pkg.tar.zst
+   sudo cat /efi/EFI/Emaki/update.json
+   sudo grub-editenv /efi/EFI/Emaki/update.env list
+   ```
+
+3. Before restarting, prove `update.json.snapshot` is this transaction's snap-pac
+   pre snapshot (`info.xml` has type `pre` and the matching number), its cleanup
+   algorithm is empty, `emaki_attempt=0`, and its captured PAM stack is healthy.
+   Save `update.cfg`, the canonical GRUB menu and the raw 1024-byte environment.
+4. Restart normally. On the encrypted VM, type the disk password and count its
+   prompts. Capture greetd restarting/start-limit-hit from the text console or
+   serial journal. Wait over five minutes from root mounting; prove the marker
+   remains and `emaki_attempt=1`, `next_entry=emaki-auto-recovery`. Capture the
+   visible failed start as a host frame. Do not repair PAM or select a snapshot.
+5. Use the host monitor's `quit` command to terminate the VM, then start the same
+   VM command/disk/firmware again. Do not use an in-guest graceful reboot for this
+   power-cut check. Leave GRUB's default selected. Encrypted recovery must ask
+   for its usual disk password once; the recovery entry adds no unlock prompt.
+6. Prove `/proc/cmdline` names `rootflags=subvol=/@snapshots/NUMBER/snapshot`,
+   `emaki.auto_return=TRANSACTION`, `emaki.snapshot_date=DATE` and `noresume`.
+   `findmnt /` must show the snapshot's writable overlay; the original pre
+   snapshot remains read-only. Prove a sentinel created in home before the update
+   still has its original hash. After login capture the full recovery prompt,
+   its matching date, the exact return explanation and **Keep this state**.
+   `emaki-rollback status --json` must report that snapshot and automatic return.
+   The environment must show attempt `2` with an empty `next_entry`.
+7. Choose **Keep this state**, authenticate, restart and prove a normal writable
+   `subvol=@`, healthy greeter, absent failure-fixture package and preserved home
+   sentinel. The old system must remain in `emaki-rollback list`. A usable boot
+   clears `update.json` and releases the pre snapshot's cleanup retention.
+8. Perform a good package transaction from the terminal (`sudo pacman -Syu`, with
+   a real package change in the controlled test repository). Record the new pre
+   number. Restart, prove fifteen seconds of stable greeter or graphical-session
+   evidence, then no `update.json`/recovery selector. Power-cycle again and prove
+   it still boots `@`, with no automatic-return message.
+
+Repeat the failed fixture from a clean baseline with host power cuts (a) after
+its package transaction but before any restart and (b) immediately after the
+first updated kernel/initramfs starts, before userspace. The next appropriate
+boot must use the same recorded pre snapshot. Repeat without **Keep this state**:
+a later restart must not automatically return a second time for that update.
+Delete the recorded snapshot from the text console before a return and prove the
+recovery attempt is consumed once, then the normal entry is attempted, without
+an automatic cycle. Preserve the console evidence of the missing snapshot.
+
+Also test two transactions before acceptance (same retained pre number, no
+counter reset), hibernation before the first updated start and during the pending
+acceptance window (resume keeps its boot ID and trial budget; the next cold boot
+is still checked), and a cold start after a deliberately unavailable hibernation
+image. Finally, perform a terminal package transaction on an ext4 VM: no update
+marker or automatic recovery entry becomes armed. These VM/hardware checks are
+additional to the rootless state, GRUB fixture and decision-mutation tests.

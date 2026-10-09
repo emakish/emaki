@@ -10,6 +10,83 @@ import Quickshell
 // The item covers the whole dock surface; the plate sits at its bottom edge.
 Item {
     id: dock
+    property bool keyboardActive: false
+    property string keyboardKey: ""
+    property int keyboardRow: -1
+    function takeFocus(): void {
+        keyboardActive = true;
+        if (!iconKeys.includes(keyboardKey))
+            keyboardKey = iconKeys[0] ?? "";
+        forceActiveFocus(Qt.TabFocusReason);
+        if (keyboardKey)
+            targetBubble(keyboardKey);
+    }
+    function leaveKeyboard(): void {
+        closePopup();
+        keyboardActive = false;
+        focus = false;
+        releaseBubble();
+    }
+    onKeyboardActiveChanged: {
+        policy.keyboardActive = keyboardActive;
+        if (!keyboardActive) {
+            focus = false;
+            releaseBubble();
+        }
+    }
+    function moveKeyboard(step: int): void {
+        if (popupOpen) {
+            const choices = popup.rows.map((r, i) => r.kind === "line" ? -1 : i).filter(i => i >= 0);
+            if (!choices.length)
+                return;
+            keyboardRow = choices[(choices.indexOf(keyboardRow) + step + choices.length) % choices.length];
+            hoverMenuRow(keyboardRow);
+        } else if (iconKeys.length) {
+            keyboardKey = iconKeys[(iconKeys.indexOf(keyboardKey) + step + iconKeys.length) % iconKeys.length];
+            targetBubble(keyboardKey);
+        }
+    }
+    Keys.onPressed: event => {
+        if (!keyboardActive)
+            return;
+        if (event.key === Qt.Key_Escape) {
+            if (popupOpen)
+                closePopup();
+            else
+                leaveKeyboard();
+        } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab || event.key === Qt.Key_Left || event.key === Qt.Key_Right || event.key === Qt.Key_Up || event.key === Qt.Key_Down) {
+            moveKeyboard(event.key === Qt.Key_Backtab || event.key === Qt.Key_Left || event.key === Qt.Key_Up || (event.modifiers & Qt.ShiftModifier) ? -1 : 1);
+        } else if (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
+            menu(keyboardKey);
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+            if (popupOpen && keyboardRow >= 0) {
+                const row = popup.rows[keyboardRow];
+                popupAction(row.kind, row.id);
+                if (["window", "new", "assign"].includes(row.kind))
+                    leaveKeyboard();
+            } else {
+                activate(keyboardKey);
+                if (!popupOpen)
+                    leaveKeyboard();
+            }
+        }
+        event.accepted = true;
+    }
+    Item {
+        z: 20
+        readonly property var ringRect: {
+            dock.tick;
+            return dock.popupOpen && dock.keyboardRow >= 0 && dock.keyboardRow < dock.popup.rows.length ? dock.menuRowRect(dock.keyboardRow) : dock.itemRect(dock.keyboardKey);
+        }
+        x: ringRect?.x ?? 0
+        y: ringRect?.y ?? 0
+        width: ringRect?.width ?? 0
+        height: ringRect?.height ?? 0
+        FocusRing {
+            shown: dock.keyboardActive && parent.width > 0
+            radius: 11
+        }
+    }
     property bool skipIntro: false
     required property DockStore store
     required property DockPolicy policy
@@ -169,6 +246,7 @@ Item {
     function closePopup(): void {
         if (!popupOpen)
             return;
+        keyboardRow = -1;
         popupKey = "";
         popupMode = "";
         aim(popup.progress, 0, 260);
@@ -186,6 +264,10 @@ Item {
         popup.model = buildPopup();
         popup.rows = popup.model?.rows ?? [];
         popup.height = popupHeightOf(popup.rows);
+        if (keyboardActive) {
+            keyboardRow = -1;
+            moveKeyboard(1);
+        }
         if (popup.progress.x < .001) {
             const v = visual(key);
             popup.anchor.x = v.center[0];
@@ -310,6 +392,8 @@ Item {
                 niri.closeWindow(w.id);
     }
     onEntriesChanged: {
+        if (keyboardActive && !iconKeys.includes(keyboardKey))
+            keyboardKey = iconKeys[0] ?? "";
         // An open menu follows its app (a window closed, a title changed).
         if (popupOpen) {
             const model = buildPopup();
@@ -570,7 +654,7 @@ Item {
         }
     }
     function holdBubble(): bool {
-        if (drag || popup.progress.x > .001 || popup.progress.target === 1)
+        if (keyboardActive || drag || popup.progress.x > .001 || popup.progress.target === 1)
             return true;
         for (const key in visuals)
             if (visuals[key].returning)

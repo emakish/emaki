@@ -181,7 +181,7 @@ fn row<'a>(view: &'a Value, key: &str) -> &'a Value {
 }
 
 #[test]
-fn settings_defaults_reads_and_required_isolated_profile_never_write() {
+fn isolated_settings_defaults_reads_and_xdg_guard_never_write() {
     let f = Fixture::new();
     let before = tree(&f.root);
     let (out, v) = f.run(&["list"]);
@@ -205,54 +205,613 @@ fn settings_defaults_reads_and_required_isolated_profile_never_write() {
     assert!(row(&v, "keybindings.toggle_window_floating")["value"].is_null());
     assert_eq!(v["generation_status"], "needs_generation");
     assert!(f.run(&["get", "appearance.gaps"]).0.status.success());
-    for c in [
-        f.command()
-            .args(["settings", "set", "appearance.gaps", "4", "--json"])
-            .output()
-            .unwrap(),
-        f.command()
-            .env_remove("XDG_STATE_HOME")
-            .args([
-                "settings",
-                "set",
-                "appearance.gaps",
-                "4",
-                "--json",
-                "--profile-root",
-                f.root.to_str().unwrap(),
-            ])
-            .output()
-            .unwrap(),
-    ] {
-        assert_eq!(c.status.code(), Some(1));
-        let r: Value = serde_json::from_slice(&c.stdout).unwrap();
-        assert!(matches!(
-            r["reason"].as_str(),
-            Some("isolated_profile_required" | "isolated_xdg_mismatch")
-        ));
-    }
+    let out = f
+        .command()
+        .env_remove("XDG_STATE_HOME")
+        .args([
+            "settings",
+            "set",
+            "appearance.gaps",
+            "4",
+            "--json",
+            "--profile-root",
+            f.root.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let result: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(result["reason"], "isolated_xdg_mismatch");
     assert_eq!(before, tree(&f.root));
 }
 
 #[test]
-fn without_a_profile_the_person_reads_one_plain_sentence_not_a_code() {
+fn installed_settings_reads_create_no_files_and_preserve_personal_files() {
     let f = Fixture::new();
+    let personal = f.root.join("config/niri/config.kdl");
+    fs::create_dir_all(personal.parent().unwrap()).unwrap();
+    fs::write(&personal, "// Personal configuration remains untouched.\n").unwrap();
+    let personal_before = fs::read(&personal).unwrap();
+    let before = tree(&f.root);
+    for args in [
+        vec!["settings", "list", "--json"],
+        vec!["settings", "history", "--json"],
+        vec!["settings", "get", "appearance.gaps", "--json"],
+    ] {
+        let out = f.command().args(args).output().unwrap();
+        assert!(out.status.success(), "{out:?}");
+        let result: Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!(result["session_applied"], false);
+    }
+    assert!(!f.source().exists());
+    assert_eq!(fs::read(&personal).unwrap(), personal_before);
+    assert_eq!(tree(&f.root), before);
     for args in [["settings", "list"], ["settings", "history"]] {
         let out = f.command().args(args).output().unwrap();
-        assert_eq!(out.status.code(), Some(1));
-        assert_eq!(
-            String::from_utf8(out.stdout).unwrap(),
-            "Managed settings are not connected to your session yet. Nothing was changed.\n"
+        assert!(out.status.success(), "{out:?}");
+        assert!(
+            !String::from_utf8(out.stdout)
+                .unwrap()
+                .contains("not connected")
         );
     }
     let help = f.command().args(["settings", "--help"]).output().unwrap();
-    let help = String::from_utf8(help.stdout).unwrap();
+    assert!(help.status.success());
     assert!(
-        help.lines()
-            .next()
+        !String::from_utf8(help.stdout)
             .unwrap()
-            .contains("not connected to your session yet")
+            .contains("not connected")
     );
+}
+
+#[test]
+fn installed_settings_without_a_session_leave_the_source_absent() {
+    let f = Fixture::new();
+    let out = f
+        .fake("ok")
+        .args([
+            "settings",
+            "set",
+            "appearance.gaps",
+            "4",
+            "--json",
+            "--timeout-ms",
+            SLOW_MACHINE_TIMEOUT_MS,
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let result: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(result["session_applied"], false);
+    assert_eq!(result["reason"], "niri_socket_missing", "{result}");
+    assert!(!f.source().exists());
+    assert!(
+        !f.root
+            .join("state/emaki/history/live-pending.json")
+            .exists()
+    );
+    let runtime = f.root.join("runtime/emaki-settings");
+    if runtime.exists() {
+        assert_eq!(fs::read_dir(runtime).unwrap().count(), 0);
+    }
+}
+
+#[test]
+fn concurrent_installed_writers_preserve_both_values_and_history_across_processes() {
+    let f = Fixture::new();
+    let shell = f.root.join("bin/emaki-shell");
+    fs::write(
+        &shell,
+        r#"#!/usr/bin/env python3
+import json, sys, time
+assert sys.argv[1:4] == ['call', 'settings', 'apply']
+assert isinstance(json.loads(sys.argv[4])['rows'], list)
+time.sleep(0.1)
+print('applied')
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&shell, fs::Permissions::from_mode(0o700)).unwrap();
+    let mut first_command = f.fake("ok");
+    let mut second_command = f.command();
+    second_command.env(
+        "PATH",
+        format!(
+            "{}:{}",
+            f.root.join("bin").display(),
+            std::env::var("PATH").unwrap()
+        ),
+    );
+    let mut children = vec![];
+    for (command, key, value) in [
+        (&mut first_command, "bar.autohide", "true"),
+        (&mut second_command, "dock.on", "false"),
+    ] {
+        children.push(
+            command
+                .args([
+                    "settings",
+                    "set",
+                    key,
+                    value,
+                    "--json",
+                    "--timeout-ms",
+                    SLOW_MACHINE_TIMEOUT_MS,
+                ])
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .unwrap(),
+        );
+    }
+    for mut child in children {
+        let deadline = Instant::now() + CHILD_DEADLINE;
+        while child.try_wait().unwrap().is_none() {
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("concurrent settings writer did not exit");
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let out = child.wait_with_output().unwrap();
+        assert!(out.status.success(), "{out:?}");
+        let result: Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!(result["session_applied"], true, "{result}");
+    }
+    let out = f
+        .command()
+        .args(["settings", "list", "--json"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{out:?}");
+    let result: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(row(&result, "bar.autohide")["value"], true);
+    assert_eq!(row(&result, "dock.on")["value"], false);
+    let out = f
+        .command()
+        .args(["settings", "history", "--json"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{out:?}");
+    let result: Value = serde_json::from_slice(&out.stdout).unwrap();
+    let history = result["history"].as_array().unwrap();
+    assert_eq!(history.len(), 2, "{result}");
+    let keys: std::collections::BTreeSet<_> = history
+        .iter()
+        .map(|entry| entry["changes"][0]["key"].as_str().unwrap())
+        .collect();
+    assert_eq!(keys, ["bar.autohide", "dock.on"].into_iter().collect());
+}
+
+fn installed_run(f: &Fixture, args: &[&str]) -> (Output, Value) {
+    let out = f
+        .fake("ok")
+        .env("XDG_CURRENT_DESKTOP", "niri")
+        .args(["settings"])
+        .args(args)
+        .arg("--json")
+        .args(write_timeout(args))
+        .output()
+        .unwrap();
+    let reply = serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{out:?}"));
+    (out, reply)
+}
+fn installed_helper(f: &Fixture, name: &str, body: &str) {
+    let path = f.root.join("bin").join(name);
+    fs::write(&path, format!("#!/usr/bin/env python3\n{body}")).unwrap();
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
+}
+
+#[test]
+fn installed_mime_requires_the_session_desktop_before_writing_associations() {
+    for desktop in ["", "other", "niri-other"] {
+        let f = Fixture::new();
+        installed_helper(&f, "emaki-terminal", "pass\n");
+        installed_helper(&f, "gio", "print('Default application: test.desktop')\n");
+        for key in ["defaults.browser", "defaults.files"] {
+            let out = f
+                .fake("ok")
+                .env("XDG_CURRENT_DESKTOP", desktop)
+                .args([
+                    "settings",
+                    "set",
+                    key,
+                    "test.desktop",
+                    "--json",
+                    "--timeout-ms",
+                    SLOW_MACHINE_TIMEOUT_MS,
+                ])
+                .output()
+                .unwrap();
+            let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
+            assert!(!out.status.success(), "{desktop}: {reply}");
+            assert_eq!(reply["reason"], "desktop_defaults_unavailable");
+            assert!(!f.source().exists());
+            assert!(!f.root.join("config/niri-mimeapps.list").exists());
+            assert!(
+                !f.root
+                    .join("state/emaki/history/live-pending.json")
+                    .exists()
+            );
+        }
+    }
+}
+
+#[test]
+fn installed_wallpaper_cannot_commit_without_the_compositor_reload() {
+    let f = Fixture::new();
+    let picture = f.root.join("picture.png");
+    fs::write(&picture, b"image").unwrap();
+    let calls = f.root.join("wallpaper-calls");
+    installed_helper(
+        &f,
+        "emaki-settings-wallpaper",
+        &format!(
+            "import sys\nfrom pathlib import Path\np = Path({calls:?})\np.write_text((p.read_text() if p.exists() else '') + sys.argv[1] + '\\n')\nif sys.argv[1] == 'snapshot': print('{{}}')\n",
+            calls = calls.to_str().unwrap(),
+        ),
+    );
+    // An absent, short endpoint proves that image mode must contact the compositor;
+    // accepting only the wallpaper helper would incorrectly commit this change.
+    let missing = format!(
+        "/tmp/emaki-missing-{}-{}",
+        std::process::id(),
+        SERIAL.fetch_add(1, Ordering::Relaxed)
+    );
+    let out = f
+        .fake("ok")
+        .env("NIRI_SOCKET", &missing)
+        .args([
+            "settings",
+            "set",
+            "appearance.wallpaper",
+            picture.to_str().unwrap(),
+            "--json",
+            "--timeout-ms",
+            SLOW_MACHINE_TIMEOUT_MS,
+        ])
+        .output()
+        .unwrap();
+    let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(!out.status.success(), "{reply}");
+    assert_eq!(reply["session_applied"], false);
+    assert!(!f.source().exists());
+    assert!(
+        !fs::read_to_string(calls)
+            .unwrap()
+            .lines()
+            .any(|op| op == "apply")
+    );
+}
+
+fn assert_no_transaction_candidate(f: &Fixture) {
+    assert!(!f.root.join("state/emaki/history/pending.json").exists());
+    for relative in tree(&f.root).keys() {
+        assert!(
+            !relative.to_string_lossy().ends_with(".tmp"),
+            "{relative:?}"
+        );
+    }
+}
+
+#[test]
+fn failed_shell_compensation_does_not_block_reads_or_a_later_retry() {
+    let f = Fixture::new();
+    installed_helper(&f, "emaki-shell", "print('applied')\n");
+    let (out, reply) = installed_run(&f, &["set", "dock.on", "false"]);
+    assert!(out.status.success(), "{reply}");
+    let source = fs::read(f.source()).unwrap();
+    let history = installed_run(&f, &["history"]).1["history"].clone();
+    installed_helper(&f, "emaki-shell", "import sys\nsys.exit(1)\n");
+    let (out, reply) = installed_run(&f, &["set", "bar.autohide", "true"]);
+    assert!(!out.status.success(), "{reply}");
+    assert_eq!(fs::read(f.source()).unwrap(), source);
+    assert_no_transaction_candidate(&f);
+    let pending = f.root.join("state/emaki/history/live-pending.json");
+    assert!(pending.exists());
+    for args in [vec!["list"], vec!["get", "dock.on"], vec!["history"]] {
+        let (out, reply) = installed_run(&f, &args);
+        assert!(out.status.success(), "{reply}");
+        assert_eq!(reply["session_applied"], false);
+    }
+    assert_eq!(installed_run(&f, &["history"]).1["history"], history);
+    assert!(
+        pending.exists(),
+        "An absent session must retain compensation intent"
+    );
+    installed_helper(&f, "emaki-shell", "print('applied')\n");
+    let out = f
+        .fake("ok")
+        .env("WAYLAND_DISPLAY", "settings-test-session")
+        .args([
+            "settings",
+            "set",
+            "bar.autohide",
+            "true",
+            "--json",
+            "--timeout-ms",
+            SLOW_MACHINE_TIMEOUT_MS,
+        ])
+        .output()
+        .unwrap();
+    let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(out.status.success(), "{reply}");
+    assert_eq!(row(&reply, "dock.on")["value"], false);
+    assert_eq!(row(&reply, "bar.autohide")["value"], true);
+    assert!(!pending.exists());
+    assert_no_transaction_candidate(&f);
+}
+
+#[test]
+fn session_start_after_failed_apply_preserves_the_persons_later_edit() {
+    let f = Fixture::new();
+    installed_helper(&f, "emaki-shell", "print('applied')\n");
+    let (out, reply) = installed_run(&f, &["set", "dock.on", "false"]);
+    assert!(out.status.success(), "{reply}");
+    installed_helper(&f, "emaki-shell", "import sys\nsys.exit(1)\n");
+    let (out, reply) = installed_run(&f, &["set", "bar.autohide", "true"]);
+    assert!(!out.status.success(), "{reply}");
+    let personal = "schema_version = 1\n[appearance]\ngaps = 12\n[dock]\non = false\n";
+    f.manual(personal);
+    let out = f
+        .fake("ok")
+        .args(["settings", "session-config"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{out:?}");
+    assert_eq!(fs::read_to_string(f.source()).unwrap(), personal);
+    assert!(
+        !out.stderr.is_empty(),
+        "The preserved hand edit needs a recovery notice"
+    );
+    let wrapper = PathBuf::from(String::from_utf8(out.stdout).unwrap().trim());
+    assert!(
+        fs::read_to_string(wrapper)
+            .unwrap()
+            .contains("settings-manual.kdl")
+    );
+    assert!(
+        fs::read_to_string(f.root.join("runtime/emaki-settings/settings-manual.kdl"))
+            .unwrap()
+            .contains("gaps 12")
+    );
+    assert_no_transaction_candidate(&f);
+    let (out, reply) = installed_run(&f, &["list"]);
+    assert!(out.status.success(), "{reply}");
+    assert_eq!(row(&reply, "appearance.gaps")["value"], 12);
+    assert_eq!(row(&reply, "dock.on")["value"], false);
+    let again = f
+        .fake("ok")
+        .args(["settings", "session-config"])
+        .output()
+        .unwrap();
+    assert!(again.status.success(), "{again:?}");
+    assert!(
+        again.stderr.is_empty(),
+        "Recovery notice must not repeat: {again:?}"
+    );
+}
+
+#[test]
+fn installed_shell_keys_apply_and_restore_previous_rows_on_unconfirmed_reply() {
+    for (key, value, changed) in [
+        ("bar.autohide", "true", "false"),
+        ("bar.overview_workspaces", "false", "true"),
+        ("dock.on", "false", "true"),
+        ("dock.auto_hide", "false", "true"),
+    ] {
+        let f = Fixture::new();
+        installed_helper(&f, "emaki-shell", "print('applied')\n");
+        let (out, reply) = installed_run(&f, &["set", key, value]);
+        assert!(out.status.success(), "{reply}");
+        assert_eq!(reply["session_applied"], true);
+        let before = fs::read(f.source()).unwrap();
+        let history = installed_run(&f, &["history"]).1["history"].clone();
+        let calls = f.root.join("shell-calls");
+        installed_helper(
+            &f,
+            "emaki-shell",
+            &format!(
+                r#"import json, sys
+from pathlib import Path
+p = Path({calls:?})
+rows = json.loads(sys.argv[4])['rows']
+previous = p.read_text() if p.exists() else ''
+p.write_text(previous + json.dumps(rows) + '\n')
+print('applied' if previous else 'unconfirmed')
+"#,
+                calls = calls.to_str().unwrap()
+            ),
+        );
+        let (out, reply) = installed_run(&f, &["set", key, changed]);
+        assert!(!out.status.success(), "{reply}");
+        assert_eq!(reply["reason"], "shell_apply_unconfirmed");
+        assert_eq!(reply["session_applied"], false);
+        assert_eq!(fs::read(f.source()).unwrap(), before);
+        assert_eq!(installed_run(&f, &["history"]).1["history"], history);
+        let calls: Vec<Value> = fs::read_to_string(calls)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(calls.len(), 2);
+        for (rows, expected) in [(&calls[0], changed == "true"), (&calls[1], value == "true")] {
+            let applied = rows
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["key"] == key)
+                .unwrap();
+            assert_eq!(applied["value"], expected);
+        }
+    }
+}
+
+#[test]
+fn installed_application_defaults_publish_owned_mime_and_reject_unavailable_apps() {
+    let f = Fixture::new();
+    installed_helper(
+        &f,
+        "emaki-terminal",
+        "import sys\nassert sys.argv[1] in ('--check', '--check-terminal')\nsys.exit(1 if sys.argv[2] == 'missing.desktop' else 0)\n",
+    );
+    installed_helper(
+        &f,
+        "gio",
+        "import sys\nassert sys.argv[1] == 'mime'\nprint('Default application: test.desktop')\n",
+    );
+    for key in ["defaults.terminal", "defaults.browser", "defaults.files"] {
+        let (out, reply) = installed_run(&f, &["set", key, "test.desktop"]);
+        assert!(out.status.success(), "{reply}");
+        assert_eq!(reply["session_applied"], true);
+    }
+    let mime = f.root.join("state/emaki/defaults/mimeapps.list");
+    let contents = fs::read_to_string(&mime).unwrap();
+    assert!(contents.starts_with("# Emaki managed defaults;"));
+    for association in [
+        "x-scheme-handler/http=test.desktop",
+        "x-scheme-handler/https=test.desktop",
+        "text/html=test.desktop",
+        "inode/directory=test.desktop",
+    ] {
+        assert!(contents.contains(association), "{contents}");
+    }
+    let before = fs::read(f.source()).unwrap();
+    let history = installed_run(&f, &["history"]).1["history"].clone();
+    for key in ["defaults.terminal", "defaults.browser", "defaults.files"] {
+        let (out, reply) = installed_run(&f, &["set", key, "missing.desktop"]);
+        assert!(!out.status.success(), "{reply}");
+        assert_eq!(reply["reason"], "application_unavailable");
+        assert_eq!(fs::read(f.source()).unwrap(), before);
+        assert_eq!(fs::read_to_string(&mime).unwrap(), contents);
+        assert_eq!(installed_run(&f, &["history"]).1["history"], history);
+    }
+}
+
+#[test]
+fn installed_mime_confirmation_failure_rolls_back_source_and_associations() {
+    for key in ["defaults.browser", "defaults.files"] {
+        let f = Fixture::new();
+        installed_helper(
+            &f,
+            "emaki-terminal",
+            "import sys\nassert sys.argv[1] in ('--check', '--check-terminal')\n",
+        );
+        installed_helper(&f, "gio", "print('Default application: first.desktop')\n");
+        let (out, reply) = installed_run(&f, &["set", key, "first.desktop"]);
+        assert!(out.status.success(), "{reply}");
+        let source = fs::read(f.source()).unwrap();
+        let mime = f.root.join("state/emaki/defaults/mimeapps.list");
+        let associations = fs::read(&mime).unwrap();
+        let history = installed_run(&f, &["history"]).1["history"].clone();
+        let (out, reply) = installed_run(&f, &["set", key, "second.desktop"]);
+        assert!(!out.status.success(), "{reply}");
+        assert_eq!(reply["reason"], "default_application_unconfirmed");
+        assert_eq!(fs::read(f.source()).unwrap(), source);
+        assert_eq!(fs::read(&mime).unwrap(), associations);
+        assert_eq!(installed_run(&f, &["history"]).1["history"], history);
+    }
+}
+
+#[test]
+fn installed_keyboard_changes_refuse_machine_settings_without_publishing() {
+    let f = Fixture::new();
+    for (key, value) in [
+        ("keyboard.layouts", "us,de"),
+        ("keyboard.switch_key", "Alt+Shift"),
+    ] {
+        let (out, reply) = installed_run(&f, &["set", key, value]);
+        assert!(!out.status.success(), "{reply}");
+        assert_eq!(reply["reason"], "keyboard_requires_machine_settings");
+        assert!(!f.source().exists());
+        assert_eq!(installed_run(&f, &["history"]).1["history"], json!([]));
+    }
+}
+
+#[test]
+fn installed_application_defaults_preserve_personal_mime_file() {
+    for filename in ["niri-mimeapps.list", "mimeapps.list"] {
+        let f = Fixture::new();
+        installed_helper(&f, "emaki-terminal", "pass\n");
+        let mime = f.root.join("config").join(filename);
+        let personal = "[Default Applications]\nx-scheme-handler/http=personal.desktop;\nx-scheme-handler/https=personal.desktop;\ntext/html=personal.desktop;\ninode/directory=personal.desktop;\n";
+        fs::write(&mime, personal).unwrap();
+        installed_helper(
+            &f,
+            "gio",
+            &format!(
+                "import configparser, sys\np = configparser.ConfigParser(interpolation=None)\np.read({mime:?})\nprint('Default application: ' + p['Default Applications'][sys.argv[2]].split(';')[0])\n",
+                mime = mime.to_str().unwrap(),
+            ),
+        );
+        for key in ["defaults.browser", "defaults.files"] {
+            let (out, reply) = installed_run(&f, &["set", key, "test.desktop"]);
+            assert!(out.status.success(), "{reply}");
+            assert_eq!(row(&reply, key)["value"], "test.desktop");
+            assert_eq!(fs::read_to_string(&mime).unwrap(), personal);
+            assert!(
+                fs::read_to_string(f.root.join("state/emaki/defaults/mimeapps.list"))
+                    .unwrap()
+                    .contains("test.desktop")
+            );
+        }
+    }
+}
+
+#[test]
+fn installed_wallpaper_failure_restores_snapshot_and_previous_source() {
+    let f = Fixture::new();
+    let first = f.root.join("first.png");
+    let second = f.root.join("second.png");
+    fs::write(&first, b"image").unwrap();
+    fs::write(&second, b"image").unwrap();
+    let calls = f.root.join("wallpaper-calls");
+    let rejected = f.root.join("reject-wallpaper");
+    installed_helper(
+        &f,
+        "emaki-settings-wallpaper",
+        &format!(
+            r#"import json, sys
+from pathlib import Path
+p = Path({calls:?})
+p.write_text((p.read_text() if p.exists() else '') + json.dumps(sys.argv[1:]) + '\n')
+if sys.argv[1] == 'snapshot':
+    print('{{"screen":"previous.png"}}')
+if sys.argv[1] == 'apply' and Path({rejected:?}).exists():
+    sys.exit(1)
+"#,
+            calls = calls.to_str().unwrap(),
+            rejected = rejected.to_str().unwrap()
+        ),
+    );
+    let (out, reply) = installed_run(
+        &f,
+        &["set", "appearance.wallpaper", first.to_str().unwrap()],
+    );
+    assert!(out.status.success(), "{reply}");
+    assert_eq!(reply["session_applied"], true);
+    let before = fs::read(f.source()).unwrap();
+    let history = installed_run(&f, &["history"]).1["history"].clone();
+    fs::write(rejected, "").unwrap();
+    let (out, reply) = installed_run(
+        &f,
+        &["set", "appearance.wallpaper", second.to_str().unwrap()],
+    );
+    assert!(!out.status.success(), "{reply}");
+    assert_eq!(reply["reason"], "wallpaper_apply_failed");
+    assert_eq!(fs::read(f.source()).unwrap(), before);
+    assert_eq!(installed_run(&f, &["history"]).1["history"], history);
+    let calls: Vec<Value> = fs::read_to_string(calls)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(calls.len(), 5);
+    assert_eq!(calls[3], json!(["apply", second.to_str().unwrap()]));
+    assert_eq!(calls[4][0], "restore");
+    let restored: Value = serde_json::from_str(calls[4][1].as_str().unwrap()).unwrap();
+    assert_eq!(restored, json!({"screen": "previous.png"}));
 }
 
 #[test]
@@ -1097,4 +1656,120 @@ fn settings_page_keys_generate_wallpaper_and_default_app_files_never_xkb_and_und
     let (out, undo_dock) = f.run(&["undo", dock["change_id"].as_str().unwrap()]);
     assert!(out.status.success(), "{undo_dock}");
     assert_eq!(row(&undo_dock, "dock.on")["value"], true);
+}
+
+#[test]
+fn installed_first_use_preserves_legacy_dock_choices_once() {
+    let f = Fixture::new();
+    fs::create_dir_all(f.root.join("state/emaki")).unwrap();
+    let dock = f.root.join("state/emaki/dock.json");
+    let legacy = br#"{"version":1,"on":false,"auto_hide":false,"pinned":["test.desktop"]}"#;
+    fs::write(&dock, legacy).unwrap();
+    let before = tree(&f.root);
+    let (out, reply) = installed_run(&f, &["list"]);
+    assert!(out.status.success(), "{reply}");
+    assert_eq!(row(&reply, "dock.on")["value"], false);
+    assert_eq!(row(&reply, "dock.auto_hide")["value"], false);
+    assert_eq!(fs::read(&dock).unwrap(), legacy);
+    assert_eq!(tree(&f.root), before);
+    assert!(!f.source().exists());
+    assert_eq!(installed_run(&f, &["history"]).1["history"], json!([]));
+    installed_helper(&f, "emaki-shell", "print('applied')\n");
+    let (out, reply) = installed_run(&f, &["set", "bar.autohide", "true"]);
+    assert!(out.status.success(), "{reply}");
+    assert_eq!(
+        fs::metadata(f.source()).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    let history = installed_run(&f, &["history"]).1;
+    assert_eq!(history["history"].as_array().unwrap().len(), 2);
+    assert!(
+        history["history"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["kind"] == "import")
+    );
+    fs::write(&dock, br#"{"version":1,"on":true,"auto_hide":true}"#).unwrap();
+    assert_eq!(
+        row(&installed_run(&f, &["list"]).1, "dock.on")["value"],
+        false
+    );
+    fs::remove_file(f.source()).unwrap();
+    assert_eq!(
+        row(&installed_run(&f, &["list"]).1, "dock.on")["value"],
+        true
+    );
+    assert!(!f.source().exists());
+}
+
+#[test]
+fn installed_legacy_defaults_remain_inherited_after_first_mutation() {
+    let f = Fixture::new();
+    fs::create_dir_all(f.root.join("state/emaki")).unwrap();
+    fs::write(
+        f.root.join("state/emaki/dock.json"),
+        br#"{"version":1,"on":true,"auto_hide":true,"pinned":["test.desktop"]}"#,
+    )
+    .unwrap();
+    installed_helper(&f, "emaki-shell", "print('applied')\n");
+    let (out, reply) = installed_run(&f, &["set", "bar.autohide", "true"]);
+    assert!(out.status.success(), "{reply}");
+    let source = fs::read_to_string(f.source()).unwrap();
+    assert!(!source.contains("[dock]"), "{source}");
+    assert!(row(&reply, "dock.on")["override_value"].is_null());
+    assert!(row(&reply, "dock.auto_hide")["override_value"].is_null());
+}
+
+#[test]
+fn installed_reset_of_unset_key_is_not_reported_as_applied() {
+    let f = Fixture::new();
+    let (out, reply) = installed_run(&f, &["reset", "appearance.gaps"]);
+    assert!(out.status.success(), "{reply}");
+    assert_eq!(reply["status"], "unchanged");
+    assert_eq!(reply["session_applied"], false);
+    assert!(reply["change_id"].is_null());
+    assert!(!f.source().exists());
+}
+
+#[test]
+fn login_keeps_valid_overrides_when_recovery_metadata_is_unreadable() {
+    let f = Fixture::new();
+    f.manual("schema_version=1\n[appearance]\ngaps=12\n");
+    let history = f.root.join("state/emaki/history");
+    fs::create_dir_all(&history).unwrap();
+    fs::write(history.join("live-pending.json"), "invalid pending record").unwrap();
+    let out = f
+        .fake("ok")
+        .args(["settings", "session-config"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{out:?}");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("using your current managed overrides"));
+    let wrapper = fs::read_to_string(String::from_utf8(out.stdout).unwrap().trim()).unwrap();
+    assert!(wrapper.contains("settings-manual.kdl"));
+    assert!(
+        fs::read_to_string(f.root.join("runtime/emaki-settings/settings-manual.kdl"))
+            .unwrap()
+            .contains("gaps 12")
+    );
+    assert!(history.join("live-pending.json").exists());
+}
+
+#[test]
+fn failed_first_change_preserves_migrated_legacy_deviations() {
+    let f = Fixture::new();
+    fs::create_dir_all(f.root.join("state/emaki")).unwrap();
+    fs::write(
+        f.root.join("state/emaki/dock.json"),
+        r#"{"version":1,"on":false,"auto_hide":true}"#,
+    )
+    .unwrap();
+    installed_helper(&f, "emaki-shell", "raise SystemExit(1)\n");
+    let (out, _) = installed_run(&f, &["set", "bar.autohide", "true"]);
+    assert!(!out.status.success());
+    let (out, reply) = installed_run(&f, &["list"]);
+    assert!(out.status.success(), "{reply}");
+    assert_eq!(row(&reply, "dock.on")["value"], false);
+    assert!(row(&reply, "dock.auto_hide")["override_value"].is_null());
 }

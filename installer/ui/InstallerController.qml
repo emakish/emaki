@@ -36,7 +36,8 @@ Item {
     property string encryptionPassword: "account"
     property string diskPassword: ""
     property string diskConfirmation: ""
-    property bool hibernation: false
+    // Hidden in 0.3.1 after hardware resume failed; the planner retains support.
+    readonly property bool hibernation: false
     // The disk is unlocked at startup in this layout (render.unlock_layout(layouts, 'grub')).
     readonly property string unlockLayout: Protocol.unlockLayout(layouts)
     // One password for everything is typed at the startup prompt in the unlock layout and at the
@@ -44,7 +45,7 @@ Item {
     readonly property bool accountUnlocks: layouts[0] === unlockLayout
     readonly property bool encryptionReady: encryption === "none" || (encryption === "encrypted" && ((encryptionPassword === "account" && accountUnlocks) || (encryptionPassword === "separate" && !Protocol.diskPasswordError(diskPassword) && diskPassword === diskConfirmation)))
     // Until encryption is chosen the header is counted: the number shown never grows later.
-    readonly property real rootMinimum: Protocol.rootMinimum(session.inventory?.memory_bytes || 0, hibernation, encryption !== "none")
+    readonly property real rootMinimum: Protocol.rootMinimum(session.inventory?.memory_bytes || 0, false, encryption !== "none")
     readonly property bool manualReady: mounts.filter(m => m.mountpoint === "/").length === 1 && mounts.filter(m => m.mountpoint === "/efi").length === 1
     // Kept only between You and Software; never passed to the shared protocol state.
     property string accountPassword: ""
@@ -208,7 +209,7 @@ Item {
             })) : []
     readonly property bool canAlongside: Protocol.alongside(selectedDisk)
     readonly property var windowsPartition: Protocol.alongsidePartition(selectedDisk)
-    readonly property real alongsideMinimum: Math.max(32 * 1073741824, hibernation ? 20 * 1073741824 + (session.inventory?.memory_bytes || 0) + 16 * 1048576 : 0)
+    readonly property real alongsideMinimum: 32 * 1073741824
     // canAlongside and windowsPartition are separate bindings: either can be updated first.
     readonly property bool alongsideSizeValid: canAlongside && !!windowsPartition && shrinkBytes >= alongsideMinimum && shrinkBytes <= windowsPartition.shrink.max_free_bytes
     onAlongsideMinimumChanged: {
@@ -728,7 +729,7 @@ Item {
             timezone: timezone,
             software: software,
             encryption: encryption === "none" ? "none" : encryptionPassword,
-            hibernation: hibernation,
+            hibernation: false,
             online_update: onlineUpdate,
             output_scales: catalog.output_scales || ({})
         };

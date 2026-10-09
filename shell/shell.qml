@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import "OutputSelection.js" as OutputSelection
 
 ShellRoot {
     id: root
@@ -13,23 +12,20 @@ ShellRoot {
     readonly property int testWidth: Number(Quickshell.env("EMAKI_SHELL_TEST_WIDTH") || "0")
     readonly property int testHeight: Number(Quickshell.env("EMAKI_SHELL_TEST_HEIGHT") || "0")
     readonly property bool valid: ["soft", "full"].includes(borderMode) && reservedSpace >= 0 && testWidth >= 0 && testHeight >= 0 && (!headless || (testWidth > 0 && testHeight > 0))
-    readonly property ShellScreen selectedOutput: OutputSelection.select(Quickshell.screens, requestedOutput)
-    readonly property Surfaces surfaceWindows: surfacesLoader.item as Surfaces
+    readonly property ShellScene scene: outputs.activeScene
+    readonly property Surfaces surfaceWindows: outputs.instances.find(i => i.scene === scene)?.surfaces ?? null
     // The lowercase standalone entry has no named QML type for a typed Loader cast.
     readonly property var coverController: coverLoader.item
 
     Component.onCompleted: {
         Quickshell.watchFiles = false;
+        UpdateService.enabled = valid && !headless && Quickshell.env("EMAKI_LIVE_SESSION") !== "1";
         if (!valid) {
             console.error("Emaki test shell: choose EMAKI_SHELL_BORDER=soft|full; dimensions/zone must be nonnegative; headless requires explicit test dimensions.");
             // Quickshell connects the engine's exit only after the root's onCompleted:
             // an exit from here is ignored, so defer it by one event-loop turn.
             Qt.callLater(Qt.exit, 1);
         } else if (!headless) {
-            surfacesLoader.setSource(Qt.resolvedUrl("Surfaces.qml"), {
-                controller: scene,
-                startup: startup
-            });
             if (startup.coverActive)
                 coverLoader.setSource(Qt.resolvedUrl("session-cover.qml"));
         }
@@ -40,15 +36,15 @@ ShellRoot {
     }
     SessionStartup {
         id: startup
-        modelsReady: scene.startupModelsReady && (root.surfaceWindows?.materialsReady ?? false)
-        modelRevision: scene.startupRevision
-        dockRequired: scene.dockStore.on
-        barMapped: root.surfaceWindows?.barMapped ?? false
-        dockMapped: root.surfaceWindows?.dockMapped ?? false
-        overlayMapped: root.surfaceWindows?.overlayMapped ?? false
+        modelsReady: outputs.modelsReady
+        modelRevision: outputs.modelRevision
+        dockRequired: outputs.shared.dockStore.on
+        barMapped: outputs.barMapped
+        dockMapped: outputs.dockMapped
+        overlayMapped: outputs.overlayMapped
         onCoverActiveChanged: {
             if (!coverActive) {
-                root.surfaceWindows?.sealStartupMaterial();
+                outputs.sealStartupMaterial();
                 root.coverController?.complete();
             }
         }
@@ -56,15 +52,15 @@ ShellRoot {
     WelcomeController {
         enabled: root.valid && !root.headless
         ready: !startup.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
-        onOpening: scene.closeAll()
+        onOpening: outputs.closeAll()
     }
     ShellRecoveryNotice {
-        store: scene.notifications
+        store: outputs.shared.notifications
         ready: root.valid && !root.headless && !startup.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
     }
     SessionUpdateNotice {
-        store: scene.notifications
-        ready: root.valid && !root.headless && !startup.coverActive && !scene.pairingPeekOpen && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
+        store: outputs.shared.notifications
+        ready: root.valid && !root.headless && !startup.coverActive && !(root.scene?.pairingPeekOpen ?? false) && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
     }
     IpcHandler {
         target: "workspaces"
@@ -72,26 +68,17 @@ ShellRoot {
             return /^[0-9]+$/.test(id) && coreService.focusWorkspace(Number(id));
         }
     }
-    ShellScene {
-        id: scene
+    ShellOutputs {
+        id: outputs
         niri: coreService
-        skipIntro: startup.skipIntro
+        startup: startup
         enabled: root.valid
-        output: root.selectedOutput
+        requestedOutput: root.requestedOutput
         borderMode: root.borderMode
         reservedSpace: root.reservedSpace
         headless: root.headless
         testWidth: root.testWidth
         testHeight: root.testHeight
-    }
-    Loader {
-        id: surfacesLoader
-        onStatusChanged: {
-            if (status === Loader.Error) {
-                console.error("Emaki test shell: failed to load Wayland surfaces.");
-                Qt.exit(1); // nonzero: the session service restarts on failure
-            }
-        }
     }
     LazyLoader {
         active: !root.headless && !startup.coverActive
@@ -106,7 +93,7 @@ ShellRoot {
     Connections {
         target: coverLoader.item
         function onRevealing(): void {
-            root.surfaceWindows?.sealStartupMaterial();
+            outputs.sealStartupMaterial();
         }
         function onCompleted(): void {
             startup.finish();
@@ -115,73 +102,88 @@ ShellRoot {
     IpcHandler {
         target: "launcher"
         function open(): void {
-            scene.openLauncher();
+            root.scene?.openLauncher(true);
         }
         function close(): void {
-            scene.closeAll();
+            outputs.closeAll();
         }
         function toggle(): void {
-            scene.toggleLauncher();
+            root.scene?.toggleLauncher(true);
         }
         function mode(name: string): bool {
-            return scene.input.setMode(name);
+            return root.scene?.input.setMode(name) ?? false;
         }
         function query(text: string): void {
-            scene.input.setQuery(text);
+            root.scene?.input.setQuery(text);
         }
         function activate(): void {
-            scene.input.activate();
+            root.scene?.input.activate();
         }
         function status(): string {
-            return scene.status();
+            return root.scene?.status() ?? "{}";
+        }
+    }
+    IpcHandler {
+        target: "keyboard"
+        function open(surface: string): bool {
+            return root.scene?.openKeyboard(surface) ?? false;
         }
     }
     IpcHandler {
         target: "drawer"
         function open(): void {
-            scene.openDrawer();
+            root.scene?.openKeyboard("clock");
         }
         function close(): void {
-            scene.closeAll();
+            outputs.closeAll();
         }
         function toggle(): void {
-            scene.toggleDrawer();
+            if (root.scene?.drawerOpen)
+                outputs.closeAll();
+            else
+                root.scene?.openKeyboard("clock");
+        }
+        function newest(): void {
+            root.scene?.openKeyboard("notifications");
         }
         function dnd(enabled: bool): void {
-            scene.notifications.dnd = enabled;
+            outputs.shared.notifications.dnd = enabled;
         }
         function media(action: string): bool {
-            return scene.clockBody.mediaAction(action);
+            return root.scene?.clockBody.mediaAction(action) ?? false;
         }
         function clear(): void {
-            scene.notifications.dismiss(scene.notifications.entries.map(n => n.id));
+            outputs.shared.notifications.dismiss(outputs.shared.notifications.entries.map(n => n.id));
         }
         function status(): string {
-            return scene.status();
+            return root.scene?.status() ?? "{}";
         }
     }
     IpcHandler {
         target: "system"
         function open(page: string): bool {
-            return scene.openSystem(page);
+            return root.scene?.openKeyboard(page) ?? false;
         }
         function close(): void {
-            scene.closeAll();
+            outputs.closeAll();
         }
         function status(): string {
-            return scene.status();
+            return root.scene?.status() ?? "{}";
         }
     }
     DockIpc {
-        scene: scene
+        shared: outputs.shared
+        scene: root.scene
     }
     IpcHandler {
         target: "review"
         function barAutoHide(value: bool): void {
-            scene.barPolicy.autoHide = value;
+            for (const instance of outputs.instances)
+                instance.scene.barPolicy.autoHide = value;
         }
         function overviewWorkspaces(value: bool): void {
-            scene.barPolicy.overviewWorkspaces = value;
+            for (const instance of outputs.instances)
+                instance.scene.barPolicy.overviewWorkspaces = value;
         }
         function border(mode: string): bool {
             if (mode !== "soft" && mode !== "full")

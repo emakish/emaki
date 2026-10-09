@@ -92,16 +92,7 @@ ShellRoot {
             texts: texts
         }));
     }
-    // The hibernation screens get a second frame scrolled to the hibernation checkbox, which follows the mode choices.
-    readonly property string modeTarget: ({
-            "disk-hibernation": "hibernationCheck",
-            "manual-hibernation": "hibernationCheck",
-            "alongside-hibernation": "hibernationCheck"
-        })[screenName] || ""
     readonly property string warningTarget: screenName.endsWith("-caps") ? (screenName.startsWith("you-") ? "capsLock" : "diskCapsLock") : screenName.endsWith("-numlock") ? (screenName.startsWith("you-") ? "numLock" : "diskNumLock") : ""
-    function scrollToMode(): bool {
-        return scrollToTarget(modeTarget);
-    }
     function scrollToTarget(name: string): bool {
         const body = findItem(content, "installerBody") as C.ScrollView;
         const flick = body.contentItem as Flickable;
@@ -217,7 +208,6 @@ ShellRoot {
                     if (["review", "alongside-review", "review-encrypted", "plan-errors", "install", "install-signatures", "install-updates", "install-step", "done", "done-restart", "done-restart-removable", "done-warning", "done-no-package-lists", "done-wifi-not-copied", "error-login-name", "error", "error-details", "error-real"].indexOf(test.screenName) >= 0) {
                         if (test.screenName === "review-encrypted") {
                             controller.encryption = "encrypted";
-                            controller.hibernation = true;
                         }
                         const secret = "fixture-" + Date.now();
                         controller.plan(secret, secret);
@@ -225,7 +215,6 @@ ShellRoot {
                         if (test.screenName.indexOf("encryption") === 0) {
                             controller.encryption = test.screenName === "encryption" ? "" : test.screenName === "encryption-none" ? "none" : "encrypted";
                             controller.encryptionPassword = ["encryption-separate", "encryption-separate-empty", "encryption-manual", "encryption-mismatch", "encryption-invalid", "encryption-revealed", "encryption-caps", "encryption-numlock"].indexOf(test.screenName) >= 0 ? "separate" : "account";
-                            controller.hibernation = true;
                             if (test.screenName === "encryption-manual")
                                 controller.mode = "manual";
                             if (test.screenName === "encryption-alongside")
@@ -246,10 +235,6 @@ ShellRoot {
                                 // Num Lock as well: its line comes under the Caps Lock line.
                                 controller.numLock = test.screenName === "encryption-numlock";
                             }
-                        } else if (test.screenName.endsWith("-hibernation")) {
-                            controller.mode = test.screenName.split("-")[0] === "disk" ? "erase" : test.screenName.split("-")[0];
-                            controller.hibernation = true;
-                            controller.step = "disk";
                         } else if (test.screenName.indexOf("timezone") === 0) {
                             controller.timezone = "Europe/Berlin";
                             controller.step = "timezone";
@@ -616,28 +601,6 @@ ShellRoot {
                 }
                 test.captured = true;
                 console.log("SCREENSHOT_OK " + test.screenName);
-                if (test.modeTarget === "")
-                    Qt.quit();
-                else if (!test.scrollToMode()) {
-                    console.error("Mode target not visible: " + test.modeTarget);
-                    Qt.quit();
-                } else
-                    modeShot.restart();
-            });
-        }
-    }
-    Timer {
-        id: modeShot
-        interval: 150
-        onTriggered: {
-            test.contentEvidence(test.screenName + "-mode");
-            content.grabToImage(function (result) {
-                if (!result.saveToFile(test.screenshot.replace(/\.png$/, "-mode.png"))) {
-                    console.error("Screenshot failed");
-                    Qt.quit();
-                    return;
-                }
-                console.log("SCREENSHOT_OK " + test.screenName + "-mode");
                 Qt.quit();
             });
         }

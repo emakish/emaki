@@ -136,7 +136,8 @@ ShellRoot {
             for (let i = 1; i <= buttons.length; ++i) {
                 keyClick(Qt.Key_Tab);
                 equal(buttons[i % buttons.length].activeFocus, true);
-                equal(buttons[i % buttons.length].border.width, 2);
+                equal(buttons[i % buttons.length].focusRing.visible, true);
+                equal(buttons[i % buttons.length].focusRing.border.width, 2);
             }
             keyClick(Qt.Key_Backtab);
             equal(control("next").activeFocus, true);

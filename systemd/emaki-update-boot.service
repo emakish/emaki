@@ -1,0 +1,19 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Accept an updated system after a usable login or desktop session
+DefaultDependencies=no
+After=multi-user.target greetd.service emaki-boot-refresh.service
+Before=shutdown.target
+Conflicts=shutdown.target
+RequiresMountsFor=/efi /.snapshots /boot
+ConditionPathExists=/efi/EFI/Emaki/update.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/emaki-update-boot accept
+TimeoutStartSec=6min
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

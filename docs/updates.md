@@ -11,7 +11,32 @@ Type your password, read the list, and press Enter at each question. Emaki's pac
 usual. The command explains common update refusals in plain English and keeps the technical
 details in brackets. It runs a full update with the same package checks and confirmation
 questions [pacman]. Plain `sudo pacman -Syu` still works and keeps its native messages.
-The desktop does not yet check whether updates are available.
+The desktop checks once a day and shows a panel indicator when updates are pending.
+
+## The update window
+
+Open **Emaki updates** from the launcher, run `emaki-update-manager`, or select the panel's
+update indicator. **Check again** refreshes the list. The window groups repository updates by
+source, with old and new versions and download sizes. It also lists installed foreign packages
+that have newer versions in the AUR. AUR packages are not checked by Arch or Emaki; this window
+does not build them. Update those separately with your AUR tool.
+
+The window shows cached Arch news newer than the last recorded successful full update when
+an item mentions manual intervention. Open its link and read the instructions before updating.
+Warnings describe known conditions; the list does not certify that an update will work.
+When a network request fails, cached information is marked as stale.
+
+The update button requests administrator authorization and runs a full repository upgrade
+through `emaki-update`, with the same refusal explanations and snapshot hooks as the terminal
+command. Repository selection and individual package updates are not offered. The transaction
+continues if the window closes; reopening it shows progress and the result. Save your work before
+choosing **Restart now** after a kernel update, or choose **Later**.
+
+Checking runs as your account with temporary package databases; it never refreshes the system's
+`/var/lib/pacman/sync`. The installed package database is read without changing it. Applying
+uses a fixed system service; it accepts no arbitrary command, package name or file path.
+
+The window's appearance and wording are drafts awaiting owner approval.
 
 After a desktop update, an on-screen notice asks you to save your work, sign out and sign in
 again. The running panel keeps its own copy of its files until it restarts, so an update cannot
@@ -72,6 +97,28 @@ echo 'Server = https://pkgs.emaki.sh/stable/$arch' | sudo tee /etc/pacman.d/emak
 ```
 
 ## If an update breaks something
+
+On btrfs installations with automatic update recovery installed, package changes
+are protected by their pre-update snapshot, including `pacman -Syu` in a terminal.
+The first subsequent start must reach a running greeter or a graphical user
+session within five minutes after mounting the system. If it does not, restart:
+the next start selects the snapshot automatically, once. Encrypted disks still
+need their usual disk password. After login, the recovery prompt explains the
+return and offers **Keep this state** to make that snapshot the system again.
+Home files are on a separate subvolume and are not rolled back.
+
+Protection starts with the transaction **after** this feature is installed; a new
+pre-transaction hook cannot protect the transaction that first installs it. The
+automatic path still requires the encrypted and unencrypted VM checks described
+in [the boot acceptance procedure](iso.md#automatic-update-return-acceptance).
+Until those checks pass, it is not a hardware recovery guarantee. A failed
+preparation never stops the package transaction: it continues without update
+recovery protection, and the terminal output names the missing snapshot or boot
+preparation step.
+Several updates before an accepted restart retain the earliest snapshot and
+do not reset the one-return limit. Hibernation resume does not accept an update.
+On ext4 there are no snapshots: these hooks do nothing and automatic return is
+unavailable. The manual paths below remain available.
 
 | Install | What you can do |
 |---|---|

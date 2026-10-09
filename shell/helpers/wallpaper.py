@@ -200,7 +200,24 @@ def texture(width, height, scale, output, variant='glass'):
             config_bytes, _ = bounded_no_symlinks(config_root / 'wpaperd/config.toml', MAX_CONFIG,
                                                 root=config_root)
         else:
-            config_bytes = bounded_read(config_root / 'wpaperd/config.toml', MAX_CONFIG)
+            managed = None
+            try:
+                settings = tomllib.loads(bounded_read(config_root / 'emaki/settings.toml', MAX_CONFIG).decode())
+                if settings.get('schema_version') != 1:
+                    raise ValueError('settings_schema')
+                appearance = settings.get('appearance', {})
+                if not isinstance(appearance, dict):
+                    raise ValueError('settings_wallpaper')
+                managed = appearance.get('wallpaper')
+                if managed is not None and (not isinstance(managed, str) or not Path(managed).is_absolute()):
+                    raise ValueError('settings_wallpaper')
+            except (OSError, ValueError, UnicodeError):
+                # A damaged managed source must not remove the ordinary wallpaper.
+                managed = None
+            if managed:
+                config_bytes = ('[default]\npath = ' + json.dumps(managed) + '\n').encode()
+            else:
+                config_bytes = bounded_read(config_root / 'wpaperd/config.toml', MAX_CONFIG)
         config = tomllib.loads(config_bytes.decode())
     except FileNotFoundError:
         return {'state': 'config_missing'}

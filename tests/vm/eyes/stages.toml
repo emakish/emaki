@@ -89,7 +89,7 @@ expected = "Clock and bar clock change; the chosen zone is named."
 
 [stages."09"]
 resolutions = ["1280x800", "1366x768", "1920x1080", "2560x1600"]
-title = "Installer Disk page: untouched, greyed Continue clicked, disk chosen, hibernation ticked"
+title = "Installer Disk page: untouched, greyed Continue clicked, disk chosen"
 pass = "GL"
 expected = "The disk card names the NVMe model; a visible reason when Continue is refused."
 

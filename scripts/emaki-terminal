@@ -1,0 +1,109 @@
+#!/usr/bin/python3 -I
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Open the managed terminal, optionally running an argv after --."""
+import os
+from pathlib import Path
+import re
+import shlex
+import shutil
+import stat
+import sys
+import tomllib
+
+
+def selected_terminal():
+    root = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
+    if not root.is_absolute():
+        raise ValueError('invalid configuration directory')
+    path = root / 'emaki/settings.toml'
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return None
+    with os.fdopen(fd, 'rb') as source:
+        info = os.fstat(source.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_nlink != 1:
+            raise ValueError('unsafe settings file')
+        raw = source.read(65537)
+    if len(raw) > 65536:
+        raise ValueError('settings file too large')
+    data = tomllib.loads(raw.decode('utf-8'))
+    if type(data.get('schema_version')) is not int or data['schema_version'] != 1:
+        raise ValueError('unsupported settings schema')
+    defaults = data.get('defaults', {})
+    if not isinstance(defaults, dict):
+        raise ValueError('invalid defaults')
+    ident = defaults.get('terminal')
+    if ident is not None and (not isinstance(ident, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+\.desktop', ident)):
+        raise ValueError('invalid terminal desktop ID')
+    return ident
+
+
+def command_argv(app):
+    """Expand supported desktop field codes without invoking a command shell."""
+    result = []
+    for word in shlex.split(app.get_commandline() or ''):
+        if word in ('%f', '%F', '%u', '%U'):
+            continue
+        if word == '%i':
+            icon = app.get_string('Icon')
+            if icon:
+                result.extend(['--icon', icon])
+            continue
+        if word == '%c':
+            result.append(app.get_name())
+            continue
+        if word == '%k':
+            result.append(app.get_filename())
+            continue
+        if '%' in word.replace('%%', ''):
+            raise ValueError('unsupported terminal field code')
+        result.append(word.replace('%%', '%'))
+    if not result:
+        raise ValueError('terminal command is missing')
+    return result
+
+
+def main(argv):
+    check = len(argv) == 2 and argv[0] in ('--check', '--check-terminal')
+    if argv and argv[0] != '--' and not check:
+        raise ValueError('usage: emaki-terminal [-- command arguments...]')
+    command = argv[1:] if argv else []
+    ident = argv[1] if check else selected_terminal()
+    if ident is not None and not re.fullmatch(r'[A-Za-z0-9_.-]+\.desktop', ident):
+        raise ValueError('invalid desktop ID')
+    if ident is None:
+        os.execvp('kitty', ['kitty'] + (['-e'] + command if command else []))
+        return
+    import gi
+    gi.require_version('Gio', '2.0')
+    from gi.repository import Gio
+    app = Gio.DesktopAppInfo.new(ident)
+    executable = app.get_executable() if app is not None else None
+    if app is None or not executable or not shutil.which(executable):
+        if check:
+            raise ValueError('desktop entry or executable is unavailable')
+        os.execvp('kitty', ['kitty'] + (['-e'] + command if command else []))
+        return
+    if check and argv[0] == '--check':
+        return
+    if 'TerminalEmulator' not in (app.get_categories() or '').split(';'):
+        raise ValueError('terminal desktop entry is unavailable')
+    if check:
+        command_argv(app)
+        return
+    if not command:
+        if not app.launch([], None):
+            raise ValueError('terminal launch failed')
+    else:
+        args = command_argv(app) + ['-e'] + command
+        os.execvp(args[0], args)
+
+
+if __name__ == '__main__':
+    try:
+        main(sys.argv[1:])
+    except Exception as error:
+        print('emaki-terminal: ' + str(error), file=sys.stderr)
+        sys.exit(1)

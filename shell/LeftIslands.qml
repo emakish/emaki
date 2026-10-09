@@ -296,6 +296,11 @@ Item {
     // ---- Input: the islands themselves (also the surface's input mask) ----
     Item {
         id: logoHit
+        KeyboardTarget {
+            property bool keyboardFirst: true
+            label: "Open launcher"
+            onActivated: left.launch()
+        }
         x: left.logoRect.x
         y: left.logoRect.y
         width: left.logoRect.width

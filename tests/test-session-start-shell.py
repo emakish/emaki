@@ -137,7 +137,7 @@ DRIVER = '''
                         return;
                     } else return;
                 }
-                if (!surfacesLoader.item || (stage <= 1 && !scene.startupModelsReady))
+                if (!root.surfaceWindows || (stage <= 1 && !scene.startupModelsReady))
                     return;
                 if (!FRESH && stage === 1) {
                     check(!startup.coverActive && !startup.skipIntro && !startup.reported,
@@ -152,8 +152,8 @@ DRIVER = '''
                     if (MATERIAL_CAP) {
                         if (Date.now() - began < 5750) return;
                         check(!startup.coverActive && !startup.reported, "unready material bypassed cap");
-                        check(surfacesLoader.item.startupMaterial === "flat", "cap did not seal flat fallback");
-                        check(surfacesLoader.item.liveMaterialsReady, "late capture never completed in fixture");
+                        check(root.surfaceWindows.startupMaterial === "flat", "cap did not seal flat fallback");
+                        check(root.surfaceWindows.liveMaterialsReady, "late capture never completed in fixture");
                         check(scene.bar.backdrop === null && scene.dock.backdrop === null,
                               "late capture switched visible material after cap");
                         stage = 3;
@@ -185,11 +185,11 @@ DRIVER = '''
                     check(DOCK_ON || (!startup.dockMapped && startup.frameCounts.dock === 0),
                           "disabled dock was required or mapped");
                     check(startup.skipIntro && scene.skipIntro, "intro released before cover completion");
-                    check(surfacesLoader.item.backdropMode === "capture", "capture was not prepared under the startup cover");
-                    check(surfacesLoader.item.materialsReady, "ack preceded final glass materials");
+                    check(root.surfaceWindows.backdropMode === "capture", "capture was not prepared under the startup cover");
+                    check(root.surfaceWindows.materialsReady, "ack preceded final glass materials");
                     coverController.revealing();
                     completeCover.start();
-                    check(surfacesLoader.item.startupMaterial === "live",
+                    check(root.surfaceWindows.startupMaterial === "live",
                           "cover transfer/drain changed the selected material");
                     check(scene.bar.y === 0, "initial bar was not at rest");
                     check(scene.bar.leftIslands.workspaceBubble.alpha.x === 1, "workspace drop still entering");
@@ -203,7 +203,7 @@ DRIVER = '''
                     if (startup.coverActive) return;
                     check(!LONG_COVER || Date.now() - began >= 5500, "independent shell timer cut the longer cover budget");
                     check(!scene.skipIntro && !startup.skipIntro, "cover completion did not restore animation");
-                    check(surfacesLoader.item.backdropMode === "capture", "capture did not resume after cover");
+                    check(root.surfaceWindows.backdropMode === "capture", "capture did not resume after cover");
                     check(!(FAILED_WATCH || FAILED_REPORT) || Date.now() - began >= 4750, "failed helper bypassed cover completion");
                     stage = 3;
                 }
@@ -303,7 +303,8 @@ def run(scenario):
         surfaces = surfaces.replace('surfaces.controller.output !== null', 'true')
         if no_overlay_frames:
             assert surfaces.count('surfaces.startup?.painted("overlay");') == 1
-            surfaces = surfaces.replace('surfaces.startup?.painted("overlay");', '')
+            surfaces = surfaces.replace('surfaces.painted("overlay");', '').replace(
+                'if (surfaces.reportFrames)\n                surfaces.startup?.painted("overlay");', '')
         (qml / 'Surfaces.qml').write_text(surfaces)
         # Preserve the real GPU pipeline file but replace its readiness input:
         # software Qt has no screencopy, and must not invent successful materials.
@@ -319,7 +320,8 @@ def run(scenario):
         (qml / 'session-cover.qml').write_text('import QtQuick\nimport Quickshell\nScope { id: cover; '
             'signal revealing(); signal completed(); function complete(): void { completed(); } '
             'Timer { interval: 5000; running: true; onTriggered: { cover.revealing(); cover.completed(); } } }\n')
-        entry = (qml / 'shell.qml').read_text().replace('headless: root.headless', 'headless: true')
+        (qml / 'ShellOutputs.qml').write_text((qml / 'ShellOutputs.qml').read_text().replace('headless: outputs.headless', 'headless: true').replace('live: !outputs.headless', 'live: false'))
+        entry = (qml / 'shell.qml').read_text()
         driver = DRIVER.replace('FRESH', str(fresh).lower()).replace('DOCK_ON', str(dock_on).lower()).replace(
             'FAILED_WATCH', str(failed_watch).lower()).replace('FAILED_REPORT', str(failed_report).lower()).replace(
             'NO_OVERLAY_FRAMES', str(no_overlay_frames).lower()).replace(

@@ -706,11 +706,11 @@ package_shell-tools() {
         # The marker pins whatever release the active recipe carries.
         release = re.search(r'^pkgrel=(\d+)$', active, re.M).group(1)
         expected = {
-            'emaki-config': {'fastfetch>=2.68.1', 'niri-emaki>=26.04-6', 'quickshell-emaki>=0.3.1-4', 'kwallet>=6.30'},
-            'emaki-desktop': {'fastfetch>=2.68.1', 'niri-emaki>=26.04-6'},
+            'emaki-config': {'fastfetch>=2.68.1', 'niri-emaki>=26.04-12', 'quickshell-emaki>=0.3.1-4', 'kwallet>=6.30'},
+            'emaki-desktop': {'fastfetch>=2.68.1', 'niri-emaki>=26.04-12'},
             'emaki-installer': {'archinstall=4.5-1'},
-            'emaki': {'emaki-config=0.3.1-2', 'emaki-desktop=0.3.1-1', 'emaki-keyring>=0.3.1-1',
-                      'emaki-mirrorlist>=0.3.1-1', 'niri-emaki=26.04-11', f'quickshell-emaki=0.3.1-{release}'},
+            'emaki': {'emaki-config=0.4.0-1', 'emaki-desktop=0.4.0-1', 'emaki-keyring>=0.4.0-1',
+                      'emaki-mirrorlist>=0.4.0-1', 'niri-emaki=26.04-12', f'quickshell-emaki=0.3.1-{release}'},
             'niri-emaki': {'libdisplay-info.so=3-64', 'libinput.so=10-64', 'libpipewire-0.3.so=0-64',
                            'libseat.so=1-64', 'libxkbcommon.so=0-64', 'niri>=26.04'},
             'quickshell-emaki': {'libEGL.so', 'libOpenGL.so', 'libcpptrace.so', 'libgcc_s.so',

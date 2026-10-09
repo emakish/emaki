@@ -31,7 +31,7 @@ encryption and a RAM-sized hibernation file. BIOS installation is unsupported.
 
 ## Alongside Windows
 
-**Not offered in 0.3.1.** Installing alongside Windows returns only after a check
+**Not offered in 0.4.0.** Installing alongside Windows returns only after a check
 on a real Windows (a real shrink of its partition, BitLocker); see DECISIONS,
 2026-10-04 "No experimental options". One switch controls it: `ALONGSIDE` in
 `emaki_installer/constants.py`, `False`. With it off the inventory does not
@@ -69,9 +69,8 @@ Plans use `partition_id` for Windows and `shrink_bytes` for **bytes freed for
 Emaki**. The worker reserves the NTFS minimum plus 2 GiB for Windows and at
 least 32 GiB for Emaki. Root must also fit the existing 20 GiB allowance, RAM
 when hibernation is selected, and the LUKS2 header when encrypted. The slider
-starts at half the available space, bounded by those limits. Since the disk
-step precedes the encryption choice, its hibernation reservation also allows
-16 MiB for a possible LUKS2 header. The review names both resulting sizes,
+starts at half the available space, bounded by those limits. The 0.4.0 UI
+always sends hibernation off and reserves no RAM-sized space. The review names both resulting sizes,
 preservation behavior, encryption and hibernation, and requires the backup
 acknowledgement before confirmation.
 
@@ -120,7 +119,7 @@ not Windows. This tests chainloading only. All files and evidence stay under
 the dedicated VM directory, and the guest is stopped on success or failure.
 Before it touches the target disk, the job asks the ISO's worker for a plan
 only; when the worker refuses the mode itself (`unsupported_mode`, as every
-0.3.1 image does), it prints `NOT APPLICABLE`, writes `NOT-APPLICABLE` into the
+0.4.0 image does), it prints `NOT APPLICABLE`, writes `NOT-APPLICABLE` into the
 run directory and exits 77: neither a pass nor a failure.
 
 ### First real Windows laptop checklist
@@ -207,10 +206,10 @@ python installer/ui/tests/render.py --repo-shell --output installer/ui/tests/art
 ```
 
 The render set includes every step, encryption choices and password states,
-hibernation in every layout mode, a selected map region, active and empty
+a selected map region, active and empty
 time zone searches, and both software choices, at the default 1024 × 700 size.
 The `alongside*` screens replay a worker offer recorded with the alongside
-switch on; a 0.3.1 worker never sends one.
+switch on; a 0.4.0 worker never sends one.
 Use `--width 960 --height 640` for the minimum window, and `--iso-fonts` to limit
 the test to the ISO's Adwaita fonts. `controller.py --unix` additionally exercises
 the real socket; it returns 77 when the sandbox cannot bind Unix sockets.
@@ -291,7 +290,13 @@ keyboard layout, so disk passwords must use printable ASCII characters.
 
 Plans must explicitly include `encryption: "none" | "account" | "separate"`.
 The separate choice also needs `disk_password`; neither password appears in
-the returned review or logs. `hibernation` is a boolean and defaults to false.
+the returned review or logs. The 0.4.0 installer window does not offer hibernation:
+the session on tested hardware did not respond after resume. Its controller keeps
+hibernation off and every UI plan explicitly sends `hibernation: false`; root
+and alongside space calculations do not reserve RAM-sized space.
+
+The worker and planner retain hibernation support for future re-enabling.
+`hibernation` is a boolean and defaults to false.
 Its size comes from the worker's RAM inventory, never a client-supplied size.
 RAM is the sum of installed SMBIOS memory devices, including firmware-reserved
 memory; unavailable or invalid firmware sizes disable hibernation instead of
@@ -303,7 +308,7 @@ Only root is encrypted; the ESP remains plain at `/efi`. Manual encryption
 requires formatting root and preserves the existing GPT and ESP. Any other
 data partitions stay unencrypted, as stated in the UI and review. The common
 `storage_layout` planner function applies these options after a layout builder;
-the alongside builder (off in 0.3.1) calls it without duplicating storage policy.
+the alongside builder (off in 0.4.0) calls it without duplicating storage policy.
 
 The shipped Arch GRUB 2:2.16-1 includes `luks2`, `argon2`, `cryptodisk` and
 `pbkdf2` modules, verified in the test ISO. Root uses LUKS2/Argon2id with a
