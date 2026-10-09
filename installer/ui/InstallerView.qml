@@ -1869,7 +1869,7 @@ Item {
             function submit(): void {
                 submitted = true;
                 view.controller.stageAccount(password.text, confirmation.text);
-                const first = [nameProblem, loginProblem, passwordProblem, confirmProblem, hostnameProblem].find(item => item.text !== "");
+                const first = [nameProblem, loginProblem, passwordProblem, confirmProblem, hostnameProblem].find(item => item.text !== "" && (item !== passwordProblem || account.problems.password));
                 if (first) {
                     // The line has just become visible; lay it out before scrolling to it.
                     account.forceLayout();
@@ -2026,9 +2026,11 @@ Item {
                     Layout.row: 5
                     Layout.column: 0
                     Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignTop
                     visible: text !== ""
-                    color: view.danger
-                    text: account.submitted || password.text ? account.problems.password : ""
+                    readonly property string error: account.submitted || password.text ? account.problems.password : ""
+                    color: error ? view.danger : view.dim
+                    text: error || "Use only letters, digits and symbols of the English (US) keyboard."
                 }
                 Hint {
                     id: confirmProblem
@@ -2036,6 +2038,7 @@ Item {
                     Layout.row: 5
                     Layout.column: 1
                     Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignTop
                     visible: text !== ""
                     color: view.danger
                     text: account.submitted || confirmation.text ? account.problems.confirm : ""
@@ -2065,7 +2068,7 @@ Item {
                     Layout.column: 0
                     Layout.fillWidth: true
                     visible: text !== ""
-                    text: Protocol.consoleWarning(view.controller.session.consoleChars, view.controller.layouts, password.text)
+                    text: /[^\x20-\x7e]/.test(password.text) ? "" : Protocol.consoleWarning(view.controller.session.consoleChars, view.controller.layouts, password.text)
                 }
                 Hint {
                     Layout.row: 9

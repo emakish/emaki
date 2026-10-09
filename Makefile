@@ -60,6 +60,7 @@ SCRIPTS = scripts/emaki-settings-wallpaper scripts/emaki-wallet-stage scripts/em
 SHELL_SRC = $(shell find shell -type f ! -path '*/__pycache__/*' ! -name '*.pyc' ! -name '*.pyo')
 SCRIPTS += scripts/emaki-update-boot
 SCRIPTS += scripts/emaki-terminal scripts/emaki-session-files scripts/emaki-session-update scripts/emaki-update
+SCRIPTS += scripts/emaki-transaction-inhibit
 QSB      ?= $(or $(shell command -v qsb),/usr/lib/qt6/bin/qsb)
 CORE_BIN  = $(CARGO_TARGET_DIR)/release/emaki
 
@@ -186,6 +187,8 @@ check-iso:
 # The package mirror: publisher, R2 client, pointer Worker, key-backup check, upgrade-check
 # helpers (no network, no Cloudflare; see docs/mirror.md).
 check-updates:
+	python3 tests/test-transaction-inhibit.py
+	python3 tests/test-update-space.py
 	python3 tests/test-upkeep-transactions.py
 	python3 tests/test-update-pins.py
 	python3 tests/test-upkeep.py
@@ -272,6 +275,8 @@ install: install-upkeep
 	install -Dm644 -t $(DESTDIR)$(PREFIX)/share/emaki-update-manager/ui update-manager/ui/*.qml
 	install -Dm644 installer/emaki_installer/update_errors.py $(DESTDIR)$(PREFIX)/libexec/emaki/emaki_update_errors.py
 	install -Dm644 scripts/emaki_session_state.py $(DESTDIR)$(PREFIX)/libexec/emaki/emaki_session_state.py
+	install -Dm644 update-manager/emaki_update_space.py $(DESTDIR)$(PREFIX)/libexec/emaki/emaki_update_space.py
+	install -Dm644 packaging/emaki-config/00-emaki-transaction-inhibit.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/00-emaki-transaction-inhibit.hook
 	rm -f $(BIN)/emaki-session-cover
 	install -Dm755 $(CORE_BIN) $(BIN)/emaki
 	for f in $(SHELL_SRC); do install -Dm644 "$$f" "$(SHARE)/$$f"; done
@@ -469,6 +474,7 @@ uninstall:
 	@if ! python3 -I scripts/emaki-greeter-provision --root "$(if $(DESTDIR),$(DESTDIR),/)" --purge-published; then \
 		echo "uninstall: WARNING: published wallpaper cleanup incomplete at $(if $(DESTDIR),$(DESTDIR),)/var/lib/emaki-greeter; retained copies need administrator cleanup. Continuing removal." >&2; \
 	fi
+	rm -f $(BIN)/emaki-transaction-inhibit $(DESTDIR)$(PREFIX)/share/libalpm/hooks/00-emaki-transaction-inhibit.hook $(DESTDIR)$(PREFIX)/libexec/emaki/emaki_update_space.py
 	rm -f $(BIN)/emaki-update-boot $(DESTDIR)$(PREFIX)/share/libalpm/hooks/04-emaki-update-boot.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/06-emaki-update-boot.hook
 	rm -f $(BIN)/emaki-update-manager $(DESTDIR)$(PREFIX)/libexec/emaki/update-manager-backend $(DESTDIR)$(PREFIX)/libexec/emaki/update_catalog.py $(DESTDIR)$(PREFIX)/libexec/emaki/emaki-update-apply
 	rm -f $(SYSTEMD)/system/emaki-update.service $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.update.policy $(DESTDIR)$(PREFIX)/share/applications/emaki-update-manager.desktop
@@ -634,6 +640,7 @@ check-shell: shell-shaders
 	python tests/test-sound-meter.py
 	python tests/test-measure-shell.py
 	python tests/test-lock-supervisor-unit.py
+	python3 tests/test-lock-layout.py
 	python tests/test-lock-supervisor.py
 	python tests/test-lock-wiring.py
 	python tests/test-lock-auth.py

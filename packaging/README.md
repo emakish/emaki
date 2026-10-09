@@ -1,4 +1,4 @@
-# Emaki 0.4.0 packages
+# Emaki 0.4.1 packages
 
 Copyright (C) 2026 Artur Yakymenko. Emaki packaging is GPL-3.0-or-later;
 the Quickshell fork retains its upstream LGPL-3.0-only license.

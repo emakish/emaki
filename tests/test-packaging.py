@@ -79,7 +79,7 @@ class MetadataTests(unittest.TestCase):
             with self.subTest(package=name):
                 info = self.recipes[name]
                 self.assertEqual(info['pkgname'], [name])
-                self.assertEqual(info['pkgver'], ['0.4.0'])
+                self.assertEqual(info['pkgver'], ['0.4.1'])
                 self.assertEqual(info['pkgrel'], [marker_release] if name == 'emaki' else ['1'])
                 # emaki-installer also ships the zone map (ODbL) and the GRUB unlock-screen fonts (DejaVu, Bitstream Vera).
                 self.assertEqual(info['license'], ['GPL-3.0-or-later', 'ODbL-1.0', 'Bitstream-Vera']
@@ -87,12 +87,12 @@ class MetadataTests(unittest.TestCase):
                                  if name == 'emaki-config' else ['GPL-3.0-or-later']
                                  if name == 'emaki-nvidia' else ['GPL-3.0-or-later'])
         cargo = tomllib.loads((ROOT / 'Cargo.toml').read_text())
-        self.assertEqual(cargo['workspace']['package']['version'], '0.4.0')
+        self.assertEqual(cargo['workspace']['package']['version'], '0.4.1')
         packages = tomllib.loads((ROOT / 'Cargo.lock').read_text())['package']
-        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.4.0'})
+        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.4.1'})
         self.assertEqual(self.recipes['emaki']['depends'], [
-            'emaki-config=0.4.0-1', 'emaki-desktop=0.4.0-1', 'niri-emaki=26.04-12',
-            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.4.0-1', 'emaki-mirrorlist>=0.4.0-1'])
+            'emaki-config=0.4.1-1', 'emaki-desktop=0.4.1-1', 'niri-emaki=26.04-12',
+            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.4.1-1', 'emaki-mirrorlist>=0.4.1-1'])
 
     def test_early_console_font_reaches_targets_and_updates(self):
         self.assertIn('terminus-font', self.recipes['emaki-config']['depends'])
@@ -1088,14 +1088,14 @@ class PayloadTests(unittest.TestCase):
         binary = self.dest / 'usr/bin/emaki'
         # Keep this payload check independent of the host's installed channel helper.
         self.assertEqual(run([str(binary), 'version'], env={**os.environ, 'PATH': ''}).stdout,
-                         'emaki 0.4.0 [channel: unknown]\n')
+                         'emaki 0.4.1 [channel: unknown]\n')
         result = run(['python3', 'scripts/core-package.py', 'verify-build-paths', '--binary', str(binary)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_defaults_and_presets(self):
         commit = run(['git', 'rev-parse', 'HEAD']).stdout.strip()
         self.assertEqual((self.dest / 'usr/lib/emaki-release').read_text(),
-                         f'VERSION=0.4.0\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
+                         f'VERSION=0.4.1\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
         expected = {'greetd.service', 'NetworkManager.service', 'bluetooth.service', 'grub-btrfsd.service',
                     'snapper-timeline.timer', 'snapper-cleanup.timer', 'fstrim.timer', 'paccache.timer', 'emaki-refresh-mirrors.timer'}
         preset = (self.dest / 'usr/lib/systemd/system-preset/50-emaki.preset').read_text().splitlines()

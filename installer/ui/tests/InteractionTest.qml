@@ -898,7 +898,8 @@ ShellRoot {
                 const names = ["nameProblem", "loginProblem", "passwordProblem", "confirmProblem", "hostnameProblem"];
                 if (names.some(name => !test.find(name)))
                     return test.check(false, "each account field has its own problem line (" + names + ")");
-                test.check(names.every(name => !test.find(name).visible), "untouched account form shows no error");
+                test.check(names.filter(name => name !== "passwordProblem").every(name => !test.find(name).visible) && test.find("passwordProblem").error === "", "untouched account form shows no error");
+                test.check(test.find("passwordProblem").visible && test.find("passwordProblem").text === "Use only letters, digits and symbols of the English (US) keyboard.", "untouched account form shows the keyboard hint");
                 // Continue follows the same rules as the review: an empty form cannot continue.
                 const proceed = test.find("accountContinue");
                 if (!proceed)
@@ -928,10 +929,18 @@ ShellRoot {
                 content.requestPlan();
                 test.check(test.visibleTexts(content, "The passwords do not match.") === 1 && confirm.visible && controller.helperMessage === "", "a mismatch is shown exactly once");
                 test.check(test.under(confirm, confirmation), "the mismatch sits under the confirmation");
-                test.check(!problem.visible && !test.find("passwordProblem").visible, "fixed fields lose their lines");
+                test.check(!problem.visible && test.find("passwordProblem").error === "", "fixed fields lose their errors");
                 confirmation.text = "disposable-a";
                 test.check(!confirm.visible && controller.helperMessage === "", "matching passwords leave no stale error");
                 test.check(test.find("accountContinue").enabled && test.reason() === "", "a valid account form can continue, with no reason line");
+                for (const value of ["Zebraф2026", "Zebra😀2026", "Zebra\t2026"]) {
+                    password.text = value;
+                    confirmation.text = value;
+                    test.check(!test.find("accountContinue").enabled && test.find("passwordProblem").error === "Use only letters, digits and symbols of the English (US) keyboard.", "an invalid keyboard character cannot continue");
+                }
+                password.text = "disposable-a";
+                confirmation.text = "disposable-a";
+                test.check(test.find("accountContinue").enabled && test.find("passwordProblem").error === "", "correcting the password restores Continue and the hint");
                 confirmation.text = "disposable-c";
                 test.check(!test.find("accountContinue").enabled, "a mismatch cannot continue");
                 confirmation.text = "disposable-a";
@@ -941,9 +950,9 @@ ShellRoot {
                 confirmation.text = "é1";
                 content.requestPlan();
                 const rule = test.find("passwordProblem");
-                test.check(controller.step === "you" && rule.visible && rule.text.indexOf("English (US) keyboard for the startup password") >= 0 && test.under(rule, password), "one password for everything names the startup keyboard rule under the password");
+                test.check(controller.step === "you" && rule.visible && rule.text === "Use only letters, digits and symbols of the English (US) keyboard." && test.under(rule, password), "one password for everything names the account keyboard rule under the password");
                 controller.clearPasswords();
-                test.check(["nameProblem", "loginProblem", "passwordProblem", "confirmProblem", "hostnameProblem"].every(name => !test.find(name).visible), "a cleared form shows no error");
+                test.check(["nameProblem", "loginProblem", "confirmProblem", "hostnameProblem"].every(name => !test.find(name).visible) && test.find("passwordProblem").error === "", "a cleared form shows no error");
                 controller.encryption = "none";
                 controller.session.notice = "";
                 controller.publish();

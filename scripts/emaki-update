@@ -17,6 +17,12 @@ except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'installer'))
     from emaki_installer.update_errors import error_lines, explain
 
+try:
+    from emaki_update_space import preflight
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'update-manager'))
+    from emaki_update_space import preflight
+
 
 def run(command, fail_on_hook_error=False):
     # Keep stdin attached for confirmation prompts. Bound retained diagnostics;
@@ -72,9 +78,19 @@ def main():
     parser.add_argument('--noninteractive', action='store_true',
                         help='use the default answers for the authorized graphical update')
     args = parser.parse_args()
+    command = ['/usr/bin/pacman', '-Syu'] + (['--noconfirm'] if args.noninteractive else [])
     try:
-        return run(['/usr/bin/pacman', '-Syu'] + (['--noconfirm'] if args.noninteractive else []),
-                   fail_on_hook_error=args.noninteractive)
+        # Let pacman explain its root requirement before reading private metadata.
+        if os.geteuid() != 0:
+            return run(command, fail_on_hook_error=args.noninteractive)
+        preflight()
+        return run(command, fail_on_hook_error=args.noninteractive)
+    except RuntimeError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print('The update was cancelled. No installed packages were changed.', file=sys.stderr)
+        return 130
     except OSError as error:
         print(explain(str(error)), file=sys.stderr)
         return 1

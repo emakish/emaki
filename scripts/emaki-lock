@@ -111,6 +111,32 @@ class Supervisor:
         self.last_error_log = 0.0
         self.finished = False
         self.stopping = False
+        self.layout_worker = None
+
+    def start_layout(self):
+        # Start only after the locker: metadata must never delay secure acquisition.
+        source = Path(__file__).resolve().parent.parent
+        shell = source / ('shell' if (source / 'shell/lock.qml').is_file() else 'share/emaki/shell')
+        try:
+            self.layout_worker = subprocess.Popen(
+                [sys.executable, '-B', str(shell / 'helpers/lock-environment.py'), '--switch-for-lock'],
+                stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            pass
+
+    def finish_layout(self):
+        worker = self.layout_worker
+        if worker is None:
+            return
+        try:
+            # No restore on a crash, refusal, shutdown, or pending re-lock. The
+            # existing authenticated lifecycle is the sole source of this state.
+            worker.communicate(b'restore\n' if self.phase == 'unlocked' else b'', timeout=.6)
+        except subprocess.TimeoutExpired:
+            worker.kill()
+            worker.communicate()
+        finally:
+            self.layout_worker = None
 
     def stop(self, _signum=None, _frame=None):
         # A scope stop terminates the whole cgroup. Starting a replacement there
@@ -524,6 +550,7 @@ class Supervisor:
         try:
             orphan = self.recover_orphan()
             self.spawn(fallback=fallback or orphan)
+            self.start_layout()
             while not self.finished:
                 try:
                     events = self.selector.select(.1)
@@ -549,6 +576,10 @@ class Supervisor:
                 except Exception as error:
                     self.log_error(error)
         finally:
+            try:
+                self.finish_layout()
+            except Exception as error:
+                self.log_error(error)
             # Do not terminate a lock child on a supervisor exception. The compositor
             # remains locked; the next owner recovers the recorded exact child via pidfd.
             for conn in list(self.connections):

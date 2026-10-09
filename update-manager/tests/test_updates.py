@@ -568,9 +568,45 @@ class Authorization(unittest.TestCase):
                 self.assertEqual(helper.changed({name: '1'}, {name: '2'}), (False, False))
                 self.assertFalse(any('sign out' in warning for warning in catalog.warnings_for([dict(name=name, aur=False)])))
 
+    def test_space_refusal_is_the_final_message_even_after_service_diagnostics(self):
+        refusal = ('Not enough free space for this update: it needs about 3.4 GB, '
+                   '500.0 MB is free. Free some space, then try again.')
+        with tempfile.TemporaryDirectory() as directory:
+            descriptor = os.open(Path(directory) / 'lock', os.O_CREAT | os.O_RDWR, 0o600)
+            process = Mock()
+            process.__enter__ = Mock(return_value=process)
+            process.__exit__ = Mock(return_value=False)
+            process.poll.return_value = 1
+            process.wait.return_value = 1
+            journal = '\n'.join(json.dumps(dict(__CURSOR=str(index), MESSAGE=line))
+                                for index, line in enumerate((refusal, 'service failed with exit status 1')))
+            with patch.object(helper.os, 'open', return_value=descriptor), \
+                    patch.object(helper, 'versions', return_value={'bash': '1'}), \
+                    patch.object(helper.subprocess, 'Popen', return_value=process), \
+                    patch.object(helper, 'run', side_effect=[Mock(stdout=journal), Mock(stdout='')]), \
+                    patch.object(helper, 'emit') as emit:
+                self.assertEqual(helper.apply(), 1)
+            self.assertEqual(emit.call_args.args, ('finished',))
+            self.assertFalse(emit.call_args.kwargs['ok'])
+            self.assertEqual(emit.call_args.kwargs['message'], refusal)
+
+    def test_nonroot_wrapper_leaves_root_refusal_to_pacman(self):
+        module = runpy.run_path(str(ROOT / 'scripts/emaki-update'))
+        for arguments in ([], ['--noninteractive']):
+            with self.subTest(arguments=arguments), \
+                    patch.dict(module['main'].__globals__, run=Mock(return_value=1), preflight=Mock()), \
+                    patch.object(os, 'geteuid', return_value=1000), \
+                    patch.object(sys, 'argv', ['emaki-update', *arguments]):
+                self.assertEqual(module['main'](), 1)
+                module['main'].__globals__['preflight'].assert_not_called()
+                module['main'].__globals__['run'].assert_called_once_with(
+                    ['/usr/bin/pacman', '-Syu'] + (['--noconfirm'] if arguments else []),
+                    fail_on_hook_error=bool(arguments))
+
     def test_noninteractive_wrapper_keeps_full_upgrade_and_failed_hooks(self):
         module = runpy.run_path(str(ROOT / 'scripts/emaki-update'))
-        with patch.dict(module['main'].__globals__, run=Mock(return_value=0)):
+        with patch.dict(module['main'].__globals__, run=Mock(return_value=0), preflight=Mock()), \
+                patch.object(os, 'geteuid', return_value=0):
             mocked = module['main'].__globals__['run']
             with patch.object(sys, 'argv', ['emaki-update', '--noninteractive']):
                 self.assertEqual(module['main'](), 0)

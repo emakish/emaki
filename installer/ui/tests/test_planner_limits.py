@@ -61,7 +61,28 @@ class PasswordCharacters(unittest.TestCase):
             with self.subTest(char=hex(ord(password[5]))):
                 self.assertEqual(by_window, by_planner)
         self.assertEqual([hex(ord(p[5])) for p, r in zip(passwords, refused) if r],
-                         [hex(x) for x in list(range(0x20)) + [0x7f]])
+                         [hex(ord(char)) for char in chars if not " " <= char <= "~"])
+
+    def test_password_length_is_checked_before_keyboard_characters(self):
+        keyboard = "Use only letters, digits and symbols of the English (US) keyboard."
+        window_length = "Enter a password without line breaks, tabs or other control characters (at most 1024 UTF-8 bytes)."
+        planner_length = "Password must be nonempty and contain no control characters (line breaks, tabs)."
+        for password in ('', 'a' * 1024, 'a' * 1025, 'ф' * 512, 'ф' * 513,
+                         '😀' * 256, '😀' * 257, 'a' * 1024 + '\t'):
+            with self.subTest(bytes=len(password.encode())):
+                too_long_or_empty = not password or len(password.encode()) > 1024
+                characters = not (password.isascii() and password.isprintable())
+                actual = window(f'accountErrors("Alex", "alex", {json.dumps(password)}, "", "emaki").password')
+                self.assertEqual(actual, window_length if too_long_or_empty else keyboard if characters else '')
+                config = {'mode': 'erase', 'disk_id': 'x', 'fs': 'btrfs', 'encryption': 'none',
+                          'user': {'login': 'alex', 'password': password}}
+                if too_long_or_empty or characters:
+                    with self.assertRaises(InstallError) as caught:
+                        validate_config(config)
+                    self.assertEqual(caught.exception.code, Code.BAD_CONFIG)
+                    self.assertEqual(str(caught.exception), planner_length if too_long_or_empty else keyboard)
+                else:
+                    validate_config(config)
 
 
 class ReviewKeyboardLine(unittest.TestCase):

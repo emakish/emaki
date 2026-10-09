@@ -243,6 +243,17 @@ ShellRoot {
                                 search.text = test.screenName === "timezone-empty" ? "no-such-region" : "berlin";
                                 search.forceActiveFocus();
                             }
+                        } else if (["you-valid", "you-cyrillic", "you-emoji", "you-tab"].indexOf(test.screenName) >= 0) {
+                            controller.step = "you";
+                            const passwords = {
+                                "you-valid": "Zebra ~2026",
+                                "you-cyrillic": "Zebraф2026",
+                                "you-emoji": "Zebra😀2026",
+                                "you-tab": "Zebra\t2026"
+                            };
+                            const value = passwords[test.screenName];
+                            (test.findItem(content, "userPassword") as C.TextField).text = value;
+                            (test.findItem(content, "confirmPassword") as C.TextField).text = value;
                         } else if (test.screenName === "you-empty") {
                             // Continue attempted on an empty form: each rule under its own field.
                             controller.fullName = "";
@@ -250,15 +261,15 @@ ShellRoot {
                             controller.step = "you";
                             content.requestPlan();
                         } else if (test.screenName === "you-console") {
-                            // English (US) and Russian: the text console has the us map, which types no Cyrillic
-                            // and no no-break space (named, since a list cannot show it).
+                            // An allowed ASCII character can still need different console keys.
+                            controller.layouts = ["de"];
                             controller.step = "you";
-                            (test.findItem(content, "userPassword") as C.TextField).text = "Пароль 2026";
-                            (test.findItem(content, "confirmPassword") as C.TextField).text = "Пароль 2026";
+                            (test.findItem(content, "userPassword") as C.TextField).text = "Zebra~2026";
+                            (test.findItem(content, "confirmPassword") as C.TextField).text = "Zebra~2026";
                         } else if (test.screenName === "you-caps" || test.screenName === "you-numlock") {
-                            // Caps Lock on while the account password has focus, the console warning below it.
+                            // Caps Lock on while a valid account password has focus.
                             controller.step = "you";
-                            (test.findItem(content, "userPassword") as C.TextField).text = "Пароль-2026";
+                            (test.findItem(content, "userPassword") as C.TextField).text = "Zebra-2026";
                             test.findItem(content, "userPassword").forceActiveFocus();
                             controller.capsLock = true;
                             controller.numLock = test.screenName === "you-numlock";
@@ -539,6 +550,19 @@ ShellRoot {
                 }
                 console.log((wifi ? "DONE_WIFI_VISIBLE " : "LOGIN_REFUSAL_VISIBLE ") + expected);
             }
+            if (["you-valid", "you-cyrillic", "you-emoji", "you-tab"].indexOf(test.screenName) >= 0) {
+                const hint = test.findItem(content, "passwordProblem") as Text;
+                const next = test.findItem(content, "accountContinue") as C.Button;
+                const valid = test.screenName === "you-valid";
+                const warning = test.findItem(content, "consoleWarning") as Text;
+                const expected = "Use only letters, digits and symbols of the English (US) keyboard.";
+                if (!warning || warning.visible || !hint || !hint.visible || hint.text !== expected || hint.color.toString() !== (valid ? content.dim : content.danger).toString() || !next || next.enabled !== valid || (content.accountBlocked === "") !== valid) {
+                    console.error("Password hint, error or Continue state is wrong: " + [hint && hint.visible, hint && hint.text, hint && hint.color, valid ? content.dim : content.danger, next && next.enabled, content.accountBlocked].join(" / "));
+                    Qt.quit();
+                    return;
+                }
+                console.log("PASSWORD_RULE " + (valid ? "hint" : "error") + " " + expected);
+            }
             if (test.screenName === "you-empty") {
                 // The login rule starts right under the login field, at its left edge, no wider.
                 const field = test.findItem(content, "loginField");
@@ -558,7 +582,9 @@ ShellRoot {
                 const warning = test.findItem(content, "consoleWarning") as Text;
                 const a = warning ? warning.mapToItem(content, 0, 0, warning.width, warning.height) : null;
                 const b = field ? field.mapToItem(content, 0, 0, field.width, field.height) : null;
-                if (!a || !b || !warning.visible || a.y < b.y + b.height - 0.5 || a.y > b.y + b.height + 16 || Math.abs(a.x - b.x) > 1 || a.x + a.width > b.x + b.width + 1) {
+                const hint = test.findItem(content, "passwordProblem");
+                const hintBottom = hint.mapToItem(content, 0, hint.height).y;
+                if (!a || !b || !warning.visible || a.y < hintBottom - 0.5 || a.y > hintBottom + 16 || Math.abs(a.x - b.x) > 1 || a.x + a.width > b.x + b.width + 1) {
                     console.error("Console warning not under the password field: " + (a && b ? a.x + "," + a.y + " " + a.width + " / field " + b.x + "," + (b.y + b.height) + " " + b.width : "missing"));
                     Qt.quit();
                     return;

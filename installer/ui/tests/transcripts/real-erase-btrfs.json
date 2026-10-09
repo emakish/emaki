@@ -6,7 +6,7 @@
         "type": "hello",
         "proto": 1,
         "archinstall_version": "4.5",
-        "emaki_version": "0.4.0",
+        "emaki_version": "0.4.1",
         "test_mode": false,
         "busy_job": null
       }

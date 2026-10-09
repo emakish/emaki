@@ -14,7 +14,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import reaper
 reaper.guard()  # nothing this test starts outlives it
 
@@ -57,6 +57,7 @@ class Selector:
 lock.socket.socket = lambda *args: Server()
 lock.selectors.DefaultSelector = Selector
 lock.Supervisor.spawn = lambda self, fallback=False: None
+lock.Supervisor.start_layout = lambda self: None
 lock.Supervisor.recover_orphan = lambda self: False
 lock.Supervisor.tick = lambda self: None
 lock.runtime_directory = lambda: directory
@@ -148,6 +149,66 @@ def run():
         s.tick()
         assert restarts == [False] and not s.finished and s.child is None
         print('PASS new wait at authenticated exit starts a new locker after reap')
+        for backend, secure, authenticated, pending, expected in (
+                ('quickshell', True, True, False, b'restore\n'),
+                ('quickshell', True, False, False, b''),
+                ('quickshell', True, True, True, b''),
+                ('hyprlock', True, False, False, b'restore\n'),
+                ('hyprlock', False, False, False, b'')):
+            s = lock.Supervisor(directory)
+            s.child = Child(); s.child.returncode = 0
+            s.backend, s.secure, s.authenticated_exit = backend, secure, authenticated
+            s.sleep_generation = int(pending)
+            s.spawn = lambda fallback=False: None
+            worker = s.layout_worker = Mock()
+            s.tick()
+            s.finish_layout()
+            worker.communicate.assert_called_once_with(expected, timeout=.6)
+            assert s.layout_worker is None
+        s = lock.Supervisor(directory)
+        worker = s.layout_worker = Mock()
+        worker.communicate.side_effect = [subprocess.TimeoutExpired('layout', .6), (b'', b'')]
+        s.stop()
+        s.finish_layout()
+        worker.kill.assert_called_once_with()
+        assert worker.communicate.call_args_list[0].args == (b'',)
+        print('PASS layout restore only after authenticated terminal unlock; refusal, re-lock and stop retain layout')
+        for failure in ('communicate', 'kill'):
+            s = lock.Supervisor(directory)
+            worker = s.layout_worker = Mock()
+            error = RuntimeError('private worker failure')
+            if failure == 'communicate':
+                worker.communicate.side_effect = error
+            else:
+                worker.communicate.side_effect = subprocess.TimeoutExpired('layout', .6)
+                worker.kill.side_effect = error
+            public = Mock()
+            s.connections[public] = dict(trusted=False, wait=True)
+            server = Mock()
+            server.bind.side_effect = lambda path: Path(path).touch()
+            log = io.StringIO()
+            try:
+                with patch.object(lock.socket, 'socket', return_value=server), \
+                        patch.object(s.selector, 'register'), \
+                        patch.object(s.selector, 'unregister'), \
+                        patch.object(s, 'recover_orphan', return_value=False), \
+                        patch.object(s, 'spawn'), \
+                        patch.object(s, 'start_layout', side_effect=s.stop), \
+                        contextlib.redirect_stderr(log):
+                    s.run()
+                public.sendall.assert_called_once_with(lock.wire(dict(state='stopping', secure=False, poured=False)))
+                public.close.assert_called_once_with()
+                assert not s.connections
+                assert s.layout_worker is None
+                server.close.assert_called_once_with()
+                assert not s.socket_path.exists()
+                with (directory / 'supervisor.lock').open('rb') as released:
+                    lock.fcntl.flock(released, lock.fcntl.LOCK_EX | lock.fcntl.LOCK_NB)
+                assert 'supervisor operation failed (RuntimeError)' in log.getvalue()
+                assert 'private worker failure' not in log.getvalue()
+            finally:
+                s.selector.close()
+        print('PASS layout cleanup exceptions preserve stopping replies, socket cleanup and flock release')
         for condition in ('death-before', 'death-after', 'hang', 'unconfirmed'):
             s = lock.Supervisor(directory, start_seconds=.1, heartbeat_seconds=.1)
             s.child = Child(); child = s.child

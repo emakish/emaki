@@ -10,6 +10,10 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 CASES = (
+    ('apply.py', 'elif space_refusal:', 'elif False:',
+     'Authorization.test_space_refusal_is_the_final_message_even_after_service_diagnostics'),
+    ('../scripts/emaki-update', 'if os.geteuid() != 0:', 'if False:',
+     'Authorization.test_nonroot_wrapper_leaves_root_refusal_to_pacman'),
     ('apply.py', "if arguments != ['apply']:", 'if False:',
      'Authorization.test_only_exact_apply_argument_is_accepted'),
     ('apply.py', 'validate(sys.argv[1:])', 'validate(sys.argv[1:2])',

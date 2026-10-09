@@ -48,6 +48,8 @@ class Logind:
         self.delay_usec = 20_000_000
         self.session_type = 'wayland'
         self.session_uid = os.getuid()
+        self.inhibitors = []
+        self.docked = False
 
     def get_cached_property(self, name):
         return Reply(self.delay_usec) if name == 'InhibitDelayMaxUSec' else None
@@ -70,12 +72,18 @@ class Logind:
         from gi.repository import GLib
         if method == 'org.freedesktop.login1':
             interface, member, arguments = _rest[:3]
+            if arguments.unpack() == ('org.freedesktop.login1.Manager', 'Docked'):
+                assert (interface, member) == ('org.freedesktop.DBus.Properties', 'Get')
+                self.events.append('Get Manager.Docked')
+                return Reply((self.docked,))
             self.assert_property_request(interface, member, arguments)
             name = arguments.unpack()[1]
             self.events.append(f'Get Session.{name}')
             values = {'Id': '7', 'Type': self.session_type,
                       'User': (self.session_uid, '/org/freedesktop/login1/user/_1000')}
             return Reply((values[name],))
+        if method == 'ListInhibitors':
+            return Reply((self.inhibitors,))
         if method != 'GetSession':
             raise AssertionError(method)
         session, = params.unpack()
@@ -363,6 +371,98 @@ class FailurePolicy(FlagCase):
         self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait'])
         self.assertEqual(self.runtime_flag().read_text(), 'stay-awake\n')
 
+    def test_transaction_lid_reuses_sleep_lock_fallback_without_suspending(self):
+        for policy in ('end-session', 'stay-awake'):
+            with self.subTest(policy=policy):
+                guard = self.policy_guard(policy)
+                guard.proxy.inhibitors = [('sleep:handle-lid-switch', 'Emaki packages',
+                                           'Packages', 'block', 0, 321)]
+                delay = guard.inhibitor
+                with self.commands({'/usr/bin/emaki-lock --wait': 1}), patch('sys.stderr'):
+                    guard.lid_closed(True, docked=False)
+                self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait',
+                                               '/usr/bin/emaki-lock --fallback --wait'])
+                self.assertEqual(guard.inhibitor, delay)
+                self.assertFalse(guard.sleeping)
+
+    def test_transaction_lid_reads_fresh_docked_state(self):
+        for policy in ('end-session', 'stay-awake'):
+            guard = self.policy_guard(policy)
+            guard.proxy.inhibitors = [('sleep:handle-lid-switch', 'Emaki packages',
+                                       'Packages', 'block', 0, 321)]
+            for docked in (True, False, True):
+                with self.subTest(policy=policy, docked=docked):
+                    self.events.clear()
+                    guard.proxy.docked = docked
+                    with patch.object(guard.proxy, 'get_cached_property', return_value=Reply(not docked)), self.commands():
+                        guard.lid_closed(True)
+                    expected = ['Get Manager.Docked']
+                    if not docked:
+                        expected.append('/usr/bin/emaki-lock --wait')
+                    self.assertEqual(self.events, expected)
+
+    def assert_transaction_lock_failure_preserves_session(self, guard, failure):
+        guard.proxy.inhibitors = [('sleep:handle-lid-switch', 'Emaki packages',
+                                   'Packages', 'block', 0, 321)]
+        delay = guard.inhibitor
+        with self.commands({'/usr/bin/emaki-lock': failure}), patch('sys.stderr') as errors:
+            guard.lid_closed(True, docked=False)
+        self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait',
+                                       '/usr/bin/emaki-lock --fallback --wait',
+                                       '/usr/bin/emaki-lock status'])
+        self.assertEqual(guard.inhibitor, delay)
+        self.assertFalse(guard.sleeping)
+        self.assertIn('staying awake', ''.join(str(call.args[0]) for call in errors.write.call_args_list))
+        self.assertTrue(self.state_flag().read_text().startswith('stay-awake\nboot='))
+        self.assertFalse(self.runtime_flag().exists())
+
+    def test_transaction_double_lock_failure_preserves_session(self):
+        for policy in ('end-session', 'stay-awake'):
+            for name, failure in self.FAILURES.items():
+                with self.subTest(policy=policy, failure=name):
+                    self.assert_transaction_lock_failure_preserves_session(self.policy_guard(policy), failure)
+
+    def test_mutant_ending_transaction_session_is_detected(self):
+        path = ROOT / 'scripts/emaki-sleep-guard'
+        source = path.read_text()
+        original = "self.flag_next_session('stay-awake')"
+        self.assertEqual(source.count(original), 1)
+        namespace = {'__name__': 'sleep_guard_mutant'}
+        exec(compile(source.replace(original, 'self.end_session()'), str(path), 'exec'), namespace)
+        guard = self.policy_guard('end-session')
+        guard.lid_closed = namespace['SleepGuard'].lid_closed.__get__(guard)
+        with self.assertRaises(AssertionError):
+            self.assert_transaction_lock_failure_preserves_session(guard, 1)
+
+    def test_mutant_ignoring_transaction_lid_is_detected(self):
+        guard = self.policy_guard('end-session')
+        guard.proxy.inhibitors = [('sleep:handle-lid-switch', 'Emaki packages',
+                                   'Packages', 'block', 0, 321)]
+        with patch.object(guard, 'transaction_inhibits_lid', return_value=False), self.commands():
+            guard.lid_closed(True, docked=False)
+        with self.assertRaises(AssertionError):
+            self.assertIn('/usr/bin/emaki-lock --wait', self.events)
+
+    def test_only_root_transaction_block_uses_transaction_lid_path(self):
+        entries = [
+            ('sleep:handle-lid-switch', 'Emaki packages', 'Packages', 'block', 1000, 321),
+            ('sleep:handle-lid-switch', 'Someone else', 'Packages', 'block', 0, 321),
+            ('sleep', 'Emaki packages', 'Packages', 'block', 0, 321),
+            ('sleep:handle-lid-switch', 'Emaki packages', 'Packages', 'delay', 0, 321),
+        ]
+        guard = self.policy_guard('end-session')
+        for entry in entries:
+            with self.subTest(entry=entry):
+                guard.proxy.inhibitors = [entry]
+                with self.commands():
+                    guard.lid_closed(True, docked=False)
+                self.assertEqual(self.events, [])
+        guard.proxy.inhibitors = [('sleep:handle-lid-switch', 'Emaki packages',
+                                   'Packages', 'block', 0, 321)]
+        with self.commands():
+            guard.lid_closed(False, docked=False)
+        self.assertEqual(self.events, [])
+
     def test_external_sleep_under_stay_awake_still_fails_closed(self):
         guard = self.policy_guard('stay-awake')
         self.fail_lock(guard, 1)
@@ -540,6 +640,16 @@ class NoticeAcrossSessions(FlagCase):
         self.assertEqual(self.notices(self.LATER, True), ['end-session'])
         self.assertFalse(self.state_flag().exists())
         self.assertEqual(self.notices(self.LATER, True), [], 'told once')
+
+    def test_failed_transaction_lock_is_told_once_at_next_login(self):
+        guard = self.policy_guard('end-session')
+        guard.proxy.inhibitors = [('sleep:handle-lid-switch', 'Emaki packages',
+                                   'Packages', 'block', 0, 321)]
+        with self.commands({'/usr/bin/emaki-lock': 1}), patch('sys.stderr'):
+            guard.lid_closed(True, docked=False)
+        self.assertEqual(self.notices(str(self.socket), True), [])
+        self.assertEqual(self.notices(self.LATER, True), ['stay-awake'])
+        self.assertEqual(self.notices(self.LATER, True), [])
 
     def test_refused_termination_is_told_once_in_the_running_session(self):
         guard = self.policy_guard('end-session')

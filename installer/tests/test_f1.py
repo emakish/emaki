@@ -58,6 +58,38 @@ class FixTests(unittest.TestCase):
                     self.assertEqual(cli.main(args), 0)
                     self.assertEqual([json.loads(c.args[0])['type'] for c in client.sendall.call_args_list], sent)
 
+    def test_cli_prints_planner_password_refusal(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            plan = Path(temporary) / 'plan.json'
+            for password in ('пароль', 'secret🔑', 'secret\t'):
+                value = config()
+                value['user']['password'] = password
+                plan.write_text(json.dumps(value))
+                controller = Controller(FakeInventory(), None)
+                replies, sent = [], []
+
+                def send(frame):
+                    request = json.loads(frame)
+                    sent.append(request['type'])
+                    replies.extend(json.dumps(reply).encode() + b'\n'
+                                   for reply in controller.handle(request))
+
+                output = io.StringIO()
+                with self.subTest(password=password), \
+                        patch('emaki_installer.cli.socket.socket') as socket, \
+                        contextlib.redirect_stdout(output):
+                    client = socket.return_value.__enter__.return_value
+                    client.sendall.side_effect = send
+                    client.makefile.return_value.readline.side_effect = lambda size: replies.pop(0)
+                    self.assertEqual(cli.main(['--plan', str(plan), '--yes']), 3)
+                self.assertEqual(sent, ['hello', 'plan'])
+                error = json.loads(output.getvalue())['errors'][0]
+                self.assertEqual(error['code'], 'bad_config')
+                self.assertEqual(error['msg'],
+                                 'Use only letters, digits and symbols of the English (US) keyboard.')
+                self.assertNotIn(password, output.getvalue())
+                self.assertIsNone(controller.pending)
+
     def test_cli_without_a_worker_says_why(self):
         # copytoram: the worker's unit is skipped (ConditionPathExists) and no socket exists.
         with tempfile.TemporaryDirectory(prefix='emi-', dir='/tmp') as temporary:

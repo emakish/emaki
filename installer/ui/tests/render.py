@@ -19,7 +19,7 @@ from render_content import validate_frame, validate_restart
 
 UI = Path(__file__).resolve().parents[1]
 ROOT = UI.parents[1]
-SCREENS = ['welcome', 'welcome-bios', 'welcome-no-boot-medium', 'keyboard', 'network', 'timezone', 'timezone-search', 'timezone-empty', 'disk', 'alongside', 'alongside-review', 'manual', 'manual-empty', 'disk-mbr', 'disk-none', 'filesystem', 'encryption', 'encryption-none', 'encryption-account', 'encryption-separate', 'encryption-separate-empty', 'encryption-manual', 'encryption-alongside', 'encryption-mismatch', 'encryption-invalid', 'encryption-revealed', 'encryption-caps', 'encryption-numlock', 'live-keyboard-you', 'live-keyboard-encryption', 'live-keyboard-failed', 'live-keyboard-second', 'you', 'you-empty', 'you-console', 'you-paste', 'you-caps', 'you-numlock', 'software', 'software-minimal', 'review', 'review-encrypted', 'plan-errors', 'install', 'install-signatures', 'install-updates', 'install-step', 'done', 'done-restart', 'done-restart-removable', 'done-warning', 'done-no-package-lists', 'done-wifi-not-copied', 'error-login-name', 'error', 'error-details', 'error-real']
+SCREENS = ['welcome', 'welcome-bios', 'welcome-no-boot-medium', 'keyboard', 'network', 'timezone', 'timezone-search', 'timezone-empty', 'disk', 'alongside', 'alongside-review', 'manual', 'manual-empty', 'disk-mbr', 'disk-none', 'filesystem', 'encryption', 'encryption-none', 'encryption-account', 'encryption-separate', 'encryption-separate-empty', 'encryption-manual', 'encryption-alongside', 'encryption-mismatch', 'encryption-invalid', 'encryption-revealed', 'encryption-caps', 'encryption-numlock', 'live-keyboard-you', 'live-keyboard-encryption', 'live-keyboard-failed', 'live-keyboard-second', 'you', 'you-valid', 'you-cyrillic', 'you-emoji', 'you-tab', 'you-empty', 'you-console', 'you-paste', 'you-caps', 'you-numlock', 'software', 'software-minimal', 'review', 'review-encrypted', 'plan-errors', 'install', 'install-signatures', 'install-updates', 'install-step', 'done', 'done-restart', 'done-restart-removable', 'done-warning', 'done-no-package-lists', 'done-wifi-not-copied', 'error-login-name', 'error', 'error-details', 'error-real']
 
 
 def main():
@@ -134,10 +134,12 @@ def main():
                 assert 'STEP_WRAPPED' in log and 'PROGRESS_BAR_VISIBLE' in log, log
             if screen == 'welcome-no-boot-medium':
                 assert "NOTICE Restart from the USB stick without the 'copy to RAM' option to install." in log, log
+            if screen in ('you-valid', 'you-cyrillic', 'you-emoji', 'you-tab'):
+                assert 'PASSWORD_RULE ' + ('hint' if screen == 'you-valid' else 'error') in log, log
             if screen == 'you-empty':
                 assert 'PROBLEM_UNDER loginField' in log, log
             if screen == 'you-console':
-                assert ('CONSOLE_WARNING The text console types these characters differently: U+00A0 no-break space П а л о р ь. '
+                assert ('CONSOLE_WARNING The text console types these characters differently: ~. '
                         'Choose a password without them if you may need the console.') in log, log
             if screen in ('you-caps', 'encryption-caps', 'you-numlock', 'encryption-numlock'):
                 assert 'SCROLLED_WARNING ' in log, log

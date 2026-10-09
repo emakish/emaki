@@ -152,7 +152,7 @@ class UpdatePinTests(unittest.TestCase):
                          for stub in self.marker_stubs()]
                 code, output = self.pacman(self.system, self.repository(stubs), '-Sy', 'emaki')
                 self.assertNotEqual(code, 0, output)
-                self.assertIn(name + '>=0.4.0-1', output)
+                self.assertIn(name + '>=0.4.1-1', output)
 
 
 if __name__ == '__main__':

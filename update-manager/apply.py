@@ -62,6 +62,7 @@ def apply():
         before = versions()
         since = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
         cursor = ''
+        space_refusal = ''
         emit('progress', message='Updating all repository packages. You can hide this window; the update will keep running.')
         with subprocess.Popen(['/usr/bin/systemctl', 'start', SERVICE], cwd='/', env=ENV,
                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -78,6 +79,10 @@ def apply():
                         if not isinstance(message, str):
                             continue
                         message = ''.join(char for char in message if ord(char) >= 32 or char == '\t')[:4096]
+                        if re.fullmatch(r'Not enough free space for this update: it needs about '
+                                        r'\d+\.\d [GM]B, \d+\.\d [GM]B is free\. '
+                                        r'Free some space, then try again\.', message):
+                            space_refusal = message
                         emit('progress', message=message)
                     except (ValueError, KeyError):
                         continue
@@ -95,10 +100,11 @@ def apply():
         if status == 0:
             message = 'Repository updates finished. AUR programs must be updated with your AUR tool.'
         else:
-            # Journal output has already been sent as progress; keep it once.
             message = 'The update did not finish. Review the details before trying again.'
             if before != after:
                 message = 'The update did not finish. Some packages changed. Review the details before trying again.'
+            elif space_refusal:
+                message = space_refusal
         emit('finished', ok=status == 0, message=message, restart=restart, signOut=sign_out)
         return 0 if status == 0 else 1
 

@@ -1,11 +1,13 @@
 import asyncio
 import errno
+import json
 import socket
 import os
 from pathlib import Path
 import tempfile
 import unittest
 import struct
+import sys
 from unittest.mock import patch
 
 from emaki_installer.constants import MAX_FRAME
@@ -137,6 +139,30 @@ class SocketTests(TransportCases, unittest.IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls):
         require_unix_socket()
+
+    async def test_cli_refuses_non_ascii_account_password_before_confirmation(self):
+        plan = Path(self.temp.name) / 'plan.json'
+        for password, message in (
+            ('пароль', 'Use only letters, digits and symbols of the English (US) keyboard.'),
+            ('secret🔑', 'Use only letters, digits and symbols of the English (US) keyboard.'),
+            ('secret\t', 'Use only letters, digits and symbols of the English (US) keyboard.'),
+        ):
+            with self.subTest(password=password):
+                value = config()
+                value['user']['password'] = password
+                plan.write_text(json.dumps(value))
+                process = await asyncio.create_subprocess_exec(
+                    sys.executable, str(Path(__file__).resolve().parents[1] / 'bin/emaki-install-cli'),
+                    '--socket', self.path, '--plan', str(plan), '--yes',
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                stdout, stderr = await asyncio.wait_for(process.communicate(), 10)
+                self.assertEqual(process.returncode, 3, stderr.decode())
+                reply = json.loads(stdout)
+                self.assertEqual(reply['type'], 'plan_ack')
+                self.assertEqual(reply['errors'], [{'code': 'bad_config', 'msg': message}])
+                self.assertNotIn('token', reply)
+                self.assertIsNone(self.controller.pending)
+                self.assertIsNone(self.controller.job)
 
 
 class SocketAvailabilityTests(unittest.TestCase):

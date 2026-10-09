@@ -39,6 +39,7 @@
 /usr/bin/emaki-snapshot-menu-check
 /usr/bin/emaki-terminal
 /usr/bin/emaki-text-session
+/usr/bin/emaki-transaction-inhibit
 /usr/bin/emaki-update
 /usr/bin/emaki-update-boot
 /usr/bin/emaki-update-channel
@@ -106,6 +107,7 @@
 /usr/libexec/emaki/emaki-update-apply
 /usr/libexec/emaki/emaki_session_state.py
 /usr/libexec/emaki/emaki_update_errors.py
+/usr/libexec/emaki/emaki_update_space.py
 /usr/libexec/emaki/update-manager-backend
 /usr/libexec/emaki/update_catalog.py
 /usr/share/applications/emaki-update-manager.desktop
@@ -377,6 +379,7 @@
 /usr/share/icons/Emaki/index.theme
 /usr/share/icons/hicolor/scalable/apps/emaki-welcome.svg
 /usr/share/libalpm/hooks/00-emaki-rollback-holds.hook
+/usr/share/libalpm/hooks/00-emaki-transaction-inhibit.hook
 /usr/share/libalpm/hooks/01-emaki-config-release.hook
 /usr/share/libalpm/hooks/02-emaki-config-remove.hook
 /usr/share/libalpm/hooks/04-emaki-update-boot.hook

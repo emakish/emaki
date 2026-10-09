@@ -321,8 +321,9 @@ class PlannerTests(unittest.TestCase):
                             validate_config(self.encrypted(encryption, password, layouts))
                         self.assertEqual(raised.exception.code, Code.BAD_CONFIG)
                         self.assertIn('English (US)', raised.exception.message)
-        # Without encryption the account password is free of that rule.
-        validate_config(dict(config(), user={'login': 'vmuser', 'password': bad[0]}))
+                        if encryption == 'separate':
+                            self.assertEqual(raised.exception.message, 'The startup password must use '
+                                             'characters available on an English (US) keyboard.')
         # The rule follows the contract's answer for the GRUB prompt, not a constant of its own.
         with patch('emaki_installer.planner.unlock_layout', return_value='de') as asked:
             with self.assertRaises(InstallError):
@@ -343,11 +344,26 @@ class PlannerTests(unittest.TestCase):
                 with self.assertRaises(InstallError) as raised:
                     validate_config(c)
                 self.assertEqual(raised.exception.code, Code.BAD_CONFIG)
-        # Other characters stay the person's choice: the window checks how they were typed.
-        for password in ('Zebra Yacht', 'Rock’n’Roll €ф', 'naïve x', '\x80x'):
+
+    def test_account_password_uses_printable_ascii_with_or_without_encryption(self):
+        for encryption in ('none', 'account', 'separate'):
             c = config()
-            c['user']['password'] = password
-            self.assertEqual(validate_config(c)['user']['password'], password)
+            c['encryption'] = encryption
+            if encryption == 'separate':
+                c['disk_password'] = 'Disk-secret1'
+            for password in (' ', ''.join(chr(x) for x in range(32, 127)), 'x' * 1024):
+                with self.subTest(encryption=encryption, length=len(password)):
+                    c['user']['password'] = password
+                    self.assertEqual(validate_config(c)['user']['password'], password)
+            for password in ('пароль', 'secret🔑', 'passé', 'naïve x', '\x80x', 'a\tb', '', 'x' * 1025):
+                with self.subTest(encryption=encryption, password=password):
+                    c['user']['password'] = password
+                    with self.assertRaises(InstallError) as raised:
+                        validate_config(c)
+                    self.assertEqual(raised.exception.code, Code.BAD_CONFIG)
+                    if password and len(password) <= 1024:
+                        self.assertEqual(raised.exception.message,
+                                         'Use only letters, digits and symbols of the English (US) keyboard.')
 
     def test_one_password_for_everything_needs_the_startup_layout_first(self):
         # The account password is typed at the login screen in the first layout and at the

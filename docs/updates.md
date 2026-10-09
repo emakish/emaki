@@ -13,6 +13,33 @@ details in brackets. It runs a full update with the same package checks and conf
 questions [pacman]. Plain `sudo pacman -Syu` still works and keeps its native messages.
 The desktop checks once a day and shows a panel indicator when updates are pending.
 
+Before downloading packages, `emaki-update` checks the pending transaction's download
+and installed sizes against free space on the system and package-cache filesystems.
+On a btrfs root with snapper snapshots, it budgets the full installed size because
+the pre-update snapshot retains replaced files; otherwise it uses positive net growth.
+Subvolumes on the same filesystem share one combined budget. It adds
+1 GiB of headroom for snapshot metadata and copy-on-write
+changes. This is an estimate, not a reservation or a guarantee that every snapshot
+will fit. A refusal reports the needed and available space; free some space and retry.
+Repository metadata is downloaded into a temporary database for this check; a refusal
+does not refresh the system package databases or change installed packages.
+If the private probe cannot prepare the transaction, the command reports this and
+hands over to the normal pacman update and its checks and questions.
+Plain pacman retains its own `CheckSpace` check.
+
+Once a package transaction reaches its pre-transaction hooks, Emaki blocks normal
+suspend, hibernation and lid-triggered sleep until pacman exits, including after a
+failure or Ctrl+C. This also covers plain `sudo pacman -Syu`, installs and removals.
+Sleep is available again afterwards; the existing screen-lock sleep guard still runs.
+Closing the lid while undocked and while the transaction holds the lid inhibitor
+asks that guard to lock the session, without suspending the update. If both locks
+fail, the session stays open and the next login shows a notice. Docked lid closures
+do nothing.
+The hook must already be installed: the update that first delivers it is not protected.
+Installer and recovery chroots do not take a sleep inhibitor on their host.
+If sleep protection cannot start, a notice is printed and the transaction continues.
+This keeps package repair available when the system bus or login service is absent.
+
 ## The update window
 
 Open **Emaki updates** from the launcher, run `emaki-update-manager`, or select the panel's

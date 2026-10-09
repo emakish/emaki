@@ -320,9 +320,11 @@ function accountErrors(name, login, password, confirm, hostname, reserved) {
         name: Array.from(name).length > 128 || /[\x00-\x1f:\x7f]/.test(name) ? "Your name must be at most 128 characters and contain no colon or control characters." : "",
         login: !/^[a-z_][a-z0-9_-]{0,31}$/.test(login) || (reserved || ["root", "greeter", "live", "nobody"]).indexOf(login) !== -1
             ? "Use 1–32 lowercase letters, digits, _ or - for your login, starting with a letter or _. This login must not be reserved." : "",
-        // No key types a control character at the login screen (planner.validate_config).
-        password: !password || /[\x00-\x1f\x7f]/.test(password) || unescape(encodeURIComponent(password)).length > 1024
-            ? "Enter a password without line breaks, tabs or other control characters (at most 1024 UTF-8 bytes)." : "",
+        // New login passwords use the same printable keyboard characters as startup passwords.
+        password: !password || unescape(encodeURIComponent(password)).length > 1024
+            ? "Enter a password without line breaks, tabs or other control characters (at most 1024 UTF-8 bytes)."
+            : /[^\x20-\x7e]/.test(password)
+                ? "Use only letters, digits and symbols of the English (US) keyboard." : "",
         confirm: password !== confirm ? "The passwords do not match." : "",
         hostname: !/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(hostname) ? "Computer name: 1–63 letters, digits or hyphens, beginning and ending with a letter or digit." : ""
     };

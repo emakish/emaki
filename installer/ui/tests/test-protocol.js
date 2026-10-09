@@ -361,6 +361,7 @@ assert.ok(P.accountError("Alex", "alex", secret, secret, "-emaki"));
 // One message per field, the same rules and texts; accountError is the first of them.
 const loginRule = "Use 1–32 lowercase letters, digits, _ or - for your login, starting with a letter or _. This login must not be reserved.";
 const nameRule = "Your name must be at most 128 characters and contain no colon or control characters.";
+const keyboardRule = "Use only letters, digits and symbols of the English (US) keyboard.";
 const passwordRule = "Enter a password without line breaks, tabs or other control characters (at most 1024 UTF-8 bytes).";
 const hostnameRule = "Computer name: 1–63 letters, digits or hyphens, beginning and ending with a letter or digit.";
 // An empty name is allowed (the planner uses the login) and two empty passwords match: no new rules.
@@ -368,11 +369,11 @@ assert.deepEqual(JSON.parse(JSON.stringify(P.accountErrors("", "", "", "", "")))
 assert.deepEqual(JSON.parse(JSON.stringify(P.accountErrors("A:lex", "Alex", "é".repeat(513), "x", "-emaki"))),
     {name: nameRule, login: loginRule, password: passwordRule, confirm: "The passwords do not match.", hostname: hostnameRule});
 assert.deepEqual(JSON.parse(JSON.stringify(P.accountErrors("Alex", "alex", secret, secret, "emaki"))), {name: "", login: "", password: "", confirm: "", hostname: ""});
-// A tab, an escape or DEL cannot be typed at the login screen: the planner refuses them too
+// Non-ASCII and control characters are refused by both the window and planner
 // (installer/ui/tests/test_planner_limits.py compares the two on every character to U+00FF).
-for (const char of ["\t", "\x01", "\x1b", "\x1f", "\x7f", "\n", "\r", "\0"])
-    assert.equal(P.accountErrors("Alex", "alex", "Zebra" + char, "Zebra" + char, "emaki").password, passwordRule, JSON.stringify(char));
-for (const char of [" ", " ", "€", "ф", "’"])
+for (const char of ["\t", "\x01", "\x1b", "\x1f", "\x7f", "\n", "\r", "\0", " ", "€", "ф", "’", "😀"])
+    assert.equal(P.accountErrors("Alex", "alex", "Zebra" + char, "Zebra" + char, "emaki").password, keyboardRule, JSON.stringify(char));
+for (const char of [" ", "!", "~", "a", "Z", "0"])
     assert.equal(P.accountErrors("Alex", "alex", "Zebra" + char, "Zebra" + char, "emaki").password, "", JSON.stringify(char));
 // The disk password is printable ASCII only (GRUB reads US key positions): no control character.
 for (const char of ["\t", "\x01", "\x1b", "\x7f", " ", "€"])

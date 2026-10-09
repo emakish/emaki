@@ -8,6 +8,7 @@ confirms, request termination of this graphical session before releasing the
 inhibitor. A persistent Emaki flag explains the closure at the next login.
 The optional stay-awake lid policy locks before asking logind to suspend;
 all PrepareForSleep requests use the same fallback and termination path.
+Transaction lid closures keep the session alive even if both lockers fail.
 """
 import os
 from pathlib import Path
@@ -291,31 +292,67 @@ class SleepGuard:
         if self.sleeping:
             return
         self.sleeping = True
-        self.window_end = time.monotonic() + self.delay_window
-        self.release_margin = min(0.25, self.delay_window * 0.05)
-        usable = self.remaining()
-        termination_reserve = min(END_SESSION_TIMEOUT, usable * 0.25)
         try:
-            # Only the readiness client is in this service's cgroup. Its timeout
-            # leaves the supervisor alive so it can accept the fallback request.
-            if run([LOCK, '--wait'], min(ACTION_LOCK_TIMEOUT, usable * 0.60), quiet=True) == 'ok':
-                return
-            if run([LOCK, '--fallback', '--wait'],
-                   self.remaining() - termination_reserve, quiet=True) == 'ok':
-                log('Primary screen lock was not confirmed; hyprlock fallback succeeded.')
-                return
-            # A fallback can confirm just as its readiness client times out.
-            if run([LOCK, 'status'], min(0.2, self.remaining() * 0.1),
-                   quiet=True, capture=True) == 'ok':
-                return
-            self.end_session()
+            if not self.lock_before_deadline():
+                self.end_session()
         finally:
             # logind will sleep at its deadline even if a command failed or hung.
             self.release()
 
-    def lid_closed(self, closed, docked):
-        """stay-awake only: the guard does what logind would have done, lock first."""
-        if self.policy != 'stay-awake' or not closed or docked or self.sleeping:
+    def lock_before_deadline(self):
+        self.window_end = time.monotonic() + self.delay_window
+        self.release_margin = min(0.25, self.delay_window * 0.05)
+        usable = self.remaining()
+        termination_reserve = min(END_SESSION_TIMEOUT, usable * 0.25)
+        # Only the readiness client is in this service's cgroup. Its timeout
+        # leaves the supervisor alive so it can accept the fallback request.
+        if run([LOCK, '--wait'], min(ACTION_LOCK_TIMEOUT, usable * 0.60), quiet=True) == 'ok':
+            return True
+        if run([LOCK, '--fallback', '--wait'],
+               self.remaining() - termination_reserve, quiet=True) == 'ok':
+            log('Primary screen lock was not confirmed; hyprlock fallback succeeded.')
+            return True
+        # A fallback can confirm just as its readiness client times out.
+        if run([LOCK, 'status'], min(0.2, self.remaining() * 0.1),
+               quiet=True, capture=True) == 'ok':
+            return True
+        return False
+
+    def transaction_inhibits_lid(self):
+        try:
+            entries, = self.proxy.call_sync(
+                'ListInhibitors', None, Gio.DBusCallFlags.NONE, 5000, None).unpack()
+            return any(who == 'Emaki packages' and uid == 0 and mode == 'block'
+                       and {'sleep', 'handle-lid-switch'} <= set(what.split(':'))
+                       for what, who, _why, mode, uid, _pid in entries)
+        except (GLib.Error, OSError, ValueError) as error:
+            log(f'could not inspect transaction sleep protection: {error}')
+            return False
+
+    def lid_closed(self, closed, docked=None):
+        """Lock blocked transaction lids; otherwise apply the stay-awake policy."""
+        if not closed or self.sleeping:
+            return
+        if docked is None:
+            # Docked has no change signal, so the proxy cache may be stale.
+            try:
+                docked, = self.proxy.get_connection().call_sync(
+                    LOGIN_NAME, LOGIN_PATH, 'org.freedesktop.DBus.Properties', 'Get',
+                    GLib.Variant('(ss)', (LOGIN_INTERFACE, 'Docked')), GLib.VariantType('(v)'),
+                    Gio.DBusCallFlags.NONE, 5000, None).unpack()
+            except (GLib.Error, OSError, ValueError) as error:
+                log(f'could not read docked state: {error}')
+                docked = False
+        if docked:
+            return
+        if self.transaction_inhibits_lid():
+            # This trusted system-bus query only requests locking. Keep our delay
+            # descriptor: there is no sleep/wake pair while packages block sleep.
+            if not self.lock_before_deadline():
+                log('warning: lid closed and the screen is not locked; staying awake')
+                self.flag_next_session('stay-awake')
+            return
+        if self.policy != 'stay-awake':
             return
         if run([LOCK, '--wait'], self.lock_timeout) == 'ok':
             run([SYSTEMCTL, 'suspend'], ACTION_TIMEOUT)
@@ -347,8 +384,7 @@ def main():
 
     def on_properties_changed(proxy, changed, _invalidated):
         if 'LidClosed' in changed.keys():
-            docked = proxy.get_cached_property('Docked')
-            guard.lid_closed(changed['LidClosed'], docked is not None and docked.unpack())
+            guard.lid_closed(changed['LidClosed'])
 
     def on_owner_changed(proxy, _property):
         if not proxy.get_name_owner():

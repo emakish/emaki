@@ -216,13 +216,13 @@ def validate_config(value):
     require(isinstance(u['name'], str) and len(u['name']) <= 128
             and not any(ord(x) < 32 or x in ':\x7f' for x in u['name']),
             Code.BAD_CONFIG, 'Invalid full name.')
-    # No key types a control character into the login screen's or GRUB's password prompt (Tab
-    # moves the focus, Return submits): a password holding one (U+0000-U+001F, U+007F) could
-    # only have been pasted. installer/ui/Protocol.js accountErrors has the same rule.
+    # Login and startup passwords must be typeable on an English (US) keyboard.
+    # installer/ui/Protocol.js accountErrors checks the same printable ASCII range.
     password = u.get('password')
-    require(isinstance(password, str) and 1 <= len(password.encode()) <= 1024
-            and not any(ord(x) < 32 or x == '\x7f' for x in password),
+    require(isinstance(password, str) and 1 <= len(password.encode()) <= 1024,
             Code.BAD_CONFIG, 'Password must be nonempty and contain no control characters (line breaks, tabs).')
+    require(password.isascii() and password.isprintable(), Code.BAD_CONFIG,
+            'Use only letters, digits and symbols of the English (US) keyboard.')
     require(c.get('encryption') in ('none', 'account', 'separate'), Code.BAD_CONFIG,
             'Choose whether to encrypt the disk and which password to use.')
     if c['encryption'] == 'separate':
