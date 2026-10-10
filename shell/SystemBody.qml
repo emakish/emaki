@@ -22,6 +22,15 @@ Item {
     // The SystemPanel: colours, drops. Null in tests of the body alone.
     property var glass: null
     property string page: ""
+    readonly property string settingsPage: ({
+            wifi: "wifi",
+            bt: "bluetooth",
+            sound: "sound",
+            light: "displays",
+            power: "battery",
+            kb: "keyboard"
+        })[page] || ""
+    signal settingsRequested(string page)
     property bool opened: false
     property string confirmation: ""
     property string selectedNetwork: ""
@@ -1820,6 +1829,13 @@ Item {
                     lineHeight: 1.2
                     color: body.dim
                 }
+            }
+            Word {
+                objectName: "quick-settings-link"
+                visible: body.settingsPage !== ""
+                key: "open-settings"
+                label: "Open settings"
+                onClicked: body.settingsRequested(body.settingsPage)
             }
         }
     }

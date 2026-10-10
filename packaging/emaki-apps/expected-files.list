@@ -1,0 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+/etc/xdg/autostart/emaki-discover-notifier.desktop
+/usr/lib/systemd/system-preset/45-emaki-apps.preset
+/usr/share/applications/emaki-printers.desktop

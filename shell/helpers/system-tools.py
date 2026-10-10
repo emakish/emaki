@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Bounded argv-only operations. No shell, profiles, credentials or private logs."""
 import importlib.util
+import grp
 import json
 import os
+import pwd
 from pathlib import Path
 import re
 import shutil
@@ -70,6 +72,17 @@ def nm_call(bus, path, interface, method, args=None, timeout=10000):
 def nm_property(bus, path, interface, name):
     _, GLib = shared.gio()
     return nm_call(bus, path, 'org.freedesktop.DBus.Properties', 'Get', GLib.Variant('(ss)', (interface, name)))[0]
+
+
+def wifi_forget_saved(r):
+    uuid = r.get('uuid')
+    if not isinstance(uuid, str) or not UUID.fullmatch(uuid):
+        return dict(state='invalid_request')
+    kind = nmcli(['--get-values', 'connection.type', 'connection', 'show', 'uuid', uuid], timeout=5).strip()
+    if kind != '802-11-wireless':
+        return dict(state='invalid_request')
+    nmcli(['--wait', '5', 'connection', 'delete', 'uuid', uuid], timeout=8)
+    return dict(state='confirmed')
 
 
 def wifi_hidden(r):
@@ -222,8 +235,21 @@ def can_hibernate():
     return reply.get('type') == 's' and reply.get('data') == ['yes']
 
 
+def account_identity():
+    """Resolve the current process user through the system account database."""
+    user = pwd.getpwuid(os.getuid())
+    name = user.pw_gecos.split(',', 1)[0].strip() or user.pw_name
+    try:
+        wheel = grp.getgrnam('wheel')
+        administrator = wheel.gr_gid == user.pw_gid or user.pw_name in wheel.gr_mem
+    except KeyError:
+        administrator = False
+    return dict(state='ready', name=name, login=user.pw_name, administrator=administrator)
+
+
 def operation(r):
     op = r.get('op')
+    if op == 'account-read': return account_identity()
     if op == 'brightness-read': return brightness()
     if op == 'brightness-set':
         value = r.get('value')
@@ -246,6 +272,7 @@ def operation(r):
     if op == 'vpn-list': return vpn_list()
     if op == 'vpn-set': return vpn_set(r)
     if op == 'wifi-hidden': return wifi_hidden(r)
+    if op == 'wifi-forget-saved': return wifi_forget_saved(r)
     if op == 'portal-open': return portal_open()
     if op == 'lock': return lock()
     if op == 'night-light-check':

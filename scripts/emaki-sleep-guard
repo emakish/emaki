@@ -36,9 +36,9 @@ END_SESSION_TIMEOUT = 2
 POLL_INTERVAL = 0.05
 FAILURE_POLICIES = ('end-session', 'stay-awake')
 DEFAULT_FAILURE_POLICY = 'end-session'
-LOGINCTL = '/usr/bin/loginctl'
-LOCK = '/usr/bin/emaki-lock'
-SYSTEMCTL = '/usr/bin/systemctl'
+LOGINCTL = 'loginctl'
+LOCK = 'emaki-lock'
+SYSTEMCTL = 'systemctl'
 BOOT_ID = '/proc/sys/kernel/random/boot_id'
 
 

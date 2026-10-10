@@ -8,7 +8,7 @@ Item {
     id: root
     property var session: Protocol.initial()
     property string step: "welcome"
-    property string mode: "erase"
+    property string mode: ""
     property string diskId: ""
     property string filesystem: "btrfs"
     property real shrinkBytes: 0
@@ -366,7 +366,7 @@ Item {
             return;
         if (step === "timezone" && (!timezoneChosen || !timezoneInfo || timezoneInfo.timezone !== timezone || applyingTimezone))
             return;
-        if (step === "disk" && !encryptedConfirmed)
+        if (step === "disk" && (!mode || !encryptedConfirmed))
             return;
         if (step === "disk" && mode === "alongside" && !alongsideSizeValid)
             return;
@@ -393,7 +393,7 @@ Item {
         diskId = id;
         // A disk without a Windows offer cannot keep Install alongside.
         if (mode === "alongside" && !Protocol.alongside(selectedDisk))
-            mode = "erase";
+            mode = "";
         shrinkBytes = defaultAlongsideSize();
         mounts = [];
         agreed = false;

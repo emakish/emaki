@@ -127,7 +127,7 @@ class SessionLock(GuardCase):
         guard = self.guard()
         with self.commands():
             guard.session_signal('Lock')
-        self.assertEqual(self.events, ['/usr/bin/emaki-lock'])
+        self.assertEqual(self.events, ['emaki-lock'])
 
     def test_unlock_signal_is_ignored(self):
         # Nothing may open the session without the password, logind included.
@@ -141,7 +141,7 @@ class SessionLock(GuardCase):
         for failure in (1, subprocess.TimeoutExpired('emaki-lock', 1), FileNotFoundError('missing')):
             with self.subTest(failure=failure):
                 guard = self.guard()
-                with self.commands({'/usr/bin/emaki-lock': failure}), patch('sys.stderr') as errors:
+                with self.commands({'emaki-lock': failure}), patch('sys.stderr') as errors:
                     guard.session_signal('Lock')
                 self.assertTrue(errors.write.called)
                 self.assertIsNotNone(guard.inhibitor)
@@ -216,9 +216,9 @@ class FlagCase(GuardCase):
         return self.runtime / 'emaki-sleep-lock-failed'
 
     def fail_lock(self, guard, failure, extra=None):
-        results = {'/usr/bin/emaki-lock --wait': failure,
-                   '/usr/bin/emaki-lock --fallback --wait': failure,
-                   '/usr/bin/emaki-lock status': 1, **(extra or {})}
+        results = {'emaki-lock --wait': failure,
+                   'emaki-lock --fallback --wait': failure,
+                   'emaki-lock status': 1, **(extra or {})}
         held = []
 
         def run(argv, **kwargs):
@@ -252,7 +252,7 @@ class FailurePolicy(FlagCase):
         guard = self.policy_guard('end-session')
         with self.commands():
             guard.prepare_for_sleep(True)
-        self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait'])
+        self.assertEqual(self.events, ['emaki-lock --wait'])
         self.assertIsNone(guard.inhibitor)
         self.assertFalse(self.state_flag().exists() or self.runtime_flag().exists())
 
@@ -260,13 +260,13 @@ class FailurePolicy(FlagCase):
         for name, failure in self.FAILURES.items():
             with self.subTest(failure=name):
                 guard = self.policy_guard('end-session')
-                with self.commands({'/usr/bin/emaki-lock --wait': failure}), patch('sys.stderr') as errors:
+                with self.commands({'emaki-lock --wait': failure}), patch('sys.stderr') as errors:
                     guard.prepare_for_sleep(True)
                 logged = ''.join(call.args[0] for call in errors.write.call_args_list)
                 self.assertEqual(len(logged.strip().splitlines()), 1)
                 self.assertIn('primary', logged.lower())
-                self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait',
-                                               '/usr/bin/emaki-lock --fallback --wait'])
+                self.assertEqual(self.events, ['emaki-lock --wait',
+                                               'emaki-lock --fallback --wait'])
                 self.assertIsNone(guard.inhibitor)
                 self.assertFalse(self.state_flag().exists() or self.runtime_flag().exists())
 
@@ -275,10 +275,10 @@ class FailurePolicy(FlagCase):
             with self.subTest(failure=name):
                 guard = self.policy_guard('end-session')
                 held = self.fail_lock(guard, failure)
-                self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait',
-                                               '/usr/bin/emaki-lock --fallback --wait',
-                                               '/usr/bin/emaki-lock status',
-                                               '/usr/bin/loginctl terminate-session 7',
+                self.assertEqual(self.events, ['emaki-lock --wait',
+                                               'emaki-lock --fallback --wait',
+                                               'emaki-lock status',
+                                               'loginctl terminate-session 7',
                                                ' '.join(ShutdownRegression.SHUTDOWN),
                                                ' '.join(ShutdownRegression.SHOW)])
                 self.assertTrue(all(was_held for _program, was_held in held))
@@ -291,9 +291,9 @@ class FailurePolicy(FlagCase):
         for name, failure in self.FAILURES.items():
             with self.subTest(failure=name):
                 guard = self.policy_guard('end-session')
-                self.fail_lock(guard, 1, {'/usr/bin/loginctl': failure})
+                self.fail_lock(guard, 1, {'loginctl': failure})
                 self.assertIsNone(guard.inhibitor)
-                self.assertIn('/usr/bin/loginctl terminate-session 7', self.events)
+                self.assertIn('loginctl terminate-session 7', self.events)
                 self.assertEqual(self.runtime_flag().read_text(), 'end-session-failed\n')
                 self.assertFalse(self.state_flag().exists())
 
@@ -342,10 +342,10 @@ class FailurePolicy(FlagCase):
                     guard.prepare_for_sleep(True)
                 commands = [argv for argv, _timeout, _at in calls]
                 self.assertEqual(commands[:4], [
-                    ['/usr/bin/emaki-lock', '--wait'],
-                    ['/usr/bin/emaki-lock', '--fallback', '--wait'],
-                    ['/usr/bin/emaki-lock', 'status'],
-                    ['/usr/bin/loginctl', 'terminate-session', '7']])
+                    ['emaki-lock', '--wait'],
+                    ['emaki-lock', '--fallback', '--wait'],
+                    ['emaki-lock', 'status'],
+                    ['loginctl', 'terminate-session', '7']])
                 self.assertTrue(all(argv in (ShutdownRegression.SHUTDOWN, ShutdownRegression.SHOW)
                                     for argv in commands[4:]))
                 self.assertLessEqual(clock[0], 100.0 + window)
@@ -363,12 +363,12 @@ class FailurePolicy(FlagCase):
         guard = self.policy_guard('stay-awake')
         with self.commands():
             guard.lid_closed(True, docked=False)
-        self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait', '/usr/bin/systemctl suspend'])
+        self.assertEqual(self.events, ['emaki-lock --wait', 'systemctl suspend'])
         self.assertIsNotNone(guard.lid_inhibitor)
         self.events.clear()
-        with self.commands({'/usr/bin/emaki-lock --wait': 1}), patch('sys.stderr'):
+        with self.commands({'emaki-lock --wait': 1}), patch('sys.stderr'):
             guard.lid_closed(True, docked=False)
-        self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait'])
+        self.assertEqual(self.events, ['emaki-lock --wait'])
         self.assertEqual(self.runtime_flag().read_text(), 'stay-awake\n')
 
     def test_transaction_lid_reuses_sleep_lock_fallback_without_suspending(self):
@@ -378,10 +378,10 @@ class FailurePolicy(FlagCase):
                 guard.proxy.inhibitors = [('sleep:handle-lid-switch', 'Emaki packages',
                                            'Packages', 'block', 0, 321)]
                 delay = guard.inhibitor
-                with self.commands({'/usr/bin/emaki-lock --wait': 1}), patch('sys.stderr'):
+                with self.commands({'emaki-lock --wait': 1}), patch('sys.stderr'):
                     guard.lid_closed(True, docked=False)
-                self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait',
-                                               '/usr/bin/emaki-lock --fallback --wait'])
+                self.assertEqual(self.events, ['emaki-lock --wait',
+                                               'emaki-lock --fallback --wait'])
                 self.assertEqual(guard.inhibitor, delay)
                 self.assertFalse(guard.sleeping)
 
@@ -398,18 +398,18 @@ class FailurePolicy(FlagCase):
                         guard.lid_closed(True)
                     expected = ['Get Manager.Docked']
                     if not docked:
-                        expected.append('/usr/bin/emaki-lock --wait')
+                        expected.append('emaki-lock --wait')
                     self.assertEqual(self.events, expected)
 
     def assert_transaction_lock_failure_preserves_session(self, guard, failure):
         guard.proxy.inhibitors = [('sleep:handle-lid-switch', 'Emaki packages',
                                    'Packages', 'block', 0, 321)]
         delay = guard.inhibitor
-        with self.commands({'/usr/bin/emaki-lock': failure}), patch('sys.stderr') as errors:
+        with self.commands({'emaki-lock': failure}), patch('sys.stderr') as errors:
             guard.lid_closed(True, docked=False)
-        self.assertEqual(self.events, ['/usr/bin/emaki-lock --wait',
-                                       '/usr/bin/emaki-lock --fallback --wait',
-                                       '/usr/bin/emaki-lock status'])
+        self.assertEqual(self.events, ['emaki-lock --wait',
+                                       'emaki-lock --fallback --wait',
+                                       'emaki-lock status'])
         self.assertEqual(guard.inhibitor, delay)
         self.assertFalse(guard.sleeping)
         self.assertIn('staying awake', ''.join(str(call.args[0]) for call in errors.write.call_args_list))
@@ -441,7 +441,7 @@ class FailurePolicy(FlagCase):
         with patch.object(guard, 'transaction_inhibits_lid', return_value=False), self.commands():
             guard.lid_closed(True, docked=False)
         with self.assertRaises(AssertionError):
-            self.assertIn('/usr/bin/emaki-lock --wait', self.events)
+            self.assertIn('emaki-lock --wait', self.events)
 
     def test_only_root_transaction_block_uses_transaction_lid_path(self):
         entries = [
@@ -466,16 +466,16 @@ class FailurePolicy(FlagCase):
     def test_external_sleep_under_stay_awake_still_fails_closed(self):
         guard = self.policy_guard('stay-awake')
         self.fail_lock(guard, 1)
-        self.assertIn('/usr/bin/loginctl terminate-session 7', self.events)
+        self.assertIn('loginctl terminate-session 7', self.events)
         self.assertIsNone(guard.inhibitor)
         self.assertFalse(any('suspend' in event or 'hibernate' in event for event in self.events))
 
 
 class ShutdownRegression(FlagCase):
     """A fake clock, delayed lockers and user-manager jobs; never touches a session."""
-    SHUTDOWN = ['/usr/bin/systemctl', '--user', 'start', '--no-block',
+    SHUTDOWN = ['systemctl', '--user', 'start', '--no-block',
                 '--job-mode=replace-irreversibly', 'niri-shutdown.target']
-    SHOW = ['/usr/bin/systemctl', '--user', 'show', '--property=ActiveState', '--value',
+    SHOW = ['systemctl', '--user', 'show', '--property=ActiveState', '--value',
             'niri-emaki.service', 'niri.service', 'graphical-session.target']
 
     def scenario(self, *, login_result=0, shutdown_result=0, state='inactive',
@@ -495,17 +495,17 @@ class ShutdownRegression(FlagCase):
             self.assertLessEqual(clock[0] + kwargs['timeout'], 120)
             stdout = ''
             result = 0
-            if argv == ['/usr/bin/emaki-lock', '--wait']:
+            if argv == ['emaki-lock', '--wait']:
                 clock[0] += kwargs['timeout']
                 raise subprocess.TimeoutExpired(argv, kwargs['timeout'])
-            elif argv == ['/usr/bin/emaki-lock', '--fallback', '--wait']:
+            elif argv == ['emaki-lock', '--fallback', '--wait']:
                 elapsed = kwargs['timeout'] if fallback_delay is None else fallback_delay
                 clock[0] += min(elapsed, kwargs['timeout'])
                 if fallback_delay is None or elapsed > kwargs['timeout']:
                     raise subprocess.TimeoutExpired(argv, kwargs['timeout'])
-            elif argv == ['/usr/bin/emaki-lock', 'status']:
+            elif argv == ['emaki-lock', 'status']:
                 result = 0 if late_lock else 1
-            elif argv == ['/usr/bin/loginctl', 'terminate-session', '7']:
+            elif argv == ['loginctl', 'terminate-session', '7']:
                 # Until every shutdown check succeeds, a crash must not leave a success flag.
                 attempt_flag[0] = self.state_flag().read_text().splitlines()[0]
                 clock[0] += 0.05
@@ -600,15 +600,15 @@ class ShutdownRegression(FlagCase):
 
     def test_three_second_fallback_preserves_the_session(self):
         self.scenario(fallback_delay=3)
-        self.assertNotIn(['/usr/bin/loginctl', 'terminate-session', '7'], self.calls)
+        self.assertNotIn(['loginctl', 'terminate-session', '7'], self.calls)
         self.assertFalse(self.state_flag().exists())
         self.assertEqual(len(self.logs.strip().splitlines()), 1)
         self.assertIn('primary', self.logs.lower())
 
     def test_lock_confirmed_after_fallback_timeout_preserves_the_session(self):
         self.scenario(late_lock=True)
-        self.assertIn(['/usr/bin/emaki-lock', 'status'], self.calls)
-        self.assertNotIn(['/usr/bin/loginctl', 'terminate-session', '7'], self.calls)
+        self.assertIn(['emaki-lock', 'status'], self.calls)
+        self.assertNotIn(['loginctl', 'terminate-session', '7'], self.calls)
         self.assertFalse(self.state_flag().exists())
 
 
@@ -645,7 +645,7 @@ class NoticeAcrossSessions(FlagCase):
         guard = self.policy_guard('end-session')
         guard.proxy.inhibitors = [('sleep:handle-lid-switch', 'Emaki packages',
                                    'Packages', 'block', 0, 321)]
-        with self.commands({'/usr/bin/emaki-lock': 1}), patch('sys.stderr'):
+        with self.commands({'emaki-lock': 1}), patch('sys.stderr'):
             guard.lid_closed(True, docked=False)
         self.assertEqual(self.notices(str(self.socket), True), [])
         self.assertEqual(self.notices(self.LATER, True), ['stay-awake'])
@@ -653,7 +653,7 @@ class NoticeAcrossSessions(FlagCase):
 
     def test_refused_termination_is_told_once_in_the_running_session(self):
         guard = self.policy_guard('end-session')
-        self.fail_lock(guard, 1, {'/usr/bin/loginctl': 1})
+        self.fail_lock(guard, 1, {'loginctl': 1})
         self.assertFalse(self.state_flag().exists())
         self.assertEqual(self.notices(str(self.socket), False), ['end-session-failed'])
         self.assertEqual(self.notices(str(self.socket), False), [])

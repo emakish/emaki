@@ -1,0 +1,501 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Machine settings: keyboard, time zone, automatic time and locale of the whole computer.
+
+The one place where the session reads and changes settings that belong to the machine rather
+than to a person. It writes no file: systemd-localed (org.freedesktop.locale1) and
+systemd-timedated (org.freedesktop.timedate1) own those files, and their polkit actions
+(org.freedesktop.locale1.set-keyboard, .set-locale, org.freedesktop.timedate1.set-timezone,
+.set-ntp) ask for an administrator. This program runs as the person, without privileges, and
+talks to both services through `busctl`.
+
+  emaki-machine-settings choices [--json]
+  emaki-machine-settings capabilities [--json]
+  emaki-machine-settings get [KEY...] [--json]
+  emaki-machine-settings set KEY VALUE [--json]
+
+Every answer is one JSON object (schema_version 1) on stdout; exit 0 read/applied/unchanged,
+1 rejected (the machine is unchanged), 2 usage, 3 uncertain: the call may have changed the
+machine but the change is not confirmed (a timeout, an unknown failure after the call, a
+read-back that failed or differs); the answer keeps key, before, requested, after and
+recovery. Raw service messages are never printed.
+
+A `set` reads, changes and confirms under one lock shared by every user of the machine:
+localed takes the whole keyboard (and the whole locale list) in one call, so two overlapping
+read-change sequences would silently undo each other. A second `set` waits for the first
+(LOCK_WAIT), then reads the machine afresh, or answers machine_settings_busy having changed
+nothing. Writers that do not use this program (localectl, another tool) are not serialised:
+a keyboard change is confirmed by reading back all four values it sent, so a write that
+lands between the call and the confirmation is reported, never answered as applied.
+
+A key the machine's own configuration declares is reported with source "declared",
+editable false and declared_by (the option that sets it), and `set` refuses it. The
+declarations are read from EMAKI_MACHINE_DECLARATIONS, else /etc/emaki/machine-settings.json:
+{"schema_version": 1, "declared": {"time.zone": "<option name>", ...}}. Another platform ships
+its own program under this name with the same commands and answers.
+"""
+import json
+import os
+from pathlib import Path
+import re
+import socket
+import subprocess
+import sys
+import time
+
+SCHEMA = 1
+DECLARATIONS = '/etc/emaki/machine-settings.json'
+LOCALE1 = ('org.freedesktop.locale1', '/org/freedesktop/locale1', 'org.freedesktop.locale1')
+TIMEDATE1 = ('org.freedesktop.timedate1', '/org/freedesktop/timedate1', 'org.freedesktop.timedate1')
+READ_TIMEOUT = 5
+# An administrator prompt waits for a person. The core gives the whole command 120 s:
+# the lock wait, the reads, the call and its confirmation fit inside it.
+CALL_TIMEOUT = 90
+LOCK_WAIT = 10
+# An abstract unix socket name: no file, any user can bind it, and it is freed when the
+# process ends, however it ends. Holding the bound socket is holding the lock of `set`.
+LOCK = '\0emaki-machine-settings'
+
+# Labels of the settings core's keyboard.switch_key. Super+Space is the packaged niri bind
+# and needs no XKB option; a grp: toggle next to it would switch a second time.
+SWITCH_KEYS = {'Super+Space': None, 'Alt+Shift': 'grp:alt_shift_toggle',
+               'Caps Lock': 'grp:caps_toggle'}
+# Offered by the installer as layout names, stored as XKB variants of us.
+US_VARIANTS = ('dvorak', 'colemak')
+# The formats a person picks together; LANG keeps messages and everything else.
+FORMATS = ('LC_NUMERIC', 'LC_TIME', 'LC_MONETARY', 'LC_MEASUREMENT', 'LC_PAPER')
+# Variants as the XKB rules list them; some have capitals (de(T3), ua(macOS)).
+LAYOUT = re.compile(r'([a-z]{2,8})(?:\(([A-Za-z0-9_-]{1,32})\))?')
+ZONE = re.compile(r'[A-Za-z0-9_+-]{1,32}(?:/[A-Za-z0-9_+-]{1,32}){0,3}')
+LOCALE = re.compile(r'(?:[a-z]{2,3}(?:_[A-Z]{2})?(?:@[a-z]{1,16})?|C)\.UTF-8')
+
+KEYS = {
+    'keyboard.layouts': {
+        'service': 'locale1', 'type': 'string_list', 'authorization': 'org.freedesktop.locale1.set-keyboard',
+        'allowed': '1..4 distinct XKB layouts, comma-separated (us,ru); layout(variant) as the XKB rules list it'},
+    'keyboard.switch_key': {
+        'service': 'locale1', 'type': 'choice', 'authorization': 'org.freedesktop.locale1.set-keyboard',
+        'allowed': ' | '.join(SWITCH_KEYS)},
+    'time.zone': {
+        'service': 'timedate1', 'type': 'time_zone', 'authorization': 'org.freedesktop.timedate1.set-timezone',
+        'allowed': 'a time zone name of the tz database (Europe/Berlin, UTC)'},
+    'time.automatic': {
+        'service': 'timedate1', 'type': 'boolean', 'authorization': 'org.freedesktop.timedate1.set-ntp',
+        'allowed': 'true | false'},
+    'locale.language': {
+        'service': 'locale1', 'type': 'locale', 'authorization': 'org.freedesktop.locale1.set-locale',
+        'allowed': 'an installed UTF-8 locale (en_US.UTF-8)'},
+    'locale.formats': {
+        'service': 'locale1', 'type': 'locale', 'authorization': 'org.freedesktop.locale1.set-locale',
+        'allowed': 'an installed UTF-8 locale for numbers, dates, money, units and paper; empty follows the language'},
+}
+
+
+# Answers in which the service itself refused a call: it changed nothing. Any other failure
+# of a call (a timeout, a lost connection, an unknown message) may come after the service
+# took it, and an administrator prompt still open can apply it later.
+REFUSED = ('authorization_refused', 'authorization_required', 'unknown_time_zone',
+           'locale_not_installed', 'machine_value_refused', 'automatic_time_unavailable')
+
+
+class Refusal(Exception):
+    def __init__(self, reason, sent=False):
+        super().__init__(reason)
+        self.reason = reason
+        # The failure may follow a call the service took.
+        self.sent = sent
+
+
+def classify(message):
+    """A fixed reason for a failed busctl call; the message itself is never shown."""
+    text = message.lower()
+    if 'interactive authentication required' in text:
+        return 'authorization_required'
+    if any(word in text for word in ('access denied', 'permission denied', 'not authorized')):
+        return 'authorization_refused'
+    if 'timed out' in text:
+        return 'machine_service_timeout'
+    if 'time zone' in text or 'timezone' in text:
+        return 'unknown_time_zone'
+    if 'not installed' in text:
+        return 'locale_not_installed'
+    if any(word in text for word in ('cannot be compiled', 'not valid', 'invalid', 'refusing')):
+        return 'machine_value_refused'
+    if 'ntp' in text and 'not supported' in text:
+        return 'automatic_time_unavailable'
+    return 'machine_service_unavailable'
+
+
+def busctl(*args, timeout=READ_TIMEOUT):
+    try:
+        result = subprocess.run(['busctl', '--system', *args], capture_output=True, text=True,
+                                stdin=subprocess.DEVNULL, timeout=timeout,
+                                env={**os.environ, 'LC_ALL': 'C', 'SYSTEMD_PAGER': ''})
+    except FileNotFoundError:
+        raise Refusal('machine_service_unavailable') from None
+    except subprocess.TimeoutExpired:
+        raise Refusal('machine_service_timeout', sent=True) from None
+    if result.returncode:
+        reason = classify(result.stderr)
+        raise Refusal(reason, sent=reason not in REFUSED)
+    return result.stdout
+
+
+def properties(service, names):
+    lines = busctl('--json=short', 'get-property', *service, *names).splitlines()
+    if len(lines) != len(names):
+        raise Refusal('machine_service_unavailable')
+    values = {}
+    for name, line in zip(names, lines):
+        try:
+            reply = json.loads(line)
+        except ValueError:
+            raise Refusal('machine_service_unavailable') from None
+        if not isinstance(reply, dict) or 'data' not in reply:
+            raise Refusal('machine_service_unavailable')
+        values[name] = reply['data']
+    return values
+
+
+def call(service, method, signature, *args):
+    busctl('--allow-interactive-authorization=yes', f'--timeout={CALL_TIMEOUT}',
+           'call', *service, method, signature, *args, timeout=CALL_TIMEOUT + 5)
+
+
+def lock():
+    """The machine-wide lock of `set`; the returned socket holds it until it is closed."""
+    held = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    deadline = time.monotonic() + LOCK_WAIT
+    while True:
+        try:
+            held.bind(LOCK)
+            return held
+        except OSError:
+            if time.monotonic() >= deadline:
+                held.close()
+                raise Refusal('machine_settings_busy') from None
+        time.sleep(0.05)
+
+
+def declarations():
+    """Keys the machine's configuration sets; an unreadable file declares every key."""
+    path = Path(os.environ.get('EMAKI_MACHINE_DECLARATIONS') or DECLARATIONS)
+    try:
+        text = path.read_text(encoding='utf-8')
+    except FileNotFoundError:
+        return {}, None
+    except (OSError, UnicodeDecodeError):
+        return {key: None for key in KEYS}, 'declarations_invalid'
+    try:
+        data = json.loads(text)
+        declared = data['declared']
+        if (data.get('schema_version') != SCHEMA or not isinstance(declared, dict)
+                or set(data) - {'schema_version', 'declared'}
+                or any(key not in KEYS or not isinstance(option, str) or not option
+                       or len(option) > 200 for key, option in declared.items())):
+            raise ValueError
+    except (ValueError, KeyError, TypeError):
+        return {key: None for key in KEYS}, 'declarations_invalid'
+    return declared, None
+
+
+def string(value):
+    if not isinstance(value, str):
+        raise Refusal('machine_service_unavailable')
+    return value
+
+
+def split(text):
+    return text.split(',') if text else []
+
+
+class Machine:
+    """Values of both services, read once per command."""
+
+    def __init__(self):
+        self.cache = {}
+        # The four XKB values of a SetX11Keyboard call, confirmed together afterwards.
+        self.sent = None
+
+    def keyboard(self):
+        if 'keyboard' not in self.cache:
+            values = properties(LOCALE1, ('X11Layout', 'X11Model', 'X11Variant', 'X11Options'))
+            self.cache['keyboard'] = {name: string(value) for name, value in values.items()}
+        return self.cache['keyboard']
+
+    def locale(self):
+        if 'locale' not in self.cache:
+            value = properties(LOCALE1, ('Locale',))['Locale']
+            if not isinstance(value, list) or not all(isinstance(item, str) and '=' in item
+                                                      for item in value):
+                raise Refusal('machine_service_unavailable')
+            self.cache['locale'] = dict(item.split('=', 1) for item in value)
+        return self.cache['locale']
+
+    def time(self):
+        if 'time' not in self.cache:
+            values = properties(TIMEDATE1, ('Timezone', 'NTP', 'CanNTP'))
+            if not isinstance(values['NTP'], bool) or not isinstance(values['CanNTP'], bool):
+                raise Refusal('machine_service_unavailable')
+            string(values['Timezone'])
+            self.cache['time'] = values
+        return self.cache['time']
+
+    def value(self, key):
+        """(value, reason): reason names why a read value cannot be shown as a setting value."""
+        if key == 'keyboard.layouts':
+            keyboard = self.keyboard()
+            layouts, variants = split(keyboard['X11Layout']), split(keyboard['X11Variant'])
+            if not layouts:
+                return None, None
+            variants += [''] * (len(layouts) - len(variants))
+            result = []
+            for layout, variant in zip(layouts, variants):
+                if layout == 'us' and variant in US_VARIANTS:
+                    result.append(variant)
+                else:
+                    result.append(f'{layout}({variant})' if variant else layout)
+            try:
+                parse_layouts(','.join(result))
+            except Refusal:
+                # Shown as read, but this program could not set it again (a `before` that
+                # is not a way back): more than four, or names outside its grammar.
+                return result, 'layouts_unrecognised'
+            return result, None
+        if key == 'keyboard.switch_key':
+            toggles = [option for option in split(self.keyboard()['X11Options'])
+                       if option.startswith('grp:')]
+            for label, option in SWITCH_KEYS.items():
+                if toggles == ([option] if option else []):
+                    return label, None
+            return None, 'switch_key_unrecognised'
+        if key == 'time.zone':
+            return self.time()['Timezone'] or None, None
+        if key == 'time.automatic':
+            return self.time()['NTP'], None
+        if key == 'locale.language':
+            return self.locale().get('LANG'), None
+        if key == 'locale.formats':
+            found = {self.locale()[name] for name in FORMATS if name in self.locale()}
+            if not found:
+                return None, None
+            if len(found) == 1 and all(name in self.locale() for name in FORMATS):
+                return found.pop(), None
+            return None, 'formats_mixed'
+        raise Refusal('unknown_setting')
+
+    def editable(self, key):
+        if key == 'time.automatic' and not self.time()['CanNTP']:
+            return 'automatic_time_unavailable'
+        return None
+
+
+def row(machine, key, declared, declared_reason):
+    spec = KEYS[key]
+    result = {'key': key, 'value': None, 'source': 'machine', 'editable': False,
+              'declared_by': None, 'reason': None, 'value_type': spec['type'],
+              'allowed': spec['allowed'], 'service': f"org.freedesktop.{spec['service']}",
+              'authorization': spec['authorization']}
+    if key in declared:
+        result.update(source='declared', declared_by=declared[key],
+                      reason=declared_reason or 'declared_by_system_configuration')
+    try:
+        result['value'], reason = machine.value(key)
+        blocked = machine.editable(key)
+    except Refusal as refusal:
+        result.update(source='unavailable' if key not in declared else 'declared',
+                      reason=result['reason'] or refusal.reason)
+        return result
+    result['reason'] = result['reason'] or blocked or reason
+    result['editable'] = key not in declared and blocked is None
+    return result
+
+
+def parse_layouts(value):
+    items = value.split(',')
+    if not 1 <= len(items) <= 4 or len(set(items)) != len(items):
+        raise Refusal('invalid_layouts')
+    layouts, variants = [], []
+    for item in items:
+        match = LAYOUT.fullmatch(item)
+        if not match:
+            raise Refusal('invalid_layouts')
+        name, variant = match[1], match[2] or ''
+        if name in US_VARIANTS and not variant:
+            name, variant = 'us', name
+        layouts.append(name)
+        variants.append(variant)
+    return ','.join(layouts), (','.join(variants) if any(variants) else '')
+
+
+def keyboard_call(machine, layout, variant, options):
+    # convert=false: the console keymap (and the initramfs passphrase prompt built from it)
+    # stays what the installer chose; only the session's XKB list changes.
+    machine.sent = {'X11Layout': layout, 'X11Model': machine.keyboard()['X11Model'],
+                    'X11Variant': variant, 'X11Options': options}
+    call(LOCALE1, 'SetX11Keyboard', 'ssssbb', layout, machine.sent['X11Model'], variant,
+         options, 'false', 'true')
+
+
+def apply(machine, key, value):
+    """Change one key; returns nothing, raises Refusal."""
+    if key == 'keyboard.layouts':
+        layout, variant = parse_layouts(value)
+        keyboard_call(machine, layout, variant, machine.keyboard()['X11Options'])
+    elif key == 'keyboard.switch_key':
+        if value not in SWITCH_KEYS:
+            raise Refusal('invalid_switch_key')
+        keyboard = machine.keyboard()
+        options = [option for option in split(keyboard['X11Options']) if not option.startswith('grp:')]
+        if SWITCH_KEYS[value]:
+            options.append(SWITCH_KEYS[value])
+        keyboard_call(machine, keyboard['X11Layout'], keyboard['X11Variant'], ','.join(options))
+    elif key == 'time.zone':
+        if not ZONE.fullmatch(value):
+            raise Refusal('unknown_time_zone')
+        call(TIMEDATE1, 'SetTimezone', 'sb', value, 'true')
+    elif key == 'time.automatic':
+        if value not in ('true', 'false'):
+            raise Refusal('invalid_boolean')
+        call(TIMEDATE1, 'SetNTP', 'bb', value, 'true')
+    elif key in ('locale.language', 'locale.formats'):
+        current = dict(machine.locale())
+        if key == 'locale.language':
+            if not LOCALE.fullmatch(value):
+                raise Refusal('invalid_locale')
+            current['LANG'] = value
+        else:
+            if value and not LOCALE.fullmatch(value):
+                raise Refusal('invalid_locale')
+            for name in FORMATS:
+                current.pop(name, None)
+                if value:
+                    current[name] = value
+        items = [f'{name}={text}' for name, text in current.items()]
+        call(LOCALE1, 'SetLocale', 'asb', str(len(items)), *items, 'true')
+    else:
+        raise Refusal('unknown_setting')
+
+
+def desired(key, value):
+    """The value `get` reports after a successful set, for the confirmation."""
+    if key == 'keyboard.layouts':
+        layout, variant = parse_layouts(value)
+        variants = split(variant) or [''] * len(split(layout))
+        return [v if name == 'us' and v in US_VARIANTS else f'{name}({v})' if v else name
+                for name, v in zip(split(layout), variants)]
+    if key == 'time.automatic':
+        return value == 'true'
+    return value or None
+
+
+def answer(reply, code=0):
+    print(json.dumps({'schema_version': SCHEMA, **reply}, sort_keys=True))
+    return code
+
+
+def rejected(reason, **fields):
+    return answer({'status': 'rejected', 'reason': reason, **fields}, 1)
+
+
+def usage():
+    return answer({'status': 'rejected', 'reason': 'usage'}, 2)
+
+
+def choices():
+    """Installed choices, read without machine services or administrator access."""
+    result = {}
+    for key, command in (('locales', ['locale', '-a']),
+                         ('time_zones', ['timedatectl', 'list-timezones'])):
+        try:
+            reply = subprocess.run(command, capture_output=True, text=True,
+                                   timeout=READ_TIMEOUT, stdin=subprocess.DEVNULL,
+                                   env={**os.environ, 'LC_ALL': 'C', 'SYSTEMD_PAGER': ''})
+            values = reply.stdout.splitlines() if reply.returncode == 0 else []
+        except (OSError, subprocess.TimeoutExpired):
+            values = []
+        if key == 'locales':
+            values = [re.sub(r'\.utf-?8', '.UTF-8', value, flags=re.I) for value in values]
+            values = [value for value in values if LOCALE.fullmatch(value)]
+        else:
+            values = [value for value in values if ZONE.fullmatch(value)]
+        result[key] = sorted(set(values))
+    return answer({'status': 'read', **result})
+
+
+def main(argv):
+    args = [arg for arg in argv if arg != '--json']
+    if not args or args[0] not in ('capabilities', 'choices', 'get', 'set'):
+        return usage()
+    command, args = args[0], args[1:]
+    if command == 'choices':
+        return usage() if args else choices()
+    declared, declared_reason = declarations()
+    machine = Machine()
+    if command == 'capabilities':
+        if args:
+            return usage()
+        return answer({'status': 'read', 'reason': 'capabilities_read', 'platform': 'systemd',
+                       'settings': [row(machine, key, declared, declared_reason) for key in KEYS]})
+    if command == 'get':
+        if any(key not in KEYS for key in args):
+            return rejected('unknown_setting')
+        return answer({'status': 'read', 'reason': 'machine_settings_read',
+                       'settings': [row(machine, key, declared, declared_reason)
+                                    for key in (args or KEYS)]})
+    if len(args) != 2:
+        return usage()
+    key, value = args
+    if key not in KEYS:
+        return rejected('unknown_setting')
+    if len(value) > 256 or any(ord(char) < 32 for char in value):
+        return rejected('invalid_value', key=key)
+    try:
+        held = lock()
+    except Refusal as refusal:
+        return rejected(refusal.reason, key=key)
+    with held:
+        return change(machine, key, value, declared, declared_reason)
+
+
+def change(machine, key, value, declared, declared_reason):
+    """Read, change and confirm one key; the caller holds the lock."""
+    before = row(machine, key, declared, declared_reason)
+    if not before['editable']:
+        return rejected(before['reason'] or 'machine_setting_read_only', key=key, settings=[before])
+    try:
+        target = desired(key, value)
+    except Refusal as refusal:
+        return rejected(refusal.reason, key=key, settings=[before])
+    if before['value'] == target:
+        return answer({'status': 'unchanged', 'reason': 'machine_setting_unchanged', 'key': key,
+                       'before': before['value'], 'after': before['value'], 'settings': [before]})
+    failure = None
+    try:
+        apply(machine, key, value)
+    except Refusal as refusal:
+        if not refusal.sent:
+            return rejected(refusal.reason, key=key, settings=[before])
+        failure = refusal.reason
+    check = Machine()
+    after = row(check, key, declared, declared_reason)
+    try:
+        foreign = machine.sent is not None and check.keyboard() != machine.sent
+    except Refusal:
+        foreign = True
+    if failure or after['value'] != target or foreign:
+        # The machine may hold the new value, the old one or a third writer's: say so, with
+        # the way to look and the way back, never as a plain refusal.
+        return answer({'status': 'uncertain', 'reason': failure or 'machine_setting_unconfirmed',
+                       'key': key, 'before': before['value'], 'requested': target,
+                       'after': after['value'], 'settings': [after],
+                       'recovery': [f'read the machine: emaki-machine-settings get {key} --json',
+                                    'set the before value again to go back once that read '
+                                    'shows the change; do not repeat the change blindly']}, 3)
+    return answer({'status': 'applied', 'reason': 'machine_setting_applied', 'key': key,
+                   'before': before['value'], 'after': after['value'], 'settings': [after]})
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

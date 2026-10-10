@@ -25,9 +25,14 @@ def staged_dependencies(recipe, version=None, qml=None, provides=False, after_bu
         work = Path(directory)
         (work / 'quickshell').mkdir()
         (work / 'quickshell/LICENSE').write_text('fixture\n')
+        # CMake is stubbed; only the recipe's license and Qt metadata are installed.
+        (work / 'expected-files.list').write_text(
+            '/usr/share/licenses/quickshell-emaki/LICENSE\n'
+            '/usr/share/quickshell-emaki/qt-build-version\n')
         return subprocess.run(['bash', '-eu', '-c', '''
             source "$1"
-            cd "$2"
+            srcdir="$2"
+            cd "$srcdir"
             pkgdir="$2/stage"
             core_version=$3 qml_version=$4 output_field=$5
             cmake() { mkdir -p build; }
@@ -36,7 +41,7 @@ def staged_dependencies(recipe, version=None, qml=None, provides=False, after_bu
             }
             build
             eval "$6"
-            cd "$2"
+            cd "$srcdir"
             package
             [[ $(<"$pkgdir/usr/share/quickshell-emaki/qt-build-version") == "$core_version" ]]
             declare -n output="$output_field"

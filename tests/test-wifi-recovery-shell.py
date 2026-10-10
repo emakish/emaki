@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
-COMMAND = '["/usr/bin/pkexec", "/usr/lib/emaki/emaki-wifi-recover", "restart"]'
+COMMAND = '["pkexec", Platform.libDir + "/emaki-wifi-recover", "restart"]'
 QML = '''import QtQuick
 import Quickshell
 ShellRoot {
@@ -101,7 +101,7 @@ def run(mutant=False, failure=None):
         service = shell/'SystemService.qml'
         source = service.read_text()
         assert COMMAND in source, 'privileged command changed'
-        service.write_text(source.replace(COMMAND, json.dumps([str(helper), '/usr/lib/emaki/emaki-wifi-recover', 'restart'])))
+        service.write_text(source.replace(COMMAND, COMMAND.replace('"pkexec"', json.dumps(str(helper)))))
         # Other page probes are harmless fixtures too; no host service is contacted.
         (shell/'helpers/system-tools.py').write_text('import json\nprint(json.dumps({"state":"unavailable"}))\n')
         if mutant:

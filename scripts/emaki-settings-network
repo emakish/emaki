@@ -1,0 +1,276 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Read and change connection settings through NetworkManager only."""
+import configparser
+import ipaddress
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import time
+import uuid
+from urllib.parse import unquote, urlsplit
+
+DEADLINE = 0
+PROFILE_FIELDS = ('ipv4.dns,ipv6.dns,ipv4.ignore-auto-dns,ipv6.ignore-auto-dns,'
+                  'proxy.method,proxy.pac-url,proxy.pac-script')
+MANUAL_PREFIX = 'function FindProxyForURL(url, host) { return "PROXY '
+MANUAL_SUFFIX = '"; }'
+
+
+class Failure(Exception):
+    pass
+
+
+class MissingObject(Failure):
+    pass
+
+
+def nm(*args):
+    remaining = DEADLINE - time.monotonic() if DEADLINE else 20
+    if remaining <= 0:
+        raise Failure('Network settings took too long. Try again.')
+    try:
+        result = subprocess.run(['nmcli', '--wait', '8', *args], text=True,
+                                capture_output=True, timeout=min(10, remaining),
+                                env=dict(os.environ, LC_ALL='C'), stdin=subprocess.DEVNULL)
+    except FileNotFoundError:
+        raise Failure('NetworkManager is not available.') from None
+    except (OSError, subprocess.TimeoutExpired):
+        raise Failure('Network settings could not be reached. Try again.') from None
+    if result.returncode:
+        if 'show' in args or 'status' in args:
+            error = MissingObject if result.returncode == 10 else Failure
+            raise error('Network settings could not be read. Try again.')
+        raise Failure('NetworkManager could not complete this change. Check your connection and permissions.')
+    return result.stdout.rstrip('\n')
+
+
+def split_row(line):
+    """Decode nmcli terse escaping before interpreting field separators."""
+    values, value, escaped = [], '', False
+    for char in line:
+        if escaped:
+            value += char
+            escaped = False
+        elif char == '\\':
+            escaped = True
+        elif char == ':':
+            values.append(value)
+            value = ''
+        else:
+            value += char
+    if escaped:
+        value += '\\'
+    return values + [value]
+
+
+def properties(fields, *target):
+    output = nm('-t', '-m', 'multiline', '-e', 'no', '-f', fields, *target)
+    result = {}
+    for line in output.splitlines():
+        key, separator, value = line.partition(':')
+        if separator:
+            result[key] = value
+    return result
+
+
+def profiles():
+    result = []
+    for line in nm('-t', '-e', 'yes', '-f', 'UUID,NAME,TYPE,DEVICE', 'connection', 'show').splitlines():
+        row = split_row(line)
+        if len(row) != 4:
+            continue
+        ident, name, kind, device = row
+        if kind in ('loopback', 'tun'):
+            continue
+        result.append(dict(uuid=ident, name=name, type=kind,
+                           device='' if device == '--' else device,
+                           active=bool(device and device != '--')))
+    return result
+
+
+def status():
+    wired = []
+    for line in nm('-t', '-e', 'yes', '-f', 'DEVICE,TYPE,STATE,CONNECTION', 'device', 'status').splitlines():
+        row = split_row(line)
+        if len(row) == 4 and row[1] == 'ethernet':
+            wired.append(dict(device=row[0], state=row[2], connection=row[3]))
+    connections = []
+    wifi_profiles = []
+    for item in profiles():
+        wifi = item['type'] in ('802-11-wireless', 'wifi')
+        fields = PROFILE_FIELDS + (',802-11-wireless.ssid,802-11-wireless-security.key-mgmt' if wifi else '')
+        try:
+            data = properties(fields, 'connection', 'show', 'uuid', item['uuid'])
+        except MissingObject:
+            if not any(current['uuid'] == item['uuid'] for current in profiles()):
+                continue
+            raise
+        connections.append(item)
+        script = data.get('proxy.pac-script', '')
+        method = data.get('proxy.method', '')
+        automatic = method in ('1', 'auto', '1 (auto)')
+        manual = automatic and script.startswith(MANUAL_PREFIX) and script.endswith(MANUAL_SUFFIX)
+        mode = 'manual' if manual else ('auto' if automatic else 'none')
+        item.update(dns=[x for family in ('ipv4', 'ipv6')
+                         for x in re.split(r'[,\s]+', data.get(family + '.dns', '')) if x and x != '--'],
+                    dnsAutomatic=all(data.get(family + '.ignore-auto-dns', 'no') not in ('yes', 'true')
+                                     for family in ('ipv4', 'ipv6')),
+                    proxyMode=mode,
+                    proxyValue=script[len(MANUAL_PREFIX):-len(MANUAL_SUFFIX)] if manual else (data.get('proxy.pac-url', '') if automatic else ''),
+                    proxyCustomScript=bool(automatic and script and not manual))
+        if wifi:
+            addresses = []
+            if item['active']:
+                details = properties('IP4.ADDRESS,IP6.ADDRESS', 'device', 'show', item['device'])
+                addresses = [v for k, v in details.items() if '.ADDRESS' in k and v]
+            wifi_profiles.append(dict(uuid=item['uuid'], name=item['name'], device=item['device'],
+                                      ssid=data.get('802-11-wireless.ssid', ''), active=item['active'],
+                                      addresses=addresses, security=data.get('802-11-wireless-security.key-mgmt', '') or 'open'))
+    return dict(ok=True, schema_version=1, wired=wired, connections=connections, wifi_profiles=wifi_profiles, vpn_types=vpn_types())
+
+
+def selected(ident):
+    try:
+        if str(uuid.UUID(ident)) != ident.lower():
+            raise ValueError()
+    except ValueError:
+        raise Failure('Choose a saved connection.') from None
+    for item in profiles():
+        if item['uuid'].lower() == ident.lower():
+            return item
+    raise Failure('This connection is no longer available.')
+
+
+def apply(item, values):
+    nm('connection', 'modify', 'uuid', item['uuid'], *values)
+    if item['active']:
+        try:
+            active = nm('-g', 'GENERAL.CON-UUID', 'device', 'show', item['device'])
+            if active != item['uuid']:
+                raise Failure('Connection changed.')
+            nm('device', 'reapply', item['device'])
+        except Failure:
+            return dict(ok=False, saved=True, error='Settings were saved. Reconnect this connection to apply them.')
+    return dict(ok=True, message='')
+
+
+def dns(ident, values):
+    reset = values == ['reset']
+    addresses = []
+    if not reset:
+        try:
+            addresses = [ipaddress.ip_address(x) for x in re.split(r'[,\s]+', ' '.join(values).strip()) if x]
+        except ValueError:
+            raise Failure('Enter valid DNS server addresses.') from None
+        if not addresses or len(addresses) > 16:
+            raise Failure('Enter between one and sixteen DNS server addresses.')
+    item = selected(ident)
+    changes = []
+    for version in (4, 6):
+        family = 'ipv' + str(version)
+        changes += [family + '.dns', ','.join(str(x) for x in addresses if x.version == version),
+                    family + '.ignore-auto-dns', 'no' if reset else 'yes']
+    return apply(item, changes)
+
+
+def proxy(ident, mode, value=''):
+    url, script = '', ''
+    if mode == 'auto':
+        if value:
+            try:
+                parsed = urlsplit(value)
+                valid = parsed.scheme in ('http', 'https') and parsed.hostname and not parsed.username and not parsed.password
+                parsed.port
+            except ValueError:
+                valid = False
+            if not valid or any(c.isspace() for c in value) or len(value) > 4096:
+                raise Failure('Enter an HTTP or HTTPS proxy configuration URL.')
+        url = value
+    elif mode == 'manual':
+        # PAC strings cannot contain quotes, separators, credentials or executable text.
+        match = re.fullmatch(r'(\[[0-9A-Fa-f:]+\]|[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?):([0-9]{1,5})', value)
+        if not match or not 1 <= int(match[2]) <= 65535:
+            raise Failure('Enter a proxy address as host:port.')
+        if match[1].startswith('['):
+            try:
+                ipaddress.IPv6Address(match[1][1:-1])
+            except ValueError:
+                raise Failure('Enter a proxy address as host:port.') from None
+        script = MANUAL_PREFIX + value + MANUAL_SUFFIX
+    elif mode != 'none' or value:
+        raise Failure('Choose None, Automatic or Manual proxy settings.')
+    return apply(selected(ident), ['proxy.method', 'none' if mode == 'none' else 'auto',
+                                  'proxy.pac-url', url, 'proxy.pac-script', script])
+
+
+def vpn_types():
+    """Native WireGuard and installed NetworkManager import plugins."""
+    available = [{'label': 'WireGuard', 'value': 'wireguard'}]
+    executable = shutil.which('nmcli')
+    if not executable:
+        return []
+    prefix = Path(executable).resolve().parent.parent
+    services = set()
+    for directory in (prefix / 'lib/NetworkManager/VPN', prefix / 'lib64/NetworkManager/VPN'):
+        for filename in directory.glob('*.name'):
+            parser = configparser.ConfigParser(interpolation=None)
+            try:
+                parser.read(filename)
+                services.add(parser.get('VPN Connection', 'service', fallback=''))
+            except (OSError, configparser.Error):
+                continue
+    for kind, label in (('openvpn', 'OpenVPN'), ('openconnect', 'OpenConnect'),
+                        ('vpnc', 'VPNC'), ('strongswan', 'IPsec')):
+        if 'org.freedesktop.NetworkManager.' + kind in services:
+            available.append({'label': label, 'value': kind})
+    return available
+
+
+def import_vpn(kind, filename):
+    if not re.fullmatch('[a-z][a-z0-9-]{0,63}', kind):
+        raise Failure('Choose a valid VPN type.')
+    if kind not in [item['value'] for item in vpn_types()]:
+        raise Failure('This VPN type needs its NetworkManager plugin.')
+    if filename.startswith('file:'):
+        parsed = urlsplit(filename)
+        if parsed.netloc not in ('', 'localhost') or parsed.query or parsed.fragment:
+            raise Failure('Choose a local VPN configuration file.')
+        filename = unquote(parsed.path)
+    path = Path(filename).expanduser().absolute()
+    if not path.is_file() or not os.access(path, os.R_OK):
+        raise Failure('Choose a readable VPN configuration file.')
+    nm('connection', 'import', 'type', kind, 'file', str(path))
+    return dict(ok=True, message='VPN imported.')
+
+
+def main(args):
+    global DEADLINE
+    DEADLINE = time.monotonic() + 25
+    try:
+        if args == ['status', '--json']:
+            result = status()
+        elif len(args) >= 3 and args[0] == 'dns':
+            result = dns(args[1], args[2:])
+        elif 3 <= len(args) <= 4 and args[0] == 'proxy':
+            result = proxy(*args[1:])
+        elif len(args) == 3 and args[0] == 'import-vpn':
+            result = import_vpn(*args[1:])
+        else:
+            raise Failure('Choose a supported network settings action.')
+    except Failure as error:
+        result = dict(ok=False, error=str(error))
+    except (OSError, ValueError):
+        result = dict(ok=False, error='Network settings could not be read. Try again.')
+    result['schema_version'] = 1
+    print(json.dumps(result))
+    return 0 if result['ok'] else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

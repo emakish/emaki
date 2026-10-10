@@ -18,6 +18,7 @@ Desktop help:
 
 Commands:
   emaki                         Show system information (fastfetch)
+  emaki settings [page]         Open settings, optionally at a page
   emaki --version               Show the Emaki version
   emaki help                    Show this help
   emaki help --internal         Show diagnostic commands

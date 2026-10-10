@@ -48,7 +48,7 @@ def ordered(text, *tokens):
 
 def packaging():
     pkg = (PACKAGE / 'PKGBUILD').read_text()
-    require(re.search(r'^pkgrel=12$', pkg, re.M), 'lock-capture package must be release 12')
+    require(re.search(r'^pkgrel=13$', pkg, re.M), 'lock-capture package must be release 13')
     sources = array(pkg, 'source')
     require(sources.count(PATCH) == 1, f'{PATCH} must appear once in source')
     patches = [name for name in sources if name.endswith('.patch')]

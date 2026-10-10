@@ -550,3 +550,9 @@ console.log("PASS plain words for all " + codes.length + " worker error codes; u
     const message = "/dev/vda1 is mounted at /run/media/live/Files. Close its windows, unmount it, then refresh disks.";
     assert.equal(P.errorPresentation({code: "disk_busy", message, retryable: true}).sentence, message);
 }
+
+for (const length of [1, 7, 8, 1024]) {
+    const password = "x".repeat(length);
+    assert.equal(P.diskPasswordError(password), length < 8 ? "Use at least 8 characters for the startup password." : "");
+    assert.equal(P.accountErrors("Test", "test", password, password, "emaki", []).password, "");
+}

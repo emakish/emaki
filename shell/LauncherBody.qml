@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -7,6 +9,25 @@ import "Liquid.js" as Liquid
 // Queries and titles live only in this scene; status never returns their contents.
 Item {
     id: body
+    property SettingsController settingsController: null
+    property bool settingsActive: false
+    readonly property SettingsView settingsView: settingsLoader.item as SettingsView
+    function showSettings(page: string): bool {
+        if (!settingsController)
+            return false;
+        settingsActive = true;
+        settingsView?.navigate(page || "panel");
+        settingsView?.takeFocus();
+        return settingsView !== null;
+    }
+    function leaveSettings(): void {
+        if (!settingsActive)
+            return;
+        settingsView?.flushPending();
+        settingsActive = false;
+        takeFocus(keyboardMode);
+    }
+    onSettingsActiveChanged: wake()
     property bool keyboardBoundary: true
     property bool keyboardMode: false
     TapHandler {
@@ -15,12 +36,15 @@ Item {
             body.keyboardMode = false
     }
     function keyboardControls(): var {
-        let controls = [query, closeButton];
+        let controls = settingsActive ? [closeButton] : [query, closeButton];
         for (let i = 0; i < modesRepeater.count; ++i)
             controls.push(modesRepeater.itemAt(i));
-        for (let i = 0; i < categoryRepeater.count; ++i)
+        controls.push(settingsButton);
+        if (settingsActive)
+            controls.push(settingsView?.search);
+        for (let i = 0; !settingsActive && i < categoryRepeater.count; ++i)
             controls.push(categoryRepeater.itemAt(i));
-        if (list.footerItem && clipActions)
+        if (!settingsActive && list.footerItem && clipActions)
             controls = controls.concat((list.footerItem as ClipboardFooter).controls);
         return controls.filter(item => item && item.visible && item.enabled);
     }
@@ -35,8 +59,15 @@ Item {
     }
     Keys.onPressed: event => {
         keyboardMode = true;
+        if (settingsActive && settingsView?.activeFocus) {
+            event.accepted = false;
+            return;
+        }
         if (event.key === Qt.Key_Escape) {
-            dismissed();
+            if (settingsActive)
+                leaveSettings();
+            else
+                dismissed();
         } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
             moveKeyboardFocus(event.key === Qt.Key_Backtab || (event.modifiers & Qt.ShiftModifier) ? -1 : 1);
         } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Up) {
@@ -75,6 +106,7 @@ Item {
     readonly property AppCatalog localCatalog: sharedCatalog ? null : (catalogFactory.createObject(body) as AppCatalog)
     readonly property AppCatalog appCatalog: apps
     signal dismissed
+    signal settingsRequested
     Component {
         id: catalogFactory
         AppCatalog {}
@@ -213,7 +245,7 @@ Item {
     readonly property bool gridMode: modeIndex === 1
     readonly property bool listMode: !gridMode
     readonly property int frequentCount: gridMode && queryText.length === 0 && category === "All" ? apps.frequent.length : 0
-    readonly property bool categoriesShown: gridMode && queryText.length === 0
+    readonly property bool categoriesShown: !settingsActive && gridMode && queryText.length === 0
     readonly property var categories: ["All", "Development", "Internet", "Media", "Games", "Learning", "Office", "System"]
     readonly property var results: buildResults()
     readonly property int side: 22
@@ -235,11 +267,12 @@ Item {
     readonly property bool clipActions: modeIndex === 4 && clips.entries.length > 0
     readonly property real listContent: Math.max(0, results.length * (rowHeight + 2) - 2) + sectionCount * sectionHeight + (clipActions ? 50 : 0)
     readonly property real contentBottom: gridMode ? gridTop + Math.ceil((results.length - frequentCount) / 7) * 86 + 10 : listTop + listContent + 12
-    readonly property real desiredHeight: Math.min(Metrics.launcherHeader + Metrics.launcherBodyMax + Metrics.launcherFoot, Math.max(Metrics.launcherHeader + 24, contentBottom))
+    readonly property real desiredHeight: settingsActive ? Metrics.settingsHeight : Math.min(Metrics.launcherHeader + Metrics.launcherBodyMax + Metrics.launcherFoot, Math.max(Metrics.launcherHeader + 24, contentBottom))
     function setMode(name: string): bool {
         const index = modes.indexOf(name);
         if (index < 0)
             return false;
+        leaveSettings();
         modeIndex = index;
         takeFocus();
         return true;
@@ -511,6 +544,7 @@ Item {
         }
     }
     onModeIndexChanged: {
+        leaveSettings();
         selectionKey = "";
         wake();
     }
@@ -524,7 +558,7 @@ Item {
             selectAt(0);
         wake();
     }
-    readonly property bool inputFocused: query.activeFocus
+    readonly property bool inputFocused: settingsActive ? (settingsView?.search.activeFocus ?? false) : query.activeFocus
     readonly property int queryLength: query.length
     property int modeIndex: 1 // Apps by default (23.09): All is the search + Recent view
     readonly property var modes: ["All", "Apps", "Windows", "Files", "Clipboard"]
@@ -613,9 +647,14 @@ Item {
     }
     function takeFocus(keyboard): void {
         keyboardMode = keyboard === true;
-        query.forceActiveFocus(keyboard ? Qt.TabFocusReason : Qt.OtherFocusReason);
+        if (settingsActive)
+            settingsView?.takeFocus();
+        else
+            query.forceActiveFocus(keyboard ? Qt.TabFocusReason : Qt.OtherFocusReason);
     }
     function reset(): void {
+        settingsView?.flushPending();
+        settingsActive = false;
         query.text = "";
         modeIndex = 1;
         selectionKey = "";
@@ -665,7 +704,20 @@ Item {
     readonly property real morph: Math.max(0, Math.min(1, expansion))
     // The content arrives on the second half of the morph.
     readonly property real contentAlpha: Liquid.smooth((morph - .55) / .45)
-    readonly property real shownWidth: Metrics.islandHeight + (width - Metrics.islandHeight) * morph
+    // During close, the compact mark returns after the header mark has faded away.
+    readonly property real compactLogoAlpha: opened ? 1 - contentAlpha : 1 - Liquid.smooth(morph / .55)
+    property real animatedWidth: width
+    onAnimatedWidthChanged: wake()
+    Behavior on animatedWidth {
+        enabled: body.morph > 0
+        NumberAnimation {
+            duration: Metrics.morphMs
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Metrics.morphCurve
+        }
+    }
+    property real maximumWidth: Infinity
+    readonly property real shownWidth: Math.min(maximumWidth, Metrics.islandHeight + (animatedWidth - Metrics.islandHeight) * morph)
     readonly property real shownHeight: {
         tick;
         return Metrics.islandHeight + (Math.max(Metrics.islandHeight, heightSpring.x) - Metrics.islandHeight) * morph;
@@ -688,7 +740,10 @@ Item {
         return logoBubble ? Liquid.smooth(logoBubble.alpha.x) : 0;
     }
     // Where the active mode, category and selected item are, panel coordinates.
-    property rect modeRect: Qt.rect(0, 0, 0, 0)
+    readonly property rect modeRect: {
+        const mode = settingsActive ? settingsButton : modesRepeater.itemAt(modeIndex);
+        return mode ? Qt.rect(mode.x + (settingsActive ? 0 : modesRow.x), mode.y + (settingsActive ? 0 : modesRow.y), mode.width, mode.height) : Qt.rect(0, 0, 0, 0);
+    }
     property rect categoryRect: Qt.rect(0, 0, 0, 0)
     property var selection: null
     // dual() of launcher.js follows the selection bubble, not the selection: an item is drawn
@@ -733,7 +788,7 @@ Item {
     // whatever its name (Metrics.launcherTileBubble); rows and cards stand 6 px proud. Null
     // when not on screen.
     function selectedGeometry(): var {
-        return geometryOf(selected);
+        return settingsActive ? null : geometryOf(selected);
     }
     function geometryOf(i: int): var {
         if (i < 0 || i >= results.length || !opened)
@@ -784,9 +839,8 @@ Item {
         let active = false;
         heightSpring.target = height;
         active = Liquid.step(heightSpring, dt, 420, .8) || active;
-        const mode = modesRepeater.itemAt(modeIndex);
+        const mode = settingsActive ? settingsButton : modesRepeater.itemAt(modeIndex);
         if (mode) {
-            modeRect = itemRect(mode);
             active = Liquid.place(modeBubble, Liquid.pad([modeRect.x, modeRect.y, modeRect.width, modeRect.height], 4), 13, now) || active;
         }
         const chip = categoriesShown ? categoryRepeater.itemAt(categories.indexOf(category)) : null;
@@ -828,19 +882,36 @@ Item {
         if (!active)
             animating = false;
     }
+    function plateDrop(bubble, kind: string): var {
+        const d = Liquid.drop(bubble, origin.x, origin.y);
+        if (!d)
+            return null;
+        const x = Math.max(origin.x, d.rect.x);
+        const y = Math.max(origin.y, d.rect.y);
+        const right = Math.min(origin.x + shownWidth, d.rect.x + d.rect.z);
+        const bottom = Math.min(origin.y + shownHeight, d.rect.y + d.rect.w);
+        const alpha = d.params.w * (kind === "logo" ? 1 : contentAlpha);
+        if (right <= x || bottom <= y || alpha < .001)
+            return null;
+        return {
+            kind: kind,
+            rect: Qt.vector4d(x, y, right - x, bottom - y),
+            params: Qt.vector4d(Math.min(d.params.x, (right - x) / 2, (bottom - y) / 2), d.params.y, d.params.z, alpha)
+        };
+    }
     // The drops in screen coordinates: mode, category, selection once the panel has grown;
     // before that the button's bubble, which the panel carries out of the bar.
     readonly property var drops: {
         tick;
         const list = [];
         if (morph > .6) {
-            for (const b of [modeBubble, categoryBubble, selectBubble]) {
-                const d = Liquid.drop(b, origin.x, origin.y);
+            for (const [kind, b] of [["mode", modeBubble], ["category", categoryBubble], ["select", selectBubble]]) {
+                const d = plateDrop(b, kind);
                 if (d)
                     list.push(d);
             }
         } else if (logoBubble) {
-            const d = Liquid.drop(logoBubble, origin.x, origin.y);
+            const d = plateDrop(logoBubble, "logo");
             if (d)
                 list.push(d);
         }
@@ -857,6 +928,31 @@ Item {
         return {
             ready: glassReady,
             height: Math.round(shownHeight),
+            plate: {
+                x: 0,
+                y: 0,
+                width: shownWidth,
+                height: shownHeight
+            },
+            drops: drops.map(d => ({
+                        kind: d.kind,
+                        x: d.rect.x - origin.x,
+                        y: d.rect.y - origin.y,
+                        width: d.rect.z,
+                        height: d.rect.w,
+                        alpha: d.params.w
+                    })),
+            content_width: content.width,
+            texture_width: layer.width - origin.x,
+            focus: {
+                x: glassFocus.x,
+                y: glassFocus.y,
+                width: glassFocus.width,
+                height: glassFocus.height,
+                shown: glassFocus.shown,
+                contained: glassFocus.contained,
+                eligible: glassFocus.eligible
+            },
             mode: rect(modeBubble),
             category: rect(categoryBubble),
             select: rect(selectBubble),
@@ -877,19 +973,24 @@ Item {
         radius: body.shownRadius
         color: LiquidPalette.flatPlate
     }
-    Repeater {
-        model: body.glassReady ? [] : body.drops
-        Rectangle {
-            required property var modelData
-            x: modelData.rect.x - body.origin.x
-            y: modelData.rect.y - body.origin.y
-            width: modelData.rect.z
-            height: modelData.rect.w
-            radius: modelData.params.x
-            opacity: modelData.params.w
-            color: LiquidPalette.flatDrop
-            border.width: 1
-            border.color: LiquidPalette.flatDropRim
+    Item {
+        width: body.shownWidth
+        height: body.shownHeight
+        clip: true
+        Repeater {
+            model: body.glassReady ? [] : body.drops
+            Rectangle {
+                required property var modelData
+                x: modelData.rect.x - body.origin.x
+                y: modelData.rect.y - body.origin.y
+                width: modelData.rect.z
+                height: modelData.rect.w
+                radius: modelData.params.x
+                opacity: modelData.params.w
+                color: LiquidPalette.flatDrop
+                border.width: 1
+                border.color: LiquidPalette.flatDropRim
+            }
         }
     }
 
@@ -1032,7 +1133,7 @@ Item {
         id: layer
         x: -body.origin.x
         y: -body.origin.y
-        width: body.origin.x + body.width + 16
+        width: body.origin.x + Math.max(body.width, body.animatedWidth) + 16
         height: body.origin.y + Math.max(body.height, body.shownHeight) + 16
         // The bar's button arrow, going as the content comes (launcher.js paint()).
         Icon {
@@ -1042,7 +1143,7 @@ Item {
             height: 18
             kind: "logo"
             ink: ShellPalette.accent
-            opacity: (1 - body.contentAlpha) * (1 - body.logoAlpha)
+            opacity: body.compactLogoAlpha * (1 - body.logoAlpha)
             visible: opacity > .001
         }
         Item {
@@ -1051,16 +1152,17 @@ Item {
             y: body.origin.y
             width: body.shownWidth
             height: body.shownHeight
-            clip: !body.glassReady
+            clip: body.settingsActive || !body.glassReady
             Item {
                 id: content
-                width: body.width
+                width: Math.max(body.width, body.animatedWidth)
                 height: body.height
                 opacity: body.contentAlpha
                 visible: opacity > .001
                 // Header: the arrow (a click closes, 23.09), the modes, a hairline.
                 Icon {
                     id: closeButton
+                    objectName: "launcher-close"
                     activeFocusOnTab: true
                     Keys.onReturnPressed: body.dismissed()
                     Keys.onEnterPressed: body.dismissed()
@@ -1090,7 +1192,7 @@ Item {
                 }
                 Row {
                     id: modesRow
-                    x: body.width - 20 - width
+                    x: body.animatedWidth - 56 - width
                     y: 16
                     height: 28
                     spacing: 2
@@ -1101,6 +1203,7 @@ Item {
                             id: modeItem
                             activeFocusOnTab: true
                             function activate(): void {
+                                body.leaveSettings();
                                 body.modeIndex = index;
                             }
                             Keys.onReturnPressed: activate()
@@ -1110,6 +1213,7 @@ Item {
                                 shown: body.keyboardMode && modeItem.activeFocus && !body.glassReady
                             }
                             required property int index
+                            objectName: "launcher-tab-" + modelData.toLowerCase()
                             required property string modelData
                             width: modeLabel.implicitWidth + 22
                             height: 28
@@ -1121,20 +1225,62 @@ Item {
                                 font.family: ShellPalette.uiFont
                                 font.pixelSize: 13
                                 font.weight: Font.Medium
-                                color: body.modeIndex === modeItem.index ? body.ink : body.dim
-                                opacity: body.modeIndex === modeItem.index ? 1 - body.modeAlpha : 1
+                                color: !body.settingsActive && body.modeIndex === modeItem.index ? body.ink : body.dim
+                                opacity: !body.settingsActive && body.modeIndex === modeItem.index ? 1 - body.modeAlpha : 1
                             }
                             MouseArea {
                                 anchors.fill: parent
                                 enabled: body.opened
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    body.modeIndex = modeItem.index;
+                                    modeItem.activate();
                                     body.takeFocus();
                                 }
                             }
                         }
                     }
+                }
+                Item {
+                    id: settingsButton
+                    objectName: "launcher-settings"
+                    x: body.animatedWidth - 46
+                    y: 16
+                    width: 28
+                    height: 28
+                    activeFocusOnTab: true
+                    function activate(): void {
+                        if (body.opened && !body.settingsActive)
+                            body.settingsRequested();
+                    }
+                    Keys.onReturnPressed: activate()
+                    Keys.onEnterPressed: activate()
+                    Keys.onSpacePressed: activate()
+                    FocusRing {
+                        shown: body.keyboardMode && settingsButton.activeFocus && !body.glassReady
+                    }
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 8
+                        color: gearMouse.containsMouse ? LiquidPalette.flatDrop : "transparent"
+                    }
+                    Image {
+                        anchors.centerIn: parent
+                        width: 20
+                        height: 20
+                        source: Qt.resolvedUrl("settings/icons/gear.svg")
+                        sourceSize: Qt.size(24, 24)
+                    }
+                    MouseArea {
+                        id: gearMouse
+                        anchors.fill: parent
+                        enabled: body.opened
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: settingsButton.activate()
+                    }
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Settings"
+                    Accessible.onPressAction: settingsButton.activate()
                 }
                 Rectangle {
                     x: body.side
@@ -1143,170 +1289,176 @@ Item {
                     height: 1
                     color: body.faint
                 }
-                Text {
-                    x: body.side
-                    y: body.bodyTop
-                    width: body.width - 2 * body.side
-                    height: 16
-                    visible: body.note !== ""
-                    verticalAlignment: Text.AlignVCenter
-                    elide: Text.ElideRight
-                    textFormat: Text.PlainText
-                    text: body.note
-                    font.family: ShellPalette.uiFont
-                    font.pixelSize: 11
-                    font.weight: Font.Medium
-                    color: body.dim
-                }
+                Item {
+                    id: regularContent
+                    objectName: "launcher-content"
+                    anchors.fill: parent
+                    visible: !body.settingsActive
+                    Text {
+                        x: body.side
+                        y: body.bodyTop
+                        width: body.width - 2 * body.side
+                        height: 16
+                        visible: body.note !== ""
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
+                        textFormat: Text.PlainText
+                        text: body.note
+                        font.family: ShellPalette.uiFont
+                        font.pixelSize: 11
+                        font.weight: Font.Medium
+                        color: body.dim
+                    }
 
-                // Apps: Frequent, the categories, the grid of tiles.
-                Text {
-                    x: body.side
-                    y: body.frequentTop
-                    height: 18
-                    visible: body.frequentCount > 0
-                    verticalAlignment: Text.AlignVCenter
-                    text: "FREQUENT"
-                    font.family: ShellPalette.uiFont
-                    font.pixelSize: 11
-                    font.weight: Font.DemiBold
-                    color: body.dim
-                }
-                Row {
-                    x: body.side
-                    y: body.frequentTop + 22
-                    height: 76
-                    Repeater {
-                        id: frequentRepeater
-                        model: body.frequentCount ? body.results.slice(0, body.frequentCount) : []
-                        TileDelegate {
-                            width: (body.width - 2 * body.side) / 6
-                            height: 76
+                    // Apps: Frequent, the categories, the grid of tiles.
+                    Text {
+                        x: body.side
+                        y: body.frequentTop
+                        height: 18
+                        visible: body.frequentCount > 0
+                        verticalAlignment: Text.AlignVCenter
+                        text: "FREQUENT"
+                        font.family: ShellPalette.uiFont
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                        color: body.dim
+                    }
+                    Row {
+                        x: body.side
+                        y: body.frequentTop + 22
+                        height: 76
+                        Repeater {
+                            id: frequentRepeater
+                            model: body.frequentCount ? body.results.slice(0, body.frequentCount) : []
+                            TileDelegate {
+                                width: (body.width - 2 * body.side) / 6
+                                height: 76
+                            }
                         }
                     }
-                }
-                Row {
-                    x: body.side
-                    y: body.categoriesTop
-                    height: 26
-                    spacing: 2
-                    Repeater {
-                        id: categoryRepeater
-                        model: body.categoriesShown ? body.categories : []
-                        Item {
-                            id: chip
-                            activeFocusOnTab: true
-                            function activate(): void {
-                                body.category = modelData;
-                            }
-                            Keys.onReturnPressed: activate()
-                            Keys.onEnterPressed: activate()
-                            Keys.onSpacePressed: activate()
-                            FocusRing {
-                                shown: body.keyboardMode && chip.activeFocus && !body.glassReady
-                            }
-                            required property string modelData
-                            readonly property bool current: body.category === modelData
-                            width: chipLabel.implicitWidth + 22
-                            height: 26
-                            Text {
-                                id: chipLabel
-                                anchors.centerIn: parent
-                                text: chip.modelData
-                                textFormat: Text.PlainText
-                                font.family: ShellPalette.uiFont
-                                font.pixelSize: 13
-                                font.weight: Font.Medium
-                                color: chip.current ? body.ink : body.dim
-                                opacity: chip.current ? 1 - body.categoryAlpha : 1
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: body.opened
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    body.category = chip.modelData;
-                                    body.takeFocus();
+                    Row {
+                        x: body.side
+                        y: body.categoriesTop
+                        height: 26
+                        spacing: 2
+                        Repeater {
+                            id: categoryRepeater
+                            model: body.categoriesShown ? body.categories : []
+                            Item {
+                                id: chip
+                                activeFocusOnTab: true
+                                function activate(): void {
+                                    body.category = modelData;
+                                }
+                                Keys.onReturnPressed: activate()
+                                Keys.onEnterPressed: activate()
+                                Keys.onSpacePressed: activate()
+                                FocusRing {
+                                    shown: body.keyboardMode && chip.activeFocus && !body.glassReady
+                                }
+                                required property string modelData
+                                readonly property bool current: body.category === modelData
+                                width: chipLabel.implicitWidth + 22
+                                height: 26
+                                Text {
+                                    id: chipLabel
+                                    anchors.centerIn: parent
+                                    text: chip.modelData
+                                    textFormat: Text.PlainText
+                                    font.family: ShellPalette.uiFont
+                                    font.pixelSize: 13
+                                    font.weight: Font.Medium
+                                    color: chip.current ? body.ink : body.dim
+                                    opacity: chip.current ? 1 - body.categoryAlpha : 1
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    enabled: body.opened
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        body.category = chip.modelData;
+                                        body.takeFocus();
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                GridView {
-                    id: grid
-                    visible: body.gridMode
-                    x: 24
-                    y: body.gridTop
-                    width: body.width - 48
-                    height: Math.max(0, body.height - y - 10)
-                    clip: true
-                    cellWidth: body.gridCell
-                    cellHeight: 86
-                    model: body.gridMode ? body.results.slice(body.frequentCount) : []
-                    onContentYChanged: body.wake()
-                    onCountChanged: body.wake()
-                    delegate: TileDelegate {
-                        offset: body.frequentCount
-                        width: grid.cellWidth
-                        height: 84
-                    }
-                }
-
-                // Every other view: rows (All under kind headings).
-                ListView {
-                    id: list
-                    visible: body.listMode
-                    x: body.side
-                    y: body.listTop
-                    width: body.width - 2 * body.side
-                    height: Math.max(0, body.height - y - 12)
-                    clip: true
-                    spacing: 2
-                    model: body.listMode ? body.results : []
-                    onContentYChanged: body.wake()
-                    onCountChanged: body.wake()
-                    section.property: body.sectioned ? "group" : ""
-                    section.delegate: Item {
-                        required property string section
-                        width: list.width
-                        height: body.sectionHeight
-                        Text {
-                            anchors.bottom: parent.bottom
-                            anchors.bottomMargin: 4
-                            height: 18
-                            verticalAlignment: Text.AlignVCenter
-                            text: parent.section.toLocaleUpperCase()
-                            textFormat: Text.PlainText
-                            font.family: ShellPalette.uiFont
-                            font.pixelSize: 11
-                            font.weight: Font.DemiBold
-                            color: body.dim
+                    GridView {
+                        id: grid
+                        visible: body.gridMode
+                        x: 24
+                        y: body.gridTop
+                        width: body.width - 48
+                        height: Math.max(0, body.height - y - 10)
+                        clip: true
+                        cellWidth: body.gridCell
+                        cellHeight: 86
+                        model: body.gridMode ? body.results.slice(body.frequentCount) : []
+                        onContentYChanged: body.wake()
+                        onCountChanged: body.wake()
+                        delegate: TileDelegate {
+                            offset: body.frequentCount
+                            width: grid.cellWidth
+                            height: 84
                         }
                     }
-                    delegate: RowDelegate {
-                        width: list.width
-                        height: body.rowHeight
-                    }
-                    // Clipboard: clear everything, pause the recorder (when the shell owns it).
-                    footer: ClipboardFooter {
-                        controls: [clearClips, recordClips]
-                        width: list.width
-                        height: body.clipActions ? 50 : 0
-                        visible: body.clipActions
-                        Row {
-                            y: 8
-                            spacing: 8
-                            ActionText {
-                                id: clearClips
-                                text: "Clear all"
-                                color: body.danger
-                                onClicked: body.clipboard.clear()
+
+                    // Every other view: rows (All under kind headings).
+                    ListView {
+                        id: list
+                        visible: body.listMode
+                        x: body.side
+                        y: body.listTop
+                        width: body.width - 2 * body.side
+                        height: Math.max(0, body.height - y - 12)
+                        clip: true
+                        spacing: 2
+                        model: body.listMode ? body.results : []
+                        onContentYChanged: body.wake()
+                        onCountChanged: body.wake()
+                        section.property: body.sectioned ? "group" : ""
+                        section.delegate: Item {
+                            required property string section
+                            width: list.width
+                            height: body.sectionHeight
+                            Text {
+                                anchors.bottom: parent.bottom
+                                anchors.bottomMargin: 4
+                                height: 18
+                                verticalAlignment: Text.AlignVCenter
+                                text: parent.section.toLocaleUpperCase()
+                                textFormat: Text.PlainText
+                                font.family: ShellPalette.uiFont
+                                font.pixelSize: 11
+                                font.weight: Font.DemiBold
+                                color: body.dim
                             }
-                            ActionText {
-                                id: recordClips
-                                visible: body.clipboard.recorderOwned
-                                text: body.clipboard.recorder === "recording" ? "Pause recording" : "Resume recording"
-                                onClicked: body.clipboard.setRecording(body.clipboard.recorder !== "recording")
+                        }
+                        delegate: RowDelegate {
+                            width: list.width
+                            height: body.rowHeight
+                        }
+                        // Clipboard: clear everything, pause the recorder (when the shell owns it).
+                        footer: ClipboardFooter {
+                            controls: [clearClips, recordClips]
+                            width: list.width
+                            height: body.clipActions ? 50 : 0
+                            visible: body.clipActions
+                            Row {
+                                y: 8
+                                spacing: 8
+                                ActionText {
+                                    id: clearClips
+                                    text: "Clear all"
+                                    color: body.danger
+                                    onClicked: body.clipboard.clear()
+                                }
+                                ActionText {
+                                    id: recordClips
+                                    visible: body.clipboard.recorderOwned
+                                    text: body.clipboard.recorder === "recording" ? "Pause recording" : "Resume recording"
+                                    onClicked: body.clipboard.setRecording(body.clipboard.recorder !== "recording")
+                                }
                             }
                         }
                     }
@@ -1348,13 +1500,14 @@ Item {
         height: 18
         kind: "logo"
         ink: ShellPalette.accent
-        opacity: (1 - body.contentAlpha) * body.logoAlpha
+        opacity: body.compactLogoAlpha * body.logoAlpha
         visible: opacity > .001
     }
     Item {
         id: onGlass
-        width: body.width
-        height: body.height
+        width: body.shownWidth
+        height: body.shownHeight
+        clip: true
         opacity: body.contentAlpha
         visible: opacity > .001
         Text {
@@ -1362,7 +1515,7 @@ Item {
             y: body.modeRect.y
             width: body.modeRect.width
             height: body.modeRect.height
-            visible: body.modeAlpha > .001
+            visible: !body.settingsActive && body.modeAlpha > .001
             opacity: body.modeAlpha
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
@@ -1390,15 +1543,18 @@ Item {
             color: body.ink
         }
         OnGlassItem {
+            visible: !body.settingsActive
             sel: body.trail
             alpha: body.trailOnGlass
         }
         OnGlassItem {
+            visible: !body.settingsActive
             sel: body.selection
             alpha: body.selectOnGlass
         }
         TextInput {
             id: query
+            visible: !body.settingsActive
             TapHandler {
                 acceptedButtons: Qt.AllButtons
                 onPressedChanged: if (pressed)
@@ -1509,8 +1665,34 @@ Item {
             }
         }
     }
+    Item {
+        width: body.shownWidth
+        height: body.shownHeight
+        clip: true
+        opacity: body.contentAlpha
+        visible: opacity > .001
+        Loader {
+            id: settingsLoader
+            active: body.settingsActive && body.settingsController !== null
+            y: Metrics.launcherHeader
+            width: body.width
+            height: Math.max(0, body.height - y)
+            sourceComponent: SettingsView {
+                embedded: true
+                surfaceRadius: body.shownRadius
+                catalog: body.settingsController.catalog
+                service: body.settingsController.service
+                niri: body.niri
+                notificationStore: body.settingsController.notificationStore
+                displays: body.settingsController.displays
+                availablePages: body.settingsController.availablePages
+                onCloseRequested: body.leaveSettings()
+            }
+        }
+    }
     // Draw the outline once, above the glass, without refracting its edges.
     FocusRing {
+        id: glassFocus
         anchors.fill: undefined
         readonly property Item focused: body.Window.window?.activeFocusItem ?? null
         readonly property bool belongs: focused !== null && body.keyboardControls().includes(focused)
@@ -1523,6 +1705,8 @@ Item {
         y: position.y
         width: belongs ? focused.width : 0
         height: belongs ? focused.height : 0
-        shown: body.keyboardMode && body.opened && body.glassReady && belongs
+        readonly property bool contained: belongs && x >= 0 && y >= 0 && x + width <= body.shownWidth && y + height <= body.shownHeight
+        readonly property bool eligible: body.keyboardMode && body.opened && contained
+        shown: body.glassReady && eligible
     }
 }

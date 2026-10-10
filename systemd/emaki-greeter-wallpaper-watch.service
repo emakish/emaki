@@ -9,7 +9,7 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 -B /usr/share/emaki/shell/helpers/publish-wallpaper.py --watch
+ExecStart=python3 -B @EMAKI_DATADIR@/shell/helpers/publish-wallpaper.py --watch
 UMask=0027
 NoNewPrivileges=yes
 Restart=on-failure

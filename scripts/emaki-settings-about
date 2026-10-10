@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Read system details and save a private, local diagnostic report for review."""
+import json
+import os
+from pathlib import Path
+import platform
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+
+sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import emaki_paths
+
+UNKNOWN = 'Unavailable'
+
+
+def read(path):
+    try:
+        return Path(path).read_text(errors='replace')[:262144].strip()
+    except OSError:
+        return ''
+
+
+def command(args):
+    try:
+        result = subprocess.run(args, capture_output=True, text=True, timeout=10,
+                                env=dict(os.environ, LC_ALL='C'))
+        return result.stdout.strip()[:262144] if result.returncode == 0 else UNKNOWN
+    except (OSError, subprocess.SubprocessError, UnicodeError):
+        return UNKNOWN
+
+
+def release():
+    result = {}
+    for line in read(Path(emaki_paths.LIBDIR).parent / 'emaki-release').splitlines():
+        key, sep, value = line.partition('=')
+        if sep and key in ('VERSION', 'LABEL', 'CHANNEL', 'EMAKI_COMMIT'):
+            try:
+                words = shlex.split(value)
+                result[key] = ' '.join(words)
+            except ValueError:
+                pass
+    return result
+
+
+def graphics_names(output):
+    """Keep the PCI vendor and device name, without bus, class or revision metadata."""
+    vendors = {
+        'Advanced Micro Devices, Inc. [AMD/ATI]': 'AMD',
+        'Advanced Micro Devices, Inc. [AMD]': 'AMD',
+        'Intel Corporation': 'Intel',
+        'NVIDIA Corporation': 'NVIDIA',
+        'Red Hat, Inc.': 'Red Hat',
+    }
+    names = []
+    for line in output.splitlines():
+        try:
+            fields = shlex.split(line)
+        except ValueError:
+            continue
+        if len(fields) < 4 or fields[1] not in ('VGA compatible controller', '3D controller', 'Display controller'):
+            continue
+        vendor, device = fields[2:4]
+        if not vendor or not device:
+            continue
+        vendor = vendors.get(vendor, vendor)
+        # PCI names often pair a chip codename with its product name in brackets.
+        _, bracket, product = device.partition(' [')
+        if bracket and product.endswith(']'):
+            device = product[:-1]
+        names.append(f'{vendor} {device}')
+    return '\n'.join(names) or UNKNOWN
+
+
+def details():
+    info = release()
+    cpu = next((line.partition(':')[2].strip() for line in read('/proc/cpuinfo').splitlines()
+                if line.startswith(('model name', 'Hardware'))), UNKNOWN)
+    memory = next((line.partition(':')[2].strip() for line in read('/proc/meminfo').splitlines()
+                   if line.startswith('MemTotal:')), UNKNOWN)
+    try:
+        amount, unit = memory.split()
+        memory = f'{int(amount) / 2**20:.1f} GiB' if unit == 'kB' and int(amount) > 0 else UNKNOWN
+    except ValueError:
+        memory = UNKNOWN
+    graphics = graphics_names(command(['lspci', '-mm']))
+    try:
+        disk = shutil.disk_usage('/')
+        storage = f'{disk.total / 2**30:.1f} GiB · {disk.free / 2**30:.1f} GiB free'
+    except OSError:
+        storage = UNKNOWN
+    firmware = ' '.join(filter(None, [read('/sys/class/dmi/id/bios_vendor'),
+                                    read('/sys/class/dmi/id/bios_version')])) or UNKNOWN
+    model = ' '.join(filter(None, [read('/sys/class/dmi/id/sys_vendor'),
+                                 read('/sys/class/dmi/id/product_name')])) or UNKNOWN
+    return {'version': info.get('VERSION', UNKNOWN), 'label': info.get('LABEL', ''),
+            'channel': info.get('CHANNEL') or command(['emaki-update-channel']),
+            'commit': info.get('EMAKI_COMMIT', UNKNOWN), 'computer': model,
+            'processor': cpu, 'graphics': graphics, 'memory': memory, 'disk': storage,
+            'firmware': firmware, 'kernel': platform.release(),
+            'window_manager': command(['niri', '--version'])}
+
+
+def report(info):
+    root = Path(os.environ.get('XDG_STATE_HOME') or Path.home() / '.local/state')
+    if not root.is_absolute():
+        root = Path.home() / '.local/state'
+    directory = root / 'emaki/reports'
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    parts = ['Emaki problem report', 'Review this file before sharing. It may contain private information.',
+             'This file has not been uploaded.', '', 'System details']
+    parts.extend(f'{key}: {value}' for key, value in info.items())
+    for title, args in [
+        ('Recent journal errors', ['journalctl', '-b', '-p', 'err', '-n', '200', '--no-pager']),
+        ('Failed system units', ['systemctl', '--failed', '--no-legend', '--no-pager']),
+        ('Failed user units', ['systemctl', '--user', '--failed', '--no-legend', '--no-pager']),
+        ('Block devices', ['lsblk', '-o', 'NAME,TYPE,SIZE,MODEL', '--json']),
+    ]:
+        parts.extend(['', title, command(args)])
+    fd, name = tempfile.mkstemp(prefix='problem-', suffix='.txt', dir=directory)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            stream.write('\n'.join(parts) + '\n')
+    except BaseException:
+        Path(name).unlink(missing_ok=True)
+        raise
+    return name
+
+
+def main(args):
+    if args not in (['status', '--json'], ['report', '--json']):
+        print(json.dumps({'schema_version': 1, 'status': 'error', 'reason': 'invalid_command'}))
+        return 2
+    try:
+        info = details()
+        response = {'schema_version': 1, 'status': 'ready', 'details': info}
+        if args[0] == 'report':
+            response.update(status='saved', path=report(info))
+    except OSError:
+        print(json.dumps({'schema_version': 1, 'status': 'error', 'reason': 'report_save_failed'}))
+        return 1
+    print(json.dumps(response))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

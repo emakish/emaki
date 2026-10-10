@@ -10,6 +10,6 @@ OnFailure=emaki-shell-recovery.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/emaki-shell-health reconcile
+ExecStart=@EMAKI_BINDIR@/emaki-shell-health reconcile
 TimeoutStartSec=60
 Slice=app.slice

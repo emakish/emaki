@@ -190,6 +190,39 @@ fn atomic_replacement_uses_private_modes_and_removes_temporary_files() {
 }
 
 #[test]
+fn session_wrapper_loads_optional_displays_before_inherited_configuration() {
+    let mut fixture = Fixture::new();
+    // This profile represents an installed session with a non-default XDG config root.
+    let displays = fixture.profile.config.join("displays.kdl");
+    assert!(!displays.exists());
+    let path = config(&fixture.profile, &fixture.before).unwrap();
+    let wrapper = fs::read_to_string(&path).unwrap();
+    let includes: Vec<_> = wrapper
+        .lines()
+        .filter(|line| line.starts_with("include "))
+        .collect();
+    assert_eq!(
+        includes[0],
+        format!(
+            "include optional=true {}",
+            serde_json::to_string(displays.to_str().unwrap()).unwrap()
+        )
+    );
+    assert!(includes[1].contains("niri/fork"));
+    assert!(!displays.exists());
+
+    let contents = b"output \"DP-1\" { scale 1.25; }\n";
+    fs::write(&displays, contents).unwrap();
+    config(&fixture.profile, &fixture.before).unwrap();
+    assert_eq!(fs::read_to_string(&path).unwrap(), wrapper);
+    assert_eq!(fs::read(&displays).unwrap(), contents);
+
+    fixture.profile.installed = false;
+    config(&fixture.profile, &fixture.before).unwrap();
+    assert!(!fs::read_to_string(path).unwrap().contains("displays.kdl"));
+}
+
+#[test]
 fn session_wrapper_derives_overrides_and_wallpaper_mode_without_editing_generations() {
     let fixture = Fixture::new();
     let mut document = fixture.after.clone();

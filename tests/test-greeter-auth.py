@@ -77,10 +77,11 @@ def harness(socket_mode='server'):
         qml = profile / 'qml'
         for name in ('AuthController', 'GreeterAuth', 'LockSession', 'GreeterSession'):
             shutil.copy(ROOT / 'shell' / (name + '.qml'), qml)
+        shutil.copy(ROOT / 'shell/Platform.qml', qml)
         (qml / 'helpers').mkdir()
         shutil.copy(ROOT / 'shell/helpers/greeter-auth.py', qml / 'helpers')
         shutil.copy(ROOT / 'tests/fixtures/greeter/GreeterAuthTest.qml', qml / 'check.qml')
-        (qml / 'qmldir').write_text(''.join(f'{name} 1.0 {name}.qml\n' for name in
+        (qml / 'qmldir').write_text('singleton Platform 1.0 Platform.qml\n' + ''.join(f'{name} 1.0 {name}.qml\n' for name in
                                           ('AuthController', 'GreeterAuth', 'LockSession', 'GreeterSession')))
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
                    QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(runtime_path(profile)),

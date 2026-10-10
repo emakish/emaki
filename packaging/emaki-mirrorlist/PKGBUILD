@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # shellcheck shell=bash disable=SC2034,SC2154
 pkgname=emaki-mirrorlist
-pkgver=0.4.2
+pkgver=0.5.0
 pkgrel=1
 pkgdesc='Emaki package repository channels'
 arch=('any')
@@ -14,7 +14,7 @@ source=('emaki-mirrorlist' 'stable.conf' 'testing.conf' 'emaki-mirrorlist.instal
 sha256sums=('ba79dca4c645f0768689cc5fbb26ffca764c8ba933ebc6b0445ab5936dc51546'
             '2ff0d5e5e994d7f429791ef83a9538bac2318245cca8a7b18ac1453758cf8b07'
             'f5481aef42c693489bf260488d241b834e2f4059c6542d5ea850bd389c56443c'
-            '0aba77a8b8840327723e3f516c3f95d6ba869926376542b8cc12c022662e01c6'
+            'ba0d2171af441b2dc4552864f2b57313f325335f6f0dc94794cee98953c58787'
             '97337eb28818ee63f3cc409278de6e998704de2bddaf28b079026d368ad058c6')
 
 package() {

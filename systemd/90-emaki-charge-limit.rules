@@ -1,0 +1,4 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Battery discovery can finish after the boot service has run.
+ACTION=="add", SUBSYSTEM=="power_supply", ATTR{type}=="Battery", TAG+="systemd", ENV{SYSTEMD_WANTS}+="emaki-charge-limit.service"

@@ -1,0 +1,13 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Apply saved Emaki battery charge limits
+After=systemd-udev-trigger.service
+ConditionPathExists=/var/lib/emaki/charge-limits.json
+
+[Service]
+Type=oneshot
+ExecStart=@EMAKI_LIBEXECDIR@/emaki-charge-limit apply
+
+[Install]
+WantedBy=multi-user.target

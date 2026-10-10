@@ -310,6 +310,8 @@ function sameLayouts(a, b) {
 function diskPasswordError(password) {
     if (!password || /[^\x20-\x7e]/.test(password) || password.length > 1024)
         return "Use characters available on an English (US) keyboard for the startup password (at most 1024 characters).";
+    if (password.length < 8)
+        return "Use at least 8 characters for the startup password.";
     return "";
 }
 

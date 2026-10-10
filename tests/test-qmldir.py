@@ -10,9 +10,9 @@ ROOT = Path(__file__).resolve().parent.parent
 SHELL = ROOT / 'shell'
 
 
-def registered():
+def registered(directory):
     names = set()
-    for line in (SHELL / 'qmldir').read_text().splitlines():
+    for line in (directory / 'qmldir').read_text().splitlines():
         match = re.fullmatch(r'(?:singleton\s+)?([A-Z]\w*)\s+[\d.]+\s+(\S+\.qml)', line.strip())
         if match:
             names.add((match[1], match[2]))
@@ -22,15 +22,20 @@ def registered():
 class Qmldir(unittest.TestCase):
     def test_every_component_is_registered(self):
         # Lower-case files (shell.qml, lock.qml, greeter.qml, session-cover.qml) are entry points, not types.
-        components = {path.name for path in SHELL.glob('*.qml') if path.name[0].isupper()}
-        listed = {file for _, file in registered()}
-        self.assertEqual(sorted(components - listed), [], 'add these to shell/qmldir')
+        directories = {path.parent for path in SHELL.rglob('*.qml')}
+        for directory in directories:
+            with self.subTest(directory=directory.relative_to(ROOT)):
+                self.assertTrue((directory / 'qmldir').is_file())
+                components = {path.name for path in directory.glob('*.qml') if path.name[0].isupper()}
+                listed = {file for _, file in registered(directory)}
+                self.assertEqual(sorted(components - listed), [], 'add these to the local qmldir')
 
     def test_every_registration_has_its_file(self):
-        for name, file in registered():
-            with self.subTest(name=name):
-                self.assertEqual(Path(file).stem, name)
-                self.assertTrue((SHELL / file).is_file(), file)
+        for directory in {path.parent for path in SHELL.rglob('qmldir')}:
+            for name, file in registered(directory):
+                with self.subTest(name=name):
+                    self.assertEqual(Path(file).stem, name)
+                    self.assertTrue((directory / file).is_file(), file)
 
 
 if __name__ == '__main__':

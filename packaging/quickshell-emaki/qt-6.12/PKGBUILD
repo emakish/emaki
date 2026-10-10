@@ -41,11 +41,13 @@ _archive="$_pkgname-$pkgver"
 source=("$_archive.tar.gz::$url/archive/v$pkgver.tar.gz"
         0001-wlr-screencopy-raw-wl_output-for-transform.patch
         0002-network-nm-name-the-activation-a-connection-failure.patch
-        0003-qt-6.12-moc-includes.patch)
+        0003-qt-6.12-moc-includes.patch
+        expected-files.list)
 sha256sums=('d60592622f1aa1cbb853d4814f605dfde827bc692befbfecffaccf4c90e352d8'
             'b32f0be7920e0dd10cf89bb0fecdd0a7c0ac73f0f113fc93e3b235ad36e894c7'
             'a01afe049a5eec79752ecbb57b705fb672a34bb7b5eff20c43e68c544f70ea65'
-            '4cb3b5acc94e0c9546568a782540ab01c1ad06946c8c7b7e290e2b9ffc21b7a2')
+            '4cb3b5acc94e0c9546568a782540ab01c1ad06946c8c7b7e290e2b9ffc21b7a2'
+            'e6d94b7b429509ef67f81f56e69aef932307cb984705267bc89e13ea0f7efd7b')
 
 prepare() {
 	cd "$_pkgname" || return 1
@@ -103,4 +105,8 @@ package() {
 	DESTDIR="$pkgdir" cmake --install build || return 1
 	install -Dm0644 build/emaki-qt-build-version "$pkgdir/usr/share/quickshell-emaki/qt-build-version" || return 1
 	install -Dm0644 -t "$pkgdir/usr/share/licenses/$pkgname/" LICENSE
+	# Keep the documented payload equal to the files this build installs.
+	find "$pkgdir" \( -type f -o -type l \) -printf '/%P\n' | LC_ALL=C sort > "$srcdir/actual-files.list"
+	sed '/^#/d; /^[[:space:]]*$/d' "$srcdir/expected-files.list" > "$srcdir/expected-paths.list"
+	diff -u "$srcdir/expected-paths.list" "$srcdir/actual-files.list" || return 1
 }

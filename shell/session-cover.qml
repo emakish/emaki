@@ -33,7 +33,7 @@ Scope {
             return;
         // Process snapshots command when running is set. Sibling bindings can
         // still contain the pre-context expiry at that point (QS 0.3.1).
-        observer.command = ["/usr/bin/python3", "-I", "-B", Quickshell.shellPath("helpers/session-start.py"), "observe", token, String(expires)];
+        observer.command = [Platform.python, "-I", "-B", Quickshell.shellPath("helpers/session-start.py"), "observe", token, String(expires)];
         observerStderr = "";
         ++observerAttempts;
         observer.running = true;
@@ -81,14 +81,14 @@ Scope {
         onDrainStarted: reason => {
             root.revealing();
             root.event("drain-" + reason, {});
-            drainReport.command = ["/usr/bin/python3", "-I", "-B", Quickshell.shellPath("helpers/session-start.py"), "drain", root.token, reason];
+            drainReport.command = [Platform.python, "-I", "-B", Quickshell.shellPath("helpers/session-start.py"), "drain", root.token, reason];
             drainReport.running = true;
         }
         onFinished: root.complete()
     }
     Process {
         id: loadContext
-        command: ["/usr/bin/python3", "-I", "-B", Quickshell.shellPath("helpers/session-start.py"), "context", root.token]
+        command: [Platform.python, "-I", "-B", Quickshell.shellPath("helpers/session-start.py"), "context", root.token]
         running: root.valid
         stdout: SplitParser {
             onRead: line => {
@@ -169,7 +169,7 @@ Scope {
     }
     Process {
         id: finishReport
-        command: ["/usr/bin/python3", "-I", "-B", Quickshell.shellPath("helpers/session-start.py"), "finished", root.token]
+        command: [Platform.python, "-I", "-B", Quickshell.shellPath("helpers/session-start.py"), "finished", root.token]
     }
     Variants {
         model: root.visibleCover ? Quickshell.screens.filter(s => (root.context.outputs || []).includes(s.name)) : []

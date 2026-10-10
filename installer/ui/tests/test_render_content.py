@@ -52,7 +52,7 @@ class RenderContentTests(unittest.TestCase):
         self.evidence = {
             'width': 400, 'height': 700, 'footerY': 660,
             'texts': [
-                dict(text='Install · 0.4.2', x=10, y=10, width=160, height=20, body=False, clipped=False, truncated=False),
+                dict(text='Install · 0.5.0', x=10, y=10, width=160, height=20, body=False, clipped=False, truncated=False),
                 dict(text='Welcome to Emaki', x=10, y=60, width=250, height=24, body=True, clipped=False, truncated=False),
                 dict(text='Page details', x=10, y=110, width=250, height=24, body=True, clipped=False, truncated=False),
             ],
@@ -70,7 +70,7 @@ class RenderContentTests(unittest.TestCase):
 
     def validate(self, evidence=None):
         log = 'CONTENT_FRAME welcome ' + json.dumps(evidence or self.evidence)
-        validate_frame(self.path, log, 'welcome', self.evidence['width'], self.evidence['height'], '0.4.2')
+        validate_frame(self.path, log, 'welcome', self.evidence['width'], self.evidence['height'], '0.5.0')
 
     def test_correct_content_passes(self):
         self.validate()
@@ -130,7 +130,7 @@ class RenderContentTests(unittest.TestCase):
 
     def test_missing_evidence_fails(self):
         with self.assertRaisesRegex(AssertionError, 'Missing or repeated'):
-            validate_frame(self.path, 'LAYOUT_OK SCREENSHOT_OK welcome', 'welcome', 400, 700, '0.4.2')
+            validate_frame(self.path, 'LAYOUT_OK SCREENSHOT_OK welcome', 'welcome', 400, 700, '0.5.0')
 
 
 class RenderMutationTests(unittest.TestCase):
@@ -154,6 +154,22 @@ class RenderMutationTests(unittest.TestCase):
                             contextlib.redirect_stdout(io.StringIO()):
                         with self.assertRaisesRegex(AssertionError, 'Expected visible content'):
                             render.main()
+
+    def test_done_screen_requires_launcher_hint(self):
+        import render
+        with tempfile.TemporaryDirectory(dir=render.ROOT / '.cache/evidence', prefix='done-mutation-') as temporary:
+            root = Path(temporary)
+            shutil.copytree(render.UI, root / 'ui', ignore=shutil.ignore_patterns('__pycache__', 'artifacts'))
+            view = root / 'ui/InstallerView.qml'
+            original = view.read_text()
+            hint = 'Press Super+D to open the app launcher. Super is the Windows key, or Command on a Mac keyboard.'
+            self.assertIn(hint, original)
+            view.write_text(original.replace(hint, ''))
+            arguments = ['render.py', '--repo-shell', '--screen', 'done', '--output', str(root / 'frames')]
+            with patch.object(render, 'UI', root / 'ui'), patch.object(sys, 'argv', arguments), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaisesRegex(AssertionError, 'Expected visible content'):
+                    render.main()
 
     def test_actual_window_rejects_password_hint_error_and_continue_mutants(self):
         import render

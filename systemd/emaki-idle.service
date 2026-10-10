@@ -1,9 +1,8 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Idle policy: dim, lock, screen off. Never suspend; see /usr/bin/emaki-idle.
-# Shipped inert: nothing starts it until the owner's live trials pass, then
-# niri/default.kdl adds it to the `systemctl --user start` line next to the
-# shell and the sleep guard. To switch it off for good: systemctl --user mask emaki-idle.
+# Idle policy: dim, lock, screen off. Never suspend; see @EMAKI_BINDIR@/emaki-idle.
+# Shipped inert. An explicit personal blanking or locking choice enables it.
+# To switch it off for good: systemctl --user mask emaki-idle.
 [Unit]
 Description=Emaki idle policy (dim, lock, screen off)
 PartOf=graphical-session.target
@@ -17,8 +16,10 @@ ConditionPathIsDirectory=!/etc/emaki-live
 StartLimitIntervalSec=0
 
 [Service]
-Type=simple
-ExecStart=/usr/bin/emaki-idle
+Type=notify
+NotifyAccess=main
+TimeoutStartSec=10
+ExecStart=@EMAKI_BINDIR@/emaki-settings-power run
 Restart=on-failure
 # No restart heals these: 2 = emaki-idle refused its arguments or timings, 127 =
 # swayidle is not installed, 255 = swayidle refused its arguments or the person's own
@@ -30,3 +31,6 @@ RestartPreventExitStatus=2 127 255
 # leave the session without its idle lock for the full maximum delay after a few exits.
 RestartSec=2
 Slice=session.slice
+
+[Install]
+WantedBy=graphical-session.target

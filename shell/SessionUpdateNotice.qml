@@ -26,7 +26,7 @@ Scope {
     Process {
         id: observer
         running: !notice.live && (notice.generation !== "" || (notice.source !== "" && notice.watcher !== "")) && !notice.pending
-        command: notice.generation !== "" ? ["/usr/bin/python3", "-I", "-B", notice.generation + "/watch.py", "watch", notice.generation] : ["/usr/bin/python3", "-I", "-B", notice.watcher, "watch-installed", notice.source]
+        command: notice.generation !== "" ? [Platform.python, "-I", "-B", notice.generation + "/watch.py", "watch", notice.generation] : [Platform.python, "-I", "-B", notice.watcher, "watch-installed", notice.source]
         stdout: SplitParser {
             onRead: data => {
                 try {

@@ -4,9 +4,14 @@
 set -eu
 umask 077
 ulimit -c 0
+paths_file="$(dirname -- "$(readlink -f -- "$0")")/../scripts/paths"
+if [[ ! -f $paths_file ]]; then
+    paths_file='@EMAKI_LIBEXECDIR@/paths'
+fi
+source "$paths_file"
 if (( $# )); then
     if (( $# == 1 )) && [[ $1 == --status || $1 == --check ]]; then
-        exec /usr/libexec/emaki/update-manager-backend "$1"
+        exec "$EMAKI_LIBEXECDIR/update-manager-backend" "$1"
     fi
     printf 'Usage: emaki-update-manager [--status|--check]\n' >&2
     exit 2
@@ -16,7 +21,7 @@ if (( EUID == 0 )); then
     exit 1
 fi
 : "${XDG_RUNTIME_DIR:?Emaki updates needs a user runtime directory}"
-config=/usr/share/emaki-update-manager/ui/shell.qml
+config="$EMAKI_PREFIX/share/emaki-update-manager/ui/shell.qml"
 exec 9>"$XDG_RUNTIME_DIR/emaki-update-manager.lock"
 if ! flock -n 9; then
     reply=''

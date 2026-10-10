@@ -12,7 +12,7 @@ Scope {
     property string error: ""
     Process {
         id: probe
-        command: ["/usr/bin/emaki-rollback", "status", "--json"]
+        command: ["emaki-rollback", "status", "--json"]
         running: true
         stdout: StdioCollector {
             onStreamFinished: {
@@ -29,7 +29,7 @@ Scope {
     }
     Process {
         id: keep
-        command: ["/usr/bin/pkexec", "/usr/bin/emaki-rollback", "keep"]
+        command: ["pkexec", Platform.binDir + "/emaki-rollback", "keep"]
         stdout: StdioCollector {}
         stderr: StdioCollector {
             id: errors

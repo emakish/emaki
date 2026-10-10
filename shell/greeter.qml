@@ -95,7 +95,7 @@ Scope {
             controller.handoffMarker = memory.sessionId === "niri-emaki.desktop" ? root.createHandoffMarker() : "";
             if (controller.handoffMarker) {
                 captureLimit.start();
-                preparePicture.command = ["/usr/bin/python3", "-I", "-B", Quickshell.shellPath("helpers/greeter-handoff.py"), "prepare", JSON.parse(controller.handoffMarker).token];
+                preparePicture.command = [Platform.python, "-I", "-B", Quickshell.shellPath("helpers/greeter-handoff.py"), "prepare", JSON.parse(controller.handoffMarker).token];
                 preparePicture.running = true;
             } else {
                 root.recordLaunch();
@@ -178,7 +178,7 @@ Scope {
                         if (!root.launchRecorded && result.saveToFile(root.picturePath) && lockSurface.glassItem) {
                             lockSurface.glassItem.grabToImage(plate => {
                                 if (!root.launchRecorded && plate.saveToFile(root.picturePath.replace(".png", "-plate.png"))) {
-                                    publishPicture.command = ["/usr/bin/python3", "-I", "-B", Quickshell.shellPath("helpers/greeter-handoff.py"), "publish", JSON.parse(controller.handoffMarker).token];
+                                    publishPicture.command = [Platform.python, "-I", "-B", Quickshell.shellPath("helpers/greeter-handoff.py"), "publish", JSON.parse(controller.handoffMarker).token];
                                     publishPicture.running = true;
                                 }
                             }, Qt.size(panel.width, panel.height));

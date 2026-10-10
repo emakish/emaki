@@ -39,6 +39,7 @@ quickshell-emaki
 snap-pac
 snapper
 sudo
+swayidle
 terminus-font
 wireless-regdb
 wpa_supplicant

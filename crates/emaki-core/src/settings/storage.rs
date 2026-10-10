@@ -430,6 +430,8 @@ fn apply(
     if desired == original && (profile.installed || profile.prepared(desired, gaps)?) {
         return Ok(("unchanged", "settings_unchanged", None));
     }
+    input::guard_personal(profile, original, desired)?;
+    input::validate(desired)?;
     desired.generation = Some(id());
     let files = desired.files(gaps);
     let stage = write_generation(&profile.runtime.join("emaki-settings-staging"), &files)?;
@@ -517,6 +519,38 @@ pub(super) fn run(
 ) -> Result<Reply> {
     let profile = Profile::open(root)?;
     let gaps = default_gaps()?;
+    if profile.installed {
+        let machine_key = match operation {
+            Operation::Set { key, value } if machine::KEYS.contains(&key) => {
+                Some((key, Some(value)))
+            }
+            Operation::Reset { key } if machine::KEYS.contains(&key) => Some((key, None)),
+            _ => None,
+        };
+        if let Some((key, value)) = machine_key {
+            // The machine is the one place of these keys: no settings.toml, generation,
+            // journal or writer lock. The reply names the previous value to set it back.
+            let change = machine::change(key, value)?;
+            // The change stands on its own: a failure to read the person's other settings
+            // afterwards neither turns it into a rejection nor loses its record.
+            let mut reply = run(Operation::List, root, timeout).unwrap_or_else(|error| {
+                let mut reply = Reply::rejected(error.reason);
+                reply.settings = rows(&Document::default(), gaps);
+                reply.settings.retain(|row| row.key == key);
+                machine::overlay(&mut reply.settings, timeout);
+                reply
+                    .recovery
+                    .push(format!("settings_unreadable: {}", error.reason));
+                reply
+            });
+            reply.status = change.status;
+            reply.reason = change.reason;
+            reply.session_applied = change.status == "committed";
+            reply.machine_change = Some(change.record);
+            reply.recovery.extend(change.recovery);
+            return Ok(reply);
+        }
+    }
     let reading = profile.installed
         && matches!(
             operation,
@@ -667,11 +701,15 @@ pub(super) fn run(
     };
     let generation_path = profile.generation(&document);
     let mut settings = rows(&document, gaps);
+    input::personal_rows(&profile, &mut settings);
     if let Operation::Get { key } = operation {
         settings.retain(|row| row.key == key);
         if settings.is_empty() {
             return Err(err("unknown_setting"));
         }
+    }
+    if profile.installed {
+        machine::overlay(&mut settings, timeout);
     }
     Ok(Reply {
         schema_version: 1,
@@ -695,6 +733,7 @@ pub(super) fn run(
         },
         manual_changes_recorded,
         recovery,
+        machine_change: None,
     })
 }
 

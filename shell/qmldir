@@ -1,3 +1,4 @@
+singleton Platform 1.0 Platform.qml
 singleton ShellPalette 1.0 ShellPalette.qml
 singleton Metrics 1.0 Metrics.qml
 Icon 1.0 Icon.qml
@@ -100,3 +101,27 @@ singleton UpdateService 1.0 UpdateService.qml
 singleton SettingsBridge 1.0 SettingsBridge.qml
 ShellOutputs 1.0 ShellOutputs.qml
 ShellServices 1.0 ShellServices.qml
+SettingsController 1.0 SettingsController.qml
+SettingsView 1.0 SettingsView.qml
+SettingsGlass 1.0 SettingsGlass.qml
+SettingsCorePage 1.0 SettingsCorePage.qml
+SettingsWallpaperPage 1.0 SettingsWallpaperPage.qml
+SystemSettingsPage 1.0 SystemSettingsPage.qml
+DisplaysService 1.0 DisplaysService.qml
+DisplaysSettingsPage 1.0 DisplaysSettingsPage.qml
+KeyboardSettingsPage 1.0 KeyboardSettingsPage.qml
+MouseSettingsPage 1.0 MouseSettingsPage.qml
+SettingsWifiPage 1.0 SettingsWifiPage.qml
+SettingsBluetoothPage 1.0 SettingsBluetoothPage.qml
+SettingsNetworkPage 1.0 SettingsNetworkPage.qml
+SettingsNetworkService 1.0 SettingsNetworkService.qml
+SoundSettingsBackend 1.0 SoundSettingsBackend.qml
+SoundSettingsPage 1.0 SoundSettingsPage.qml
+NotificationsSettingsPage 1.0 NotificationsSettingsPage.qml
+SettingsPowerPage 1.0 SettingsPowerPage.qml
+SettingsAppsPage 1.0 SettingsAppsPage.qml
+SettingsRegionPage 1.0 SettingsRegionPage.qml
+SettingsAboutPage 1.0 SettingsAboutPage.qml
+SettingsMaintenancePage 1.0 SettingsMaintenancePage.qml
+SettingsPageDefinition 1.0 SettingsPageDefinition.qml
+SettingsPageRegistry 1.0 SettingsPageRegistry.qml

@@ -13,14 +13,14 @@ fn project(values: &Snapshot, schema: &[Field]) -> Snapshot {
         .collect()
 }
 fn changes(before: &Snapshot, after: &Snapshot, schema: &[Field]) -> Vec<Change> {
-    schema
-        .iter()
-        .filter(|field| !field.secret)
-        .filter_map(|field| {
-            let before = before.get(field.key).cloned().unwrap_or(Value::Null);
-            let after = after.get(field.key).cloned().unwrap_or(Value::Null);
+    let keys: BTreeSet<_> = before.keys().chain(after.keys()).collect();
+    keys.into_iter()
+        .filter(|key| recordable(key, schema))
+        .filter_map(|key| {
+            let before = before.get(key).cloned().unwrap_or(Value::Null);
+            let after = after.get(key).cloned().unwrap_or(Value::Null);
             (before != after).then(|| Change {
-                key: field.key.into(),
+                key: key.clone(),
                 before,
                 after,
             })

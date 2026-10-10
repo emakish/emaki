@@ -147,7 +147,7 @@ ShellRoot {
             root.scene?.openKeyboard("notifications");
         }
         function dnd(enabled: bool): void {
-            outputs.shared.notifications.dnd = enabled;
+            outputs.shared.notifications.setDnd(enabled);
         }
         function media(action: string): bool {
             return root.scene?.clockBody.mediaAction(action) ?? false;

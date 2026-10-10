@@ -64,7 +64,7 @@ Item {
         Date.timeZoneUpdated();
         dateTimeChanged();
     }
-    readonly property string clockTime: Qt.formatDateTime(dateTime, "HH:mm")
+    readonly property string clockTime: Qt.formatDateTime(dateTime, (SettingsBridge.values.find(row => row.key === "bar.clock_24_hour")?.value ?? true) ? "HH:mm" : "h:mm AP")
     // The island's short date and the panel's long one (clock.js shortDate/longDate). English
     // names from fixed lists: the island's width is measured on them (ClockCompactRow).
     readonly property var dayNames: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]

@@ -148,6 +148,7 @@ smartmontools
 sof-firmware
 squashfs-tools
 sudo
+swayidle
 syslinux
 systemd-resolvconf
 tcpdump

@@ -72,7 +72,9 @@ assert helper({'op':'web','query':'PRIVATE_QUERY & $(touch BAD)'})['state']=='re
 wait_for(lambda:(root/'web.json').exists());assert json.loads((root/'web.json').read_text())==['https://duckduckgo.com/?q=PRIVATE_QUERY%20%26%20%24%28touch%20BAD%29']
 assert not (root/'BAD').exists()
 walls=root/'d/emaki/wallpapers';walls.mkdir(parents=True);wall=walls/'fixture.png';wall.write_bytes(png);(walls/'notes.txt').write_text('PRIVATE_NOTE')
-assert helper({'op':'wallpapers'})['entries']==[dict(path=str(wall),name='fixture')]
+wallpapers=helper({'op':'wallpapers'})['entries']
+assert dict(path=str(wall),name='fixture') in wallpapers,wallpapers
+assert all(entry['name'] in ('Emaki landscape','fixture') for entry in wallpapers),wallpapers
 xkb=helper({'op':'xkb-layouts'})['entries'];assert dict(code='ru',name='Russian') in xkb and len(xkb)>50,len(xkb)
 defaults=helper({'op':'defaults'})['entries'];assert [d['label'] for d in defaults]==['Browser','Terminal','Files','Text editor','Image viewer','Video player']
 assert defaults[0]['key']=='defaults.browser' and defaults[0]['id']=='fixture-web.desktop' and defaults[0]['choices']==[dict(id='fixture-web.desktop',name='Fixture Browser')],defaults[0]
@@ -89,6 +91,7 @@ fixture = (qml/'shell.qml').read_text().replace('    id: root', '\n'.join([
     '    IpcHandler {',
     '        target: "second-settings"',
     '        function value(key: string): string { return JSON.stringify(secondSettings.value(key)); }',
+    '        function described(key: string): string { return JSON.stringify(secondSettings.row(key)?.application ?? null); }',
     '    }'
 ]), 1)
 (qml/'shell.qml').write_text(fixture)
@@ -145,13 +148,29 @@ try:
     # IPC applies all managed shell values synchronously, with no core callback.
     wait_for(lambda: not json.loads(ipc('settingsStatus'))['busy'])
     rows = helper(dict(op='settings', action='list', profile=str(core_profile), binary=os.environ['EMAKI_BIN']))['settings']
-    def apply_rows(values):
-        return run(['qs', '-p', str(qml), 'ipc', 'call', 'settings', 'apply', json.dumps(dict(rows=values))]).decode().strip()
+    def compact(values):
+        # As the core sends them: key, value and a set override only.
+        return [dict(key=row['key'], value=row['value'], **({} if row['override_value'] is None else
+                                                            dict(override_value=row['override_value'])))
+                for row in values]
+    def apply_rows(values, full=False):
+        message = json.dumps(dict(rows=values if full else compact(values)))
+        return run(['qs', '-p', str(qml), 'ipc', 'call', 'settings', 'apply', message]).decode().strip()
+    # Quickshell's IPC server never answers a call split over two reads; whole catalog
+    # messages of 60 KB lost about half of their answers (2026-10-10).
+    assert len(json.dumps(dict(rows=compact(rows)))) < 16384
     before = state()
     assert apply_rows([]) == 'invalid_settings'
+    assert apply_rows([dict(rows[0], key=None)] + rows) == 'invalid_settings'
+    shell_keys = ('bar.autohide', 'bar.overview_workspaces', 'dock.on', 'dock.auto_hide')
+    # A full list, as the settings window reads it, then a compact apply keeps its descriptions.
+    assert apply_rows([row for row in rows if row['key'] in shell_keys], full=True) == 'applied'
+    described = next(row['application'] for row in rows if row['key'] == 'dock.on')
+    assert described
     assert state()['dock']['on'] == before['dock']['on']
     changed = [dict(row, value=not row['value']) if row['key'] in ('bar.autohide', 'bar.overview_workspaces', 'dock.on', 'dock.auto_hide') else row for row in rows]
     assert apply_rows(changed) == 'applied'
+    assert json.loads(run(['qs', '-p', str(qml), 'ipc', 'call', 'second-settings', 'described', 'dock.on'])) == described
     for row in changed:
         if row['key'] in ('bar.autohide', 'bar.overview_workspaces', 'dock.on', 'dock.auto_hide'):
             shared = run(['qs', '-p', str(qml), 'ipc', 'call', 'second-settings', 'value', row['key']])

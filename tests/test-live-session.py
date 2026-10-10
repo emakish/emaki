@@ -86,6 +86,7 @@ printf "%s\\n" "$2"''',
                 target = base / name
                 target.write_text('#!/bin/sh\n' + content + '\n')
                 target.chmod(0o700)
+            (base / 'paths').write_text((ROOT / 'scripts/paths').read_text())
             for name in ('emaki-power', 'emaki-idle', 'emaki-shell'):
                 (base / ('test-' + name)).write_text((ROOT / 'scripts' / name).read_text().replace(MARKER, str(marker)))
             for live in (False, True):

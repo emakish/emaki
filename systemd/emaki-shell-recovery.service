@@ -9,5 +9,5 @@ Requisite=graphical-session.target
 
 [Service]
 Type=exec
-ExecStart=/usr/bin/kitty --class emaki-shell-recovery --title "Emaki panel recovery" /usr/bin/emaki-shell recover
+ExecStart=kitty --class emaki-shell-recovery --title "Emaki panel recovery" @EMAKI_BINDIR@/emaki-shell recover
 Slice=app.slice

@@ -12,12 +12,19 @@ Scope {
     property var defaults: []
     property var xkbLayouts: []
     property var wallpapers: []
+    property string inheritedWallpaper: ""
     property string state: "idle"
     property string lastAction: "idle"
+    property string lastStatus: ""
+    property bool sessionApplied: false
+    property string currentAction: ""
+    property bool replyReceived: false
+    property bool inFlight: false
     property var queue: []
     readonly property int applyEpoch: SettingsBridge.applyEpoch
     property int readEpoch: 0
-    readonly property bool busy: core.busy || queue.length > 0
+    readonly property bool busy: inFlight || core.busy || queue.length > 0
+    readonly property bool writing: (inFlight && ["set", "reset", "undo"].includes(currentAction)) || queue.some(request => ["set", "reset", "undo"].includes(request.action))
     function send(action: string, args: var): void {
         queue = queue.concat([
             {
@@ -25,13 +32,16 @@ Scope {
                 args: args
             }
         ]);
-        drain();
+        Qt.callLater(drain);
     }
     function drain(): void {
-        if (!core.busy && queue.length) {
+        if (!inFlight && !core.busy && queue.length) {
+            inFlight = true;
             const next = queue[0];
             queue = queue.slice(1);
             readEpoch = applyEpoch;
+            currentAction = next.action;
+            replyReceived = false;
             core.start({
                 op: "settings",
                 action: next.action,
@@ -40,6 +50,20 @@ Scope {
                 binary: Quickshell.env("EMAKI_BIN")
             });
         }
+    }
+    function finish(): void {
+        if (!inFlight || core.busy)
+            return;
+        if (!replyReceived) {
+            state = core.state;
+            if (["set", "reset", "undo"].includes(currentAction)) {
+                lastStatus = "unconfirmed";
+                lastAction = core.state;
+            }
+        }
+        inFlight = false;
+        currentAction = "";
+        Qt.callLater(drain);
     }
     function refresh(): void {
         send("list", []);
@@ -61,6 +85,12 @@ Scope {
     }
     function set(key: string, value: string): void {
         send("set", [key, value]);
+    }
+    function reset(key: string): void {
+        send("reset", [key]);
+    }
+    function row(key: string): var {
+        return Array.from(settings.values).find(v => v.key === key) || null;
     }
     function setFloating(value: string): void {
         set("keybindings.toggle_window_floating", value);
@@ -107,7 +137,13 @@ Scope {
         id: core
         timeoutMs: 35000
         onCompleted: value => {
+            const action = settings.currentAction;
+            settings.replyReceived = true;
             settings.state = value.state;
+            if (["set", "reset", "undo"].includes(action)) {
+                settings.lastStatus = value.status || "rejected";
+                settings.sessionApplied = value.session_applied === true;
+            }
             if (value.status === "rejected")
                 settings.lastAction = value.state;
             else if (value.status === "committed" || value.status === "unchanged") {
@@ -120,16 +156,16 @@ Scope {
             // A list already in flight must not overwrite a newer IPC apply.
             if (value.settings?.length && settings.readEpoch === settings.applyEpoch)
                 SettingsBridge.values = value.settings;
-            if (value.history)
+            else if (value.settings?.length && action === "list")
+                // An IPC apply carries no titles: read the full rows again.
+                settings.send("list", []);
+            if (action === "history" && value.history)
                 settings.history = value.history;
         }
-        onBusyChanged: {
-            if (!busy) {
-                if (settings.state === "idle")
-                    settings.state = core.state;
-                settings.drain();
-            }
-        }
+        onBusyChanged: if (!busy)
+            Qt.callLater(settings.finish)
+        onStateChanged: if (state !== "pending" && !busy)
+            Qt.callLater(settings.finish)
     }
     PrivateJob {
         id: defaultsJob
@@ -141,6 +177,9 @@ Scope {
     }
     PrivateJob {
         id: wallpapersJob
-        onCompleted: value => settings.wallpapers = value.entries || []
+        onCompleted: value => {
+            settings.wallpapers = value.entries || [];
+            settings.inheritedWallpaper = value.inheritedPath || "";
+        }
     }
 }

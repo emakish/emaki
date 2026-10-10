@@ -49,6 +49,8 @@ ShellRoot {
         inventory.for_id = request.id;
         controller.receive(inventory);
         controller.diskId = current.empty ? "" : inventory.disks[0].id;
+        // These cases isolate the hardware gate after an explicit installation choice.
+        controller.mode = "erase";
         controller.step = "disk";
         verify.restart();
     }

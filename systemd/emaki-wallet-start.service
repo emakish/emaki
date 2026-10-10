@@ -8,8 +8,8 @@ Before=xdg-desktop-autostart.target emaki-shell.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/emaki-wallet-start
-ExecStop=/usr/bin/emaki-wallet-start --stop
+ExecStart=@EMAKI_BINDIR@/emaki-wallet-start
+ExecStop=@EMAKI_BINDIR@/emaki-wallet-start --stop
 RemainAfterExit=yes
 TimeoutStartSec=45
 TimeoutStopSec=10

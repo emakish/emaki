@@ -1,0 +1,13 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+singleton SettingsTheme 1.0 SettingsTheme.qml
+SettingsButton 1.0 SettingsButton.qml
+SettingsCard 1.0 SettingsCard.qml
+SettingsPageHeader 1.0 SettingsPageHeader.qml
+SettingsRow 1.0 SettingsRow.qml
+SettingsToggleRow 1.0 SettingsToggleRow.qml
+SettingsSliderRow 1.0 SettingsSliderRow.qml
+SettingsComboBox 1.0 SettingsComboBox.qml
+SettingsChoiceRow 1.0 SettingsChoiceRow.qml
+SettingsSegmentedRow 1.0 SettingsSegmentedRow.qml
+SettingsListRow 1.0 SettingsListRow.qml

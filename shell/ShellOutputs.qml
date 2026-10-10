@@ -34,6 +34,11 @@ Scope {
         live: !outputs.headless
     }
     Binding {
+        target: shared.settingsController
+        property: "targetHost"
+        value: outputs.activeScene
+    }
+    Binding {
         target: shared
         property: "panelOpen"
         value: outputs.instances.some(i => i.scene.systemOpen)

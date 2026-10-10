@@ -354,7 +354,11 @@ class PlannerTests(unittest.TestCase):
             for password in (' ', ''.join(chr(x) for x in range(32, 127)), 'x' * 1024):
                 with self.subTest(encryption=encryption, length=len(password)):
                     c['user']['password'] = password
-                    self.assertEqual(validate_config(c)['user']['password'], password)
+                    if encryption == 'account' and len(password) < 8:
+                        with self.assertRaisesRegex(InstallError, 'at least 8 characters'):
+                            validate_config(c)
+                    else:
+                        self.assertEqual(validate_config(c)['user']['password'], password)
             for password in ('пароль', 'secret🔑', 'passé', 'naïve x', '\x80x', 'a\tb', '', 'x' * 1025):
                 with self.subTest(encryption=encryption, password=password):
                     c['user']['password'] = password

@@ -71,7 +71,7 @@ def stage_unlocked(root, lock_fd):
     try:
         env = dict(os.environ, PAM_KWALLET5_LOGIN=str(root / 'environment'),
                    QT_QPA_PLATFORM='offscreen')
-        process = subprocess.Popen(['/usr/bin/ksecretd', '--pam-login', str(read_fd),
+        process = subprocess.Popen(['ksecretd', '--pam-login', str(read_fd),
             str(listener.fileno())], env=env, pass_fds=(read_fd, listener.fileno(), lock_fd),
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         os.close(read_fd)
@@ -166,7 +166,7 @@ def main():
     if len(sys.argv) == 2:
         if os.environ.get('DBUS_SESSION_BUS_ADDRESS'):
             os.environ.setdefault('EMAKI_DESKTOP_BUS', os.environ['DBUS_SESSION_BUS_ADDRESS'])
-        os.execvp('dbus-run-session', ['dbus-run-session', '--', '/usr/bin/python3', '-I', '-B',
+        os.execvp('dbus-run-session', ['dbus-run-session', '--', 'python3', '-I', '-B',
             str(Path(__file__).resolve()), '--inside', sys.argv[1]])
     if len(sys.argv) != 3 or sys.argv[1] != '--inside':
         return 2

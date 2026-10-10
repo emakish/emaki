@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Installed-system acceptance; start before run-iso.sh --no-cd to catch GRUB."""
 import argparse
+import importlib.machinery
 import importlib.util
 import json
 import os
@@ -17,6 +18,29 @@ spec.loader.exec_module(monitor)
 spec = importlib.util.spec_from_file_location('iso_shot', HERE / 'iso-shot.py')
 shot = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(shot)
+loader = importlib.machinery.SourceFileLoader('system_map', str(HERE.parents[1] / 'scripts/render-system-map'))
+system_map = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+loader.exec_module(system_map)
+# The installed page, so the check proves what shipped rather than this checkout.
+SYSTEM_MAP = '/usr/share/emaki/system-map.md'
+SESSION_ENV = 'XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus'
+
+
+def map_state_commands(page):
+    """(component, command) for every state the map promises; "none yet" entries are skipped."""
+    entries, problems = system_map.components(page, SYSTEM_MAP)
+    if problems or not entries:
+        raise ValueError('; '.join(problems) or f'no system-map blocks in {SYSTEM_MAP}')
+    return [(entry['component'], command) for entry in entries
+            if (command := system_map.state_command(entry))]
+
+
+def json_answer(output):
+    try:
+        json.loads(output)
+    except ValueError:
+        return False
+    return True
 
 
 # Exact QEMU hardware limitations, the duplicate packaged activation names
@@ -232,6 +256,19 @@ def main():
                 break
             time.sleep(1)
         status(ready, 'installed compositor and shell active')
+        # The map's truth: every state command it ships answers JSON in the session.
+        page = remote('cat ' + SYSTEM_MAP)
+        (run / 'map-page.log').write_bytes(page.stdout + page.stderr)
+        commands = None
+        try:
+            if page.returncode == 0:
+                commands = map_state_commands(page.stdout.decode(errors='replace'))
+        except ValueError as error:
+            with (run / 'map-page.log').open('a') as stream:
+                stream.write(f'\n{error}\n')
+        if status(commands is not None, 'map state commands: installed map readable'):
+            for component, command in commands:
+                check(f'map-state-{component}', f'{SESSION_ENV} {command}', predicate=json_answer)
         # Query both managers after the session has started, when desktop
         # services and their error messages can actually be observed.
         check('failed-units', 'systemctl --failed --no-legend --plain',

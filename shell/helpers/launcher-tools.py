@@ -12,9 +12,12 @@ import subprocess
 import sys
 import tempfile
 import time
+from urllib.parse import quote
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import emaki_paths
 import app_scope
 import clipboard_store
-from urllib.parse import quote
 
 class Refused(Exception):
     pass
@@ -236,7 +239,7 @@ def handle(request):
         return dict(state='ready',entries=values)
     if op=='xkb-layouts':
         # `! layout` of the installed XKB rules list: code and human name, as the core validates.
-        rules=Path(os.environ.get('EMAKI_XKB_RULES') or '/usr/share/X11/xkb/rules/evdev.lst')
+        rules=Path(os.environ.get('EMAKI_XKB_RULES') or emaki_paths.XKB_RULES)
         if not rules.is_file(): raise Refused('xkb_rules_missing')
         with open(rules,'rb') as f: raw=f.read(1024*1024+1)
         if len(raw)>1024*1024: raise Refused('xkb_rules_missing')
@@ -247,18 +250,51 @@ def handle(request):
                 code,_,name=line.strip().partition(' ')
                 rows.append(dict(code=code,name=name.strip() or code))
         return dict(state='ready',entries=rows[:512])
+    if op=='wallpaper-choose':
+        import wallpaper_chooser
+        return wallpaper_chooser.choose()
     if op=='wallpapers':
         # Candidate pictures for the page: the packaged/user Emaki wallpaper folders only.
         roots=[Path(os.environ.get('XDG_DATA_HOME') or Path.home()/'.local/share')]
-        roots+=[Path(p) for p in (os.environ.get('XDG_DATA_DIRS') or '/usr/local/share:/usr/share').split(':') if p]
+        roots+=[Path(p) for p in (os.environ.get('XDG_DATA_DIRS') or emaki_paths.XDG_DATA_DIRS_DEFAULT).split(':') if p]
         rows=[]; seen=set()
+        shipped=Path(emaki_paths.DATADIR)/'wallpaper/fallback.png'
+        if shipped.is_file():
+            rows.append(dict(path=str(shipped),name='Emaki landscape'))
+            seen.add(shipped.name)
         for root in roots:
             folder=root/'emaki/wallpapers'
             if not folder.is_dir(): continue
             for path in sorted(folder.iterdir()):
                 if path.suffix.lower() in ('.png','.jpg','.jpeg','.webp') and path.is_file() and path.name not in seen and len(rows)<64:
                     seen.add(path.name); rows.append(dict(path=str(path),name=path.stem))
-        return dict(state='ready',entries=rows)
+        # Resolve only a single static inherited picture shared by every output.
+        # Mixed-output and slideshow configurations have no single current tile.
+        inherited = ''
+        try:
+            import tomllib
+            config_root = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home()/'.config')
+            with (config_root/'wpaperd/config.toml').open('rb') as stream:
+                raw = stream.read(65537)
+            if len(raw) > 65536:
+                raise ValueError('config_limit')
+            config = tomllib.loads(raw.decode())
+            if not all(re.fullmatch(r'[A-Za-z0-9_.:-]{1,128}', key) and isinstance(value, dict)
+                       for key, value in config.items()):
+                raise ValueError('output_selection_unsupported')
+            default = config.get('default', {})
+            selectors = [key for key in config if key not in ('default', 'any')]
+            options = [dict(default, **config.get('any', {}))]
+            options += [dict(default, **config[key]) for key in selectors]
+            paths = {str(Path(option['path']).expanduser()) for option in options
+                     if isinstance(option.get('path'), str) and option['path']}
+            if len(paths) == 1 and all(option.get('path') for option in options):
+                path = Path(paths.pop())
+                if path.is_absolute() and path.is_file():
+                    inherited = str(path)
+        except (OSError, ValueError, UnicodeError):
+            pass
+        return dict(state='ready',entries=rows,inheritedPath=inherited)
     if op=='web':
         query=request.get('query','')
         if not isinstance(query,str) or not query.strip() or len(query)>4096: raise Refused('invalid_query')

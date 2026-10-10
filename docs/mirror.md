@@ -15,16 +15,17 @@ Both hosts are R2 custom domains in the `emaki.sh` zone (an `r2.dev` address is 
 meant for development only). Two buckets and two tokens, so the package publishing credentials
 cannot delete or replace an ISO.
 
-Installed systems select a source in `/etc/emaki/channel` [update channel]:
+Installed systems select a source in `/var/lib/emaki/channel`, included through the fixed
+selector `/etc/emaki/channel` [update channel]:
 
 ```
 Include = /usr/share/emaki/mirrors/stable.conf
 ```
 
-`/etc/pacman.d/emaki-mirrorlist` includes this selector; the selected package-owned
+`/etc/pacman.d/emaki-mirrorlist` includes the selector; the selected package-owned
 file supplies `https://pkgs.emaki.sh/stable/$arch` or the testing address [emaki-mirrorlist].
-The package preserves a valid stable or testing selector and repairs missing or invalid
-selectors on installation or upgrade [channel selector].
+The package preserves a valid stable or testing choice and repairs missing or invalid
+ones on installation or upgrade [channel selector]; `emaki-update-channel set` changes it.
 
 ## Object layout in `emaki-pkgs`
 

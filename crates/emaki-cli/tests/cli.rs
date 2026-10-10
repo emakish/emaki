@@ -80,7 +80,7 @@ fn help_starts_with_desktop_guidance() {
         assert!(!text.contains("state [--json]"));
         assert!(!text.contains("map [--json]"));
         assert!(!text.contains("apply"));
-        assert!(!text.contains("settings"));
+        assert!(text.contains("emaki settings [page]"));
         assert!(output.stderr.is_empty());
     }
 }

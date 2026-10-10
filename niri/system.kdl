@@ -13,7 +13,7 @@
 //  Put your changes in ~/.config/niri/config.kdl. Once it exists,
 //  niri reads it instead of this file (switching immediately), so include
 //  the Emaki defaults as the first line in your personal config:
-//    include "/usr/share/emaki/niri/default.kdl"
+//    include "@EMAKI_DATADIR@/niri/default.kdl"
 // ═══════════════════════════════════════════════════════════════════════
 
-include "/usr/share/emaki/niri/default.kdl"
+include "@EMAKI_DATADIR@/niri/default.kdl"

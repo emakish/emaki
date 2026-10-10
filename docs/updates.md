@@ -81,21 +81,31 @@ nothing to update.
 
 ## Channels
 
-`/etc/emaki/channel` selects the update source [update channel]:
+Choose the update source in Settings, Updates & Recovery, Channel, or with
+`sudo emaki-update-channel set stable --json` (or `set testing`) [update channel].
+`testing` receives every release first; `stable` receives only releases that passed the
+upgrade check. The command changes only `/var/lib/emaki/channel`, confirms the effective
+server and removes the local copy of the `[emaki]` database, so the next ordinary update
+downloads the chosen channel's database (the two channels' databases are not in time order,
+and pacman keeps a newer copy from the other channel). The command refuses while another
+package operation runs.
+
+The chain is fixed: `/etc/pacman.d/emaki-mirrorlist` includes `/etc/emaki/channel`, which
+includes `/var/lib/emaki/channel`, which names one packaged definition:
 
 ```
 Include = /usr/share/emaki/mirrors/stable.conf
-# Include = /usr/share/emaki/mirrors/testing.conf
 ```
 
-`testing` receives every release first; `stable` receives only releases that passed the
-upgrade check. To change channel, swap which line is commented and run `sudo pacman -Syyu` once
-(two `y`: the databases of the two channels are not in time order, and a plain `-Syu` can fail
-once with a signature error after the switch). The package keeps a valid stable or testing choice unchanged [channel selector].
-On installation or upgrade, it repairs a missing or invalid selector to stable; a missing
-selector during migration inherits a recognized older channel.
+Releases 0.3.0 to 0.4.2 kept that line in `/etc/emaki/channel` itself. Installing or
+upgrading the repository package moves it into `/var/lib/emaki/channel`, keeping stable or
+testing; a choice edited by hand into `/etc/emaki/channel` later is moved the same way,
+because it is the one pacman reads [channel selector]. The package keeps a valid choice
+unchanged and repairs a missing or invalid selector or state to stable; a missing selector
+during migration inherits a recognized older channel.
 Package-owned server definitions receive address updates [emaki-mirrorlist]. Recognized older GitHub and Emaki server lines migrate automatically, preserving the
-channel; custom server configurations stay untouched [emaki-mirrorlist]. `emaki-update-channel` reports the
+channel; custom server configurations stay untouched and Settings does not offer the switch
+for them [emaki-mirrorlist]. `emaki-update-channel` reports the
 effective channel, or `custom`, `mixed`, `disabled`, or `unknown` when appropriate.
 
 If the selector is missing or invalid and pacman cannot read it, recover the stable source

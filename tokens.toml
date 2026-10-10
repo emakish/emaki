@@ -5,8 +5,8 @@
 #
 # Regenerate configs after editing:  ./scripts/render-theme
 #
-# Later, matugen will extract the color palette from the wallpaper.
-# The file structure will stay the same; only the source of the values will change.
+# The palette is fixed; wallpaper colors do not change these values.
+# See DECISIONS.md, 2026-09-22: wallpaper-derived colors were cancelled.
 
 [color]
 background      = "14100d"  # desktop and window background

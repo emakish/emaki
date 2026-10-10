@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""List desktop choices and manage only personal XDG autostart entries."""
+import configparser
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import secrets
+import shutil
+import stat
+import subprocess
+import sys
+
+LIMIT = 262144
+MIME_ROLES = {'browser': 'x-scheme-handler/https', 'mail': 'x-scheme-handler/mailto',
+              'files': 'inode/directory', 'editor': 'text/plain'}
+
+
+def desktop_id(value):
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+\.desktop', value) or value.startswith('.'):
+        raise ValueError('Invalid application identifier.')
+    return value
+
+
+def installed_apps():
+    import gi
+    gi.require_version('Gio', '2.0')
+    from gi.repository import Gio
+    result = []
+    for app in Gio.AppInfo.get_all():
+        ident = app.get_id()
+        if not ident or not app.should_show() or not shutil.which(app.get_executable() or ''):
+            continue
+        try:
+            desktop_id(ident)
+        except ValueError:
+            continue
+        categories = (app.get_categories() or '').split(';')
+        types = app.get_supported_types() or []
+        roles = [role for role, mime in MIME_ROLES.items() if mime in types]
+        if 'TerminalEmulator' in categories:
+            roles.append('terminal')
+        result.append({'id': ident, 'name': app.get_display_name(), 'roles': roles,
+                       'filename': app.get_filename()})
+    return sorted(result, key=lambda app: (app['name'].casefold(), app['id']))
+
+
+def resolved_defaults():
+    """Ask the desktop resolver so personal MIME preferences retain precedence."""
+    import gi
+    gi.require_version('Gio', '2.0')
+    from gi.repository import Gio
+    result = {}
+    for role, mime in MIME_ROLES.items():
+        app = Gio.AppInfo.get_default_for_type(mime, False)
+        result[role] = {'id': app.get_id(), 'name': app.get_display_name()} if app else None
+    result['terminal'] = None
+    try:
+        reply = subprocess.run(['emaki-terminal', '--default', '--json'],
+                               capture_output=True, text=True, check=True, timeout=3)
+        executable = json.loads(reply.stdout)['executable']
+        path = shutil.which(executable)
+        if path:
+            for app in Gio.AppInfo.get_all():
+                if ('TerminalEmulator' in (app.get_categories() or '').split(';')
+                        and shutil.which(app.get_executable() or '') == path):
+                    result['terminal'] = {'id': app.get_id(), 'name': app.get_display_name()}
+                    break
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError):
+        pass
+    return result
+
+
+def directory(create=False):
+    config = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
+    if not config.is_absolute():
+        raise ValueError('The personal configuration directory must be absolute.')
+    if create:
+        config.mkdir(mode=0o700, parents=True, exist_ok=True)
+    root = os.open(config, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        if os.fstat(root).st_uid != os.geteuid():
+            raise ValueError('The personal configuration directory is not owned by you.')
+        if create:
+            try:
+                os.mkdir('autostart', 0o700, dir_fd=root)
+            except FileExistsError:
+                pass
+        fd = os.open('autostart', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root)
+    finally:
+        os.close(root)
+    if os.fstat(fd).st_uid != os.geteuid():
+        os.close(fd)
+        raise ValueError('The startup directory is not owned by you.')
+    return fd
+
+
+def read_entry(fd, name):
+    desktop_id(name)
+    source = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+    with os.fdopen(source, 'rb') as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_nlink != 1:
+            raise ValueError('The startup entry is not a personal regular file.')
+        raw = stream.read(LIMIT + 1)
+    if len(raw) > LIMIT:
+        raise ValueError('The startup entry is too large.')
+    return raw.decode('utf-8')
+
+
+def parse(text):
+    parser = configparser.ConfigParser(interpolation=None, strict=True)
+    parser.optionxform = str
+    parser.read_string(text)
+    entry = parser['Desktop Entry']
+    if entry.get('Type') != 'Application' or not entry.get('Name') or not entry.get('Exec'):
+        raise ValueError('The startup entry is not an application.')
+    return entry
+
+
+def set_hidden(text, hidden):
+    lines, inside, inserted = [], False, False
+    for line in text.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped.startswith('['):
+            if inside and hidden is not None and not inserted:
+                lines.append('Hidden=' + hidden + '\n')
+                inserted = True
+            inside = stripped == '[Desktop Entry]'
+        if inside and re.match(r'Hidden\s*=', stripped):
+            continue
+        lines.append(line if line.endswith('\n') else line + '\n')
+    if inside and hidden is not None and not inserted:
+        lines.append('Hidden=' + hidden + '\n')
+    return ''.join(lines)
+
+
+def write_entry(fd, name, text, new=False):
+    temp = '.emaki-' + secrets.token_hex(12)
+    out = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=fd)
+    try:
+        with os.fdopen(out, 'w', encoding='utf-8') as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if new:
+            os.link(temp, name, src_dir_fd=fd, dst_dir_fd=fd, follow_symlinks=False)
+        else:
+            os.rename(temp, name, src_dir_fd=fd, dst_dir_fd=fd)
+        os.fsync(fd)
+    finally:
+        try:
+            os.unlink(temp, dir_fd=fd)
+        except FileNotFoundError:
+            pass
+
+
+def status():
+    apps, startup = installed_apps(), []
+    defaults = resolved_defaults()
+    try:
+        fd = directory()
+    except FileNotFoundError:
+        return {'applications': apps, 'startup': startup, 'defaults': defaults}
+    try:
+        for name in sorted(os.listdir(fd)):
+            if not name.endswith('.desktop'):
+                continue
+            try:
+                entry = parse(read_entry(fd, name))
+                startup.append({'id': name, 'name': entry['Name'],
+                                'enabled': entry.get('Hidden', 'false').lower() != 'true'})
+            except (OSError, ValueError, KeyError, configparser.Error):
+                continue
+    finally:
+        os.close(fd)
+    return {'applications': apps, 'startup': startup, 'defaults': defaults}
+
+
+def run(args):
+    if not args or args[-1] != '--json':
+        raise ValueError('Use status, add, set or reset with --json.')
+    args = args[:-1]
+    if args == ['status']:
+        return status()
+    if len(args) not in (2, 3) or args[0] not in ('add', 'set', 'reset'):
+        raise ValueError('Unknown startup action.')
+    action, name = args[:2]
+    desktop_id(name)
+    if action == 'set' and (len(args) != 3 or args[2] not in ('true', 'false')):
+        raise ValueError('Choose whether the app starts automatically.')
+    if action != 'set' and len(args) != 2:
+        raise ValueError('Unexpected startup argument.')
+    text = None
+    if action == 'add':
+        app = next((app for app in installed_apps() if app['id'] == name), None)
+        if app is None:
+            raise ValueError('The installed application is unavailable.')
+        text = Path(app['filename']).read_text(encoding='utf-8')
+        if len(text.encode('utf-8')) > LIMIT:
+            raise ValueError('The application entry is too large.')
+        parse(text)
+        text = set_hidden(text, 'false')
+    fd = directory(create=action == 'add')
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        if text is None:
+            text = read_entry(fd, name)
+            parse(text)
+            text = set_hidden(text, None if action == 'reset' else ('false' if args[2] == 'true' else 'true'))
+        write_entry(fd, name, text, new=action == 'add')
+    finally:
+        os.close(fd)
+    return status()
+
+
+def error_message(error):
+    if isinstance(error, FileExistsError):
+        return 'This app already has a personal startup entry. Check it before adding the app again.'
+    if isinstance(error, PermissionError):
+        return 'Your startup entries could not be accessed. Check their permissions and try again.'
+    if isinstance(error, (configparser.Error, KeyError, UnicodeError)):
+        return 'A startup entry could not be read. Check its contents and try again.'
+    if isinstance(error, ValueError):
+        return str(error)
+    return 'Apps could not be read or changed. Refresh the page and try again.'
+
+
+if __name__ == '__main__':
+    try:
+        print(json.dumps({'schema_version': 1, 'ok': True, **run(sys.argv[1:])}))
+    except Exception as error:
+        print(json.dumps({'schema_version': 1, 'ok': False, 'error': error_message(error)}))
+        sys.exit(1)

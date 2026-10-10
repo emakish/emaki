@@ -7,12 +7,84 @@ Item {
     id: service
     property bool live: false
     property bool helpersEnabled: live
+    property var account: ({
+            state: "unavailable"
+        })
+    readonly property string accountName: account.state === "ready" ? account.name : (Quickshell.env("USER") || "")
+    readonly property bool accountAdministrator: account.state === "ready" && account.administrator === true
     property SystemBackend backend: native.item as SystemBackend
     // A failed native Loader remains unready; the independent startup caps still
     // reveal the desktop. Headless/test services need no native service discovery.
     readonly property bool startupReady: !live || (native.status === Loader.Ready && backend?.startupReady === true)
     property string actionState: "idle"
+    property int actionSerial: 0
     property bool wifiRestartRunning: false
+    // Password text only exists during an explicit, authenticated reveal.
+    property string wifiPassword: ""
+    property string wifiPasswordUuid: ""
+    property string wifiPasswordState: "idle"
+    property string pendingWifiPassword: ""
+    property bool settingsWifiScan: false
+    onSettingsWifiScanChanged: if (backend)
+        backend.settingsWifiScan = settingsWifiScan
+    onBackendChanged: if (backend)
+        backend.settingsWifiScan = settingsWifiScan
+    function clearWifiPassword(): void {
+        wifiPasswordDeadline.stop();
+        wifiPassword = "";
+        pendingWifiPassword = "";
+        wifiPasswordUuid = "";
+        wifiPasswordState = "idle";
+        if (wifiPasswordProcess.running)
+            wifiPasswordProcess.signal(15);
+    }
+    function revealWifiPassword(uuid: string): bool {
+        if (!helpersEnabled || wifiPasswordProcess.running || !/^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$/.test(uuid)) {
+            wifiPasswordState = "unavailable";
+            return false;
+        }
+        clearWifiPassword();
+        wifiPasswordUuid = uuid;
+        wifiPasswordState = "pending";
+        wifiPasswordDeadline.restart();
+        wifiPasswordProcess.running = true;
+        return true;
+    }
+    Timer {
+        id: wifiPasswordDeadline
+        interval: 90000
+        onTriggered: {
+            service.clearWifiPassword();
+            service.wifiPasswordState = "failed";
+        }
+    }
+    Process {
+        id: wifiPasswordProcess
+        command: ["pkexec", Platform.libexecDir + "/emaki-wifi-password", "show", service.wifiPasswordUuid]
+        stdout: SplitParser {
+            onRead: line => {
+                if (service.wifiPasswordState !== "pending")
+                    return;
+                try {
+                    const reply = JSON.parse(line);
+                    if (reply.schema_version === 1 && reply.state === "ready" && typeof reply.password === "string")
+                        service.pendingWifiPassword = reply.password;
+                } catch (_) {}
+            }
+        }
+        stderr: SplitParser {
+            onRead: _line => {}
+        }
+        onExited: code => {
+            wifiPasswordDeadline.stop();
+            if (service.wifiPasswordState !== "pending")
+                return;
+            const accepted = code === 0 && service.pendingWifiPassword !== "";
+            service.wifiPassword = accepted ? service.pendingWifiPassword : "";
+            service.pendingWifiPassword = "";
+            service.wifiPasswordState = accepted ? "ready" : "failed";
+        }
+    }
     property var pendingCheck: null
     property string pendingKind: ""
     // The Wayland surface supplies readiness after mapping with OnDemand focus.
@@ -165,6 +237,7 @@ Item {
         enabled: service.helpersEnabled
     }
     function act(kind: string, value: var): bool {
+        actionSerial += 1;
         // Cancel replaces the pairing's check: that check would report the deliberate stop as a failure.
         // Only for the device being paired; a cancel the backend refuses reports why, and the
         // pairing stays tracked.
@@ -203,6 +276,19 @@ Item {
             wifiRestartStartup.restart();
             wifiRestartDeadline.restart();
             wifiRestart.running = true;
+            return true;
+        }
+        if (kind === "wifi-forget-saved") {
+            if (!helpersEnabled) {
+                actionState = "disabled";
+                return false;
+            }
+            action.timeoutMs = 15000;
+            action.start({
+                op: "wifi-forget-saved",
+                uuid: value
+            });
+            actionState = "pending";
             return true;
         }
         if (kind === "brightness" || kind === "profile" || kind === "session" || kind === "lock") {
@@ -416,11 +502,22 @@ Item {
     property bool panelOpen: false
     onPanelOpenChanged: if (panelOpen)
         refresh()
+    PrivateJob {
+        id: accountJob
+        helper: Quickshell.shellPath("helpers/system-tools.py")
+        onCompleted: r => service.account = r
+    }
     Component.onCompleted: if (helpersEnabled) {
+        accountJob.start({
+            op: "account-read"
+        });
         refresh();
         takeSleepFlags(true);
     }
     onHelpersEnabledChanged: if (helpersEnabled) {
+        accountJob.start({
+            op: "account-read"
+        });
         refresh();
         takeSleepFlags(true);
     }
@@ -480,7 +577,7 @@ Item {
     }
     Process {
         id: wifiRestart
-        command: ["/usr/bin/pkexec", "/usr/lib/emaki/emaki-wifi-recover", "restart"]
+        command: ["pkexec", Platform.libDir + "/emaki-wifi-recover", "restart"]
         stdout: SplitParser {
             onRead: _line => {}
         }

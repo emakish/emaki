@@ -1,0 +1,12 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Today's violations of the Portability rules, read by tests/check-portability.py.
+# One line per violating source line: path<TAB>the line (whitespace collapsed)<TAB>reason.
+# The list only shrinks: fix the line, then delete its entry (the check fails while it stays).
+# A new entry needs a reason and the step that removes it. Seams and rules are numbered as in
+# the Portability section of the directives and the 2026-10-09 portability audit.
+crates/emaki-core/src/map.rs	let initcpio = Some(PathBuf::from("/usr/lib/initcpio"));	seam 8: the map's machine table becomes per-platform data (0.5.0)
+crates/emaki-core/src/map.rs	("mirrorlist", "pacman.d/emaki-mirrorlist"),	seam 8: the map's machine table becomes per-platform data (0.5.0)
+crates/emaki-core/src/map.rs	("machine_snapper", "snapper/configs/root"),	seam 8: the map's machine table becomes per-platform data (0.5.0)
+crates/emaki-core/src/map.rs	("machine_grub_btrfs", "default/grub-btrfs/config"),	seam 8: the map's machine table becomes per-platform data (0.5.0)
+crates/emaki-core/src/map.rs	("machine_pacman", "pacman.conf"),	seam 8: the map's machine table becomes per-platform data (0.5.0)

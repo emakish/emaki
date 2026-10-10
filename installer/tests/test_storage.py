@@ -44,6 +44,21 @@ class StorageTests(unittest.TestCase):
             with self.assertRaisesRegex(InstallError, 'English'):
                 make_plan(c, inventory())
 
+    def test_disk_password_minimum_does_not_change_unencrypted_login(self):
+        for encryption in ('none', 'account', 'separate'):
+            for length in (1, 7, 8, 1024):
+                with self.subTest(encryption=encryption, length=length):
+                    c = dict(config(), encryption=encryption)
+                    if encryption == 'separate':
+                        c['disk_password'] = 'x' * length
+                    else:
+                        c['user']['password'] = 'x' * length
+                    if encryption != 'none' and length < 8:
+                        with self.assertRaisesRegex(InstallError, 'at least 8 characters'):
+                            make_plan(c, inventory())
+                    else:
+                        make_plan(c, inventory())
+
     def test_layout_matrix_and_review_never_contain_passwords(self):
         for fs in ('btrfs', 'ext4'):
             for mode in ('erase', 'manual'):

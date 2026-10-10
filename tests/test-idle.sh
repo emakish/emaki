@@ -104,8 +104,10 @@ sleepers='suspend|hibernate|hybrid-sleep|systemctl sleep|loginctl suspend|IdleAc
 if grep -v '^[[:space:]]*#' "$S" | grep -Eqi "$sleepers"; then bad "no sleep in emaki-idle" "$(grep -v '^[[:space:]]*#' "$S" | grep -Ei "$sleepers")"; else ok "no sleep words in emaki-idle code"; fi
 if grep -v '^[[:space:]]*#' "$S" | grep -Eq 'lock .emaki-lock|before-sleep'; then bad "one owner per job" "idle still handles lock/before-sleep"; else ok "idle leaves logind Lock and PrepareForSleep to the guard"; fi
 if [ -f "$UNIT" ]; then
+    python3 "$ROOT/scripts/render-paths" --text "$UNIT" > "$T/emaki-idle.service"
+    UNIT="$T/emaki-idle.service"
     if grep -v '^[[:space:]]*#' "$UNIT" | grep -Eqi "$sleepers"; then bad "no sleep in the unit" "$(grep -Ei "$sleepers" "$UNIT")"; else ok "no sleep words in emaki-idle.service"; fi
-    for line in 'ConditionPathIsDirectory=!/etc/emaki-live' 'StartLimitIntervalSec=0' 'Restart=on-failure' 'RestartSec=2' 'RestartPreventExitStatus=2 127 255' 'ExecStart=/usr/bin/emaki-idle' 'ConditionUser=!root' 'Requisite=graphical-session.target'; do
+    for line in 'ConditionPathIsDirectory=!/etc/emaki-live' 'StartLimitIntervalSec=0' 'Restart=on-failure' 'RestartSec=2' 'RestartPreventExitStatus=2 127 255' 'ExecStart=/usr/bin/emaki-settings-power run' 'ConditionUser=!root' 'Requisite=graphical-session.target'; do
         grep -qxF "$line" "$UNIT" && ok "unit: $line" || bad "unit: $line" "missing"
     done
     grep -q 'StartLimitBurst' "$UNIT" && bad "unit: StartLimitBurst" "present (only StartLimitIntervalSec=0 disables rate limiting)" || ok "unit: no StartLimitBurst"
@@ -117,13 +119,19 @@ if [ -f "$UNIT" ]; then
     else
         ok "unit: flat restart delay (no RestartSteps/RestartMaxDelaySec)"
     fi
-    # Not started by anything until the owner's live trials: no [Install] section, nothing wants it.
-    grep -q '^\[Install\]' "$UNIT" && bad "unit: [Install]" "present; the unit must stay inert until it is started on purpose" || ok "unit: no [Install] section"
+    # Only an explicit personal settings choice enables the policy for future sessions.
+    grep -qxF 'WantedBy=graphical-session.target' "$UNIT" && ok "unit: personal session enablement" || bad "unit: personal session enablement" "missing"
+    if grep -q '^enable emaki-idle.service' "$ROOT/systemd/50-emaki.preset"; then bad "unit: inert by default" "distribution preset enables idle"; else ok "unit: inert by default"; fi
     if grep -v '^[[:space:]]*//' "$ROOT/niri/default.kdl" | grep -q 'emaki-idle'; then bad "default.kdl starts emaki-idle" "it must not before the live trials"; else ok "default.kdl does not start emaki-idle"; fi
     if command -v systemd-analyze >/dev/null 2>&1; then
         # Exit 0 with a misspelt key: only the message tells. Exit non-zero: the unit was
         # not checked (no user manager here) - say so, never pass silently.
-        out=$(XDG_RUNTIME_DIR="$REAL_RUNTIME" systemd-analyze --user verify "$UNIT" 2>&1); rc=$?
+        # Verify this checkout's executable payload without requiring installation.
+        mkdir -p "$T/payload/bin" "$T/verify"
+        cp "$ROOT/scripts/emaki-settings-power" "$T/payload/bin/"
+        python3 "$ROOT/scripts/render-paths" --prefix "$T/payload" \
+            --text "$ROOT/systemd/emaki-idle.service" > "$T/verify/emaki-idle.service"
+        out=$(XDG_RUNTIME_DIR="$REAL_RUNTIME" systemd-analyze --user verify "$T/verify/emaki-idle.service" 2>&1); rc=$?
         if [ "$rc" -ne 0 ]; then
             case "$out" in
                 *"Failed to initialize manager"*) echo "skip unit: systemd-analyze could not start a user manager here; the unit was not checked" ;;

@@ -4,7 +4,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as C
-import "file:///usr/share/emaki/shell" as Shell
+import "@EMAKI_DATADIR@/shell" as Shell
 
 Rectangle {
     id: view

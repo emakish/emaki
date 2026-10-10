@@ -17,6 +17,8 @@ boot = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(boot)
 EVIDENCE = ROOT / '.cache/evidence'
 EVIDENCE.mkdir(parents=True, exist_ok=True)
+PAGE = (ROOT / 'docs/system-map.md').read_text()
+STATES = boot.map_state_commands(PAGE)
 
 
 class HealthTests(unittest.TestCase):
@@ -58,6 +60,11 @@ class HealthTests(unittest.TestCase):
                 output = '../usr/lib/emaki/os-release\nPRETTY_NAME="Emaki"\nID=arch\n'
             elif 'findmnt' in command:
                 output = 'ext4\n'
+            elif command == 'cat ' + boot.SYSTEM_MAP:
+                output, code = ('', 1) if broken == 'map-page' else (PAGE, 0)
+            elif any(state in command for _, state in STATES):
+                assert command.startswith('XDG_RUNTIME_DIR=/run/user/$(id -u) '), command
+                output = 'not json\n' if broken == 'map-state' else '{"schema_version": 1}\n'
             elif 'grep -c Emaki' in command:
                 output = '2\n'
             return subprocess.CompletedProcess(argv, code, output.encode(), b'')
@@ -83,11 +90,17 @@ class HealthTests(unittest.TestCase):
         self.assertEqual(len(probes), 3)
         self.assertTrue(all(i > login for i, _ in probes))
         self.assertTrue(any('--user --failed' in command for _, command in probes))
+        # Every state command the installed map promises runs after login, in the session.
+        states = [i for i, command in enumerate(calls) if any(state in command for _, state in STATES)]
+        self.assertEqual(len(states), len(STATES))
+        self.assertTrue(all(i > login for i in states))
 
     def test_post_login_failures_and_unavailable_managers_fail(self):
         for broken, label in [('system', 'failed-units'), ('user', 'failed-user-units'),
                               ('system-query', 'failed-units'), ('user-query', 'failed-user-units'),
-                              ('journal', 'journal-errors')]:
+                              ('journal', 'journal-errors'),
+                              ('map-page', 'map state commands: installed map readable'),
+                              ('map-state', 'map-state-wifi-recovery')]:
             with self.subTest(broken=broken):
                 result, _, summary = self.run_boot(broken)
                 self.assertEqual(result, 1)

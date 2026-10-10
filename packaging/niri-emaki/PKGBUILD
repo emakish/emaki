@@ -10,7 +10,7 @@
 pkgname=niri-emaki
 _pkgname=niri
 pkgver=26.04
-pkgrel=12
+pkgrel=13
 pkgdesc="niri with Emaki glass capture, login handoff, overview backdrop, crisp cursors and living wallpaper"
 arch=(x86_64)
 url="https://github.com/niri-wm/niri"

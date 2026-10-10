@@ -64,6 +64,14 @@ class Acceptance(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'T1 from 0.2.0 at 1920x1080'):
             m.validate_runs(original, m.required_starts(self.backend, CANDIDATE))
 
+    def test_post_promotion_t3_does_not_replace_required_t1_or_t2(self):
+        starts = ('0.1.0', '0.1.1', '0.3.0')
+        t3 = [f'T3 {start} {size}' for start in starts for size in m.REQUIRED_SIZES]
+        m.validate_runs(runs(starts), starts)
+        for missing in ('T1', 'T2'):
+            with self.subTest(missing=missing), self.assertRaisesRegex(ValueError, missing + ' from'):
+                m.validate_runs([run for run in runs(starts) if not run.startswith(missing + ' ')] + t3, starts)
+
     def test_records_fail_closed(self):
         for data in (None, b'not json', b'[]', b'{}', b'{"manifest": "bad"}', b'\xff'):
             with self.subTest(data=data), self.assertRaises(ValueError):

@@ -10,6 +10,7 @@ import math
 import os
 from pathlib import Path
 import re
+import runpy
 import select
 import shlex
 import shutil
@@ -25,12 +26,17 @@ import reaper
 reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parents[1]
+PATH_RENDERER = runpy.run_path(str(ROOT / 'scripts/render-paths'))
+
+
+def rendered_unit(path):
+    return PATH_RENDERER['substitute'](path.read_text(), PATH_RENDERER['paths']())
 
 
 def unit_file(path):
     unit = configparser.ConfigParser(interpolation=None)
     unit.optionxform = str
-    assert unit.read(path) == [str(path)], path
+    unit.read_string(rendered_unit(path), source=str(path))
     return unit
 
 
@@ -60,8 +66,18 @@ class UnitChecks:
         # The exit code stays 0 for a misspelt key; only the message tells. A non-zero
         # exit means the unit was not checked at all (no runtime directory, e.g. a CI
         # job running as root: "Failed to initialize manager"): never a silent pass.
-        result = subprocess.run(['systemd-analyze', '--user', 'verify', str(self.UNIT)],
-                                text=True, capture_output=True)
+        with tempfile.TemporaryDirectory(prefix='emaki-unit-') as directory:
+            unit = Path(directory) / self.UNIT.name
+            # Check this checkout's payload, not whichever version is installed.
+            prefix = Path(directory) / 'payload'
+            bindir = prefix / 'bin'
+            bindir.mkdir(parents=True)
+            for name in ('emaki-shell', 'emaki-settings-power', 'emaki-sleep-guard'):
+                shutil.copy2(ROOT / 'scripts' / name, bindir / name)
+            unit.write_text(PATH_RENDERER['substitute'](
+                self.UNIT.read_text(), PATH_RENDERER['paths'](str(prefix))))
+            result = subprocess.run(['systemd-analyze', '--user', 'verify', str(unit)],
+                                    text=True, capture_output=True)
         if result.returncode and 'Failed to initialize manager' in result.stderr:
             self.skipTest('systemd-analyze could not start a user manager here, the unit was not checked: '
                           + result.stderr.strip().splitlines()[-1])
@@ -85,6 +101,7 @@ class UnitChecks:
                        QS_DISABLE_CRASH_HANDLER='1')
             env.update({key: value.replace('{private}', private) for key, value in environ.items()})
             if self.SCRIPT.name == 'emaki-shell':
+                Path(private, 'run/readlink').symlink_to(shutil.which('readlink'))
                 checker = Path(private, 'run/emaki-qt-check')
                 checker.write_text('#!/bin/sh\nexit 0\n')
                 checker.chmod(0o700)
@@ -312,7 +329,7 @@ class SleepGuardRestart(UnitChecks, unittest.TestCase):
         self.assertEqual(condition[:2], ['/bin/sh', '-c'])
         self.assertEqual(len(condition), 3)
         command = condition[2]
-        self.assertEqual(command.count('/usr/bin/systemctl'), 1)
+        self.assertEqual(command.count('systemctl'), 1)
         # systemd turns $$ into a literal $ before handing the command to sh.
         self.assertNotIn('$', command.replace('$$', ''))
         command = command.replace('$$', '$')
@@ -324,7 +341,7 @@ class SleepGuardRestart(UnitChecks, unittest.TestCase):
                             'printf "%s\\n" "$QUERY_STATE"\n'
                             'exit "$QUERY_STATUS"\n')
             fake.chmod(0o700)
-            command = command.replace('/usr/bin/systemctl', shlex.quote(str(fake)))
+            command = command.replace('systemctl', shlex.quote(str(fake)))
             cases = [(state, 0, 0 if state in ('active', 'activating') else 1)
                      for state in ('active', 'activating', 'inactive', 'deactivating',
                                    'failed', 'reloading', 'unknown', '', 'active\nactivating')]
@@ -373,7 +390,7 @@ class SleepGuardRestart(UnitChecks, unittest.TestCase):
         self.assertEqual(service.get('Type'), 'notify')
         self.assertNotIn('ExecStartPost', service)
         self.assertIn(service.get('NotifyAccess', 'main'), ('main', 'all'))
-        self.assertTrue(service['ExecStart'].startswith('/usr/bin/python3 '), service['ExecStart'])
+        self.assertTrue(service['ExecStart'].startswith('python3 '), service['ExecStart'])
 
 
 class ShellRestart(UnitChecks, unittest.TestCase):

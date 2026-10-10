@@ -160,7 +160,7 @@ class WorkerLifecycleTests(unittest.TestCase):
         return events, phases, cleanups, runners
 
     def test_wifi_capture_failure_is_a_done_warning(self):
-        with patch('emaki_installer.worker.capture_wifi', side_effect=InstallError(
+        with patch('emaki_installer.worker.active_wifi', return_value='e6685942-10ed-4eaf-9741-1bfed347fc6f'), patch('emaki_installer.worker.capture_wifi', side_effect=InstallError(
                 Code.BAD_CONFIG, 'private failure')):
             events, phases, _, _ = self.execute(wifi_uuid='e6685942-10ed-4eaf-9741-1bfed347fc6f')
         self.assertEqual(events[-1]['type'], 'done')
@@ -194,12 +194,13 @@ class WorkerLifecycleTests(unittest.TestCase):
         self.assertEqual(events[-1]['type'], 'done')
         self.assertNotIn('Wi-Fi was not copied; join it again after restarting.', events[-1]['warnings'])
 
-    def test_recorded_wifi_is_the_fallback_without_an_active_connection(self):
+    def test_wired_or_offline_never_copies_a_stale_installer_join(self):
         joined = 'aaaaaaaa-1111-4111-8111-111111111111'
         with patch('emaki_installer.worker.capture_wifi', return_value=b'joined profile') as capture:
             events, _, _, _ = self.execute(wifi_uuid=joined)
-        capture.assert_called_once_with(joined)
+        capture.assert_not_called()
         self.assertEqual(events[-1]['type'], 'done')
+        self.assertNotIn('Wi-Fi was not copied; join it again after restarting.', events[-1]['warnings'])
 
     def test_recorded_wifi_is_the_fallback_with_two_active_adapters(self):
         from emaki_installer.network_profiles import active_wifi
@@ -1595,6 +1596,32 @@ class BootAndSnapshotTests(unittest.TestCase):
         profile = self.root / ('etc/NetworkManager/system-connections/' + uuid + '.nmconnection')
         self.assertEqual(profile.read_bytes(), data)
         self.assertEqual(profile.stat().st_mode & 0o777, 0o600)
+        self.assertIsNone(self.worker.wifi_profile)
+
+    def test_encrypted_target_keeps_the_selected_wifi(self):
+        from emaki_installer.network_profiles import capture_wifi
+        from test_network_profiles import UUID, PROFILE, private_command
+        source = self.root / 'live-profiles'
+        source.mkdir()
+        profile = source / 'joined.nmconnection'
+        profile.write_text(PROFILE)
+        profile.chmod(0o600)
+        def run(argv, **kwargs):
+            if '--active' in argv:
+                return UUID + ':802-11-wireless\n'
+            if 'UUID,TYPE,FILENAME' in argv:
+                return UUID + ':802-11-wireless:' + str(profile) + '\n'
+            return private_command(argv, **kwargs)
+        self.worker.plan.config.update(encryption='separate', disk_password='disk-password')
+        self.worker.wifi_uuid = UUID
+        self.worker.wifi_profile = capture_wifi(
+            UUID, run=run, directories=(source,), owner=profile.stat().st_uid)
+        self.run_account_and_settings()
+        saved = self.root / ('etc/NetworkManager/system-connections/' + UUID + '.nmconnection')
+        self.assertTrue(saved.is_file())
+        self.assertIn(b'psk=fixture-password-only', saved.read_bytes())
+        self.assertNotIn(b'permissions=user:live:', saved.read_bytes())
+        self.assertEqual(saved.stat().st_mode & 0o777, 0o600)
         self.assertIsNone(self.worker.wifi_profile)
 
     def test_wifi_write_failure_does_not_stop_settings(self):

@@ -1,8 +1,14 @@
 #!/usr/bin/python3 -IB
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Mark desktop upgrades and notify local graphical sessions, without restarting them."""
+"""The desktop state: record desktop upgrades, answer `state` in JSON, notify sessions.
 
+`emaki-session-update state` is the one interface the session reads to learn that the desktop
+changed under it; it prints {"schema": 1, "busy", "desktop", "update"} (see MANIFEST.md,
+component desktop-update-signal). Running sessions are never restarted.
+"""
+
+from datetime import datetime, timezone
 import os
 import json
 from pathlib import Path
@@ -12,26 +18,55 @@ import sys
 import time
 import uuid
 
-sys.path.insert(0, '/usr/libexec/emaki')
+sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import emaki_paths
 import emaki_session_state as state
+import emaki_session_arch as arch
 
+SCHEMA = 1
 MARKER = Path('/run/emaki-session-update')
-LOGINCTL = '/usr/bin/loginctl'
+LOGINCTL = 'loginctl'
 SUMMARY = 'Sign out and sign in again to finish updating the desktop.'
 BODY = 'Save your work first [Emaki].'
+# What a running session must do after a desktop update. Shell, compositor and Qt are all
+# loaded once per login, so every recorded update asks for a new session.
+SIGN_OUT = 'sign-out'
 
 
-def mark_update(path=MARKER):
+def mark_update(path=MARKER, components=()):
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o644)
     try:
         token = uuid.uuid4().hex
-        value = json.dumps(dict(root=state.root_id(), boot=state.boot_id(), transaction=token)).encode()
+        value = json.dumps(dict(root=state.root_id(), boot=state.boot_id(), transaction=token,
+                                at=datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                                components=list(components), action=SIGN_OUT)).encode()
         os.ftruncate(fd, 0)
         os.write(fd, value)
     finally:
         os.close(fd)
     return token
+
+
+def desktop_state(marker=None):
+    """The answer of `state`: a missing, malformed or other-boot record means no update."""
+    record = state.marker_record(MARKER if marker is None else marker)
+    update = None
+    if record is not None:
+        # Records of the previous release carry only the identity fields.
+        components = record.get('components', [])
+        update = dict(id=record['transaction'], at=record.get('at'),
+                      components=components if isinstance(components, list) else [],
+                      action=record.get('action', SIGN_OUT))
+    return dict(schema=SCHEMA, busy=arch.transaction_running(), desktop=arch.desktop_id(), update=update)
+
+
+def targets():
+    # The hook passes the matched package names on standard input, one per line.
+    try:
+        return arch.session_components(sys.stdin.read().split()) if sys.stdin and not sys.stdin.isatty() else []
+    except (OSError, ValueError):
+        return []
 
 
 def graphical_users():
@@ -83,9 +118,9 @@ def send_notification():
 def notify_user(uid):
     user = pwd.getpwuid(uid)
     subprocess.run(
-        ['/usr/bin/python3', '-I', '-B', str(Path(__file__).resolve()), '--notify'],
+        ['python3', '-I', '-B', str(Path(__file__).resolve()), '--notify'],
         user=uid, group=user.pw_gid, extra_groups=[], cwd='/',
-        env={'PATH': '/usr/bin', 'LANG': 'C.UTF-8'},
+        env={'PATH': emaki_paths.TRUSTED_PATH, 'LANG': 'C.UTF-8'},
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         check=False, timeout=5)
 
@@ -94,7 +129,7 @@ def deliver(token):
     # The last hook still runs inside pacman. Wait in a detached process so it
     # can return, complete later admin hooks and release the package database.
     deadline = time.monotonic() + 86400
-    while state.transaction_running():
+    while arch.transaction_running():
         if time.monotonic() >= deadline:
             return 0
         time.sleep(1)
@@ -106,7 +141,7 @@ def deliver(token):
         return 0
     for uid in users:
         # A subsequent transaction may have started during recipient discovery.
-        if state.transaction_running() or state.marker_value(MARKER) != token:
+        if arch.transaction_running() or state.marker_value(MARKER) != token:
             return 0
         try:
             notify_user(uid)
@@ -116,6 +151,14 @@ def deliver(token):
 
 
 def main():
+    if sys.argv[1:] == ['state']:
+        # Read-only and open to every user: the session polls it.
+        try:
+            print(json.dumps(desktop_state(), sort_keys=True), flush=True)
+        except OSError as error:
+            print(f'The desktop state could not be read: {error} [Emaki].', file=sys.stderr)
+            return 75
+        return 0
     if sys.argv[1:] == ['--notify']:
         if os.getuid() == 0:
             return 1
@@ -132,14 +175,14 @@ def main():
         return deliver(sys.argv[2])
     if sys.argv[1:]:
         return 1
-    token = mark_update()
+    token = mark_update(components=targets())
     # No user bus is contacted from inside the transaction or a foreign root.
     try:
-        subprocess.Popen(['/usr/bin/python3', '-I', '-B', str(Path(__file__).resolve()),
+        subprocess.Popen(['python3', '-I', '-B', str(Path(__file__).resolve()),
                           '--after-transaction', token], start_new_session=True,
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, close_fds=True, cwd='/',
-                         env={'PATH': '/usr/bin', 'LANG': 'C.UTF-8'})
+                         env={'PATH': emaki_paths.TRUSTED_PATH, 'LANG': 'C.UTF-8'})
     except (OSError, subprocess.SubprocessError):
         pass
     return 0

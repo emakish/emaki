@@ -242,6 +242,8 @@ def validate_config(value):
         require(unlock == 'us' and disk_password.isascii()
                 and disk_password.isprintable(), Code.BAD_CONFIG,
                 'The startup password must use characters available on an English (US) keyboard.')
+        require(len(disk_password) >= 8, Code.BAD_CONFIG,
+                'Use at least 8 characters for the startup password.')
         # The account password is also typed at the login screen, which starts in the first
         # layout, while GRUB reads unlock_layout(layouts, 'grub'): the window offers it for the
         # disk only when the two agree (InstallerController.accountUnlocks).

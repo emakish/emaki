@@ -36,6 +36,10 @@ RELENG_LEFTOVERS = ('usr/local/bin/choose-mirror', 'usr/local/bin/Installation_g
 
 
 class StaticTests(unittest.TestCase):
+    def test_idle_available_in_live_and_target_images(self):
+        for name in ('packages-extra.txt', 'profile/packages.x86_64', 'target-packages.txt'):
+            self.assertIn('swayidle', (HERE / name).read_text().split())
+
     def test_cache_pruning_keeps_full_current_transaction(self):
         with tempfile.TemporaryDirectory() as directory:
             cache = Path(directory)

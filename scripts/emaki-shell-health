@@ -14,7 +14,11 @@ import sys
 import uuid
 from urllib.parse import unquote
 
-PACKAGED = Path('/usr/share/emaki/shell')
+sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import emaki_paths
+
+PACKAGED = Path(emaki_paths.DATADIR) / 'shell'
 SHELL_UNIT = 'emaki-shell.service'
 NOTICE_UNIT = 'emaki-shell-recovery.service'
 

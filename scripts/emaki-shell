@@ -1,6 +1,13 @@
 #!/bin/sh
+# Resolve the source checkout through symlinks; installed wrappers use the build path.
+emaki_script=$(readlink -f -- "$0")
+emaki_paths="${emaki_script%/*}/paths"
+[ -r "$emaki_paths" ] || emaki_paths='@EMAKI_LIBEXECDIR@/paths'
+# shellcheck source=scripts/paths
+. "$emaki_paths"
+unset emaki_script emaki_paths
 # Emaki shell: bar, launcher, clock shade with notifications, right island, dock.
-# Quickshell (QML from /usr/share/emaki/shell) on top of the `emaki` core.
+# Quickshell (QML from the packaged shell) on top of the `emaki` core.
 #
 #   emaki-shell                     start (used by niri autostart)
 #   emaki-shell call <target> <…>   tell the running shell: launcher toggle,
@@ -15,14 +22,14 @@ set -eu
 EMAKI_LIVE_SESSION=0
 [ ! -f /etc/emaki-live/greetd.toml ] || EMAKI_LIVE_SESSION=1
 export EMAKI_LIVE_SESSION
-shell="${EMAKI_SHELL_DIR:-/usr/share/emaki/shell}"
+shell="${EMAKI_SHELL_DIR:-$EMAKI_DATADIR/shell}"
 case "$0" in
     */*) health="${0%/*}/emaki-shell-health"; session_files="${0%/*}/emaki-session-files" ;;
     *) health=emaki-shell-health; session_files=emaki-session-files ;;
 esac
 
 if [ "${1:-}" = "call" ]; then
-    [ ! -e "${XDG_RUNTIME_DIR:-/nonexistent}/emaki-shell-health/packaged" ] || shell=/usr/share/emaki/shell
+    [ ! -e "${XDG_RUNTIME_DIR:-/nonexistent}/emaki-shell-health/packaged" ] || shell="$EMAKI_DATADIR/shell"
     shell=$("$session_files" active "$shell") || exit 75
     shift
     if [ "$#" -eq 2 ] && [ "$1" = "launcher" ] && [ "$2" = "toggle" ]; then
@@ -47,7 +54,7 @@ fi
 
 # Record the actual service selection: its private environment may differ from
 # the failure handler's. IPC and subsequent starts honor the same recovery marker.
-shell=$("$health" record "$shell") || shell=/usr/share/emaki/shell
+shell=$("$health" record "$shell") || shell="$EMAKI_DATADIR/shell"
 
 # Metadata can be absent on older packages; even a version mismatch is not proof
 # of a crash. Confirm a failure once: a bounded package query can time out while
@@ -76,7 +83,7 @@ fi
 # qs links jemalloc. Honor user tuning; default only this shell, not its apps.
 export MALLOC_CONF="${MALLOC_CONF:-thp:never}"
 
-export EMAKI_BIN="${EMAKI_BIN:-/usr/bin/emaki}"
+export EMAKI_BIN="${EMAKI_BIN:-$(command -v emaki || printf emaki)}"
 unset EMAKI_SESSION_GENERATION EMAKI_SESSION_SOURCE EMAKI_SESSION_WATCHER
 if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$shell" ] && [ -f "$EMAKI_BIN" ]; then
     source_shell=$shell
@@ -100,7 +107,7 @@ export EMAKI_SHELL_TRAY="${EMAKI_SHELL_TRAY:-1}"
 unset EMAKI_SESSION_START EMAKI_SESSION_SKIP_INTRO
 startup_token=
 if [ -n "${EMAKI_LOGIN_HANDOFF:-}" ]; then
-    startup_token=$(/usr/bin/timeout --kill-after=.2s 1s /usr/bin/python3 -I -B "$shell/helpers/session-start.py" shell-token 2>/dev/null) || startup_token=
+    startup_token=$(timeout --kill-after=.2s 1s python3 -I -B "$shell/helpers/session-start.py" shell-token 2>/dev/null) || startup_token=
 fi
 case "$startup_token" in
     ''|*[!0-9a-f]*) ;;

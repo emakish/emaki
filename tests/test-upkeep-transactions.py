@@ -26,6 +26,8 @@ from emaki_installer.worker import software_packages
 
 packaging = runpy.run_path(str(ROOT / 'tests/test-packaging.py'))
 metadata = packaging['metadata']
+renderer = runpy.run_path(str(ROOT / 'scripts/render-paths'))
+INSTALL_PATHS = renderer['paths']()
 NOTICE = 'Recording the desktop update [Emaki].'
 SESSION_HOOK = 'usr/share/libalpm/hooks/zzz-emaki-session-update.hook'
 GRUB_HOOK = 'usr/share/libalpm/hooks/90-emaki-grub-title.hook'
@@ -148,8 +150,12 @@ class Transactions(unittest.TestCase):
                     payload[destination] = (data, mode)
                 if not old and (ROOT / 'packaging/emaki-config/zzz-emaki-session-update.hook').exists():
                     payload[SESSION_HOOK] = ((ROOT / 'packaging/emaki-config/zzz-emaki-session-update.hook').read_bytes(), 0o644)
-                    payload['usr/bin/emaki-session-update'] = ((ROOT / 'scripts/emaki-session-update').read_bytes(), 0o755)
+                    payload['usr/bin/emaki-session-update'] = (renderer['substitute'](
+                        (ROOT / 'scripts/emaki-session-update').read_text(), INSTALL_PATHS).encode(), 0o755)
+                    payload['usr/libexec/emaki/emaki_paths.py'] = (renderer['modules'](INSTALL_PATHS)[0].encode(), 0o644)
                     payload['usr/libexec/emaki/emaki_session_state.py'] = ((ROOT / 'scripts/emaki_session_state.py').read_bytes(), 0o644)
+                    payload['usr/libexec/emaki/emaki_session_arch.py'] = ((ROOT / 'scripts/emaki_session_arch.py').read_bytes(), 0o644)
+                    payload['usr/libexec/emaki/update_catalog.py'] = ((ROOT / 'update-manager/catalog.py').read_bytes(), 0o644)
             if info['name'] == 'emaki-config' and not old:
                 payload['usr/share/emaki/xdg/autostart/org.kde.kdeconnect.daemon.desktop'] = (
                     (ROOT / 'packaging/emaki-config/org.kde.kdeconnect.daemon.desktop').read_bytes(), 0o644)

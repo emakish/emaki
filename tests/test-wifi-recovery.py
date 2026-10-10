@@ -20,6 +20,7 @@ SOURCE = Path(__file__).resolve().parents[1] / 'scripts/emaki-wifi-recover'
 
 def load(source=None):
     module = types.ModuleType('wifi_recovery_fixture')
+    module.__file__ = str(SOURCE)
     exec(compile(SOURCE.read_text() if source is None else source, str(SOURCE), 'exec'),
          module.__dict__)
     return module
@@ -52,11 +53,11 @@ class Fixture(unittest.TestCase):
 
     def command(self, *args):
         self.calls.append(args)
-        if args == ('/usr/bin/nmcli', '-g', 'WIFI,WIFI-HW', 'general'):
+        if args == ('nmcli', '-g', 'WIFI,WIFI-HW', 'general'):
             return self.radio
-        if args[:5] == ('/usr/bin/nmcli', '-g', 'GENERAL.TYPE,GENERAL.STATE', 'device', 'show'):
+        if args[:5] == ('nmcli', '-g', 'GENERAL.TYPE,GENERAL.STATE', 'device', 'show'):
             return self.states[args[5]]
-        if args[:6] == ('/usr/bin/nmcli', '-g', 'BSSID', 'device', 'wifi', 'list'):
+        if args[:6] == ('nmcli', '-g', 'BSSID', 'device', 'wifi', 'list'):
             self.assertEqual(args[6:], ('ifname', args[7], '--rescan', 'no'))
             return self.access_points[args[7]]
         raise AssertionError(f'unexpected command: {args!r}')
@@ -215,7 +216,7 @@ class Fixture(unittest.TestCase):
             self.assertEqual((driver / verb).read_text(), device.name)
         self.assertEqual(len(self.logs), 1)
         self.assertIn('source=manual reset=unbind-bind', self.logs[0])
-        self.assertTrue(all(call[0] == '/usr/bin/nmcli' for call in self.calls))
+        self.assertTrue(all(call[0] == 'nmcli' for call in self.calls))
 
     def test_usb_interface_not_parent(self):
         _, device, driver = self.adapter(identity='1-2:1.0', bus='usb')

@@ -76,6 +76,7 @@ Item {
     // The island's hovered cell ("cell-sound"): drawn on the glass under the carried drop.
     property string islandHoverKey: ""
     signal pageRequested(string page)
+    signal settingsRequested(string page)
     readonly property alias body: body
     readonly property alias head: head
     // For tests/glass-shots.py.
@@ -530,6 +531,7 @@ Item {
                 niri: panel.niri
                 page: panel.page
                 opened: panel.opened
+                onSettingsRequested: page => panel.settingsRequested(page)
             }
         }
     }

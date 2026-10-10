@@ -193,6 +193,17 @@ ShellRoot {
                 if (JSON.parse(scene.status()).search.selected_index !== 1)
                     throw new Error("Arrow did not move the selection");
                 root.save(canvas, "launcher-selected", () => {
+                    root.stage = 200;
+                    scene.context.settingsController.openOn(scene, "panel");
+                    tick.restart();
+                });
+            } else if (root.stage === 200) {
+                const state = JSON.parse(scene.status());
+                if (state.launcher_panel.width !== Math.min(1240, state.system.x - 20) || state.launcher_panel.height !== 810)
+                    throw new Error("Settings did not grow inside the launcher: " + JSON.stringify(state.launcher_panel));
+                if (!scene.input.settingsActive || !scene.input.settingsView)
+                    throw new Error("Settings view is not hosted by the launcher");
+                root.save(canvas, "launcher-settings", () => {
                     root.stage = 5;
                     scene.closeAll();
                     tick.restart();

@@ -22,6 +22,7 @@ def run():
         root = Path(directory)
         binary = root / 'bin'
         binary.mkdir()
+        (binary / 'readlink').symlink_to(shutil.which('readlink'))
         qt_check = binary / 'emaki-qt-check'
         qt_check.write_text('#!/bin/sh\nexit 0\n')
         qt_check.chmod(0o700)

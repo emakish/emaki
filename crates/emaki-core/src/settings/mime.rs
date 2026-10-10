@@ -85,6 +85,8 @@ pub(super) fn verify(profile: &Profile, doc: &Document, timeout: Duration) -> Re
         ("x-scheme-handler/https", &doc.defaults.browser),
         ("text/html", &doc.defaults.browser),
         ("inode/directory", &doc.defaults.files),
+        ("x-scheme-handler/mailto", &doc.defaults.mail),
+        ("text/plain", &doc.defaults.editor),
     ] {
         if let Some(selected) = selected {
             let result = helper_with_lock(

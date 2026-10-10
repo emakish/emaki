@@ -55,6 +55,21 @@ _emaki_migrate_mirrorlist() {
     fi
 }
 
+# Machine state is usable when it is a private regular file that names a packaged channel.
+_emaki_state_valid() {
+    local directory="${1%/}/var/lib/emaki" line
+    [[ ! -L ${1%/}/var && ! -L ${1%/}/var/lib && ! -L $directory ]] || return 1
+    [[ -f $directory/channel && ! -L $directory/channel ]] || return 1
+    [[ $(stat -c %h -- "$directory/channel") == 1 ]] || return 1
+    while IFS= read -r line || [[ -n $line ]]; do
+        line=${line%%#*}
+        if [[ $line =~ ^[[:space:]]*Include[[:space:]]*=[[:space:]]*/usr/share/emaki/mirrors/(stable|testing)\.conf[[:space:]]*$ ]]; then
+            return 0
+        fi
+    done < "$directory/channel"
+    return 1
+}
+
 # The selector stays outside the payload; keep valid local channel choices verbatim.
 # This must also work before the first extraction, without any packaged templates.
 _emaki_initialize_channel() {
@@ -68,6 +83,11 @@ _emaki_initialize_channel() {
         [[ $(stat -c %h -- "$selector") == 1 ]] || return 1
         while IFS= read -r line || [[ -n $line ]]; do
             line=${line%%#*}
+            if [[ $line =~ ^[[:space:]]*Include[[:space:]]*=[[:space:]]*/var/lib/emaki/channel[[:space:]]*$ ]]; then
+                # A missing or broken machine state is repaired like an invalid selector.
+                _emaki_state_valid "$root" && return 0
+                break
+            fi
             if [[ $line =~ ^[[:space:]]*Include[[:space:]]*=[[:space:]]*/usr/share/emaki/mirrors/(stable|testing)\.conf[[:space:]]*$ ]]; then
                 return 0
             fi
@@ -160,12 +180,72 @@ pre_upgrade() {
     }
 }
 
+# Move a stock selector into machine state during package installation only.
+# Runtime channel changes never rewrite the administrator's configuration.
+_emaki_channel_state() {
+    local root=$1 selector directory state line entry='' count=0 channel temporary
+    selector="${root%/}/etc/emaki/channel"
+    directory="${root%/}/var/lib/emaki"
+    state="$directory/channel"
+    [[ -f $selector && ! -L $selector && ! -L ${root%/}/etc/emaki ]] || return 1
+    [[ $(stat -c %h -- "$selector") == 1 ]] || return 1
+    while IFS= read -r line || [[ -n $line ]]; do
+        line=${line%%#*}
+        [[ $line =~ ^[[:space:]]*$ ]] && continue
+        entry=$line
+        count=$((count + 1))
+    done < "$selector"
+    [[ $count == 1 ]] || return 0
+    if [[ $entry =~ ^[[:space:]]*Include[[:space:]]*=[[:space:]]*/var/lib/emaki/channel[[:space:]]*$ ]]; then
+        _emaki_state_valid "$root"
+        return
+    fi
+    [[ $entry =~ ^[[:space:]]*Include[[:space:]]*=[[:space:]]*/usr/share/emaki/mirrors/(stable|testing)\.conf[[:space:]]*$ ]] || return 0
+    channel=${BASH_REMATCH[1]}
+    [[ ! -L ${root%/}/var && ! -L ${root%/}/var/lib && ! -L $directory ]] || return 1
+    mkdir -p -- "$directory" || return 1
+    count=0
+    if [[ -e $state || -L $state ]]; then
+        # Never write through a link or into a file shared by another name.
+        [[ -f $state && ! -L $state && $(stat -c %h -- "$state") == 1 ]] || return 1
+        while IFS= read -r line || [[ -n $line ]]; do
+            line=${line%%#*}
+            [[ $line =~ ^[[:space:]]*$ ]] && continue
+            [[ $line == "Include = /usr/share/emaki/mirrors/${channel}.conf" ]] || count=2
+            count=$((count + 1))
+        done < "$state"
+    fi
+    # pacman reads the direct selector now, so it wins over older state: an interrupted
+    # migration or a hand edit after the move keeps the channel that is in effect.
+    if [[ $count != 1 ]]; then
+        temporary=$(mktemp "$directory/.channel.XXXXXX") || return 1
+        if ! printf '%s\n' '# Copyright (C) 2026 Artur Yakymenko' \
+                '# SPDX-License-Identifier: GPL-3.0-or-later' \
+                "Include = /usr/share/emaki/mirrors/${channel}.conf" > "$temporary" ||
+                ! chmod 644 "$temporary" || ! mv -f -- "$temporary" "$state"; then
+            rm -f -- "$temporary"
+            return 1
+        fi
+    fi
+    temporary=$(mktemp "${selector%/*}/.channel.XXXXXX") || return 1
+    # The state now names the same channel as the selector, so it stays on failure.
+    if ! printf '%s\n' '# Copyright (C) 2026 Artur Yakymenko' \
+            '# SPDX-License-Identifier: GPL-3.0-or-later' \
+            '# Change the update channel in Settings or with emaki-update-channel set.' \
+            'Include = /var/lib/emaki/channel' > "$temporary" ||
+            ! chmod --reference="$selector" "$temporary" ||
+            ! mv -f -- "$temporary" "$selector"; then
+        rm -f -- "$temporary"
+        return 1
+    fi
+}
+
 post_install() {
-    _emaki_migrate_mirrorlist /
+    _emaki_migrate_mirrorlist / && _emaki_channel_state /
 }
 
 post_upgrade() {
-    _emaki_migrate_mirrorlist /
+    _emaki_migrate_mirrorlist / && _emaki_channel_state /
 }
 
 pre_remove() {
@@ -175,4 +255,6 @@ pre_remove() {
 post_remove() {
     [[ ! -L /etc/emaki ]] || return 1
     rm -f -- /etc/emaki/channel
+    [[ ! -L /var/lib/emaki ]] || return 1
+    rm -f -- /var/lib/emaki/channel /var/lib/emaki/channel.lock
 }

@@ -356,7 +356,7 @@ Scope {
         screenWidth: surfaces.controller.viewportWidth
         screenHeight: surfaces.controller.viewportHeight
         dpr: surfaces.controller.output?.devicePixelRatio ?? 1
-        region: Qt.rect(0, 0, Math.min(surfaces.controller.viewportWidth, Metrics.logoX + surfaces.controller.panelWidth + 120), Math.min(surfaces.controller.viewportHeight, Metrics.top + Metrics.launcherHeader + Metrics.launcherBodyMax + Metrics.launcherFoot + 120))
+        region: Qt.rect(0, 0, Math.min(surfaces.controller.viewportWidth, Metrics.logoX + Math.max(surfaces.controller.panelWidth, surfaces.controller.panel.width) + 120), Math.min(surfaces.controller.viewportHeight, Metrics.top + Math.max(surfaces.controller.panelHeight, surfaces.controller.panel.height) + 120))
         active: surfaces.controller.launcherPresent
     }
     // A live capture needs a frame or two after the overlay appears; until then the panel

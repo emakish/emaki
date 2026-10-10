@@ -16,6 +16,7 @@ ShellRoot {
         height: 720
         visible: true
         property int dismissals: 0
+        property int settingsOpened: 0
         Item {
             anchors.fill: parent
             property int leaked: 0
@@ -28,6 +29,7 @@ ShellRoot {
                 opened: true
                 niri: service
                 onDismissed: window.dismissals++
+                onSettingsRequested: window.settingsOpened++
             }
         }
         TestCase {
@@ -73,7 +75,12 @@ ShellRoot {
                 const modes = launcher.modes.length;
                 for (let i = 1; i < modes; ++i)
                     traverse();
-                const category = launcher.keyboardControls()[2 + modes];
+                const gear = launcher.keyboardControls()[2 + modes];
+                verify(gear.activeFocus);
+                keyClick(Qt.Key_Return);
+                compare(window.settingsOpened, 1);
+                traverse();
+                const category = launcher.keyboardControls()[3 + modes];
                 verify(category.activeFocus);
                 keyClick(Qt.Key_Right);
                 keyClick(Qt.Key_Enter);
@@ -101,7 +108,7 @@ ShellRoot {
                 wait(30);
                 // Clipboard footer actions are in the same cyclic order.
                 let controls = launcher.keyboardControls();
-                compare(controls.length, 3 + launcher.modes.length);
+                compare(controls.length, 4 + launcher.modes.length);
                 const clear = controls[controls.length - 1];
                 compare(clear.text, "Clear all");
                 for (let i = 0; i < controls.length; ++i) {

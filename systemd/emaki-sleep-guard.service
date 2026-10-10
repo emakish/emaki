@@ -16,11 +16,11 @@ StartLimitIntervalSec=0
 [Service]
 # A false condition skips the start without triggering Restart=always.
 # Targets go straight from inactive to active (systemd target.c), and niri requests the guard after READY=1; `activating` is accepted only as a harmless extra.
-ExecCondition=/bin/sh -c 'state=$$(/usr/bin/systemctl --user show --property=ActiveState --value graphical-session.target) || exit 1; case "$$state" in active|activating) exit 0;; *) exit 1;; esac'
+ExecCondition=/bin/sh -c 'state=$$(systemctl --user show --property=ActiveState --value graphical-session.target) || exit 1; case "$$state" in active|activating) exit 0;; *) exit 1;; esac'
 # The guard sends READY=1 once it holds logind's delay inhibitor, together with
 # RESTART_RESET=1 (below). python3 is the main process, as NotifyAccess=main needs.
 Type=notify
-ExecStart=/usr/bin/python3 -I /usr/bin/emaki-sleep-guard
+ExecStart=python3 -I @EMAKI_BINDIR@/emaki-sleep-guard
 # always, not on-failure: the guard exits 0 on SIGTERM, so a `systemctl --user kill`
 # would end it for good. A stop job (systemctl --user stop, the end of the session
 # through PartOf=) is never restarted.

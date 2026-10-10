@@ -70,7 +70,7 @@ Scope {
     onReadyChanged: {
         if (ready && !_reportStarted && !_finished) {
             _reportStarted = true;
-            reporter.command = ["/usr/bin/python3", "-I", "-B", Quickshell.shellPath("helpers/session-start.py"), "shell-ready", token, dockRequired ? "dock" : "no-dock"];
+            reporter.command = [Platform.python, "-I", "-B", Quickshell.shellPath("helpers/session-start.py"), "shell-ready", token, dockRequired ? "dock" : "no-dock"];
             reporter.running = true;
         }
     }

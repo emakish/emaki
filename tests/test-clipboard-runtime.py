@@ -4,6 +4,7 @@
 """Exercise real clipboard storage, migration boundaries, and both recorder routes."""
 import importlib.util
 import json
+import runpy
 import os
 from pathlib import Path
 import shlex
@@ -14,6 +15,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
+RENDER = runpy.run_path(str(ROOT / 'scripts/render-paths'))
+PATHS = RENDER['paths']()
 HELPERS = ROOT / 'shell/helpers'
 spec = importlib.util.spec_from_file_location('clipboard_store', HELPERS / 'clipboard_store.py')
 store = importlib.util.module_from_spec(spec)
@@ -161,7 +164,7 @@ class ClipboardRuntime(unittest.TestCase):
         watcher.chmod(0o700)
         self.env.update(PATH=str(bindir) + ':' + self.env['PATH'],
                         WATCH_ARGS=str(self.root / 'args'), EMAKI_WL_PASTE=str(watcher))
-        line = next(line for line in (ROOT / 'niri/default.kdl').read_text().splitlines()
+        line = next(line for line in RENDER['substitute']((ROOT / 'niri/default.kdl').read_text(), PATHS).splitlines()
                     if line.startswith('spawn-at-startup "emaki-autostart" "clipboard" ')
                     and 'clipboard_store.py' in line)
         # The login switch wrapper execs the rest unchanged; run that command directly.

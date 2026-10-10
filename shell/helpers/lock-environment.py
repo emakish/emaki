@@ -11,6 +11,9 @@ import socket
 import sys
 import time
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import emaki_paths
+
 # Mirror installer/emaki_installer/latin_layouts.py; tests/test-lock-layout.py
 # keeps both facts in sync without making the desktop depend on the installer.
 LATIN_LAYOUTS = frozenset((
@@ -51,7 +54,7 @@ def layout_codes(latin_only=False):
     one code for one layout. For switch targets, variants need their own approved
     entry; a Latin base code says nothing about the variant's alphabet.
     """
-    path = Path(os.environ.get('EMAKI_XKB_RULES') or '/usr/share/X11/xkb/rules/evdev.lst')
+    path = Path(os.environ.get('EMAKI_XKB_RULES') or emaki_paths.XKB_RULES)
     try:
         text = path.read_text('utf-8', 'replace')
     except OSError:

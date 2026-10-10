@@ -216,7 +216,7 @@ def cover_context(token, environment):
     value = status(token, environment)
     queried_mono, queried_ms = time.monotonic(), time.time()*1000
     # Bound a stuck IPC peer; charge successful reply transit against expiry.
-    response = subprocess.run(['/usr/bin/niri-emaki', 'msg', '--json', 'emaki-startup-cover'],
+    response = subprocess.run(['niri-emaki', 'msg', '--json', 'emaki-startup-cover'],
                               env=environment, capture_output=True, check=True, timeout=2)
     state = json.loads(response.stdout)
     if not state.get('active') or state.get('remaining_ms', 0) <= 250 or value.get('coverFinished'):
@@ -234,7 +234,7 @@ def niri_snapshot(environment):
         return None
     observations = []
     for request in ('layers', 'windows'):
-        response = subprocess.run(['/usr/bin/niri-emaki', 'msg', '--json', request], env=environment,
+        response = subprocess.run(['niri-emaki', 'msg', '--json', request], env=environment,
                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=.25, check=False)
         if response.returncode or len(response.stdout) > 1024 * 1024:
             return None

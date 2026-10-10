@@ -170,6 +170,9 @@ ShellRoot {
     function prepare(): void {
         controller.step = "you";
         controller.diskId = "/dev/vda";
+        // Planning follows an explicit disk choice; preserve manual fixtures on reprobe.
+        if (!controller.mode)
+            controller.mode = "erase";
         controller.encryption = "none";
         controller.login = "demo";
         controller.fullName = "Demo User";

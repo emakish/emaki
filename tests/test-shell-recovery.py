@@ -7,12 +7,15 @@ import json
 import os
 from pathlib import Path
 import select
+import runpy
 import shutil
 import subprocess
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+RENDER = runpy.run_path(str(ROOT / 'scripts/render-paths'))
+PATHS = RENDER['paths']()
 
 
 class Recovery(unittest.TestCase):
@@ -20,17 +23,17 @@ class Recovery(unittest.TestCase):
         shell = configparser.ConfigParser(interpolation=None)
         shell.read(ROOT / 'systemd/emaki-shell.service')
         recovery = configparser.ConfigParser(interpolation=None)
-        recovery.read(ROOT / 'systemd/emaki-shell-recovery.service')
+        recovery.read_string(RENDER['substitute']((ROOT / 'systemd/emaki-shell-recovery.service').read_text(), PATHS))
         self.assertEqual(shell['Unit']['OnFailure'], 'emaki-shell-heal.service')
         self.assertIn('emaki-shell-recovery.service', shell['Unit']['Conflicts'].split())
         self.assertEqual(recovery['Unit']['PartOf'], 'graphical-session.target')
         self.assertEqual(recovery['Unit']['Requisite'], 'graphical-session.target')
         self.assertNotIn('emaki-shell.service', recovery['Unit'].get('PartOf', ''))
         self.assertEqual(recovery['Service']['ExecStart'],
-                         '/usr/bin/kitty --class emaki-shell-recovery --title "Emaki panel recovery" /usr/bin/emaki-shell recover')
+                         'kitty --class emaki-shell-recovery --title "Emaki panel recovery" /usr/bin/emaki-shell recover')
         self.assertNotIn('Restart', recovery['Service'])
         heal = configparser.ConfigParser(interpolation=None)
-        heal.read(ROOT / 'systemd/emaki-shell-heal.service')
+        heal.read_string(RENDER['substitute']((ROOT / 'systemd/emaki-shell-heal.service').read_text(), PATHS))
         self.assertEqual(heal['Unit']['OnFailure'], 'emaki-shell-recovery.service')
         self.assertEqual(heal['Unit']['Requisite'], 'graphical-session.target')
         self.assertEqual(heal['Unit']['PartOf'], 'graphical-session.target')
@@ -219,6 +222,8 @@ if 'ipc' not in sys.argv:
         with tempfile.TemporaryDirectory(prefix='shell-ipc-') as directory:
             base = Path(directory)
             shutil.copyfile(ROOT / 'scripts/emaki-shell', base / 'emaki-shell')
+            for name in ('paths', 'emaki_paths.py'):
+                shutil.copy2(ROOT / 'scripts' / name, base / name)
             shutil.copy2(ROOT / 'scripts/emaki-session-files', base / 'emaki-session-files')
             shutil.copy2(ROOT / 'scripts/emaki_session_state.py', base / 'emaki_session_state.py')
             for name, body in [('emaki-shell-health', 'echo unexpected > "$HEALTH_CALL"; exit 1'),

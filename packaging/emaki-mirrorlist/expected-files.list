@@ -1,0 +1,7 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+/etc/pacman.d/emaki-mirrorlist
+/usr/share/emaki/mirrors/channel.conf
+/usr/share/emaki/mirrors/default.conf
+/usr/share/emaki/mirrors/stable.conf
+/usr/share/emaki/mirrors/testing.conf

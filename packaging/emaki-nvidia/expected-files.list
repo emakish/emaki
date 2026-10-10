@@ -1,0 +1,10 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+/etc/mkinitcpio.conf.d/60-emaki-nvidia.conf
+/etc/nvidia/nvidia-application-profiles-rc.d/50-emaki-niri.json
+/usr/lib/emaki/nvidia/graphics.py
+/usr/lib/emaki/nvidia/runtime.py
+/usr/lib/modprobe.d/emaki-nvidia.conf
+/usr/share/emaki/nvidia/session.sh
+/usr/share/libalpm/hooks/92-emaki-nvidia-guard.hook
+/usr/share/licenses/emaki-nvidia/LICENSE

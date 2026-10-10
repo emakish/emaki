@@ -41,7 +41,8 @@ class Delivery(unittest.TestCase):
         for name in ('Makefile', 'LICENSE'):
             shutil.copyfile(ROOT / name, cls.root / name)
         cls.exempt = delivery.exceptions(cls.root)
-        cls.delivered = delivery.installed_sources(cls.root)
+        cls.payloads = {}
+        cls.delivered = delivery.installed_sources(cls.root, cls.payloads)
 
     def test_archive_without_git_stages_runtime_payload(self):
         self.assertFalse((self.root / '.git').exists())
@@ -51,6 +52,68 @@ class Delivery(unittest.TestCase):
                      'systemd/emaki-shell.service', 'installer/ui/InstallerView.qml',
                      'packaging/emaki-nvidia/session.sh', 'installer/emaki_installer/graphics.py'):
             self.assertIn(name, self.delivered)
+
+    def test_each_package_payload_matches_its_inventory(self):
+        self.assertFalse(delivery.payload_problems(self.root, self.payloads))
+        self.assertIn('/usr/share/emaki-installer/ui/shaders', self.payloads['emaki-installer'])
+        self.assertEqual(self.payloads['emaki'], set())
+        self.assertEqual(self.payloads['niri-emaki'], {'/usr/bin/niri-emaki'})
+
+    def test_inventory_drift_and_missing_list_fail(self):
+        listing = self.root / 'packaging/emaki-apps/expected-files.list'
+        original = listing.read_text()
+        try:
+            listing.write_text(original + '/usr/share/emaki/not-installed\n')
+            errors = delivery.payload_problems(self.root, self.payloads)
+            self.assertTrue(any('listed path is not installed' in error for error in errors), errors)
+            listing.write_text('# Empty inventory\n')
+            errors = delivery.payload_problems(self.root, self.payloads)
+            self.assertEqual(len(errors), len(self.payloads['emaki-apps']))
+            self.assertTrue(all('absent from expected-files.list' in error for error in errors))
+            listing.unlink()
+            errors = delivery.payload_problems(self.root, self.payloads)
+            self.assertEqual(errors, ['emaki-apps: missing expected-files.list'])
+        finally:
+            listing.write_text(original)
+
+    def test_changed_package_destination_fails_inventory(self):
+        recipe = self.root / 'packaging/emaki-apps/PKGBUILD'
+        original = recipe.read_text()
+        try:
+            recipe.write_text(original.replace('$pkgdir/usr/share/applications/emaki-printers.desktop',
+                                               '$pkgdir/usr/share/applications/moved-printers.desktop'))
+            payloads = {}
+            delivery.installed_sources(self.root, payloads)
+            errors = delivery.payload_problems(self.root, payloads)
+            self.assertEqual(len(errors), 2, errors)
+            self.assertTrue(any('moved-printers.desktop' in error for error in errors))
+        finally:
+            recipe.write_text(original)
+
+    def test_archive_generated_path_modules_are_not_source_candidates(self):
+        self.assertFalse((self.root / '.git').exists())
+        subprocess.run(['python3', str(self.root / 'scripts/render-paths'),
+                        '--source', str(self.root)], check=True)
+        generated = ('scripts/emaki_paths.py', 'scripts/paths',
+                     'shell/Platform.qml', 'shell/helpers/emaki_paths.py')
+        neighbors = ('scripts/emaki_paths_extra.py', 'scripts/paths-extra',
+                     'shell/PlatformExtra.qml', 'shell/helpers/emaki_paths_extra.py')
+        try:
+            for name in neighbors:
+                (self.root / name).write_text('# delivery mutation\n')
+            files = delivery.candidates(self.root)
+            for name in generated:
+                self.assertTrue((self.root / name).is_file(), name)
+                self.assertNotIn(name, files)
+            self.assertIn('scripts/render-paths', files)
+            for name in neighbors:
+                self.assertIn(name, files)
+            errors = delivery.problems(files, self.delivered, self.exempt)
+            self.assertEqual(sorted(error.split(':')[0] for error in errors),
+                             sorted(neighbors), errors)
+        finally:
+            for name in neighbors:
+                (self.root / name).unlink()
 
     def test_new_unshipped_file_fails_even_if_recipe_comment_mentions_it(self):
         path = self.root / 'scripts/emaki-unshipped-test'
@@ -154,6 +217,49 @@ class Delivery(unittest.TestCase):
                     delivery.exceptions(self.root)
         finally:
             manifest.write_text(original)
+
+
+class BuiltPayloads(unittest.TestCase):
+    def test_recipe_rejects_added_and_removed_payload_files(self):
+        for name in ('quickshell-emaki', 'quickshell-emaki/qt-6.12',
+                     'xdg-desktop-portal-gnome-emaki'):
+            with self.subTest(recipe=name), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                source = root / 'source'
+                source.mkdir()
+                package = root / 'package'
+                package.mkdir()
+                shell = source / 'quickshell'
+                (shell / 'build').mkdir(parents=True)
+                (shell / 'build/emaki-qt-build-version').write_text('6.12.0\n')
+                (shell / 'LICENSE').write_text('fixture\n')
+                expected = ['/usr/share/payload']
+                if name.startswith('quickshell-emaki'):
+                    expected += ['/usr/share/licenses/quickshell-emaki/LICENSE',
+                                 '/usr/share/quickshell-emaki/qt-build-version']
+                listing = source / 'expected-files.list'
+                listing.write_text('# Fixture inventory\n' + '\n'.join(sorted(expected)) + '\n')
+                script = r'''source "$1"
+startdir=$2 srcdir=$2 pkgdir=$3
+_qt_build_version() { printf '%s\n' '6.12.0'; }
+cmake() { mkdir -p "$pkgdir/usr/share"; touch "$pkgdir/usr/share/payload"; }
+meson() { cmake; }
+cd "$srcdir"
+package
+'''
+                argv = ['bash', '-e', '-c', script, 'test',
+                        str(ROOT / 'packaging' / name / 'PKGBUILD'), str(source), str(package)]
+                result = subprocess.run(argv, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                (package / 'usr/share/unexpected').touch()
+                result = subprocess.run(argv, capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('/usr/share/unexpected', result.stdout)
+                (package / 'usr/share/unexpected').unlink()
+                listing.write_text(listing.read_text() + '/usr/share/missing\n')
+                result = subprocess.run(argv, capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('/usr/share/missing', result.stdout)
 
 
 class PrivatePythonBytecode(unittest.TestCase):

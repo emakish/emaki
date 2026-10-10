@@ -370,7 +370,7 @@ AuthController {
             cancel();
     }
     readonly property Process authWorker: Process {
-        command: ["/usr/bin/python3", "-I", "-B", Quickshell.shellPath("helpers/greeter-auth.py"), String(Quickshell.processId)]
+        command: [Platform.python, "-I", "-B", Quickshell.shellPath("helpers/greeter-auth.py"), String(Quickshell.processId)]
         clearEnvironment: true
         environment: root.recoveryEnvironment()
         stdinEnabled: true

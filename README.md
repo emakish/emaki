@@ -6,7 +6,7 @@ Emaki is an Arch-based desktop built around **niri-emaki**, a fork of the
 pixel-art wallpaper: a looping valley at sunset that scrolls with your workspaces, with
 steam trains running through it.
 
-**Status: 0.4.2 alpha — not for everyday use.** See [Release stages](#release-stages). It is
+**Status: 0.5.0 alpha — not for everyday use.** See [Release stages](#release-stages). It is
 tested in QEMU with UEFI firmware (OVMF) and has been installed on one real machine so far, see
 [Tested hardware](#tested-hardware). Where the project is heading: [PLANS.md](PLANS.md).
 
@@ -33,10 +33,11 @@ Beta here is the stage of Emaki as a whole, not a pre-release: every new version
 
 ## What's inside
 
-- **niri-emaki** (`packaging/niri-emaki/`) — niri 26.04 with eight patches: the living
+- **niri-emaki** (`packaging/niri-emaki/`) — niri 26.04 with nine patches: the living
   wallpaper, glass capture for the shell, a seamless handoff from the login screen, an
   animated overview backdrop, crisp cursors at fractional scale and a distinct exit status
-  when no GPU renderer can be created, plus locked-session capture protection.
+  when no GPU renderer can be created, plus locked-session capture protection, static-blur
+  occlusion accounting and preserved keyboard focus for mapped shell layers.
 - **The shell** (`shell/`) — bar islands (workspaces, clock, system, privacy), dock,
   launcher, notifications and on-screen display on liquid glass. The login screen (a greetd
   greeter) and the lock screen are drawn by the same shell.
@@ -76,7 +77,7 @@ installer offers two software sets. **Minimal** is the desktop with Dolphin, Fir
 **Rich** (preselected) adds LibreOffice, Thunderbird, Okular, Kate, Gwenview, Ark, Haruna,
 Elisa, Spectacle, OBS Studio, qBittorrent, KeePassXC, Discover with Flatpak, Partition Manager,
 Filelight, System Monitor, ISO Image Writer, KCharSelect, Skanlite, printing and
-media codecs. Not in 0.4.2: BIOS boot, installing alongside Windows.
+media codecs. Not in 0.5.0: BIOS boot, installing alongside Windows.
 
 ## Security notes
 
@@ -105,11 +106,10 @@ session without your password.
 
 Installed Emaki on another machine? Reports are welcome in the issues.
 
-### Known issues in 0.4.2
+### Known issues in 0.5.0
 
 - Hibernation: on the tested MacBook the session does not respond after resuming. Do not use
   hibernation.
-- Wi-Fi joined in the installer has to be joined again after installing.
 - Machines that still update from the old GitHub address print
   "emaki: missing required signature" once after moving to `pkgs.emaki.sh`; the next update is
   clean.

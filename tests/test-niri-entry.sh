@@ -113,16 +113,16 @@ else
 fi
 
 # The system entry point includes defaults at the exact path used by make install.
-if grep -qx 'include "/usr/share/emaki/niri/default.kdl"' "$R/niri/system.kdl"; then
+if grep -qx 'include "@EMAKI_DATADIR@/niri/default.kdl"' "$R/niri/system.kdl"; then
     ok "system.kdl includes the installed default.kdl"
 else
-    bad "system.kdl must include \"/usr/share/emaki/niri/default.kdl\""
+    bad "system.kdl must include \"@EMAKI_DATADIR@/niri/default.kdl\""
 fi
 
 # Copy of niri/ with installation paths redirected to a temporary directory.
 mkdir -p "$T/share" "$T/etc" "$T/home/.config/niri" "$T/empty"
 cp "$R"/niri/*.kdl "$T/share/"
-sed -i -e "s|/usr/share/emaki/niri/|$T/share/|g" -e "s|/etc/niri/config.kdl|$T/etc/config.kdl|g" "$T"/share/*.kdl
+sed -i -e "s|@EMAKI_DATADIR@/niri/|$T/share/|g" -e "s|/etc/niri/config.kdl|$T/etc/config.kdl|g" "$T"/share/*.kdl
 cp "$T/share/system.kdl" "$T/etc/config.kdl"
 printf 'include "%s/share/default.kdl"\n' "$T" > "$T/home/.config/niri/config.kdl"
 

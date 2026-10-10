@@ -172,6 +172,7 @@ class LayoutTests(unittest.TestCase):
         qml = self.work / 'qml'
         (qml / 'helpers').mkdir(parents=True)
         shutil.copy(HELPER, qml / 'helpers/lock-environment.py')
+        shutil.copy(ROOT / 'shell/helpers/emaki_paths.py', qml / 'helpers/emaki_paths.py')
         shutil.copy(ROOT / 'shell/LockEnvironment.qml', qml / 'LockEnvironment.qml')
         shutil.copy(ROOT / 'tests/fixtures/LockLayoutTest.qml', qml / 'check.qml')
         with self.server.lock:

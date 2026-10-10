@@ -5,6 +5,7 @@
 from pathlib import Path
 from runtime_fixture import runtime_path
 import json
+import runpy
 import os
 import shutil
 import socket
@@ -16,13 +17,15 @@ import tomllib
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+RENDER = runpy.run_path(str(ROOT / 'scripts/render-paths'))
+PATHS = RENDER['paths']()
 
 
 class ThemeTests(unittest.TestCase):
     def test_administrator_prompt_selects_fusion_only_for_its_process(self):
         self.assertIn('spawn-at-startup "emaki-autostart" "authentication" "env" "QT_QUICK_CONTROLS_STYLE=Fusion" '
                       '"/usr/lib/polkit-kde-authentication-agent-1"',
-                      (ROOT / 'niri/default.kdl').read_text())
+                      RENDER['substitute']((ROOT / 'niri/default.kdl').read_text(), PATHS))
 
     def test_administrator_controls_use_readable_emaki_palette(self):
         # Match the agent's QApplication and Kirigami/QtQuick Controls, without

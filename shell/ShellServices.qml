@@ -11,6 +11,7 @@ Scope {
     property bool live: false
     property bool panelOpen: false
     readonly property alias settings: settings
+    readonly property alias settingsController: settingsController
     readonly property alias dockStore: dockStore
     readonly property alias services: services
     readonly property alias notifications: notes
@@ -21,7 +22,14 @@ Scope {
     readonly property alias dockLabels: labels
     SettingsCatalog {
         id: settings
-        active: false
+        active: settingsController.opened
+    }
+    SettingsController {
+        id: settingsController
+        catalog: settings
+        notificationStore: notes
+        service: services
+        niri: context.niri
     }
     DockStore {
         id: dockStore
@@ -44,6 +52,7 @@ Scope {
     }
     NotificationStore {
         id: notes
+        catalog: settings
     }
     NotificationService {
         id: notificationService
@@ -52,7 +61,7 @@ Scope {
     SystemService {
         id: services
         live: context.live
-        panelOpen: context.panelOpen
+        panelOpen: context.panelOpen || settingsController.opened
         onLowBattery: percent => notes.systemBattery(percent)
         onSleepLockFailed: policy => notes.systemSleepLock(policy)
     }

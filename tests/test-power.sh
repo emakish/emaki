@@ -13,6 +13,7 @@ mk() { printf '#!/bin/sh\n%s\n' "$2" > "$T/$1"; chmod +x "$T/$1"; }
 mk fuzzel 'printf "%s\n" "$*" >> "'"$T"'/fuzzel-args"; cat > "'"$T"'/menu-items"; a=$(head -n1 "'"$T"'/answers"); sed -i 1d "'"$T"'/answers"; [ -n "$a" ] || exit 1; printf "%s\n" "$a"'
 # Real config layer selection, not a stub: its result is checked below.
 cp "$(dirname "$S")/emaki-config-path" "$T/emaki-config-path"
+cp "$(dirname "$S")/paths" "$T/paths"
 # The test runner's personal files must not affect the result.
 export XDG_CONFIG_HOME="$T/config"
 mk emaki-wallet-start 'echo "wallet $*" >> "'"$LOG"'"; if [ -f "'"$T"'/wallet-stall" ]; then trap "" TERM; while :; do sleep 1; done; fi; [ ! -f "'"$T"'/wallet-fail" ]'

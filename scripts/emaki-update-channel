@@ -1,12 +1,141 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Report the effective Emaki repository channel without accessing the network."""
+"""Read or change the fixed Emaki repository channel without accessing the network."""
 
 import argparse
+import fcntl
+import json
+import os
+from pathlib import Path
 import re
+import stat
 import subprocess
 import sys
+import tempfile
+
+sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import emaki_paths
+
+STATE = Path('/var/lib/emaki/channel')
+SELECTOR = Path('/etc/emaki/channel')
+MIRRORLIST = Path('/etc/pacman.d/emaki-mirrorlist')
+ENV = {'PATH': emaki_paths.TRUSTED_PATH, 'LC_ALL': 'C'}
+
+
+def regular(path, owner=0):
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != owner or info.st_nlink != 1 or info.st_mode & 0o022:
+        raise ValueError('The update channel file is not safe to change.')
+
+
+def active_lines(path):
+    return [line.split('#', 1)[0].strip() for line in path.read_text().splitlines()
+            if line.split('#', 1)[0].strip()]
+
+
+def managed():
+    regular(SELECTOR)
+    regular(STATE)
+    # The page changes only what pacman reads through the whole package chain.
+    if (active_lines(MIRRORLIST) != ['Include = /etc/emaki/channel']
+            or active_lines(SELECTOR) != ['Include = /var/lib/emaki/channel']):
+        raise ValueError('The update channel needs the current repository package.')
+    choices = {f'Include = {emaki_paths.DATADIR}/mirrors/{name}.conf': name
+               for name in ('stable', 'testing')}
+    lines = active_lines(STATE)
+    if len(lines) != 1 or lines[0] not in choices:
+        raise ValueError('The update channel has a custom configuration.')
+    return choices[lines[0]]
+
+
+def channel_status(config):
+    channel = detect(config)
+    editable = False
+    try:
+        editable = managed() == channel
+    except (OSError, ValueError):
+        pass
+    return dict(schema_version=1, status='read', channel=channel, editable=editable,
+                default='stable', message='' if editable else
+                'The current repository configuration cannot be changed here.')
+
+
+def switch(channel):
+    if channel not in ('stable', 'testing'):
+        raise ValueError('Choose Stable or Testing.')
+    if os.geteuid() != 0:
+        raise ValueError('Authentication is required to change the update channel.')
+    # The root-owned state directory and fixed selector are prepared by packaging.
+    for parent in (STATE.parent, STATE.parent.parent):
+        info = parent.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+            raise ValueError('The update channel directory is not safe to change.')
+    fd = os.open(STATE.parent / 'channel.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        before = managed()
+        if detect('/etc/pacman.conf') != before:
+            raise ValueError('The update channel has a custom configuration.')
+        if before == channel:
+            return dict(schema_version=1, status='unchanged', channel=channel, editable=True, default='stable')
+        old = STATE.read_bytes()
+        databases = database()
+        if (databases / 'db.lck').exists():
+            raise ValueError('Another package operation is running. Try again when it finishes.')
+        content = (f'# Copyright (C) 2026 Artur Yakymenko\n'
+                   '# SPDX-License-Identifier: GPL-3.0-or-later\n'
+                   f'Include = {emaki_paths.DATADIR}/mirrors/{channel}.conf\n').encode()
+        replace_state(content)
+        if detect('/etc/pacman.conf') != channel:
+            replace_state(old)
+            raise ValueError('The update channel could not be confirmed. The previous choice was restored.')
+        try:
+            forget_database(databases)
+        except OSError:
+            replace_state(old)
+            raise ValueError('The update channel could not be prepared for the next update. '
+                             'The previous choice was restored.') from None
+        return dict(schema_version=1, status='applied', channel=channel, editable=True,
+                    default='stable', message=(
+                        'Your next updates come from Stable. Packages newer than Stable stay until Stable catches up.'
+                        if before == 'testing' and channel == 'stable' else
+                        'The channel changed. Your next updates come from Testing.'))
+
+
+def database():
+    result = subprocess.run(['pacman-conf', 'DBPath'], check=True, capture_output=True, text=True,
+                            timeout=10, env=ENV)
+    path = Path(result.stdout.strip())
+    if not path.is_absolute():
+        raise ValueError('The package database location could not be read.')
+    return path
+
+
+def forget_database(databases):
+    # A refresh can keep the other channel's newer database after a switch
+    # (docs/updates.md, Channels); without a copy, the next refresh downloads the selected one.
+    for name in ('emaki.db', 'emaki.db.sig'):
+        (databases / 'sync' / name).unlink(missing_ok=True)
+
+
+def replace_state(content):
+    fd, name = tempfile.mkstemp(prefix='.channel-', dir=STATE.parent)
+    try:
+        with os.fdopen(fd, 'wb') as output:
+            output.write(content)
+            output.flush()
+            os.fchmod(output.fileno(), 0o644)
+            os.fsync(output.fileno())
+        os.replace(name, STATE)
+        directory = os.open(STATE.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        Path(name).unlink(missing_ok=True)
 
 
 def classify(servers):
@@ -25,7 +154,8 @@ def classify(servers):
 def detect(config):
     def query(*arguments):
         result = subprocess.run(['pacman-conf', '--config', config, *arguments],
-                                check=True, capture_output=True, text=True, timeout=10)
+                                check=True, capture_output=True, text=True, timeout=10,
+                                env=ENV if os.geteuid() == 0 else None)
         return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
     try:
@@ -37,6 +167,23 @@ def detect(config):
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] in ('status', 'set', 'reset'):
+        try:
+            args = sys.argv[1:]
+            if args == ['status', '--json']:
+                answer = channel_status('/etc/pacman.conf')
+            elif args == ['reset', '--json']:
+                answer = switch('stable')
+            elif len(args) == 3 and args[0] == 'set' and args[-1] == '--json':
+                answer = switch(args[1])
+            else:
+                raise ValueError('Use status, set stable, set testing or reset with --json.')
+            print(json.dumps(answer))
+            return 0
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            print(json.dumps(dict(schema_version=1, status='rejected', message=str(error)
+                                  if isinstance(error, ValueError) else 'The update channel could not be changed.')))
+            return 1
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', default='/etc/pacman.conf',
                         help='read an alternate pacman configuration')

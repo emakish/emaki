@@ -57,6 +57,7 @@ quickshell-emaki
 rtkit
 sof-firmware
 sudo
+swayidle
 udiskie
 upower
 vulkan-intel

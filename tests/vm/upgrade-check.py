@@ -24,7 +24,10 @@ sees, then reads the result over SSH.
       channel switch (docs/updates.md, Channels) is the only way such a machine follows testing,
       so both runs swap the commented Include in /etc/emaki/channel, leave the mirrorlist alone
       and type `sudo pacman -Syyu` for the first upgrade, as documented (via channel-testing).
-  T3  nothing changed at all: the real GitHub stable after `publish.sh github`.
+  T3  nothing changed at all, after promotion: from 0.2.0 on the public stable channel
+      (via pkgs-stable), whose served database must match its current snapshot MANIFEST;
+      older starts use the real GitHub stable after `publish.sh github` (via github-stable).
+      --via may select either stable route explicitly for a matching start version.
   --rehearsal  T2 of the bridge with pkgs.emaki.sh also answered locally from a bucket
       directory; never acceptance (publish.sh stamp refuses its results).
 
@@ -75,7 +78,8 @@ PKGS_TESTING = 'Server = https://pkgs.emaki.sh/testing/$arch'
 # How each run reaches the candidate; `edited`: the run itself changed the mirrorlist.
 VIAS = {'github-testing': {'edited': True}, 'old-address': {'edited': False},
         'pkgs-testing': {'edited': True}, 'pkgs-testing-swap': {'edited': True},
-        'channel-testing': {'edited': True}, 'github-stable': {'edited': False}}
+        'channel-testing': {'edited': True}, 'github-stable': {'edited': False},
+        'pkgs-stable': {'edited': False}}
 # From 0.3.0 on the mirrorlist only includes the channel selector, which includes one of these.
 CHANNEL_INCLUDE = 'Include = /etc/emaki/channel'
 SELECTOR = 'Include = /usr/share/emaki/mirrors/{}.conf'
@@ -165,7 +169,7 @@ def wallet_probe(guest, mode):
     return guest.desktop('timeout 30 python3 -IB -c ' + shlex.quote(WALLET_PROBE)
                          + ' ' + shlex.quote(mode), check=False)
 SIZES = {'1920x1080': (1920, 1080, 1), '2560x1600': (2560, 1600, 2)}
-CHANNEL_SCREEN = ('cat /etc/pacman.d/emaki-mirrorlist /etc/emaki/channel\n'
+CHANNEL_SCREEN = ('cat /etc/pacman.d/emaki-mirrorlist /etc/emaki/channel /var/lib/emaki/channel\n'
                   'pacman-conf --repo emaki Server\n'
                   'emaki-update-channel\n')
 
@@ -227,6 +231,23 @@ def t1_via(start):
     return 'github-testing' if tuple(map(int, version.split('.'))) < (0, 2, 0) else 'pkgs-testing-swap'
 
 
+def t3_via(start, requested=None):
+    """Use the fresh base's unedited stable address; never relabel a testing run."""
+    expected = 'github-stable' if t1_via(start) == 'github-testing' else 'pkgs-stable'
+    if requested is not None and requested != expected:
+        raise SystemExit(f'BAD: {start} uses {expected}; {requested} would not test its unedited stable address')
+    return expected
+
+
+def select_via(run, start, mirror, requested=None):
+    """Stable route overrides belong to post-promotion T3, outside the required stamp."""
+    if requested is not None and run != 'T3':
+        raise SystemExit('BAD: --via is only for the post-promotion T3 stable check')
+    if run == 'T3':
+        return t3_via(start, requested)
+    return t1_via(start) if run == 'T1' else t2_via(mirror)
+
+
 def t2_via(mirror):
     """How T2 reaches the candidate in testing. For the bridge, `promote --first` has put it
     behind pkgs.emaki.sh/stable as well: T2 is the unedited old address (GitHub stable answered
@@ -252,18 +273,34 @@ def selector_via(guest, via):
     return 'channel-testing' if active == [CHANNEL_INCLUDE] else via
 
 
-def candidate(mirror, channel, github_db=None):
+def check_stable_route(guest, via):
+    """Verify T3's unedited base really uses the endpoint whose database was checked."""
+    if via not in ('pkgs-stable', 'github-stable'):
+        return
+    expected = ('https://pkgs.emaki.sh/stable/x86_64' if via == 'pkgs-stable'
+                else f'{GITHUB}/stable')
+    servers = guest.run('pacman-conf --repo emaki Server').splitlines()
+    if servers != [expected]:
+        raise RuntimeError(f'the base does not use {via}: {servers!r}')
+
+
+def candidate(mirror, channel, github_db=None, *, served_channel=False):
     """The candidate this run tests: the mirror snapshot's MANIFEST. The database pacman will read
     must be byte for byte that snapshot's emaki.db: the old address's copy when github_db is
-    given, else the snapshot itself."""
+    given, else the public channel endpoint when served_channel is set, else the snapshot.
+    Reading the channel endpoint checks its redirect too; a pointer move to different database
+    bytes between reads fails the digest comparison instead of silently testing another promotion."""
+    if served_channel and github_db is not None:
+        raise ValueError('a served channel check cannot use a GitHub database copy')
     snap, manifest = snapshot_manifest(mirror, channel)
     if snap is None:
         raise SystemExit(f'BAD: {channel} serves nothing')
     entries = publish.parse_manifest(manifest)
     if github_db is None:
-        served = fetch(f'{mirror}/snap/{channel}/{snap}/emaki.db') or b''
+        path = f'{channel}/x86_64/emaki.db' if served_channel else f'snap/{channel}/{snap}/emaki.db'
+        served = fetch(f'{mirror}/{path}') or b''
         if hashlib.sha256(served).hexdigest() != entries.get('emaki.db'):
-            raise SystemExit(f'BAD: snap/{channel}/{snap}/emaki.db does not match its MANIFEST')
+            raise SystemExit(f'BAD: {path} does not match its MANIFEST')
     else:
         served = github_db
         if hashlib.sha256(github_db).hexdigest() != entries.get('emaki.db'):
@@ -553,6 +590,8 @@ def checks_after_upgrade(guest, via, cand, before_log, start, before_version, be
     expected = 'testing' if VIAS[via]['edited'] else 'stable'
     mirrorlist = guest.run('cat /etc/pacman.d/emaki-mirrorlist')
     selector = guest.run('cat /etc/emaki/channel')
+    # From 0.5.0 the fixed selector includes machine state that Settings changes.
+    state = guest.run('cat /var/lib/emaki/channel')
 
     def entries(text):
         return [line.split('#', 1)[0].strip() for line in text.splitlines()
@@ -560,8 +599,10 @@ def checks_after_upgrade(guest, via, cand, before_log, start, before_version, be
 
     check('channel selector connected [pacman]', entries(mirrorlist) == ['Include = /etc/emaki/channel'],
           mirrorlist)
+    check('channel selector includes machine state [update channel]',
+          entries(selector) == ['Include = /var/lib/emaki/channel'], selector)
     check('selected channel preserved [update channel]',
-          entries(selector) == [f'Include = /usr/share/emaki/mirrors/{expected}.conf'], selector)
+          entries(state) == [f'Include = /usr/share/emaki/mirrors/{expected}.conf'], state)
     check('no pending mirror list [pacnew]',
           guest.run('test ! -e /etc/pacman.d/emaki-mirrorlist.pacnew', check=False).returncode == 0)
     servers = guest.run('pacman-conf --repo emaki Server').splitlines()
@@ -653,6 +694,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0],
                                      formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     parser.add_argument('--run', required=True, choices=('T1', 'T2', 'T3'))
+    parser.add_argument('--via', choices=('pkgs-stable', 'github-stable'),
+                        help="T3 stable route (default: the start version's packaged address)")
     parser.add_argument('--start', required=True, help='0.1.0, 0.1.1, 0.1.2-release, 0.1.2-full, 0.2.0 or 0.3.0')
     parser.add_argument('--base', required=True, help='directory with target.qcow2 and OVMF_VARS.4m.fd of a fresh install')
     parser.add_argument('--vm-dir', default=os.environ.get('VMDIR'), help='this job\'s directory (default $VMDIR)')
@@ -672,12 +715,9 @@ def main():
     rehearsal = bool(args.rehearsal_bucket)
     if rehearsal and args.run != 'T2':
         raise SystemExit('BAD: --rehearsal-bucket is a T2 rehearsal')
-    if args.run == 'T1':
-        via = t1_via(args.start)
-    elif args.run == 'T3':
-        via = 'github-stable'
-    else:
-        via = t2_via(args.mirror)
+    via = select_via(args.run, args.start, args.mirror, args.via)
+    if via in ('pkgs-stable', 'github-stable') and args.github_dir:
+        raise SystemExit('BAD: T3 reads the public stable address and takes no --github-dir')
     if via == 'old-address' and not args.github_dir:
         raise SystemExit('BAD: T2 of the bridge needs --github-dir (publish.sh --github local:DIR github --tag '
                          'testing; DIR/testing)')
@@ -688,14 +728,15 @@ def main():
 
     if via == 'old-address':
         github_db = (Path(args.github_dir) / 'emaki.db').read_bytes()
-    elif via in ('pkgs-testing', 'pkgs-testing-swap'):
+    elif via in ('pkgs-testing', 'pkgs-testing-swap', 'pkgs-stable'):
         github_db = None
     else:
         request = urllib.request.Request(f'{GITHUB}/{"stable" if args.run == "T3" else "testing"}/emaki.db',
                                          headers={'User-Agent': 'emaki-publish'})
         with urllib.request.urlopen(request, timeout=60) as response:
             github_db = response.read()
-    cand = candidate(args.mirror, 'stable' if args.run == 'T3' else 'testing', github_db)
+    cand = candidate(args.mirror, 'stable' if args.run == 'T3' else 'testing', github_db,
+                     served_channel=via == 'pkgs-stable')
     print(f'candidate: MANIFEST {cand["manifest_sha256"]}, emaki {cand["versions"].get("emaki")}', flush=True)
     fixture = json.loads(Path(args.fixture).read_text())
     user, password = fixture['user']['login'], fixture['user']['password']
@@ -744,6 +785,7 @@ def main():
         before_version = check_start_version(guest, args.start, cand)
         result['start_package_version'] = before_version
         via = result['via'] = selector_via(guest, via)
+        check_stable_route(guest, via)
         before = prepare_old_state(guest, via)
         (vm / 'before.txt').write_text(before)
         before_config = personal_config(guest)

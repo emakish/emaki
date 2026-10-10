@@ -42,7 +42,10 @@ with tempfile.TemporaryDirectory() as tmp:
     helper = base / 'prepare.py'
     helper.write_text('import os\nprint(os.environ.get("FIXTURE_PNG", ""))\n')
     wrapper = base / 'session'
-    wrapper.write_text(source.replace('/usr/share/emaki/shell/helpers/session-start.py', str(helper)))
+    wrapper.write_text(source.replace('$EMAKI_DATADIR/shell/helpers/session-start.py', str(helper)))
+    (base / 'paths').symlink_to(ROOT / 'scripts/paths')
+    for tool in ('readlink', 'timeout', 'python3'):
+        (base / tool).symlink_to('/usr/bin/' + tool)
     compositor = base / 'niri-emaki'
     compositor.write_text('#!/usr/bin/python3\nimport json,os\nfrom pathlib import Path\n'
                           'Path(os.environ["RESULT"]).write_text(json.dumps({k:v for k,v in os.environ.items() if k.startswith("EMAKI_")}))\n')
@@ -66,7 +69,7 @@ xdg_end = source.index('\n# Config selection.', xdg_start)
 for state in ('', '/fixture/state', 'relative-state'):
     for value in ('', '/etc/xdg', '/custom:/etc/xdg', '/usr/share/emaki/xdg:/etc/xdg'):
         env = {'PATH': '/usr/bin', 'HOME': '/fixture/home',
-               'XDG_CONFIG_DIRS': value, 'XDG_STATE_HOME': state}
+               'XDG_CONFIG_DIRS': value, 'XDG_STATE_HOME': state, 'EMAKI_DATADIR': '/usr/share/emaki'}
         managed = (state if state.startswith('/') else '/fixture/home/.local/state') + '/emaki/defaults'
         inherited = value if value.startswith('/usr/share/emaki/xdg:') else '/usr/share/emaki/xdg:' + (value or '/etc/xdg')
         expected = managed + ':' + inherited

@@ -83,7 +83,7 @@ for scale, fallback in ((1, ''), (2, ''), (1, 'config_invalid'), (1, 'image_miss
         continue
     assert 'MATERIAL_IDLE_OK' in result.stdout, result.stdout
     assert 'PRIVATE' not in result.stdout, result.stdout
-    for state in ('bar', 'bar-hover', 'bar-logo-hover', 'launcher', 'launcher-selected', 'launcher-search', 'drawer', 'drawer-dnd', 'drawer-hover', 'notification-peek', 'notification-flood', 'launcher-clipboard', 'launcher-web', 'launcher-frequent', 'drawer-media', 'dock', 'dock-list', 'dock-menu', 'osd-sound', 'osd-light', 'privacy', 'privacy-open', 'wifi-portal', 'wifi-hidden', 'launcher-recent', 'bar-system-hover', 'system-sound', 'system-wifi', 'system-bt', 'system-power', 'system-power-confirm'):
+    for state in ('bar', 'bar-hover', 'bar-logo-hover', 'launcher', 'launcher-selected', 'launcher-settings', 'launcher-search', 'drawer', 'drawer-dnd', 'drawer-hover', 'notification-peek', 'notification-flood', 'launcher-clipboard', 'launcher-web', 'launcher-frequent', 'drawer-media', 'dock', 'dock-list', 'dock-menu', 'osd-sound', 'osd-light', 'privacy', 'privacy-open', 'wifi-portal', 'wifi-hidden', 'launcher-recent', 'bar-system-hover', 'system-sound', 'system-wifi', 'system-bt', 'system-power', 'system-power-confirm'):
         with Image.open(DEST / f'{state}@{scale}x.png') as frame:
             assert frame.size == (1536 * scale, 960 * scale), frame.size
     # The selected / current drops (today, the chosen player, the open page's tab) are orange,

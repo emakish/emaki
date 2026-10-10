@@ -1,14 +1,15 @@
 use crate::{bad_arguments, json_output, output};
 use emaki_core::settings::{Operation, run as settings};
 use std::path::Path;
-use std::process::ExitCode;
+use std::process::{Command, ExitCode, Stdio};
 use std::time::Duration;
 
 #[path = "settings_tui.rs"]
 mod tui;
 
-const HELP: &str = "Usage: emaki settings [command] [options]
-Without a command, open the keyboard settings menu.
+const HELP: &str = "Usage: emaki settings [page | command] [options]
+Without a command, open settings inside the running shell launcher.
+Use a page name (for example, wifi) to open that page.
   list                       List settings, current values, defaults and sources
   get KEY                    Read one setting
   set KEY VALUE              Validate, save and apply a setting
@@ -16,6 +17,7 @@ Without a command, open the keyboard settings menu.
   history                    List persisted changes
   undo ID                    Restore changed keys, refusing later-key conflicts
 Options:
+  --text                     Open the keyboard settings menu instead
   --json                     Print a command reply as JSON (not for the menu)
   --profile-root PATH        Use an isolated test profile with matching XDG paths
   --timeout-ms N             Write/menu validation deadline: 10..10000 ms (default 2000)
@@ -36,6 +38,11 @@ pub(super) fn run(args: &[&str]) -> ExitCode {
     if args == ["--help"] || args == ["-h"] {
         return output(&format!("{HELP}\n"), 0);
     }
+    if let [page] = args {
+        if PAGES.contains(page) {
+            return open_launcher_settings(page);
+        }
+    }
     let (operation, tail) = match args {
         ["list", tail @ ..] => (Some(Operation::List), tail),
         ["history", tail @ ..] => (Some(Operation::History), tail),
@@ -51,10 +58,11 @@ pub(super) fn run(args: &[&str]) -> ExitCode {
         [flag, ..] if flag.starts_with("--") => (None, args),
         _ => return bad_arguments(),
     };
-    let (mut root, mut json, mut timeout) = (None, false, None);
+    let (mut root, mut json, mut timeout, mut text) = (None, false, None, false);
     let mut args = tail.iter();
     while let Some(arg) = args.next() {
         match *arg {
+            "--text" if !text && operation.is_none() => text = true,
             "--profile-root" if root.is_none() => {
                 let Some(path) = args.next() else {
                     return bad_arguments();
@@ -86,6 +94,12 @@ pub(super) fn run(args: &[&str]) -> ExitCode {
         }
     }
     let Some(operation) = operation else {
+        if !text {
+            if root.is_some() || timeout.is_some() {
+                return bad_arguments();
+            }
+            return open_launcher_settings("");
+        }
         return tui::run(root, Duration::from_millis(timeout.unwrap_or(2000)));
     };
     let reply = settings(
@@ -97,5 +111,72 @@ pub(super) fn run(args: &[&str]) -> ExitCode {
         json_output(serde_json::to_string_pretty(&reply), reply.exit_code())
     } else {
         output(&reply.human(), reply.exit_code())
+    }
+}
+
+const PAGES: &[&str] = &[
+    "panel",
+    "windows",
+    "wifi",
+    "bluetooth",
+    "sound",
+    "displays",
+    "battery",
+    "keyboard",
+    "mouse",
+    "network",
+    "notifications",
+    "wallpaper",
+    "region",
+    "apps",
+    "about",
+    "updates",
+    "lock",
+];
+
+fn open_launcher_settings(page: &str) -> ExitCode {
+    // A successful IPC process can still mean an unavailable method. Require the
+    // launcher's structured acknowledgement, with one bounded request and no retry.
+    let reply = Command::new("timeout")
+        .args([
+            "--kill-after=1s",
+            "3s",
+            "emaki-shell",
+            "call",
+            "settings",
+            "open",
+            page,
+        ])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output();
+    let opened = reply
+        .ok()
+        .filter(|reply| reply.status.success())
+        .is_some_and(|reply| {
+            serde_json::from_slice::<serde_json::Value>(&reply.stdout)
+                .is_ok_and(|value| value["schema_version"] == 1 && value["status"] == "opened")
+        });
+    if opened {
+        ExitCode::SUCCESS
+    } else {
+        output(
+            "settings: launcher unavailable; use emaki settings --text for the keyboard menu.\n",
+            1,
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn page_names_match_the_shell_registry() {
+        let registry = include_str!("../../../shell/SettingsPageRegistry.qml");
+        let pages: Vec<_> = registry
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix(r#"pageId: ""#))
+            .map(|page| page.trim_end_matches('"'))
+            .collect();
+        assert_eq!(super::PAGES, pages);
     }
 }

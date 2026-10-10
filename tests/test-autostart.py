@@ -15,8 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 WRAPPER = ROOT / 'scripts/emaki-autostart'
 COMMANDS = {
     'wallpaper': ['emaki-session-wallpaper'],
-    'clipboard': ['python3', '-B', '/usr/share/emaki/shell/helpers/clipboard_store.py', '--watch'],
-    'authentication': ['env', 'QT_QUICK_CONTROLS_STYLE=Fusion', '/usr/lib/polkit-kde-authentication-agent-1'],
+    'clipboard': ['python3', '-B', '@EMAKI_DATADIR@/shell/helpers/clipboard_store.py', '--watch'],
+    'authentication': ['env', 'QT_QUICK_CONTROLS_STYLE=Fusion', '@EMAKI_POLKIT_AGENT@'],
     'automount': ['udiskie', '--no-automount'],
     'shell': ['systemctl', '--user', 'start', '--no-block', 'emaki-shell.service'],
     'sleep-guard': ['systemctl', '--user', 'start', '--no-block', 'emaki-sleep-guard.service'],

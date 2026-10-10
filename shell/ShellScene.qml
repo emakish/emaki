@@ -39,6 +39,7 @@ Item {
             niri: scene.niri
             live: !scene.headless
             panelOpen: scene.systemOpen
+            settingsController.targetHost: scene
         }
     }
     property bool skipIntro: false
@@ -451,9 +452,14 @@ Item {
             if (scene.focusedOutput)
                 scene.showNotification(id);
         }
-        function onDndChanged(): void {
-            if (scene.notes.dnd)
+        function onEffectiveDndChanged(): void {
+            if (scene.notes.effectiveDnd)
                 scene.retainCriticalPeek();
+        }
+        function onRulesChanged(): void {
+            scene.peekIds = scene.peekIds.filter(id => scene.notes.entries.some(e => e.id === id && scene.notes.peekAllowed(e)));
+            if (!scene.peekOpen)
+                scene.endPeek();
         }
         function onEntriesChanged(): void {
             if (scene.peekOpen) {
@@ -529,10 +535,12 @@ Item {
     function showNotification(id: int): void {
         if (!focusedOutput)
             return;
+        if (!notes.entries.some(e => e.id === id && notes.peekAllowed(e)))
+            return;
         const time = Date.now();
         const critical = notes.entries.some(e => e.id === id && e.critical === true);
         const pairing = notes.entries.some(e => e.id === id && e.critical === true && !e.batteryWarning && e.object);
-        if (!critical && (niri.overviewOpen || modalOpen || notes.dnd || presentationState !== "clear" || time < peekCooldown))
+        if (!critical && (niri.overviewOpen || modalOpen || notes.effectiveDnd || presentationState !== "clear" || time < peekCooldown))
             return;
         // A new pairing request replaces the current one so its actions are visible.
         // Other arrivals remain in the drawer while a request is pending.
@@ -577,8 +585,8 @@ Item {
         peekCooldown = state.cooldown;
         peekStarted = state.started;
         peekUntil = state.until;
-        peekIds = state.ids.filter(id => notes.entries.some(e => e.id === id && (state.until > now || (e.critical && !e.batteryWarning && e.object))));
-        if (niri.overviewOpen || modalOpen || notes.dnd || presentationState !== "clear")
+        peekIds = state.ids.filter(id => notes.entries.some(e => e.id === id && notes.peekAllowed(e) && (state.until > now || (e.critical && !e.batteryWarning && e.object))));
+        if (niri.overviewOpen || modalOpen || notes.effectiveDnd || presentationState !== "clear")
             retainCriticalPeek();
         if (peekOpen) {
             clockPresent = true;
@@ -620,13 +628,17 @@ Item {
     signal closeAllRequested
     readonly property real viewportWidth: headless ? testWidth : Math.min(output?.width ?? 0, testWidth || Infinity)
     readonly property real viewportHeight: headless ? testHeight : Math.min(output?.height ?? 0, testHeight || Infinity)
-    readonly property real panelWidth: Math.min(Metrics.launcherWidth, Math.max(36, viewportWidth - Metrics.logoX - Metrics.side))
-    // Content follows the mockup's 500px body cap; surfaces keep their accepted morph.
-    readonly property real panelHeight: Math.min(launcherBody.desiredHeight, Math.max(36, viewportHeight - Metrics.top - Metrics.side))
+    readonly property real settingsWidthLimit: Math.max(Metrics.islandHeight, Math.min(viewportWidth - 60, bar.systemGlass.islandRect.x - Metrics.logoX - Metrics.side))
+    readonly property real panelWidth: launcherBody.settingsActive ? Math.min(Metrics.settingsWidth, settingsWidthLimit) : Math.min(Metrics.launcherWidth, Math.max(36, viewportWidth - Metrics.logoX - Metrics.side))
+    // Settings use the larger approved proportions, with room around every output edge.
+    readonly property real panelHeight: Math.min(launcherBody.desiredHeight, Math.max(36, viewportHeight - (launcherBody.settingsActive ? 74 : Metrics.top + Metrics.side)))
 
     function openLauncher(keyboard): void {
         if (!enabled || (!output && !headless))
             return;
+        // A new opening interrupts the retained close frame with fresh launcher state.
+        if (launcherPresent && !launcherOpen)
+            launcherBody.reset();
         if (!launcherOpen)
             closePanels(true);
         if (launcherOpen) {
@@ -651,7 +663,7 @@ Item {
             keyboardSurface = "";
         launcherOpen = false; // Release keyboard immediately; compositor restores underlying focus.
         expansion = 0;
-        launcherBody.reset();
+        launcherBody.settingsView?.flushPending();
         closeTimer.restart();
     }
     function closeAll(): void {
@@ -804,7 +816,7 @@ Item {
             notifications: {
                 server: notificationService.state,
                 count: notes.count,
-                dnd: notes.dnd,
+                dnd: notes.effectiveDnd,
                 groups: notes.groups().length,
                 expanded_groups: Object.keys(notes.expanded).length,
                 action: notes.actionState,
@@ -940,13 +952,13 @@ Item {
         launcherOpen: scene.launcherOpen
         launcherPresent: scene.launcherPresent
         // Right edge of the growing launcher panel: islands fade as it covers them.
-        launcherRight: scene.launcherPresent ? Metrics.logoX + Metrics.islandHeight + (scene.panelWidth - Metrics.islandHeight) * scene.expansion : 0
+        launcherRight: scene.launcherPresent ? Metrics.logoX + launcherBody.shownWidth : 0
         launcherExpansion: scene.launcherPresent ? scene.expansion : 0
         // An island stays drawn under its growing panel (the overlay, above the bar) until the
         // panel is half open: hiding it at once left 30–60 ms with neither drawn (27.09).
         clockPresent: scene.clockPresent && scene.clockExpansion > .5
         notificationCount: scene.notes.count
-        dnd: scene.notes.dnd
+        dnd: scene.notes.effectiveDnd
         services: scene.services
         systemPresent: scene.systemPresent && scene.systemExpansion > .5
         onSystemClicked: page => scene.openSystem(page, scene.barKeyboardActive)
@@ -991,6 +1003,7 @@ Item {
         }
         LauncherBody {
             id: launcherBody
+            settingsController: scene.context.settingsController
             sharedCatalog: scene.context.catalog
             sharedClipboard: scene.context.clipboard
             wallpaperState: wallpaper.state
@@ -999,6 +1012,7 @@ Item {
             niri: scene.niri
             identity: scene.appIdentity
             width: scene.panelWidth
+            maximumWidth: settingsActive ? scene.settingsWidthLimit : Infinity
             height: scene.panelHeight
             expansion: scene.expansion
             opened: scene.launcherOpen
@@ -1006,6 +1020,7 @@ Item {
             origin: Qt.point(panel.x, panel.y)
             logoBubble: bar.leftIslands.logoBubble
             onDismissed: scene.closeAll()
+            onSettingsRequested: scene.context.settingsController.openOn(scene, "")
         }
     }
     // Each output mirrors the shared snapshot, including outputs added later.
@@ -1078,5 +1093,6 @@ Item {
         focus: scene.systemOpen
         Keys.onEscapePressed: scene.closeSystem()
         onPageRequested: page => scene.openSystem(page, systemPanel.keyboardMode)
+        onSettingsRequested: page => scene.context.settingsController.openOn(scene, page)
     }
 }

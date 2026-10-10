@@ -111,8 +111,10 @@ def run(width, height, mutant=None, reopen=False):
     with tempfile.TemporaryDirectory(prefix='emaki-update-ui-') as directory:
         root = Path(directory)
         shutil.copytree(UI, root / 'ui')
+        controller = root / 'ui/UpdateController.qml'
+        controller.write_text(controller.read_text().replace('@EMAKI_DATADIR@/shell', (ROOT / 'shell').as_uri()))
         view = root / 'ui/UpdateView.qml'
-        text = view.read_text().replace('file:///usr/share/emaki/shell', (ROOT / 'shell').as_uri())
+        text = view.read_text().replace('@EMAKI_DATADIR@/shell', (ROOT / 'shell').as_uri())
         if mutant and not reopen:
             before, after = MUTANTS[mutant]
             assert before in text

@@ -3,6 +3,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell.Io
+import "@EMAKI_DATADIR@/shell" as Shell
 
 Item {
     id: root
@@ -24,7 +25,7 @@ Item {
         output = "";
         received = false;
         notStarted = false;
-        process.command = ["/usr/libexec/emaki/update-manager-backend", operation];
+        process.command = [Shell.Platform.libexecDir + "/update-manager-backend", operation];
         process.running = true;
         startWatch.restart();
     }

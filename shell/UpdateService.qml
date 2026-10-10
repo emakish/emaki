@@ -48,7 +48,7 @@ Scope {
     }
     Process {
         id: status
-        command: ["/usr/bin/emaki-update-manager", "--status"]
+        command: ["emaki-update-manager", "--status"]
         stdout: StdioCollector {
             onStreamFinished: service.acceptStatus(text)
         }
@@ -56,7 +56,7 @@ Scope {
     }
     Process {
         id: checker
-        command: ["/usr/bin/emaki-update-manager", "--check"]
+        command: ["emaki-update-manager", "--check"]
         stdout: StdioCollector {}
         stderr: StdioCollector {}
         onRunningChanged: if (!running)
@@ -64,7 +64,7 @@ Scope {
     }
     Process {
         id: launcher
-        command: AppLaunch.command("emaki-update-manager", ["/usr/bin/emaki-update-manager"])
+        command: AppLaunch.command("emaki-update-manager", ["emaki-update-manager"])
         stderr: SplitParser {
             onRead: line => AppLaunch.diagnostic(line)
         }

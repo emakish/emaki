@@ -305,7 +305,10 @@ fn concurrent_installed_writers_preserve_both_values_and_history_across_processe
         r#"#!/usr/bin/env python3
 import json, sys, time
 assert sys.argv[1:4] == ['call', 'settings', 'apply']
-assert isinstance(json.loads(sys.argv[4])['rows'], list)
+rows = json.loads(sys.argv[4])['rows']
+assert isinstance(rows, list) and rows
+# Only run-time fields: a long message can lose its answer in the shell's IPC.
+assert all(set(row) <= {'key', 'value', 'override_value'} and 'value' in row for row in rows)
 time.sleep(0.1)
 print('applied')
 "#,
@@ -345,16 +348,33 @@ print('applied')
         );
     }
     for mut child in children {
+        // Read while the child runs: a complete shortcut catalog is larger than
+        // the pipe buffer, so waiting for exit before reading would deadlock.
+        let drain = |mut stream: Box<dyn std::io::Read + Send>| {
+            std::thread::spawn(move || {
+                let mut bytes = Vec::new();
+                stream.read_to_end(&mut bytes).unwrap();
+                bytes
+            })
+        };
+        let stdout = drain(Box::new(child.stdout.take().unwrap()));
+        let stderr = drain(Box::new(child.stderr.take().unwrap()));
         let deadline = Instant::now() + CHILD_DEADLINE;
         while child.try_wait().unwrap().is_none() {
             if Instant::now() >= deadline {
                 let _ = child.kill();
                 let _ = child.wait();
+                let _ = stdout.join();
+                let _ = stderr.join();
                 panic!("concurrent settings writer did not exit");
             }
             std::thread::sleep(Duration::from_millis(5));
         }
-        let out = child.wait_with_output().unwrap();
+        let out = Output {
+            status: child.wait().unwrap(),
+            stdout: stdout.join().unwrap(),
+            stderr: stderr.join().unwrap(),
+        };
         assert!(out.status.success(), "{out:?}");
         let result: Value = serde_json::from_slice(&out.stdout).unwrap();
         assert_eq!(result["session_applied"], true, "{result}");
@@ -409,7 +429,12 @@ fn installed_mime_requires_the_session_desktop_before_writing_associations() {
         let f = Fixture::new();
         installed_helper(&f, "emaki-terminal", "pass\n");
         installed_helper(&f, "gio", "print('Default application: test.desktop')\n");
-        for key in ["defaults.browser", "defaults.files"] {
+        for key in [
+            "defaults.browser",
+            "defaults.files",
+            "defaults.mail",
+            "defaults.editor",
+        ] {
             let out = f
                 .fake("ok")
                 .env("XDG_CURRENT_DESKTOP", desktop)
@@ -661,7 +686,13 @@ fn installed_application_defaults_publish_owned_mime_and_reject_unavailable_apps
         "gio",
         "import sys\nassert sys.argv[1] == 'mime'\nprint('Default application: test.desktop')\n",
     );
-    for key in ["defaults.terminal", "defaults.browser", "defaults.files"] {
+    for key in [
+        "defaults.terminal",
+        "defaults.browser",
+        "defaults.files",
+        "defaults.mail",
+        "defaults.editor",
+    ] {
         let (out, reply) = installed_run(&f, &["set", key, "test.desktop"]);
         assert!(out.status.success(), "{reply}");
         assert_eq!(reply["session_applied"], true);
@@ -674,12 +705,20 @@ fn installed_application_defaults_publish_owned_mime_and_reject_unavailable_apps
         "x-scheme-handler/https=test.desktop",
         "text/html=test.desktop",
         "inode/directory=test.desktop",
+        "x-scheme-handler/mailto=test.desktop",
+        "text/plain=test.desktop",
     ] {
         assert!(contents.contains(association), "{contents}");
     }
     let before = fs::read(f.source()).unwrap();
     let history = installed_run(&f, &["history"]).1["history"].clone();
-    for key in ["defaults.terminal", "defaults.browser", "defaults.files"] {
+    for key in [
+        "defaults.terminal",
+        "defaults.browser",
+        "defaults.files",
+        "defaults.mail",
+        "defaults.editor",
+    ] {
         let (out, reply) = installed_run(&f, &["set", key, "missing.desktop"]);
         assert!(!out.status.success(), "{reply}");
         assert_eq!(reply["reason"], "application_unavailable");
@@ -691,7 +730,12 @@ fn installed_application_defaults_publish_owned_mime_and_reject_unavailable_apps
 
 #[test]
 fn installed_mime_confirmation_failure_rolls_back_source_and_associations() {
-    for key in ["defaults.browser", "defaults.files"] {
+    for key in [
+        "defaults.browser",
+        "defaults.files",
+        "defaults.mail",
+        "defaults.editor",
+    ] {
         let f = Fixture::new();
         installed_helper(
             &f,
@@ -714,19 +758,348 @@ fn installed_mime_confirmation_failure_rolls_back_source_and_associations() {
     }
 }
 
+/// A machine-settings provider with the provider's JSON answers, over a JSON file of
+/// machine values; `declared` keys are read-only, `machine-fail` holds a forced refusal.
+fn machine_provider(f: &Fixture) -> PathBuf {
+    let state = f.root.join("machine.json");
+    fs::write(
+        &state,
+        r#"{"keyboard.layouts": ["us", "ru"], "keyboard.switch_key": "Super+Space"}"#,
+    )
+    .unwrap();
+    installed_helper(
+        f,
+        "emaki-machine-settings",
+        &format!(
+            r#"import json, sys
+from pathlib import Path
+root = Path({root:?})
+args = [a for a in sys.argv[1:] if a != '--json']
+with open(root / 'machine.log', 'a') as log:
+    log.write(json.dumps(args) + '\n')
+state = json.loads((root / 'machine.json').read_text())
+declared = (root / 'declared').read_text().split() if (root / 'declared').exists() else []
+def row(key):
+    d = key in declared
+    return {{'key': key, 'value': state.get(key), 'source': 'declared' if d else 'machine',
+            'editable': not d, 'declared_by': 'keyboard.option' if d else None,
+            'reason': 'declared_by_system_configuration' if d else None}}
+def out(reply, code=0):
+    print(json.dumps({{'schema_version': 1, **reply}}))
+    sys.exit(code)
+if args[0] == 'get':
+    out({{'status': 'read', 'reason': 'machine_settings_read', 'settings': [row(k) for k in args[1:]]}})
+key, value = args[1], args[2]
+if key in declared:
+    out({{'status': 'rejected', 'reason': 'declared_by_system_configuration', 'key': key}}, 1)
+fail = root / 'machine-fail'
+if fail.exists():
+    out({{'status': 'rejected', 'reason': fail.read_text().strip(), 'key': key}}, 1)
+after = value.split(',') if key == 'keyboard.layouts' else value
+before = state.get(key)
+if before == after:
+    out({{'status': 'unchanged', 'reason': 'machine_setting_unchanged', 'key': key, 'before': before, 'after': after}})
+state[key] = after
+(root / 'machine.json').write_text(json.dumps(state))
+if (root / 'machine-uncertain').exists():
+    out({{'status': 'uncertain', 'reason': 'machine_setting_unconfirmed', 'key': key, 'before': before,
+         'requested': after, 'after': None, 'recovery': ['SECRET provider text']}}, 3)
+if (root / 'machine-crash').exists():
+    print('Traceback SECRET')
+    sys.exit(9)
+out({{'status': 'applied', 'reason': 'machine_setting_applied', 'key': key, 'before': before, 'after': after}})
+"#,
+            root = f.root.to_str().unwrap()
+        ),
+    );
+    state
+}
+fn machine_calls(f: &Fixture) -> Vec<Value> {
+    fs::read_to_string(f.root.join("machine.log"))
+        .unwrap_or_default()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
+}
+
 #[test]
-fn installed_keyboard_changes_refuse_machine_settings_without_publishing() {
+fn installed_keyboard_keys_read_and_change_the_machine_without_publishing() {
     let f = Fixture::new();
-    for (key, value) in [
-        ("keyboard.layouts", "us,de"),
-        ("keyboard.switch_key", "Alt+Shift"),
+    let state = machine_provider(&f);
+    let (out, reply) = installed_run(&f, &["list"]);
+    assert!(out.status.success(), "{reply}");
+    let layouts = row(&reply, "keyboard.layouts");
+    assert_eq!(layouts["value"], json!(["us", "ru"]));
+    assert_eq!(layouts["source"], "machine");
+    assert_eq!(layouts["editable"], true);
+    assert!(layouts["override_value"].is_null());
+    assert_eq!(row(&reply, "appearance.gaps")["editable"], true);
+    assert!(row(&reply, "appearance.gaps").get("declared_by").is_none());
+    for (key, value, after) in [
+        ("keyboard.layouts", "us,de", json!(["us", "de"])),
+        ("keyboard.layouts", "dvorak,ru", json!(["dvorak", "ru"])),
+        ("keyboard.switch_key", "Alt+Shift", json!("Alt+Shift")),
     ] {
         let (out, reply) = installed_run(&f, &["set", key, value]);
-        assert!(!out.status.success(), "{reply}");
-        assert_eq!(reply["reason"], "keyboard_requires_machine_settings");
-        assert!(!f.source().exists());
-        assert_eq!(installed_run(&f, &["history"]).1["history"], json!([]));
+        assert!(out.status.success(), "{reply}");
+        assert_eq!(reply["status"], "committed");
+        assert_eq!(reply["reason"], "machine_setting_applied");
+        assert_eq!(reply["session_applied"], true);
+        assert_eq!(reply["machine_change"]["after"], after);
+        assert_eq!(row(&reply, key)["value"], after);
+        assert!(reply["change_id"].is_null());
     }
+    let (out, reply) = installed_run(&f, &["set", "keyboard.switch_key", "Alt+Shift"]);
+    assert!(out.status.success(), "{reply}");
+    assert_eq!(reply["status"], "unchanged");
+    assert_eq!(reply["session_applied"], false);
+    // Reset brings the machine back to the packaged Super+Space; layouts have no default.
+    let (out, reply) = installed_run(&f, &["reset", "keyboard.switch_key"]);
+    assert!(out.status.success(), "{reply}");
+    assert_eq!(reply["machine_change"]["before"], "Alt+Shift");
+    assert_eq!(row(&reply, "keyboard.switch_key")["value"], "Super+Space");
+    let (out, reply) = installed_run(&f, &["reset", "keyboard.layouts"]);
+    assert_eq!(out.status.code(), Some(1), "{reply}");
+    assert_eq!(reply["reason"], "machine_setting_has_no_default");
+    // Nothing of the person's store is written, and history stays empty.
+    assert!(!f.source().exists());
+    assert!(!f.root.join("state/emaki/generations").exists());
+    assert_eq!(installed_run(&f, &["history"]).1["history"], json!([]));
+    let machine: Value = serde_json::from_slice(&fs::read(state).unwrap()).unwrap();
+    assert_eq!(machine["keyboard.layouts"], json!(["dvorak", "ru"]));
+}
+
+#[test]
+fn installed_keyboard_refusals_never_reach_or_change_the_machine() {
+    let f = Fixture::new();
+    let state = machine_provider(&f);
+    let before = fs::read(&state).unwrap();
+    for (key, value, reason) in [
+        ("keyboard.layouts", "us,zzqq", "unknown_layout"),
+        ("keyboard.layouts", "us,us", "invalid_layouts"),
+        ("keyboard.layouts", "us\"; spawn SECRET", "invalid_layouts"),
+        ("keyboard.switch_key", "Ctrl+Shift", "invalid_switch_key"),
+    ] {
+        let (out, reply) = installed_run(&f, &["set", key, value]);
+        assert_eq!(out.status.code(), Some(1), "{reply}");
+        assert_eq!(reply["reason"], reason);
+    }
+    assert!(
+        machine_calls(&f).iter().all(|call| call[0] == "get"),
+        "{:?}",
+        machine_calls(&f)
+    );
+    // Provider refusals pass through as fixed reasons; unknown text never does.
+    for (forced, reason) in [
+        ("authorization_refused", "authorization_refused"),
+        ("SECRET free text", "machine_setting_rejected"),
+    ] {
+        fs::write(f.root.join("machine-fail"), forced).unwrap();
+        let (out, reply) = installed_run(&f, &["set", "keyboard.layouts", "us,de"]);
+        assert_eq!(out.status.code(), Some(1), "{reply}");
+        assert_eq!(reply["reason"], reason);
+        assert!(!String::from_utf8(out.stdout).unwrap().contains("SECRET"));
+    }
+    fs::remove_file(f.root.join("machine-fail")).unwrap();
+    fs::write(f.root.join("declared"), "keyboard.switch_key").unwrap();
+    let switch = row(
+        &installed_run(&f, &["get", "keyboard.switch_key"]).1,
+        "keyboard.switch_key",
+    )
+    .clone();
+    assert_eq!(switch["source"], "declared");
+    assert_eq!(switch["editable"], false);
+    assert_eq!(switch["declared_by"], "keyboard.option");
+    assert_eq!(switch["machine_reason"], "declared_by_system_configuration");
+    let (out, reply) = installed_run(&f, &["set", "keyboard.switch_key", "Caps Lock"]);
+    assert_eq!(out.status.code(), Some(1), "{reply}");
+    assert_eq!(reply["reason"], "declared_by_system_configuration");
+    assert_eq!(fs::read(&state).unwrap(), before);
+    assert!(!f.source().exists());
+}
+
+#[test]
+fn installed_keyboard_rows_without_a_provider_are_unavailable_and_read_only() {
+    let f = Fixture::new();
+    let out = f
+        .command()
+        .env("PATH", f.root.join("bin"))
+        .args(["settings", "get", "keyboard.layouts", "--json"])
+        .output()
+        .unwrap();
+    let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(out.status.success(), "{reply}");
+    let layouts = row(&reply, "keyboard.layouts");
+    assert_eq!(layouts["source"], "unavailable");
+    assert_eq!(layouts["editable"], false);
+    assert!(layouts["value"].is_null());
+    assert_eq!(layouts["machine_reason"], "machine_settings_unavailable");
+    let out = f
+        .command()
+        .env("PATH", f.root.join("bin"))
+        .args([
+            "settings",
+            "set",
+            "keyboard.switch_key",
+            "Alt+Shift",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(out.status.code(), Some(1), "{reply}");
+    assert_eq!(reply["reason"], "machine_settings_unavailable");
+    assert!(!f.source().exists());
+}
+
+/// A personal change with its undo id, and the history it left.
+fn personal_change(f: &Fixture) -> (String, Value) {
+    installed_helper(f, "emaki-shell", "print('applied')\n");
+    let (out, reply) = installed_run(f, &["set", "bar.autohide", "true"]);
+    assert!(out.status.success(), "{reply}");
+    let id = reply["change_id"].as_str().unwrap().to_owned();
+    (id, installed_run(f, &["history"]).1["history"].clone())
+}
+fn undo_still_works(f: &Fixture, id: &str, history: &Value) {
+    assert_eq!(&installed_run(f, &["history"]).1["history"], history);
+    let (out, reply) = installed_run(f, &["undo", id]);
+    assert!(out.status.success(), "{reply}");
+    assert_eq!(reply["status"], "committed");
+    assert!(!fs::read_to_string(f.source()).unwrap().contains("keyboard"));
+}
+
+#[test]
+fn installed_machine_change_survives_unreadable_personal_settings() {
+    let f = Fixture::new();
+    let state = machine_provider(&f);
+    let (id, history) = personal_change(&f);
+    let source = fs::read(f.source()).unwrap();
+    fs::write(f.source(), "[[[ not toml").unwrap();
+    let (out, reply) = installed_run(&f, &["set", "keyboard.layouts", "us,de"]);
+    assert!(out.status.success(), "{reply}");
+    assert_eq!(reply["status"], "committed");
+    assert_eq!(reply["reason"], "machine_setting_applied");
+    assert_eq!(reply["session_applied"], true);
+    assert_eq!(reply["machine_change"]["before"], json!(["us", "ru"]));
+    assert_eq!(reply["machine_change"]["after"], json!(["us", "de"]));
+    assert_eq!(
+        row(&reply, "keyboard.layouts")["value"],
+        json!(["us", "de"])
+    );
+    assert!(
+        reply["recovery"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|note| note.as_str().unwrap().starts_with("settings_unreadable: ")),
+        "{reply}"
+    );
+    let machine: Value = serde_json::from_slice(&fs::read(state).unwrap()).unwrap();
+    assert_eq!(machine["keyboard.layouts"], json!(["us", "de"]));
+    fs::write(f.source(), source).unwrap();
+    undo_still_works(&f, &id, &history);
+}
+
+#[test]
+fn installed_unconfirmed_machine_change_is_uncertain_with_the_way_back() {
+    let f = Fixture::new();
+    machine_provider(&f);
+    let (id, history) = personal_change(&f);
+    // The provider changed the machine but could not confirm it.
+    fs::write(f.root.join("machine-uncertain"), "").unwrap();
+    let (out, reply) = installed_run(&f, &["set", "keyboard.layouts", "us,de"]);
+    assert_eq!(out.status.code(), Some(3), "{reply}");
+    assert_eq!(reply["status"], "uncertain");
+    assert_eq!(reply["reason"], "machine_setting_unconfirmed");
+    assert_eq!(reply["session_applied"], false);
+    assert_eq!(reply["machine_change"]["before"], json!(["us", "ru"]));
+    assert_eq!(reply["machine_change"]["requested"], json!(["us", "de"]));
+    assert!(reply["machine_change"]["after"].is_null());
+    fs::remove_file(f.root.join("machine-uncertain")).unwrap();
+    // The provider died after changing the machine: the core's own read keeps the way back.
+    fs::write(f.root.join("machine-crash"), "").unwrap();
+    let (out, reply) = installed_run(&f, &["set", "keyboard.switch_key", "Alt+Shift"]);
+    assert_eq!(out.status.code(), Some(3), "{reply}");
+    assert_eq!(reply["status"], "uncertain");
+    assert_eq!(reply["reason"], "machine_settings_invalid_reply");
+    assert_eq!(reply["machine_change"]["before"], "Super+Space");
+    assert_eq!(reply["machine_change"]["requested"], "Alt+Shift");
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(!text.contains("SECRET"), "{text}");
+    assert!(
+        text.contains("emaki-machine-settings get keyboard.switch_key --json"),
+        "{text}"
+    );
+    fs::remove_file(f.root.join("machine-crash")).unwrap();
+    undo_still_works(&f, &id, &history);
+}
+
+#[test]
+fn installed_layouts_before_value_sets_the_machine_back() {
+    let f = Fixture::new();
+    let state = machine_provider(&f);
+    fs::write(
+        &state,
+        r#"{"keyboard.layouts": ["us(intl)", "de(T3)"], "keyboard.switch_key": "Super+Space"}"#,
+    )
+    .unwrap();
+    let (out, reply) = installed_run(&f, &["set", "keyboard.layouts", "us"]);
+    assert!(out.status.success(), "{reply}");
+    let before = reply["machine_change"]["before"].clone();
+    assert_eq!(before, json!(["us(intl)", "de(T3)"]));
+    // The documented way back: set the before value again, as a comma-separated list.
+    let back: Vec<&str> = before
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item.as_str().unwrap())
+        .collect();
+    let (out, reply) = installed_run(&f, &["set", "keyboard.layouts", &back.join(",")]);
+    assert!(out.status.success(), "{reply}");
+    assert_eq!(reply["status"], "committed");
+    assert_eq!(reply["machine_change"]["after"], before);
+    assert_eq!(row(&reply, "keyboard.layouts")["value"], before);
+    for (value, reason) in [
+        ("us(nosuchvariant)", "unknown_layout"),
+        ("us(intl", "invalid_layouts"),
+    ] {
+        let (out, reply) = installed_run(&f, &["set", "keyboard.layouts", value]);
+        assert_eq!(out.status.code(), Some(1), "{reply}");
+        assert_eq!(reply["reason"], reason);
+    }
+    // Isolated profiles keep the plain codes they store.
+    let (out, reply) = f.run(&["set", "keyboard.layouts", "us(intl)"]);
+    assert_eq!(out.status.code(), Some(1), "{reply}");
+    assert_eq!(reply["reason"], "invalid_layouts");
+}
+
+#[test]
+fn installed_undo_of_a_hand_edited_keyboard_value_is_not_replayed() {
+    let f = Fixture::new();
+    machine_provider(&f);
+    installed_helper(&f, "emaki-shell", "print('applied')\n");
+    let (out, reply) = installed_run(&f, &["set", "bar.autohide", "true"]);
+    assert!(out.status.success(), "{reply}");
+    let text = fs::read_to_string(f.source()).unwrap();
+    f.manual(&format!("{text}\n[keyboard]\nswitch_key = \"Caps Lock\"\n"));
+    let (out, reply) = installed_run(&f, &["set", "bar.autohide", "false"]);
+    assert!(out.status.success(), "{reply}");
+    let history = installed_run(&f, &["history"]).1["history"].clone();
+    let manual = history
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["kind"] == "manual")
+        .unwrap_or_else(|| panic!("{history}"))["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let (out, reply) = installed_run(&f, &["undo", &manual]);
+    assert_eq!(out.status.code(), Some(1), "{reply}");
+    assert_eq!(reply["reason"], "machine_setting_not_in_history");
+    // The machine value, not the inert hand-edited one, is what the row reports.
+    let (_, reply) = installed_run(&f, &["get", "keyboard.switch_key"]);
+    assert_eq!(row(&reply, "keyboard.switch_key")["value"], "Super+Space");
 }
 
 #[test]
@@ -735,7 +1108,7 @@ fn installed_application_defaults_preserve_personal_mime_file() {
         let f = Fixture::new();
         installed_helper(&f, "emaki-terminal", "pass\n");
         let mime = f.root.join("config").join(filename);
-        let personal = "[Default Applications]\nx-scheme-handler/http=personal.desktop;\nx-scheme-handler/https=personal.desktop;\ntext/html=personal.desktop;\ninode/directory=personal.desktop;\n";
+        let personal = "[Default Applications]\nx-scheme-handler/http=personal.desktop;\nx-scheme-handler/https=personal.desktop;\ntext/html=personal.desktop;\ninode/directory=personal.desktop;\nx-scheme-handler/mailto=personal.desktop;\ntext/plain=personal.desktop;\n";
         fs::write(&mime, personal).unwrap();
         installed_helper(
             &f,
@@ -745,7 +1118,12 @@ fn installed_application_defaults_preserve_personal_mime_file() {
                 mime = mime.to_str().unwrap(),
             ),
         );
-        for key in ["defaults.browser", "defaults.files"] {
+        for key in [
+            "defaults.browser",
+            "defaults.files",
+            "defaults.mail",
+            "defaults.editor",
+        ] {
             let (out, reply) = installed_run(&f, &["set", key, "test.desktop"]);
             assert!(out.status.success(), "{reply}");
             assert_eq!(row(&reply, key)["value"], "test.desktop");
@@ -1772,4 +2150,566 @@ fn failed_first_change_preserves_migrated_legacy_deviations() {
     assert!(out.status.success(), "{reply}");
     assert_eq!(row(&reply, "dock.on")["value"], false);
     assert!(row(&reply, "dock.auto_hide")["override_value"].is_null());
+}
+
+#[test]
+fn input_controls_validate_real_niri_and_keep_machine_layouts_out() {
+    let f = Fixture::new();
+    f.set("windows.focus_follows_mouse", "true");
+    for (key, value) in [
+        ("keyboard.repeat_delay", "450"),
+        ("keyboard.repeat_rate", "40"),
+        ("mouse.speed", "-0.35"),
+        ("mouse.natural_scroll", "true"),
+        ("touchpad.speed", "0.4"),
+        ("touchpad.tap", "false"),
+        ("touchpad.natural_scroll", "false"),
+        ("touchpad.disable_while_typing", "false"),
+        ("touchpad.two_finger_right_click", "true"),
+        ("gestures.dnd_edge_view_scroll", "false"),
+        ("gestures.dnd_edge_workspace_switch", "false"),
+    ] {
+        f.set(key, value);
+    }
+    let (_, reply) = f.run(&["get", "touchpad.tap"]);
+    let generation = Path::new(reply["generation_path"].as_str().unwrap());
+    let text = fs::read_to_string(generation.join("niri.kdl")).unwrap();
+    for expected in [
+        "focus-follows-mouse",
+        "repeat-delay 450",
+        "repeat-rate 40",
+        "accel-speed -0.35",
+        "accel-speed 0.4",
+        "click-method \"clickfinger\"",
+        "tap-button-map \"left-right-middle\"",
+        "max-speed 0",
+        "dwtp",
+    ] {
+        assert!(text.contains(expected), "missing {expected}: {text}");
+    }
+    assert!(!text.contains("xkb"));
+    assert!(!text.contains("        tap\n"));
+    assert!(!text.contains("        dwt\n"));
+    let (out, reply) = f.run(&["reset", "touchpad.two_finger_right_click"]);
+    assert!(out.status.success(), "{reply}");
+    assert!(row(&reply, "touchpad.two_finger_right_click")["value"].is_null());
+    let text =
+        fs::read_to_string(Path::new(reply["generation_path"].as_str().unwrap()).join("niri.kdl"))
+            .unwrap();
+    assert!(!text.contains("click-method"));
+    assert!(!text.contains("tap-button-map"));
+    for (key, value) in [
+        ("keyboard.repeat_delay", "99"),
+        ("keyboard.repeat_rate", "101"),
+        ("mouse.speed", "NaN"),
+        ("mouse.speed", "1.1"),
+        ("touchpad.tap", "yes"),
+        ("gestures.dnd_edge_view_scroll", "true; spawn evil"),
+    ] {
+        let before = fs::read(f.source()).unwrap();
+        let (out, _) = f.run(&["set", key, value]);
+        assert!(!out.status.success(), "accepted {key}={value}");
+        assert_eq!(fs::read(f.source()).unwrap(), before);
+    }
+}
+
+#[test]
+fn every_packaged_shortcut_has_an_editable_catalog_action() {
+    let f = Fixture::new();
+    let (out, reply) = f.run(&["list"]);
+    assert!(out.status.success());
+    let rows: Vec<_> = reply["settings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["key"].as_str().unwrap().starts_with("shortcuts."))
+        .collect();
+    let package = include_str!("../../../niri/default.kdl");
+    let binds = package
+        .split_once("binds {\n")
+        .unwrap()
+        .1
+        .split_once("\n}")
+        .unwrap()
+        .0;
+    let count = binds
+        .lines()
+        .filter(|line| {
+            let line = line.trim();
+            !line.starts_with("//") && line.contains("{")
+        })
+        .count();
+    assert_eq!(rows.len(), count);
+    for row in rows {
+        assert!(!row["title"].as_str().unwrap().is_empty());
+        assert!(!row["explanation"].as_str().unwrap().is_empty());
+        assert_eq!(row["editable"], row["default"] != "Mod+Ctrl+Escape");
+    }
+    assert_eq!(
+        row(&reply, "shortcuts.Alt+Tab")["title"],
+        "Focus previous window"
+    );
+}
+
+#[test]
+fn shortcut_move_reuse_reset_and_undo_keep_one_binding_per_chord() {
+    let f = Fixture::new();
+    let first = f.set("shortcuts.Mod+T", "Ctrl+Super+Shift+F12");
+    assert_eq!(
+        row(&first, "shortcuts.Mod+T")["value"],
+        "Mod+Ctrl+Shift+F12"
+    );
+    let second = f.set("shortcuts.Mod+D", "Super+T");
+    let text =
+        fs::read_to_string(Path::new(second["generation_path"].as_str().unwrap()).join("niri.kdl"))
+            .unwrap();
+    assert!(text.contains("Mod+D { spawn; }"));
+    assert_eq!(text.matches("    Mod+T ").count(), 1);
+    assert!(text.contains("Mod+Ctrl+Shift+F12 hotkey-overlay-title=\"Open terminal\""));
+    assert!(text.contains("Mod+T hotkey-overlay-title=\"Open launcher\""));
+    let (out, failed) = f.run(&["reset", "shortcuts.Mod+T"]);
+    assert!(!out.status.success(), "{failed}");
+    assert_eq!(
+        failed["reason"],
+        "That shortcut is already in use. Choose another key combination."
+    );
+    let (out, history) = f.run(&["history"]);
+    assert!(out.status.success(), "{history}");
+    assert_eq!(history["history"].as_array().unwrap().len(), 2);
+    for reply in [&second, &first] {
+        let (out, undone) = f.run(&["undo", reply["change_id"].as_str().unwrap()]);
+        assert!(out.status.success(), "{undone}");
+    }
+    let (out, reply) = f.run(&["get", "shortcuts.Mod+T"]);
+    assert!(out.status.success());
+    assert_eq!(row(&reply, "shortcuts.Mod+T")["value"], "Mod+T");
+    assert!(row(&reply, "shortcuts.Mod+T")["override_value"].is_null());
+}
+
+#[test]
+fn shortcut_conflicts_reserved_aliases_and_injection_leave_store_unchanged() {
+    let f = Fixture::new();
+    f.set("keyboard.repeat_rate", "35");
+    for (key, value) in [
+        ("shortcuts.Mod+T", "T"),
+        ("shortcuts.Mod+T", "Space"),
+        ("shortcuts.Mod+T", "Return"),
+        ("shortcuts.Mod+T", "super+d"),
+        ("shortcuts.Mod+T", "Super+Tab"),
+        ("shortcuts.Mod+T", "Alt+Shift+Tab"),
+        ("shortcuts.Mod+T", "Ctrl+Super+Esc"),
+        ("shortcuts.Mod+T", "Super+Control+Escape"),
+        ("keybindings.toggle_window_floating", "Mod+Ctrl+Esc"),
+        ("keybindings.toggle_window_floating", "Mod+D"),
+        ("shortcuts.Mod+T", "Super+Q { spawn evil; }"),
+        ("shortcuts.Mod+T", "Super+Super+Q"),
+    ] {
+        let before = fs::read(f.source()).unwrap();
+        let (out, reply) = f.run(&["set", key, value]);
+        assert!(!out.status.success(), "accepted {key}={value}: {reply}");
+        assert_eq!(fs::read(f.source()).unwrap(), before);
+    }
+    f.set("keybindings.toggle_window_floating", "Mod+Ctrl+Shift+F11");
+    let (out, _) = f.run(&["set", "shortcuts.Mod+T", "Shift+Control+Super+F11"]);
+    assert!(!out.status.success());
+}
+
+#[test]
+fn shortcut_remap_preserves_repeat_and_locked_session_properties() {
+    let f = Fixture::new();
+    f.set("shortcuts.XF86AudioMute", "Super+Ctrl+F10");
+    let reply = f.set("shortcuts.Mod+L", "Super+Ctrl+Shift+F10");
+    let text =
+        fs::read_to_string(Path::new(reply["generation_path"].as_str().unwrap()).join("niri.kdl"))
+            .unwrap();
+    assert!(text.contains("Mod+Ctrl+F10 repeat=false allow-when-locked=true"));
+    assert!(text.contains("Mod+Ctrl+Shift+F10 allow-when-locked=true hotkey-overlay-title=\"Lock screen\" { spawn \"emaki-lock\"; }"));
+}
+
+#[test]
+fn floating_override_can_use_a_vacated_packaged_chord_without_being_disabled() {
+    let f = Fixture::new();
+    f.set("shortcuts.Mod+T", "Super+Ctrl+Shift+F12");
+    let reply = f.set("keybindings.toggle_window_floating", "Super+T");
+    let text =
+        fs::read_to_string(Path::new(reply["generation_path"].as_str().unwrap()).join("niri.kdl"))
+            .unwrap();
+    assert!(text.contains("Mod+T { toggle-window-floating; }"));
+    assert!(!text.contains("Mod+T { spawn; }"));
+    let (out, _) = f.run(&["reset", "shortcuts.Mod+T"]);
+    assert!(!out.status.success());
+}
+
+#[test]
+fn notification_rules_have_history_reset_and_undo() {
+    let f = Fixture::new();
+    let request = |args: &[&str]| -> Value {
+        let output = f
+            .fake("ok")
+            .arg("settings")
+            .args(args)
+            .args([
+                "--profile-root",
+                f.root.to_str().unwrap(),
+                "--json",
+                "--timeout-ms",
+                SLOW_MACHINE_TIMEOUT_MS,
+            ])
+            .output()
+            .unwrap();
+        let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert!(output.status.success(), "{value}");
+        value
+    };
+    let rules = r#"{"desktop:org.example.Mail":"silent","name:Chat":"off"}"#;
+    let changed = request(&["set", "notifications.rules", rules]);
+    request(&["set", "notifications.dnd", "true"]);
+    request(&["set", "notifications.until", "1900000000000"]);
+    request(&[
+        "set",
+        "notifications.schedule",
+        r#"{"enabled":true,"start":"22:00","end":"07:00"}"#,
+    ]);
+    request(&["set", "sound.system_sounds", "false"]);
+    let (_, history) = f.run(&["history"]);
+    assert_eq!(history["history"].as_array().unwrap().len(), 5);
+    let reset = request(&["reset", "notifications.rules"]);
+    request(&["undo", reset["change_id"].as_str().unwrap()]);
+    let (_, listed) = f.run(&["list"]);
+    let rule = listed["settings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["key"] == "notifications.rules")
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(rule["value"].as_str().unwrap()).unwrap(),
+        serde_json::from_str::<Value>(rules).unwrap()
+    );
+    assert_eq!(changed["status"], "committed");
+}
+
+#[test]
+fn window_behavior_round_trips_validates_resets_and_undoes() {
+    let f = Fixture::new();
+    let defaults = f.run(&["list"]).1;
+    assert_eq!(
+        row(&defaults, "windows.default_column_width")["value"],
+        "full"
+    );
+    assert_eq!(
+        row(&defaults, "windows.focus_follows_mouse")["value"],
+        false
+    );
+    for width in ["full", "half", "third", "twothirds"] {
+        let reply = f.set("windows.default_column_width", width);
+        assert_eq!(row(&reply, "windows.default_column_width")["value"], width);
+    }
+    let before = tree(&f.root);
+    for (key, value) in [
+        ("windows.default_column_width", "0.5"),
+        ("windows.default_column_width", "full\ninput {}"),
+        ("windows.focus_follows_mouse", "yes"),
+        ("windows.focus_follows_mouse", "1"),
+    ] {
+        let (out, reply) = f.run(&["set", key, value]);
+        assert!(!out.status.success(), "{reply}");
+        assert_eq!(before, tree(&f.root));
+    }
+    let change = f.set("windows.focus_follows_mouse", "true");
+    let source = fs::read_to_string(f.source()).unwrap();
+    assert!(source.contains("[windows]"));
+    assert!(source.contains("default_column_width = \"twothirds\""));
+    assert!(source.contains("focus_follows_mouse = true"));
+    let (out, reply) = f.run(&["undo", change["change_id"].as_str().unwrap()]);
+    assert!(out.status.success(), "{reply}");
+    assert!(row(&reply, "windows.focus_follows_mouse")["override_value"].is_null());
+    assert_eq!(
+        row(&reply, "windows.default_column_width")["value"],
+        "twothirds"
+    );
+    f.set("windows.focus_follows_mouse", "false");
+    for key in [
+        "windows.default_column_width",
+        "windows.focus_follows_mouse",
+    ] {
+        let (out, reply) = f.run(&["reset", key]);
+        assert!(out.status.success(), "{reply}");
+        assert!(row(&reply, key)["override_value"].is_null());
+    }
+    assert!(
+        !fs::read_to_string(f.source())
+            .unwrap()
+            .contains("[windows]")
+    );
+}
+
+#[test]
+fn window_behavior_validation_failure_preserves_source_and_history() {
+    for key in [
+        "windows.default_column_width",
+        "windows.focus_follows_mouse",
+    ] {
+        let f = Fixture::new();
+        f.set("appearance.gaps", "4");
+        let before = tree(&f.root);
+        let value = if key.ends_with("width") {
+            "half"
+        } else {
+            "true"
+        };
+        for mode in ["fragment", "combined"] {
+            let out = f
+                .fake(mode)
+                .args([
+                    "settings",
+                    "set",
+                    key,
+                    value,
+                    "--profile-root",
+                    f.root.to_str().unwrap(),
+                    "--json",
+                    "--timeout-ms",
+                    SLOW_MACHINE_TIMEOUT_MS,
+                ])
+                .output()
+                .unwrap();
+            let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
+            assert!(!out.status.success(), "{reply}");
+            assert_eq!(reply["reason"], format!("{mode}_validation_failed"));
+            assert_eq!(before, tree(&f.root));
+        }
+    }
+}
+
+#[test]
+fn window_behavior_failed_live_load_restores_previous_fragment_and_source() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::unix::net::UnixListener;
+    for (key, value, candidate_node) in [
+        ("windows.default_column_width", "half", "proportion 0.5"),
+        ("windows.focus_follows_mouse", "true", "focus-follows-mouse"),
+    ] {
+        let f = Fixture::new();
+        f.manual("schema_version = 1\n[appearance]\ngaps = 4\n");
+        let source = fs::read(f.source()).unwrap();
+        let socket = std::env::temp_dir().join(format!(
+            "s5-load-{}-{}",
+            std::process::id(),
+            SERIAL.fetch_add(1, Ordering::Relaxed)
+        ));
+        let listener = UnixListener::bind(&socket).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let server = std::thread::spawn(move || {
+            let accept = || {
+                let deadline = Instant::now() + CHILD_DEADLINE;
+                loop {
+                    match listener.accept() {
+                        Ok((stream, _)) => return stream,
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            assert!(Instant::now() < deadline, "Compositor request timed out");
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                        Err(error) => panic!("Compositor socket failed: {error}"),
+                    }
+                }
+            };
+            for failed in [true, false] {
+                let mut events = accept();
+                events.set_read_timeout(Some(CHILD_DEADLINE)).unwrap();
+                let mut line = String::new();
+                BufReader::new(&events).read_line(&mut line).unwrap();
+                assert_eq!(serde_json::from_str::<Value>(&line).unwrap(), "EventStream");
+                events
+                    .write_all(b"{\"Ok\":\"Handled\"}\n{\"ConfigLoaded\":{\"failed\":false}}\n")
+                    .unwrap();
+                let mut action = accept();
+                action.set_read_timeout(Some(CHILD_DEADLINE)).unwrap();
+                line.clear();
+                BufReader::new(&action).read_line(&mut line).unwrap();
+                let request: Value = serde_json::from_str(&line).unwrap();
+                let wrapper = PathBuf::from(
+                    request["Action"]["LoadConfigFile"]["path"]
+                        .as_str()
+                        .unwrap(),
+                );
+                let text = fs::read_to_string(&wrapper).unwrap();
+                let fragment_path = text
+                    .lines()
+                    .filter_map(|line| line.strip_prefix("include \""))
+                    .map(|line| line.trim_end_matches('"'))
+                    .last()
+                    .unwrap();
+                let fragment = fs::read_to_string(fragment_path).unwrap();
+                assert!(fragment.contains("gaps 4"));
+                assert_eq!(fragment.contains(candidate_node), failed, "{fragment}");
+                action.write_all(b"{\"Ok\":\"Handled\"}\n").unwrap();
+                writeln!(events, "{{\"ConfigLoaded\":{{\"failed\":{failed}}}}}").unwrap();
+            }
+        });
+        let out = f
+            .fake("ok")
+            .env("NIRI_SOCKET", &socket)
+            .args([
+                "settings",
+                "set",
+                key,
+                value,
+                "--json",
+                "--timeout-ms",
+                SLOW_MACHINE_TIMEOUT_MS,
+            ])
+            .output()
+            .unwrap();
+        server.join().unwrap();
+        fs::remove_file(socket).unwrap();
+        let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert!(!out.status.success(), "{reply}");
+        assert_eq!(reply["reason"], "niri_config_load_failed");
+        assert_eq!(fs::read(f.source()).unwrap(), source);
+        assert_no_transaction_candidate(&f);
+        assert!(
+            !f.root
+                .join("state/emaki/history/live-pending.json")
+                .exists()
+        );
+        assert!(
+            installed_run(&f, &["history"]).1["history"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+    }
+}
+
+#[test]
+fn window_behavior_requires_live_compositor_before_commit() {
+    for (key, value) in [
+        ("windows.default_column_width", "half"),
+        ("windows.focus_follows_mouse", "true"),
+    ] {
+        let f = Fixture::new();
+        let (out, reply) = installed_run(&f, &["set", key, value]);
+        assert!(!out.status.success(), "{reply}");
+        assert_eq!(reply["reason"], "niri_socket_missing");
+        assert!(!f.source().exists());
+        assert_no_transaction_candidate(&f);
+    }
+}
+
+#[test]
+fn mail_and_editor_defaults_generate_mime_and_reset_with_history() {
+    let f = Fixture::new();
+    for key in ["defaults.mail", "defaults.editor"] {
+        assert!(row(&f.run(&["list"]).1, key)["default"].is_null());
+    }
+    f.set("defaults.mail", "fixture-mail.desktop");
+    let result = f.set("defaults.editor", "fixture-editor.desktop");
+    let generated = PathBuf::from(result["generation_path"].as_str().unwrap());
+    let mime = fs::read_to_string(generated.join("mimeapps.list")).unwrap();
+    assert!(mime.contains("x-scheme-handler/mailto=fixture-mail.desktop\n"));
+    assert!(mime.contains("text/plain=fixture-editor.desktop\n"));
+    let (out, reset) = f.run(&["reset", "defaults.mail"]);
+    assert!(out.status.success());
+    let values = f.run(&["list"]).1;
+    assert!(row(&values, "defaults.mail")["value"].is_null());
+    assert_eq!(
+        row(&values, "defaults.editor")["value"],
+        "fixture-editor.desktop"
+    );
+    let (out, _) = f.run(&["undo", reset["change_id"].as_str().unwrap()]);
+    assert!(out.status.success());
+    assert_eq!(
+        row(&f.run(&["list"]).1, "defaults.mail")["value"],
+        "fixture-mail.desktop"
+    );
+}
+
+#[test]
+fn personal_input_configuration_prevents_replacing_device_blocks() {
+    let f = Fixture::new();
+    let path = f.root.join("config/niri/config.kdl");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let personal = "input { touchpad { off; accel-profile \"flat\"; scroll-factor 0.5; middle-emulation; }; }\n";
+    fs::write(&path, personal).unwrap();
+    for (key, value) in [("mouse.speed", "0.5"), ("touchpad.tap", "false")] {
+        let (out, reply) = f.run(&["set", key, value]);
+        assert!(!out.status.success(), "{reply}");
+        assert!(
+            reply["reason"]
+                .as_str()
+                .unwrap()
+                .contains("personal compositor")
+        );
+    }
+    let (out, reply) = f.run(&["list"]);
+    assert!(out.status.success(), "{reply}");
+    assert_eq!(row(&reply, "touchpad.speed")["editable"], false);
+    assert!(row(&reply, "touchpad.speed")["value"].is_null());
+    assert_eq!(fs::read_to_string(path).unwrap(), personal);
+}
+
+#[test]
+fn personal_bindings_are_not_shadowed_or_disabled() {
+    let f = Fixture::new();
+    let path = f.root.join("config/niri/config.kdl");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let personal = "binds { Mod+B { spawn \"browser\"; }; Mod+T { spawn \"terminal\"; }; }\n";
+    fs::write(&path, personal).unwrap();
+    for (key, value) in [
+        ("shortcuts.Mod+D", "Mod+B"),
+        ("shortcuts.Mod+T", "Mod+Ctrl+F10"),
+        ("keybindings.toggle_window_floating", "Mod+B"),
+    ] {
+        let (out, reply) = f.run(&["set", key, value]);
+        assert!(!out.status.success(), "{reply}");
+        assert!(
+            reply["reason"]
+                .as_str()
+                .unwrap()
+                .contains("personal compositor")
+        );
+    }
+    assert_eq!(fs::read_to_string(path).unwrap(), personal);
+    let (_, reply) = f.run(&["list"]);
+    assert_eq!(row(&reply, "shortcuts.Mod+D")["editable"], false);
+}
+
+#[test]
+fn function_keys_can_be_used_without_modifiers() {
+    let f = Fixture::new();
+    for key in ["F1", "F12", "F24"] {
+        f.set("shortcuts.Mod+T", key);
+    }
+}
+
+#[test]
+fn later_personal_configuration_keeps_stored_device_and_shortcut_overrides_inert() {
+    let f = Fixture::new();
+    f.set("keyboard.repeat_delay", "450");
+    f.set("touchpad.speed", "0.5");
+    f.set("shortcuts.Mod+T", "Mod+Ctrl+F10");
+    let source = fs::read(f.source()).unwrap();
+    let personal = f.root.join(".config/niri/config.kdl");
+    fs::create_dir_all(personal.parent().unwrap()).unwrap();
+    fs::write(&personal, "input { touchpad { off; }; }\n").unwrap();
+    let result = f
+        .command()
+        .env("HOME", &f.root)
+        .args(["settings", "session-config"])
+        .output()
+        .unwrap();
+    assert!(result.status.success(), "{result:?}");
+    let wrapper = fs::read_to_string(String::from_utf8(result.stdout).unwrap().trim()).unwrap();
+    let fragment = wrapper
+        .lines()
+        .filter_map(|line| line.strip_prefix("include "))
+        .filter_map(|path| serde_json::from_str::<String>(path).ok())
+        .find(|path| path.contains("settings-"))
+        .unwrap();
+    let text = fs::read_to_string(fragment).unwrap();
+    assert!(text.contains("repeat-delay 450"));
+    assert!(!text.contains("touchpad"));
+    assert!(!text.contains("spawn"));
+    assert_eq!(fs::read(f.source()).unwrap(), source);
 }

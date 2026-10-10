@@ -18,6 +18,8 @@ from unittest import mock
 from gi.repository import GLib
 
 ROOT = Path(__file__).resolve().parents[1]
+RENDER = runpy.run_path(str(ROOT / 'scripts/render-paths'))
+PATHS = RENDER['paths']()
 SECRET = 'org.freedesktop.Secret'
 
 
@@ -643,11 +645,11 @@ class AuthenticationBridge(Fixture):
 
 class LoginNotice(Fixture):
     def test_login_units_and_installed_help(self):
-        start = (ROOT / 'systemd/emaki-wallet-start.service').read_text()
+        start = RENDER['substitute']((ROOT / 'systemd/emaki-wallet-start.service').read_text(), PATHS)
         self.assertIn('Before=xdg-desktop-autostart.target emaki-shell.service', start)
         self.assertIn('ExecStart=/usr/bin/emaki-wallet-start', start)
         notice = configparser.ConfigParser()
-        notice.read(ROOT / 'systemd/emaki-wallet-migrate.service')
+        notice.read_string(RENDER['substitute']((ROOT / 'systemd/emaki-wallet-migrate.service').read_text(), PATHS))
         self.assertIn('emaki-shell.service', notice['Unit']['After'].split())
         self.assertIn('emaki-wallet-start.service', notice['Unit']['After'].split())
         self.assertEqual(notice['Service']['ExecStart'], '/usr/bin/emaki-wallet-migrate --automatic')

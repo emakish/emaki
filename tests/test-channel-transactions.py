@@ -19,6 +19,10 @@ OLD_MIRRORLIST = '''# Emaki repository channels. Enable exactly one server.
 Server = https://pkgs.emaki.sh/stable/$arch
 # Server = https://pkgs.emaki.sh/testing/$arch
 '''
+# packaging/emaki-mirrorlist/emaki-mirrorlist as 0.3.0 to 0.4.2 left it after migration.
+INCLUDING = '''# Choose the update channel in /etc/emaki/channel.
+Include = /etc/emaki/channel
+'''
 
 
 def run(args, **kwargs):
@@ -121,12 +125,12 @@ class Transactions(unittest.TestCase):
                           '-C', str(stage), *sorted(item.name for item in stage.iterdir())]))
         return result
 
-    def legacy(self, version='0.2.0-1', contents=OLD_MIRRORLIST):
+    def legacy(self, version='0.2.0-1', contents=OLD_MIRRORLIST, mirrors=False):
         stage = self.work / 'legacy'
         target = stage / 'etc/pacman.d/emaki-mirrorlist'
         target.parent.mkdir(parents=True)
         target.write_text(contents)
-        if '/usr/share/emaki/mirrors/' in contents:
+        if '/usr/share/emaki/mirrors/' in contents or mirrors:
             mirrors = stage / 'usr/share/emaki/mirrors'
             mirrors.mkdir(parents=True)
             for channel in ('stable', 'testing'):
@@ -161,18 +165,26 @@ printf '%s-%s' "$pkgver" "$pkgrel"
                                                              'https://updated.example.invalid/'))
         return self.archive(stage, version)
 
+    @staticmethod
+    def active(path):
+        return [line.strip() for line in path.read_text().splitlines()
+                if line.strip() and not line.lstrip().startswith('#')]
+
     def verify_channel(self, channel, refreshed=False):
+        # The fixed selector includes machine state, which names the channel.
         selector = self.root / 'etc/emaki/channel'
+        state = self.root / 'var/lib/emaki/channel'
         self.assertTrue(selector.is_file(), 'channel choice must live outside the mirrorlist package')
-        self.assertEqual([line.strip() for line in selector.read_text().splitlines()
-                          if line.strip() and not line.lstrip().startswith('#')],
-                         [f'Include = /usr/share/emaki/mirrors/{channel}.conf'])
+        self.assertEqual(self.active(selector), ['Include = /var/lib/emaki/channel'])
+        self.assertEqual(self.active(state), [f'Include = /usr/share/emaki/mirrors/{channel}.conf'])
+        self.assertEqual(state.stat().st_mode & 0o777, 0o644)
         mirrorlist = self.root / 'etc/pacman.d/emaki-mirrorlist'
         self.assertIn('Include = /etc/emaki/channel', mirrorlist.read_text())
         self.assertFalse(Path(str(mirrorlist) + '.pacnew').exists())
-        owner = self.pacman('-Qo', selector)
-        self.assertNotEqual(owner.returncode, 0, owner.stdout + owner.stderr)
-        self.assertIn('No package owns', owner.stderr)
+        for path in (selector, state):
+            owner = self.pacman('-Qo', path)
+            self.assertNotEqual(owner.returncode, 0, owner.stdout + owner.stderr)
+            self.assertIn('No package owns', owner.stderr)
         host = 'updated.example.invalid' if refreshed else 'pkgs.emaki.sh'
         server = self.root / f'usr/share/emaki/mirrors/{channel}.conf'
         self.assertIn(f'Server = https://{host}/{channel}/$arch', server.read_text())
@@ -184,8 +196,12 @@ printf '%s-%s' "$pkgver" "$pkgrel"
         self.success(effective)
         self.assertEqual(effective.stdout.strip(), f'https://{host}/{channel}/x86_64')
 
-    def migrate(self, channel, edited=None, version='0.2.0-1', contents=OLD_MIRRORLIST):
-        self.success(self.pacman('-U', self.legacy(version, contents)))
+    def migrate(self, channel, edited=None, version='0.2.0-1', contents=OLD_MIRRORLIST, selector=None):
+        self.success(self.pacman('-U', self.legacy(version, contents, mirrors=selector is not None)))
+        if selector is not None:
+            # As the 0.3.0 to 0.4.2 scriptlets left it, outside the package.
+            (self.root / 'etc/emaki').mkdir(exist_ok=True)
+            (self.root / 'etc/emaki/channel').write_text(selector)
         mirrorlist = self.root / 'etc/pacman.d/emaki-mirrorlist'
         if edited is not None:
             mirrorlist.write_text(edited)
@@ -198,13 +214,15 @@ printf '%s-%s' "$pkgver" "$pkgrel"
             self.assertIn('.pacnew was merged automatically and removed', upgraded.stdout)
         self.verify_channel(channel)
         self.healthy()
-        selector = self.root / 'etc/emaki/channel'
-        selector.write_text(selector.read_text() + '# Local channel choice.\n')
-        preserved = selector.read_bytes()
+        preserved = {}
+        for path in (self.root / 'etc/emaki/channel', self.root / 'var/lib/emaki/channel'):
+            path.write_text(path.read_text() + '# Local channel choice.\n')
+            preserved[path] = path.read_bytes()
         self.success(self.pacman('-U', self.current(refresh=True)))
         self.verify_channel(channel, refreshed=True)
         self.healthy()
-        self.assertEqual(selector.read_bytes(), preserved)
+        for path, contents in preserved.items():
+            self.assertEqual(path.read_bytes(), contents)
 
     def enable_fixture_repositories(self):
         # Both repository entries download a real local database through pacman's
@@ -253,8 +271,9 @@ printf '%s-%s' "$pkgver" "$pkgrel"
         self.assertTrue(replacement.is_file())
         mirrorlist.write_bytes(replacement.read_bytes())
         self.healthy()
-        self.assertIn('Include = /usr/share/emaki/mirrors/stable.conf',
-                      (self.root / 'etc/emaki/channel').read_text())
+        self.assertEqual(self.active(self.root / 'etc/emaki/channel'), ['Include = /var/lib/emaki/channel'])
+        self.assertEqual(self.active(self.root / 'var/lib/emaki/channel'),
+                         ['Include = /usr/share/emaki/mirrors/stable.conf'])
 
     def test_blocked_selector_aborts_before_extraction(self):
         self.legacy_with_repositories()
@@ -304,21 +323,48 @@ printf '%s-%s' "$pkgver" "$pkgrel"
                 # Missing Includes cannot parse, so use a known working recovery
                 # config to reach the package scriptlet before testing normal use.
                 self.success(self.pacman('--config', '/etc/recovery.conf', '-U', package))
-                self.assertTrue(selector.is_file())
-                self.assertIn('Include = /usr/share/emaki/mirrors/stable.conf', selector.read_text())
+                self.verify_channel('stable')
                 self.healthy()
 
-    def test_valid_selectors_preserved_on_reinstall(self):
+    def test_invalid_states_are_repaired_on_reinstall(self):
+        package = self.current()
+        self.success(self.pacman('-U', package))
+        self.enable_fixture_repositories()
+        state = self.root / 'var/lib/emaki/channel'
+        self.healthy()
+        for invalid in (None, '', '# no active channel\n', 'junk\n',
+                        'Include = /usr/share/emaki/mirrors/missing.conf\n'):
+            with self.subTest(state=invalid):
+                if invalid is None:
+                    state.unlink(missing_ok=True)
+                else:
+                    state.write_text(invalid)
+                self.success(self.pacman('--config', '/etc/recovery.conf', '-U', package))
+                self.verify_channel('stable')
+                self.healthy()
+
+    def test_valid_choices_preserved_on_reinstall(self):
         package = self.current()
         self.success(self.pacman('-U', package))
         self.enable_fixture_repositories()
         selector = self.root / 'etc/emaki/channel'
+        state = self.root / 'var/lib/emaki/channel'
         for channel in ('stable', 'testing'):
             with self.subTest(channel=channel):
+                # A choice in machine state, with a local comment, is kept verbatim.
                 contents = f'# Local choice.\nInclude = /usr/share/emaki/mirrors/{channel}.conf\n'
-                selector.write_text(contents)
+                state.write_text(contents)
                 self.success(self.pacman('-U', package))
-                self.assertEqual(selector.read_text(), contents)
+                self.assertEqual(state.read_text(), contents)
+                self.verify_channel(channel)
+                self.healthy()
+        for channel in ('testing', 'stable'):
+            with self.subTest(selector=channel):
+                # Older documentation edited the selector directly. That choice is in
+                # effect, so the next installation moves it into machine state.
+                selector.write_text(f'# Local choice.\nInclude = /usr/share/emaki/mirrors/{channel}.conf\n')
+                self.success(self.pacman('-U', package))
+                self.verify_channel(channel)
                 self.healthy()
 
     def test_removal_keeps_other_repositories_working(self):
@@ -327,6 +373,7 @@ printf '%s-%s' "$pkgver" "$pkgrel"
         self.healthy()
         self.success(self.pacman('-R', 'emaki-mirrorlist'))
         self.assertFalse((self.root / 'etc/emaki/channel').exists())
+        self.assertFalse((self.root / 'var/lib/emaki/channel').exists())
         self.assertIn(self.unrelated_configuration, (self.root / 'etc/pacman.conf').read_text())
         self.healthy()
 
@@ -338,6 +385,7 @@ printf '%s-%s' "$pkgver" "$pkgrel"
         self.healthy()
         self.success(self.pacman('-R', 'emaki-mirrorlist'))
         self.assertFalse((self.root / 'etc/emaki/channel').exists())
+        self.assertFalse((self.root / 'var/lib/emaki/channel').exists())
         self.assertIn(self.unrelated_configuration, (self.root / 'etc/pacman.conf').read_text())
         self.healthy()
 
@@ -350,6 +398,7 @@ printf '%s-%s' "$pkgver" "$pkgrel"
         self.healthy()
         self.success(self.pacman('-R', 'emaki-mirrorlist'))
         self.assertFalse((self.root / 'etc/emaki/channel').exists())
+        self.assertFalse((self.root / 'var/lib/emaki/channel').exists())
         self.assertIn('[emaki]', configuration.read_text())
         self.assertIn(custom, configuration.read_text())
         self.assertNotIn('Include = /etc/pacman.d/emaki-mirrorlist', configuration.read_text())
@@ -361,7 +410,7 @@ printf '%s-%s' "$pkgver" "$pkgrel"
         selector.write_text('# An incomplete prior choice.\n')
         self.success(self.pacman('-U', self.current()))
         self.enable_fixture_repositories()
-        self.assertIn('Include = /usr/share/emaki/mirrors/stable.conf', selector.read_text())
+        self.verify_channel('stable')
         self.healthy()
 
     def test_untouched_stable_upgrade_and_server_refresh(self):
@@ -383,6 +432,29 @@ printf '%s-%s' "$pkgver" "$pkgrel"
     def test_previous_selector_testing_upgrade(self):
         self.migrate('testing', 'Include = /usr/share/emaki/mirrors/testing.conf\n',
                      version='0.2.0-2', contents='Include = /usr/share/emaki/mirrors/stable.conf\n')
+
+    def selector_release(self, channel):
+        # 0.3.0 to 0.4.2: the mirrorlist only includes /etc/emaki/channel, which names the
+        # channel; testing is the documented swap of its commented Include.
+        other = 'stable' if channel == 'testing' else 'testing'
+        self.migrate(channel, version='0.4.1-1', contents=INCLUDING, selector=(
+            '# Choose stable or testing [update channel].\n'
+            '# After switching channels, run `sudo pacman -Syyu` once.\n'
+            f'# Include = /usr/share/emaki/mirrors/{other}.conf\n'
+            f'Include = /usr/share/emaki/mirrors/{channel}.conf\n'))
+
+    def test_selector_release_stable_upgrade(self):
+        self.selector_release('stable')
+
+    def test_selector_release_testing_upgrade(self):
+        self.selector_release('testing')
+
+    def test_fresh_install_ignores_left_state(self):
+        state = self.root / 'var/lib/emaki/channel'
+        state.parent.mkdir(parents=True)
+        state.write_text('Include = /usr/share/emaki/mirrors/testing.conf\n')
+        self.success(self.pacman('-U', self.current()))
+        self.verify_channel('stable')
 
     def test_fresh_install_channel_is_unowned(self):
         self.success(self.pacman('-U', self.current()))

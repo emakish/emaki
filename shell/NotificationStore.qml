@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -8,6 +10,101 @@ import Quickshell.Io
 Scope {
     id: store
     property bool dnd: false
+    property var catalog: null
+    property bool dndMigrated: false
+    property bool dndMigrationRequested: false
+    onManagedValuesChanged: Qt.callLater(migrateDnd)
+    onRestoredChanged: Qt.callLater(migrateDnd)
+    function migrateDnd(): void {
+        if (!restored || foreign || dndMigrated || !catalog)
+            return;
+        const row = managedValues.find(v => v.key === "notifications.dnd");
+        if (!row)
+            return;
+        // An explicit managed value always wins, including a previously saved false.
+        if (row.override_value !== null && row.override_value !== undefined || !dnd) {
+            dndMigrated = true;
+            if (dnd)
+                saveTimer.restart();
+        } else if (!dndMigrationRequested) {
+            dndMigrationRequested = true;
+            catalog.set("notifications.dnd", "true");
+        }
+        // Mark only an observed committed override. A failed or interrupted request
+        // keeps the old cache value for a retry on the next shell start.
+    }
+    readonly property var managedValues: catalog ? catalog.values : []
+    readonly property bool effectiveDnd: manualDnd() || Number(policyValue("notifications.until", "0")) > now || scheduleActive(policyJson("notifications.schedule", {}), now)
+    readonly property var rules: policyJson("notifications.rules", {})
+    readonly property bool systemSounds: policyValue("sound.system_sounds", true) === true
+    // A playback provider can query this policy without bypassing quiet rules.
+    function soundAllowed(id: string): bool {
+        return systemSounds && !effectiveDnd && ruleFor(id) === "allow";
+    }
+    property var applications: []
+    function policyValue(key: string, fallback: var): var {
+        const row = managedValues.find(v => v.key === key);
+        return row && row.value !== null ? row.value : fallback;
+    }
+    function policyJson(key: string, fallback: var): var {
+        try {
+            return JSON.parse(policyValue(key, JSON.stringify(fallback)));
+        } catch (error) {
+            return fallback;
+        }
+    }
+    function manualDnd(): bool {
+        const row = managedValues.find(v => v.key === "notifications.dnd");
+        if (!dndMigrated && dnd && (!row || row.override_value === null))
+            return true;
+        return policyValue("notifications.dnd", dnd) === true;
+    }
+    function setDnd(enabled: bool): void {
+        if (catalog) {
+            catalog.set("notifications.dnd", enabled ? "true" : "false");
+            if (!enabled)
+                catalog.set("notifications.until", "0");
+        } else {
+            dnd = enabled;
+        }
+    }
+    function scheduleActive(schedule: var, timestamp: double): bool {
+        if (!schedule || schedule.enabled !== true)
+            return false;
+        const minute = value => {
+            if (typeof value !== "string" || !/^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/.test(value))
+                return -1;
+            return Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
+        };
+        const start = minute(schedule.start), end = minute(schedule.end);
+        if (start < 0 || end < 0)
+            return false;
+        const date = new Date(timestamp);
+        const current = date.getHours() * 60 + date.getMinutes();
+        return start === end || (start < end ? current >= start && current < end : current >= start || current < end);
+    }
+    function applicationId(n: var): string {
+        const desktop = String(n.desktopEntry || "").slice(0, 240);
+        return desktop ? "desktop:" + desktop : "name:" + String(n.appName || "Application").slice(0, 128);
+    }
+    function rememberApplication(id: string, name: string): void {
+        if (applications.some(app => app.id === id))
+            return;
+        applications = applications.concat([
+            {
+                id: id,
+                name: name.slice(0, 128)
+            }
+        ]).slice(-256);
+    }
+    function ruleFor(id: string): string {
+        return Object.prototype.hasOwnProperty.call(rules, id) && ["allow", "silent", "off"].includes(rules[id]) ? rules[id] : "allow";
+    }
+    function peekAllowed(entry: var): bool {
+        return entry.critical === true || ruleFor(entry.appId || "name:" + entry.app) === "allow";
+    }
+    onApplicationsChanged: if (restored)
+        saveTimer.restart()
     property var entries: []
     readonly property string statePath: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/emaki/notifications.json"
     property bool restored: false
@@ -25,6 +122,12 @@ Scope {
             store.foreign = file.version !== undefined && file.version !== 1;
             const saved = store.foreign ? {} : file;
             store.dnd = saved.dnd === true;
+            store.dndMigrated = saved.dndMigrated === true;
+            // Older caches listed internal warnings even though their rules never apply.
+            store.applications = (Array.isArray(saved.applications) ? saved.applications : []).filter(a => a && typeof a.id === "string" && a.id.length <= 512 && typeof a.name === "string" && !["name:Battery low", "name:Battery critical", "name:Desktop update"].includes(a.id)).slice(-256).map(a => ({
+                        id: a.id,
+                        name: a.name.slice(0, 128)
+                    }));
             store.entries = (Array.isArray(saved.entries) ? saved.entries : []).filter(e => e && typeof e.summary === "string" && typeof e.time === "number").slice(0, 200).map(e => ({
                         id: store.systemId--,
                         app: String(e.app || "Application").slice(0, 128),
@@ -53,7 +156,9 @@ Scope {
         onTriggered: if (!store.foreign)
             stateFile.setText(JSON.stringify({
                 version: 1,
-                dnd: store.dnd,
+                dnd: store.dndMigrated ? store.manualDnd() : store.dnd,
+                dndMigrated: store.dndMigrated,
+                applications: store.applications,
                 entries: store.entries.map(e => ({
                             app: e.app,
                             summary: e.summary,
@@ -125,6 +230,7 @@ Scope {
         return {
             id: n.id,
             app: (n.appName || "Application").slice(0, 128),
+            appId: n.desktopEntry ? "desktop:" + String(n.desktopEntry).slice(0, 240) : "name:" + (n.appName || "Application").slice(0, 128),
             // Pairing confirmation, authorization and displayed PINs use persistent
             // blueman notices. Match protocol fields, not translated summaries.
             critical: (n.appName === "blueman" && n.appIcon === "blueman" && n.expireTimeout === 0) || (n.appName === "Desktop update" && n.summary === "Sign out and sign in again to finish updating the desktop."),
@@ -150,8 +256,17 @@ Scope {
             n.dismiss();
             return;
         }
+        const appId = applicationId(n);
+        const rule = ruleFor(appId);
+        const entry = snapshot(n, Date.now());
+        if (!(entry.critical && n.appName === "Desktop update"))
+            rememberApplication(appId, String(n.appName || "Application"));
+        if (rule === "off" && !entry.critical) {
+            n.dismiss();
+            return;
+        }
         const id = n.id;
-        entries = [snapshot(n, Date.now())].concat(entries);
+        entries = [entry].concat(entries);
         function update() {
             const old = store.entries.find(e => e.id === id);
             if (old?.object)
@@ -174,7 +289,8 @@ Scope {
         });
         if (entries.length > 200)
             dismiss(entries.slice(200).map(e => e.id));
-        arrived(id);
+        if (rule === "allow" || entry.critical)
+            arrived(id);
     }
     property int systemId: -1
     // A notice from the shell itself (no D-Bus object): negative IDs, no actions.
@@ -182,7 +298,13 @@ Scope {
         return localNotice(app, summary, body, false, false);
     }
     function localNotice(app: string, summary: string, body: string, batteryWarning: bool, sessionUpdate: bool): int {
+        const appId = "name:" + app.slice(0, 128);
+        if (!batteryWarning && !sessionUpdate)
+            rememberApplication(appId, app);
         const id = systemId--;
+        const rule = ruleFor(appId);
+        if (rule === "off" && !batteryWarning && !sessionUpdate)
+            return id;
         entries = [
             {
                 id: id,
@@ -200,7 +322,8 @@ Scope {
         ].concat(entries);
         if (entries.length > 200)
             dismiss(entries.slice(200).map(e => e.id));
-        arrived(id);
+        if (rule === "allow" || batteryWarning || sessionUpdate)
+            arrived(id);
         return id;
     }
     function systemBattery(percent: int): void {
@@ -232,12 +355,11 @@ Scope {
     }
     Timer {
         interval: 1000
-        running: store.entries.length > 0
+        running: true
         repeat: true
         onTriggered: {
             const current = Date.now();
-            if (Math.floor(current / 60000) !== Math.floor(store.now / 60000))
-                store.now = current;
+            store.now = current;
             for (const e of store.entries)
                 if (e.deadline && e.deadline <= current && e.object)
                     e.object.expire();

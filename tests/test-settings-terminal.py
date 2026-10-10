@@ -2,6 +2,9 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Managed terminal reads and argument expansion, without opening a terminal."""
+import contextlib
+import io
+import json
 import os
 from pathlib import Path
 import runpy
@@ -25,11 +28,51 @@ class Terminal(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
 
+    def test_password_result_waits_for_enter_and_preserves_exit_status(self):
+        for code in (0, 1, 10):
+            receipt = self.root / ('receipt-' + str(code))
+            output = io.StringIO()
+            with patch('subprocess.run', return_value=types.SimpleNamespace(returncode=code)) as run, patch('builtins.input', return_value='') as wait, contextlib.redirect_stdout(output):
+                self.assertEqual(MODULE['password_prompt'](str(receipt)), code)
+            run.assert_called_once_with(['passwd'], check=False)
+            wait.assert_called_once()
+            self.assertEqual(receipt.read_text(), str(code))
+            self.assertEqual(receipt.stat().st_mode & 0o777, 0o600)
+            self.assertIn('Password changed.' if code == 0 else 'Password not changed.', output.getvalue())
+
+    def test_password_status_uses_receipt_not_terminal_exit_code(self):
+        for code in (0, 1, None):
+            def terminal(command, **kwargs):
+                self.assertEqual(command[:2], ['emaki-terminal', '--'])
+                self.assertEqual(command[-2], '--password-prompt')
+                if code is not None:
+                    Path(command[-1]).write_text(str(code))
+                return types.SimpleNamespace(returncode=0)
+            output = io.StringIO()
+            with patch('subprocess.run', side_effect=terminal), contextlib.redirect_stdout(output):
+                MODULE['change_password']()
+            reply = json.loads(output.getvalue())
+            self.assertEqual(reply['status'], 'changed' if code == 0 else 'unchanged' if code == 1 else 'unconfirmed')
+
+    def test_detached_password_prompt_still_waits_without_receipt_directory(self):
+        with patch('subprocess.run', return_value=types.SimpleNamespace(returncode=0)), patch('builtins.input', return_value='') as wait, contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(MODULE['password_prompt'](self.root / 'gone' / 'receipt'), 0)
+            wait.assert_called_once()
+
     def test_missing_file_uses_default(self):
         self.assertIsNone(MODULE['selected_terminal']())
         with patch('os.execvp') as execute:
             MODULE['main'](['--', 'printf', 'a b', '$(false)'])
             execute.assert_called_once_with('kitty', ['kitty', '-e', 'printf', 'a b', '$(false)'])
+
+    def test_default_query_matches_launch_fallback_without_launching(self):
+        output = io.StringIO()
+        with patch('os.execvp') as execute, contextlib.redirect_stdout(output):
+            MODULE['main'](['--default', '--json'])
+            execute.assert_not_called()
+            reply = json.loads(output.getvalue())
+            MODULE['main']([])
+            execute.assert_called_once_with(reply['executable'], [reply['executable']])
 
     def test_saved_terminal(self):
         self.path.write_text('schema_version = 1\n[defaults]\nterminal = "test.desktop"\n')

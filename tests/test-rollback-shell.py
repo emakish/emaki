@@ -18,7 +18,7 @@ assert policy.find('defaults/allow_inactive').text == 'no'
 assert policy.find('defaults/allow_any').text == 'no'
 assert policy.find('annotate').text == '/usr/bin/emaki-rollback'
 source = (ROOT / 'shell/SnapshotRecovery.qml').read_text()
-assert '["/usr/bin/pkexec", "/usr/bin/emaki-rollback", "keep"]' in source
+assert '["pkexec", Platform.binDir + "/emaki-rollback", "keep"]' in source
 assert 'status.mode === "snapshot"' in source
 assert 'status.automatic === true ? status.message : ""' in source
 assert 'automaticMessage: recovery.automaticMessage' in source

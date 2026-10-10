@@ -95,6 +95,8 @@ Item {
             return "Choose a disk.";
         if (diskReason(c.selectedDisk))
             return diskReason(c.selectedDisk);
+        if (!c.mode)
+            return "Choose how to install on this disk.";
         if (c.encryptedRefusal)
             return c.encryptedRefusal;
         if (!c.encryptedConfirmed)
@@ -782,7 +784,7 @@ Item {
                     visible: ["keyboard", "network", "timezone", "disk", "filesystem", "encryption"].indexOf(view.controller.step) >= 0
                     text: view.controller.partitioning ? "GParted is open…" : "Continue"
                     primary: true
-                    enabled: !view.controller.locked && (view.controller.step !== "encryption" || (view.controller.encryptionReady && view.controller.secretsChecked)) && (view.controller.step !== "timezone" || (view.controller.timezoneChosen && view.controller.timezoneInfo?.timezone === view.controller.timezone && !view.controller.applyingTimezone)) && (view.controller.step !== "disk" || (!view.secureBootRefused && view.controller.session.inventory?.uefi && !!view.controller.selectedDisk && view.controller.encryptedConfirmed && !view.diskReason(view.controller.selectedDisk) && (view.controller.mode !== "alongside" || view.controller.alongsideSizeValid) && (view.controller.mode !== "manual" || (!Protocol.manualReason(view.controller.selectedDisk) && (!view.controller.manualAssignments || view.controller.manualReady)))))
+                    enabled: !view.controller.locked && (view.controller.step !== "encryption" || (view.controller.encryptionReady && view.controller.secretsChecked)) && (view.controller.step !== "timezone" || (view.controller.timezoneChosen && view.controller.timezoneInfo?.timezone === view.controller.timezone && !view.controller.applyingTimezone)) && (view.controller.step !== "disk" || (!view.secureBootRefused && view.controller.session.inventory?.uefi && !!view.controller.selectedDisk && !!view.controller.mode && view.controller.encryptedConfirmed && !view.diskReason(view.controller.selectedDisk) && (view.controller.mode !== "alongside" || view.controller.alongsideSizeValid) && (view.controller.mode !== "manual" || (!Protocol.manualReason(view.controller.selectedDisk) && (!view.controller.manualAssignments || view.controller.manualReady)))))
                     onClicked: view.controller.next()
                 }
                 Action {
@@ -2383,6 +2385,10 @@ Item {
             Lead {
                 width: parent.width
                 text: "Emaki is installed. Restart to begin using your new desktop."
+            }
+            Copy {
+                width: parent.width
+                text: "Press Super+D to open the app launcher. Super is the Windows key, or Command on a Mac keyboard."
             }
             Copy {
                 text: "Installed in " + view.duration(Math.round(view.controller.session.seconds)) + "."

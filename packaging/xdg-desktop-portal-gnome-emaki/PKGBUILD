@@ -5,7 +5,7 @@
 pkgname=xdg-desktop-portal-gnome-emaki
 _upstream=xdg-desktop-portal-gnome
 pkgver=50.0
-pkgrel=2
+pkgrel=3
 pkgdesc="Backend implementation for xdg-desktop-portal for the GNOME desktop environment"
 url="https://gitlab.gnome.org/GNOME/xdg-desktop-portal-gnome"
 arch=(x86_64)
@@ -42,9 +42,11 @@ replaces=(xdg-desktop-portal-gnome 'xdg-desktop-portal-gtk<1.10.0-2')
 source=(
   "git+https://gitlab.gnome.org/GNOME/xdg-desktop-portal-gnome.git?signed#tag=${pkgver/[a-z]/.&}"
   "git+https://gitlab.gnome.org/GNOME/libgxdp.git#commit=d5eca997aa2fea5af54fdd286d5c1e1aa7c76389"
+  expected-files.list
 )
 b2sums=('85ef8077172eb7fe181f2b3ab1585e7d8e467cec5acc163c9438364d4f8f127d4c582141a91899c859689b08a7b8c470668f9fd883f1457254b6cf913b75ce2e'
-        'afa272ad0b3f5b417326269ff55cb943a8c811860f13a48867e0673ebcb58df8a4b91756a0aceace9860f8754880b95328d6670fd9c0420f81d859db4631b19c')
+        'afa272ad0b3f5b417326269ff55cb943a8c811860f13a48867e0673ebcb58df8a4b91756a0aceace9860f8754880b95328d6670fd9c0420f81d859db4631b19c'
+        '75b4f367652ba2229bd717c4e38bf2ceadb77bb5abd7fcadaa8a971c120e8cc69599982cb8a3bbfdd444583d7fb6d05f4044aa56882c9ba307a76a040b32075b')
 validpgpkeys=(
   8307C0A224BABDA1BABD0EB9A6EEEC9E0136164A
   9038F70CA72FAC9D10C6327B89AFE307C861D158
@@ -68,6 +70,10 @@ check() {
 
 package() {
   meson install -C build --destdir "$pkgdir"
+  # Keep the documented payload equal to the files this build installs.
+  find "$pkgdir" \( -type f -o -type l \) -printf '/%P\n' | LC_ALL=C sort > "$srcdir/actual-files.list"
+  sed '/^#/d; /^[[:space:]]*$/d' "$srcdir/expected-files.list" > "$srcdir/expected-paths.list"
+  diff -u "$srcdir/expected-paths.list" "$srcdir/actual-files.list" || return 1
 }
 
 # vim:set sw=2 sts=-1 et:

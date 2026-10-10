@@ -345,18 +345,18 @@ Item {
             y: 4
             width: 38
             height: 20
-            onClicked: body.store.dnd = !body.store.dnd
+            onClicked: body.store.setDnd(!body.store.effectiveDnd)
             Rectangle {
                 anchors.fill: parent
                 radius: 10
-                color: body.store.dnd ? body.accent : body.faint
+                color: body.store.effectiveDnd ? body.accent : body.faint
             }
             Accessible.role: Accessible.CheckBox
-            Accessible.checked: body.store.dnd
+            Accessible.checked: body.store.effectiveDnd
         }
     }
     // The knob's place (clock.js 'knob'): 20 × 22 at the track's left or right end.
-    readonly property rect knobRect: Qt.rect(side + inner - 38 + (store.dnd ? 18 : 0), notesTop + 3, 20, 22)
+    readonly property rect knobRect: Qt.rect(side + inner - 38 + (store.effectiveDnd ? 18 : 0), notesTop + 3, 20, 22)
     readonly property bool knobShown: opened
     Text {
         visible: body.opened && body.serverNote

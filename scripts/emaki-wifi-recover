@@ -14,7 +14,11 @@ import sys
 import syslog
 import time
 
-ENV = {'PATH': '/usr/bin', 'LC_ALL': 'C'}
+sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import emaki_paths
+
+ENV = {'PATH': emaki_paths.TRUSTED_PATH, 'LC_ALL': 'C'}
 QUIET = 30
 BACKOFF = (60, 180, 600)
 WINDOW = 90
@@ -84,7 +88,7 @@ class Recovery:
     def guard(self, candidate):
         """Return a fixed guard name, never connection names or other NM text."""
         try:
-            if self.command('/usr/bin/nmcli', '-g', 'WIFI,WIFI-HW', 'general').strip().split(':') != ['enabled', 'enabled']:
+            if self.command('nmcli', '-g', 'WIFI,WIFI-HW', 'general').strip().split(':') != ['enabled', 'enabled']:
                 return 'radio'
             found = False
             for net in (self.sysfs / 'class/net').iterdir():
@@ -98,13 +102,13 @@ class Recovery:
                     return 'carrier'
                 if (net / 'operstate').read_text().strip() not in ('down', 'dormant'):
                     return 'operstate'
-                values = self.command('/usr/bin/nmcli', '-g', 'GENERAL.TYPE,GENERAL.STATE',
+                values = self.command('nmcli', '-g', 'GENERAL.TYPE,GENERAL.STATE',
                                       'device', 'show', net.name).splitlines()
                 # Only managed, disconnected or failed devices. Activation (40..100),
                 # deactivation, unavailable and unmanaged states must never be reset.
                 if len(values) != 2 or values[0] != 'wifi' or values[1].split()[0] not in ('30', '120'):
                     return 'nm-state'
-                if self.command('/usr/bin/nmcli', '-g', 'BSSID', 'device', 'wifi', 'list',
+                if self.command('nmcli', '-g', 'BSSID', 'device', 'wifi', 'list',
                                 'ifname', net.name, '--rescan', 'no'):
                     return 'scan-cache'
             return None if found else 'missing-interface'
@@ -277,7 +281,7 @@ class Recovery:
         return True
 
     def journal(self):
-        output = self.command('/usr/bin/journalctl', '--boot', '--quiet', '--no-pager',
+        output = self.command('journalctl', '--boot', '--quiet', '--no-pager',
                               '--output=json', '--since=-90 seconds', '-n', '200',
                               '_TRANSPORT=kernel', '+', '_SYSTEMD_UNIT=NetworkManager.service')
         return [json.loads(line) for line in output.splitlines() if line]

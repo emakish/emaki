@@ -1,0 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+/usr/share/pacman/keyrings/emaki-revoked
+/usr/share/pacman/keyrings/emaki-trusted
+/usr/share/pacman/keyrings/emaki.gpg

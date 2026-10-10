@@ -10,12 +10,20 @@ temporary directory given as DESTDIR.
 import os
 from pathlib import Path
 import subprocess
+import runpy
 import tempfile
 import unittest
 import reaper
 reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
+RENDER = runpy.run_path(str(ROOT / 'scripts/render-paths'))
+
+
+def shipped(source):
+    return RENDER['substitute']((ROOT / source).read_text(), RENDER['paths']()).encode()
+
+
 # Installed path (under DESTDIR) -> shipped source.
 STAGED = {
     'etc/niri/config.kdl': 'niri/system.kdl',
@@ -66,21 +74,21 @@ class Uninstall(unittest.TestCase):
             for installed, source in STAGED.items():
                 path = Path(temporary, installed)
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes((ROOT / source).read_bytes())
+                path.write_bytes(shipped(source))
             for installed in EDITED:
                 with Path(temporary, installed).open('a') as stream:
                     stream.write(LINE)
             for installed, source in KEPT.items():
                 path = Path(temporary, installed)
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes((ROOT / source).read_bytes())
+                path.write_bytes(shipped(source))
             result = uninstall(temporary)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             for installed, source in STAGED.items():
                 path = Path(temporary, installed)
                 if installed in EDITED:
                     self.assertTrue(path.is_file(), f'{installed} was removed although it was edited')
-                    self.assertEqual(path.read_bytes(), (ROOT / source).read_bytes() + LINE.encode(), installed)
+                    self.assertEqual(path.read_bytes(), shipped(source) + LINE.encode(), installed)
                 else:
                     self.assertFalse(path.exists(), installed)
             self.assertEqual(kept(result), sorted(f'uninstall: kept {Path(temporary, installed)} '
@@ -89,9 +97,19 @@ class Uninstall(unittest.TestCase):
             self.assertFalse(Path(temporary, 'usr/share/doc/emaki').exists())
             self.assertTrue(Path(temporary, 'etc/niri').is_dir())
             for installed, source in KEPT.items():
-                self.assertEqual(Path(temporary, installed).read_bytes(), (ROOT / source).read_bytes(), installed)
+                self.assertEqual(Path(temporary, installed).read_bytes(), shipped(source), installed)
             for directory in ('hooks', 'install'):
                 self.assertTrue(Path(temporary, 'usr/lib/initcpio', directory).is_dir())
+
+    def test_rendered_unedited_niri_default_is_removed(self):
+        with tempfile.TemporaryDirectory(prefix='emaki-uninstall-') as temporary:
+            path = Path(temporary, 'etc/niri/config.kdl')
+            path.parent.mkdir(parents=True)
+            path.write_bytes(shipped('niri/system.kdl'))
+            result = uninstall(temporary)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertFalse(path.exists())
+            self.assertEqual(kept(result), [])
 
     def test_empty_root_is_a_no_op(self):
         with tempfile.TemporaryDirectory(prefix='emaki-uninstall-') as temporary:

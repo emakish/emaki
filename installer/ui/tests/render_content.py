@@ -45,6 +45,8 @@ def validate_frame(path, log, screen, width, height, version, *, scrolled=False)
     expected = ['EMAKI SETUP' if height < 600 else ('Installer' if version is None else 'Install · ' + version)]
     if not scrolled:
         expected.append(heading_for(screen))
+        if screen == 'done':
+            expected.append('Press Super+D to open the app launcher. Super is the Windows key, or Command on a Mac keyboard.')
         if screen.endswith('-numlock'):
             expected.append('Num Lock is on — the login screen starts with Num Lock off; type digits on the main row.')
     required = []

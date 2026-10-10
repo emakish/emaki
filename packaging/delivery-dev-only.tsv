@@ -116,8 +116,10 @@ scripts/public/screenshots/live-session.png	Public repository documentation scre
 scripts/public/screenshots/login.png	Public repository documentation screenshot for login.	scripts/make-public.sh:shots
 scripts/public/wallpaper-README.md	Public source artwork README template.	scripts/make-public.sh
 scripts/render-kde-theme	Build tool producing installed kdeglobals from tokens.toml.	Makefile:render
+scripts/render-paths	Build tool rendering install paths and package text.	Makefile:paths and install
 scripts/render-shell-palette	Build tool producing installed ShellPalette.qml.	Makefile:render
 scripts/render-shell-tools	Build tool producing installed ShellTools.qml.	Makefile:shell-config
+scripts/render-system-map	Build tool producing installed docs/system-map.md from MANIFEST.md; also parses the map for its checks.	Makefile:render; tests/check-system-map.py
 scripts/render-theme	Build tool producing installed themes and system identity defaults.	Makefile:render
 scripts/try-palette.py	Developer palette experiment tool editing source tokens.toml.	scripts/try-palette.py:module documentation
 crates/emaki-cli/Cargo.toml	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
@@ -235,7 +237,15 @@ update-manager/ui/tests/controller.py	Update-window process protocol test runner
 update-manager/ui/tests/ControllerTest.qml	Update-window process protocol fixture.	update-manager/ui/tests/controller.py
 crates/emaki-core/src/settings/live.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
 crates/emaki-core/src/settings/niri_live.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-core/src/settings/machine.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
 crates/emaki-cli/src/settings_tui.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
 crates/emaki-cli/tests/settings_tui.rs	Core regression test or fixture; not part of the installed executable.	cargo test --workspace
 crates/emaki-core/src/settings/live_tests.rs	Core regression tests for durable session rollback; excluded from installed executable.	cargo test -p emaki-core
 crates/emaki-core/src/settings/mime.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-core/src/settings/input.rs	Compiled into the existing core and CLI input-settings backend.	crates/emaki-core/src/settings/mod.rs
+packaging/emaki-installer/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
+packaging/emaki-apps/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
+packaging/emaki-desktop/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
+packaging/emaki-keyring/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
+packaging/emaki-mirrorlist/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
+packaging/emaki-nvidia/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems

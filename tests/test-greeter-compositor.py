@@ -135,7 +135,7 @@ class Wrapper(unittest.TestCase):
         self.stub('agreety', AGREETY_STUB)
         self.stub('agetty', AGETTY_STUB)
         self.agetty_log = self.base / 'agetty'
-        for name in ('sleep', 'cat', 'stty', 'python3'):
+        for name in ('sleep', 'cat', 'stty', 'python3', 'readlink'):
             (self.bin / name).symlink_to('/usr/bin/' + name)
         self.journal = self.base / 'journal'
         self.result = self.base / 'result'

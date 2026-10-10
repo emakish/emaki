@@ -105,7 +105,7 @@ class WalletStage(unittest.TestCase):
             self.helper['stage'](self.target)
         self.assertEqual(write.call_args.args[1], self.helper['derive_key'](password, bytes(range(56))))
         self.assertNotIn(password.decode(), str(launch.call_args))
-        self.assertEqual(launch.call_args.args[0][:2], ['/usr/bin/ksecretd', '--pam-login'])
+        self.assertEqual(launch.call_args.args[0][:2], ['ksecretd', '--pam-login'])
         self.assertEqual(launch.call_args.kwargs['env']['QT_QPA_PLATFORM'], 'offscreen')
         self.assertEqual(len(launch.call_args.kwargs['pass_fds']), 3)
         self.assertEqual(wallet.call_args_list[0], mock.call('/org/freedesktop/secrets',

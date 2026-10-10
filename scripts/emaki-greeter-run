@@ -1,4 +1,11 @@
 #!/bin/bash
+# Resolve the source checkout through symlinks; installed wrappers use the build path.
+emaki_script=$(readlink -f -- "$0")
+emaki_paths="${emaki_script%/*}/paths"
+[ -r "$emaki_paths" ] || emaki_paths='@EMAKI_LIBEXECDIR@/paths'
+# shellcheck source=scripts/paths
+. "$emaki_paths"
+unset emaki_script emaki_paths
 # A successful greetd acknowledgement is recorded before compositor teardown.
 # Qt may _exit(255) on Wayland disconnect; that is not a greeter failure.
 if [[ ${1:-} == --success ]]; then
@@ -17,17 +24,17 @@ umask 077
 # This data layer hides the stock session only in the recovery greeter's chooser.
 # The primary greeter still reads the stock entry for automatic session recovery.
 run_regreet() {
-    XDG_DATA_DIRS="/usr/share/emaki/greetd/data:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}" regreet
+    XDG_DATA_DIRS="$EMAKI_DATADIR/greetd/data:${XDG_DATA_DIRS:-$EMAKI_XDG_DATA_DIRS_DEFAULT}" regreet
 }
 if ! EMAKI_GREETER_SUCCESS_FILE=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/emaki-greeter-success.XXXXXXXX"); then
     unset EMAKI_GREETER_SUCCESS_FILE
-    qs -p /usr/share/emaki/shell/greeter.qml || run_regreet
+    qs -p "$EMAKI_DATADIR/shell/greeter.qml" || run_regreet
     "${EMAKI_GREETER_COMPOSITOR:-niri}" msg action quit --skip-confirmation
     exit $?
 fi
 export EMAKI_GREETER_SUCCESS_FILE
 trap 'rm -f "$EMAKI_GREETER_SUCCESS_FILE"' EXIT
-qs -p /usr/share/emaki/shell/greeter.qml
+qs -p "$EMAKI_DATADIR/shell/greeter.qml"
 result=$?
 if [[ -s $EMAKI_GREETER_SUCCESS_FILE ]]; then
     exit 0

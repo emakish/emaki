@@ -68,8 +68,22 @@ fn command(
     }
     String::from_utf8(result.stdout).map_err(|_| err(reason))
 }
+/// Only what changes at run time goes to the shell; it keeps the descriptive fields of the
+/// rows it already listed. The IPC server of Quickshell 0.3 never answers a call that arrives
+/// in more than one read, so a large message can leave the transaction unconfirmed.
+fn shell_rows(rows: Vec<Setting>) -> Vec<Value> {
+    rows.into_iter()
+        .map(|row| {
+            let mut compact = json!({"key": row.key, "value": row.value});
+            if !row.override_value.is_null() {
+                compact["override_value"] = row.override_value;
+            }
+            compact
+        })
+        .collect()
+}
 fn shell(profile: &Profile, doc: &Document, gaps: u16, timeout: Duration) -> Result<()> {
-    let rows = serde_json::to_string(&json!({"rows": rows(doc, gaps)}))
+    let rows = serde_json::to_string(&json!({"rows": shell_rows(rows(doc, gaps))}))
         .map_err(|_| err("invalid_settings"))?;
     if command(
         profile,
@@ -87,13 +101,30 @@ fn shell(profile: &Profile, doc: &Document, gaps: u16, timeout: Duration) -> Res
 }
 /// A wrapper always includes the personal configuration; none of its files are edited.
 pub(super) fn config(profile: &Profile, doc: &Document) -> Result<PathBuf> {
+    let mut effective = doc.clone();
+    input::protect_personal(profile, &mut effective);
+    let doc = &effective;
     let home = std::env::var_os("HOME").ok_or_else(|| err("home_missing"))?;
     let base = if Path::new(&home).join(".config/niri/config.kdl").exists() {
-        "/usr/share/emaki/niri/fork.kdl"
+        "niri/fork.kdl"
     } else {
-        "/usr/share/emaki/niri/fork-system.kdl"
+        "niri/fork-system.kdl"
     };
-    let mut text = format!("// Emaki managed session configuration.\ninclude {base:?}\n");
+    let base = data_dir().join(base);
+    let mut text = "// Emaki managed session configuration.\n".to_owned();
+    if profile.installed {
+        // Output blocks use first-match precedence, unlike layout overrides.
+        // Keep the managed display layer ahead of inherited personal defaults.
+        let displays = profile.config.join("displays.kdl");
+        let displays = displays
+            .to_str()
+            .ok_or_else(|| err("invalid_config_path"))?;
+        text.push_str(&format!(
+            "include optional=true {}\n",
+            serde_json::to_string(displays).unwrap()
+        ));
+    }
+    text.push_str(&format!("include {base:?}\n"));
     if doc.overrides().values().any(|value| !value.is_null()) {
         let id = doc.generation.as_deref().unwrap_or("manual");
         // Re-derive from current package defaults after an update, retaining only overrides.
@@ -190,18 +221,33 @@ pub(super) fn apply(
     timeout: Duration,
 ) -> Result<()> {
     if changed(before, after, &[LAYOUTS, SWITCH_KEY]) {
-        return Err(err("keyboard_requires_machine_settings"));
+        // Installed keyboard keys live on the machine; an undo of an observed hand edit of
+        // these inert values is not replayed (set them with `emaki settings set`).
+        return Err(err("machine_setting_not_in_history"));
     }
-    let niri = changed(before, after, &[GAPS, FLOATING])
+    let niri = before.input != after.input
+        || before.shortcuts != after.shortcuts
+        || changed(before, after, &[GAPS, FLOATING, COLUMN_WIDTH, FOCUS_MOUSE])
         || (changed(before, after, &[WALLPAPER]) && std::env::var_os("NIRI_SOCKET").is_some());
     let shell_changed = changed(
         before,
         after,
-        &[BAR_AUTOHIDE, BAR_OVERVIEW, DOCK_ON, DOCK_AUTO_HIDE],
+        &[
+            CLOCK_24_HOUR,
+            BAR_AUTOHIDE,
+            BAR_OVERVIEW,
+            DOCK_ON,
+            DOCK_AUTO_HIDE,
+            DND,
+            UNTIL,
+            SCHEDULE,
+            RULES,
+            SYSTEM_SOUNDS,
+        ],
     );
-    let mime = changed(before, after, &[BROWSER, FILES]);
+    let mime = changed(before, after, &[BROWSER, FILES, MAIL, EDITOR]);
     let wallpaper_changed = changed(before, after, &[WALLPAPER]);
-    for key in [TERMINAL, BROWSER, FILES] {
+    for key in [TERMINAL, BROWSER, FILES, MAIL, EDITOR] {
         if changed(before, after, &[key]) {
             if let Some(id) = after.overrides().get(key).and_then(Value::as_str) {
                 command(
@@ -328,6 +374,8 @@ pub(super) fn migrate_mime(profile: &Profile, doc: &Document) -> Result<()> {
     if owned_legacy
         || doc.defaults.browser.is_some()
         || doc.defaults.files.is_some()
+        || doc.defaults.mail.is_some()
+        || doc.defaults.editor.is_some()
         || read(&mime_path(profile))?.is_some()
     {
         // Rebuild disposable associations from the current source at login too.

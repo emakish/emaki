@@ -1,0 +1,8 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Installed paths not yet in any system-map component (tests/check-system-map.py).
+# "[reason]" opens a group; then one exact installed path per line. This list only
+# shrinks: a path that gets a component, or stops being installed, must leave it, and a
+# new installed path goes into a component, never here.
+
+# No uncovered installed paths.

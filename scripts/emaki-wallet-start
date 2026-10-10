@@ -8,13 +8,21 @@ import fcntl
 import json
 import os
 import signal
+import shutil
 from pathlib import Path
 import subprocess
 import sys
 import time
 
+sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import emaki_paths
+
+# D-Bus activation starts Exec= without a PATH search (dbus-daemon execs it directly;
+# dbus-broker hands it to systemd, which searches only its compiled directories).
+COMMAND = emaki_paths.BINDIR + '/emaki-wallet-start --wait'
 ACTIVATION = ('# Emaki session Secret Service\n[D-BUS Service]\n'
-              'Name=org.freedesktop.secrets\nExec=/usr/bin/emaki-wallet-start --wait\n')
+              'Name=org.freedesktop.secrets\nExec=' + COMMAND + '\n')
 
 
 def bus_call(method, *args):
@@ -43,9 +51,13 @@ def select_provider(runtime, call=bus_call):
                  'org.freedesktop.impl.portal.Secret'):
         path = activation_path(runtime).with_name(name + '.service')
         content = ACTIVATION.replace('Name=org.freedesktop.secrets', 'Name=' + name)
+        previous = content
         if name in ('org.gnome.keyring', 'org.freedesktop.impl.portal.Secret'):
-            content = content.replace('/usr/bin/emaki-wallet-start --wait', '/usr/bin/false')
-        if path.is_symlink() or (path.exists() and path.read_text() != content):
+            content = content.replace(COMMAND, 'false')
+            # Runtime overrides outlive graphical logout. Accept the exact spelling
+            # earlier releases generated, which named false in the command directory.
+            previous = content.replace('Exec=false', 'Exec=' + emaki_paths.BINDIR + '/false')
+        if path.is_symlink() or (path.exists() and path.read_text() not in (content, previous)):
             raise RuntimeError('A personal Secret Service activation file takes precedence. Check your wallet settings.')
         paths.append((path, content))
     created = False
@@ -102,6 +114,10 @@ def discard_pending_pam(env, proc=Path('/proc')):
     address = env.get('PAM_KWALLET5_LOGIN')
     if not address:
         return
+    daemon = shutil.which('ksecretd', path=emaki_paths.TRUSTED_PATH)
+    if daemon is None:
+        return
+    daemon = Path(daemon).resolve()
     try:
         if Path(address).stat().st_uid != os.getuid():
             return
@@ -117,7 +133,7 @@ def discard_pending_pam(env, proc=Path('/proc')):
                 if process.stat().st_uid != os.getuid():
                     continue
                 args = (process / 'cmdline').read_bytes().split(b'\0')
-                if b'--pam-login' not in args or (process / 'exe').resolve() != Path('/usr/bin/ksecretd'):
+                if b'--pam-login' not in args or (process / 'exe').resolve() != daemon:
                     continue
                 index = args.index(b'--pam-login')
                 descriptor = args[index + 2].decode()
@@ -209,7 +225,7 @@ def prepare(env, runtime, run=subprocess.run, call=bus_call):
         for unit in present:
             run(['systemctl', '--user', 'stop', unit], env=env, check=True,
                 capture_output=True, timeout=10)
-        run(['/usr/bin/emaki-wallet-migrate', '--snapshot'], env=env,
+        run(['emaki-wallet-migrate', '--snapshot'], env=env,
             check=True, timeout=110)
     except (RuntimeError, OSError, subprocess.SubprocessError):
         raise
@@ -228,11 +244,11 @@ def start(env, runtime, run=subprocess.run, call=bus_call, sleep=time.sleep):
             discard_pending_pam(env)
             raise
         if env.get('PAM_KWALLET5_LOGIN'):
-            run(['/usr/lib/pam_kwallet_init'], env=env, check=True,
+            run([emaki_paths.PAM_KWALLET_INIT], env=env, check=True,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
         else:
             run(['systemd-run', '--user', '--collect', '--quiet',
-                 '--unit=emaki-wallet-daemon', '/usr/bin/ksecretd'], env=env, check=True,
+                 '--unit=emaki-wallet-daemon', 'ksecretd'], env=env, check=True,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
         wait_provider(call, sleep)
 

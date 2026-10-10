@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Personal blanking and locking policy, and battery information."""
+import argparse
+import json
+import os
+from pathlib import Path
+import signal
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+
+# The shipped service is inert until a personal timer choice enables it.
+DEFAULTS = {'blank_battery': 0, 'blank_ac': 0, 'lock_delay': 0, 'lid': 'system'}
+OFF = dict(DEFAULTS)
+# Preserve the fallback used by existing partial personal configuration files.
+SAVED_DEFAULTS = dict(DEFAULTS, blank_battery=330, blank_ac=330, lock_delay=300)
+SUPPLIES = Path('/sys/class/power_supply')
+
+
+def config_path():
+    return Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'emaki/power.json'
+
+
+def validate(key, value):
+    if key == 'lid':
+        if value not in ('system', 'ignore'):
+            raise ValueError('The saved lid setting is not valid.')
+        return value
+    if key not in DEFAULTS:
+        raise ValueError('Unknown power setting.')
+    if isinstance(value, bool) or str(value) not in ('0', '60', '120', '150', '300', '330', '600', '900', '1800', '3600'):
+        raise ValueError('Choose one of the available delays.')
+    return int(value)
+
+
+def read_settings():
+    values = dict(SAVED_DEFAULTS)
+    try:
+        stored = json.loads(config_path().read_text())
+    except FileNotFoundError:
+        return dict(OFF)
+    if not isinstance(stored, dict):
+        raise ValueError('The saved power settings are not valid.')
+    for key, value in stored.items():
+        values[key] = validate(key, value)
+    # Retire the unsupported lid override; the sleep guard owns lid handling.
+    values['lid'] = 'system'
+    return values
+
+
+def save_settings(values):
+    path = config_path()
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix='.power-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            json.dump(values, stream)
+            stream.write('\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def read_text(path):
+    try:
+        return path.read_text().strip()
+    except OSError:
+        return ''
+
+
+def batteries():
+    result = []
+    for path in sorted(SUPPLIES.glob('*')):
+        if read_text(path / 'type') != 'Battery' or read_text(path / 'scope') == 'Device':
+            continue
+        health = None
+        for prefix in ('energy', 'charge'):
+            try:
+                full = float(read_text(path / (prefix + '_full')))
+                design = float(read_text(path / (prefix + '_full_design')))
+                if full >= 0 and design > 0:
+                    health = round(100 * full / design)
+                    break
+            except ValueError:
+                pass
+        capacity = read_text(path / 'capacity')
+        threshold = read_text(path / 'charge_control_end_threshold')
+        result.append({'name': path.name, 'health': health,
+                       'percent': int(capacity) if capacity.isdecimal() else None,
+                       'charging': read_text(path / 'status') == 'Charging',
+                       'charge_limit': int(threshold) if threshold.isdecimal() else None})
+    return result
+
+
+def source():
+    for path in SUPPLIES.glob('*'):
+        if read_text(path / 'type') != 'Battery' and read_text(path / 'online') == '1':
+            return 'ac'
+    return 'battery' if batteries() else 'ac'
+
+
+def available():
+    return all(shutil.which(name) for name in ('swayidle', 'emaki-idle', 'emaki-lock', 'niri'))
+
+
+def ready():
+    address = os.environ.get('NOTIFY_SOCKET')
+    if address:
+        if address.startswith('@'):
+            address = '\0' + address[1:]
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as connection:
+            connection.connect(address)
+            connection.sendall(b'READY=1')
+
+
+def runtime_error():
+    if not config_path().exists():
+        return ''
+    try:
+        result = subprocess.run(['systemctl', '--user', 'show', 'emaki-idle.service',
+                                 '--property=ActiveState', '--value'],
+                                capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return 'Could not check the screen timers.'
+    if result.returncode or result.stdout.strip() != 'active':
+        return 'The screen timers are not running. Apply a setting to try again.'
+    return ''
+
+
+def status():
+    supported = available()
+    message = runtime_error() if supported else 'Automatic locking and blanking are unavailable because required session components are missing.'
+    values = read_settings() if not message else dict(OFF)
+    return {'schema_version': 1, 'state': 'ready', 'values': values,
+            'defaults': DEFAULTS, 'idle_available': supported, 'source': source(), 'batteries': batteries(),
+            'message': message}
+
+
+
+def call(command):
+    result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+    if result.returncode:
+        raise RuntimeError('The system could not apply the power setting.')
+    return result
+
+
+def set_value(key, value):
+    values = read_settings()
+    previous = dict(values)
+    values[key] = validate(key, value)
+    if key == 'lid':
+        raise ValueError('Lid behavior is managed by the system.')
+    if not available():
+        raise RuntimeError('Automatic locking and blanking are unavailable because required session components are missing.')
+    if values == previous and not config_path().exists():
+        return status()
+    save_settings(values)
+    try:
+        # Enabling is an explicit personal choice; the packaged unit remains inert.
+        call(['systemctl', '--user', 'enable', 'emaki-idle.service'])
+        call(['systemctl', '--user', 'restart', 'emaki-idle.service'])
+        call(['systemctl', '--user', 'is-active', '--quiet', 'emaki-idle.service'])
+    except (OSError, RuntimeError, subprocess.TimeoutExpired):
+        save_settings(previous)
+        try:
+            call(['systemctl', '--user', 'restart', 'emaki-idle.service'])
+        except (OSError, RuntimeError, subprocess.TimeoutExpired):
+            pass
+        raise
+    return status()
+
+
+def charge(name, value):
+    if not any(row['name'] == name and row['charge_limit'] is not None for row in batteries()):
+        raise ValueError('This battery does not expose a charge limit.')
+    if value not in ('50', '60', '70', '80', '90', '100'):
+        raise ValueError('Choose a charge limit from 50 to 100 percent.')
+    sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import emaki_paths
+    call(['pkexec', str(Path(emaki_paths.LIBEXECDIR) / 'emaki-charge-limit'), 'set', name, value])
+    return status()
+
+
+def run():
+    children = []
+    stopping = False
+
+    def stop(_signum, _frame):
+        nonlocal stopping
+        stopping = True
+
+    def cleanup():
+        while children:
+            process = children.pop()
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGTERM)
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait()
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    previous = None
+    try:
+        while not stopping:
+            values = read_settings()
+            active = source()
+            policy = (values['blank_' + active], values['lock_delay'], values['lid'])
+            if policy != previous:
+                cleanup()
+                env = dict(os.environ, EMAKI_IDLE_OFF=str(policy[0]), EMAKI_IDLE_LOCK=str(policy[1]))
+                # Avoid a dim timer after blanking; preserve the package's 150-second default.
+                env['EMAKI_IDLE_DIM'] = str(min(150, max(0, policy[0] - 1))) if policy[0] else '0'
+                if policy[0] or policy[1]:
+                    if not available():
+                        raise SystemExit(127)
+                    children.append(subprocess.Popen(['emaki-idle'], env=env, start_new_session=True))
+                # Type=notify stays activating until the child survives startup.
+                # Later exits still fail the unit instead of leaving a healthy supervisor.
+                time.sleep(1)
+                for child in children:
+                    code = child.poll()
+                    if code is not None:
+                        raise SystemExit(code or 1)
+                ready()
+                previous = policy
+            for child in children:
+                code = child.poll()
+                if code in (2, 127, 255):
+                    raise SystemExit(code)
+                if code is not None:
+                    raise RuntimeError('The idle policy stopped unexpectedly.')
+            time.sleep(1)
+    finally:
+        cleanup()
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('action', choices=['status', 'set', 'reset', 'charge', 'run'])
+    parser.add_argument('key', nargs='?')
+    parser.add_argument('value', nargs='?')
+    parser.add_argument('--json', action='store_true')
+    args = parser.parse_args()
+    try:
+        if args.action == 'run':
+            run()
+            return 0
+        if args.action == 'status':
+            result = status()
+        elif args.action == 'charge':
+            result = charge(args.key, args.value)
+        elif args.action == 'reset':
+            if args.key not in DEFAULTS:
+                raise ValueError('Unknown power setting.')
+            result = set_value(args.key, DEFAULTS[args.key])
+        else:
+            result = set_value(args.key, args.value)
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+        print(json.dumps({'schema_version': 1, 'state': 'error', 'message': str(error)}))
+        return 2 if args.action == 'run' and isinstance(error, ValueError) else 1
+    print(json.dumps(result))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

@@ -291,6 +291,9 @@ def bounded(value):
 with open(os.environ['FIXTURE_LOG'], 'a') as stream:
     stream.write(json.dumps([name, arguments]) + '\\n')
 if name == 'python3':
+    if arguments == ['scripts/render-paths', '--text', 'niri/system.kdl']:
+        print(Path('niri/system.kdl').read_text(), end='')
+        sys.exit(0)
     assert arguments == ['-I', 'scripts/emaki-greeter-provision', '--root', str(stage), '--purge-published']
     base = bounded(stage / 'var/lib/emaki-greeter')
     quarantine = base / ('.purge-published-' + 'a' * 32)
@@ -323,6 +326,9 @@ elif name == 'rmdir':
 elif name == 'cmp':
     # Read-only, with cmp's exit codes: 0 equal, 1 different, 2 a file is missing.
     assert len(arguments) == 3 and arguments[0] == '-s', arguments
+    if arguments[1] == '-':
+        installed = bounded(arguments[2])
+        sys.exit(0 if installed.is_file() and sys.stdin.buffer.read() == installed.read_bytes() else 1)
     shipped = Path(arguments[1])
     assert not shipped.is_absolute() and '..' not in shipped.parts, arguments
     assert (Path.cwd() / shipped).resolve().is_relative_to(Path.cwd().resolve()), arguments
@@ -350,6 +356,7 @@ else:
     # and turns a staged path into a root path, which the stubs reject.
     mark = next(line for line in makefile.splitlines() if line.startswith('NIRI_ETC_MARK = '))
     harness.write_text('''PREFIX = /usr
+LIBEXECDIR = $(PREFIX)/libexec/emaki
 BIN = $(DESTDIR)$(PREFIX)/bin
 SHARE = $(DESTDIR)$(PREFIX)/share/emaki
 ICONS = $(DESTDIR)$(PREFIX)/share/icons

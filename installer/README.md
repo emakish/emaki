@@ -31,7 +31,7 @@ encryption and a RAM-sized hibernation file. BIOS installation is unsupported.
 
 ## Alongside Windows
 
-**Not offered in 0.4.2.** Installing alongside Windows returns only after a check
+**Not offered in 0.5.0.** Installing alongside Windows returns only after a check
 on a real Windows (a real shrink of its partition, BitLocker); see DECISIONS,
 2026-10-04 "No experimental options". One switch controls it: `ALONGSIDE` in
 `emaki_installer/constants.py`, `False`. With it off the inventory does not
@@ -69,7 +69,7 @@ Plans use `partition_id` for Windows and `shrink_bytes` for **bytes freed for
 Emaki**. The worker reserves the NTFS minimum plus 2 GiB for Windows and at
 least 32 GiB for Emaki. Root must also fit the existing 20 GiB allowance, RAM
 when hibernation is selected, and the LUKS2 header when encrypted. The slider
-starts at half the available space, bounded by those limits. The 0.4.2 UI
+starts at half the available space, bounded by those limits. The 0.5.0 UI
 always sends hibernation off and reserves no RAM-sized space. The review names both resulting sizes,
 preservation behavior, encryption and hibernation, and requires the backup
 acknowledgement before confirmation.
@@ -119,7 +119,7 @@ not Windows. This tests chainloading only. All files and evidence stay under
 the dedicated VM directory, and the guest is stopped on success or failure.
 Before it touches the target disk, the job asks the ISO's worker for a plan
 only; when the worker refuses the mode itself (`unsupported_mode`, as every
-0.4.2 image does), it prints `NOT APPLICABLE`, writes `NOT-APPLICABLE` into the
+0.5.0 image does), it prints `NOT APPLICABLE`, writes `NOT-APPLICABLE` into the
 run directory and exits 77: neither a pass nor a failure.
 
 ### First real Windows laptop checklist
@@ -209,7 +209,7 @@ The render set includes every step, encryption choices and password states,
 a selected map region, active and empty
 time zone searches, and both software choices, at the default 1024 × 700 size.
 The `alongside*` screens replay a worker offer recorded with the alongside
-switch on; a 0.4.2 worker never sends one.
+switch on; a 0.5.0 worker never sends one.
 Use `--width 960 --height 640` for the minimum window, and `--iso-fonts` to limit
 the test to the ISO's Adwaita fonts. `controller.py --unix` additionally exercises
 the real socket; it returns 77 when the sandbox cannot bind Unix sockets.
@@ -284,7 +284,29 @@ disconnect, window close and Hide discard it; returning to review after such
 an action requires entering it again. Passwords never enter diagnostic output,
 shared protocol state, command arguments or saved configuration.
 
+## Wi-Fi after installation
+
+The worker captures the active Wi-Fi profile before disk work and writes it into the
+mounted target during Settings, including encrypted installations. A successful join
+from the live desktop works without a recorded installer join. With multiple active
+Wi-Fi adapters, a recorded installer join must identify an active profile; otherwise
+the installer reports that Wi-Fi was not copied. With no active Wi-Fi, nothing is copied,
+even if an earlier installer join remains recorded. Saved but unused profiles are never copied.
+
+Only a private, root-owned regular keyfile from NetworkManager's system-connections
+directories is read. NetworkManager normalizes it offline before saved-secret checks,
+removes live-user restrictions and enables autoconnect. Open and personal networks
+with saved secrets are supported; enterprise credentials and session-only secrets
+remain unsupported and produce the existing completion warning. The root worker
+writes the selected profile as root:root, mode 0600, inside a mode-0700 target directory.
+Profile contents and secrets never enter logs or command arguments.
+
+The completion page identifies Super+D as the launcher shortcut.
+
 ## Encryption and hibernation
+
+The disk step starts without an installation mode. Erase requires an explicit choice,
+including after switching away from a disk that supported installing alongside.
 
 The Encryption step has no initial yes/no answer. Continue requires a choice.
 After choosing encryption, the recommended option uses the account password;
@@ -293,11 +315,13 @@ fields have the same eye controls as the account fields. Passwords stay in
 private controller memory until the plan is sent, and are cleared on Back,
 Hide, close, disconnect and submission. Changing an account password after
 installation does not change the disk password. Startup uses the English (US)
-keyboard layout, so disk passwords must use printable ASCII characters.
+keyboard layout, so disk passwords must use printable ASCII characters and contain
+at least 8 characters. This minimum also applies when the account password unlocks
+the disk; unencrypted installations retain the existing login-password rules.
 
 Plans must explicitly include `encryption: "none" | "account" | "separate"`.
 The separate choice also needs `disk_password`; neither password appears in
-the returned review or logs. The 0.4.2 installer window does not offer hibernation:
+the returned review or logs. The 0.5.0 installer window does not offer hibernation:
 the session on tested hardware did not respond after resume. Its controller keeps
 hibernation off and every UI plan explicitly sends `hibernation: false`; root
 and alongside space calculations do not reserve RAM-sized space.
@@ -315,7 +339,7 @@ Only root is encrypted; the ESP remains plain at `/efi`. Manual encryption
 requires formatting root and preserves the existing GPT and ESP. Any other
 data partitions stay unencrypted, as stated in the UI and review. The common
 `storage_layout` planner function applies these options after a layout builder;
-the alongside builder (off in 0.4.2) calls it without duplicating storage policy.
+the alongside builder (off in 0.5.0) calls it without duplicating storage policy.
 
 The shipped Arch GRUB 2:2.16-1 includes `luks2`, `argon2`, `cryptodisk` and
 `pbkdf2` modules, verified in the test ISO. Root uses LUKS2/Argon2id with a

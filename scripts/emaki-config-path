@@ -1,9 +1,16 @@
 #!/bin/sh
+# Resolve the source checkout through symlinks; installed wrappers use the build path.
+emaki_script=$(readlink -f -- "$0")
+emaki_paths="${emaki_script%/*}/paths"
+[ -r "$emaki_paths" ] || emaki_paths='@EMAKI_LIBEXECDIR@/paths'
+# shellcheck source=scripts/paths
+. "$emaki_paths"
+unset emaki_script emaki_paths
 # Print the component config path, respecting Emaki's config layers.
 #
 # Why: an application's system directory (/etc/xdg/<application>) often belongs to its
 # package — for fuzzel, /etc/xdg/fuzzel/fuzzel.ini is owned by the fuzzel package. Writing
-# there is forbidden (directives 2 and 6), so our default lives in /usr/share/emaki and
+# there is forbidden (directives 2 and 6), so our default lives in Emaki’s data directory and
 # is passed via a flag; this wrapper ensures that the user's file takes precedence.
 #
 # Usage:
@@ -19,5 +26,5 @@ user_config="${XDG_CONFIG_HOME:-$HOME/.config}/$component/$file"
 if [ -r "$user_config" ]; then
     printf '%s\n' "$user_config"
 else
-    printf '%s\n' "/usr/share/emaki/$component/$file"
+    printf '%s\n' "$EMAKI_DATADIR/$component/$file"
 fi

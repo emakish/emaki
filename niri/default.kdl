@@ -56,11 +56,11 @@ spawn-at-startup "emaki-autostart" "wallpaper" "emaki-session-wallpaper"
 // Retire only the old database once before recording. wl-paste in
 // --watch mode passes CLIPBOARD_STATE=sensitive for entries marked by
 // a password manager, and cliphist store skips those entries.
-spawn-at-startup "emaki-autostart" "clipboard" "python3" "-B" "/usr/share/emaki/shell/helpers/clipboard_store.py" "--watch"
+spawn-at-startup "emaki-autostart" "clipboard" "python3" "-B" "@EMAKI_DATADIR@/shell/helpers/clipboard_store.py" "--watch"
 
 // polkit authentication service. Without it, graphical applications cannot request
 // an administrator password: requests are silently denied.
-spawn-at-startup "emaki-autostart" "authentication" "env" "QT_QUICK_CONTROLS_STYLE=Fusion" "/usr/lib/polkit-kde-authentication-agent-1"
+spawn-at-startup "emaki-autostart" "authentication" "env" "QT_QUICK_CONTROLS_STYLE=Fusion" "@EMAKI_POLKIT_AGENT@"
 
 // Mount USB drives on request; insertion must not mount behind the lock.
 spawn-at-startup "emaki-autostart" "automount" "udiskie" "--no-automount"
@@ -78,9 +78,9 @@ spawn-at-startup "emaki-autostart" "automount" "udiskie" "--no-automount"
 spawn-at-startup "emaki-autostart" "shell" "systemctl" "--user" "start" "--no-block" "emaki-shell.service"
 spawn-at-startup "emaki-autostart" "sleep-guard" "systemctl" "--user" "start" "--no-block" "emaki-sleep-guard.service"
 
-// The idle policy (emaki-idle) is NOT started yet: each step —
-// dimming, locking, screen blanking — must first be tested individually on a running
-// desktop. It does not and will not suspend or hibernate.
+// The idle policy ships disabled; Settings can enable supported personal timers.
+// The hardware trial of dimming, locking and screen blanking remains a release gate.
+// It does not and will not suspend or hibernate.
 
 // ── Layout behavior ────────────────────────────────────────────────────
 layout {
@@ -262,11 +262,11 @@ binds {
     Mod+Period hotkey-overlay-title="Search keyboard shortcuts" { spawn "emaki-shell" "call" "keyboard" "open" "shortcuts"; }
 
     // Emergency terminal WITHOUT Super: if something intercepts Super,
-    // this binding still works. The path is absolute because spawn does not
-    // start a shell or expand PATH the way bash does.
-    Ctrl+Alt+T hotkey-overlay-title="Open terminal (works without Super)" { spawn "/usr/bin/kitty"; }
+    // this binding still works. The compositor finds the terminal through PATH.
+    Ctrl+Alt+T hotkey-overlay-title="Open terminal (works without Super)" { spawn "kitty"; }
 
     // ── Windows and columns ────────────────────────────────────────────────
+    Alt+Tab hotkey-overlay-title="Focus previous window" { focus-window-previous; }
     Mod+C { close-window; }
     Mod+F { fullscreen-window; }
     Mod+R { switch-preset-column-width; }   // one third → one half → two thirds

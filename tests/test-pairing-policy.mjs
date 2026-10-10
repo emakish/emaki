@@ -57,6 +57,11 @@ function run(sources) {
             Metrics: {morphMs: 350}, peekTimer: {restart() {}, stop() {}}, closeTimer: {restart() {}}, systemBody: {rows: [], reset() {}}, services: {pendingKind: ''},
             enabled: true, output: {}, focusedOutput: true,
             WlrKeyboardFocus: {None: 'none', OnDemand: 'on-demand', Exclusive: 'exclusive'}});
+        const policy = vm.createContext({rules: {}});
+        policy.ruleFor = production('NotificationStore.qml', 'ruleFor', 'id', policy);
+        state.notes.peekAllowed = production('NotificationStore.qml', 'peekAllowed', 'entry', policy);
+        state.policy = policy;
+        Object.defineProperty(state.notes, 'effectiveDnd', {get() { return this.dnd; }});
         state.scene = state;
         state.surfaces = {controller: state, pendingLayer: ''};
         const surface = vm.createContext({controller: state});
@@ -77,6 +82,24 @@ function run(sources) {
         for (const name of ['showNotification', 'closeSystem', 'closeClock', 'endPeek', 'retainCriticalPeek'])
             state[name] = production('ShellScene.qml', name, name === 'showNotification' ? 'id' : '', state);
         return state;
+    }
+    // Per-application quiet rules must never reject a live pairing confirmation.
+    for (const rule of ['silent', 'off']) {
+        const state = fixture(false);
+        const received = vm.createContext({rules: {'name:blueman': rule}, applications: [], entries: [],
+            Quickshell: {env() { return ''; }}, Date, arrived(id) { state.showNotification(id); }});
+        received.store = received;
+        for (const [name, args] of [['plainBody', 'value'], ['applicationId', 'n'],
+                ['rememberApplication', 'id,name'], ['ruleFor', 'id'], ['snapshot', 'n,time'], ['accept', 'n']])
+            received[name] = production('NotificationStore.qml', name, args, received);
+        Object.defineProperty(state.notes, 'entries', {get() { return received.entries; }});
+        state.policy.rules = received.rules;
+        const notification = request(false).object;
+        notification.dismiss = () => { throw Error('pairing request dismissed by ' + rule); };
+        for (const signal of ['summaryChanged', 'bodyChanged', 'appNameChanged', 'actionsChanged', 'expireTimeoutChanged', 'closed'])
+            notification[signal] = {connect() {}};
+        received.accept(notification);
+        assert.deepEqual(Array.from(state.peekIds), [1], rule + ' pairing arrival and preview');
     }
     // Find the overlay binding by its real source scope.
     const overlaySources = sources['Surfaces.qml'].split('id: overlay')[1];
@@ -229,7 +252,7 @@ function run(sources) {
         const state = vm.createContext({pendingCheck: null, pendingKind: '', pendingValue: null,
             pairingFocusManaged: true, pairingQueued: false, action: {busy: false},
             wifiRestartRunning: false, wifiRestart: {running: false},
-            actionState: 'idle', attempts: 0, ticks: 25, confirmationTicks: 25,
+            actionState: 'idle', actionSerial: 0, attempts: 0, ticks: 25, confirmationTicks: 25,
             confirmation: {start() {}}, backend: {act(...args) { calls.push(args); return result; }}});
         state.service = state;
         focus.state.services = state;
@@ -250,12 +273,15 @@ function run(sources) {
             state.action.start = request => calls.push(request);
             state.wifiRestartRunning = flag === 'authorization';
             state.wifiRestart.running = flag === 'process';
+            let serial = state.actionSerial;
             for (const wifiKind of ['wifi-restart', 'wifi-power', 'wifi-connect', 'hidden']) {
                 assert.equal(state.act(wifiKind, null), false, wifiKind + ' remains gated during ' + flag);
                 assert.equal(state.actionState, 'busy');
+                assert.equal(state.actionSerial, ++serial, 'rejected request advances action identity');
             }
             assert.equal(state.act(kind, kind === 'session' ? 'suspend' : 42), true,
                 kind + ' remains available during ' + flag);
+            assert.equal(state.actionSerial, ++serial, 'accepted request advances action identity');
             assert.equal(calls.length, 1, kind + ' reaches its isolated backend');
         }
     }
@@ -438,6 +464,9 @@ function run(sources) {
 run(original);
 if (process.argv.includes('--mutations')) {
     const mutations = [
+        ['pairing off rule', 'NotificationStore.qml', 'rule === "off" && !entry.critical', 'rule === "off"'],
+        ['pairing silent arrival', 'NotificationStore.qml', 'rule === "allow" || entry.critical', 'rule === "allow"'],
+        ['pairing silent preview', 'NotificationStore.qml', 'return entry.critical === true || ruleFor', 'return ruleFor'],
         ['modal gate', 'ShellScene.qml', 'if (!critical && (niri.overviewOpen || modalOpen', 'if ((niri.overviewOpen || modalOpen'],
         ['battery replacement', 'ShellScene.qml', '(pairingPeekOpen && !pairing)', 'false'],
         ['second pairing request', 'ShellScene.qml', '(pairingPeekOpen && !pairing)', 'pairingPeekOpen'],

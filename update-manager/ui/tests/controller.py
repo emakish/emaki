@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 
+ROOT = Path(__file__).resolve().parents[3]
 UI = Path(__file__).resolve().parents[1]
 BACKEND = '''#!{python}
 # Copyright (C) 2026 Artur Yakymenko
@@ -53,8 +54,8 @@ def run(scenario):
         backend = root / 'backend'
         backend.write_text(BACKEND.format(python=sys.executable))
         backend.chmod(0o700)
-        controller = (UI / 'UpdateController.qml').read_text()
-        command = '"/usr/libexec/emaki/update-manager-backend"'
+        controller = (UI / 'UpdateController.qml').read_text().replace('@EMAKI_DATADIR@/shell', (ROOT / 'shell').as_uri())
+        command = 'Shell.Platform.libexecDir + "/update-manager-backend"'
         assert controller.count(command) == 1
         (root / 'UpdateController.qml').write_text(controller.replace(command, json.dumps(str(backend))))
         shutil.copyfile(UI / 'tests/ControllerTest.qml', root / 'ControllerTest.qml')

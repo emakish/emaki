@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -17,11 +19,31 @@ Item {
     // The query, for highlighting a matched file name.
     property string term: ""
     readonly property string kind: row?.kind ?? ""
-    readonly property string icon: {
+    readonly property var iconCandidates: {
         const name = row?.entry?.icon ?? "";
         const themed = name ? Quickshell.iconPath(name, true) : "";
-        // These two KDE apps keep their icons in Breeze rather than hicolor.
-        return themed || (["accessories-character-map", "utilities-system-monitor"].includes(name) ? "file:///usr/share/icons/breeze/apps/48/" + name + ".svg" : "");
+        if (!["accessories-character-map", "utilities-system-monitor", "system-software-update", "printer"].includes(name))
+            return themed ? [themed] : [];
+        const category = name === "printer" ? "devices" : "apps";
+        const home = Quickshell.env("XDG_DATA_HOME") || (Quickshell.env("HOME") + "/.local/share");
+        const roots = [home].concat((Quickshell.env("XDG_DATA_DIRS") || Platform.xdgDataDirsDefault).split(":"));
+        const locations = ["hicolor/scalable/" + category + "/", "hicolor/48x48/" + category + "/", "breeze/" + category + "/48/", "breeze/" + category + "/64/", "AdwaitaLegacy/48x48/" + (category === "apps" ? "legacy" : category) + "/"];
+        const candidates = themed ? [themed] : [];
+        for (const path of [...new Set(roots)].filter(path => path.startsWith("/")))
+            for (const location of locations)
+                for (const extension of ["svg", "png"])
+                    candidates.push("file://" + path + "/icons/" + location + name + "." + extension);
+        return [...new Set(candidates)];
+    }
+    property int iconCandidate: 0
+    readonly property string icon: iconCandidates[iconCandidate] ?? ""
+    onIconCandidatesChanged: iconCandidate = 0
+    function nextIcon(failedSource): void {
+        // An image can fail while its source binding is still being evaluated.
+        Qt.callLater(() => {
+            if (icon === String(failedSource) && iconCandidate < iconCandidates.length)
+                iconCandidate++;
+        });
     }
     // Results without an app icon use a symbolic icon.
     readonly property string symbol: ({
@@ -62,6 +84,8 @@ Item {
             height: 40
             sourceSize: Qt.size(80, 80)
             source: item.shape === "tile" ? item.icon : ""
+            onStatusChanged: if (status === Image.Error)
+                item.nextIcon(source)
             smooth: true
             mipmap: true
         }
@@ -108,6 +132,8 @@ Item {
             sourceSize: Qt.size(48, 48)
             source: item.shape === "row" ? item.icon : ""
             visible: status === Image.Ready
+            onStatusChanged: if (status === Image.Error)
+                item.nextIcon(source)
             smooth: true
             mipmap: true
         }

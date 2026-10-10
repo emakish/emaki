@@ -41,9 +41,19 @@ class SessionFiles(unittest.TestCase):
         self.binary.write_text('#!/bin/sh\necho old-core\n')
         self.binary.chmod(0o700)
         self.helper = load('emaki-session-files')
-        self.helper.PACKAGES = self.base / 'packages'
-        self.helper.TRANSACTION = self.base / 'db.lck'
-        self.helper.UPDATE = self.base / 'update-marker'
+        # The session reads only the state command; answer it with the real backend over fixtures.
+        self.update = load('emaki-session-update')
+        self.packages = self.base / 'packages'
+        self.lock = self.base / 'db.lck'
+        self.marker = self.base / 'update-marker'
+        for name, value in (('PACKAGES', self.packages), ('LOCK', self.lock)):
+            fixture = patch.object(self.update.arch, name, value)
+            fixture.start()
+            self.addCleanup(fixture.stop)
+        backend = patch.object(self.helper, 'query_state',
+                               side_effect=lambda: json.dumps(self.update.desktop_state(self.marker)))
+        backend.start()
+        self.addCleanup(backend.stop)
         writable = patch.object(self.helper.state, 'readonly_root', return_value=False)
         writable.start()
         self.addCleanup(writable.stop)
@@ -72,14 +82,14 @@ class SessionFiles(unittest.TestCase):
 
     def test_same_version_reinstall_and_compositor_update_survive_shell_restart(self):
         shell = self.prepare()
-        load('emaki-session-update').mark_update(self.helper.UPDATE)
+        self.update.mark_update(self.marker)
         self.assertTrue(self.helper.changed(shell.parent))
         self.assertTrue(self.helper.changed(self.prepare().parent))
         with patch.dict(os.environ, NIRI_SOCKET='session-two'):
             self.assertFalse(self.helper.changed(self.prepare().parent))
 
     def test_package_versions_detect_update_without_hook(self):
-        package = self.helper.PACKAGES / 'qt6-base-6.10-1/desc'
+        package = self.packages / 'qt6-base-6.10-1/desc'
         package.parent.mkdir(parents=True)
         package.write_text('old package')
         shell = self.prepare()
@@ -99,7 +109,7 @@ class SessionFiles(unittest.TestCase):
         self.assertFalse((self.helper.runtime(self.source) / 'active.json').exists())
 
     def test_stale_lock_does_not_delay_panel(self):
-        self.helper.TRANSACTION.touch()
+        self.lock.touch()
         with patch.object(self.helper.time, 'sleep') as sleep:
             shell = self.helper.prepare(self.source, self.binary, wait=True)
         sleep.assert_not_called()
@@ -107,7 +117,7 @@ class SessionFiles(unittest.TestCase):
         self.assertFalse(self.helper.changed(shell.parent))
 
     def test_snapshot_root_with_lock_does_not_delay_panel(self):
-        self.helper.TRANSACTION.touch()
+        self.lock.touch()
         with patch.object(self.helper.state, 'readonly_root', return_value=True), \
                 patch.object(self.helper.time, 'sleep') as sleep:
             shell = self.helper.prepare(self.source, self.binary, wait=True)
@@ -115,7 +125,7 @@ class SessionFiles(unittest.TestCase):
         self.assertNotEqual(shell, self.source)
 
     def test_live_holder_starts_installed_panel_after_short_bound(self):
-        with self.helper.TRANSACTION.open('w'), patch.object(self.helper, 'START_WAIT', 0.1):
+        with self.lock.open('w'), patch.object(self.helper, 'START_WAIT', 0.1):
             start = time.monotonic()
             shell = self.helper.prepare(self.source, self.binary, wait=True)
             elapsed = time.monotonic() - start
@@ -142,7 +152,7 @@ class SessionFiles(unittest.TestCase):
                 captured = self.helper.prepare(self.source, self.binary, wait=True)
                 self.assertNotEqual(captured, self.source)
                 sleep.assert_not_called()
-                package = self.helper.PACKAGES / 'niri-99-1/desc'
+                package = self.packages / 'niri-99-1/desc'
                 package.parent.mkdir(parents=True)
                 package.touch()
                 self.assertTrue(self.helper.changed(captured.parent))
@@ -155,11 +165,11 @@ class SessionFiles(unittest.TestCase):
             query.stdout.close()
 
     def test_installed_fallback_keeps_baseline_through_update_and_recapture(self):
-        with self.helper.TRANSACTION.open('w'):
+        with self.lock.open('w'):
             self.assertEqual(self.prepare(), self.source)
             baseline = self.helper.runtime(self.source) / 'session.json'
             original = baseline.read_text()
-            load('emaki-session-update').mark_update(self.helper.UPDATE)
+            self.update.mark_update(self.marker)
             self.assertFalse(self.helper.changed_installed(self.source))
         self.assertTrue(self.helper.changed_installed(self.source))
         captured = self.prepare()
@@ -170,8 +180,8 @@ class SessionFiles(unittest.TestCase):
             self.assertFalse(self.helper.changed_installed(self.source))
 
     def test_first_fallback_after_hook_marker_still_remembers_old_compositor(self):
-        load('emaki-session-update').mark_update(self.helper.UPDATE)
-        with self.helper.TRANSACTION.open('w'):
+        self.update.mark_update(self.marker)
+        with self.lock.open('w'):
             self.assertEqual(self.prepare(), self.source)
             self.assertFalse(self.helper.changed_installed(self.source))
         self.assertTrue(self.helper.changed_installed(self.source))
@@ -182,7 +192,7 @@ class SessionFiles(unittest.TestCase):
             with self.assertRaises(OSError):
                 self.prepare()
         self.assertFalse(self.helper.changed_installed(self.source))
-        load('emaki-session-update').mark_update(self.helper.UPDATE)
+        self.update.mark_update(self.marker)
         self.assertTrue(self.helper.changed_installed(self.source))
         self.assertTrue(self.helper.changed(self.prepare().parent))
 
@@ -191,29 +201,35 @@ class SessionFiles(unittest.TestCase):
             with self.assertRaises(OSError):
                 self.prepare()
         self.assertFalse(self.helper.changed_installed(self.source))
-        load('emaki-session-update').mark_update(self.helper.UPDATE)
+        self.update.mark_update(self.marker)
         self.assertTrue(self.helper.changed_installed(self.source))
         self.assertTrue(self.helper.changed(self.prepare().parent))
 
-    def test_installed_observer_reports_missing_baseline_without_replacing_it(self):
-        with patch.object(self.helper.state, 'transaction_running', return_value=False), \
+    def test_installed_observer_records_a_missing_baseline_instead_of_a_notice(self):
+        self.helper.runtime(self.source)
+        with patch.object(self.update.arch, 'transaction_running', return_value=False), \
                 patch.object(self.helper.state, 'LIVE', self.base / 'absent-live'), \
                 patch('builtins.print') as output:
+            with patch.object(self.helper.time, 'sleep', side_effect=StopIteration), \
+                    self.assertRaises(StopIteration):
+                self.helper.watch(self.source, installed_source=True)
+            output.assert_not_called()
+            self.assertTrue((self.helper.runtime(self.source) / 'session.json').exists())
+            self.update.mark_update(self.marker)
             self.helper.watch(self.source, installed_source=True)
         self.assertEqual(json.loads(output.call_args.args[0]), dict(schema=1, restart=True))
-        self.assertFalse((self.helper.runtime(self.source) / 'session.json').exists())
 
     def test_no_notice_until_transaction_and_later_hooks_exit(self):
         shell = self.prepare()
-        with self.helper.TRANSACTION.open('w'):
+        with self.lock.open('w'):
             (self.source / 'helper.py').write_text('new files before later hooks')
             self.assertFalse(self.helper.changed(shell.parent))
-            load('emaki-session-update').mark_update(self.helper.UPDATE)
+            self.update.mark_update(self.marker)
             self.assertFalse(self.helper.changed(shell.parent))
         self.assertTrue(self.helper.changed(shell.parent))
 
     def test_reason_only_database_change_does_not_request_signout(self):
-        package = self.helper.PACKAGES / 'qt6-base-6.10-1/desc'
+        package = self.packages / 'qt6-base-6.10-1/desc'
         package.parent.mkdir(parents=True)
         package.write_text('%NAME%\nqt6-base\n\n%VERSION%\n6.10-1\n\n%REASON%\n0\n')
         shell = self.prepare()
@@ -260,6 +276,7 @@ class SessionFiles(unittest.TestCase):
         tools.mkdir()
         scripts = {
             'emaki-shell': (ROOT / 'scripts/emaki-shell').read_text(),
+            'paths': (ROOT / 'scripts/paths').read_text(),
             'emaki-shell-health': '#!/bin/sh\nprintf "%s\\n" "$2"\n',
             'emaki-qt-check': '#!/bin/sh\nexit 0\n',
             'qs': '''#!/usr/bin/python3

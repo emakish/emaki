@@ -351,7 +351,6 @@ class Worker:
                     self.wifi_uuid = plan.config.get('wifi_uuid')
                     if not self.wifi_uuid:
                         raise
-                self.wifi_uuid = self.wifi_uuid or plan.config.get('wifi_uuid')
                 if self.wifi_uuid:
                     self.wifi_profile = capture_wifi(self.wifi_uuid)
             except (InstallError, OSError):

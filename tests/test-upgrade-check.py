@@ -6,6 +6,7 @@ old-address proxy over TLS with its test CA, the guestfwd relay, the keys it typ
 candidate check, the installer fixture, and the stamp's refusal of rehearsal results. The VM
 runs themselves (T1, T2, T3) are not exercised here."""
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -15,8 +16,10 @@ import socket
 import subprocess
 import sys
 import tempfile
+import tarfile
 import threading
 import unittest
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -60,7 +63,8 @@ class ChannelMigration(unittest.TestCase):
                 'cat ~/.config/niri/config.kdl': b'personal config\n',
                 'cat /var/log/pacman.log': 'marker\n[ALPM] upgraded emaki (0.2.0-1 -> 0.2.1)\n[ALPM] transaction completed\n',
                 'cat /etc/pacman.d/emaki-mirrorlist': 'Include = /etc/emaki/channel\n',
-                'cat /etc/emaki/channel': f'# Choice\nInclude = /usr/share/emaki/mirrors/{channel}.conf\n',
+                'cat /etc/emaki/channel': '# Fixed\nInclude = /var/lib/emaki/channel\n',
+                'cat /var/lib/emaki/channel': f'# Choice\nInclude = /usr/share/emaki/mirrors/{channel}.conf\n',
                 'cat /etc/pacman.d/emaki-mirrorlist.pacnew 2>/dev/null || true': '',
                 'test ! -e /etc/pacman.d/emaki-mirrorlist.pacnew': 0,
                 'pacman-conf --repo emaki Server': f'https://pkgs.emaki.sh/{channel}/x86_64\n',
@@ -113,7 +117,8 @@ class ChannelMigration(unittest.TestCase):
     def test_wrong_selector_server_report_or_pending_mirror_list_fails(self):
         for command, value in [
                 ('cat /etc/pacman.d/emaki-mirrorlist', 'Server = https://pkgs.emaki.sh/testing/$arch\n'),
-                ('cat /etc/emaki/channel', 'Include = /usr/share/emaki/mirrors/stable.conf\n'),
+                ('cat /etc/emaki/channel', 'Include = /usr/share/emaki/mirrors/testing.conf\n'),
+                ('cat /var/lib/emaki/channel', 'Include = /usr/share/emaki/mirrors/stable.conf\n'),
                 ('test ! -e /etc/pacman.d/emaki-mirrorlist.pacnew', 1),
                 ('pacman-conf --repo emaki Server', 'https://pkgs.emaki.sh/stable/x86_64\n'),
                 ('emaki-update-channel', 'stable\n')]:
@@ -228,6 +233,116 @@ class MirrorSwitch(unittest.TestCase):
             with self.subTest(selector=selector), tempfile.TemporaryDirectory() as directory, \
                     self.assertRaises(RuntimeError):
                 check.prepare_old_state(self.Guest(directory, self.INCLUDING, selector), 'channel-testing')
+
+
+class StableSelection(unittest.TestCase):
+    def test_t3_follows_each_starts_packaged_address(self):
+        for start in ('0.1.0', '0.1.1', '0.1.2-release', '0.1.2-full'):
+            with self.subTest(start=start):
+                self.assertEqual(check.select_via('T3', start, 'unused'), 'github-stable')
+                self.assertEqual(check.select_via('T3', start, 'unused', 'github-stable'), 'github-stable')
+        for start in ('0.2.0', '0.3.0', '0.4.2', '0.10.0'):
+            with self.subTest(start=start):
+                self.assertEqual(check.select_via('T3', start, 'unused'), 'pkgs-stable')
+                self.assertEqual(check.select_via('T3', start, 'unused', 'pkgs-stable'), 'pkgs-stable')
+
+    def test_stable_override_cannot_replace_pre_promotion_coverage(self):
+        for run in ('T1', 'T2'):
+            for via in ('pkgs-stable', 'github-stable'):
+                with self.subTest(run=run, via=via), self.assertRaisesRegex(SystemExit, 'only.*T3'):
+                    check.select_via(run, '0.3.0', 'unused', via)
+        for start, via in (('0.1.1', 'pkgs-stable'), ('0.3.0', 'github-stable')):
+            with self.subTest(start=start), self.assertRaisesRegex(SystemExit, 'unedited stable address'):
+                check.select_via('T3', start, 'unused', via)
+
+    def test_pre_promotion_routes_remain_unchanged(self):
+        self.assertEqual(check.select_via('T1', '0.1.1', 'unused'), 'github-testing')
+        self.assertEqual(check.select_via('T1', '0.3.0', 'unused'), 'pkgs-testing-swap')
+        for route in ('old-address', 'pkgs-testing'):
+            with mock.patch.object(check, 't2_via', return_value=route) as choose:
+                self.assertEqual(check.select_via('T2', '0.3.0', 'mirror'), route)
+                choose.assert_called_once_with('mirror')
+
+    def test_stable_base_must_use_the_checked_endpoint(self):
+        for via, server in (('pkgs-stable', 'https://pkgs.emaki.sh/stable/x86_64'),
+                            ('github-stable', check.GITHUB + '/stable')):
+            guest = mock.Mock()
+            guest.run.return_value = server + '\n'
+            check.check_stable_route(guest, via)
+            guest.run.assert_called_once_with('pacman-conf --repo emaki Server')
+            for wrong in ('https://pkgs.emaki.sh/testing/x86_64\n', server + '\n' + server, ''):
+                guest.run.return_value = wrong
+                with self.subTest(via=via, wrong=wrong), self.assertRaisesRegex(RuntimeError, 'base does not use'):
+                    check.check_stable_route(guest, via)
+
+    def test_stable_preparation_leaves_both_channel_files_unchanged(self):
+        for mirrorlist, selector in ((MirrorSwitch.PACKAGED['0.2.0'], None),
+                                     (MirrorSwitch.INCLUDING, MirrorSwitch.SELECTOR)):
+            with tempfile.TemporaryDirectory() as directory:
+                guest = MirrorSwitch.Guest(directory, mirrorlist, selector)
+                self.assertEqual(check.selector_via(guest, 'pkgs-stable'), 'pkgs-stable')
+                check.prepare_old_state(guest, 'pkgs-stable')
+                self.assertEqual(guest.file.read_text(), mirrorlist)
+                if selector is not None:
+                    self.assertEqual(guest.selector.read_text(), selector)
+
+    def test_served_stable_database_must_match_current_manifest(self):
+        database = b'published database'
+        manifest = b'published manifest'
+        digest = check.hashlib.sha256(database).hexdigest()
+        with mock.patch.object(check, 'snapshot_manifest', return_value=('promotion', manifest)) as snapshot, \
+                mock.patch.object(check.publish, 'parse_manifest', return_value={'emaki.db': digest}), \
+                mock.patch.object(check.publish, 'db_entries', return_value={'emaki': {'name': 'emaki', 'version': '0.4.2-1'}}), \
+                mock.patch.object(check, 'fetch', return_value=database) as fetch:
+            result = check.candidate('https://pkgs.emaki.sh', 'stable', served_channel=True)
+            snapshot.assert_called_once_with('https://pkgs.emaki.sh', 'stable')
+            fetch.assert_called_once_with('https://pkgs.emaki.sh/stable/x86_64/emaki.db')
+            self.assertEqual(result['db_sha256'], digest)
+            self.assertEqual(result['versions'], {'emaki': '0.4.2-1'})
+            for served in (None, b'previous promotion', b'new promotion'):
+                fetch.return_value = served
+                with self.subTest(served=served), self.assertRaisesRegex(SystemExit, 'stable/x86_64/emaki.db'):
+                    check.candidate('https://pkgs.emaki.sh', 'stable', served_channel=True)
+        with self.assertRaises(ValueError):
+            check.candidate('unused', 'stable', database, served_channel=True)
+
+    def test_t3_from_0_3_0_reads_the_served_stable_database(self):
+        with tempfile.TemporaryDirectory() as directory:
+            bucket = Path(directory)
+            (bucket / 'pointers').mkdir()
+            (bucket / 'pointers/stable').write_text('promotion\n')
+            snapshot = bucket / 'snap/stable/promotion'
+            snapshot.mkdir(parents=True)
+            endpoint = bucket / 'stable/x86_64/emaki.db'
+            endpoint.parent.mkdir(parents=True)
+            description = (b'%FILENAME%\nemaki-0.4.2-1-x86_64.pkg.tar.zst\n\n'
+                           b'%NAME%\nemaki\n\n%VERSION%\n0.4.2-1\n')
+            with tarfile.open(endpoint, 'w:gz') as archive:
+                member = tarfile.TarInfo('emaki-0.4.2-1/desc')
+                member.size = len(description)
+                archive.addfile(member, io.BytesIO(description))
+            digest = check.hashlib.sha256(endpoint.read_bytes()).hexdigest()
+            (snapshot / 'MANIFEST').write_text(digest + '  emaki.db\n')
+            # Only the channel endpoint has a database; no GitHub or immutable database read.
+            command = [sys.executable, HERE / 'vm/upgrade-check.py', '--run', 'T3', '--via', 'pkgs-stable',
+                       '--start', '0.3.0', '--base', bucket, '--mirror', f'file://{bucket}', '--dry-run']
+            dry = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(dry.returncode, 0, dry.stdout + dry.stderr)
+            self.assertIn('(pkgs-stable)', dry.stdout)
+            self.assertIn(', emaki 0.4.2-1', dry.stdout)
+            endpoint.write_bytes(b'wrong channel database')
+            dry = subprocess.run(command, capture_output=True, text=True)
+            self.assertNotEqual(dry.returncode, 0)
+            self.assertIn('stable/x86_64/emaki.db does not match its MANIFEST', dry.stderr)
+
+    def test_fetch_is_a_read_only_get(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = b'database'
+        with mock.patch.object(check.urllib.request, 'urlopen', return_value=response) as opening:
+            self.assertEqual(check.fetch('https://pkgs.emaki.sh/stable/x86_64/emaki.db'), b'database')
+            request = opening.call_args.args[0]
+            self.assertEqual(request.get_method(), 'GET')
+            self.assertIsNone(request.data)
 
 
 class UpgradeEvidence(unittest.TestCase):

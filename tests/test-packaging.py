@@ -79,7 +79,7 @@ class MetadataTests(unittest.TestCase):
             with self.subTest(package=name):
                 info = self.recipes[name]
                 self.assertEqual(info['pkgname'], [name])
-                self.assertEqual(info['pkgver'], ['0.4.2'])
+                self.assertEqual(info['pkgver'], ['0.5.0'])
                 self.assertEqual(info['pkgrel'], [marker_release] if name == 'emaki' else ['1'])
                 # emaki-installer also ships the zone map (ODbL) and the GRUB unlock-screen fonts (DejaVu, Bitstream Vera).
                 self.assertEqual(info['license'], ['GPL-3.0-or-later', 'ODbL-1.0', 'Bitstream-Vera']
@@ -87,12 +87,12 @@ class MetadataTests(unittest.TestCase):
                                  if name == 'emaki-config' else ['GPL-3.0-or-later']
                                  if name == 'emaki-nvidia' else ['GPL-3.0-or-later'])
         cargo = tomllib.loads((ROOT / 'Cargo.toml').read_text())
-        self.assertEqual(cargo['workspace']['package']['version'], '0.4.2')
+        self.assertEqual(cargo['workspace']['package']['version'], '0.5.0')
         packages = tomllib.loads((ROOT / 'Cargo.lock').read_text())['package']
-        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.4.2'})
+        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.5.0'})
         self.assertEqual(self.recipes['emaki']['depends'], [
-            'emaki-config=0.4.2-1', 'emaki-desktop=0.4.2-1', 'niri-emaki=26.04-12',
-            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.4.2-1', 'emaki-mirrorlist>=0.4.2-1'])
+            'emaki-config=0.5.0-1', 'emaki-desktop=0.5.0-1', 'niri-emaki=26.04-13',
+            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.5.0-1', 'emaki-mirrorlist>=0.5.0-1'])
 
     def test_early_console_font_reaches_targets_and_updates(self):
         self.assertIn('terminus-font', self.recipes['emaki-config']['depends'])
@@ -210,10 +210,10 @@ class MetadataTests(unittest.TestCase):
         self.assertFalse({'nautilus', 'loupe', 'file-roller', 'papers', '7zip', 'unrar',
                           'emaki-apps'} & set(desktop['depends']))
         self.assertFalse({'make', 'rust', 'qt6-shadertools'} & set(desktop['depends']))
-        self.assertTrue(any(d.startswith('swayidle:') for d in desktop['optdepends']))
+        self.assertIn('swayidle', desktop['depends'])
         self.assertFalse(any(d.startswith('niri-emaki:') for d in desktop['optdepends']))
         niri = self.recipes['niri-emaki']
-        self.assertEqual((niri['pkgver'], niri['pkgrel']), (['26.04'], ['12']))
+        self.assertEqual((niri['pkgver'], niri['pkgrel']), (['26.04'], ['13']))
         self.assertTrue({'niri>=26.04', 'libdisplay-info.so=3-64', 'libinput.so=10-64',
                          'libseat.so=1-64', 'mesa'} <= set(niri['depends']))
         self.assertIn('export NIRI_BUILD_COMMIT="v$pkgver+emaki.$pkgrel"',
@@ -319,7 +319,7 @@ class MetadataTests(unittest.TestCase):
     def test_portal_without_nautilus(self):
         portal = self.recipes['xdg-desktop-portal-gnome-emaki']
         self.assertEqual(portal['pkgver'], ['50.0'])
-        self.assertEqual(portal['pkgrel'], ['2'])
+        self.assertEqual(portal['pkgrel'], ['3'])
         self.assertNotIn('nautilus', portal['depends'])
         self.assertIn('xdg-desktop-portal-gnome', portal['provides'])
         self.assertIn('xdg-desktop-portal-gnome', portal['conflicts'])
@@ -329,9 +329,11 @@ class MetadataTests(unittest.TestCase):
         for fingerprint in portal['validpgpkeys']:
             key = ROOT / 'packaging/xdg-desktop-portal-gnome-emaki/keys/pgp' / f'{fingerprint}.asc'
             self.assertTrue(key.is_file(), key)
+        self.assertEqual(len(portal['b2sums']), 3)
         self.assertEqual(portal['b2sums'], [
             '85ef8077172eb7fe181f2b3ab1585e7d8e467cec5acc163c9438364d4f8f127d4c582141a91899c859689b08a7b8c470668f9fd883f1457254b6cf913b75ce2e',
-            'afa272ad0b3f5b417326269ff55cb943a8c811860f13a48867e0673ebcb58df8a4b91756a0aceace9860f8754880b95328d6670fd9c0420f81d859db4631b19c'])
+            'afa272ad0b3f5b417326269ff55cb943a8c811860f13a48867e0673ebcb58df8a4b91756a0aceace9860f8754880b95328d6670fd9c0420f81d859db4631b19c',
+            '75b4f367652ba2229bd717c4e38bf2ceadb77bb5abd7fcadaa8a971c120e8cc69599982cb8a3bbfdd444583d7fb6d05f4044aa56882c9ba307a76a040b32075b'])
         # By the upstream name, never by the fork's own (PortalResolutionTests).
         for name, recipe in self.recipes.items():
             self.assertNotIn(FORK, [re.split(r'[<>=]', d)[0] for d in recipe['depends']], name)
@@ -1083,13 +1085,14 @@ class PayloadTests(unittest.TestCase):
                                              self.dest / 'usr/lib/systemd/system-sleep')
                 executable |= path.relative_to(self.dest).as_posix() in (
                     'usr/libexec/emaki/update-manager-backend', 'usr/libexec/emaki/emaki-update-apply',
-                    'usr/lib/emaki/emaki-wifi-recover')
+                    'usr/lib/emaki/emaki-wifi-recover', 'usr/libexec/emaki/emaki-wifi-password',
+                    'usr/libexec/emaki/emaki-charge-limit')
                 readonly = path.relative_to(self.dest).as_posix() in ('etc/sudoers.d/10-emaki-wheel', 'usr/share/emaki/defaults/wheel')
                 self.assertEqual(mode, 0o440 if readonly else 0o755 if executable else 0o644, str(path))
         binary = self.dest / 'usr/bin/emaki'
         # Keep this payload check independent of the host's installed channel helper.
         self.assertEqual(run([str(binary), 'version'], env={**os.environ, 'PATH': ''}).stdout,
-                         'emaki 0.4.2 [channel: unknown]\n')
+                         'emaki 0.5.0 [channel: unknown]\n')
         result = run(['python3', 'scripts/core-package.py', 'verify-build-paths', '--binary', str(binary)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -1110,7 +1113,7 @@ class PayloadTests(unittest.TestCase):
     def test_defaults_and_presets(self):
         commit = run(['git', 'rev-parse', 'HEAD']).stdout.strip()
         self.assertEqual((self.dest / 'usr/lib/emaki-release').read_text(),
-                         f'VERSION=0.4.2\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
+                         f'VERSION=0.5.0\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
         expected = {'greetd.service', 'NetworkManager.service', 'bluetooth.service', 'grub-btrfsd.service',
                     'snapper-timeline.timer', 'snapper-cleanup.timer', 'fstrim.timer', 'paccache.timer',
                     'emaki-refresh-mirrors.timer', 'emaki-wifi-recovery.service'}
@@ -1209,7 +1212,7 @@ class PayloadTests(unittest.TestCase):
         config.read(unit)
         self.assertEqual(config['Unit']['PartOf'], 'graphical-session.target')
         self.assertEqual(config['Install']['WantedBy'], 'graphical-session.target')
-        self.assertEqual(config['Service']['ExecStart'], '/usr/bin/python3 -I /usr/bin/emaki-sleep-guard')
+        self.assertEqual(config['Service']['ExecStart'], 'python3 -I /usr/bin/emaki-sleep-guard')
         self.assertEqual(config['Service']['Restart'], 'always')
         startup = (self.dest / 'usr/share/emaki/niri/default.kdl').read_text().splitlines()
         for name in ('shell', 'sleep-guard'):

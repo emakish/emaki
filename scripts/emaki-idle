@@ -28,7 +28,8 @@
 #   emaki-idle --dim | --undim the dim step itself, called by swayidle
 #
 # The timings are package defaults. EMAKI_IDLE_DIM / EMAKI_IDLE_LOCK /
-# EMAKI_IDLE_OFF (seconds, 0 = step off) exist for automated checks only.
+# EMAKI_IDLE_OFF (seconds, 0 = step off) are supplied by the personal policy
+# supervisor and may also be overridden for isolated checks.
 #
 # Brightness: `brightnessctl -s` saves the CURRENT brightness. If the timer
 # fires again while the screen is already dimmed, it saves the dimmed value and

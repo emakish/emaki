@@ -6,6 +6,10 @@ import argparse
 import json
 from pathlib import Path
 import re
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import emaki_paths
 
 TOKEN = re.compile(r'(?P<space>[ \t\r]+)|(?P<comment>//[^\n]*|/\*.*?\*/)|(?P<raw>r?(?P<hash>\#+)".*?"(?P=hash))|(?P<string>"(?:\\.|[^"\\])*")|(?P<punct>[{};\n=])|(?P<word>[^\s{};="/]+|/(?![/*-])[^\s{};=]*)|(?P<disabled>/-)', re.S)
 
@@ -111,7 +115,7 @@ def read_shortcuts(path):
 def main():
     parser = argparse.ArgumentParser()
     nearby = Path(__file__).resolve().parents[2] / "niri/default.kdl"
-    default = nearby if nearby.is_file() else Path("/usr/share/emaki/niri/default.kdl")
+    default = nearby if nearby.is_file() else Path(emaki_paths.DATADIR) / "niri/default.kdl"
     parser.add_argument("--config", type=Path, default=default)
     args = parser.parse_args()
     try:

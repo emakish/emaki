@@ -1,6 +1,6 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Carry only the Wi-Fi connection selected by a successful installer join."""
+"""Carry only an active Wi-Fi connection used in the live session."""
 import configparser
 import os
 from pathlib import Path
@@ -13,6 +13,7 @@ from .errors import Code, require
 
 PROFILE_DIRS = (Path('/etc/NetworkManager/system-connections'),
                 Path('/run/NetworkManager/system-connections'))
+WIFI_TYPES = ('wifi', '802-11-wireless')
 UNAVAILABLE = ('Could not save the Wi-Fi connection [NetworkManager]. '
                'Connect to that network again before installing.')
 
@@ -30,8 +31,8 @@ def private_command(argv, *, input=None):
 def active_wifi(*, run=private_command):
     """Select the sole active Wi-Fi profile, including joins from the desktop."""
     active = run(['nmcli', '-t', '-f', 'UUID,TYPE', 'connection', 'show', '--active'])
-    uuids = [line.rsplit(':', 1)[0] for line in active.splitlines()
-             if line.endswith(':802-11-wireless')]
+    uuids = [row[0] for line in active.splitlines()
+             if len(row := line.split(':')) == 2 and row[1] in WIFI_TYPES]
     require(len(uuids) <= 1, Code.BAD_CONFIG, UNAVAILABLE)
     return uuids[0] if uuids else None
 
@@ -41,12 +42,14 @@ def capture_wifi(uuid, *, run=private_command, directories=PROFILE_DIRS, owner=0
     require(isinstance(uuid, str) and re.fullmatch(
         r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', uuid), Code.BAD_CONFIG, UNAVAILABLE)
     active = run(['nmcli', '-t', '-f', 'UUID,TYPE', 'connection', 'show', '--active'])
-    require(any(line == uuid + ':802-11-wireless' for line in active.splitlines()),
+    require(any(line == uuid + ':' + kind for line in active.splitlines()
+                for kind in WIFI_TYPES),
             Code.BAD_CONFIG, UNAVAILABLE)
     listing = run(['nmcli', '-t', '--escape', 'no', '-f', 'UUID,TYPE,FILENAME',
                           'connection', 'show'])
-    paths = [line.split(':', 2)[2] for line in listing.splitlines()
-             if line.startswith(uuid + ':802-11-wireless:')]
+    paths = [row[2] for line in listing.splitlines()
+             if len(row := line.split(':', 2)) == 3
+             and row[0] == uuid and row[1] in WIFI_TYPES]
     require(len(paths) == 1, Code.BAD_CONFIG, UNAVAILABLE)
     path = Path(paths[0])
     require(path.parent in directories and path.resolve() == path, Code.BAD_CONFIG, UNAVAILABLE)
@@ -57,11 +60,17 @@ def capture_wifi(uuid, *, run=private_command, directories=PROFILE_DIRS, owner=0
                 and info.st_nlink == 1 and not info.st_mode & 0o077
                 and info.st_size <= 1024 * 1024, Code.BAD_CONFIG, UNAVAILABLE)
         data = stream.read(1024 * 1024 + 1)
+    # Normalize aliases before checking saved secrets. libnm accepts both
+    # wifi-security and 802-11-wireless-security in source keyfiles.
+    prepared = run(['nmcli', '--offline', 'connection', 'modify',
+                    'connection.permissions', '', 'connection.autoconnect', 'yes'],
+                   input=data)
+    require(bool(prepared.strip()), Code.BAD_CONFIG, UNAVAILABLE)
     try:
         profile = configparser.ConfigParser(interpolation=None, strict=True)
-        profile.read_string(data.decode('utf-8'))
+        profile.read_string(prepared)
         require(profile.get('connection', 'uuid') == uuid
-                and profile.get('connection', 'type') in ('wifi', '802-11-wireless'),
+                and profile.get('connection', 'type') in WIFI_TYPES,
                 Code.BAD_CONFIG, UNAVAILABLE)
         # The join page supports personal and open networks. Session-only secrets
         # or external enterprise certificates cannot safely survive this copy.
@@ -79,12 +88,6 @@ def capture_wifi(uuid, *, run=private_command, directories=PROFILE_DIRS, owner=0
             require(saved, Code.BAD_CONFIG, UNAVAILABLE)
     except (configparser.Error, UnicodeError, KeyError, ValueError):
         require(False, Code.BAD_CONFIG, UNAVAILABLE)
-    # libnm validates and serializes the keyfile offline. Remove the live user's
-    # permissions so the installed account can activate this same connection.
-    prepared = run(['nmcli', '--offline', 'connection', 'modify',
-                           'connection.permissions', '', 'connection.autoconnect', 'yes'],
-                          input=data)
-    require(bool(prepared.strip()), Code.BAD_CONFIG, UNAVAILABLE)
     return prepared.encode()
 
 

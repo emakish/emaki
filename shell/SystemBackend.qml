@@ -9,11 +9,15 @@ Item {
     property bool audioReady: false
     property var sink: null
     property var source: null
+    property int preferredOutputId: -1
+    property int preferredInputId: -1
     property var audioNodes: []
     // Playback streams (Stream/Output/Audio) for the per-app mixer: [{id, name, detail, audio}]
     property var streams: []
     // Microphone level 0..1 while the sound page asks for it (PwNodePeakMonitor in production).
     property bool micMeter: false
+    // Independent window request: closing the quick panel must not stop its meter.
+    property bool settingsMicMeter: false
     property real micLevel: 0
     property var battery: null
     property bool charging: false
@@ -34,7 +38,8 @@ Item {
     // NetworkManager for a scan every 10 s: on only while the page is open, never in the
     // background, and not while the radio is off or blocked.
     property bool wifiScan: false
-    readonly property bool wifiScanning: wifiScan && wifiEnabled && wifiHardwareEnabled
+    property bool settingsWifiScan: false
+    readonly property bool wifiScanning: (wifiScan || settingsWifiScan) && wifiEnabled && wifiHardwareEnabled
     function setScanners(on: bool): void {
         for (const d of Array.from(wifiDevices ?? []))
             if (typeof d?.scannerEnabled === "boolean" && d.scannerEnabled !== on)
@@ -232,6 +237,12 @@ Item {
         return "output_unavailable";
     }
     function chooseInput(id: int): var {
+        return "input_unavailable";
+    }
+    function resetOutput(): var {
+        return "output_unavailable";
+    }
+    function resetInput(): var {
         return "input_unavailable";
     }
     function setWifiEnabled(value: bool): void {

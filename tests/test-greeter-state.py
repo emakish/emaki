@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Session/user memory, path boundaries and the real Quickshell helper protocol."""
 from runtime_fixture import runtime_path
+from dataclasses import replace
 import importlib.util
 import json
 import os
@@ -52,6 +53,20 @@ class StateTests(unittest.TestCase):
     def tearDown(self):
         self.work.cleanup()
 
+    def test_session_catalog_searches_xdg_roots_in_order(self):
+        first = self.base / 'first/wayland-sessions'
+        second = self.base / 'second/wayland-sessions'
+        first.mkdir(parents=True)
+        second.mkdir(parents=True)
+        entry = '[Desktop Entry]\nType=Application\nName={name}\nExec={command}\n'
+        (first / 'niri-emaki.desktop').write_text(entry.format(name='First', command='first-session'))
+        (second / 'niri-emaki.desktop').write_text(entry.format(name='Second', command='second-session'))
+        (second / 'niri.desktop').write_text(entry.format(name='Fallback', command='fallback-session'))
+        with patch.dict(os.environ, XDG_DATA_DIRS=':'.join(map(str, [first.parent, self.base / 'missing', second.parent]))):
+            catalog = helper.session_catalog(replace(self.paths, sessions=None))
+        self.assertEqual(catalog['niri-emaki.desktop']['command'], ['first-session'])
+        self.assertEqual(catalog['niri.desktop']['command'], ['fallback-session'])
+
     def test_stock_session_override_is_hidden_without_replacing_system_entry(self):
         import configparser
         entry = configparser.ConfigParser()
@@ -66,7 +81,7 @@ class StateTests(unittest.TestCase):
         binary = self.base / 'bin'
         binary.mkdir()
         (binary / 'bash').symlink_to('/bin/bash')
-        for tool in ('mktemp', 'rm'):
+        for tool in ('mktemp', 'rm', 'readlink'):
             (binary / tool).symlink_to('/usr/bin/' + tool)
         journal = binary / 'systemd-cat'
         journal.write_text('#!/usr/bin/python3\nimport os,sys\nfrom pathlib import Path\n'
@@ -132,6 +147,7 @@ class StateTests(unittest.TestCase):
         binary = self.base / 'bin'
         binary.mkdir()
         (binary / 'cat').symlink_to('/usr/bin/cat')
+        (binary / 'readlink').symlink_to('/usr/bin/readlink')
         dbus = binary / 'dbus-run-session'
         dbus.write_text('#!/usr/bin/python3\nimport os,sys\n'
                         'print("dbus-output",flush=True); print("dbus-error",file=sys.stderr,flush=True)\n'

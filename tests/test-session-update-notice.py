@@ -2,6 +2,7 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Update notices wait for startup, ignore live media and survive observer failure."""
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -14,14 +15,17 @@ evidence = ROOT / '.cache/evidence/u6d'
 evidence.mkdir(parents=True, exist_ok=True)
 
 
-def run_case(name, watcher, checks, *, live=False, fallback=False, unmanaged=False, duration=800):
+def run_case(name, watcher, checks, *, live=False, fallback=False, unmanaged=False, duration=800, setup=None):
     with tempfile.TemporaryDirectory(prefix='session-notice-', dir=evidence) as directory, \
             tempfile.TemporaryDirectory(prefix='emaki-notice-', dir='/tmp') as runtime:
         base = Path(directory)
         for folder in ('home', 'config', 'state', 'cache', 'qml', 'generation'):
             (base / folder).mkdir(mode=0o700)
-        for component in ('NotificationStore.qml', 'SessionUpdateNotice.qml'):
+        for component in ('NotificationStore.qml', 'SessionUpdateNotice.qml', 'Platform.qml'):
             shutil.copyfile(ROOT / 'shell' / component, base / 'qml' / component)
+        (base / 'qml/qmldir').write_text('singleton Platform 1.0 Platform.qml\n'
+                                              'NotificationStore 1.0 NotificationStore.qml\n'
+                                              'SessionUpdateNotice 1.0 SessionUpdateNotice.qml\n')
         (base / 'generation/watch.py').write_text(watcher)
         (base / 'qml/shell.qml').write_text('''import QtQuick
 import Quickshell
@@ -50,6 +54,8 @@ ShellRoot {
                    DBUS_SYSTEM_BUS_ADDRESS='unix:path=' + runtime + '/missing-system-bus')
         for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'NIRI_SOCKET', 'QT_LOGGING_RULES'):
             env.pop(key, None)
+        if setup:
+            env.update(setup(base, runtime))
         result = subprocess.run(['qs', '-p', str(base / 'qml'), '--no-color'], env=env,
                                 text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 timeout=duration / 1000 + 10)
@@ -148,3 +154,47 @@ notes, _, _ = run_case('unmanaged-hook', '', '''
 ''', unmanaged=True)
 assert notes == [], notes
 print('PASS: installed-file observer, preserved startup gating, critical hook fallback and duplicate suppression')
+
+# The real observer against the desktop state command: the panel learns of an update only from
+# `emaki-session-update state`, never from the package manager. A fixture command answers.
+def backend_case(name, baseline, answer):
+    def setup(base, runtime):
+        shutil.copyfile(ROOT / 'scripts/emaki-session-files', base / 'generation/watch.py')
+        shutil.copyfile(ROOT / 'scripts/emaki_session_state.py', base / 'generation/emaki_session_state.py')
+        # Same identity as emaki-session-files for a session without a compositor socket.
+        identity = hashlib.sha256(('offscreen\0' + str(base / 'qml')).encode()).hexdigest()[:24]
+        session = Path(runtime) / 'emaki-session-files' / identity
+        session.mkdir(parents=True)
+        (session / 'session.json').write_text(json.dumps(baseline))
+        tools = base / 'bin'
+        tools.mkdir()
+        (base / 'state.json').write_text(json.dumps(answer))
+        command = tools / 'emaki-session-update'
+        command.write_text('#!/bin/sh\n: > ' + str(base / 'generation/started') + '\n'
+                           '[ "$1" = state ] && exec cat ' + str(base / 'state.json') + '\nexit 2\n')
+        command.chmod(0o700)
+        return dict(PATH=str(tools) + ':' + os.environ['PATH'])
+    notes, asked, _ = run_case('backend-' + name, '', '''
+    Component.onCompleted: notice.ready = true
+''', fallback=True, duration=2500, setup=setup)
+    assert asked, 'the observer never asked the desktop state command: ' + name
+    return notes
+
+
+update = dict(id='update-two', at='2026-10-09T12:00:00+00:00', components=['quickshell-emaki'], action='sign-out')
+notes = backend_case('new-update', dict(desktop='desk-one'),
+                     dict(schema=1, busy=False, desktop='desk-one', update=update))
+assert len(notes) == 1 and notes[0]['sessionUpdate'] and notes[0]['critical'], notes
+notes = backend_case('missing-record', dict(desktop='desk-one'),
+                     dict(schema=1, busy=False, desktop='desk-one', update=None))
+assert notes == [], notes
+notes = backend_case('stale-record', dict(desktop='desk-one', transaction='update-two'),
+                     dict(schema=1, busy=False, desktop='desk-one', update=update))
+assert notes == [], notes
+notes = backend_case('busy', dict(desktop='desk-one'),
+                     dict(schema=1, busy=True, desktop='desk-two', update=update))
+assert notes == [], notes
+notes = backend_case('desktop-changed', dict(desktop='desk-one'),
+                     dict(schema=1, busy=False, desktop='desk-two', update=None))
+assert len(notes) == 1 and notes[0]['sessionUpdate'], notes
+print('PASS: notice from the desktop state command: new update, missing and stale records, busy system, changed desktop')

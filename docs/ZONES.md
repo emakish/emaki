@@ -59,8 +59,9 @@ of the package named:
 ## 2. Managed settings
 
 Owner: Emaki, on your command.
-How to change: `emaki settings` opens a keyboard menu; `list`, `get`, `set`,
-`reset`, `history` and `undo` use the same core. The menu's texts and look are drafts.
+How to change: `emaki settings` opens settings inside the launcher; add a page name such as
+`wifi` to open that page. `emaki settings --text` opens the keyboard menu.
+`list`, `get`, `set`, `reset`, `history` and `undo` use the same core.
 On update: never touched. A changed Emaki default reaches every
 setting you have not set yourself.
 
@@ -89,11 +90,11 @@ and terminal choices use session helpers; bar and dock values use acknowledged
 shell bindings. A failed application restores previous managed values. Emaki never
 writes personal compositor configuration (see zone 3) or the personal fork include.
 
-Keyboard remains machine-owned through localed and the console configuration (zone 3).
-Installed mutations of `keyboard.layouts` and `keyboard.switch_key` are refused
-with `keyboard_requires_machine_settings`. These two keys are not connected: N5's
-requirement that all twelve keys apply is incomplete. An explicit isolated test
-profile can still store them without affecting a session.
+Keyboard remains machine-owned (zone 3). On an installed system `emaki settings`
+reads and changes `keyboard.layouts` and `keyboard.switch_key` on the machine through
+`emaki-machine-settings`, which asks the system's locale service; nothing of them is
+stored in managed settings or their history. An explicit isolated test profile can
+still store them without affecting a session.
 
 The shell also keeps application use, recent items, notifications, night light and
 welcome state under `$XDG_STATE_HOME/emaki/`; these are outside settings history:
@@ -126,7 +127,9 @@ Your files:
 
 The machine's own settings, initially written by the installer from your
 answers. Emaki packages do not own these files; you change them with sudo
-or with the system tool (`localectl`, `timedatectl`). Boot refresh migrates
+or with the system tool (`localectl`, `timedatectl`); `emaki-machine-settings`
+changes keyboard, time zone, automatic time and locale through the same system
+services, after an administrator password. Boot refresh migrates
 recognized menu defaults to a packaged include, preserves your custom menu
 values and disk arguments, and regenerates the boot menu and initramfs.
 It also replaces the stock resume hook name with `emaki-resume`:

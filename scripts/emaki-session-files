@@ -1,26 +1,80 @@
 #!/usr/bin/python3 -IB
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Keep QML, lazy components, helpers and the core from one installed generation."""
+"""Keep QML, lazy components, helpers and the core from one installed generation.
+
+Whether a system transaction is running and whether the desktop changed since login come only
+from the desktop state command (`emaki-session-update state`), never from the package manager.
+"""
 import hashlib
 import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
 
-sys.path.insert(0, '/usr/libexec/emaki')
+sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import emaki_session_state as state
 
 SCHEMA = 1
-PACKAGES = Path('/var/lib/pacman/local')
-TRANSACTION = Path('/var/lib/pacman/db.lck')
-UPDATE = Path('/run/emaki-session-update')
+STATE_SCHEMA = 1
+STATE = 'emaki-session-update'
 START_WAIT = 2
 RUNTIMES = Path('/run/user')
+
+
+def query_state():
+    # Beside an installed or development copy of this script, else by name: a captured
+    # generation keeps asking the installed command, which describes the system now.
+    beside = Path(__file__).resolve().with_name(STATE)
+    command = str(beside) if os.access(beside, os.X_OK) else STATE
+    return subprocess.run([command, 'state'], stdin=subprocess.DEVNULL, capture_output=True,
+                          text=True, timeout=10, check=True).stdout
+
+
+def backend():
+    """The desktop state, validated: {busy, desktop, update}. Raises when there is no answer."""
+    value = json.loads(query_state())
+    update = value['update']
+    if (value['schema'] != STATE_SCHEMA or not isinstance(value['busy'], bool)
+            or not isinstance(value['desktop'], str)
+            or not (update is None or isinstance(update['id'], str) and isinstance(update['action'], str))):
+        raise ValueError('The desktop state answer is not understood.')
+    return value
+
+
+def answer():
+    """The desktop state, or None while the state command gives no usable answer."""
+    try:
+        return backend()
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        return None
+
+
+def busy(value):
+    return value is not None and value['busy']
+
+
+def installed(value):
+    """What a session compares with its login: the desktop identity and the last update needing it."""
+    if value is None:
+        return None
+    seen = dict(desktop=value['desktop'])
+    update = value['update']
+    if update is not None and update['action'] != 'none':
+        seen['transaction'] = update['id']
+    return seen
+
+
+def differs(before, now):
+    """Whether the desktop moved since `before`: another desktop identity, or an update needing a
+    new session recorded after it. A record that was lost or became unreadable is not an update."""
+    return (before.get('baseline-incomplete', False) or now['desktop'] != before['desktop']
+            or 'transaction' in now and now['transaction'] != before.get('transaction'))
 
 
 def digest(path):
@@ -35,19 +89,6 @@ def tree(path):
     return {str(file.relative_to(path)): digest(file)
             for file in sorted(path.rglob('*')) if file.is_file()
             and '__pycache__' not in file.parts and file.suffix not in ('.pyc', '.pyo')}
-
-
-def installed():
-    versions = {}
-    for entry in PACKAGES.glob('*/desc'):
-        if entry.parent.name.startswith(('emaki-config-', 'niri-', 'quickshell-', 'qt6-')):
-            # The record also includes the install reason, changed by pacman -D
-            # without replacing files. Only package versions identify payloads.
-            versions[entry.parent.name] = True
-    marker = state.marker_value(UPDATE)
-    if marker is not None:
-        versions['transaction'] = marker
-    return versions
 
 
 def identity(source):
@@ -75,6 +116,19 @@ def record_active(source, shell, pid):
     write_json(runtime(source).parent / 'current.json', value)
 
 
+def remember(baseline, value):
+    # The first answered observation of this login. Without any answer there is nothing to
+    # compare yet; the watcher records the first settled answer instead (see `recorded`).
+    if baseline.exists() or value is None:
+        return
+    before = installed(value)
+    if value['busy']:
+        # Files may already be replaced: a first observation inside a running
+        # transaction cannot establish what the compositor originally loaded.
+        before['baseline-incomplete'] = True
+    write_json(baseline, before)
+
+
 def prepare(source, binary, wait=False, pid=None):
     source, binary = source.absolute(), binary.absolute()
     pid = os.getpid() if pid is None else pid
@@ -82,23 +136,19 @@ def prepare(source, binary, wait=False, pid=None):
     # Record the compositor's first observed state even when capture cannot finish.
     # In particular, waiting for a transaction must not move this baseline forward.
     baseline = base / 'session.json'
-    if not baseline.exists():
-        before = installed()
-        if state.transaction_running(TRANSACTION):
-            # Files may already be replaced: a first observation inside a running
-            # transaction cannot establish what the compositor originally loaded.
-            before['baseline-incomplete'] = True
-        write_json(baseline, before)
+    value = answer()
+    remember(baseline, value)
     deadline = time.monotonic() + (START_WAIT if wait else 0)
-    while state.transaction_running(TRANSACTION):
+    while busy(value):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            print('A system update is running. Starting the panel with installed files [pacman].',
+            print('A system update is running. Starting the panel with installed files [Emaki].',
                   file=sys.stderr, flush=True)
             record_active(source, source, pid)
             return source
         time.sleep(min(0.1, remaining))
-    before = installed()
+        value = answer()
+    before = installed(value)
     files, core = tree(source), digest(binary)
     version = hashlib.sha256(json.dumps([SCHEMA, files, core, digest(Path(__file__)),
                                         digest(Path(state.__file__))], sort_keys=True).encode()).hexdigest()
@@ -118,7 +168,11 @@ def prepare(source, binary, wait=False, pid=None):
         finally:
             if stage.exists():
                 shutil.rmtree(stage)
-    if state.transaction_running(TRANSACTION) or installed() != before or tree(source) != files or digest(binary) != core:
+    after = answer()
+    remember(baseline, after)
+    # Without an answer on either side only the file digests can prove a stable capture.
+    moved = before is not None and after is not None and differs(before, installed(after))
+    if busy(after) or moved or tree(source) != files or digest(binary) != core:
         raise RuntimeError('Desktop files changed while the panel was starting [Emaki].')
     record_active(source, target / 'shell', pid)
     return target / 'shell'
@@ -141,24 +195,52 @@ def active(source):
     return source
 
 
+def settled():
+    """The desktop state when nothing is being installed, else None: no answer, no notice."""
+    value = answer()
+    return None if state.LIVE.exists() or value is None or value['busy'] else value
+
+
+def recorded(baseline, value):
+    """The login baseline, or None when it is missing or unreadable. An unknown start is no
+    evidence of an update: the settled answer `value` becomes the baseline for later polls."""
+    try:
+        before = json.loads(baseline.read_text())
+        if (isinstance(before, dict) and isinstance(before.get('desktop'), str)
+                and isinstance(before.get('transaction', ''), str)):
+            return before
+    except (OSError, ValueError):
+        pass
+    try:
+        baseline.unlink(missing_ok=True)
+        remember(baseline, value)
+    except OSError:
+        pass
+    return None
+
+
 def changed(generation):
-    if state.LIVE.exists() or state.transaction_running(TRANSACTION):
+    value = settled()
+    if value is None:
         return False
-    value = json.loads((generation / 'generation.json').read_text())
-    if value['schema'] != SCHEMA:
+    record = json.loads((generation / 'generation.json').read_text())
+    if record['schema'] != SCHEMA:
         return True
-    baseline = json.loads((generation.parent / 'session.json').read_text())
-    stale = (installed() != baseline or tree(Path(value['source'])) != value['files']
-             or digest(Path(value['binary'])) != value['core'])
-    return stale and not state.transaction_running(TRANSACTION)
+    before = recorded(generation.parent / 'session.json', value)
+    # Changed files are proof on their own, with or without a baseline.
+    stale = (before is not None and differs(before, installed(value))
+             or tree(Path(record['source'])) != record['files']
+             or digest(Path(record['binary'])) != record['core'])
+    return stale and settled() is not None
 
 
 def changed_installed(source):
-    if state.LIVE.exists() or state.transaction_running(TRANSACTION):
+    value = settled()
+    if value is None:
         return False
-    baseline = json.loads((runtime(source, create=False) / 'session.json').read_text())
-    stale = installed() != baseline
-    return stale and not state.transaction_running(TRANSACTION)
+    before = recorded(runtime(source, create=False) / 'session.json', value)
+    stale = before is not None and differs(before, installed(value))
+    return stale and settled() is not None
 
 
 def watch(generation, installed_source=False):
@@ -166,7 +248,7 @@ def watch(generation, installed_source=False):
         try:
             stale = changed_installed(generation) if installed_source else changed(generation)
         except (OSError, ValueError, KeyError):
-            stale = not state.LIVE.exists() and not state.transaction_running(TRANSACTION)
+            stale = settled() is not None
         if stale:
             print(json.dumps(dict(schema=SCHEMA, restart=True)), flush=True)
             return

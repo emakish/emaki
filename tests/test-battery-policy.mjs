@@ -63,15 +63,48 @@ const local = vm.createContext({systemId: -1, entries: [], Date, arrived(id) {
     assert.equal(local.entries[0].id, id);
     assert.equal(local.entries[0].batteryWarning, true);
 }});
+local.applications = []; local.rules = {};
+for (const [name, args] of [['rememberApplication', 'id,name'], ['ruleFor', 'id'], ['peekAllowed', 'entry']])
+    local[name] = vm.runInContext('(function(' + args + '){' + body('NotificationStore.qml', name) + '})', local);
 local.localNotice = vm.runInContext('(function(app,summary,body,batteryWarning,sessionUpdate){' + body('NotificationStore.qml', 'localNotice') + '})', local);
 const systemBattery = vm.runInContext('(function(percent){' + body('NotificationStore.qml', 'systemBattery') + '})', local);
 systemBattery(10); systemBattery(5);
 assert.deepEqual(Array.from(local.entries, e => [e.app, e.critical, e.batteryWarning]),
     [['Battery critical', true, true], ['Battery low', true, true]]);
+assert.deepEqual(Array.from(local.applications), [], 'battery warnings have no ineffective application rules');
 local.arrived = () => {};
+local.localNotice('Desktop update', 'Finish updating.', '', false, true);
+assert.deepEqual(Array.from(local.applications), [], 'desktop update has no ineffective application rule');
+for (const rule of ['silent', 'off']) {
+    local.rules = {'name:Battery low': rule, 'name:Battery critical': rule, 'name:Desktop update': rule};
+    let arrived = 0;
+    local.arrived = () => arrived++;
+    systemBattery(10); systemBattery(5);
+    local.localNotice('Desktop update', 'Finish updating.', '', false, true);
+    assert.equal(arrived, 3, 'legacy rules cannot suppress internal warnings');
+    assert.ok(local.entries.slice(0, 3).every(entry => local.peekAllowed(entry)));
+    assert.deepEqual(Array.from(local.applications), []);
+}
+local.rules = {}; local.arrived = () => {};
 vm.runInContext('(function(){' + body('NotificationStore.qml', 'local') + '})',
     vm.createContext({app: 'Battery low', summary: '', body: '', localNotice: local.localNotice}))();
 assert.equal(local.entries[0].batteryWarning, false);
+assert.deepEqual(Array.from(local.applications, app => app.id), ['name:Battery low'],
+    'an ordinary notice with the same name keeps its application policy');
+
+// Old stored internal senders disappear while real applications and history remain.
+const saved = {version: 1, applications: [
+    {id: 'name:Battery low', name: 'Battery low'},
+    {id: 'name:Battery critical', name: 'Battery critical'},
+    {id: 'name:Desktop update', name: 'Desktop update'},
+    {id: 'desktop:mail', name: 'Mail'}
+], entries: [{app: 'Battery low', summary: 'Low battery.', time: 1000}]};
+const restored = vm.createContext({stateFile: {text: () => JSON.stringify(saved)}, systemId: -1});
+restored.store = restored;
+vm.runInContext('(function(){' + body('NotificationStore.qml', 'restore') + '})()', restored);
+assert.deepEqual(Array.from(restored.applications, app => app.id), ['desktop:mail']);
+assert.equal(restored.entries[0].summary, 'Low battery.');
+assert.equal(restored.entries[0].object, null);
 
 // Snapshot the exact persistent notification protocol used for numeric confirmation.
 const store = vm.createContext({n: {id: 3, appName: 'blueman', appIcon: 'blueman',
@@ -90,12 +123,29 @@ store.n.expireTimeout = 0; store.n.appName = 'Ordinary'; assert.equal(snapshot()
 store.n.appName = 'Battery low'; assert.equal(snapshot().batteryWarning, undefined);
 store.n.appName = 'blueman'; store.n.appIcon = 'other'; assert.equal(snapshot().critical, false);
 
+// The compatible external update notice is also exempt from application controls.
+const incoming = vm.createContext({entries: [], applications: [], rules: {}, Date,
+    Quickshell: {env: () => ''}, arrived() {}});
+incoming.store = incoming;
+for (const [name, args] of [['applicationId', 'n'], ['rememberApplication', 'id,name'],
+        ['ruleFor', 'id'], ['snapshot', 'n,time'], ['plainBody', 'value'], ['accept', 'n']])
+    incoming[name] = vm.runInContext('(function(' + args + '){' + body('NotificationStore.qml', name) + '})', incoming);
+const update = {id: 8, appName: 'Desktop update', appIcon: '', body: '', actions: [],
+    summary: 'Sign out and sign in again to finish updating the desktop.', expireTimeout: 0};
+for (const signal of ['summaryChanged', 'bodyChanged', 'appNameChanged', 'actionsChanged', 'expireTimeoutChanged', 'closed'])
+    update[signal] = {connect() {}};
+incoming.accept(update);
+assert.equal(incoming.entries[0].critical, true);
+assert.deepEqual(Array.from(incoming.applications), []);
+
 let now = 100000;
 const popup = vm.createContext({notes: {dnd: true, entries: [{id: 1, critical: true, batteryWarning: true}, {id: 2}, pairing]},
     focusedOutput: true, systemOpen: false, launcherOpen: false, drawerOpen: false, privacyOpen: false,
     niri: {overviewOpen: false}, presentationState: 'covered', modalOpen: false,
     Date: {now: () => now}, peekCooldown: 0, peekStarted: 0, peekUntil: 0,
     peekIds: [], peekTimer: {restart() {}}, endPeek() { popup.peekIds = []; }});
+popup.notes.peekAllowed = local.peekAllowed;
+Object.defineProperty(popup.notes, 'effectiveDnd', {get() { return this.dnd; }});
 Object.defineProperty(popup, 'peekOpen', {get() { return popup.peekIds.length > 0; }});
 Object.defineProperty(popup, 'pairingPeekOpen', {get() {
     return expression('ShellScene.qml', 'readonly property bool pairingPeekOpen:', popup);

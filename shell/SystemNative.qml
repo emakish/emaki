@@ -14,6 +14,8 @@ SystemBackend {
     audioReady: Pipewire.ready
     sink: Pipewire.defaultAudioSink
     source: Pipewire.defaultAudioSource
+    preferredOutputId: Pipewire.preferredDefaultAudioSink?.id ?? -1
+    preferredInputId: Pipewire.preferredDefaultAudioSource?.id ?? -1
     audioNodes: Pipewire.nodes.values.filter(n => !n.isStream && n.audio)
     streams: Pipewire.nodes.values.filter(n => (n.type & PwNodeType.AudioOutStream) === PwNodeType.AudioOutStream && n.audio).map(n => ({
                 id: n.id,
@@ -28,7 +30,7 @@ SystemBackend {
     PwNodePeakMonitor {
         id: micPeak
         node: native.source
-        enabled: native.micMeter && native.source !== null
+        enabled: (native.micMeter || native.settingsMicMeter) && native.source !== null
     }
     // Stream/Input/Audio = an app recording the microphone. QS 0.3.1 maps no type for
     // Stream/Input/Video (camera consumers), so that one comes from media.class directly.
@@ -55,6 +57,8 @@ SystemBackend {
     networks: wifiDevices.reduce((rows, d) => rows.concat(d.networks.values.map(n => ({
                     key: d.name + "/" + n.name,
                     name: n.name,
+                    device: d.name,
+                    address: d.address,
                     connected: n.connected,
                     known: n.known,
                     busy: n.stateChanging,
@@ -96,6 +100,14 @@ SystemBackend {
             return "input_gone";
         Pipewire.preferredDefaultAudioSource = node;
         return () => source?.id === id;
+    }
+    function resetOutput(): var {
+        Pipewire.preferredDefaultAudioSink = null;
+        return () => Pipewire.preferredDefaultAudioSink === null;
+    }
+    function resetInput(): var {
+        Pipewire.preferredDefaultAudioSource = null;
+        return () => Pipewire.preferredDefaultAudioSource === null;
     }
     Instantiator {
         model: native.networks

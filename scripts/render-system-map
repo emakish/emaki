@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Render the system map (docs/system-map.md) from the ```system-map blocks of MANIFEST.md.
+
+The rendered page ships in emaki-config; it repeats each block verbatim under its plain-language
+section, so the page itself stays machine-readable where MANIFEST.md is not exported.
+`--check` exits 1 when the committed page differs from a fresh render.
+"""
+import argparse
+from pathlib import Path
+import re
+import sys
+
+ROOT = Path(__file__).resolve().parent.parent
+SOURCE = 'MANIFEST.md'
+PAGE = 'docs/system-map.md'
+FENCE = 'system-map'
+FIELDS = ('component', 'what', 'files', 'zone', 'state', 'change', 'never', 'rollback')
+ZONES = {
+    'package': 'installed by an Emaki package; never edit it, an update replaces it.',
+    'emaki-settings': 'changed only with `emaki settings`, which keeps a history.',
+    'person': "the person's own files, theirs to change; no Emaki update writes them.",
+}
+NONE_YET = 'none yet: '
+BLOCK = re.compile(r'^```' + FENCE + r'[ \t]*\n(.*?)^```[ \t]*$', re.M | re.S)
+
+
+def blocks(text):
+    """Every fenced block as (line number of its fence, body)."""
+    return [(text.count('\n', 0, match.start()) + 1, match[1]) for match in BLOCK.finditer(text)]
+
+
+def parse(body, where):
+    """One block into a dict; files is a list of globs. Returns (component, problems)."""
+    component, problems, key = {}, [], None
+    for line in body.splitlines():
+        if not line.strip():
+            continue
+        if line.startswith('  '):
+            if key is None:
+                problems.append(f'{where}: an indented line before any field: {line.strip()}')
+            elif key == 'files':
+                component['files'].append(line.strip())
+            else:
+                component[key] = (component[key] + ' ' + line.strip()).strip()
+            continue
+        name, separator, value = line.partition(':')
+        if not separator or name not in FIELDS:
+            problems.append(f'{where}: unknown line {line!r}; fields are {", ".join(FIELDS)}')
+            key = None
+            continue
+        if name in component:
+            problems.append(f'{where}: field {name} given twice')
+        key = name
+        component[name] = [] if name == 'files' else value.strip()
+        if name == 'files' and value.strip():
+            component['files'].append(value.strip())
+    label = component.get('component') or where
+    for name in FIELDS:
+        if not component.get(name):
+            problems.append(f'{label}: field {name} is missing or empty')
+    if component.get('zone') and component['zone'] not in ZONES:
+        problems.append(f'{label}: zone {component["zone"]!r} is not one of {", ".join(ZONES)}')
+    for pattern in component.get('files', []):
+        if not pattern.startswith('/') or '..' in pattern.split('/'):
+            problems.append(f'{label}: files entry {pattern!r} is not an absolute installed path')
+    state = component.get('state', '')
+    if state.startswith('none yet') and not state[len(NONE_YET):].strip():
+        problems.append(f'{label}: state "none yet" needs a reason: "{NONE_YET}<reason>"')
+    return component, problems
+
+
+def components(text, name):
+    result, problems = [], []
+    for line, body in blocks(text):
+        component, found = parse(body, f'{name}:{line}')
+        result.append(component)
+        problems += found
+    seen = set()
+    for component in result:
+        if component.get('component') in seen:
+            problems.append(f'{component["component"]}: component named twice')
+        seen.add(component.get('component'))
+    return result, problems
+
+
+def state_command(component):
+    """The state command, or None while the map says "none yet"."""
+    state = component['state']
+    return None if state.startswith(NONE_YET) else state
+
+
+def glob_pattern(pattern):
+    """Installed-path glob: ** crosses directories, * and ? stay inside one name."""
+    parts = re.split(r'(\*\*|\*|\?)', pattern)
+    regex = ''.join({'**': '.*', '*': '[^/]*', '?': '[^/]'}.get(part, re.escape(part)) for part in parts)
+    return re.compile(regex + r'\Z')
+
+
+def render(entries):
+    lines = [
+        '# Emaki system map',
+        '',
+        'Emaki is an Arch-based distribution built around the niri compositor, with its own',
+        'desktop shell, settings, installer and recovery tools. Read this map before changing',
+        'the system: each component names its files, ownership, state command and recovery path.',
+        '',
+        f'Generated from the `{FENCE}` blocks of the Emaki sources by scripts/render-system-map;',
+        'do not edit. One section per component: what it is, the files it installs, whose files',
+        'they are, how to ask its state, how to change it, what never to do and how to go back.',
+        '',
+        'Zones:',
+        '',
+        *(f'- `{zone}`: {meaning}' for zone, meaning in ZONES.items()),
+        '',
+        'Start with `emaki state --json` for a system overview, then run the relevant component\'s',
+        'State command in the installed session. Read the JSON status and reason as well as the',
+        'exit code: unavailable state is not proof that a component is absent or broken.',
+        '"none yet" means no suitable JSON command exists today; its reason names the gap.',
+        '',
+        'Follow each Change instruction. Use managed settings or the named settings page where',
+        'available, and keep personal overrides separate from package files. Never write the',
+        'person\'s `~/.config/niri/config.kdl` or edit generated files to change a setting.',
+        '',
+        'Choose the rollback path before making a change. Managed settings use',
+        '`emaki settings history --json` and `emaki settings undo ID`; machine settings and other',
+        'personal state have separate recovery instructions. Before snapshot recovery, read',
+        '`emaki-rollback status --json`: `unsupported` means snapshots are unavailable on this root.',
+        'Ext4 has none; a supported btrfs root still needs an available pre-update snapshot.',
+        'A snapshot restores the whole root subvolume, not just one component. It excludes /home',
+        'and other separate mounts or subvolumes, including a separate /boot and the /efi system',
+        'partition. Emaki installs /boot inside root, so that layout includes its boot files.',
+        'Snapshot boots are temporary: follow snapshot-recovery to keep one, with the person\'s',
+        'decision. Without a suitable snapshot, recovery needs a separately saved system backup',
+        'or a compatible package repair through the update backend; no automatic rollback is promised.',
+        'Back up personal files separately. Keep the snapshot packages installed where supported.',
+        '',
+        'On Arch, package changes go through `pacman`. Use the component\'s Rollback instruction',
+        'for a previous package version or a system snapshot; never replace package files by hand.',
+    ]
+    for entry in sorted(entries, key=lambda item: item['component']):
+        state = state_command(entry)
+        lines += [
+            '',
+            f'## {entry["component"]}',
+            '',
+            entry['what'],
+            '',
+            '- Files: ' + ', '.join(f'`{pattern}`' for pattern in entry['files']),
+            f'- Zone: {entry["zone"]}, {ZONES[entry["zone"]]}',
+            f'- State: `{state}` (prints JSON)' if state else f'- State: {entry["state"]}',
+            f'- Change: {entry["change"]}',
+            f'- Never: {entry["never"]}',
+            f'- Rollback: {entry["rollback"]}',
+            '',
+            '```' + FENCE,
+            *block_lines(entry),
+            '```',
+        ]
+    return '\n'.join(lines) + '\n'
+
+
+def block_lines(entry):
+    lines = []
+    for name in FIELDS:
+        if name == 'files':
+            lines += ['files:', *(f'  {pattern}' for pattern in entry['files'])]
+        else:
+            lines.append(f'{name}: {entry[name]}')
+    return lines
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--root', type=Path, default=ROOT)
+    parser.add_argument('--check', action='store_true', help='compare with the committed page')
+    args = parser.parse_args()
+    entries, problems = components((args.root / SOURCE).read_text(), SOURCE)
+    if problems:
+        for problem in problems:
+            print(f'system map: {problem}', file=sys.stderr)
+        return 1
+    page = render(entries)
+    target = args.root / PAGE
+    if args.check:
+        if not target.is_file() or target.read_text() != page:
+            print(f'system map: {PAGE} is stale; run make render', file=sys.stderr)
+            return 1
+        return 0
+    if not target.is_file() or target.read_text() != page:
+        target.write_text(page)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

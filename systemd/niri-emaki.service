@@ -15,8 +15,8 @@ Before=xdg-desktop-autostart.target
 [Service]
 Slice=session.slice
 Type=notify
-ExecStartPre=-/usr/bin/emaki-wallet-start --prepare
+ExecStartPre=-@EMAKI_BINDIR@/emaki-wallet-start --prepare
 TimeoutStartSec=150
-ExecStart=/usr/bin/niri-emaki-session --compositor
-ExecStopPost=-/usr/bin/emaki-wallet-start --stop
-ExecStopPost=-/usr/bin/systemctl --user unset-environment PAM_KWALLET5_LOGIN
+ExecStart=@EMAKI_BINDIR@/niri-emaki-session --compositor
+ExecStopPost=-@EMAKI_BINDIR@/emaki-wallet-start --stop
+ExecStopPost=-systemctl --user unset-environment PAM_KWALLET5_LOGIN

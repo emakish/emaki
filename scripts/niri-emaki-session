@@ -1,4 +1,11 @@
 #!/bin/bash
+# Resolve the source checkout through symlinks; installed wrappers use the build path.
+emaki_script=$(readlink -f -- "$0")
+emaki_paths="${emaki_script%/*}/paths"
+[ -r "$emaki_paths" ] || emaki_paths='@EMAKI_LIBEXECDIR@/paths'
+# shellcheck source=scripts/paths
+. "$emaki_paths"
+unset emaki_script emaki_paths
 # Keep the cleared login VT silent, including login-shell and compositor output.
 # Drain the pipe if journald is unavailable so children can continue writing.
 if command -v systemd-cat >/dev/null 2>&1; then
@@ -30,7 +37,7 @@ case "${XDG_STATE_HOME:-}" in
     *) emaki_defaults_root="$HOME/.local/state/emaki/defaults" ;;
 esac
 IFS=: read -r -a emaki_config_dirs <<< "${XDG_CONFIG_DIRS:-/etc/xdg}"
-XDG_CONFIG_DIRS=/usr/share/emaki/xdg
+XDG_CONFIG_DIRS="$EMAKI_DATADIR/xdg"
 # Personal config remains above this search list. Repeated wrapper entry keeps
 # each owned layer once, with managed defaults above packaged defaults.
 case "$emaki_defaults_root" in
@@ -41,7 +48,7 @@ case "$emaki_defaults_root" in
 esac
 for emaki_config_dir in "${emaki_config_dirs[@]}"; do
     case "$emaki_config_dir" in
-        ""|/usr/share/emaki/xdg|"$emaki_defaults_root") ;;
+        ""|"$EMAKI_DATADIR/xdg"|"$emaki_defaults_root") ;;
         *) XDG_CONFIG_DIRS="$XDG_CONFIG_DIRS:$emaki_config_dir" ;;
     esac
 done
@@ -54,16 +61,16 @@ unset emaki_defaults_root emaki_config_dir emaki_config_dirs
 # edits the user's file. It checks the exact path included by fork.kdl.
 fork_config() {
     if [ -e "$HOME/.config/niri/config.kdl" ]; then
-        echo /usr/share/emaki/niri/fork.kdl
+        printf '%s\n' "$EMAKI_DATADIR/niri/fork.kdl"
     else
-        echo /usr/share/emaki/niri/fork-system.kdl
+        printf '%s\n' "$EMAKI_DATADIR/niri/fork-system.kdl"
     fi
 }
 
 emaki_nvidia_session_policy() {
-    if [ -r /usr/share/emaki/nvidia/session.sh ]; then
+    if [ -r "$EMAKI_DATADIR/nvidia/session.sh" ]; then
         # shellcheck source=packaging/emaki-nvidia/session.sh
-        source /usr/share/emaki/nvidia/session.sh
+        source "$EMAKI_DATADIR/nvidia/session.sh"
     fi
 }
 
@@ -72,8 +79,8 @@ start_compositor() {
     unset EMAKI_STARTUP_COVER EMAKI_SESSION_TAKEOVER
     cover_png=
     if [ -n "${EMAKI_LOGIN_HANDOFF:-}" ]; then
-        cover_png=$(/usr/bin/timeout --kill-after=.2s 1s /usr/bin/python3 -I -B \
-        /usr/share/emaki/shell/helpers/session-start.py prepare 2>/dev/null) || cover_png=
+        cover_png=$(timeout --kill-after=.2s 1s python3 -I -B \
+        "$EMAKI_DATADIR/shell/helpers/session-start.py" prepare 2>/dev/null) || cover_png=
     fi
     if [ -n "$cover_png" ]; then
         export EMAKI_STARTUP_COVER="$cover_png"

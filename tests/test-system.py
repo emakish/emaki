@@ -219,6 +219,11 @@ def no_password_argv(before):
     new=(root/'commands').read_text()[len(before):]
     return not any(x in new for x in ('fixture-password','PRIVATE_HIDDEN','PRIVATE_OPEN','"connect"'))
 try:
+    account_expected = helper(dict(op='account-read'))
+    account_identity = scenario('account-identity', [
+        '[() => {}, () => ++root.mark > 5]',
+        '[() => { root.note("disabled account idle", svc.account.state === "unavailable"); svc.helpersEnabled = true; }, () => svc.account.state === "ready"]',
+        '[() => root.note("resolved account", svc.accountName === ' + json.dumps(account_expected['name']) + ' && svc.accountAdministrator === ' + json.dumps(account_expected['administrator']) + '), () => true]'])
     # Service-level scenarios start first and run beside everything else; their facts are checked
     # where the panel cases cover the same ground.
     # A panel join NetworkManager has not finished when the check gives up stays registered; its
@@ -562,7 +567,7 @@ try:
     def alive(pid):
         try:os.kill(pid,0);return True
         except ProcessLookupError:return False
-    s=wait(q,lambda s:s['services']['night']['state']=='off');assert s['services']['night']==dict(state='off',warmth=50,temperature=4000)
+    s=wait(q,lambda s:s['services']['night']['state']=='off');assert s['services']['night']==dict(state='off',warmth=50,temperature=4000,schedule='always',startTime='20:00',endTime='07:00',error='')
     assert ipc(q,'night','true')=='true';wait(q,lambda s:s['services']['night']['state']=='on' and (root/'wlsunset.json').exists())
     assert sun()[1]==['-t','4000','-T','4001'];pid1=sun()[0]
     assert ipc(q,'nightWarmth','80')=='true';wait(q,lambda s:s['services']['night']['state']=='on' and (root/'wlsunset.json').exists() and sun()[0]!=pid1)
@@ -747,6 +752,7 @@ try:
     owner.terminate();owner.wait(timeout=3);time.sleep(.3)
     assert state(b)['services']['tray']=='owned_elsewhere'
     assert subprocess.run(['busctl','--user','--quiet','status','org.kde.StatusNotifierWatcher'],capture_output=True).returncode != 0
+    assert account_identity() == {'disabled account idle': True, 'resolved account': True, 'done': True}
     print('PASS: system readings/panels, sound/network/BT confirmation+timeout, private helper, power confirmation, battery threshold, tray ownership:',root)
 finally:
     for p,log in processes:

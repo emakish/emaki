@@ -113,7 +113,7 @@ Scope {
     }
     FileView {
         id: xkbRules
-        path: Quickshell.env("EMAKI_XKB_RULES") || "/usr/share/X11/xkb/rules/evdev.lst"
+        path: Quickshell.env("EMAKI_XKB_RULES") || Platform.xkbRules
         blockLoading: true
         printErrors: false
         onLoaded: service.layoutCodes = XkbCodes.parse(text())

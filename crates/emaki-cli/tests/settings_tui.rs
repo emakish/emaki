@@ -42,6 +42,7 @@ fn keyboard_menu_edits_resets_and_undoes_through_core() {
     };
     let menu = |keys: &str| {
         let mut child = command()
+            .arg("--text")
             .arg("--profile-root")
             .arg(&root)
             .stdin(Stdio::piped())
@@ -136,7 +137,7 @@ with tempfile.TemporaryDirectory(prefix='emaki-settings-pty-') as directory:
             self.pending = b''
             self.transcript = b''
             self.child = subprocess.Popen(
-                [sys.argv[1], 'settings', '--profile-root', str(profile)],
+                [sys.argv[1], 'settings', '--text', '--profile-root', str(profile)],
                 stdin=self.slave, stdout=self.slave, stderr=subprocess.PIPE, env=env)
 
         def expect(self, expected):
@@ -241,4 +242,94 @@ with tempfile.TemporaryDirectory(prefix='emaki-settings-pty-') as directory:
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+#[test]
+fn launcher_entry_requires_structured_shell_acknowledgement() {
+    let root = std::env::temp_dir().join(format!("emaki-settings-window-{}", std::process::id()));
+    fs::create_dir_all(&root).unwrap();
+    let shell = root.join("emaki-shell");
+    fs::write(
+        &shell,
+        r#"#!/bin/sh
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+printf '%s\n' "$#" "$@" > "$CALL_LOG"
+printf '%s\n' "$SHELL_REPLY"
+exit "$SHELL_STATUS"
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&shell, fs::Permissions::from_mode(0o700)).unwrap();
+    let log = root.join("call.log");
+    let command = || {
+        let mut c = Command::new(env!("CARGO_BIN_EXE_emaki"));
+        c.arg("settings")
+            .env(
+                "PATH",
+                format!("{}:{}", root.display(), std::env::var("PATH").unwrap()),
+            )
+            .env("CALL_LOG", &log)
+            .env("SHELL_STATUS", "0")
+            .env(
+                "SHELL_REPLY",
+                r#"{"schema_version":1,"status":"opened","page":"panel"}"#,
+            );
+        c
+    };
+    let out = command().output().unwrap();
+    assert!(out.status.success(), "{out:?}");
+    assert!(out.stdout.is_empty());
+    assert!(out.stderr.is_empty());
+    assert_eq!(
+        fs::read_to_string(&log).unwrap(),
+        "4\ncall\nsettings\nopen\n\n"
+    );
+    for page in ["wifi", "displays", "lock"] {
+        let out = command().arg(page).output().unwrap();
+        assert!(out.status.success(), "{out:?}");
+        assert_eq!(
+            fs::read_to_string(&log).unwrap(),
+            format!("4\ncall\nsettings\nopen\n{page}\n")
+        );
+    }
+    for reply in [
+        "",
+        "Unknown method",
+        r#"{"schema_version":2,"status":"opened"}"#,
+        r#"{"schema_version":1,"status":"unavailable"}"#,
+    ] {
+        let out = command()
+            .arg("wifi")
+            .env("SHELL_REPLY", reply)
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(1), "{out:?}");
+        assert!(
+            String::from_utf8(out.stdout)
+                .unwrap()
+                .contains("emaki settings --text")
+        );
+    }
+    let out = command().env("SHELL_STATUS", "1").output().unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    fs::remove_file(&log).unwrap();
+    for args in [
+        vec!["--json"],
+        vec!["unknown-page"],
+        vec!["wifi", "--text"],
+        vec!["wifi", "--json"],
+        vec!["wifi", "--profile-root", "/tmp"],
+        vec!["wifi", "--timeout-ms", "100"],
+        vec!["wifi", "sound"],
+        vec!["--text", "--text"],
+        vec!["list", "--text"],
+        vec!["--profile-root", "/tmp"],
+        vec!["--timeout-ms", "100"],
+    ] {
+        let out = command().args(args).output().unwrap();
+        assert_eq!(out.status.code(), Some(2), "{out:?}");
+        assert!(!log.exists());
+    }
+    fs::remove_dir_all(root).unwrap();
 }

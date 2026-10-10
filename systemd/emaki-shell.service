@@ -32,7 +32,7 @@ StartLimitBurst=20
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/emaki-shell
+ExecStart=@EMAKI_BINDIR@/emaki-shell
 Restart=on-failure
 # Skip transient failed states while retrying; OnFailure opens recovery only when
 # retries end (including start-limit exhaustion), not on each recoverable crash.

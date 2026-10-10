@@ -337,6 +337,7 @@ ShellRoot {
         }
         function run(): void {
             if (test.stage === 0) {
+                test.check(controller.mode === "", "no disk installation mode is preselected");
                 const install = test.findItem(content, "installChoice");
                 if (!install)
                     return test.check(false, "welcome choice is named installChoice");
@@ -530,6 +531,7 @@ ShellRoot {
                 yes.forceActiveFocus();
                 input.keyClick(Qt.Key_Space);
                 test.check(controller.encryption === "encrypted" && controller.encryptionPassword === "account", "keyboard chooses encryption with recommended account password");
+                test.check(controller.accountProblems("a", "a").password === "Use at least 8 characters for the startup password.", "account password used for disk unlock also needs eight characters");
                 const separate = test.findItem(content, "encryptSeparate") as C.AbstractButton;
                 separate.forceActiveFocus();
                 input.keyClick(Qt.Key_Space);
@@ -553,7 +555,17 @@ ShellRoot {
                     input.keyClick(Qt.Key_Return);
                     test.check(field.echoMode === TextInput.Password, "disk password eye masks");
                 }
-                test.check(controller.encryptionReady, "matching disk passwords allow Continue");
+                test.check(!controller.encryptionReady && test.reason() === "Use at least 8 characters for the startup password.", "matching one-character disk passwords are refused with a plain explanation");
+                controller.next();
+                test.check(controller.step === "encryption", "short disk password cannot leave encryption");
+                for (const name of ["diskPassword", "diskConfirmation"]) {
+                    const field = test.findItem(content, name) as C.TextField;
+                    field.forceActiveFocus();
+                    input.keyClick(Qt.Key_End);
+                    for (let index = 0; index < 7; ++index)
+                        input.keyClick(Qt.Key_A);
+                }
+                test.check(controller.encryptionReady, "matching eight-character disk passwords allow Continue");
                 const confirmation = test.findItem(content, "diskConfirmation") as C.TextField;
                 confirmation.forceActiveFocus();
                 input.keyClick(Qt.Key_B);
@@ -561,7 +573,7 @@ ShellRoot {
                 test.check(test.reason() === "The disk passwords do not match.", "the grey Continue says why: a mismatch (" + test.reason() + ")");
                 input.keyClick(Qt.Key_Backspace);
                 controller.next();
-                test.check(controller.step === "you" && controller.diskPassword === "a", "disk password retained privately until planning");
+                test.check(controller.step === "you" && controller.diskPassword === "aaaaaaaa", "disk password retained privately until planning");
                 controller.lost();
                 test.check(controller.diskPassword === "" && controller.diskConfirmation === "", "disconnect clears both disk secrets");
                 controller.session.ready = true;
@@ -619,8 +631,15 @@ ShellRoot {
                         }
                     ]
                 };
+                controller.mode = "";
                 controller.chooseDisk("/dev/vda");
-                controller.mode = "erase";
+                input.wait(30);
+                test.check(controller.mode === "" && test.reason() === "Choose how to install on this disk.", "selecting a disk does not select Erase");
+                test.check(!test.find("continueButton").enabled, "Continue waits for an explicit installation mode");
+                controller.next();
+                test.check(controller.step === "disk", "next refuses an unchosen installation mode");
+                input.mouseClick(test.find("eraseChoice"));
+                test.check(controller.mode === "erase", "clicking Erase selects it explicitly");
                 input.wait(30);
                 test.check(!test.findItem(content, "alongsideChoice").visible && !controller.canAlongside, "a Windows disk without a worker offer does not offer alongside");
                 // The card states what is on the disk; nothing offers to keep or shrink Windows.
@@ -710,7 +729,7 @@ ShellRoot {
                 controller.mode = "alongside";
                 test.check(controller.canAlongside && controller.alongsideSizeValid, "the Windows disk offers alongside");
                 controller.chooseDisk("/dev/vdb");
-                test.check(controller.mode === "erase" && test.reason() === "", "a disk without Windows leaves alongside (" + controller.mode + ", " + test.reason() + ")");
+                test.check(controller.mode === "" && test.reason() === "Choose how to install on this disk.", "a disk without Windows requires a new explicit mode after alongside (" + controller.mode + ", " + test.reason() + ")");
                 // Manual needs a GPT disk (planner.manual_partitions): an MBR disk says so on the
                 // choice; a disk without a table can still get one from GParted.
                 const tables = [["/dev/vdc", "dos"], ["/dev/vdd", null], ["/dev/vde", "gpt"]];

@@ -127,6 +127,7 @@ class NvidiaTests(unittest.TestCase):
     def session_fixture(self):
         binary = self.base / 'bin'
         binary.mkdir()
+        (binary / 'readlink').symlink_to(shutil.which('readlink'))
         # Every external session command resolves to a recorder, never the host.
         recorder = f'''#!{sys.executable}
 import json, os, pathlib, sys
@@ -175,7 +176,8 @@ if name in ('systemctl', 'dbus-update-activation-environment', 'emaki-session-im
         policy.write_text(text)
         wrapper = self.base / 'wrapper'
         self.executable(wrapper, (ROOT / 'scripts/niri-emaki-session').read_text().replace(
-            '/usr/share/emaki/nvidia/session.sh', str(policy)))
+            '$EMAKI_DATADIR/nvidia/session.sh', str(policy)))
+        shutil.copyfile(ROOT / 'scripts/paths', self.base / 'paths')
         env = {'PATH': str(binary), 'HOME': str(self.base / 'home'), 'SHELL': '',
                'FIXTURE': str(self.base)}
         return wrapper, env

@@ -13,3 +13,4 @@ Target = qt6-*
 Description = Recording the desktop update [Emaki].
 When = PostTransaction
 Exec = /usr/bin/emaki-session-update
+NeedsTargets

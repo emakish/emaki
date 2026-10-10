@@ -16,6 +16,9 @@ import sys
 import time
 import tomllib
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import emaki_paths
+
 MAX_FILE = 65536
 NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]{0,62}\$?\Z")
 SESSION = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}\.desktop\Z")
@@ -27,7 +30,7 @@ class Paths:
     users: Path = Path('/var/lib/emaki-greeter/users')
     passwd: Path = Path('/etc/passwd')
     login_defs: Path = Path('/etc/login.defs')
-    sessions: Path = Path('/usr/share/wayland-sessions')
+    sessions: Path | None = None
     regreet: Path = Path('/var/lib/regreet/state.toml')
     boot_id: Path = Path('/proc/sys/kernel/random/boot_id')
 
@@ -282,15 +285,23 @@ def parse_session(raw, path):
 
 def session_catalog(paths):
     result = {}
-    with directory(paths.sessions) as fd:
-        for filename in sorted(os.listdir(fd)):
-            if not valid_session(filename):
-                continue
-            try:
-                result[filename] = parse_session(read_at(fd, filename), paths.sessions / filename)
-            except (OSError, ValueError, KeyError, configparser.Error):
-                # A broken optional desktop file must not hide a valid Niri fallback.
-                continue
+    roots = [paths.sessions] if paths.sessions is not None else [
+        Path(root) / 'wayland-sessions'
+        for root in (os.environ.get('XDG_DATA_DIRS') or emaki_paths.XDG_DATA_DIRS_DEFAULT).split(':')
+        if root and Path(root).is_absolute()]
+    for root in roots:
+        try:
+            with directory(root) as fd:
+                for filename in sorted(os.listdir(fd)):
+                    if not valid_session(filename) or filename in result:
+                        continue
+                    try:
+                        result[filename] = parse_session(read_at(fd, filename), root / filename)
+                    except (OSError, ValueError, KeyError, configparser.Error):
+                        # A broken optional desktop file must not hide a valid fallback.
+                        continue
+        except FileNotFoundError:
+            continue
     return result
 
 

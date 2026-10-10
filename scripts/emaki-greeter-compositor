@@ -1,4 +1,11 @@
 #!/bin/bash
+# Resolve the source checkout through symlinks; installed wrappers use the build path.
+emaki_script=$(readlink -f -- "$0")
+emaki_paths="${emaki_script%/*}/paths"
+[ -r "$emaki_paths" ] || emaki_paths='@EMAKI_LIBEXECDIR@/paths'
+# shellcheck source=scripts/paths
+. "$emaki_paths"
+unset emaki_script emaki_paths
 # greetd hands this process the login VT as stdin/stdout/stderr. Keep the VT on fd 3 for the
 # failure screen below; nothing else writes to it.
 exec 3>&1
@@ -39,7 +46,7 @@ boot_seconds() {
 started=$(boot_seconds)
 (
     trap - INT QUIT
-    exec dbus-run-session "$EMAKI_GREETER_COMPOSITOR" --config /usr/share/emaki/greetd/niri.kdl
+    exec dbus-run-session "$EMAKI_GREETER_COMPOSITOR" --config "$EMAKI_DATADIR/greetd/niri.kdl"
 ) <&0 3>&- &
 compositor=$!
 wait "$compositor"
@@ -60,7 +67,7 @@ if [[ -n $signalled ]] || ((status == 0)) || { ((status != 3)) && ((ended - star
 fi
 
 echo "showing graphics-failed message (status $status)"
-greetd_dir=${EMAKI_GREETD_DIR:-/usr/share/emaki/greetd}
+greetd_dir=${EMAKI_GREETD_DIR:-$EMAKI_DATADIR/greetd}
 show_message() {
     local lines=() i
     mapfile -t lines < "$greetd_dir/graphics-failed.txt" 2>/dev/null

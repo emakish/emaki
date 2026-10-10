@@ -209,6 +209,9 @@ ShellRoot {
                         if (test.screenName === "review-encrypted") {
                             controller.encryption = "encrypted";
                         }
+                        // Later pages start after the person has chosen an installation mode.
+                        if (!controller.mode)
+                            controller.mode = "erase";
                         const secret = "fixture-" + Date.now();
                         controller.plan(secret, secret);
                     } else {

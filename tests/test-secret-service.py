@@ -78,6 +78,26 @@ class NativeProvider(unittest.TestCase):
         self.assertEqual(portal['preferred']['org.freedesktop.impl.portal.Secret'], 'kwallet;')
         self.assertEqual(portal['preferred']['org.freedesktop.impl.portal.ScreenCast'], 'gnome;')
 
+    def test_previous_generated_activation_survives_package_update(self):
+        call = mock.Mock(return_value='')
+        self.helper['select_provider'](self.runtime, call)
+        directory = self.helper['activation_path'](self.runtime).parent
+        previous = {}
+        for path in directory.glob('*.service'):
+            # 0.4.2 wrote these exact files: the wallet command and false by absolute path.
+            text = path.read_text().replace('Exec=false', 'Exec=/usr/bin/false')
+            self.assertIn('Exec=/usr/bin/', text)
+            path.write_text(text)
+            previous[path] = text
+        call.reset_mock()
+        self.assertFalse(self.helper['select_provider'](self.runtime, call))
+        call.assert_called_once_with('ReloadConfig')
+        self.assertEqual({path: path.read_text() for path in previous}, previous)
+        changed = next(iter(previous))
+        changed.write_text(previous[changed].replace('Exec=/usr/bin/', 'Exec=/personal/bin/'))
+        with self.assertRaisesRegex(RuntimeError, 'personal Secret Service'):
+            self.helper['select_provider'](self.runtime, call)
+
     def test_pam_init_precedes_activation_reload_and_owner_verification(self):
         events = []
         def call(method, *args):
@@ -103,7 +123,7 @@ class NativeProvider(unittest.TestCase):
         call = mock.Mock(return_value='s ":1.42"')
         run = mock.Mock()
         self.helper['start'](self.env, self.runtime, run, call, mock.Mock())
-        self.assertEqual(run.call_args.args[0][-1], '/usr/bin/ksecretd')
+        self.assertEqual(run.call_args.args[0][-1], 'ksecretd')
         self.assertEqual(call.call_args_list[0], mock.call('ReloadConfig'))
 
     def test_gnome_owner_collision_is_not_success(self):
@@ -125,7 +145,7 @@ class NativeProvider(unittest.TestCase):
         self.assertEqual(sleep.call_count, 100)
         self.assertTrue(self.helper['activation_path'](self.runtime).exists())
         unit = (ROOT / 'systemd/emaki-wallet-start.service').read_text()
-        self.assertIn('ExecStop=/usr/bin/emaki-wallet-start --stop', unit)
+        self.assertIn('ExecStop=@EMAKI_BINDIR@/emaki-wallet-start --stop', unit)
         self.assertNotIn('ExecStopPost=', unit)
 
     def test_disabled_provider_discards_pending_pam(self):
@@ -151,17 +171,17 @@ class NativeProvider(unittest.TestCase):
         self.assertEqual(events[2][4:], ['gnome-keyring-daemon.socket', 'gnome-keyring-daemon.service'])
         self.assertEqual(events[3], ['systemctl', '--user', 'stop', 'gnome-keyring-daemon.socket'])
         self.assertEqual(events[4], ['systemctl', '--user', 'stop', 'gnome-keyring-daemon.service'])
-        self.assertEqual(events[5], ['/usr/bin/emaki-wallet-migrate', '--snapshot'])
+        self.assertEqual(events[5], ['emaki-wallet-migrate', '--snapshot'])
         for unit in ('systemd/niri-emaki.service', 'systemd/niri-wallet.conf'):
-            self.assertIn('ExecStartPre=-/usr/bin/emaki-wallet-start --prepare', (ROOT / unit).read_text())
-        self.assertIn('Exec=/usr/bin/emaki-wallet-start --wait', self.helper['ACTIVATION'])
+            self.assertIn('ExecStartPre=-@EMAKI_BINDIR@/emaki-wallet-start --prepare', (ROOT / unit).read_text())
+        self.assertIn('Exec=/usr/bin/emaki-wallet-start --wait\n', self.helper['ACTIVATION'])
         self.assertNotIn('Exec=/usr/bin/ksecretd', self.helper['ACTIVATION'])
 
     def test_fresh_install_does_not_stop_absent_old_units(self):
         run = mock.Mock(return_value=subprocess.CompletedProcess([], 0, 'not-found'))
         self.helper['prepare'](self.env, self.runtime, run, mock.Mock())
         self.assertFalse(any('stop' in call.args[0] for call in run.call_args_list))
-        self.assertEqual(run.call_args.args[0], ['/usr/bin/emaki-wallet-migrate', '--snapshot'])
+        self.assertEqual(run.call_args.args[0], ['emaki-wallet-migrate', '--snapshot'])
 
     def test_failure_preserves_matching_file_not_created_by_this_session(self):
         path = self.helper['activation_path'](self.runtime)
@@ -214,8 +234,8 @@ class NativeProvider(unittest.TestCase):
         run.assert_not_called()
         for unit in ('systemd/niri-emaki.service', 'systemd/niri-wallet.conf'):
             contents = (ROOT / unit).read_text()
-            self.assertIn('ExecStopPost=-/usr/bin/emaki-wallet-start --stop', contents)
-            self.assertIn('ExecStopPost=-/usr/bin/systemctl --user unset-environment PAM_KWALLET5_LOGIN', contents)
+            self.assertIn('ExecStopPost=-@EMAKI_BINDIR@/emaki-wallet-start --stop', contents)
+            self.assertIn('ExecStopPost=-systemctl --user unset-environment PAM_KWALLET5_LOGIN', contents)
 
     def test_discard_identifies_only_the_pending_socket_holder(self):
         proc = self.runtime / 'proc'
@@ -230,7 +250,8 @@ class NativeProvider(unittest.TestCase):
             (directory / 'exe').symlink_to('/usr/bin/ksecretd')
             (directory / 'fd/5').symlink_to('socket:[' + inode + ']')
         with mock.patch('os.pidfd_open', return_value=999) as pidfd, \
-                mock.patch('signal.pidfd_send_signal') as kill, mock.patch('os.close'):
+                mock.patch('signal.pidfd_send_signal') as kill, mock.patch('os.close'), \
+                mock.patch('shutil.which', return_value='/usr/bin/ksecretd'):
             self.helper['discard_pending_pam']({'PAM_KWALLET5_LOGIN': str(address)}, proc)
         pidfd.assert_called_once_with(101)
         kill.assert_called_once_with(999, 9)
@@ -289,11 +310,11 @@ class NativeProvider(unittest.TestCase):
                      'org.kde.secretservicecompat'):
             content = (services / (name + '.service')).read_text()
             self.assertIn('Name=' + name, content)
-            self.assertIn('Exec=/usr/bin/emaki-wallet-start --wait', content)
+            self.assertIn('Exec=/usr/bin/emaki-wallet-start --wait\n', content)
         for name in ('org.gnome.keyring', 'org.freedesktop.impl.portal.Secret'):
             legacy = (services / (name + '.service')).read_text()
             self.assertIn('Name=' + name, legacy)
-            self.assertIn('Exec=/usr/bin/false', legacy)
+            self.assertIn('Exec=false\n', legacy)
         self.env['XDG_STATE_HOME'] = str(self.runtime / 'state')
         report = Path(self.env['XDG_STATE_HOME']) / 'emaki/wallet-migration-v1.json'
         report.parent.mkdir(parents=True)

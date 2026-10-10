@@ -46,7 +46,7 @@ ShellRoot {
     property var managed: ({})
     function applySettings(auto, overview, dock, hide) {
         managed = {"bar.autohide": auto, "bar.overview_workspaces": overview,
-            "dock.on": dock, "dock.auto_hide": hide};
+            "dock.on": dock, "dock.auto_hide": hide, "bar.clock_24_hour": overview};
         SettingsBridge.values = Object.keys(managed).map(key => ({key: key, value: managed[key]}));
     }
     function check(value, message) {
@@ -173,6 +173,8 @@ ShellRoot {
                 && scene.barPolicy.overviewWorkspaces === managed["bar.overview_workspaces"], "managed bar settings");
             check(scene.dockStore.on === managed["dock.on"]
                 && scene.dockStore.autoHide === managed["dock.auto_hide"], "managed dock settings");
+            scene.bar.dateTime = new Date(2026, 0, 1, 15, 7);
+            check(scene.bar.clockTime === (managed["bar.clock_24_hour"] ? "15:07" : "3:07 PM"), "clock format on every output");
             const descriptor = [a,b,c].find(screen => screen.name === scene.outputName);
             check(scene.viewportWidth === descriptor.width && scene.viewportHeight === descriptor.height, "own dimensions");
             check(scene.outputScale === descriptor.devicePixelRatio, "own output scale");
@@ -301,6 +303,31 @@ ShellRoot {
             } else if (root.step === 12) {
                 root.inspect(2);
                 root.check(root.created === 5, "only required delegates created");
+                root.publish(root.a.name);
+                const reply = JSON.parse(outputs.shared.settingsController.open("panel"));
+                root.check(reply.status === "opened", "settings open accepted on first output");
+            } else if (root.step === 13) {
+                const controller = outputs.shared.settingsController;
+                const source = root.scenes().find(scene => scene.outputName === root.a.name);
+                root.check(controller.activeHost === source && controller.opened
+                    && controller.page === "panel" && source.launcherOpen && source.input.settingsActive,
+                    "settings status follows first output after opening frame");
+                root.publish(root.b.name);
+                const reply = JSON.parse(controller.open("windows"));
+                root.check(reply.status === "opened", "settings open accepted on newly focused output");
+                root.check(!source.launcherOpen, "previous settings output closes on rerouting");
+            } else if (root.step === 14) {
+                const controller = outputs.shared.settingsController;
+                const destination = outputs.activeScene;
+                root.check(destination.outputName === root.b.name && controller.activeHost === destination
+                    && controller.opened && controller.page === "windows"
+                    && destination.launcherOpen && destination.input.settingsActive,
+                    "settings status follows newly focused output after opening frame");
+                root.check(root.scenes().filter(scene => scene.launcherOpen).length === 1,
+                    "only destination launcher remains open");
+                controller.dismiss();
+                root.check(!controller.opened && !destination.launcherOpen,
+                    "settings close and status target newly focused output");
                 console.log("OUTPUTS_COMPLETE"); Qt.quit();
             }
             root.step++;
@@ -342,7 +369,7 @@ def run(scale, mutation=''):
             before = 'Component.onCompleted: applyManagedSettings()'
             after = 'Component.onCompleted: {}'
         elif mutation == 'import-policy':
-            before = 'if (niri.overviewOpen || modalOpen || notes.dnd || presentationState !== "clear")\n            retainCriticalPeek();'
+            before = 'if (niri.overviewOpen || modalOpen || notes.effectiveDnd || presentationState !== "clear")\n            retainCriticalPeek();'
             after = 'if (false)\n            retainCriticalPeek();'
         else:
             before = 'if (scene.focusedOutput)'

@@ -410,7 +410,7 @@ Item {
             width: panel.islandWidth
             time: panel.time
             date: panel.date
-            dnd: panel.store.dnd
+            dnd: panel.store.effectiveDnd
             notificationCount: panel.store.count
             ink: panel.ink
             dim: panel.dim
@@ -510,7 +510,7 @@ Item {
             width: panel.islandWidth
             time: panel.time
             date: panel.date
-            dnd: panel.store.dnd
+            dnd: panel.store.effectiveDnd
             notificationCount: panel.store.count
             ink: panel.ink
             dim: panel.dim
@@ -546,7 +546,7 @@ Item {
                 width: 9
                 height: 9
                 radius: 4.5
-                color: panel.store.dnd ? LiquidPalette.text : panel.dim
+                color: panel.store.effectiveDnd ? LiquidPalette.text : panel.dim
             }
         }
     }

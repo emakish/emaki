@@ -2,14 +2,19 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Open the managed terminal, optionally running an argv after --."""
+import json
 import os
 from pathlib import Path
 import re
 import shlex
 import shutil
 import stat
+import subprocess
+import tempfile
 import sys
 import tomllib
+
+DEFAULT_TERMINAL = 'kitty'
 
 
 def selected_terminal():
@@ -65,7 +70,54 @@ def command_argv(app):
     return result
 
 
+def password_prompt(receipt):
+    """Keep the password program's result visible without reading its input."""
+    try:
+        code = subprocess.run(['passwd'], check=False).returncode
+    except OSError:
+        code = 127
+    result = 'Password changed.' if code == 0 else 'Password not changed.'
+    print('\n' + result, flush=True)
+    if code == 0:
+        print('Your login wallet may still use your previous password. Update its password separately.', flush=True)
+    try:
+        fd = os.open(receipt, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, 'w') as output:
+            output.write(str(code))
+    except OSError:
+        pass  # A detached terminal may outlive the receipt directory.
+    try:
+        input('Press Enter to close this window. ')
+    except (EOFError, KeyboardInterrupt):
+        pass
+    return code
+
+
+def change_password():
+    # The receipt records only an exit status, never password input or program output.
+    with tempfile.TemporaryDirectory(prefix='emaki-password-') as temporary:
+        receipt = Path(temporary) / 'result'
+        try:
+            subprocess.run(['emaki-terminal', '--', str(Path(__file__).resolve()),
+                            '--password-prompt', str(receipt)], check=False,
+                           stdout=sys.stderr)
+            code = int(receipt.read_text())
+            message = 'Password changed.' if code == 0 else 'Password not changed.'
+            status = 'changed' if code == 0 else 'unchanged'
+        except (OSError, ValueError):
+            status = 'unconfirmed'
+            message = 'The password change could not be confirmed. Check the password window.'
+        print(json.dumps({'schema_version': 1, 'status': status, 'message': message}))
+
+
 def main(argv):
+    if argv == ['--default', '--json']:
+        print(json.dumps({'executable': DEFAULT_TERMINAL}))
+        return
+    if argv == ['--change-password', '--json']:
+        return change_password()
+    if len(argv) == 2 and argv[0] == '--password-prompt':
+        raise SystemExit(password_prompt(argv[1]))
     check = len(argv) == 2 and argv[0] in ('--check', '--check-terminal')
     if argv and argv[0] != '--' and not check:
         raise ValueError('usage: emaki-terminal [-- command arguments...]')
@@ -74,7 +126,7 @@ def main(argv):
     if ident is not None and not re.fullmatch(r'[A-Za-z0-9_.-]+\.desktop', ident):
         raise ValueError('invalid desktop ID')
     if ident is None:
-        os.execvp('kitty', ['kitty'] + (['-e'] + command if command else []))
+        os.execvp(DEFAULT_TERMINAL, [DEFAULT_TERMINAL] + (['-e'] + command if command else []))
         return
     import gi
     gi.require_version('Gio', '2.0')
@@ -84,7 +136,7 @@ def main(argv):
     if app is None or not executable or not shutil.which(executable):
         if check:
             raise ValueError('desktop entry or executable is unavailable')
-        os.execvp('kitty', ['kitty'] + (['-e'] + command if command else []))
+        os.execvp(DEFAULT_TERMINAL, [DEFAULT_TERMINAL] + (['-e'] + command if command else []))
         return
     if check and argv[0] == '--check':
         return

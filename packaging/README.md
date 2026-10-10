@@ -1,4 +1,4 @@
-# Emaki 0.4.2 packages
+# Emaki 0.5.0 packages
 
 Copyright (C) 2026 Artur Yakymenko. Emaki packaging is GPL-3.0-or-later;
 the Quickshell fork retains its upstream LGPL-3.0-only license.
@@ -80,10 +80,11 @@ resume and a second suspend, plus logind restart recovery.
 `emaki-keyring` installs the public signing key and trust/revocation lists;
 its install/upgrade hook runs `pacman-key --populate emaki`. The installer
 initializes pacman's keyring first. Add `[emaki]` to pacman.conf with
-`Include = /etc/pacman.d/emaki-mirrorlist`. The mirror list includes `/etc/emaki/channel` [channel selector].
-This file selects `/usr/share/emaki/mirrors/stable.conf` by default; select
-`testing.conf` and run `sudo pacman -Syyu` once to switch [update channel].
-The package creates the selector once and never replaces it [emaki-mirrorlist].
+`Include = /etc/pacman.d/emaki-mirrorlist`. The mirror list includes `/etc/emaki/channel` [channel selector],
+which includes the machine state `/var/lib/emaki/channel`. The state selects
+`/usr/share/emaki/mirrors/stable.conf` by default; `sudo emaki-update-channel set testing --json`
+or Settings switches it [update channel]. The package creates both files outside its payload,
+moves an older choice into the state and keeps a valid one [emaki-mirrorlist].
 Run `emaki-update-channel` to read the effective update source [update channel].
 `/usr/lib/emaki-release` records the release version and label [release metadata].
 

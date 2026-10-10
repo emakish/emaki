@@ -22,7 +22,7 @@ reaper.guard()  # nothing this test starts outlives it
 ROOT = Path(__file__).resolve().parent.parent
 os.chdir(ROOT)
 TOOLS = Path(os.environ.get('QML_TOOLS_DIR', '/usr/lib/qt6/bin'))
-FILES = sorted(str(p) for p in Path('shell').glob('*.qml'))
+FILES = sorted(str(p) for p in Path('shell').rglob('*.qml'))
 CACHE = ROOT / '.cache'
 CACHE.mkdir(exist_ok=True)
 
@@ -40,8 +40,18 @@ lint = subprocess.run([str(TOOLS / 'qmllint'), '--ignore-settings', '-W', '0', '
 report = json.loads(lint.stdout)
 (CACHE / 'shell-qmllint.json').write_text(lint.stdout)
 known = []
+# Qt 6.11.2 still checks QProcess::ExitStatus metadata for zero-parameter
+# arrow handlers, including DisplaysService and NightLight.
 additional_metadata = {
+    ('DisplaysService.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
+    ('NightLight.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
+    ('SettingsNetworkService.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('SystemService.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
+    ('SettingsPowerPage.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
+    ('SettingsAppsPage.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
+    ('SettingsAboutPage.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
+    ('SettingsRegionPage.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
+    ('SettingsMaintenancePage.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('NiriService.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('SessionUpdateNotice.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('WelcomeController.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
@@ -71,7 +81,8 @@ for file in report['files']:
         else:
             raise AssertionError((file['filename'], warning))
 # Exact Quickshell metadata gaps; runtime tests exercise these handlers.
-assert len(known) <= 23, known
+# The integrated settings sections add handlers to the installed metadata gaps.
+assert len(known) <= 34, known
 assert lint.returncode == 0 or known, (lint.returncode, lint.stderr)
 print(f'QML format OK; qmllint raw rc={lint.returncode}, {len(known)} documented QS metadata diagnostics, no others')
 
@@ -246,6 +257,32 @@ def smoke_with_runtime(width, height, scale, exclusive_zone, runtime):
             opened = wait_state(lambda s: s['launcher_panel']['width'] == 720)
             # An empty All (Recent with nothing logged) is a short panel: header, one line, foot.
             assert opened['launcher'] == 'open' and 140 <= opened['launcher_panel']['height'] <= 560, opened['launcher_panel']
+            # Settings uses the same launcher panel and returns it to the normal size.
+            settings_reply = json.loads(call('settings', 'open', 'panel'))
+            assert settings_reply['status'] == 'opened', settings_reply
+            grown = wait_state(lambda s: s['launcher'] == 'open'
+                               and abs(s['launcher_panel']['width'] - min(1240, width - 60, s['system']['x'] - 20)) < 1
+                               and abs(s['launcher_panel']['height'] - min(810, height - 74)) < 1)
+            settings_state = json.loads(call('settings', 'status'))
+            assert settings_state['opened'] and settings_state['page'] == 'panel', settings_state
+            assert grown['launcher_panel']['width'] > opened['launcher_panel']['width']
+            rejected = json.loads(call('settings', 'open', 'unavailable-page'))
+            assert rejected['status'] == 'unavailable', rejected
+            assert json.loads(call('settings', 'status'))['page'] == 'panel'
+            call('launcher', 'mode', 'Apps')
+            wait_state(lambda s: s['launcher'] == 'open' and s['launcher_panel']['width'] == 720)
+            assert not json.loads(call('settings', 'status'))['opened']
+            assert json.loads(call('settings', 'open', 'keyboard'))['status'] == 'opened'
+            assert json.loads(call('settings', 'status'))['page'] == 'keyboard'
+            call('settings', 'close')
+            wait_state(lambda s: s['launcher'] == 'closed' and s['launcher_panel']['width'] == 36)
+            assert not json.loads(call('settings', 'status'))['opened']
+            assert json.loads(call('settings', 'open', 'panel'))['status'] == 'opened'
+            call('launcher', 'close')
+            wait_state(lambda s: s['launcher'] == 'closed' and s['launcher_panel']['width'] == 36)
+            assert not json.loads(call('settings', 'status'))['opened']
+            call('launcher', 'open')
+            wait_state(lambda s: s['launcher_panel']['width'] == 720)
             wait_state(lambda s: s['search']['labels'] == 'ready')
             assert private_title not in call('launcher', 'status')
             # Recent keeps the visible app and skips the two hidden ids logged around it.

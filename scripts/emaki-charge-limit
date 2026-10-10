@@ -1,0 +1,100 @@
+#!/usr/bin/python3 -I
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Apply validated battery thresholds; never accept a caller-supplied path."""
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import sys
+import tempfile
+
+SUPPLIES = Path('/sys/class/power_supply')
+STATE = Path('/var/lib/emaki/charge-limits.json')
+
+
+def validate(name, value):
+    if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', name):
+        raise ValueError('Invalid battery name.')
+    if type(value) is not int or value not in range(50, 101, 10):
+        raise ValueError('Choose a charge limit from 50 to 100 percent.')
+    path = SUPPLIES / name
+    if (path / 'type').read_text().strip() != 'Battery':
+        raise ValueError('The selected device is not a battery.')
+    threshold = path / 'charge_control_end_threshold'
+    if not threshold.is_file():
+        raise ValueError('This battery does not expose a charge limit.')
+    return threshold
+
+
+def load():
+    try:
+        result = json.loads(STATE.read_text())
+    except FileNotFoundError:
+        return {}
+    if not isinstance(result, dict):
+        raise ValueError('The saved charge limits are invalid.')
+    return result
+
+
+def save(values):
+    fd, temporary = tempfile.mkstemp(prefix='.charge-limits-', dir=STATE.parent)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            json.dump(values, stream)
+            stream.write('\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, STATE)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def apply(name, value):
+    path = validate(name, value)
+    path.write_text(str(value) + '\n')
+    if path.read_text().strip() != str(value):
+        raise RuntimeError('The battery did not accept the charge limit.')
+
+
+def main(argv):
+    try:
+        if os.geteuid() != 0:
+            raise PermissionError('Administrator approval is required.')
+        if not (argv == ['apply'] or len(argv) == 3 and argv[0] == 'set'):
+            raise ValueError('Use set BATTERY PERCENT or apply.')
+        STATE.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+        with (STATE.parent / '.charge-limits.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            values = load()
+            if argv[0] == 'set':
+                name, raw = argv[1:]
+                if not raw.isdecimal():
+                    raise ValueError('Invalid charge limit.')
+                value = int(raw)
+                path = validate(name, value)
+                previous = path.read_text()
+                try:
+                    apply(name, value)
+                    values[name] = value
+                    save(values)
+                except (OSError, RuntimeError):
+                    path.write_text(previous)
+                    raise
+            else:
+                for name, value in values.items():
+                    # A disconnected removable battery must not block other batteries.
+                    if not (SUPPLIES / name).exists():
+                        continue
+                    apply(name, value)
+        print(json.dumps({'schema_version': 1, 'state': 'ready'}))
+        return 0
+    except (OSError, ValueError, RuntimeError) as error:
+        print(json.dumps({'schema_version': 1, 'state': 'error', 'message': str(error)}))
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
