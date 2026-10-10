@@ -177,7 +177,10 @@ for the candidate's own manifest. The records are read again at promotion: after
 0.2.0, the next candidate also requires 0.2.0 upgrade runs. `promote --first` exists once,
 for the bridge release. `withdraw <channel>` serves the files of an earlier snapshot again as a new snapshot.
 `github [--tag testing] [--restore]` copies a channel to the old GitHub address during the
-bridge period. `status`, `verify <channel>`, `unlock --yes`, `sign <dir>`. A publish that dies
+bridge period; it sets the `Current: Emaki <version> (<UTC day>)` line of the release text (above
+`<!-- emaki-sources -->`) to the `emaki` marker of the copied snapshot and keeps the rest of the
+hand-written text (DRY-RUN prints the line); a restore names the release of the restored database.
+`status`, `verify <channel>`, `unlock --yes`, `sign <dir>`. A publish that dies
 is finished by running the same command again. The checks are recorded only once the lock is
 held, and every run repeats the stamp and the closure check right before it moves the pointer;
 a check that fails there closes the run and releases the lock, with nothing machines read

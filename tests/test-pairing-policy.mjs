@@ -228,6 +228,7 @@ function run(sources) {
         const focus = focusFixture(), calls = [];
         const state = vm.createContext({pendingCheck: null, pendingKind: '', pendingValue: null,
             pairingFocusManaged: true, pairingQueued: false, action: {busy: false},
+            wifiRestartRunning: false, wifiRestart: {running: false},
             actionState: 'idle', attempts: 0, ticks: 25, confirmationTicks: 25,
             confirmation: {start() {}}, backend: {act(...args) { calls.push(args); return result; }}});
         state.service = state;
@@ -241,6 +242,22 @@ function run(sources) {
         state.stop = () => {};
         state.tick = production(timerFile, 'tick', '', state);
         return {state, focus, calls};
+    }
+    for (const flag of ['authorization', 'process']) {
+        for (const kind of ['volume', 'mute', 'mic', 'brightness', 'profile', 'bt-power', 'lock', 'session']) {
+            const {state, calls} = serviceFixture(() => true);
+            state.helpersEnabled = true;
+            state.action.start = request => calls.push(request);
+            state.wifiRestartRunning = flag === 'authorization';
+            state.wifiRestart.running = flag === 'process';
+            for (const wifiKind of ['wifi-restart', 'wifi-power', 'wifi-connect', 'hidden']) {
+                assert.equal(state.act(wifiKind, null), false, wifiKind + ' remains gated during ' + flag);
+                assert.equal(state.actionState, 'busy');
+            }
+            assert.equal(state.act(kind, kind === 'session' ? 'suspend' : 42), true,
+                kind + ' remains available during ' + flag);
+            assert.equal(calls.length, 1, kind + ' reaches its isolated backend');
+        }
     }
     for (const outcome of ['confirmed', 'failed', 'throws', 'cancel']) {
         const result = outcome === 'failed' ? 'unavailable' : outcome === 'throws' ?
@@ -446,6 +463,9 @@ if (process.argv.includes('--mutations')) {
         ['missing pairing owner', 'ShellOutputs.qml', 'outputs.pairingOwner?.surfaces.pairingReady ?? true', 'outputs.pairingOwner?.surfaces.pairingReady ?? false'],
         ['shared focus management', 'ShellOutputs.qml', 'value: !outputs.headless', 'value: false'],
         ['deferred native request', 'SystemService.qml', 'if (!service.pairingFocusReady)', 'if (false)'],
+        ['authorization blocks unrelated actions', 'SystemService.qml',
+            '(wifiAction && (wifiRestartRunning || wifiRestart.running))',
+            '(wifiRestartRunning || wifiRestart.running)'],
         ['preview stacking', 'ShellScene.qml', 'z: scene.batteryPeekOpen || scene.pairingPeekOpen ? 40 : 0', 'z: 0'],
         ['panel closing', 'ShellScene.qml', 'closeTimer.restart();\n    }\n    Behavior on systemExpansion', 'peekIds = [];\n        closeTimer.restart();\n    }\n    Behavior on systemExpansion'],
         ['sharing privacy', 'ClockBody.qml', 'hidePreviewBodies ? Object.assign', 'false ? Object.assign']

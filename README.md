@@ -6,7 +6,7 @@ Emaki is an Arch-based desktop built around **niri-emaki**, a fork of the
 pixel-art wallpaper: a looping valley at sunset that scrolls with your workspaces, with
 steam trains running through it.
 
-**Status: 0.4.1 alpha — not for everyday use.** See [Release stages](#release-stages). It is
+**Status: 0.4.2 alpha — not for everyday use.** See [Release stages](#release-stages). It is
 tested in QEMU with UEFI firmware (OVMF) and has been installed on one real machine so far, see
 [Tested hardware](#tested-hardware). Where the project is heading: [PLANS.md](PLANS.md).
 
@@ -76,7 +76,7 @@ installer offers two software sets. **Minimal** is the desktop with Dolphin, Fir
 **Rich** (preselected) adds LibreOffice, Thunderbird, Okular, Kate, Gwenview, Ark, Haruna,
 Elisa, Spectacle, OBS Studio, qBittorrent, KeePassXC, Discover with Flatpak, Partition Manager,
 Filelight, System Monitor, ISO Image Writer, KCharSelect, Skanlite, printing and
-media codecs. Not in 0.4.1: BIOS boot, installing alongside Windows.
+media codecs. Not in 0.4.2: BIOS boot, installing alongside Windows.
 
 ## Security notes
 
@@ -101,16 +101,15 @@ session without your password.
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.3.1 | Update from 0.3.0 with `pacman -Syu`, boot with disk encryption, login, desktop, wrong and right password on the lock screen | After hibernation the session does not respond; Wi-Fi joined in the installer has to be joined again after installing |
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.4.0 | Installation from USB with disk encryption, boot, login, desktop, Wi-Fi on 2.4 GHz, keyboard control of the panel and dock | Wi-Fi joined in the installer has to be joined again after installing |
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.4.1 | Update from 0.4.0 with `pacman -Syu`, Wi-Fi after the update, screen lock and unlock | No new issues found |
+| MacBook Pro (Retina, 13-inch, Early 2015) | 0.4.2 | Update from 0.4.1 with `pacman -Syu`, restart, sound with realtime priority, the snapshot boot menu check at startup | No new issues found |
 
 Installed Emaki on another machine? Reports are welcome in the issues.
 
-### Known issues in 0.4.1
+### Known issues in 0.4.2
 
 - Hibernation: on the tested MacBook the session does not respond after resuming. Do not use
   hibernation.
 - Wi-Fi joined in the installer has to be joined again after installing.
-- Systems updated from earlier versions print `warning: directory permissions differ on
-  /etc/sudoers.d/` during updates. Administrator rights keep working.
 - Machines that still update from the old GitHub address print
   "emaki: missing required signature" once after moving to `pkgs.emaki.sh`; the next update is
   clean.

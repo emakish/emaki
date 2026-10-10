@@ -106,6 +106,7 @@ scripts/core-package.py	Build tool producing the installed core executable.	Make
 scripts/make-public.sh	Public source export maintenance tool.	MANIFEST.md:public source export; tests/test-make-public.py
 scripts/release-notes	Offline release draft and missing-note check; not installed.	docs/updates-runbook.md:Release notes draft; tests/test-release-notes.py
 scripts/public/PLANS.md	Public source repository letter on where the project is heading.	scripts/make-public.sh
+scripts/public/NIXOS.md	Public source repository page on Emaki and NixOS.	scripts/make-public.sh
 scripts/public/README.md	Public source repository README template.	scripts/make-public.sh
 scripts/public/allow.txt	Public source export lexical exceptions.	scripts/make-public.sh
 scripts/public/screenshots/boot-menu.png	Public repository documentation screenshot for boot-menu.	scripts/make-public.sh:shots

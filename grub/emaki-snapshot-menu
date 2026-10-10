@@ -15,10 +15,44 @@ import tempfile
 # The supported generator calls this renderer before validating and publishing
 # its menu, including updates made directly by the snapshot watcher.
 SETTING = 'GRUB_BTRFS_SCRIPT_CHECK="emaki-snapshot-menu-check"'
+STAGING = '.emaki-snapshots'
+STAGING_SETTING = 'GRUB_BTRFS_GBTRFS_DIRNAME="/boot/grub/.emaki-snapshots"'
 SCRIPT_CHECK = '/usr/bin/grub-script-check'
 HEADER = re.compile(r"menuentry '\|((?:\s*(?:Date|Snapshot|Type|Description)\s*\|)+)' \{ echo \}\n")
 OUTER = re.compile(r"submenu '(\|[^']*)' \{\n")
 TITLE = re.compile(r"    submenu '(\|[^']*)' \{ echo \}\n")
+
+
+def sync_directory(path):
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def publish_staged(menu):
+    """Publish checked bytes before the generator replaces its private copy."""
+    if menu.name != 'grub-btrfs.new' or menu.parent.name != STAGING:
+        return
+    if menu.parent.is_symlink() or menu.parent.parent.is_symlink():
+        raise ValueError(f'{menu.parent}: expected a real directory')
+    target = menu.parent.parent / 'grub-btrfs.cfg'
+    if target.is_symlink() or (target.exists() and not target.is_file()):
+        raise ValueError(f'{target}: expected a regular file')
+    descriptor, temporary = tempfile.mkstemp(prefix=target.name + '.emaki-publish-', dir=target.parent)
+    try:
+        with os.fdopen(descriptor, 'wb') as stream:
+            stream.write(menu.read_bytes())
+            stream.flush()
+            os.fchmod(stream.fileno(), 0o644)
+            os.fsync(stream.fileno())
+        os.replace(temporary, target)
+        sync_directory(target.parent)
+        # GRUB cannot replay the Btrfs tree log; commit the renamed file too.
+        subprocess.run(['sync', '-f', str(target)], check=True)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
 
 
 def replace_file(path, original, replacement, validate=False):
@@ -38,6 +72,9 @@ def replace_file(path, original, replacement, validate=False):
         if validate and subprocess.run([SCRIPT_CHECK, temporary], check=False).returncode:
             raise ValueError('The snapshot menu failed its syntax check (grub-script-check).')
         os.replace(temporary, path)
+        sync_directory(path.parent)
+        if validate:
+            subprocess.run(['sync', '-f', str(path)], check=True)
     finally:
         Path(temporary).unlink(missing_ok=True)
 
@@ -87,10 +124,31 @@ def repair(generator, menu, defaults):
         raise ValueError(f'{generator}: expected a regular file')
     if defaults.is_symlink() or not defaults.is_file():
         raise ValueError(f'{defaults}: expected a regular file')
+    stage = menu.parent / STAGING
+    if stage.is_symlink():
+        raise ValueError(f'{stage}: expected a real directory')
+    stage.mkdir(parents=True, exist_ok=True)
+    sync_directory(stage.parent)
     text = defaults.read_text()
-    if SETTING not in text.splitlines():
-        replace_file(defaults, text, text.rstrip('\n') + '\n' + SETTING + '\n')
+    settings = [setting for setting in (SETTING, STAGING_SETTING) if setting not in text.splitlines()]
+    if settings:
+        replace_file(defaults, text, text.rstrip('\n') + '\n' + '\n'.join(settings) + '\n')
     repair_menu(menu)
+    # Retire interrupted writes from before staging and either temporary prefix.
+    leftovers = [menu.with_name('grub-btrfs.cfg.bkp'), menu.with_name('grub-btrfs.new')]
+    leftovers.extend(menu.parent.glob('grub-btrfs.cfg.emaki.*'))
+    leftovers.extend(menu.parent.glob('grub-btrfs.cfg.emaki-publish-*'))
+    removed = False
+    for leftover in leftovers:
+        try:
+            mode = leftover.lstat().st_mode
+        except FileNotFoundError:
+            continue
+        if stat.S_ISREG(mode):
+            leftover.unlink()
+            removed = True
+    if removed:
+        sync_directory(menu.parent)
 
 
 def main():
@@ -103,9 +161,12 @@ def main():
     try:
         if args.check is not None:
             repair_menu(args.check)
-            return subprocess.run([SCRIPT_CHECK, str(args.check)], check=False).returncode
+            result = subprocess.run([SCRIPT_CHECK, str(args.check)], check=False).returncode
+            if result == 0:
+                publish_staged(args.check)
+            return result
         repair(args.generator, args.menu, args.defaults)
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.exit(1, f'emaki-snapshot-menu: {error}\n')
     return 0
 

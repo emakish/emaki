@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import runpy
 import re
+import stat
 import subprocess
 import tempfile
 
@@ -141,6 +142,20 @@ def adopt_defaults(root, fresh=False):
         wheel.unlink()
 
 
+def repair_sudoers_mode(root):
+    """Give an installed /etc/sudoers.d the 0750 that sudo and emaki-config ship.
+
+    Images up to 0.3.0 created it 0755; pacman never changes the mode of an existing
+    directory and warns on every transaction that extracts it. Only that exact
+    root-owned 0755 directory is changed; any other mode is a local choice."""
+    directory = root / 'etc/sudoers.d'
+    if not safe(directory) or not directory.is_dir():
+        return
+    status = directory.lstat()
+    if stat.S_IMODE(status.st_mode) == 0o755 and status.st_uid == 0 and status.st_gid == 0:
+        directory.chmod(0o750)
+
+
 def release_defaults(root, removing=False):
     """Detach managed settings while the outgoing package is still installed."""
     from emaki_boot_defaults import release as release_boot
@@ -237,6 +252,10 @@ def apply(root, fresh=False):
     if state.get('version', 0) < 2:
         retire_installer_outputs(root)
         state['version'] = 2
+        write(path, json.dumps(state) + '\n')
+    if state.get('version', 0) < 3:
+        repair_sudoers_mode(root)
+        state['version'] = 3
         write(path, json.dumps(state) + '\n')
     from emaki_boot_defaults import apply as boot_defaults
     boot_defaults(root)

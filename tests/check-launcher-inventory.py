@@ -14,13 +14,16 @@ import re
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-MINIMAL = {'emaki-welcome', 'firefox', 'kitty', 'org.kde.dolphin'}
+# The update manager comes with emaki-config, so every set shows it; Blueman's two entries
+# are hidden (Bluetooth lives in the shell panel); Printers comes with emaki-apps (Rich only).
+MINIMAL = {'emaki-welcome', 'firefox', 'kitty', 'org.kde.dolphin',
+           'emaki-update-manager'}
 LIVE = MINIMAL | {'emaki-install', 'gparted'}
 RICH = MINIMAL | {
     'org.kde.ark', 'org.kde.discover', 'org.kde.elisa', 'org.kde.filelight',
     'org.kde.gwenview', 'org.kde.haruna', 'org.kde.isoimagewriter', 'org.kde.kate',
-    'org.kde.kcharselect', 'org.kde.kdeconnect.app',
-    'org.kde.kdeconnect.sms', 'org.keepassxc.KeePassXC', 'com.obsproject.Studio',
+    'org.kde.kcharselect', 'emaki-printers',
+    'org.keepassxc.KeePassXC', 'com.obsproject.Studio',
     'org.kde.okular', 'org.kde.partitionmanager', 'org.kde.plasma-systemmonitor',
     'org.qbittorrent.qBittorrent', 'org.kde.skanlite', 'org.kde.spectacle',
     'org.mozilla.Thunderbird', 'cups',

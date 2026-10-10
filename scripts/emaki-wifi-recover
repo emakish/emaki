@@ -1,0 +1,308 @@
+#!/usr/bin/python3 -I
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Recover a disconnected wireless device without unloading a shared module."""
+from contextlib import contextmanager
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import signal
+import subprocess
+import sys
+import syslog
+import time
+
+ENV = {'PATH': '/usr/bin', 'LC_ALL': 'C'}
+QUIET = 30
+BACKOFF = (60, 180, 600)
+WINDOW = 90
+FAILURE = re.compile(r'\bscan(?:ning)?(?:\s+(?:request|operation))?\s*:?\s*'
+                     r'(?:error|failed|failure|timed out)\b|'
+                     r'\bfailed to (?:request |start |trigger |perform )?scan\b', re.I)
+NAME = re.compile(r'[a-zA-Z0-9_.:-]+')
+
+
+def run(*args):
+    return subprocess.run(args, check=True, capture_output=True, text=True,
+                          timeout=8, env=ENV).stdout.strip()
+
+
+def failure_for(row, names, now):
+    """Accept only fresh kernel records naming this interface, phy or bus device."""
+    if row.get('_TRANSPORT') != 'kernel':
+        return False
+    try:
+        age = now - int(row['__MONOTONIC_TIMESTAMP']) / 1_000_000
+    except (KeyError, TypeError, ValueError):
+        return False
+    message = row.get('MESSAGE', '')
+    if isinstance(message, list):
+        try:
+            message = bytes(message).decode('utf-8', errors='replace')
+        except (ValueError, TypeError):
+            return False
+    if not isinstance(message, str) or not 0 <= age <= WINDOW or not FAILURE.search(message):
+        return False
+    return any(re.search(r'(?<![\w.:-])' + re.escape(name) + r'(?![\w.-])',
+                         message) for name in names)
+
+
+class Recovery:
+    def __init__(self, sysfs=Path('/sys'), runtime=Path('/run/emaki-wifi-recovery'),
+                 command=run, clock=time.monotonic, log=None):
+        self.sysfs, self.runtime = sysfs, runtime
+        self.command, self.clock = command, clock
+        self.log = log or (lambda text: syslog.syslog(syslog.LOG_NOTICE, text))
+
+    def devices(self):
+        result = []
+        for net in sorted((self.sysfs / 'class/net').iterdir()):
+            try:
+                if not (net / 'phy80211').exists() or not NAME.fullmatch(net.name):
+                    continue
+                device = (net / 'device').resolve(strict=True)
+                driver = (device / 'driver').resolve(strict=True)
+                bus = (device / 'subsystem').resolve(strict=True).name
+                # USB binds its wireless interface, never the parent USB device.
+                if bus not in ('pci', 'usb') or (bus == 'usb' and ':' not in device.name):
+                    continue
+                if not device.is_relative_to(self.sysfs / 'devices'):
+                    continue
+                if driver.parent != self.sysfs / 'bus' / bus / 'drivers':
+                    continue
+                if not NAME.fullmatch(device.name) or not all(
+                        (driver / verb).exists() for verb in ('unbind', 'bind')):
+                    continue
+                result.append({'interface': net.name, 'device': device, 'driver': driver,
+                               'phy': (net / 'phy80211').resolve(strict=True).name})
+            except OSError:
+                continue
+        return result
+
+    def guard(self, candidate):
+        """Return a fixed guard name, never connection names or other NM text."""
+        try:
+            if self.command('/usr/bin/nmcli', '-g', 'WIFI,WIFI-HW', 'general').strip().split(':') != ['enabled', 'enabled']:
+                return 'radio'
+            found = False
+            for net in (self.sysfs / 'class/net').iterdir():
+                device = (net / 'device').resolve()
+                if device != candidate['device'] and not device.is_relative_to(candidate['device']):
+                    continue
+                found = True
+                if not (net / 'phy80211').exists():
+                    return 'wired-sibling'
+                if (net / 'carrier').read_text().strip() != '0':
+                    return 'carrier'
+                if (net / 'operstate').read_text().strip() not in ('down', 'dormant'):
+                    return 'operstate'
+                values = self.command('/usr/bin/nmcli', '-g', 'GENERAL.TYPE,GENERAL.STATE',
+                                      'device', 'show', net.name).splitlines()
+                # Only managed, disconnected or failed devices. Activation (40..100),
+                # deactivation, unavailable and unmanaged states must never be reset.
+                if len(values) != 2 or values[0] != 'wifi' or values[1].split()[0] not in ('30', '120'):
+                    return 'nm-state'
+                if self.command('/usr/bin/nmcli', '-g', 'BSSID', 'device', 'wifi', 'list',
+                                'ifname', net.name, '--rescan', 'no'):
+                    return 'scan-cache'
+            return None if found else 'missing-interface'
+        except (OSError, subprocess.SubprocessError, IndexError):
+            return 'state-unavailable'
+
+    def safe(self, candidate):
+        self.refusal = self.guard(candidate)
+        return self.refusal is None
+
+    def log_refusal(self, record, candidate):
+        if not record.get('refused'):
+            record['refused'] = True
+            self.log(f"device={candidate['device'].name} evidence present, refused: {self.refusal}")
+
+    @contextmanager
+    def state(self):
+        # Root-owned /run persists across service/manual restarts, but not a boot.
+        self.runtime.mkdir(mode=0o700, exist_ok=True)
+        with (self.runtime / 'lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            path = self.runtime / 'state.json'
+            data = json.loads(path.read_text()) if path.exists() else {}
+            yield data
+
+    def save(self, data):
+        serialized = json.dumps(data)
+        path = self.runtime / 'state.json'
+        if path.exists() and path.read_text() == serialized:
+            return
+        temporary = self.runtime / 'state.new'
+        with temporary.open('w') as stream:
+            stream.write(serialized)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(self.runtime / 'state.json')
+
+    def rebind(self, candidate):
+        driver, device = candidate['driver'], candidate['device']
+        # Persisting the budget and writing the journal can yield to NM. Check again
+        # at the sysfs boundary, including calls made outside the polling loop.
+        if not self.safe(candidate):
+            raise OSError('device state changed')
+        if (device / 'driver').resolve(strict=True) != driver:
+            raise OSError('driver changed')
+        # Keep both controls open before removing the device. Always attempt bind,
+        # even if unbind raises after a partial operation. No shell or module names.
+        with (driver / 'bind').open('w') as bind, (driver / 'unbind').open('w') as unbind:
+            mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM, signal.SIGINT})
+            try:
+                try:
+                    unbind.write(device.name)
+                    unbind.flush()
+                finally:
+                    bind.write(device.name)
+                    bind.flush()
+            finally:
+                signal.pthread_sigmask(signal.SIG_SETMASK, mask)
+
+    def finish_pending(self, data, now):
+        """Complete recorded unbinds even after their wireless netdev disappeared."""
+        handled = set()
+        outcome = 1
+        for key, record in data.items():
+            pending = record.get('pending')
+            if not pending:
+                continue
+            handled.add(key)
+            try:
+                try:
+                    device = (self.sysfs / 'devices' / key).resolve(strict=True)
+                except FileNotFoundError:
+                    record.pop('pending')
+                    continue
+                driver = (self.sysfs / pending).resolve(strict=True)
+                bus = (device / 'subsystem').resolve(strict=True).name
+                if (not device.is_relative_to(self.sysfs / 'devices') or
+                        not NAME.fullmatch(device.name) or bus not in ('pci', 'usb') or
+                        (bus == 'usb' and ':' not in device.name) or
+                        driver.parent != self.sysfs / 'bus' / bus / 'drivers'):
+                    continue
+                if (device / 'driver').exists():
+                    record.pop('pending')
+                    continue
+                # Never replace an existing binding, even if its link is unreadable.
+                if (device / 'driver').is_symlink():
+                    continue
+                count = record.get('bind_attempts', 0)
+                if count >= len(BACKOFF) or now < record.get('bind_next', 0):
+                    outcome = 75
+                    continue
+                record.update(bind_attempts=count + 1, bind_next=now + BACKOFF[count])
+                self.save(data)
+                self.log(f'device={device.name} completion={count + 1} reset=bind-pending')
+                (driver / 'bind').write_text(device.name)
+                outcome = 0
+                if (device / 'driver').exists():
+                    record.pop('pending')
+            except OSError:
+                outcome = 1
+        return handled, outcome
+
+    def tick(self, rows=(), manual=False):
+        now = self.clock()
+        outcome = 1
+        with self.state() as data:
+            seen, outcome = self.finish_pending(data, now)
+            for candidate in self.devices():
+                key = str(candidate['device'].relative_to(self.sysfs / 'devices'))
+                if key in seen:
+                    continue
+                seen.add(key)
+                record = data.setdefault(key, {'attempts': 0, 'next': 0})
+                names = (candidate['interface'], candidate['phy'], candidate['device'].name)
+                evidence = any(failure_for(row, names, now) and
+                               int(row['__MONOTONIC_TIMESTAMP']) / 1_000_000 > record.get('last', -1)
+                               for row in rows)
+                if not (manual or evidence):
+                    record.pop('empty_since', None)
+                    continue
+                if not self.safe(candidate):
+                    if evidence:
+                        self.log_refusal(record, candidate)
+                    record.pop('empty_since', None)
+                    continue
+                if record['attempts'] >= len(BACKOFF) or now < record['next']:
+                    outcome = 75
+                    continue
+                start = record.setdefault('empty_since', now)
+                if not manual and now - start < QUIET:
+                    continue
+                # Recheck after discovery/polling and before the destructive write.
+                if not self.safe(candidate):
+                    if evidence:
+                        self.log_refusal(record, candidate)
+                    record.pop('empty_since', None)
+                    continue
+                count = record['attempts']
+                record.update(attempts=count + 1, last=now, next=now + BACKOFF[count],
+                              pending=str(candidate['driver'].relative_to(self.sysfs)))
+                record.pop('empty_since', None)
+                self.save(data)  # A crash or failed bind consumes the attempt too.
+                self.log(f"device={candidate['device'].name} interface={candidate['interface']} "
+                         f"attempt={count + 1} source={'manual' if manual else 'automatic'} "
+                         'reset=unbind-bind')
+                try:
+                    self.rebind(candidate)
+                    outcome = 0
+                except OSError:
+                    outcome = 1
+                if (candidate['device'] / 'driver').exists():
+                    record.pop('pending', None)
+                # One device per invocation; later polls can handle another adapter.
+                break
+            self.save(data)
+        return outcome
+
+    def watch_tick(self):
+        candidates = self.devices()
+        if not candidates:
+            if not (self.runtime / 'state.json').exists():
+                return False
+            with self.state() as data:
+                if not any(record.get('pending') and
+                           record.get('bind_attempts', 0) < len(BACKOFF)
+                           for record in data.values()):
+                    return False
+            # Pending binds need no scan evidence; their netdev may be absent.
+        self.tick(self.journal() if candidates else ())
+        return True
+
+    def journal(self):
+        output = self.command('/usr/bin/journalctl', '--boot', '--quiet', '--no-pager',
+                              '--output=json', '--since=-90 seconds', '-n', '200',
+                              '_TRANSPORT=kernel', '+', '_SYSTEMD_UNIT=NetworkManager.service')
+        return [json.loads(line) for line in output.splitlines() if line]
+
+
+def main():
+    if len(sys.argv) != 2 or sys.argv[1] not in ('restart', 'watch') or os.geteuid() != 0:
+        return 1
+    # The polkit entry authorizes restart only; even a direct privileged invocation
+    # exposes no arbitrary paths, device IDs, executables or environment overrides.
+    if sys.argv[1] == 'watch' and 'PKEXEC_UID' in os.environ:
+        return 1
+    syslog.openlog('emaki-wifi-recovery')
+    recovery = Recovery()
+    if sys.argv[1] == 'restart':
+        return recovery.tick(manual=True)
+    while True:
+        try:
+            if not recovery.watch_tick():
+                return 0
+        except (OSError, ValueError, subprocess.SubprocessError):
+            # Missing NM/journal/state cannot authorize a reset. The next poll retries.
+            pass
+        time.sleep(10)
+
+
+if __name__ == '__main__':
+    sys.exit(main())

@@ -4,7 +4,7 @@ Quickshell 0.3.1 from Arch + two patches and one upstream backport. The first: t
 The second: `Network.activation` names the NetworkManager activation a `connectionFailed` belongs to, a new activation no longer inherits the previous one's failure reason, and failure reasons without a `ConnectionFailReason` of their own are reported as `Unknown` instead of not at all (the shell's Wi-Fi panel needs this to ignore a late failure of a join it has retried).
 The backport (`0003`) carries upstream commit `5d5d498` (complete types for meta-object generation), which Quickshell needs to build against Qt 6.12; see `packaging/REBASE.md`.
 A separate package (`provides`/`conflicts` quickshell) prevents pacman from overwriting the fix during a normal update.
-Build: `makepkg -s` in this directory; install: `sudo pacman -U quickshell-emaki-0.3.1-6-x86_64.pkg.tar.zst`.
+Build: `makepkg -s` in this directory; install: `sudo pacman -U quickshell-emaki-0.3.1-7-x86_64.pkg.tar.zst`.
 Once upstream Quickshell includes both fixes, remove this package and return to `quickshell` from extra.
 Upstream report (2026-09-25): https://github.com/quickshell-mirror/quickshell/issues/1202.
 

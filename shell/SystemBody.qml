@@ -34,6 +34,7 @@ Item {
     property string hiddenName: ""
     property string hiddenPassword: ""
     readonly property var wifiErrors: ({
+            wifi_restart_failed: "Wi-Fi could not restart. Try again later.",
             wrong_password: "Wrong password. Try again.",
             auth_timeout: "The network did not answer in time. Try again.",
             network_lost: "The network disappeared while connecting.",
@@ -1408,6 +1409,20 @@ Item {
                                 height: 2
                             }
                         }
+                    }
+                }
+                Item {
+                    width: body.inner
+                    height: 40
+                    visible: body.backend?.wifiRestartAvailable ?? false
+                    Word {
+                        objectName: "wifiRestartAction"
+                        x: 6
+                        y: 2
+                        key: "wifi-restart"
+                        label: "Restart Wi-Fi"
+                        enabled: !body.service.wifiRestartRunning
+                        onClicked: body.service.act("wifi-restart", null)
                     }
                 }
                 // system.js: the word 6 px in, 40 px for the line.

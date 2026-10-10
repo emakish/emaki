@@ -41,6 +41,7 @@ report = json.loads(lint.stdout)
 (CACHE / 'shell-qmllint.json').write_text(lint.stdout)
 known = []
 additional_metadata = {
+    ('SystemService.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('NiriService.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('SessionUpdateNotice.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('WelcomeController.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
@@ -70,7 +71,7 @@ for file in report['files']:
         else:
             raise AssertionError((file['filename'], warning))
 # Exact Quickshell metadata gaps; runtime tests exercise these handlers.
-assert len(known) <= 22, known
+assert len(known) <= 23, known
 assert lint.returncode == 0 or known, (lint.returncode, lint.stderr)
 print(f'QML format OK; qmllint raw rc={lint.returncode}, {len(known)} documented QS metadata diagnostics, no others')
 
@@ -83,7 +84,8 @@ if '--lint-only' in sys.argv:
 # Desktop ids the launcher never lists (Arch live-ISO/dependency utilities; DECISIONS 2026-10-03).
 HIDDEN_IDS = ['avahi-discover', 'bssh', 'bvnc', 'lftp', 'lstopo', 'qv4l2', 'qvidcap',
               'stoken-gui', 'stoken-gui-small', 'vim',
-              'qt6ct', 'org.kde.kdeconnect.nonplasma', 'mpv', 'org.kde.kwrite']
+              'qt6ct', 'org.kde.kdeconnect.nonplasma', 'mpv', 'org.kde.kwrite',
+              'blueman-adapters', 'blueman-manager']
 _catalog = Path('shell/AppCatalog.qml').read_text()
 _listed = json.loads(_catalog[_catalog.index('hiddenIds: [') + len('hiddenIds: '):].split('\n', 1)[0])
 assert _listed == HIDDEN_IDS, ('AppCatalog.hiddenIds and the fixture list differ', _listed)

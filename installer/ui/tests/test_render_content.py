@@ -52,7 +52,7 @@ class RenderContentTests(unittest.TestCase):
         self.evidence = {
             'width': 400, 'height': 700, 'footerY': 660,
             'texts': [
-                dict(text='Install · 0.4.1', x=10, y=10, width=160, height=20, body=False, clipped=False, truncated=False),
+                dict(text='Install · 0.4.2', x=10, y=10, width=160, height=20, body=False, clipped=False, truncated=False),
                 dict(text='Welcome to Emaki', x=10, y=60, width=250, height=24, body=True, clipped=False, truncated=False),
                 dict(text='Page details', x=10, y=110, width=250, height=24, body=True, clipped=False, truncated=False),
             ],
@@ -70,7 +70,7 @@ class RenderContentTests(unittest.TestCase):
 
     def validate(self, evidence=None):
         log = 'CONTENT_FRAME welcome ' + json.dumps(evidence or self.evidence)
-        validate_frame(self.path, log, 'welcome', self.evidence['width'], self.evidence['height'], '0.4.1')
+        validate_frame(self.path, log, 'welcome', self.evidence['width'], self.evidence['height'], '0.4.2')
 
     def test_correct_content_passes(self):
         self.validate()
@@ -130,7 +130,7 @@ class RenderContentTests(unittest.TestCase):
 
     def test_missing_evidence_fails(self):
         with self.assertRaisesRegex(AssertionError, 'Missing or repeated'):
-            validate_frame(self.path, 'LAYOUT_OK SCREENSHOT_OK welcome', 'welcome', 400, 700, '0.4.1')
+            validate_frame(self.path, 'LAYOUT_OK SCREENSHOT_OK welcome', 'welcome', 400, 700, '0.4.2')
 
 
 class RenderMutationTests(unittest.TestCase):

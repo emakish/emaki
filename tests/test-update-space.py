@@ -72,7 +72,7 @@ class Space(unittest.TestCase):
 
     def test_btrfs_subvolumes_share_backing_pool_and_unknown_combines(self):
         mounts = ('10 1 0:30 /@ / rw - btrfs /dev/test rw\n'
-                  '11 1 0:31 /@pkg /var/cache/pacman/pkg rw - btrfs /dev/test rw\n')
+                  '11 10 0:31 /@pkg /var/cache/pacman/pkg rw - btrfs /dev/test rw\n')
         root = space.mount_details('/', mounts)
         cache = space.mount_details('/var/cache/pacman/pkg', mounts)
         self.assertEqual(root, ('/dev/test', 'btrfs'))
@@ -86,15 +86,58 @@ class Space(unittest.TestCase):
         self.assertEqual(len(space.requirements(1, 1, filesystem(1, 10), filesystem(2, 10),
                                               pools=('/dev/root', None))), 1)
 
-    def test_last_overmount_at_deepest_matching_path_is_visible(self):
-        mounts = ('10 1 0:30 / / rw - btrfs /dev/root rw\n'
-                  '11 10 0:31 / /var/cache/pacman/pkg rw - btrfs /dev/hidden rw\n'
-                  '12 11 0:32 / /var/cache/pacman/pkg rw - ext4 /dev/visible rw\n'
-                  '13 10 0:33 / /var/cache rw - ext4 /dev/shallower rw\n')
-        for path in ('/var/cache/pacman/pkg', '/var/cache/pacman/pkg/package.pkg.tar.zst'):
+    STACKED = ('10 1 0:30 / / rw - btrfs /dev/root rw\n'
+               '11 10 0:31 / /var/cache/pacman/pkg rw - btrfs /dev/hidden rw\n'
+               '12 11 0:32 / /var/cache/pacman/pkg rw - ext4 /dev/visible rw\n')
+    PACKAGE_PATHS = ('/var/cache/pacman/pkg', '/var/cache/pacman/pkg/package.pkg.tar.zst')
+
+    def assert_visible_mounts(self, details):
+        # Stacked at one path: the top of the stack is visible.
+        for path in self.PACKAGE_PATHS:
+            self.assertEqual(details(path, self.STACKED), ('/dev/visible', 'ext4'))
+        # A later, shallower mount covers both: the package cache is on it now.
+        covered = self.STACKED + '13 10 0:33 / /var/cache rw - ext4 /dev/shallower rw\n'
+        for path in (*self.PACKAGE_PATHS, '/var/cache'):
+            self.assertEqual(details(path, covered), ('/dev/shallower', 'ext4'))
+        # A propagated mount on the covered stack stays hidden, though it is listed last.
+        hidden = covered + '14 12 0:34 / /var/cache/pacman/pkg/sub rw - xfs /dev/propagated rw\n'
+        self.assertEqual(details('/var/cache/pacman/pkg/sub', hidden), ('/dev/shallower', 'ext4'))
+        # A mount made inside the covering one is visible again.
+        inner = covered + '15 13 0:35 / /var/cache/pacman/pkg rw - xfs /dev/inner rw\n'
+        for path in self.PACKAGE_PATHS:
+            self.assertEqual(details(path, inner), ('/dev/inner', 'xfs'))
+        self.assertEqual(details('/var/cache', inner), ('/dev/shallower', 'ext4'))
+        self.assertEqual(details('/', inner), ('/dev/root', 'btrfs'))
+        # A table that cannot be walked from its root proves nothing.
+        self.assertEqual(details('/var', '10 10 0:30 / / rw - btrfs /dev/root rw\n'), (None, None))
+
+    def test_visible_mount_follows_the_mount_tree(self):
+        self.assert_visible_mounts(space.mount_details)
+
+    def test_mutant_without_parent_check_is_rejected(self):
+        path = ROOT / 'update-manager/emaki_update_space.py'
+        source = path.read_text()
+        old = 'mount[2] == prefix and mount[1] == visible[0]'
+        self.assertEqual(source.count(old), 1)
+        namespace = {'__file__': str(path), '__name__': 'space_mutant'}
+        exec(compile(source.replace(old, 'mount[2] == prefix and mount[0] != visible[0]'), str(path), 'exec'), namespace)
+        with self.assertRaises(AssertionError):
+            self.assert_visible_mounts(namespace['mount_details'])
+
+    def test_real_mount_table_agrees_with_findmnt(self):
+        findmnt = Path('/usr/bin/findmnt')
+        if not findmnt.exists():
+            self.skipTest('findmnt is not installed')
+        for path in ('/', '/var/cache/pacman/pkg', tempfile.gettempdir()):
+            if not Path(path).exists():
+                continue
+            result = subprocess.run([str(findmnt), '-n', '-o', 'SOURCE,FSTYPE', '--target', path],
+                                    capture_output=True, text=True, check=True)
+            source, kind = result.stdout.split()
+            source = source.split('[', 1)[0]
+            expected = os.path.realpath(source) if source.startswith('/dev/') else None
             with self.subTest(path=path):
-                self.assertEqual(space.mount_details(path, mounts), ('/dev/visible', 'ext4'))
-        self.assertEqual(space.mount_details('/', mounts), ('/dev/root', 'btrfs'))
+                self.assertEqual(space.mount_details(path), (expected, kind))
 
     def test_snapshot_root_charges_installed_not_only_net(self):
         with patch.object(Path, 'is_dir', return_value=True):

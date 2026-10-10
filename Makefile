@@ -72,6 +72,7 @@ render:
 	python3 scripts/render-kde-theme
 
 check: check-assumptions
+	python3 tests/test-wifi-recovery.py
 	python3 update-manager/tests/test_updates.py
 	python3 update-manager/tests/mutants.py
 	python3 tests/test-runtime-fixture.py
@@ -203,6 +204,7 @@ check-updates:
 	python3 tests/test-channel-transactions.py
 	python3 tests/test-legacy-app-notice.py
 	python3 tests/test-snapshot-menu.py
+	python3 tests/test-snapshot-repair.py
 	python3 tests/test-channel-detection.py
 	python3 tests/test-arch-snapshot.py
 	python3 tests/test-qt-runtime-pins.py
@@ -264,6 +266,10 @@ install: install-upkeep
 		echo "Move your settings to ~/.config/niri/config.kdl and remove this file, then retry." >&2; \
 		exit 1; fi
 	install -Dm644 polkit/org.emaki.rollback.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.rollback.policy
+	install -Dm755 scripts/emaki-wifi-recover $(DESTDIR)$(PREFIX)/lib/emaki/emaki-wifi-recover
+	install -Dm644 polkit/org.emaki.wifi-recovery.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.wifi-recovery.policy
+	install -Dm644 systemd/emaki-wifi-recovery.service $(SYSTEMD)/system/emaki-wifi-recovery.service
+	install -Dm644 systemd/90-emaki-wifi-recovery.rules $(DESTDIR)$(PREFIX)/lib/udev/rules.d/90-emaki-wifi-recovery.rules
 	install -Dm755 -t $(BIN) $(SCRIPTS)
 	install -Dm755 update-manager/emaki-update-manager $(BIN)/emaki-update-manager
 	install -Dm755 update-manager/backend.py $(DESTDIR)$(PREFIX)/libexec/emaki/update-manager-backend
@@ -321,10 +327,12 @@ install: install-upkeep
 	install -Dm755 systemd/emaki-boot-resume $(SYSTEMD)/system-sleep/emaki-boot-resume
 	install -Dm644 systemd/emaki-boot-complete.service $(SYSTEMD)/system/emaki-boot-complete.service
 	install -Dm644 systemd/emaki-boot-refresh.service $(SYSTEMD)/system/emaki-boot-refresh.service
+	install -Dm644 systemd/emaki-snapshot-menu.service $(SYSTEMD)/system/emaki-snapshot-menu.service
 	install -Dm644 systemd/emaki-update-boot.service $(SYSTEMD)/system/emaki-update-boot.service
 	mkdir -p $(SYSTEMD)/system/multi-user.target.wants
 	ln -sfn ../emaki-boot-complete.service $(SYSTEMD)/system/multi-user.target.wants/emaki-boot-complete.service
 	ln -sfn ../emaki-boot-refresh.service $(SYSTEMD)/system/multi-user.target.wants/emaki-boot-refresh.service
+	ln -sfn ../emaki-snapshot-menu.service $(SYSTEMD)/system/multi-user.target.wants/emaki-snapshot-menu.service
 	ln -sfn ../emaki-update-boot.service $(SYSTEMD)/system/multi-user.target.wants/emaki-update-boot.service
 	install -Dm644 initcpio/hooks/emaki-resume $(DESTDIR)/usr/lib/initcpio/hooks/emaki-resume
 	install -Dm644 initcpio/install/emaki-resume $(DESTDIR)/usr/lib/initcpio/install/emaki-resume
@@ -458,6 +466,7 @@ uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/hooks/90-emaki-grub-title.hook $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-grub-title
 	rm -f $(SYSTEMD)/system/emaki-boot-complete.service $(SYSTEMD)/system/multi-user.target.wants/emaki-boot-complete.service
 	rm -f $(SYSTEMD)/system/emaki-boot-refresh.service $(SYSTEMD)/system/multi-user.target.wants/emaki-boot-refresh.service
+	rm -f $(SYSTEMD)/system/emaki-snapshot-menu.service $(SYSTEMD)/system/multi-user.target.wants/emaki-snapshot-menu.service
 	rm -f $(SYSTEMD)/system/emaki-update-boot.service $(SYSTEMD)/system/multi-user.target.wants/emaki-update-boot.service
 	rm -f $(BOOTLIB)/__init__.py $(BOOTLIB)/refresh.py $(BOOTLIB)/update.py $(BOOTLIB)/update_menu.py $(BOOTLIB)/usable.py $(addprefix $(BOOTLIB)/,$(addsuffix .py,$(BOOT_SHARED)))
 	for picture in $(BOOT_ARTWORK); do rm -f "$(BOOTLIB)/$${picture#installer/emaki_installer/}"; done
@@ -481,6 +490,8 @@ uninstall:
 	rm -rf $(DESTDIR)$(PREFIX)/share/emaki-update-manager
 	rm -f $(BIN)/emaki-session-files $(BIN)/emaki-session-update $(BIN)/emaki-update $(DESTDIR)$(PREFIX)/libexec/emaki/emaki_update_errors.py $(DESTDIR)$(PREFIX)/libexec/emaki/emaki_session_state.py
 	rm -f $(BIN)/emaki-wallet-stage $(BIN)/emaki-wallet-start $(BIN)/emaki-keyring-recover $(BIN)/emaki-wallet-migrate $(BIN)/emaki-rollback $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.rollback.policy
+	rm -f $(DESTDIR)$(PREFIX)/lib/emaki/emaki-wifi-recover $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.wifi-recovery.policy $(SYSTEMD)/system/emaki-wifi-recovery.service
+	rm -f $(DESTDIR)$(PREFIX)/lib/udev/rules.d/90-emaki-wifi-recovery.rules
 	rm -f $(BIN)/emaki-boot-refresh $(DESTDIR)$(PREFIX)/share/libalpm/hooks/95-emaki-boot-refresh.hook
 	rm -f $(BIN)/emaki-drm-hold $(BIN)/emaki-greeter-compositor $(BIN)/emaki-greeter-run $(BIN)/emaki-text-session $(BIN)/emaki-session-import-environment $(SYSTEMD)/system/emaki-drm-hold.service
 	rm -f $(BIN)/emaki-autostart $(BIN)/emaki-idle $(BIN)/emaki-config-path $(BIN)/emaki-power $(BIN)/emaki-shell $(BIN)/emaki-shell-health $(BIN)/emaki-lock $(BIN)/emaki-session-cover $(BIN)/emaki-session-wallpaper $(BIN)/emaki
@@ -585,6 +596,7 @@ $(SHADERS) &: $(SHADER_SRC)
 # No live Wayland; fixtures use .cache/, with short temporary Unix-socket paths.
 .PHONY: check-shell shell-shots shell-shaders
 check-shell: shell-shaders
+	python3 tests/test-wifi-recovery-shell.py
 	python3 update-manager/ui/tests/interactions.py
 	python3 update-manager/ui/tests/controller.py
 	python3 tests/test-render-fonts.py

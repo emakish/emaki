@@ -292,8 +292,8 @@ Windows"). The alongside check uses a synthetic Windows disk: its Microsoft
 path holds a diagnostic EFI program, so it tests chainloading only, not Windows. The last
 encrypted run on the full 0.1.2 test ISO ended rc=1.
 
-Install alongside Windows is not offered in 0.4.1: the 0.4.1 installer has no experimental
-options. On a 0.4.1 ISO the alongside check asks the worker for a plan only, sees the mode
+Install alongside Windows is not offered in 0.4.2: the 0.4.2 installer has no experimental
+options. On a 0.4.2 ISO the alongside check asks the worker for a plan only, sees the mode
 refused, prints `NOT APPLICABLE` and exits 77 without touching the target disk; treat 77 as
 "not run", never as a pass.
 
@@ -621,7 +621,7 @@ sudo cat /boot/emaki/*/manifest.json
 
 Capture the complete package transaction output. It must show the refresh hook
 and its success message. Do not run a manual refresh before the first reboot:
-that would hide a broken package hook. The 0.4.1 packages must upgrade the installed
+that would hide a broken package hook. The 0.4.2 packages must upgrade the installed
 0.2.0 packages so ordinary `pacman -Syu` selects them. No publication is part of this check.
 
 Reboot and capture the actual framebuffer:

@@ -377,6 +377,56 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(list((self.root / 'etc/emaki/sudoers.d').iterdir()), [])
 
+    def as_root(self, *arguments):
+        # A user namespace maps this account to uid 0, so the fixture is root-owned there.
+        script = self.root / 'usr/share/libalpm/scripts/emaki-system-migrate'
+        return subprocess.run(['unshare', '-r', sys.executable, '-B', str(script), str(self.root), *arguments],
+                              capture_output=True, text=True)
+
+    @unittest.skipUnless(shutil.which('unshare'), 'unshare unavailable')
+    def test_old_root_owned_sudoers_directory_mode_is_repaired_once(self):
+        directory = self.root / 'etc/sudoers.d'
+        self.assertEqual(directory.stat().st_mode & 0o7777, 0o750)  # what new installs get
+        directory.chmod(0o755)
+        probe = subprocess.run(['unshare', '-r', 'stat', '-c', '%u', str(directory)], capture_output=True, text=True)
+        if probe.returncode:
+            self.skipTest('user namespaces unavailable: ' + probe.stderr.strip())
+        self.assertEqual(probe.stdout.strip(), '0')
+        state = self.root / 'var/lib/emaki/migrations/state.json'
+        state.parent.mkdir(parents=True, exist_ok=True)
+        state.write_text(json.dumps({'version': 2, 'units': sorted(migration.LEGACY_UNITS)}) + '\n')
+        result = self.as_root('--transaction')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(directory.stat().st_mode & 0o7777, 0o750)
+        self.assertEqual(json.loads(state.read_text())['version'], 3)
+        # Once only: an administrator's later choice stays.
+        directory.chmod(0o755)
+        self.assertEqual(self.as_root('--transaction').returncode, 0)
+        self.assertEqual(directory.stat().st_mode & 0o7777, 0o755)
+
+    @unittest.skipUnless(shutil.which('unshare'), 'unshare unavailable')
+    def test_other_sudoers_directory_modes_owners_and_links_stay(self):
+        directory = self.root / 'etc/sudoers.d'
+        for mode in (0o700, 0o775, 0o750):
+            with self.subTest(mode=oct(mode)):
+                directory.chmod(mode)
+                (self.root / 'var/lib/emaki/migrations/state.json').unlink(missing_ok=True)
+                result = self.as_root()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(directory.stat().st_mode & 0o7777, mode)
+        # Owned by an ordinary account (this test's own uid outside the namespace).
+        directory.chmod(0o755)
+        (self.root / 'var/lib/emaki/migrations/state.json').unlink()
+        migration.apply(self.root)
+        self.assertEqual(directory.stat().st_mode & 0o7777, 0o755)
+        # A linked directory is never followed.
+        target = self.root / 'elsewhere'
+        directory.rename(target)
+        directory.symlink_to(target)
+        (self.root / 'var/lib/emaki/migrations/state.json').unlink()
+        self.assertEqual(self.as_root().returncode, 0)
+        self.assertEqual(target.stat().st_mode & 0o7777, 0o755)
+
     def test_symlinked_or_hardlinked_files_stay_untouched(self):
         external = self.put('custom', migration.LEGACY_ZRAM)
         zram = self.root / 'etc/systemd/zram-generator.conf'

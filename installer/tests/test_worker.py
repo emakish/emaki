@@ -803,6 +803,23 @@ class BootAndSnapshotTests(unittest.TestCase):
             self.assertIn('--boot-directory=/boot', c)
             self.assertIn('--bootloader-id=Emaki', c)
 
+    def test_grub_config_creates_snapshot_stage_before_generation(self):
+        self.boot_files()
+        stage = self.root / 'boot/grub/.emaki-snapshots'
+        self.assertTrue(self.worker.plan.btrfs)
+        self.assertFalse(stage.exists())
+        chroot = self.worker.runner.chroot
+
+        def check_stage(argv, target, **kwargs):
+            if argv[0] == 'grub-mkconfig':
+                self.assertTrue(stage.is_dir())
+                self.assertEqual(stage.stat().st_mode & 0o777, 0o755)
+            return chroot(argv, target, **kwargs)
+
+        with patch.object(self.worker.runner, 'chroot', side_effect=check_stage) as run:
+            self.worker.grub_config()
+        run.assert_any_call(['grub-mkconfig', '-o', '/boot/grub/grub.cfg'], self.root)
+
     def test_snapshot_packages_follow_the_root_filesystem(self):
         snapshots = {'snapper', 'snap-pac', 'grub-btrfs'}
         for fs in ('ext4', 'btrfs'):

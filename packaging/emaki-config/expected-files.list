@@ -66,6 +66,7 @@
 /usr/lib/emaki/boot/emaki_boot/update.py
 /usr/lib/emaki/boot/emaki_boot/update_menu.py
 /usr/lib/emaki/boot/emaki_boot/usable.py
+/usr/lib/emaki/emaki-wifi-recover
 /usr/lib/emaki/os-release
 /usr/lib/environment.d/60-emaki-xdg.conf
 /usr/lib/initcpio/hooks/emaki-resume
@@ -82,11 +83,14 @@
 /usr/lib/systemd/system/emaki-drm-hold.service
 /usr/lib/systemd/system/emaki-refresh-mirrors.service
 /usr/lib/systemd/system/emaki-refresh-mirrors.timer
+/usr/lib/systemd/system/emaki-snapshot-menu.service
 /usr/lib/systemd/system/emaki-update-boot.service
 /usr/lib/systemd/system/emaki-update.service
+/usr/lib/systemd/system/emaki-wifi-recovery.service
 /usr/lib/systemd/system/greetd.service.d/emaki.conf
 /usr/lib/systemd/system/multi-user.target.wants/emaki-boot-complete.service
 /usr/lib/systemd/system/multi-user.target.wants/emaki-boot-refresh.service
+/usr/lib/systemd/system/multi-user.target.wants/emaki-snapshot-menu.service
 /usr/lib/systemd/system/multi-user.target.wants/emaki-update-boot.service
 /usr/lib/systemd/user/emaki-greeter-wallpaper-watch.service
 /usr/lib/systemd/user/emaki-greeter-wallpaper.path
@@ -104,6 +108,7 @@
 /usr/lib/systemd/user/niri.service.d/50-emaki-wallet.conf
 /usr/lib/systemd/zram-generator.conf.d/00-emaki.conf
 /usr/lib/tmpfiles.d/emaki-greeter.conf
+/usr/lib/udev/rules.d/90-emaki-wifi-recovery.rules
 /usr/libexec/emaki/emaki-update-apply
 /usr/libexec/emaki/emaki_session_state.py
 /usr/libexec/emaki/emaki_update_errors.py
@@ -408,5 +413,6 @@
 /usr/share/licenses/emaki-config/LICENSE-DejaVu.txt
 /usr/share/polkit-1/actions/org.emaki.rollback.policy
 /usr/share/polkit-1/actions/org.emaki.update.policy
+/usr/share/polkit-1/actions/org.emaki.wifi-recovery.policy
 /usr/share/themes/Emaki/gtk-3.0/gtk.css
 /usr/share/wayland-sessions/niri-emaki.desktop

@@ -310,17 +310,16 @@ class GithubTarget:
     def fetch(self, tag, name):
         return http_get(f'{self.download_base}/{tag}/{name}', missing_ok=True)
 
-    def notes(self, tag, text):
+    def notes(self, tag, text, version=None):
         if self.dry_run:
-            say(f'DRY-RUN: would update source directions in {self.repo} release {tag}')
+            line = f'; header {release_line(version, utcnow())!r}' if version else ''
+            say(f'DRY-RUN: would update source directions in {self.repo} release {tag}{line}')
             return
         current = subprocess.run(['gh', 'release', 'view', tag, '-R', self.repo, '--json', 'body',
                                   '--jq', '.body'], capture_output=True, text=True, check=True).stdout
-        marker = '<!-- emaki-sources -->'
-        current = current.split(marker)[0].rstrip()
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / 'notes.txt'
-            path.write_text(current + '\n\n' + marker + '\n' + source_notes(text))
+            path.write_text(release_body(current, text, version, utcnow()))
             subprocess.run(['gh', 'release', 'edit', tag, '-R', self.repo, '--notes-file', str(path)], check=True)
 
     def delete(self, tag, name):
@@ -357,7 +356,7 @@ class LocalGithubTarget(GithubTarget):
         path = self.root / tag / name
         return path.read_bytes() if path.is_file() else None
 
-    def notes(self, tag, text):
+    def notes(self, tag, text, version=None):
         if self.dry_run:
             say(f'DRY-RUN: would update source directions in {self.root / tag}')
             return
@@ -594,6 +593,38 @@ def sources_text(records, base_url='https://pkgs.emaki.sh'):
 def source_notes(text):
     fence = '`' * max(3, max((len(m.group()) + 1 for m in re.finditer(r'`+', text)), default=3))
     return f'{fence}text\n{text.rstrip()}\n{fence}\n' if text else ''
+
+
+SOURCES_MARKER = '<!-- emaki-sources -->'
+# The Current part starts a line or a sentence of the hand-written header, e.g. GitHub's
+# "Emaki packages, stable channel. Current: Emaki 0.2.0 (2026-10-06). First upload: Emaki 0.1.0."
+RELEASE_LINE = re.compile(r'(?:^|(?<=\. ))Current: Emaki [0-9][0-9A-Za-z.+~:-]*[0-9A-Za-z]'
+                          r'(?: \(\d{4}-\d{2}-\d{2}\))?', re.M)
+
+
+def release_line(version, when):
+    """The header line of a GitHub release: the Emaki release it serves since this UTC day."""
+    return f'Current: Emaki {version} ({when.strftime("%Y-%m-%d")})'
+
+
+def release_body(current, text, version, when):
+    """Release text: the hand-written header with its Current line naming VERSION, then the
+    sources marker and the source directions. Without a version the header stays as it was."""
+    header = current.replace('\r\n', '\n').split(SOURCES_MARKER)[0].rstrip()
+    if version:
+        line = release_line(version, when)
+        if RELEASE_LINE.search(header):
+            header = RELEASE_LINE.sub(lambda _: line, header, count=1)
+        else:
+            header = line + ('\n\n' + header if header else '')
+    return header + '\n\n' + SOURCES_MARKER + '\n' + source_notes(text)
+
+
+def emaki_version(packages):
+    """pkgver of the `emaki` release marker among package file names, or None."""
+    versions = [package_version(filename)[1].rsplit('-', 1)[0] for filename in packages
+                if filename.endswith('.pkg.tar.zst') and package_version(filename)[0] == 'emaki']
+    return versions[0] if len(versions) == 1 else None
 
 
 def source_records(files):
@@ -1712,8 +1743,12 @@ class Publisher:
                     target.upload(tag, stamps[-1] / name, name)
                 else:
                     target.delete(tag, name)
+            try:
+                restored = emaki_version(db_entries((stamps[-1] / 'emaki.db').read_bytes()))
+            except (OSError, KeyError, IndexError, UnicodeDecodeError, tarfile.TarError):
+                restored = None  # The header keeps its text when the saved database names no release.
             target.notes(tag, (stamps[-1] / 'SOURCES').read_text()
-                         if (stamps[-1] / 'SOURCES').is_file() else '')
+                         if (stamps[-1] / 'SOURCES').is_file() else '', restored)
             for name in ('emaki.files', 'emaki.db'):
                 if (stamps[-1] / name).is_file():
                     target.upload(tag, stamps[-1] / name, name)
@@ -1771,7 +1806,7 @@ class Publisher:
                 path = Path(temp) / name
                 path.write_bytes(files[name])
                 target.upload(tag, path, name)
-            target.notes(tag, files['SOURCES'].decode())
+            target.notes(tag, files['SOURCES'].decode(), emaki_version(manifest_packages(manifest)))
             # The database last, and never a database signature (P5: an address that once served
             # one must serve a matching one forever, and assets cannot change together).
             for name in ('emaki.files', 'emaki.db'):

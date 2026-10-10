@@ -39,6 +39,7 @@ class RenderTests(unittest.TestCase):
         text = grub_defaults()
         self.assertIn('GRUB_GFXMODE=1024x768,800x600,640x480,auto\n', text)
         self.assertIn('GRUB_TERMINAL_OUTPUT=gfxterm\n', text)
+        self.assertIn('GRUB_BTRFS_GBTRFS_DIRNAME="/boot/grub/.emaki-snapshots"\n', text)
         for required in ('GRUB_DISTRIBUTOR="Emaki"', 'GRUB_DISABLE_SUBMENU=y', 'GRUB_TIMEOUT=5',
                          'GRUB_TOP_LEVEL="/boot/vmlinuz-linux"', 'GRUB_DISABLE_RECOVERY=true',
                          'GRUB_DISABLE_BOOTNEXT=true', 'GRUB_BACKGROUND=/usr/share/emaki/grub/background.png', 'GRUB_DISABLE_OS_PROBER=true'):

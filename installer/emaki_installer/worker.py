@@ -668,6 +668,7 @@ class Worker:
 
     def grub_config(self):
         if self.plan.btrfs:
+            self.files.mkdir('/boot/grub/.emaki-snapshots', 0o755)
             config = '/etc/default/grub-btrfs/config'
             self.files.write(config, grub_btrfs_package_config(self.files.read(config)))
         title_output = self.runner.chroot(

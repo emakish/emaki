@@ -125,7 +125,7 @@ def human_size(size):
 
 
 def mount_details(path, mountinfo=None):
-    """Match the containing mount, ignoring btrfs's per-subvolume device IDs."""
+    """Match the visible containing mount, ignoring btrfs's per-subvolume device IDs."""
     try:
         path = Path(path).resolve()
         text = mountinfo if mountinfo is not None else Path('/proc/self/mountinfo').read_text()
@@ -135,15 +135,26 @@ def mount_details(path, mountinfo=None):
             fields, filesystem = before.split(), after.split()
             unescape = lambda value: re.sub(r'\\([0-7]{3})', lambda match: chr(int(match[1], 8)), value)
             target = Path(unescape(fields[4]))
-            if path == target or target in path.parents:
-                source = unescape(filesystem[1])
-                # Pseudo filesystems and anonymous sources cannot prove separation.
-                identity = os.path.realpath(source) if source.startswith('/dev/') else None
-                mounts.append((len(target.parts), identity, filesystem[0]))
-        if mounts:
-            # The last entry at the deepest matching path is the visible mount.
-            _, identity, kind = max(reversed(mounts), key=lambda item: item[0])
-            return identity, kind
+            source = unescape(filesystem[1])
+            # Pseudo filesystems and anonymous sources cannot prove separation.
+            identity = os.path.realpath(source) if source.startswith('/dev/') else None
+            mounts.append((fields[0], fields[1], target, identity, filesystem[0]))
+        # Walk the mount tree as path lookup does: at each path prefix, a mount whose parent is
+        # the mount visible so far covers it, so a later /var/cache hides an earlier, deeper
+        # /var/cache/pacman/pkg that hangs off the mount it covered.
+        roots = [mount for mount in mounts if mount[2] == Path('/')]
+        at_root = {mount[0] for mount in roots}
+        visible = next((mount for mount in reversed(roots) if mount[1] not in at_root), None)
+        for prefix in (*reversed(path.parents), path):
+            seen = set()  # A malformed table must not loop.
+            while visible is not None and visible[0] not in seen:
+                seen.add(visible[0])
+                covering = [mount for mount in mounts if mount[2] == prefix and mount[1] == visible[0]]
+                if not covering:
+                    break
+                visible = covering[-1]
+        if visible is not None:
+            return visible[3], visible[4]
     except (OSError, ValueError, IndexError):
         pass
     return None, None

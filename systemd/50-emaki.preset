@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 enable greetd.service
 enable NetworkManager.service
+enable emaki-wifi-recovery.service
 enable bluetooth.service
 enable grub-btrfsd.service
 enable snapper-timeline.timer

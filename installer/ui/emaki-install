@@ -21,6 +21,9 @@ if ! flock -n 9; then
     exit 1
 fi
 export EMAKI_SHELL_SHADER_DIR=/usr/share/emaki/shell/shaders
+# Without this, a Quickshell build with its crash handler opens a report window and re-executes
+# qs in place instead of exiting.
+export QS_DISABLE_CRASH_HANDLER=1
 # This shell holds the lock for exactly the lifetime of qs. qs gets no fd 9, so processes it
 # starts (helpers, a crash reporter) cannot keep the lock once it is gone.
 qs -p "$config" 9>&-

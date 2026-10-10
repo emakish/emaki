@@ -1,0 +1,20 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Repair a missing or stale snapshot boot menu
+DefaultDependencies=no
+After=multi-user.target emaki-boot-complete.service emaki-boot-refresh.service
+Before=shutdown.target
+Conflicts=shutdown.target
+RequiresMountsFor=/boot /efi /.snapshots
+ConditionPathExists=/etc/grub.d/41_snapshots-btrfs
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/emaki-boot-refresh --repair-snapshots
+TimeoutStartSec=5min
+TimeoutStopSec=90s
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

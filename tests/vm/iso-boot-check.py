@@ -19,13 +19,18 @@ shot = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(shot)
 
 
-# Exact QEMU hardware limitations and the duplicate packaged activation name
-# shadowed by the native runtime override. All other errors fail acceptance.
+# Exact QEMU hardware limitations, the duplicate packaged activation names
+# shadowed by emaki-wallet-start's runtime overrides, and the denial that the
+# sudo-user check itself provokes. All other errors fail acceptance.
 JOURNAL_ERROR_ALLOWLIST = tuple(re.compile(re.escape(line)) for line in (
     'i8042: PNP: No PS/2 controller found.',
     'virt/tdx: TDX not supported by the host platform',
-    "Ignoring duplicate name 'org.freedesktop.secrets' in service file '/usr/share/dbus-1/services/org.freedesktop.secrets.service'",
-))
+    *(f"Ignoring duplicate name '{name}' in service file '/usr/share/dbus-1/services/{name}.service'"
+      for name in ('org.freedesktop.secrets', 'org.freedesktop.impl.portal.desktop.kwallet',
+                   'org.kde.secretservicecompat')),
+)) + (
+    re.compile(r' *([a-z_][a-z0-9_-]*) : a password is required ; PWD=/home/\1 ; USER=root ; COMMAND=/usr/bin/true'),
+)
 
 
 def journal_errors_ok(output):

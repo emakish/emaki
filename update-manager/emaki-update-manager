@@ -29,4 +29,7 @@ if ! flock -n 9; then
     printf 'The update window could not be shown: %s\n' "${reply:-(no reply)}" >&2
     exit 1
 fi
+# Without this, a Quickshell build with its crash handler opens a report window and re-executes
+# qs in place instead of exiting.
+export QS_DISABLE_CRASH_HANDLER=1
 qs -p "$config" 9>&-

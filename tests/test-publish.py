@@ -563,6 +563,46 @@ class SourceProvenance(unittest.TestCase):
         rendered = markdown.markdown(saved[0], extensions=['fenced_code'])
         self.assertIn('&lt;initial&gt;/&lt;pkgname&gt;', rendered)
 
+    def test_release_header_names_the_published_emaki_release(self):
+        when = publish.datetime.datetime(2026, 10, 9, 23, 0, tzinfo=publish.datetime.timezone.utc)
+        packages = ['emaki-0.4.2-1-any.pkg.tar.zst', 'emaki-config-0.4.2-1-x86_64.pkg.tar.zst',
+                    'emaki-desktop-0.4.2-1-any.pkg.tar.zst', 'quickshell-emaki-0.3.1-7-x86_64.pkg.tar.zst']
+        self.assertEqual(publish.emaki_version(packages), '0.4.2')
+        self.assertIsNone(publish.emaki_version(packages[1:]))
+        self.assertIsNone(publish.emaki_version(packages + ['emaki-0.4.1-1-any.pkg.tar.zst']))
+        old = ('Current: Emaki 0.2.0 (2026-10-05)\r\n\r\nInstall Emaki from https://emaki.sh.\r\n\r\n'
+               '<!-- emaki-sources -->\r\n```text\r\nold directions\r\n```\r\n')
+        body = publish.release_body(old, 'new directions\n', '0.4.2', when)
+        self.assertEqual(body, 'Current: Emaki 0.4.2 (2026-10-09)\n\nInstall Emaki from https://emaki.sh.\n\n'
+                               '<!-- emaki-sources -->\n```text\nnew directions\n```\n')
+        # Without a date, without any header, and with no version to name.
+        self.assertTrue(publish.release_body('Current: Emaki 0.1.1\nText', '', '0.4.2', when)
+                        .startswith('Current: Emaki 0.4.2 (2026-10-09)\nText\n'))
+        self.assertTrue(publish.release_body('', 'x', '0.4.2', when)
+                        .startswith('Current: Emaki 0.4.2 (2026-10-09)\n\n<!-- emaki-sources -->\n'))
+        self.assertEqual(publish.release_body('Notes\n\n<!-- emaki-sources -->\nold', 'x', None, when),
+                         'Notes\n\n<!-- emaki-sources -->\n' + publish.source_notes('x'))
+        # The published stable header names the release inside its first sentence.
+        stable = ('Emaki packages, stable channel. Current: Emaki 0.2.0 (2026-10-06). First upload: Emaki 0.1.0.'
+                  '\n\n<!-- emaki-sources -->\nold')
+        self.assertEqual(publish.release_body(stable, 'x', '0.4.2', when),
+                         'Emaki packages, stable channel. Current: Emaki 0.4.2 (2026-10-09). First upload: '
+                         'Emaki 0.1.0.\n\n<!-- emaki-sources -->\n' + publish.source_notes('x'))
+        # A line that merely mentions the release elsewhere is not the header line.
+        mention = 'Older: see Current: Emaki 0.1.1 (2026-10-03) notes'
+        self.assertTrue(publish.release_body(mention, '', '0.4.2', when).startswith(
+            'Current: Emaki 0.4.2 (2026-10-09)\n\n' + mention))
+        target = publish.GithubTarget()
+        saved = []
+        def command(args, **kwargs):
+            if 'edit' in args:
+                saved.append(Path(args[-1]).read_text())
+            return SimpleNamespace(stdout=old)
+        with mock.patch.object(publish.subprocess, 'run', side_effect=command), \
+                mock.patch.object(publish, 'utcnow', return_value=when):
+            target.notes('stable', 'new directions\n', '0.4.2')
+        self.assertEqual(saved, [body])
+
     def test_withdraw_record_keeps_its_kind_with_source_records(self):
         publisher = self.publisher
         records = {e['name']: e['source'] for e in publisher.collect(self.directory).values()}

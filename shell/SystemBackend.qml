@@ -25,6 +25,9 @@ Item {
     property bool wiredConnected: false
     property var wifiDevices: []
     property var networks: []
+    // Guard the device as well as its network rows: a disappearing row must not
+    // expose recovery while the adapter still reports an active connection.
+    readonly property bool wifiRestartAvailable: networkReady && wifiEnabled && wifiHardwareEnabled && wifiDevices.length > 0 && !wifiDevices.some(d => d.connected) && !networks.some(n => n.connected || n.busy || n.signal > 0)
     // Wi-Fi scanning while the Wi-Fi page asks for it (SystemBody). QS 0.3.1 lists a network
     // that is neither saved nor connected only while its device's scanner is on
     // (nm/wireless.cpp: visible = scanning || activated || known), and an enabled scanner asks

@@ -97,6 +97,8 @@ header_menu
         self.assertEqual(self.generator.read_bytes(), original_generator)
         self.assertEqual(self.generator.stat().st_mode & 0o777, 0o751)
         self.assertIn(repair.SETTING, self.defaults.read_text())
+        self.assertIn(repair.STAGING_SETTING, self.defaults.read_text())
+        self.assertTrue((self.root / repair.STAGING).is_dir())
         before = self.defaults.read_bytes()
         repair.repair(self.generator, self.menu, self.defaults)
         self.assertEqual(self.defaults.read_bytes(), before)
@@ -109,6 +111,127 @@ header_menu
                 self.assertEqual(repair.main(), 0)
             self.assert_bootable(self.menu.read_text())
             self.assertEqual(subprocess.run([CHECKER, str(self.menu)]).returncode, 0)
+
+    def staged_menu(self):
+        stage = self.root / repair.STAGING
+        stage.mkdir()
+        menu = stage / 'grub-btrfs.new'
+        menu.write_text(self.original)
+        return menu
+
+    def test_staged_publication_survives_upstream_backup_and_copy(self):
+        menu = self.staged_menu()
+        private = menu.with_name('grub-btrfs.cfg')
+        private.write_text('previous private menu\n')
+        private.rename(private.with_suffix('.cfg.bkp'))
+        before = self.menu.read_bytes()
+        self.assertEqual(before, self.original.encode())
+        with patch.object(sys, 'argv', ['emaki-snapshot-menu', '--check', str(menu)]):
+            self.assertEqual(repair.main(), 0)
+        self.assert_bootable(self.menu.read_text())
+        # A hard stop anywhere in this upstream tail cannot remove the live name.
+        private.write_bytes(menu.read_bytes())
+        menu.unlink()
+        private.with_suffix('.cfg.bkp').unlink()
+        self.assert_bootable(self.menu.read_text())
+
+    def test_invalid_staged_menu_does_not_replace_canonical_menu(self):
+        menu = self.staged_menu()
+        menu.write_text(self.original + "submenu 'broken' {\n")
+        before = self.menu.read_bytes()
+        with patch.object(sys, 'argv', ['emaki-snapshot-menu', '--check', str(menu)]):
+            with self.assertRaises(SystemExit) as error:
+                repair.main()
+        self.assertEqual(error.exception.code, 1)
+        self.assertEqual(self.menu.read_bytes(), before)
+
+    def test_staged_publication_flushes_file_then_name_then_filesystem(self):
+        menu = self.staged_menu()
+        events = []
+        real_fsync, real_replace, real_run = os.fsync, os.replace, subprocess.run
+
+        def fsync(descriptor):
+            events.append(('fsync', os.readlink(f'/proc/self/fd/{descriptor}')))
+            return real_fsync(descriptor)
+
+        def replace(source, destination):
+            events.append(('replace', str(destination)))
+            return real_replace(source, destination)
+
+        def run(command, **kwargs):
+            if command[0] == 'sync':
+                events.append(('sync', command[-1]))
+            return real_run(command, **kwargs)
+
+        with patch.object(os, 'fsync', side_effect=fsync), \
+                patch.object(os, 'replace', side_effect=replace), \
+                patch.object(subprocess, 'run', side_effect=run):
+            repair.publish_staged(menu)
+        self.assertEqual([event[0] for event in events], ['fsync', 'replace', 'fsync', 'sync'])
+        self.assertEqual(events[1:], [('replace', str(self.menu)),
+                                      ('fsync', str(self.root)), ('sync', str(self.menu))])
+        self.assertEqual(list(self.root.glob('grub-btrfs.cfg.emaki*')), [])
+
+    def test_repair_removes_only_regular_abandoned_files(self):
+        names = ('grub-btrfs.cfg.bkp', 'grub-btrfs.new',
+                 'grub-btrfs.cfg.emaki.old', 'grub-btrfs.cfg.emaki-publish-abandoned')
+        self.menu.write_text(repair.render(self.original))
+        target = self.root / 'unrelated'
+        target.write_text('keep me')
+        for kind in ('regular', 'symlink', 'directory', 'fifo'):
+            with self.subTest(kind=kind):
+                for name in names:
+                    path = self.root / name
+                    path.unlink(missing_ok=True)
+                    if kind == 'regular':
+                        path.write_text('abandoned')
+                    elif kind == 'symlink':
+                        path.symlink_to(target)
+                    elif kind == 'directory':
+                        path.mkdir()
+                    else:
+                        os.mkfifo(path)
+                with patch.object(repair, 'sync_directory', wraps=repair.sync_directory) as sync:
+                    repair.repair(self.generator, self.menu, self.defaults)
+                if kind == 'regular':
+                    self.assertTrue(all(not (self.root / name).exists() for name in names))
+                    self.assertEqual(sync.call_args.args, (self.root,))
+                    self.assertEqual(sync.call_count, 3)  # Staging, defaults, cleanup.
+                else:
+                    self.assertTrue(all(os.path.lexists(self.root / name) for name in names))
+                    for name in names:
+                        path = self.root / name
+                        if kind == 'directory':
+                            path.rmdir()
+                        else:
+                            path.unlink()
+                self.assertEqual(target.read_text(), 'keep me')
+
+    def test_repair_preserves_transaction_recovery_files(self):
+        sidecars = [self.root / ('grub-btrfs.cfg.emaki-' + suffix)
+                    for suffix in ('new-transaction', 'old-transaction')]
+        for sidecar in sidecars:
+            sidecar.write_text('transaction recovery bytes')
+        repair.repair(self.generator, self.menu, self.defaults)
+        for sidecar in sidecars:
+            self.assertEqual(sidecar.read_text(), 'transaction recovery bytes')
+
+    def test_publication_temporary_file_is_excluded_from_stage_copy(self):
+        menu = self.staged_menu()
+        real_replace = os.replace
+        copied = self.root / 'copied'
+
+        def replace(source, destination):
+            temporary = Path(source)
+            self.assertTrue(temporary.name.startswith('grub-btrfs.cfg.emaki-publish-'))
+            shutil.copytree(self.root, copied,
+                            ignore=shutil.ignore_patterns('*.emaki-*', 'copied'))
+            self.assertFalse((copied / temporary.name).exists())
+            return real_replace(source, destination)
+
+        with patch.object(os, 'replace', side_effect=replace):
+            repair.publish_staged(menu)
+        self.assertEqual(self.menu.read_bytes(), menu.read_bytes())
 
     def test_kernel_without_matching_initramfs_keeps_title(self):
         self.generator.write_text(self.generator.read_text().replace(
@@ -125,7 +248,7 @@ header_menu
         with self.assertRaises(ValueError):
             repair.repair_menu(self.menu)
         self.assertEqual(self.menu.read_bytes(), before)
-        self.assertEqual(list(self.root.glob('grub-btrfs.cfg.emaki.*')), [])
+        self.assertEqual(list(self.root.glob('grub-btrfs.cfg.emaki*')), [])
         with patch.object(sys, 'argv', ['emaki-snapshot-menu', '--check', str(self.menu)]):
             with self.assertRaises(SystemExit) as error:
                 repair.main()
@@ -171,7 +294,7 @@ class PacmanMenu(unittest.TestCase):
         for directory in ('usr/share/libalpm/hooks', 'etc/pacman.d/hooks'):
             for hook in (scratch.root / directory).glob('*.hook'):
                 hook.unlink()
-        sources = [CHECKER] + re.findall(r'(/[^\s()]+)', subprocess.run(
+        sources = [CHECKER, '/usr/bin/sync'] + re.findall(r'(/[^\s()]+)', subprocess.run(
             ['ldd', CHECKER], text=True, capture_output=True, check=True).stdout)
         for source in sources:
             relative = 'usr/bin/grub-script-check' if source == CHECKER else source.lstrip('/')

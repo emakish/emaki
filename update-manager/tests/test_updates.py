@@ -618,5 +618,22 @@ class Authorization(unittest.TestCase):
         self.assertIn('Some packages may already have changed', result.stderr)
 
 
+class Launcher(unittest.TestCase):
+    def test_window_starts_without_quickshell_crash_handler(self):
+        # The real launcher against a stub qs that records the environment it receives.
+        with tempfile.TemporaryDirectory(prefix='update-qs-') as temporary:
+            root = Path(temporary)
+            (root / 'bin').mkdir()
+            stub = root / 'bin/qs'
+            stub.write_text('#!/bin/sh\nprintf %s "${QS_DISABLE_CRASH_HANDLER-unset}" > "$QS_STUB_OUT"\n')
+            stub.chmod(0o755)
+            env = {key: value for key, value in os.environ.items() if key != 'QS_DISABLE_CRASH_HANDLER'}
+            env.update(PATH=f'{root / "bin"}:/usr/bin', XDG_RUNTIME_DIR=str(root), QS_STUB_OUT=str(root / 'out'))
+            result = subprocess.run(['bash', str(ROOT / 'update-manager/emaki-update-manager')],
+                                    env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((root / 'out').read_text(), '1')
+
+
 if __name__ == '__main__':
     unittest.main()

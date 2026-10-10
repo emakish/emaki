@@ -12,6 +12,7 @@ Item {
     // reveal the desktop. Headless/test services need no native service discovery.
     readonly property bool startupReady: !live || (native.status === Loader.Ready && backend?.startupReady === true)
     property string actionState: "idle"
+    property bool wifiRestartRunning: false
     property var pendingCheck: null
     property string pendingKind: ""
     // The Wayland surface supplies readiness after mapping with OnDemand focus.
@@ -186,9 +187,23 @@ Item {
             ticks = confirmationTicks;
             return true;
         }
-        if (pendingCheck || action.busy) {
+        // Authorization has its own process; unrelated panel actions remain available.
+        const wifiAction = kind.startsWith("wifi-") || kind === "hidden";
+        if (pendingCheck || action.busy || (wifiAction && (wifiRestartRunning || wifiRestart.running))) {
             actionState = "busy";
             return false;
+        }
+        if (kind === "wifi-restart") {
+            if (!helpersEnabled || !backend?.wifiRestartAvailable) {
+                actionState = "unavailable";
+                return false;
+            }
+            actionState = "pending";
+            wifiRestartRunning = true;
+            wifiRestartStartup.restart();
+            wifiRestartDeadline.restart();
+            wifiRestart.running = true;
+            return true;
         }
         if (kind === "brightness" || kind === "profile" || kind === "session" || kind === "lock") {
             if (!helpersEnabled) {
@@ -444,6 +459,45 @@ Item {
         printErrors: false
         onFileChanged: service.takeSleepFlags(false)
     }
+    function failWifiRestart(): void {
+        wifiRestartStartup.stop();
+        wifiRestartDeadline.stop();
+        wifiRestartRunning = false;
+        actionState = "wifi_restart_failed";
+        if (wifiRestart.running)
+            wifiRestart.signal(15);
+    }
+    // FailedToStart does not emit exited; authentication must also have a bound.
+    Timer {
+        id: wifiRestartStartup
+        interval: 3000
+        onTriggered: service.failWifiRestart()
+    }
+    Timer {
+        id: wifiRestartDeadline
+        interval: 90000
+        onTriggered: service.failWifiRestart()
+    }
+    Process {
+        id: wifiRestart
+        command: ["/usr/bin/pkexec", "/usr/lib/emaki/emaki-wifi-recover", "restart"]
+        stdout: SplitParser {
+            onRead: _line => {}
+        }
+        stderr: SplitParser {
+            onRead: _line => {}
+        }
+        onStarted: wifiRestartStartup.stop()
+        // Successful reset is not a promise that scanning has already recovered.
+        onExited: code => {
+            wifiRestartStartup.stop();
+            wifiRestartDeadline.stop();
+            if (!service.wifiRestartRunning)
+                return;
+            service.wifiRestartRunning = false;
+            service.actionState = code === 0 ? "requested" : "wifi_restart_failed";
+        }
+    }
     Process {
         id: backlightMonitor
         running: service.helpersEnabled
@@ -501,6 +555,9 @@ Item {
             charging: backend?.charging ?? false,
             network: backend?.networkReady ? (backend.wifiDevices.length ? (backend.wifiEnabled ? "on" : "off") : "no_adapter") : "unavailable",
             networks: backend?.networks.length ?? 0,
+            wifi_recovery_available: true,
+            wifi_recovery_action: backend?.wifiRestartAvailable ?? false,
+            wifi_recovery_running: wifiRestartRunning,
             wifi_scanners: Array.from(backend?.wifiDevices ?? []).filter(d => d?.scannerEnabled === true).length,
             connectivity: backend?.connectivity ?? "unknown",
             vpn: vpn.state,

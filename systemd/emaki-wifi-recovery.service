@@ -1,0 +1,20 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Recover stalled wireless scanning
+After=NetworkManager.service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/emaki/emaki-wifi-recover watch
+Restart=on-failure
+RestartSec=30
+UMask=0077
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectSystem=full
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target

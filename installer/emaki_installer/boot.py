@@ -160,6 +160,7 @@ def grub_defaults(alongside=False, luks_uuid=None, resume_uuid=None, resume_offs
         cmdline += [f'resume=UUID={resume_uuid}', f'resume_offset={resume_offset}']
     return ('GRUB_DEFAULT=0\nGRUB_TIMEOUT=5\nGRUB_DISTRIBUTOR="Emaki"\n'
             'GRUB_BTRFS_SCRIPT_CHECK="emaki-snapshot-menu-check"\n'
+            'GRUB_BTRFS_GBTRFS_DIRNAME="/boot/grub/.emaki-snapshots"\n'
             'GRUB_TOP_LEVEL="/boot/vmlinuz-linux"\n'
             # The microcode hook puts the CPU's microcode into every initramfs; a separate
             # early image would load it twice and multiply grub-btrfs's rows per snapshot.

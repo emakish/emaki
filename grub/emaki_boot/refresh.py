@@ -339,7 +339,7 @@ def atomic(path, data):
 
 
 def sync_grub_menu(path):
-    if path == Path('/boot/grub/grub.cfg'):
+    if path in (Path('/boot/grub/grub.cfg'), Path('/boot/grub/grub-btrfs.cfg')):
         # Btrfs fsync can persist only the tree log. GRUB reads the committed
         # filesystem trees without Linux's mount-time replay, so commit this
         # rename before publishing ESP state or dropping the recovery intent.
@@ -534,6 +534,7 @@ def bind(source, target):
 def generate(stage):
     """Private mount namespace: generators cannot overwrite the active menu."""
     stage = Path(stage)
+    (stage / 'grub/.emaki-snapshots').mkdir(exist_ok=True)
     bind(stage / 'defaults', Path('/etc/default/grub'))
     if (stage / 'btrfs-config').exists():
         bind(stage / 'btrfs-config', Path('/etc/default/grub-btrfs/config'))
@@ -694,7 +695,47 @@ def live_kernels():
     return kernels
 
 
-def refresh_menu(identity, state, recovery=False):
+def snapshot_inventory():
+    """List numbered snapshots without reading metadata or walking their contents."""
+    return {int(entry.name) for entry in Path('/.snapshots').iterdir()
+            if entry.name.isdecimal() and not entry.is_symlink() and entry.is_dir()
+            and (entry / 'snapshot').is_dir()}
+
+
+def snapshot_menu_needs_repair():
+    if (not Path('/etc/grub.d/41_snapshots-btrfs').is_file()
+            or not Path('/.snapshots').is_dir()):
+        return False
+    menu = Path('/boot/grub/grub-btrfs.cfg')
+    require(not menu.is_symlink(), 'The snapshot menu must not be a symbolic link.')
+    if not menu.exists():
+        return True
+    content = regular(menu)
+    if not content.strip():
+        return True
+    present = {int(number) for number in re.findall(rb'/@snapshots/([0-9]+)/snapshot(?:/|[\s\"\'])', content)}
+    # Upstream can omit existing snapshots for kernel availability or settings.
+    # Only references to deleted snapshots require boot-time regeneration.
+    return not present.issubset(snapshot_inventory())
+
+
+def repair_snapshot_menu(identity):
+    """Use the normal staged publication path when boot finds a lost or stale menu."""
+    if identity['fstype'] != 'btrfs' or not snapshot_menu_needs_repair():
+        return
+    stage = Path('/boot/grub/.emaki-snapshots')
+    require(not stage.parent.is_symlink() and not stage.is_symlink(),
+            'The snapshot staging path must be a real directory.')
+    stage.mkdir(parents=True, exist_ok=True)
+    sync_directory(stage.parent)
+    with pause_snapshots():
+        recover(identity)
+        state = read_state(Path('/efi/EFI/Emaki/grubx64.efi'), Path('/efi/EFI/BOOT/BOOTX64.EFI'))
+        refresh_menu(identity, state, snapshots_required=True)
+    print('The snapshot boot menu was repaired.')
+
+
+def refresh_menu(identity, state, recovery=False, snapshots_required=False):
     """Generate against the current root, preserving the loader and trial budget."""
     require(not Path('/boot/grub').is_symlink(), 'A customized /boot/grub symbolic link needs manual review.')
     kernels = live_kernels()
@@ -707,6 +748,8 @@ def refresh_menu(identity, state, recovery=False):
     try:
         shutil.copytree(Path('/boot/grub'), stage / 'grub', symlinks=True,
                         ignore=shutil.ignore_patterns('*.emaki-*'))
+        if snapshots_required:
+            (stage / 'grub/grub-btrfs.cfg').unlink(missing_ok=True)
         write(stage / 'defaults', defaults)
         btrfs_config = Path('/etc/default/grub-btrfs/config')
         if btrfs_config.is_file():
@@ -725,6 +768,10 @@ def refresh_menu(identity, state, recovery=False):
         atomic(stage / 'grub/grub.cfg', text)
         run(['grub-script-check', stage / 'grub/grub.cfg'])
         snapshots = stage / 'grub/grub-btrfs.cfg'
+        if snapshots_required and not snapshots.exists():
+            require(not snapshot_inventory(), 'The snapshot generator did not produce a menu.')
+            # Upstream exits before its checker when no snapshots remain.
+            write(snapshots, '# No snapshots available.\n')
         if snapshots.exists():
             run(['grub-script-check', snapshots])
             transaction.add(Path('/boot/grub/grub-btrfs.cfg'), regular(snapshots))
@@ -1231,6 +1278,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='Safely refresh the installed Emaki boot loader and menu.')
     parser.add_argument('--hook', action='store_true')
     parser.add_argument('--retry', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--repair-snapshots', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--sleep-phase', choices=('pre', 'post'), help=argparse.SUPPRESS)
     parser.add_argument('--mark-good', action='store_true', help='promote the successfully booted loader')
     parser.add_argument('--check', action='store_true', help='check the installed disk identity without writing')
@@ -1238,6 +1286,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     previous_sigterm = None
     try:
+        if args.repair_snapshots and not snapshot_menu_needs_repair():
+            return 0
         if (Path('/.emaki-install-incomplete').exists() or Path('/run/archiso').exists()
                 or subprocess.run(['systemd-detect-virt', '--chroot', '--quiet'],
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0):
@@ -1248,7 +1298,7 @@ def main(argv=None):
                 if acquired:
                     sleep_trial(args.sleep_phase)
             return 0
-        if args.retry or args.mark_good:
+        if args.retry or args.mark_good or args.repair_snapshots:
             def interrupted(signum, frame):
                 raise TimeoutError('The boot loader operation was interrupted.')
             previous_sigterm = signal.signal(signal.SIGTERM, interrupted)
@@ -1266,12 +1316,19 @@ def main(argv=None):
             return 0
         with open_run_lock('w') as lock:
             try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                wait_run_lock(lock)
             except BlockingIOError:
-                if args.retry:
+                if args.retry or args.repair_snapshots:
                     LOG.write('Another boot loader operation is running; retry at the next boot.\n')
                     return 0
                 raise
+            if args.repair_snapshots:
+                identity = discover()
+                if identity is not None:
+                    remove_previous_boot_lock(Path('/var/lib/pacman/db.lck'), current_boot_id())
+                    with pacman_lock():
+                        repair_snapshot_menu(identity)
+                return 0
             if not args.mark_good:
                 return refresh_attempt(args.retry)
             identity = discover()

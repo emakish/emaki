@@ -54,6 +54,7 @@ python-gobject
 python-pillow
 qt6ct
 quickshell-emaki
+rtkit
 sof-firmware
 sudo
 udiskie

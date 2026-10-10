@@ -709,11 +709,11 @@ package_shell-tools() {
             'emaki-config': {'fastfetch>=2.68.1', 'niri-emaki>=26.04-12', 'quickshell-emaki>=0.3.1-4', 'kwallet>=6.30'},
             'emaki-desktop': {'fastfetch>=2.68.1', 'niri-emaki>=26.04-12'},
             'emaki-installer': {'archinstall=4.5-1'},
-            'emaki': {'emaki-config=0.4.1-1', 'emaki-desktop=0.4.1-1', 'emaki-keyring>=0.4.1-1',
-                      'emaki-mirrorlist>=0.4.1-1', 'niri-emaki=26.04-12', f'quickshell-emaki=0.3.1-{release}'},
+            'emaki': {'emaki-config=0.4.2-1', 'emaki-desktop=0.4.2-1', 'emaki-keyring>=0.4.2-1',
+                      'emaki-mirrorlist>=0.4.2-1', 'niri-emaki=26.04-12', f'quickshell-emaki=0.3.1-{release}'},
             'niri-emaki': {'libdisplay-info.so=3-64', 'libinput.so=10-64', 'libpipewire-0.3.so=0-64',
                            'libseat.so=1-64', 'libxkbcommon.so=0-64', 'niri>=26.04'},
-            'quickshell-emaki': {'libEGL.so', 'libOpenGL.so', 'libcpptrace.so', 'libgcc_s.so',
+            'quickshell-emaki': {'libEGL.so', 'libOpenGL.so', 'libgcc_s.so',
                                 'libjemalloc.so', 'libpam.so', 'libpipewire-0.3.so',
                                 'libstdc++.so', 'libwayland-client.so'} | {
                 f'{package}{bound}' for package in ('qt6-base', 'qt6-declarative')
@@ -729,7 +729,7 @@ package_shell-tools() {
                                                       ('makedepends', 'qt6-shadertools'))
                                 for bound in (f'>={lower}', f'<{upper}')}
         self.assertEqual({(f.package, f.kind, f.value) for f in fences}, expected_fences)
-        self.assertEqual(len(fences), 37 if activated else 33)
+        self.assertEqual(len(fences), 36 if activated else 32)
         self.assertTrue(set(expected) <= names)
 
 

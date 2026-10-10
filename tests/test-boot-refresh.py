@@ -171,9 +171,11 @@ class ConfigurationChecks(unittest.TestCase):
     def test_private_generation_never_runs_or_reconfigures_mkinitcpio(self):
         with tempfile.TemporaryDirectory(prefix='boot-generate-') as directory:
             stage = Path(directory)
+            (stage / 'grub').mkdir()
             (stage / 'btrfs-config').write_text('GRUB_BTRFS_DIRNAME="/@snapshots"\n')
             with patch.object(refresh, 'run') as command:
                 refresh.generate(stage)
+            self.assertTrue((stage / 'grub/.emaki-snapshots').is_dir())
             calls = [list(map(str, call.args[0])) for call in command.call_args_list]
             self.assertEqual(calls, [
                 ['mount', '--bind', str(stage / 'defaults'), '/etc/default/grub'],

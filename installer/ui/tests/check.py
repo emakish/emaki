@@ -32,6 +32,21 @@ def check_reopen_contract():
     print('PASS reopen contract: IPC names, reply token, lock not inherited by qs')
 
 
+def check_crash_handler_disabled():
+    # Run the real launcher against a stub qs that records the environment it receives.
+    with tempfile.TemporaryDirectory(prefix='installer-qs-') as temporary:
+        root = Path(temporary)
+        (root / 'bin').mkdir()
+        stub = root / 'bin/qs'
+        stub.write_text('#!/bin/sh\nprintf %s "${QS_DISABLE_CRASH_HANDLER-unset}" > "$QS_STUB_OUT"\n')
+        stub.chmod(0o755)
+        env = {key: value for key, value in os.environ.items() if key != 'QS_DISABLE_CRASH_HANDLER'}
+        env.update(PATH=f'{root / "bin"}:/usr/bin', XDG_RUNTIME_DIR=str(root), QS_STUB_OUT=str(root / 'out'))
+        checked(['bash', str(UI / 'emaki-install')], env=env)
+        assert (root / 'out').read_text() == '1', (root / 'out').read_text()
+    print('PASS crash handler: emaki-install starts qs with QS_DISABLE_CRASH_HANDLER=1')
+
+
 def check_icon():
     checked([sys.executable, str(ROOT / 'art/icons/emaki-install.py'), '--check'])
     svg = ET.parse(UI / 'emaki-install.svg').getroot()
@@ -103,6 +118,7 @@ def main():
     checked(['bash', '-n', str(UI / 'emaki-install'), str(ROOT / 'packaging/emaki-installer/PKGBUILD')])
     print('PASS bash -n launcher and PKGBUILD')
     check_reopen_contract()
+    check_crash_handler_disabled()
     check_icon()
     checked([shellcheck, str(UI / 'emaki-install')])
     print('PASS shellcheck launcher')

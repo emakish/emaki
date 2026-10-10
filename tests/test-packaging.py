@@ -79,7 +79,7 @@ class MetadataTests(unittest.TestCase):
             with self.subTest(package=name):
                 info = self.recipes[name]
                 self.assertEqual(info['pkgname'], [name])
-                self.assertEqual(info['pkgver'], ['0.4.1'])
+                self.assertEqual(info['pkgver'], ['0.4.2'])
                 self.assertEqual(info['pkgrel'], [marker_release] if name == 'emaki' else ['1'])
                 # emaki-installer also ships the zone map (ODbL) and the GRUB unlock-screen fonts (DejaVu, Bitstream Vera).
                 self.assertEqual(info['license'], ['GPL-3.0-or-later', 'ODbL-1.0', 'Bitstream-Vera']
@@ -87,12 +87,12 @@ class MetadataTests(unittest.TestCase):
                                  if name == 'emaki-config' else ['GPL-3.0-or-later']
                                  if name == 'emaki-nvidia' else ['GPL-3.0-or-later'])
         cargo = tomllib.loads((ROOT / 'Cargo.toml').read_text())
-        self.assertEqual(cargo['workspace']['package']['version'], '0.4.1')
+        self.assertEqual(cargo['workspace']['package']['version'], '0.4.2')
         packages = tomllib.loads((ROOT / 'Cargo.lock').read_text())['package']
-        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.4.1'})
+        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.4.2'})
         self.assertEqual(self.recipes['emaki']['depends'], [
-            'emaki-config=0.4.1-1', 'emaki-desktop=0.4.1-1', 'niri-emaki=26.04-12',
-            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.4.1-1', 'emaki-mirrorlist>=0.4.1-1'])
+            'emaki-config=0.4.2-1', 'emaki-desktop=0.4.2-1', 'niri-emaki=26.04-12',
+            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.4.2-1', 'emaki-mirrorlist>=0.4.2-1'])
 
     def test_early_console_font_reaches_targets_and_updates(self):
         self.assertIn('terminus-font', self.recipes['emaki-config']['depends'])
@@ -185,7 +185,7 @@ class MetadataTests(unittest.TestCase):
             'gtk3', 'wpaperd', 'wl-clipboard', 'cliphist', 'polkit-kde-agent', 'udiskie', 'kitty',
             'fastfetch>=2.68.1', 'imagemagick', 'hyprlock', 'playerctl', 'fuzzel', 'qt6ct',
             'noto-fonts', 'breeze-icons', 'adwaita-icon-theme', 'brightnessctl',
-            'power-profiles-daemon', 'networkmanager', 'bluez', 'upower', 'pipewire', 'wireplumber',
+            'power-profiles-daemon', 'networkmanager', 'bluez', 'upower', 'pipewire', 'wireplumber', 'rtkit',
             'pipewire-pulse', 'wlsunset', 'greetd', 'greetd-regreet', 'kwallet-pam', 'kwallet>=6.30',
             'coreutils', 'dbus', 'procps-ng', 'systemd', 'util-linux', 'bash',
         }
@@ -1082,22 +1082,38 @@ class PayloadTests(unittest.TestCase):
                 executable = path.parent in (self.dest / 'usr/bin', self.dest / 'usr/share/libalpm/scripts',
                                              self.dest / 'usr/lib/systemd/system-sleep')
                 executable |= path.relative_to(self.dest).as_posix() in (
-                    'usr/libexec/emaki/update-manager-backend', 'usr/libexec/emaki/emaki-update-apply')
+                    'usr/libexec/emaki/update-manager-backend', 'usr/libexec/emaki/emaki-update-apply',
+                    'usr/lib/emaki/emaki-wifi-recover')
                 readonly = path.relative_to(self.dest).as_posix() in ('etc/sudoers.d/10-emaki-wheel', 'usr/share/emaki/defaults/wheel')
                 self.assertEqual(mode, 0o440 if readonly else 0o755 if executable else 0o644, str(path))
         binary = self.dest / 'usr/bin/emaki'
         # Keep this payload check independent of the host's installed channel helper.
         self.assertEqual(run([str(binary), 'version'], env={**os.environ, 'PATH': ''}).stdout,
-                         'emaki 0.4.1 [channel: unknown]\n')
+                         'emaki 0.4.2 [channel: unknown]\n')
         result = run(['python3', 'scripts/core-package.py', 'verify-build-paths', '--binary', str(binary)])
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_wireless_device_activation(self):
+        rule = self.dest / 'usr/lib/udev/rules.d/90-emaki-wifi-recovery.rules'
+        self.assertEqual(rule.read_bytes(),
+                         (ROOT / 'systemd/90-emaki-wifi-recovery.rules').read_bytes())
+        active = [line for line in rule.read_text().splitlines()
+                  if line.strip() and not line.startswith('#')]
+        self.assertEqual(active, [
+            'ACTION=="add", SUBSYSTEM=="net", ENV{DEVTYPE}=="wlan", '
+            'TAG+="systemd", ENV{SYSTEMD_WANTS}+="emaki-wifi-recovery.service"'])
+        unit = configparser.ConfigParser()
+        unit.read(self.dest / 'usr/lib/systemd/system/emaki-wifi-recovery.service')
+        self.assertEqual(unit['Install']['WantedBy'], 'multi-user.target')
+        self.assertEqual(unit['Service']['ExecStart'], '/usr/lib/emaki/emaki-wifi-recover watch')
 
     def test_defaults_and_presets(self):
         commit = run(['git', 'rev-parse', 'HEAD']).stdout.strip()
         self.assertEqual((self.dest / 'usr/lib/emaki-release').read_text(),
-                         f'VERSION=0.4.1\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
+                         f'VERSION=0.4.2\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
         expected = {'greetd.service', 'NetworkManager.service', 'bluetooth.service', 'grub-btrfsd.service',
-                    'snapper-timeline.timer', 'snapper-cleanup.timer', 'fstrim.timer', 'paccache.timer', 'emaki-refresh-mirrors.timer'}
+                    'snapper-timeline.timer', 'snapper-cleanup.timer', 'fstrim.timer', 'paccache.timer',
+                    'emaki-refresh-mirrors.timer', 'emaki-wifi-recovery.service'}
         preset = (self.dest / 'usr/lib/systemd/system-preset/50-emaki.preset').read_text().splitlines()
         self.assertEqual({line.split()[1] for line in preset if line.startswith('enable ')}, expected)
         skel = self.dest / 'etc/skel/.config'

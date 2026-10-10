@@ -654,11 +654,22 @@ class StaticTests(unittest.TestCase):
             self.assertTrue(module.journal_errors_ok('-- No entries --\n'))
             self.assertTrue(module.journal_errors_ok('i8042: PNP: No PS/2 controller found.\n'))
             for line in ('virt/tdx: TDX not supported by the host platform',
-                         "Ignoring duplicate name 'org.freedesktop.secrets' in service file '/usr/share/dbus-1/services/org.freedesktop.secrets.service'"):
+                         "Ignoring duplicate name 'org.freedesktop.secrets' in service file '/usr/share/dbus-1/services/org.freedesktop.secrets.service'",
+                         "Ignoring duplicate name 'org.freedesktop.impl.portal.desktop.kwallet' in service file '/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.kwallet.service'",
+                         "Ignoring duplicate name 'org.kde.secretservicecompat' in service file '/usr/share/dbus-1/services/org.kde.secretservicecompat.service'",
+                         '   emaki : a password is required ; PWD=/home/emaki ; USER=root ; COMMAND=/usr/bin/true'):
                 self.assertTrue(module.journal_errors_ok(line + '\n'))
                 self.assertFalse(module.journal_errors_ok(line + ' unexpected\n'))
                 self.assertFalse(module.journal_errors_ok('prefix ' + line + '\n'))
                 self.assertFalse(module.journal_errors_ok(line + '\nI/O error\n'))
+            # Only the exact names emaki-wallet-start shadows, and only the denial of
+            # the probe command for the account's own home directory.
+            self.assertFalse(module.journal_errors_ok(
+                "Ignoring duplicate name 'org.gnome.keyring' in service file '/usr/share/dbus-1/services/org.gnome.keyring.service'\n"))
+            for line in ('   emaki : a password is required ; PWD=/home/emaki ; USER=root ; COMMAND=/usr/bin/pacman',
+                         '   emaki : a password is required ; PWD=/home/other ; USER=root ; COMMAND=/usr/bin/true',
+                         '   emaki : 3 incorrect password attempts ; PWD=/home/emaki ; USER=root ; COMMAND=/usr/bin/true'):
+                self.assertFalse(module.journal_errors_ok(line + '\n'))
             self.assertFalse(module.journal_errors_ok("gkr-pam: couldn't unlock the login keyring.\n"))
             self.assertFalse(module.journal_errors_ok('Failed to start greetd.service\n'))
             self.assertFalse(module.journal_errors_ok('i8042: PNP: No PS/2 controller found.\nI/O error\n'))

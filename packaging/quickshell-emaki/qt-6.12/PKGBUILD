@@ -10,8 +10,7 @@ pkgdesc='Flexible toolkit for making desktop shells with QtQuick (Emaki patched 
 arch=(x86_64 aarch64)
 url="https://git.outfoxxed.me/$_pkgname/$_pkgname"
 license=(LGPL-3.0-only)
-depends=(cpptrace libcpptrace.so
-         glibc # libc.so libm.so
+depends=(glibc # libc.so libm.so
          hicolor-icon-theme
          jemalloc libjemalloc.so
          libdrm # libdrm.so
@@ -85,7 +84,7 @@ build() {
 		-D CMAKE_BUILD_TYPE=RelWithDebInfo
 		-D DISTRIBUTOR='Emaki (Arch Linux package + patches)'
 		-D DISTRIBUTOR_DEBUGINFO_AVAILABLE=Yes
-		-D CRASH_REPORTER=Off
+		-D CRASH_HANDLER=OFF
 		-D CMAKE_INSTALL_PREFIX=/usr
 		-D INSTALL_QML_PREFIX=lib/qt6/qml
 	)

@@ -10,9 +10,12 @@ Scope {
     // qvidcap), stoken (stoken-gui, stoken-gui-small), vim. Only the launcher skips
     // them: the programs stay installed, gtk-launch and MIME handling are unchanged
     // and the dock still resolves their windows (DECISIONS 2026-10-03).
-    // Rich helpers and duplicate indicator entries; KDE Connect and SMS stay visible.
+    // Rich helpers and duplicate indicator entries, including the KDE Connect indicator
+    // that upgraded systems may retain (no current software set ships it).
     // NoDisplay entries are excluded by shown(), without duplicate IDs here.
-    readonly property var hiddenIds: ["avahi-discover", "bssh", "bvnc", "lftp", "lstopo", "qv4l2", "qvidcap", "stoken-gui", "stoken-gui-small", "vim", "qt6ct", "org.kde.kdeconnect.nonplasma", "mpv", "org.kde.kwrite"]
+    // blueman-adapters carries OnlyShowIn=XFCE;MATE;, which Quickshell 0.3.1 does not read;
+    // blueman-manager is hidden because Bluetooth lives in the shell panel (DECISIONS 2026-10-09).
+    readonly property var hiddenIds: ["avahi-discover", "bssh", "bvnc", "lftp", "lstopo", "qv4l2", "qvidcap", "stoken-gui", "stoken-gui-small", "vim", "qt6ct", "org.kde.kdeconnect.nonplasma", "mpv", "org.kde.kwrite", "blueman-adapters", "blueman-manager"]
     readonly property var entries: DesktopEntries.applications.values.filter(entry => catalog.shown(entry)).sort((a, b) => a.name.localeCompare(b.name))
     readonly property string launcher: Quickshell.env("EMAKI_GTK_LAUNCH") || "gtk-launch"
     property string launchState: "idle"
