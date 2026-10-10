@@ -27,6 +27,17 @@ configuration and get Emaki. That is one of the plans for later, when Emaki on A
 and stable. Until then, everything new in Emaki is designed so it can be carried over. More:
 [NIXOS.md](NIXOS.md).
 
+AI assistants, deep and safe. More and more people let AI agents like Claude Code or Codex run
+commands on their computers. On most systems that means one of two things: keep the agent away from
+anything important, or let it do everything without asking. Emaki is being built for a third way: an
+agent may work deep in the system, up to administrator rights, with a safety net at every step. Emaki
+will describe itself to agents: where things are, which files belong to whom, how to check and change
+them, how to roll back. One clear Emaki prompt will ask you before anything runs as administrator,
+showing who is asking and exactly what will run; you answer with your password, face or fingerprint.
+On btrfs, snapguard, my tool that takes a snapshot before risky actions, becomes part of Emaki. And
+for those who want it, an optional sudo key lets an agent work without asking for a while — at your
+own risk, with a plain warning. The first parts come in 0.5.
+
 And my goal for the future: our own Wayland compositor that turns the way we work with windows
 upside down. That comes later; Emaki comes first.
 
