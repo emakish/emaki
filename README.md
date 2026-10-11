@@ -103,6 +103,7 @@ session without your password.
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.4.0 | Installation from USB with disk encryption, boot, login, desktop, Wi-Fi on 2.4 GHz, keyboard control of the panel and dock | Wi-Fi joined in the installer has to be joined again after installing |
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.4.1 | Update from 0.4.0 with `pacman -Syu`, Wi-Fi after the update, screen lock and unlock | No new issues found |
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.4.2 | Update from 0.4.1 with `pacman -Syu`, restart, sound with realtime priority, the snapshot boot menu check at startup | No new issues found |
+| MacBook Pro (Retina, 13-inch, Early 2015) | 0.5.0 | Update from 0.4.2 with `pacman -Syu`, restart, then a fresh installation from USB (erase disk), boot, login, desktop | Wi-Fi joined in the installer has to be joined again after installing |
 
 Installed Emaki on another machine? Reports are welcome in the issues.
 
