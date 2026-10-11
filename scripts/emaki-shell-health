@@ -20,6 +20,7 @@ import emaki_paths
 
 PACKAGED = Path(emaki_paths.DATADIR) / 'shell'
 SHELL_UNIT = 'emaki-shell.service'
+TRUSTED_UNIT = 'niri-emaki.service'
 NOTICE_UNIT = 'emaki-shell-recovery.service'
 
 
@@ -56,6 +57,11 @@ def select_shell(requested, record=False, runtime_shell=None):
             'shell': os.path.abspath(selected),
             'invocation': os.environ.get('INVOCATION_ID', ''),
         }
+        if os.environ.get('EMAKI_SHELL_PROCESS_ID'):
+            # Trusted children share the compositor's journal invocation. Restrict
+            # diagnostics to this launch so an old failure cannot repair new files.
+            launch['supervisor'] = TRUSTED_UNIT
+            launch['since'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         if runtime_shell:
             launch['runtime_shell'] = runtime_shell
         write_state(state / 'launch.json', json.dumps(launch))
@@ -133,11 +139,22 @@ def reconcile():
     except (OSError, ValueError):
         pass
     invocation = launch.get('invocation', '') if isinstance(launch, dict) else ''
-    current = run('systemctl', '--user', 'show', '--property=InvocationID', '--value', SHELL_UNIT)
+    unit = TRUSTED_UNIT if isinstance(launch, dict) and launch.get('supervisor') == TRUSTED_UNIT else SHELL_UNIT
+    current = run('systemctl', '--user', 'show', '--property=InvocationID', '--value', unit)
     trusted = (isinstance(invocation, str) and bool(re.fullmatch('[0-9a-f]{32}', invocation))
                and current == invocation
                and os.environ.get('MONITOR_INVOCATION_ID', invocation) == invocation)
-    query = [f'_SYSTEMD_INVOCATION_ID={invocation}'] if trusted else ['-u', SHELL_UNIT]
+    query = [f'_SYSTEMD_INVOCATION_ID={invocation}'] if trusted else ['-u', unit]
+    if unit == TRUSTED_UNIT:
+        since = launch.get('since', '')
+        try:
+            since = datetime.datetime.fromisoformat(since)
+            if since.tzinfo is None:
+                raise ValueError('Missing launch timezone.')
+            query.extend(['--since', since.strftime('%Y-%m-%d %H:%M:%S.%f %z')])
+        except (TypeError, ValueError):
+            # Without a bounded launch window, only manual recovery is safe.
+            trusted = False
     log = clean(run('journalctl', '--user', '--no-pager', '-o', 'cat', '-n', '200', *query))
     write_state(state / 'errors.log', log + '\n')
     print(log, flush=True)
@@ -170,9 +187,14 @@ def reconcile():
             'backup': clean(str(backup.relative_to(Path(launch['shell'])))),
         }))
         print(message, flush=True)
-        run('systemctl', '--user', 'reset-failed', SHELL_UNIT)
-        # Do not wait for a job whose failure may activate this handler again.
-        run('systemctl', '--user', '--no-block', 'restart', SHELL_UNIT)
+        if unit == TRUSTED_UNIT:
+            # The compositor retains startup argv/environment; preparation reads
+            # the packaged marker afresh when it creates the replacement shell.
+            run(str(Path(__file__).resolve().with_name('emaki-shell-trusted')), 'restart')
+        else:
+            run('systemctl', '--user', 'reset-failed', SHELL_UNIT)
+            # Do not wait for a job whose failure may activate this handler again.
+            run('systemctl', '--user', '--no-block', 'restart', SHELL_UNIT)
     except (OSError, subprocess.SubprocessError):
         print('Automatic shell recovery failed. Opening recovery.', flush=True)
         notice()
@@ -208,6 +230,7 @@ def report():
 
 
 def main():
+    os.environ['PATH'] = emaki_paths.TRUSTED_PATH
     command = sys.argv[1]
     try:
         if command in ('select', 'record'):

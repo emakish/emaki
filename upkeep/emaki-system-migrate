@@ -16,6 +16,7 @@ import tempfile
 
 LEGACY_ZRAM = '[zram0]\nzram-size = min(ram / 2, 8192)\nswap-priority = 100\n'
 LEGACY_WHEEL = '%wheel ALL=(ALL:ALL) ALL\n'
+SUDO_BROKER = '@EMAKI_LIBEXECDIR@/emaki-sudo-broker'
 # Preserve historical choices and ambiguous preexisting optional services.
 # Only newly introduced preset names are safe to offer without an old state ledger.
 LEGACY_UNITS = {
@@ -156,8 +157,35 @@ def repair_sudoers_mode(root):
         directory.chmod(0o750)
 
 
+def drain_sudo_keys(root):
+    """Veto live package removal until the outgoing service clears its records."""
+    # An offline package root must never stop services or clean the host's cache.
+    if root != Path('/'):
+        return
+    broker = Path(SUDO_BROKER)
+    runtime = Path('/run/emaki-sudo')
+    if not broker.exists() and not runtime.exists() and not runtime.is_symlink():
+        return
+    if not broker.is_absolute() or not safe(broker) or not broker.is_file():
+        raise OSError('Cannot remove Emaki: sudo cleanup executable is unavailable.')
+    info = broker.stat()
+    if info.st_uid != 0 or info.st_mode & 0o022 or not info.st_mode & 0o111:
+        raise OSError('Cannot remove Emaki: sudo cleanup executable is unsafe.')
+    # Stop may include both the service drain and its post-stop drain. A second
+    # explicit drain proves success even when systemd reported a clean stop after
+    # retaining failed jobs. AbortOnFail keeps the executable available for retry.
+    subprocess.run(['systemctl', 'stop', 'emaki-sudo.service'], check=True, timeout=120)
+    # An installed service that has never run has no runtime directory or keys.
+    # Check after stopping so no new journal can appear behind this decision.
+    if not runtime.exists() and not runtime.is_symlink():
+        return
+    subprocess.run([str(broker), '--cleanup'], check=True, timeout=40)
+
+
 def release_defaults(root, removing=False):
     """Detach managed settings while the outgoing package is still installed."""
+    if removing:
+        drain_sudo_keys(root)
     from emaki_boot_defaults import release as release_boot
     from emaki_initramfs import release as release_initramfs
     release_initramfs(root)

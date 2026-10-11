@@ -4,30 +4,35 @@
 # makepkg supplies build paths and consumes package metadata.
 # shellcheck disable=SC2034,SC2154
 pkgname=emaki-config
-pkgver=0.5.0
-pkgrel=1
+pkgver=0.6.0
+pkgrel=14
 pkgdesc='Emaki shell, CLI, system defaults, session, greeter and themes'
 arch=('x86_64')
 url='https://github.com/emakish/emaki'
 license=('GPL-3.0-or-later' 'Bitstream-Vera')
 depends=(
     'pacman' 'pacman-contrib' 'fakeroot' 'reflector' 'polkit'
-    'glibc' 'libgcc' 'bash' 'coreutils' 'dbus' 'procps-ng' 'systemd' 'util-linux'
-    'niri-emaki>=26.04-12' 'quickshell-emaki>=0.3.1-4'
+    'glibc' 'libgcc' 'bash' 'coreutils' 'dbus' 'procps-ng' 'systemd>=256' 'util-linux' 'sudo' 'pam' 'qt6-declarative'
+    'niri-emaki>=26.04-20' 'quickshell-emaki>=0.3.1-10'
     'python' 'python-gobject' 'python-pillow' 'gtk3'
-    'wpaperd' 'wl-clipboard' 'cliphist' 'polkit-kde-agent' 'udiskie'
+    'appstream' 'archlinux-appstream-data'
+    'wpaperd' 'wl-clipboard' 'cliphist' 'udiskie'
+    'grim' 'gstreamer' 'gst-plugin-pipewire' 'gst-plugins-base'
+    'gst-plugins-base-libs' 'gst-plugins-good' 'gst-plugins-bad' 'libglvnd' 'ffmpeg'
     'kitty' 'fastfetch>=2.68.1' 'imagemagick' 'hyprlock' 'playerctl' 'fuzzel' 'qt6ct' 'noto-fonts' 'breeze-icons' 'adwaita-icon-theme'
     'terminus-font'
     'xdg-desktop-portal-gnome' 'xdg-desktop-portal-gtk'  # Upstream name; see emaki-desktop.
     'brightnessctl' 'power-profiles-daemon' 'networkmanager' 'upower' 'blueman' 'bluez'
     'pipewire' 'wireplumber' 'pipewire-pulse' 'rtkit' 'wlsunset'
     'greetd' 'greetd-regreet' 'kwallet-pam' 'kwallet>=6.30'
+    'accountsservice'  # Settings › Users: accounts and their polkit actions
 )
-makedepends=('git' 'make' 'python' 'rust' 'qt6-shadertools')
+makedepends=('git' 'make' 'python' 'rust' 'qt6-shadertools' 'cmake' 'gcc' 'pkgconf')
 checkdepends=('niri' 'nodejs')  # nodejs: shell JavaScript tests in make check
-optdepends=('swayidle: optional emaki-idle policy')
+optdepends=('swayidle: optional emaki-idle policy'
+            'python-yaml: validate optional AppStream YAML catalogs')
 conflicts=('emaki-core')
-backup=('etc/sudoers.d/10-emaki-wheel'
+backup=('etc/pam.d/emaki-sudo' 'etc/sudoers.d/10-emaki-wheel'
         'etc/niri/config.kdl' 'etc/xdg/hypr/hyprlock.conf' 'etc/xdg/fastfetch/config.jsonc'
         'etc/xdg/kwalletrc' 'etc/xdg/mimeapps.list' 'etc/xdg/kdeglobals' 'etc/xdg/dolphinrc' 'etc/xdg/qt6ct/qt6ct.conf'
         'etc/xdg/menus/emaki-applications.menu' 'etc/xdg/xdg-desktop-portal/niri-portals.conf')
@@ -86,7 +91,7 @@ check() {
 
 package() {
     _emaki_source
-    _emaki_make install install-niri-emaki DESTDIR="$pkgdir"
+    _emaki_make install install-niri-emaki DESTDIR="$pkgdir" INSTALL_SUDO_TURN_INTEGRATION=0
     python scripts/core-package.py verify-build-paths --binary "$pkgdir/usr/bin/emaki"
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
     # Review changes to the committed contract; never generate it in package().

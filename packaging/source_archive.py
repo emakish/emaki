@@ -18,7 +18,7 @@ import tempfile
 
 PACKAGES = ('niri-emaki', 'quickshell-emaki', 'xdg-desktop-portal-gnome-emaki',
             'emaki-config', 'emaki-nvidia', 'emaki-desktop', 'emaki-apps', 'emaki-installer',
-            'emaki-keyring', 'emaki-mirrorlist', 'emaki')
+            'emaki-keyring', 'emaki-mirrorlist', 'emaki-sudo-key', 'emaki')
 
 
 def run(*args, **kwargs):
@@ -189,6 +189,9 @@ def archive(recipe, src, output, commit, version):
                 'emaki-config': ['emaki', 'emaki/vendor', 'emaki/.cargo/config.toml',
                                  'emaki-source-commit'],
                 'emaki-installer': ['emaki-installer'],
+                'emaki-sudo-key': ['emaki-sudo-key/scripts/emaki-sudo-turn',
+                                   'emaki-sudo-key/sudo/turn-reporting.md',
+                                   'emaki-sudo-key/sudo/integrations'],
                 'emaki-nvidia': ['emaki-nvidia']}.get(name, [])
     for relative in required:
         if not (src / relative).exists():

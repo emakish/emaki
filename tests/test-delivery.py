@@ -28,7 +28,7 @@ class Delivery(unittest.TestCase):
         cls.root.mkdir()
         # Real recipes, no .git and no build artifacts. Copy only their inputs.
         directories = {path.split('/')[0] for path in delivery.RUNTIME_ROOTS}
-        directories.update(('docs', 'packaging', 'installer'))
+        directories.update(('docs', 'packaging', 'installer', 'sudo'))
         directories.discard('iso')
         for directory in directories:
             if (ROOT / directory).is_dir():
@@ -48,16 +48,49 @@ class Delivery(unittest.TestCase):
         self.assertFalse((self.root / '.git').exists())
         self.assertFalse(delivery.problems(delivery.candidates(self.root),
                                            self.delivered, self.exempt))
-        for name in ('shell/shell.qml', 'niri/default.kdl', 'upkeep/emaki-system-migrate',
+        for name in ('shell/shell.qml', 'capture/recorder.py', 'capture/dmabuf.py', 'niri/default.kdl', 'upkeep/emaki-system-migrate',
                      'systemd/emaki-shell.service', 'installer/ui/InstallerView.qml',
-                     'packaging/emaki-nvidia/session.sh', 'installer/emaki_installer/graphics.py'):
+                     'packaging/emaki-nvidia/session.sh', 'installer/emaki_installer/graphics.py',
+                     'scripts/emaki-sudo-turn', 'sudo/turn-reporting.md',
+                     'sudo/integrations/claude-hooks.json', 'sudo/integrations/codex-notify.toml'):
             self.assertIn(name, self.delivered)
 
     def test_each_package_payload_matches_its_inventory(self):
         self.assertFalse(delivery.payload_problems(self.root, self.payloads))
         self.assertIn('/usr/share/emaki-installer/ui/shaders', self.payloads['emaki-installer'])
         self.assertEqual(self.payloads['emaki'], set())
+        self.assertIn('/usr/libexec/emaki/emaki-capture-recorder', self.payloads['emaki-config'])
+        self.assertFalse((self.root / '.cache/capture-build').exists())
         self.assertEqual(self.payloads['niri-emaki'], {'/usr/bin/niri-emaki'})
+
+    def test_turn_setup_belongs_only_to_optional_package(self):
+        self.assertIn('/usr/bin/emaki-sudo-turn', self.payloads['emaki-sudo-key'])
+        self.assertIn('/usr/share/emaki/sudo-key.installed', self.payloads['emaki-sudo-key'])
+        for path in self.payloads['emaki-sudo-key']:
+            self.assertNotIn(path, self.payloads['emaki-config'])
+
+    def test_removed_optional_turn_install_is_not_hidden_by_base_install(self):
+        recipe = self.root / 'packaging/emaki-sudo-key/PKGBUILD'
+        original = recipe.read_text()
+        try:
+            mutated = original.replace(
+                '    install -Dm755 "$srcdir/emaki-sudo-key/scripts/emaki-sudo-turn" "$pkgdir/usr/bin/emaki-sudo-turn"',
+                '    :')
+            # Removing the install also removes its destination-only rendering step.
+            render = """    sed -i -e 's|@EMAKI_PYTHON@|/usr/bin/python3|g' -e 's|@EMAKI_BINDIR@|/usr/bin|g' \\
+        "$pkgdir/usr/bin/emaki-sudo-turn"
+"""
+            self.assertIn(render, mutated)
+            recipe.write_text(mutated.replace(render, ''))
+            payloads = {}
+            delivered = delivery.installed_sources(self.root, payloads)
+            errors = delivery.problems(delivery.candidates(self.root), delivered, self.exempt)
+            self.assertTrue(any(error.startswith('scripts/emaki-sudo-turn: no package installs')
+                                for error in errors), errors)
+            self.assertIn('emaki-sudo-key: listed path is not installed: /usr/bin/emaki-sudo-turn',
+                          delivery.payload_problems(self.root, payloads))
+        finally:
+            recipe.write_text(original)
 
     def test_inventory_drift_and_missing_list_fail(self):
         listing = self.root / 'packaging/emaki-apps/expected-files.list'

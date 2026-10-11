@@ -28,7 +28,8 @@ with tempfile.TemporaryDirectory(prefix='settings-launcher-') as temporary:
     helpers.mkdir()
     # Opening every section must not invoke installed machine helpers.
     for name in ('emaki-settings-apps', 'emaki-machine-settings', 'emaki-settings-about',
-                 'emaki-settings-power', 'emaki-update-channel'):
+                 'emaki-settings-power', 'emaki-update-channel', 'emaki-settings-storage',
+                 'emaki-settings-privacy', 'emaki-settings-users'):
         helper = helpers / name
         helper.write_text('#!/bin/sh\nexit 1\n')
         helper.chmod(0o700)
@@ -57,7 +58,11 @@ with tempfile.TemporaryDirectory(prefix='settings-launcher-') as temporary:
                             env=env, capture_output=True, text=True, timeout=45)
     output = result.stdout + result.stderr
     (EVIDENCE / 'settings-launcher.log').write_text(output)
-    assert result.returncode == 0 and 'SETTINGS_LAUNCHER_RESULT 15 0' in output, output
+    cases = [line.split('SETTINGS_LAUNCHER_CASE ', 1)[1]
+             for line in output.splitlines() if 'SETTINGS_LAUNCHER_CASE ' in line]
+    assert len(cases) == 15, ('Missing settings case diagnostics', cases, output)
+    assert result.returncode == 0 and 'SETTINGS_LAUNCHER_RESULT 16 0' in output, output
+    assert all(case.endswith(' PASS') for case in cases), cases
     for error in ('ReferenceError', 'TypeError', 'Binding loop', 'Unable to assign', 'Cannot assign'):
         assert error not in output, output
     for name in ('settings-launcher.png', 'settings-search.png', 'settings-narrow.png', 'launcher-normal.png',
@@ -65,7 +70,7 @@ with tempfile.TemporaryDirectory(prefix='settings-launcher-') as temporary:
                  'settings-shrink-mid.png', 'settings-close-mid.png', 'settings-1280x800.png',
                  'settings-1024x640.png'):
         assert (EVIDENCE / name).stat().st_size > 1000, name
-    print('PASS: settings lifecycle, all 17 pages, search anchors, dynamic reset, input, history and screenshots')
+    print('PASS: settings lifecycle, all 21 pages, search anchors, dynamic reset, input, history and screenshots')
 
     # Environments without Unix sockets still run every in-process QML assertion.
     probe = socket.socket(socket.AF_UNIX)

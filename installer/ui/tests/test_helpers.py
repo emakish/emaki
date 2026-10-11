@@ -19,6 +19,7 @@ from unittest.mock import patch
 
 UI = Path(__file__).resolve().parents[1]
 ROOT = UI.parents[1]
+sys.path.insert(0, str(ROOT / 'installer'))
 INSTALLED_UI = '/usr/share/emaki-installer/ui/shell.qml'
 spec = importlib.util.spec_from_file_location('ui_helper', UI / 'ui-helper.py')
 helper = importlib.util.module_from_spec(spec)
@@ -285,10 +286,34 @@ class Helpers(unittest.TestCase):
     def test_boot_medium_ancestry_detects_usb_and_skips_internal_disk(self):
         with tempfile.TemporaryDirectory() as temp, patch.object(helper, 'BOOT_MOUNT', Path(temp)):
             for transport, expected in [('usb', True), ('sata', False)]:
-                tree = {'blockdevices': [{'rm': False, 'children': [{'rm': False, 'tran': transport}]}]}
-                replies = [subprocess.CompletedProcess([], 0, b'/dev/sdb1\n', b''),
-                           subprocess.CompletedProcess([], 0, json.dumps(tree).encode(), b'')]
+                tree = {'blockdevices': [{'path': '/dev/sdb', 'type': 'disk', 'rm': False,
+                                         'tran': transport, 'children': [
+                                             {'path': '/dev/mapper/ventoy', 'type': 'dm',
+                                              'maj:min': '253:0'}]}]}
+                replies = [subprocess.CompletedProcess([], 0, json.dumps(tree).encode(), b''),
+                           subprocess.CompletedProcess([], 0, json.dumps({'filesystems': [
+                               {'source': '/dev/dm-0', 'maj:min': '253:0'}]}).encode(), b'')]
                 with patch.object(helper, 'run', side_effect=replies):
+                    self.assertEqual(helper.boot_removable(), expected)
+
+    def test_loop_boot_medium_uses_backing_disk_for_removal_instruction(self):
+        from emaki_installer.boot_media import BootMedia
+        with tempfile.TemporaryDirectory() as temp, patch.object(helper, 'BOOT_MOUNT', Path(temp)):
+            root = Path(temp)
+            backing = root / 'sys/dev/block/7:0/loop/backing_file'
+            backing.parent.mkdir(parents=True)
+            backing.write_text('/run/archiso/img_dev/Images/Emaki Live.iso\n')
+            for transport, expected in [('usb', True), ('sata', False)]:
+                tree = {'blockdevices': [
+                    {'path': '/dev/loop0', 'type': 'loop', 'maj:min': '7:0'},
+                    {'path': '/dev/sdb', 'type': 'disk', 'rm': False, 'tran': transport,
+                     'children': [{'path': '/dev/sdb1', 'type': 'part', 'maj:min': '8:17'}]}]}
+                replies = [subprocess.CompletedProcess([], 0, json.dumps(data).encode(), b'')
+                           for data in (tree, {'filesystems': [{'source': '/dev/loop0', 'maj:min': '7:0'}]},
+                                        {'filesystems': [{'source': '/dev/sdb1', 'maj:min': '8:17'}]})]
+                with patch.object(helper, 'run', side_effect=replies), \
+                        patch('emaki_installer.boot_media.BootMedia',
+                              side_effect=lambda run, nodes: BootMedia(run, nodes, root=root)):
                     self.assertEqual(helper.boot_removable(), expected)
 
     def test_network_one_row_per_name_and_security(self):

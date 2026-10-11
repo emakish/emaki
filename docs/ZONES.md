@@ -180,9 +180,8 @@ of `~/.config`.
 | --- | --- |
 | `wallpaper` | Desktop wallpaper [emaki-session-wallpaper] |
 | `clipboard` | Clipboard history recording [wl-paste, cliphist] |
-| `authentication` | Administrator password prompts [polkit-kde-agent] |
 | `automount` | Drive mounting on request (udiskie) |
-| `shell` | Panel, launcher and notifications [emaki-shell] |
+| `shell` | Panel, launcher, notifications and administrator password prompts [emaki-shell] |
 | `sleep-guard` | Locking before sleep [emaki-sleep-guard] |
 
 To turn off the clipboard history at login [cliphist]:
@@ -261,5 +260,15 @@ Emaki retains its runtime activation overrides for Secret Service, the Secret po
 Activation waits for the migration result; it cannot bypass paused password storage.
 No original keyring files are removed.
 
-The old polkit agent can be removed after the upgrade notice lists it as unused.
+The shell now owns administrator password prompts. The former KDE authorization
+package is no longer required; its session startup is removed and the legacy
+`authentication` session wrapper is rejected. Log out and in after the update
+to end an already-running old process. Package removal remains an explicit action.
 The GNOME screencast portal remains required for screen sharing.
+
+Administrator authorization is package-owned shell UI. Locking cancels a pending
+request; request details and passwords are not exposed through shell IPC. The
+runtime lock marker is transient session state, not a personal preference.
+The optional Sudo key controls are hidden unless a future package installs
+`$(DATADIR)/sudo-key.installed`; do not create that marker by hand. Its presence
+does not supply a granting mechanism in this version.

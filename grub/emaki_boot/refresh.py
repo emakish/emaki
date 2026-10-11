@@ -264,10 +264,10 @@ def require(condition, message):
         raise Refuse(message)
 
 
-def run(argv):
+def run(argv, env=None):
     result = subprocess.run([str(a) for a in argv], text=True, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, env={
-                                'PATH': '/usr/bin', 'LC_ALL': 'C'})
+                                'PATH': '/usr/bin', 'LC_ALL': 'C', **(env or {})})
     if LOG is not None:
         LOG.write('$ ' + shlex.join([str(a) for a in argv]) + '\n')
         LOG.write(result.stdout + result.stderr)
@@ -540,7 +540,39 @@ def generate(stage):
         bind(stage / 'btrfs-config', Path('/etc/default/grub-btrfs/config'))
     # 41_snapshots-btrfs has output side effects even when mkconfig uses stdout.
     bind(stage / 'grub', Path('/boot/grub'))
-    run(['grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
+    # A GRUB_FONT in the machine's defaults is sourced later and wins over this one.
+    font = menu_font()
+    run(['grub-mkconfig', '-o', '/boot/grub/grub.cfg'], {'GRUB_FONT': font} if font else None)
+    menu = Path('/boot/grub/grub.cfg')
+    original = regular(menu).decode()
+    safe = boot.menu_font_fallback(original)
+    if safe != original:
+        # This menu is private staging, never the active canonical menu.
+        menu.unlink()
+        write(menu, safe)
+
+
+def menu_font():
+    """The packaged face for the mode GRUB drew this boot's menu in, if installed."""
+    font = boot.menu_font(boot.boot_framebuffer(Path(boot.BOOT_PARAMS)))
+    return font if font and Path(font).is_file() and not Path(font).is_symlink() else None
+
+
+def menu_font_needs_repair():
+    """True when the canonical menu's face was chosen for another mode than this boot's.
+
+    Fresh installs choose from the live system's mode; firmware that also offers the
+    menu's preferred 1024x768 then draws the installed menu there. A local GRUB_FONT stays.
+    """
+    if boot.boot_framebuffer(Path(boot.BOOT_PARAMS)) is None:
+        return False
+    defaults, menu = Path('/etc/default/grub'), Path('/boot/grub/grub.cfg')
+    if any(not path.is_file() or path.is_symlink() for path in (defaults, menu)):
+        return False
+    if 'GRUB_FONT' in assignments(regular(defaults).decode()):
+        return False
+    current = boot.generated_menu_font(regular(menu).decode())
+    return current != '' and current != menu_font()
 
 
 def rewrite_menu(text, generation, fsroot):
@@ -721,7 +753,8 @@ def snapshot_menu_needs_repair():
 
 def repair_snapshot_menu(identity):
     """Use the normal staged publication path when boot finds a lost or stale menu."""
-    if identity['fstype'] != 'btrfs' or not snapshot_menu_needs_repair():
+    snapshots = identity['fstype'] == 'btrfs' and snapshot_menu_needs_repair()
+    if not snapshots and not menu_font_needs_repair():
         return
     stage = Path('/boot/grub/.emaki-snapshots')
     require(not stage.parent.is_symlink() and not stage.is_symlink(),
@@ -730,9 +763,15 @@ def repair_snapshot_menu(identity):
     sync_directory(stage.parent)
     with pause_snapshots():
         recover(identity)
-        state = read_state(Path('/efi/EFI/Emaki/grubx64.efi'), Path('/efi/EFI/BOOT/BOOTX64.EFI'))
-        refresh_menu(identity, state, snapshots_required=True)
-    print('The snapshot boot menu was repaired.')
+        state_path = Path('/efi/EFI/Emaki/boot-state.json')
+        if state_path.exists() or state_path.is_symlink():
+            state = read_state(Path('/efi/EFI/Emaki/grubx64.efi'), Path('/efi/EFI/BOOT/BOOTX64.EFI'))
+        else:
+            # A fresh alongside install can retain a foreign fallback forever.
+            # Menu-only repair needs no loader ownership or generation state.
+            state = {'good': None, 'newest': None}
+        refresh_menu(identity, state, snapshots_required=snapshots)
+    print('The snapshot boot menu was repaired.' if snapshots else 'The boot menu lettering was resized.')
 
 
 def refresh_menu(identity, state, recovery=False, snapshots_required=False):
@@ -1286,7 +1325,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     previous_sigterm = None
     try:
-        if args.repair_snapshots and not snapshot_menu_needs_repair():
+        if args.repair_snapshots and not snapshot_menu_needs_repair() and not menu_font_needs_repair():
             return 0
         if (Path('/.emaki-install-incomplete').exists() or Path('/run/archiso').exists()
                 or subprocess.run(['systemd-detect-virt', '--chroot', '--quiet'],

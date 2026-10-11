@@ -31,11 +31,47 @@ RICH = MINIMAL | {
 }
 
 
+# XDG_CURRENT_DESKTOP of an Emaki session; quickshell-emaki's 0006 applies OnlyShowIn and
+# NotShowIn against it as GLib does (the first named desktop decides).
+DESKTOPS = ('niri',)
+
+
+ESCAPES = {'s': ' ', 'n': '\n', 't': '\t', 'r': '\r', '\\': '\\', ';': ';'}
+
+
+def string_list(value):
+    """A desktop entry string list: an unescaped ';' ends an element, and \\s, \\n, \\t, \\r,
+    \\\\ and \\; decode inside elements (specification, "Possible value types")."""
+    items, item, characters = [], '', iter(value)
+    for character in characters:
+        if character == '\\':
+            escaped = next(characters, '')
+            item += ESCAPES.get(escaped, '\\' + escaped)
+        elif character == ';':
+            items.append(item)
+            item = ''
+        else:
+            item += character
+    return items + [item] if item else items
+
+
+def shown_here(entry, desktops=DESKTOPS):
+    only = string_list(entry.get('onlyshowin', ''))
+    never = string_list(entry.get('notshowin', ''))
+    for desktop in desktops:
+        if desktop in only:
+            return True
+        if desktop in never:
+            return False
+    # A present OnlyShowIn hides the entry from unnamed desktops even when it names none.
+    return 'onlyshowin' not in entry
+
+
 def hidden_ids(catalog):
     return set(json.loads(re.search(r'hiddenIds: (\[[^\n]+\])', catalog.read_text())[1]))
 
 
-def inventory(directories, hidden):
+def inventory(directories, hidden, desktops=DESKTOPS):
     entries = {}
     for directory in directories:
         for path in sorted(directory.rglob('*.desktop')):
@@ -47,7 +83,7 @@ def inventory(directories, hidden):
             entries[entry_id] = dict(parser['Desktop Entry']) if parser.has_section('Desktop Entry') else {}
     visible, redundant = set(), set()
     for entry_id, entry in entries.items():
-        concealed = entry.get('nodisplay') == 'true' or entry.get('hidden') == 'true'
+        concealed = entry.get('nodisplay') == 'true' or entry.get('hidden') == 'true' or not shown_here(entry, desktops)
         if concealed and entry_id in hidden:
             redundant.add(entry_id)
         if entry.get('type') == 'Application' and not concealed and entry_id not in hidden:
@@ -92,6 +128,39 @@ def self_test():
             assert 'Redundant hidden IDs' in str(error)
         else:
             raise AssertionError('An already hidden helper remained on the list')
+        # OnlyShowIn/NotShowIn hide an entry as NoDisplay does (Blueman's adapter dialog).
+        entry('other-desktops', 'OnlyShowIn=XFCE;MATE;\n')
+        entry('not-here', 'NotShowIn=niri;\n')
+        entry('also-here', 'OnlyShowIn=GNOME;niri;\n')
+        entry('not-kde', 'NotShowIn=KDE;\n')
+        check([apps], {'utility'}, {'app', 'also-here', 'not-kde'})
+        try:
+            check([apps], {'utility', 'other-desktops'}, {'app', 'also-here', 'not-kde'})
+        except ValueError as error:
+            assert 'Redundant hidden IDs (already hidden by the package): other-desktops' in str(error)
+        else:
+            raise AssertionError('An entry hidden by OnlyShowIn remained on the list')
+        for name in ('other-desktops', 'not-here', 'also-here', 'not-kde'):
+            (apps / (name + '.desktop')).unlink()
+        # A present but empty OnlyShowIn names no desktop, so it hides the entry everywhere.
+        entry('only-empty', 'OnlyShowIn=\n')
+        entry('only-empty-element', 'OnlyShowIn=;\n')
+        check([apps], {'utility'}, {'app'})
+        assert not shown_here({'onlyshowin': ''}, ()) and shown_here({}, ())
+        for name in ('only-empty', 'only-empty-element'):
+            (apps / (name + '.desktop')).unlink()
+        # List escapes decode before matching: "ni\sri" names the desktop "ni ri".
+        assert string_list(r'ni\sri;a\;b;c\\;\t\n\r;') == ['ni ri', 'a;b', 'c\\', '\t\n\r']
+        assert string_list('XFCE;MATE') == ['XFCE', 'MATE'] and string_list(';') == ['']
+        assert shown_here({'onlyshowin': r'XFCE;ni\sri;'}, ('ni ri',))
+        assert not shown_here({'notshowin': r'ni\sri;'}, ('ni ri',))
+        assert shown_here({'onlyshowin': r'a\;b;'}, ('a;b',))
+        entry('only-escaped', 'OnlyShowIn=XFCE;ni\\sri;\n')
+        entry('not-escaped', 'NotShowIn=ni\\sri;\n')
+        assert inventory([apps], {'utility'})[0] == {'app', 'not-escaped'}
+        assert inventory([apps], {'utility'}, ('ni ri',))[0] == {'app', 'only-escaped'}
+        for name in ('only-escaped', 'not-escaped'):
+            (apps / (name + '.desktop')).unlink()
         # The packaged helpers remain valid desktop entries; only the launcher
         # hides them, while the chosen player and editor remain visible.
         for path in apps.glob('*.desktop'):

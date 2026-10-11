@@ -14,6 +14,7 @@ import argparse
 import importlib.machinery
 import importlib.util
 from pathlib import Path
+import re
 import shutil
 import sys
 import tempfile
@@ -65,9 +66,14 @@ def problems(entries, installed, allow, allow_name=ALLOW):
     errors = []
     patterns = [(entry['component'], pattern, system_map.glob_pattern(pattern))
                 for entry in entries for pattern in entry['files']]
+    # Runtime coordination and personal media are created during a session, not
+    # installed into an image. Their ownership is still part of the system map.
+    dynamic = {(entry['component'], pattern) for entry in entries for pattern in entry['files']
+               if (entry['zone'] == 'person' and pattern.startswith('/home/'))
+               or (entry['zone'] == 'package' and pattern.startswith('/run/'))}
     owners = {path: sorted({name for name, _, regex in patterns if regex.match(path)}) for path in installed}
     for name, pattern, regex in patterns:
-        if not any(regex.match(path) for path in installed):
+        if (name, pattern) not in dynamic and not any(regex.match(path) for path in installed):
             errors.append(f'{name}: files entry {pattern} matches no installed path')
     for path in sorted(installed):
         found = owners[path]
@@ -109,6 +115,38 @@ def installed_paths(root):
     return result
 
 
+CLI = 'crates/emaki-cli/src'
+MAP_SOURCE = 'crates/emaki-core/src/map.rs'
+
+
+def cli_problems(renderer, root):
+    """The rules' own commands are in the emaki CLI help; the map zones are those of `emaki map`."""
+    errors = []
+    sources = {name: root / CLI / name for name in ('main.rs', 'settings.rs')}
+    if not all(path.is_file() for path in sources.values()):
+        return [f'{CLI}: main.rs and settings.rs are needed to check the rules\' commands']
+    for command in renderer.RULES_COMMANDS.values():
+        program, *words = command.split()
+        options = [word for word in words if word.startswith('--')]
+        words = [word for word in words if not word.startswith('--')]
+        source = sources['settings.rs' if words[0] == 'settings' else 'main.rs'].read_text()
+        source = '\n'.join(re.findall(r'const \w*HELP: &str = "(.*?)";', source, re.S))
+        usage = ' '.join(words[1:] if words[0] == 'settings' else words)
+        lines = [line.strip() for line in source.splitlines()]
+        found = [line for line in lines if line.startswith(usage + ' ') or line == usage]
+        if program != 'emaki' or not found:
+            errors.append(f'rules command {command!r} is not in the help of {CLI}')
+        elif any(option not in source for option in options):
+            errors.append(f'rules command {command!r}: an option is not in the help of {CLI}')
+    zones = (root / MAP_SOURCE).read_text() if (root / MAP_SOURCE).is_file() else ''
+    if set(renderer.MAP_ZONES) != set(renderer.ZONES):
+        errors.append('MAP_ZONES and ZONES name different zones')
+    for name in renderer.MAP_ZONES.values():
+        if f'zone: "{name}"' not in zones:
+            errors.append(f'map zone {name!r} is not a zone of {MAP_SOURCE}')
+    return errors
+
+
 def check(root):
     renderer = load_renderer(root)
     manifest = root / renderer.SOURCE
@@ -123,6 +161,11 @@ def check(root):
     else:
         # A tree without MANIFEST.md (the public sources): the rendered page carries the blocks.
         entries, errors = renderer.components((root / renderer.PAGE).read_text(), renderer.PAGE)
+    if not errors:
+        rules = root / renderer.RULES
+        if not rules.is_file() or rules.read_text() != renderer.render_rules(entries):
+            errors.append(f'{renderer.RULES} is stale; run make render')
+        errors += cli_problems(renderer, root)
     allow, allow_errors = allowed((root / ALLOW).read_text())
     if not errors and not allow_errors:
         errors += problems(entries, installed_paths(root), allow)
@@ -172,6 +215,17 @@ def self_test():
         ('a files entry matching nothing fails',
          run(COMPLETE.replace('  /usr/lib/emaki-release\n', '  /usr/lib/emaki-release\n  /usr/lib/nothing/**\n')),
          '/usr/lib/nothing/** matches no installed path'),
+        ('personal media can describe session-created files',
+         run(COMPLETE + COMPLETE.replace('component: release-marker', 'component: personal-media')
+             .replace('/usr/lib/emaki-release', '/home/*/Pictures/Screenshots/*')
+             .replace('zone: package', 'zone: person')), None),
+        ('runtime coordination can describe session-created files',
+         run(COMPLETE + COMPLETE.replace('component: release-marker', 'component: capture-runtime')
+             .replace('/usr/lib/emaki-release', '/run/user/*/emaki-capture-*.lock')), None),
+        ('package ownership cannot hide an unmatched personal path',
+         run(COMPLETE + COMPLETE.replace('component: release-marker', 'component: wrong-owner')
+             .replace('/usr/lib/emaki-release', '/home/*/Pictures/Screenshots/*')),
+         'matches no installed path'),
         ('an unknown zone fails', run(COMPLETE.replace('zone: package', 'zone: system')), "zone 'system'"),
         ('"none yet" without a reason fails',
          run(COMPLETE.replace('state: emaki-release-state --json', 'state: none yet:')), 'needs a reason'),
@@ -191,6 +245,13 @@ def self_test():
     ok = not errors and again == entries
     print(f'{"ok" if ok else "FAILED"}: the rendered page carries the same blocks')
     failed += not ok
+    # State queries come from the map, including commands that do not accept --json.
+    fixture = dict(entries[0], component='settings-runtime', state='emaki-shell call settings status')
+    rules = system_map.render_rules([*entries, fixture])
+    ok = ('`emaki-shell call settings status`' in rules
+          and 'emaki-shell call settings status --json' not in rules)
+    print(f'{"ok" if ok else "FAILED"}: rules preserve the map state command exactly')
+    failed += not ok
     # Whole trees: a stale page fails; without MANIFEST.md the page's blocks are checked.
     with tempfile.TemporaryDirectory() as directory:
         tree = Path(directory)
@@ -204,13 +265,44 @@ def self_test():
         (tree / 'packaging/emaki-config/expected-files.list').write_text('\n'.join(installed) + '\n')
         (tree / 'MANIFEST.md').write_text(COMPLETE)
         (tree / 'docs/system-map.md').write_text(system_map.render(entries))
+        (tree / system_map.RULES).write_text(system_map.render_rules(entries))
+        (tree / CLI).mkdir(parents=True)
+        (tree / MAP_SOURCE).parent.mkdir(parents=True)
+        (tree / CLI / 'main.rs').write_text(
+            'const HELP: &str = "Commands:\n  map [--json]  Paths\n  state [--json]  State";\n')
+        settings = (tree / CLI / 'settings.rs')
+        settings.write_text('const HELP: &str = "  history  Changes\n  undo ID  Restore\n  --json  JSON";\n')
+        (tree / MAP_SOURCE).write_text('zone: "package"\nzone: "managed"\nzone: "yours"\n')
         cases = [('a fresh tree passes', check(tree), None)]
+        settings.write_text('const HELP: &str = "  log  Changes\n  undo ID  Restore\n  --json  JSON";\n')
+        cases.append(('a renamed command named by the rules fails', check(tree),
+                      "'emaki settings history --json' is not in the help"))
+        settings.write_text('// history\nconst HELP: &str = "  undo ID  Restore\n  --json  JSON";\n')
+        cases.append(('a command outside the help text fails', check(tree), 'is not in the help'))
+        settings.write_text('const HELP: &str = "  history  Changes\n  undo ID  Restore";\n')
+        cases.append(('a missing option fails', check(tree), 'an option is not in the help'))
+        settings.write_text('const HELP: &str = "  history  Changes\n  undo ID  Restore\n  --json  JSON";\n')
+        (tree / MAP_SOURCE).write_text('zone: "package"\nzone: "settings"\nzone: "yours"\n')
+        cases.append(('a renamed emaki map zone fails', check(tree), "map zone 'managed'"))
+        (tree / MAP_SOURCE).write_text('zone: "package"\nzone: "managed"\nzone: "yours"\n')
+        (tree / system_map.RULES).write_text('old instructions\n')
+        cases.append(('a stale rules template fails', check(tree), 'is stale; run make render'))
+        (tree / system_map.RULES).unlink()
+        cases.append(('a missing rules template fails', check(tree), 'is stale; run make render'))
+        (tree / system_map.RULES).write_text(system_map.render_rules(entries))
         (tree / 'MANIFEST.md').write_text(COMPLETE.replace('Edit the file.', 'Edit it.'))
         cases.append(('a stale rendered page fails', check(tree), 'is stale; run make render'))
         (tree / 'MANIFEST.md').unlink()
         cases.append(('a private tree without MANIFEST.md fails', check(tree), 'MANIFEST.md is missing'))
         (tree / 'scripts/make-public.sh').unlink()
         cases.append(('a public tree checks the blocks of its page', check(tree), None))
+        (tree / system_map.RULES).write_text('old public instructions\n')
+        cases.append(('a public tree rejects stale rules', check(tree), 'is stale; run make render'))
+        (tree / system_map.RULES).write_text(system_map.render_rules(entries))
+        changed = [dict(entries[0], state='emaki-state --json')]
+        (tree / 'docs/system-map.md').write_text(system_map.render(changed))
+        cases.append(('a changed map command invalidates the rules', check(tree), 'is stale; run make render'))
+        (tree / 'docs/system-map.md').write_text(system_map.render(entries))
         (tree / 'packaging/emaki-config/PKGBUILD').touch()
         listing = tree / 'packaging/emaki-config/expected-files.list'
         listing.write_text('# Fixture inventory header\n'

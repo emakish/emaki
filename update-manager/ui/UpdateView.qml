@@ -4,7 +4,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as C
-import "@EMAKI_DATADIR@/shell" as Shell
+import "file:@EMAKI_DATADIR@/shell" as Shell
 
 Rectangle {
     id: view
@@ -69,7 +69,10 @@ Rectangle {
     }
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Escape) {
-            if (controller.phase !== "applying") hideRequested();
+            if (!controller.busy) {
+                if (controller.restoreOpen) controller.cancelRestore();
+                else controller.hide();
+            }
             event.accepted = true;
         } else scrollKey(event);
     }
@@ -92,7 +95,7 @@ Rectangle {
     }
     component Action: C.Button {
         id: action
-        focusPolicy: Qt.StrongFocus
+        focusPolicy: visible && enabled ? Qt.StrongFocus : Qt.NoFocus
         Keys.onReturnPressed: if (enabled) clicked()
         Keys.onEnterPressed: if (enabled) clicked()
         onActiveFocusChanged: if (activeFocus) view.reveal(action)
@@ -115,6 +118,8 @@ Rectangle {
     }
     Connections {
         target: view.controller
+        function onHideReady(): void { view.hideRequested(); }
+        function onRestoreOpenChanged(): void { topPosition.restart(); body.forceActiveFocus(); }
         function onPhaseChanged(): void {
             view.followTail = true;
             view.detailsOpen = false;
@@ -182,13 +187,14 @@ Rectangle {
                 }
                 Label { objectName: "resultMessage"; visible: text.length > 0; text: view.controller.message }
                 Label { visible: view.controller.signOut; text: "Sign out and sign back in to use the updated Emaki session." }
-                Label { visible: view.controller.restart; text: "A kernel update needs a restart." }
+                Label { objectName: "restartReminder"; visible: view.controller.reminder; text: "[PLACEHOLDER] Updated system components need a restart." }
                 ColumnLayout {
                     objectName: "updateCatalog"
                     Layout.fillWidth: true
-                    visible: !view.controller.busy && view.controller.phase !== "finished"
+                    visible: !view.controller.busy && view.controller.phase !== "finished" && !view.controller.restoreOpen
                     spacing: 12
                     Label { text: view.controller.data.checkedAt ? "Last checked: " + view.localTime(view.controller.data.checkedAt) : "No update check yet." }
+                    Label { visible: !!view.controller.data.aurNotice; text: view.controller.data.aurNotice || "" }
                     Label { text: "Repository download: " + view.size(view.controller.data.downloadSize) }
                     Repeater {
                         model: (view.controller.data.warnings || []).filter((warning, index, warnings) => warnings.indexOf(warning) === index)
@@ -223,6 +229,31 @@ Rectangle {
                         }
                     }
                 }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: view.controller.restoreOpen
+                    Label { text: "[PLACEHOLDER] Restore before an update. Your /home files will stay as they are." }
+                    Label { visible: !view.controller.busy && view.controller.restorePoints.length === 0; text: "[PLACEHOLDER] No pre-update restore points are available." }
+                    Repeater {
+                        model: view.controller.restorePoints
+                        Action {
+                            required property var modelData
+                            required property int index
+                            objectName: "restorePoint" + index
+                            Layout.fillWidth: true
+                            enabled: !view.controller.busy && !view.controller.restorePending
+                            text: "[PLACEHOLDER] Before the update of " + view.localTime(modelData.timestamp || modelData.date) + " · " + (modelData.packages || modelData.description || String(modelData.id)) + (modelData.notice ? "\n" + modelData.notice : "")
+                            onClicked: view.controller.selectRestore(modelData)
+                        }
+                    }
+                    Label {
+                        objectName: "restoreConfirmation"
+                        visible: !!view.controller.selectedRestore
+                        text: view.controller.selectedRestore ? "[PLACEHOLDER] Restore the system as it was before the update of " + view.localTime(view.controller.selectedRestore.timestamp || view.controller.selectedRestore.date) + ". Your /home files will stay as they are. The current system will be kept so this can be undone. Save your work; a restart is required." : ""
+                    }
+                    Action { objectName: "confirmRestore"; visible: !!view.controller.selectedRestore; enabled: !view.controller.busy; text: "[PLACEHOLDER] Confirm restore"; onClicked: view.controller.restore() }
+                    Action { objectName: "cancelRestore"; enabled: !view.controller.busy; text: "[PLACEHOLDER] Cancel"; onClicked: view.controller.cancelRestore() }
+                }
                 Action {
                     objectName: "detailsToggle"
                     visible: !!view.controller.data.errorDetails
@@ -237,9 +268,10 @@ Rectangle {
             columns: view.width < 780 ? 2 : 4
             Layout.fillWidth: true
             Action { objectName: "check"; text: "Check again"; enabled: !view.controller.busy; onClicked: view.controller.check() }
-            Action { objectName: "apply"; text: "Update repositories"; enabled: !view.controller.busy && view.controller.repositoryCount > 0 && !view.controller.data.error && view.controller.phase !== "finished"; onClicked: view.controller.apply() }
+            Action { objectName: "apply"; text: "[PLACEHOLDER] Update"; enabled: !view.controller.busy && view.controller.managedCount > 0 && !view.controller.restorePending && !view.controller.data.error && view.controller.phase !== "finished"; onClicked: view.controller.apply() }
+            Action { objectName: "restore"; text: "[PLACEHOLDER] Restore before an update…"; enabled: !view.controller.busy && !view.controller.restorePending; onClicked: view.controller.loadRestorePoints() }
             Action { objectName: "restart"; text: "Restart now"; visible: view.controller.restart; enabled: !view.controller.busy; onClicked: view.controller.reboot() }
-            Action { objectName: "hide"; text: view.controller.restart ? "Later" : "Hide"; onClicked: view.hideRequested() }
+            Action { objectName: "hide"; text: view.controller.restart ? "Later" : "Hide"; onClicked: view.controller.hide() }
         }
     }
 }

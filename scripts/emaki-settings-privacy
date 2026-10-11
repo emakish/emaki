@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Collect privacy status without authentication or implicit changes."""
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import emaki_paths
+import emaki_privacy_portals
+
+
+def command(args, timeout=20):
+    try:
+        result = subprocess.run(args, capture_output=True, text=True, timeout=timeout,
+                                env=dict(os.environ, LC_ALL='C'))
+        if result.returncode == 0 and len(result.stdout) <= 2**20:
+            value = json.loads(result.stdout)
+            return value if isinstance(value, dict) else {}
+    except (OSError, subprocess.SubprocessError, UnicodeError, ValueError):
+        pass
+    return {}
+
+
+def combine(states):
+    states = set(states)
+    if not states or 'unavailable' in states:
+        return 'unavailable'
+    return next(iter(states)) if len(states) == 1 else 'mixed'
+
+
+def mount_encryption(mount, devices):
+    """Check every backing branch, including repeated LVM and multi-device Btrfs."""
+    if (not isinstance(mount, dict) or not mount.get('fstype')
+            or mount.get('fstype') in ('overlay', 'tmpfs', 'squashfs')
+            or (mount.get('fstype') == 'btrfs' and not mount.get('uuid'))):
+        return 'unavailable'
+    number = mount.get('maj:min')
+    if not isinstance(number, str) or ':' not in number:
+        return 'unavailable'
+    matches = []
+    count = 0
+
+    def walk(nodes, ancestry=()):
+        nonlocal count
+        if not isinstance(nodes, list) or len(ancestry) > 32:
+            raise ValueError('invalid block tree')
+        for node in nodes:
+            count += 1
+            if count > 4096 or not isinstance(node, dict):
+                raise ValueError('invalid block tree')
+            branch = ancestry + (node.get('type'),)
+            same_fs = (mount.get('fstype') == 'btrfs' and mount.get('uuid')
+                       and node.get('uuid') == mount['uuid'])
+            if node.get('maj:min') == number or same_fs:
+                if 'crypt' in branch:
+                    matches.append('encrypted')
+                elif branch[0] == 'disk' and all(kind in ('disk', 'part', 'lvm', 'raid0',
+                        'raid1', 'raid4', 'raid5', 'raid6', 'raid10', 'md', 'mpath') for kind in branch):
+                    matches.append('unencrypted')
+                else:
+                    matches.append('unavailable')
+            walk(node.get('children', []), branch)
+
+    try:
+        walk(devices)
+    except ValueError:
+        return 'unavailable'
+    return combine(matches)
+
+
+def encryption():
+    devices = command(['lsblk', '--json', '--paths', '--output', 'NAME,TYPE,MAJ:MIN,FSTYPE,UUID'])
+    rows = []
+    for target in ('/', '/home'):
+        info = command(['findmnt', '--json', '--target', target, '--output', 'SOURCE,MAJ:MIN,FSTYPE,UUID'])
+        mounts = info.get('filesystems')
+        mount = mounts[0] if isinstance(mounts, list) and len(mounts) == 1 else None
+        rows.append({'mount': target, 'state': mount_encryption(mount, devices.get('blockdevices'))})
+    return {'state': combine(row['state'] for row in rows), 'mounts': rows}
+
+
+def recovery():
+    response = command(['pkexec', '--disable-internal-agent',
+                        str(Path(emaki_paths.LIBEXECDIR) / 'emaki-privacy-recovery'), 'status', '--json'],
+                       timeout=60)
+    if (response.get('schema_version') == 1 and response.get('status') == 'ready'
+            and all(isinstance(response.get(key), dict) for key in ('snapshot', 'rollback', 'menu'))):
+        return {key: response[key] for key in ('snapshot', 'rollback', 'menu')}
+    return {'snapshot': {'state': 'unavailable'}, 'rollback': {'mode': 'unavailable'},
+            'menu': {'state': 'unavailable', 'latest_snapshot_present': None}}
+
+
+def lock_status():
+    power = command(['emaki-settings-power', 'status', '--json'])
+    values = power.get('values')
+    delay = values.get('lock_delay') if isinstance(values, dict) else None
+    if (power.get('state') == 'ready' and power.get('idle_available') is True
+            and type(delay) is int and delay >= 0):
+        return {'state': 'ready', 'delay': delay}
+    return {'state': 'unavailable'}
+
+
+def report_locations():
+    state = Path(os.environ.get('XDG_STATE_HOME') or Path.home() / '.local/state')
+    if not state.is_absolute():
+        state = Path.home() / '.local/state'
+    runtime = os.environ.get('XDG_RUNTIME_DIR', '')
+    return {'saved': str(state / 'emaki/reports'),
+            'runtime': str(Path(runtime) / 'emaki-shell-health') if runtime.startswith('/') else None}
+
+
+def status():
+    return {'schema_version': 1, 'status': 'ready', 'recovery': recovery(),
+            'encryption': encryption(), 'portals': emaki_privacy_portals.status(),
+            'lock': lock_status(), 'reports': report_locations()}
+
+
+def main(args):
+    if args == ['status', '--json']:
+        response = status()
+    elif len(args) == 5 and args[0] == 'revoke-portal' and args[-1] == '--json':
+        revoked = emaki_privacy_portals.revoke(*args[1:4])
+        response = status()
+        response['operation'] = 'revoked' if revoked else 'failed'
+    else:
+        print(json.dumps({'schema_version': 1, 'status': 'error', 'reason': 'invalid_command'}))
+        return 2
+    print(json.dumps(response))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

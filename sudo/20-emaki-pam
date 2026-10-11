@@ -1,0 +1,4 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# This file and the PAM service are owned by the same package.
+Defaults pam_service="emaki-sudo", pam_login_service="emaki-sudo"

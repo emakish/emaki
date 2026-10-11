@@ -39,6 +39,30 @@ Back up personal files separately. Keep the snapshot packages installed where su
 On Arch, package changes go through `pacman`. Use the component's Rollback instruction
 for a previous package version or a system snapshot; never replace package files by hand.
 
+## agent-rules
+
+Before a risky system action, establish a recovery path and take a snapshot with snapguard where it is installed and configured for this root; confirm that protection succeeded before proceeding.
+
+- Files: `/usr/share/emaki/agent-rules.md`, `/usr/share/emaki/agent-rules-setup.md`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: none yet: these are Markdown instructions, offered in Settings > AI Assistants; opening them changes no personal configuration and does not enable protection.
+- Change: Read the rules and setup guide, then explicitly add the instructions to your own configuration if wanted. For risky actions, consult the installed snapguard documentation and use its supported interface; never guess its commands. Check snapshot coverage and keep separate backups of personal files before making the authorized change.
+- Never: Enable instructions without the person's choice; overwrite existing personal rules; bypass snapguard, assume it is installed because a prompt mentions it, or equate a sudo key with permission to skip a snapshot or the person's decision.
+- Rollback: If snapguard is absent or not working, say plainly that rollback protection for this risky action needs snapguard; do not promise an automatic undo. On ext4 snapguard keeps only file archives; a system rollback needs a btrfs root. Explain the recovery gap before proceeding and let the person decide whether to arrange protection or defer. Existing root snapshots and independent backups may support manual recovery only when verified for this change. Remove only the rules you added to turn this integration off.
+
+```system-map
+component: agent-rules
+what: Before a risky system action, establish a recovery path and take a snapshot with snapguard where it is installed and configured for this root; confirm that protection succeeded before proceeding.
+files:
+  /usr/share/emaki/agent-rules.md
+  /usr/share/emaki/agent-rules-setup.md
+zone: package
+state: none yet: these are Markdown instructions, offered in Settings > AI Assistants; opening them changes no personal configuration and does not enable protection.
+change: Read the rules and setup guide, then explicitly add the instructions to your own configuration if wanted. For risky actions, consult the installed snapguard documentation and use its supported interface; never guess its commands. Check snapshot coverage and keep separate backups of personal files before making the authorized change.
+never: Enable instructions without the person's choice; overwrite existing personal rules; bypass snapguard, assume it is installed because a prompt mentions it, or equate a sudo key with permission to skip a snapshot or the person's decision.
+rollback: If snapguard is absent or not working, say plainly that rollback protection for this risky action needs snapguard; do not promise an automatic undo. On ext4 snapguard keeps only file archives; a system rollback needs a btrfs root. Explain the recovery gap before proceeding and let the person decide whether to arrange protection or defer. Existing root snapshots and independent backups may support manual recovery only when verified for this change. Remove only the rules you added to turn this integration off.
+```
+
 ## application-defaults
 
 Default application associations, launcher and terminal themes, file-manager preferences, toolkit appearance and desktop portal routing. Skeleton templates are package-owned; copies in a new account are personal files and are not updated in place.
@@ -100,6 +124,32 @@ never: Edit packaged launcher or preset files to configure one person's session;
 rollback: For application integration and its compatible dependency set together, follow snapshot-recovery with an available pre-update btrfs root snapshot. Personal application data and autostart overrides in /home remain unchanged. Ext4 has no snapshot rollback.
 ```
 
+## authentication-prompt
+
+The shell presents password-only administrator authorization requests from polkit and sudo in one clock-island card with a two-minute deadline, queued in the order their providers expose them.
+
+- Files: `/usr/share/emaki/shell/Polkit*.qml`, `/usr/share/emaki/shell/Polkit*.js`, `/usr/share/emaki/shell/SudoKey*.qml`, `/usr/share/emaki/shell/helpers/polkit-lock-state.py`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: none yet: request contents and passwords have no diagnostic IPC; inspect the packaged files or exercise a request in an isolated graphical session.
+- Change: Respond to the requesting application's card, expand Details, or cancel with Cancel or Esc. The optional sudo-key package controls whether its grant options appear.
+- Never: Log or export passwords or authorization cookies, bypass lock cancellation, start a competing authorization service, or create the sudo-key marker by hand.
+- Rollback: Restore matching shell and session packages and log out and in. Personal application settings remain unchanged.
+
+```system-map
+component: authentication-prompt
+what: The shell presents password-only administrator authorization requests from polkit and sudo in one clock-island card with a two-minute deadline, queued in the order their providers expose them.
+files:
+  /usr/share/emaki/shell/Polkit*.qml
+  /usr/share/emaki/shell/Polkit*.js
+  /usr/share/emaki/shell/SudoKey*.qml
+  /usr/share/emaki/shell/helpers/polkit-lock-state.py
+zone: package
+state: none yet: request contents and passwords have no diagnostic IPC; inspect the packaged files or exercise a request in an isolated graphical session.
+change: Respond to the requesting application's card, expand Details, or cancel with Cancel or Esc. The optional sudo-key package controls whether its grant options appear.
+never: Log or export passwords or authorization cookies, bypass lock cancellation, start a competing authorization service, or create the sudo-key marker by hand.
+rollback: Restore matching shell and session packages and log out and in. Personal application settings remain unchanged.
+```
+
 ## autostart
 
 Starts desktop autostart entries and supplies the packaged device-integration entry. Per-person off switches live in ~/.config/emaki/autostart-disabled; these are personal files, not managed settings.
@@ -155,7 +205,7 @@ rollback: Set the supported limit to 100 percent; package removal disables boot/
 
 Boot artwork, boot-loader refresh implementation, update return and boot-completion services, initramfs snapshot mounts and resume integration. Generated boot output describes this machine and must stay consistent with its kernels and root snapshots.
 
-- Files: `/usr/bin/emaki-update-boot`, `/usr/lib/emaki/boot/**`, `/usr/lib/initcpio/hooks/emaki-*`, `/usr/lib/initcpio/install/emaki-*`, `/usr/lib/systemd/system-sleep/emaki-boot-resume`, `/usr/lib/systemd/system/emaki-boot-complete.service`, `/usr/lib/systemd/system/emaki-boot-refresh.service`, `/usr/lib/systemd/system/emaki-update-boot.service`, `/usr/lib/systemd/system/multi-user.target.wants/emaki-boot-complete.service`, `/usr/lib/systemd/system/multi-user.target.wants/emaki-boot-refresh.service`, `/usr/lib/systemd/system/multi-user.target.wants/emaki-update-boot.service`, `/usr/share/emaki/boot/*`, `/usr/share/emaki/grub/*`, `/usr/share/libalpm/hooks/04-emaki-update-boot.hook`, `/usr/share/libalpm/hooks/06-emaki-update-boot.hook`, `/usr/share/libalpm/hooks/95-emaki-boot-refresh.hook`, `/usr/share/libalpm/scripts/emaki_boot_defaults.py`
+- Files: `/usr/bin/emaki-update-boot`, `/usr/lib/emaki/boot/**`, `/usr/lib/initcpio/hooks/emaki-*`, `/usr/lib/initcpio/install/emaki-*`, `/usr/lib/systemd/system-sleep/emaki-boot-resume`, `/usr/lib/systemd/system/emaki-boot-complete.service`, `/usr/lib/systemd/system/emaki-boot-refresh.service`, `/usr/lib/systemd/system/emaki-update-boot.service`, `/usr/lib/systemd/system/multi-user.target.wants/emaki-boot-complete.service`, `/usr/lib/systemd/system/multi-user.target.wants/emaki-boot-refresh.service`, `/usr/lib/systemd/system/multi-user.target.wants/emaki-update-boot.service`, `/usr/share/emaki/boot/*`, `/usr/share/emaki/grub/*`, `/usr/share/emaki/grub/fonts/*`, `/usr/share/libalpm/hooks/04-emaki-update-boot.hook`, `/usr/share/libalpm/hooks/06-emaki-update-boot.hook`, `/usr/share/libalpm/hooks/95-emaki-boot-refresh.hook`, `/usr/share/libalpm/scripts/emaki_boot_defaults.py`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
 - State: none yet: boot publication and automatic return have no aggregate read-only JSON command; inspect the boot services' journal and /var/log/emaki-boot-refresh.log.
 - Change: Update through the update manager. Package hooks and boot services regenerate boot output; use the boot menu to choose an available recovery entry.
@@ -179,6 +229,7 @@ files:
   /usr/lib/systemd/system/multi-user.target.wants/emaki-update-boot.service
   /usr/share/emaki/boot/*
   /usr/share/emaki/grub/*
+  /usr/share/emaki/grub/fonts/*
   /usr/share/libalpm/hooks/04-emaki-update-boot.hook
   /usr/share/libalpm/hooks/06-emaki-update-boot.hook
   /usr/share/libalpm/hooks/95-emaki-boot-refresh.hook
@@ -188,6 +239,80 @@ state: none yet: boot publication and automatic return have no aggregate read-on
 change: Update through the update manager. Package hooks and boot services regenerate boot output; use the boot menu to choose an available recovery entry.
 never: Run boot-loader installation or menu-generation commands by hand; edit generated /boot files or /etc machine boot configuration by hand; remove a kernel or snapshot needed by a pending update.
 rollback: Try another installed kernel, or follow snapshot-recovery with an available pre-update btrfs root snapshot. Only /boot inside the root subvolume is restored with its modules; a separate /boot and the /efi system partition need their own recovery. Ext4 has no snapshot rollback. Keep recovery entries until the recovered system is verified.
+```
+
+## capture-media
+
+Completed pictures and silent recordings are personal files. XDG media locations override the usual Pictures and Videos directories; hidden partial files are never completed captures.
+
+- Files: `/home/*/Pictures/Screenshots/*`, `/home/*/Videos/Screencasts/*`
+- Zone: person, the person's own files, theirs to change; no Emaki update writes them.
+- State: `emaki-shell call capture status` (prints JSON)
+- Change: Capture through the shell or manage completed files with the file manager. XDG user-directory settings may select different personal locations.
+- Never: Replace another capture or publish an undecodable picture or incomplete recording.
+- Rollback: Delete unwanted completed captures through the file manager; package rollback does not change personal media.
+
+```system-map
+component: capture-media
+what: Completed pictures and silent recordings are personal files. XDG media locations override the usual Pictures and Videos directories; hidden partial files are never completed captures.
+files:
+  /home/*/Pictures/Screenshots/*
+  /home/*/Videos/Screencasts/*
+zone: person
+state: emaki-shell call capture status
+change: Capture through the shell or manage completed files with the file manager. XDG user-directory settings may select different personal locations.
+never: Replace another capture or publish an undecodable picture or incomplete recording.
+rollback: Delete unwanted completed captures through the file manager; package rollback does not change personal media.
+```
+
+## capture-runtime
+
+A private per-display advisory lease allows one recording. Inotify observes the lock marker; an uncertain event stops at the last safe boundary. Runtime files are volatile coordination, not personal settings.
+
+- Files: `/run/user/*/emaki-capture-*.lock`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: `emaki-shell call capture status` (prints JSON)
+- Change: Start or stop through the shell capture action; the kernel releases the lease when its owner exits. The location follows XDG_RUNTIME_DIR.
+- Never: Remove an active lease file or treat a lock marker event as permission to retain later frames.
+- Rollback: Stop the active recording; the user runtime directory is removed on session teardown.
+
+```system-map
+component: capture-runtime
+what: A private per-display advisory lease allows one recording. Inotify observes the lock marker; an uncertain event stops at the last safe boundary. Runtime files are volatile coordination, not personal settings.
+files:
+  /run/user/*/emaki-capture-*.lock
+zone: package
+state: emaki-shell call capture status
+change: Start or stop through the shell capture action; the kernel releases the lease when its owner exits. The location follows XDG_RUNTIME_DIR.
+never: Remove an active lease file or treat a lock marker event as permission to retain later frames.
+rollback: Stop the active recording; the user runtime directory is removed on session teardown.
+```
+
+## capture-tool
+
+A session-owned overlay selects an area, a window or a screen and captures a picture or a silent MP4 recording. Pictures are copied to the clipboard and saved under Pictures/Screenshots; recordings are saved under Videos/Screencasts. User media directories follow XDG configuration. These personal files are outside settings history.
+
+- Files: `/usr/share/emaki/shell/Capture*.qml`, `/usr/share/emaki/shell/CaptureText.js`, `/usr/share/emaki/shell/helpers/capture.py`, `/usr/libexec/emaki/emaki-capture-recorder`, `/usr/libexec/emaki/dmabuf.py`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: `emaki-shell call capture status` (prints JSON)
+- Change: Run `emaki-shell call capture open`, choose the source and mode, then capture. `emaki-shell call capture stop` stops recording. The action is deliberately unbound until the owner chooses a key.
+- Never: Bypass compositor capture protection, capture while locked, pass the trusted Wayland descriptor to a helper, replace personal media, or report an incomplete recording as saved.
+- Rollback: Restore matching shell and compositor packages. Existing pictures and videos remain personal files and are not deleted by rollback.
+
+```system-map
+component: capture-tool
+what: A session-owned overlay selects an area, a window or a screen and captures a picture or a silent MP4 recording. Pictures are copied to the clipboard and saved under Pictures/Screenshots; recordings are saved under Videos/Screencasts. User media directories follow XDG configuration. These personal files are outside settings history.
+files:
+  /usr/share/emaki/shell/Capture*.qml
+  /usr/share/emaki/shell/CaptureText.js
+  /usr/share/emaki/shell/helpers/capture.py
+  /usr/libexec/emaki/emaki-capture-recorder
+  /usr/libexec/emaki/dmabuf.py
+zone: package
+state: emaki-shell call capture status
+change: Run `emaki-shell call capture open`, choose the source and mode, then capture. `emaki-shell call capture stop` stops recording. The action is deliberately unbound until the owner chooses a key.
+never: Bypass compositor capture protection, capture while locked, pass the trusted Wayland descriptor to a helper, replace personal media, or report an incomplete recording as saved.
+rollback: Restore matching shell and compositor packages. Existing pictures and videos remain personal files and are not deleted by rollback.
 ```
 
 ## channels-and-mirrors
@@ -244,7 +369,7 @@ rollback: Read `emaki settings history --json`, then use `emaki settings undo ID
 
 ## compositor-configuration
 
-Packaged niri defaults and the Emaki session includes. /etc/niri/config.kdl is a packaged fallback; a person may have a separate ~/.config/niri/config.kdl, which Emaki must never overwrite. The personal ~/.config/emaki/niri-emaki.kdl include is read last in the Emaki session.
+Packaged niri defaults and the Emaki session includes. /etc/niri/config.kdl is a packaged fallback; a person may have a separate ~/.config/niri/config.kdl, which Emaki must never overwrite. The personal ~/.config/emaki/niri-emaki.kdl include follows wallpaper defaults, then packaged fork rules supply the safety bindings. Startup proof and optional revoke chords and actions remain fixed until the next login, including across live keymap changes. Missing startup actions can recover only from the packaged rules on any configuration reload attempt.
 
 - Files: `/etc/niri/config.kdl`, `/usr/share/emaki/niri/*`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
@@ -255,7 +380,7 @@ Packaged niri defaults and the Emaki session includes. /etc/niri/config.kdl is a
 
 ```system-map
 component: compositor-configuration
-what: Packaged niri defaults and the Emaki session includes. /etc/niri/config.kdl is a packaged fallback; a person may have a separate ~/.config/niri/config.kdl, which Emaki must never overwrite. The personal ~/.config/emaki/niri-emaki.kdl include is read last in the Emaki session.
+what: Packaged niri defaults and the Emaki session includes. /etc/niri/config.kdl is a packaged fallback; a person may have a separate ~/.config/niri/config.kdl, which Emaki must never overwrite. The personal ~/.config/emaki/niri-emaki.kdl include follows wallpaper defaults, then packaged fork rules supply the safety bindings. Startup proof and optional revoke chords and actions remain fixed until the next login, including across live keymap changes. Missing startup actions can recover only from the packaged rules on any configuration reload attempt.
 files:
   /etc/niri/config.kdl
   /usr/share/emaki/niri/*
@@ -268,7 +393,7 @@ rollback: Undo managed changes with `emaki settings undo ID`. Restore the person
 
 ## compositor-runtime
 
-The patched niri compositor executable used by the Emaki desktop and login compositor; its configuration belongs to the separate compositor-configuration component.
+The patched niri compositor executable used by the Emaki desktop and login compositor; its configuration belongs to the separate compositor-configuration component. It reserves the authentication layer and isolates its input through trusted-authentication-path.
 
 - Files: `/usr/bin/niri-emaki`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
@@ -279,7 +404,7 @@ The patched niri compositor executable used by the Emaki desktop and login compo
 
 ```system-map
 component: compositor-runtime
-what: The patched niri compositor executable used by the Emaki desktop and login compositor; its configuration belongs to the separate compositor-configuration component.
+what: The patched niri compositor executable used by the Emaki desktop and login compositor; its configuration belongs to the separate compositor-configuration component. It reserves the authentication layer and isolates its input through trusted-authentication-path.
 files:
   /usr/bin/niri-emaki
 zone: package
@@ -580,9 +705,44 @@ never: Edit or replace them by hand; a wrong value stops the login screen and th
 rollback: For generated package path modules, follow snapshot-recovery with an available pre-update btrfs root snapshot. Recover them with the matching package files and install layout; personal settings in /home remain unchanged. Ext4 has no snapshot rollback.
 ```
 
+## installed-programs
+
+The program manager JSON engine joins Arch and optional Flathub programs with standard AppStream metadata, search and details. It authenticates native and default-system Flatpak changes, supports removal of existing user Flatpak deployments without root, delegates full updates to the update backend, and preserves the installed-program removal preview and refusals used by Settings > Apps. AUR search results are terminal-build information only.
+
+- Files: `/usr/bin/emaki-programs`, `/usr/libexec/emaki/emaki-programs-remove`, `/usr/libexec/emaki/emaki-programs-install`, `/usr/libexec/emaki/emaki-programs-flatpak`, `/usr/libexec/emaki/programs_catalog.py`, `/usr/libexec/emaki/programs_appstream.py`, `/usr/libexec/emaki/programs_arch.py`, `/usr/libexec/emaki/programs_engine.py`, `/usr/libexec/emaki/programs_flatpak.py`, `/usr/share/polkit-1/actions/org.emaki.programs.policy`, `/usr/share/polkit-1/actions/org.emaki.programs.install.policy`, `/usr/share/polkit-1/actions/org.emaki.programs.flatpak.policy`, `/usr/share/polkit-1/rules.d/00-emaki-programs.rules`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: `emaki-programs catalog --json; emaki-programs list --json; emaki-programs preview PACKAGE --json` (prints JSON)
+- Change: Use the versioned `emaki-programs serve` JSON protocol, or its catalog/search/details/plan/ execute commands. Read the complete plan before passing its token to execute. Existing Settings removal and `emaki-programs remove PACKAGE TOKEN --json` retain their original preview contract.
+- Never: Remove with a cascade (-c) or a dependency override (-d); remove without reading the full preview; remove an Emaki or system package here; execute AUR recipes; add remotes automatically; select a program by display name; install into a user or additional system Flatpak installation; run overlapping repository transactions (they share a lock).
+- Rollback: Install the program again; its personal settings stay. On btrfs the repository transaction's pre snapshot holds the removed packages. Flatpak deployments are separate transactions; they and personal application data are outside a system snapshot. Ext4 has no system snapshot rollback.
+
+```system-map
+component: installed-programs
+what: The program manager JSON engine joins Arch and optional Flathub programs with standard AppStream metadata, search and details. It authenticates native and default-system Flatpak changes, supports removal of existing user Flatpak deployments without root, delegates full updates to the update backend, and preserves the installed-program removal preview and refusals used by Settings > Apps. AUR search results are terminal-build information only.
+files:
+  /usr/bin/emaki-programs
+  /usr/libexec/emaki/emaki-programs-remove
+  /usr/libexec/emaki/emaki-programs-install
+  /usr/libexec/emaki/emaki-programs-flatpak
+  /usr/libexec/emaki/programs_catalog.py
+  /usr/libexec/emaki/programs_appstream.py
+  /usr/libexec/emaki/programs_arch.py
+  /usr/libexec/emaki/programs_engine.py
+  /usr/libexec/emaki/programs_flatpak.py
+  /usr/share/polkit-1/actions/org.emaki.programs.policy
+  /usr/share/polkit-1/actions/org.emaki.programs.install.policy
+  /usr/share/polkit-1/actions/org.emaki.programs.flatpak.policy
+  /usr/share/polkit-1/rules.d/00-emaki-programs.rules
+zone: package
+state: emaki-programs catalog --json; emaki-programs list --json; emaki-programs preview PACKAGE --json
+change: Use the versioned `emaki-programs serve` JSON protocol, or its catalog/search/details/plan/ execute commands. Read the complete plan before passing its token to execute. Existing Settings removal and `emaki-programs remove PACKAGE TOKEN --json` retain their original preview contract.
+never: Remove with a cascade (-c) or a dependency override (-d); remove without reading the full preview; remove an Emaki or system package here; execute AUR recipes; add remotes automatically; select a program by display name; install into a user or additional system Flatpak installation; run overlapping repository transactions (they share a lock).
+rollback: Install the program again; its personal settings stay. On btrfs the repository transaction's pre snapshot holds the removed packages. Flatpak deployments are separate transactions; they and personal application data are outside a system snapshot. Ext4 has no system snapshot rollback.
+```
+
 ## installer
 
-The live installation window, command-line client, privileged worker, device planning code, UI and reference fixtures. The installer is available on live media and is not retained as an installed-system service.
+The live installation window, command-line client, privileged worker, device planning code, UI and reference fixtures, including shared physical boot-media resolution for inventory and restart instructions. The installer is available on live media and is not retained as an installed-system service.
 
 - Files: `/usr/bin/emaki-install`, `/usr/bin/emaki-install-cli`, `/usr/bin/emaki-installerd`, `/usr/lib/python*/site-packages/emaki_installer/**`, `/usr/lib/systemd/system/emaki-installerd.service`, `/usr/lib/sysusers.d/emaki-installer.conf`, `/usr/lib/tmpfiles.d/emaki-installer.conf`, `/usr/share/applications/emaki-install.desktop`, `/usr/share/doc/emaki-installer/**`, `/usr/share/emaki-installer/**`, `/usr/share/icons/hicolor/scalable/apps/emaki-install.svg`, `/usr/share/licenses/emaki-installer/*`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
@@ -593,7 +753,7 @@ The live installation window, command-line client, privileged worker, device pla
 
 ```system-map
 component: installer
-what: The live installation window, command-line client, privileged worker, device planning code, UI and reference fixtures. The installer is available on live media and is not retained as an installed-system service.
+what: The live installation window, command-line client, privileged worker, device planning code, UI and reference fixtures, including shared physical boot-media resolution for inventory and restart instructions. The installer is available on live media and is not retained as an installed-system service.
 files:
   /usr/bin/emaki-install
   /usr/bin/emaki-install-cli
@@ -759,7 +919,7 @@ rollback: For matching policy, drivers and kernel modules together, follow snaps
 
 ## package-transaction-safety
 
-Package hooks enforce snapshot retention, inhibit unsafe concurrent power operations, maintain release identity and refresh initramfs and menu integration. The migration helper adopts only recognized older defaults.
+Package hooks enforce snapshot retention, inhibit unsafe concurrent power operations, maintain release identity and refresh initramfs and menu integration. Before package removal they drop the sudo PAM selector ahead of either service copy, refusing removal if that fails. The migration helper adopts only recognized older defaults.
 
 - Files: `/usr/bin/emaki-transaction-inhibit`, `/usr/share/libalpm/hooks/00-emaki-*`, `/usr/share/libalpm/hooks/01-emaki-config-release.hook`, `/usr/share/libalpm/hooks/02-emaki-config-remove.hook`, `/usr/share/libalpm/hooks/50-emaki-os-release*.hook`, `/usr/share/libalpm/hooks/89-emaki-*.hook`, `/usr/share/libalpm/hooks/90-emaki-grub-title.hook`, `/usr/share/libalpm/hooks/93-emaki-initramfs-refresh.hook`, `/usr/share/libalpm/hooks/99-emaki-rollback-holds.hook`, `/usr/share/libalpm/scripts/emaki-grub-title`, `/usr/share/libalpm/scripts/emaki-initramfs-refresh`, `/usr/share/libalpm/scripts/emaki-os-release`, `/usr/share/libalpm/scripts/emaki-rollback-holds`, `/usr/share/libalpm/scripts/emaki-snapshot-policy`, `/usr/share/libalpm/scripts/emaki-system-migrate`, `/usr/share/libalpm/scripts/emaki_initramfs.py`, `/etc/sudoers.d/10-emaki-wheel`, `/usr/share/emaki/defaults/wheel`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
@@ -770,7 +930,7 @@ Package hooks enforce snapshot retention, inhibit unsafe concurrent power operat
 
 ```system-map
 component: package-transaction-safety
-what: Package hooks enforce snapshot retention, inhibit unsafe concurrent power operations, maintain release identity and refresh initramfs and menu integration. The migration helper adopts only recognized older defaults.
+what: Package hooks enforce snapshot retention, inhibit unsafe concurrent power operations, maintain release identity and refresh initramfs and menu integration. Before package removal they drop the sudo PAM selector ahead of either service copy, refusing removal if that fails. The migration helper adopts only recognized older defaults.
 files:
   /usr/bin/emaki-transaction-inhibit
   /usr/share/libalpm/hooks/00-emaki-*
@@ -795,6 +955,30 @@ state: none yet: no read-only JSON command reports all package hooks and transac
 change: Update emaki-config through the update manager. On Arch, package transactions use `pacman`.
 never: Disable transaction or snapshot hooks; remove snapshot packages; write sudoers or other /etc files by hand; interrupt a running package transaction. Before recursive removal on Arch, inspect the entire `pacman -Rs --print` result and preserve needed dependencies explicitly.
 rollback: For hooks and the root package database together, follow snapshot-recovery with an available pre-update btrfs root snapshot. Separate /boot and /efi output is not restored; follow boot-loader-and-initramfs for those boundaries. Ext4 has no snapshot rollback.
+```
+
+## privacy-recovery-status
+
+Reads the newest full-update pre-snapshot receipt, current rollback mode and existing boot-menu syntax and snapshot link through a fixed read-only privileged helper.
+
+- Files: `/usr/libexec/emaki/emaki-privacy-recovery`, `/usr/share/polkit-1/actions/org.emaki.privacy.recovery.policy`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: `emaki-settings-privacy status --json` (prints JSON)
+- Change: None; existing recovery tools own restore and boot repair.
+- Never: Repair menus while checking status, authenticate during page load, treat unreadable receipts as no snapshots or claim syntax checks prove bootability.
+- Rollback: Return to the previous package; this reader changes no recovery data.
+
+```system-map
+component: privacy-recovery-status
+what: Reads the newest full-update pre-snapshot receipt, current rollback mode and existing boot-menu syntax and snapshot link through a fixed read-only privileged helper.
+files:
+  /usr/libexec/emaki/emaki-privacy-recovery
+  /usr/share/polkit-1/actions/org.emaki.privacy.recovery.policy
+zone: package
+state: emaki-settings-privacy status --json
+change: None; existing recovery tools own restore and boot repair.
+never: Repair menus while checking status, authenticate during page load, treat unreadable receipts as no snapshots or claim syntax checks prove bootability.
+rollback: Return to the previous package; this reader changes no recovery data.
 ```
 
 ## release-identity-and-licenses
@@ -1140,6 +1324,31 @@ never: Automatically suspend, overwrite machine power policy or create another s
 rollback: Reset each changed key or disable the personal emaki-idle.service; the person owns saved state.
 ```
 
+## settings-privacy
+
+Reads recovery, storage encryption, remembered portal decisions, lock delay and diagnostic locations in the existing Settings cards; revokes supported remembered grants and the current user's sudo keys.
+
+- Files: `/usr/bin/emaki-settings-privacy`, `/usr/libexec/emaki/emaki_privacy_portals.py`, `/usr/share/emaki/shell/SettingsPrivacyPage.qml`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: `emaki-settings-privacy status --json` (prints JSON)
+- Change: Use revoke-portal TABLE HANDLE APP --json only for a currently listed revocable grant; use the existing sudo service to revoke keys and Lock & Login to change the delay.
+- Never: Grant access, stop another application's live capture, read portal secrets, collect reports on page load or infer safety from unavailable data.
+- Rollback: Return to the previous package; a revoked permission or key must be requested again through its normal authorization flow.
+
+```system-map
+component: settings-privacy
+what: Reads recovery, storage encryption, remembered portal decisions, lock delay and diagnostic locations in the existing Settings cards; revokes supported remembered grants and the current user's sudo keys.
+files:
+  /usr/bin/emaki-settings-privacy
+  /usr/libexec/emaki/emaki_privacy_portals.py
+  /usr/share/emaki/shell/SettingsPrivacyPage.qml
+zone: package
+state: emaki-settings-privacy status --json
+change: Use revoke-portal TABLE HANDLE APP --json only for a currently listed revocable grant; use the existing sudo service to revoke keys and Lock & Login to change the delay.
+never: Grant access, stop another application's live capture, read portal secrets, collect reports on page load or infer safety from unavailable data.
+rollback: Return to the previous package; a revoked permission or key must be requested again through its normal authorization flow.
+```
+
 ## settings-sound
 
 Shares existing native audio devices and the peak monitor with the quick sound panel; it starts no second device service.
@@ -1187,6 +1396,33 @@ never: Modify system entries, follow redirected personal paths or execute entrie
 rollback: Reset the owned entry or remove an added entry; use settings history for defaults.* changes.
 ```
 
+## settings-storage
+
+Shows filesystem pool usage and storage categories, with explicit file previews for package cache, archived journals and personal home trash.
+
+- Files: `/usr/bin/emaki-settings-storage`, `/usr/libexec/emaki/emaki_storage.py`, `/usr/libexec/emaki/storage_arch.py`, `/usr/share/emaki/shell/SettingsStoragePage.qml`, `/usr/share/polkit-1/actions/org.emaki.storage.policy`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: `emaki-settings-storage status --json` (prints JSON)
+- Change: Open Storage in Settings. Inspect protected details through authentication, preview one category, then explicitly confirm its listed entries. The fixed preview KIND --json and cleanup KIND TOKEN --json commands expose the same protocol. Retained-root inspection temporarily mounts the top-level tree read-only under /run/emaki-storage-* in a private namespace, then unmounts and removes the empty directory.
+- Never: Delete snapshots, follow links or nested mounts, accept deletion paths, clean personal files outside home trash, run trash cleanup as root, or use an obsolete preview.
+- Rollback: Cleanup cannot be undone. Installed and rollback-required package versions remain protected; snapshot restoration stays in the existing recovery path.
+
+```system-map
+component: settings-storage
+what: Shows filesystem pool usage and storage categories, with explicit file previews for package cache, archived journals and personal home trash.
+files:
+  /usr/bin/emaki-settings-storage
+  /usr/libexec/emaki/emaki_storage.py
+  /usr/libexec/emaki/storage_arch.py
+  /usr/share/emaki/shell/SettingsStoragePage.qml
+  /usr/share/polkit-1/actions/org.emaki.storage.policy
+zone: package
+state: emaki-settings-storage status --json
+change: Open Storage in Settings. Inspect protected details through authentication, preview one category, then explicitly confirm its listed entries. The fixed preview KIND --json and cleanup KIND TOKEN --json commands expose the same protocol. Retained-root inspection temporarily mounts the top-level tree read-only under /run/emaki-storage-* in a private namespace, then unmounts and removes the empty directory.
+never: Delete snapshots, follow links or nested mounts, accept deletion paths, clean personal files outside home trash, run trash cleanup as root, or use an obsolete preview.
+rollback: Cleanup cannot be undone. Installed and rollback-required package versions remain protected; snapshot restoration stays in the existing recovery path.
+```
+
 ## settings-system-pages
 
 Power, startup apps, region, system information and maintenance pages use fixed providers and the shared settings core.
@@ -1212,6 +1448,34 @@ state: emaki-shell call settings status
 change: Open battery, apps, region, about, updates or lock through Settings; use each supported row.
 never: Write machine configuration from QML, upload diagnostic reports or expose unfinished recovery actions.
 rollback: Reset the affected provider or core setting; restore the previous package for page code.
+```
+
+## settings-users
+
+Settings › Users lists the accounts of the people on this computer and changes accounts through AccountsService. Administrative changes use Emaki's non-retained auth_admin action and a fixed root helper; editing one's own name uses stock change-own-user-data authorization. One's own password uses passwd in the managed terminal. Other passwords are typed only in that terminal and sent privately to the helper. A shell singleton keeps operations and results alive when authentication closes Settings. One usable administrator always remains; the account in use and signed-in accounts cannot be removed.
+
+- Files: `/usr/bin/emaki-settings-users`, `/usr/libexec/emaki/emaki-settings-users-root`, `/usr/libexec/emaki/users_home.py`, `/usr/share/polkit-1/actions/org.emaki.settings-users.policy`, `/usr/share/emaki/shell/SettingsUsersPage.qml`, `/usr/share/emaki/shell/SettingsUsersService.qml`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: `emaki-settings-users status --json` (prints JSON)
+- Change: Open Settings › Users (`emaki-shell call settings open users`), or run `emaki-settings-users add|remove|set-name|set-password|set-administrator`; a password comes from the managed terminal (`--terminal`) or one line on stdin, never from an argument. A kept home becomes root-owned mode 0700 at <home>.removed-YYYYMMDD[-N] before account removal, leaving the original path free for a fresh home. Failed-add rollback preserves and secures the home rather than asking AccountsService to delete an unproven new directory.
+- Never: Edit passwd, shadow or group files by hand or from a page; remove the account in use, a signed-in account or the last usable administrator; pass a password or its hash as a command argument; leave a kept home accessible through a reused account ID; report a partial home deletion failure as applied.
+- Rollback: Restore a name, role or password through the same page; remove an added account if desired. Recreating a removed login does not restore its original UID, group memberships or data. A btrfs root snapshot restores the account database but not home folders; a deleted home is gone, and restoring access to a secured retained home needs an administrator. Ext4 has no snapshot rollback.
+
+```system-map
+component: settings-users
+what: Settings › Users lists the accounts of the people on this computer and changes accounts through AccountsService. Administrative changes use Emaki's non-retained auth_admin action and a fixed root helper; editing one's own name uses stock change-own-user-data authorization. One's own password uses passwd in the managed terminal. Other passwords are typed only in that terminal and sent privately to the helper. A shell singleton keeps operations and results alive when authentication closes Settings. One usable administrator always remains; the account in use and signed-in accounts cannot be removed.
+files:
+  /usr/bin/emaki-settings-users
+  /usr/libexec/emaki/emaki-settings-users-root
+  /usr/libexec/emaki/users_home.py
+  /usr/share/polkit-1/actions/org.emaki.settings-users.policy
+  /usr/share/emaki/shell/SettingsUsersPage.qml
+  /usr/share/emaki/shell/SettingsUsersService.qml
+zone: package
+state: emaki-settings-users status --json
+change: Open Settings › Users (`emaki-shell call settings open users`), or run `emaki-settings-users add|remove|set-name|set-password|set-administrator`; a password comes from the managed terminal (`--terminal`) or one line on stdin, never from an argument. A kept home becomes root-owned mode 0700 at <home>.removed-YYYYMMDD[-N] before account removal, leaving the original path free for a fresh home. Failed-add rollback preserves and secures the home rather than asking AccountsService to delete an unproven new directory.
+never: Edit passwd, shadow or group files by hand or from a page; remove the account in use, a signed-in account or the last usable administrator; pass a password or its hash as a command argument; leave a kept home accessible through a reused account ID; report a partial home deletion failure as applied.
+rollback: Restore a name, role or password through the same page; remove an added account if desired. Recreating a removed login does not restore its original UID, group memberships or data. A btrfs root snapshot restores the account database but not home folders; a deleted home is gone, and restoring access to a secured retained home needs an administrator. Ext4 has no snapshot rollback.
 ```
 
 ## settings-wallpaper
@@ -1293,7 +1557,7 @@ rollback: For the shell runtime and Qt libraries together, follow snapshot-recov
 
 ## snapshot-boot-menu
 
-Keeps the boot menu's list of snapshots bootable. After each package transaction a hook checks the grub-btrfs menu with Emaki's renderer and publishes only a validated fragment to /boot/grub/grub-btrfs.cfg. After boot, emaki-snapshot-menu.service runs `emaki-boot-refresh --repair-snapshots`, which rebuilds the fragment only when it is missing, empty or names snapshots that no longer exist; a healthy boot writes nothing. The same emaki-boot-refresh program also refreshes the Emaki boot loader.
+Keeps the boot menu's list of snapshots bootable. After each package transaction a hook checks the grub-btrfs menu with Emaki's renderer and publishes only a validated fragment to /boot/grub/grub-btrfs.cfg. After boot, emaki-snapshot-menu.service runs `emaki-boot-refresh --repair-snapshots`, which rebuilds the fragment only when it is missing, empty or names snapshots that no longer exist, or the main menu once when its lettering was sized for another screen mode than this boot's, on btrfs and ext4; a healthy boot writes nothing. The generated header keeps Unifont for Unicode fallback and retries it if the enlarged face cannot initialize gfxterm. The same emaki-boot-refresh program also refreshes the Emaki boot loader.
 
 - Files: `/usr/bin/emaki-boot-refresh`, `/usr/bin/emaki-snapshot-menu-check`, `/usr/lib/systemd/system/emaki-snapshot-menu.service`, `/usr/lib/systemd/system/multi-user.target.wants/emaki-snapshot-menu.service`, `/usr/share/libalpm/hooks/91-emaki-snapshot-menu.hook`, `/usr/share/libalpm/scripts/emaki-snapshot-menu`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
@@ -1304,7 +1568,7 @@ Keeps the boot menu's list of snapshots bootable. After each package transaction
 
 ```system-map
 component: snapshot-boot-menu
-what: Keeps the boot menu's list of snapshots bootable. After each package transaction a hook checks the grub-btrfs menu with Emaki's renderer and publishes only a validated fragment to /boot/grub/grub-btrfs.cfg. After boot, emaki-snapshot-menu.service runs `emaki-boot-refresh --repair-snapshots`, which rebuilds the fragment only when it is missing, empty or names snapshots that no longer exist; a healthy boot writes nothing. The same emaki-boot-refresh program also refreshes the Emaki boot loader.
+what: Keeps the boot menu's list of snapshots bootable. After each package transaction a hook checks the grub-btrfs menu with Emaki's renderer and publishes only a validated fragment to /boot/grub/grub-btrfs.cfg. After boot, emaki-snapshot-menu.service runs `emaki-boot-refresh --repair-snapshots`, which rebuilds the fragment only when it is missing, empty or names snapshots that no longer exist, or the main menu once when its lettering was sized for another screen mode than this boot's, on btrfs and ext4; a healthy boot writes nothing. The generated header keeps Unifont for Unicode fallback and retries it if the enlarged face cannot initialize gfxterm. The same emaki-boot-refresh program also refreshes the Emaki boot loader.
 files:
   /usr/bin/emaki-boot-refresh
   /usr/bin/emaki-snapshot-menu-check
@@ -1343,6 +1607,113 @@ never: Remove snapper, snap-pac or grub-btrfs; delete /.snapshots by hand; keep 
 rollback: Keep the recovery receipt and previous-root entry until the recovered system is verified. Use the boot menu for another available root and restore home files from separate backups.
 ```
 
+## sudo-authentication
+
+Routes non-terminal sudo authentication through a root service and the shell prompt while terminal requests use the standard sudo PAM stack.
+
+- Files: `/etc/sudoers.d/20-emaki-pam`, `/usr/bin/emaki-sudo`, `/etc/pam.d/emaki-sudo`, `/usr/lib/pam.d/emaki-sudo`, `/usr/lib/security/pam_emaki_sudo.so`, `/usr/libexec/emaki/emaki-sudo-broker`, `/usr/share/emaki/shell/Emaki/Sudo/*`, `/usr/share/emaki/shell/SudoPrompt*.qml`, `/usr/share/emaki/shell/SudoText.js`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: `emaki-sudo status --json` (prints JSON)
+- Change: Use ordinary sudo for an authorized command. Non-terminal authentication uses the desktop card when available; the person reviews the request and enters a password there. Terminal sudo keeps its standard PAM conversation and ordinary password memory. Cancel, Esc, expiry or locking cancels a new request. Update emaki-config for matching PAM policy, module, root service and shell transport; do not change authentication policy yourself.
+- Never: Ask the person to send a password to an agent; send passwords through command arguments, environment, files or general shell IPC; retry a cancelled request through a bypass. sudo -n cannot consume a key; -S and -A keep stock password handling and are not substitutes for the desktop card. Never remove the selected PAM service while keeping its sudoers selector.
+- Rollback: Restore the matching emaki-config package; remove the sudoers selector together with its PAM service when removing this integration. Root login policy is unchanged.
+
+```system-map
+component: sudo-authentication
+what: Routes non-terminal sudo authentication through a root service and the shell prompt while terminal requests use the standard sudo PAM stack.
+files:
+  /etc/sudoers.d/20-emaki-pam
+  /usr/bin/emaki-sudo
+  /etc/pam.d/emaki-sudo
+  /usr/lib/pam.d/emaki-sudo
+  /usr/lib/security/pam_emaki_sudo.so
+  /usr/libexec/emaki/emaki-sudo-broker
+  /usr/share/emaki/shell/Emaki/Sudo/*
+  /usr/share/emaki/shell/SudoPrompt*.qml
+  /usr/share/emaki/shell/SudoText.js
+zone: package
+state: emaki-sudo status --json
+change: Use ordinary sudo for an authorized command. Non-terminal authentication uses the desktop card when available; the person reviews the request and enters a password there. Terminal sudo keeps its standard PAM conversation and ordinary password memory. Cancel, Esc, expiry or locking cancels a new request. Update emaki-config for matching PAM policy, module, root service and shell transport; do not change authentication policy yourself.
+never: Ask the person to send a password to an agent; send passwords through command arguments, environment, files or general shell IPC; retry a cancelled request through a bypass. sudo -n cannot consume a key; -S and -A keep stock password handling and are not substitutes for the desktop card. Never remove the selected PAM service while keeping its sudoers selector.
+rollback: Restore the matching emaki-config package; remove the sudoers selector together with its PAM service when removing this integration. Root login policy is unchanged.
+```
+
+## sudo-authentication-runtime
+
+Holds the root-owned authentication socket and volatile nonsecret grants. Root-only journals in /run/emaki-sudo/cleanup retain served parent identities until cached sudo cleanup succeeds; restart ends all grants and retries those journals. Private /var/lib/emaki-sudo/UID.warning records retain each user's warning acceptance across logins, service restarts and upgrades. The private /var/lib/emaki-sudo/installation epoch changes only on removal followed by installation.
+
+- Files: `/usr/lib/systemd/system/emaki-sudo.service`, `/usr/lib/systemd/system/multi-user.target.wants/emaki-sudo.service`, `/usr/lib/systemd/system/emaki-sudo-cleanup.service`, `/usr/lib/systemd/system/emaki-sudo-cleanup.timer`, `/usr/lib/systemd/system/timers.target.wants/emaki-sudo-cleanup.timer`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: `emaki-sudo status --json` (prints JSON)
+- Change: Use emaki-sudo revoke ID --json or emaki-sudo revoke-all --json for the current user's grants. Service restart ends all grants and retries cleanup. The root-only emaki-sudo-broker --cleanup helper drains retained journals during service stop and package removal. Accept the warning in the trusted desktop prompt; the broker stores a root-owned mode 0600 record in its mode 0700 state directory. An administrator can reset acceptance by removing that UID's .warning file.
+- Never: Replace the socket, edit or delete cleanup journals, persist passwords or grants, write warning acceptance from user-controlled files, or treat service state as personal configuration.
+- Rollback: Restart emaki-sudo.service to recreate the runtime socket, end volatile grants and retry their cached sudo cleanup; terminal authentication remains available. Remove a user's acceptance record to require the warning again; removing and reinstalling the optional package also requires fresh acceptance. Upgrades preserve acceptance.
+
+```system-map
+component: sudo-authentication-runtime
+what: Holds the root-owned authentication socket and volatile nonsecret grants. Root-only journals in /run/emaki-sudo/cleanup retain served parent identities until cached sudo cleanup succeeds; restart ends all grants and retries those journals. Private /var/lib/emaki-sudo/UID.warning records retain each user's warning acceptance across logins, service restarts and upgrades. The private /var/lib/emaki-sudo/installation epoch changes only on removal followed by installation.
+files:
+  /usr/lib/systemd/system/emaki-sudo.service
+  /usr/lib/systemd/system/multi-user.target.wants/emaki-sudo.service
+  /usr/lib/systemd/system/emaki-sudo-cleanup.service
+  /usr/lib/systemd/system/emaki-sudo-cleanup.timer
+  /usr/lib/systemd/system/timers.target.wants/emaki-sudo-cleanup.timer
+zone: package
+state: emaki-sudo status --json
+change: Use emaki-sudo revoke ID --json or emaki-sudo revoke-all --json for the current user's grants. Service restart ends all grants and retries cleanup. The root-only emaki-sudo-broker --cleanup helper drains retained journals during service stop and package removal. Accept the warning in the trusted desktop prompt; the broker stores a root-owned mode 0600 record in its mode 0700 state directory. An administrator can reset acceptance by removing that UID's .warning file.
+never: Replace the socket, edit or delete cleanup journals, persist passwords or grants, write warning acceptance from user-controlled files, or treat service state as personal configuration.
+rollback: Restart emaki-sudo.service to recreate the runtime socket, end volatile grants and retry their cached sudo cleanup; terminal authentication remains available. Remove a user's acceptance record to require the warning again; removing and reinstalling the optional package also requires fresh acceptance. Upgrades preserve acceptance.
+```
+
+## sudo-key
+
+The optional package lets the person give an agent a sudo key: a temporary extension of ordinary sudo for that agent's process tree, not a stored password. Only the person grants a key, after its warning screen; ordinary approval creates none. Ordinary sudo stays stock with its own 5-minute password memory. When a key ends, its served parents lose their cached sudo authority too; the person's terminal memory is untouched. Keys survive screen lock, suspend and shell restarts; they end on expiry, logout, the agent's exit, the panel indicator or Super+Ctrl+Esc.
+
+- Files: `/usr/share/emaki/sudo-key.installed`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: `emaki-sudo status --json` (prints JSON)
+- Change: Install or remove emaki-sudo-key through package management. The person types the amount in the prompt: a number of minutes, at least 5 (the service takes 5–1440); a number of the agent's turns (1–1000, with a four-hour hard cap), only for agents that report turns; or the agent's whole session. There are no preset amounts; never ask for fewer than 5 minutes. Continue using ordinary sudo within the authorized scope. Inspect emaki-sudo status --json; revoke one key from the panel indicator or with emaki-sudo revoke ID --json. Revoke all with Super+Ctrl+Esc or emaki-sudo revoke-all --json. Turn reporting is a separate opt-in integration.
+- Never: Grant a key or acknowledge its warning for the person, create the marker manually, request a wider grant than needed, describe a grant as a stored password, or promise that revocation undoes commands already run or clears the person's terminal sudo password memory. Do not treat screen lock, suspend or a shell restart as revocation.
+- Rollback: Remove emaki-sudo-key to remove its marker and packaged binding; keys and their served parents' cached sudo authority end, while the person's terminal memory remains unchanged. A running compositor retains its captured binding until the session ends.
+
+```system-map
+component: sudo-key
+what: The optional package lets the person give an agent a sudo key: a temporary extension of ordinary sudo for that agent's process tree, not a stored password. Only the person grants a key, after its warning screen; ordinary approval creates none. Ordinary sudo stays stock with its own 5-minute password memory. When a key ends, its served parents lose their cached sudo authority too; the person's terminal memory is untouched. Keys survive screen lock, suspend and shell restarts; they end on expiry, logout, the agent's exit, the panel indicator or Super+Ctrl+Esc.
+files:
+  /usr/share/emaki/sudo-key.installed
+zone: package
+state: emaki-sudo status --json
+change: Install or remove emaki-sudo-key through package management. The person types the amount in the prompt: a number of minutes, at least 5 (the service takes 5–1440); a number of the agent's turns (1–1000, with a four-hour hard cap), only for agents that report turns; or the agent's whole session. There are no preset amounts; never ask for fewer than 5 minutes. Continue using ordinary sudo within the authorized scope. Inspect emaki-sudo status --json; revoke one key from the panel indicator or with emaki-sudo revoke ID --json. Revoke all with Super+Ctrl+Esc or emaki-sudo revoke-all --json. Turn reporting is a separate opt-in integration.
+never: Grant a key or acknowledge its warning for the person, create the marker manually, request a wider grant than needed, describe a grant as a stored password, or promise that revocation undoes commands already run or clears the person's terminal sudo password memory. Do not treat screen lock, suspend or a shell restart as revocation.
+rollback: Remove emaki-sudo-key to remove its marker and packaged binding; keys and their served parents' cached sudo authority end, while the person's terminal memory remains unchanged. A running compositor retains its captured binding until the session ends.
+```
+
+## sudo-turn-reporting
+
+Offers optional turn reports for process-scoped sudo keys, with a four-hour hard cap.
+
+- Files: `/usr/bin/emaki-sudo-turn`, `/usr/share/emaki/sudo/turn-reporting.md`, `/usr/share/emaki/sudo/integrations/claude-hooks.json`, `/usr/share/emaki/sudo/integrations/codex-notify.toml`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: `emaki-sudo status --json` (prints JSON)
+- Change: Open the setup guide in AI Assistants settings and explicitly add the selected reporting configuration.
+- Never: Never send turn reports yourself. Do not write personal configuration automatically, forward prompt or reply text, treat a report as permission to grant, or extend the fixed expiry on a report.
+- Rollback: Remove the reporting entries you added and revoke existing keys from the panel or emaki-sudo revoke-all --json.
+
+```system-map
+component: sudo-turn-reporting
+what: Offers optional turn reports for process-scoped sudo keys, with a four-hour hard cap.
+files:
+  /usr/bin/emaki-sudo-turn
+  /usr/share/emaki/sudo/turn-reporting.md
+  /usr/share/emaki/sudo/integrations/claude-hooks.json
+  /usr/share/emaki/sudo/integrations/codex-notify.toml
+zone: package
+state: emaki-sudo status --json
+change: Open the setup guide in AI Assistants settings and explicitly add the selected reporting configuration.
+never: Never send turn reports yourself. Do not write personal configuration automatically, forward prompt or reply text, treat a report as permission to grant, or extend the fixed expiry on a report.
+rollback: Remove the reporting entries you added and revoke existing keys from the panel or emaki-sudo revoke-all --json.
+```
+
 ## system-map
 
 This page: one section per Emaki component, with its files, their zone, how to ask its state, how to change it, what never to do and how to go back. Rendered from the Emaki sources; each section ends with the same facts as a fenced system-map block for programs.
@@ -1366,13 +1737,110 @@ never: Edit the page by hand or trust a copy of another release.
 rollback: If a pre-update btrfs root snapshot exists, follow snapshot-recovery to recover the packaged map with its matching system version. Ext4 has no snapshot rollback.
 ```
 
+## trusted-authentication-path
+
+The compositor-owned authentication connection and reserved emaki-auth-prompt surface, with isolated input and a physical Ctrl+Alt+Delete proof action. The startup proof and optional revoke bindings stay fixed for the session through an independent startup keymap. Missing startup actions can recover from packaged rules on any configuration reload attempt. The wrapper keeps its private connection out of preparation helpers and app launches; writable shell code remains outside the connection trust boundary. The compositor-runtime component enforces surface and input isolation.
+
+- Files: `/usr/bin/emaki-shell-trusted`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: `emaki-shell-trusted status --json; niri-emaki msg --json trusted-shell-identity` (prints JSON)
+- Change: Update the compatible compositor and shell packages, then sign out and back in. Use `emaki-shell restart` to restart the captured shell command with the reconciled selection; login environment changes require signing out and back in. Press Ctrl+Alt+Delete to show the compositor-owned proof view. Changes to captured safety bindings require a new login; missing startup actions can recover from packaged rules on the next reload attempt. Optional Super+Ctrl+Esc revocation calls the fixed CLI directly, even while the shell is unavailable.
+- Never: Grant trust from a namespace, title, process name or caller-supplied command; export the private connection to the user service manager or application children; display the prompt while locked; treat an ordinary client's copy of the mark as compositor proof.
+- Rollback: Follow snapshot-recovery for the compatible root package set together. Personal niri configuration remains unchanged; disabling the trusted startup path refuses authentication surfaces rather than granting their role to an ordinary client. Ext4 has no snapshot rollback.
+
+```system-map
+component: trusted-authentication-path
+what: The compositor-owned authentication connection and reserved emaki-auth-prompt surface, with isolated input and a physical Ctrl+Alt+Delete proof action. The startup proof and optional revoke bindings stay fixed for the session through an independent startup keymap. Missing startup actions can recover from packaged rules on any configuration reload attempt. The wrapper keeps its private connection out of preparation helpers and app launches; writable shell code remains outside the connection trust boundary. The compositor-runtime component enforces surface and input isolation.
+files:
+  /usr/bin/emaki-shell-trusted
+zone: package
+state: emaki-shell-trusted status --json; niri-emaki msg --json trusted-shell-identity
+change: Update the compatible compositor and shell packages, then sign out and back in. Use `emaki-shell restart` to restart the captured shell command with the reconciled selection; login environment changes require signing out and back in. Press Ctrl+Alt+Delete to show the compositor-owned proof view. Changes to captured safety bindings require a new login; missing startup actions can recover from packaged rules on the next reload attempt. Optional Super+Ctrl+Esc revocation calls the fixed CLI directly, even while the shell is unavailable.
+never: Grant trust from a namespace, title, process name or caller-supplied command; export the private connection to the user service manager or application children; display the prompt while locked; treat an ordinary client's copy of the mark as compositor proof.
+rollback: Follow snapshot-recovery for the compatible root package set together. Personal niri configuration remains unchanged; disabling the trusted startup path refuses authentication surfaces rather than granting their role to an ordinary client. Ext4 has no snapshot rollback.
+```
+
+## trusted-shell-generations
+
+Keeps the trusted panel's code in protected package-created generations. A running compositor retains its original generation across panel restarts and package updates.
+
+- Files: `/usr/bin/emaki-shell-generations`, `/usr/libexec/emaki/emaki_shell_tree.py`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: none yet: generation pointers and compositor records describe retained versions; startup failures are recorded in the compositor service journal.
+- Change: Package installation publishes read-only trees under /var/lib/emaki/shell-generations. Only package installation prunes them, preserving current, previous and live session records.
+- Never: Edit a published generation, point trusted startup at a user copy, or delete a generation named by a live compositor record.
+- Rollback: Boot the snapshot before the package update and sign out and in again.
+
+```system-map
+component: trusted-shell-generations
+what: Keeps the trusted panel's code in protected package-created generations. A running compositor retains its original generation across panel restarts and package updates.
+files:
+  /usr/bin/emaki-shell-generations
+  /usr/libexec/emaki/emaki_shell_tree.py
+zone: package
+state: none yet: generation pointers and compositor records describe retained versions; startup failures are recorded in the compositor service journal.
+change: Package installation publishes read-only trees under /var/lib/emaki/shell-generations. Only package installation prunes them, preserving current, previous and live session records.
+never: Edit a published generation, point trusted startup at a user copy, or delete a generation named by a live compositor record.
+rollback: Boot the snapshot before the package update and sign out and in again.
+```
+
+## update-reminder-state
+
+Restart backend and per-user, boot-bound evidence and explicit dismissal in $XDG_CACHE_HOME/emaki-update-manager/restart.json, serialized with restart.lock.
+
+- Files: `/usr/libexec/emaki/update_reminder.py`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: `emaki-update-manager --status` (prints JSON)
+- Change: Use Later in the update window to dismiss this boot's reminder; restart clears its evidence.
+- Never: Interpret a cached update prediction as a running-kernel change or reuse dismissal across boots.
+- Rollback: Remove the personal update cache to repeat discovery; the backend reconstructs evidence from current-boot package logs.
+
+```system-map
+component: update-reminder-state
+what: Restart backend and per-user, boot-bound evidence and explicit dismissal in $XDG_CACHE_HOME/emaki-update-manager/restart.json, serialized with restart.lock.
+files:
+  /usr/libexec/emaki/update_reminder.py
+zone: package
+state: emaki-update-manager --status
+change: Use Later in the update window to dismiss this boot's reminder; restart clears its evidence.
+never: Interpret a cached update prediction as a running-kernel change or reuse dismissal across boots.
+rollback: Remove the personal update cache to repeat discovery; the backend reconstructs evidence from current-boot package logs.
+```
+
+## update-restore
+
+Unprivileged, dated pre-update snapshot listing from a root-owned index and authenticated restoration through the existing rollback backend.
+
+- Files: `/usr/libexec/emaki/emaki-update-restore`, `/usr/share/polkit-1/actions/org.emaki.update.restore.policy`, `/usr/lib/systemd/system/emaki-restore-index.service`, `/usr/lib/systemd/system/emaki-restore-index.timer`, `/usr/lib/systemd/system/timers.target.wants/emaki-restore-index.timer`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: `emaki-rollback status --json` (prints JSON)
+- Change: Use Restore before an update in the update window; read the list without authentication, select a date, confirm and authenticate the restore. The helper's list and restore token commands expose the same JSON protocol.
+- Never: Run Snapper rollback, supply a command or path, restore without confirmation, change /home, or continue updating a prepared restore.
+- Rollback: Restart into the prepared system; use the existing kept-root restore mechanism to undo it.
+
+```system-map
+component: update-restore
+what: Unprivileged, dated pre-update snapshot listing from a root-owned index and authenticated restoration through the existing rollback backend.
+files:
+  /usr/libexec/emaki/emaki-update-restore
+  /usr/share/polkit-1/actions/org.emaki.update.restore.policy
+  /usr/lib/systemd/system/emaki-restore-index.service
+  /usr/lib/systemd/system/emaki-restore-index.timer
+  /usr/lib/systemd/system/timers.target.wants/emaki-restore-index.timer
+zone: package
+state: emaki-rollback status --json
+change: Use Restore before an update in the update window; read the list without authentication, select a date, confirm and authenticate the restore. The helper's list and restore token commands expose the same JSON protocol.
+never: Run Snapper rollback, supply a command or path, restore without confirmation, change /home, or continue updating a prepared restore.
+rollback: Restart into the prepared system; use the existing kept-root restore mechanism to undo it.
+```
+
 ## updates
 
 The update manager window, terminal update command, privileged update backend and service. The backend decides whether a restart or sign-out is needed and explains refused transactions.
 
-- Files: `/usr/bin/emaki-update`, `/usr/bin/emaki-update-manager`, `/usr/lib/systemd/system/emaki-update.service`, `/usr/libexec/emaki/emaki-update-apply`, `/usr/libexec/emaki/emaki_update_*.py`, `/usr/libexec/emaki/update-manager-backend`, `/usr/libexec/emaki/update_catalog.py`, `/usr/share/applications/emaki-update-manager.desktop`, `/usr/share/emaki-update-manager/**`, `/usr/share/polkit-1/actions/org.emaki.update.policy`
+- Files: `/usr/bin/emaki-update`, `/usr/bin/emaki-update-manager`, `/usr/lib/systemd/system/emaki-update.service`, `/usr/libexec/emaki/emaki-update-apply`, `/usr/libexec/emaki/emaki_update_*.py`, `/usr/libexec/emaki/update-manager-backend`, `/usr/libexec/emaki/update_catalog.py`, `/usr/libexec/emaki/update_flatpaks.py`, `/usr/share/applications/emaki-update-manager.desktop`, `/usr/share/emaki-update-manager/**`, `/usr/share/polkit-1/actions/org.emaki.update.policy`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
-- State: none yet: the window backend has a private streaming protocol, not an installed read-only JSON status command; use the update manager to inspect update state.
+- State: `emaki-update-manager --status` (prints JSON)
 - Change: Open `emaki-update-manager` or use `emaki-update` for a full update. Let the backend perform the transaction and follow its restart or sign-out request.
 - Never: Run concurrent package transactions; bypass snapshot or space checks; decide restart requirements from package names; use a partial upgrade to fix a dependency mismatch.
 - Rollback: For the update backend and installed root package set together, follow snapshot-recovery with an available pre-update btrfs root snapshot. Personal state in /home and separate boot files are not restored. Ext4 has no snapshot rollback.
@@ -1388,11 +1856,12 @@ files:
   /usr/libexec/emaki/emaki_update_*.py
   /usr/libexec/emaki/update-manager-backend
   /usr/libexec/emaki/update_catalog.py
+  /usr/libexec/emaki/update_flatpaks.py
   /usr/share/applications/emaki-update-manager.desktop
   /usr/share/emaki-update-manager/**
   /usr/share/polkit-1/actions/org.emaki.update.policy
 zone: package
-state: none yet: the window backend has a private streaming protocol, not an installed read-only JSON status command; use the update manager to inspect update state.
+state: emaki-update-manager --status
 change: Open `emaki-update-manager` or use `emaki-update` for a full update. Let the backend perform the transaction and follow its restart or sign-out request.
 never: Run concurrent package transactions; bypass snapshot or space checks; decide restart requirements from package names; use a partial upgrade to fix a dependency mismatch.
 rollback: For the update backend and installed root package set together, follow snapshot-recovery with an available pre-update btrfs root snapshot. Personal state in /home and separate boot files are not restored. Ext4 has no snapshot rollback.

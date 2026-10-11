@@ -1,0 +1,20 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Real machines running Emaki, and the image each was last installed from. Upgrade acceptance
+# (acceptance.py, docs/updates-runbook.md section 15) starts only where a real system can be.
+#
+# Before the public launch the required starts are the current released image and the oldest
+# `installed_from` below. A reinstalled machine gets its new image and date here; a machine that
+# no longer runs Emaki is deleted.
+#
+# `launch` is the version of the first image published at the public launch, "" until then.
+# `iso` writes a launch mark into that image's released/iso/ record, once; from then on the
+# required starts are every image published since the launch, and a `launch` that differs from
+# the marked record refuses.
+launch = ""
+
+[[machine]]
+name = "MacBook Pro 13-inch 2015"
+installed_from = "0.5.0"
+installed = 2026-10-10

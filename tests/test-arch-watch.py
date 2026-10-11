@@ -706,11 +706,12 @@ package_shell-tools() {
         # The marker pins whatever release the active recipe carries.
         release = re.search(r'^pkgrel=(\d+)$', active, re.M).group(1)
         expected = {
-            'emaki-config': {'fastfetch>=2.68.1', 'niri-emaki>=26.04-12', 'quickshell-emaki>=0.3.1-4', 'kwallet>=6.30'},
+            'emaki-config': {'fastfetch>=2.68.1', 'niri-emaki>=26.04-20', 'quickshell-emaki>=0.3.1-10', 'kwallet>=6.30', 'systemd>=256'},
             'emaki-desktop': {'fastfetch>=2.68.1', 'niri-emaki>=26.04-12'},
             'emaki-installer': {'archinstall=4.5-1'},
-            'emaki': {'emaki-config=0.5.0-1', 'emaki-desktop=0.5.0-1', 'emaki-keyring>=0.5.0-1',
-                      'emaki-mirrorlist>=0.5.0-1', 'niri-emaki=26.04-13', f'quickshell-emaki=0.3.1-{release}'},
+            'emaki-sudo-key': {'emaki-config>=0.6.0-3'},
+            'emaki': {'emaki-config=0.6.0-14', 'emaki-desktop=0.6.0-1', 'emaki-keyring>=0.6.0-1',
+                      'emaki-mirrorlist>=0.6.0-1', 'niri-emaki=26.04-20', f'quickshell-emaki=0.3.1-{release}'},
             'niri-emaki': {'libdisplay-info.so=3-64', 'libinput.so=10-64', 'libpipewire-0.3.so=0-64',
                            'libseat.so=1-64', 'libxkbcommon.so=0-64', 'niri>=26.04'},
             'quickshell-emaki': {'libEGL.so', 'libOpenGL.so', 'libgcc_s.so',
@@ -729,7 +730,7 @@ package_shell-tools() {
                                                       ('makedepends', 'qt6-shadertools'))
                                 for bound in (f'>={lower}', f'<{upper}')}
         self.assertEqual({(f.package, f.kind, f.value) for f in fences}, expected_fences)
-        self.assertEqual(len(fences), 36 if activated else 32)
+        self.assertEqual(len(fences), 38 if activated else 34)
         self.assertTrue(set(expected) <= names)
 
 

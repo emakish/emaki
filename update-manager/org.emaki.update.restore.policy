@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright (C) 2026 Artur Yakymenko -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN" "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Emaki</vendor>
+  <action id="org.emaki.update.restore">
+    <description>[PLACEHOLDER] Restore the system before an update</description>
+    <message>[PLACEHOLDER] Authentication is required to restore the system before the selected update. Your /home files will stay as they are.</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@EMAKI_LIBEXECDIR@/emaki-update-restore</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">restore</annotate>
+  </action>
+</policyconfig>

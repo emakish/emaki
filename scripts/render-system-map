@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Render the system map (docs/system-map.md) from the ```system-map blocks of MANIFEST.md.
+"""Render the system map and rules template from the ```system-map blocks of MANIFEST.md.
 
 The rendered page ships in emaki-config; it repeats each block verbatim under its plain-language
 section, so the page itself stays machine-readable where MANIFEST.md is not exported.
-`--check` exits 1 when the committed page differs from a fresh render.
+`--check` exits 1 when either committed document differs from a fresh render.
 """
 import argparse
 from pathlib import Path
@@ -15,6 +15,7 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = 'MANIFEST.md'
 PAGE = 'docs/system-map.md'
+RULES = 'docs/agent-rules.md'
 FENCE = 'system-map'
 FIELDS = ('component', 'what', 'files', 'zone', 'state', 'change', 'never', 'rollback')
 ZONES = {
@@ -22,6 +23,17 @@ ZONES = {
     'emaki-settings': 'changed only with `emaki settings`, which keeps a history.',
     'person': "the person's own files, theirs to change; no Emaki update writes them.",
 }
+# `emaki map --json` names the same zones as docs/ZONES.md does.
+MAP_ZONES = {'package': 'package', 'emaki-settings': 'managed', 'person': 'yours'}
+# Commands the rules template names in its own text, outside the map's state entries.
+# tests/check-system-map.py finds each in the emaki CLI help; the image check runs the read-only ones.
+RULES_COMMANDS = {
+    'state': 'emaki state --json',
+    'map': 'emaki map --json',
+    'history': 'emaki settings history --json',
+    'undo': 'emaki settings undo ID',
+}
+RULES_READ_ONLY = ('state', 'map', 'history')
 NONE_YET = 'none yet: '
 BLOCK = re.compile(r'^```' + FENCE + r'[ \t]*\n(.*?)^```[ \t]*$', re.M | re.S)
 
@@ -114,7 +126,7 @@ def render(entries):
         '',
         *(f'- `{zone}`: {meaning}' for zone, meaning in ZONES.items()),
         '',
-        'Start with `emaki state --json` for a system overview, then run the relevant component\'s',
+        f'Start with `{RULES_COMMANDS["state"]}` for a system overview, then run the relevant component\'s',
         'State command in the installed session. Read the JSON status and reason as well as the',
         'exit code: unavailable state is not proof that a component is absent or broken.',
         '"none yet" means no suitable JSON command exists today; its reason names the gap.',
@@ -124,7 +136,7 @@ def render(entries):
         'person\'s `~/.config/niri/config.kdl` or edit generated files to change a setting.',
         '',
         'Choose the rollback path before making a change. Managed settings use',
-        '`emaki settings history --json` and `emaki settings undo ID`; machine settings and other',
+        f'`{RULES_COMMANDS["history"]}` and `{RULES_COMMANDS["undo"]}`; machine settings and other',
         'personal state have separate recovery instructions. Before snapshot recovery, read',
         '`emaki-rollback status --json`: `unsupported` means snapshots are unavailable on this root.',
         'Ext4 has none; a supported btrfs root still needs an available pre-update snapshot.',
@@ -171,6 +183,89 @@ def block_lines(entry):
     return lines
 
 
+def render_rules(entries):
+    """A small instruction template; detailed component ownership stays in the map."""
+    by_name = {entry['component']: entry for entry in entries}
+    map_files = by_name.get('system-map', {}).get('files', [])
+    lines = [
+        '<!-- Copyright (C) 2026 Artur Yakymenko -->',
+        '<!-- SPDX-License-Identifier: GPL-3.0-or-later -->',
+        '# Working on an Emaki system',
+        '',
+        'Generated from the system map by scripts/render-system-map; do not edit the packaged copy.',
+        'These instructions apply when working on an installed Emaki system.',
+        'Emaki is an Arch-based distribution built around the niri compositor, with its own',
+        'desktop shell, settings, installer and recovery tools.',
+        '',
+        '## Read before changing the system',
+        '',
+        *(f'Read the installed system map at `{path}` for this release.' for path in map_files),
+        'Find the affected component and read its Files, Zone, Change, Never and Rollback',
+        'entries before acting. If a path is not covered, establish its owner before writing.',
+        'A copy from another machine or release is not evidence of the current system.',
+        '',
+        '## File ownership',
+        '',
+        *(f'- `{zone}`: {meaning}' for zone, meaning in ZONES.items()),
+        '',
+        f'To find the owner of a path, run `{RULES_COMMANDS["map"]}`.',
+        'Its zone names differ: ' + ' and '.join(f'`{theirs}` is `{ours}`' for ours, theirs in MAP_ZONES.items() if ours != theirs) + '.',
+        '',
+        'Use `emaki settings` for Emaki settings; never edit the canonical settings store,',
+        'generated configuration or history directly. Use the map\'s named interface for',
+        'machine settings. Keep personal overrides separate and preserve existing content.',
+        'Never write the person\'s `~/.config/niri/config.kdl` to change Emaki settings.',
+        'Back up personal files separately before changing them with the person\'s permission.',
+        '',
+        '## Ask for state',
+        '',
+        f'Start with `{RULES_COMMANDS["state"]}`, then use the relevant command below in the installed',
+        'session. These commands print JSON, including those without a `--json` option.',
+        'Read status and reason as well as the exit code. Unavailable state does not prove',
+        'a component is absent or broken. Do not run every command for an unrelated change.',
+        '',
+        '| State command | Components |',
+        '| --- | --- |',
+    ]
+    commands = {}
+    unavailable = []
+    for entry in sorted(entries, key=lambda item: item['component']):
+        command = state_command(entry)
+        if command:
+            commands.setdefault(command, []).append(entry['component'])
+        else:
+            unavailable.append(entry['component'])
+    for command, names in sorted(commands.items()):
+        lines.append(f'| `{command}` | {", ".join(names)} |')
+    if unavailable:
+        lines += ['', 'No JSON state command yet: ' + ', '.join(unavailable) + '.',
+                  'Read each component\'s State entry in the map for the reason; do not invent a command.']
+    lines += [
+        '',
+        '## Make and verify a change',
+        '',
+        'Choose the recovery path first. Follow the component\'s Change instruction, make',
+        'the smallest authorized change, then query state again and verify the result.',
+        f'Managed settings have `{RULES_COMMANDS["history"]}` and `{RULES_COMMANDS["undo"]}`;',
+        'machine and personal settings may have different recovery paths in the map.',
+        'On Arch, package operations use the package backend and its package manager;',
+        'never replace package files by hand or bypass a failed protection check.',
+        'Never disable authentication, expose secrets in logs or weaken permissions to make',
+        'a command succeed. A rules file is guidance, not a security boundary or a sudo grant.',
+    ]
+    for name, title in (
+            ('agent-rules', 'Snapshot before risky actions'),
+            ('snapshot-recovery', 'Snapshot coverage and recovery'),
+            ('sudo-authentication', 'Authentication for a command'),
+            ('sudo-key', 'Optional sudo key')):
+        entry = by_name.get(name)
+        if entry:
+            lines += ['', f'## {title}', '', entry['what'], '',
+                      'Change: ' + entry['change'], '', 'Never: ' + entry['never'], '',
+                      'Recovery: ' + entry['rollback']]
+    return '\n'.join(lines) + '\n'
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=ROOT)
@@ -181,16 +276,16 @@ def main():
         for problem in problems:
             print(f'system map: {problem}', file=sys.stderr)
         return 1
-    page = render(entries)
-    target = args.root / PAGE
-    if args.check:
+    failed = False
+    for name, page in ((PAGE, render(entries)), (RULES, render_rules(entries))):
+        target = args.root / name
         if not target.is_file() or target.read_text() != page:
-            print(f'system map: {PAGE} is stale; run make render', file=sys.stderr)
-            return 1
-        return 0
-    if not target.is_file() or target.read_text() != page:
-        target.write_text(page)
-    return 0
+            if args.check:
+                print(f'system map: {name} is stale; run make render', file=sys.stderr)
+                failed = True
+            else:
+                target.write_text(page)
+    return int(failed)
 
 
 if __name__ == '__main__':

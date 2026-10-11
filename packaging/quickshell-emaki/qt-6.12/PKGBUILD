@@ -1,6 +1,7 @@
 # Derived from the Arch Linux 'quickshell' package (Maintainer: Caleb Maclennan <caleb@alerque.com>)
-# Emaki: same build + a fix for the wlr-screencopy crash on Smithay compositors (niri)
-# and a fix that names the activation each network connection failure belongs to.
+# Emaki: same build + a fix for the wlr-screencopy crash on Smithay compositors (niri),
+# a fix that names the activation each network connection failure belongs to, and a
+# repaired polkit service (one request at a time, no cookie in logs, wiped replies).
 
 _pkgname=quickshell
 pkgname=quickshell-emaki
@@ -42,11 +43,13 @@ source=("$_archive.tar.gz::$url/archive/v$pkgver.tar.gz"
         0001-wlr-screencopy-raw-wl_output-for-transform.patch
         0002-network-nm-name-the-activation-a-connection-failure.patch
         0003-qt-6.12-moc-includes.patch
+        0004-services-polkit-one-request-at-a-time.patch
         expected-files.list)
 sha256sums=('d60592622f1aa1cbb853d4814f605dfde827bc692befbfecffaccf4c90e352d8'
             'b32f0be7920e0dd10cf89bb0fecdd0a7c0ac73f0f113fc93e3b235ad36e894c7'
             'a01afe049a5eec79752ecbb57b705fb672a34bb7b5eff20c43e68c544f70ea65'
             '4cb3b5acc94e0c9546568a782540ab01c1ad06946c8c7b7e290e2b9ffc21b7a2'
+            '7115569ed25736ba4f5ae1cc3da37f4dfbcfc046f813dc0ffb89268232827b4b'
             'e6d94b7b429509ef67f81f56e69aef932307cb984705267bc89e13ea0f7efd7b')
 
 prepare() {
@@ -54,6 +57,7 @@ prepare() {
 	patch -Np1 -i "$srcdir/0001-wlr-screencopy-raw-wl_output-for-transform.patch"
 	patch -Np1 -i "$srcdir/0002-network-nm-name-the-activation-a-connection-failure.patch"
 	patch -Np1 -i "$srcdir/0003-qt-6.12-moc-includes.patch"
+	patch -Np1 -i "$srcdir/0004-services-polkit-one-request-at-a-time.patch"
 }
 
 # Keep the runtime floor equal to the Qt release used for this rebuild.

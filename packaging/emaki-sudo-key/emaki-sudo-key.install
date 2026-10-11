@@ -1,0 +1,75 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# shellcheck shell=bash
+# The private generation belongs to an installation, not to an archive version.
+# Before the first upgrade, retain the old marker identity used by existing records.
+_warning_generation() {
+    python3 -I - "$1" <<'PYTHON'
+import os
+import stat
+import sys
+
+state = '/var/lib/emaki-sudo'
+marker = '/usr/share/emaki/sudo-key.installed'
+try:
+    os.mkdir(state, 0o700)
+except FileExistsError:
+    pass
+fd = os.open(state, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+identity = os.fstat(fd)
+if identity.st_uid != 0 or stat.S_IMODE(identity.st_mode) != 0o700:
+    raise RuntimeError('unsafe warning state directory')
+if sys.argv[1] in ('new', 'remove'):
+    try:
+        os.unlink('installation', dir_fd=fd)
+    except FileNotFoundError:
+        pass
+    os.fsync(fd)
+    if sys.argv[1] == 'remove':
+        sys.exit(0)
+if sys.argv[1] == 'keep':
+    try:
+        os.stat('installation', dir_fd=fd, follow_symlinks=False)
+    except FileNotFoundError:
+        pass
+    else:
+        sys.exit(0)
+marker_fd = os.open(marker, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+identity = os.fstat(marker_fd)
+if not stat.S_ISREG(identity.st_mode) or identity.st_uid != 0 or identity.st_mode & 0o022:
+    raise RuntimeError('unsafe sudo key marker')
+value = f'1 {identity.st_ino} {identity.st_ctime_ns // 1000000000} {identity.st_ctime_ns % 1000000000}\n'
+try:
+    os.unlink('installation.new', dir_fd=fd)
+except FileNotFoundError:
+    pass
+output = os.open('installation.new', os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                 0o600, dir_fd=fd)
+with os.fdopen(output, 'w') as stream:
+    stream.write(value)
+    stream.flush()
+    os.fsync(stream.fileno())
+os.rename('installation.new', 'installation', src_dir_fd=fd, dst_dir_fd=fd)
+os.fsync(fd)
+PYTHON
+}
+
+post_install() {
+    _warning_generation new
+}
+
+pre_upgrade() {
+    _warning_generation keep
+}
+
+post_remove() {
+    _warning_generation remove
+    # The marker is now absent. Restart only an already-running broker to end
+    # every key and drain cleanup before reopening ordinary prompt service.
+    systemctl try-restart emaki-sudo.service ||
+        echo 'emaki-sudo-key: broker restart or sudo timestamp cleanup failed' >&2
+    if [[ -d /run/emaki-sudo ]] && ! systemctl is-active --quiet emaki-sudo.service; then
+        /usr/libexec/emaki/emaki-sudo-broker --cleanup ||
+            echo 'emaki-sudo-key: sudo timestamp cleanup failed; retained journals need administrator attention' >&2
+    fi
+}

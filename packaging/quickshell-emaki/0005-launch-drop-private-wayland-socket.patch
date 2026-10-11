@@ -1,0 +1,100 @@
+Date: Sat, 10 Oct 2026 21:34:47 +0000
+Subject: [PATCH] Keep the private Wayland socket out of child environments
+
+Copyright (C) 2026 Artur Yakymenko
+SPDX-License-Identifier: LGPL-3.0-only
+
+Qt consumes WAYLAND_SOCKET after the initial environment snapshot is taken.
+Discard it from that snapshot so shell children connect through WAYLAND_DISPLAY.
+Retain the live startup variable until Qt opens the private display connection.
+Exercise both Process and execDetached with actual child processes.
+
+diff --git a/src/launch/CMakeLists.txt b/src/launch/CMakeLists.txt
+index 4db11bf..d18f43f 100644
+--- a/src/launch/CMakeLists.txt
++++ b/src/launch/CMakeLists.txt
+@@ -21,3 +21,9 @@ qs_add_pchset(launch
+ qs_pch(quickshell-launch SET launch)
+ 
+ target_link_libraries(quickshell PRIVATE quickshell-launch)
++
++if (BUILD_TESTING)
++	find_package(Python3 COMPONENTS Interpreter REQUIRED)
++	add_test(NAME child-environment
++		COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test-child-environment.py $<TARGET_FILE:quickshell>)
++endif()
+diff --git a/src/launch/launch.cpp b/src/launch/launch.cpp
+index 71d9983..04f428d 100644
+--- a/src/launch/launch.cpp
++++ b/src/launch/launch.cpp
+@@ -174,6 +174,9 @@ int launch(const LaunchArgs& args, char** argv, QCoreApplication* coreApplicatio
+ 	LogManager::initFs();
+ 
+ 	Common::INITIAL_ENVIRONMENT = QProcessEnvironment::systemEnvironment();
++	// The inherited display descriptor belongs only to this shell connection.
++	// Qt still needs the live environment to open it; children use the public display.
++	Common::INITIAL_ENVIRONMENT.remove(QStringLiteral("WAYLAND_SOCKET"));
+ 
+ 	if (!pragmas.useSystemStyle) {
+ 		qunsetenv("QT_STYLE_OVERRIDE");
+diff --git a/src/launch/test-child-environment.py b/src/launch/test-child-environment.py
+new file mode 100644
+index 0000000..cf7d38f
+--- /dev/null
++++ b/src/launch/test-child-environment.py
+@@ -0,0 +1,55 @@
++#!/usr/bin/env python3
++# Copyright (C) 2026 Artur Yakymenko
++# SPDX-License-Identifier: LGPL-3.0-only
++"""Both process launch APIs discard a private display socket from their snapshot."""
++import json
++import os
++from pathlib import Path
++import subprocess
++import sys
++import tempfile
++import time
++
++with tempfile.TemporaryDirectory(prefix='qs-child-env-') as directory:
++    root = Path(directory)
++    root.chmod(0o700)
++    probe = root / 'probe.py'
++    probe.write_text('import json, os, pathlib, sys\n'
++                     'pathlib.Path(sys.argv[1]).write_text(json.dumps(dict(os.environ)))\n')
++    command = [sys.executable, str(probe)]
++    (root / 'shell.qml').write_text('''import QtQuick
++import Quickshell
++import Quickshell.Io
++ShellRoot {
++    Process {
++        command: %s
++        running: true
++        onExited: (code, status) => { if (code !== 0) Qt.exit(2); }
++    }
++    Component.onCompleted: {
++        Quickshell.watchFiles = false;
++        if (Quickshell.env("WAYLAND_SOCKET") !== "198") Qt.exit(3);
++        Quickshell.execDetached(%s);
++    }
++    Timer { interval: 700; running: true; onTriggered: Qt.quit() }
++}
++''' % (json.dumps(command + [str(root / 'process.json')]),
++       json.dumps(command + [str(root / 'detached.json')])))
++    environment = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
++                       QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=directory,
++                       XDG_CONFIG_HOME=directory, XDG_CACHE_HOME=directory, XDG_DATA_HOME=directory,
++                       XDG_STATE_HOME=directory, WAYLAND_SOCKET='198',
++                       WAYLAND_DISPLAY='wayland-public-probe',
++                       DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(root / 'no-bus'))
++    result = subprocess.run([sys.argv[1], '-p', str(root), '--no-color'],
++                            env=environment, capture_output=True, text=True, timeout=10)
++    assert result.returncode == 0, result.stdout + result.stderr
++    for route in ('process', 'detached'):
++        output = root / (route + '.json')
++        until = time.monotonic() + 3
++        while not output.exists() and time.monotonic() < until:
++            time.sleep(.02)
++        child = json.loads(output.read_text())
++        assert 'WAYLAND_SOCKET' not in child, route
++        assert child['WAYLAND_DISPLAY'] == 'wayland-public-probe', route
++print('PASS: Process and execDetached drop WAYLAND_SOCKET and preserve WAYLAND_DISPLAY')

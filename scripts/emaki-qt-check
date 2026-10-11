@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3 -I
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Check the installed Quickshell build against both installed Qt releases."""
@@ -20,7 +20,7 @@ def build_version(build_file):
         # Some packages record the validated build only in their Provides field.
         # Query only the installed package, never a newer build in a sync database.
         result = subprocess.run(['/usr/bin/pacman', '-Qi', 'quickshell-emaki'],
-                                env=dict(os.environ, LC_ALL='C'), capture_output=True,
+                                env=dict(os.environ, LC_ALL='C', PATH='@EMAKI_TRUSTED_PATH@'), capture_output=True,
                                 text=True, timeout=5, check=True)
         fields = re.findall(r'^Provides\s*:\s*([^\n]*(?:\n[ \t]+[^\n]*)*)',
                             result.stdout, re.MULTILINE)
@@ -37,6 +37,7 @@ def build_version(build_file):
 def check(build_file=BUILD_VERSION):
     built = build_version(build_file)
     result = subprocess.run(['/usr/bin/pacman', '-Q', *COMPONENTS],
+                            env=dict(os.environ, PATH='@EMAKI_TRUSTED_PATH@'),
                             capture_output=True, text=True, timeout=5, check=True)
     installed = {}
     for line in result.stdout.splitlines():

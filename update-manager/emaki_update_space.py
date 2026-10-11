@@ -193,7 +193,7 @@ def check_space(download, net, root, cache, pools=(None, None), installed=0):
                                'Free some space, then try again.')
 
 
-def _preflight():
+def _preflight(targets=()):
     database = Path(command(['/usr/bin/pacman-conf', 'DBPath']).strip())
     caches = command(['/usr/bin/pacman-conf', 'CacheDir']).splitlines()
     cache = next((Path(path) for path in caches if Path(path).is_dir()
@@ -215,7 +215,7 @@ def _preflight():
         # This subprocess can only reach the summary: the installation prompt
         # is rejected explicitly, never accepted through a default answer.
         try:
-            summary = command(['/usr/bin/pacman', '-Su', '--confirm', *base], probe=True)
+            summary = command(['/usr/bin/pacman', '-Su', '--confirm', *base, *(['--needed', *targets] if targets else [])], probe=True)
             download, net, installed = transaction_sizes(summary)
         except (RuntimeError, OSError, ValueError):
             print('The free-space estimate is unavailable; continuing with pacman’s own checks.', file=sys.stderr)
@@ -230,13 +230,16 @@ def _preflight():
                     (root_pool, cache_pool), retained)
 
 
-def preflight():
+def preflight(targets=()):
     def interrupted(signum, frame):
         raise SystemExit(128 + signum)
 
     previous = {signum: signal.signal(signum, interrupted) for signum in (signal.SIGHUP, signal.SIGTERM)}
     try:
-        _preflight()
+        if targets:
+            _preflight(targets=targets)
+        else:
+            _preflight()
     except (OSError, ValueError, subprocess.TimeoutExpired) as error:
         raise RuntimeError(FAILURE) from error
     finally:

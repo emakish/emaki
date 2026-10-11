@@ -15,6 +15,7 @@ import re
 import shutil
 import socket
 import subprocess
+import sys
 import sysconfig
 import tempfile
 import unittest
@@ -56,6 +57,19 @@ class Records(unittest.TestCase):
             root = Path(tmp)
             with patch.object(holds.os, 'open', side_effect=AssertionError('must not take a lock')):
                 self.assertEqual(holds.check(root, {'unrelated'}), 0)
+
+    def test_keyrings_are_never_held(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old, new = Path(tmp) / 'old', Path(tmp) / 'new'
+            database(old, {'archlinux-keyring': '2-1', 'emaki-keyring': '2-1', 'down': '2-1'})
+            database(new, {'archlinux-keyring': '1-1', 'emaki-keyring': '1-1', 'down': '1-1'})
+            self.assertEqual(holds.prepare(old, new), {'down': '2-1'})
+            # A record written before this rule loses its keyring holds when read.
+            holds.write(new, holds.STATE, json.dumps({'holds': {'emaki-keyring': '2-1', 'down': '2-1'}}))
+            self.assertEqual(holds.load(new)['holds'], {'down': '2-1'})
+            holds.write(new, holds.STATE, json.dumps({'holds': {'archlinux-keyring': '2-1'}}))
+            with patch.object(holds.os, 'open', side_effect=AssertionError('must not query')):
+                self.assertEqual(holds.check(new, {'archlinux-keyring'}), 0)
 
     def test_release_all_resets_malformed_record(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -136,13 +150,14 @@ class Transactions(unittest.TestCase):
         self.assertEqual(holds.prepare(old, self.root), {'changed': '2-1'})
         self.configure('bad')
 
-    def repository(self, label, packages, files=None):
+    def repository(self, label, packages, files=None, depends=None):
         repo = self.work / label
         repo.mkdir()
         for name, version in packages.items():
             stage = repo / name
             stage.mkdir()
-            (stage / '.PKGINFO').write_text(f'pkgname = {name}\npkgver = {version}\npkgdesc = rollback fixture\narch = any\nsize = 0\nbuilddate = 1\n')
+            requires = ''.join(f'depend = {dependency}\n' for dependency in (depends or {}).get(name, ()))
+            (stage / '.PKGINFO').write_text(f'pkgname = {name}\npkgver = {version}\npkgdesc = rollback fixture\narch = any\nsize = 0\nbuilddate = 1\n{requires}')
             members = ['.PKGINFO']
             for relative, source in (files or {}).get(name, {}).items():
                 target = stage / relative
@@ -157,14 +172,16 @@ class Transactions(unittest.TestCase):
     def configure(self, label, extra=''):
         (self.root / 'etc/pacman.conf').write_text(f'[options]\nArchitecture = x86_64\nSigLevel = Never\n{extra}[fixture]\nServer = file://{self.work / label}\n')
 
+    def pacman_prefix(self):
+        return ['unshare', '--user', '--map-root-user', '--mount', 'sh', '-c',
+                'mount --rbind /proc \"$1/proc\" || exit; shift; exec \"$@\"', '_', str(self.root),
+                *self.pacman_command, '--root', str(self.root),
+                '--config', str(self.root / 'etc/pacman.conf'), '--dbpath', str(self.root / 'var/lib/pacman'),
+                '--hookdir', str(self.root / 'etc/pacman.d/hooks'),
+                '--cachedir', str(self.root / 'var/cache/pacman/pkg'), '--logfile', str(self.root / 'var/log/pacman.log')]
+
     def pacman(self, *args):
-        result = run(['unshare', '--user', '--map-root-user', '--mount', 'sh', '-c',
-                      'mount --rbind /proc \"$1/proc\" || exit; shift; exec \"$@\"', '_', str(self.root),
-                      *self.pacman_command, '--root', str(self.root),
-                      '--config', str(self.root / 'etc/pacman.conf'), '--dbpath', str(self.root / 'var/lib/pacman'),
-                      '--hookdir', str(self.root / 'etc/pacman.d/hooks'),
-                      '--cachedir', str(self.root / 'var/cache/pacman/pkg'), '--logfile', str(self.root / 'var/log/pacman.log'),
-                      '--noconfirm', *args], env={**os.environ, 'LC_ALL': 'C'})
+        result = run([*self.pacman_prefix(), '--noconfirm', *args], env={**os.environ, 'LC_ALL': 'C'})
         log = ROOT / '.cache/evidence/rollback-holds-transactions.log'
         with log.open('a') as output:
             output.write(f'{self.id()}: pacman {" ".join(args)}\n{result.stdout}{result.stderr}\n')
@@ -222,17 +239,119 @@ class Transactions(unittest.TestCase):
         self.assertIn('sudo emaki-rollback release --all', result.stdout + result.stderr)
         self.assertIn('changed 1-1', self.pacman('-Q', 'changed').stdout)
 
-    def test_full_upgrade_refusal_explains_both_ways_out(self):
+    def test_full_upgrade_refusal_explains_release_without_partial_upgrade(self):
         result = self.pacman('-Syyu')
         self.assertNotEqual(result.returncode, 0)
         output = result.stdout + result.stderr
-        self.assertIn('sudo pacman -Syu --ignore changed', output)
+        self.assertNotIn('--ignore', output)
         self.assertIn('sudo emaki-rollback release changed', output)
         self.assertIn('sudo emaki-rollback release --all', output)
         self.assertIn('other 1-1', self.pacman('-Q', 'other').stdout)
-        self.success(self.pacman('-Syu', '--ignore', 'changed'))
+
+    def emaki_update(self):
+        """The graphical update path (scripts/emaki-update --noninteractive) on this root."""
+        # Fixture repositories change within one second; its own -Sy would keep the old database.
+        self.success(self.pacman('-Syy'))
+        code =('import runpy,sys; from pathlib import Path; m=runpy.run_path(sys.argv[1]); '
+                'sys.exit(m["update"](True, sys.argv[3:], Path(sys.argv[2])))')
+        result = run([sys.executable, '-c', code, str(ROOT / 'scripts/emaki-update'),
+                      str(self.root / holds.STATE), *self.pacman_prefix()], env={**os.environ, 'LC_ALL': 'C'})
+        log = ROOT / '.cache/evidence/rollback-holds-transactions.log'
+        with log.open('a') as output:
+            output.write(f'{self.id()}: emaki-update\n{result.stdout}{result.stderr}\n')
+        return result
+
+    def test_update_refuses_whole_transaction_until_a_newer_version(self):
+        # The reviewer's case: holds {libfoo: 1.2-1}, transaction {libfoo 1.2-1, openssl 3.5.9-1}.
+        holds.write(self.root, holds.STATE, json.dumps({'holds': {'changed': '2-1'}, 'differences': {}}))
+        result = self.emaki_update()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('held after a restore: changed 2-1', result.stderr)
+        self.assertIn('A newer version will release each hold automatically', result.stderr)
+        self.assertIn('sudo emaki-rollback release changed', result.stderr)
         self.assertIn('changed 1-1', self.pacman('-Q', 'changed').stdout)
+        self.assertIn('other 1-1', self.pacman('-Q', 'other').stdout)
+        self.assertEqual(holds.load(self.root)['holds'], {'changed': '2-1'})
+        # A newer version installs and releases the hold.
+        self.configure('new')
+        self.success(self.emaki_update())
+        self.assertIn('changed 3-1', self.pacman('-Q', 'changed').stdout)
+        self.assertEqual(holds.load(self.root)['holds'], {})
+
+    def test_update_refuses_clearly_when_an_upgrade_needs_the_held_version(self):
+        self.repository('needs', {'changed': '2-1', 'other': '2-1'}, depends={'other': ['changed>=2']})
+        self.configure('needs')
+        result = self.emaki_update()
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('held after a restore: changed 2-1', result.stderr)
+        self.assertIn('sudo emaki-rollback release changed', result.stderr)
+        self.assertIn('changed 1-1', self.pacman('-Q', 'changed').stdout)
+        self.assertIn('other 1-1', self.pacman('-Q', 'other').stdout)
+
+    def test_update_refreshes_keyrings_first_even_with_old_keyring_holds(self):
+        names = ('archlinux-keyring', 'emaki-keyring')
+        self.repository('keyring-old', dict.fromkeys(names, '1-1'))
+        self.configure('keyring-old')
+        self.success(self.pacman('-Syy', *names))
+        self.repository('keyring-new', dict.fromkeys((*names, 'changed', 'other'), '2-1'))
+        self.configure('keyring-new')
+        holds.write(self.root, holds.STATE, json.dumps(
+            {'holds': dict.fromkeys((*names, 'changed'), '2-1'), 'differences': {}}))
+        log = self.root / 'var/log/pacman.log'
+        log.write_text('')  # Fixture installation must not satisfy keyring-first assertions.
+        result = self.emaki_update()
+        self.assertNotEqual(result.returncode, 0)
+        for name in names:
+            self.assertIn(f'{name} 2-1', self.pacman('-Q', name).stdout)
+        self.assertIn('other 1-1', self.pacman('-Q', 'other').stdout)
+        self.assertIn('changed 1-1', self.pacman('-Q', 'changed').stdout)
+        commands = [line for line in log.read_text().splitlines() if '[PACMAN] Running' in line]
+        refresh = next(i for i, line in enumerate(commands) if re.search(r"(?: |')-Sy(?: |')", line))
+        keyring = next(i for i, line in enumerate(commands)
+                       if re.search(r"-S'? '?--noconfirm'? '?archlinux-keyring'? '?emaki-keyring(?: |')", line))
+        self.assertLess(refresh, keyring, commands)
+        self.assertFalse(any(re.search(r"(?: |')-Su(?: |')", line) for line in commands), commands)
+        holds.release(self.root, 'changed')
+        self.success(self.emaki_update())
         self.assertIn('other 2-1', self.pacman('-Q', 'other').stdout)
+        commands = [line for line in log.read_text().splitlines() if '[PACMAN] Running' in line]
+        upgrade = next(i for i, line in enumerate(commands) if re.search(r"(?: |')-Su(?: |')", line))
+        self.assertLess(keyring, upgrade, commands)
+
+    def test_held_library_refuses_an_unversioned_abi_consumer_upgrade(self):
+        if not shutil.which('cc'):
+            self.skipTest('C compiler unavailable')
+        payloads = {}
+        for version in (1, 2):
+            source = self.work / f'library{version}.c'
+            source.write_text(f'int value(void) {{ return {version}; }}\n')
+            library = self.work / f'libchanged.so.{version}'
+            self.success(run(['cc', '-shared', '-fPIC', f'-Wl,-soname,{library.name}',
+                              '-o', str(library), str(source)]))
+            source = self.work / f'consumer{version}.c'
+            source.write_text(f'int value(void); int main(void) {{ return value() == {version} ? 0 : 1; }}\n')
+            executable = self.work / f'consumer{version}'
+            self.success(run(['cc', '-o', str(executable), str(source), str(library),
+                              '-Wl,-rpath,$ORIGIN/../lib']))
+            payloads[version] = {'changed': {f'usr/lib/{library.name}': library},
+                                 'other': {'usr/bin/other': executable}}
+        self.repository('abi-old', {'changed': '1-1', 'other': '1-1'}, payloads[1],
+                        {'other': ['changed']})
+        self.configure('abi-old')
+        for cached in (self.root / 'var/cache/pacman/pkg').glob('*.pkg.tar.zst'):
+            cached.unlink()
+        self.success(self.pacman('-Syy', 'changed', 'other'))
+        executable = self.root / 'usr/bin/other'
+        self.success(run([str(executable)]))
+        self.repository('abi-new', {'changed': '2-1', 'other': '2-1'}, payloads[2],
+                        {'other': ['changed']})
+        self.configure('abi-new')
+        result = self.emaki_update()
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('held after a restore: changed 2-1', result.stderr)
+        for name in ('changed', 'other'):
+            self.assertIn(f'{name} 1-1', self.pacman('-Q', name).stdout)
+        self.success(run([str(executable)]))
 
     def test_forward_versions_and_new_packages_do_not_create_holds(self):
         holds.release(self.root, '--all')

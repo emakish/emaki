@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 
 from emaki_installer.constants import MARKER, PACKAGES, PHASES
 from emaki_installer.errors import Code, InstallError
+from emaki_installer.network_profiles import Choice
 from emaki_installer.planner import make_plan
 from emaki_installer.render import GRUB_EARLY_MODULES, grub_early_config, grub_unlock_memdisk
 from emaki_installer.runtime import Redactor, Runner, TargetFiles, cleanup
@@ -86,7 +87,7 @@ def finishable(root):
 
 class WorkerLifecycleTests(unittest.TestCase):
     def setUp(self):
-        self.active_patch = patch("emaki_installer.worker.active_wifi", return_value=None, create=True)
+        self.active_patch = patch("emaki_installer.worker.choose_wifi", return_value=Choice(None, "the live session has no Wi-Fi profile", 0))
         self.active_patch.start()
         self.addCleanup(self.active_patch.stop)
 
@@ -159,22 +160,47 @@ class WorkerLifecycleTests(unittest.TestCase):
         self.assertEqual(plan.config['user']['password'], '')
         return events, phases, cleanups, runners
 
-    def test_wifi_capture_failure_is_a_done_warning(self):
-        with patch('emaki_installer.worker.active_wifi', return_value='e6685942-10ed-4eaf-9741-1bfed347fc6f'), patch('emaki_installer.worker.capture_wifi', side_effect=InstallError(
-                Code.BAD_CONFIG, 'private failure')):
-            events, phases, _, _ = self.execute(wifi_uuid='e6685942-10ed-4eaf-9741-1bfed347fc6f')
+    JOINED = 'aaaaaaaa-1111-4111-8111-111111111111'
+    OTHER = 'bbbbbbbb-2222-4222-8222-222222222222'
+    NOT_COPIED = 'Wi-Fi was not copied; join it again after restarting.'
+
+    def wifi(self, rows, joined=None, capture=b'private profile'):
+        """Run the worker against a fake NetworkManager listing: rows are (uuid, timestamp, active)."""
+        from emaki_installer import network_profiles
+        listing = ''.join(f'{uuid}:802-11-wireless:{stamp}:{"yes" if active else "no"}:'
+                          f'/etc/NetworkManager/system-connections/{uuid}.nmconnection\n'
+                          for uuid, stamp, active in rows) + 'wired:802-3-ethernet:1:yes:/run/w.nmconnection\n'
+        lines = []
+        with patch('emaki_installer.worker.choose_wifi',
+                   side_effect=lambda j: network_profiles.choose_wifi(j, run=lambda argv: listing)), \
+                patch('emaki_installer.worker.capture_wifi', **(
+                    {'side_effect': capture} if isinstance(capture, Exception) else {'return_value': capture})) as captured:
+            events, phases, _, _ = self.execute(wifi_uuid=joined, log=lines.append)
         self.assertEqual(events[-1]['type'], 'done')
-        self.assertIn('Wi-Fi was not copied; join it again after restarting.', events[-1]['warnings'])
-        self.assertIn('prepare_disk', phases)
+        log = '\n'.join(line for line in lines if line.startswith('Wi-Fi'))
+        return captured, events[-1]['warnings'], log
+
+    def test_wifi_capture_failure_is_a_done_warning_with_its_reason(self):
+        from emaki_installer.network_profiles import WifiNotCopied
+        captured, warnings, log = self.wifi([(self.JOINED, 5, True)], self.JOINED, capture=WifiNotCopied(
+            'the password is not saved in the keyfile (psk-flags 1: held by a desktop keyring client or asked at each connection).'))
+        captured.assert_called_once()
+        self.assertIn(self.NOT_COPIED, warnings)
+        self.assertIn('Wi-Fi: not copied: the password is not saved in the keyfile (psk-flags 1', log)
+
+    def test_unexpected_capture_error_logs_only_its_type(self):
+        captured, warnings, log = self.wifi([(self.JOINED, 5, True)], capture=OSError('/etc/x/HomeNet.nmconnection'))
+        self.assertIn(self.NOT_COPIED, warnings)
+        self.assertIn('Wi-Fi: not copied: OSError.', log)
+        self.assertNotIn('HomeNet', log)
 
     def test_active_wifi_is_captured_without_a_recorded_join(self):
-        uuid = 'e6685942-10ed-4eaf-9741-1bfed347fc6f'
-        with patch('emaki_installer.worker.active_wifi', return_value=uuid, create=True) as active, \
-                patch('emaki_installer.worker.capture_wifi', return_value=b'private profile') as capture:
-            events, _, _, _ = self.execute()
-        self.assertEqual(events[-1]['type'], 'done')
-        active.assert_called_once_with()
-        capture.assert_called_once_with(uuid)
+        captured, warnings, log = self.wifi([(self.OTHER, 5, True)])
+        captured.assert_called_once()
+        self.assertEqual(captured.call_args.args, (self.OTHER,))
+        self.assertNotIn(self.NOT_COPIED, warnings)
+        self.assertIn('Wi-Fi: the live session has 1 Wi-Fi profile(s); Network page join: none.', log)
+        self.assertIn(f'Wi-Fi: chose {self.OTHER}: the active Wi-Fi connection.', log)
 
     def test_success_all_phases_then_cleanup_then_done(self):
         events, phases, cleanups, _ = self.execute()
@@ -185,44 +211,55 @@ class WorkerLifecycleTests(unittest.TestCase):
         self.assertNotIn('lazy', cleanups[-1].kwargs)
 
     def test_active_wifi_wins_over_a_stale_installer_join(self):
-        joined = 'aaaaaaaa-1111-4111-8111-111111111111'
-        active = 'bbbbbbbb-2222-4222-8222-222222222222'
-        with patch('emaki_installer.worker.active_wifi', return_value=active), \
-                patch('emaki_installer.worker.capture_wifi', return_value=b'active profile') as capture:
-            events, _, _, _ = self.execute(wifi_uuid=joined)
-        capture.assert_called_once_with(active)
-        self.assertEqual(events[-1]['type'], 'done')
-        self.assertNotIn('Wi-Fi was not copied; join it again after restarting.', events[-1]['warnings'])
+        captured, warnings, _ = self.wifi([(self.JOINED, 5, False), (self.OTHER, 9, True)], self.JOINED)
+        self.assertEqual(captured.call_args.args, (self.OTHER,))
+        self.assertNotIn(self.NOT_COPIED, warnings)
 
-    def test_wired_or_offline_never_copies_a_stale_installer_join(self):
-        joined = 'aaaaaaaa-1111-4111-8111-111111111111'
-        with patch('emaki_installer.worker.capture_wifi', return_value=b'joined profile') as capture:
-            events, _, _, _ = self.execute(wifi_uuid=joined)
-        capture.assert_not_called()
-        self.assertEqual(events[-1]['type'], 'done')
-        self.assertNotIn('Wi-Fi was not copied; join it again after restarting.', events[-1]['warnings'])
+    def test_network_page_join_is_kept_after_the_link_dropped(self):
+        # The Mac (GOTCHAS 2026-10-10): joined on the Network page, no Wi-Fi active at the worker's start.
+        captured, warnings, log = self.wifi([(self.OTHER, 3, False), (self.JOINED, 5, False)], self.JOINED)
+        self.assertEqual(captured.call_args.args, (self.JOINED,))
+        self.assertNotIn(self.NOT_COPIED, warnings)
+        self.assertIn(f'Wi-Fi: chose {self.JOINED}: joined on the Network page; no Wi-Fi is active now.', log)
+
+    def test_panel_join_is_kept_after_the_link_dropped(self):
+        # Joined from the desktop panel: no Network page join; the only saved profile, and it connected.
+        captured, warnings, log = self.wifi([(self.JOINED, 5, False)])
+        self.assertEqual(captured.call_args.args, (self.JOINED,))
+        self.assertNotIn(self.NOT_COPIED, warnings)
+        self.assertIn('the only saved Wi-Fi profile, and it has connected', log)
+
+    def test_missing_network_page_join_warns_and_copies_nothing(self):
+        # Review RW1: the recorded join is gone; an unrelated old profile, or none at all, remains.
+        for rows in ([(self.OTHER, 7, False)], []):
+            with self.subTest(rows=rows):
+                captured, warnings, log = self.wifi(rows, self.JOINED)
+                captured.assert_not_called()
+                self.assertIn(self.NOT_COPIED, warnings)
+                self.assertIn(f'Wi-Fi: nothing chosen: the Network page join {self.JOINED} is no longer saved', log)
+
+    def test_saved_wifi_that_cannot_be_chosen_warns(self):
+        for rows in ([(self.JOINED, 5, False), (self.OTHER, 9, False)],   # two used, none active
+                     [(self.JOINED, 7, False), (self.OTHER, 0, False)],   # old used, newer attempt failed
+                     [(self.JOINED, 0, False)],                           # a failed join only
+                     [(self.JOINED, 5, True), (self.OTHER, 9, True)]):    # two adapters, no join
+            with self.subTest(rows=rows):
+                captured, warnings, log = self.wifi(rows)
+                captured.assert_not_called()
+                self.assertIn(self.NOT_COPIED, warnings)
+                self.assertIn('Wi-Fi: nothing chosen: ', log)
+
+    def test_no_wifi_at_all_is_logged_without_a_warning(self):
+        captured, warnings, log = self.wifi([])
+        captured.assert_not_called()
+        self.assertNotIn(self.NOT_COPIED, warnings)
+        self.assertIn('Wi-Fi: nothing chosen: the live session has no Wi-Fi profile.', log)
 
     def test_recorded_wifi_is_the_fallback_with_two_active_adapters(self):
-        from emaki_installer.network_profiles import active_wifi
-        joined = 'aaaaaaaa-1111-4111-8111-111111111111'
-        other = 'bbbbbbbb-2222-4222-8222-222222222222'
-        active = joined + ':802-11-wireless\n' + other + ':802-11-wireless\n'
-        with patch('emaki_installer.worker.active_wifi',
-                   side_effect=lambda: active_wifi(run=lambda argv: active)), \
-                patch('emaki_installer.worker.capture_wifi', return_value=b'joined profile') as capture:
-            events, _, _, _ = self.execute(wifi_uuid=joined)
-        capture.assert_called_once_with(joined)
-        self.assertEqual(events[-1]['type'], 'done')
-        self.assertNotIn('Wi-Fi was not copied; join it again after restarting.', events[-1]['warnings'])
-
-    def test_ambiguous_wifi_without_a_recorded_join_warns(self):
-        with patch('emaki_installer.worker.active_wifi', side_effect=InstallError(
-                Code.BAD_CONFIG, 'private failure')), \
-                patch('emaki_installer.worker.capture_wifi') as capture:
-            events, _, _, _ = self.execute()
-        capture.assert_not_called()
-        self.assertEqual(events[-1]['type'], 'done')
-        self.assertIn('Wi-Fi was not copied; join it again after restarting.', events[-1]['warnings'])
+        captured, warnings, log = self.wifi([(self.JOINED, 5, True), (self.OTHER, 9, True)], self.JOINED)
+        self.assertEqual(captured.call_args.args, (self.JOINED,))
+        self.assertNotIn(self.NOT_COPIED, warnings)
+        self.assertIn('one of 2 active Wi-Fi connections', log)
 
     def test_reserved_login_emits_its_own_code_before_disk_work(self):
         with patch('emaki_installer.worker.verify_account_name', side_effect=InstallError(
@@ -821,6 +858,43 @@ class BootAndSnapshotTests(unittest.TestCase):
             self.worker.grub_config()
         run.assert_any_call(['grub-mkconfig', '-o', '/boot/grub/grub.cfg'], self.root)
 
+    def test_grub_config_uses_the_live_mode_face_when_installed(self):
+        self.boot_files()
+        face = '/usr/share/emaki/grub/fonts/menu-32.pf2'
+        for mode, installed, prefix in (((2560, 1600), True, ['env', 'GRUB_FONT=' + face]),
+                                        ((2560, 1600), False, []), ((1024, 768), True, []), (None, True, [])):
+            with self.subTest(mode=mode, installed=installed):
+                target = self.root / face.lstrip('/')
+                if installed:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(b'font')
+                else:
+                    target.unlink(missing_ok=True)
+                with patch.object(worker_module, 'boot_framebuffer', return_value=mode), \
+                        patch.object(self.worker.runner, 'chroot', wraps=self.worker.runner.chroot) as run:
+                    self.worker.grub_config()
+                run.assert_any_call([*prefix, 'grub-mkconfig', '-o', '/boot/grub/grub.cfg'], self.root)
+
+    def test_live_large_face_has_a_safe_installed_menu_on_both_filesystems(self):
+        for fs in ('btrfs', 'ext4'):
+            with self.subTest(fs=fs):
+                self.worker.plan = make_plan(config(fs=fs), inventory())
+                self.boot_files()
+                face = '/usr/share/emaki/grub/fonts/menu-46.pf2'
+                self.worker.files.write(face, 'font')
+                entries = self.worker.files.read('/boot/grub/grub.cfg')
+                header = ('if loadfont /@' + face + ' ; then\n'
+                          '  set gfxmode=1024x768,800x600,640x480,auto\nfi\n'
+                          'terminal_output gfxterm\n')
+                self.worker.files.write('/boot/grub/grub.cfg', header + entries)
+                with patch.object(worker_module, 'boot_framebuffer', return_value=(3840, 2160)):
+                    self.worker.grub_config()
+                text = self.worker.files.read('/boot/grub/grub.cfg')
+                self.assertEqual(text, worker_module.menu_font_fallback(header + entries))
+                self.assertIn('if terminal_output gfxterm; then', text)
+                self.assertIn('set gfxterm_font="Unifont Regular 16"', text)
+                self.assertTrue(text.endswith(entries))
+
     def test_snapshot_packages_follow_the_root_filesystem(self):
         snapshots = {'snapper', 'snap-pac', 'grub-btrfs'}
         for fs in ('ext4', 'btrfs'):
@@ -934,6 +1008,7 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.worker.plan.config['mode'] = 'alongside'
         self.worker.files.write('/efi/EFI/BOOT/BOOTX64.EFI', b'foreign')
         self.worker.files.write('/efi/EFI/Microsoft/Boot/bootmgfw.efi', b'microsoft')
+        self.worker.files.write('/efi/EFI/Microsoft/Boot/BCD', b'windows configuration')
         from emaki_installer.inventory import efi_loaders
         self.worker.plan.disk['partitions'] = [{'esp': True, '_efi_loaders': efi_loaders(self.root / 'efi')}]
         self.worker.files.write('/boot/grub/grub.cfg', self.worker.files.read('/boot/grub/grub.cfg') +
@@ -945,11 +1020,117 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.assertIn('GRUB_DEFAULT=0', self.worker.files.read('/etc/default/grub'))
         self.assertFalse(any('--removable' in c for c in commands))
         self.assertEqual(self.worker.files.read('/efi/EFI/Microsoft/Boot/bootmgfw.efi'), 'microsoft')
-        self.worker.files.write('/efi/EFI/Microsoft/Boot/bootmgfw.efi', b'changed')
+        self.worker.files.write('/efi/EFI/Microsoft/Boot/BCD', b'changed')
         self.worker.runner.commands.clear()
         with self.assertRaisesRegex(InstallError, 'differ from the reviewed'):
             self.worker.bootloader()
         self.assertEqual(self.worker.runner.commands, [])
+
+    def test_alongside_bootloader_refuses_foreign_efi_changes(self):
+        from emaki_installer.inventory import efi_loaders
+        self.boot_files()
+        self.worker.plan.config['mode'] = 'alongside'
+        f = self.worker.files
+        f.write('/efi/EFI/Microsoft/Boot/bootmgfw.efi', b'microsoft')
+        f.write('/efi/EFI/Microsoft/Boot/BCD', b'configuration')
+        f.write('/efi/EFI/BOOT/BOOTX64.EFI', b'fallback')
+        self.worker.plan.disk['partitions'] = [{'esp': True, '_efi_loaders': efi_loaders(self.root / 'efi')}]
+        f.write('/boot/grub/grub.cfg', f.read('/boot/grub/grub.cfg') + "menuentry 'Windows Boot Manager' {\n}\n")
+        original = self.worker.runner.chroot
+        for kind, name in (('changed', 'BCD'), ('unexpected', 'unexpected'), ('missing', 'BCD')):
+            with self.subTest(kind=kind):
+                logs = []
+                self.worker.log = logs.append
+                self.worker.runner.commands.clear()
+                def chroot(command, *args, **kwargs):
+                    result = original(command, *args, **kwargs)
+                    if 'grub-install' in command:
+                        if kind == 'missing':
+                            f.path('/efi/EFI/Microsoft/Boot/' + name).unlink(missing_ok=True)
+                        else:
+                            f.write('/efi/EFI/Microsoft/Boot/' + name, b'changed')
+                    return result
+                self.worker.runner.chroot = chroot
+                with self.assertRaisesRegex(InstallError, 'EFI files changed') as caught:
+                    self.worker.bootloader()
+                self.assertEqual(caught.exception.code, Code.BOOT_VERIFY)
+                self.assertFalse(caught.exception.retryable)
+                self.assertIn('passed post-shrink verification before loader installation', caught.exception.message)
+                self.assertIn('Do not retry installation', caught.exception.message)
+                self.assertIn('Save the installation log to another device', caught.exception.message)
+                self.assertTrue(any(f'Post-write EFI {kind} (1):' in line
+                                    and name.lower() in line for line in logs), logs)
+                self.assertFalse(any('genfstab' in command for command, _ in self.worker.runner.commands))
+                self.assertFalse(f.path('/etc/fstab').exists())
+                f.write('/efi/EFI/Microsoft/Boot/BCD', b'configuration')
+                f.path('/efi/EFI/Microsoft/Boot/unexpected').unlink(missing_ok=True)
+
+    def test_alongside_efi_difference_log_is_bounded_and_escaped(self):
+        self.boot_files()
+        self.worker.plan.config['mode'] = 'alongside'
+        self.worker.plan.disk['partitions'] = [{'esp': True, '_efi_loaders': {}}]
+        f = self.worker.files
+        f.write('/boot/grub/grub.cfg', f.read('/boot/grub/grub.cfg') +
+                "menuentry 'Windows Boot Manager' {\n}\n")
+        logs = []
+        self.worker.log = logs.append
+        after = {f'EFI/{n:02d}\n' + 'x' * 300: 'digest' for n in range(25)}
+        with patch.object(worker_module.alongside, 'efi_loaders', side_effect=[{}, after]):
+            with self.assertRaises(InstallError):
+                self.worker.bootloader()
+        diagnostic = next(line for line in logs if 'Post-write EFI unexpected' in line)
+        self.assertIn('unexpected (25)', diagnostic)
+        self.assertIn(r'EFI/00\n', diagnostic)
+        self.assertNotIn('EFI/20', diagnostic)
+        self.assertNotIn('\n', diagnostic)
+        self.assertLess(len(diagnostic), 4900)
+
+    def test_alongside_postwrite_unreadable_efi_has_recovery_advice(self):
+        self.boot_files()
+        self.worker.plan.config['mode'] = 'alongside'
+        self.worker.plan.disk['partitions'] = [{'esp': True, '_efi_loaders': {}}]
+        f = self.worker.files
+        f.write('/boot/grub/grub.cfg', f.read('/boot/grub/grub.cfg') +
+                "menuentry 'Windows Boot Manager' {\n}\n")
+        logs = []
+        self.worker.log = logs.append
+        with patch.object(worker_module.alongside, 'efi_loaders', side_effect=[
+                {}, InstallError(Code.UNSAFE_DISK, '[PLACEHOLDER] Cannot safely verify the existing EFI files.')]):
+            with self.assertRaises(InstallError) as caught:
+                self.worker.bootloader()
+        self.assertEqual(caught.exception.code, Code.BOOT_VERIFY)
+        self.assertFalse(caught.exception.retryable)
+        self.assertIn('could not be verified after loader installation', caught.exception.message)
+        self.assertIn('passed post-shrink verification before loader installation', caught.exception.message)
+        self.assertIn('Do not retry installation', caught.exception.message)
+        self.assertIn('Save the installation log to another device', caught.exception.message)
+        self.assertIn('Post-write EFI inventory failed: unsafe_disk', logs)
+        self.assertTrue(any('grub-install' in command for command, _ in self.worker.runner.commands))
+        self.assertFalse(any('genfstab' in command for command, _ in self.worker.runner.commands))
+        self.assertFalse(f.path('/etc/fstab').exists())
+
+    def test_alongside_snapshot_refresh_keeps_windows_and_snapshot_configuration(self):
+        self.boot_files()
+        self.worker.plan.config['mode'] = 'alongside'
+        f = self.worker.files
+        f.write('/boot/grub/grub.cfg', f.read('/boot/grub/grub.cfg') + "menuentry 'Windows Boot Manager' {\n}\n")
+        f.write('/etc/snapper/configs/root', 'SUBVOLUME="/"\n')
+        f.mkdir('/.snapshots/1/snapshot')
+        original = self.worker.runner.run
+
+        def run(argv, **kwargs):
+            result = original(argv, **kwargs)
+            if 'snapper' in argv and 'create' in argv:
+                return '1\n'
+            return result
+
+        self.worker.runner.run = run
+        self.worker.snapshot()
+        commands = [c for c, _ in self.worker.runner.commands]
+        self.assertIn(['arch-chroot', str(self.root), 'grub-mkconfig', '-o', '/boot/grub/grub.cfg'], commands)
+        self.assertTrue(f.path('/boot/grub/.emaki-snapshots').is_dir())
+        self.assertIn('. /usr/share/emaki/boot/grub-btrfs.conf', f.read('/etc/default/grub-btrfs/config'))
+        self.assertIn('Windows Boot Manager', f.read('/boot/grub/grub.cfg'))
 
     @alongside_on()
     def test_alongside_missing_windows_menu_is_fatal(self):
@@ -1447,6 +1628,17 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.assertEqual(self.worker.plan.config['user']['password'], '')
         self.assertTrue(any(command[-3:] == ['passwd', '-l', 'root'] for command, _ in calls))
 
+    def test_repository_override_requires_a_signed_database(self):
+        live = self.root / 'live-mirrorlist'
+        live.write_text('Server = https://fallback.invalid/$repo/os/$arch\n')
+        self.worker.online = False
+        self.worker.plan.config['repo_server'] = 'https://pkgs.example/stable'
+        self.worker.files.write('/etc/pacman.conf', TARGET_PACMAN_CONF)
+        with patch('emaki_installer.worker.Path', side_effect=lambda p: live if str(p) == '/etc/pacman.d/mirrorlist' else Path(p)):
+            self.worker.repositories()
+        self.assertEqual(self.worker.files.read('/etc/pacman.d/emaki-mirrorlist'),
+                         'SigLevel = Required\nServer = https://pkgs.example/stable\n')
+
     def test_arch_mirror_ranking_requires_online_update_and_connectivity(self):
         live = self.root / 'live-mirrorlist'
         live.write_text('Server = https://fallback.invalid/$repo/os/$arch\n')
@@ -1607,10 +1799,8 @@ class BootAndSnapshotTests(unittest.TestCase):
         profile.write_text(PROFILE)
         profile.chmod(0o600)
         def run(argv, **kwargs):
-            if '--active' in argv:
-                return UUID + ':802-11-wireless\n'
-            if 'UUID,TYPE,FILENAME' in argv:
-                return UUID + ':802-11-wireless:' + str(profile) + '\n'
+            if 'UUID,TYPE,TIMESTAMP,ACTIVE,FILENAME' in argv:
+                return UUID + ':802-11-wireless:7:yes:' + str(profile) + '\n'
             return private_command(argv, **kwargs)
         self.worker.plan.config.update(encryption='separate', disk_password='disk-password')
         self.worker.wifi_uuid = UUID
@@ -2065,7 +2255,7 @@ class RepairTests(unittest.TestCase):
         worker = Worker(None, inv, Redactor(), lambda kind, **kw: events.append({'type': kind, **kw}),
                         lambda line: None, runner_factory=RecordingRunner)
         with patch('emaki_installer.worker.make_plan', return_value=plan), \
-                patch('emaki_installer.worker.active_wifi', return_value=None, create=True), \
+                patch("emaki_installer.worker.choose_wifi", return_value=Choice(None, "none", 0)), \
                 patch('emaki_installer.worker.preflight_repo', side_effect=InstallError(
                     Code.UNSAFE_DISK, 'Unsafe Windows filesystem.', retryable=False)):
             worker.run(plan, threading.Event())

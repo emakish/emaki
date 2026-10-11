@@ -1,0 +1,22 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Retry pending sudo key timestamp cleanup
+After=systemd-tmpfiles-setup.service
+
+[Service]
+Type=oneshot
+ExecStart=@EMAKI_LIBEXECDIR@/emaki-sudo-broker --cleanup-if-idle
+TimeoutStartSec=35
+RuntimeDirectory=emaki-sudo
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run/sudo/ts
+ProtectHome=yes
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+LimitCORE=0

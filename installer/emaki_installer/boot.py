@@ -3,6 +3,7 @@
 """Shared installed-system and installer GRUB rendering and verification."""
 import io
 import re
+import struct
 import tarfile
 
 from .errors import Code, require
@@ -10,6 +11,14 @@ from . import grub_screen
 
 # Keep the installed menu's existing preference; unlocking preserves the firmware mode.
 GRUB_GFXMODE = '1024x768,800x600,640x480,auto'
+# GRUB scripts cannot read the selected video mode, so the menu face is chosen where the
+# menu is generated, from the framebuffer GRUB handed to Linux (GRUB_GFXPAYLOAD_LINUX=keep).
+BOOT_PARAMS = '/sys/kernel/boot_params/data'
+MENU_FONT_DIR = '/usr/share/emaki/grub/fonts'
+# Committed DejaVu Sans Mono faces, largest first: (pixel size, gfxterm cell width, height).
+MENU_FONTS = ((46, 28, 55), (32, 19, 38), (24, 14, 29))
+# GRUB's 16 px Unifont gives 128x48 cells at 1024x768; a larger face must keep this much.
+MENU_GRID = (100, 30)
 GRUB_UNLOCK_GFXMODE = 'auto'
 # What the EFI image of an encrypted install embeds so GRUB can ask in graphics mode before
 # the unlock: what grub-install embeds for a LUKS2 root (partition table, cryptodisk, ciphers,
@@ -151,6 +160,72 @@ def grub_image_carries(image, prefix):
     return image[:2] == b'MZ' and prefix.encode() + b'\0' in image
 
 
+def boot_framebuffer(path=BOOT_PARAMS):
+    """Width and height of the EFI framebuffer this boot started with, or None.
+
+    x86 boot_params begin with screen_info: orig_video_isVGA at 0x0f is 0x70 for an EFI
+    framebuffer, lfb_width and lfb_height are little-endian at 0x12 and 0x14.
+    """
+    try:
+        with open(path, 'rb') as stream:
+            info = stream.read(0x16)
+    except OSError:
+        return None
+    if len(info) < 0x16 or info[0x0f] != 0x70:
+        return None
+    width, height = struct.unpack_from('<HH', info, 0x12)
+    return (width, height) if width and height else None
+
+
+def menu_font(mode):
+    """The largest face that keeps the menu grid; None keeps GRUB's own 16 px font."""
+    if mode:
+        for size, width, height in MENU_FONTS:
+            if mode[0] // width >= MENU_GRID[0] and mode[1] // height >= MENU_GRID[1]:
+                return f'{MENU_FONT_DIR}/menu-{size}.pf2'
+    return None
+
+
+def generated_menu_font(text):
+    """The face a generated menu loads: a path, None for GRUB's default, '' if unknown."""
+    loads = re.findall(r'^if loadfont (\S+) ; then$', text, re.M)
+    if loads == ['$font']:
+        return None
+    return MENU_FONT_DIR + '/' + loads[0].rsplit('/', 1)[1] if (
+        len(loads) == 1 and re.fullmatch(r'\S*/usr/share/emaki/grub/fonts/menu-[0-9]+\.pf2', loads[0])) else ''
+
+
+def menu_font_fallback(text):
+    """Retry gfxterm with the stock face if a saved enlarged face no longer fits.
+
+    The framebuffer used to choose the face belongs to an earlier boot (or the live
+    installer). Firmware may choose a smaller mode now. Only our generated face and
+    the stock gfxterm command are changed; local fonts and other terminals stay local.
+    """
+    font = generated_menu_font(text)
+    if not font or text.count('\nterminal_output gfxterm\n') != 1:
+        return text
+    size = next((size for size, _, _ in MENU_FONTS if font.endswith(f'/menu-{size}.pf2')), None)
+    if size is None:
+        return text
+    # GRUB_FONT replaces the stock header's Unifont load. Keep its wider Unicode
+    # coverage in the registry; gfxterm_font still makes our face primary.
+    terminal = ('\nloadfont unicode\n'
+                f'set gfxterm_font="DejaVu Sans Mono Regular {size}"\n'
+                'if terminal_output gfxterm; then\n'
+                '  true\n'
+                'else\n'
+                '  set gfxterm_font="Unifont Regular 16"\n'
+                '  if loadfont unicode; then\n'
+                '    terminal_output gfxterm\n'
+                '  fi\n'
+                'fi\n'
+                # configfile opens a new environment for the snapshot menu. Carry
+                # the face that actually initialized, including the stock retry.
+                'export gfxterm_font\n')
+    return text.replace('\nterminal_output gfxterm\n', terminal)
+
+
 def grub_defaults(alongside=False, luks_uuid=None, resume_uuid=None, resume_offset=None):
     cmdline = []
     if luks_uuid:
@@ -196,5 +271,3 @@ def verify_grub(text):
     for kernel in ('linux', 'linux-lts'):
         require(re.search(r'^\s*linux(?:efi)?\s+\S*/vmlinuz-' + kernel + r'(?:\s|$)', text, re.M),
                 Code.BOOT_VERIFY, f'GRUB has no executable entry for {kernel}.')
-
-

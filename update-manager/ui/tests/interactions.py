@@ -11,16 +11,16 @@ import tempfile
 UI = Path(__file__).resolve().parents[1]
 ROOT = UI.parents[1]
 MUTANTS = {
-    'tab': ('focusPolicy: Qt.StrongFocus', 'focusPolicy: Qt.NoFocus'),
+    'tab': ('focusPolicy: visible && enabled ? Qt.StrongFocus : Qt.NoFocus', 'focusPolicy: Qt.NoFocus'),
     'apply': ('onClicked: view.controller.apply()', 'onClicked: {}'),
     'news': ('view.openNews(modelData.link)', 'view.openNews("")'),
-    'busy': ('enabled: !view.controller.busy && view.controller.repositoryCount', 'enabled: view.controller.repositoryCount'),
+    'busy': ('enabled: !view.controller.busy && view.controller.managedCount', 'enabled: view.controller.managedCount'),
     'restart': ('onClicked: view.controller.reboot()', 'onClicked: {}'),
-    'later': ('onClicked: view.hideRequested()', 'onClicked: {}'),
+    'later': ('onClicked: view.controller.hide()', 'onClicked: {}'),
     'scroll': ('if (activeFocus) view.reveal(action)', 'if (false) view.reveal(action)'),
     'enter': ('Keys.onEnterPressed: if (enabled) clicked()', 'Keys.onEnterPressed: {}'),
     'return': ('Keys.onReturnPressed: if (enabled) clicked()', 'Keys.onReturnPressed: {}'),
-    'escape': ('if (controller.phase !== "applying") hideRequested()', 'hideRequested()'),
+    'escape': ('if (!controller.busy) {', 'if (true) {'),
     'keyboard-scroll': ('Keys.onPressed: event => view.scrollKey(event)', 'Keys.onPressed: event => { event.accepted = true; }'),
     'footer-scroll': ('if (!ancestor) return;', ''),
     'tail': ('view.controller.phase === "applying" && view.followTail', 'false'),
@@ -37,6 +37,14 @@ QtObject {
     property string phase: "idle"
     readonly property bool busy: phase === "applying"
     property int repositoryCount: 0
+    property int managedCount: 0
+    property bool reminder: false
+    property bool restorePending: false
+    property bool restoreOpen: false
+    property var restorePoints: []
+    property var selectedRestore: null
+    signal hideReady
+    function hide(): void { hideReady(); }
     property bool restart: false
     property bool signOut: false
     property string message: ""
@@ -112,9 +120,9 @@ def run(width, height, mutant=None, reopen=False):
         root = Path(directory)
         shutil.copytree(UI, root / 'ui')
         controller = root / 'ui/UpdateController.qml'
-        controller.write_text(controller.read_text().replace('@EMAKI_DATADIR@/shell', (ROOT / 'shell').as_uri()))
+        controller.write_text(controller.read_text().replace('@EMAKI_DATADIR@', str(ROOT)))
         view = root / 'ui/UpdateView.qml'
-        text = view.read_text().replace('@EMAKI_DATADIR@/shell', (ROOT / 'shell').as_uri())
+        text = view.read_text().replace('@EMAKI_DATADIR@', str(ROOT))
         if mutant and not reopen:
             before, after = MUTANTS[mutant]
             assert before in text

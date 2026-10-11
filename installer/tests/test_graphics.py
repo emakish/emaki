@@ -95,15 +95,16 @@ class ConsoleFontTests(unittest.TestCase):
 # Serialized protocol plan fields and ordered packages from the unmodified checkout
 # 8afb2e864657f840075ec24daa7f3914aeb41e44, using the deterministic keyboard fixture below.
 # Package hashes include the common terminus-font addition from 4daab6f; plan hashes stay fixed.
+# Rich package hashes include the explicitly installed Rich programs (RICH_APPS, 0.6.0).
 BASELINE = {
     'btrfs-minimal': ('135423acba4a58851f74b9fd2d52f138f120221d4e16bc7fcdbf8c1658d3d568',
                      'd317feee47e2119c760957ff19c3e2b82147aaf402e926e3808cb820561563df'),
     'btrfs-rich': ('12b4cb778eca3cead0b03d3efcaa6d066172a336e660a9c492ae2120f9138d9b',
-                  '48037390883451e5dc6d3a7fcac5267e7c3ca92715698b02ee8b2dc20e8cc938'),
+                  'c8a8db1f58f8c854f55c641139f95f6fe604e06299b3352ccc540227eaef2c5e'),
     'ext4-minimal': ('ab33a9debe3b1892c98ba04998d50486f2e229528f5bd8aee776ce8e77ad5e00',
                     'e1cc27f59e7545956bd3bc4504ba10b3afff9ca0d2ec6daba77ad6f517297fe6'),
     'ext4-rich': ('b861d7f51bcddb7f998325c9cf149c9dac7350dcc428a0705e294535e17e0033',
-                 'a5a6791ed558c610ef8a7a4134cda446d33c88ade784e94cca2c4ce3cf6a9888'),
+                 '8124eddec0dc2823535e4879bc3aeaf8f76dcce993534a8f3705796034de446e'),
 }
 
 
@@ -328,7 +329,8 @@ class GraphicsTests(unittest.TestCase):
         inv = inventory()
         plan = make_plan(config(), inv)
         inv['_graphics'] = dict(devices=[dict(vendor=0x10de, device=0x2684)], available=[])
-        worker = SimpleNamespace(plan=plan, inventory=FakeInventory(inv), backend=Mock(), mark_disk_changed=Mock())
+        worker = SimpleNamespace(plan=plan, inventory=FakeInventory(inv), backend=Mock(), mark_disk_changed=Mock(),
+                                 test_mode=False)
         with self.assertRaisesRegex(InstallError, 'Graphics hardware or driver availability changed'):
             Worker.prepare_disk(worker)
         worker.mark_disk_changed.assert_not_called()

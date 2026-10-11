@@ -1,0 +1,12 @@
+#%PAM-1.0
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Missing optional transport falls through to the distribution's sudo stack.
+auth [success=done auth_err=die perm_denied=die abort=die default=ignore] @EMAKI_PAM_MODULE@
+auth include sudo
+# Sudo calls account management only after authentication succeeded. A callback
+# without this handle's fresh password transaction cannot create a grant.
+account [perm_denied=die abort=die default=ignore] @EMAKI_PAM_MODULE@
+account include sudo
+password include sudo
+session include sudo

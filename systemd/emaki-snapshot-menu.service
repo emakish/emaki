@@ -7,7 +7,7 @@ After=multi-user.target emaki-boot-complete.service emaki-boot-refresh.service
 Before=shutdown.target
 Conflicts=shutdown.target
 RequiresMountsFor=/boot /efi /.snapshots
-ConditionPathExists=/etc/grub.d/41_snapshots-btrfs
+ConditionPathExists=/boot/grub/grub.cfg
 
 [Service]
 Type=oneshot

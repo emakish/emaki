@@ -19,6 +19,8 @@ import reaper
 reaper.guard()  # nothing this test starts outlives it
 
 sys.dont_write_bytecode = True
+# No state test may contact the compositor of the invoking desktop.
+os.environ.pop('NIRI_SOCKET', None)
 
 ROOT = Path(__file__).resolve().parent.parent
 loader = importlib.machinery.SourceFileLoader('lock_supervisor', str(ROOT / 'scripts/emaki-lock'))
@@ -57,6 +59,9 @@ class Selector:
 lock.socket.socket = lambda *args: Server()
 lock.selectors.DefaultSelector = Selector
 lock.Supervisor.spawn = lambda self, fallback=False: None
+lock.Supervisor.prepare_session_lock = lambda self: True
+lock.Supervisor.block_authentication = lambda self: None
+lock.Supervisor.cancel_authentication = lambda self: None
 lock.Supervisor.start_layout = lambda self: None
 lock.Supervisor.recover_orphan = lambda self: False
 lock.Supervisor.tick = lambda self: None
@@ -108,6 +113,115 @@ def run():
     with tempfile.TemporaryDirectory(prefix='lock-unit-', dir=ROOT / '.cache') as value:
         directory = Path(value)
         detached_stderr(directory)
+        s = lock.Supervisor(directory)
+        server = Mock()
+        server.bind.side_effect = lambda path: Path(path).touch()
+        order = []
+        with patch.object(lock.socket, 'socket', return_value=server), \
+                patch.object(s.selector, 'register'), \
+                patch.object(s, 'prepare_session_lock', side_effect=lambda: order.append('prepare') or True), \
+                patch.object(s, 'block_authentication', side_effect=lambda: order.append('gate')), \
+                patch.object(s, 'recover_orphan', return_value=False), \
+                patch.object(s, 'spawn', side_effect=lambda fallback=False: order.append('locker')), \
+                patch.object(s, 'cancel_authentication', side_effect=lambda: order.append('cancel')), \
+                patch.object(s, 'start_layout', side_effect=lambda: setattr(s, 'finished', True)):
+            s.run()
+        s.selector.close()
+        assert order == ['prepare', 'gate', 'locker', 'cancel']
+        assert s.retained_lock, 'failed startup must retain an acknowledged preparation gate'
+        print('PASS acknowledged compositor isolation precedes the gate; cancellation follows locker spawn')
+        # Unsupported or unavailable preparation must still spawn the locker,
+        # keeping a live authentication prompt mapped until a secure reply.
+        s = lock.Supervisor(directory)
+        order = []
+        with patch.object(lock.socket, 'socket', return_value=server), \
+                patch.object(s.selector, 'register'), \
+                patch.object(s, 'prepare_session_lock', return_value=False), \
+                patch.object(s, 'block_authentication', side_effect=lambda: order.append('gate')), \
+                patch.object(s, 'recover_orphan', return_value=False), \
+                patch.object(s, 'spawn', side_effect=lambda fallback=False: order.append('locker')), \
+                patch.object(s, 'cancel_authentication', side_effect=lambda: order.append('cancel')), \
+                patch.object(s, 'start_layout', side_effect=lambda: setattr(s, 'finished', True)):
+            s.run()
+            assert order == ['locker']
+            assert s.authentication_pending
+            s.authentication_after_lock()
+            assert order == ['locker']
+            s.secure = True
+            s.authentication_after_lock()
+            s.authentication_after_lock()
+            assert order == ['locker', 'gate', 'cancel']
+        s.selector.close()
+        print('PASS unavailable preparation defers gate and cancellation until confirmed lock')
+
+        # Isolated socketpairs cover fragmented acknowledgements, protocol errors,
+        # disconnects, and timeouts without using the live compositor socket.
+        for chunks, expected in [(b'{"Ok":"Handled"}\n', True),
+                                 (b'{"Err":"unsupported"}\n', False),
+                                 (b'{"Ok":"other"}\n', False),
+                                 (b'invalid\n', False), (b'', False)]:
+            local, peer = socket.socketpair()
+            class PreparedSocket:
+                def __enter__(self): return self
+                def __exit__(self, *args): local.close()
+                def settimeout(self, value): local.settimeout(value)
+                def connect(self, path): assert path == 'fixture-niri'
+                def sendall(self, data): local.sendall(data)
+                def recv(self, count): return local.recv(min(count, 3))
+            peer.sendall(chunks)
+            peer.shutdown(socket.SHUT_WR)
+            try:
+                with patch.dict(os.environ, {'NIRI_SOCKET': 'fixture-niri'}), \
+                        patch.object(lock.socket, 'socket', return_value=PreparedSocket()):
+                    assert s.prepare_session_lock() is expected
+                assert peer.recv(4096) == b'"PrepareSessionLock"\n'
+            finally:
+                peer.close()
+        failed = Mock()
+        failed.__enter__ = Mock(return_value=failed)
+        failed.__exit__ = Mock(return_value=False)
+        for error in [FileNotFoundError(), TimeoutError()]:
+            failed.connect.side_effect = error
+            with patch.dict(os.environ, {'NIRI_SOCKET': 'fixture-niri'}), \
+                    patch.object(lock.socket, 'socket', return_value=failed):
+                assert not s.prepare_session_lock()
+        print('PASS preparation requires the exact acknowledged reply and tolerates unavailable IPC')
+
+        # A hung shell: the cancellation call returns at once, tick() kills it after its
+        # second, and the exit path waits out only the rest of that second.
+        popen = subprocess.Popen
+        calls = []
+        def hung_shell(argv, **kwargs):
+            calls.append(argv)
+            return popen(['sleep', '30'], **kwargs)
+        s = lock.Supervisor(directory)
+        with patch.object(lock.subprocess, 'Popen', hung_shell):
+            started = time.monotonic()
+            s.cancel_authentication()
+            assert time.monotonic() - started < .5 and calls == [['emaki-shell', 'call', 'authentication', 'lock']]
+            worker = s.cancel_worker
+            s.reap_cancel()
+            assert worker.poll() is None and s.cancel_worker is worker, 'reaped before its second'
+            s.cancel_deadline = time.monotonic() - .01
+            s.reap_cancel()
+            assert worker.returncode is not None and s.cancel_worker is None, 'hung shell call outlived its second'
+            s.cancel_authentication()
+            worker = s.cancel_worker
+            s.cancel_deadline = time.monotonic() + .3
+            started = time.monotonic()
+            s.reap_cancel(final=True)
+            assert .2 < time.monotonic() - started < 2 and worker.returncode is not None and s.cancel_worker is None
+        with patch.object(lock.subprocess, 'Popen', lambda argv, **kwargs: popen(['true'], **kwargs)):
+            s.cancel_authentication()
+            worker = s.cancel_worker
+            s.reap_cancel(final=True)
+            assert worker.returncode == 0 and s.cancel_worker is None
+        with patch.object(lock.subprocess, 'Popen', side_effect=OSError):
+            s.cancel_authentication()
+            assert s.cancel_worker is None
+            s.reap_cancel(final=True)
+        s.selector.close()
+        print('PASS shell cancellation runs beside the loop; a hung shell is killed after one second')
         marker = directory / 'gate-executed'
         for release in (False, True):
             read_fd, write_fd = os.pipe()
@@ -445,6 +559,31 @@ def run():
         s.tick()
         assert s.finished and s.phase == 'refused' and not starts and s.retry_at is None
         print('PASS fallback exit is terminal without marker; refusal never retries')
+        gate = directory / 'authentication-blocked'
+        for terminal in ('unlocked', 'refused', 'failed', 'stopping'):
+            for retained in (False, True):
+                gate.write_text('{}')
+                s = lock.Supervisor(directory)
+                s.retained_lock = retained
+                if terminal == 'failed':
+                    s.fail()
+                elif terminal == 'stopping':
+                    s.stop()
+                else:
+                    s.child = Child(); s.child.returncode = 0
+                    s.backend = 'hyprlock'; s.secure = terminal == 'unlocked'
+                    s.tick()
+                assert s.phase == terminal
+                assert gate.exists() is (retained and terminal != 'unlocked'), (terminal, retained)
+                s.selector.close()
+        gate.write_text('{}')
+        s = lock.Supervisor(directory); s.child = Child()
+        s.stop()
+        assert gate.exists(), 'stopping supervisor must preserve a live locker gate'
+        s.selector.close()
+        gate.unlink()
+        print('PASS terminal unlocked paths clear the gate; confirmed dead locks and live lockers retain it')
+
         # Crash of both lockers: a new quickshell->hyprlock cycle after 2, 5, 10 s, then stop.
         s = lock.Supervisor(directory)
         starts = []; s.spawn = lambda fallback=False: starts.append(fallback)

@@ -31,6 +31,8 @@ class Channel(unittest.TestCase):
         self.selector.parent.mkdir(parents=True)
         self.state.write_text(f'Include = {channel.emaki_paths.DATADIR}/mirrors/stable.conf\n')
         self.selector.write_text('Include = /var/lib/emaki/channel\n')
+        self.operation_lock = self.base / 'operation.lock'
+        self.enterContext(patch.object(channel, 'LOCK', self.operation_lock))
         self.enterContext(patch.object(channel, 'STATE', self.state))
         self.enterContext(patch.object(channel, 'SELECTOR', self.selector))
         self.mirrorlist = self.base / 'etc/pacman.d/emaki-mirrorlist'
@@ -45,6 +47,13 @@ class Channel(unittest.TestCase):
         self.enterContext(patch.object(channel, 'database', return_value=self.databases))
         real_regular = channel.regular
         self.enterContext(patch.object(channel, 'regular', lambda path: real_regular(path, os.getuid())))
+        self.restore_mode = 'normal'
+        self.status_calls = []
+
+        def status(command):
+            self.status_calls.append(command)
+            return subprocess.CompletedProcess(command, 0, '{"mode": "%s"}' % self.restore_mode, '')
+        self.enterContext(patch.object(channel, 'run_status', status))
 
     def as_root(self):
         self.enterContext(patch.object(channel.os, 'geteuid', return_value=0))
@@ -74,6 +83,72 @@ class Channel(unittest.TestCase):
             self.assertIn('Packages newer than Stable stay until Stable catches up.', result['message'])
         self.assertEqual(self.selector.read_bytes(), before)
         self.assertEqual(self.state.stat().st_mode & 0o777, 0o644)
+
+    def test_pending_restore_or_unknown_status_refuses_without_changes(self):
+        self.as_root()
+        before = self.state.read_bytes()
+        for mode, text in (('pending', 'Restart into the normal system'),
+                           ('snapshot', 'Restart into the normal system'),
+                           ('unknown', 'could not be checked')):
+            with self.subTest(mode=mode):
+                self.restore_mode = mode
+                with self.assertRaisesRegex(ValueError, text):
+                    channel.switch('testing')
+                self.assertEqual(self.state.read_bytes(), before)
+                self.assertTrue(all(path.exists() for path in self.synced))
+        self.assertEqual(self.status_calls[-1][1:], ['status', '--json'])
+        self.assertEqual(Path(self.status_calls[-1][0]).name, 'emaki-rollback')
+
+    def test_shared_lock_covers_restore_check_and_channel_mutation(self):
+        self.as_root()
+        events = []
+        real_status = channel.run_status
+        real_replace = channel.replace_state
+        real_forget = channel.forget_database
+
+        def require_locked(event):
+            with self.operation_lock.open('a') as contender:
+                with self.assertRaises(BlockingIOError):
+                    channel.fcntl.flock(contender, channel.fcntl.LOCK_EX | channel.fcntl.LOCK_NB)
+            events.append(event)
+
+        def status(command):
+            require_locked('status')
+            return real_status(command)
+
+        def replace(content):
+            require_locked('replace')
+            return real_replace(content)
+
+        def forget(databases):
+            require_locked('forget')
+            return real_forget(databases)
+
+        with patch.object(channel, 'detect', side_effect=lambda _: channel.managed()), \
+                patch.object(channel, 'run_status', status), \
+                patch.object(channel, 'replace_state', replace), \
+                patch.object(channel, 'forget_database', forget):
+            self.assertEqual(channel.switch('testing')['status'], 'applied')
+        self.assertEqual(events, ['status', 'replace', 'forget'])
+        with self.operation_lock.open('a') as contender:
+            channel.fcntl.flock(contender, channel.fcntl.LOCK_EX | channel.fcntl.LOCK_NB)
+
+    def test_concurrent_restore_refuses_before_status_and_state_access(self):
+        self.as_root()
+        before = self.state.read_bytes()
+        with self.operation_lock.open('a') as restore:
+            channel.fcntl.flock(restore, channel.fcntl.LOCK_EX | channel.fcntl.LOCK_NB)
+            with patch.object(channel, 'managed', side_effect=AssertionError('Reached channel state')):
+                with self.assertRaisesRegex(ValueError, 'Another package operation'):
+                    channel.switch('testing')
+        self.assertEqual(self.status_calls, [])
+        self.assertEqual(self.state.read_bytes(), before)
+        self.assertTrue(all(path.exists() for path in self.synced))
+        # Once restore finishes, its pending state is checked under our lock.
+        self.restore_mode = 'pending'
+        with self.assertRaisesRegex(ValueError, 'Restart into the normal system'):
+            channel.switch('testing')
+        self.assertEqual(self.state.read_bytes(), before)
 
     def test_confirmation_failure_restores_previous_selection(self):
         self.as_root()

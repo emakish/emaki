@@ -13,12 +13,51 @@ from pathlib import Path
 import re
 import sys
 
-# Reviewed source: v26.04 with this package's nine patches. Whole-file hashes
+# Reviewed source: v26.04 with this package's eleven patches. Whole-file hashes
 # deliberately reject even benign edits: a new width-changing layout path or
 # a new action/render path must not slip past a narrow text-pattern check.
 REVIEWED = {
+    'src/trusted_keyboard.rs': (
+        '558841f99d0eb5b32bfa26cd66337028e024c6418f384d7416f205aa133e61f3',
+        'startup keymap snapshot and physical safety matching (B2b2)'),
+    'src/tests/trusted_binds.rs': (
+        '814e96be2eb42f0a73f2a9007fc73e34d686e1cf2d083f4b533d44fcc9f33988',
+        'physical keymap reload, binding and capture regressions (B2b2)'),
+    'src/trusted_binds.rs': (
+        '0b200bab287266d2d03ed090abafba62de33b24ec838d13ef734136d959795b4',
+        'startup safety capture, exact packaged identity and missing-bind recovery (B2b2)'),
+    'src/trusted_client.rs': (
+        '12f3ed9496341ca04ae131d8645914998edf4e1e9d5c3a7ae877269a309517de',
+        'private connection, immutable launch environment and supervised restart (A6)'),
+    'src/trusted_prompt.rs': (
+        'd1ee11d459499068f9d93efae92c93014f896dc92238f3a8f8fd81d11b6643b5',
+        'trusted role input boundary, lock gating and proof rendering (A6)'),
+    'src/handlers/mod.rs': (
+        '3f6d54cf1a7d3fbfc0a8c6877d759eda58eb784d045bf278d0ac5930efb191f1',
+        'virtual pointer, selection and drag handlers (A6)'),
+    'src/handlers/xdg_shell.rs': (
+        'e0570bb9984804994a7a3213d66a253167bdf3772f4843a8d57ba6174cdb1eff',
+        'popup, move and resize grab refusal (A6)'),
+    'src/ipc/server.rs': (
+        '8f9a23881f40d9aace0641bd79cb31813c77e2ceb06fb2e08f0ca0e048b65738',
+        'fixed restart, trusted state and input-picking refusal (A6)'),
+    'src/utils/spawning.rs': (
+        '376613abb6f8078c4386988525ed80009c8ca84c66c727f1b47dad99423d7995',
+        'child environment snapshot inputs (A6)'),
+    'src/main.rs': (
+        '4448b67c86366fa091033fdaa2f8a8e21c1eb9933d970dc2a43820afd5e84127',
+        'startup-only trusted command capture (A6)'),
+    'niri-config/src/lib.rs': (
+        '2dce509c5d6d41a9a09806f5fc47c9b5e71436a010be118876a0d23cd3a5c212',
+        'singleton trusted startup configuration (A6)'),
+    'niri-ipc/src/lib.rs': (
+        '92dbbab8ccfc603b6541bf18231a21861d6851e6842b2fb2ac8a2a479d46594e',
+        'fixed restart and trusted status protocol without a proof action (A6)'),
+    'src/tests/trusted_prompt.rs': (
+        '669977711a48bd12c6f3179789d7f6c6d9c824741801d482d827be97ef48271c',
+        'identity, input, proof pixel and lock regressions (A6)'),
     'src/handlers/layer_shell.rs': (
-        '3c0136bcf386537c49551fc33045599dbd57dfe7123e7c8274b1f066476a4a03',
+        '2f7a7d1462de5c7abd8ffd1d987929e9c49c0f6e7b41b9bb99f8e1a29b246e14',
         'persistent layer keyboard focus (N6c)'),
     'src/layer/mapped.rs': (
         '94a3c9fb9c39f3828dba0860bf5423e950855435c4bc530d4f9872f55801b561',
@@ -31,17 +70,17 @@ REVIEWED = {
         '783df0bc03ece88a6632466353671dab954f8970da7b2a05dedd6bc4fcf78df3',
         'wallpaper camera regression coverage (465)'),
     'niri-config/src/binds.rs': (
-        'd049c1b8a5c6c1b94ab8b6da128686134e90cc2e1d2c9418c21ae93517d19f7a',
+        '9752be2505d6d8e8c83dc1ad8ea7b225a17115c0ee46f69d235dd6e337858cf0',
         'new navigation actions and the wildcard match (753)'),
     'src/input/mod.rs': (
-        '121c83be940ad84ef1d5b7c357ccff3cb88c5f373e67f0669263cb5b899d232e',
-        'navigation action classification (753)'),
+        '341b6e6d8859a2ad051cc914980fa55a42c21186f5698352601e398ec25dae9d',
+        'navigation action classification and safety dispatch (753, B2b)'),
     'src/cursor.rs': (
         'e9cc29129eafa86517afe0a2d6e90038dfe7678da9d9d37d2e2f1afa0c75240f',
         'geometry, damage and opaque-region output scales (754)'),
     'src/niri.rs': (
-        'f7198fba63a335443c03e443e32ef659300522b33324c72b80915985f2ffa4c2',
-        'own-layer exclusion, cursor scales, locked rendering static blur and keyboard arbitration (230, 464, 754, N6c)'),
+        '3b98563dde0fed29d0f344cd536d0c8c1b8a184cd8b4cec3a0d23a0a4d768a45',
+        'own-layer exclusion, cursor scales, locked rendering static blur and keyboard arbitration and frozen bindings (230, 464, 754, N6c, B2b)'),
     'src/render_helpers/xray.rs': (
         'dac33e39cf6f79142cab756d6f93f2b61aab5a6ed980f49bbd32a114707d22c1',
         'static blur opaque coverage and geometry tests (230)'),
@@ -54,7 +93,7 @@ REVIEWED = {
 }
 CURSOR_PATHS = {
     'src/cursor.rs', 'src/niri.rs', 'src/screencasting/mod.rs',
-    'src/tests/lock_capture.rs',
+    'src/tests/lock_capture.rs', 'src/trusted_prompt.rs',
 }
 CAPTURE_PROTOCOL = re.compile(r'image[_-]copy[_-]capture')
 CURSOR_PATH = re.compile(r'\bCursorRenderElement\b|\brender_pointer\s*\(')
@@ -95,7 +134,7 @@ def main(argv):
         print('See packaging/REBASE.md, Silent-break places; do not refresh hashes without review.',
               file=sys.stderr)
         return 1
-    print('niri rebase guards passed (capture, wallpaper camera, navigation actions, cursor scale, layer focus)')
+    print('niri rebase guards passed (capture, wallpaper camera, navigation actions, cursor scale, layer focus, trusted prompt)')
     return 0
 
 

@@ -18,20 +18,25 @@ HEADER = 'Copyright (C) 2026 Artur Yakymenko\nSPDX-License-Identifier: GPL-3.0-o
 SYSTEM = {
     'XKB_RULES': '/usr/share/X11/xkb/rules/evdev.lst',
     'PAM_KWALLET_INIT': '/usr/lib/pam_kwallet_init',
-    'POLKIT_AGENT': '/usr/lib/polkit-kde-authentication-agent-1',
     'XDG_DATA_DIRS_DEFAULT': '/usr/local/share:/usr/share',
     'TRUSTED_PATH': '/usr/bin',
+    'PYTHON': '/usr/bin/python3',
+    'QS': '/usr/bin/qs',
+    'QMLDIR': '/usr/lib/qt6/qml',
+    'QT_PLUGINSDIR': '/usr/lib/qt6/plugins',
 }
 
 
-def paths(prefix='/usr', datadir=None, libexecdir=None, system=None):
+def paths(prefix='/usr', datadir=None, libexecdir=None, system=None, localstatedir=None):
     prefix = str(Path(prefix))
     values = {
         'PREFIX': prefix,
         'DATADIR': datadir or prefix + '/share/emaki',
         'LIBEXECDIR': libexecdir or prefix + '/libexec/emaki',
         'LIBDIR': prefix + '/lib/emaki',
+        'LOCALSTATEDIR': localstatedir or '/var/lib/emaki',
         'BINDIR': prefix + '/bin',
+        'SUDO_KEY_MARKER': (datadir or prefix + '/share/emaki') + '/sudo-key.installed',
     }
     values.update({key: (system or {}).get(key) or value for key, value in SYSTEM.items()})
     for name, value in values.items():
@@ -63,7 +68,7 @@ def modules(values):
     shell += ''.join(f'EMAKI_{key}={shlex.quote(value)}\n' for key, value in values.items())
     names = {'PREFIX': 'prefix', 'DATADIR': 'dataDir', 'LIBEXECDIR': 'libexecDir',
              'LIBDIR': 'libDir', 'BINDIR': 'binDir', 'XKB_RULES': 'xkbRules',
-             'XDG_DATA_DIRS_DEFAULT': 'xdgDataDirsDefault'}
+             'XDG_DATA_DIRS_DEFAULT': 'xdgDataDirsDefault', 'SUDO_KEY_MARKER': 'sudoKeyMarker'}
     qml = ''.join('// ' + line + '\n' for line in HEADER.splitlines())
     qml += 'pragma Singleton\n\nimport QtQuick\nimport Quickshell\n\nQtObject {\n'
     qml += ''.join(f'    readonly property string {name}: {json.dumps(values[key])}\n'
@@ -75,6 +80,7 @@ def modules(values):
 def replacements(values):
     # Longest first: the update window is a sibling of Emaki's data directory.
     return {
+        '#!/usr/bin/python3 -I': '#!' + values['PYTHON'] + ' -I',
         '/usr/share/emaki-update-manager': values['PREFIX'] + '/share/emaki-update-manager',
         '/usr/share/emaki': values['DATADIR'],
         '/usr/libexec/emaki': values['LIBEXECDIR'],
@@ -145,6 +151,7 @@ def main():
     parser.add_argument('--prefix', default='/usr')
     parser.add_argument('--datadir')
     parser.add_argument('--libexecdir')
+    parser.add_argument('--localstatedir')
     for key in SYSTEM:
         parser.add_argument('--' + key.lower().replace('_', '-'), dest=key)
     group = parser.add_mutually_exclusive_group(required=True)
@@ -153,7 +160,8 @@ def main():
     group.add_argument('--text', type=Path)
     parser.add_argument('--inventory', type=Path, default=ROOT / 'packaging/emaki-config/expected-files.list')
     args = parser.parse_args()
-    values = paths(args.prefix, args.datadir, args.libexecdir, {key: getattr(args, key) for key in SYSTEM})
+    values = paths(args.prefix, args.datadir, args.libexecdir,
+                   {key: getattr(args, key) for key in SYSTEM}, args.localstatedir)
     if args.source:
         render_source(args.source, values)
     elif args.install:

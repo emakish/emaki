@@ -1,0 +1,46 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Reject unsafe prompt text, including callers that bypass the program manager.
+// This never grants authorization: valid requests still use the action policy.
+// Helpers independently validate argv and the preview before changing packages.
+polkit.addRule(function(action, subject) {
+    var flatpakInstall = action.id === "org.emaki.programs.flatpak.install";
+    var flatpakRemove = action.id === "org.emaki.programs.flatpak.remove";
+    if (flatpakInstall || flatpakRemove) {
+        var flatpakHelper = "@EMAKI_LIBEXECDIR@/emaki-programs-flatpak";
+        var flatpakCommand = action.lookup("command_line");
+        if (action.lookup("program") !== flatpakHelper || typeof flatpakCommand !== "string"
+                || flatpakCommand.length > flatpakHelper.length + 720)
+            return polkit.Result.NO;
+        var fields = flatpakCommand.split(" ");
+        if (fields.length !== 5 || fields[0] !== flatpakHelper
+                || fields[1] !== (flatpakInstall ? "install" : "remove")
+                || /[^\x21-\x7e]/.test(fields.slice(1).join(""))
+                || !/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/.test(fields[2])
+                || fields[3].length > 512
+                || !/^app\/[A-Za-z0-9_][A-Za-z0-9_.-]*\/[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/.test(fields[3])
+                || !/^[0-9a-f]{64}$/.test(fields[4]))
+            return polkit.Result.NO;
+        return;
+    }
+    var install = action.id === "org.emaki.programs.install";
+    if (!install && action.id !== "org.emaki.programs.remove")
+        return;
+    var helper = "@EMAKI_LIBEXECDIR@/emaki-programs-" + (install ? "install" : "remove");
+    var command = action.lookup("command_line");
+    if (action.lookup("program") !== helper || typeof command !== "string"
+            || command.length > helper.length + 8706)
+        return polkit.Result.NO;
+    var words = command.split(" ");
+    if (words.length !== 3 || words[0] !== helper)
+        return polkit.Result.NO;
+    // pkexec joins argv without quoting. Accept only unambiguous ASCII fields;
+    // malformed argv groupings still fail the helper's own argument validation.
+    var name = install ? /^[A-Za-z0-9][A-Za-z0-9@._+-]*\/[A-Za-z0-9][A-Za-z0-9@._+-]*$/
+                       : /^[a-z0-9@_+][a-z0-9@._+-]{0,127}$/;
+    var token = install ? /^[0-9a-f]{64}$/ : /^[a-z0-9@_+][a-z0-9@._+,-]{0,8191}$/;
+    // JavaScript's $ also matches before a final newline; exclude it explicitly.
+    if (words[1].length > 512 || /[^\x21-\x7e]/.test(words[1] + words[2])
+            || !name.test(words[1]) || !token.test(words[2]))
+        return polkit.Result.NO;
+});

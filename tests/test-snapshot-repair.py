@@ -83,6 +83,54 @@ class SnapshotRepairChecks(unittest.TestCase):
             self.assertEqual(f.commands, before)
             self.assertEqual(f.output.getvalue().count('repaired'), 1)
 
+    def test_foreign_fallback_menu_repair_preserves_esp_on_small_and_large_esps(self):
+        for size in (100, 512):
+            with self.subTest(esp_mib=size), self.prepared(missing=True) as f:
+                foreign = b'foreign fallback loader'
+                f.put(f.mapped('/efi/EFI/BOOT/BOOTX64.EFI'), foreign)
+                f.originals['/efi/EFI/BOOT/BOOTX64.EFI'] = foreign
+                f.put(f.mapped('/efi/EFI/Microsoft/Boot/bootmgfw.efi'), b'Windows loader')
+                f.put(f.mapped('/efi/EFI/Microsoft/Boot/BCD'), b'Windows boot data')
+                esp = f.mapped('/efi')
+                before = {p: p.read_bytes() for p in esp.rglob('*') if p.is_file()}
+                writes = []
+                atomic = refresh.atomic
+                statvfs = refresh.os.statvfs
+
+                def record(target, data):
+                    if target.is_relative_to(esp):
+                        writes.append(target)
+                    return atomic(target, data)
+
+                def space(path):
+                    if path == esp:
+                        return SimpleNamespace(f_blocks=size * refresh.MIB,
+                                               f_bavail=32 * refresh.MIB, f_frsize=1)
+                    return statvfs(path)
+
+                with patch.object(refresh, 'atomic', side_effect=record), \
+                        patch.object(refresh.os, 'statvfs', side_effect=space):
+                    refresh.repair_snapshot_menu(f.identity)
+                    self.assert_repaired(f)
+                    self.assertTrue(writes)
+                    self.assertEqual(set(writes), {f.mapped('/efi/EFI/Emaki/boot-intent.json')})
+                    self.assertEqual(before, {p: p.read_bytes() for p in esp.rglob('*') if p.is_file()})
+                    self.assertFalse(f.mapped('/efi/EFI/Emaki/boot-state.json').exists())
+                    with self.assertRaisesRegex(refresh.Kept, 'fallback loader is not recognized'):
+                        refresh.refresh(f.identity)
+                    self.assertEqual(before, {p: p.read_bytes() for p in esp.rglob('*') if p.is_file()})
+
+    def test_existing_generation_state_is_still_validated_during_menu_repair(self):
+        for state in ({}, {'good': None, 'newest': None, 'fallback_sha256': '0' * 64}):
+            with self.subTest(state=state), self.prepared(missing=True) as f:
+                f.put(f.mapped('/efi/EFI/Emaki/boot-state.json'), json.dumps(state))
+                f.put(f.mapped('/efi/EFI/BOOT/BOOTX64.EFI'), b'foreign fallback loader')
+                before = {p: p.read_bytes() for p in f.root.rglob('*') if p.is_file()}
+                with self.assertRaises(refresh.Refuse):
+                    refresh.repair_snapshot_menu(f.identity)
+                self.assertEqual(before, {p: p.read_bytes() for p in f.root.rglob('*') if p.is_file()})
+                self.assertFalse(any(command[0] == 'unshare' for command in f.commands))
+
     def test_repair_recreates_and_syncs_live_stage_before_generation(self):
         with self.prepared(missing=True) as f:
             stage = f.mapped('/boot/grub/.emaki-snapshots')
@@ -355,10 +403,116 @@ class SnapshotRepairChecks(unittest.TestCase):
             self.assertFalse(f.mapped('/var/lib/pacman/db.lck').exists())
             self.assertFalse(f.mapped('/var/lib/emaki/boot-refresh-pending').exists())
 
+    @contextmanager
+    def lettering(self, mode, menu_font, defaults_font=False):
+        """A healthy snapshot fragment; the canonical menu loads `menu_font` (None: GRUB's)."""
+        with self.prepared() as f:
+            info = bytearray(0x40)
+            info[0x0f] = 0x70
+            info[0x12:0x16] = mode[0].to_bytes(2, 'little') + mode[1].to_bytes(2, 'little')
+            f.put(f.mapped('/sys/kernel/boot_params/data'), bytes(info))
+            for size in (24, 32, 46):
+                f.put(f.mapped(f'/usr/share/emaki/grub/fonts/menu-{size}.pf2'), b'font')
+            header = ('if loadfont $font ; then\n' if menu_font is None
+                      else f'if loadfont /@{menu_font} ; then\n')
+            f.put(f.mapped('/boot/grub/grub.cfg'), header + '  set gfxmode=1024x768,800x600,640x480,auto\nfi\n')
+            if defaults_font:
+                defaults = f.mapped('/etc/default/grub')
+                f.put(defaults, defaults.read_text() + 'GRUB_FONT=/boot/grub/fonts/unicode.pf2\n')
+            yield f
+
+    def test_menu_drawn_in_another_mode_is_regenerated_once(self):
+        support = runpy.run_path(str(ROOT / 'tests/test-menu-font.py'))
+        generator = support['GeneratedHeader']()
+        self.addCleanup(generator.doCleanups)
+        generator.setUp()
+        fonts = '/usr/share/emaki/grub/fonts'
+        headers = {}
+        for size in (None, 32, 46):
+            raw = generator.header_for(str(ROOT / f'grub/fonts/menu-{size}.pf2') if size else None)
+            raw = raw.replace(str(ROOT / 'grub/fonts'), fonts)
+            headers[size] = refresh.boot.menu_font_fallback(raw)
+        for filesystem in ('btrfs', 'ext4'):
+            for mode, previous, chosen in (((2560, 1600), None, 32), ((1024, 768), 46, None)):
+                with self.subTest(filesystem=filesystem, mode=mode), self.lettering(mode, None) as f:
+                    f.identity['fstype'] = filesystem
+                    if filesystem == 'ext4':
+                        f.identity['fsroot'] = ''
+                        f.mapped('/etc/grub.d/41_snapshots-btrfs').unlink()
+                        shutil.rmtree(f.mapped('/.snapshots'))
+                        f.mapped('/boot/grub/grub-btrfs.cfg').unlink()
+                    menu = f.mapped('/boot/grub/grub.cfg')
+                    f.put(menu, headers[previous])
+                    run = refresh.run.side_effect
+
+                    def generate(arguments):
+                        result = run(arguments)
+                        if str(arguments[0]) == 'unshare':
+                            stage = Path(arguments[-1]) / 'grub'
+                            staged_menu = stage / 'grub.cfg'
+                            staged_menu.write_text(headers[chosen] + staged_menu.read_text())
+                            if filesystem == 'ext4':
+                                (stage / 'grub-btrfs.cfg').unlink()
+                        return result
+
+                    with patch.object(refresh, 'run', side_effect=generate):
+                        self.assertTrue(refresh.menu_font_needs_repair())
+                        refresh.repair_snapshot_menu(f.identity)
+                        self.assertEqual(f.output.getvalue(), 'The boot menu lettering was resized.\n')
+                        expected = f'{fonts}/menu-{chosen}.pf2' if chosen else None
+                        self.assertEqual(refresh.boot.generated_menu_font(menu.read_text()), expected)
+                        self.assertFalse(refresh.menu_font_needs_repair())
+                        self.assertEqual(sum(command[0] == 'unshare' for command in f.commands), 1)
+                        if filesystem == 'btrfs':
+                            self.assertEqual(f.mapped('/boot/grub/grub-btrfs.cfg').read_text(), f.generated)
+                        else:
+                            self.assertFalse(f.mapped('/boot/grub/grub-btrfs.cfg').exists())
+                        f.paused.assert_called_once()
+                        for path in ('/efi/EFI/Emaki/grubx64.efi', '/efi/EFI/BOOT/BOOTX64.EFI'):
+                            self.assertEqual(f.mapped(path).read_bytes(), f.originals[path])
+                        commands = list(f.commands)
+                        before = {path: (path.read_bytes(), path.stat().st_mtime_ns)
+                                  for path in f.root.rglob('*') if path.is_file()}
+                        with patch.object(refresh, 'write', wraps=refresh.write) as writes, \
+                                patch.object(refresh, 'atomic', wraps=refresh.atomic) as atomic:
+                            refresh.repair_snapshot_menu(f.identity)
+                            writes.assert_not_called()
+                            atomic.assert_not_called()
+                        self.assertEqual(f.commands, commands)
+                        self.assertEqual(before, {path: (path.read_bytes(), path.stat().st_mtime_ns)
+                                                  for path in f.root.rglob('*') if path.is_file()})
+                        self.assertEqual(f.output.getvalue(), 'The boot menu lettering was resized.\n')
+
+    def test_matching_or_local_lettering_writes_nothing(self):
+        for mode, font, local in (((2560, 1600), '/usr/share/emaki/grub/fonts/menu-32.pf2', False),
+                                  ((1024, 768), None, False), ((1920, 1080), '/usr/share/emaki/grub/fonts/menu-24.pf2', False),
+                                  ((3840, 2160), None, True)):
+            with self.subTest(mode=mode, font=font, local=local), self.lettering(mode, font, local) as f:
+                self.assertFalse(refresh.menu_font_needs_repair())
+                with patch.object(refresh.os, 'geteuid', return_value=1000):
+                    self.assertEqual(refresh.main(['--repair-snapshots']), 0)
+                refresh.repair_snapshot_menu(f.identity)
+                self.assertEqual(f.commands, [])
+                self.assertEqual(f.output.getvalue(), '')
+                f.paused.assert_not_called()
+
+    def test_unknown_mode_or_menu_writes_nothing(self):
+        with self.lettering((2560, 1600), None) as f:
+            f.mapped('/sys/kernel/boot_params/data').unlink()
+            self.assertFalse(refresh.menu_font_needs_repair())
+        with self.lettering((2560, 1600), None) as f:
+            f.put(f.mapped('/boot/grub/grub.cfg'), 'old canonical menu\n')
+            self.assertFalse(refresh.menu_font_needs_repair())
+        with self.lettering((2560, 1600), None) as f:
+            f.mapped('/usr/share/emaki/grub/fonts/menu-32.pf2').unlink()
+            self.assertFalse(refresh.menu_font_needs_repair())
+
     def test_boot_unit_order_and_delivery(self):
         unit = (ROOT / 'systemd/emaki-snapshot-menu.service').read_text()
         self.assertIn('After=multi-user.target emaki-boot-complete.service emaki-boot-refresh.service', unit)
         self.assertIn('RequiresMountsFor=/boot /efi /.snapshots', unit)
+        conditions = [line for line in unit.splitlines() if line.startswith('Condition')]
+        self.assertEqual(conditions, ['ConditionPathExists=/boot/grub/grub.cfg'])
         self.assertIn('ExecStart=/usr/bin/emaki-boot-refresh --repair-snapshots', unit)
         self.assertIn('WantedBy=multi-user.target', unit)
         makefile = (ROOT / 'Makefile').read_text()

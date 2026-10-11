@@ -40,6 +40,7 @@ art/wallpaper/train-anim.js	Browser mockup animation metadata; runtime consumes 
 art/wallpaper/train-anim.py	Artwork generator for installed train-frames.png and train.json.	art/wallpaper/train-anim.py:usage
 art/wallpaper/train.png	Source sprite for the installed animated train frames.	art/wallpaper/README.md:step 8
 boot/emaki-splash.bmp	Unshipped UKI prototype; installed systems boot with GRUB.	MANIFEST.md:boot splash (not installed); tests/test-packaging.py
+grub/fonts/README.md	Rebuild notes and cell sizes for the installed GRUB menu faces; no runtime consumer.	tests/test-menu-font.py:module documentation; Makefile grub/fonts install line
 grub/tests/10_linux-2.16.fixture	Regression fixture for boot menu compatibility.	tests/test-packaging.py
 grub/tests/grub-btrfs-4.14.fixture	Regression fixture for boot menu compatibility.	tests/test-snapshot-menu.py
 installer/assets/grub/README.md	Artwork and prototype-font regeneration instructions.	installer/assets/grub/README.md
@@ -47,6 +48,10 @@ installer/assets/grub/generate-screens.py	Build tool producing installed emaki_i
 installer/assets/grub/subset-pf2.py	Build tool producing the installed unlock-24.pf2 fallback font.	installer/assets/grub/README.md
 installer/assets/grub/unlock-32.pf2	Unused 32 px font prototype; only unlock-24.pf2 ships.	installer/assets/grub/README.md
 installer/assets/grub/unlock-48.pf2	Unused 48 px font prototype; only unlock-24.pf2 ships.	installer/assets/grub/README.md
+installer/fixtures/plan-alongside.json	Alongside-install test plan with a public test password; not shipped in release images.	installer/tests/test_f1.py
+installer/fixtures/plan-erase-btrfs.json	VM test plan (signed offline repository, public test password); not shipped in release images.	tests/vm/iso-install.sh; installer/tests/test_f1.py
+installer/fixtures/plan-erase-ext4.json	VM test plan (signed offline repository, public test password); not shipped in release images.	tests/vm/iso-install.sh; installer/tests/test_f1.py
+installer/fixtures/plan-manual.json	VM test plan (signed offline repository, public test password); not shipped in release images.	tests/vm/iso-install.sh; installer/tests/test_f1.py
 installer/ui/tests/ControllerTest.qml	Controller test window.	installer/ui/tests/controller.py
 installer/ui/tests/CopyTest.qml	Password-copy regression test window.	installer/ui/tests/interactions.py
 installer/ui/tests/FakeNiri.js	Synthetic compositor for installer window tests.	installer/ui/tests/interactions.py; installer/ui/tests/render.py
@@ -119,7 +124,7 @@ scripts/render-kde-theme	Build tool producing installed kdeglobals from tokens.t
 scripts/render-paths	Build tool rendering install paths and package text.	Makefile:paths and install
 scripts/render-shell-palette	Build tool producing installed ShellPalette.qml.	Makefile:render
 scripts/render-shell-tools	Build tool producing installed ShellTools.qml.	Makefile:shell-config
-scripts/render-system-map	Build tool producing installed docs/system-map.md from MANIFEST.md; also parses the map for its checks.	Makefile:render; tests/check-system-map.py
+scripts/render-system-map	Build tool producing the installed system map and rules template from MANIFEST.md; also parses the map for its checks.	Makefile:render; tests/check-system-map.py
 scripts/render-theme	Build tool producing installed themes and system identity defaults.	Makefile:render
 scripts/try-palette.py	Developer palette experiment tool editing source tokens.toml.	scripts/try-palette.py:module documentation
 crates/emaki-cli/Cargo.toml	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
@@ -231,6 +236,12 @@ installer/ui/tests/test_render_cleanup.py	Installer renderer cleanup regression 
 update-manager/tests/test_updates.py	Update catalog and privilege-boundary regression tests.	Makefile:check
 update-manager/tests/fixtures.py	Package metadata fixtures.	Makefile:check
 update-manager/tests/mutants.py	Mutation checks for update parsing and privilege validation.	Makefile:check
+update-manager/tests/test_programs.py	Installed programs: preview parsing, refusal rules and removal helper guards.	Makefile:check
+update-manager/tests/test_appstream.py	Standard application metadata parsing tests.	Makefile:check
+update-manager/tests/test_programs_engine.py	Program manager catalog and JSON protocol tests.	Makefile:check
+update-manager/tests/test_programs_install.py	Repository install planning and authorization boundary tests.	Makefile:check
+update-manager/tests/test_programs_flatpak_apply.py	System application authorization boundary tests.	Makefile:check
+update-manager/tests/test_programs_flatpak.py	Optional application catalog and transaction plan tests.	Makefile:check
 update-manager/ui/tests/InteractionTest.qml	Keyboard-only update-window interaction fixture.	update-manager/ui/tests/interactions.py
 update-manager/ui/tests/interactions.py	Update-window interaction and mutation test runner.	Makefile:check-shell
 update-manager/ui/tests/controller.py	Update-window process protocol test runner.	Makefile:check-shell
@@ -249,3 +260,7 @@ packaging/emaki-desktop/expected-files.list	Exact package payload checked agains
 packaging/emaki-keyring/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
 packaging/emaki-mirrorlist/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
 packaging/emaki-nvidia/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
+update-manager/tests/test_flatpaks.py	Flatpak update parsing tests.	Makefile:check
+update-manager/tests/test_protocol.py	Update backend protocol tests.	Makefile:check
+update-manager/tests/test_reminder.py	Restart reminder tests.	Makefile:check
+update-manager/tests/test_restore.py	Restore point tests.	Makefile:check

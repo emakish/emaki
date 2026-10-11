@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Fixed JSON interface for storage inspection and explicitly previewed cleanups."""
+from pathlib import Path
+import sys
+
+sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from emaki_storage import main
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

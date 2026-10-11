@@ -19,7 +19,7 @@ import tarfile
 import tempfile
 import time
 import unittest
-from unittest.mock import patch, Mock
+from unittest.mock import call, patch, Mock
 from urllib.parse import parse_qs, urlparse
 import xml.etree.ElementTree as ET
 
@@ -119,6 +119,18 @@ class Parsing(unittest.TestCase):
 
 
 class Checking(unittest.TestCase):
+    def setUp(self):
+        # Optional application discovery has its own isolated wire tests.
+        optional = patch.object(backend.flatpaks, 'discover', return_value=[])
+        optional.start()
+        self.addCleanup(optional.stop)
+        restart = patch.object(backend.reminder, 'status', return_value=dict(restart=False, reminder=False, restartPackages=[]))
+        restart.start()
+        self.addCleanup(restart.stop)
+        rollback = patch.object(backend, 'rollback_pending', return_value=False)
+        rollback.start()
+        self.addCleanup(rollback.stop)
+
     def test_real_pacman_private_sync_and_print_formats(self):
         with tempfile.TemporaryDirectory(prefix='emaki-pacman-fixture-') as directory:
             root = Path(directory)
@@ -183,10 +195,14 @@ class Checking(unittest.TestCase):
             with patch.object(backend, 'package_paths', return_value=(system, log)), \
                     patch.object(backend, 'command', side_effect=command), \
                     patch.object(backend, 'compare', return_value=1), \
+                    patch.object(backend.shutil, 'which', side_effect=lambda name: '/fixture/paru' if name == 'paru' else None), \
                     patch.object(backend, 'fetch', side_effect=fetch), patch.object(backend, 'emit'):
                 data = backend.discover(root)
             self.assertEqual((system / 'sync/untouched').read_text(), 'original')
             self.assertEqual(len(data['updates']), 4)
+            self.assertEqual(data['aurHelpers'], ['paru'])
+            self.assertIn('update in a terminal with paru', data['aurNotice'])
+            self.assertFalse(any(args[0].endswith('/paru') for args in calls))
             self.assertTrue(any('hold back' in message for message in data['warnings']))
             self.assertTrue(any('example-local' in message for message in data['warnings']))
             sync = next(args for args in calls if '-Sy' in args)
@@ -449,7 +465,8 @@ with patch.object(backend, 'package_paths', return_value=(root / 'system', root 
                 command.assert_called_once_with(['/usr/bin/pacman', '-Q'])
                 self.assertEqual(emit.call_args.args, ('finished',))
                 self.assertTrue(emit.call_args.kwargs['ok'])
-                self.assertTrue(emit.call_args.kwargs['restart'])
+                # A cached linux row is not evidence that the running kernel changed.
+                self.assertFalse(emit.call_args.kwargs['restart'])
 
     def test_unknown_service_result_is_never_success(self):
         with tempfile.TemporaryDirectory() as directory, \
@@ -541,6 +558,7 @@ class Authorization(unittest.TestCase):
                 line = 'error: unable to lock database'
                 journal = json.dumps(dict(__CURSOR='one', MESSAGE=line)) + '\n'
                 with patch.object(helper.os, 'open', return_value=descriptor), \
+                        patch.object(helper, 'require_update_root'), \
                         patch.object(helper, 'versions', side_effect=[{'bash': '1'}, {'bash': '2' if changed else '1'}]), \
                         patch.object(helper.subprocess, 'Popen', return_value=process), \
                         patch.object(helper, 'run', side_effect=[Mock(stdout=journal), Mock(stdout='')]), \
@@ -581,6 +599,7 @@ class Authorization(unittest.TestCase):
             journal = '\n'.join(json.dumps(dict(__CURSOR=str(index), MESSAGE=line))
                                 for index, line in enumerate((refusal, 'service failed with exit status 1')))
             with patch.object(helper.os, 'open', return_value=descriptor), \
+                    patch.object(helper, 'require_update_root'), \
                     patch.object(helper, 'versions', return_value={'bash': '1'}), \
                     patch.object(helper.subprocess, 'Popen', return_value=process), \
                     patch.object(helper, 'run', side_effect=[Mock(stdout=journal), Mock(stdout='')]), \
@@ -589,6 +608,36 @@ class Authorization(unittest.TestCase):
             self.assertEqual(emit.call_args.args, ('finished',))
             self.assertFalse(emit.call_args.kwargs['ok'])
             self.assertEqual(emit.call_args.kwargs['message'], refusal)
+
+    def test_hold_refusal_reaches_final_error_even_after_keyring_updates(self):
+        refusals = (
+            '[PLACEHOLDER] The update was refused because these packages are held after a restore: '
+            'libfoo 1.2-1. A newer version will release each hold automatically. '
+            'To allow a held version again, run: sudo emaki-rollback release libfoo',
+            '[PLACEHOLDER] The available package versions could not be checked. '
+            'The update was refused before changing installed packages.',
+        )
+        for refusal in refusals:
+            with self.subTest(refusal=refusal), tempfile.TemporaryDirectory() as directory:
+                descriptor = os.open(Path(directory) / 'lock', os.O_CREAT | os.O_RDWR, 0o600)
+                process = Mock()
+                process.__enter__ = Mock(return_value=process)
+                process.__exit__ = Mock(return_value=False)
+                process.poll.return_value = process.wait.return_value = 1
+                journal = json.dumps(dict(__CURSOR='one', MESSAGE=refusal)) + '\n'
+                journal += json.dumps(dict(__CURSOR='two', MESSAGE='Service exited with status 1.')) + '\n'
+                before = {'emaki-keyring': '1', 'libfoo': '1.1-1'}
+                after = dict(before, **{'emaki-keyring': '2'}) if 'held after' in refusal else before
+                with patch.object(helper.os, 'open', return_value=descriptor), \
+                        patch.object(helper, 'require_update_root'), \
+                        patch.object(helper, 'versions', side_effect=[before, after]), \
+                        patch.object(helper.subprocess, 'Popen', return_value=process), \
+                        patch.object(helper, 'run', side_effect=[Mock(stdout=journal), Mock(stdout='')]), \
+                        patch.object(helper, 'emit') as emit:
+                    self.assertEqual(helper.apply(), 1)
+                self.assertEqual(emit.call_args.args, ('finished',))
+                self.assertFalse(emit.call_args.kwargs['ok'])
+                self.assertEqual(emit.call_args.kwargs['message'], refusal)
 
     def test_nonroot_wrapper_leaves_root_refusal_to_pacman(self):
         module = runpy.run_path(str(ROOT / 'scripts/emaki-update'))
@@ -605,12 +654,50 @@ class Authorization(unittest.TestCase):
 
     def test_noninteractive_wrapper_keeps_full_upgrade_and_failed_hooks(self):
         module = runpy.run_path(str(ROOT / 'scripts/emaki-update'))
-        with patch.dict(module['main'].__globals__, run=Mock(return_value=0), preflight=Mock()), \
+        with patch.dict(module['main'].__globals__, run=Mock(return_value=0), preflight=Mock(),
+                        upgrades=Mock(return_value={'other': '2-1'})), \
                 patch.object(os, 'geteuid', return_value=0):
             mocked = module['main'].__globals__['run']
             with patch.object(sys, 'argv', ['emaki-update', '--noninteractive']):
                 self.assertEqual(module['main'](), 0)
-            mocked.assert_called_once_with(['/usr/bin/pacman', '-Syu', '--noconfirm'], fail_on_hook_error=True)
+            self.assertEqual(mocked.call_args_list, [
+                call(['/usr/bin/pacman', '-Sy'], fail_on_hook_error=True),
+                call(['/usr/bin/pacman', '-Su', '--noconfirm'], fail_on_hook_error=True)])
+        # Keyrings first, in their own transaction; a hold refuses every remaining upgrade.
+        with tempfile.TemporaryDirectory() as directory:
+            record = Path(directory) / 'holds.json'
+            record.write_text(json.dumps({'holds': {'libfoo': '1.2-1', 'emaki-keyring': '2-1', 'glibc': '2.40-1'}}))
+            with patch.dict(module['update'].__globals__, run=Mock(return_value=0), upgrades=Mock(return_value={
+                    'libfoo': '1.2-1', 'openssl': '3.5.9-1', 'emaki-keyring': '2-1', 'archlinux-keyring': '3-1',
+                    'glibc': '2.41-1'})):
+                mocked = module['update'].__globals__['run']
+                with patch('sys.stderr', new_callable=io.StringIO) as errors:
+                    self.assertEqual(module['update'](True, holds=record), 1)
+                self.assertIn('held after a restore: libfoo 1.2-1', errors.getvalue())
+                self.assertNotIn('emaki-keyring 2-1', errors.getvalue())
+                self.assertNotIn('glibc 2.40-1', errors.getvalue())
+            self.assertEqual(mocked.call_args_list, [
+                call(['/usr/bin/pacman', '-Sy'], fail_on_hook_error=True),
+                call(['/usr/bin/pacman', '-S', '--noconfirm', 'archlinux-keyring', 'emaki-keyring'],
+                     fail_on_hook_error=True)])
+        with patch.dict(module['update'].__globals__, run=Mock(return_value=0),
+                        upgrades=Mock(side_effect=ValueError('query failed'))), \
+                patch('sys.stderr', new_callable=io.StringIO) as errors:
+            self.assertEqual(module['update'](True), 1)
+            module['update'].__globals__['run'].assert_called_once_with(
+                ['/usr/bin/pacman', '-Sy'], fail_on_hook_error=True)
+            self.assertIn('available package versions could not be checked', errors.getvalue())
+        # pacman returns 1 both for no upgrades and for some query failures.
+        for status, output, error, refused in (
+                (1, '', '', False), (1, '', 'error: database unreadable', True),
+                (2, '', '', True), (0, 'unexpected output', '', True)):
+            with self.subTest(status=status, error=error), \
+                    patch('subprocess.run', return_value=Mock(returncode=status, stdout=output, stderr=error)):
+                if refused:
+                    with self.assertRaises(ValueError):
+                        module['upgrades']()
+                else:
+                    self.assertEqual(module['upgrades'](), {})
         code = ('import runpy,sys; m=runpy.run_path(sys.argv[1]); '
                 'sys.exit(m["run"]([sys.executable,"-c",\'print("error: command failed to execute correctly")\'], True))')
         result = subprocess.run([sys.executable, '-c', code, str(ROOT / 'scripts/emaki-update')], text=True, capture_output=True)

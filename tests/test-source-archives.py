@@ -58,6 +58,24 @@ class Archives(unittest.TestCase):
             tar.extractall(destination, filter='data')
         return destination / archive.name.removesuffix('.sources.tar.gz')
 
+    def test_optional_turn_setup_source_archive_keeps_prepared_payload(self):
+        recipe = self.recipe('emaki-sudo-key')
+        with self.assertRaisesRegex(ValueError, 'missing prepared source'):
+            source.archive(recipe, self.src, self.out, self.commit, '1.0-1')
+        project = self.src / 'emaki-sudo-key'
+        for relative in ('scripts/emaki-sudo-turn', 'sudo/turn-reporting.md'):
+            destination = project / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / relative, destination)
+        shutil.copytree(ROOT / 'sudo/integrations', project / 'sudo/integrations')
+        archive = source.archive(recipe, self.src, self.out, self.commit, '1.0-1')
+        root = self.unpack(archive)
+        for path in project.rglob('*'):
+            if path.is_file():
+                self.assertEqual((root / 'src/emaki-sudo-key' / path.relative_to(project)).read_bytes(),
+                                 path.read_bytes())
+        self.assertEqual((root / 'SOURCE-COMMIT').read_text().strip(), self.commit)
+
     def test_quickshell_archive_has_prepared_patch_and_recipe(self):
         recipe = self.recipe('quickshell-emaki')
         project = self.src / 'quickshell'
@@ -276,8 +294,12 @@ class BuildWiring(unittest.TestCase):
         self.repo = self.base / 'tree'
         recipe = self.repo / 'packaging/quickshell-emaki'
         recipe.mkdir(parents=True)
-        for filename in ('build.sh', 'source_archive.py'):
+        (self.repo / '.gitignore').write_text('__pycache__/\n')
+        for filename in ('build.sh', 'source_archive.py', 'release_inputs.py'):
             shutil.copy2(ROOT / 'packaging' / filename, self.repo / 'packaging' / filename)
+        constants = self.repo / 'installer/emaki_installer/constants.py'
+        constants.parent.mkdir(parents=True)
+        constants.write_text('ALONGSIDE = False\n')
         (recipe / 'input.txt').write_text('original\n')
         (recipe / 'PKGBUILD').write_text('''pkgname=quickshell-emaki
 pkgver=1.0

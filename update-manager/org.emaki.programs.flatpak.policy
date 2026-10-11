@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright (C) 2026 Artur Yakymenko -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN" "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Emaki</vendor>
+  <action id="org.emaki.programs.flatpak.install">
+    <description>[PLACEHOLDER] Install a system Flatpak program</description>
+    <message>[PLACEHOLDER] Authentication is required to install the system Flatpak program in this command: $(command_line)</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@EMAKI_LIBEXECDIR@/emaki-programs-flatpak</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">install</annotate>
+  </action>
+  <action id="org.emaki.programs.flatpak.remove">
+    <description>[PLACEHOLDER] Remove a system Flatpak program</description>
+    <message>[PLACEHOLDER] Authentication is required to remove the system Flatpak program in this command: $(command_line)</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@EMAKI_LIBEXECDIR@/emaki-programs-flatpak</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">remove</annotate>
+  </action>
+</policyconfig>

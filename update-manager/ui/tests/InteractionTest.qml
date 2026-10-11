@@ -13,6 +13,7 @@ ShellRoot {
     property int checks: 0
     property int applies: 0
     property int restarts: 0
+    property int restores: 0
     property int hides: 0
     property string opened: ""
     QtObject {
@@ -21,6 +22,18 @@ ShellRoot {
         property bool busy: false
         property string phase: "idle"
         property int repositoryCount: 1
+        property int managedCount: 1
+        property bool reminder: false
+        property bool restoreOpen: false
+        property bool restorePending: false
+        property var restorePoints: []
+        property var selectedRestore: null
+        signal hideReady
+        function hide(): void { reminder = false; hideReady(); }
+        function loadRestorePoints(): void { restoreOpen = true; restorePoints = [{id: 42, date: "2026-10-10T12:00:00Z", description: "System update"}]; }
+        function selectRestore(point: var): void { selectedRestore = point; }
+        function cancelRestore(): void { restoreOpen = false; selectedRestore = null; }
+        function restore(): void { test.restores++; busy = true; phase = "restoring"; }
         property bool restart: false
         property bool signOut: false
         property string message: ""
@@ -45,7 +58,7 @@ ShellRoot {
         check(!!item, "control exists " + name);
         let count = 0;
         do { input.keyClick(Qt.Key_Tab); count++; } while (!item.activeFocus && count < 40);
-        check(item.activeFocus, "Tab reaches " + name);
+        check(item.activeFocus, "Tab reaches " + name + " visible=" + item.visible + " enabled=" + item.enabled + " restoreOpen=" + controller.restoreOpen);
         input.wait(30);
         if (name === "news0") {
             const viewport = (find(view, "updateBody") as C.ScrollView).contentItem;
@@ -112,7 +125,7 @@ ShellRoot {
             test.check(Math.abs(flick.contentY - (flick.contentHeight - flick.height)) < 2, "End resumes tail follow");
             test.tab("hide"); input.keyClick(Qt.Key_Space);
             test.check(test.hides === 1 && controller.busy, "hide preserves running update");
-            controller.busy = false; controller.phase = "finished"; controller.restart = true;
+            controller.busy = false; controller.phase = "finished"; controller.restart = true; controller.reminder = true;
             controller.message = "Update complete."; controller.signOut = true;
             input.wait(30);
             test.check(!test.find(view, "updateCatalog").visible, "result replaces the package list");
@@ -138,8 +151,23 @@ ShellRoot {
             test.check(test.find(view, "errorDetails").visible, "keyboard expands error details");
             test.tab("hide"); input.wait(30);
             test.check(flick.contentY >= 0, "short body never scrolls negative");
-            controller.repositoryCount = 0;
+            controller.repositoryCount = 0; controller.managedCount = 0;
             test.check(!test.find(view, "apply").enabled, "AUR-only cannot apply");
+            controller.managedCount = 1;
+            controller.data = {updates: [{kind: "flatpak", source: "Flatpak", name: "App", old: "1", new: "2", aur: false}], groups: [{name: "Flatpak", count: 1}]};
+            test.check(test.find(view, "apply").enabled, "Flatpak-only can apply");
+            test.check(!test.find(view, "restartReminder").visible && controller.restart, "Later dismisses banner while restart remains available");
+            test.tab("restore"); input.keyClick(Qt.Key_Return); input.wait(30);
+            test.tab("restorePoint0"); input.keyClick(Qt.Key_Return); input.wait(30);
+            test.check(test.find(view, "restoreConfirmation").visible && test.find(view, "restoreConfirmation").text.includes("/home"), "dated restore needs clear confirmation preserving home");
+            test.tab("cancelRestore"); input.keyClick(Qt.Key_Return);
+            test.check(test.restores === 0 && !controller.selectedRestore, "cancel never restores");
+            test.tab("restore"); input.keyClick(Qt.Key_Return); input.wait(30);
+            test.tab("restorePoint0"); input.keyClick(Qt.Key_Return); input.wait(30);
+            test.tab("confirmRestore"); input.keyClick(Qt.Key_Return);
+            test.check(test.restores === 1 && !test.find(view, "apply").enabled && !test.find(view, "restart").enabled, "confirmed restore blocks overlapping mutations");
+            controller.busy = false; controller.phase = "idle"; controller.restorePending = true;
+            test.check(!test.find(view, "apply").enabled && !test.find(view, "restore").enabled, "prepared restore blocks updates and further restores");
             if (!test.failed) console.log("INTERACTION_OK");
             Qt.quit();
         }

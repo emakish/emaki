@@ -22,7 +22,7 @@ env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
            XDG_RUNTIME_DIR=str(runtime_path(root)), XDG_CONFIG_HOME=str(root / 'c'),
            XDG_DATA_HOME=str(root / 'd'), XDG_DATA_DIRS=str(root / 'd'),
            XDG_STATE_HOME=str(root / 's'), XDG_CACHE_HOME=str(root / 'cache'),
-           TMPDIR=str(root / 'tmp'), DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(root / 'no-bus'),
+           TMPDIR=str(root / 'tmp'), WAYLAND_SOCKET='198', DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(root / 'no-bus'),
            DBUS_SYSTEM_BUS_ADDRESS='unix:path=' + str(root / 'no-system'))
 for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'NIRI_SOCKET'):
     env.pop(name, None)
@@ -36,6 +36,7 @@ assert subprocess.run(['niri', 'msg', 'action', 'spawn', '--', 'false'],
 app = root / 'app.py'
 app.write_text('''import json, os, sys, time
 from pathlib import Path
+assert 'WAYLAND_SOCKET' not in os.environ
 if 'forked' in sys.argv:
     if os.fork(): sys.exit(0)
     time.sleep(.1)

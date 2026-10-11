@@ -6,6 +6,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import runpy
 from pathlib import Path
 import subprocess
 import selectors
@@ -258,7 +259,13 @@ class SessionFiles(unittest.TestCase):
                    EMAKI_SHELL_DIR=str(self.source))
         env.pop('NIRI_SOCKET', None)
         env.pop('WAYLAND_DISPLAY', None)
-        result = subprocess.run([str(ROOT / 'scripts/emaki-shell'), 'call', 'dock', 'status'],
+        wrapper = tools / 'emaki-shell'
+        render = runpy.run_path(str(ROOT / 'scripts/render-paths'))
+        values = dict(render['paths'](), TRUSTED_PATH=str(tools) + ':/usr/bin')
+        wrapper.write_text(render['substitute']((ROOT / 'scripts/emaki-shell').read_text(), values))
+        for name in ('emaki_paths.py', 'emaki-session-files', 'emaki_session_state.py'):
+            (tools / name).symlink_to(ROOT / 'scripts' / name)
+        result = subprocess.run([sys.executable, '-I', str(wrapper), 'call', 'dock', 'status'],
                                 env=env, text=True, capture_output=True, check=True)
         self.assertEqual(result.stdout.splitlines(), ['-p', str(shell), 'ipc', 'call', 'dock', 'status'])
 
@@ -275,7 +282,9 @@ class SessionFiles(unittest.TestCase):
         tools = self.base / 'launch-tools'
         tools.mkdir()
         scripts = {
-            'emaki-shell': (ROOT / 'scripts/emaki-shell').read_text(),
+            'emaki-shell': (ROOT / 'scripts/emaki-shell').read_text().replace(
+                '@EMAKI_TRUSTED_PATH@', str(tools) + ':/usr/bin'),
+            'emaki_paths.py': (ROOT / 'scripts/emaki_paths.py').read_text(),
             'paths': (ROOT / 'scripts/paths').read_text(),
             'emaki-shell-health': '#!/bin/sh\nprintf "%s\\n" "$2"\n',
             'emaki-qt-check': '#!/bin/sh\nexit 0\n',

@@ -8,7 +8,7 @@ from emaki_installer.constants import GIB, MIB
 
 
 def alongside_on():
-    """Offer the alongside mode for one test; the shipped default keeps it off."""
+    """Offer the alongside mode for one test independently of the release switch."""
     return patch.object(constants, 'ALONGSIDE', True)
 
 

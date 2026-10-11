@@ -1,0 +1,46 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# shellcheck shell=bash disable=SC2034,SC2154
+pkgname=emaki-sudo-key
+pkgver=0.6.0
+pkgrel=6
+pkgdesc='Optional scoped sudo grants and their warning screen'
+arch=('any')
+url='https://github.com/emakish/emaki'
+license=('GPL-3.0-or-later')
+depends=('emaki-config>=0.6.0-3' 'sudo')
+makedepends=('git' 'python')
+install=emaki-sudo-key.install
+source=('sudo-key.installed' 'sudo-key.kdl')
+sha256sums=('140e1b557f10b9965aa95ae796344de112ffb9046c537073ea1d102b80d96805' '6ca4f4f3f19c1a96e3cf315a941b927e3cdb2b353098a179ee0fa1efd3a3116b')
+
+# Pin the repository payload exactly as other checkout-backed packages do.
+if [[ -f $startdir/SOURCE-COMMIT ]]; then
+    _emaki_commit=$(<"$startdir/SOURCE-COMMIT")
+    [[ $_emaki_commit =~ ^[0-9a-f]{40}$ ]] || return 1
+    [[ -z ${EMAKI_SOURCE_COMMIT:-} || $EMAKI_SOURCE_COMMIT == "$_emaki_commit" ]] || return 1
+else
+    _emaki_commit=$(git -C "$startdir/../.." rev-parse --verify "${EMAKI_SOURCE_COMMIT:-HEAD}^{commit}")
+fi
+export _emaki_commit
+
+prepare() {
+    mkdir -p "$srcdir/emaki-sudo-key"
+    git -C "$startdir/../.." archive --format=tar \
+        --output="$srcdir/emaki-sudo-key.tar" "$_emaki_commit" \
+        scripts/emaki-sudo-turn scripts/render-paths sudo/turn-reporting.md sudo/integrations
+    tar -xf "$srcdir/emaki-sudo-key.tar" -C "$srcdir/emaki-sudo-key"
+}
+
+package() {
+    install -Dm755 "$srcdir/emaki-sudo-key/scripts/emaki-sudo-turn" "$pkgdir/usr/bin/emaki-sudo-turn"
+    sed -i -e 's|@EMAKI_PYTHON@|/usr/bin/python3|g' -e 's|@EMAKI_BINDIR@|/usr/bin|g' \
+        "$pkgdir/usr/bin/emaki-sudo-turn"
+    install -Dm644 "$srcdir/emaki-sudo-key/sudo/turn-reporting.md" "$pkgdir/usr/share/emaki/sudo/turn-reporting.md"
+    install -Dm644 -t "$pkgdir/usr/share/emaki/sudo/integrations" "$srcdir/emaki-sudo-key/sudo/integrations/"*
+    sed -i 's|@EMAKI_BINDIR@|/usr/bin|g' "$pkgdir/usr/share/emaki/sudo/integrations/"*
+
+    install -Dm644 "$srcdir/sudo-key.installed" "$pkgdir/usr/share/emaki/sudo-key.installed"
+    python3 "$srcdir/emaki-sudo-key/scripts/render-paths" --text "$srcdir/sudo-key.kdl" > "$srcdir/sudo-key-rendered.kdl"
+    install -Dm644 "$srcdir/sudo-key-rendered.kdl" "$pkgdir/usr/share/emaki/niri/sudo-key.kdl"
+}

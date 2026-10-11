@@ -81,6 +81,18 @@ ShellRoot {
         testHeight: root.testHeight
     }
     LazyLoader {
+        active: root.valid && !root.headless
+        PolkitPromptService {
+            outputs: outputs
+        }
+    }
+    LazyLoader {
+        active: root.valid && !root.headless
+        CaptureService {
+            outputs: outputs
+        }
+    }
+    LazyLoader {
         active: !root.headless && !startup.coverActive
         SnapshotRecovery {}
     }

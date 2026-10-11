@@ -30,6 +30,8 @@ one linear stack on top of tag `v26.04`.
 | `0007-protect-session-pixels-while-locked.patch` | patch delivered in the distribution tree | `v26.04` with `0001`–`0006` applied |
 | `0008-account-for-static-blur-occlusion.patch` | patch delivered in the distribution tree | `v26.04` with `0001`–`0007` applied |
 | `0009-preserve-mapped-layer-keyboard-focus.patch` | patch delivered in the distribution tree | `v26.04` with `0001`–`0008` applied |
+| `0010-trusted-authentication-prompt.patch` | patch delivered in the distribution tree | `v26.04` with `0001`–`0009` applied |
+| `0011-freeze-session-safety-bindings.patch` | patch delivered in the distribution tree | `v26.04` with `0001`–`0010` applied |
 
 Check that the stack is linear (in the niri fork clone):
 
@@ -406,12 +408,15 @@ cursor metadata and unlock recovery before accepting the package.
 
 ## quickshell-emaki
 
-Two patches on Quickshell `v0.3.1`, applied by `prepare()` in this order:
+Four patches on Quickshell `v0.3.1`, applied by `prepare()` in this order:
 
 | Patch | Branch | Base |
 |---|---|---|
 | `0001-wlr-screencopy-raw-wl_output-for-transform.patch` | `emaki` | `v0.3.1` |
 | `0002-network-nm-name-the-activation-a-connection-failure.patch` | `emaki-network-attempt` | `emaki` |
+| `0003-qt-6.12-moc-includes.patch` | upstream backport, see "Qt 6.12 candidate" | `0002` applied |
+| `0004-services-polkit-one-request-at-a-time.patch` | `emaki-0004` (scratch clone only) | `0001`–`0003` applied |
+| `0006-core-desktopentry-honour-onlyshowin-notshowin.patch` | `emaki-0006` (scratch clone only) | `0001`–`0005` applied |
 
 Each branch is a single commit on its base. `emaki-network-attempt` was cut on
 2026-10-05 in a separate clone of the fork; until it is fetched into the fork
@@ -433,7 +438,7 @@ branch commit.
 After regenerating a patch, rewrite its header lines the same way, then update
 `sha256sums` in the PKGBUILD (run for `0002`; `tests/test-make-public.py` checks
 that every patch's `Date:` is UTC and its sha256 is in the PKGBUILD). The package
-is dropped once upstream Quickshell contains both fixes (see
+is dropped once upstream Quickshell contains these fixes (see
 `quickshell-emaki/README.md`).
 
 Applying both patches to an export of `v0.3.1` gives exactly the tree of
@@ -477,6 +482,44 @@ each NetworkManager update (references are to NetworkManager 1.58.1):
 ```sh
 git grep -n 'emit frontend->connectionFailed' emaki-network-attempt -- src/network   # 1 line, in nm/network.cpp
 ```
+
+### Polkit service repair (patch 0004, 2026-10-10)
+
+`0004` was cut in a clone of the fork in which a commit holds `v0.3.1` with
+`0001`–`0003` applied by `patch -Np1`, as `prepare()` applies them. Branch
+`emaki-0004` is one commit on that, `git format-patch --stdout -1` of it is the
+tracked file, committed with the author `Emaki contributors <emaki@localhost>`
+and a UTC date, so no header line was rewritten. The clone was a scratch clone
+that is not kept; the patch file is the source. Applying the four patches
+to `git archive v0.3.1` gives exactly the tree of `emaki-0004` (checked
+2026-10-10 with the `diff -r` recipe above).
+
+Its test, `src/services/polkit/test/queue.cpp`, compiles the service sources
+again with a fake `Session` (`test/fakesession.cpp`), so it never starts the
+PolKit helper or reaches PAM, and feeds requests through the listener's
+public entry point on an unregistered listener. The second test,
+`test/realsession.cpp` (`polkitsession`), runs the production `Session`
+against the system's polkit library with `POLKIT_DEBUG` set: a unix-group
+identity is refused before a helper is looked for, and the reply is caught
+in place of the library's response call, so neither starts a helper:
+
+```sh
+cmake -G Ninja -B build -D BUILD_TESTING=ON -D CRASH_HANDLER=OFF
+cmake --build build --target polkitqueue polkitsession
+(cd build/src/services/polkit/test && env -u WAYLAND_DISPLAY -u DISPLAY QT_QPA_PLATFORM=offscreen ./polkitqueue)
+(cd build/src/services/polkit/test && env -u WAYLAND_DISPLAY -u DISPLAY QT_QPA_PLATFORM=offscreen ./polkitsession)
+```
+
+At each rebase and each polkit update, re-read these facts in the polkit
+sources (polkit 127 was read). Starting a session completes it synchronously on
+a setup error (the fork then cancels the request, `AuthFlow::completed`).
+Cancelling a session emits `completed(FALSE)` once (`complete_session`). The
+reply is written straight to the helper's stream. The details polkitd sends
+carry only `polkit.caller-pid` and `polkit.subject-pid` (`add_pid` in
+`polkitbackendinteractiveauthority.c`). A returned `POLKIT_ERROR_CANCELLED`
+makes polkitd answer "not authorized" with `polkit.dismissed`. With
+`POLKIT_DEBUG` set (any value), starting a session prints the cookie with
+`g_print`; `Session::initiate` filters it.
 
 ### Qt 6.12 candidate (2026-10-05)
 
@@ -679,3 +722,127 @@ Also repeat Super+B with a maximized application: the bar must stay visible and
 the application's height must remain constant. Verify Escape, outside clicks,
 native focus navigation, native pairing, lock, fullscreen, and US/RU shortcuts.
 These VM checks are separate from the source tests.
+
+
+### Trusted authentication connection and input (2026-10-10)
+
+Patch `0010` binds `emaki-auth-prompt` to the private connection inserted by the startup supervisor.
+Review every ClientState constructor: public listeners and security-context connections must remain
+untrusted. Keep startup argv and the entire child environment immutable across config reloads and
+restart IPC. The private endpoint must be revoked before replacement and on compositor shutdown.
+`spawn-trusted-shell-at-startup` is a singleton startup setting, never a spawn action.
+
+The read-only `TrustedShellIdentity` request reports only the supervised child tied
+to that exact live connection. Keep its pidfd, start time and connection-liveness
+checks together, and revoke the identity before restart. Socketpair peer credentials
+identify the creating compositor, so they cannot identify the executed shell.
+Ordinary direct children, including the configurable satellite helper, must never
+enter this identity record. The root broker verifies the IPC peer against logind's
+pinned controller before matching the reported identity to its provider pidfd.
+
+The layer handler refuses the reserved role before mapping or configure. `trusted_prompt.rs` owns
+cross-output focus, grab revocation, the proof lifetime and prompt rendering above the normal scene.
+Locking and locked rendering hide the prompt, including while waiting for lock surfaces. During
+that wait keyboard focus must stay empty even if the shell unmaps its prompt; an
+exclusive ordinary overlay must receive no keyboard-enter event. The supervisor also
+awaits PrepareSessionLock before writing its authentication gate or cancelling the
+prompt. Preserve this pre-protocol input barrier until the protocol owner's unlock;
+the generic rendering-failure unlock path must not release it. Test prompt unmap
+before the Wayland lock request with the proof curtain inactive, including actual
+keyboard/pointer/touch events, failure cleanup and post-unlock focus restoration.
+Legacy or failed preparation defers cancellation until private lock acquisition. During
+physical proof the blank curtain must cover even a hostile lock surface, without unlocking. On a
+rebase inspect keyboard/pointer/touch/tablet dispatch, pointer constraints, DnD, popup grabs, IPC
+picking, accessibility monitoring and virtual input. Smithay virtual-keyboard and input-method
+dispatch do not pass through normal key filtering; their global filters are security boundaries.
+Physical proof-key handling precedes a11y and ordinary bindings, cannot be inhibited, and has no
+`niri-ipc::Action` equivalent. A blank proof view with no prompt removes pre-painted counterfeits.
+The three-second proof translates the whole card below a reserved top band of up to 48 logical
+pixels (at most half the output height) and uniformly reduces oversized cards to fit. Never crop
+the card. Pointer/touch are withheld and the cursor hidden during this transformed proof view.
+Check VT switching and power-key handling before normal isolation filtering; those inputs must
+remain compositor-only. Keep restart revocation ahead of SIGTERM with a two-second grace before
+SIGKILL, and exhaustion routed to the existing shell-heal/reconcile/recovery chain. The next
+restart must honor the reconciled shell selection. Denial warnings are bounded per connection;
+new connections can still generate new warnings.
+
+Quickshell patch `0005` strips `WAYLAND_SOCKET` from `Common::INITIAL_ENVIRONMENT`, captured before
+Qt connects. Do not unset it for the shell itself. Check child Process, detached and desktop-entry
+launches after any launcher rebase, and retain application-scope stripping as a second boundary.
+
+Run the package's new `trusted_prompt`, `trusted_client`, niri-config `trusted` and niri-ipc
+`trusted_shell` tests, alongside the existing layer, cursor, lock and capture suites. The source
+fingerprint guard now includes the private launcher, input handlers, IPC routes and prompt renderer.
+Run `python3 tests/test-trusted-shell-launch.py` for the preparation wrapper, and
+`python3 tests/vm/run-trusted-prompt.py --help` for actual guest acceptance. The VM runner requires a
+real shell trigger, denies an ordinary same-namespace/exclusive client before configure, compares
+input counts on competing overlays, rejects the raw IPC action and records physical proof/lock
+observations. The distribution binds Ctrl+Alt+Delete in the fork rules; the disposable fixture
+may add its own binding. Never run these acceptance steps against the host's desktop.
+
+### Frozen session safety bindings (2026-10-11)
+
+Patch `0011` follows the complete `0001`–`0010` stack on `v26.04` and ships in
+niri-emaki 26.04-20. Capture complete startup keyboard bindings for
+`show-trusted-prompt-mark` and direct revocation. Revocation requires the exact absolute
+executable compiled through `NIRI_EMAKI_SUDO_PROGRAM` and exactly the arguments
+`revoke-all --json`; a matching basename in another directory is not sufficient.
+Resolve `Mod` to the startup backend's modifier and let the last safety binding for a
+normalized alias win, so the final packaged binding takes precedence. The recipe's
+`_cargo_home` supplies both `NIRI_EMAKI_SUDO_PROGRAM` and `NIRI_EMAKI_SAFETY_CONFIG`,
+defaulting to the installed Arch paths. Other layouts override these paths at build
+time; session environment variables cannot redirect them.
+
+After loading any startup custom XKB file, serialize the effective keymap and create
+an independent private `xkb::State`. Feed it every backend key press and release
+before accessibility interception. Both safety-key classification and exact chord
+matching use that private state, including its modifier state, rather than the live
+keyboard's state. Ordinary layout and keymap changes still reload live; ordinary
+binding dispatch excludes safety actions so a relocated live alias cannot draw a
+proof mark or dispatch captured revocation. Restoring the original actions and full
+binding properties in configuration also removes conflicting normalized aliases and
+warns about changes or removals.
+
+Warn separately when startup lacks proof or revocation. On every configuration
+reload attempt, including personal parse failures, try to fill only missing safety
+actions from the compiled `NIRI_EMAKI_SAFETY_CONFIG` path for proof, and its fixed sibling
+`sudo-key.kdl` for
+revocation. Verify root ownership, regular files, non-writable modes and the full
+parent hierarchy, rejecting symlinks and unsafe includes. Startup revocation uses
+the same verified package source, never parsed personal bindings. Reserve its
+literal `Super+Ctrl+Escape` chord even while that package is absent. Spell the
+packaged bind with `Super` too; a startup personal `mod-key "Alt"` must neither move
+revocation nor give the Super chord to a personal bind. Installing the optional package
+mid-session supplies the missing action on the next reload attempt. Never capture
+replacements from the user's reloaded bindings.
+Existing captures remain immutable, and recovery retains the original `Mod`, environment
+and private keymap. An unreadable or invalid packaged file leaves missing actions
+uncaptured and is retried on a later reload attempt.
+
+Keep captured safety keyboard dispatch ahead of prompt isolation, accessibility
+interception and shortcut inhibition. Revocation still obeys `allow-when-locked`.
+Retain regressions for changed and removed binds, modifier aliases, unrelated reloads,
+startup action identification and dispatch during a trusted prompt. Exercise live
+`ctrl:swap_lwin_lctl`, `altwin:swap_alt_win` and custom XKB files remapping `<DELE>` and
+`<ESC>`: the original physical Ctrl+Alt+Delete and Super+Ctrl+Esc must still dispatch
+their captured actions, and relocated chords must not draw a mark. Cover a custom
+startup file, sequential layout reloads and the absence of secondary live aliases.
+Also cover exact-path refusal, startup alias precedence, missing-capture warnings,
+package-only recovery and retry after an unreadable or invalid package file. Cover
+installation mid-session with hostile includes before and after, personal parse failures, absent-package
+physical reservation through live XKB changes, next-session capture, and rejection
+of wrong owners, writable modes, symlinks and unsafe includes. The package's
+trusted tests must exercise these paths after applying the whole stack; update
+the patched-source fingerprint guard and its recipe checksums with the resulting source.
+Every test capture must inject an independent package root before recovery, including
+indirect compositor fixtures. Test-only authority starts at that private root so a
+shared temporary parent cannot invalidate it; include escapes and unsafe paths inside
+the fixture remain forbidden. Production must retain compiled paths and full root-owned
+ancestor checks. Run the trusted groups with absent and populated installed trees
+in a mount namespace and under an empty environment; never alter the host packages.
+Validate both installed fork entry points, absolute substituted commands and optional
+revoke-package rendering. Shared defaults must still validate with stock niri.
+
+The captured revoke command also keeps its startup environment. Its prepared spawn must not
+consult the reloadable child environment; the environment regression checks that ordinary
+commands still see reloads while the captured revoke command does not.

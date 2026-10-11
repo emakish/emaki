@@ -1,6 +1,7 @@
 """Alongside safety and ordering; no real block device is opened or mounted."""
 import copy
 import json
+import os
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -201,6 +202,29 @@ class NtfsTests(AlongsideOnTestCase):
         self.assertIn('dirty', offer['reason'])
         self.assertFalse(any(cmd[0] in ('mount', 'ntfs-3g') for cmd, _ in runner.commands))
 
+    def test_unverifiable_efi_is_an_alongside_refusal_not_an_inventory_failure(self):
+        _, inv = windows()
+        disk = inv['disks'][0]
+        esp, windows_part = disk['partitions']
+        runner = RecordingRunner()
+        probe = ntfs.Inventory(runner)
+        error = InstallError(Code.UNSAFE_DISK, ntfs.EFI_MANIFEST_UNSAFE)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'mount'
+            root.mkdir()
+            with patch.object(ntfs.tempfile, 'mkdtemp', return_value=str(root)), \
+                    patch.object(ntfs, 'efi_loaders', side_effect=error):
+                probe._inspect(disk, esp)
+            self.assertFalse(root.exists())
+        self.assertEqual(esp['_efi_loaders'], {})
+        self.assertEqual(esp['_efi_error'], ntfs.EFI_MANIFEST_UNSAFE)
+        runner.commands.clear()
+        with patch.object(ntfs, 'bitlocker_signature', return_value=False):
+            offer = probe._ntfs_shrink(disk, windows_part)
+        self.assertEqual(offer['reason'], ntfs.EFI_MANIFEST_UNSAFE)
+        self.assertEqual(runner.commands, [])
+        self.assertNotIn('_efi_error', ntfs.public_inventory(esp))
+
     def test_busy_no_gpt_no_esp_bitlocker_unknown_fail_closed(self):
         for change, reason in [({'_busy': True}, 'in use'), ({'_pttype': 'dos'}, 'GPT'),
                                ({'_read_only': True}, 'read-only')]:
@@ -233,13 +257,89 @@ class NtfsTests(AlongsideOnTestCase):
             self.assertTrue(all(p['shrink']['reason'] for p in disk['partitions'][1:]))
 
 
+class EfiManifestTests(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name)
+
+    def put(self, name, contents=b'fixture'):
+        path = self.root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(contents)
+        return path
+
+    def test_all_foreign_files_case_insensitive_and_own_subtree_excluded(self):
+        self.put('efi/mIcRoSoFt/BOOT/BOOTMGFW.EFI')
+        bcd = self.put('efi/mIcRoSoFt/BOOT/BCD', b'configuration')
+        self.put('efi/mIcRoSoFt/BOOT/BCD.LOG', b'')
+        fallback = self.put('efi/boot/bootx64.efi')
+        vendor = self.put('efi/Other/shim.efi')
+        own = self.put('efi/Emaki/grubx64.efi')
+        before = ntfs.efi_loaders(self.root)
+        self.assertEqual(set(before), {'EFI/Microsoft/Boot/bootmgfw.efi',
+                         'EFI/microsoft/boot/bcd', 'EFI/microsoft/boot/bcd.log',
+                         'EFI/BOOT/BOOTX64.EFI', 'EFI/other/shim.efi'})
+        own.write_bytes(b'new bootloader')
+        self.assertEqual(before, ntfs.efi_loaders(self.root))
+        for path in (bcd, fallback, vendor):
+            with self.subTest(path=path):
+                original = path.read_bytes()
+                path.write_bytes(b'changed')
+                self.assertNotEqual(before, ntfs.efi_loaders(self.root))
+                path.write_bytes(original)
+                path.unlink()
+                self.assertNotEqual(before, ntfs.efi_loaders(self.root))
+                path.write_bytes(original)
+
+    def test_symlinks_special_files_and_ambiguous_names_refused(self):
+        for name in ('efi', 'efi/Microsoft', 'efi/Microsoft/Boot/BCD', 'efi/Emaki'):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                link = root / name
+                link.parent.mkdir(parents=True, exist_ok=True)
+                link.symlink_to('/missing')
+                with self.assertRaises(InstallError):
+                    ntfs.efi_loaders(root)
+        self.put('efi/Microsoft/Boot/BCD')
+        self.put('efi/Microsoft/Boot/bcd')
+        with self.assertRaises(InstallError):
+            ntfs.efi_loaders(self.root)
+        (self.root / 'efi/Microsoft/Boot/bcd').unlink()
+        os.mkfifo(self.root / 'efi/pipe')
+        with self.assertRaises(InstallError):
+            ntfs.efi_loaders(self.root)
+
+    def test_bounds_limit_entries_depth_files_and_aggregate_reads(self):
+        self.put('efi/Microsoft/Boot/BCD', b'1234')
+        self.put('efi/boot/bootx64.efi', b'1234')
+        for limit, value in (('EFI_MANIFEST_MAX_ENTRIES', 2),
+                             ('EFI_MANIFEST_MAX_DEPTH', 1),
+                             ('EFI_MANIFEST_MAX_FILE_BYTES', 3),
+                             ('EFI_MANIFEST_MAX_BYTES', 7)):
+            with self.subTest(limit=limit), patch.object(ntfs, limit, value):
+                with self.assertRaises(InstallError):
+                    ntfs.efi_loaders(self.root)
+        (self.root / 'efi/boot/bootx64.efi').write_bytes(b'')
+        with self.assertRaises(InstallError):
+            ntfs.efi_loaders(self.root)
+
+
+class AlongsideDefaultTests(unittest.TestCase):
+    def test_default_switch_is_off(self):
+        self.assertIs(constants.ALONGSIDE, False)
+
+
 class AlongsideOffTests(unittest.TestCase):
-    """The shipped default: the mode is neither probed, offered nor accepted."""
+    """An explicit disabled switch prevents probing, offering and writing."""
 
     def setUp(self):
+        switch = patch.object(constants, 'ALONGSIDE', False)
+        switch.start()
+        self.addCleanup(switch.stop)
         self.c, self.inv = windows()
 
-    def test_default_switch_is_off(self):
+    def test_explicit_switch_is_off(self):
         self.assertIs(constants.ALONGSIDE, False)
 
     def test_inventory_does_not_probe_or_offer_windows(self):
@@ -437,6 +537,21 @@ class AlongsideTests(AlongsideOnTestCase):
             worker.prepare_disk()
         worker.backend.prepare.assert_not_called()
         self.assertFalse(worker.disk_changed)
+
+    def test_changed_foreign_efi_manifest_aborts_before_any_write(self):
+        for name in ('EFI/microsoft/boot/bcd', 'EFI/BOOT/BOOTX64.EFI', 'EFI/other/shim.efi'):
+            with self.subTest(name=name):
+                self.c, self.inv = windows()
+                manifest = self.inv['disks'][0]['partitions'][0]['_efi_loaders']
+                manifest[name] = 'reviewed-content'
+                plan = self.plan()
+                worker = Worker(None, FakeInventory(self.inv), Redactor(), Mock(), Mock())
+                worker.plan, worker.backend = plan, Mock()
+                manifest[name] = 'changed-content'
+                with self.assertRaisesRegex(InstallError, 'changed after review'):
+                    worker.prepare_disk()
+                worker.backend.prepare.assert_not_called()
+                self.assertFalse(worker.disk_changed)
 
     def test_format_guard_never_formats_esp_or_windows(self):
         plan = self.plan()

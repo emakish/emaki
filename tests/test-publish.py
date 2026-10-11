@@ -248,6 +248,10 @@ class World:
              'commit', '-q', '--allow-empty', '-m', 'init'], check=True)
         self.registry = self.base / 'released-packages.sha256'
         self.registry.write_text('')
+        # No image record in the bucket: the one required start is this machine's 0.1.0.
+        self.machines = self.base / 'machines.toml'
+        self.machines.write_text('launch = ""\n[[machine]]\nname = "test machine"\n'
+                                 'installed_from = "0.1.0"\ninstalled = 2026-10-10\n')
         self.github = self.base / 'github'
         self.flat = flat
         self.backend = f'local:{self.bucket}'
@@ -256,7 +260,7 @@ class World:
 
     def args(self, state=None):
         args = ['--backend', self.backend, '--public-url', self.url, '--state-dir', state or self.state,
-                '--stamp', self.base / 'stamp.json', '--key', self.keys.fpr, '--signing-home', self.keys.home,
+                '--stamp', self.base / 'stamp.json', '--machines', self.machines, '--key', self.keys.fpr, '--signing-home', self.keys.home,
                 '--keyring', self.keys.keyring, '--trusted', self.keys.trusted, '--registry', self.registry,
                 '--source-tree', self.tree, '--closure', 'emaki emaki-apps', '--arch-dbs', 'none',
                 '--github', f'local:{self.github}']
@@ -449,16 +453,20 @@ class ResumedDownloadReadBack(unittest.TestCase):
 
 
 class PublishedAcceptance(unittest.TestCase):
-    def test_publication_preserves_020_stamp_but_next_candidate_requires_020(self):
+    def test_publication_preserves_stamp_but_next_candidate_requires_the_new_image(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             backend = publish.LocalBackend(root / 'bucket')
+            machines = root / 'machines.toml'
+            machines.write_text('launch = ""\n[[machine]]\nname = "Mac"\ninstalled_from = "0.5.0"\n'
+                                'installed = 2026-10-10\n')
+            backend.put_new('released/iso/0.5.0', json.dumps({'manifest': 'c' * 64}).encode())
             publisher = object.__new__(publish.Publisher)
             publisher.backend = backend
-            publisher.args = SimpleNamespace(stamp=root / 'stamp.json')
+            publisher.args = SimpleNamespace(stamp=root / 'stamp.json', machines=machines)
             current, following = 'a' * 64, 'b' * 64
 
-            def results(manifest, starts=('0.1.0', '0.1.1')):
+            def results(manifest, starts=('0.5.0',)):
                 paths = []
                 for run_name in ('T1', 'T2'):
                     for start in starts:
@@ -471,21 +479,20 @@ class PublishedAcceptance(unittest.TestCase):
                 return paths
 
             # A stamp prepared before a publication must be rechecked at promotion time.
-            publish.write_stamp(results(following), publisher.args.stamp, backend)
+            publish.write_stamp(results(following), publisher.args.stamp, backend, machines)
             stale_stamp = publisher.args.stamp.read_bytes()
-            publish.write_stamp(results(current), publisher.args.stamp, backend)
+            publish.write_stamp(results(current), publisher.args.stamp, backend, machines)
             original_stamp = publisher.args.stamp.read_bytes()
             publisher.check_stamp(current)
-            backend.put_new('released/iso/0.2.0', json.dumps({'manifest': current}).encode())
+            backend.put_new('released/iso/0.6.0', json.dumps({'manifest': current}).encode())
             publisher.check_stamp(current)
             self.assertEqual(publisher.args.stamp.read_bytes(), original_stamp)
             publisher.args.stamp.write_bytes(stale_stamp)
-            with self.assertRaisesRegex(publish.Refused, 'T1 from 0.2.0'):
+            with self.assertRaisesRegex(publish.Refused, 'T1 from 0.6.0'):
                 publisher.check_stamp(following)
-            with self.assertRaisesRegex(publish.Refused, 'T1 from 0.2.0'):
-                publish.write_stamp(results(following), publisher.args.stamp, backend)
-            publish.write_stamp(results(following, ('0.1.0', '0.1.1', '0.2.0')),
-                                publisher.args.stamp, backend)
+            with self.assertRaisesRegex(publish.Refused, 'T1 from 0.6.0'):
+                publish.write_stamp(results(following), publisher.args.stamp, backend, machines)
+            publish.write_stamp(results(following, ('0.5.0', '0.6.0')), publisher.args.stamp, backend, machines)
             publisher.check_stamp(following)
 
 
@@ -753,8 +760,11 @@ class SourceProvenance(unittest.TestCase):
                        'archive': 'arch-demo.src.tar.gz', 'sha256': arch_sha, 'size': len(arch_data)}
         arch_manifest.write_text(json.dumps({'schema': 1, 'closure_sha256': publish.sha256(closure),
                                              'packages': {arch_name: arch_record}}))
+        # This image is the launch image: its released/iso/ record carries the launch mark.
+        machines = root / 'machines.toml'
+        machines.write_text(f'launch = "{image_version}"\n')
         publisher.args = SimpleNamespace(dl_backend=f'local:{dl}', dl_public_url='https://download.invalid',
-                                         arch_sources=arch_manifest)
+                                         arch_sources=arch_manifest, machines=machines)
         publisher.dry_run = False
         publisher.backend = publish.LocalBackend(root / 'bucket')
         publisher.keyring = root / 'keyring'
@@ -879,6 +889,9 @@ class SourceProvenance(unittest.TestCase):
             publisher.dry_run = False
             publisher.backend = backend
             publish.iso_publish(publisher, image, False)
+            release = json.loads(publisher.backend.get(f'released/iso/{image_version}')[0])
+            # The legacy run reparses its arguments: the checked-in machines file is not launched.
+            self.assertEqual(release.get('launch'), None if legacy else True)
             self.assertEqual(resumed, [f'https://download.invalid/iso/{image_version}/{image.name}'])
             route.assert_called_with(f'https://download.invalid/iso/{image_version}/{image.name}')
             if legacy:
@@ -1375,7 +1388,8 @@ class PublishTests(unittest.TestCase):
 
     def stamp_results(self, manifest, hours_ago=0, skip=(), t2_via='old-address', red=(),
                       sizes=('1920x1080', '2560x1600')):
-        """skip and red name (run, start) or (run, start, size)."""
+        """skip and red name (run, start) or (run, start, size). 0.1.0 is the required start (the
+        World's machines file); 0.1.1 is an extra one, which counts only when it is red."""
         finished = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours_ago))
         paths = []
         for run_name in ('T1', 'T2'):
@@ -1402,6 +1416,35 @@ class PublishTests(unittest.TestCase):
         self.refused(world.publish('stamp', *self.stamp_results(manifest, skip={('T2', '0.1.0', '1920x1080')})),
                      'T2 from 0.1.0 at 1920x1080')
         self.ok(world.publish('stamp', *self.stamp_results(manifest)))
+        self.ok(world.publish('stamp', *self.stamp_results(manifest, skip={('T1', '0.1.1'), ('T2', '0.1.1')})))
+
+    def test_acceptance_plan_prints_what_the_stamp_requires(self):
+        world = self.world
+        self.refused(world.publish('acceptance-plan'), 'testing has no snapshot')
+        self.ok(world.publish('publish', 'testing', self.candidate('1-1')))
+        manifest = self.manifest_of_testing()
+        plan = json.loads(self.ok(world.publish('acceptance-plan', '--json')).stdout)
+        self.assertEqual(plan['manifest_sha256'], manifest)
+        self.assertEqual(plan['starts'], ['0.1.0'])
+        self.assertEqual([(r['run'], r['start'], r['size']) for r in plan['runs']],
+                         [(run, '0.1.0', size) for run in ('T1', 'T2') for size in ('1920x1080', '2560x1600')])
+        self.assertEqual(self.ok(world.publish('acceptance-plan')).stdout.splitlines(),
+                         ['T1 0.1.0 1920x1080', 'T1 0.1.0 2560x1600', 'T2 0.1.0 1920x1080', 'T2 0.1.0 2560x1600'])
+        # An image released from another candidate becomes the current image to start from.
+        (world.bucket / 'released/iso').mkdir(parents=True)
+        (world.bucket / 'released/iso/0.2.0').write_text(json.dumps({'manifest': 'c' * 64}))
+        plan = json.loads(self.ok(world.publish('acceptance-plan', '--json')).stdout)
+        self.assertEqual(plan['starts'], ['0.1.0', '0.2.0'])
+        self.assertEqual(len(plan['runs']), 8)
+        plan = json.loads(self.ok(world.publish('acceptance-plan', '--json', '--manifest', 'c' * 64)).stdout)
+        self.assertEqual(plan['starts'], ['0.1.0'])
+        self.refused(world.publish('acceptance-plan', '--manifest', 'bad'), 'no valid MANIFEST digest')
+        world.machines.write_text('launch = ""\n')
+        self.assertEqual(json.loads(self.ok(world.publish('acceptance-plan', '--json')).stdout)['starts'],
+                         ['0.2.0'])
+        world.machines.unlink()
+        self.refused(world.publish('acceptance-plan'), 'cannot read the machines file')
+        self.refused(world.publish('stamp', *self.stamp_results(manifest)), 'cannot read the machines file')
 
     def manifest_of_testing(self):
         snap = self.world.pointer('testing')
@@ -2010,6 +2053,75 @@ class PublishTests(unittest.TestCase):
         self.assertEqual(offenders, [])
 
 
+class SigningAgentEnds(unittest.TestCase):
+    """The signing home's gpg-agent ends after the last signature, also when signing fails."""
+
+    def fake_tools(self, base, gpg_status=0):
+        bin_dir, log = base / 'bin', base / 'calls.log'
+        bin_dir.mkdir()
+        for tool, status in (('gpgconf', 0), ('gpg-connect-agent', 0), ('gpg', gpg_status)):
+            script = bin_dir / tool
+            script.write_text('#!/bin/sh\nprintf "%s %s\\n" "$(basename "$0")" "$*" >> "$FAKE_LOG"\n'
+                              + ('for last; do :; done\n: > "$last.sig"\n' if tool == 'gpg' else '')
+                              + f'exit {status}\n')
+            script.chmod(0o755)
+        environment = mock.patch.dict(os.environ, PATH=f'{bin_dir}:{os.environ["PATH"]}', FAKE_LOG=str(log))
+        return environment, log
+
+    def run_sign(self, gpg_status, verified):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            environment, log = self.fake_tools(base, gpg_status)
+            packages = base / 'packages'
+            packages.mkdir()
+            (packages / 'demo-1-1-any.pkg.tar.zst').write_bytes(b'demo')
+            home = base / 'signing'
+            args = SimpleNamespace(key='KEY', signing_home=str(home), dry_run=False, keyring='k', trusted='t',
+                                   directory=str(packages))
+            verifier = mock.Mock(**{'verify.return_value': verified})
+            with environment, mock.patch.object(publish, 'Verifier', return_value=verifier), \
+                    mock.patch.object(publish.Path, 'home', return_value=base / 'user'):
+                try:
+                    publish.sign_directory(args)
+                    raised = None
+                except (publish.Refused, subprocess.CalledProcessError) as error:
+                    raised = error
+            calls = log.read_text().splitlines()
+            verifier.close.assert_called_once()
+            return raised, calls, home
+
+    def test_agent_is_killed_after_the_last_signature(self):
+        raised, calls, home = self.run_sign(0, True)
+        self.assertIsNone(raised)
+        self.assertEqual(calls[-1], f'gpgconf --homedir {home} --kill gpg-agent')
+        self.assertTrue(calls[0].startswith('gpg-connect-agent'))
+
+    def test_agent_is_killed_when_signing_or_verification_fails(self):
+        for gpg_status, verified in ((2, True), (0, False)):
+            with self.subTest(gpg_status=gpg_status, verified=verified):
+                raised, calls, home = self.run_sign(gpg_status, verified)
+                self.assertIsNotNone(raised)
+                self.assertEqual(calls[-1], f'gpgconf --homedir {home} --kill gpg-agent')
+
+    def test_publisher_close_ends_a_prepared_signer_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            environment, log = self.fake_tools(base)
+            with environment:
+                idle = publish.Signer('KEY', base / 'signing')
+                idle.close()
+                dry = publish.Signer('KEY', base / 'signing', dry_run=True)
+                dry.prepared = True
+                dry.close()
+                self.assertFalse(log.exists())
+                used = publish.Signer('KEY', base / 'signing')
+                used.prepared = True
+                holder = SimpleNamespace(signer=used, _verifier=None)
+                publish.Publisher.close(holder)
+                publish.Publisher.close(holder)
+            self.assertEqual(log.read_text().splitlines(), [f'gpgconf --homedir {base / "signing"} --kill gpg-agent'])
+
+
 class DrillSyncWait(unittest.TestCase):
     def test_socket_root_ignores_a_long_tmpdir(self):
         source = (HERE / 'publish-drill.sh').read_text()
@@ -2187,21 +2299,31 @@ class BuildScript(unittest.TestCase):
         self.tree, self.state, self.bin = self.base / 'tree', self.base / 'state', self.base / 'bin'
         for folder in (self.tree / 'packaging', self.state, self.bin):
             folder.mkdir(parents=True)
+        (self.tree / '.gitignore').write_text('__pycache__/\n')
         shutil.copy2(ROOT / 'packaging/build.sh', self.tree / 'packaging/build.sh')
+        shutil.copy2(ROOT / 'packaging/release_inputs.py', self.tree / 'packaging/release_inputs.py')
+        shutil.copy2(ROOT / 'packaging/source_archive.py',
+                     self.tree / 'packaging/source_archive_policy.py')
+        constants = self.tree / 'installer/emaki_installer/constants.py'
+        constants.parent.mkdir(parents=True)
+        constants.write_text('ALONGSIDE = False\n')
+        # Keep real release policy imports while isolating source archive production.
         (self.tree / 'packaging/source_archive.py').write_text("""import json, sys
 from pathlib import Path
-if sys.argv[1] == 'vendor':
-    raise SystemExit(0)
-args = dict(zip(sys.argv[2::2], sys.argv[3::2]))
-output = Path(args['--output'])
-name = Path(args['--recipe']).name
-metadata_path = output / 'SOURCES.json'
-metadata = json.loads(metadata_path.read_text()) if metadata_path.exists() else {
-    'format': 1, 'commit': args['--commit'], 'packages': {}}
-archive = f"{name}-{args['--version']}.sources.tar.gz"
-(output / archive).write_bytes(b'source fixture')
-metadata['packages'][name] = {'version': args['--version'], 'archive': archive}
-metadata_path.write_text(json.dumps(metadata))
+from source_archive_policy import PACKAGES, public_excluded, public_policy, run
+if __name__ == '__main__':
+    if sys.argv[1] == 'vendor':
+        raise SystemExit(0)
+    args = dict(zip(sys.argv[2::2], sys.argv[3::2]))
+    output = Path(args['--output'])
+    name = Path(args['--recipe']).name
+    metadata_path = output / 'SOURCES.json'
+    metadata = json.loads(metadata_path.read_text()) if metadata_path.exists() else {
+        'format': 1, 'commit': args['--commit'], 'packages': {}}
+    archive = f"{name}-{args['--version']}.sources.tar.gz"
+    (output / archive).write_bytes(b'source fixture')
+    metadata['packages'][name] = {'version': args['--version'], 'archive': archive}
+    metadata_path.write_text(json.dumps(metadata))
 """)
         for name, body in BUILD_STUBS.items():
             (self.bin / name).write_text('#!/bin/bash\n' + body)

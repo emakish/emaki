@@ -12,6 +12,7 @@ import py_compile
 import runpy
 import shutil
 import subprocess
+import sys
 import tempfile
 import tomllib
 from types import SimpleNamespace
@@ -65,6 +66,59 @@ class MetadataTests(unittest.TestCase):
     def setUpClass(cls):
         cls.recipes = {p.parent.name: metadata(p) for p in sorted(ROOT.glob('packaging/*/PKGBUILD'))}
 
+    def test_config_hooks_create_shell_generation_with_fixed_interpreter(self):
+        hooks = ROOT / 'packaging/emaki-config/emaki-config.install'
+        # Intercept only the exact installed commands: no fixture reaches the host.
+        harness = '''
+            /usr/bin/python3() { printf 'python'; printf ' <%s>' "$@"; printf '\\n'; }
+            /usr/share/libalpm/scripts/emaki-initramfs-refresh() { :; }
+            /usr/share/libalpm/scripts/emaki-system-migrate() { :; }
+            systemctl() { printf 'systemctl'; printf ' <%s>' "$@"; printf '\\n'; }
+            source "$1"
+            post_install 0.6.0-11
+            post_upgrade 0.6.0-11 0.6.0-10
+        '''
+        result = run(['/bin/bash', '-eu', '-c', harness, 'hooks', str(hooks)],
+                     env={**os.environ, 'PATH': '/nonexistent'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), [
+            'python <-IB> </usr/bin/emaki-shell-generations> <install>',
+            'python <-IB> </usr/bin/emaki-shell-generations> <install>',
+            'systemctl <daemon-reload>',
+            'systemctl <try-restart> <emaki-sudo.service>',
+            'systemctl <start> <emaki-sudo-cleanup.timer>',
+            'python <-I> </usr/bin/emaki-migrate-installer-config>',
+        ])
+
+    def test_config_hooks_report_generation_failure(self):
+        hooks = ROOT / 'packaging/emaki-config/emaki-config.install'
+        for hook in ('post_install', 'post_upgrade'):
+            with self.subTest(hook=hook):
+                harness = '''
+                    /usr/bin/python3() {
+                        if [[ "$2" == /usr/bin/emaki-shell-generations ]]; then
+                            echo 'emaki-shell-generations: publication fixture failure' >&2
+                            return 42
+                        fi
+                        echo installer-migration
+                    }
+                    /usr/share/libalpm/scripts/emaki-initramfs-refresh() { echo initramfs; }
+                    /usr/share/libalpm/scripts/emaki-system-migrate() { echo mark-fresh; }
+                    systemctl() { printf 'systemctl'; printf ' <%s>' "$@"; printf '\\n'; }
+                    source "$1"
+                    "$2" 0.6.0-11 0.6.0-10
+                '''
+                result = run(['/bin/bash', '-eu', '-c', harness, 'hooks', str(hooks), hook],
+                             env={**os.environ, 'PATH': '/nonexistent'})
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn('emaki-shell-generations: publication fixture failure', result.stderr)
+                expected = (['initramfs', 'mark-fresh'] if hook == 'post_install' else [
+                    'systemctl <daemon-reload>',
+                    'systemctl <try-restart> <emaki-sudo.service>',
+                    'systemctl <start> <emaki-sudo-cleanup.timer>',
+                    'initramfs', 'installer-migration'])
+                self.assertEqual(result.stdout.splitlines(), expected)
+
     def test_greeter_inner_auth_stack_is_delivered(self):
         expected = (ROOT / 'packaging/emaki-config/expected-files.list').read_text().splitlines()
         makefile = (ROOT / 'Makefile').read_text()
@@ -74,25 +128,65 @@ class MetadataTests(unittest.TestCase):
         self.assertIn('auth       substack    emaki-greetd-auth', (ROOT / 'greetd/pam').read_text())
         self.assertIn('auth       include     system-local-login', (ROOT / 'greetd/pam-auth').read_text())
 
-    def test_release_versions(self, marker_release='1'):
-        for name in ('emaki', 'emaki-config', 'emaki-desktop', 'emaki-apps', 'emaki-keyring', 'emaki-mirrorlist', 'emaki-installer', 'emaki-nvidia'):
+    def test_release_versions(self, marker_release='15'):
+        for name in ('emaki', 'emaki-config', 'emaki-desktop', 'emaki-apps', 'emaki-keyring', 'emaki-mirrorlist', 'emaki-installer', 'emaki-nvidia', 'emaki-sudo-key'):
             with self.subTest(package=name):
                 info = self.recipes[name]
                 self.assertEqual(info['pkgname'], [name])
-                self.assertEqual(info['pkgver'], ['0.5.0'])
-                self.assertEqual(info['pkgrel'], [marker_release] if name == 'emaki' else ['1'])
+                self.assertEqual(info['pkgver'], ['0.6.0'])
+                self.assertEqual(info['pkgrel'], [marker_release] if name == 'emaki' else
+                                 ['14'] if name == 'emaki-config' else
+                                 ['6'] if name == 'emaki-sudo-key' else
+                                 ['5'] if name == 'emaki-installer' else
+                                 ['2'] if name == 'emaki-apps' else ['1'])
                 # emaki-installer also ships the zone map (ODbL) and the GRUB unlock-screen fonts (DejaVu, Bitstream Vera).
                 self.assertEqual(info['license'], ['GPL-3.0-or-later', 'ODbL-1.0', 'Bitstream-Vera']
                                  if name == 'emaki-installer' else ['GPL-3.0-or-later', 'Bitstream-Vera']
                                  if name == 'emaki-config' else ['GPL-3.0-or-later']
                                  if name == 'emaki-nvidia' else ['GPL-3.0-or-later'])
         cargo = tomllib.loads((ROOT / 'Cargo.toml').read_text())
-        self.assertEqual(cargo['workspace']['package']['version'], '0.5.0')
+        self.assertEqual(cargo['workspace']['package']['version'], '0.6.0')
         packages = tomllib.loads((ROOT / 'Cargo.lock').read_text())['package']
-        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.5.0'})
+        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.6.0'})
         self.assertEqual(self.recipes['emaki']['depends'], [
-            'emaki-config=0.5.0-1', 'emaki-desktop=0.5.0-1', 'niri-emaki=26.04-13',
-            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.5.0-1', 'emaki-mirrorlist>=0.5.0-1'])
+            'emaki-config=0.6.0-14', 'emaki-desktop=0.6.0-1', 'niri-emaki=26.04-20',
+            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.6.0-1', 'emaki-mirrorlist>=0.6.0-1'])
+
+    @unittest.skipUnless(shutil.which('pacman'), 'needs pacman for removal dependency resolution')
+    def test_obs_removal_preview_keeps_base_packages(self):
+        # Use real recipe dependencies in an isolated installed-package database.
+        # The print-only command is the same dependency check used by Programs.
+        catalog = runpy.run_path(str(ROOT / 'update-manager/programs_catalog.py'))
+        with tempfile.TemporaryDirectory(prefix='emaki-obs-removal-') as temporary:
+            root = Path(temporary)
+            local = root / 'db/local'
+            local.mkdir(parents=True)
+            (local / 'ALPM_DB_VERSION').write_text('9\n')
+            config = root / 'pacman.conf'
+            config.write_text('[options]\nArchitecture = x86_64\n')
+            for name in ('emaki-config', 'emaki-desktop', 'emaki-apps', 'obs-studio'):
+                info = self.recipes.get(name, {'depends': [], 'optdepends': []})
+                package = local / (name + '-1-1')
+                package.mkdir()
+                description = '%NAME%\n' + name + '\n\n%VERSION%\n1-1\n\n%ARCH%\nx86_64\n\n%REASON%\n0\n\n'
+                for field in ('depends', 'optdepends'):
+                    if info[field]:
+                        description += '%' + field.upper() + '%\n' + '\n'.join(info[field]) + '\n\n'
+                (package / 'desc').write_text(description)
+                (package / 'files').write_text('%FILES%\n\n')
+            argv = ['pacman', '--config', str(config), '--dbpath', str(root / 'db'),
+                    '-Rs', '--print', '--print-format', '%n', 'obs-studio']
+            result = run(argv, timeout=20)
+            preview = catalog['assess']('obs-studio', result.returncode, result.stdout, result.stderr)
+            self.assertEqual(preview['code'], 'ready', preview)
+            self.assertEqual(preview['packages'], ['obs-studio'])
+            # A dependency regression must be detected by the real resolver.
+            desc = local / 'emaki-config-1-1/desc'
+            desc.write_text(desc.read_text().replace('%DEPENDS%\n', '%DEPENDS%\nobs-studio\n'))
+            result = run(argv, timeout=20)
+            blocked = catalog['assess']('obs-studio', result.returncode, result.stdout, result.stderr)
+            self.assertEqual(blocked['code'], 'emaki', blocked)
+            self.assertIn('emaki-config', blocked['requiredBy'])
 
     def test_early_console_font_reaches_targets_and_updates(self):
         self.assertIn('terminus-font', self.recipes['emaki-config']['depends'])
@@ -169,27 +263,30 @@ class MetadataTests(unittest.TestCase):
     def test_config_contract(self):
         info = self.recipes['emaki-config']
         self.assertEqual(set(info['backup']), {
+            'etc/pam.d/emaki-sudo',
             'etc/sudoers.d/10-emaki-wheel',
             'etc/niri/config.kdl', 'etc/xdg/hypr/hyprlock.conf', 'etc/xdg/fastfetch/config.jsonc',
             'etc/xdg/kwalletrc', 'etc/xdg/mimeapps.list', 'etc/xdg/kdeglobals', 'etc/xdg/dolphinrc', 'etc/xdg/qt6ct/qt6ct.conf',
             'etc/xdg/menus/emaki-applications.menu', 'etc/xdg/xdg-desktop-portal/niri-portals.conf'})
         for package in ('emaki-config', 'emaki-desktop'):
             self.assertFalse(set(self.recipes[package]['depends']) & {
-                'gnome-keyring', 'polkit-gnome', 'adwaita-cursors',
+                'gnome-keyring', 'polkit-gnome', 'polkit-kde-agent', 'adwaita-cursors',
                 'adwaita-fonts'})
         self.assertEqual(info['conflicts'], ['emaki-core'])
-        self.assertEqual(set(info['makedepends']), {'git', 'make', 'python', 'rust', 'qt6-shadertools'})
+        self.assertEqual(set(info['makedepends']), {'git', 'make', 'python', 'rust', 'qt6-shadertools', 'cmake', 'gcc', 'pkgconf'})
         self.assertEqual(set(info['checkdepends']), {'niri', 'nodejs'})
         required = {
-            'niri-emaki>=26.04-12', 'quickshell-emaki>=0.3.1-4', 'python', 'python-gobject', 'python-pillow',
-            'gtk3', 'wpaperd', 'wl-clipboard', 'cliphist', 'polkit-kde-agent', 'udiskie', 'kitty',
+            'niri-emaki>=26.04-20', 'quickshell-emaki>=0.3.1-10', 'python', 'python-gobject', 'python-pillow',
+            'gtk3', 'wpaperd', 'wl-clipboard', 'cliphist', 'udiskie', 'kitty', 'grim', 'gstreamer', 'gst-plugin-pipewire', 'gst-plugins-base',
+            'gst-plugins-base-libs', 'gst-plugins-good', 'gst-plugins-bad', 'libglvnd', 'ffmpeg',
             'fastfetch>=2.68.1', 'imagemagick', 'hyprlock', 'playerctl', 'fuzzel', 'qt6ct',
             'noto-fonts', 'breeze-icons', 'adwaita-icon-theme', 'brightnessctl',
             'power-profiles-daemon', 'networkmanager', 'bluez', 'upower', 'pipewire', 'wireplumber', 'rtkit',
             'pipewire-pulse', 'wlsunset', 'greetd', 'greetd-regreet', 'kwallet-pam', 'kwallet>=6.30',
-            'coreutils', 'dbus', 'procps-ng', 'systemd', 'util-linux', 'bash',
+            'coreutils', 'dbus', 'procps-ng', 'systemd>=256', 'util-linux', 'bash',
         }
         self.assertTrue(required <= set(info['depends']), required - set(info['depends']))
+        self.assertNotIn('obs-studio', info['depends'])
         recipe = (ROOT / 'packaging/emaki-config/PKGBUILD').read_text()
         for text in ('export _emaki_commit', 'source_archive.py" checkout', '"$_emaki_commit"',
                      'cargo fetch --locked', '_emaki_make build', '_emaki_make check',
@@ -197,6 +294,29 @@ class MetadataTests(unittest.TestCase):
                      'diff -u packaging/emaki-config/expected-files.list'):
             self.assertIn(text, recipe)
         self.assertIn('"--locked", "--offline"', (ROOT / 'scripts/core-package.py').read_text())
+
+    def test_shell_owns_packaged_authorization_startup(self):
+        for relative in ('iso/packages-extra.txt', 'iso/profile/packages.x86_64'):
+            self.assertNotIn('polkit-kde-agent', (ROOT / relative).read_text().split())
+        for relative in ('niri/default.kdl', 'scripts/niri-emaki-session',
+                         'systemd/niri-emaki.service', 'systemd/50-emaki.preset'):
+            source = (ROOT / relative).read_text()
+            self.assertNotIn('polkit-kde-authentication-agent-1', source)
+            self.assertNotIn('plasma-polkit-agent.service', source)
+            self.assertNotIn('@EMAKI_POLKIT_AGENT@', source)
+        self.assertNotIn('"authentication"', (ROOT / 'niri/default.kdl').read_text())
+        # Do not turn an upgrade into a default-No conflict or remove another desktop.
+        for name in ('emaki-config', 'emaki-desktop'):
+            for field in ('conflicts', 'replaces'):
+                self.assertNotIn('polkit-kde-agent', self.recipes[name][field])
+
+    def test_previous_config_cannot_launch_retired_authorization(self):
+        # A locally edited packaged niri config receives a pacnew on upgrade.
+        # Its old startup command must also be inert, without editing that file.
+        result = run([str(ROOT / 'scripts/emaki-autostart'), 'authentication',
+                      'sh', '-c', 'printf retired-startup'])
+        self.assertEqual(result.returncode, 64)
+        self.assertEqual(result.stdout, '')
 
     def test_desktop_and_fork_constraints(self):
         desktop = self.recipes['emaki-desktop']
@@ -213,7 +333,7 @@ class MetadataTests(unittest.TestCase):
         self.assertIn('swayidle', desktop['depends'])
         self.assertFalse(any(d.startswith('niri-emaki:') for d in desktop['optdepends']))
         niri = self.recipes['niri-emaki']
-        self.assertEqual((niri['pkgver'], niri['pkgrel']), (['26.04'], ['13']))
+        self.assertEqual((niri['pkgver'], niri['pkgrel']), (['26.04'], ['20']))
         self.assertTrue({'niri>=26.04', 'libdisplay-info.so=3-64', 'libinput.so=10-64',
                          'libseat.so=1-64', 'mesa'} <= set(niri['depends']))
         self.assertIn('export NIRI_BUILD_COMMIT="v$pkgver+emaki.$pkgrel"',
@@ -356,17 +476,28 @@ class MetadataTests(unittest.TestCase):
         info = self.recipes['emaki-apps']
         self.assertEqual(info['arch'], ['any'])
         self.assertEqual(info['pkgver'], [(ROOT / 'iso/VERSION').read_text().strip()])
-        required = {'emaki-desktop', 'gwenview', 'ark', 'okular', 'thunderbird', 'qbittorrent',
+        # Programs a person may remove are optional: the installer installs them explicitly.
+        programs = {'gwenview', 'ark', 'okular', 'thunderbird', 'qbittorrent',
                     'haruna', 'elisa', 'kate', 'libreoffice-fresh', 'spectacle', 'obs-studio',
-                    'plasma-systemmonitor', 'partitionmanager', 'filelight', 'discover', 'flatpak',
-                    'fwupd', 'isoimagewriter', 'cups', 'print-manager', 'skanlite',
-                    'kcharselect', 'keepassxc', '7zip', 'unrar', 'ffmpeg', 'qt6-multimedia-ffmpeg',
+                    'plasma-systemmonitor', 'partitionmanager', 'filelight', 'discover',
+                    'isoimagewriter', 'skanlite', 'kcharselect', 'keepassxc'}
+        required = {'emaki-desktop', 'flatpak', 'fwupd', 'cups', 'print-manager',
+                    '7zip', 'unrar', 'ffmpeg', 'qt6-multimedia-ffmpeg',
                     'gst-plugins-base', 'gst-plugins-good', 'gst-plugins-bad', 'gst-plugins-ugly', 'gst-libav',
                     'ttf-liberation', 'ttf-carlito', 'hunspell-en_us'}
         self.assertEqual(set(info['depends']), required)
         self.assertEqual(len(info['depends']), len(required))
+        self.assertEqual(set(info['optdepends']), programs)
+        self.assertEqual(len(info['optdepends']), len(programs))
+        sys.path.insert(0, str(ROOT / 'installer'))
+        from emaki_installer.constants import RICH_APPS
+        from emaki_installer.worker import software_packages
+        self.assertEqual(RICH_APPS, info['optdepends'])
+        self.assertTrue({'emaki-apps', *programs} <= set(software_packages('rich')))
+        self.assertFalse({'emaki-apps', *programs} & set(software_packages('minimal')))
+        self.assertTrue(programs <= set((ROOT / 'iso/target-packages.txt').read_text().split()))
         evidence = json.loads((ROOT / 'packaging/emaki-apps/arch-packages.json').read_text())
-        self.assertEqual({p['pkgname'] for p in evidence['direct']}, required - {'emaki-desktop'})
+        self.assertEqual({p['pkgname'] for p in evidence['direct']}, (required | programs) - {'emaki-desktop'})
         self.assertTrue(all(p['repo'] in ('core', 'extra') for p in evidence['direct']))
 
     def test_rich_printing_preset(self):
@@ -695,6 +826,52 @@ class PortalResolutionTests(unittest.TestCase):
 @unittest.skipUnless(all(map(shutil.which, ('pacman', 'repo-add', 'bsdtar')))
                      and (os.geteuid() == 0 or shutil.which('fakeroot')),
                      'needs pacman, repo-add, bsdtar and fakeroot')
+class AuthorizationPackagingTests(unittest.TestCase):
+    """Resolve both fresh and upgraded desktops without changing the host."""
+    pacman = PortalResolutionTests.pacman
+    installed = PortalResolutionTests.installed
+
+    def test_fresh_and_upgrade_keep_one_packaged_startup(self):
+        with tempfile.TemporaryDirectory(prefix='emaki-auth-packaging-') as directory:
+            work = Path(directory)
+            names = {'emaki', 'emaki-config', 'emaki-desktop', 'polkit-kde-agent'}
+            extra = stub_repository(work / 'extra', 'extra', [
+                {'name': 'polkit-kde-agent', 'version': '6.7.5-1'}])
+            previous = stub_repository(work / 'old', 'emaki', [
+                {'name': 'emaki-config', 'version': '0.5.0-1', 'depends': ['polkit-kde-agent']},
+                {'name': 'emaki-desktop', 'version': '0.5.0-1',
+                 'depends': ['emaki-config', 'polkit-kde-agent']},
+                {'name': 'emaki', 'version': '0.5.0-1',
+                 'depends': ['emaki-config=0.5.0-1', 'emaki-desktop=0.5.0-1']}])
+            current = []
+            for name in sorted(names - {'polkit-kde-agent'}):
+                recipe = metadata(ROOT / 'packaging' / name / 'PKGBUILD')
+                current.append({
+                    'name': name, 'version': recipe['pkgver'][0] + '-' + recipe['pkgrel'][0],
+                    'depends': [d for d in recipe['depends'] if re.split(r'[<>=]', d)[0] in names],
+                    'conflicts': recipe['conflicts'], 'replaces': recipe['replaces']})
+            candidate = stub_repository(work / 'new', 'emaki', current)
+            for upgrade in (False, True):
+                with self.subTest(upgrade=upgrade):
+                    system = work / str(upgrade)
+                    if upgrade:
+                        code, output = self.pacman(system, [('extra', extra), ('emaki', previous)], '-Sy', 'emaki')
+                        self.assertEqual(code, 0, output)
+                        self.assertIn('polkit-kde-agent', self.installed(system))
+                    code, output = self.pacman(system, [('extra', extra), ('emaki', candidate)],
+                                               *(['-Syyu'] if upgrade else ['-Sy', 'emaki']))
+                    self.assertEqual(code, 0, output)
+                    installed = self.installed(system)
+                    for package in current:
+                        self.assertEqual(installed[package['name']], package['version'])
+                    # Already installed software is kept; the next Emaki login no longer
+                    # starts it. Fresh images do not pull the retired provider at all.
+                    self.assertEqual('polkit-kde-agent' in installed, upgrade)
+
+
+@unittest.skipUnless(all(map(shutil.which, ('pacman', 'repo-add', 'bsdtar')))
+                     and (os.geteuid() == 0 or shutil.which('fakeroot')),
+                     'needs pacman, repo-add, bsdtar and fakeroot')
 class QtResolutionTests(unittest.TestCase):
     """Real transactions on local empty-package repositories, never the host database.
 
@@ -883,7 +1060,9 @@ class GrubTitleTests(unittest.TestCase):
     def test_installer_patches_in_chroot_before_mkconfig(self):
         result = run(['python3', '-c', '''
 from unittest.mock import Mock, call
+from emaki_installer import worker as module
 from emaki_installer.worker import Worker
+module.boot_framebuffer = lambda: None  # the host's own boot mode must not choose a face
 worker = Worker.__new__(Worker)
 worker.plan = Mock(config={'mode': 'erase'})
 worker.target = '/target'
@@ -1054,7 +1233,9 @@ class PayloadTests(unittest.TestCase):
             stub = forbidden / name
             stub.write_text('#!/bin/sh\necho "Unexpected host command: $0" >&2\nexit 99\n')
             stub.chmod(0o755)
-        result = run(['make', 'install', 'install-niri-emaki', f'DESTDIR={cls.dest}'],
+        result = run(['make', 'install', 'install-niri-emaki', 'INSTALL_SUDO_TURN_INTEGRATION=0',
+                      f'DESTDIR={cls.dest}', f'SUDO_BUILD={cls.base / "sudo-build"}',
+                      f'CAPTURE_BUILD={cls.base / "capture-build"}'],
                      env=dict(os.environ, PATH=str(forbidden) + ':' + os.environ['PATH'],
                               SUDO_USER='must-not-be-used'))
         if result.returncode:
@@ -1062,6 +1243,58 @@ class PayloadTests(unittest.TestCase):
         license_path = cls.dest / 'usr/share/licenses/emaki-config/LICENSE'
         license_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / 'LICENSE', license_path)
+
+    def test_users_authorization_payload_is_installed(self):
+        import xml.etree.ElementTree as ET
+        helper = self.dest / 'usr/libexec/emaki/emaki-settings-users-root'
+        policy = self.dest / 'usr/share/polkit-1/actions/org.emaki.settings-users.policy'
+        self.assertTrue(helper.is_file())
+        self.assertEqual(helper.stat().st_mode & 0o7777, 0o755)
+        document = ET.fromstring(policy.read_text())
+        actions = document.findall('action')
+        self.assertEqual(len(actions), 1)
+        action = actions[0]
+        annotation = action.find("annotate[@key='org.freedesktop.policykit.exec.path']")
+        self.assertIsNotNone(annotation)
+        self.assertEqual(annotation.text, '/usr/libexec/emaki/emaki-settings-users-root')
+        for scope in ('allow_any', 'allow_inactive', 'allow_active'):
+            self.assertEqual(action.findtext('defaults/' + scope), 'auth_admin')
+        self.assertNotIn('_keep', policy.read_text())
+        # The program manager ships one deny-only rule; account authorization
+        # must still come exclusively from the auth_admin policy above.
+        rule = self.dest / 'usr/share/polkit-1/rules.d/00-emaki-programs.rules'
+        self.assertEqual(list(self.dest.glob('**/polkit-1/rules.d/*.rules')), [rule])
+        source = (ROOT / 'update-manager/00-emaki-programs.rules').read_text()
+        self.assertEqual(rule.read_text(), source.replace('@EMAKI_LIBEXECDIR@',
+                                                        '/usr/libexec/emaki'))
+        self.assertEqual(set(re.findall(r'action\.id [!=]== "([^"]+)"', source)), {
+            'org.emaki.programs.install', 'org.emaki.programs.remove',
+            'org.emaki.programs.flatpak.install', 'org.emaki.programs.flatpak.remove',
+        })
+        self.assertEqual(set(re.findall(r'\breturn\s+([^;]+);', source)),
+                         {'polkit.Result.NO'})
+
+    def test_capture_recorder_is_built_and_installed(self):
+        built = self.base / 'capture-build/emaki-capture-recorder'
+        installed = self.dest / 'usr/libexec/emaki/emaki-capture-recorder'
+        self.assertEqual(installed.read_bytes(), built.read_bytes())
+        self.assertEqual(installed.read_bytes(), (ROOT / 'capture/recorder.py').read_bytes())
+        self.assertTrue(os.access(installed, os.X_OK))
+        support = self.dest / 'usr/libexec/emaki/dmabuf.py'
+        self.assertEqual(support.read_bytes(), (ROOT / 'capture/dmabuf.py').read_bytes())
+        self.assertFalse((self.dest / 'usr/share/emaki/shell/helpers/capture_portal.py').exists())
+
+    def test_turn_setup_is_absent_from_base_package(self):
+        self.assertFalse((self.dest / 'usr/bin/emaki-sudo-turn').exists())
+        self.assertFalse((self.dest / 'usr/share/emaki/sudo').exists())
+        self.assertIn('INSTALL_SUDO_TURN_INTEGRATION=0',
+                      (ROOT / 'packaging/emaki-config/PKGBUILD').read_text())
+
+    def test_shell_generation_manager_is_delivered(self):
+        manager = self.dest / 'usr/bin/emaki-shell-generations'
+        self.assertEqual(manager.read_text().splitlines()[0], '#!/usr/bin/python3 -IB')
+        self.assertTrue((self.dest / 'usr/libexec/emaki/emaki_shell_tree.py').is_file())
+        self.assertIn('/usr/libexec/emaki', manager.read_text())
 
     def test_inventory(self):
         expected = (ROOT / 'packaging/emaki-config/expected-files.list').read_text().splitlines()
@@ -1085,16 +1318,38 @@ class PayloadTests(unittest.TestCase):
                                              self.dest / 'usr/lib/systemd/system-sleep')
                 executable |= path.relative_to(self.dest).as_posix() in (
                     'usr/libexec/emaki/update-manager-backend', 'usr/libexec/emaki/emaki-update-apply',
+                    'usr/libexec/emaki/emaki-update-restore', 'usr/libexec/emaki/emaki-privacy-recovery',
+                    'usr/libexec/emaki/emaki-programs-remove', 'usr/libexec/emaki/emaki-capture-recorder',
+                    'usr/libexec/emaki/emaki-programs-flatpak', 'usr/libexec/emaki/emaki-programs-install',
                     'usr/lib/emaki/emaki-wifi-recover', 'usr/libexec/emaki/emaki-wifi-password',
-                    'usr/libexec/emaki/emaki-charge-limit')
-                readonly = path.relative_to(self.dest).as_posix() in ('etc/sudoers.d/10-emaki-wheel', 'usr/share/emaki/defaults/wheel')
+                    'usr/libexec/emaki/emaki-charge-limit', 'usr/libexec/emaki/emaki-sudo-broker',
+                    'usr/libexec/emaki/emaki-settings-users-root')
+                readonly = path.relative_to(self.dest).as_posix() in ('etc/sudoers.d/10-emaki-wheel', 'etc/sudoers.d/20-emaki-pam', 'usr/share/emaki/defaults/wheel')
                 self.assertEqual(mode, 0o440 if readonly else 0o755 if executable else 0o644, str(path))
         binary = self.dest / 'usr/bin/emaki'
         # Keep this payload check independent of the host's installed channel helper.
         self.assertEqual(run([str(binary), 'version'], env={**os.environ, 'PATH': ''}).stdout,
-                         'emaki 0.5.0 [channel: unknown]\n')
+                         'emaki 0.6.0 [channel: unknown]\n')
         result = run(['python3', 'scripts/core-package.py', 'verify-build-paths', '--binary', str(binary)])
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_sudo_pam_archive_order(self):
+        if not shutil.which('makepkg') or not shutil.which('bsdtar'):
+            self.skipTest('makepkg and bsdtar required to verify the full payload archive')
+        makepkg = Path(shutil.which('makepkg')).read_text()
+        listing = re.search(r'^list_package_files\(\) \{.*?^\}', makepkg, re.M | re.S)
+        self.assertIsNotNone(listing, 'makepkg archive API changed; recheck extraction order')
+        archive = self.base / 'emaki-config-payload.tar'
+        built = subprocess.run(['bash', '-euo', 'pipefail', '-c', listing.group(0) +
+                                '\nlist_package_files | bsdtar --no-fflags --no-read-sparse -cnf "$1" --null --files-from -',
+                                'archive', str(archive)], cwd=self.dest,
+                               capture_output=True, text=True, timeout=60)
+        self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+        result = run(['bsdtar', '-tf', str(archive)], timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        names = result.stdout.splitlines()
+        self.assertLess(names.index('etc/pam.d/emaki-sudo'),
+                        names.index('etc/sudoers.d/20-emaki-pam'))
 
     def test_wireless_device_activation(self):
         rule = self.dest / 'usr/lib/udev/rules.d/90-emaki-wifi-recovery.rules'
@@ -1113,10 +1368,11 @@ class PayloadTests(unittest.TestCase):
     def test_defaults_and_presets(self):
         commit = run(['git', 'rev-parse', 'HEAD']).stdout.strip()
         self.assertEqual((self.dest / 'usr/lib/emaki-release').read_text(),
-                         f'VERSION=0.5.0\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
+                         f'VERSION=0.6.0\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
         expected = {'greetd.service', 'NetworkManager.service', 'bluetooth.service', 'grub-btrfsd.service',
                     'snapper-timeline.timer', 'snapper-cleanup.timer', 'fstrim.timer', 'paccache.timer',
-                    'emaki-refresh-mirrors.timer', 'emaki-wifi-recovery.service'}
+                    'emaki-refresh-mirrors.timer', 'emaki-wifi-recovery.service', 'emaki-sudo.service',
+                    'emaki-sudo-cleanup.timer', 'emaki-restore-index.timer'}
         preset = (self.dest / 'usr/lib/systemd/system-preset/50-emaki.preset').read_text().splitlines()
         self.assertEqual({line.split()[1] for line in preset if line.startswith('enable ')}, expected)
         skel = self.dest / 'etc/skel/.config'

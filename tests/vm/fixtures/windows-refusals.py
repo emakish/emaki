@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Refusal probes on the disposable synthetic Windows fixture, before resizing."""
 from contextlib import contextmanager
 import hashlib
@@ -19,21 +21,32 @@ MIB = 1024**2
 
 
 class ProbeRunner:
-    def run(self, argv):
-        result = subprocess.run(argv, capture_output=True, text=True, env=dict(os.environ, LC_ALL='C'))
+    def run(self, argv, **kwargs):
+        result = subprocess.run(argv, capture_output=True, text=True, **kwargs, env=dict(os.environ, LC_ALL='C'))
         if result.returncode:
             raise InstallError(Code.COMMAND_FAILED, 'Fixture probe command failed.',
                                output=result.stdout + result.stderr, returncode=result.returncode)
         return result.stdout
+
+    def log(self, message):
+        print(message, file=sys.stderr, flush=True)
 
 
 def run(*args):
     return subprocess.check_output(args, text=True).strip()
 
 
+def write_counters():
+    # The disposable target has no unrelated writer. Observe the entire device,
+    # including writes beyond the sampled metadata and file extents below.
+    name = Path(DISK).resolve(strict=True).name
+    fields = (Path('/sys/class/block') / name / 'stat').read_text().split()
+    return int(fields[4]), int(fields[6])
+
+
 def digest():
     result = hashlib.sha256()
-    for name, lengths in ((DISK, ((0, 4 * MIB),)), (NTFS, ((0, 32 * MIB), (-MIB, MIB)))):
+    for name, lengths in ((DISK, ((0, 4 * MIB), (-4 * MIB, 4 * MIB))), (NTFS, ((0, 32 * MIB), (-MIB, MIB)))):
         with open(name, 'rb', buffering=0) as stream:
             for offset, length in lengths:
                 stream.seek(offset, os.SEEK_END if offset < 0 else os.SEEK_SET)
@@ -42,10 +55,13 @@ def digest():
 
 
 def probe(reason=None):
+    os.sync()
+    writes = write_counters()
     before = digest()
     inv = Inventory(ProbeRunner()).probe()
     disk = next(d for d in inv['disks'] if d['id'] == DISK)
-    assert digest() == before, 'Probe modified GPT or sampled NTFS metadata/data'
+    assert digest() == before, 'Probe modified sampled primary/backup GPT or NTFS metadata/data'
+    assert write_counters() == writes, 'Read-only probe wrote to the target disk'
     offer = disk['shrink'] or {}
     if reason:
         assert reason.lower() in offer.get('reason', '').lower(), offer
@@ -65,10 +81,15 @@ def mounted(options):
             run('umount', directory)
 
 
-def main():
+def guest_guard():
     assert os.geteuid() == 0 and run('systemd-detect-virt', '--vm') in ('qemu', 'kvm')
     assert 'emaki.test=1' in Path('/proc/cmdline').read_text().split()
     assert run('lsblk', '-dn', '-o', 'SERIAL', DISK) == 'emaki-target'
+    assert Path('/run/archiso/bootmnt').exists(), 'requires the disposable live test ISO'
+
+
+def main():
+    guest_guard()
     Path('/run/emaki-installer').mkdir(mode=0o700, exist_ok=True)
     baseline = probe()
     with mounted('ro,norecover'):
@@ -107,6 +128,8 @@ def main():
     config = json.load(sys.stdin)
     for freed in (31 * 1024**3, 95 * 1024**3):
         config['shrink_bytes'] = freed
+        os.sync()
+        writes = write_counters()
         before = digest()
         try:
             make_plan(config, baseline)
@@ -115,6 +138,7 @@ def main():
         else:
             raise AssertionError('Unsafe size was accepted')
         assert digest() == before
+        assert write_counters() == writes, 'Refused plan wrote to the target disk'
         print('PASS: refused unsafe Emaki size', freed, flush=True)
 
 

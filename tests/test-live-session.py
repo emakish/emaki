@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """ISO policy with an isolated marker and command fakes; never touch the host session."""
 from runtime_fixture import runtime_path
+from shell_fixture import shell_wrapper
 import importlib.machinery
 import importlib.util
 import os
@@ -87,14 +88,21 @@ printf "%s\\n" "$2"''',
                 target.write_text('#!/bin/sh\n' + content + '\n')
                 target.chmod(0o700)
             (base / 'paths').write_text((ROOT / 'scripts/paths').read_text())
-            for name in ('emaki-power', 'emaki-idle', 'emaki-shell'):
+            wrapper = shell_wrapper(base / 'wrapper', str(base) + ':/usr/bin')
+            wrapper.write_text(wrapper.read_text().replace(MARKER, str(marker)))
+            for name in ('emaki-shell-health', 'emaki-session-files'):
+                (wrapper.parent / name).unlink()
+                (wrapper.parent / name).symlink_to(base / name)
+            for name in ('emaki-power', 'emaki-idle'):
                 (base / ('test-' + name)).write_text((ROOT / 'scripts' / name).read_text().replace(MARKER, str(marker)))
             for live in (False, True):
                 marker.touch() if live else marker.unlink(missing_ok=True)
                 log.unlink(missing_ok=True)
                 (base / 'generation').unlink(missing_ok=True)
                 for name in ('emaki-power', 'emaki-idle', 'emaki-shell'):
-                    subprocess.run(['sh', str(base / ('test-' + name))], env=env, check=True, capture_output=True)
+                    command = ([sys.executable, '-I', str(wrapper)] if name == 'emaki-shell'
+                               else ['sh', str(base / ('test-' + name))])
+                    subprocess.run(command, env=env, check=True, capture_output=True)
                 self.assertEqual('Lock' in (base / 'menu').read_text().splitlines(), not live)
                 self.assertEqual('emaki-lock' in (base / 'idle').read_text(), not live)
                 self.assertEqual(log.read_text().splitlines(), ['suspend'] if live else ['lock', 'suspend'])
@@ -103,7 +111,7 @@ printf "%s\\n" "$2"''',
             # A full or unwritable runtime directory must not keep the panel from starting.
             (base / 'emaki-shell-health').write_text('#!/bin/sh\nexit 1\n')
             (base / 'flag').unlink()
-            subprocess.run(['sh', str(base / 'test-emaki-shell')], env=env, check=True, capture_output=True)
+            subprocess.run([sys.executable, '-I', str(wrapper)], env=env, check=True, capture_output=True)
             self.assertTrue((base / 'flag').exists())
 
     def test_live_welcome_blocks_startup_and_explicit_open(self):

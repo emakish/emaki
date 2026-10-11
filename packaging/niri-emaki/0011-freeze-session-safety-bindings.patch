@@ -1,0 +1,2232 @@
+Subject: [PATCH] Freeze proof and revocation bindings for the running session
+
+Copyright (C) 2026 Artur Yakymenko
+SPDX-License-Identifier: GPL-3.0-or-later
+
+Apply after patches 0001 through 0010 on niri v26.04. Capture complete safety
+bindings and their physical startup keymap. Classify and dispatch backend keys
+through a private state that live layout, option and keymap-file reloads cannot
+replace. Keep ordinary layout and binding reloads live. Revocation uses the
+captured environment and a build-time executable identity. Missing startup
+bindings can recover only from the build-time packaged config path.
+
+diff --git a/Cargo.lock b/Cargo.lock
+index b03ba15c..0b854fba 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2289,6 +2289,7 @@ dependencies = [
+  "wayland-scanner",
+  "wayland-server",
+  "xcursor",
++ "xkbcommon",
+  "xshell",
+  "zbus",
+ ]
+diff --git a/Cargo.toml b/Cargo.toml
+index fa7164e9..5f9f1dab 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -97,6 +97,7 @@ wayland-backend = "0.3.15"
+ wayland-scanner = "0.31.10"
+ wayland-server = "0.31.13"
+ xcursor = "0.3.10"
++xkbcommon = "0.9.0"
+ zbus = { version = "5.13.2", optional = true }
+ 
+ [dependencies.smithay]
+diff --git a/src/input/mod.rs b/src/input/mod.rs
+index 214f5e54..abd599d0 100644
+--- a/src/input/mod.rs
++++ b/src/input/mod.rs
+@@ -520,35 +520,15 @@ impl State {
+ 
+         let is_inhibiting_shortcuts = self.is_inhibiting_shortcuts();
+ 
+-        // Classify candidate proof keys before accessibility observers or grabs can see
+-        // them. Exact modifier matching happens after XKB updates inside input().
+-        // Checking all layouts also covers the Latin fallback used for ordinary binds.
++        // Every backend event updates the private startup state, including releases
++        // and events consumed by accessibility. Live keymaps never enter this route.
++        let trusted_keyboard = self.niri.trusted_keyboard.as_mut().unwrap();
++        trusted_keyboard.update(event.key_code(), event.state());
++        let safety_bind =
++            trusted_keyboard.matching_bind(event.key_code(), self.niri.trusted_binds.keyboard_binds());
+         #[cfg(feature = "dbus")]
+-        let proof_key = {
+-            let keyboard = self.niri.seat.get_keyboard().unwrap();
+-            let triggers: Vec<_> = self
+-                .niri
+-                .config
+-                .borrow()
+-                .binds
+-                .0
+-                .iter()
+-                .filter(|bind| matches!(bind.action, Action::ShowTrustedPromptMark))
+-                .map(|bind| bind.key)
+-                .collect();
+-            keyboard.with_xkb_state(self, |context| {
+-                let xkb = context.xkb().lock().unwrap();
+-                xkb.layouts().any(|layout| {
+-                    xkb.raw_syms_for_key_in_layout(event.key_code(), layout)
+-                        .iter()
+-                        .any(|sym| {
+-                            triggers
+-                                .iter()
+-                                .any(|key| proof_key_or_modifier(*key, mod_key, *sym))
+-                        })
+-                })
+-            })
+-        };
++        let safety_key =
++            trusted_keyboard.is_safety_key(event.key_code(), self.niri.trusted_binds.keyboard_binds());
+ 
+         // Accessibility modifier grabs should override XKB state changes (e.g. Caps Lock), so we
+         // need to process them before keyboard.input() below.
+@@ -558,7 +538,7 @@ impl State {
+         #[cfg(feature = "dbus")]
+         let block = {
+             let block = if self.niri.trusted_prompt_input_isolated()
+-                || proof_key
++                || safety_key
+                 || self.niri.suppressed_keys.contains(&event.key_code())
+             {
+                 KbMonBlock::Pass
+@@ -596,16 +576,26 @@ impl State {
+ 
+                 // This route is reached only by backend keyboard events. Virtual
+                 // keyboards never enter it, and the action has no IPC equivalent.
+-                let proof_bind = {
+-                    let config = this.niri.config.borrow();
+-                    raw.is_some_and(|raw| {
+-                        find_trusted_prompt_bind(&config.binds, mod_key, raw, *mods)
+-                    })
+-                };
+-                if pressed && proof_bind {
++                if let Some(bind) = safety_bind.filter(|_| pressed) {
+                     this.niri.suppressed_keys.insert(key_code);
+                     this.stop_key_repeat();
+-                    this.niri.show_trusted_prompt_mark();
++                    if matches!(bind.action, Action::ShowTrustedPromptMark) {
++                        #[cfg(test)]
++                        if let Some(actions) = &mut this.niri.trusted_bind_dispatches {
++                            actions.push(bind.action.clone());
++                        }
++                        this.niri.show_trusted_prompt_mark();
++                    } else if !this.niri.is_locked() || bind.allow_when_locked {
++                        if let Some(command) = this.niri.trusted_binds.revoke_command(&bind.action)
++                        {
++                            #[cfg(test)]
++                            if let Some(actions) = &mut this.niri.trusted_bind_dispatches {
++                                actions.push(bind.action.clone());
++                                return FilterResult::Intercept(None);
++                            }
++                            crate::utils::spawning::spawn_prepared(command);
++                        }
++                    }
+                     return FilterResult::Intercept(None);
+                 }
+                 if this.niri.trusted_prompt_input_isolated() {
+@@ -873,6 +863,11 @@ impl State {
+             return;
+         }
+ 
++        #[cfg(test)]
++        if let Some(actions) = &mut self.niri.trusted_bind_dispatches {
++            actions.push(action.clone());
++        }
++
+         if let Some(touch) = self.niri.seat.get_touch() {
+             touch.cancel(self);
+         }
+@@ -4809,7 +4804,7 @@ fn allowed_during_trusted_prompt(action: &Action) -> bool {
+ }
+ 
+ // A modifier grab must not prevent the proof chord from reaching XKB.
+-fn proof_key_or_modifier(key: Key, mod_key: ModKey, sym: Keysym) -> bool {
++pub(crate) fn proof_key_or_modifier(key: Key, mod_key: ModKey, sym: Keysym) -> bool {
+     if key.trigger == Trigger::Keysym(sym) {
+         return true;
+     }
+@@ -4829,6 +4824,7 @@ fn proof_key_or_modifier(key: Key, mod_key: ModKey, sym: Keysym) -> bool {
+     modifiers.intersects(modifier)
+ }
+ 
++#[cfg(test)]
+ fn find_trusted_prompt_bind(
+     bindings: &Binds,
+     mod_key: ModKey,
+@@ -4847,7 +4843,7 @@ fn find_trusted_prompt_bind(
+     .is_some()
+ }
+ 
+-fn find_configured_bind<'a>(
++pub(crate) fn find_configured_bind<'a>(
+     bindings: impl IntoIterator<Item = &'a Bind>,
+     mod_key: ModKey,
+     trigger: Trigger,
+@@ -5474,7 +5470,15 @@ fn make_binds_iter<'a>(
+     let mru_open_binds = mru_open_binds.into_iter().flatten();
+ 
+     // General binds take precedence over the MRU binds.
+-    general_binds.chain(mru_binds).chain(mru_open_binds)
++    general_binds
++        .chain(mru_binds)
++        .chain(mru_open_binds)
++        .filter(|bind| {
++            // Safety actions are dispatched only through the frozen physical route.
++            // The live keymap must not provide a second, relocated revoke route.
++            !matches!(bind.action, Action::ShowTrustedPromptMark)
++                && !crate::trusted_binds::is_revoke_action(&bind.action)
++        })
+ }
+ 
+ #[cfg(test)]
+@@ -5484,6 +5488,43 @@ mod tests {
+     use super::*;
+     use crate::animation::Clock;
+ 
++    #[test]
++    fn trusted_binds_revoke_remains_available_during_prompt_isolation() {
++        let config = niri_config::Config::parse_mem(&format!(
++            "binds {{ Mod+Ctrl+Escape {{ spawn {:?} \"revoke-all\" \"--json\"; }}; }}",
++            crate::trusted_binds::REVOKE_PROGRAM,
++        ))
++        .unwrap();
++        let captured = crate::trusted_binds::TrustedBinds::capture_fixture(&config.binds, ModKey::Super);
++        let bind = find_configured_bind(
++            captured.iter(),
++            ModKey::Alt,
++            Trigger::Keysym(Keysym::Escape),
++            ModifiersState {
++                ctrl: true,
++                logo: true,
++                ..Default::default()
++            },
++        )
++        .unwrap();
++        assert!(captured.revoke_command(&bind.action).is_some());
++        for command in [
++            vec!["emaki-sudo", "revoke-all", "--json"],
++            vec![
++                "/opt/emaki/bin/emaki-shell",
++                "call",
++                "sudoKeys",
++                "revokeAll",
++            ],
++            vec!["/opt/emaki/bin/emaki-sudo", "status", "--json"],
++            vec!["/opt/emaki/bin/emaki-sudo", "revoke-all", "--json", "extra"],
++        ] {
++            let action = Action::Spawn(command.into_iter().map(String::from).collect());
++            assert!(captured.revoke_command(&action).is_none());
++            assert!(!allowed_during_trusted_prompt(&action));
++        }
++    }
++
+     #[test]
+     fn trusted_prompt_preserves_recovery_keys_without_forwarding_them() {
+         for (keysym, expected) in [
+diff --git a/src/lib.rs b/src/lib.rs
+index 560366ef..53723b26 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -21,7 +21,9 @@ pub mod render_helpers;
+ pub mod rubber_band;
+ #[cfg(feature = "xdp-gnome-screencast")]
+ pub mod screencasting;
++pub mod trusted_binds;
+ pub mod trusted_client;
++pub mod trusted_keyboard;
+ pub mod trusted_prompt;
+ pub mod ui;
+ pub mod utils;
+diff --git a/src/niri.rs b/src/niri.rs
+index 41ebc581..e283ec4b 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -439,6 +439,10 @@ pub struct Niri {
+     pub ipc_outputs_changed: bool,
+ 
+     pub satellite: Option<Satellite>,
++    pub trusted_binds: crate::trusted_binds::TrustedBinds,
++    pub trusted_keyboard: Option<crate::trusted_keyboard::TrustedKeyboard>,
++    #[cfg(test)]
++    pub trusted_bind_dispatches: Option<Vec<niri_config::Action>>,
+     pub trusted_shell_supervisor: Option<crate::trusted_client::SupervisorHandle>,
+ 
+     #[cfg(feature = "xdp-gnome-screencast")]
+@@ -772,6 +776,14 @@ impl State {
+ 
+         // Load the xkb_file config option if set by the user.
+         state.load_xkb_file();
++        // Freeze the effective startup map, including custom files and fallback.
++        let keyboard = state.niri.seat.get_keyboard().unwrap();
++        let keymap = keyboard.with_xkb_state(&mut state, |context| {
++            let xkb = context.xkb().lock().unwrap();
++            // SAFETY: only serialize while the guard is held; no keymap reference escapes.
++            unsafe { xkb.keymap() }.get_as_string(xkbcommon::xkb::KEYMAP_FORMAT_TEXT_V1)
++        });
++        state.niri.trusted_keyboard = Some(crate::trusted_keyboard::TrustedKeyboard::new(keymap));
+         // Initialize some IPC server state.
+         state.ipc_keyboard_layouts_changed();
+         // Focus the default monitor if set by the user.
+@@ -1462,6 +1474,9 @@ impl State {
+     pub fn reload_config(&mut self, config: Result<Config, ()>) {
+         let _span = tracy_client::span!("State::reload_config");
+
++        // Package recovery is independent of the personal configuration parse.
++        self.niri.trusted_binds.recover_missing();
++
+         let mut config = match config {
+             Ok(config) => config,
+             Err(()) => {
+@@ -1475,6 +1490,9 @@ impl State {
+             }
+         };
+ 
++        let mod_key = self.backend.mod_key(&config);
++        self.niri.trusted_binds.restore(&mut config.binds, mod_key);
++
+         self.niri.config_error_notification.hide();
+         self.niri.emaki_wallpaper.borrow_mut().retry_failed();
+ 
+@@ -2284,6 +2302,13 @@ impl Niri {
+         event_loop.insert_source(executor, |_, _, _| ()).unwrap();
+ 
+         let display_handle = display.handle();
++        let trusted_binds = {
++            let mut config = config.borrow_mut();
++            let mod_key = backend.mod_key(&config);
++            let captured = crate::trusted_binds::TrustedBinds::capture(&config.binds, mod_key);
++            captured.restore(&mut config.binds, mod_key);
++            captured
++        };
+         let config_ = config.borrow();
+         let config_file_output_config = config_.outputs.clone();
+ 
+@@ -2694,6 +2719,10 @@ impl Niri {
+             ipc_outputs_changed: false,
+ 
+             satellite: None,
++            trusted_binds,
++            trusted_keyboard: None,
++            #[cfg(test)]
++            trusted_bind_dispatches: None,
+             trusted_shell_supervisor: None,
+ 
+             #[cfg(feature = "xdp-gnome-screencast")]
+diff --git a/src/tests/mod.rs b/src/tests/mod.rs
+index 7353483d..bfe29708 100644
+--- a/src/tests/mod.rs
++++ b/src/tests/mod.rs
+@@ -1,4 +1,4 @@
+-use fixture::Fixture;
++pub(crate) use fixture::Fixture;
+ 
+ mod client;
+ mod fixture;
+@@ -16,3 +16,4 @@ mod startup_cover;
+ mod transactions;
+ mod window_opening;
+ mod trusted_prompt;
++mod trusted_binds;
+diff --git a/src/tests/trusted_binds.rs b/src/tests/trusted_binds.rs
+new file mode 100644
+index 00000000..a004b2fd
+--- /dev/null
++++ b/src/tests/trusted_binds.rs
+@@ -0,0 +1,1006 @@
++// Copyright (C) 2026 Artur Yakymenko
++// SPDX-License-Identifier: GPL-3.0-or-later
++
++//! Startup security chords survive configuration reloads and include changes.
++
++use std::fs;
++
++use niri_config::{Action, Bind, Config, Key, Modifiers};
++use xshell::Shell;
++
++use super::Fixture;
++use crate::trusted_binds::REVOKE_PROGRAM;
++
++const STARTUP: &str = concat!(
++    r#"
++    hotkey-overlay { skip-at-startup; }
++    binds {
++        Ctrl+Alt+Delete repeat=false { show-trusted-prompt-mark; }
++        Mod+Ctrl+Escape repeat=false allow-inhibiting=false {
++            spawn ""#,
++    env!("NIRI_EMAKI_SUDO_PROGRAM"),
++    r#"" "revoke-all" "--json";
++        }
++        Mod+T { spawn "old-terminal"; }
++    }
++"#
++);
++
++fn startup() -> Config {
++    Config::parse_mem(STARTUP).unwrap()
++}
++
++fn fixture(config: Config) -> Fixture {
++    let binds = niri_config::Binds(config.binds.0.clone());
++    let mut f = Fixture::with_config(config);
++    f.niri().trusted_binds =
++        crate::trusted_binds::TrustedBinds::capture_fixture(&binds, niri_config::ModKey::Super);
++    let niri = f.niri();
++    niri.trusted_binds.restore(
++        &mut niri.config.borrow_mut().binds,
++        niri_config::ModKey::Super,
++    );
++    f
++}
++
++fn expected() -> Vec<Bind> {
++    let mut binds = startup().binds.0;
++    binds.truncate(2);
++    for bind in &mut binds {
++        if bind.key.modifiers.contains(Modifiers::COMPOSITOR) {
++            bind.key.modifiers.remove(Modifiers::COMPOSITOR);
++            bind.key.modifiers.insert(Modifiers::SUPER);
++        }
++    }
++    binds
++}
++
++fn assert_reserved(f: &mut Fixture) {
++    let config = f.niri().config.borrow();
++    for expected in expected() {
++        let matches: Vec<_> = config
++            .binds
++            .0
++            .iter()
++            .filter(|b| b.key == expected.key)
++            .collect();
++        assert_eq!(matches, vec![&expected]);
++    }
++    let revoke = config
++        .binds
++        .0
++        .iter()
++        .find(|b| b.key == "Super+Ctrl+Escape".parse::<Key>().unwrap())
++        .unwrap();
++    assert_eq!(
++        revoke.action,
++        Action::Spawn(vec![
++            REVOKE_PROGRAM.into(),
++            "revoke-all".into(),
++            "--json".into(),
++        ])
++    );
++}
++
++#[test]
++fn trusted_binds_later_optional_include_cannot_rebind_either_chord() {
++    for chord in ["Ctrl+Alt+Delete", "Mod+Ctrl+Escape", "Super+Ctrl+Escape"] {
++        let sh = Shell::new().unwrap();
++        let dir = sh.create_temp_dir().unwrap();
++        let main = dir.path().join("config.kdl");
++        let optional = dir.path().join("user.kdl");
++        fs::write(
++            &main,
++            format!("{STARTUP}\ninclude \"user.kdl\" optional=true\n"),
++        )
++        .unwrap();
++        let mut f = fixture(Config::load(&main).config.unwrap());
++        fs::write(
++            &optional,
++            format!("binds {{ {chord} {{ spawn \"hostile\"; }}; }}"),
++        )
++        .unwrap();
++        f.niri_state()
++            .reload_config(Ok(Config::load(&main).config.unwrap()));
++        assert_reserved(&mut f);
++        assert!(!f
++            .niri()
++            .config
++            .borrow()
++            .binds
++            .0
++            .iter()
++            .any(|b| b.action == Action::Spawn(vec!["hostile".into()])));
++    }
++}
++
++#[test]
++fn trusted_binds_optional_file_removal_retains_startup_actions() {
++    let sh = Shell::new().unwrap();
++    let dir = sh.create_temp_dir().unwrap();
++    let main = dir.path().join("config.kdl");
++    let optional = dir.path().join("security.kdl");
++    fs::write(&main, "include \"security.kdl\" optional=true\n").unwrap();
++    fs::write(&optional, STARTUP).unwrap();
++    let mut f = fixture(Config::load(&main).config.unwrap());
++    fs::remove_file(optional).unwrap();
++    f.niri_state()
++        .reload_config(Ok(Config::load(&main).config.unwrap()));
++    assert_reserved(&mut f);
++}
++
++#[test]
++fn trusted_binds_removed_include_retains_startup_actions() {
++    let sh = Shell::new().unwrap();
++    let dir = sh.create_temp_dir().unwrap();
++    let main = dir.path().join("config.kdl");
++    fs::write(dir.path().join("security.kdl"), STARTUP).unwrap();
++    fs::write(&main, "include \"security.kdl\"\n").unwrap();
++    let mut f = fixture(Config::load(&main).config.unwrap());
++    fs::write(&main, "hotkey-overlay { skip-at-startup; }\n").unwrap();
++    f.niri_state()
++        .reload_config(Ok(Config::load(&main).config.unwrap()));
++    assert_reserved(&mut f);
++}
++
++#[test]
++fn trusted_binds_removed_bindings_retain_actions_and_reload_unrelated_bind() {
++    let mut f = fixture(startup());
++    f.niri_state().reload_config(Ok(Config::parse_mem(
++        r#"binds { Mod+T { spawn "new-terminal"; }; }"#,
++    )
++    .unwrap()));
++    assert_reserved(&mut f);
++    let config = f.niri().config.borrow();
++    assert!(config
++        .binds
++        .0
++        .iter()
++        .any(|b| b.action == Action::Spawn(vec!["new-terminal".into()])));
++    assert!(!config
++        .binds
++        .0
++        .iter()
++        .any(|b| b.action == Action::Spawn(vec!["old-terminal".into()])));
++}
++
++#[test]
++fn trusted_binds_modifier_reload_does_not_move_physical_chord() {
++    let mut f = fixture(startup());
++    let config = Config::parse_mem(
++        r#"
++        input { mod-key "Alt"; }
++        binds {
++            Super+Ctrl+Escape { spawn "hostile"; }
++            Mod+T { spawn "new-terminal"; }
++        }
++    "#,
++    )
++    .unwrap();
++    f.niri_state().reload_config(Ok(config));
++    assert_reserved(&mut f);
++    let config = f.niri().config.borrow();
++    assert_eq!(config.input.mod_key, Some(niri_config::ModKey::Alt));
++    assert!(!config.binds.0.iter().any(|b| {
++        matches!(&b.action, Action::Spawn(argv) if argv.first().map(String::as_str) == Some(REVOKE_PROGRAM))
++            && b.key != "Super+Ctrl+Escape".parse::<Key>().unwrap()
++    }));
++}
++
++#[test]
++fn trusted_binds_reload_restores_full_binding_properties() {
++    let mut f = fixture(startup());
++    let config = Config::parse_mem(
++        &r#"
++        binds {
++            Ctrl+Alt+Delete repeat=true cooldown-ms=60000 {
++                show-trusted-prompt-mark;
++            }
++            Mod+Ctrl+Escape repeat=true allow-inhibiting=true allow-when-locked=true cooldown-ms=60000 hotkey-overlay-title="Changed" {
++                spawn "@REVOKE_PROGRAM@" "revoke-all" "--json";
++            }
++        }
++    "#.replace("@REVOKE_PROGRAM@", REVOKE_PROGRAM),
++    )
++    .unwrap();
++    f.niri_state().reload_config(Ok(config));
++    assert_reserved(&mut f);
++}
++
++#[test]
++fn trusted_binds_sequential_reloads_cannot_relocate_or_replace_startup_actions() {
++    let mut f = fixture(startup());
++    for replacement in [
++        r#"
++        binds {
++            Ctrl+Alt+F10 { show-trusted-prompt-mark; }
++            Mod+Ctrl+F11 { spawn "@REVOKE_PROGRAM@" "revoke-all" "--json"; }
++            Mod+T { spawn "new-terminal"; }
++        }
++        "#,
++        r#"
++        binds {
++            Ctrl+Alt+Delete { spawn "hostile"; }
++            Mod+Ctrl+Escape { spawn "/different/bin/emaki-sudo" "revoke-all" "--json"; }
++            Mod+T { spawn "new-terminal"; }
++        }
++        "#,
++        r#"
++        binds {
++            Ctrl+Alt+F12 { show-trusted-prompt-mark; }
++            Super+Ctrl+F9 { spawn "/different/bin/emaki-sudo" "revoke-all" "--json"; }
++            Mod+T { spawn "new-terminal"; }
++        }
++        "#,
++    ] {
++        f.niri_state().reload_config(Ok(Config::parse_mem(
++            &replacement.replace("@REVOKE_PROGRAM@", REVOKE_PROGRAM),
++        )
++        .unwrap()));
++        assert_reserved(&mut f);
++        let config = f.niri().config.borrow();
++        assert_eq!(config.binds.0.len(), 3);
++        assert!(config.binds.0.iter().any(|bind| {
++            bind.key == "Mod+T".parse::<Key>().unwrap()
++                && bind.action == Action::Spawn(vec!["new-terminal".into()])
++        }));
++    }
++}
++
++#[test]
++fn trusted_binds_warn_on_change_removal_and_physical_alias_shadow() {
++    // A separate process keeps parallel tests from changing trace callsite interest.
++    const CHILD: &str = "NIRI_TEST_SAFETY_BIND_LOG";
++    if std::env::var_os(CHILD).is_none() {
++        let result = std::process::Command::new(std::env::current_exe().unwrap())
++            .args([
++                "--exact",
++                "tests::trusted_binds::trusted_binds_warn_on_change_removal_and_physical_alias_shadow",
++                "--nocapture",
++            ])
++            .env(CHILD, "1")
++            .output()
++            .unwrap();
++        assert!(
++            result.status.success(),
++            "{}\n{}",
++            String::from_utf8_lossy(&result.stdout),
++            String::from_utf8_lossy(&result.stderr),
++        );
++        return;
++    }
++
++    use std::io::Write;
++    use std::sync::{Arc, Mutex};
++
++    use crate::trusted_binds::TrustedBinds;
++    use niri_config::ModKey;
++
++    #[derive(Clone)]
++    struct Log(Arc<Mutex<Vec<u8>>>);
++    impl Write for Log {
++        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
++            self.0.lock().unwrap().extend_from_slice(bytes);
++            Ok(bytes.len())
++        }
++
++        fn flush(&mut self) -> std::io::Result<()> {
++            Ok(())
++        }
++    }
++
++    let log = Log(Arc::default());
++    let writer = log.clone();
++    let subscriber = tracing_subscriber::fmt()
++        .with_max_level(tracing::Level::WARN)
++        .with_ansi(false)
++        .without_time()
++        .with_writer(move || writer.clone())
++        .finish();
++    let _guard = tracing::subscriber::set_default(subscriber);
++    let original = startup();
++    let captured = TrustedBinds::capture_fixture(&original.binds, ModKey::Super);
++    let key = "Super+Ctrl+Escape".parse::<Key>().unwrap();
++    for mutation in ["changed", "removed", "shadowed"] {
++        log.0.lock().unwrap().clear();
++        let mut config = startup();
++        match mutation {
++            "changed" => config.binds.0[1].action = Action::Spawn(vec!["hostile".into()]),
++            "removed" => {
++                config.binds.0.remove(1);
++            }
++            "shadowed" => {
++                let mut shadow = config.binds.0[1].clone();
++                shadow.key = key;
++                shadow.action = Action::Spawn(vec!["hostile".into()]);
++                config.binds.0.push(shadow);
++            }
++            _ => unreachable!(),
++        }
++        captured.restore(&mut config.binds, ModKey::Super);
++        let text = String::from_utf8(log.0.lock().unwrap().clone()).unwrap();
++        assert_eq!(
++            text.matches("ignoring changed, removed or shadowed session safety binding")
++                .count(),
++            1,
++            "{mutation}: {text}",
++        );
++        assert!(text.contains("WARN"), "{mutation}: {text}");
++        assert!(text.contains(&format!("key={key:?}")), "{mutation}: {text}");
++    }
++}
++
++#[test]
++fn trusted_binds_revoke_environment_stays_frozen_after_reload() {
++    // Keep global child-environment changes confined to a single-test process.
++    const CHILD: &str = "NIRI_TEST_REVOKE_ENVIRONMENT";
++    if std::env::var_os(CHILD).is_none() {
++        let result = std::process::Command::new(std::env::current_exe().unwrap())
++            .args([
++                "--exact",
++                "tests::trusted_binds::trusted_binds_revoke_environment_stays_frozen_after_reload",
++                "--nocapture",
++            ])
++            .env(CHILD, "1")
++            .env("B2B_REVOKE_TEST", "startup")
++            .env_remove("LD_PRELOAD")
++            .output()
++            .unwrap();
++        assert!(
++            result.status.success(),
++            "{}\n{}",
++            String::from_utf8_lossy(&result.stdout),
++            String::from_utf8_lossy(&result.stderr),
++        );
++        return;
++    }
++
++    use std::ffi::{OsStr, OsString};
++    use std::process::Command;
++
++    fn selected(command: &Command, name: &str) -> Option<OsString> {
++        command
++            .get_envs()
++            .find(|(key, _)| *key == OsStr::new(name))
++            .and_then(|(_, value)| value.map(OsStr::to_os_string))
++    }
++
++    let mut f = fixture(startup());
++    let action = Action::Spawn(vec![
++        REVOKE_PROGRAM.into(),
++        "revoke-all".into(),
++        "--json".into(),
++    ]);
++    let before = f.niri().trusted_binds.revoke_command(&action).unwrap();
++    assert_eq!(selected(&before, "B2B_REVOKE_TEST"), Some("startup".into()));
++    assert_eq!(selected(&before, "LD_PRELOAD"), None);
++
++    let reload = Config::parse_mem(&format!(
++        "{STARTUP}\nenvironment {{ B2B_REVOKE_TEST \"changed\"; LD_PRELOAD \"/tmp/untrusted.so\"; }}"
++    ))
++    .unwrap();
++    f.niri_state().reload_config(Ok(reload));
++    let after = f.niri().trusted_binds.revoke_command(&action).unwrap();
++    for name in ["B2B_REVOKE_TEST", "LD_PRELOAD"] {
++        assert_eq!(selected(&after, name), selected(&before, name), "{name}");
++    }
++
++    let mut ordinary = Command::new("unused-test-command");
++    crate::utils::spawning::configure_child_environment(&mut ordinary);
++    assert_eq!(
++        selected(&ordinary, "B2B_REVOKE_TEST"),
++        Some("changed".into())
++    );
++    assert_eq!(
++        selected(&ordinary, "LD_PRELOAD"),
++        Some("/tmp/untrusted.so".into())
++    );
++}
++
++// Send physical evdev keycodes through the same dispatcher as hardware keyboards.
++struct KeyboardInput;
++struct PhysicalKey {
++    evdev: u32,
++    state: smithay::backend::input::KeyState,
++    count: u32,
++}
++
++impl smithay::backend::input::InputBackend for KeyboardInput {
++    type Device = smithay::backend::winit::WinitVirtualDevice;
++    type KeyboardKeyEvent = PhysicalKey;
++    type PointerAxisEvent = smithay::backend::input::UnusedEvent;
++    type PointerButtonEvent = smithay::backend::input::UnusedEvent;
++    type PointerMotionEvent = smithay::backend::input::UnusedEvent;
++    type PointerMotionAbsoluteEvent = smithay::backend::input::UnusedEvent;
++    type GestureSwipeBeginEvent = smithay::backend::input::UnusedEvent;
++    type GestureSwipeUpdateEvent = smithay::backend::input::UnusedEvent;
++    type GestureSwipeEndEvent = smithay::backend::input::UnusedEvent;
++    type GesturePinchBeginEvent = smithay::backend::input::UnusedEvent;
++    type GesturePinchUpdateEvent = smithay::backend::input::UnusedEvent;
++    type GesturePinchEndEvent = smithay::backend::input::UnusedEvent;
++    type GestureHoldBeginEvent = smithay::backend::input::UnusedEvent;
++    type GestureHoldEndEvent = smithay::backend::input::UnusedEvent;
++    type TouchUpEvent = smithay::backend::input::UnusedEvent;
++    type TouchMotionEvent = smithay::backend::input::UnusedEvent;
++    type TouchCancelEvent = smithay::backend::input::UnusedEvent;
++    type TouchFrameEvent = smithay::backend::input::UnusedEvent;
++    type TabletToolAxisEvent = smithay::backend::input::UnusedEvent;
++    type TabletToolProximityEvent = smithay::backend::input::UnusedEvent;
++    type TabletToolTipEvent = smithay::backend::input::UnusedEvent;
++    type TabletToolButtonEvent = smithay::backend::input::UnusedEvent;
++    type SwitchToggleEvent = smithay::backend::input::UnusedEvent;
++    type TouchDownEvent = smithay::backend::input::UnusedEvent;
++    type SpecialEvent = ();
++}
++
++impl smithay::backend::input::Event<KeyboardInput> for PhysicalKey {
++    fn time(&self) -> u64 {
++        1_000
++    }
++    fn device(&self) -> smithay::backend::winit::WinitVirtualDevice {
++        smithay::backend::winit::WinitVirtualDevice
++    }
++}
++
++impl smithay::backend::input::KeyboardKeyEvent<KeyboardInput> for PhysicalKey {
++    fn key_code(&self) -> smithay::input::keyboard::Keycode {
++        (self.evdev + 8).into()
++    }
++    fn state(&self) -> smithay::backend::input::KeyState {
++        self.state
++    }
++    fn count(&self) -> u32 {
++        self.count
++    }
++}
++
++fn physical_key(f: &mut Fixture, evdev: u32, pressed: bool, count: u32) {
++    use smithay::backend::input::{InputEvent, KeyState};
++    f.niri_state()
++        .process_input_event::<KeyboardInput>(InputEvent::Keyboard {
++            event: PhysicalKey {
++                evdev,
++                state: if pressed {
++                    KeyState::Pressed
++                } else {
++                    KeyState::Released
++                },
++                count,
++            },
++        });
++}
++
++fn press_chord(f: &mut Fixture, keys: &[u32]) {
++    for (index, &key) in keys.iter().enumerate() {
++        physical_key(f, key, true, index as u32 + 1);
++    }
++}
++
++fn release_chord(f: &mut Fixture, keys: &[u32]) {
++    for (index, &key) in keys.iter().enumerate().rev() {
++        physical_key(f, key, false, index as u32);
++    }
++}
++
++fn live_symbols(f: &mut Fixture, evdev: u32) -> Vec<smithay::input::keyboard::Keysym> {
++    let state = f.niri_state();
++    let keyboard = state.niri.seat.get_keyboard().unwrap();
++    keyboard.with_xkb_state(state, |context| {
++        let xkb = context.xkb().lock().unwrap();
++        xkb.layouts()
++            .flat_map(|layout| {
++                xkb.raw_syms_for_key_in_layout((evdev + 8).into(), layout)
++                    .to_vec()
++            })
++            .collect()
++    })
++}
++
++fn assert_dispatch(f: &mut Fixture, keys: &[u32], action: Action) {
++    f.niri().trusted_bind_dispatches.as_mut().unwrap().clear();
++    press_chord(f, keys);
++    assert_eq!(
++        f.niri().trusted_bind_dispatches.as_ref().unwrap(),
++        &[action]
++    );
++    release_chord(f, keys);
++}
++
++#[test]
++fn trusted_binds_physical_chords_survive_live_xkb_changes() {
++    use smithay::input::keyboard::Keysym;
++
++    let sh = Shell::new().unwrap();
++    let dir = sh.create_temp_dir().unwrap();
++    let keymap = dir.path().join("remapped.xkb");
++    fs::write(
++        &keymap,
++        r#"
++        xkb_keymap {
++            xkb_keycodes { include "evdev+aliases(qwerty)" };
++            xkb_types { include "complete" };
++            xkb_compatibility { include "complete" };
++            xkb_symbols {
++                include "pc+us+inet(evdev)"
++                replace key <DELE> { [ F11 ] };
++                replace key <ESC> { [ F12 ] };
++            };
++        };
++    "#,
++    )
++    .unwrap();
++    let cases = [
++        (
++            "options \"ctrl:swap_lwin_lctl\"".to_owned(),
++            "Super+Alt+Delete",
++            "Ctrl+Super+Escape",
++            29,
++            Keysym::Super_L,
++        ),
++        (
++            "options \"altwin:swap_alt_win\"".to_owned(),
++            "Ctrl+Super+Delete",
++            "Ctrl+Alt+Escape",
++            56,
++            Keysym::Super_L,
++        ),
++        (
++            format!("file {:?}", keymap),
++            "Ctrl+Alt+F11",
++            "Super+Ctrl+F12",
++            111,
++            Keysym::F11,
++        ),
++    ];
++    for (xkb, proof_alias, revoke_alias, changed_code, changed_sym) in cases {
++        let mut f = fixture(startup());
++        f.niri().trusted_bind_dispatches = Some(Vec::new());
++        assert!(!live_symbols(&mut f, changed_code).contains(&changed_sym));
++        let reload = Config::parse_mem(&format!(
++            r#"
++            input {{ keyboard {{ xkb {{ {xkb}; }}; }}; }}
++            binds {{
++                {proof_alias} {{ toggle-debug-tint; }}
++                {revoke_alias} {{ toggle-debug-tint; }}
++                F10 {{ toggle-debug-tint; }}
++            }}
++        "#
++        ))
++        .unwrap();
++        // Reload while the proof modifiers are physically held. Their releases must
++        // also update the startup state, despite the changed live modifier map.
++        press_chord(&mut f, &[29, 56]);
++        f.niri_state().reload_config(Ok(reload));
++        assert!(
++            live_symbols(&mut f, changed_code).contains(&changed_sym),
++            "{xkb}"
++        );
++        for code in [29_u32, 56, 125, 111, 1] {
++            let niri = f.niri();
++            assert!(
++                niri.trusted_keyboard
++                    .as_ref()
++                    .unwrap()
++                    .is_safety_key((code + 8).into(), niri.trusted_binds.iter()),
++                "physical safety key {code} after {xkb}"
++            );
++        }
++        f.niri().trusted_bind_dispatches.as_mut().unwrap().clear();
++        physical_key(&mut f, 111, true, 3);
++        assert_eq!(
++            f.niri().trusted_bind_dispatches.as_ref().unwrap(),
++            &[Action::ShowTrustedPromptMark],
++            "{xkb}"
++        );
++        release_chord(&mut f, &[29, 56, 111]);
++        assert_dispatch(&mut f, &[29, 56, 111], Action::ShowTrustedPromptMark);
++        assert_dispatch(&mut f, &[125, 29, 1], expected()[1].action.clone());
++        // Let the proof view end before checking ordinary input outside isolation.
++        f.niri().trusted_prompt_proof_deadline = None;
++        f.niri_state().refresh_trusted_prompt_input();
++        // Ordinary bindings still work, and released physical modifiers do not stick.
++        assert_dispatch(&mut f, &[68], Action::ToggleDebugTint);
++        f.niri().trusted_bind_dispatches.as_mut().unwrap().clear();
++        press_chord(&mut f, &[111]);
++        release_chord(&mut f, &[111]);
++        assert!(f
++            .niri()
++            .trusted_bind_dispatches
++            .as_ref()
++            .unwrap()
++            .is_empty());
++    }
++}
++
++fn assert_no_dispatch(f: &mut Fixture, keys: &[u32]) {
++    f.niri().trusted_bind_dispatches.as_mut().unwrap().clear();
++    press_chord(f, keys);
++    release_chord(f, keys);
++    assert!(f
++        .niri()
++        .trusted_bind_dispatches
++        .as_ref()
++        .unwrap()
++        .is_empty());
++}
++
++#[test]
++fn trusted_binds_live_alias_cannot_dispatch_a_second_safety_chord() {
++    let mut f = fixture(startup());
++    f.niri().trusted_bind_dispatches = Some(Vec::new());
++    f.niri_state().reload_config(Ok(Config::parse_mem(
++        r#"
++        input { keyboard { xkb { options "altwin:swap_alt_win"; }; }; }
++    "#,
++    )
++    .unwrap()));
++    // The live map calls physical Alt "Super", but it is not the startup Super.
++    // Restored safety actions must not also participate in normal live lookup.
++    assert_no_dispatch(&mut f, &[56, 29, 1]);
++    assert_no_dispatch(&mut f, &[29, 125, 111]);
++    assert_dispatch(&mut f, &[125, 29, 1], expected()[1].action.clone());
++    assert_dispatch(&mut f, &[29, 56, 111], Action::ShowTrustedPromptMark);
++}
++
++#[test]
++fn trusted_binds_ordinary_layouts_keep_reloading_sequentially() {
++    use smithay::input::keyboard::Keysym;
++
++    let mut f = fixture(startup());
++    f.niri().trusted_bind_dispatches = Some(Vec::new());
++    for (layout, symbol) in [("de", Keysym::z), ("fr", Keysym::y), ("us", Keysym::y)] {
++        f.niri_state().reload_config(Ok(Config::parse_mem(&format!(
++            r#"
++            input {{ keyboard {{ xkb {{ layout "{layout}"; }}; }}; }}
++        "#
++        ))
++        .unwrap()));
++        assert!(
++            live_symbols(&mut f, 21).contains(&symbol),
++            "layout {layout}"
++        );
++        assert_dispatch(&mut f, &[29, 56, 111], Action::ShowTrustedPromptMark);
++        assert_dispatch(&mut f, &[125, 29, 1], expected()[1].action.clone());
++    }
++}
++
++#[test]
++fn trusted_binds_startup_custom_file_defines_the_frozen_physical_keys() {
++    use smithay::input::keyboard::Keysym;
++
++    let sh = Shell::new().unwrap();
++    let dir = sh.create_temp_dir().unwrap();
++    let keymap = dir.path().join("startup.xkb");
++    fs::write(
++        &keymap,
++        r#"
++        xkb_keymap {
++            xkb_keycodes { include "evdev+aliases(qwerty)" };
++            xkb_types { include "complete" };
++            xkb_compatibility { include "complete" };
++            xkb_symbols {
++                include "pc+us+inet(evdev)"
++                replace key <DELE> { [ Escape ] };
++                replace key <ESC> { [ Delete ] };
++            };
++        };
++    "#,
++    )
++    .unwrap();
++    let config = Config::parse_mem(&format!(
++        r#"
++        {STARTUP}
++        input {{ keyboard {{ xkb {{ file {keymap:?}; }}; }}; }}
++    "#
++    ))
++    .unwrap();
++    let mut f = fixture(config);
++    f.niri().trusted_bind_dispatches = Some(Vec::new());
++    assert!(live_symbols(&mut f, 1).contains(&Keysym::Delete));
++    assert_dispatch(&mut f, &[29, 56, 1], Action::ShowTrustedPromptMark);
++    assert_dispatch(&mut f, &[125, 29, 111], expected()[1].action.clone());
++    f.niri_state().reload_config(Ok(Config::parse_mem(
++        r#"
++        input { keyboard { xkb { layout "us"; }; }; }
++    "#,
++    )
++    .unwrap()));
++    assert!(live_symbols(&mut f, 1).contains(&Keysym::Escape));
++    assert_dispatch(&mut f, &[29, 56, 1], Action::ShowTrustedPromptMark);
++    assert_dispatch(&mut f, &[125, 29, 111], expected()[1].action.clone());
++    assert_no_dispatch(&mut f, &[29, 56, 111]);
++    assert_no_dispatch(&mut f, &[125, 29, 1]);
++}
++
++#[test]
++fn trusted_binds_package_install_recovers_revoke_and_freezes_it_for_the_session() {
++    let sh = Shell::new().unwrap();
++    let dir = sh.create_temp_dir().unwrap();
++    let main = dir.path().join("config.kdl");
++    let rules = dir.path().join("fork-rules.kdl");
++    let package = dir.path().join("sudo-key.kdl");
++    let attacker = dir.path().join("niri-emaki.kdl");
++    fs::write(
++        &rules,
++        "binds { Ctrl+Alt+Delete repeat=false { show-trusted-prompt-mark; }; }",
++    )
++    .unwrap();
++    fs::write(
++        &main,
++        "hotkey-overlay { skip-at-startup; }\ninclude \"fork-rules.kdl\"\ninclude optional=true \"sudo-key.kdl\"\ninclude optional=true \"niri-emaki.kdl\"\n",
++    )
++    .unwrap();
++    // The package does not exist yet, but the personal include already claims
++    // the promised chord. Production startup must reserve it without spawning.
++    fs::write(
++        &attacker,
++        "binds { Super+Ctrl+Escape { toggle-debug-tint; }; }",
++    )
++    .unwrap();
++    let mut f = Fixture::with_config(Config::load(&main).config.unwrap());
++    f.niri().trusted_bind_dispatches = Some(Vec::new());
++    f.niri().trusted_binds.use_fixture_source(rules.clone());
++    assert_no_dispatch(&mut f, &[125, 29, 1]);
++    f.niri_state()
++        .reload_config(Ok(Config::load(&main).config.unwrap()));
++    assert_no_dispatch(&mut f, &[125, 29, 1]);
++
++    let packaged = format!(
++        "binds {{ Mod+Ctrl+Escape repeat=false allow-inhibiting=false {{ spawn {REVOKE_PROGRAM:?} \"revoke-all\" \"--json\"; }}; }}"
++    );
++    fs::write(&package, &packaged).unwrap();
++    f.niri_state()
++        .reload_config(Ok(Config::load(&main).config.unwrap()));
++    assert_reserved(&mut f);
++    assert_dispatch(&mut f, &[125, 29, 1], expected()[1].action.clone());
++
++    // Rewrite the personal include after installation, then remove and replace
++    // the package. None of these reloads can replace the recovered action.
++    for replacement in [
++        "binds { Mod+Ctrl+Escape { toggle-debug-tint; }; }",
++        "binds { Super+Ctrl+Escape { toggle-debug-tint; }; }",
++    ] {
++        fs::write(&attacker, replacement).unwrap();
++        f.niri_state()
++            .reload_config(Ok(Config::load(&main).config.unwrap()));
++        assert_reserved(&mut f);
++        assert_dispatch(&mut f, &[125, 29, 1], expected()[1].action.clone());
++    }
++    fs::remove_file(&package).unwrap();
++    f.niri_state()
++        .reload_config(Ok(Config::load(&main).config.unwrap()));
++    assert_dispatch(&mut f, &[125, 29, 1], expected()[1].action.clone());
++    fs::write(
++        &package,
++        "binds { Mod+Ctrl+Escape { toggle-debug-tint; }; }",
++    )
++    .unwrap();
++    f.niri_state()
++        .reload_config(Ok(Config::load(&main).config.unwrap()));
++    assert_dispatch(&mut f, &[125, 29, 1], expected()[1].action.clone());
++
++    // A fresh session with the genuine package and the hostile include present
++    // recovers the same action through the verified packaged-source path.
++    fs::write(&package, packaged).unwrap();
++    let mut next = Fixture::with_config(Config::load(&main).config.unwrap());
++    next.niri().trusted_bind_dispatches = Some(Vec::new());
++    next.niri().trusted_binds.use_fixture_source(rules);
++    next.niri_state()
++        .reload_config(Ok(Config::load(&main).config.unwrap()));
++    assert_reserved(&mut next);
++    assert_dispatch(&mut next, &[125, 29, 1], expected()[1].action.clone());
++}
++
++#[test]
++fn trusted_binds_absent_package_reserves_startup_physical_chord_across_xkb_reload() {
++    use smithay::input::keyboard::Keysym;
++
++    let sh = Shell::new().unwrap();
++    let dir = sh.create_temp_dir().unwrap();
++    let rules = dir.path().join("fork-rules.kdl");
++    let keymap = dir.path().join("startup.xkb");
++    fs::write(
++        &rules,
++        "binds { Ctrl+Alt+Delete repeat=false { show-trusted-prompt-mark; }; }",
++    )
++    .unwrap();
++    fs::write(
++        &keymap,
++        r#"
++        xkb_keymap {
++            xkb_keycodes { include "evdev+aliases(qwerty)" };
++            xkb_types { include "complete" };
++            xkb_compatibility { include "complete" };
++            xkb_symbols {
++                include "pc+us+inet(evdev)"
++                replace key <DELE> { [ Escape ] };
++                replace key <ESC> { [ Delete ] };
++            };
++        };
++        "#,
++    )
++    .unwrap();
++    let mut f = Fixture::with_config(
++        Config::parse_mem(&format!(
++            r#"
++            hotkey-overlay {{ skip-at-startup; }}
++            input {{ keyboard {{ xkb {{ file {keymap:?}; }}; }}; }}
++            binds {{ Super+Ctrl+Escape {{ toggle-debug-tint; }}; }}
++            "#
++        ))
++        .unwrap(),
++    );
++    f.niri().trusted_bind_dispatches = Some(Vec::new());
++    f.niri().trusted_binds.use_fixture_source(rules);
++    assert!(live_symbols(&mut f, 111).contains(&Keysym::Escape));
++    assert_no_dispatch(&mut f, &[125, 29, 111]);
++
++    let reload = r#"
++        hotkey-overlay { skip-at-startup; }
++        input { keyboard { xkb { layout "us"; }; }; }
++        binds {
++            Super+Ctrl+Delete { toggle-debug-tint; }
++            Super+Ctrl+Escape { toggle-debug-tint; }
++            F10 { toggle-debug-tint; }
++        }
++    "#;
++    f.niri_state()
++        .reload_config(Ok(Config::parse_mem(reload).unwrap()));
++    assert!(live_symbols(&mut f, 111).contains(&Keysym::Delete));
++    assert_no_dispatch(&mut f, &[125, 29, 111]);
++    assert_no_dispatch(&mut f, &[125, 29, 1]);
++    assert_dispatch(&mut f, &[68], Action::ToggleDebugTint);
++
++    fs::write(
++        dir.path().join("sudo-key.kdl"),
++        format!(
++            "binds {{ Mod+Ctrl+Escape repeat=false allow-inhibiting=false {{ spawn {REVOKE_PROGRAM:?} \"revoke-all\" \"--json\"; }}; }}"
++        ),
++    )
++    .unwrap();
++    f.niri_state()
++        .reload_config(Ok(Config::parse_mem(reload).unwrap()));
++    assert_dispatch(&mut f, &[125, 29, 111], expected()[1].action.clone());
++    assert_no_dispatch(&mut f, &[125, 29, 1]);
++}
++
++fn mod_key_tree(personal: &str) -> (xshell::TempDir, std::path::PathBuf, std::path::PathBuf) {
++    let sh = Shell::new().unwrap();
++    let dir = sh.create_temp_dir().unwrap();
++    let main = dir.path().join("fork.kdl");
++    let rules = dir.path().join("fork-rules.kdl");
++    fs::write(dir.path().join("personal.kdl"), personal).unwrap();
++    fs::write(
++        &rules,
++        "include optional=true \"sudo-key.kdl\"\nbinds { Ctrl+Alt+Delete { show-trusted-prompt-mark; }; }",
++    )
++    .unwrap();
++    fs::write(
++        dir.path().join("sudo-key.kdl"),
++        format!("binds {{ Super+Ctrl+Escape {{ spawn {REVOKE_PROGRAM:?} \"revoke-all\" \"--json\"; }}; }}"),
++    )
++    .unwrap();
++    // Same order as niri/fork.kdl: personal first, packaged rules last.
++    fs::write(
++        &main,
++        "hotkey-overlay { skip-at-startup; }\ninclude \"personal.kdl\"\ninclude \"fork-rules.kdl\"\n",
++    )
++    .unwrap();
++    (dir, main, rules)
++}
++
++fn packaged_revoke() -> Action {
++    Action::Spawn(vec![
++        REVOKE_PROGRAM.into(),
++        "revoke-all".into(),
++        "--json".into(),
++    ])
++}
++
++#[test]
++fn trusted_binds_startup_mod_key_cannot_take_super_ctrl_esc() {
++    // Persistent same-uid write, effective at the next login.
++    let (_dir, main, rules) = mod_key_tree(
++        "input { mod-key \"Alt\"; }\nbinds { Super+Ctrl+Escape { toggle-debug-tint; }; }",
++    );
++    let mut f = Fixture::with_config(Config::load(&main).config.unwrap());
++    f.niri().trusted_bind_dispatches = Some(Vec::new());
++    assert_no_dispatch(&mut f, &[125, 29, 1]);
++    f.niri().trusted_bind_dispatches = Some(Vec::new());
++    f.niri().trusted_binds.use_fixture_source(rules);
++    f.niri_state()
++        .reload_config(Ok(Config::load(&main).config.unwrap()));
++    // Physical Super+Ctrl+Esc (evdev 125, 29, 1): what runs?
++    f.niri().trusted_bind_dispatches.as_mut().unwrap().clear();
++    press_chord(&mut f, &[125, 29, 1]);
++    release_chord(&mut f, &[125, 29, 1]);
++    let super_ctrl_esc = f.niri().trusted_bind_dispatches.clone().unwrap();
++    f.niri().trusted_bind_dispatches.as_mut().unwrap().clear();
++    press_chord(&mut f, &[56, 29, 1]);
++    release_chord(&mut f, &[56, 29, 1]);
++    let alt_ctrl_esc = f.niri().trusted_bind_dispatches.clone().unwrap();
++    assert_eq!(super_ctrl_esc, vec![packaged_revoke()]);
++    assert!(alt_ctrl_esc.is_empty());
++}
++
++#[test]
++fn trusted_binds_default_mod_key_control() {
++    let (_dir, main, rules) = mod_key_tree("binds { Super+Ctrl+Escape { toggle-debug-tint; }; }");
++    let mut f = Fixture::with_config(Config::load(&main).config.unwrap());
++    f.niri().trusted_bind_dispatches = Some(Vec::new());
++    f.niri().trusted_binds.use_fixture_source(rules);
++    f.niri_state()
++        .reload_config(Ok(Config::load(&main).config.unwrap()));
++    f.niri().trusted_bind_dispatches.as_mut().unwrap().clear();
++    press_chord(&mut f, &[125, 29, 1]);
++    release_chord(&mut f, &[125, 29, 1]);
++    assert_eq!(
++        f.niri().trusted_bind_dispatches.clone().unwrap(),
++        vec![packaged_revoke()]
++    );
++}
++
++#[test]
++fn trusted_binds_live_mod_key_change_cannot_take_super_ctrl_esc() {
++    let (dir, main, rules) = mod_key_tree("binds { Mod+T { spawn \"terminal\"; }; }");
++    let mut f = Fixture::with_config(Config::load(&main).config.unwrap());
++    f.niri().trusted_bind_dispatches = Some(Vec::new());
++    f.niri().trusted_binds.use_fixture_source(rules);
++    f.niri_state()
++        .reload_config(Ok(Config::load(&main).config.unwrap()));
++    fs::write(
++        dir.path().join("personal.kdl"),
++        "input { mod-key \"Alt\"; keyboard { xkb { options \"altwin:swap_alt_win\"; }; }; }\n\
++         binds { Super+Ctrl+Escape { toggle-debug-tint; }; Mod+Ctrl+Escape { toggle-debug-tint; }; Alt+Ctrl+Escape { toggle-debug-tint; }; }",
++    )
++    .unwrap();
++    f.niri_state()
++        .reload_config(Ok(Config::load(&main).config.unwrap()));
++    assert_dispatch(&mut f, &[125, 29, 1], packaged_revoke());
++    assert_dispatch(&mut f, &[29, 56, 111], Action::ShowTrustedPromptMark);
++}
++
++#[test]
++fn trusted_binds_package_install_recovers_despite_personal_parse_error() {
++    let (dir, main, rules) = mod_key_tree(
++        "input { mod-key \"Alt\"; }\nbinds { Super+Ctrl+Escape { toggle-debug-tint; }; F10 { toggle-debug-tint; }; }",
++    );
++    let package = dir.path().join("sudo-key.kdl");
++    let packaged = fs::read_to_string(&package).unwrap();
++    fs::remove_file(&package).unwrap();
++    let mut f = Fixture::with_config(Config::load(&main).config.unwrap());
++    f.niri().trusted_bind_dispatches = Some(Vec::new());
++    f.niri().trusted_binds.use_fixture_source(rules);
++    assert_no_dispatch(&mut f, &[125, 29, 1]);
++
++    fs::write(dir.path().join("personal.kdl"), "binds {").unwrap();
++    assert!(Config::load(&main).config.is_err());
++    f.niri_state().reload_config(Err(()));
++    assert_no_dispatch(&mut f, &[125, 29, 1]);
++
++    // A failed personal load cannot make an invalid package acceptable.
++    fs::write(&package, "binds {").unwrap();
++    f.niri_state().reload_config(Err(()));
++    assert_no_dispatch(&mut f, &[125, 29, 1]);
++
++    fs::write(&package, packaged).unwrap();
++    let reload = Config::load(&main).config.map_err(|_| ());
++    assert!(reload.is_err());
++    f.niri_state().reload_config(reload);
++    assert_dispatch(&mut f, &[125, 29, 1], packaged_revoke());
++    assert_no_dispatch(&mut f, &[56, 29, 1]);
++    // Ordinary input keeps the last valid configuration.
++    assert_dispatch(&mut f, &[68], Action::ToggleDebugTint);
++
++    fs::remove_file(&package).unwrap();
++    f.niri_state().reload_config(Err(()));
++    assert_dispatch(&mut f, &[125, 29, 1], packaged_revoke());
++    fs::write(
++        dir.path().join("personal.kdl"),
++        "binds { Super+Ctrl+Escape { toggle-debug-tint; }; }",
++    )
++    .unwrap();
++    f.niri_state()
++        .reload_config(Ok(Config::load(&main).config.unwrap()));
++    assert_dispatch(&mut f, &[125, 29, 1], packaged_revoke());
++}
+diff --git a/src/trusted_binds.rs b/src/trusted_binds.rs
+new file mode 100644
+--- /dev/null
++++ b/src/trusted_binds.rs
+@@ -0,0 +1,738 @@
++// Copyright (C) 2026 Artur Yakymenko
++// SPDX-License-Identifier: GPL-3.0-or-later
++
++//! Safety chords and their complete actions are captured once per session.
++
++use std::collections::BTreeMap;
++use std::ffi::OsString;
++use std::fs;
++use std::os::unix::fs::MetadataExt;
++use std::path::{Path, PathBuf};
++use std::process::Command;
++
++use niri_config::{Action, Bind, Binds, Config, Key, ModKey, Modifiers, Trigger};
++use tracing::warn;
++
++pub const REVOKE_PROGRAM: &str = env!("NIRI_EMAKI_SUDO_PROGRAM");
++#[cfg(not(test))]
++const SAFETY_CONFIG: &str = env!("NIRI_EMAKI_SAFETY_CONFIG");
++
++#[derive(Debug)]
++pub struct TrustedBinds {
++    binds: Vec<Bind>,
++    mod_key: ModKey,
++    recovery_path: PathBuf,
++    environment: BTreeMap<OsString, OsString>,
++    reserved_revoke: Bind,
++    authority: PackageAuthority,
++    #[cfg(test)]
++    _fixture_root: xshell::TempDir,
++}
++
++#[derive(Debug)]
++struct PackageAuthority {
++    uid: u32,
++    #[cfg(test)]
++    root: Option<PathBuf>,
++}
++
++impl PackageAuthority {
++    fn installed() -> Self {
++        Self {
++            uid: 0,
++            #[cfg(test)]
++            root: None,
++        }
++    }
++
++    #[cfg(test)]
++    fn fixture(root: &Path) -> Self {
++        Self {
++            uid: unsafe { libc::geteuid() },
++            root: Some(root.to_path_buf()),
++        }
++    }
++}
++
++fn is_revoke_lookalike(action: &Action) -> bool {
++    let Action::Spawn(command) = action else {
++        return false;
++    };
++    matches!(command.as_slice(), [program, operation, format]
++        if Path::new(program).is_absolute()
++            && Path::new(program).file_name().is_some_and(|name| name == "emaki-sudo")
++            && operation == "revoke-all"
++            && format == "--json")
++}
++
++pub fn is_revoke_action(action: &Action) -> bool {
++    matches!(action, Action::Spawn(command)
++        if matches!(command.as_slice(), [program, operation, format]
++            if program == REVOKE_PROGRAM && operation == "revoke-all" && format == "--json"))
++}
++
++fn effective_safety_binds(binds: &Binds, mod_key: ModKey) -> Vec<Bind> {
++    let mut seen = Vec::new();
++    let mut captured = Vec::new();
++    // Resolve safety aliases backwards in include order. Ordinary actions
++    // and untrusted executable lookalikes cannot claim a safety chord.
++    for bind in binds.0.iter().rev() {
++        let key = physical_key(bind.key, mod_key);
++        if !is_safety_action(&bind.action) || seen.contains(&key) {
++            continue;
++        }
++        seen.push(key);
++        if matches!(key.trigger, Trigger::Keysym(_)) && is_safety_action(&bind.action) {
++            let mut bind = bind.clone();
++            bind.key = key;
++            captured.push(bind);
++        }
++    }
++    captured.reverse();
++    captured
++}
++
++fn is_safety_action(action: &Action) -> bool {
++    matches!(action, Action::ShowTrustedPromptMark) || is_revoke_action(action)
++}
++
++fn physical_key(mut key: Key, mod_key: ModKey) -> Key {
++    if key.modifiers.contains(Modifiers::COMPOSITOR) {
++        key.modifiers.remove(Modifiers::COMPOSITOR);
++        key.modifiers.insert(mod_key.to_modifiers());
++    }
++    key
++}
++
++impl TrustedBinds {
++    pub fn capture(binds: &Binds, mod_key: ModKey) -> Self {
++        #[cfg(not(test))]
++        let (recovery_path, authority) =
++            (PathBuf::from(SAFETY_CONFIG), PackageAuthority::installed());
++        // Every test compositor starts with its own absent packages. Inject the
++        // source before the first recovery, including indirect Fixture callers.
++        #[cfg(test)]
++        let fixture_root = xshell::Shell::new().unwrap().create_temp_dir().unwrap();
++        #[cfg(test)]
++        let (recovery_path, authority) = (
++            fixture_root.path().join("fork-rules.kdl"),
++            PackageAuthority::fixture(fixture_root.path()),
++        );
++        let reserved_revoke = Bind {
++            key: "Super+Ctrl+Escape".parse().unwrap(),
++            action: Action::Spawn(Vec::new()),
++            repeat: false,
++            cooldown: None,
++            allow_when_locked: true,
++            allow_inhibiting: false,
++            hotkey_overlay_title: None,
++        };
++        // Parsed personal includes have no provenance. They may never supply the
++        // revoke action, even at startup or before the optional package exists.
++        let captured = effective_safety_binds(binds, mod_key)
++            .into_iter()
++            .filter(|bind| !is_revoke_action(&bind.action) && bind.key != reserved_revoke.key)
++            .collect();
++        let mut configured = Command::new("");
++        crate::utils::spawning::configure_child_environment(&mut configured);
++        let environment =
++            crate::trusted_client::snapshot_environment(std::env::vars_os(), &configured);
++        let mut captured = Self {
++            binds: captured,
++            mod_key,
++            recovery_path,
++            authority,
++            environment,
++            reserved_revoke,
++            #[cfg(test)]
++            _fixture_root: fixture_root,
++        };
++        captured.recover_missing();
++        captured
++    }
++
++    fn missing(&self) -> (bool, bool) {
++        (
++            !self
++                .binds
++                .iter()
++                .any(|bind| matches!(bind.action, Action::ShowTrustedPromptMark)),
++            !self.binds.iter().any(|bind| is_revoke_action(&bind.action)),
++        )
++    }
++
++    fn warn_missing(&self) {
++        let (proof, revoke) = self.missing();
++        if proof {
++            warn!(
++                "session proof safety binding is missing; recovery requires the packaged safety config on a reload attempt"
++            );
++        }
++        if revoke {
++            warn!(
++                "session revoke safety binding is missing; recovery requires the packaged safety config on a reload attempt"
++            );
++        }
++    }
++
++    /// Retry missing actions only from the installed, build-time packaged path.
++    /// Existing actions, the startup modifier interpretation and environment stay frozen.
++    pub fn recover_missing(&mut self) {
++        if self.missing() == (false, false) {
++            return;
++        }
++        let path = self.recovery_path.clone();
++        self.recover_missing_from(&path);
++    }
++
++    fn recover_missing_from(&mut self, path: &Path) {
++        let (proof, revoke) = self.missing();
++        let mut sources = Vec::new();
++        if proof {
++            sources.push((path.to_path_buf(), false));
++        }
++        if revoke {
++            sources.push((path.with_file_name("sudo-key.kdl"), true));
++        }
++        for (path, revoke_source) in sources {
++            let Some(config) = load_packaged_config(&path, &self.authority) else {
++                continue;
++            };
++            for bind in effective_safety_binds(&config.binds, self.mod_key) {
++                let wanted = if revoke_source {
++                    is_revoke_action(&bind.action)
++                } else {
++                    matches!(bind.action, Action::ShowTrustedPromptMark)
++                        && bind.key != self.reserved_revoke.key
++                };
++                if wanted && !self.binds.iter().any(|old| old.key == bind.key) {
++                    self.binds.push(bind);
++                }
++            }
++        }
++        self.warn_missing();
++    }
++
++    /// The absent optional action still owns its physical chord. Its inert
++    /// placeholder is used only by the private keyboard route, never spawned.
++    pub fn keyboard_binds(&self) -> impl Iterator<Item = &Bind> {
++        self.binds.iter().chain(
++            std::iter::once(&self.reserved_revoke)
++                .filter(|reserved| !self.binds.iter().any(|bind| bind.key == reserved.key)),
++        )
++    }
++
++    #[cfg(test)]
++    pub(crate) fn capture_fixture(binds: &Binds, mod_key: ModKey) -> Self {
++        let mut captured = Self::capture(&Binds::default(), mod_key);
++        // Legacy dispatch tests supply an already trusted snapshot. Production
++        // always validates the installed source instead.
++        captured.binds = effective_safety_binds(binds, mod_key);
++        captured
++    }
++
++    #[cfg(test)]
++    pub(crate) fn use_fixture_source(&mut self, path: PathBuf) {
++        self.authority = PackageAuthority::fixture(path.parent().unwrap());
++        self.recovery_path = path;
++    }
++
++    pub fn iter(&self) -> impl Iterator<Item = &Bind> {
++        self.binds.iter()
++    }
++
++    pub fn revoke_command(&self, action: &Action) -> Option<Command> {
++        if !is_revoke_action(action) || !self.binds.iter().any(|bind| bind.action == *action) {
++            return None;
++        }
++        let Action::Spawn(argv) = action else {
++            unreachable!()
++        };
++        let mut command = Command::new(&argv[0]);
++        command.args(&argv[1..]).env_clear().envs(&self.environment);
++        Some(command)
++    }
++
++    pub fn restore(&self, binds: &mut Binds, mod_key: ModKey) {
++        for captured in &self.binds {
++            let matching: Vec<_> = binds
++                .0
++                .iter()
++                .filter(|bind| physical_key(bind.key, mod_key) == captured.key)
++                .collect();
++            let unchanged = matching.len() == 1 && {
++                let mut candidate = matching[0].clone();
++                candidate.key = physical_key(candidate.key, mod_key);
++                candidate == *captured
++            };
++            if !unchanged {
++                warn!(key = ?captured.key, "ignoring changed, removed or shadowed session safety binding");
++            }
++        }
++        binds.0.retain(|bind| {
++            if physical_key(bind.key, mod_key) == self.reserved_revoke.key {
++                return false;
++            }
++            if self
++                .binds
++                .iter()
++                .any(|captured| physical_key(bind.key, mod_key) == captured.key)
++            {
++                return false;
++            }
++            if matches!(bind.key.trigger, Trigger::Keysym(_))
++                && (matches!(bind.action, Action::ShowTrustedPromptMark)
++                    || is_revoke_lookalike(&bind.action))
++            {
++                warn!(key = ?bind.key, "ignoring new session safety binding until next login");
++                return false;
++            }
++            true
++        });
++        binds.0.extend(self.binds.iter().cloned());
++    }
++}
++
++/// Every component must belong to the package authority and be unwritable by
++/// others. Refuse symlinks rather than trusting a target outside that hierarchy.
++fn verify_packaged_path(path: &Path, authority: &PackageAuthority) -> bool {
++    verify_packaged_path_or_absent(path, authority, false)
++}
++
++fn verify_packaged_path_or_absent(
++    path: &Path,
++    authority: &PackageAuthority,
++    allow_absent: bool,
++) -> bool {
++    if !path.is_absolute()
++        || path
++            .components()
++            .any(|part| matches!(part, std::path::Component::ParentDir))
++    {
++        return false;
++    }
++    // Check directories before children, including when the optional leaf is
++    // absent. An attacker cannot erase an unsafe include after it was parsed to
++    // make its untrusted contents look like an absent optional package.
++    #[cfg(test)]
++    if authority
++        .root
++        .as_ref()
++        .is_some_and(|root| !path.starts_with(root))
++    {
++        return false;
++    }
++    let ancestors: Vec<_> = path.ancestors().collect();
++    for component in ancestors.into_iter().rev() {
++        // A fixture grants authority only inside its explicit private root.
++        // Its host ancestors (such as a sticky temporary directory) are not
++        // packaged paths. Production always checks the complete hierarchy.
++        #[cfg(test)]
++        if authority
++            .root
++            .as_ref()
++            .is_some_and(|root| component != root && root.starts_with(component))
++        {
++            continue;
++        }
++        let leaf = component == path;
++        let metadata = match fs::symlink_metadata(component) {
++            Ok(metadata) => metadata,
++            Err(error) => {
++                return leaf && allow_absent && error.kind() == std::io::ErrorKind::NotFound
++            }
++        };
++        let expected_owner = metadata.uid() == authority.uid || (!leaf && metadata.uid() == 0);
++        if !expected_owner
++            || metadata.mode() & 0o022 != 0
++            || (leaf && !metadata.is_file())
++            || (!leaf && !metadata.is_dir())
++        {
++            return false;
++        }
++    }
++    true
++}
++
++fn load_packaged_config(path: &Path, authority: &PackageAuthority) -> Option<Config> {
++    if !verify_packaged_path(path, authority) {
++        warn!(
++            ?path,
++            "refusing unsafe packaged safety config path, owner or mode"
++        );
++        return None;
++    }
++    // Verified directories and files cannot be changed by the session uid.
++    // Includes are checked too before any parsed binding becomes authoritative.
++    let parsed = Config::load(path);
++    for include in &parsed.includes {
++        if !verify_packaged_path_or_absent(include, authority, true) {
++            warn!(?include, "refusing unsafe packaged safety config include");
++            return None;
++        }
++    }
++    match parsed.config {
++        Ok(config) => Some(config),
++        Err(error) => {
++            warn!(
++                ?path,
++                ?error,
++                "cannot recover session safety bindings from packaged config"
++            );
++            None
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use std::fs;
++    use std::io::Write;
++    use std::sync::{Arc, Mutex};
++    use xshell::Shell;
++
++    fn packaged() -> String {
++        format!(
++            "binds {{ Ctrl+Alt+Delete repeat=false {{ show-trusted-prompt-mark; }}; \
++             Mod+Ctrl+Escape repeat=false {{ spawn {REVOKE_PROGRAM:?} \"revoke-all\" \"--json\"; }}; }}"
++        )
++    }
++
++    fn capture(text: &str) -> TrustedBinds {
++        TrustedBinds::capture_fixture(&Config::parse_mem(text).unwrap().binds, ModKey::Super)
++    }
++
++    #[test]
++    fn trusted_binds_captures_have_independent_package_roots() {
++        let mut first = TrustedBinds::capture(&Binds::default(), ModKey::Super);
++        let mut second = TrustedBinds::capture(&Binds::default(), ModKey::Super);
++        assert_ne!(first.recovery_path, second.recovery_path);
++        assert_eq!(first.missing(), (true, true));
++        assert_eq!(second.missing(), (true, true));
++        fs::write(&first.recovery_path, packaged()).unwrap();
++        fs::write(
++            first.recovery_path.with_file_name("sudo-key.kdl"),
++            packaged(),
++        )
++        .unwrap();
++        first.recover_missing();
++        second.recover_missing();
++        assert_eq!(first.missing(), (false, false));
++        assert_eq!(second.missing(), (true, true));
++        let first_root = first.recovery_path.parent().unwrap().to_path_buf();
++        drop(first);
++        assert!(!first_root.exists());
++        assert!(second.recovery_path.parent().unwrap().exists());
++    }
++
++    #[test]
++    fn trusted_binds_fixture_authority_stops_at_private_root() {
++        use std::os::unix::fs::PermissionsExt;
++
++        let sh = Shell::new().unwrap();
++        let dir = sh.create_temp_dir().unwrap();
++        // Reproduce the builder's shared temporary directory without changing it.
++        let shared = dir.path().join("shared");
++        fs::create_dir(&shared).unwrap();
++        fs::set_permissions(&shared, fs::Permissions::from_mode(0o1777)).unwrap();
++        let root = shared.join("private");
++        fs::create_dir(&root).unwrap();
++        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
++        let path = root.join("fork-rules.kdl");
++        fs::write(&path, packaged()).unwrap();
++        fs::write(root.join("sudo-key.kdl"), packaged()).unwrap();
++        let mut captured = TrustedBinds::capture(&Binds::default(), ModKey::Super);
++        captured.use_fixture_source(path.clone());
++        captured.recover_missing();
++        assert_eq!(captured.missing(), (false, false));
++        assert!(load_packaged_config(&path, &PackageAuthority::installed()).is_none());
++        fs::set_permissions(&root, fs::Permissions::from_mode(0o777)).unwrap();
++        assert!(load_packaged_config(&path, &captured.authority).is_none());
++    }
++
++    #[test]
++    fn trusted_binds_packaged_revoke_beats_startup_alias_lookalike() {
++        for personal_first in [true, false] {
++            let sh = Shell::new().unwrap();
++            let dir = sh.create_temp_dir().unwrap();
++            let path = dir.path().join("fork.kdl");
++            fs::write(dir.path().join("personal.kdl"),
++                "binds { Super+Ctrl+Escape { spawn \"/untrusted/emaki-sudo\" \"revoke-all\" \"--json\"; }; }").unwrap();
++            fs::write(dir.path().join("sudo-key.kdl"), packaged()).unwrap();
++            let order = if personal_first {
++                "include \"personal.kdl\"\ninclude optional=true \"sudo-key.kdl\"\n"
++            } else {
++                "include optional=true \"sudo-key.kdl\"\ninclude \"personal.kdl\"\n"
++            };
++            fs::write(&path, order).unwrap();
++            let config = Config::load(&path).config.unwrap();
++            let captured = TrustedBinds::capture_fixture(&config.binds, ModKey::Super);
++            assert_eq!(captured.binds.len(), 2);
++            let revoke = captured
++                .binds
++                .iter()
++                .find(|b| is_revoke_action(&b.action))
++                .unwrap();
++            assert_eq!(
++                captured
++                    .revoke_command(&revoke.action)
++                    .unwrap()
++                    .get_program(),
++                REVOKE_PROGRAM
++            );
++            let hostile = Action::Spawn(vec![
++                "/untrusted/emaki-sudo".into(),
++                "revoke-all".into(),
++                "--json".into(),
++            ]);
++            assert!(captured.revoke_command(&hostile).is_none());
++        }
++    }
++
++    #[test]
++    fn trusted_binds_last_effective_safety_alias_wins() {
++        let captured = capture(&format!(
++            "binds {{ Mod+Ctrl+Escape repeat=false {{ spawn {REVOKE_PROGRAM:?} \"revoke-all\" \"--json\"; }}; \
++             Super+Ctrl+Escape repeat=true cooldown-ms=123 {{ spawn {REVOKE_PROGRAM:?} \"revoke-all\" \"--json\"; }}; }}"
++        ));
++        let revoke = captured
++            .binds
++            .iter()
++            .find(|b| is_revoke_action(&b.action))
++            .unwrap();
++        assert!(revoke.repeat);
++        assert_eq!(revoke.cooldown, Some(std::time::Duration::from_millis(123)));
++    }
++
++    #[test]
++    fn trusted_binds_empty_capture_warns_for_both_actions() {
++        // Trace callsite interest is process-global, even with local subscribers.
++        const CHILD: &str = "NIRI_TEST_MISSING_SAFETY_LOG";
++        if std::env::var_os(CHILD).is_none() {
++            let output = Command::new(std::env::current_exe().unwrap())
++                .args([
++                    "--exact",
++                    "trusted_binds::tests::trusted_binds_empty_capture_warns_for_both_actions",
++                    "--nocapture",
++                ])
++                .env(CHILD, "1")
++                .output()
++                .unwrap();
++            assert!(output.status.success(), "{output:?}");
++            return;
++        }
++        #[derive(Clone)]
++        struct Log(Arc<Mutex<Vec<u8>>>);
++        impl Write for Log {
++            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
++                self.0.lock().unwrap().extend_from_slice(bytes);
++                Ok(bytes.len())
++            }
++            fn flush(&mut self) -> std::io::Result<()> {
++                Ok(())
++            }
++        }
++        let log = Log(Arc::default());
++        let writer = log.clone();
++        let subscriber = tracing_subscriber::fmt()
++            .with_max_level(tracing::Level::WARN)
++            .with_ansi(false)
++            .without_time()
++            .with_writer(move || writer.clone())
++            .finish();
++        tracing::subscriber::with_default(subscriber, || {
++            capture("");
++        });
++        let text = String::from_utf8(log.0.lock().unwrap().clone()).unwrap();
++        assert!(
++            text.contains("session proof safety binding is missing"),
++            "{text}"
++        );
++        assert!(
++            text.contains("session revoke safety binding is missing"),
++            "{text}"
++        );
++        assert!(text.contains("WARN"), "{text}");
++    }
++
++    #[test]
++    fn trusted_binds_packaged_recovery_retries_and_freezes() {
++        let sh = Shell::new().unwrap();
++        let dir = sh.create_temp_dir().unwrap();
++        let path = dir.path().join("fork-rules.kdl");
++        let mut captured = capture("");
++        captured.use_fixture_source(path.clone());
++        let initial_environment = captured.environment.clone();
++        let mut personal = Config::parse_mem(&format!("binds {{ Ctrl+Alt+F1 {{ show-trusted-prompt-mark; }}; Ctrl+Alt+F2 {{ spawn {REVOKE_PROGRAM:?} \"revoke-all\" \"--json\"; }}; Ctrl+Alt+F3 {{ spawn \"/untrusted/emaki-sudo\" \"revoke-all\" \"--json\"; }}; }}")).unwrap();
++        captured.restore(&mut personal.binds, ModKey::Alt);
++        assert!(captured.binds.is_empty());
++        assert!(personal.binds.0.is_empty());
++        captured.recover_missing_from(&path);
++        assert!(captured.binds.is_empty());
++        fs::write(&path, "binds {").unwrap();
++        captured.recover_missing_from(&path);
++        assert!(captured.binds.is_empty());
++        fs::write(&path, packaged()).unwrap();
++        fs::write(path.with_file_name("sudo-key.kdl"), packaged()).unwrap();
++        captured.recover_missing_from(&path);
++        assert_eq!(captured.binds, capture(&packaged()).binds);
++        assert_eq!(captured.environment, initial_environment);
++        let frozen = captured.binds.clone();
++        fs::write(
++            &path,
++            "binds { Ctrl+Alt+F1 { show-trusted-prompt-mark; }; }",
++        )
++        .unwrap();
++        captured.recover_missing_from(&path);
++        assert_eq!(captured.binds, frozen);
++    }
++
++    #[test]
++    fn trusted_binds_partial_recovery_preserves_original_action_and_modifier() {
++        let sh = Shell::new().unwrap();
++        let dir = sh.create_temp_dir().unwrap();
++        let path = dir.path().join("fork-rules.kdl");
++        let mut captured =
++            capture("binds { Ctrl+Alt+F1 repeat=true { show-trusted-prompt-mark; }; }");
++        captured.use_fixture_source(path.clone());
++        let original = captured.binds[0].clone();
++        fs::write(
++            &path,
++            format!("input {{ mod-key \"Alt\"; }}\n{}", packaged()),
++        )
++        .unwrap();
++        fs::write(path.with_file_name("sudo-key.kdl"), packaged()).unwrap();
++        captured.recover_missing_from(&path);
++        assert_eq!(captured.binds.len(), 2);
++        assert_eq!(captured.binds[0], original);
++        assert_eq!(
++            captured.binds[1].key,
++            "Super+Ctrl+Escape".parse::<Key>().unwrap()
++        );
++    }
++
++    #[test]
++    fn trusted_binds_recovered_session_keeps_startup_keymap() {
++        use crate::tests::Fixture;
++        use smithay::backend::input::KeyState;
++
++        let sh = Shell::new().unwrap();
++        let dir = sh.create_temp_dir().unwrap();
++        let path = dir.path().join("fork-rules.kdl");
++        let mut f = Fixture::with_config(Config::parse_mem("").unwrap());
++        // The fixture owns a separate packaged source; production captures only
++        // the compiled path, with no configuration or environment override.
++        f.niri().trusted_binds.use_fixture_source(path.clone());
++        let hostile = Config::parse_mem(
++            "input { keyboard { xkb { options \"altwin:swap_alt_win\"; }; }; }\n\
++             binds { Ctrl+Alt+F1 { show-trusted-prompt-mark; }; }",
++        )
++        .unwrap();
++        f.niri_state().reload_config(Ok(hostile));
++        assert!(f.niri().trusted_binds.binds.is_empty());
++        fs::write(&path, packaged()).unwrap();
++        fs::write(path.with_file_name("sudo-key.kdl"), packaged()).unwrap();
++        f.niri_state()
++            .reload_config(Ok(Config::parse_mem("").unwrap()));
++        assert_eq!(f.niri().config.borrow().binds.0, capture(&packaged()).binds);
++        for (keys, proof) in [([37_u32, 64, 119], true), ([133, 37, 9], false)] {
++            let niri = f.niri();
++            let keyboard = niri.trusted_keyboard.as_mut().unwrap();
++            for code in keys {
++                keyboard.update(code.into(), KeyState::Pressed);
++            }
++            let bind = keyboard
++                .matching_bind(keys[2].into(), niri.trusted_binds.iter())
++                .unwrap();
++            assert_eq!(matches!(bind.action, Action::ShowTrustedPromptMark), proof);
++            if !proof {
++                assert!(niri.trusted_binds.revoke_command(&bind.action).is_some());
++            }
++            for code in keys.into_iter().rev() {
++                keyboard.update(code.into(), KeyState::Released);
++            }
++        }
++    }
++    #[test]
++    fn trusted_binds_package_paths_refuse_unsafe_owner_mode_and_redirects() {
++        use std::os::unix::fs::{symlink, PermissionsExt};
++
++        let sh = Shell::new().unwrap();
++        let dir = sh.create_temp_dir().unwrap();
++        let root = dir.path().join("package");
++        fs::create_dir(&root).unwrap();
++        let path = root.join("sudo-key.kdl");
++        fs::write(&path, packaged()).unwrap();
++        let authority = PackageAuthority::fixture(dir.path());
++        assert!(load_packaged_config(&path, &authority).is_some());
++        if authority.uid != 0 {
++            // Production accepts root ownership only, even for the exact filename.
++            assert!(load_packaged_config(&path, &PackageAuthority::installed()).is_none());
++        }
++        for mode in [0o666, 0o664] {
++            fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap();
++            assert!(load_packaged_config(&path, &authority).is_none());
++        }
++        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
++        fs::set_permissions(&root, fs::Permissions::from_mode(0o775)).unwrap();
++        assert!(load_packaged_config(&path, &authority).is_none());
++        fs::set_permissions(&root, fs::Permissions::from_mode(0o755)).unwrap();
++        let link = dir.path().join("redirect.kdl");
++        symlink(&path, &link).unwrap();
++        assert!(load_packaged_config(&link, &authority).is_none());
++        let directory_link = dir.path().join("redirect-directory");
++        symlink(&root, &directory_link).unwrap();
++        assert!(load_packaged_config(&directory_link.join("sudo-key.kdl"), &authority).is_none());
++        assert!(!verify_packaged_path(Path::new("sudo-key.kdl"), &authority));
++        assert!(!verify_packaged_path(
++            &root.join("../package/sudo-key.kdl"),
++            &authority
++        ));
++        assert!(load_packaged_config(&root, &authority).is_none());
++    }
++
++    #[test]
++    fn trusted_binds_package_includes_require_the_same_authority() {
++        use std::os::unix::fs::PermissionsExt;
++
++        let sh = Shell::new().unwrap();
++        let dir = sh.create_temp_dir().unwrap();
++        let path = dir.path().join("sudo-key.kdl");
++        let include = dir.path().join("included.kdl");
++        let authority = PackageAuthority::fixture(dir.path());
++        fs::write(&path, "include optional=true \"included.kdl\"\n").unwrap();
++        assert!(load_packaged_config(&path, &authority).is_some());
++        fs::write(&include, packaged()).unwrap();
++        assert!(load_packaged_config(&path, &authority).is_some());
++        let outside = sh.create_temp_dir().unwrap();
++        let external = outside.path().join("external.kdl");
++        fs::write(&external, packaged()).unwrap();
++        fs::write(&path, format!("include {:?}\n", external)).unwrap();
++        assert!(load_packaged_config(&path, &authority).is_none());
++        fs::write(&path, "include optional=true \"included.kdl\"\n").unwrap();
++        fs::set_permissions(&include, fs::Permissions::from_mode(0o666)).unwrap();
++        assert!(load_packaged_config(&path, &authority).is_none());
++        fs::write(&path, "include optional=true \"unsafe/absent.kdl\"\n").unwrap();
++        fs::create_dir(dir.path().join("unsafe")).unwrap();
++        fs::set_permissions(dir.path().join("unsafe"), fs::Permissions::from_mode(0o777)).unwrap();
++        assert!(load_packaged_config(&path, &authority).is_none());
++    }
++
++    #[test]
++    fn trusted_binds_personal_startup_cannot_supply_revoke() {
++        let config = Config::parse_mem(&packaged()).unwrap();
++        let captured = TrustedBinds::capture(&config.binds, ModKey::Super);
++        assert!(captured.missing().1);
++        assert!(captured
++            .binds
++            .iter()
++            .all(|bind| !is_revoke_action(&bind.action)));
++        let mut personal = config.binds;
++        captured.restore(&mut personal, ModKey::Super);
++        assert!(personal
++            .0
++            .iter()
++            .all(|bind| bind.key != captured.reserved_revoke.key));
++    }
++}
+diff --git a/src/trusted_client.rs b/src/trusted_client.rs
+index c7fa4a78..c43ff645 100644
+--- a/src/trusted_client.rs
++++ b/src/trusted_client.rs
+@@ -424,7 +424,7 @@ fn start_recovery(
+         })
+ }
+ 
+-fn snapshot_environment(
++pub(crate) fn snapshot_environment(
+     inherited: impl IntoIterator<Item = (OsString, OsString)>,
+     configured: &Command,
+ ) -> BTreeMap<OsString, OsString> {
+diff --git a/src/trusted_keyboard.rs b/src/trusted_keyboard.rs
+new file mode 100644
+index 00000000..7f653061
+--- /dev/null
++++ b/src/trusted_keyboard.rs
+@@ -0,0 +1,93 @@
++// Copyright (C) 2026 Artur Yakymenko
++// SPDX-License-Identifier: GPL-3.0-or-later
++
++//! A private startup keymap, updated only by physical backend key events.
++
++use niri_config::{Bind, ModKey, Trigger};
++use smithay::backend::input::KeyState;
++use smithay::input::keyboard::{Keycode, Keysym, ModifiersState};
++use xkbcommon::xkb;
++
++pub struct TrustedKeyboard {
++    state: xkb::State,
++}
++
++impl TrustedKeyboard {
++    pub fn new(keymap: String) -> Self {
++        // Compile a serialized snapshot into an independent context. Retaining a
++        // reference to Smithay's keymap would violate its thread/lifetime contract.
++        let context =
++            xkb::Context::new(xkb::CONTEXT_NO_DEFAULT_INCLUDES | xkb::CONTEXT_NO_ENVIRONMENT_NAMES);
++        let keymap = xkb::Keymap::new_from_string(
++            &context,
++            keymap,
++            xkb::KEYMAP_FORMAT_TEXT_V1,
++            xkb::KEYMAP_COMPILE_NO_FLAGS,
++        )
++        .expect("the startup keyboard keymap must remain valid");
++        Self {
++            state: xkb::State::new(&keymap),
++        }
++    }
++
++    pub fn update(&mut self, code: Keycode, state: KeyState) {
++        self.state.update_key(
++            code,
++            match state {
++                KeyState::Pressed => xkb::KeyDirection::Down,
++                KeyState::Released => xkb::KeyDirection::Up,
++            },
++        );
++    }
++
++    pub fn is_safety_key<'a>(&self, code: Keycode, binds: impl Iterator<Item = &'a Bind>) -> bool {
++        let keymap = self.state.get_keymap();
++        binds.into_iter().any(|bind| {
++            (0..keymap.num_layouts()).any(|layout| {
++                keymap
++                    .key_get_syms_by_level(code, layout, 0)
++                    .iter()
++                    .any(|sym| {
++                        // Captured keys already have Mod resolved at startup.
++                        crate::input::proof_key_or_modifier(bind.key, ModKey::Super, *sym)
++                    })
++            })
++        })
++    }
++
++    pub fn matching_bind<'a>(
++        &self,
++        code: Keycode,
++        binds: impl Iterator<Item = &'a Bind>,
++    ) -> Option<Bind> {
++        let raw = self.raw_sym(code)?;
++        let mut mods = ModifiersState::default();
++        mods.update_with(&self.state);
++        crate::input::find_configured_bind(binds, ModKey::Super, Trigger::Keysym(raw), mods)
++    }
++
++    fn raw_sym(&self, code: Keycode) -> Option<Keysym> {
++        let keymap = self.state.get_keymap();
++        let layout = self.state.key_get_layout(code);
++        let base = *keymap.key_get_syms_by_level(code, layout, 0).first()?;
++        // Match ordinary bind semantics, including the Latin fallback, against
++        // only the captured keymap and its private physical-input state.
++        if base.key_char().map(|ch| ch.is_ascii()).unwrap_or(true) {
++            return Some(base);
++        }
++        for other in 0..keymap.num_layouts() {
++            if other == layout {
++                continue;
++            }
++            if let Some(sym) = keymap.key_get_syms_by_level(code, other, 0).first() {
++                if sym
++                    .key_char()
++                    .is_some_and(|ch| ch.is_ascii() && !ch.is_ascii_control())
++                {
++                    return Some(*sym);
++                }
++            }
++        }
++        Some(base)
++    }
++}
+diff --git a/src/utils/spawning.rs b/src/utils/spawning.rs
+index d3b0665c..3a4c5920 100644
+--- a/src/utils/spawning.rs
++++ b/src/utils/spawning.rs
+@@ -126,9 +126,28 @@ fn spawn_sync(
+         process.env("DESKTOP_STARTUP_ID", token.as_str());
+     }
+ 
++    run_prepared(process);
++}
++
++/// Spawn a captured command without consulting the reloadable child environment.
++pub(crate) fn spawn_prepared(process: Command) {
++    if let Err(err) = thread::Builder::new()
++        .name("Command Spawner".to_owned())
++        .spawn(move || run_prepared(process))
++    {
++        warn!("error spawning a thread to spawn the command: {err:?}");
++    }
++}
++
++fn run_prepared(mut process: Command) {
++    let command = process.get_program().to_owned();
++    process
++        .stdin(Stdio::null())
++        .stdout(Stdio::null())
++        .stderr(Stdio::null());
+     unsafe { process.pre_exec(crate::utils::signals::unblock_all) };
+ 
+-    let Some(mut child) = do_spawn(command, process) else {
++    let Some(mut child) = do_spawn(&command, process) else {
+         return;
+     };
+ 

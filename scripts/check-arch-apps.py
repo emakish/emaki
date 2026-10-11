@@ -31,11 +31,11 @@ def fetch(query):
                 raise
 
 
-def dependencies(recipe):
+def dependencies(recipe, field='depends'):
     result = subprocess.run(['bash', '-eu', '-c',
-                             'startdir=$1; source "$1/PKGBUILD"; printf "%s\\n" "${depends[@]}"',
+                             f'startdir=$1; {field}=(); source "$1/PKGBUILD"; printf "%s\\n" "${{{field}[@]}}"',
                              '_', str(recipe.parent)], check=True, capture_output=True, text=True)
-    return [line for line in result.stdout.splitlines() if line]
+    return [line.split(':', 1)[0] for line in result.stdout.splitlines() if line]
 
 
 def sync_records(directory):
@@ -82,6 +82,10 @@ def main():
         method = 'Current core/extra API'
     packages = {p['pkgname']: p for p in records}
     local = {p.parent.name: dependencies(p) for p in ROOT.glob('packaging/*/PKGBUILD')}
+    # The Rich programs are emaki-apps' optdepends: the installer installs them
+    # explicitly beside it, so they belong to the Rich set and its closure.
+    programs = dependencies(ROOT / 'packaging/emaki-apps/PKGBUILD', 'optdepends')
+    local['emaki-apps'] += programs
     providers = {}
     for p in records:
         for dep in p['provides']:
@@ -118,6 +122,7 @@ def main():
     seeds = set((ROOT / 'iso/profile/packages.x86_64').read_text().split())
     seeds.update((ROOT / 'iso/target-packages.txt').read_text().split())
     seeds.discard('emaki-apps')
+    seeds.difference_update(programs)
     baseline = closure(seeds)
     rich = closure(seeds | {'emaki-apps'})
     if 'nautilus' in rich:

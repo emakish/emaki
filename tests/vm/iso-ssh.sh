@@ -4,4 +4,6 @@ set -Eeuo pipefail
 source "$(dirname -- "$(readlink -f -- "$0")")/iso-common.sh"
 iso_parse "$@"
 iso_ssh_args
-exec "${ISO_SSH[@]}" "${ISO_ARGS[@]}"
+# Talks only to the QEMU this directory started (iso_ssh in iso-common.sh).
+iso_prove_vm >/dev/null
+exec "${ISO_SSH_UNCHECKED[@]}" "${ISO_ARGS[@]}"

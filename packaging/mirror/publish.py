@@ -707,6 +707,25 @@ class Signer:
         subprocess.run(command + [str(db)] + [str(p) for p in packages], check=True, env=self.env(),
                        stdout=subprocess.DEVNULL)
 
+    def close(self):
+        """End the signing home's key daemon after the last signature, also after a failure.
+
+        Its passphrase cache would otherwise let any program of this user sign for the cache
+        lifetime after a publish. The next signing starts a fresh daemon and asks again."""
+        if not self.prepared or self.dry_run:
+            return
+        self.prepared = False
+        try:
+            result = subprocess.run(['gpgconf', '--homedir', str(self.home), '--kill', 'gpg-agent'],
+                                    capture_output=True, text=True, env=self.env())
+        except OSError as error:
+            say(f'[PLACEHOLDER] WARNING: the signing key daemon could not be stopped ({error}); run: '
+                f'gpgconf --homedir {self.home} --kill gpg-agent')
+            return
+        if result.returncode:
+            say(f'[PLACEHOLDER] WARNING: the signing key daemon could not be stopped; run: '
+                f'gpgconf --homedir {self.home} --kill gpg-agent')
+
 
 def stop_gnupg(home, fakeroot=False):
     """Stop what gpg started for a temporary HOME (its key daemon, scdaemon, dirmngr) before HOME
@@ -876,8 +895,11 @@ class Publisher:
         return self._verifier
 
     def close(self):
-        if self._verifier:
-            self._verifier.close()
+        try:
+            self.signer.close()
+        finally:
+            if self._verifier:
+                self._verifier.close()
 
     # pointers, snapshots, records ----------------------------------------------------------
     def pointer(self, channel):
@@ -1615,7 +1637,8 @@ class Publisher:
             raise Refused(f'the acceptance stamp is for MANIFEST {stamp.get("manifest_sha256")}, '
                           f'not for {manifest_sha}')
         try:
-            acceptance.validate_runs(stamp.get('runs'), acceptance.required_starts(self.backend, manifest_sha))
+            acceptance.validate_runs(stamp.get('runs'), acceptance.required_starts(
+                self.backend, manifest_sha, self.args.machines))
         except ValueError as error:
             raise Refused(str(error)) from None
         if bridge:
@@ -1665,6 +1688,26 @@ class Publisher:
             'Machines that already updated keep the withdrawn versions (pacman -Su never downgrades).')
 
     # status / unlock / verify ----------------------------------------------------------------
+    def acceptance_plan(self, manifest_sha, as_json):
+        """The (run, start, size) list that `stamp` and `promote` require now, for scripts to read
+        instead of counting. The candidate is testing's MANIFEST unless one is named."""
+        if manifest_sha is None:
+            current, _ = self.pointer('testing')
+            if current is None:
+                raise Refused('testing has no snapshot; name the candidate with --manifest')
+            manifest_sha = sha256(self.snapshot('testing', current)['MANIFEST'])
+        try:
+            starts = acceptance.required_starts(self.backend, manifest_sha, self.args.machines)
+        except ValueError as error:
+            raise Refused(str(error)) from None
+        runs = acceptance.plan(starts)
+        if as_json:
+            print(json.dumps({'manifest_sha256': manifest_sha, 'starts': list(starts),
+                              'runs': [{'run': r, 'start': s, 'size': z} for r, s, z in runs]}, indent=1))
+        else:
+            for run in runs:
+                print(' '.join(run))
+
     def status(self):
         for channel in CHANNELS:
             current, _ = self.pointer(channel)
@@ -1958,6 +2001,10 @@ def iso_publish(publisher, path, full_check):
     if not filenames or len(filenames) != len(set(filenames)) or set(filenames) != actual:
         raise Refused('closure.txt does not match the image package files')
     check_iso_transactions(image, filenames)
+    try:
+        launch = acceptance.launch_mark(publisher.backend, version, getattr(args, 'machines', acceptance.MACHINES))
+    except ValueError as error:
+        raise Refused(str(error)) from None
     problems = []
     source_manifest = getattr(args, 'arch_sources', None)
     missing_sources = getattr(args, 'missing_sources', None)
@@ -2083,10 +2130,13 @@ def iso_publish(publisher, path, full_check):
     key_file = f'iso/{version}/emaki-signing-key.asc'
     # Machines installed from this image read pkgs.emaki.sh/stable: from the first write that can
     # make it public, stable may move only through the stamped promote (promote --first is spent).
+    # The launch image's record carries the launch mark, written once like the record itself:
+    # upgrade acceptance checks the machines file's `launch` against it (acceptance.launched).
+    release = {'stable': current, 'manifest': sha256(files['MANIFEST']), 'image_sha256': digest}
+    if launch:
+        release['launch'] = True
     try:
-        publisher.backend.put_new(f'released/iso/{version}', json.dumps(
-            {'stable': current, 'manifest': sha256(files['MANIFEST']), 'image_sha256': digest},
-            sort_keys=True).encode())
+        publisher.backend.put_new(f'released/iso/{version}', json.dumps(release, sort_keys=True).encode())
     except Exists:
         pass
     published, _ = dl.get(key + '.sha256')
@@ -2336,10 +2386,10 @@ STEP_NAMES['withdraw'] = STEP_NAMES['publish']
 
 # acceptance stamp ----------------------------------------------------------------------------
 
-def write_stamp(results, path, backend):
-    """The gate's input: T1 and T2 green from published images at both screen sizes, all on one
-    candidate MANIFEST. A single red result for that candidate refuses: a green run of the same
-    kind does not cancel it."""
+def write_stamp(results, path, backend, machines=acceptance.MACHINES):
+    """The gate's input: T1 and T2 green from every required start (acceptance.py) at both screen
+    sizes, all on one candidate MANIFEST. Extra starts are kept. A single red result for that
+    candidate refuses: a green run of the same kind does not cancel it."""
     loaded = [json.loads(Path(p).read_text()) for p in results]
     manifests = {r.get('manifest_sha256') for r in loaded}
     if len(manifests) != 1 or None in manifests:
@@ -2360,7 +2410,7 @@ def write_stamp(results, path, backend):
         green.add((result['run'], result['start'], result.get('size')))
     try:
         acceptance.validate_runs(sorted(f'{r} {s} {z}' for r, s, z in green),
-                                 acceptance.required_starts(backend, next(iter(manifests))))
+                                 acceptance.required_starts(backend, next(iter(manifests)), machines))
     except ValueError as error:
         raise Refused(str(error)) from None
     stamp = {'manifest_sha256': manifests.pop(), 'created': now.isoformat(timespec='seconds'),
@@ -2388,7 +2438,10 @@ def sign_directory(args):
                 raise Refused(f'{signature.name} does not verify against {args.keyring}')
             say(f'signed: {path.name}')
     finally:
-        verifier.close()
+        try:
+            signer.close()
+        finally:
+            verifier.close()
 
 
 def parser():
@@ -2401,6 +2454,8 @@ def parser():
                       help='owner/repo, or local:DIR for tests')
     main.add_argument('--state-dir', default=str(state))
     main.add_argument('--stamp', default=str(state / 'acceptance-stamp.json'))
+    main.add_argument('--machines', default=str(acceptance.MACHINES),
+                      help='real machines and their images: the required upgrade starts (default %(default)s)')
     main.add_argument('--key', default=os.environ.get('EMAKI_SIGN_KEY', DEFAULT_KEY))
     main.add_argument('--signing-home', default=os.environ.get(
         'EMAKI_SIGNING_GNUPGHOME', str(Path.home() / '.config/emaki-signing/gnupg')))
@@ -2450,13 +2505,16 @@ def parser():
     additions.add_argument('--missing-sources', type=Path, required=True, help='remaining MISSING-SOURCES.json')
     st = sub.add_parser('stamp', help='write the acceptance stamp from upgrade-check results')
     st.add_argument('results', nargs='+')
+    ap = sub.add_parser('acceptance-plan', help='print the (run, start, size) list the stamp requires')
+    ap.add_argument('--manifest', help="the candidate's MANIFEST sha256 (default: testing's)")
+    ap.add_argument('--json', action='store_true')
     return main
 
 
 def main(argv=None):
     args = parser().parse_args(argv)
     try:
-        if args.command not in ('status', 'verify', 'stamp'):
+        if args.command not in ('status', 'verify', 'stamp', 'acceptance-plan'):
             # Checked as a file, at the start: a missing pinentry prompt would prove nothing,
             # because gpg-agent caches a typed passphrase.
             passphrase = Path.home() / '.config/emaki-signing/passphrase'
@@ -2467,7 +2525,7 @@ def main(argv=None):
             sign_directory(args)
             return 0
         if args.command == 'stamp':
-            write_stamp(args.results, args.stamp, open_backend(args.backend, args.dry_run))
+            write_stamp(args.results, args.stamp, open_backend(args.backend, args.dry_run), args.machines)
             return 0
         publisher = Publisher(args)
         try:
@@ -2477,6 +2535,8 @@ def main(argv=None):
                 publisher.publish(args.channel, args.directory)
             elif args.command == 'status':
                 publisher.status()
+            elif args.command == 'acceptance-plan':
+                publisher.acceptance_plan(args.manifest, args.json)
             elif args.command == 'unlock':
                 publisher.unlock(args.yes)
             elif args.command == 'verify':

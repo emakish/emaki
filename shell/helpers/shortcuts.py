@@ -71,28 +71,42 @@ def nodes(text):
         return result
     return block()
 
-def read_shortcuts(path):
+def read_shortcuts(path, *additional_paths):
     rows = {}
     active = set()
     seen = 0
     modifier = "Super"
-    def read(file):
+    def read(file, optional=False):
         nonlocal seen, modifier
         file = file.expanduser().resolve()
+        try:
+            size = file.stat().st_size
+        except FileNotFoundError:
+            if optional:
+                return
+            raise ValueError("Configuration is not a bounded regular file") from None
         seen += 1
         if file in active or seen > 64:
             raise ValueError("Include cycle or too many files")
         active.add(file)
-        if not file.is_file() or file.stat().st_size > 1024 * 1024:
+        if not file.is_file() or size > 1024 * 1024:
             raise ValueError("Configuration is not a bounded regular file")
         data = file.read_bytes()
         if len(data) > 1024 * 1024:
             raise ValueError("Configuration is too large")
         for head, children in nodes(data.decode("utf-8")):
             if head[0] == "include":
-                if len(head) != 2:
+                arguments = head[1:]
+                optional = False
+                if len(arguments) == 4:
+                    for at in (0, 1):
+                        if arguments[at:at + 2] == ["optional", "="] and arguments[at + 2] in ("true", "false"):
+                            optional = arguments[at + 2] == "true"
+                            arguments = arguments[:at] + arguments[at + 3:]
+                            break
+                if len(arguments) != 1:
                     raise ValueError("Unsupported include")
-                read(file.parent / Path(head[1]).expanduser())
+                read(file.parent / Path(arguments[0]).expanduser(), optional)
             elif head[0] == "input":
                 for setting, _ in children:
                     if setting[0] == "mod-key" and len(setting) == 2:
@@ -108,6 +122,8 @@ def read_shortcuts(path):
                     rows[binding[0].casefold()] = {"keys": binding[0], "description": description or "Disabled"}
         active.remove(file)
     read(Path(path))
+    for additional in additional_paths:
+        read(Path(additional))
     for row in rows.values():
         row["keys"] = row["keys"].replace("Mod+", modifier + "+")
     return list(rows.values())
@@ -116,10 +132,15 @@ def main():
     parser = argparse.ArgumentParser()
     nearby = Path(__file__).resolve().parents[2] / "niri/default.kdl"
     default = nearby if nearby.is_file() else Path(emaki_paths.DATADIR) / "niri/default.kdl"
-    parser.add_argument("--config", type=Path, default=default)
+    parser.add_argument("--config", type=Path)
     args = parser.parse_args()
     try:
-        result = {"rows": read_shortcuts(args.config), "state": "ready"}
+        if args.config is not None:
+            rows = read_shortcuts(args.config)
+        else:
+            fork_rules = default.with_name("fork-rules.kdl")
+            rows = read_shortcuts(default, *([fork_rules] if fork_rules.is_file() else []))
+        result = {"rows": rows, "state": "ready"}
     except (OSError, ValueError, IndexError, RecursionError):
         result = {"rows": [], "state": "unavailable"}
     print(json.dumps(result))

@@ -13,13 +13,14 @@ from urllib.parse import unquote, urlsplit
 from . import __version__
 from .arch_backend import Backend, offline_config
 from . import inventory as alongside
-from .constants import GRUB_VISIBLE_FONT, LOG, MARKER, PACKAGES, PHASES, SNAPSHOT_PACKAGES, TARGET, TEST_PACKAGES, WORK
+from .constants import GRUB_VISIBLE_FONT, LOG, MARKER, PACKAGES, PHASES, RICH_APPS, SNAPSHOT_PACKAGES, TARGET, TEST_PACKAGES, WORK
 from .errors import Code, InstallError, require
 from .update_errors import details as update_error_details
 from .copy_progress import CopyProgress
+from .boot import boot_framebuffer, menu_font, menu_font_fallback
 from .clock import ensure_clock
 from .media import discover_repo, package_source
-from .network_profiles import active_wifi, capture_wifi, install_wifi
+from .network_profiles import WifiNotCopied, capture_wifi, choose_wifi, install_wifi
 from .planner import make_plan
 from .render import (GRUB_EARLY_MODULES, console_keymap,
                      grub_btrfs_package_config, grub_defaults, grub_early_config, grub_image_carries, grub_prefix,
@@ -126,7 +127,7 @@ def enable_units(runner, target, units):
 
 def software_packages(software='rich', *, btrfs=True, graphics=()):
     return (PACKAGES + ['mkinitcpio'] + (SNAPSHOT_PACKAGES if btrfs else [])
-            + (['emaki-apps'] if software == 'rich' else []) + list(graphics))
+            + (['emaki-apps'] + RICH_APPS if software == 'rich' else []) + list(graphics))
 
 
 def verify_graphics(runner, plan, target):
@@ -328,7 +329,7 @@ class Worker:
             # This is intentionally repeated after token validation: a USB can
             # disappear or GParted can finish between plan and actual execution.
             current = self.inventory.probe()
-            fresh = make_plan(plan.config, current)
+            fresh = make_plan(plan.config, current, self.test_mode)
             require(fresh.fingerprint == plan.fingerprint, Code.DISK_CHANGED,
                     'Disk identity or partition layout changed after the review.')
             require(fresh.swap_bytes == plan.swap_bytes, Code.DISK_CHANGED,
@@ -342,19 +343,7 @@ class Worker:
                 keys = Path('/etc/emaki-test/authorized_keys')
                 require(keys.is_file() and keys.stat().st_size > 0, Code.BAD_CONFIG,
                         'Test mode requires /etc/emaki-test/authorized_keys.')
-            try:
-                try:
-                    self.wifi_uuid = active_wifi()
-                except InstallError:
-                    # Multiple active adapters cannot identify one profile, but
-                    # a recorded installer join still identifies the user's choice.
-                    self.wifi_uuid = plan.config.get('wifi_uuid')
-                    if not self.wifi_uuid:
-                        raise
-                if self.wifi_uuid:
-                    self.wifi_profile = capture_wifi(self.wifi_uuid)
-            except (InstallError, OSError):
-                self.wifi_copy_failed()
+            self.capture_live_wifi(plan.config.get('wifi_uuid'))
             packages = preflight_repo(self.runner, self.test_mode, plan.config.get('software', 'rich'),
                                       alongside_mode=plan.config['mode'] == 'alongside', btrfs=plan.btrfs,
                                       graphics=plan.graphics_packages,
@@ -444,6 +433,33 @@ class Worker:
             self.emit('done', log_path=str(LOG), seconds=round(time.monotonic() - started, 2),
                       warnings=list(self.warnings))
 
+    def capture_live_wifi(self, joined):
+        """Choose and read the Wi-Fi profile before disk work; every step goes to the log.
+
+        A link that dropped after the join still copies that network. A Network page join or
+        saved Wi-Fi that ends up copying nothing warns instead of staying silent.
+        """
+        self.wifi_uuid = self.wifi_profile = None
+        try:
+            choice = choose_wifi(joined)
+            safe_log(self.log, f'Wi-Fi: the live session has {choice.saved} Wi-Fi profile(s); '
+                               f'Network page join: {joined or "none"}.')
+            if choice.uuid is None:
+                safe_log(self.log, f'Wi-Fi: nothing chosen: {choice.reason}.')
+                if choice.saved or joined:
+                    self.wifi_copy_failed()
+                return
+            safe_log(self.log, f'Wi-Fi: chose {choice.uuid}: {choice.reason}.')
+            self.wifi_uuid = choice.uuid
+            self.wifi_profile = capture_wifi(choice.uuid, note=lambda line: safe_log(self.log, 'Wi-Fi: ' + line))
+        except WifiNotCopied as exc:
+            safe_log(self.log, f'Wi-Fi: not copied: {exc.reason}')
+            self.wifi_copy_failed()
+        except (InstallError, OSError) as exc:
+            # The message may name a keyfile path; only the type goes to the log.
+            safe_log(self.log, f'Wi-Fi: not copied: {type(exc).__name__}.')
+            self.wifi_copy_failed()
+
     def wifi_copy_failed(self):
         self.wifi_profile = None
         if WIFI_NOT_COPIED not in self.warnings:
@@ -455,7 +471,7 @@ class Worker:
             alongside.require_verified()
         # Package verification can take minutes. Recheck every mode at the write
         # boundary, including encrypted-volume confirmations against fresh UUIDs.
-        fresh = make_plan(self.plan.config, self.inventory.probe())
+        fresh = make_plan(self.plan.config, self.inventory.probe(), self.test_mode)
         require(fresh.fingerprint == self.plan.fingerprint, Code.DISK_CHANGED,
                 'Windows shrink bounds, disk identity or ESP state changed after review; disk untouched.'
                 if self.plan.config['mode'] == 'alongside' else
@@ -583,14 +599,40 @@ class Worker:
                                                           ('/efi/EFI/BOOT/BOOTX64.EFI', removable_ok)) if written])
         self.grub_config()
         if self.plan.config['mode'] == 'alongside':
-            after = alongside.efi_loaders(self.files.path('/efi'))
-            require(all(after.get(name) == digest for name, digest in preserved_loaders.items()),
-                    Code.BOOT_VERIFY, 'STOP: a pre-existing Microsoft or fallback EFI loader changed.')
+            try:
+                after = alongside.efi_loaders(self.files.path('/efi'))
+            except InstallError as exc:
+                self.log('Post-write EFI inventory failed: ' + exc.code.value)
+                self.efi_preservation_failed('EFI files could not be verified after loader installation.')
+            added = {'EFI/BOOT/BOOTX64.EFI'} if removable_ok else set()
+            differences = {
+                'changed': sorted(name for name in preserved_loaders.keys() & after.keys()
+                                  if preserved_loaders[name] != after[name]),
+                'missing': sorted(preserved_loaders.keys() - after.keys()),
+                'unexpected': sorted(after.keys() - preserved_loaders.keys() - added),
+            }
+            if any(differences.values()):
+                for kind, names in differences.items():
+                    if names:
+                        # The ESP is untrusted; escape names and bound the diagnostic.
+                        paths = ', '.join(ascii(name)[:240] for name in names[:20])
+                        self.log(f'Post-write EFI {kind} ({len(names)}): {paths}')
+                self.efi_preservation_failed('Existing Windows or other EFI files changed; '
+                                             'the installation log lists affected paths.')
         text = self.runner.run(['genfstab', '-U', '-f', str(self.target), str(self.target)])
         fstab = normalize_fstab(text, self.plan)
         if self.plan.swap_bytes:
             fstab += '/swap/swapfile\tnone\tswap\tdefaults,pri=10\t0 0\n'
         self.files.write('/etc/fstab', fstab)
+
+    def efi_preservation_failed(self, detail):
+        # Reaching bootloader means prepare completed its post-shrink checks. This
+        # says nothing about Windows booting or the current state of the ESP.
+        raise InstallError(
+            Code.BOOT_VERIFY, '[PLACEHOLDER] STOP: ' + detail +
+            ' The Windows data partition passed post-shrink verification before loader installation. '
+            'Disk changes have already been made. Do not retry installation. '
+            'Save the installation log to another device and seek recovery help before changing this disk.')
 
     def unlock_screen(self, loaders):
         """Rebuild GRUB's EFI image so it asks for the disk password in graphics mode.
@@ -674,7 +716,15 @@ class Worker:
             ['/usr/share/libalpm/scripts/emaki-grub-title'], self.target, check=False)
         if title_output.strip():
             self.log('WARNING: GRUB menu title adjustment reported a problem; installation continues.')
-        self.runner.chroot(['grub-mkconfig', '-o', '/boot/grub/grub.cfg'], self.target)
+        # The live mode is a first guess. The generated header retries a smaller face if
+        # needed; boot-time repair corrects the choice for the following menu.
+        font = menu_font(boot_framebuffer())
+        font_env = ['env', 'GRUB_FONT=' + font] if font and self.files.path(font).is_file() else []
+        self.runner.chroot([*font_env, 'grub-mkconfig', '-o', '/boot/grub/grub.cfg'], self.target)
+        original = self.files.read('/boot/grub/grub.cfg')
+        safe = menu_font_fallback(original)
+        if safe != original:
+            self.files.write('/boot/grub/grub.cfg', safe)
         verify_grub(self.files.read('/boot/grub/grub.cfg'))
         if self.plan.config['mode'] == 'alongside':
             # 30_os-prober invokes os-prober inside this chroot. Do not invent
@@ -722,9 +772,12 @@ class Worker:
         else:
             self.log('Wi-Fi country left unset: timezone ' + c['timezone'] + ' has no country.')
         if self.wifi_profile is not None:
+            uuid = getattr(self, 'wifi_uuid', None) or c['wifi_uuid']
             try:
-                install_wifi(getattr(self, 'wifi_uuid', None) or c['wifi_uuid'], self.wifi_profile, self.files)
-            except (InstallError, OSError):
+                install_wifi(uuid, self.wifi_profile, self.files)
+                self.log(f'Wi-Fi: installed {uuid} into /etc/NetworkManager/system-connections (0600).')
+            except (InstallError, OSError) as exc:
+                safe_log(self.log, f'Wi-Fi: not installed: {type(exc).__name__}.')
                 self.wifi_copy_failed()
             finally:
                 self.wifi_profile = None
@@ -828,7 +881,9 @@ class Worker:
                 'Target pacman.conf is missing standard Arch repositories.')
         self.files.write('/etc/pacman.conf', text)
         if self.plan.config.get('repo_server'):
-            self.files.write('/etc/pacman.d/emaki-mirrorlist', 'Server = ' + self.plan.config['repo_server'] + '\n')
+            # Test mode only (planner). The packaged chain requires a signed database; so does this.
+            self.files.write('/etc/pacman.d/emaki-mirrorlist',
+                             'SigLevel = Required\nServer = ' + self.plan.config['repo_server'] + '\n')
         mirrors = Path('/etc/pacman.d/mirrorlist')
         require(mirrors.is_file(), Code.OFFLINE_REPO, 'The live Arch mirrorlist is missing.')
         self.files.write('/etc/pacman.d/mirrorlist', mirrors.read_bytes())

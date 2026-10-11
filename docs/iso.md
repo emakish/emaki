@@ -239,9 +239,31 @@ wait "$check_pid"
 cat "$EMAKI_ISO_VM_DIR/boot-check.log"
 ```
 
-`iso-stop.sh` asks the monitor to quit, then waits up to 180 seconds. A timeout
-fails without killing QEMU or changing the disk. The runner holds a directory
-lock for its lifetime to prevent overlapping launches.
+`iso-stop.sh` requests guest poweroff through the monitor, then waits up to 180
+seconds for QEMU to exit. This lets the guest flush filesystem writes before the
+disk is reused. A timeout fails and keeps the running VM and its bookkeeping;
+it never silently forces a stop. For an unbooted or unresponsive disposable guest,
+`iso-stop.sh --force` explicitly quits QEMU and can lose unsaved guest writes.
+The runner holds a directory lock for its lifetime to prevent overlapping launches.
+
+The harness talks only to the VM its directory started (`tests/vm/iso-owner.py`).
+`run-iso.sh` locks the directory's `run.lock` as its first step, refuses to start
+when `127.0.0.1:PORT` is already taken, and hands the lock to QEMU through exec; a
+process belongs to the directory exactly when it holds that lock open. Every SSH
+contact (`iso-ssh.sh`, each attempt of `iso-wait-ssh.sh`, each step of
+`iso-install.sh`) goes through `iso_ssh` in `iso-common.sh`, which first proves that
+the process listening on the port is the QEMU holding this directory's lock; anything
+else on the port, such as a leftover VM of a renamed directory, is named and refused
+before the command is sent. Because the lock is held from the launcher's first step,
+`iso-stop.sh` finds a start at any moment, before any PID file exists: it waits while
+the launcher is still preparing, stops the QEMU it starts (SIGTERM when the monitor
+does not exist yet, which ends QEMU the same way as the monitor's `quit`), and reports
+success only when nothing of the directory holds the lock any more.
+`tests/vm/night/vm.sh`, the other launcher of this directory layout, follows the same
+rules: it refuses a taken port, hands its directory lock to QEMU, returns only once
+QEMU owns the port, and stops its QEMU itself when the start fails. `run-iso.sh` reads
+OVMF from `EMAKI_ISO_OVMF_DIR` and the render node from `EMAKI_ISO_RENDER_NODE` when
+they are set; `EMAKI_ISO_KVM_DEVICE` moves only its KVM check, for the fake-QEMU tests.
 
 Boot checks print `OK:`/`BAD:` for failed units, boot journal errors, package version and ownership,
 NetworkManager connectivity, the Emaki repository, a real `pacman -Syu`, GRUB
@@ -292,8 +314,8 @@ Windows"). The alongside check uses a synthetic Windows disk: its Microsoft
 path holds a diagnostic EFI program, so it tests chainloading only, not Windows. The last
 encrypted run on the full 0.1.2 test ISO ended rc=1.
 
-Install alongside Windows is not offered in 0.5.0: the 0.5.0 installer has no experimental
-options. On a 0.5.0 ISO the alongside check asks the worker for a plan only, sees the mode
+Install alongside Windows is not offered in 0.6.0: the 0.6.0 installer has no experimental
+options. On a 0.6.0 ISO the alongside check asks the worker for a plan only, sees the mode
 refused, prints `NOT APPLICABLE` and exits 77 without touching the target disk; treat 77 as
 "not run", never as a pass.
 
@@ -621,7 +643,7 @@ sudo cat /boot/emaki/*/manifest.json
 
 Capture the complete package transaction output. It must show the refresh hook
 and its success message. Do not run a manual refresh before the first reboot:
-that would hide a broken package hook. The 0.5.0 packages must upgrade the installed
+that would hide a broken package hook. The 0.6.0 packages must upgrade the installed
 0.2.0 packages so ordinary `pacman -Syu` selects them. No publication is part of this check.
 
 Reboot and capture the actual framebuffer:

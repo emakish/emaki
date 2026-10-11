@@ -11,11 +11,13 @@ import os
 from pathlib import Path
 import re
 import shlex
+import stat
 import tempfile
 import threading
 from urllib.request import urlopen
 
 from . import constants
+from .boot_media import BootMedia
 from .media import discover_repo, MISSING_NOTICE
 from .hardware import disk_behind_vmd, secure_boot, vmd_present, VMD_MESSAGE
 from .constants import GIB, MIB
@@ -191,22 +193,86 @@ def verify_gpt(runner, disk):
             Code.UNSAFE_DISK, 'GPT validation failed; Windows will not be resized.')
 
 
+EFI_MANIFEST_MAX_ENTRIES = 4096
+EFI_MANIFEST_MAX_BYTES = 256 * MIB
+EFI_MANIFEST_MAX_FILE_BYTES = 64 * MIB
+EFI_MANIFEST_MAX_DEPTH = 16
+EFI_MANIFEST_UNSAFE = '[PLACEHOLDER] Cannot safely verify the existing EFI files.'
+
+
 def efi_loaders(root):
-    """Only known EFI paths, ordinary bounded files; FAT lookup ignores case."""
+    """Fingerprint foreign EFI files, including BCD, before and after install.
+
+    FAT names compare without case; normalize keys even on test filesystems.
+    Only our own vendor subtree is excluded. Bound enumeration and reads so an
+    untrusted ESP cannot make the read-only inventory consume unlimited work.
+    """
     result = {}
-    for name in ('EFI/Microsoft/Boot/bootmgfw.efi', 'EFI/BOOT/BOOTX64.EFI'):
-        path = root
-        for component in name.split('/'):
-            path = path / component
-            require(not path.is_symlink(), Code.UNSAFE_DISK, 'EFI loader path contains a symlink.')
-        if path.exists():
-            require(path.is_file() and 0 < path.stat().st_size <= 64 * MIB,
-                    Code.UNSAFE_DISK, 'EFI loader is not a valid bounded file.')
-            result[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    entries = 0
+    total = 0
+    canonical = {name.casefold(): name for name in
+                 ('EFI/Microsoft/Boot/bootmgfw.efi', 'EFI/BOOT/BOOTX64.EFI')}
+
+    def children(directory):
+        nonlocal entries
+        seen = set()
+        with os.scandir(directory) as stream:
+            for child in stream:
+                entries += 1
+                name = child.name.casefold()
+                require(entries <= EFI_MANIFEST_MAX_ENTRIES and name not in seen
+                        and not any(ord(c) < 32 for c in child.name),
+                        Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
+                seen.add(name)
+                yield Path(child.path), name
+
+    def visit(path, key, depth):
+        nonlocal total
+        require(depth <= EFI_MANIFEST_MAX_DEPTH, Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
+        info = path.lstat()
+        require(not stat.S_ISLNK(info.st_mode), Code.UNSAFE_DISK,
+                'EFI loader path contains a symlink.')
+        if stat.S_ISDIR(info.st_mode):
+            for child, name in children(path):
+                if key == 'efi' and name == 'emaki':
+                    # Reject a link even though we do not fingerprint our files.
+                    require(not child.is_symlink() and child.is_dir(),
+                            Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
+                    continue
+                visit(child, key + '/' + name, depth + 1)
+            return
+        require(stat.S_ISREG(info.st_mode) and info.st_size <= EFI_MANIFEST_MAX_FILE_BYTES
+                and (not key.endswith('.efi') or info.st_size > 0),
+                Code.UNSAFE_DISK, 'EFI loader is not a valid bounded file.')
+        total += info.st_size
+        require(total <= EFI_MANIFEST_MAX_BYTES, Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
+        digest = hashlib.sha256()
+        with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), 'rb') as stream:
+            opened = os.fstat(stream.fileno())
+            require(stat.S_ISREG(opened.st_mode) and
+                    (opened.st_dev, opened.st_ino, opened.st_size) ==
+                    (info.st_dev, info.st_ino, info.st_size),
+                    Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
+            remaining = info.st_size
+            while remaining:
+                chunk = stream.read(min(remaining, MIB))
+                require(bool(chunk), Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
+                digest.update(chunk)
+                remaining -= len(chunk)
+            require(not stream.read(1), Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
+        result[canonical.get(key, 'EFI/' + key[4:])] = digest.hexdigest()
+
+    try:
+        require(not root.is_symlink() and root.is_dir(), Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
+        for path, name in children(root):
+            if name == 'efi':
+                require(not path.is_symlink() and path.is_dir(), Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE)
+                visit(path, name, 0)
+    except OSError as exc:
+        raise InstallError(Code.UNSAFE_DISK, EFI_MANIFEST_UNSAFE) from exc
     return result
 
 
-BOOT_MOUNT = "/run/archiso/bootmnt"
 EFI = Path("/sys/firmware/efi")
 BUSY_REASON = "This disk is busy [LVM, RAID or an open encrypted volume]. Close its volumes, then try again."
 ENCRYPTED_TYPES = {
@@ -607,7 +673,7 @@ class Inventory:
             for marker in markers:
                 if marker.startswith('/dev/'):
                     resolved = os.path.realpath(self.root / marker.lstrip('/'))
-                    expected = str(self.root / path.lstrip('/'))
+                    expected = os.path.realpath(self.root / path.lstrip('/'))
                     if resolved == expected:
                         matches.add(path)
             if labels and node.get('label') in labels:
@@ -616,33 +682,16 @@ class Inventory:
         return (matches, True) if len(matches) == 1 else (set(), False)
 
     def _boot_sources(self, nodes):
-        """Resolve the exact live-medium mount and, for loop ISOs, its backing disk."""
-        known = {_path(node): node for node in nodes}
-        numbers = {node.get("maj:min"): _path(node) for node in nodes if node.get("maj:min")}
-        query = ["findmnt", "--json", "--mountpoint", BOOT_MOUNT, "--output", "SOURCE,MAJ:MIN"]
-        visited = set()
-        for _ in range(8):
-            try:
-                data = json.loads(self._optional(query))
-                mounts = data.get("filesystems", [])
-                if len(mounts) != 1:
-                    return self._boot_marker(nodes)
-                source = mounts[0].get("source", "").split("[", 1)[0]
-                path = numbers.get(mounts[0].get("maj:min")) or os.path.realpath(source)
-                if path not in known or path in visited:
-                    return set(), False
-                visited.add(path)
-                if known[path].get("type") != "loop":
-                    # Optical drives need not appear in selectable disks, but
-                    # their positively resolved source still makes safety known.
-                    return {path}, True
-                backing = _read(Path("/sys/class/block") / Path(path).name / "loop/backing_file").strip()
-                if not backing.startswith("/"):
-                    return set(), False
-                query = ["findmnt", "--json", "--target", backing, "--output", "SOURCE,MAJ:MIN"]
-            except (ValueError, TypeError, KeyError):
-                return self._boot_marker(nodes)
-        return set(), False
+        """Identify every physical disk carrying the live ISO, including marker fallback."""
+        media = BootMedia(self._optional, nodes, root=self.root, sysfs_root=self.sysfs_root)
+        source = media.mounted_source()
+        if source is None:
+            markers, known = self._boot_marker(nodes)
+            if not known:
+                return set(), False
+            source = next(iter(markers))
+        disks = media.physical(source)
+        return disks, bool(disks)
 
     def _signature(self, path):
         """Fresh low-level blkid tags; None when the device cannot be read.
@@ -738,7 +787,13 @@ class Inventory:
                 part["_esp_free_bytes"] = usage.f_bavail * usage.f_frsize
                 if _has_windows(root):
                     part["os_hint"] = "windows"
-                part['_efi_loaders'] = efi_loaders(root)
+                try:
+                    part['_efi_loaders'] = efi_loaders(root)
+                except InstallError as exc:
+                    # Unverified preservation evidence refuses alongside, while
+                    # the disk stays visible for the other installation modes.
+                    part['_efi_loaders'] = {}
+                    part['_efi_error'] = exc.message
             if fs in {"ntfs", "ntfs3"} and windows_system(root):
                 part["os_hint"] = "windows"
             if fs in {"ext4", "btrfs"}:
@@ -785,6 +840,8 @@ class Inventory:
             require(len(esps) == 1 and esps[0]['fs'] == 'vfat', Code.ESP_SPACE,
                     'Alongside requires exactly one FAT32 ESP.')
             esp = esps[0]
+            if esp.get('_efi_error'):
+                return dict(refusal, reason=esp['_efi_error'])
             require((esp.get('_esp_free_bytes') or 0) >= 32 * MIB, Code.ESP_SPACE,
                     'ESP needs at least 32 MiB of verified free space.')
             require('EFI/Microsoft/Boot/bootmgfw.efi' in esp.get('_efi_loaders', {}), Code.SHRINK_BOUNDS,

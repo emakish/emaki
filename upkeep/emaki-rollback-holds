@@ -24,6 +24,9 @@ UNCONFIRMED = ('Package versions could not be checked (pacman). '
                'This transaction was refused. To release all holds, run: '
                'sudo emaki-rollback release --all')
 NAME = re.compile(r'[a-zA-Z0-9@_+][a-zA-Z0-9@_.+:-]*')
+# Every other signature is checked with these. Holding one would keep a revoked key
+# trusted after a restore, so they are never held, and older records drop them.
+KEYRINGS = frozenset({'archlinux-keyring', 'emaki-keyring'})
 
 
 def safe(root, relative):
@@ -63,6 +66,8 @@ def load(root):
     for name, version in state['holds'].items():
         if not NAME.fullmatch(name) or not version_ok(version):
             raise ValueError('Invalid rollback hold record (pacman).')
+    state['holds'] = {name: version for name, version in state['holds'].items()
+                      if name not in KEYRINGS}
     return state
 
 
@@ -174,7 +179,7 @@ def prepare(rolled_away, restored):
                    for name in sorted(old.keys() | new.keys()) if old.get(name) != new.get(name)}
     for name, difference in differences.items():
         version = difference['rolled_away']
-        if (version and difference['restored'] and newer(version, difference['restored'])
+        if (name not in KEYRINGS and version and difference['restored'] and newer(version, difference['restored'])
                 and (name not in holds or newer(version, holds[name]))):
             holds[name] = version
     save(restored, {'holds': holds, 'differences': differences})
@@ -395,8 +400,6 @@ def check(root, targets):
     for line in notices(blocked):
         print(line, file=sys.stderr)
     if blocked:
-        print('To upgrade the other packages, run: sudo pacman -Syu --ignore ' +
-              ','.join(sorted(blocked)), file=sys.stderr)
         print('To release all holds, run: sudo emaki-rollback release --all', file=sys.stderr)
         return 3
     remaining = {name: version for name, version in state['holds'].items()

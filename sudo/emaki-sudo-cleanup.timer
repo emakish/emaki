@@ -1,0 +1,12 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Retry pending sudo key timestamp cleanup after broker stop
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=15s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

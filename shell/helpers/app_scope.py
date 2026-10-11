@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Launch-only children leave the shell cgroup; protocol helpers stay with qs."""
 import base64
 import json
@@ -15,16 +17,30 @@ SETUP_TIMEOUT = 1
 LAUNCH_TIMEOUT = 5
 WORKER_TIMEOUT = LAUNCH_TIMEOUT + 1
 MALLOC_MARKER = 'EMAKI_SHELL_ORIGINAL_MALLOC_CONF'
+SESSION_MARKER = 'EMAKI_SHELL_SESSION_ENV'
+INTERNAL_MARKERS = (SESSION_MARKER, MALLOC_MARKER, 'EMAKI_SHELL_PROCESS_ID')
 
 
 def application_environment():
-    """Undo only emaki-shell's allocator default before leaving the shell."""
+    """Remove shell-only environment before leaving the shell."""
     environment = dict(os.environ)
-    original = environment.pop(MALLOC_MARKER, None)
-    if original == '0':
-        environment.pop('MALLOC_CONF', None)
-    elif original is not None and original.startswith('1'):
-        environment['MALLOC_CONF'] = original[1:]
+    try:
+        session = json.loads(environment.get(SESSION_MARKER, 'null'))
+    except (ValueError, TypeError):
+        session = None
+    if (isinstance(session, dict)
+            and all(isinstance(key, str) and key and '=' not in key and '\0' not in key
+                    and isinstance(value, str) and '\0' not in value
+                    for key, value in session.items())):
+        environment = session
+    else:
+        original = environment.get(MALLOC_MARKER)
+        if original == '0':
+            environment.pop('MALLOC_CONF', None)
+        elif original is not None and original.startswith('1'):
+            environment['MALLOC_CONF'] = original[1:]
+    for key in ('WAYLAND_SOCKET', *INTERNAL_MARKERS):
+        environment.pop(key, None)
     return environment
 
 

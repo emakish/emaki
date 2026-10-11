@@ -62,15 +62,17 @@ def trial_available():
 def boot_removable():
     if not BOOT_MOUNT.is_dir():
         return False
-    result = run(['findmnt', '-n', '-o', 'SOURCE', '--mountpoint', str(BOOT_MOUNT)])
-    source = result.stdout.decode().strip().split('[', 1)[0]
-    if result.returncode or not source.startswith('/dev/'):
-        return False
-    result = run(['lsblk', '--tree', '-s', '-J', '-o', 'RM,TRAN', source])
-    def removable(rows):
-        return any(row.get('rm') in (True, 1, '1') or row.get('tran') == 'usb'
-                   or removable(row.get('children', [])) for row in rows)
-    return result.returncode == 0 and removable(json.loads(result.stdout).get('blockdevices', []))
+    from emaki_installer.boot_media import BootMedia, COLUMNS
+
+    def query(argv):
+        result = run(argv)
+        if result.returncode:
+            return '{}'
+        return result.stdout.decode()
+
+    nodes = json.loads(query(['lsblk', '--json', '--paths', '--tree', '--output', COLUMNS]))
+    media = BootMedia(query, nodes.get('blockdevices', []))
+    return media.removable(media.physical(media.mounted_source()))
 
 
 def catalog():

@@ -47,7 +47,6 @@ os-prober
 pipewire
 pipewire-pulse
 playerctl
-polkit-kde-agent
 power-profiles-daemon
 python
 python-gobject

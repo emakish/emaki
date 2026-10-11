@@ -19,6 +19,11 @@ while (($#)); do
         *) iso_die "unknown option: $1" ;;
     esac
 done
+# The lock comes first: iso-stop.sh and iso-owner.py know this directory's launcher by it from
+# here on, and QEMU inherits it through exec.
+mkdir -p -- "$ISO_VM"
+exec 9>"$ISO_VM/run.lock"
+flock -n 9 || iso_die 'this ISO VM is already running'
 [[ $outputs == 1 || $outputs == 2 ]] || iso_die '--outputs must be 1 or 2'
 [[ $memory =~ ^[1-9][0-9]*G$ ]] || iso_die '--memory must be a positive whole number of GiB (for example 4G)'
 ((usb == 0 || no_cd == 0)) || iso_die '--usb requires a live ISO; incompatible with --no-cd'
@@ -30,19 +35,26 @@ disk=$(realpath -m -- "${disk:-$ISO_VM/target.qcow2}")
 # QEMU drive options use commas as separators; reject ambiguous filenames.
 [[ $disk != *,* && $ISO_VM != *,* && $iso != *,* ]] || iso_die 'QEMU paths must not contain commas'
 for command in qemu-system-x86_64 qemu-img; do command -v "$command" >/dev/null || iso_die "missing $command"; done
-code=/usr/share/edk2/x64/OVMF_CODE.4m.fd
-vars=/usr/share/edk2/x64/OVMF_VARS.4m.fd
-[[ -r $code && -r $vars && -r /dev/kvm && -w /dev/kvm ]] || iso_die 'OVMF or KVM unavailable'
-[[ -r /dev/dri/renderD128 && -w /dev/dri/renderD128 ]] || iso_die 'renderD128 unavailable'
-mkdir -p -- "$ISO_VM" "$(dirname -- "$disk")"
-exec 9>"$ISO_VM/run.lock"
-flock -n 9 || iso_die 'this ISO VM is already running'
+# Firmware and the render node can live elsewhere (another distribution, a fixture). QEMU opens
+# the KVM device itself; EMAKI_ISO_KVM_DEVICE only moves this check, for the fake-QEMU tests.
+firmware=${EMAKI_ISO_OVMF_DIR:-/usr/share/edk2/x64}
+kvm=${EMAKI_ISO_KVM_DEVICE:-/dev/kvm}
+render=${EMAKI_ISO_RENDER_NODE:-/dev/dri/renderD128}
+code=$firmware/OVMF_CODE.4m.fd
+vars=$firmware/OVMF_VARS.4m.fd
+[[ $code != *,* && $render != *,* ]] || iso_die 'QEMU paths must not contain commas'
+[[ -r $code && -r $vars && -r $kvm && -w $kvm ]] || iso_die 'OVMF or KVM unavailable'
+[[ -r $render && -w $render ]] || iso_die "render node $render unavailable"
+mkdir -p -- "$(dirname -- "$disk")"
 if [[ -e $ISO_VM/qemu.pid ]]; then
     pid=$(<"$ISO_VM/qemu.pid")
     [[ $pid =~ ^[1-9][0-9]{0,9}$ ]] || iso_die 'invalid existing pidfile'
     [[ ! -e /proc/$pid ]] || iso_die 'PID is still alive; use iso-stop.sh first'
     rm -- "$ISO_VM/qemu.pid"
 fi
+# A QEMU of another directory can still hold this port; its guest would answer every SSH step.
+python3 "$ISO_HERE/iso-owner.py" port-free "$ISO_PORT" \
+    || iso_die "127.0.0.1:$ISO_PORT is already in use (another VM?); stop it first or choose --ssh-port"
 if ((no_cd)) && [[ ! -f $disk ]]; then iso_die '--no-cd requires an existing installed disk'; fi
 [[ -f $disk ]] || qemu-img create -f qcow2 "$disk" 40G
 [[ -f $ISO_VM/OVMF_VARS.4m.fd ]] || cp -- "$vars" "$ISO_VM/OVMF_VARS.4m.fd"
@@ -69,7 +81,7 @@ exec qemu-system-x86_64 -machine q35 -enable-kvm -cpu host -smp 6 -m "$memory" \
     -drive "file=$disk,if=none,id=target,format=qcow2,discard=unmap" \
     -device virtio-blk-pci,drive=target,serial=emaki-target "${cd_args[@]}" \
     -nic "$network" \
-    -device "virtio-vga-gl,max_outputs=$outputs" -display egl-headless,rendernode=/dev/dri/renderD128 \
+    -device "virtio-vga-gl,max_outputs=$outputs" -display "egl-headless,rendernode=$render" \
     -monitor "unix:$socket_runtime/mon.sock,server=on,wait=off" \
     -vnc "unix:$socket_runtime/vnc.sock" \
     -serial "file:$ISO_VM/serial.log" -pidfile "$ISO_VM/qemu.pid"

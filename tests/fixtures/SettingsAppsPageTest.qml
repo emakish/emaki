@@ -72,6 +72,32 @@ ShellRoot {
             tryCompare(page, "error", "Fixture refused the change.");
             compare(page.startup[0].enabled, true);
         }
+        function test_program_removal_shows_the_preview_first() {
+            tryVerify(() => page.programs.length === 2 && !page.programsBusy);
+            const card = findChild(page, "settings-installed-programs");
+            verify(card !== null);
+            const kate = findChild(card, "program-kate");
+            verify(kate !== null);
+            findChild(kate, "program-remove").clicked();
+            tryVerify(() => page.preview.code === "required" && !page.programsBusy);
+            const refused = kate.parent;
+            verify(findChild(refused, "program-preview").visible);
+            verify(!findChild(refused, "program-confirm").visible);
+            findChild(refused, "program-cancel").clicked();
+            compare(page.preview.code, undefined);
+            const gwenview = findChild(card, "program-gwenview");
+            findChild(gwenview, "program-remove").clicked();
+            tryVerify(() => page.preview.code === "ready" && !page.programsBusy);
+            const block = gwenview.parent;
+            verify(findChild(block, "program-preview").visible);
+            compare(findChild(block, "program-preview-packages").text, "gwenview\nkimageannotator");
+            const confirm = findChild(block, "program-confirm");
+            verify(confirm.visible);
+            confirm.clicked();
+            tryVerify(() => page.programsMessage === "Fixture removed");
+            tryVerify(() => page.programs.length === 1 && page.programs[0].package === "kate" && !page.programsBusy);
+            compare(page.preview.code, undefined);
+        }
         onCompletedChanged: if (completed)
             console.log("APPS_PAGE_RESULT " + qtest_results.passCount + " " + qtest_results.failCount)
     }

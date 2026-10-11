@@ -112,6 +112,105 @@ class Supervisor:
         self.finished = False
         self.stopping = False
         self.layout_worker = None
+        self.cancel_worker = None
+        self.cancel_deadline = 0.0
+        self.authentication_pending = False
+        # A dead lock client leaves compositor protection in place. Do not infer
+        # an unlocked desktop from a later failed replacement or stale heartbeat.
+        self.retained_lock = False
+
+    def prepare_session_lock(self):
+        # The gate can unmap a prompt before the locker even connects. Wait for
+        # compositor input isolation, not merely for a successfully sent request.
+        path = os.environ.get('NIRI_SOCKET')
+        if not path:
+            return False
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stream:
+                stream.settimeout(.5)
+                stream.connect(path)
+                stream.sendall(b'"PrepareSessionLock"\n')
+                reply = b''
+                deadline = time.monotonic() + .5
+                while b'\n' not in reply and len(reply) < 4096:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return False
+                    stream.settimeout(remaining)
+                    chunk = stream.recv(4096 - len(reply))
+                    if not chunk:
+                        return False
+                    reply += chunk
+                return json.loads(reply.split(b'\n', 1)[0]) == {'Ok': 'Handled'}
+        except (OSError, ValueError):
+            return False
+
+    def authentication_after_lock(self):
+        # Old compositors and failed IPC still get a locker immediately. Never
+        # unmap authentication until its private channel confirms a real lock.
+        if self.authentication_pending and self.secure:
+            self.authentication_pending = False
+            self.block_authentication()
+            self.cancel_authentication()
+
+    def release_authentication(self):
+        if self.retained_lock or self.secure or self.child is not None and self.child.poll() is None:
+            return
+        (self.directory / 'authentication-blocked').unlink(missing_ok=True)
+
+    def block_authentication(self):
+        # Persist before asking the shell to clear its input: a shell restart or
+        # supervisor crash must not permit a new request behind the lock screen.
+        identity = {}
+        display = Path(os.environ.get('WAYLAND_DISPLAY', 'wayland-0'))
+        display = display if display.is_absolute() else self.directory.parent / display
+        try:
+            info = display.stat()
+            if stat.S_ISSOCK(info.st_mode):
+                identity = dict(device=info.st_dev, inode=info.st_ino)
+        except OSError:
+            pass
+        try:
+            descriptor = os.open(self.directory / 'authentication-blocked',
+                                 os.O_CREAT | os.O_TRUNC | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(descriptor, 'w') as marker:
+                json.dump(identity, marker)
+        except OSError:
+            # The observer blocks on an unsafe gate. Its storage must never
+            # prevent acquiring the compositor lock; still clear the live shell.
+            pass
+
+    def cancel_authentication(self):
+        # The locker must already be running before a slow shell IPC call. The call runs
+        # beside the loop (reap_cancel), so a hung shell delays neither the layout switch
+        # nor the replies to waiting clients.
+        try:
+            self.cancel_worker = subprocess.Popen(['emaki-shell', 'call', 'authentication', 'lock'],
+                                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                                  stderr=subprocess.DEVNULL)
+            self.cancel_deadline = time.monotonic() + 1
+        except OSError:
+            # The marker also reaches a recovering shell through its watcher.
+            # Failure of the desktop shell must never prevent screen locking.
+            self.cancel_worker = None
+
+    def reap_cancel(self, final=False):
+        # The shell gets one second, as before; at exit the supervisor waits out the rest.
+        worker = self.cancel_worker
+        if worker is None:
+            return
+        remaining = self.cancel_deadline - time.monotonic()
+        try:
+            if final:
+                worker.wait(timeout=max(remaining, 0))
+            elif worker.poll() is None and remaining > 0:
+                return
+        except subprocess.TimeoutExpired:
+            pass
+        if worker.poll() is None:
+            worker.kill()
+            worker.wait()
+        self.cancel_worker = None
 
     def start_layout(self):
         # Start only after the locker: metadata must never delay secure acquisition.
@@ -143,6 +242,7 @@ class Supervisor:
         # would leave it subject to the same stop deadline.
         self.stopping = self.finished = True
         self.phase = 'stopping'
+        self.release_authentication()
 
     def spawn(self, fallback=False):
         if self.stopping:
@@ -209,9 +309,11 @@ class Supervisor:
     def fail(self):
         # A refusal can mean another locker owns the session. Never retry later
         # and unexpectedly re-lock the desktop after that owner authenticates.
+        self.retained_lock = self.retained_lock or self.secure
         self.secure = self.poured = False
         self.phase = 'failed'
         self.finished = True
+        self.release_authentication()
 
     def crashed(self):
         # Both lockers died: a crash, not a refusal. The compositor keeps the
@@ -328,6 +430,8 @@ class Supervisor:
                 if self.poured and not (value['secure'] and value['poured']):
                     self.readiness_since = self.last_heartbeat
                 self.secure = value['secure']
+                self.authentication_after_lock()
+                self.retained_lock = self.retained_lock or self.secure
                 active = value.get('outputsActive', True)
                 if isinstance(active, (bool, int)):
                     self.outputs_active = bool(active)
@@ -439,7 +543,8 @@ class Supervisor:
         while b'\n' in self.fallback_buffer:
             line, self.fallback_buffer = self.fallback_buffer.split(b'\n', 1)
             if LOCKED_EVENT.fullmatch(ANSI_COLOR.sub(b'', line)):
-                self.secure = self.poured = True
+                self.secure = self.poured = self.retained_lock = True
+                self.authentication_after_lock()
                 self.phase = 'locked'
         if len(self.fallback_buffer) > 4096:
             self.fallback_buffer = b''
@@ -477,6 +582,7 @@ class Supervisor:
         return now
 
     def tick(self):
+        self.reap_cancel()
         if self.stopping:
             return
         now = self.account_stall()
@@ -490,6 +596,7 @@ class Supervisor:
             normal = self.child.returncode == 0 and (self.authenticated_exit if self.backend == 'quickshell' else True)
             backend = self.backend
             confirmed = self.secure
+            self.retained_lock = self.retained_lock or confirmed
             self.retire()
             pending = self.prepared_generation < self.sleep_generation or any(row['wait'] for row in self.connections.values())
             if normal and backend == 'quickshell' and pending:
@@ -498,8 +605,11 @@ class Supervisor:
                 self.spawn(False)
             elif normal:
                 self.phase = 'refused' if backend == 'hyprlock' and not confirmed else 'unlocked'
+                if self.phase == 'unlocked':
+                    self.retained_lock = False
                 self.secure = self.poured = False
                 self.finished = True
+                self.release_authentication()
             elif backend == 'hyprlock':
                 self.crashed()
             else:
@@ -548,8 +658,20 @@ class Supervisor:
         self.server.setblocking(False)
         self.selector.register(self.server, selectors.EVENT_READ, 'server')
         try:
+            # An interrupted owner may have died after locking but before its
+            # acknowledgement. Keep that uncertainty until authenticated release.
+            self.retained_lock = (self.directory / 'authentication-blocked').exists()
+            prepared = self.prepare_session_lock()
+            # Preparation remains an input boundary even if both lockers fail.
+            self.retained_lock = self.retained_lock or prepared
+            self.authentication_pending = not prepared
+            if prepared:
+                self.block_authentication()
             orphan = self.recover_orphan()
+            self.retained_lock = self.retained_lock or orphan
             self.spawn(fallback=fallback or orphan)
+            if prepared:
+                self.cancel_authentication()
             self.start_layout()
             while not self.finished:
                 try:
@@ -576,6 +698,14 @@ class Supervisor:
                 except Exception as error:
                     self.log_error(error)
         finally:
+            try:
+                self.release_authentication()
+            except Exception as error:
+                self.log_error(error)
+            try:
+                self.reap_cancel(final=True)
+            except Exception as error:
+                self.log_error(error)
             try:
                 self.finish_layout()
             except Exception as error:

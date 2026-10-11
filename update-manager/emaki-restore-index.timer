@@ -1,0 +1,12 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Keep the public system restore point inventory current
+
+[Timer]
+OnBootSec=1s
+OnUnitInactiveSec=30s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

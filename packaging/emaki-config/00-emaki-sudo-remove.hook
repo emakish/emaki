@@ -1,0 +1,13 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Reverse package-file removal deletes the vendor PAM service before /etc files.
+# Stop selecting it before that can happen, even when the local override is absent.
+[Trigger]
+Type = Package
+Operation = Remove
+Target = emaki-config
+
+[Action]
+When = PreTransaction
+Exec = /usr/bin/rm -f /etc/sudoers.d/20-emaki-pam
+AbortOnFail

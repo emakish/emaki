@@ -89,6 +89,24 @@ class RebaseGuardTests(unittest.TestCase):
                 self.assertTrue(any(failure.startswith(relative + ':') and 'N6c' in failure
                                     for failure in guard.check(self.source)))
 
+    def test_trusted_connection_and_input_paths_require_review(self):
+        for relative in ('src/trusted_client.rs', 'src/trusted_prompt.rs',
+                         'src/handlers/mod.rs', 'src/handlers/xdg_shell.rs',
+                         'src/ipc/server.rs', 'src/utils/spawning.rs',
+                         'niri-config/src/lib.rs', 'niri-ipc/src/lib.rs'):
+            with self.subTest(relative=relative):
+                self.change(relative, '// changed trust boundary\n')
+                self.assertTrue(any(failure.startswith(relative + ':') and 'A6' in failure
+                                    for failure in guard.check(self.source)))
+
+    def test_session_safety_bindings_require_review(self):
+        for relative in ('src/trusted_binds.rs', 'src/trusted_keyboard.rs',
+                         'src/tests/trusted_binds.rs', 'src/input/mod.rs', 'src/niri.rs'):
+            with self.subTest(relative=relative):
+                self.change(relative, '// changed session binding policy\n')
+                self.assertTrue(any(failure.startswith(relative + ':') and 'B2b' in failure
+                                    for failure in guard.check(self.source)))
+
     def test_missing_source_is_not_a_pass(self):
         (self.source / 'src/layout/scrolling.rs').unlink()
         self.assertTrue(any('missing reviewed source' in failure for failure in guard.check(self.source)))
@@ -102,10 +120,11 @@ class RebaseGuardTests(unittest.TestCase):
         recipe = (ROOT / 'packaging/niri-emaki/PKGBUILD').read_text()
         invocation = 'python "$srcdir/check-assumptions.py" . || return 1'
         self.assertIn(invocation, recipe)
-        self.assertLess(recipe.index('patch -Np1 -i ../0009'), recipe.index(invocation))
+        self.assertLess(recipe.index('patch -Np1 -i ../0011'), recipe.index(invocation))
         self.assertLess(recipe.index(invocation), recipe.index('cargo fetch'))
         self.assertIn('        check-assumptions.py)', recipe)
         self.assertIn('  python\n', recipe)
+        self.assertIn('cargo test --frozen --release --lib trusted_binds', recipe)
         data = CHECKER.read_bytes()
         self.assertIn(hashlib.sha512(data).hexdigest(), recipe)
         self.assertIn(hashlib.blake2b(data).hexdigest(), recipe)

@@ -40,12 +40,24 @@ except PermissionError:
     print('BLOCKED real Unix-listener integration (explicit EMAKI_TEST_SANDBOX=1); rerun without opt-in outside sandbox')
     raise SystemExit(0)
 
+# Keep desktop IPC isolated from the host and from the fake locker protocol.
 FAKE = '''#!/usr/bin/env python3
 import json,os,socket,sys,time,select
 from pathlib import Path
 r=Path(os.environ['LOCK_FIXTURE'])
 name=Path(sys.argv[0]).name
+if name=='emaki-shell':
+ assert sys.argv[1:]==['call','authentication','lock']
+ os.execv(str(Path(sys.argv[0]).with_name('qs')),
+          ['qs','-p','desktop.qml','ipc','call','authentication','lock'])
+if name=='qs':
+ if sys.argv[3:]==['ipc','call','authentication','lock']:
+  name='qs-cancel'
+ else:
+  assert sys.argv[1]=='-p' and Path(sys.argv[2]).name=='lock.qml' and sys.argv[3:]==['--no-color']
+  name='qs-locker'
 with (r/'calls').open('a') as f:f.write(name+' '+str(os.getpid())+'\\n')
+if name=='qs-cancel':sys.exit(0)
 if name=='hyprlock':
  if (r/'fallback-fail').exists():sys.exit(1)
  if (r/'fallback-success').exists():sys.exit(0)
@@ -58,7 +70,13 @@ if name=='hyprlock':
 mode=(r/'mode').read_text()
 if mode=='die-before':sys.exit(1)
 s=socket.socket(socket.AF_UNIX);s.connect(os.environ['EMAKI_LOCK_SOCKET'])
-def send(**v):s.sendall((json.dumps(dict(version=1,**v))+'\\n').encode())
+def disconnected():
+ if mode=='orphan':
+  while True:time.sleep(.1)
+ sys.exit(1)
+def send(**v):
+ try:s.sendall((json.dumps(dict(version=1,**v))+'\\n').encode())
+ except (BrokenPipeError,ConnectionResetError):disconnected()
 send(event='state',secure=False,poured=False,phase='pour')
 if mode=='late':time.sleep(.22)
 if mode=='unconfirmed':
@@ -73,11 +91,9 @@ if mode=='normal':
 generation=0
 while True:
  if select.select([s],[],[],0)[0]:
-  data=s.recv(4096)
-  if not data:
-   if mode=='orphan':
-    while True:time.sleep(.1)
-   sys.exit(1)
+  try:data=s.recv(4096)
+  except (BrokenPipeError,ConnectionResetError):disconnected()
+  if not data:disconnected()
   for line in data.splitlines():generation=max(generation,json.loads(line).get('generation',0))
  if mode!='hang':send(event='state',secure=True,poured=True,phase='locked',sleepGeneration=generation)
  time.sleep(.05)
@@ -98,7 +114,7 @@ def until(predicate, timeout=3):
 with tempfile.TemporaryDirectory(prefix='emaki-lock-', dir='/tmp') as value:
     base = Path(value)
     commands = base / 'bin'; commands.mkdir()
-    for name in ('qs', 'hyprlock'):
+    for name in ('qs', 'hyprlock', 'emaki-shell'):
         path = commands / name; path.write_text(FAKE); path.chmod(0o700)
     os.environ['PATH'] = str(commands) + ':' + os.environ['PATH']
     os.environ.pop('WAYLAND_DISPLAY', None)
@@ -123,10 +139,13 @@ with tempfile.TemporaryDirectory(prefix='emaki-lock-', dir='/tmp') as value:
                 begin = time.monotonic()
                 result = lock.client(directory, 'wait')
                 assert time.monotonic() - begin > .12 and result['secure'] and result['poured']
-                # A second owner loses flock and cannot spawn a second locker.
+                # A second owner loses flock and cannot launch a locker or cancel again.
+                until(lambda: (directory / 'calls').read_text().count('qs-cancel ') == 1)
+                calls = (directory / 'calls').read_text()
+                assert calls.count('qs-locker ') == calls.count('qs-cancel ') == 1
                 other = lock.Supervisor(directory)
                 other.run()
-                assert (directory / 'calls').read_text().count('qs ') == 1
+                assert (directory / 'calls').read_text() == calls
             elif mode == 'normal':
                 until(lambda: supervisor.finished)
                 assert 'hyprlock' not in (directory / 'calls').read_text()
@@ -137,7 +156,8 @@ with tempfile.TemporaryDirectory(prefix='emaki-lock-', dir='/tmp') as value:
                 result = lock.client(directory, 'wait')
                 assert result['state'] == 'locked' and result['backend'] == 'hyprlock'
                 assert (directory / 'calls').read_text().count('hyprlock ') == 1
-                assert (directory / 'calls').read_text().count('qs ') == 1
+                assert (directory / 'calls').read_text().count('qs-locker ') == 1
+            until(lambda: (directory / 'calls').read_text().count('qs-cancel ') == 1)
             print('PASS', mode)
         finally:
             supervisor.finished = True
@@ -155,6 +175,7 @@ with tempfile.TemporaryDirectory(prefix='emaki-lock-', dir='/tmp') as value:
         until(lambda: supervisor.backend == 'hyprlock' and supervisor.child is not None)
         result = lock.client(directory, 'wait')
         assert result['state'] == 'lock_failed' and not result['secure']
+        assert (directory / 'calls').read_text().count('qs-cancel ') == 0
         print('PASS alive fallback without acknowledgement fails closed')
     finally:
         supervisor.finished = True; thread.join(timeout=2); supervisor.retire(kill=True)
@@ -169,7 +190,8 @@ with tempfile.TemporaryDirectory(prefix='emaki-lock-', dir='/tmp') as value:
         thread.join(timeout=2)
         assert not thread.is_alive() and supervisor.phase == 'refused'
         calls = (directory / 'calls').read_text()
-        assert calls.count('qs ') == calls.count('hyprlock ') == 1
+        assert calls.count('qs-locker ') == calls.count('hyprlock ') == 1
+        assert calls.count('qs-cancel ') == 0
         time.sleep(.2)
         assert (directory / 'calls').read_text() == calls
         print('PASS fallback exit 0 without marker is terminal and cannot retry')
@@ -187,12 +209,14 @@ with tempfile.TemporaryDirectory(prefix='emaki-lock-', dir='/tmp') as value:
             until(lambda: supervisor.retry_at is not None)
             assert not supervisor.finished and lock.client(directory, 'status')['state'] == 'recovering'
             calls = (directory / 'calls').read_text()
-            assert calls.count('qs ') == calls.count('hyprlock ') == 1
+            assert calls.count('qs-locker ') == calls.count('hyprlock ') == 1
+            assert calls.count('qs-cancel ') == 0
             until(lambda: supervisor.finished, timeout=6)
             thread.join(timeout=2)
             assert not thread.is_alive() and supervisor.phase == 'failed'
             calls = (directory / 'calls').read_text()
-            assert calls.count('qs ') == calls.count('hyprlock ') == 1 + len(lock.RETRY_BACKOFF), calls
+            assert calls.count('qs-locker ') == calls.count('hyprlock ') == 1 + len(lock.RETRY_BACKOFF), calls
+            assert calls.count('qs-cancel ') == 0
             time.sleep(.3)
             assert (directory / 'calls').read_text() == calls
             print('PASS crashed lockers are retried through the backoff steps, then stop')
@@ -214,7 +238,8 @@ with tempfile.TemporaryDirectory(prefix='emaki-lock-', dir='/tmp') as value:
     try:
         until(lambda: supervisor.secure)
         assert injected and lock.client(directory, 'wait')['state'] == 'locked'
-        assert (directory / 'calls').read_text().count('qs ') == 1
+        assert (directory / 'calls').read_text().count('qs-locker ') == 1
+        until(lambda: (directory / 'calls').read_text().count('qs-cancel ') == 1)
         print('PASS unexpected handler exception retains ownership and supervision')
     finally:
         supervisor.finished = True; thread.join(timeout=2); supervisor.retire(kill=True)
@@ -243,6 +268,8 @@ with tempfile.TemporaryDirectory(prefix='emaki-lock-', dir='/tmp') as value:
             until(lambda: lock.client(directory, 'status').get('backend') == 'hyprlock' and lock.client(directory, 'status')['state'] == 'locked')
             assert lock.process_identity(old['pid']) is None
             assert (directory / 'calls').read_text().count('hyprlock ') == 1
+            assert (directory / 'calls').read_text().count('qs-locker ') == 1
+            until(lambda: (directory / 'calls').read_text().count('qs-cancel ') == 2)
             print('PASS supervisor', termination.name, 'exits promptly; next request retires the exact orphan before one fallback')
         finally:
             for owner in owners:
@@ -274,14 +301,15 @@ with tempfile.TemporaryDirectory(prefix='emaki-lock-', dir='/tmp') as value:
     try:
         with patch.object(lock.subprocess, 'Popen', owned_popen):
             result = lock.client(directory, 'wait')
-        calls = (directory / 'calls').read_text() if (directory / 'calls').exists() else ''
+        until(lambda: (directory / 'calls').exists() and (directory / 'calls').read_text().count('qs-cancel ') == 1)
+        calls = (directory / 'calls').read_text()
         diagnostics = dict(result=result, calls=calls, socket_path=str(directory / 'control.sock'), launchers=[
             dict(argv=owner.args, returncode=owner.poll(),
                  stderr=(directory / f'launcher-{index}.stderr').read_text(errors='replace'))
             for index, owner in enumerate(owners)])
         assert result['state'] == 'locked' and result['secure'] and result['poured'], diagnostics
         assert len(owners) == 2 and owners[0].returncode == 1, diagnostics
-        assert calls.count('qs ') == 1, diagnostics
+        assert calls.count('qs-locker ') == calls.count('qs-cancel ') == 1, diagnostics
         print('PASS failed fake systemd user manager falls back to one confirmed setsid locker')
     finally:
         for owner in owners:

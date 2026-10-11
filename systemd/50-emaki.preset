@@ -3,6 +3,8 @@
 enable greetd.service
 enable NetworkManager.service
 enable emaki-wifi-recovery.service
+enable emaki-sudo.service
+enable emaki-sudo-cleanup.timer
 enable bluetooth.service
 enable grub-btrfsd.service
 enable snapper-timeline.timer
@@ -10,6 +12,7 @@ enable snapper-cleanup.timer
 enable fstrim.timer
 enable paccache.timer
 enable emaki-refresh-mirrors.timer
+enable emaki-restore-index.timer
 # NetworkManager owns networking and resolv.conf; the installed bootloader is GRUB.
 disable systemd-networkd.service
 disable systemd-networkd.socket

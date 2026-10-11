@@ -15,11 +15,13 @@ MARKER = '/.emaki-install-incomplete'
 # Retained memdisk font; the visible unlock text is pre-rendered artwork.
 GRUB_VISIBLE_FONT = Path('/usr/share/emaki-installer/grub/unlock-24.pf2')
 MAX_FRAME = 64 * 1024
-# Install alongside Windows. Off: the inventory does not probe Windows, the
-# interface never offers the mode, and planner, worker and backend refuse it.
-# It returns only after a check on a real Windows (real shrink, BitLocker).
-# Only a source change turns it on; there is no runtime override.
+# Install alongside Windows only when the read-only inventory verifies a safe
+# shrink offer. The source switch also gates planner, worker and backend;
+# there is no runtime override. Keep shipped builds off until real Windows
+# acceptance is recorded in docs/hardware-acceptance.md.
 ALONGSIDE = False
+# Source-tree test builds only. Packaging fixes this to False; no runtime flag enables it.
+TEST_REPO_OVERRIDE = True
 PHASES = {'prepare_disk': 5, 'copy_packages': 60, 'bootloader': 10,
           'account': 5, 'settings': 10, 'snapshot': 3, 'update': 5, 'finish': 2}
 SUBVOLUMES = {'@': '/', '@home': '/home', '@log': '/var/log',
@@ -27,6 +29,11 @@ SUBVOLUMES = {'@': '/', '@home': '/home', '@log': '/var/log',
 BTRFS_OPTIONS = ['compress=zstd:3', 'noatime', 'space_cache=v2', 'discard=async']
 TEST_PACKAGES = ['openssh', 'grim']
 SNAPSHOT_PACKAGES = ['snapper', 'snap-pac', 'grub-btrfs']
+# The Rich programs, installed explicitly next to emaki-apps so a person can remove
+# any of them and keep it removed. The same names are emaki-apps' optdepends.
+RICH_APPS = '''gwenview ark okular thunderbird qbittorrent haruna elisa kate libreoffice-fresh
+spectacle obs-studio plasma-systemmonitor partitionmanager filelight discover
+isoimagewriter skanlite kcharselect keepassxc'''.split()
 PACKAGES = '''base linux linux-lts linux-firmware intel-ucode amd-ucode
 btrfs-progs e2fsprogs dosfstools cryptsetup grub efibootmgr terminus-font
 inotify-tools zram-generator networkmanager wpa_supplicant wireless-regdb sudo emaki emaki-config

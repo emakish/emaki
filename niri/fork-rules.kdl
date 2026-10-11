@@ -1,6 +1,6 @@
-// Rule for “niri (Emaki)”. Included by fork.kdl and fork-system.kdl.
-// Stock niri 26.04 does not recognize this key and would reject the entire config,
-// so the rule lives here instead of default.kdl.
+// Fork-only rules for “niri (Emaki)”. Included by fork.kdl and fork-system.kdl.
+// Stock niri 26.04 does not recognize these nodes and would reject the entire config,
+// so they live here instead of default.kdl.
 //
 // The shell's own screen capture excludes shell surfaces: the dock glass
 // refracts what is underneath it, not itself. Other applications
@@ -10,9 +10,21 @@ layer-rule {
     hide-from-own-screencopy true
 }
 
-// Living wallpaper (2026-10-02): niri-emaki draws the pixel ring per workspace above
-// wpaperd, each workspace from its own random start, 1:1 with the camera, with trains.
-// "image" leaves the plain wpaperd wallpaper. The files come from make install.
-emaki-wallpaper {
-    mode "ring"
+// The password card is excluded for every screenshot and recording client.
+// Same-client glass exclusion alone does not protect external capture streams.
+layer-rule {
+    match namespace="^emaki-auth-prompt$"
+    block-out-from "screen-capture"
+}
+
+// Authentication surfaces require the private Wayland connection created for this
+// fixed shell command. Startup environment is captured once; IPC cannot replace it.
+spawn-trusted-shell-at-startup "@EMAKI_BINDIR@/emaki-autostart" "shell" "@EMAKI_BINDIR@/emaki-shell"
+
+// Repeat the optional revoke binding after personal fork settings too.
+include optional=true "sudo-key.kdl"
+
+binds {
+    // The compositor proves the current authentication prompt on physical key input.
+    Ctrl+Alt+Delete hotkey-overlay-title="Show that the password window is real" { show-trusted-prompt-mark; }
 }

@@ -119,18 +119,43 @@ else
     bad "system.kdl must include \"@EMAKI_DATADIR@/niri/default.kdl\""
 fi
 
+# Security rules must follow personal fork settings; wallpaper remains overridable.
+for entry in fork.kdl fork-system.kdl; do
+    if awk '
+        /^emaki-wallpaper \{/ { wallpaper = NR }
+        /^include optional=true "~\/.config\/emaki\/niri-emaki.kdl"$/ { personal = NR }
+        /^include "fork-rules.kdl"$/ { rules = NR }
+        END { exit !(wallpaper && wallpaper < personal && personal < rules) }
+    ' "$R/niri/$entry"; then
+        ok "$entry: wallpaper defaults, personal settings, protected rules"
+    else
+        bad "$entry: incorrect security include order or wallpaper default"
+    fi
+done
+
 # Copy of niri/ with installation paths redirected to a temporary directory.
+if grep -qx 'include optional=true "sudo-key.kdl"' "$R/niri/fork-rules.kdl"; then
+    ok "fork-rules.kdl repeats the optional revoke binding after personal settings"
+else
+    bad "fork-rules.kdl does not restore the optional revoke binding"
+fi
+
 mkdir -p "$T/share" "$T/etc" "$T/home/.config/niri" "$T/empty"
-cp "$R"/niri/*.kdl "$T/share/"
-sed -i -e "s|@EMAKI_DATADIR@/niri/|$T/share/|g" -e "s|/etc/niri/config.kdl|$T/etc/config.kdl|g" "$T"/share/*.kdl
+for config in "$R"/niri/*.kdl "$R/packaging/emaki-sudo-key/sudo-key.kdl"; do
+    python3 "$R/scripts/render-paths" --prefix "$T/prefix" --datadir "$T/share" \
+        --text "$config" > "$T/share/$(basename "$config")"
+done
+sed -i -e "s|$T/share/niri/|$T/share/|g" -e "s|/etc/niri/config.kdl|$T/etc/config.kdl|g" "$T"/share/*.kdl
 cp "$T/share/system.kdl" "$T/etc/config.kdl"
 printf 'include "%s/share/default.kdl"\n' "$T" > "$T/home/.config/niri/config.kdl"
 
-if niri validate -c "$T/etc/config.kdl" >"$T/log" 2>&1; then
-    ok "system config (/etc/niri/config.kdl) is valid"
-else
-    bad "system config (/etc/niri/config.kdl) is invalid:"; cat "$T/log"
-fi
+for config in "$T/share/sudo-key.kdl" "$T/share/default.kdl" "$T/etc/config.kdl" "$T/home/.config/niri/config.kdl"; do
+    if niri validate -c "$config" >"$T/log" 2>&1; then
+        ok "stock niri validates $config"
+    else
+        bad "stock niri rejects $config:"; cat "$T/log"
+    fi
+done
 
 # Fork: both entry points are valid, but fork.kdl requires a personal config (hence the selection).
 NIRI_EMAKI="${NIRI_EMAKI:-$(command -v niri-emaki || true)}"
@@ -155,6 +180,8 @@ else
 fi
 
 # Config selection in niri-emaki-session --compositor (as called by niri-emaki.service).
+python3 "$R/scripts/render-paths" --prefix "$T/prefix" --source "$T/session"
+cp "$R/scripts/niri-emaki-session" "$T/session/scripts/"
 mkdir -p "$T/bin"
 printf '#!/bin/sh\ncat >/dev/null\n' > "$T/bin/systemd-cat"
 chmod +x "$T/bin/systemd-cat"
@@ -162,14 +189,14 @@ printf '#!/bin/sh\nprintf "%%s\\n" "$*" > "%s/args"\n' "$T" > "$T/bin/niri-emaki
 chmod +x "$T/bin/niri-emaki"
 chooses() {   # chooses "<name>" "<HOME>" "<expected arguments>"
     rm -f "$T/args"
-    HOME="$2" PATH="$T/bin:$PATH" EMAKI_LOGIN_HANDOFF='' bash "$R/scripts/niri-emaki-session" --compositor
+    HOME="$2" PATH="$T/bin:$PATH" EMAKI_LOGIN_HANDOFF='' bash "$T/session/scripts/niri-emaki-session" --compositor
     got=$(cat "$T/args" 2>/dev/null)
     if [ "$got" = "$3" ]; then ok "$1"; else bad "$1: got [$got] want [$3]"; fi
 }
 chooses "session: personal config -> fork.kdl" "$T/home" \
-    "--session -c /usr/share/emaki/niri/fork.kdl"
+    "--session -c $T/prefix/share/emaki/niri/fork.kdl"
 chooses "session: no personal config -> fork-system.kdl" "$T/empty" \
-    "--session -c /usr/share/emaki/niri/fork-system.kdl"
+    "--session -c $T/prefix/share/emaki/niri/fork-system.kdl"
 # Startup does not create the user's file.
 if [ -e "$T/empty/.config" ]; then bad "session created files in HOME"; else ok "session writes nothing to HOME"; fi
 

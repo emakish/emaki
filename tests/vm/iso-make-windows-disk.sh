@@ -28,14 +28,14 @@ PY
 [[ ! -e $ISO_VM/windows-before.json ]] || iso_die 'baseline already exists; use a fresh VM directory and empty disk'
 ISO_USER=live
 iso_ssh_args
-"${ISO_SSH[@]}" 'cat > /tmp/windows-efi.cfg' <<'EOF'
+iso_ssh 'cat > /tmp/windows-efi.cfg' <<'EOF'
 serial --unit=0 --speed=115200
 terminal_output console serial
 echo EMAKI_SYNTHETIC_WINDOWS_EFI_OK
 sleep 3600
 EOF
-"${ISO_SSH[@]}" "grub-mkstandalone -O x86_64-efi --locales='' --fonts='' -o /tmp/windows-fixture.efi boot/grub/grub.cfg=/tmp/windows-efi.cfg"
-"${ISO_SSH[@]}" 'umask 077; cat > /tmp/emaki-windows-fixture.py' <"$ISO_HERE/fixtures/windows-disk.py"
-"${ISO_SSH[@]}" 'sudo -n python3 /tmp/emaki-windows-fixture.py prepare' >"$ISO_VM/windows-before.json.tmp"
+iso_ssh "grub-mkstandalone -O x86_64-efi --locales='' --fonts='' -o /tmp/windows-fixture.efi boot/grub/grub.cfg=/tmp/windows-efi.cfg"
+iso_ssh 'umask 077; cat > /tmp/emaki-windows-fixture.py' <"$ISO_HERE/fixtures/windows-disk.py"
+iso_ssh 'sudo -n python3 /tmp/emaki-windows-fixture.py prepare' >"$ISO_VM/windows-before.json.tmp"
 mv -- "$ISO_VM/windows-before.json.tmp" "$ISO_VM/windows-before.json"
 printf 'Prepared synthetic Windows disk. Preservation baseline: %s/windows-before.json\n' "$ISO_VM"

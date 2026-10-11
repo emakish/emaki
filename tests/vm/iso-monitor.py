@@ -25,7 +25,7 @@ def command(directory, text, timeout=5):
 
         response()
         connection.sendall(text.encode() + b'\n')
-        return response(text == 'quit')
+        return response(text in ('quit', 'system_powerdown'))
 
 
 def main():

@@ -92,7 +92,7 @@ class FixTests(unittest.TestCase):
 
     def test_cli_without_a_worker_says_why(self):
         # copytoram: the worker's unit is skipped (ConditionPathExists) and no socket exists.
-        with tempfile.TemporaryDirectory(prefix='emi-', dir='/tmp') as temporary:
+        with tempfile.TemporaryDirectory(prefix='emi-') as temporary:
             missing = Path(temporary) / 'sock'
             for mounted in (False, True):
                 if mounted:
@@ -100,8 +100,12 @@ class FixTests(unittest.TestCase):
                 stderr = io.StringIO()
                 with self.subTest(mounted=mounted):
                     with patch('emaki_installer.cli.BOOT_MOUNT', Path(temporary) / 'bootmnt'), \
+                            patch('emaki_installer.cli.socket.socket') as socket, \
                             contextlib.redirect_stderr(stderr), contextlib.redirect_stdout(io.StringIO()):
+                        client = socket.return_value.__enter__.return_value
+                        client.connect.side_effect = FileNotFoundError
                         self.assertEqual(cli.main(['--probe', '--socket', str(missing)]), 2)
+                        client.connect.assert_called_once_with(str(missing))
                     text = stderr.getvalue()
                     self.assertNotIn('FileNotFoundError', text)
                     self.assertNotIn('Traceback', text)
@@ -152,14 +156,14 @@ class FixTests(unittest.TestCase):
                     part['id'] = data['disk_id'] + '-part' + str(part['number'])
                 if data['mode'] == 'alongside':
                     self.assertEqual(data['partition_id'], data['disk_id'] + '-part3')
-                    with self.assertRaises(InstallError) as raised:
-                        make_plan(data, inv)
+                    with patch('emaki_installer.constants.ALONGSIDE', False), self.assertRaises(InstallError) as raised:
+                        make_plan(data, inv, test_mode=True)
                     self.assertEqual(raised.exception.code, Code.UNSUPPORTED_MODE)
                     with alongside_on(), self.assertRaises(InstallError) as raised:
-                        make_plan(data, inv)
+                        make_plan(data, inv, test_mode=True)
                     self.assertEqual(raised.exception.code, Code.SHRINK_BOUNDS)
                 else:
-                    make_plan(data, inv)
+                    make_plan(data, inv, test_mode=True)
 
     def test_finish_rejects_each_bad_directory_mode(self):
         with tempfile.TemporaryDirectory() as temporary:

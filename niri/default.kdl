@@ -58,24 +58,24 @@ spawn-at-startup "emaki-autostart" "wallpaper" "emaki-session-wallpaper"
 // a password manager, and cliphist store skips those entries.
 spawn-at-startup "emaki-autostart" "clipboard" "python3" "-B" "@EMAKI_DATADIR@/shell/helpers/clipboard_store.py" "--watch"
 
-// polkit authentication service. Without it, graphical applications cannot request
-// an administrator password: requests are silently denied.
-spawn-at-startup "emaki-autostart" "authentication" "env" "QT_QUICK_CONTROLS_STYLE=Fusion" "@EMAKI_POLKIT_AGENT@"
+// Administrator password requests are handled by the Emaki shell.
 
 // Mount USB drives on request; insertion must not mount behind the lock.
 spawn-at-startup "emaki-autostart" "automount" "udiskie" "--no-automount"
 
-// Panel, launcher, clock shade with notifications, right island, dock, tray —
-// the Emaki shell (Quickshell on top of the emaki core). It runs as the
-// emaki-shell.service user service: restarts after a crash; after make install, run
-// `emaki-shell restart`; view logs with `journalctl --user -u emaki-shell`.
-// The wrapper sets distribution environment variables; set your own with
-// `systemctl --user set-environment` or a service drop-in.
+// Panel, launcher, clock shade, dock, tray and notifications. The fork starts
+// the shell on a private connection via fork-rules.kdl and supervises its lifetime.
+// This service launch supplies the shell when no trusted supervisor is configured;
+// its condition skips it whenever the compositor owns shell supervision.
+// `emaki-shell restart` selects the running compositor's supervisor or legacy service.
+// The trusted supervisor captures its environment at login; restart does not refresh it.
+// After changing the login environment, sign out and back in. Later user-manager or
+// activation-environment updates do not reach the trusted shell or the apps it launches.
 //   emaki-shell call launcher status     current shell state
 //   emaki-shell call dock status         pinned and running dock apps
-// Without systemd (niri started without niri-session), replace the shell command with
-// spawn-at-startup "emaki-autostart" "shell" "emaki-shell".
 spawn-at-startup "emaki-autostart" "shell" "systemctl" "--user" "start" "--no-block" "emaki-shell.service"
+// Ctrl+Alt+Delete requests the trusted prompt mark through its binding in niri/fork-rules.kdl.
+// Only a physical compositor binding can request the mark; it is not an IPC action.
 spawn-at-startup "emaki-autostart" "sleep-guard" "systemctl" "--user" "start" "--no-block" "emaki-sleep-guard.service"
 
 // The idle policy ships disabled; Settings can enable supported personal timers.
@@ -294,6 +294,8 @@ binds {
 
     Mod+Shift+S hotkey-overlay-title="Take an interactive screenshot" { screenshot; }
     Print { screenshot; }
+    // The combined picture/recording overlay is deliberately unbound pending a key choice.
+    // Action: spawn "emaki-shell" "call" "capture" "open";
 
     // Show all key bindings on screen instead of digging through the config.
     Mod+Shift+Slash { show-hotkey-overlay; }
@@ -328,3 +330,4 @@ binds {
 // Base struts assume whole scale. The installer writes each session output scale and
 // its fractional strut compensation to the target config (calculation in docs/shell.md).
 include "shell.kdl"
+include optional=true "sudo-key.kdl"

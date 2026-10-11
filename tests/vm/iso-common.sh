@@ -36,13 +36,27 @@ iso_parse() {
     fi
     [[ $ISO_USER =~ ^[a-z_][a-z0-9_-]*$ ]] || iso_die 'invalid SSH user'
 }
+# Refuse unless this directory's QEMU (started by run-iso.sh) is the listener on the SSH port;
+# waits up to $1 seconds for a VM that is still starting. GOTCHAS 2026-10-10.
+iso_prove_vm() {
+    python3 "$ISO_HERE/iso-owner.py" prove --dir "$ISO_VM" --port "$ISO_PORT" --wait "${1:-0}" \
+        || iso_die "refusing to talk to a VM that $ISO_VM did not start"
+}
 iso_ssh_args() {
     [[ -r $ISO_KEY ]] || iso_die "SSH key unavailable: $ISO_KEY"
     mkdir -p -- "$ISO_VM"
     local generation=initial
     [[ ! -f $ISO_VM/ssh-host-generation ]] || generation=$(<"$ISO_VM/ssh-host-generation")
     [[ $generation =~ ^[a-z0-9-]+$ ]] || iso_die 'invalid SSH host generation'
-    ISO_SSH=(ssh -F /dev/null -p "$ISO_PORT" -i "$ISO_KEY" -o BatchMode=yes -o IdentitiesOnly=yes
+    ISO_SSH_UNCHECKED=(ssh -F /dev/null -p "$ISO_PORT" -i "$ISO_KEY" -o BatchMode=yes -o IdentitiesOnly=yes
         -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="${ISO_KNOWN_HOSTS:-$ISO_VM/known_hosts-$ISO_USER-$generation}"
         -o ConnectTimeout=3 -o ServerAliveInterval=15 "$ISO_USER@127.0.0.1")
+}
+# The only way to the guest: every SSH contact, each retry included, is preceded by the proof
+# that this directory's QEMU owns the port, so a VM that went away is never replaced unseen.
+# A refusal goes to the script's own stderr even when the caller sends the command's elsewhere.
+exec {ISO_STDERR}>&2
+iso_ssh() {
+    iso_prove_vm >/dev/null 2>&"$ISO_STDERR"
+    "${ISO_SSH_UNCHECKED[@]}" "$@"
 }

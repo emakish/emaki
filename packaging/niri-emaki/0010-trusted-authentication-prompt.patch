@@ -1,0 +1,3879 @@
+Subject: [PATCH] Add a trusted authentication connection, isolated input and physical proof
+
+Copyright (C) 2026 Artur Yakymenko
+SPDX-License-Identifier: GPL-3.0-or-later
+
+Apply after patches 0001 through 0009 on niri v26.04. The trusted command and
+its environment are captured once at startup; IPC can restart only that command.
+The proof is a physical keyboard action, deliberately absent from the IPC API.
+
+diff --git a/niri-config/src/binds.rs b/niri-config/src/binds.rs
+index 9bc401d4..54d26c58 100644
+--- a/niri-config/src/binds.rs
++++ b/niri-config/src/binds.rs
+@@ -97,9 +97,11 @@ pub struct SwitchAction {
+     pub spawn: Vec<String>,
+ }
+ 
+-// Remember to add new actions to the CLI enum too.
++// Ordinary actions also belong in the CLI enum; trusted proof is keyboard-only.
+ #[derive(knuffel::Decode, Debug, Clone, PartialEq)]
+ pub enum Action {
++    /// A compositor-only proof; deliberately unavailable over IPC.
++    ShowTrustedPromptMark,
+     Quit(#[knuffel(property(name = "skip-confirmation"), default)] bool),
+     #[knuffel(skip)]
+     ChangeVt(i32),
+@@ -915,10 +917,23 @@ where
+ 
+                     // The toggle-inhibit action must always be uninhibitable.
+                     // Otherwise, it would be impossible to trigger it.
+-                    if matches!(action, Action::ToggleKeyboardShortcutsInhibit) {
++                    if matches!(
++                        action,
++                        Action::ToggleKeyboardShortcutsInhibit | Action::ShowTrustedPromptMark
++                    ) {
+                         allow_inhibiting = false;
+                     }
+ 
++                    if matches!(action, Action::ShowTrustedPromptMark)
++                        && !matches!(key.trigger, Trigger::Keysym(_))
++                    {
++                        ctx.emit_error(DecodeError::unexpected(
++                            child,
++                            "action",
++                            "show-trusted-prompt-mark requires a keyboard binding",
++                        ));
++                    }
++
+                     Ok(Self {
+                         key,
+                         action,
+@@ -1047,6 +1062,18 @@ impl FromStr for Key {
+ mod tests {
+     use super::*;
+ 
++    #[test]
++    fn trusted_prompt_proof_requires_a_keyboard_binding() {
++        assert!(
++            crate::Config::parse_mem("binds { Mod+MouseLeft { show-trusted-prompt-mark; }; }",)
++                .is_err()
++        );
++        let config =
++            crate::Config::parse_mem("binds { Mod+F12 { show-trusted-prompt-mark; }; }").unwrap();
++        assert_eq!(config.binds.0[0].action, Action::ShowTrustedPromptMark);
++        assert!(!config.binds.0[0].allow_inhibiting);
++    }
++
+     #[test]
+     fn parse_xf86_screensaver() {
+         assert_eq!(
+diff --git a/niri-config/src/lib.rs b/niri-config/src/lib.rs
+index ee88987d..5185ee7d 100644
+--- a/niri-config/src/lib.rs
++++ b/niri-config/src/lib.rs
+@@ -71,6 +71,8 @@ pub struct Config {
+     pub input: Input,
+     pub outputs: Outputs,
+     pub spawn_at_startup: Vec<SpawnAtStartup>,
++    /// A single compositor-owned shell connection, fixed for this session.
++    pub spawn_trusted_shell_at_startup: Option<SpawnAtStartup>,
+     pub spawn_sh_at_startup: Vec<SpawnShAtStartup>,
+     pub layout: Layout,
+     pub prefer_no_csd: bool,
+@@ -218,6 +220,25 @@ where
+                 "workspace" => m_push!(workspaces),
+ 
+                 // Single-part sections.
++                "spawn-trusted-shell-at-startup" => {
++                    let part = SpawnAtStartup::decode_node(node, ctx)?;
++                    let mut config = config.borrow_mut();
++                    if config.spawn_trusted_shell_at_startup.is_some() {
++                        ctx.emit_error(DecodeError::unexpected(
++                            &node.node_name,
++                            "node",
++                            "only one trusted shell may be configured, including across includes",
++                        ));
++                    } else if part.command.is_empty() || part.command[0].is_empty() {
++                        ctx.emit_error(DecodeError::unexpected(
++                            &node.node_name,
++                            "node",
++                            "a nonempty trusted shell command is required",
++                        ));
++                    } else {
++                        config.spawn_trusted_shell_at_startup = Some(part);
++                    }
++                }
+                 "binds" => {
+                     let part = Binds::decode_node(node, ctx)?;
+ 
+@@ -638,6 +659,26 @@ mod tests {
+ 
+     use super::*;
+ 
++    #[test]
++    fn trusted_shell_startup_command_is_optional_and_singleton() {
++        assert!(Config::parse_mem("")
++            .unwrap()
++            .spawn_trusted_shell_at_startup
++            .is_none());
++        let config =
++            Config::parse_mem(r#"spawn-trusted-shell-at-startup "emaki-shell" "run-trusted""#)
++                .unwrap();
++        assert_eq!(
++            config.spawn_trusted_shell_at_startup.unwrap().command,
++            ["emaki-shell", "run-trusted"]
++        );
++        assert!(Config::parse_mem("spawn-trusted-shell-at-startup").is_err());
++        assert!(Config::parse_mem(
++            "spawn-trusted-shell-at-startup \"one\"\nspawn-trusted-shell-at-startup \"two\""
++        )
++        .is_err());
++    }
++
+     #[test]
+     fn can_create_default_config() {
+         let _ = Config::load_default();
+@@ -1266,6 +1307,7 @@ mod tests {
+                     ],
+                 },
+             ],
++            spawn_trusted_shell_at_startup: None,
+             spawn_sh_at_startup: [
+                 SpawnShAtStartup {
+                     command: "qs -c ~/source/qs/MyAwesomeShell",
+diff --git a/niri-ipc/src/lib.rs b/niri-ipc/src/lib.rs
+index 1e087cdd..9fda5772 100644
+--- a/niri-ipc/src/lib.rs
++++ b/niri-ipc/src/lib.rs
+@@ -79,6 +79,15 @@ pub enum Request {
+     EmakiStartupCover,
+     /// Request Emaki wallpaper configuration, loading state, trains and workspace offsets.
+     EmakiWallpaper,
++    /// Request whether a fixed trusted shell command is configured and running.
++    TrustedShell,
++    /// Request the live child owning the compositor-created private shell connection.
++    /// Consumers must authenticate this IPC server and compare a live pidfd.
++    TrustedShellIdentity,
++    /// Restart only the immutable trusted shell command captured at startup.
++    RestartTrustedShell,
++    /// Isolate session input before cancelling authentication and starting the locker.
++    PrepareSessionLock,
+     /// Request information about the configured keyboard layouts.
+     KeyboardLayouts,
+     /// Request information about the focused output.
+@@ -157,6 +166,10 @@ pub enum Response {
+     EmakiStartupCover(StartupCoverStatus),
+     /// Information about Emaki's wallpaper engine.
+     EmakiWallpaper(EmakiWallpaperStatus),
++    /// Information about the compositor-owned shell supervisor.
++    TrustedShell(TrustedShell),
++    /// Live identity bound to the private shell connection, absent during restart.
++    TrustedShellIdentity(Option<TrustedShellIdentity>),
+     /// Information about the keyboard layout.
+     KeyboardLayouts(KeyboardLayouts),
+     /// Information about the focused output.
+@@ -175,6 +188,30 @@ pub enum Response {
+     Casts(Vec<Cast>),
+ }
+ 
++/// Identity of the unreaped child given the compositor's private Wayland connection.
++/// This is meaningful only when obtained from an authenticated compositor IPC socket.
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
++#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
++pub struct TrustedShellIdentity {
++    /// Linux process ID; pin and verify with a pidfd before using it.
++    pub pid: u32,
++    /// Linux /proc/PID/stat starttime, in clock ticks since boot.
++    pub start_time: u64,
++}
++
++/// State of the compositor-owned shell supervisor. This is not proof of a prompt.
++#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
++#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
++pub struct TrustedShell {
++    /// A command was captured at compositor startup.
++    pub configured: bool,
++    /// The supervised child is currently running.
++    pub running: bool,
++    /// A compositor-authorized prompt is mapped, visible and owns input now.
++    /// This is session state, not authority granted to the caller.
++    pub prompt_active: bool,
++}
++
+ /// Current compositor startup cover, for a shell taking over the same image.
+ #[derive(Serialize, Deserialize, Debug, Clone, Default)]
+ #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+@@ -2147,6 +2184,55 @@ impl OutputAction {
+ mod tests {
+     use super::*;
+ 
++    #[test]
++    fn trusted_shell_control_json_has_no_command_arguments() {
++        for (request, expected) in [
++            (Request::TrustedShell, r#""TrustedShell""#),
++            (Request::TrustedShellIdentity, r#""TrustedShellIdentity""#),
++            (Request::RestartTrustedShell, r#""RestartTrustedShell""#),
++            (Request::PrepareSessionLock, r#""PrepareSessionLock""#),
++        ] {
++            assert_eq!(serde_json::to_string(&request).unwrap(), expected);
++            assert!(serde_json::from_str::<Request>(expected).is_ok());
++        }
++        assert!(serde_json::from_str::<Request>(
++            r#"{"RestartTrustedShell":{"command":["other-program"]}}"#
++        )
++        .is_err());
++        let status = TrustedShell {
++            configured: true,
++            running: false,
++            prompt_active: false,
++        };
++        assert_eq!(
++            serde_json::to_string(&status).unwrap(),
++            r#"{"configured":true,"running":false,"prompt_active":false}"#
++        );
++    }
++
++    #[test]
++    fn trusted_shell_identity_json_contract() {
++        let reply: Reply = Ok(Response::TrustedShellIdentity(Some(TrustedShellIdentity {
++            pid: 42,
++            start_time: 123456,
++        })));
++        let encoded = serde_json::to_string(&reply).unwrap();
++        assert_eq!(
++            encoded,
++            r#"{"Ok":{"TrustedShellIdentity":{"pid":42,"start_time":123456}}}"#
++        );
++        assert!(matches!(
++            serde_json::from_str::<Reply>(&encoded).unwrap(),
++            Ok(Response::TrustedShellIdentity(Some(_)))
++        ));
++        let absent: Reply = Ok(Response::TrustedShellIdentity(None));
++        assert_eq!(
++            serde_json::to_string(&absent).unwrap(),
++            r#"{"Ok":{"TrustedShellIdentity":null}}"#
++        );
++        assert!(serde_json::from_str::<Request>(r#"{"TrustedShellIdentity":{"pid":42}}"#).is_err());
++    }
++
+     #[test]
+     fn emaki_wallpaper_json_contract() {
+         assert_eq!(
+diff --git a/src/cli.rs b/src/cli.rs
+index 70a151bf..2d54f87d 100644
+--- a/src/cli.rs
++++ b/src/cli.rs
+@@ -73,6 +73,14 @@ pub enum Msg {
+     EmakiStartupCover,
+     /// Show Emaki's wallpaper mode, loading state, trains and workspace offsets.
+     EmakiWallpaper,
++    /// Show whether a trusted shell is configured and running.
++    TrustedShell,
++    /// Show the process identity bound to the private trusted shell connection.
++    TrustedShellIdentity,
++    /// Restart the fixed trusted shell command configured at startup.
++    RestartTrustedShell,
++    /// Isolate input until the next session lock completes and unlocks.
++    PrepareSessionLock,
+     /// Get the configured keyboard layouts.
+     KeyboardLayouts,
+     /// Print information about the focused output.
+diff --git a/src/handlers/layer_shell.rs b/src/handlers/layer_shell.rs
+index d9a1b9f4..1c564d0f 100644
+--- a/src/handlers/layer_shell.rs
++++ b/src/handlers/layer_shell.rs
+@@ -1,4 +1,7 @@
++use std::sync::atomic::Ordering;
++
+ use smithay::delegate_layer_shell;
++use smithay::reexports::wayland_server::Resource;
+ use smithay::desktop::{layer_map_for_output, LayerSurface, PopupKind, WindowSurfaceType};
+ use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
+ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+@@ -25,6 +28,24 @@ impl WlrLayerShellHandler for State {
+         _layer: Layer,
+         namespace: String,
+     ) {
++        if namespace == crate::trusted_prompt::NAMESPACE {
++            if !crate::trusted_prompt::client_is_trusted(surface.wl_surface()) {
++                warn_prompt_denial_once(surface.wl_surface(), false);
++                surface.send_close();
++                return;
++            }
++            // One authentication card owns the seat across all outputs. The
++            // role is released on destruction, not on a temporary null commit.
++            if self.niri.layout.outputs().any(|output| {
++                layer_map_for_output(output)
++                    .layers()
++                    .any(|layer| layer.namespace() == crate::trusted_prompt::NAMESPACE)
++            }) {
++                warn_prompt_denial_once(surface.wl_surface(), true);
++                surface.send_close();
++                return;
++            }
++        }
+         let output = if let Some(wl_output) = &wl_output {
+             self.niri.output_from_resource(wl_output)
+         } else {
+@@ -229,6 +250,9 @@ impl State {
+ 
+         // This will call queue_redraw() inside.
+         self.niri.output_resized(&output);
++        self.refresh_trusted_prompt_input();
++        self.update_keyboard_focus();
++        self.refresh_pointer_contents();
+ 
+         true
+     }
+@@ -253,3 +277,14 @@ fn add_mapped_layer_pre_commit_hook(layer: &LayerSurface) -> HookId {
+         }
+     })
+ }
++
++// A hostile connection can create arbitrarily many refused roles. Keep its first
++// diagnostic while closing every attempt before configure, without journal spam.
++fn warn_prompt_denial_once(surface: &WlSurface, duplicate: bool) {
++    let Some(client) = surface.client() else { return; };
++    let Some(state) = client.get_data::<crate::niri::ClientState>() else { return; };
++    if !state.trusted_prompt_denial_logged.swap(true, Ordering::Relaxed) {
++        let kind = if duplicate { "duplicate" } else { "untrusted" };
++        warn!("denied {kind} emaki-auth-prompt layer surface");
++    }
++}
+diff --git a/src/handlers/mod.rs b/src/handlers/mod.rs
+index 3532078b..1e217946 100644
+--- a/src/handlers/mod.rs
++++ b/src/handlers/mod.rs
+@@ -323,6 +323,9 @@ impl WaylandDndGrabHandler for State {
+         serial: Serial,
+         type_: dnd::GrabType,
+     ) {
++        if self.niri.trusted_prompt_input_isolated() {
++            return;
++        }
+         self.niri.dnd_icon = icon.map(|surface| DndIcon {
+             surface,
+             offset: Point::new(0, 0),
+@@ -466,6 +469,8 @@ impl SessionLockHandler for State {
+     }
+
+     fn unlock(&mut self) {
++        // Only the protocol owner can release preparation; rendering failure cannot.
++        self.niri.session_lock_prepared = false;
+         self.niri.unlock();
+         self.niri.activate_monitors(&mut self.backend);
+         self.niri.notify_activity();
+@@ -669,20 +674,32 @@ impl VirtualPointerHandler for State {
+     }
+ 
+     fn on_virtual_pointer_motion(&mut self, event: VirtualPointerMotionEvent) {
++        if self.niri.trusted_prompt_input_isolated() {
++            return;
++        }
+         self.process_input_event(InputEvent::<VirtualPointerInputBackend>::PointerMotion { event });
+     }
+ 
+     fn on_virtual_pointer_motion_absolute(&mut self, event: VirtualPointerMotionAbsoluteEvent) {
++        if self.niri.trusted_prompt_input_isolated() {
++            return;
++        }
+         self.process_input_event(
+             InputEvent::<VirtualPointerInputBackend>::PointerMotionAbsolute { event },
+         );
+     }
+ 
+     fn on_virtual_pointer_button(&mut self, event: VirtualPointerButtonEvent) {
++        if self.niri.trusted_prompt_input_isolated() {
++            return;
++        }
+         self.process_input_event(InputEvent::<VirtualPointerInputBackend>::PointerButton { event });
+     }
+ 
+     fn on_virtual_pointer_axis(&mut self, event: VirtualPointerAxisEvent) {
++        if self.niri.trusted_prompt_input_isolated() {
++            return;
++        }
+         self.process_input_event(InputEvent::<VirtualPointerInputBackend>::PointerAxis { event });
+     }
+ }
+diff --git a/src/handlers/xdg_shell.rs b/src/handlers/xdg_shell.rs
+index 38440c90..3f398b2d 100644
+--- a/src/handlers/xdg_shell.rs
++++ b/src/handlers/xdg_shell.rs
+@@ -71,6 +71,9 @@ impl XdgShellHandler for State {
+     }
+ 
+     fn move_request(&mut self, surface: ToplevelSurface, _seat: WlSeat, serial: Serial) {
++        if self.niri.trusted_prompt_input_isolated() {
++            return;
++        }
+         let wl_surface = surface.wl_surface();
+ 
+         let mut grab_start_data = None;
+@@ -155,6 +158,9 @@ impl XdgShellHandler for State {
+         serial: Serial,
+         edges: xdg_toplevel::ResizeEdge,
+     ) {
++        if self.niri.trusted_prompt_input_isolated() {
++            return;
++        }
+         let wl_surface = surface.wl_surface();
+ 
+         let mut grab_start_data = None;
+@@ -273,6 +279,13 @@ impl XdgShellHandler for State {
+             return;
+         };
+ 
++        // Authentication accepts input only on its root layer; no popup may
++        // replace the compositor's exclusive focus during the proof interval.
++        if self.niri.trusted_prompt_input_isolated() {
++            let _ = PopupManager::dismiss_popup(&root, &popup);
++            return;
++        }
++
+         // We need to hand out the grab in a way consistent with what update_keyboard_focus()
+         // thinks the current focus is, otherwise it will desync and cause weird issues with
+         // keyboard focus being at the wrong place.
+diff --git a/src/input/mod.rs b/src/input/mod.rs
+index c524c530..214f5e54 100644
+--- a/src/input/mod.rs
++++ b/src/input/mod.rs
+@@ -226,6 +226,7 @@ impl State {
+         I::Device: 'static, // Needed for downcasting.
+     {
+         let _span = tracy_client::span!("process_input_event");
++        self.refresh_trusted_prompt_input();
+ 
+         // Make sure some logic like workspace clean-up has a chance to run before doing actions.
+         self.niri.advance_animations();
+@@ -258,6 +259,22 @@ impl State {
+ 
+         let mut consumed_by_a11y = false;
+         use InputEvent::*;
++        // A client must not keep an ongoing gesture focused beneath the prompt.
++        if self.niri.trusted_prompt_input_isolated()
++            && matches!(
++                &event,
++                GestureSwipeBegin { .. }
++                    | GestureSwipeUpdate { .. }
++                    | GestureSwipeEnd { .. }
++                    | GesturePinchBegin { .. }
++                    | GesturePinchUpdate { .. }
++                    | GesturePinchEnd { .. }
++                    | GestureHoldBegin { .. }
++                    | GestureHoldEnd { .. }
++            )
++        {
++            return;
++        }
+         match event {
+             DeviceAdded { device } => self.on_device_added(device),
+             DeviceRemoved { device } => self.on_device_removed(device),
+@@ -503,6 +520,36 @@ impl State {
+ 
+         let is_inhibiting_shortcuts = self.is_inhibiting_shortcuts();
+ 
++        // Classify candidate proof keys before accessibility observers or grabs can see
++        // them. Exact modifier matching happens after XKB updates inside input().
++        // Checking all layouts also covers the Latin fallback used for ordinary binds.
++        #[cfg(feature = "dbus")]
++        let proof_key = {
++            let keyboard = self.niri.seat.get_keyboard().unwrap();
++            let triggers: Vec<_> = self
++                .niri
++                .config
++                .borrow()
++                .binds
++                .0
++                .iter()
++                .filter(|bind| matches!(bind.action, Action::ShowTrustedPromptMark))
++                .map(|bind| bind.key)
++                .collect();
++            keyboard.with_xkb_state(self, |context| {
++                let xkb = context.xkb().lock().unwrap();
++                xkb.layouts().any(|layout| {
++                    xkb.raw_syms_for_key_in_layout(event.key_code(), layout)
++                        .iter()
++                        .any(|sym| {
++                            triggers
++                                .iter()
++                                .any(|key| proof_key_or_modifier(*key, mod_key, *sym))
++                        })
++                })
++            })
++        };
++
+         // Accessibility modifier grabs should override XKB state changes (e.g. Caps Lock), so we
+         // need to process them before keyboard.input() below.
+         //
+@@ -510,11 +557,18 @@ impl State {
+         // other changes.
+         #[cfg(feature = "dbus")]
+         let block = {
+-            let block = self.a11y_process_key(
+-                Duration::from_millis(u64::from(time)),
+-                event.key_code(),
+-                event.state(),
+-            );
++            let block = if self.niri.trusted_prompt_input_isolated()
++                || proof_key
++                || self.niri.suppressed_keys.contains(&event.key_code())
++            {
++                KbMonBlock::Pass
++            } else {
++                self.a11y_process_key(
++                    Duration::from_millis(u64::from(time)),
++                    event.key_code(),
++                    event.state(),
++                )
++            };
+             if block != KbMonBlock::Pass {
+                 *consumed_by_a11y = true;
+             }
+@@ -528,7 +582,7 @@ impl State {
+         #[cfg(not(feature = "dbus"))]
+         let _ = consumed_by_a11y;
+ 
+-        let Some(Some(bind)) = self.niri.seat.get_keyboard().unwrap().input(
++        let result = self.niri.seat.get_keyboard().unwrap().input(
+             self,
+             event.key_code(),
+             event.state(),
+@@ -540,6 +594,30 @@ impl State {
+                 let raw = keysym.raw_latin_sym_or_raw_current_sym();
+                 let modifiers = modifiers_from_state(*mods);
+ 
++                // This route is reached only by backend keyboard events. Virtual
++                // keyboards never enter it, and the action has no IPC equivalent.
++                let proof_bind = {
++                    let config = this.niri.config.borrow();
++                    raw.is_some_and(|raw| {
++                        find_trusted_prompt_bind(&config.binds, mod_key, raw, *mods)
++                    })
++                };
++                if pressed && proof_bind {
++                    this.niri.suppressed_keys.insert(key_code);
++                    this.stop_key_repeat();
++                    this.niri.show_trusted_prompt_mark();
++                    return FilterResult::Intercept(None);
++                }
++                if this.niri.trusted_prompt_input_isolated() {
++                    return trusted_prompt_key_filter(
++                        &mut this.niri.suppressed_keys,
++                        key_code,
++                        modified,
++                        pressed,
++                        this.niri.config.borrow().input.disable_power_key_handling,
++                    );
++                }
++
+                 // After updating XKB state from accessibility-grabbed keys, return right away and
+                 // don't handle them.
+                 #[cfg(feature = "dbus")]
+@@ -655,7 +733,11 @@ impl State {
+ 
+                 res
+             },
+-        ) else {
++        );
++        // The proof action can change isolation inside the keyboard filter. Reset
++        // grabs only once the keyboard handle has released its internal locks.
++        self.refresh_trusted_prompt_input();
++        let Some(Some(bind)) = result else {
+             return;
+         };
+ 
+@@ -784,6 +866,9 @@ impl State {
+         allow_when_locked: bool,
+         key: Option<Keycode>,
+     ) {
++        if self.niri.trusted_prompt_input_isolated() && !allowed_during_trusted_prompt(&action) {
++            return;
++        }
+         if self.niri.is_locked() && !(allow_when_locked || allowed_when_locked(&action)) {
+             return;
+         }
+@@ -823,6 +908,8 @@ impl State {
+         };
+ 
+         match action {
++            // The proof may only be activated by the physical keyboard route above.
++            Action::ShowTrustedPromptMark => (),
+             Action::Quit(skip_confirmation) => {
+                 if !skip_confirmation && self.niri.exit_confirm_dialog.show() {
+                     self.niri.queue_redraw_all();
+@@ -834,16 +921,22 @@ impl State {
+             }
+             Action::ChangeVt(vt) => {
+                 self.backend.change_vt(vt);
+-                // Changing VT may not deliver the key releases, so clear the state.
+-                self.niri.suppressed_keys.clear();
++                // Keep isolated releases private even if modifiers change before release.
++                // Otherwise changing VT may lose releases, so clear the state.
++                if !self.niri.trusted_prompt_input_isolated() {
++                    self.niri.suppressed_keys.clear();
++                }
+                 for mon in self.niri.layout.monitors_mut() {
+                     mon.emaki_clear_keys();
+                 }
+             }
+             Action::Suspend => {
+                 self.backend.suspend();
+-                // Suspend may not deliver the key releases, so clear the state.
+-                self.niri.suppressed_keys.clear();
++                // Keep isolated releases private even if modifiers change before release.
++                // Otherwise suspend may lose releases, so clear the state.
++                if !self.niri.trusted_prompt_input_isolated() {
++                    self.niri.suppressed_keys.clear();
++                }
+                 for mon in self.niri.layout.monitors_mut() {
+                     mon.emaki_clear_keys();
+                 }
+@@ -2932,6 +3025,21 @@ impl State {
+             return;
+         }
+ 
++        if self.niri.trusted_prompt_input_isolated() {
++            self.update_pointer_contents();
++            pointer.button(
++                self,
++                &ButtonEvent {
++                    button: button_code,
++                    state: button_state,
++                    serial,
++                    time: event.time_msec(),
++                },
++            );
++            pointer.frame(self);
++            return;
++        }
++
+         if ButtonState::Pressed == button_state {
+             let mods = self.niri.seat.get_keyboard().unwrap().modifier_state();
+             let modifiers = modifiers_from_state(mods);
+@@ -3254,7 +3362,8 @@ impl State {
+         let horizontal_amount_v120 = event.amount_v120(Axis::Horizontal);
+         let vertical_amount_v120 = event.amount_v120(Axis::Vertical);
+ 
+-        let is_overview_open = self.niri.layout.is_overview_open();
++        let isolated = self.niri.trusted_prompt_input_isolated();
++        let is_overview_open = !isolated && self.niri.layout.is_overview_open();
+ 
+         // We should only handle scrolling in the overview if the pointer is not over a (top or
+         // overlay) layer surface.
+@@ -3276,10 +3385,10 @@ impl State {
+             false
+         };
+ 
+-        let is_mru_open = self.niri.window_mru_ui.is_open();
++        let is_mru_open = !isolated && self.niri.window_mru_ui.is_open();
+ 
+         // Handle wheel scroll bindings.
+-        if source == AxisSource::Wheel {
++        if source == AxisSource::Wheel && !isolated {
+             // If we have a scroll bind with current modifiers, then accumulate and don't pass to
+             // Wayland. If there's no bind, reset the accumulator.
+             let mods = self.niri.seat.get_keyboard().unwrap().modifier_state();
+@@ -3443,7 +3552,7 @@ impl State {
+         let vertical_amount = event.amount(Axis::Vertical);
+ 
+         // Handle touchpad and continuous scroll bindings.
+-        if source == AxisSource::Finger || source == AxisSource::Continuous {
++        if !isolated && matches!(source, AxisSource::Finger | AxisSource::Continuous) {
+             let mods = self.niri.seat.get_keyboard().unwrap().modifier_state();
+             let modifiers = modifiers_from_state(mods);
+ 
+@@ -3689,6 +3798,12 @@ impl State {
+     where
+         I::Device: 'static, // Needed for downcasting.
+     {
++        if self.niri.trusted_prompt_input_isolated() {
++            if let Some(tool) = self.niri.seat.tablet_seat().get_tool(&event.tool()) {
++                tool.proximity_out(event.time_msec());
++            }
++            return;
++        }
+         let Some(pos) = self.compute_tablet_position(&event) else {
+             return;
+         };
+@@ -3759,6 +3874,12 @@ impl State {
+     }
+ 
+     fn on_tablet_tool_tip<I: InputBackend>(&mut self, event: I::TabletToolTipEvent) {
++        if self.niri.trusted_prompt_input_isolated() {
++            if let Some(tool) = self.niri.seat.tablet_seat().get_tool(&event.tool()) {
++                tool.proximity_out(event.time_msec());
++            }
++            return;
++        }
+         let tool = self.niri.seat.tablet_seat().get_tool(&event.tool());
+ 
+         let Some(tool) = tool else {
+@@ -3860,6 +3981,12 @@ impl State {
+     where
+         I::Device: 'static, // Needed for downcasting.
+     {
++        if self.niri.trusted_prompt_input_isolated() {
++            if let Some(tool) = self.niri.seat.tablet_seat().get_tool(&event.tool()) {
++                tool.proximity_out(event.time_msec());
++            }
++            return;
++        }
+         let Some(pos) = self.compute_tablet_position(&event) else {
+             return;
+         };
+@@ -3907,6 +4034,12 @@ impl State {
+     }
+ 
+     fn on_tablet_tool_button<I: InputBackend>(&mut self, event: I::TabletToolButtonEvent) {
++        if self.niri.trusted_prompt_input_isolated() {
++            if let Some(tool) = self.niri.seat.tablet_seat().get_tool(&event.tool()) {
++                tool.proximity_out(event.time_msec());
++            }
++            return;
++        }
+         let tool = self.niri.seat.tablet_seat().get_tool(&event.tool());
+ 
+         if let Some(tool) = tool {
+@@ -4250,6 +4383,23 @@ impl State {
+ 
+         let under = self.niri.contents_under(pos);
+ 
++        if !matches!(self.niri.lock_state, crate::niri::LockState::Unlocked)
++            || self.niri.trusted_prompt_input_isolated()
++        {
++            handle.down(
++                self,
++                under.surface,
++                &DownEvent {
++                    slot,
++                    location: pos,
++                    serial,
++                    time: evt.time_msec(),
++                },
++            );
++            self.niri.pointer_visibility = PointerVisibility::Disabled;
++            return;
++        }
++
+         let mod_key = self.backend.mod_key(&self.niri.config.borrow());
+ 
+         if self.niri.screenshot_ui.is_open() {
+@@ -4583,6 +4733,13 @@ fn find_bind<'a>(
+     mods: ModifiersState,
+     disable_power_key_handling: bool,
+ ) -> Option<Bind> {
++    find_hardcoded_bind(modified, disable_power_key_handling).or_else(|| {
++        let trigger = Trigger::Keysym(raw?);
++        find_configured_bind(bindings, mod_key, trigger, mods)
++    })
++}
++
++fn find_hardcoded_bind(modified: Keysym, disable_power_key_handling: bool) -> Option<Bind> {
+     use keysyms::*;
+ 
+     // Handle hardcoded binds.
+@@ -4596,29 +4753,98 @@ fn find_bind<'a>(
+         _ => None,
+     };
+ 
+-    if let Some(action) = hardcoded_action {
+-        return Some(Bind {
+-            key: Key {
+-                // Not entirely correct but it doesn't matter in how we currently use it.
+-                trigger: Trigger::Keysym(modified),
+-                modifiers: Modifiers::empty(),
+-            },
+-            action,
+-            repeat: true,
+-            cooldown: None,
+-            allow_when_locked: false,
+-            // In a worst-case scenario, the user has no way to unlock the compositor and a
+-            // misbehaving client has a keyboard shortcuts inhibitor, "jailing" the user.
+-            // The user must always be able to change VTs to recover from such a situation.
+-            // It also makes no sense to inhibit the default power key handling.
+-            // Hardcoded binds must never be inhibited.
+-            allow_inhibiting: false,
+-            hotkey_overlay_title: None,
+-        });
++    hardcoded_action.map(|action| Bind {
++        key: Key {
++            // Not entirely correct but it doesn't matter in how we currently use it.
++            trigger: Trigger::Keysym(modified),
++            modifiers: Modifiers::empty(),
++        },
++        action,
++        repeat: true,
++        cooldown: None,
++        allow_when_locked: false,
++        // In a worst-case scenario, the user has no way to unlock the compositor and a
++        // misbehaving client has a keyboard shortcuts inhibitor, "jailing" the user.
++        // The user must always be able to change VTs to recover from such a situation.
++        // It also makes no sense to inhibit the default power key handling.
++        // Hardcoded binds must never be inhibited.
++        allow_inhibiting: false,
++        hotkey_overlay_title: None,
++    })
++}
++
++// Keep recovery keys out of both the prompt and lock clients, including releases
++// after the modifiers changed or a backend reset the pressed-key state.
++fn trusted_prompt_key_filter(
++    suppressed_keys: &mut HashSet<Keycode>,
++    key_code: Keycode,
++    modified: Keysym,
++    pressed: bool,
++    disable_power_key_handling: bool,
++) -> FilterResult<Option<Bind>> {
++    if !pressed && suppressed_keys.remove(&key_code) {
++        return FilterResult::Intercept(None);
+     }
++    if find_hardcoded_bind(modified, false).is_some() {
++        if pressed {
++            suppressed_keys.insert(key_code);
++            let mut bind = find_hardcoded_bind(modified, disable_power_key_handling);
++            if let Some(bind) = &mut bind {
++                // A held recovery key must not repeatedly suspend the session.
++                bind.repeat = false;
++            }
++            return FilterResult::Intercept(bind);
++        }
++        return FilterResult::Intercept(None);
++    }
++    if pressed {
++        // A new press supersedes a release lost during VT switching or suspend.
++        suppressed_keys.remove(&key_code);
++    }
++    FilterResult::Forward
++}
++
++fn allowed_during_trusted_prompt(action: &Action) -> bool {
++    matches!(action, Action::ChangeVt(_) | Action::Suspend)
++}
+
+-    let trigger = Trigger::Keysym(raw?);
+-    find_configured_bind(bindings, mod_key, trigger, mods)
++// A modifier grab must not prevent the proof chord from reaching XKB.
++fn proof_key_or_modifier(key: Key, mod_key: ModKey, sym: Keysym) -> bool {
++    if key.trigger == Trigger::Keysym(sym) {
++        return true;
++    }
++    let mut modifiers = key.modifiers;
++    if modifiers.contains(Modifiers::COMPOSITOR) {
++        modifiers |= mod_key.to_modifiers();
++    }
++    let modifier = match sym {
++        Keysym::Control_L | Keysym::Control_R => Modifiers::CTRL,
++        Keysym::Shift_L | Keysym::Shift_R => Modifiers::SHIFT,
++        Keysym::Alt_L | Keysym::Alt_R => Modifiers::ALT,
++        Keysym::Super_L | Keysym::Super_R => Modifiers::SUPER,
++        Keysym::ISO_Level3_Shift => Modifiers::ISO_LEVEL3_SHIFT,
++        Keysym::ISO_Level5_Shift => Modifiers::ISO_LEVEL5_SHIFT,
++        _ => Modifiers::empty(),
++    };
++    modifiers.intersects(modifier)
++}
++
++fn find_trusted_prompt_bind(
++    bindings: &Binds,
++    mod_key: ModKey,
++    raw: Keysym,
++    mods: ModifiersState,
++) -> bool {
++    find_configured_bind(
++        bindings
++            .0
++            .iter()
++            .filter(|bind| matches!(bind.action, Action::ShowTrustedPromptMark)),
++        mod_key,
++        Trigger::Keysym(raw),
++        mods,
++    )
++    .is_some()
+ }
+ 
+ fn find_configured_bind<'a>(
+@@ -5258,6 +5484,177 @@ mod tests {
+     use super::*;
+     use crate::animation::Clock;
+ 
++    #[test]
++    fn trusted_prompt_preserves_recovery_keys_without_forwarding_them() {
++        for (keysym, expected) in [
++            (Keysym::XF86_Switch_VT_1, Action::ChangeVt(1)),
++            (Keysym::XF86_Switch_VT_12, Action::ChangeVt(12)),
++            (Keysym::XF86_PowerOff, Action::Suspend),
++        ] {
++            let keycode = Keycode::from(42u32);
++            let mut suppressed = HashSet::new();
++            let result = trusted_prompt_key_filter(&mut suppressed, keycode, keysym, true, false);
++            let FilterResult::Intercept(Some(bind)) = result else {
++                panic!("recovery key was not intercepted");
++            };
++            assert_eq!(bind.action, expected);
++            assert!(!bind.repeat);
++            assert!(!bind.allow_inhibiting);
++            assert!(allowed_during_trusted_prompt(&bind.action));
++            assert!(allowed_when_locked(&bind.action));
++            assert!(suppressed.contains(&keycode));
++            // Still intercept a release if the backend reset pressed-key state.
++            suppressed.clear();
++            assert!(matches!(
++                trusted_prompt_key_filter(&mut suppressed, keycode, keysym, false, false),
++                FilterResult::Intercept(None)
++            ));
++        }
++    }
++
++    #[test]
++    fn trusted_prompt_respects_disabled_power_handling_without_leaking_the_key() {
++        let keycode = Keycode::from(42u32);
++        let mut suppressed = HashSet::new();
++        for pressed in [true, false] {
++            assert!(matches!(
++                trusted_prompt_key_filter(
++                    &mut suppressed,
++                    keycode,
++                    Keysym::XF86_PowerOff,
++                    pressed,
++                    true
++                ),
++                FilterResult::Intercept(None)
++            ));
++            assert_eq!(suppressed.contains(&keycode), pressed);
++        }
++        assert!(matches!(
++            trusted_prompt_key_filter(
++                &mut suppressed,
++                keycode,
++                Keysym::XF86_Switch_VT_2,
++                true,
++                true
++            ),
++            FilterResult::Intercept(Some(Bind {
++                action: Action::ChangeVt(2),
++                ..
++            }))
++        ));
++    }
++
++    #[test]
++    fn trusted_prompt_vt_release_stays_private_after_modifier_release() {
++        let keycode = Keycode::from(42u32);
++        let mut suppressed = HashSet::new();
++        assert!(matches!(
++            trusted_prompt_key_filter(
++                &mut suppressed,
++                keycode,
++                Keysym::XF86_Switch_VT_2,
++                true,
++                false
++            ),
++            FilterResult::Intercept(Some(_))
++        ));
++        assert!(matches!(
++            trusted_prompt_key_filter(&mut suppressed, keycode, Keysym::F2, false, false),
++            FilterResult::Intercept(None)
++        ));
++        assert!(suppressed.is_empty());
++        // If the backend lost that release, a new unmodified press starts afresh.
++        suppressed.insert(keycode);
++        for pressed in [true, false] {
++            assert!(matches!(
++                trusted_prompt_key_filter(&mut suppressed, keycode, Keysym::F2, pressed, false),
++                FilterResult::Forward
++            ));
++        }
++        assert!(suppressed.is_empty());
++    }
++
++    #[test]
++    fn trusted_prompt_recovery_exception_keeps_other_actions_blocked() {
++        for action in [
++            Action::Quit(true),
++            Action::ShowTrustedPromptMark,
++            Action::CloseWindow,
++        ] {
++            assert!(!allowed_during_trusted_prompt(&action));
++        }
++        let keycode = Keycode::from(42u32);
++        let mut suppressed = HashSet::new();
++        for pressed in [true, false] {
++            assert!(matches!(
++                trusted_prompt_key_filter(&mut suppressed, keycode, Keysym::a, pressed, false),
++                FilterResult::Forward
++            ));
++        }
++        // A proof chord's suppressed release remains private after focus changes.
++        suppressed.insert(keycode);
++        assert!(matches!(
++            trusted_prompt_key_filter(&mut suppressed, keycode, Keysym::F12, false, false),
++            FilterResult::Intercept(None)
++        ));
++    }
++
++    #[test]
++    fn trusted_prompt_proof_uses_only_its_configured_keyboard_chord() {
++        let config = Config::parse_mem(
++            "binds { Mod+F12 { show-trusted-prompt-mark; }; Mod+F11 { quit; }; }",
++        )
++        .unwrap();
++        let mods = ModifiersState {
++            logo: true,
++            ..ModifiersState::default()
++        };
++        assert!(find_trusted_prompt_bind(
++            &config.binds,
++            ModKey::Super,
++            Keysym::F12,
++            mods
++        ));
++        assert!(!find_trusted_prompt_bind(
++            &config.binds,
++            ModKey::Super,
++            Keysym::F11,
++            mods
++        ));
++        assert!(!find_trusted_prompt_bind(
++            &config.binds,
++            ModKey::Super,
++            Keysym::F12,
++            ModifiersState::default(),
++        ));
++        assert!(!find_trusted_prompt_bind(
++            &config.binds,
++            ModKey::Super,
++            Keysym::F12,
++            ModifiersState {
++                shift: true,
++                ..mods
++            },
++        ));
++    }
++
++    #[test]
++    fn trusted_prompt_proof_modifiers_bypass_accessibility_grabs() {
++        let key: Key = "Mod+Ctrl+F12".parse().unwrap();
++        assert!(proof_key_or_modifier(key, ModKey::Super, Keysym::F12));
++        assert!(proof_key_or_modifier(key, ModKey::Super, Keysym::Super_L));
++        assert!(proof_key_or_modifier(key, ModKey::Super, Keysym::Control_R));
++        assert!(!proof_key_or_modifier(key, ModKey::Super, Keysym::Shift_L));
++        assert!(!proof_key_or_modifier(key, ModKey::Super, Keysym::F11));
++        assert!(proof_key_or_modifier(key, ModKey::Alt, Keysym::Alt_R));
++        assert!(!proof_key_or_modifier(key, ModKey::Alt, Keysym::Super_L));
++    }
++
++    #[test]
++    fn trusted_prompt_proof_is_not_an_ipc_action() {
++        assert!(serde_json::from_str::<niri_ipc::Action>("\"ShowTrustedPromptMark\"").is_err());
++    }
++
+     #[test]
+     fn emaki_non_repeating_binds_only_get_a_tail() {
+         let mut bind = hardcoded_overview_bind(Keysym::Right, ModifiersState::default()).unwrap();
+diff --git a/src/ipc/client.rs b/src/ipc/client.rs
+index aae92883..9b9bee00 100644
+--- a/src/ipc/client.rs
++++ b/src/ipc/client.rs
+@@ -46,6 +46,10 @@ pub fn handle_msg(mut msg: Msg, json: bool) -> anyhow::Result<()> {
+         Msg::Layers => Request::Layers,
+         Msg::EmakiStartupCover => Request::EmakiStartupCover,
+         Msg::EmakiWallpaper => Request::EmakiWallpaper,
++        Msg::TrustedShell => Request::TrustedShell,
++        Msg::TrustedShellIdentity => Request::TrustedShellIdentity,
++        Msg::RestartTrustedShell => Request::RestartTrustedShell,
++        Msg::PrepareSessionLock => Request::PrepareSessionLock,
+         Msg::KeyboardLayouts => Request::KeyboardLayouts,
+         Msg::EventStream => Request::EventStream,
+         Msg::RequestError => Request::ReturnError,
+@@ -319,7 +323,7 @@ pub fn handle_msg(mut msg: Msg, json: bool) -> anyhow::Result<()> {
+                 println!("No color was picked.");
+             }
+         }
+-        Msg::Action { .. } => {
++        Msg::Action { .. } | Msg::RestartTrustedShell | Msg::PrepareSessionLock => {
+             let Response::Handled = response else {
+                 bail!("unexpected response: expected Handled, got {response:?}");
+             };
+@@ -511,6 +515,31 @@ pub fn handle_msg(mut msg: Msg, json: bool) -> anyhow::Result<()> {
+                 }
+             }
+         }
++        Msg::TrustedShellIdentity => {
++            let Response::TrustedShellIdentity(identity) = response else {
++                bail!("unexpected response: expected TrustedShellIdentity, got {response:?}");
++            };
++            if json {
++                println!("{}", serde_json::to_string(&identity)?);
++            } else if let Some(identity) = identity {
++                println!("PID: {}, start time: {}", identity.pid, identity.start_time);
++            } else {
++                println!("No live trusted shell connection");
++            }
++        }
++        Msg::TrustedShell => {
++            let Response::TrustedShell(status) = response else {
++                bail!("unexpected response: expected TrustedShell, got {response:?}");
++            };
++            if json {
++                println!("{}", serde_json::to_string(&status)?);
++            } else {
++                println!(
++                    "Configured: {}, running: {}, prompt active: {}",
++                    status.configured, status.running, status.prompt_active
++                );
++            }
++        }
+         Msg::EmakiStartupCover => {
+             let Response::EmakiStartupCover(status) = response else {
+                 bail!("unexpected response: expected EmakiStartupCover, got {response:?}");
+diff --git a/src/ipc/server.rs b/src/ipc/server.rs
+index f6680daf..4c0e8da9 100644
+--- a/src/ipc/server.rs
++++ b/src/ipc/server.rs
+@@ -287,6 +287,69 @@ async fn process(ctx: &ClientCtx, request: Request) -> Reply {
+             let windows = state.windows.windows.values().cloned().collect();
+             Response::Windows(windows)
+         }
++        Request::TrustedShellIdentity => {
++            let (tx, rx) = async_channel::bounded(1);
++            ctx.event_loop.insert_idle(move |state| {
++                let identity = state
++                    .niri
++                    .trusted_shell_supervisor
++                    .as_ref()
++                    .and_then(|handle| handle.identity(&state.niri.display_handle));
++                let _ = tx.send_blocking(identity);
++            });
++            Response::TrustedShellIdentity(
++                rx.recv()
++                    .await
++                    .map_err(|_| "error getting trusted shell identity")?,
++            )
++        }
++        Request::TrustedShell => {
++            let (tx, rx) = async_channel::bounded(1);
++            ctx.event_loop.insert_idle(move |state| {
++                let handle = state.niri.trusted_shell_supervisor.as_ref();
++                let _ = tx.send_blocking(niri_ipc::TrustedShell {
++                    configured: handle.is_some(),
++                    running: handle.is_some_and(|handle| handle.is_running()),
++                    prompt_active: state.niri.trusted_prompt_active(),
++                });
++            });
++            Response::TrustedShell(
++                rx.recv()
++                    .await
++                    .map_err(|_| "error getting trusted shell status")?,
++            )
++        }
++        Request::PrepareSessionLock => {
++            let (tx, rx) = async_channel::bounded(1);
++            ctx.event_loop.insert_idle(move |state| {
++                state.prepare_session_lock();
++                let _ = tx.send_blocking(());
++            });
++            rx.recv()
++                .await
++                .map_err(|_| "error preparing session lock")?;
++            Response::Handled
++        }
++        Request::RestartTrustedShell => {
++            let (tx, rx) = async_channel::bounded(1);
++            ctx.event_loop.insert_idle(move |state| {
++                let configured = if let Some(handle) = &state.niri.trusted_shell_supervisor {
++                    handle.request_restart();
++                    true
++                } else {
++                    false
++                };
++                let _ = tx.send_blocking(configured);
++            });
++            if !rx
++                .recv()
++                .await
++                .map_err(|_| "error restarting trusted shell")?
++            {
++                return Err(String::from("no trusted shell configured"));
++            }
++            Response::Handled
++        }
+         Request::Layers => {
+             let (tx, rx) = async_channel::bounded(1);
+             ctx.event_loop.insert_idle(move |state| {
+@@ -343,6 +406,10 @@ async fn process(ctx: &ClientCtx, request: Request) -> Reply {
+         Request::PickWindow => {
+             let (tx, rx) = async_channel::bounded(1);
+             ctx.event_loop.insert_idle(move |state| {
++                if state.niri.trusted_prompt_input_isolated() {
++                    let _ = tx.send_blocking(None);
++                    return;
++                }
+                 let pointer = state.niri.seat.get_pointer().unwrap();
+                 let start_data = PointerGrabStartData {
+                     focus: None,
+@@ -372,6 +439,10 @@ async fn process(ctx: &ClientCtx, request: Request) -> Reply {
+         Request::PickColor => {
+             let (tx, rx) = async_channel::bounded(1);
+             ctx.event_loop.insert_idle(move |state| {
++                if state.niri.trusted_prompt_input_isolated() {
++                    let _ = tx.send_blocking(None);
++                    return;
++                }
+                 state.handle_pick_color(tx);
+             });
+             let result = rx.recv().await;
+diff --git a/src/lib.rs b/src/lib.rs
+index d5168386..560366ef 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -21,6 +21,8 @@ pub mod render_helpers;
+ pub mod rubber_band;
+ #[cfg(feature = "xdp-gnome-screencast")]
+ pub mod screencasting;
++pub mod trusted_client;
++pub mod trusted_prompt;
+ pub mod ui;
+ pub mod utils;
+ pub mod window;
+diff --git a/src/main.rs b/src/main.rs
+index dca08957..d7893e35 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -167,6 +167,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
+     let config_includes = config_load_result.includes;
+ 
+     let spawn_at_startup = mem::take(&mut config.spawn_at_startup);
++    let trusted_shell = config.spawn_trusted_shell_at_startup.take();
+     let spawn_sh_at_startup = mem::take(&mut config.spawn_sh_at_startup);
+     *CHILD_ENV.write().unwrap() = mem::take(&mut config.environment);
+ 
+@@ -283,6 +284,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
+ 
+     watcher::setup(&mut state, &config_path, config_includes);
+ 
++    if let Some(shell) = trusted_shell {
++        niri::trusted_client::start(&mut state, shell.command);
++    }
++
+     // Spawn commands from cli and auto-start.
+     spawn(cli.command, None);
+ 
+diff --git a/src/niri.rs b/src/niri.rs
+index 3051ffa7..41ebc581 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -381,6 +381,15 @@ pub struct Niri {
+     pub mods_with_finger_scroll_binds: HashSet<Modifiers>,
+ 
+     pub lock_state: LockState,
++    pub trusted_prompt_proof_deadline: Option<Instant>,
++    pub trusted_prompt_proof_surface: Option<WlSurface>,
++    pub trusted_prompt_input_surface: Option<WlSurface>,
++    pub trusted_prompt_was_isolated: bool,
++    /// Holds input across shell cancellation before the lock client connects.
++    pub session_lock_prepared: bool,
++    pub trusted_prompt_was_marked: bool,
++    pub trusted_prompt_backdrop_id: Id,
++    pub trusted_prompt_mark_ids: [Id; 3],
+ 
+     startup_cover: Option<StartupCover>,
+     emaki_wallpaper: RefCell<crate::render_helpers::emaki_wallpaper::Wallpaper>,
+@@ -430,6 +439,7 @@ pub struct Niri {
+     pub ipc_outputs_changed: bool,
+ 
+     pub satellite: Option<Satellite>,
++    pub trusted_shell_supervisor: Option<crate::trusted_client::SupervisorHandle>,
+ 
+     #[cfg(feature = "xdp-gnome-screencast")]
+     pub casting: Screencasting,
+@@ -1048,6 +1058,7 @@ impl State {
+         if !self.niri.exit_confirm_dialog.is_open()
+             && !self.niri.is_locked()
+             && !self.niri.screenshot_ui.is_open()
++            && !self.niri.trusted_prompt_input_isolated()
+         {
+             // Don't refresh cursor focus during transitions.
+             if let Some((output, _)) = self.niri.output_under(location) {
+@@ -1131,6 +1142,7 @@ impl State {
+     }
+ 
+     pub fn update_keyboard_focus(&mut self) {
++        self.refresh_trusted_prompt_input();
+         // Clean up on-demand layer surface focus if necessary.
+         if let Some(surface) = &self.niri.layer_shell_on_demand_focus {
+             // Still alive and has on-demand interactivity.
+@@ -1154,9 +1166,18 @@ impl State {
+         }
+ 
+         // Compute the current focus.
+-        let focus = if self.niri.exit_confirm_dialog.is_open() {
++        let focus = if self.niri.trusted_prompt_input_isolated() {
++            self.niri
++                .trusted_prompt()
++                .map(|layer| KeyboardFocus::LayerShell {
++                    surface: layer.wl_surface().clone(),
++                })
++                .unwrap_or(KeyboardFocus::Layout { surface: None })
++        } else if self.niri.exit_confirm_dialog.is_open() {
+             KeyboardFocus::ExitConfirmDialog
+-        } else if self.niri.is_locked() {
++        } else if !matches!(self.niri.lock_state, LockState::Unlocked) {
++            // Waiting for the locker to map its surfaces is already an input boundary.
++            // The prompt may unmap during this interval; never return focus to a session client.
+             KeyboardFocus::LockScreen {
+                 surface: self.niri.lock_surface_focus(),
+             }
+@@ -1977,7 +1998,10 @@ impl State {
+     }
+ 
+     pub fn open_screenshot_ui(&mut self, show_pointer: bool, path: Option<String>) {
+-        if self.niri.is_locked() || self.niri.screenshot_ui.is_open() {
++        if self.niri.is_locked()
++            || self.niri.trusted_prompt_input_isolated()
++            || self.niri.screenshot_ui.is_open()
++        {
+             return;
+         }
+ 
+@@ -2347,11 +2371,19 @@ impl Niri {
+ 
+         let text_input_state = TextInputManagerState::new::<State>(&display_handle);
+         let input_method_state =
+-            InputMethodManagerState::new::<State, _>(&display_handle, client_is_unrestricted);
++            InputMethodManagerState::new::<State, _>(&display_handle, |client| {
++                client
++                    .get_data::<ClientState>()
++                    .is_some_and(|data| data.trusted_shell)
++            });
+         let keyboard_shortcuts_inhibit_state =
+             KeyboardShortcutsInhibitState::new::<State>(&display_handle);
+         let virtual_keyboard_state =
+-            VirtualKeyboardManagerState::new::<State, _>(&display_handle, client_is_unrestricted);
++            VirtualKeyboardManagerState::new::<State, _>(&display_handle, |client| {
++                client
++                    .get_data::<ClientState>()
++                    .is_some_and(|data| data.trusted_shell)
++            });
+         let virtual_pointer_state =
+             VirtualPointerManagerState::new::<State, _>(&display_handle, client_is_unrestricted);
+         let foreign_toplevel_state =
+@@ -2615,6 +2647,14 @@ impl Niri {
+             mods_with_finger_scroll_binds,
+ 
+             lock_state: LockState::Unlocked,
++            trusted_prompt_proof_deadline: None,
++            trusted_prompt_proof_surface: None,
++            trusted_prompt_input_surface: None,
++            trusted_prompt_was_isolated: false,
++            session_lock_prepared: false,
++            trusted_prompt_was_marked: false,
++            trusted_prompt_backdrop_id: Id::new(),
++            trusted_prompt_mark_ids: std::array::from_fn(|_| Id::new()),
+             startup_cover: None,
+             emaki_wallpaper: RefCell::default(),
+             wallpaper_timer: None,
+@@ -2654,6 +2694,7 @@ impl Niri {
+             ipc_outputs_changed: false,
+ 
+             satellite: None,
++            trusted_shell_supervisor: None,
+ 
+             #[cfg(feature = "xdp-gnome-screencast")]
+             casting: screencasting,
+@@ -2678,6 +2719,8 @@ impl Niri {
+             primary_selection_disabled: config.clipboard.disable_primary,
+             restricted,
+             credentials_unknown,
++            trusted_shell: false,
++            trusted_prompt_denial_logged: AtomicBool::new(false),
+         });
+ 
+         if let Err(err) = self.display_handle.insert_client(client, data) {
+@@ -2685,6 +2728,22 @@ impl Niri {
+         }
+     }
+ 
++    /// Insert the private connection created by the trusted-shell supervisor.
++    pub(crate) fn insert_trusted_shell(&mut self, client: UnixStream) -> std::io::Result<Client> {
++        let config = self.config.borrow();
++        let data = Arc::new(ClientState {
++            compositor_state: Default::default(),
++            can_view_decoration_globals: config.prefer_no_csd,
++            primary_selection_disabled: config.clipboard.disable_primary,
++            restricted: false,
++            // A socket pair reports its creator's PID, not the exec'd shell.
++            credentials_unknown: true,
++            trusted_shell: true,
++            trusted_prompt_denial_logged: AtomicBool::new(false),
++        });
++        self.display_handle.insert_client(client, data)
++    }
++
+     #[cfg(feature = "dbus")]
+     pub fn inhibit_power_key(&mut self) -> anyhow::Result<()> {
+         use smithay::reexports::rustix::io::{fcntl_setfd, FdFlags};
+@@ -3324,9 +3383,12 @@ impl Niri {
+         // The ordering here must be consistent with the ordering in render() so that input is
+         // consistent with the visuals.
+ 
++        if self.trusted_prompt_input_isolated() {
++            return self.trusted_prompt_contents_under(output, pos_within_output);
++        }
+         if self.exit_confirm_dialog.is_open() {
+             return rv;
+-        } else if self.is_locked() {
++        } else if !matches!(self.lock_state, LockState::Unlocked) {
+             let Some(state) = self.output_state.get(output) else {
+                 return rv;
+             };
+@@ -3740,6 +3802,13 @@ impl Niri {
+         match render_cursor {
+             RenderCursor::Hidden => (),
+             RenderCursor::Surface { surface, hotspot } => {
++                if self.trusted_prompt_input_isolated()
++                    && !self
++                        .trusted_prompt()
++                        .is_some_and(|layer| layer.wl_surface().id().same_client_as(&surface.id()))
++                {
++                    return;
++                }
+                 let lock = match &self.lock_state {
+                     LockState::Locking(confirmation) => Some(confirmation.ext_session_lock()),
+                     LockState::Locked(lock) => Some(lock),
+@@ -3783,8 +3852,8 @@ impl Niri {
+             }
+         }
+ 
+-        // A drag icon belongs to the session, not the lock screen.
+-        if self.is_locked() {
++        // A drag icon never enters a lock or trusted prompt.
++        if self.is_locked() || self.trusted_prompt_input_isolated() {
+             return;
+         }
+ 
+@@ -4278,7 +4347,7 @@ impl Niri {
+         }
+ 
+         // Locked rendering must not prepare any session content, including xray buffers.
+-        if self.is_locked() {
++        if self.is_locked() || self.trusted_prompt_proof_active() {
+             self.render_inner(ctx, output, include_pointer, include_startup_cover, push);
+             return;
+         }
+@@ -4315,8 +4384,15 @@ impl Niri {
+             push
+         };
+ 
+-        // The pointer goes on the top.
+-        if include_pointer && self.pointer_visibility.is_visible() {
++        if self.trusted_prompt_input_isolated() {
++            self.render_trusted_prompt(ctx.r(), output, include_pointer, push);
++            if self.trusted_prompt_proof_active() {
++                return;
++            }
++        }
++
++        // A mapped trusted role already rendered its pointer above its own card.
++        if include_pointer && !self.trusted_prompt_input_isolated() && self.pointer_visibility.is_visible() {
+             self.render_pointer(ctx.renderer, output, &mut |elem| push(elem.into()));
+         }
+ 
+@@ -4705,6 +4781,10 @@ impl Niri {
+     ) -> impl Iterator<Item = (&'a MappedLayer, Rectangle<i32, Logical>)> {
+         // LayerMap returns layers in reverse stacking order.
+         layer_map.layers_on(layer).rev().filter_map(move |surface| {
++            // The reserved role is rendered once above the entire ordinary scene.
++            if surface.namespace() == crate::trusted_prompt::NAMESPACE {
++                return None;
++            }
+             if startup_cover::client_cover_hidden(
+                 surface.namespace(),
+                 self.startup_cover_deadline,
+@@ -6053,6 +6133,8 @@ impl Niri {
+     }
+ 
+     pub fn lock(&mut self, confirmation: SessionLocker) {
++        self.trusted_prompt_proof_deadline = None;
++        self.trusted_prompt_proof_surface = None;
+         for mon in self.layout.monitors_mut() {
+             mon.emaki_clear_keys();
+         }
+@@ -6302,6 +6384,9 @@ impl Niri {
+     ///
+     /// Make sure the pointer location and contents are up to date before calling this.
+     pub fn maybe_activate_pointer_constraint(&self) {
++        if self.trusted_prompt_input_isolated() {
++            return;
++        }
+         let Some((surface, surface_loc)) = &self.pointer_contents.surface else {
+             return;
+         };
+@@ -6332,6 +6417,9 @@ impl Niri {
+     }
+ 
+     pub fn focus_layer_surface_if_on_demand(&mut self, surface: Option<LayerSurface>) {
++        if self.trusted_prompt_input_isolated() {
++            return;
++        }
+         if let Some(surface) = surface {
+             if surface.cached_state().keyboard_interactivity
+                 == wlr_layer::KeyboardInteractivity::OnDemand
+@@ -7043,6 +7131,10 @@ pub struct ClientState {
+     pub restricted: bool,
+     /// We cannot retrieve this client's socket credentials.
+     pub credentials_unknown: bool,
++    /// Set only for the private connection given to the configured shell at startup.
++    pub trusted_shell: bool,
++    /// At most one reserved-role refusal warning per connection.
++    pub trusted_prompt_denial_logged: AtomicBool,
+ }
+ 
+ impl ClientData for ClientState {
+@@ -7102,6 +7194,8 @@ niri_render_elements! {
+             SolidColorRenderElement
+         >>>,
+         Pointer = PointerRenderElements<R>,
++        TrustedPointer = CropRenderElement<PointerRenderElements<R>>,
++        TrustedPrompt = CropRenderElement<RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>>,
+         Wayland = WaylandSurfaceRenderElement<R>,
+         SolidColor = SolidColorRenderElement,
+         ScreenshotUi = ScreenshotUiRenderElement,
+diff --git a/src/tests/fixture.rs b/src/tests/fixture.rs
+index e57ef215..50293bdc 100644
+--- a/src/tests/fixture.rs
++++ b/src/tests/fixture.rs
+@@ -96,12 +96,25 @@ impl Fixture {
+     }
+ 
+     pub fn add_client(&mut self) -> ClientId {
++        self.add_client_with_trust(false)
++    }
++
++    /// Exercise the compositor-created connection without trusting the public socket.
++    pub fn add_trusted_shell(&mut self) -> ClientId {
++        self.add_client_with_trust(true)
++    }
++
++    fn add_client_with_trust(&mut self, trusted: bool) -> ClientId {
+         let (sock1, sock2) = UnixStream::pair().unwrap();
+-        self.niri().insert_client(NewClient {
+-            client: sock1,
+-            restricted: false,
+-            credentials_unknown: false,
+-        });
++        if trusted {
++            self.niri().insert_trusted_shell(sock1).unwrap();
++        } else {
++            self.niri().insert_client(NewClient {
++                client: sock1,
++                restricted: false,
++                credentials_unknown: false,
++            });
++        }
+ 
+         let client = Client::new(sock2);
+         let id = client.id;
+diff --git a/src/tests/lock_capture.rs b/src/tests/lock_capture.rs
+index bfc44d07..54226fc1 100644
+--- a/src/tests/lock_capture.rs
++++ b/src/tests/lock_capture.rs
+@@ -371,3 +371,47 @@ impl Dispatch<ExtSessionLockSurfaceV1, ()> for client::State {
+         }
+     }
+ }
++
++#[test]
++fn egl_trusted_prompt_proof_covers_real_hostile_lock_without_unlocking() {
++    use std::time::{Duration, Instant};
++
++    let mut f = fixture();
++    let shell = f.add_trusted_shell();
++    let prompt = f.client(shell).create_layer(None, Layer::Overlay, crate::trusted_prompt::NAMESPACE);
++    prompt.set_configure_props(LayerConfigureProps {
++        anchor: Some(Anchor::Top | Anchor::Left),
++        size: Some((u32::from(SIZE.0), u32::from(SIZE.1))),
++        ..Default::default()
++    });
++    let surface = prompt.surface.clone();
++    prompt.commit();
++    f.double_roundtrip(shell);
++    let prompt = f.client(shell).layer(&surface);
++    prompt.attach_new_buffer();
++    prompt.set_size(SIZE.0, SIZE.1);
++    prompt.ack_last_and_commit();
++    f.double_roundtrip(shell);
++    assert!(f.niri().trusted_prompt_active());
++    let lock = lock(&mut f);
++    assert!(!f.niri().trusted_prompt_active());
++    let before = pixels(&mut f, RenderTarget::Output);
++    assert!(before.chunks_exact(4).any(|px| px == LOCK_PIXEL));
++    f.niri().show_trusted_prompt_mark();
++    f.state.server.dispatch();
++    assert!(f.niri().is_locked());
++    assert!(f.niri().trusted_prompt_input_isolated());
++    assert!(!f.niri().trusted_prompt_mark_active());
++    let proof = pixels(&mut f, RenderTarget::Output);
++    assert_ne!(before, proof, "physical proof must erase pre-painted lock pixels");
++    assert!(proof.chunks_exact(4).all(|px| px == [0, 0, 0, 255]));
++    assert!(f.niri().seat.get_keyboard().unwrap().current_focus().is_none());
++    assert!(f.niri().contents_under((10., 10.).into()).surface.is_none());
++    // Expiry restores the same live lock surface, without an unlock or a new client.
++    f.niri().trusted_prompt_proof_deadline = Some(Instant::now() - Duration::from_secs(1));
++    f.state.server.dispatch();
++    assert!(f.niri().is_locked());
++    assert!(!f.niri().trusted_prompt_input_isolated());
++    assert_eq!(pixels(&mut f, RenderTarget::Output), before);
++    assert!(lock.surface.is_alive());
++}
+diff --git a/src/tests/mod.rs b/src/tests/mod.rs
+index 266c311d..7353483d 100644
+--- a/src/tests/mod.rs
++++ b/src/tests/mod.rs
+@@ -15,3 +15,4 @@ mod screencopy;
+ mod startup_cover;
+ mod transactions;
+ mod window_opening;
++mod trusted_prompt;
+diff --git a/src/tests/startup_cover.rs b/src/tests/startup_cover.rs
+index a7da9c0d..112467b8 100644
+--- a/src/tests/startup_cover.rs
++++ b/src/tests/startup_cover.rs
+@@ -328,6 +328,8 @@ fn egl_session_lock_request_releases_cover_immediately() {
+                 primary_selection_disabled: false,
+                 restricted: false,
+                 credentials_unknown: false,
++                trusted_shell: false,
++                trusted_prompt_denial_logged: std::sync::atomic::AtomicBool::new(false),
+             }),
+         )
+         .expect(
+diff --git a/src/tests/trusted_prompt.rs b/src/tests/trusted_prompt.rs
+new file mode 100644
+index 00000000..a91f4e4e
+--- /dev/null
++++ b/src/tests/trusted_prompt.rs
+@@ -0,0 +1,1080 @@
++// Copyright (C) 2026 Artur Yakymenko
++// SPDX-License-Identifier: GPL-3.0-or-later
++
++//! Reserved prompt identity, focus isolation, and compositor proof lifecycle.
++
++use niri_config::Config;
++use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
++use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::{
++    zwlr_layer_shell_v1::Layer,
++    zwlr_layer_surface_v1::{Anchor, KeyboardInteractivity},
++};
++use smithay::reexports::wayland_server::{backend::ObjectId, Resource as _};
++use wayland_client::protocol::wl_surface::WlSurface;
++
++use super::client::{ClientId, LayerConfigureProps};
++use super::Fixture;
++use crate::niri::LockState;
++
++const NAMESPACE: &str = "emaki-auth-prompt";
++
++fn fixture() -> Fixture {
++    let mut f =
++        Fixture::with_config(Config::parse_mem("hotkey-overlay { skip-at-startup; }").unwrap());
++    f.add_output(1, (800, 600));
++    f
++}
++
++fn request(f: &mut Fixture, id: ClientId, namespace: &str) -> WlSurface {
++    let layer = f.client(id).create_layer(None, Layer::Overlay, namespace);
++    layer.set_configure_props(LayerConfigureProps {
++        size: Some((200, 100)),
++        anchor: Some(Anchor::Top | Anchor::Left),
++        kb_interactivity: Some(KeyboardInteractivity::Exclusive),
++        ..Default::default()
++    });
++    let surface = layer.surface.clone();
++    layer.commit();
++    f.double_roundtrip(id);
++    surface
++}
++
++fn map(f: &mut Fixture, id: ClientId, namespace: &str) -> WlSurface {
++    let surface = request(f, id, namespace);
++    let layer = f.client(id).layer(&surface);
++    assert!(!layer.close_requested);
++    assert!(!layer.configures_received.is_empty());
++    layer.attach_new_buffer();
++    layer.set_size(200, 100);
++    layer.ack_last_and_commit();
++    f.double_roundtrip(id);
++    surface
++}
++
++fn set_locked(f: &mut Fixture) {
++    // A dead lock resource represents a session whose locker has disconnected.
++    let lock = ExtSessionLockV1::from_id(&f.niri().display_handle, ObjectId::null()).unwrap();
++    f.niri().lock_state = LockState::Locked(lock);
++    f.state.server.dispatch();
++}
++
++#[test]
++fn trusted_prompt_public_socket_cannot_claim_namespace() {
++    let mut f = fixture();
++    let id = f.add_client();
++    let surface = request(&mut f, id, NAMESPACE);
++    let layer = f.client(id).layer(&surface);
++    assert!(layer.close_requested);
++    assert!(layer.configures_received.is_empty());
++    assert!(!f.niri().trusted_prompt_active());
++    // Refusing a reserved role does not disconnect ordinary layer-shell clients.
++    map(&mut f, id, "ordinary-overlay");
++    assert!(!f.niri().trusted_prompt_active());
++}
++
++#[test]
++fn trusted_prompt_excludes_competing_layers_in_both_arrival_orders() {
++    for hostile_first in [false, true] {
++        let mut f = fixture();
++        let hostile = f.add_client();
++        let shell = f.add_trusted_shell();
++        if hostile_first {
++            map(&mut f, hostile, "hostile-overlay");
++        }
++        map(&mut f, shell, NAMESPACE);
++        if !hostile_first {
++            map(&mut f, hostile, "hostile-overlay");
++        }
++        let prompt = f.niri().trusted_prompt().unwrap();
++        let keyboard = f.niri().seat.get_keyboard().unwrap();
++        assert_eq!(keyboard.current_focus().as_ref(), Some(prompt.wl_surface()));
++        assert_eq!(
++            f.niri()
++                .contents_under((50., 80.).into())
++                .surface
++                .map(|s| s.0),
++            Some(prompt.wl_surface().clone()),
++        );
++        assert!(f
++            .niri()
++            .contents_under((500., 400.).into())
++            .surface
++            .is_none());
++        // Moving the active output must not return focus to another client.
++        f.add_output(2, (800, 600));
++        f.niri_focus_output(2);
++        f.niri_state().update_keyboard_focus();
++        assert_eq!(keyboard.current_focus().as_ref(), Some(prompt.wl_surface()));
++    }
++}
++
++#[test]
++fn trusted_prompt_mark_requires_prompt_and_resets_on_unmap() {
++    let mut f = fixture();
++    f.niri().show_trusted_prompt_mark();
++    assert!(!f.niri().trusted_prompt_mark_active());
++    let shell = f.add_trusted_shell();
++    let surface = map(&mut f, shell, NAMESPACE);
++    f.niri().show_trusted_prompt_mark();
++    assert!(f.niri().trusted_prompt_mark_active());
++    let layer = f.client(shell).layer(&surface);
++    layer.attach_null();
++    layer.commit();
++    f.double_roundtrip(shell);
++    assert!(!f.niri().trusted_prompt_active());
++    assert!(!f.niri().trusted_prompt_mark_active());
++}
++
++#[test]
++fn trusted_prompt_lock_revokes_focus_and_mark() {
++    let mut f = fixture();
++    let shell = f.add_trusted_shell();
++    map(&mut f, shell, NAMESPACE);
++    f.niri().show_trusted_prompt_mark();
++    assert!(f.niri().trusted_prompt_mark_active());
++    set_locked(&mut f);
++    assert!(!f.niri().trusted_prompt_active());
++    assert!(!f.niri().trusted_prompt_mark_active());
++    assert!(f
++        .niri()
++        .seat
++        .get_keyboard()
++        .unwrap()
++        .current_focus()
++        .is_none());
++    assert!(f.niri().contents_under((50., 80.).into()).surface.is_none());
++    f.niri().show_trusted_prompt_mark();
++    assert!(!f.niri().trusted_prompt_mark_active());
++}
++
++#[test]
++fn trusted_prompt_mapped_during_lock_has_no_focus_or_mark() {
++    let mut f = fixture();
++    set_locked(&mut f);
++    let shell = f.add_trusted_shell();
++    map(&mut f, shell, NAMESPACE);
++    assert!(!f.niri().trusted_prompt_active());
++    assert!(f
++        .niri()
++        .seat
++        .get_keyboard()
++        .unwrap()
++        .current_focus()
++        .is_none());
++    assert!(f.niri().contents_under((50., 80.).into()).surface.is_none());
++    f.niri().show_trusted_prompt_mark();
++    assert!(!f.niri().trusted_prompt_mark_active());
++}
++
++fn pixels(f: &mut Fixture) -> Vec<u8> {
++    capture_pixels(f, None, crate::render_helpers::RenderTarget::Output)
++}
++
++fn capture_pixels(
++    f: &mut Fixture,
++    capture_client: Option<&smithay::reexports::wayland_server::Client>,
++    target: crate::render_helpers::RenderTarget,
++) -> Vec<u8> {
++    use crate::render_helpers::{render_to_vec, RenderCtx};
++    use smithay::backend::allocator::Fourcc;
++    use smithay::utils::{Scale, Transform};
++
++    let output = f.niri_output(1);
++    let state = f.niri_state();
++    state
++        .backend
++        .with_primary_renderer(|renderer| {
++            let elements = state.niri.render_to_vec(
++                RenderCtx {
++                    renderer,
++                    target,
++                    xray: None,
++                    capture_client,
++                },
++                &output,
++                false,
++            );
++            render_to_vec(
++                renderer,
++                output.current_mode().unwrap().size,
++                Scale::from(1.),
++                Transform::Normal,
++                Fourcc::Abgr8888,
++                elements.iter().rev(),
++            )
++            .unwrap()
++        })
++        .unwrap()
++}
++
++fn paint(f: &mut Fixture, id: ClientId, surface: &WlSurface, rgba: [u32; 4]) {
++    let layer = f.client(id).layer(surface);
++    let buffer =
++        layer
++            .spbm
++            .create_u32_rgba_buffer(rgba[0], rgba[1], rgba[2], rgba[3], &layer.qh, ());
++    layer.surface.attach(Some(&buffer), 0, 0);
++    layer.commit();
++    f.double_roundtrip(id);
++}
++
++#[test]
++fn egl_trusted_prompt_proof_band_cannot_be_painted_by_clients() {
++    let mut f = fixture();
++    f.niri_state().backend.headless().add_renderer().unwrap();
++    let shell = f.add_trusted_shell();
++    let surface = map(&mut f, shell, NAMESPACE);
++    paint(&mut f, shell, &surface, [u32::MAX, 0, 0, u32::MAX]);
++    let hostile = f.add_client();
++    let hostile_surface = map(&mut f, hostile, "hostile-overlay");
++    paint(
++        &mut f,
++        hostile,
++        &hostile_surface,
++        [0, u32::MAX, 0, u32::MAX],
++    );
++    let before = pixels(&mut f);
++    let red = [255, 0, 0, 255];
++    let green = [0, 255, 0, 255];
++    let index = (80 * 800 + 50) * 4;
++    assert_eq!(&before[index..index + 4], red);
++    assert!(!before.chunks_exact(4).any(|px| px == green));
++    f.niri().show_trusted_prompt_mark();
++    let proof = pixels(&mut f);
++    assert_ne!(
++        proof, before,
++        "compositor action must change rendered pixels"
++    );
++    assert!(
++        !proof[..800 * 48 * 4]
++            .chunks_exact(4)
++            .any(|px| px == red || px == green),
++        "a client buffer painted the reserved proof band"
++    );
++    assert_eq!(
++        proof.chunks_exact(4).filter(|px| *px == red).count(),
++        before.chunks_exact(4).filter(|px| *px == red).count(),
++        "proof must retain every pixel of the card, including its top edge"
++    );
++    set_locked(&mut f);
++    let locked = pixels(&mut f);
++    assert!(
++        !locked.chunks_exact(4).any(|px| px == red || px == green),
++        "a session layer leaked into locked output"
++    );
++}
++
++#[test]
++fn trusted_prompt_revokes_existing_pointer_click_grab() {
++    use smithay::backend::input::ButtonState;
++    use smithay::input::pointer::{ButtonEvent, MotionEvent};
++    use smithay::utils::SERIAL_COUNTER;
++
++    let mut f = fixture();
++    let hostile = f.add_client();
++    map(&mut f, hostile, "hostile-overlay");
++    let pointer = f.niri().seat.get_pointer().unwrap();
++    let focus = f.niri().contents_under((50., 80.).into()).surface;
++    assert!(focus.is_some());
++    pointer.motion(
++        f.niri_state(),
++        focus,
++        &MotionEvent {
++            location: (50., 80.).into(),
++            serial: SERIAL_COUNTER.next_serial(),
++            time: 1,
++        },
++    );
++    pointer.button(
++        f.niri_state(),
++        &ButtonEvent {
++            button: 0x110,
++            state: ButtonState::Pressed,
++            serial: SERIAL_COUNTER.next_serial(),
++            time: 2,
++        },
++    );
++    assert!(pointer.is_grabbed());
++    let shell = f.add_trusted_shell();
++    map(&mut f, shell, NAMESPACE);
++    let prompt = f.niri().trusted_prompt().unwrap();
++    assert!(
++        !pointer.is_grabbed(),
++        "an earlier click grab survived trusted prompt mapping"
++    );
++    assert_eq!(pointer.current_focus().as_ref(), Some(prompt.wl_surface()));
++}
++
++#[test]
++fn egl_trusted_prompt_proof_without_prompt_blanks_hostile_pixels_and_input() {
++    let mut f = fixture();
++    f.niri_state().backend.headless().add_renderer().unwrap();
++    let hostile = f.add_client();
++    let surface = map(&mut f, hostile, "fake-prompt-with-painted-mark");
++    paint(&mut f, hostile, &surface, [u32::MAX, 0, 0, u32::MAX]);
++    let red = [255, 0, 0, 255];
++    assert!(pixels(&mut f).chunks_exact(4).any(|px| px == red));
++    assert!(f
++        .niri()
++        .seat
++        .get_keyboard()
++        .unwrap()
++        .current_focus()
++        .is_some());
++    f.niri().show_trusted_prompt_mark();
++    f.state.server.dispatch();
++    assert!(f.niri().trusted_prompt_input_isolated());
++    assert!(!f.niri().trusted_prompt_mark_active());
++    assert!(f
++        .niri()
++        .seat
++        .get_keyboard()
++        .unwrap()
++        .current_focus()
++        .is_none());
++    assert!(f
++        .niri()
++        .seat
++        .get_pointer()
++        .unwrap()
++        .current_focus()
++        .is_none());
++    assert!(f.niri().contents_under((50., 80.).into()).surface.is_none());
++    let curtain = pixels(&mut f);
++    assert!(
++        curtain.chunks_exact(4).all(|px| px == [0, 0, 0, 255]),
++        "the no-prompt proof curtain must contain no client pixels or authenticity mark"
++    );
++}
++
++#[test]
++fn trusted_prompt_same_surface_remap_requires_fresh_proof() {
++    let mut f = fixture();
++    let shell = f.add_trusted_shell();
++    let surface = map(&mut f, shell, NAMESPACE);
++    f.niri().show_trusted_prompt_mark();
++    assert!(f.niri().trusted_prompt_mark_active());
++    let layer = f.client(shell).layer(&surface);
++    layer.attach_null();
++    layer.commit();
++    f.double_roundtrip(shell);
++    assert!(!f.niri().trusted_prompt_mark_active());
++    // The role survives unmapping, but its state resets; renegotiate on the same wl_surface.
++    let layer = f.client(shell).layer(&surface);
++    layer.set_configure_props(LayerConfigureProps {
++        size: Some((200, 100)),
++        anchor: Some(Anchor::Top | Anchor::Left),
++        kb_interactivity: Some(KeyboardInteractivity::Exclusive),
++        ..Default::default()
++    });
++    layer.commit();
++    f.double_roundtrip(shell);
++    let layer = f.client(shell).layer(&surface);
++    layer.attach_new_buffer();
++    layer.set_size(200, 100);
++    layer.ack_last_and_commit();
++    f.double_roundtrip(shell);
++    assert!(f.niri().trusted_prompt_active());
++    assert!(
++        !f.niri().trusted_prompt_mark_active(),
++        "remapping reused earlier proof"
++    );
++    f.niri().show_trusted_prompt_mark();
++    assert!(f.niri().trusted_prompt_mark_active());
++}
++
++#[test]
++fn egl_trusted_prompt_pending_lock_already_hides_prompt_and_input() {
++    use std::sync::{Arc, atomic::AtomicBool};
++    use smithay::reexports::wayland_protocols::ext::session_lock::v1::client::ext_session_lock_manager_v1::ExtSessionLockManagerV1;
++    use wayland_client::Proxy as _;
++
++    let mut f = fixture();
++    f.niri_state().backend.headless().add_renderer().unwrap();
++    let shell = f.add_trusted_shell();
++    let surface = map(&mut f, shell, NAMESPACE);
++    paint(&mut f, shell, &surface, [u32::MAX, 0, 0, u32::MAX]);
++    f.niri().show_trusted_prompt_mark();
++    let locker = f.add_client();
++    let client = f.client(locker);
++    let registry = client.display.get_registry(&client.qh, ());
++    let global = client
++        .state
++        .globals
++        .iter()
++        .find(|g| g.interface == ExtSessionLockManagerV1::interface().name)
++        .unwrap();
++    let manager: ExtSessionLockManagerV1 = registry.bind(global.name, 1, &client.qh, ());
++    let _lock = manager.lock(&client.qh, Arc::new(AtomicBool::new(false)));
++    // Deliberately send no lock surfaces, leaving the compositor in the grace interval.
++    f.double_roundtrip(locker);
++    assert!(matches!(
++        f.niri().lock_state,
++        LockState::WaitingForSurfaces { .. }
++    ));
++    assert!(!f.niri().trusted_prompt_active());
++    assert!(!f.niri().trusted_prompt_mark_active());
++    assert!(f
++        .niri()
++        .seat
++        .get_keyboard()
++        .unwrap()
++        .current_focus()
++        .is_none());
++    assert!(f.niri().contents_under((50., 80.).into()).surface.is_none());
++    assert!(!pixels(&mut f)
++        .chunks_exact(4)
++        .any(|px| px == [255, 0, 0, 255]));
++}
++
++// Record the actual wire events: checking only final compositor focus misses a
++// transient enter followed by a leave within the same dispatch.
++type SurfaceEnters = std::sync::Arc<std::sync::Mutex<Vec<WlSurface>>>;
++
++wayland_client::delegate_noop!(super::client::State: ignore wayland_client::protocol::wl_seat::WlSeat);
++
++impl wayland_client::Dispatch<wayland_client::protocol::wl_keyboard::WlKeyboard, SurfaceEnters>
++    for super::client::State
++{
++    fn event(
++        _state: &mut Self,
++        _proxy: &wayland_client::protocol::wl_keyboard::WlKeyboard,
++        event: wayland_client::protocol::wl_keyboard::Event,
++        enters: &SurfaceEnters,
++        _conn: &wayland_client::Connection,
++        _qh: &wayland_client::QueueHandle<Self>,
++    ) {
++        if let wayland_client::protocol::wl_keyboard::Event::Enter { surface, .. } = event {
++            enters.lock().unwrap().push(surface);
++        }
++    }
++}
++
++impl wayland_client::Dispatch<wayland_client::protocol::wl_pointer::WlPointer, SurfaceEnters>
++    for super::client::State
++{
++    fn event(
++        _state: &mut Self,
++        _proxy: &wayland_client::protocol::wl_pointer::WlPointer,
++        event: wayland_client::protocol::wl_pointer::Event,
++        enters: &SurfaceEnters,
++        _conn: &wayland_client::Connection,
++        _qh: &wayland_client::QueueHandle<Self>,
++    ) {
++        if let wayland_client::protocol::wl_pointer::Event::Enter { surface, .. } = event {
++            enters.lock().unwrap().push(surface);
++        }
++    }
++}
++
++impl wayland_client::Dispatch<wayland_client::protocol::wl_touch::WlTouch, SurfaceEnters>
++    for super::client::State
++{
++    fn event(
++        _state: &mut Self,
++        _proxy: &wayland_client::protocol::wl_touch::WlTouch,
++        event: wayland_client::protocol::wl_touch::Event,
++        downs: &SurfaceEnters,
++        _conn: &wayland_client::Connection,
++        _qh: &wayland_client::QueueHandle<Self>,
++    ) {
++        if let wayland_client::protocol::wl_touch::Event::Down { surface, .. } = event {
++            downs.lock().unwrap().push(surface);
++        }
++    }
++}
++
++fn touch_downs(f: &mut Fixture, id: ClientId) -> SurfaceEnters {
++    use wayland_client::protocol::wl_seat::WlSeat;
++    use wayland_client::Proxy as _;
++
++    f.niri().seat.add_touch();
++    let client = f.client(id);
++    let registry = client.display.get_registry(&client.qh, ());
++    let global = client
++        .state
++        .globals
++        .iter()
++        .find(|g| g.interface == WlSeat::interface().name)
++        .unwrap();
++    let seat: WlSeat = registry.bind(global.name, 1, &client.qh, ());
++    let downs = SurfaceEnters::default();
++    seat.get_touch(&client.qh, downs.clone());
++    f.double_roundtrip(id);
++    downs
++}
++
++// Exercise the production input dispatcher, including its touch-down lock gate.
++struct TouchInput;
++struct TouchDown;
++
++impl smithay::backend::input::InputBackend for TouchInput {
++    type Device = smithay::backend::winit::WinitVirtualDevice;
++    type KeyboardKeyEvent = smithay::backend::input::UnusedEvent;
++    type PointerAxisEvent = smithay::backend::input::UnusedEvent;
++    type PointerButtonEvent = smithay::backend::input::UnusedEvent;
++    type PointerMotionEvent = smithay::backend::input::UnusedEvent;
++    type PointerMotionAbsoluteEvent = smithay::backend::input::UnusedEvent;
++    type GestureSwipeBeginEvent = smithay::backend::input::UnusedEvent;
++    type GestureSwipeUpdateEvent = smithay::backend::input::UnusedEvent;
++    type GestureSwipeEndEvent = smithay::backend::input::UnusedEvent;
++    type GesturePinchBeginEvent = smithay::backend::input::UnusedEvent;
++    type GesturePinchUpdateEvent = smithay::backend::input::UnusedEvent;
++    type GesturePinchEndEvent = smithay::backend::input::UnusedEvent;
++    type GestureHoldBeginEvent = smithay::backend::input::UnusedEvent;
++    type GestureHoldEndEvent = smithay::backend::input::UnusedEvent;
++    type TouchUpEvent = smithay::backend::input::UnusedEvent;
++    type TouchMotionEvent = smithay::backend::input::UnusedEvent;
++    type TouchCancelEvent = smithay::backend::input::UnusedEvent;
++    type TouchFrameEvent = smithay::backend::input::UnusedEvent;
++    type TabletToolAxisEvent = smithay::backend::input::UnusedEvent;
++    type TabletToolProximityEvent = smithay::backend::input::UnusedEvent;
++    type TabletToolTipEvent = smithay::backend::input::UnusedEvent;
++    type TabletToolButtonEvent = smithay::backend::input::UnusedEvent;
++    type SwitchToggleEvent = smithay::backend::input::UnusedEvent;
++    type TouchDownEvent = TouchDown;
++    type SpecialEvent = ();
++}
++
++impl smithay::backend::input::Event<TouchInput> for TouchDown {
++    fn time(&self) -> u64 {
++        1_000
++    }
++    fn device(&self) -> smithay::backend::winit::WinitVirtualDevice {
++        smithay::backend::winit::WinitVirtualDevice
++    }
++}
++
++impl smithay::backend::input::TouchEvent<TouchInput> for TouchDown {
++    fn slot(&self) -> smithay::backend::input::TouchSlot {
++        Some(0).into()
++    }
++}
++
++impl smithay::backend::input::AbsolutePositionEvent<TouchInput> for TouchDown {
++    fn x(&self) -> f64 {
++        50.
++    }
++    fn y(&self) -> f64 {
++        80.
++    }
++    fn x_transformed(&self, _width: i32) -> f64 {
++        50.
++    }
++    fn y_transformed(&self, _height: i32) -> f64 {
++        80.
++    }
++}
++
++impl smithay::backend::input::TouchDownEvent<TouchInput> for TouchDown {}
++
++fn touch_overlay(f: &mut Fixture) {
++    use smithay::backend::input::InputEvent;
++    f.niri_state()
++        .process_input_event::<TouchInput>(InputEvent::TouchDown { event: TouchDown });
++    let state = f.niri_state();
++    let touch = state.niri.seat.get_touch().unwrap();
++    touch.frame(state);
++    touch.cancel(state);
++}
++
++fn pointer_enters(f: &mut Fixture, id: ClientId) -> SurfaceEnters {
++    use wayland_client::protocol::wl_seat::WlSeat;
++    use wayland_client::Proxy as _;
++
++    let client = f.client(id);
++    let registry = client.display.get_registry(&client.qh, ());
++    let global = client
++        .state
++        .globals
++        .iter()
++        .find(|g| g.interface == WlSeat::interface().name)
++        .unwrap();
++    let seat: WlSeat = registry.bind(global.name, 1, &client.qh, ());
++    let enters = SurfaceEnters::default();
++    seat.get_pointer(&client.qh, enters.clone());
++    f.double_roundtrip(id);
++    enters
++}
++
++fn keyboard_enters(f: &mut Fixture, id: ClientId) -> SurfaceEnters {
++    use wayland_client::protocol::wl_seat::WlSeat;
++    use wayland_client::Proxy as _;
++
++    let client = f.client(id);
++    let registry = client.display.get_registry(&client.qh, ());
++    let global = client
++        .state
++        .globals
++        .iter()
++        .find(|g| g.interface == WlSeat::interface().name)
++        .unwrap();
++    let seat: WlSeat = registry.bind(global.name, 1, &client.qh, ());
++    let enters = SurfaceEnters::default();
++    seat.get_keyboard(&client.qh, enters.clone());
++    f.double_roundtrip(id);
++    enters
++}
++
++#[test]
++fn trusted_prompt_prepare_lock_without_prompt_revokes_session_focus() {
++    let mut f = fixture();
++    let hostile = f.add_client();
++    let enters = keyboard_enters(&mut f, hostile);
++    let overlay = map(&mut f, hostile, "competing-exclusive-overlay");
++    assert_eq!(*enters.lock().unwrap(), [overlay]);
++    enters.lock().unwrap().clear();
++    f.niri_state().prepare_session_lock();
++    f.double_roundtrip(hostile);
++    assert!(f
++        .niri()
++        .seat
++        .get_keyboard()
++        .unwrap()
++        .current_focus()
++        .is_none());
++    assert!(enters.lock().unwrap().is_empty());
++    assert!(f.niri().session_lock_prepared);
++    assert!(!f.niri().trusted_prompt_proof_active());
++}
++
++#[test]
++fn egl_trusted_prompt_lock_never_enters_competing_overlay() {
++    use std::sync::{atomic::AtomicBool, Arc};
++    use smithay::reexports::wayland_protocols::ext::session_lock::v1::client::ext_session_lock_manager_v1::ExtSessionLockManagerV1;
++    use wayland_client::Proxy as _;
++
++    for unmap_prompt in ["retained", "after-lock", "before-lock"] {
++        let mut f = fixture();
++        f.niri_state().backend.headless().add_renderer().unwrap();
++        let hostile = f.add_client();
++        let hostile_enters = keyboard_enters(&mut f, hostile);
++        let hostile_pointer_enters = pointer_enters(&mut f, hostile);
++        let hostile_touch_downs = touch_downs(&mut f, hostile);
++        f.niri()
++            .seat
++            .get_pointer()
++            .unwrap()
++            .set_location((50., 80.).into());
++        let overlay = map(&mut f, hostile, "competing-exclusive-overlay");
++        assert_eq!(*hostile_enters.lock().unwrap(), [overlay.clone()]);
++        assert_eq!(*hostile_pointer_enters.lock().unwrap(), [overlay.clone()]);
++        touch_overlay(&mut f);
++        f.double_roundtrip(hostile);
++        assert_eq!(*hostile_touch_downs.lock().unwrap(), [overlay.clone()]);
++
++        let shell = f.add_trusted_shell();
++        let prompt = map(&mut f, shell, NAMESPACE);
++        assert!(!f.niri().trusted_prompt_proof_active());
++        f.double_roundtrip(hostile);
++        hostile_enters.lock().unwrap().clear();
++        hostile_pointer_enters.lock().unwrap().clear();
++        hostile_touch_downs.lock().unwrap().clear();
++
++        if unmap_prompt == "before-lock" {
++            // The supervisor first awaits this compositor transition, then the
++            // gate watcher cancels the shell prompt before the locker connects.
++            f.niri_state().prepare_session_lock();
++            f.niri_state().prepare_session_lock();
++            let layer = f.client(shell).layer(&prompt);
++            layer.attach_null();
++            layer.commit();
++            f.double_roundtrip(shell);
++            f.double_roundtrip(hostile);
++            assert!(matches!(f.niri().lock_state, LockState::Unlocked));
++            // The rendering-failure cleanup shares Niri::unlock(), but must not
++            // release preparation without the protocol owner's unlock request.
++            f.niri().unlock();
++            f.double_roundtrip(hostile);
++            assert!(f.niri().session_lock_prepared);
++            assert!(!f.niri().trusted_prompt_proof_active());
++            assert!(hostile_enters.lock().unwrap().is_empty());
++            assert!(hostile_pointer_enters.lock().unwrap().is_empty());
++            touch_overlay(&mut f);
++            f.double_roundtrip(hostile);
++            assert!(hostile_touch_downs.lock().unwrap().is_empty());
++            assert!(f
++                .niri()
++                .seat
++                .get_keyboard()
++                .unwrap()
++                .current_focus()
++                .is_none());
++        }
++
++        let locker = f.add_client();
++        let lock_enters = keyboard_enters(&mut f, locker);
++        let client = f.client(locker);
++        let registry = client.display.get_registry(&client.qh, ());
++        let global = client
++            .state
++            .globals
++            .iter()
++            .find(|g| g.interface == ExtSessionLockManagerV1::interface().name)
++            .unwrap();
++        let manager: ExtSessionLockManagerV1 = registry.bind(global.name, 1, &client.qh, ());
++        let lock = manager.lock(&client.qh, Arc::new(AtomicBool::new(false)));
++        f.double_roundtrip(locker);
++        f.double_roundtrip(hostile);
++        assert!(matches!(
++            f.niri().lock_state,
++            LockState::WaitingForSurfaces { .. }
++        ));
++        assert!(hostile_enters.lock().unwrap().is_empty());
++        assert!(hostile_pointer_enters.lock().unwrap().is_empty());
++        assert!(f
++            .niri()
++            .seat
++            .get_keyboard()
++            .unwrap()
++            .current_focus()
++            .is_none());
++
++        if unmap_prompt == "after-lock" {
++            // The broker cancels the prompt on lock. This can happen while the
++            // locker is still preparing its first surface.
++            let layer = f.client(shell).layer(&prompt);
++            layer.attach_null();
++            layer.commit();
++            f.double_roundtrip(shell);
++            f.double_roundtrip(hostile);
++            assert!(hostile_enters.lock().unwrap().is_empty());
++            assert!(hostile_pointer_enters.lock().unwrap().is_empty());
++            assert!(f
++                .niri()
++                .seat
++                .get_keyboard()
++                .unwrap()
++                .current_focus()
++                .is_none());
++        }
++
++        // Tap the hostile overlay while the lock is waiting, both with the
++        // prompt retained and after the broker has unmapped it.
++        touch_overlay(&mut f);
++        f.double_roundtrip(hostile);
++        assert!(hostile_touch_downs.lock().unwrap().is_empty());
++        assert!(f
++            .niri()
++            .seat
++            .get_keyboard()
++            .unwrap()
++            .current_focus()
++            .is_none());
++
++        let client = f.client(locker);
++        let surface = client
++            .state
++            .compositor
++            .as_ref()
++            .unwrap()
++            .create_surface(&client.qh, ());
++        let _lock_surface =
++            lock.get_lock_surface(&surface, &client.output("headless-1"), &client.qh, ());
++        let viewport =
++            client
++                .state
++                .viewporter
++                .as_ref()
++                .unwrap()
++                .get_viewport(&surface, &client.qh, ());
++        f.double_roundtrip(locker);
++        f.double_roundtrip(hostile);
++        assert!(hostile_enters.lock().unwrap().is_empty());
++        assert!(hostile_pointer_enters.lock().unwrap().is_empty());
++        let client = f.client(locker);
++        let buffer = client.state.spbm.as_ref().unwrap().create_u32_rgba_buffer(
++            0,
++            0,
++            u32::MAX,
++            u32::MAX,
++            &client.qh,
++            (),
++        );
++        viewport.set_destination(800, 600);
++        surface.attach(Some(&buffer), 0, 0);
++        surface.commit();
++        f.double_roundtrip(locker);
++        f.double_roundtrip(hostile);
++        assert!(f.niri().is_locked());
++        assert_eq!(*lock_enters.lock().unwrap(), [surface]);
++        assert!(
++            hostile_enters.lock().unwrap().is_empty(),
++            "locking transiently entered an unrelated exclusive overlay"
++        );
++        assert!(
++            hostile_pointer_enters.lock().unwrap().is_empty(),
++            "locking transiently sent pointer enter to an unrelated overlay"
++        );
++
++        if unmap_prompt == "before-lock" {
++            assert!(f.niri().session_lock_prepared);
++            lock.unlock_and_destroy();
++            f.double_roundtrip(locker);
++            f.double_roundtrip(hostile);
++            assert!(matches!(f.niri().lock_state, LockState::Unlocked));
++            assert!(!f.niri().session_lock_prepared);
++            assert_eq!(*hostile_enters.lock().unwrap(), [overlay]);
++        }
++    }
++}
++
++#[test]
++fn trusted_prompt_input_injection_globals_require_private_connection() {
++    let mut f = fixture();
++    let ordinary = f.add_client();
++    let trusted = f.add_trusted_shell();
++    for interface in [
++        "zwp_virtual_keyboard_manager_v1",
++        "zwp_input_method_manager_v2",
++    ] {
++        assert!(
++            !f.client(ordinary)
++                .state
++                .globals
++                .iter()
++                .any(|g| g.interface == interface),
++            "ordinary connection advertised {interface}"
++        );
++        assert!(
++            f.client(trusted)
++                .state
++                .globals
++                .iter()
++                .any(|g| g.interface == interface),
++            "private connection did not advertise {interface}"
++        );
++    }
++}
++
++#[test]
++fn trusted_prompt_rejects_second_reserved_role_even_on_private_connection() {
++    let mut f = fixture();
++    let shell = f.add_trusted_shell();
++    map(&mut f, shell, NAMESPACE);
++    let original = f.niri().trusted_prompt().unwrap();
++    let duplicate = request(&mut f, shell, NAMESPACE);
++    let layer = f.client(shell).layer(&duplicate);
++    assert!(layer.close_requested);
++    assert!(layer.configures_received.is_empty());
++    assert_eq!(f.niri().trusted_prompt().unwrap(), original);
++}
++
++#[test]
++fn egl_trusted_prompt_keeps_own_capture_exclusion() {
++    use crate::render_helpers::RenderTarget;
++    let mut f = Fixture::with_config(
++        Config::parse_mem(
++            r#"
++        hotkey-overlay { skip-at-startup; }
++        layer-rule {
++            match namespace="^emaki-auth-prompt$"
++            hide-from-own-screencopy true
++        }
++    "#,
++        )
++        .unwrap(),
++    );
++    f.add_output(1, (800, 600));
++    f.niri_state().backend.headless().add_renderer().unwrap();
++    let shell = f.add_trusted_shell();
++    let surface = map(&mut f, shell, NAMESPACE);
++    paint(&mut f, shell, &surface, [u32::MAX, 0, 0, u32::MAX]);
++    let client = f
++        .niri()
++        .trusted_prompt()
++        .unwrap()
++        .wl_surface()
++        .client()
++        .unwrap();
++    let capture = capture_pixels(&mut f, Some(&client), RenderTarget::ScreenCapture);
++    assert!(!capture.chunks_exact(4).any(|pixel| pixel == [255, 0, 0, 255]));
++    let other_capture = capture_pixels(&mut f, None, RenderTarget::ScreenCapture);
++    let index = (80 * 800 + 50) * 4;
++    assert_eq!(&other_capture[index..index + 4], [255, 0, 0, 255]);
++}
++
++#[test]
++fn egl_trusted_prompt_keeps_capture_block_out() {
++    use crate::render_helpers::RenderTarget;
++    let mut f = Fixture::with_config(
++        Config::parse_mem(
++            r#"
++        hotkey-overlay { skip-at-startup; }
++        layer-rule {
++            match namespace="^emaki-auth-prompt$"
++            block-out-from "screen-capture"
++        }
++    "#,
++        )
++        .unwrap(),
++    );
++    f.add_output(1, (800, 600));
++    f.niri_state().backend.headless().add_renderer().unwrap();
++    let shell = f.add_trusted_shell();
++    let surface = map(&mut f, shell, NAMESPACE);
++    paint(&mut f, shell, &surface, [u32::MAX, 0, 0, u32::MAX]);
++    let capture = capture_pixels(&mut f, None, RenderTarget::ScreenCapture);
++    assert!(!capture.chunks_exact(4).any(|pixel| pixel == [255, 0, 0, 255]));
++    let screen = pixels(&mut f);
++    let index = (80 * 800 + 50) * 4;
++    assert_eq!(&screen[index..index + 4], [255, 0, 0, 255]);
++}
++
++#[test]
++fn trusted_prompt_proof_revokes_pointer_focus_in_reserved_band() {
++    let mut f = fixture();
++    let shell = f.add_trusted_shell();
++    map(&mut f, shell, NAMESPACE);
++    let pointer = f.niri().seat.get_pointer().unwrap();
++    pointer.set_location((20., 20.).into());
++    f.niri_state().refresh_pointer_contents();
++    assert!(pointer.current_focus().is_some());
++    f.niri().show_trusted_prompt_mark();
++    f.niri_state().refresh_trusted_prompt_input();
++    assert!(pointer.current_focus().is_none());
++    assert!(f
++        .niri()
++        .seat
++        .get_keyboard()
++        .unwrap()
++        .current_focus()
++        .is_some());
++}
++
++#[test]
++fn trusted_prompt_private_connection_does_not_claim_compositor_credentials() {
++    let mut f = fixture();
++    let shell = f.add_trusted_shell();
++    map(&mut f, shell, NAMESPACE);
++    let prompt = f.niri().trusted_prompt().unwrap();
++    let client = prompt.wl_surface().client().unwrap();
++    assert!(
++        client
++            .get_data::<crate::niri::ClientState>()
++            .unwrap()
++            .credentials_unknown
++    );
++    assert!(crate::utils::get_credentials_for_surface(prompt.wl_surface()).is_none());
++}
++
++fn map_full_output(f: &mut Fixture, id: ClientId, namespace: &str) -> WlSurface {
++    let layer = f.client(id).create_layer(None, Layer::Overlay, namespace);
++    layer.set_configure_props(LayerConfigureProps {
++        size: Some((800, 600)),
++        anchor: Some(Anchor::Top | Anchor::Left),
++        kb_interactivity: Some(KeyboardInteractivity::Exclusive),
++        ..Default::default()
++    });
++    let surface = layer.surface.clone();
++    layer.commit();
++    f.double_roundtrip(id);
++    let layer = f.client(id).layer(&surface);
++    layer.attach_new_buffer();
++    layer.set_size(800, 600);
++    layer.ack_last_and_commit();
++    f.double_roundtrip(id);
++    surface
++}
++
++#[test]
++fn egl_trusted_prompt_preserves_normal_scene_below_card_in_both_arrival_orders() {
++    use crate::render_helpers::RenderTarget;
++    for hostile_first in [true, false] {
++        let mut f = fixture();
++        f.niri_state().backend.headless().add_renderer().unwrap();
++        let hostile = f.add_client();
++        let shell = f.add_trusted_shell();
++        let mut background = None;
++        if hostile_first {
++            background = Some(map_full_output(&mut f, hostile, "competing-overlay"));
++        }
++        let prompt = map(&mut f, shell, NAMESPACE);
++        paint(&mut f, shell, &prompt, [u32::MAX, 0, 0, u32::MAX]);
++        let background = background.unwrap_or_else(|| map_full_output(&mut f, hostile, "competing-overlay"));
++        paint(&mut f, hostile, &background, [0, u32::MAX, 0, u32::MAX]);
++        for target in [RenderTarget::Output, RenderTarget::ScreenCapture, RenderTarget::Screencast] {
++            let image = capture_pixels(&mut f, None, target);
++            assert_eq!(&image[(20 * 800 + 20) * 4..][..4], [255, 0, 0, 255]);
++            assert_eq!(&image[(400 * 800 + 500) * 4..][..4], [0, 255, 0, 255]);
++        }
++        assert!(f.niri().contents_under((500., 400.).into()).surface.is_none());
++        f.niri().show_trusted_prompt_mark();
++        assert!(!pixels(&mut f).chunks_exact(4).any(|px| px == [0, 255, 0, 255]));
++    }
++}
++
++#[test]
++fn egl_trusted_prompt_proof_fits_oversized_card_below_band() {
++    let mut f = fixture();
++    f.niri_state().backend.headless().add_renderer().unwrap();
++    let shell = f.add_trusted_shell();
++    let surface = map_full_output(&mut f, shell, NAMESPACE);
++    paint(&mut f, shell, &surface, [u32::MAX, 0, 0, u32::MAX]);
++    f.niri().show_trusted_prompt_mark();
++    let image = pixels(&mut f);
++    let red = [255, 0, 0, 255];
++    assert_eq!(image.chunks_exact(4).filter(|px| *px == red).count(), 736 * 552);
++    assert_eq!(&image[(48 * 800) * 4..][..4], red);
++    assert_eq!(&image[(599 * 800 + 735) * 4..][..4], red);
++    assert!(!image[..800 * 48 * 4].chunks_exact(4).any(|px| px == red));
++    assert!(f.niri().contents_under((50., 80.).into()).surface.is_none());
++}
++
++#[test]
++fn trusted_prompt_refusal_logs_once_per_connection_and_still_closes_every_role() {
++    // Trace callsite interest is shared with parallel tests that use no subscriber.
++    // Exercise actual warning output in a fresh, single-test process.
++    if std::env::var_os("NIRI_TEST_PROMPT_DENIAL_LOG").is_none() {
++        let result = std::process::Command::new(std::env::current_exe().unwrap())
++            .args([
++                "--exact",
++                "tests::trusted_prompt::trusted_prompt_refusal_logs_once_per_connection_and_still_closes_every_role",
++                "--nocapture",
++            ])
++            .env("NIRI_TEST_PROMPT_DENIAL_LOG", "1")
++            .output()
++            .unwrap();
++        assert!(result.status.success(), "{}\n{}",
++            String::from_utf8_lossy(&result.stdout), String::from_utf8_lossy(&result.stderr));
++        return;
++    }
++    use std::io::Write;
++    use std::sync::{Arc, Mutex};
++
++    #[derive(Clone)]
++    struct Log(Arc<Mutex<Vec<u8>>>);
++    impl Write for Log {
++        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
++            self.0.lock().unwrap().extend_from_slice(bytes);
++            Ok(bytes.len())
++        }
++        fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
++    }
++    let log = Log(Arc::default());
++    let writer = log.clone();
++    let subscriber = tracing_subscriber::fmt()
++        .with_max_level(tracing::Level::WARN)
++        .with_writer(move || writer.clone())
++        .finish();
++    let _guard = tracing::subscriber::set_default(subscriber);
++    let mut f = fixture();
++    for _ in 0..2 {
++        let hostile = f.add_client();
++        for _ in 0..3 {
++            let surface = request(&mut f, hostile, NAMESPACE);
++            let layer = f.client(hostile).layer(&surface);
++            assert!(layer.close_requested);
++            assert!(layer.configures_received.is_empty());
++        }
++    }
++    let shell = f.add_trusted_shell();
++    map(&mut f, shell, NAMESPACE);
++    for _ in 0..3 {
++        let surface = request(&mut f, shell, NAMESPACE);
++        assert!(f.client(shell).layer(&surface).close_requested);
++    }
++    let text = String::from_utf8(log.0.lock().unwrap().clone()).unwrap();
++    assert_eq!(text.matches("denied untrusted emaki-auth-prompt layer surface").count(), 2);
++    assert_eq!(text.matches("denied duplicate emaki-auth-prompt layer surface").count(), 1);
++}
+diff --git a/src/trusted_client.rs b/src/trusted_client.rs
+new file mode 100644
+index 00000000..c7fa4a78
+--- /dev/null
++++ b/src/trusted_client.rs
+@@ -0,0 +1,738 @@
++// Copyright (C) 2026 Artur Yakymenko
++// SPDX-License-Identifier: GPL-3.0-or-later
++
++//! The shell's authority belongs to one compositor-created Wayland connection.
++//! No public socket, client credential, environment string or IPC request grants it.
++
++use std::collections::BTreeMap;
++use std::ffi::OsString;
++use std::io;
++use std::net::Shutdown;
++use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
++use std::os::unix::net::UnixStream;
++use std::os::unix::process::CommandExt;
++use std::path::Path;
++use std::process::{Child, Command, Stdio};
++use std::sync::atomic::{AtomicBool, Ordering};
++use std::sync::{Arc, Mutex};
++use std::time::{Duration, Instant};
++
++use calloop::timer::{TimeoutAction, Timer};
++use niri_ipc::TrustedShellIdentity;
++use smithay::reexports::wayland_server::{Client, DisplayHandle};
++
++use crate::niri::State;
++use crate::utils::spawning::{configure_child_environment, restore_nofile_rlimit};
++
++const POLL_INTERVAL: Duration = Duration::from_millis(250);
++const RESTART_GRACE: Duration = Duration::from_secs(2);
++const STABLE_UPTIME: Duration = Duration::from_secs(60);
++const MAX_FAILURES: u32 = 5;
++
++/// Control the captured startup command without accepting replacement arguments.
++#[derive(Clone, Default)]
++pub struct SupervisorHandle {
++    restart: Arc<AtomicBool>,
++    running: Arc<AtomicBool>,
++    connection: Arc<Mutex<Option<Arc<TrustedConnection>>>>,
++}
++
++impl SupervisorHandle {
++    pub fn request_restart(&self) {
++        self.restart.store(true, Ordering::Relaxed);
++    }
++
++    pub fn is_running(&self) -> bool {
++        self.running.load(Ordering::Relaxed)
++    }
++
++    /// Report only the child to which this compositor gave the private connection.
++    pub fn identity(&self, display: &DisplayHandle) -> Option<TrustedShellIdentity> {
++        if self.restart.load(Ordering::Relaxed) {
++            return None;
++        }
++        let connection = self.connection.lock().ok()?;
++        connection.as_ref()?.identity(display)
++    }
++}
++
++/// Start one shell, using the startup command even after configuration reloads.
++/// The child must exec the shell in the foreground, retaining WAYLAND_SOCKET.
++pub fn start(state: &mut State, command: Vec<String>) {
++    if command.is_empty() {
++        return;
++    }
++    // Capture authority-bearing executable, arguments and the entire environment
++    // once. An IPC config reload may change ordinary spawn environment, never this.
++    let executable = Path::new(&command[0]);
++    let expanded = crate::utils::expand_home(executable).unwrap_or_else(|err| {
++        warn!("could not expand trusted shell command: {err}");
++        None
++    });
++    let executable = expanded
++        .as_deref()
++        .unwrap_or(executable)
++        .as_os_str()
++        .to_owned();
++    let mut configured = Command::new(&executable);
++    configure_child_environment(&mut configured);
++    let environment = snapshot_environment(std::env::vars_os(), &configured);
++    let handle = SupervisorHandle::default();
++    state.niri.trusted_shell_supervisor = Some(handle.clone());
++    let mut supervisor = Supervisor {
++        handle,
++        stopped: false,
++        executable,
++        arguments: command.into_iter().skip(1).collect(),
++        environment,
++        running: None,
++        failures: 0,
++        retry_at: Instant::now(),
++    };
++    let timer = Timer::immediate();
++    if let Err(err) = state
++        .niri
++        .event_loop
++        .insert_source(timer, move |_, _, state| supervisor.tick(state))
++    {
++        state.niri.trusted_shell_supervisor = None;
++        warn!("could not supervise trusted shell: {err:?}");
++    }
++}
++
++/// A pidfd pins the child even after it exits; the saved ClientId pins the exact
++/// private Wayland connection. Socketpair SO_PEERCRED identifies this compositor,
++/// so it must never be used as the identity of the child that inherited its peer.
++struct TrustedConnection {
++    process: ProcessIdentity,
++    client: Client,
++    socket: UnixStream,
++    revoked: AtomicBool,
++}
++
++impl TrustedConnection {
++    fn identity(&self, display: &DisplayHandle) -> Option<TrustedShellIdentity> {
++        if self.revoked.load(Ordering::Relaxed)
++            || !self.process.is_alive()
++            || !socket_is_connected(&self.socket)
++            || display
++                .backend_handle()
++                .get_client_data(self.client.id())
++                .is_err()
++        {
++            return None;
++        }
++        Some(self.process.identity.clone())
++    }
++}
++
++struct ProcessIdentity {
++    pidfd: OwnedFd,
++    identity: TrustedShellIdentity,
++}
++
++impl ProcessIdentity {
++    /// The caller owns an unreaped Child, so its PID cannot be reused while the
++    /// pidfd and proc start time are captured. Never construct this from a caller PID.
++    fn new(child: &Child) -> io::Result<Self> {
++        let pid = child.id();
++        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
++        if fd < 0 {
++            return Err(io::Error::last_os_error());
++        }
++        let pidfd = unsafe { OwnedFd::from_raw_fd(fd as i32) };
++        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat"))?;
++        let start_time = proc_start_time(&stat)
++            .ok_or_else(|| io::Error::other("invalid trusted child process identity"))?;
++        Ok(Self {
++            pidfd,
++            identity: TrustedShellIdentity { pid, start_time },
++        })
++    }
++
++    fn is_alive(&self) -> bool {
++        let mut poll = libc::pollfd {
++            fd: self.pidfd.as_raw_fd(),
++            events: libc::POLLIN,
++            revents: 0,
++        };
++        // Errors and exit readiness both fail closed; a stopped child remains the
++        // same process and never makes an ordinary sibling eligible as provider.
++        unsafe { libc::poll(&mut poll, 1, 0) == 0 }
++    }
++}
++
++fn socket_is_connected(socket: &UnixStream) -> bool {
++    let mut poll = libc::pollfd {
++        fd: socket.as_raw_fd(),
++        events: libc::POLLRDHUP,
++        revents: 0,
++    };
++    unsafe { libc::poll(&mut poll, 1, 0) == 0 }
++}
++
++fn proc_start_time(stat: &str) -> Option<u64> {
++    // comm may contain spaces and closing parentheses; fields after its final
++    // parenthesis begin at field 3, and starttime is field 22.
++    stat.rsplit_once(')')?
++        .1
++        .split_whitespace()
++        .nth(19)?
++        .parse()
++        .ok()
++}
++
++struct Running {
++    child: Child,
++    /// Duplicates only the server endpoint, so shutdown revokes a lingering client
++    /// even if the shell accidentally left its connection in a descendant.
++    revoke: UnixStream,
++    connection: Option<Arc<TrustedConnection>>,
++    started_at: Instant,
++    terminating_at: Option<Instant>,
++}
++
++impl Running {
++    fn begin_restart(&mut self, now: Instant) {
++        if self.terminating_at.is_some() {
++            return;
++        }
++        // Revoke authority immediately; give the old process time to flush state.
++        if let Some(connection) = &self.connection {
++            connection.revoked.store(true, Ordering::Relaxed);
++        }
++        let _ = self.revoke.shutdown(Shutdown::Both);
++        // A child cannot have its PID reused before we reap it.
++        unsafe { libc::kill(self.child.id() as libc::pid_t, libc::SIGTERM) };
++        self.terminating_at = Some(now);
++    }
++
++    fn enforce_restart_deadline(&mut self, now: Instant) {
++        if self
++            .terminating_at
++            .is_some_and(|at| now.duration_since(at) >= RESTART_GRACE)
++        {
++            let _ = self.child.kill();
++        }
++    }
++}
++
++impl Drop for Running {
++    fn drop(&mut self) {
++        if let Some(connection) = &self.connection {
++            connection.revoked.store(true, Ordering::Relaxed);
++        }
++        let _ = self.revoke.shutdown(Shutdown::Both);
++        let _ = self.child.kill();
++        // Normal retirement has already reaped the child. Never block the event
++        // loop waiting for a process to finish, even when the supervisor is dropped.
++        let _ = self.child.try_wait();
++    }
++}
++
++struct Supervisor {
++    handle: SupervisorHandle,
++    stopped: bool,
++    executable: OsString,
++    arguments: Vec<String>,
++    environment: BTreeMap<OsString, OsString>,
++    running: Option<Running>,
++    failures: u32,
++    retry_at: Instant,
++}
++
++impl Supervisor {
++    fn tick(&mut self, state: &mut State) -> TimeoutAction {
++        if self.handle.restart.swap(false, Ordering::Relaxed) {
++            if let Some(running) = &mut self.running {
++                running.begin_restart(Instant::now());
++            }
++            self.handle.running.store(false, Ordering::Relaxed);
++            self.failures = 0;
++            self.stopped = false;
++            self.retry_at = Instant::now();
++        }
++        if self.stopped {
++            return TimeoutAction::ToDuration(POLL_INTERVAL);
++        }
++        if let Some(running) = &mut self.running {
++            running.enforce_restart_deadline(Instant::now());
++            let restarting = running.terminating_at.is_some();
++            let disabled = match running.child.try_wait() {
++                Ok(None) => return TimeoutAction::ToDuration(POLL_INTERVAL),
++                Ok(Some(status)) => {
++                    if status.code() == Some(78) {
++                        info!("trusted shell is disabled by its autostart switch");
++                        true
++                    } else {
++                        warn!("trusted shell exited: {status}");
++                        false
++                    }
++                }
++                Err(err) => {
++                    warn!("could not wait for trusted shell: {err}");
++                    false
++                }
++            };
++            let stable = running.started_at.elapsed() >= STABLE_UPTIME;
++            // Revoke the old connection before creating a fresh trusted connection.
++            self.running.take();
++            *self.handle.connection.lock().unwrap() = None;
++            self.handle.running.store(false, Ordering::Relaxed);
++            if restarting {
++                return TimeoutAction::ToDuration(Duration::ZERO);
++            }
++            if disabled {
++                self.stopped = true;
++                return TimeoutAction::ToDuration(POLL_INTERVAL);
++            }
++            if stable {
++                self.failures = 0;
++            }
++            return self.failed();
++        }
++        let now = Instant::now();
++        if now < self.retry_at {
++            return TimeoutAction::ToInstant(self.retry_at);
++        }
++        match self.spawn(state) {
++            Ok(running) => {
++                *self.handle.connection.lock().unwrap() = running.connection.clone();
++                self.running = Some(running);
++                self.handle.running.store(true, Ordering::Relaxed);
++                TimeoutAction::ToDuration(POLL_INTERVAL)
++            }
++            Err(err) => {
++                warn!("could not start trusted shell: {err}");
++                self.failed()
++            }
++        }
++    }
++
++    fn failed(&mut self) -> TimeoutAction {
++        self.failures += 1;
++        let Some(delay) = restart_delay(self.failures) else {
++            warn!("trusted shell stopped after repeated failures; starting shell recovery");
++            self.stopped = true;
++            if let Err(err) = start_recovery(self.environment.clone()) {
++                warn!("could not start shell recovery worker: {err}");
++            }
++            return TimeoutAction::ToDuration(POLL_INTERVAL);
++        };
++        self.retry_at = Instant::now() + delay;
++        TimeoutAction::ToInstant(self.retry_at)
++    }
++
++    fn spawn(&self, state: &mut State) -> io::Result<Running> {
++        let (server, client) = UnixStream::pair()?;
++        let revoke = server.try_clone()?;
++        let identity_socket = server.try_clone()?;
++        let wayland_client = state.niri.insert_trusted_shell(server)?;
++
++        let mut process = Command::new(&self.executable);
++        process
++            .env_clear()
++            .envs(&self.environment)
++            .args(&self.arguments)
++            .stdin(Stdio::null())
++            .stdout(Stdio::null())
++            // Keep shell diagnostics in the compositor's journal.
++            .stderr(Stdio::inherit());
++        let socket_fd = client.as_raw_fd();
++        // Apply this after configured environment so it cannot replace the descriptor.
++        process.env("WAYLAND_SOCKET", socket_fd.to_string());
++        unsafe {
++            process.pre_exec(move || {
++                crate::utils::signals::unblock_all()?;
++                restore_nofile_rlimit();
++                // Only this child's copy becomes inheritable. In the compositor it
++                // remains CLOEXEC, including while other commands spawn concurrently.
++                let flags = libc::fcntl(socket_fd, libc::F_GETFD);
++                if flags == -1
++                    || libc::fcntl(socket_fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC) == -1
++                {
++                    return Err(io::Error::last_os_error());
++                }
++                Ok(())
++            });
++        }
++        let result = process.spawn();
++        // The compositor must not retain the client endpoint after exec.
++        drop(client);
++        match result {
++            Ok(mut child) => {
++                let process = match ProcessIdentity::new(&child) {
++                    Ok(process) => process,
++                    Err(err) => {
++                        let _ = revoke.shutdown(Shutdown::Both);
++                        let _ = child.kill();
++                        let _ = child.wait();
++                        return Err(err);
++                    }
++                };
++                let connection = Arc::new(TrustedConnection {
++                    process,
++                    client: wayland_client,
++                    socket: identity_socket,
++                    revoked: AtomicBool::new(false),
++                });
++                Ok(Running {
++                    child,
++                    revoke,
++                    connection: Some(connection),
++                    started_at: Instant::now(),
++                    terminating_at: None,
++                })
++            }
++            Err(err) => {
++                let _ = revoke.shutdown(Shutdown::Both);
++                Err(err)
++            }
++        }
++    }
++}
++
++/// Recovery has a fixed command and the same captured session environment as
++/// startup. It receives no trusted connection and cannot replace the shell argv.
++fn start_recovery(
++    environment: BTreeMap<OsString, OsString>,
++) -> io::Result<std::thread::JoinHandle<()>> {
++    std::thread::Builder::new()
++        .name("Shell Recovery".to_owned())
++        .spawn(move || {
++            let mut command = Command::new("systemctl");
++            command
++                .args(["--user", "--no-block", "start", "emaki-shell-heal.service"])
++                .env_clear()
++                .envs(environment)
++                .env_remove("WAYLAND_SOCKET")
++                .stdin(Stdio::null())
++                .stdout(Stdio::null())
++                .stderr(Stdio::inherit());
++            unsafe {
++                command.pre_exec(|| {
++                    crate::utils::signals::unblock_all()?;
++                    restore_nofile_rlimit();
++                    Ok(())
++                });
++            }
++            match command.status() {
++                Ok(status) if status.success() => (),
++                Ok(status) => warn!("could not activate shell recovery: {status}"),
++                Err(err) => warn!("could not activate shell recovery: {err}"),
++            }
++        })
++}
++
++fn snapshot_environment(
++    inherited: impl IntoIterator<Item = (OsString, OsString)>,
++    configured: &Command,
++) -> BTreeMap<OsString, OsString> {
++    let mut environment: BTreeMap<_, _> = inherited.into_iter().collect();
++    for (name, value) in configured.get_envs() {
++        if let Some(value) = value {
++            environment.insert(name.to_owned(), value.to_owned());
++        } else {
++            environment.remove(name);
++        }
++    }
++    environment.remove(std::ffi::OsStr::new("WAYLAND_SOCKET"));
++    environment
++}
++
++fn restart_delay(failures: u32) -> Option<Duration> {
++    (failures < MAX_FAILURES).then(|| Duration::from_secs(1 << failures.saturating_sub(1)))
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn restart_fixture(ignore_term: bool) -> (Running, UnixStream) {
++        use std::io::BufRead;
++        let (revoke, peer) = UnixStream::pair().unwrap();
++        let script = if ignore_term {
++            "trap '' TERM; printf 'ready\\n'; while :; do sleep 0.01; done"
++        } else {
++            "trap 'exit 42' TERM; printf 'ready\\n'; while :; do sleep 0.01; done"
++        };
++        let mut child = Command::new("sh")
++            .args(["-c", script])
++            .stdout(Stdio::piped())
++            .spawn()
++            .unwrap();
++        let mut line = String::new();
++        std::io::BufReader::new(child.stdout.take().unwrap())
++            .read_line(&mut line)
++            .unwrap();
++        assert_eq!(line, "ready\n");
++        (
++            Running {
++                child,
++                revoke,
++                connection: None,
++                started_at: Instant::now(),
++                terminating_at: None,
++            },
++            peer,
++        )
++    }
++
++    fn wait_for_exit(running: &mut Running) -> std::process::ExitStatus {
++        let deadline = Instant::now() + Duration::from_secs(5);
++        loop {
++            if let Some(status) = running.child.try_wait().unwrap() {
++                return status;
++            }
++            assert!(Instant::now() < deadline, "child did not exit");
++            std::thread::sleep(Duration::from_millis(10));
++        }
++    }
++
++    fn identity_fixture() -> (
++        smithay::reexports::wayland_server::Display<()>,
++        Running,
++        UnixStream,
++    ) {
++        let display = smithay::reexports::wayland_server::Display::<()>::new().unwrap();
++        let (mut running, peer) = restart_fixture(false);
++        let client = display
++            .handle()
++            .insert_client(running.revoke.try_clone().unwrap(), Arc::new(()))
++            .unwrap();
++        running.connection = Some(Arc::new(TrustedConnection {
++            process: ProcessIdentity::new(&running.child).unwrap(),
++            client,
++            socket: running.revoke.try_clone().unwrap(),
++            revoked: AtomicBool::new(false),
++        }));
++        (display, running, peer)
++    }
++
++    #[test]
++    fn private_connection_identity_keeps_stopped_child_not_ordinary_sibling() {
++        let (display, mut genuine, _peer) = identity_fixture();
++        let (mut sibling, _sibling_peer) = restart_fixture(false);
++        let connection = genuine.connection.as_ref().unwrap();
++        let original = connection.identity(&display.handle()).unwrap();
++        assert_eq!(original.pid, genuine.child.id());
++        assert_ne!(original.pid, sibling.child.id());
++        unsafe {
++            assert_eq!(libc::kill(genuine.child.id() as i32, libc::SIGSTOP), 0);
++            let mut status = 0;
++            assert_eq!(
++                libc::waitpid(genuine.child.id() as i32, &mut status, libc::WUNTRACED),
++                genuine.child.id() as i32
++            );
++            assert!(libc::WIFSTOPPED(status));
++        }
++        assert_eq!(connection.identity(&display.handle()), Some(original));
++        genuine.child.kill().unwrap();
++        genuine.child.wait().unwrap();
++        sibling.child.kill().unwrap();
++        sibling.child.wait().unwrap();
++    }
++
++    #[test]
++    fn disconnected_private_socket_revokes_identity_of_live_child() {
++        let (display, mut running, peer) = identity_fixture();
++        let connection = running.connection.as_ref().unwrap();
++        assert!(connection.identity(&display.handle()).is_some());
++        // A parallel fork can inherit even a CLOEXEC peer until exec, so dropping
++        // our copy alone need not disconnect it. Keep a duplicate to exercise that
++        // case and shut down the connection independently of the last close.
++        let inherited_peer = peer.try_clone().unwrap();
++        peer.shutdown(Shutdown::Both).unwrap();
++        drop(peer);
++        assert!(running.child.try_wait().unwrap().is_none());
++        // No display dispatch or supervisor revocation: the socket check itself
++        // must revoke the identity immediately, even while the child is alive.
++        assert!(display
++            .handle()
++            .backend_handle()
++            .get_client_data(connection.client.id())
++            .is_ok());
++        assert!(connection.identity(&display.handle()).is_none());
++        drop(inherited_peer);
++        running.child.kill().unwrap();
++        running.child.wait().unwrap();
++    }
++
++    #[test]
++    fn closed_private_socket_revokes_identity_of_live_child() {
++        let (display, mut running, peer) = identity_fixture();
++        let connection = running.connection.as_ref().unwrap();
++        assert!(connection.identity(&display.handle()).is_some());
++        drop(peer);
++        // Other tests may have forked with a copy of the peer. Wait for those
++        // copies to close on exec before checking identity after the last close.
++        let deadline = Instant::now() + Duration::from_secs(5);
++        while socket_is_connected(&connection.socket) {
++            assert!(
++                Instant::now() < deadline,
++                "private socket did not disconnect"
++            );
++            std::thread::sleep(Duration::from_millis(1));
++        }
++        assert!(running.child.try_wait().unwrap().is_none());
++        assert!(connection.identity(&display.handle()).is_none());
++        running.child.kill().unwrap();
++        running.child.wait().unwrap();
++    }
++
++    #[test]
++    fn exited_pidfd_cannot_be_replaced_by_another_live_process() {
++        let (display, mut running, _peer) = identity_fixture();
++        let connection = running.connection.as_ref().unwrap().clone();
++        running.child.kill().unwrap();
++        running.child.wait().unwrap();
++        let (mut replacement, _replacement_peer) = restart_fixture(false);
++        assert!(connection.identity(&display.handle()).is_none());
++        // Even substituting a live PID/starttime cannot revive the old pidfd.
++        let mut stale = ProcessIdentity::new(&replacement.child).unwrap();
++        stale.pidfd = connection.process.pidfd.try_clone().unwrap();
++        assert!(!stale.is_alive());
++        replacement.child.kill().unwrap();
++        replacement.child.wait().unwrap();
++    }
++
++    #[test]
++    fn restart_request_revokes_identity_before_supervisor_tick() {
++        let (display, mut running, _peer) = identity_fixture();
++        let handle = SupervisorHandle::default();
++        *handle.connection.lock().unwrap() = running.connection.clone();
++        assert!(handle.identity(&display.handle()).is_some());
++        handle.request_restart();
++        assert!(handle.identity(&display.handle()).is_none());
++        handle.restart.store(false, Ordering::Relaxed);
++        running.begin_restart(Instant::now());
++        assert!(handle.identity(&display.handle()).is_none());
++        wait_for_exit(&mut running);
++    }
++
++    #[test]
++    fn process_start_time_ignores_parentheses_and_spaces_in_comm() {
++        assert_eq!(
++            proc_start_time(
++                "42 (shell ) name) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 12345 0"
++            ),
++            Some(12345)
++        );
++        assert_eq!(proc_start_time("42 (shell) S 1"), None);
++    }
++
++    #[test]
++    fn restart_revokes_socket_and_allows_graceful_exit() {
++        use std::io::Read;
++        let (mut running, mut peer) = restart_fixture(false);
++        peer.set_read_timeout(Some(Duration::from_millis(100)))
++            .unwrap();
++        let now = Instant::now();
++        running.begin_restart(now);
++        assert_eq!(
++            peer.read(&mut [0]).unwrap(),
++            0,
++            "authority must end before exit"
++        );
++        running.enforce_restart_deadline(now + RESTART_GRACE / 2);
++        assert_eq!(wait_for_exit(&mut running).code(), Some(42));
++    }
++
++    #[test]
++    fn restart_kills_only_after_grace_and_repeated_requests_cannot_extend_it() {
++        use std::os::unix::process::ExitStatusExt;
++        let (mut running, _peer) = restart_fixture(true);
++        let now = Instant::now();
++        running.begin_restart(now);
++        running.begin_restart(now + Duration::from_secs(1));
++        running.enforce_restart_deadline(now + RESTART_GRACE - Duration::from_millis(1));
++        assert!(running.child.try_wait().unwrap().is_none());
++        running.enforce_restart_deadline(now + RESTART_GRACE);
++        assert_eq!(wait_for_exit(&mut running).signal(), Some(libc::SIGKILL));
++    }
++
++    #[test]
++    fn exhausted_retries_start_fixed_heal_service_without_private_socket() {
++        use std::os::unix::fs::PermissionsExt;
++        let shell = xshell::Shell::new().unwrap();
++        let directory = shell.create_temp_dir().unwrap();
++        let systemctl = directory.path().join("systemctl");
++        let result = directory.path().join("result");
++        std::fs::write(&systemctl, "#!/bin/sh\n[ -z \"${WAYLAND_SOCKET+x}\" ] || exit 1\nprintf '%s\\n' \"$@\" > \"$RESULT\"\n").unwrap();
++        std::fs::set_permissions(&systemctl, std::fs::Permissions::from_mode(0o700)).unwrap();
++        let environment = BTreeMap::from([
++            (
++                OsString::from("PATH"),
++                directory.path().as_os_str().to_owned(),
++            ),
++            (OsString::from("RESULT"), result.as_os_str().to_owned()),
++            (OsString::from("WAYLAND_SOCKET"), OsString::from("123")),
++        ]);
++        let mut supervisor = Supervisor {
++            handle: SupervisorHandle::default(),
++            stopped: false,
++            executable: OsString::from("unused"),
++            arguments: vec![],
++            environment,
++            running: None,
++            failures: MAX_FAILURES - 1,
++            retry_at: Instant::now(),
++        };
++        supervisor.failed();
++        assert!(supervisor.stopped);
++        let deadline = Instant::now() + Duration::from_secs(5);
++        loop {
++            if std::fs::read_to_string(&result)
++                .is_ok_and(|value| value.ends_with("emaki-shell-heal.service\n"))
++            {
++                break;
++            }
++            assert!(Instant::now() < deadline, "heal service was not activated");
++            std::thread::sleep(Duration::from_millis(10));
++        }
++        assert_eq!(
++            std::fs::read_to_string(result).unwrap(),
++            "--user\n--no-block\nstart\nemaki-shell-heal.service\n"
++        );
++    }
++
++    #[test]
++    fn startup_environment_does_not_follow_later_config_changes() {
++        let mut inherited = BTreeMap::from([
++            (OsString::from("PATH"), OsString::from("initial-bin")),
++            (
++                OsString::from("LD_PRELOAD"),
++                OsString::from("initial-library"),
++            ),
++            (OsString::from("WAYLAND_SOCKET"), OsString::from("123")),
++        ]);
++        let mut configured = Command::new("shell");
++        configured.env_remove("LD_PRELOAD").env("DISPLAY", ":0");
++        let captured = snapshot_environment(inherited.clone(), &configured);
++        // Simulate a later config's ordinary-child edits without mutating globals.
++        configured
++            .env("LD_PRELOAD", "replacement-library")
++            .env("DISPLAY", ":99");
++        inherited.insert(OsString::from("PATH"), OsString::from("replacement-bin"));
++        assert_eq!(
++            captured.get(std::ffi::OsStr::new("PATH")),
++            Some(&OsString::from("initial-bin"))
++        );
++        assert_eq!(
++            captured.get(std::ffi::OsStr::new("DISPLAY")),
++            Some(&OsString::from(":0"))
++        );
++        assert!(!captured.contains_key(std::ffi::OsStr::new("LD_PRELOAD")));
++        assert!(!captured.contains_key(std::ffi::OsStr::new("WAYLAND_SOCKET")));
++    }
++
++    #[test]
++    fn restarts_back_off_and_stop_after_five_failures() {
++        assert_eq!(restart_delay(1), Some(Duration::from_secs(1)));
++        assert_eq!(restart_delay(2), Some(Duration::from_secs(2)));
++        assert_eq!(restart_delay(3), Some(Duration::from_secs(4)));
++        assert_eq!(restart_delay(4), Some(Duration::from_secs(8)));
++        assert_eq!(restart_delay(5), None);
++        assert_eq!(restart_delay(u32::MAX), None);
++    }
++}
+diff --git a/src/trusted_prompt.rs b/src/trusted_prompt.rs
+new file mode 100644
+index 00000000..4b5afc7f
+--- /dev/null
++++ b/src/trusted_prompt.rs
+@@ -0,0 +1,325 @@
++// Copyright (C) 2026 Artur Yakymenko
++// SPDX-License-Identifier: GPL-3.0-or-later
++
++//! The authentication role belongs to a compositor-created connection, never a name.
++
++use std::time::{Duration, Instant};
++
++use smithay::backend::renderer::element::utils::{
++    CropRenderElement, Relocate, RelocateRenderElement, RescaleRenderElement,
++};
++use smithay::desktop::utils::bbox_from_surface_tree;
++use smithay::backend::renderer::element::Kind;
++use smithay::desktop::{
++    layer_map_for_output, LayerSurface, PopupUngrabStrategy, WindowSurfaceType,
++};
++use smithay::input::pointer::{CursorIcon, CursorImageStatus};
++use smithay::output::Output;
++use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
++use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
++use smithay::reexports::wayland_server::Resource;
++use smithay::utils::{Logical, Point, Rectangle, Scale, SERIAL_COUNTER};
++use smithay::wayland::pointer_constraints::with_pointer_constraint;
++
++use crate::niri::{ClientState, LockState, Niri, OutputRenderElements, PointContents, State};
++use crate::render_helpers::renderer::NiriRenderer;
++use crate::render_helpers::solid_color::SolidColorRenderElement;
++use crate::render_helpers::surface::push_elements_from_surface_tree;
++use crate::render_helpers::RenderCtx;
++use crate::utils::{get_monotonic_time, output_size};
++
++pub const NAMESPACE: &str = "emaki-auth-prompt";
++pub const PROOF_BAND_HEIGHT: f64 = 48.;
++
++pub fn client_is_trusted(surface: &WlSurface) -> bool {
++    surface.client().is_some_and(|client| {
++        client
++            .get_data::<ClientState>()
++            .is_some_and(|state| state.trusted_shell)
++    })
++}
++
++impl Niri {
++    /// A mapped role, even while it is hidden by a lock request.
++    fn mapped_trusted_prompt(&self) -> Option<LayerSurface> {
++        self.mapped_layer_surfaces
++            .keys()
++            .find(|layer| layer.namespace() == NAMESPACE && client_is_trusted(layer.wl_surface()))
++            .cloned()
++    }
++
++    pub fn trusted_prompt(&self) -> Option<LayerSurface> {
++        if !matches!(self.lock_state, LockState::Unlocked) {
++            return None;
++        }
++        self.mapped_trusted_prompt()
++    }
++
++    pub fn trusted_prompt_active(&self) -> bool {
++        self.trusted_prompt().is_some()
++    }
++
++    /// The no-prompt proof curtain also absorbs input. A fake client cannot keep
++    /// displaying a pre-painted proof while the physical action is held/invoked.
++    pub fn trusted_prompt_input_isolated(&self) -> bool {
++        (!self.is_locked()
++            && (self.session_lock_prepared || self.mapped_trusted_prompt().is_some()))
++            || self.trusted_prompt_proof_active()
++    }
++
++    pub fn trusted_prompt_proof_active(&self) -> bool {
++        self.trusted_prompt_proof_deadline
++            .is_some_and(|end| Instant::now() < end)
++    }
++
++    pub fn trusted_prompt_mark_active(&self) -> bool {
++        self.trusted_prompt_proof_active()
++            && self.trusted_prompt().is_some_and(|layer| {
++                self.trusted_prompt_proof_surface.as_ref() == Some(layer.wl_surface())
++            })
++    }
++
++    /// Only the physical keyboard dispatch calls this. There is no IPC action.
++    pub fn show_trusted_prompt_mark(&mut self) {
++        let deadline = Instant::now() + Duration::from_secs(3);
++        self.trusted_prompt_proof_deadline = Some(deadline);
++        self.trusted_prompt_proof_surface = self.trusted_prompt().map(|l| l.wl_surface().clone());
++        self.event_loop
++            .insert_source(Timer::from_deadline(deadline), move |_, _, state| {
++                if state.niri.trusted_prompt_proof_deadline == Some(deadline) {
++                    state.niri.trusted_prompt_proof_deadline = None;
++                    state.niri.trusted_prompt_proof_surface = None;
++                    state.niri.queue_redraw_all();
++                }
++                TimeoutAction::Drop
++            })
++            .unwrap();
++        self.queue_redraw_all();
++    }
++
++    pub(crate) fn trusted_prompt_contents_under(
++        &self,
++        output: &Output,
++        pos: Point<f64, Logical>,
++    ) -> PointContents {
++        let mut contents = PointContents {
++            output: Some(output.clone()),
++            ..Default::default()
++        };
++        let Some(layer) = self.trusted_prompt() else {
++            return contents;
++        };
++        // The proof view may move/scale the card. Do not send pointer or touch
++        // coordinates to a moving target; keyboard focus stays on the trusted role.
++        if self.trusted_prompt_proof_active() {
++            return contents;
++        }
++        let map = layer_map_for_output(output);
++        let Some(geometry) = map.layer_geometry(&layer) else {
++            return contents;
++        };
++        let origin = geometry.loc;
++        let global = self.global_space.output_geometry(output).unwrap().loc;
++        // Only this role's surface tree receives input. Layer popups are not part
++        // of the password card and cannot claim focus through a popup grab.
++        contents.surface = layer
++            .surface_under(
++                pos - origin.to_f64(),
++                WindowSurfaceType::TOPLEVEL | WindowSurfaceType::SUBSURFACE,
++            )
++            .map(|(surface, offset)| (surface, (offset + origin + global).to_f64()));
++        if contents.surface.is_some() {
++            contents.layer = Some(layer);
++        }
++        contents
++    }
++
++    pub(crate) fn render_trusted_prompt<R: NiriRenderer>(
++        &self,
++        ctx: RenderCtx<R>,
++        output: &Output,
++        include_pointer: bool,
++        push: &mut dyn FnMut(OutputRenderElements<R>),
++    ) {
++        let scale = Scale::from(output.current_scale().fractional_scale());
++        let size = output_size(output);
++        let marked = self.trusted_prompt_mark_active();
++        let band = if marked {
++            PROOF_BAND_HEIGHT.min(size.h / 2.)
++        } else {
++            0.
++        };
++        let viewport = Rectangle::new((0., band).into(), (size.w, size.h - band).into())
++            .to_physical_precise_round(scale);
++
++        // The proof occupies reserved output space outside every client buffer,
++        // including cursors. This neutral geometric fixture has no client text.
++        if marked {
++            for (id, (x, y, w, h)) in self.trusted_prompt_mark_ids.iter().zip([
++                (16., 16., 8., 16.),
++                (24., 24., 16., 8.),
++                (40., 8., 8., 24.),
++            ]) {
++                push(
++                    SolidColorRenderElement::new(
++                        id.clone(),
++                        Rectangle::new((x, y).into(), (w, h).into()),
++                        Default::default(),
++                        [1., 1., 1., 1.].into(),
++                        Kind::Unspecified,
++                    )
++                    .into(),
++                );
++            }
++        }
++        if include_pointer && !self.trusted_prompt_proof_active() && self.pointer_visibility.is_visible() {
++            self.render_pointer(ctx.renderer, output, &mut |element| {
++                if let Some(element) = CropRenderElement::from_element(element, scale, viewport) {
++                    push(OutputRenderElements::TrustedPointer(element));
++                }
++            });
++        }
++        if let Some(layer) = self.trusted_prompt().filter(|layer| {
++            let rules = self.mapped_layer_surfaces.get(layer).unwrap().rules();
++            let own_capture = rules.hide_from_own_screencopy
++                && ctx
++                    .capture_client
++                    .is_some_and(|client| layer.wl_surface().client().as_ref() == Some(client));
++            // Keep the existing capture privacy rules above the ordinary scene
++            // too. The proof interval alone supplies an opaque curtain.
++            !own_capture && !ctx.target.should_block_out(rules.block_out_from)
++        }) {
++            let map = layer_map_for_output(output);
++            if let Some(geometry) = map.layer_geometry(&layer) {
++                let origin = geometry.loc.to_f64().to_physical_precise_round(scale);
++                let bounds = bbox_from_surface_tree(layer.wl_surface(), geometry.loc).to_f64();
++                let zoom = if marked {
++                    ((size.h - band) / bounds.size.h.max(1.))
++                        .min(size.w / bounds.size.w.max(1.))
++                        .min(1.)
++                } else {
++                    1.
++                };
++                let proof_origin = Point::from((
++                    bounds.loc.x.clamp(0., (size.w - bounds.size.w * zoom).max(0.)),
++                    bounds.loc.y.clamp(band, (size.h - bounds.size.h * zoom).max(band)),
++                ));
++                let bounds_origin = bounds.loc.to_physical_precise_round(scale);
++                let offset = if marked {
++                    proof_origin.to_physical_precise_round(scale) - bounds_origin
++                } else {
++                    Point::from((0, 0))
++                };
++                push_elements_from_surface_tree(
++                    ctx.renderer,
++                    layer.wl_surface(),
++                    origin,
++                    scale,
++                    1.,
++                    Kind::Unspecified,
++                    &mut |element| {
++                        let element = RescaleRenderElement::from_element(element, bounds_origin, zoom);
++                        let element = RelocateRenderElement::from_element(element, offset, Relocate::Relative);
++                        if let Some(element) =
++                            CropRenderElement::from_element(element, scale, viewport)
++                        {
++                            push(OutputRenderElements::TrustedPrompt(element));
++                        }
++                    },
++                );
++            }
++        }
++        // Only proof replaces the desktop. A normally mapped prompt sits above
++        // the ordinary scene with no dimming and retains the same input boundary.
++        if !self.trusted_prompt_proof_active() {
++            return;
++        }
++        push(
++            SolidColorRenderElement::new(
++                self.trusted_prompt_backdrop_id.clone(),
++                Rectangle::from_size(size),
++                Default::default(),
++                [0., 0., 0., 1.].into(),
++                Kind::Unspecified,
++            )
++            .into(),
++        );
++    }
++}
++
++impl State {
++    /// Acknowledge only after revoking focus and grabs. There is no IPC cancellation:
++    /// the protocol lock owner must complete the normal unlock transition.
++    pub fn prepare_session_lock(&mut self) {
++        self.niri.session_lock_prepared = true;
++        self.update_keyboard_focus();
++    }
++
++    /// Revoke inherited grabs at both sides of a trust/lock boundary. Also called
++    /// at input dispatch: a commit and input may arrive in the same event turn.
++    pub fn refresh_trusted_prompt_input(&mut self) {
++        if !matches!(self.niri.lock_state, LockState::Unlocked) {
++            // A proof requested while locked still curtains the hostile lock
++            // surface. It must never authenticate a hidden session prompt.
++            self.niri.trusted_prompt_proof_surface = None;
++        } else if self
++            .niri
++            .trusted_prompt_proof_surface
++            .as_ref()
++            .is_some_and(|surface| {
++                !self
++                    .niri
++                    .mapped_trusted_prompt()
++                    .is_some_and(|layer| layer.wl_surface() == surface)
++            })
++        {
++            // A later remap on the same wl_surface needs a fresh physical proof.
++            self.niri.trusted_prompt_proof_surface = None;
++        }
++        let isolated = self.niri.trusted_prompt_input_isolated();
++        let marked = self.niri.trusted_prompt_mark_active();
++        let surface = self.niri.trusted_prompt().map(|l| l.wl_surface().clone());
++        if isolated == self.niri.trusted_prompt_was_isolated
++            && marked == self.niri.trusted_prompt_was_marked
++            && surface == self.niri.trusted_prompt_input_surface
++        {
++            return;
++        }
++        self.niri.trusted_prompt_was_isolated = isolated;
++        self.niri.trusted_prompt_was_marked = marked;
++        self.niri.trusted_prompt_input_surface = surface;
++        let pointer = self.niri.seat.get_pointer().unwrap();
++        if let Some((surface, _)) = &self.niri.pointer_contents.surface {
++            with_pointer_constraint(surface, &pointer, |constraint| {
++                if let Some(constraint) = constraint {
++                    constraint.deactivate();
++                }
++            });
++        }
++        if let Some(mut grab) = self.niri.popup_grab.take() {
++            grab.grab.ungrab(PopupUngrabStrategy::All);
++        }
++        self.niri.seat.get_keyboard().unwrap().unset_grab(self);
++        pointer.unset_grab(
++            self,
++            SERIAL_COUNTER.next_serial(),
++            get_monotonic_time().as_millis() as u32,
++        );
++        if let Some(touch) = self.niri.seat.get_touch() {
++            touch.cancel(self);
++            touch.unset_grab(self);
++        }
++        self.niri.dnd_icon = None;
++        self.niri.tablet_cursor_location = None;
++        if let Some(timer) = self.niri.bind_repeat_timer.take() {
++            self.niri.event_loop.remove(timer);
++        }
++        self.niri
++            .cursor_manager
++            .set_cursor_image(CursorImageStatus::Named(CursorIcon::Default));
++        self.niri.queue_redraw_all();
++        // These call back into the boundary check, now with the updated state.
++        self.update_keyboard_focus();
++        self.refresh_pointer_contents();
++    }
++}
+diff --git a/src/utils/spawning.rs b/src/utils/spawning.rs
+index b3ba57b9..d3b0665c 100644
+--- a/src/utils/spawning.rs
++++ b/src/utils/spawning.rs
+@@ -119,6 +119,33 @@ fn spawn_sync(
+         .stdout(Stdio::null())
+         .stderr(Stdio::null());
+ 
++    configure_child_environment(&mut process);
++
++    if let Some(token) = token.as_ref() {
++        process.env("XDG_ACTIVATION_TOKEN", token.as_str());
++        process.env("DESKTOP_STARTUP_ID", token.as_str());
++    }
++
++    unsafe { process.pre_exec(crate::utils::signals::unblock_all) };
++
++    let Some(mut child) = do_spawn(command, process) else {
++        return;
++    };
++
++    match child.wait() {
++        Ok(status) => {
++            if !status.success() {
++                warn!("child did not exit successfully: {status:?}");
++            }
++        }
++        Err(err) => {
++            warn!("error waiting for child: {err:?}");
++        }
++    }
++}
++
++/// Apply the same child environment to ordinary commands and the supervised shell.
++pub(crate) fn configure_child_environment(process: &mut Command) {
+     // Remove RUST_BACKTRACE and RUST_LIB_BACKTRACE from the environment if needed.
+     if REMOVE_ENV_RUST_BACKTRACE.load(Ordering::Relaxed) {
+         process.env_remove("RUST_BACKTRACE");
+@@ -148,28 +175,6 @@ fn spawn_sync(
+         }
+     }
+     drop(env);
+-
+-    if let Some(token) = token.as_ref() {
+-        process.env("XDG_ACTIVATION_TOKEN", token.as_str());
+-        process.env("DESKTOP_STARTUP_ID", token.as_str());
+-    }
+-
+-    unsafe { process.pre_exec(crate::utils::signals::unblock_all) };
+-
+-    let Some(mut child) = do_spawn(command, process) else {
+-        return;
+-    };
+-
+-    match child.wait() {
+-        Ok(status) => {
+-            if !status.success() {
+-                warn!("child did not exit successfully: {status:?}");
+-            }
+-        }
+-        Err(err) => {
+-            warn!("error waiting for child: {err:?}");
+-        }
+-    }
+ }
+ 
+ #[cfg(not(feature = "systemd"))]

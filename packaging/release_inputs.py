@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Check a selective release against its published package source records."""
+"""Check release prerequisites and selective published package source records."""
 import argparse
+import ast
+from datetime import date
 import json
 from pathlib import Path
 import re
@@ -10,6 +12,48 @@ import subprocess
 import sys
 
 from source_archive import PACKAGES, public_excluded, public_policy, run
+
+
+def check_alongside(repo):
+    """Read the committed build inputs; uncommitted acceptance cannot authorize a build."""
+    source = run('git', '-C', str(repo), 'show',
+                 'HEAD:installer/emaki_installer/constants.py')
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as error:
+        raise ValueError('alongside release switch is not valid Python') from error
+    assignments = [node for node in tree.body if isinstance(node, ast.Assign)
+                   and any(isinstance(target, ast.Name) and target.id == 'ALONGSIDE'
+                           for target in node.targets)]
+    bindings = [node for node in ast.walk(tree) if isinstance(node, ast.Name)
+                and node.id == 'ALONGSIDE' and isinstance(node.ctx, ast.Store)]
+    if (len(assignments) != 1 or len(bindings) != 1
+            or not isinstance(assignments[0].value, ast.Constant)
+            or type(assignments[0].value.value) is not bool):
+        raise ValueError('alongside release switch must be a literal boolean')
+    if assignments[0].value.value is False:
+        return
+    try:
+        acceptance = run('git', '-C', str(repo), 'show', 'HEAD:docs/hardware-acceptance.md')
+    except subprocess.CalledProcessError as error:
+        raise ValueError('alongside requires recorded real-Windows acceptance') from error
+    rows = [line.strip().strip('|').split('|') for line in acceptance.splitlines()
+            if line.strip().startswith('| H-W-ALONGSIDE |')]
+    if len(rows) == 1 and len(rows[0]) == 6:
+        _, result, machine, day, iso, evidence = [cell.strip() for cell in rows[0]]
+        try:
+            recorded = date.fromisoformat(day)
+        except ValueError:
+            recorded = None
+        pending = {'', 'pending', 'not tested', 'none', 'n/a', 'tbd', '—', '-'}
+        if (result == 'PASS' and recorded and recorded.isoformat() == day
+                and recorded <= date.today()
+                and re.fullmatch(r'[0-9a-f]{64}', iso) and len(set(iso)) > 1
+                and machine.lower() not in pending and evidence.lower() not in pending
+                and not re.search(r'placeholder|synthetic|\bvm\b', machine + ' ' + evidence, re.I)):
+            return
+    raise ValueError('alongside requires a PASS real-Windows acceptance row '
+                     '(H-W-ALONGSIDE) in docs/hardware-acceptance.md')
 
 
 def changed_inputs(repo, name, old, new):
@@ -26,9 +70,11 @@ def changed_inputs(repo, name, old, new):
     shared = {
         'emaki-nvidia': {'LICENSE', 'installer/emaki_installer/graphics.py'},
         'emaki-installer': {'LICENSE'},
+        'emaki-sudo-key': {'scripts/emaki-sudo-turn', 'sudo/turn-reporting.md'},
     }.get(name, set())
     return any(path.startswith(recipe) or path in shared or
-               (name == 'emaki-installer' and path.startswith('installer/'))
+               (name == 'emaki-installer' and path.startswith('installer/')) or
+               (name == 'emaki-sudo-key' and path.startswith('sudo/integrations/'))
                for path in changed if path)
 
 
@@ -45,6 +91,7 @@ def recipe_version(repo, name):
 
 
 def check(repo, metadata, selected):
+    check_alongside(repo)
     if not selected:
         raise ValueError('--published-sources requires explicit --only selections')
     if any(name not in PACKAGES for name in selected):
@@ -85,11 +132,14 @@ def check(repo, metadata, selected):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repo', type=Path, required=True)
-    parser.add_argument('--published-sources', type=Path, required=True)
+    parser.add_argument('--published-sources', type=Path)
     parser.add_argument('--only', action='append', default=[])
     args = parser.parse_args()
     try:
-        check(args.repo, json.loads(args.published_sources.read_text()), set(args.only))
+        if args.published_sources:
+            check(args.repo, json.loads(args.published_sources.read_text()), set(args.only))
+        else:
+            check_alongside(args.repo)
     except (ValueError, OSError, subprocess.CalledProcessError) as error:
         parser.exit(1, f'ERROR: release input check: {error}\n')
     print('Release input check passed.')

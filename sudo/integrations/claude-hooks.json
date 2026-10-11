@@ -1,0 +1,7 @@
+{
+  "$comment": "Copyright (C) 2026 Artur Yakymenko; SPDX-License-Identifier: GPL-3.0-or-later. Merge only the hooks object into your settings.",
+  "hooks": {
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "@EMAKI_BINDIR@/emaki-sudo-turn claude"}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "@EMAKI_BINDIR@/emaki-sudo-turn claude"}]}]
+  }
+}

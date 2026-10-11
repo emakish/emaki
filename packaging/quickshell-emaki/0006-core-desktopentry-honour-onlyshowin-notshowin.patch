@@ -1,0 +1,140 @@
+From ef3da9f4054dc0357bd56065075b2fc1af64562f Mon Sep 17 00:00:00 2001
+From: Emaki contributors <emaki@localhost>
+Date: Sat, 10 Oct 2026 23:30:00 +0000
+Subject: [PATCH] core/desktopentry: honour OnlyShowIn and NotShowIn in
+ applications
+
+Copyright (C) 2026 Artur Yakymenko
+SPDX-License-Identifier: LGPL-3.0-only
+
+Parse the desktop entry specification's OnlyShowIn and NotShowIn lists and
+leave entries they exclude from the desktops in XDG_CURRENT_DESKTOP out of
+DesktopEntries.applications, matched as GLib's g_desktop_app_info_get_show_in
+does: the first current desktop named by either list decides, and with none
+named an entry is shown unless it has an OnlyShowIn key, even an empty one.
+List elements decode the string escapes (\s, \n, \t, \r, \\ and \;) before
+matching. byId and heuristicLookup still find such entries, so running
+windows keep their icons.
+---
+ src/core/desktopentry.cpp | 56 ++++++++++++++++++++++++++++++++++++++-
+ src/core/desktopentry.hpp |  7 ++++-
+ 2 files changed, 61 insertions(+), 2 deletions(-)
+
+diff --git a/src/core/desktopentry.cpp b/src/core/desktopentry.cpp
+index 637f758..b0f878b 100644
+--- a/src/core/desktopentry.cpp
++++ b/src/core/desktopentry.cpp
+@@ -99,6 +99,42 @@ QDebug operator<<(QDebug debug, const Locale& locale) {
+ 	return debug;
+ }
+ 
++namespace {
++
++// A desktop entry string list (specification, "Possible value types"): an unescaped ';'
++// ends an element, and \s, \n, \t, \r, \\ and \; decode inside elements as GLib does.
++QVector<QString> parseStringList(const QString& value) {
++	auto list = QVector<QString>();
++	auto element = QString();
++
++	for (qsizetype i = 0; i < value.length(); i++) {
++		const auto c = value.at(i);
++
++		if (c == u'\\' && i + 1 < value.length()) {
++			const auto next = value.at(++i);
++			if (next == u's') element += u' ';
++			else if (next == u'n') element += u'\n';
++			else if (next == u't') element += u'\t';
++			else if (next == u'r') element += u'\r';
++			else if (next == u'\\' || next == u';') element += next;
++			else {
++				element += c;
++				element += next;
++			}
++		} else if (c == u';') {
++			list.append(element);
++			element.clear();
++		} else {
++			element += c;
++		}
++	}
++
++	if (!element.isEmpty()) list.append(element);
++	return list;
++}
++
++} // namespace
++
+ ParsedDesktopEntryData DesktopEntry::parseText(const QString& id, const QString& text) {
+ 	ParsedDesktopEntryData data;
+ 	data.id = id;
+@@ -123,6 +159,10 @@ ParsedDesktopEntryData DesktopEntry::parseText(const QString& id, const QString&
+ 				else if (key == "StartupWMClass") data.startupClass = value;
+ 				else if (key == "NoDisplay") data.noDisplay = value == "true";
+ 				else if (key == "Hidden") data.hidden = value == "true";
++				else if (key == "OnlyShowIn") {
++					data.hasOnlyShowIn = true;
++					data.onlyShowIn = parseStringList(value);
++				} else if (key == "NotShowIn") data.notShowIn = parseStringList(value);
+ 				else if (key == "Comment") data.comment = value;
+ 				else if (key == "Icon") data.icon = value;
+ 				else if (key == "Exec") {
+@@ -577,9 +617,23 @@ void DesktopEntryManager::onScanCompleted(const QList<ParsedDesktopEntryData>& s
+ 	this->desktopEntries = newEntries;
+ 	this->lowercaseDesktopEntries = newLowercaseEntries;
+ 
++	// The desktop entry specification's OnlyShowIn/NotShowIn, matched as GLib's
++	// g_desktop_app_info_get_show_in does: the first current desktop named by either list
++	// decides; with none named, an entry is shown unless it has an OnlyShowIn key, even an
++	// empty one.
++	const auto desktops = qEnvironmentVariable("XDG_CURRENT_DESKTOP").split(u':', Qt::SkipEmptyParts);
++	auto shownHere = [&desktops](const ParsedDesktopEntryData& data) {
++		for (const auto& desktop: desktops) {
++			if (data.onlyShowIn.contains(desktop)) return true;
++			if (data.notShowIn.contains(desktop)) return false;
++		}
++
++		return !data.hasOnlyShowIn;
++	};
++
+ 	auto newApplications = QVector<DesktopEntry*>();
+ 	for (auto* entry: this->desktopEntries.values())
+-		if (!entry->bNoDisplay) newApplications.append(entry);
++		if (!entry->bNoDisplay && shownHere(entry->state)) newApplications.append(entry);
+ 
+ 	this->mApplications.diffUpdate(newApplications);
+ 
+diff --git a/src/core/desktopentry.hpp b/src/core/desktopentry.hpp
+index 0d1eff2..2cef57e 100644
+--- a/src/core/desktopentry.hpp
++++ b/src/core/desktopentry.hpp
+@@ -34,6 +34,9 @@ struct ParsedDesktopEntryData {
+ 	QString startupClass;
+ 	bool noDisplay = false;
+ 	bool hidden = false;
++	bool hasOnlyShowIn = false;
++	QVector<QString> onlyShowIn;
++	QVector<QString> notShowIn;
+ 	QString comment;
+ 	QString icon;
+ 	QString execString;
+@@ -170,6 +173,7 @@ private:
+ 	QVector<DesktopAction*> mActions;
+ 
+ 	friend class DesktopAction;
++	friend class DesktopEntryManager;
+ };
+ 
+ /// An action of a @@DesktopEntry$.
+@@ -293,7 +297,8 @@ private:
+ /// [desktop entry specification]: https://specifications.freedesktop.org/desktop-entry-spec/latest/
+ class DesktopEntries: public QObject {
+ 	Q_OBJECT;
+-	/// All desktop entries of type Application that are not Hidden or NoDisplay.
++	/// All desktop entries of type Application that are not Hidden or NoDisplay, and that
++	/// `OnlyShowIn`/`NotShowIn` do not exclude from the desktops in `XDG_CURRENT_DESKTOP`.
+ 	QSDOC_TYPE_OVERRIDE(ObjectModel<DesktopEntry>*);
+ 	Q_PROPERTY(UntypedObjectModel* applications READ applications CONSTANT);
+ 	QML_ELEMENT;
+-- 
+2.55.0
+

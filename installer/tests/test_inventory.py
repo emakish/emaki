@@ -152,10 +152,14 @@ class ProbeSafetyTests(unittest.TestCase):
             json.dumps({"filesystems": [{"source": "/dev/loop0", "maj:min": "7:0"}]}),
             json.dumps({"filesystems": [{"source": "/dev/nvme0n1p3[/images]", "maj:min": "259:3"}]}),
         ]
-        with patch("emaki_installer.inventory._read", return_value="/media/USB/images/emaki.iso\n"):
-            sources, known = Inventory(runner)._boot_sources(list(_walk(data["blockdevices"])))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            backing = root / 'sys/dev/block/7:0/loop/backing_file'
+            backing.parent.mkdir(parents=True)
+            backing.write_text('/media/USB/images/emaki.iso\n')
+            sources, known = Inventory(runner, root=root)._boot_sources(list(_walk(data["blockdevices"])))
         self.assertTrue(known)
-        self.assertEqual(sources, {"/dev/nvme0n1p3"})
+        self.assertEqual(sources, {"/dev/nvme0n1"})
         self.assertTrue(parse_lsblk(data, boot_sources=sources)[0]["is_boot_medium"])
         self.assertEqual(runner.run.call_args_list[1].args[0],
                          ["findmnt", "--json", "--target", "/media/USB/images/emaki.iso",
@@ -170,7 +174,7 @@ class ProbeSafetyTests(unittest.TestCase):
         runner.run.return_value = json.dumps({"filesystems": [{"source": "/dev/dm-0", "maj:min": "253:0"}]})
         sources, known = Inventory(runner)._boot_sources(list(_walk(data["blockdevices"])))
         self.assertTrue(known)
-        self.assertEqual(sources, {"/dev/mapper/ventoy"})
+        self.assertEqual(sources, {"/dev/nvme0n1"})
         self.assertTrue(parse_lsblk(data, boot_sources=sources)[0]["is_boot_medium"])
 
     def test_loop_iso_unresolved_backing_and_cycles_fail_closed(self):
@@ -186,8 +190,66 @@ class ProbeSafetyTests(unittest.TestCase):
                     json.dumps({"filesystems": [{"source": "/dev/loop0", "maj:min": "7:0"}]}),
                     json.dumps({"filesystems": [second]}),
                 ]
-                with patch("emaki_installer.inventory._read", return_value=backing):
-                    self.assertEqual(Inventory(runner)._boot_sources(nodes), (set(), False))
+                with tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    path = root / 'sys/dev/block/7:0/loop/backing_file'
+                    path.parent.mkdir(parents=True)
+                    path.write_text(backing)
+                    self.assertEqual(Inventory(runner, root=root)._boot_sources(nodes), (set(), False))
+
+    def test_copytoram_loop_marker_refuses_physical_boot_disk_not_separate_target(self):
+        from emaki_installer.planner import validate_disk
+        data = fixture('windows')
+        target = fixture('blank')['blockdevices'][0]
+        data['blockdevices'].extend([target, {'path': '/dev/loop0', 'type': 'loop', 'maj:min': '7:0'}])
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cmdline = root / 'proc/cmdline'
+            cmdline.parent.mkdir()
+            cmdline.write_text('copytoram=y archisodevice=/dev/loop0')
+            backing = root / 'sys/dev/block/7:0/loop/backing_file'
+            backing.parent.mkdir(parents=True)
+            backing.write_text('/run/archiso/img_dev/Emaki Live.iso\n')
+            runner = Mock()
+            runner.run.side_effect = [
+                '{}', json.dumps({'filesystems': [{'source': '/dev/nvme0n1p3', 'maj:min': '259:3'}]})]
+            sources, known = Inventory(runner, root=root)._boot_sources(list(_walk(data['blockdevices'])))
+            disks = parse_lsblk(data, boot_sources=sources)
+            inventory = {'uefi': True, '_boot_medium_known': known}
+            self.assertEqual(sources, {'/dev/nvme0n1'})
+            with self.assertRaises(InstallError) as caught:
+                validate_disk(disks[0], inventory)
+            self.assertEqual(caught.exception.code, Code.BOOT_MEDIUM)
+            validate_disk(disks[1], inventory)
+
+    def test_orphan_mapper_never_makes_an_unidentified_boot_disk_safe(self):
+        from emaki_installer.planner import validate_disk
+        data = fixture('blank')
+        data['blockdevices'].append({'path': '/dev/mapper/ventoy', 'type': 'dm', 'maj:min': '253:0'})
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = Mock()
+            runner.run.return_value = json.dumps({'filesystems': [{'source': '/dev/dm-0', 'maj:min': '253:0'}]})
+            sources, known = Inventory(runner, root=Path(temporary))._boot_sources(list(_walk(data['blockdevices'])))
+            self.assertEqual((sources, known), (set(), False))
+            with self.assertRaises(InstallError) as caught:
+                validate_disk(parse_lsblk(data, boot_sources=sources)[0],
+                              {'uefi': True, '_boot_medium_known': known})
+            self.assertEqual(caught.exception.code, Code.UNSAFE_DISK)
+
+    def test_mapper_boot_marker_matches_kernel_device_alias(self):
+        data = fixture('windows')
+        data['blockdevices'][0]['children'][2]['children'] = [
+            {'path': '/dev/mapper/ventoy', 'type': 'dm', 'maj:min': '253:0'}]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'dev/mapper').mkdir(parents=True)
+            (root / 'dev/mapper/ventoy').symlink_to('../dm-0')
+            (root / 'proc').mkdir()
+            (root / 'proc/cmdline').write_text('archisodevice=/dev/dm-0 copytoram=y')
+            runner = Mock()
+            runner.run.return_value = '{}'
+            self.assertEqual(Inventory(runner, root=root)._boot_sources(list(_walk(data['blockdevices']))),
+                             ({'/dev/nvme0n1'}, True))
 
     def test_probe_skips_boot_and_busy_and_unknown(self):
         for known, boot, busy in [(False, False, False), (True, True, False), (True, False, True)]:
@@ -236,9 +298,9 @@ class ProbeSafetyTests(unittest.TestCase):
         self.assertNotIn("reason", self.busy_probe(mounted))
         self.assertNotIn("reason", self.busy_probe(lambda disk: None))
 
-    def test_windows_disk_carries_no_alongside_offer_by_default(self):
-        # The shape the interface receives for a Windows disk in 0.2.
-        public = self.busy_probe(lambda disk: None)
+    def test_disabled_build_carries_no_alongside_offer(self):
+        with patch('emaki_installer.constants.ALONGSIDE', False):
+            public = self.busy_probe(lambda disk: None)
         self.assertIsNone(public["shrink"])
         self.assertFalse([part["path"] for part in public["partitions"] if "shrink" in part])
         with alongside_on(), patch("emaki_installer.inventory.bitlocker_signature", return_value=True):

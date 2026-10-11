@@ -24,6 +24,41 @@ ShellRoot {
         onTriggered: {
             test.settle();
             test.check(controller.phase === "idle" && controller.received, "initial result received");
+            const scenario = Quickshell.env("TEST_SCENARIO");
+            if (scenario === "flatpak" || scenario === "aur") {
+                test.check(controller.repositoryCount === 0, "non-repository rows excluded from repository count");
+                controller.apply();
+                test.check(controller.busy === (scenario === "flatpak"), "only managed rows can start update");
+                test.settle();
+                if (!test.failed) console.log("CONTROLLER_OK");
+                Qt.quit(); return;
+            }
+            if (scenario === "reminder") {
+                test.check(controller.restart && controller.reminder, "startup restores reminder");
+                controller.hide(); test.settle();
+                test.check(controller.restart && !controller.reminder, "dismissal keeps restart available");
+                controller.check(); test.settle();
+                test.check(controller.restart && !controller.reminder, "new check preserves dismissed reminder");
+                if (!test.failed) console.log("CONTROLLER_OK");
+                Qt.quit(); return;
+            }
+            if (scenario.startsWith("restore-")) {
+                controller.loadRestorePoints(); test.settle();
+                test.check(controller.restorePoints.length === 1 && controller.restoreOpen, "restore list received");
+                controller.selectRestore(controller.restorePoints[0]);
+                controller.cancelRestore();
+                test.check(!controller.selectedRestore && !controller.restoreOpen, "cancel drops selection");
+                controller.selectRestore(controller.restorePoints[0]); controller.restore();
+                controller.apply(); controller.reboot(); controller.loadRestorePoints();
+                test.check(controller.phase === "restoring", "restore blocks overlapping actions");
+                test.settle();
+                const ok = scenario === "restore-success";
+                test.check(controller.succeeded === ok && controller.restorePending === (ok || scenario === "restore-partial") && controller.restart === (ok || scenario === "restore-partial"), "restore result retains refusal or pending restart");
+                test.check(controller.message === (ok ? "Restore prepared." : "Restore refused."), "restore result explanation");
+                if (controller.restorePending) { controller.apply(); test.check(!controller.busy, "prepared restore prevents updates"); }
+                if (!test.failed) console.log("CONTROLLER_OK");
+                Qt.quit(); return;
+            }
             test.check(controller.data.cached === true && controller.repositoryCount === 1, "startup uses cached check and counts only repository rows");
             controller.check();
             test.check(controller.phase === "checking" && controller.busy, "manual refresh enters checking");
@@ -34,7 +69,6 @@ ShellRoot {
             controller.check(); controller.apply(); controller.reboot();
             test.check(controller.phase === "applying", "busy rejects overlapping operations");
             test.settle();
-            const scenario = Quickshell.env("TEST_SCENARIO");
             if (scenario === "cancelled") {
                 test.check(controller.phase === "idle" && !controller.busy && controller.repositoryCount > 0, "cancelled permission returns to actionable list");
                 test.check(controller.message === "The update was not started." && controller.output === "", "cancelled permission has one plain explanation");
@@ -47,6 +81,10 @@ ShellRoot {
             if (scenario === "success") {
                 test.check(controller.succeeded && controller.restart && controller.signOut, "success exposes restart and sign-out advice");
                 test.check(controller.message === "Update complete.", "success result message");
+                const previousOutput = controller.output;
+                controller.hide(); test.settle();
+                test.check(controller.phase === "finished" && controller.message === "Update complete." && controller.output === previousOutput, "Later preserves completed result until explicit check");
+                test.check(!controller.reminder && controller.restart, "Later dismisses only the reminder");
                 controller.reboot();
                 test.check(controller.phase === "restarting", "restart starts process");
                 test.settle();

@@ -17,6 +17,19 @@ from support import RecordingRunner
 
 
 class RuntimeTests(unittest.TestCase):
+    def test_only_explicit_descriptors_are_inherited(self):
+        with tempfile.TemporaryFile() as selected, tempfile.TemporaryFile() as unrelated:
+            selected.write(b'reviewed disk')
+            selected.flush()
+            script = ('import os, sys; '
+                      'print(open(sys.argv[1]).read()); '
+                      'print(os.path.exists(sys.argv[2]))')
+            output = Runner(lambda line: None).run(
+                [sys.executable, '-c', script, f'/proc/self/fd/{selected.fileno()}',
+                 f'/proc/self/fd/{unrelated.fileno()}'], pass_fds=(selected.fileno(),))
+            self.assertEqual(output, 'reviewed disk\nFalse\n')
+            os.fstat(selected.fileno())
+
     def test_secret_stdin_and_output_never_logged(self):
         logs = []
         runner = Runner(logs.append)

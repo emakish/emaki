@@ -1,4 +1,8 @@
 singleton Platform 1.0 Platform.qml
+CaptureController 1.0 CaptureController.qml
+CaptureService 1.0 CaptureService.qml
+CaptureOverlay 1.0 CaptureOverlay.qml
+CapturePanel 1.0 CapturePanel.qml
 singleton ShellPalette 1.0 ShellPalette.qml
 singleton Metrics 1.0 Metrics.qml
 Icon 1.0 Icon.qml
@@ -125,3 +129,24 @@ SettingsAboutPage 1.0 SettingsAboutPage.qml
 SettingsMaintenancePage 1.0 SettingsMaintenancePage.qml
 SettingsPageDefinition 1.0 SettingsPageDefinition.qml
 SettingsPageRegistry 1.0 SettingsPageRegistry.qml
+PolkitAdapter 1.0 PolkitAdapter.qml
+PolkitExpander 1.0 PolkitExpander.qml
+PolkitPromptController 1.0 PolkitPromptController.qml
+PolkitPromptQueue 1.0 PolkitPromptQueue.qml
+PolkitPromptCard 1.0 PolkitPromptCard.qml
+PolkitHazardFrame 1.0 PolkitHazardFrame.qml
+PolkitPromptSurface 1.0 PolkitPromptSurface.qml
+PolkitPromptService 1.0 PolkitPromptService.qml
+PolkitLockState 1.0 PolkitLockState.qml
+SudoKeyChoices 1.0 SudoKeyChoices.qml
+SudoKeySettingsPage 1.0 SudoKeySettingsPage.qml
+singleton SudoKeySupport 1.0 SudoKeySupport.qml
+SudoPromptService 1.0 SudoPromptService.qml
+SudoPromptAdapter 1.0 SudoPromptAdapter.qml
+SudoKeyIndicator 1.0 SudoKeyIndicator.qml
+SudoKeyWarning 1.0 SudoKeyWarning.qml
+SudoKeyWarningSurface 1.0 SudoKeyWarningSurface.qml
+SettingsStoragePage 1.0 SettingsStoragePage.qml
+SettingsPrivacyPage 1.0 SettingsPrivacyPage.qml
+SettingsUsersPage 1.0 SettingsUsersPage.qml
+singleton SettingsUsersService 1.0 SettingsUsersService.qml

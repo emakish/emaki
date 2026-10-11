@@ -1,3 +1,7 @@
+import contextlib
+import json
+import os
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 import tempfile
@@ -6,9 +10,11 @@ from unittest.mock import patch
 
 from emaki_installer.arch_backend import (DeviceOperations, OfflinePacman, missing_grub_modules, offline_config,
                                           validate_live_plan)
+from emaki_installer import arch_backend
 from emaki_installer.constants import OFFLINE_REPO
 from emaki_installer.errors import Code, InstallError
 from emaki_installer.planner import make_plan
+from emaki_installer.runtime import Runner
 from emaki_installer.render import GRUB_EARLY_MODULES
 from support import RecordingRunner, config, inventory, manual
 
@@ -86,6 +92,160 @@ class BackendTests(unittest.TestCase):
                                                                                   Path('/dev/fake2'))
                 self.assertEqual(runner.commands, [(argv, {})])
 
+    def disk_identity(self, plan, sequences):
+        """Fake the device while preserving the production exclusive-open flags and lifetime."""
+        plan.disk['_identity']['disk-seq'] = 42
+        opened = []
+
+        real_open = os.open
+
+        def device_open(path, flags):
+            opened.append(path)
+            self.assertEqual(flags, os.O_RDONLY | os.O_EXCL | os.O_CLOEXEC)
+            return real_open(os.devnull, os.O_RDONLY)
+
+        def reread(fd, request):
+            os.fstat(fd)  # The exclusive descriptor must still be open at the kernel reread.
+            self.assertEqual(request, arch_backend.BLKRRPART)
+            return 0
+
+        return opened, [patch.object(arch_backend.os, 'open', device_open),
+                        patch.object(arch_backend, 'disk_sequence', side_effect=sequences),
+                        patch.object(arch_backend.fcntl, 'ioctl', side_effect=reread)]
+
+    def test_wipe_writes_through_the_reviewed_disk_sequence(self):
+        plan = make_plan(config(), inventory())
+        runner = RecordingRunner()
+        query = ('lsblk', '--tree', '-J', '-b', '-o', 'PATH,TYPE,PARTN,START,SIZE,PTTYPE', '/dev/vda')
+        runner.responses[query] = json.dumps({'blockdevices': [{'pttype': 'gpt', 'children': [
+            {'path': f'/dev/vda{p.number}', 'partn': p.number, 'start': p.start // 512, 'size': p.size}
+            for p in plan.partitions]}]})
+        opened, patches = self.disk_identity(plan, [42, 42, 42, 42])
+        with contextlib.ExitStack() as stack:
+            for item in patches:
+                stack.enter_context(item)
+            DeviceOperations(plan, runner).partition(
+                SimpleNamespace(wipe=True, partitions=[SimpleNamespace(dev_path=None) for _ in plan.partitions]))
+        self.assertEqual(opened, ['/dev/vda', '/dev/vda'])
+        command, kwargs = runner.commands[0]
+        fd, = kwargs['pass_fds']
+        self.assertEqual(command[-1], f'/proc/self/fd/{fd}')
+        self.assertIn('--no-reread', command)
+        self.assertIn('--no-tell-kernel', command)
+        self.assertEqual(runner.commands[1][0], ['udevadm', 'settle', '--timeout=30'])
+        with self.assertRaises(OSError):
+            os.fstat(fd)
+        # linux/fs.h: BLKGETDISKSEQ _IOR(0x12, 128, __u64)
+        self.assertEqual(arch_backend.BLKGETDISKSEQ, (2 << 30) | (8 << 16) | (0x12 << 8) | 128)
+
+    def test_swapped_or_unknown_disk_is_never_written(self):
+        for sequences, identity, code in (
+                ([43], 42, Code.DISK_CHANGED),
+                ([42], None, Code.UNSAFE_DISK),
+                ([OSError(25, 'Inappropriate ioctl')], 42, Code.UNSAFE_DISK)):
+            with self.subTest(sequences=sequences, identity=identity):
+                plan = make_plan(config(), inventory())
+                runner = RecordingRunner()
+                opened, patches = self.disk_identity(plan, sequences)
+                plan.disk['_identity']['disk-seq'] = identity
+                with contextlib.ExitStack() as stack:
+                    for item in patches:
+                        stack.enter_context(item)
+                    with self.assertRaises(InstallError) as raised:
+                        DeviceOperations(plan, runner).partition(SimpleNamespace(wipe=True, partitions=[]))
+                self.assertEqual(raised.exception.code, code)
+                self.assertEqual(runner.commands, [])
+        plan = make_plan(config(), inventory())
+        plan.disk['_identity']['disk-seq'] = 42
+        busy = OSError(16, 'Device or resource busy')
+        with patch.object(arch_backend, 'open_exclusive', side_effect=busy), \
+                self.assertRaises(InstallError) as raised:
+            DeviceOperations(plan, RecordingRunner()).partition(SimpleNamespace(wipe=True, partitions=[]))
+        self.assertEqual(raised.exception.code, Code.DISK_BUSY)
+
+    def test_stale_sequence_link_and_reused_node_cannot_redirect_the_writer(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            node, original, replacement, stale = [root / name for name in ('disk', 'old', 'new', '42')]
+            node.write_bytes(b'reviewed')
+            replacement.write_bytes(b'replacement')
+            old_inode = node.stat().st_ino
+            stale.symlink_to(node)
+            plan = make_plan(config(), inventory())
+            plan.disk['path'] = str(node)
+            plan.disk['_identity']['disk-seq'] = 42
+            runner = RecordingRunner()
+            record = runner.run
+
+            def run(argv, **kwargs):
+                if argv[0] == 'sfdisk':
+                    fd, = kwargs['pass_fds']
+                    self.assertEqual(os.fstat(fd).st_ino, old_inode)
+                    # Both names now resolve to the replacement; the inherited descriptor
+                    # continues to address the original object across the subprocess boundary.
+                    node.rename(original)
+                    replacement.rename(node)
+                    self.assertEqual(stale.read_bytes(), b'replacement')
+                    self.assertEqual(argv[-1], f'/proc/self/fd/{fd}')
+                    Runner(lambda line: None).run(
+                        [sys.executable, '-c',
+                         'import pathlib, sys; pathlib.Path(sys.argv[1]).write_bytes(b"written")', argv[-1]],
+                        pass_fds=kwargs['pass_fds'])
+                return record(argv, **kwargs)
+
+            runner.run = run
+            def sequence(fd):
+                return 42 if os.fstat(fd).st_ino == old_inode else 43
+
+            with patch.object(arch_backend, 'disk_sequence', side_effect=sequence), \
+                    patch.object(arch_backend.fcntl, 'ioctl', return_value=0), \
+                    self.assertRaises(InstallError) as raised:
+                DeviceOperations(plan, runner).partition(SimpleNamespace(wipe=True, partitions=[]))
+            self.assertEqual(raised.exception.code, Code.DISK_CHANGED)
+            self.assertNotIn('not changed', str(raised.exception))
+            self.assertEqual(original.read_bytes(), b'written')
+            self.assertEqual(node.read_bytes(), b'replacement')
+            self.assertFalse(any(argv[0] == 'lsblk' for argv, _ in runner.commands))
+
+    def test_post_write_sequence_failure_stops_before_reread(self):
+        for after in (43, OSError(19, 'No such device')):
+            plan = make_plan(config(), inventory())
+            runner = RecordingRunner()
+            _, patches = self.disk_identity(plan, [42, after])
+            with contextlib.ExitStack() as stack:
+                for item in patches:
+                    stack.enter_context(item)
+                with self.assertRaises(InstallError) as raised:
+                    DeviceOperations(plan, runner).partition(SimpleNamespace(wipe=True, partitions=[]))
+                arch_backend.fcntl.ioctl.assert_not_called()
+            self.assertEqual(len(runner.commands), 1)
+            self.assertNotIn('not changed', str(raised.exception))
+
+    def test_writer_or_kernel_reread_failure_closes_the_descriptor(self):
+        for fail_writer in (True, False):
+            plan = make_plan(config(), inventory())
+            runner = RecordingRunner()
+            descriptor = []
+
+            def run(argv, **kwargs):
+                fd, = kwargs['pass_fds']
+                descriptor.append(fd)
+                os.fstat(fd)
+                if fail_writer:
+                    raise InstallError(Code.UNSAFE_DISK, 'write failed')
+                return ''
+
+            runner.run = run
+            _, patches = self.disk_identity(plan, [42, 42])
+            with contextlib.ExitStack() as stack:
+                for item in patches:
+                    stack.enter_context(item)
+                arch_backend.fcntl.ioctl.side_effect = OSError(16, 'Device busy')
+                with self.assertRaises(InstallError):
+                    DeviceOperations(plan, runner).partition(SimpleNamespace(wipe=True, partitions=[]))
+            with self.assertRaises(OSError):
+                os.fstat(descriptor[0])
+
     def test_erase_sfdisk_half_open_geometry_and_tree_verification(self):
         import json
         plan = make_plan(config(), inventory())
@@ -95,7 +255,11 @@ class BackendTests(unittest.TestCase):
             {'path': f'/dev/vda{p.number}', 'partn': p.number, 'start': p.start // 512, 'size': p.size}
             for p in plan.partitions]}]})
         archparts = [SimpleNamespace(dev_path=None) for _ in plan.partitions]
-        DeviceOperations(plan, runner).partition(SimpleNamespace(wipe=True, partitions=archparts))
+        _, patches = self.disk_identity(plan, [42, 42, 42, 42])
+        with contextlib.ExitStack() as stack:
+            for item in patches:
+                stack.enter_context(item)
+            DeviceOperations(plan, runner).partition(SimpleNamespace(wipe=True, partitions=archparts))
         command, kwargs = runner.commands[0]
         self.assertEqual(command[0], 'sfdisk')
         self.assertIn('start=2048, size=2097152, type=U', kwargs['input'])
@@ -107,7 +271,10 @@ class BackendTests(unittest.TestCase):
         runner = RecordingRunner()
         query = ('lsblk', '--tree', '-J', '-b', '-o', 'PATH,TYPE,PARTN,START,SIZE,PTTYPE', '/dev/vda')
         runner.responses[query] = '{"blockdevices":[{"pttype":"gpt","children":[]}]}'
-        with self.assertRaises(InstallError):
+        _, patches = self.disk_identity(plan, [42, 42, 42, 42])
+        with contextlib.ExitStack() as stack, self.assertRaises(InstallError):
+            for item in patches:
+                stack.enter_context(item)
             DeviceOperations(plan, runner).partition(SimpleNamespace(wipe=True, partitions=[1, 2]))
         self.assertFalse(any(command[0].startswith('mkfs') for command, _ in runner.commands))
 

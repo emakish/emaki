@@ -31,6 +31,34 @@ if sys.argv[1] != 'status':
 print(json.dumps({'ok': True, 'applications': [{'id': 'editor.desktop', 'name': 'Editor', 'roles': ['editor']}], 'defaults': {'editor': {'id': 'editor.desktop', 'name': 'Editor'}}, 'startup': [{'id': 'fixture.desktop', 'name': 'Fixture', 'enabled': True}]}))
 ''')
     helper.chmod(0o700)
+    # The package backend: gwenview removes after a preview, kate is needed by another package.
+    programs = base / 'bin/emaki-programs'
+    programs.write_text('''#!/usr/bin/env python3
+import json, os, sys
+state = os.path.join(os.environ['XDG_STATE_HOME'], 'programs.log')
+removed = os.path.exists(state) and 'remove gwenview gwenview,kimageannotator' in open(state).read()
+with open(state, 'a') as log:
+    log.write(' '.join(sys.argv[1:]) + '\\n')
+def reply(code, ok=False, **fields):
+    answer = dict(ok=ok, code=code, message='Fixture ' + code, packages=[], requiredBy=[], blocked=[], token='')
+    answer.update(fields)
+    print(json.dumps(answer))
+    sys.exit(0 if ok else 1)
+if sys.argv[1:] == ['list', '--json']:
+    rows = [dict(package='kate', version='1-1', names=['Kate'], ids=['org.kde.kate.desktop'], preinstalled=True)]
+    if not removed:
+        rows.insert(0, dict(package='gwenview', version='1-1', names=['Gwenview'], ids=['org.kde.gwenview.desktop'], preinstalled=True))
+    print(json.dumps(dict(ok=True, programs=rows)))
+elif sys.argv[1:] == ['preview', 'gwenview', '--json']:
+    reply('ready', True, packages=['gwenview', 'kimageannotator'], token='gwenview,kimageannotator')
+elif sys.argv[1:] == ['preview', 'kate', '--json']:
+    reply('required', requiredBy=['some-suite'])
+elif sys.argv[1:] == ['remove', 'gwenview', 'gwenview,kimageannotator', '--json']:
+    reply('removed', True, packages=['gwenview', 'kimageannotator'])
+else:
+    reply('failed')
+''')
+    programs.chmod(0o700)
     env = dict(os.environ, HOME=str(base / 'home'), XDG_CONFIG_HOME=str(base / 'config'),
                XDG_CONFIG_DIRS=str(base / 'config'), XDG_DATA_HOME=str(base / 'data'),
                XDG_DATA_DIRS=str(base / 'data'), XDG_CACHE_HOME=str(base / 'cache'),
@@ -45,7 +73,12 @@ print(json.dumps({'ok': True, 'applications': [{'id': 'editor.desktop', 'name': 
     result = subprocess.run(['qs', '-p', str(base / 'shell/test.qml'), '--no-color'],
                             env=env, capture_output=True, text=True, timeout=30)
     output = result.stdout + result.stderr
-    assert result.returncode == 0 and 'APPS_PAGE_RESULT 2 0' in output, output
+    assert result.returncode == 0 and 'APPS_PAGE_RESULT 3 0' in output, output
     for error in ('ReferenceError', 'TypeError', 'Binding loop', 'Unable to assign', 'Cannot assign'):
         assert error not in output, output
-print('PASS: Apps choices, reset, busy guard and visible backend failures')
+    calls = (base / 'state/programs.log').read_text().splitlines()
+    # Nothing is removed without a preview, and removal carries exactly the previewed list.
+    assert calls[:4] == ['list --json', 'preview kate --json', 'preview gwenview --json',
+                         'remove gwenview gwenview,kimageannotator --json'], calls
+    assert calls[4:] == ['list --json'], calls
+print('PASS: Apps choices, reset, busy guard, visible backend failures and program removal preview')

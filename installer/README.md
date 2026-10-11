@@ -31,23 +31,19 @@ encryption and a RAM-sized hibernation file. BIOS installation is unsupported.
 
 ## Alongside Windows
 
-**Not offered in 0.5.0.** Installing alongside Windows returns only after a check
-on a real Windows (a real shrink of its partition, BitLocker); see DECISIONS,
-2026-10-04 "No experimental options". One switch controls it: `ALONGSIDE` in
-`emaki_installer/constants.py`, `False`. With it off the inventory does not
-probe Windows partitions and publishes no shrink offer, so the Disk step never
-shows the mode or its notes; a plan with `"mode": "alongside"` is refused with
-`unsupported_mode` before any disk is probed; the worker and backend refuse a
-plan made while the mode was offered before any write. Only a source change
-turns it on; there is no environment, protocol or `emaki.test=1` override.
+**Shipped off pending real-Windows acceptance.** The retained implementation uses the
+existing Disk and Review path; it adds no new screens. One source switch,
+`ALONGSIDE` in `emaki_installer/constants.py`, gates inventory, planner, worker
+and backend. There is no environment, protocol or `emaki.test=1` override.
+Disabled builds still refuse plans before disk access. The packaged
+`fixtures/plan-alongside.json` uses the same verified planner as the window.
 
-The code and its unit tests stay in the tree; the alongside tests turn the
-switch on explicitly (`alongside_on()` in `tests/support.py`). The rest of this
-section describes the code with the switch on. The btrfs and ext4 queue cycles
-below passed before the switch was turned off: both shrank, preserved
-NTFS/GPT/EFI data, booted encrypted Emaki, resumed the same kernel session and
-chainloaded the diagnostic Windows EFI target. These are synthetic fixtures;
-real Windows and hardware acceptance remain in the checklist below.
+Real Windows shrink, BitLocker and hardware acceptance remain open (the
+2026-10-04 acceptance decision and checklist below). The synthetic fixture
+proves preservation and EFI chainloading, not a functioning Windows system.
+The tests assert the shipped default is off and enable the path through `alongside_on()`.
+Package builds reject an enabled source switch until a complete real-Windows PASS row is
+committed in `docs/hardware-acceptance.md` (`H-W-ALONGSIDE`).
 
 With the switch on, the Disk step offers "Install alongside Windows" only when the worker reports
 a shrinkable Windows system volume. Read-only probes require an unambiguous
@@ -69,14 +65,14 @@ Plans use `partition_id` for Windows and `shrink_bytes` for **bytes freed for
 Emaki**. The worker reserves the NTFS minimum plus 2 GiB for Windows and at
 least 32 GiB for Emaki. Root must also fit the existing 20 GiB allowance, RAM
 when hibernation is selected, and the LUKS2 header when encrypted. The slider
-starts at half the available space, bounded by those limits. The 0.5.0 UI
+starts at half the available space, bounded by those limits. The 0.6.0 UI
 always sends hibernation off and reserves no RAM-sized space. The review names both resulting sizes,
 preservation behavior, encryption and hibernation, and requires the backup
 acknowledgement before confirmation.
 
 Immediately before writes, the worker repeats the probe after package
 preflight and compares disk/partition identity, geometry, NTFS bounds, ESP
-free space and loader hashes with the review. The transaction then:
+free space and foreign EFI file hashes with the review. The transaction then:
 
 1. Verifies GPT metadata and dry-runs the exact NTFS size without force.
 2. Shrinks NTFS, requiring the tool's successful completion marker.
@@ -101,26 +97,59 @@ and the installation log. There is no automatic rollback of a partial resize.
 
 Only alongside installs add os-prober/ntfs-3g and enable os-prober in GRUB.
 The generated menu must contain Windows Boot Manager; Emaki stays the default.
-Existing Microsoft and foreign fallback EFI files must retain their hashes.
+All existing EFI files outside `EFI/Emaki`, including Microsoft BCD and foreign
+vendor/fallback files, must retain their hashes. Enumeration and streaming
+hashes have finite entry, depth and size bounds; ambiguous names, symlinks,
+special files or unverifiable trees are refused before shrinking.
+If the post-write EFI check fails, installation stops and the log identifies changed,
+missing or unexpected paths (bounded and escaped). Unreadable EFI evidence also gets a
+post-write failure. The diagnostic distinguishes the earlier Windows post-shrink check
+from the current EFI failure, warns against retrying, and asks to retain the log for recovery.
+Both post-write variants and the pre-write unverifiable-EFI refusal remain explicitly
+`[PLACEHOLDER]` text pending owner approval; the feature remains shipped off.
 The ESP, MSR and other partitions are preserved; encryption covers Emaki root.
+On a 100 MiB Windows ESP, installed-system loader refresh remains permanently "kept"
+because it requires at least 256 MiB (DECISIONS 2026-10-06). A foreign fallback also
+keeps loader refresh from replacing it. Snapshot-menu repair still runs without a loader
+generation record: it repairs the menu and existing defaults using Emaki's own intent file
+without replacing foreign EFI files. This does not upgrade the retained loaders.
 With encrypted root, GRUB asks for the Emaki disk password before showing its
 menu, including its Windows choice. A separate Windows option in the firmware
 boot menu can start Windows directly; verify that option on the real laptop.
 
-The self-contained queue job is `tests/vm/iso-alongside-check.sh btrfs RUN`
-or `tests/vm/iso-alongside-check.sh ext4 RUN`, with
-`VMDIR="$HOME/VMs/n2-along"`. It uses one 6 GiB KVM guest, SSH port 2241,
-and the ISO named by `EMAKI_CHECK_ISO` with Minimal software. It creates a
-96 GiB disposable disk with an ESP, MSR and NTFS data, exercises refusals,
-installs, verifies data/GPT/EFI preservation, boots encrypted Emaki,
-checks RAM-sized swap and kernel resume, and selects the Windows GRUB entry.
+The packaged-image queue job is `tests/vm/iso-alongside-check.sh btrfs RUN`
+or `tests/vm/iso-alongside-check.sh ext4 RUN`. Set `EMAKI_CHECK_ISO` to the
+candidate test image, `VMDIR` strictly inside `~/VMs`, and
+`EMAKI_ALONGSIDE_BASE_DISK` to an empty standalone qcow2 base.
+The job requires `cp --reflink=always`; a clone smaller than 80 GiB grows to
+96 GiB. It refuses a nonempty base. No base is changed. It uses one 6 GiB KVM
+guest and `EMAKI_ISO_SSH_PORT` (default 2241). It checks free disk space and
+port availability, then proves through its private monitor that the guest
+owns both the SSH forward and target disk before every remote command.
+
+Each job runs two fresh fixtures: one preserves a foreign fallback, then a
+`-no-fallback` variant verifies the added removable x86-64 EFI loader and records its hash.
+The fixture has an ESP, MSR, NTFS system volume, and a trailing 1 GiB recovery
+partition. The job exercises refusals, installs Minimal software with
+hibernation off, verifies data/GPT/EFI/recovery preservation, boots encrypted
+Emaki, boots a recovery snapshot on btrfs, and selects the Windows GRUB entry.
 Its Microsoft path contains a diagnostic EFI program with a serial marker,
-not Windows. This tests chainloading only. All files and evidence stay under
-the dedicated VM directory, and the guest is stopped on success or failure.
-Before it touches the target disk, the job asks the ISO's worker for a plan
-only; when the worker refuses the mode itself (`unsupported_mode`, as every
-0.5.0 image does), it prints `NOT APPLICABLE`, writes `NOT-APPLICABLE` into the
-run directory and exits 77: neither a pass nor a failure.
+not Windows. This tests chainloading only. All evidence stays in the dedicated
+VM directory, and the guest is stopped on success or failure. Before fixture
+preparation, the job asks the packaged worker for a plan only; a build with
+alongside disabled reports `NOT APPLICABLE`, records that status and exits 77.
+This is neither a pass nor a failure. It never overlays the checkout's worker.
+
+For a source-level storage check inside an already running disposable test guest,
+`tests/vm/fixtures/windows-refusals.py` exercises mounted/read-only, BitLocker,
+hibernated, dirty and insufficient-space refusals. `windows-shrink.py` first
+injects a failed exact-size dry run; `--resize` then shrinks at the verified
+minimum plus reserve. Both check whole-device write counters around refusals,
+in addition to sampled primary/backup GPT and NTFS bytes. Feed the reference
+plan on stdin, then feed the saved `windows-disk.py prepare` baseline to
+`windows-disk.py check --freed BYTES`, using the emitted `shrink_bytes`.
+These checks never replace the packaged-image boot/snapshot checks or the
+real Windows checklist.
 
 ### First real Windows laptop checklist
 
@@ -209,7 +238,7 @@ The render set includes every step, encryption choices and password states,
 a selected map region, active and empty
 time zone searches, and both software choices, at the default 1024 × 700 size.
 The `alongside*` screens replay a worker offer recorded with the alongside
-switch on; a 0.5.0 worker never sends one.
+switch on; a 0.6.0 worker never sends one.
 Use `--width 960 --height 640` for the minimum window, and `--iso-fonts` to limit
 the test to the ISO's Adwaita fonts. `controller.py --unix` additionally exercises
 the real socket; it returns 77 when the sandbox cannot bind Unix sockets.
@@ -261,12 +290,16 @@ installation token. The installed target still uses the plan's `timezone` field.
 
 Software adds `software: "rich" | "minimal"` to the plan config. Omitted means
 `"rich"`, for compatibility with older plans. Rich is preselected and adds
-`emaki-apps` to the same signed offline pacstrap transaction as the base desktop.
+`emaki-apps` and all 19 programs in `emaki_installer.constants.RICH_APPS` as explicit
+targets in the same signed offline pacstrap transaction as the base desktop.
+The programs are optional dependencies of `emaki-apps`; its dependency closure
+alone does not install them.
 Minimal uses only the desktop's Dolphin, Firefox and kitty application set.
 The Review summary names the selection. Preflight resolves the selected set
 before disk writes; missing Rich packages produce `offline_repo_incomplete`
-with an explicit `emaki-apps` message. ISO assembly must include `emaki-apps`
-and all its dependencies in the offline repository. The ext4 fixture exercises
+with an explicit `emaki-apps` message. ISO assembly must include `emaki-apps`,
+every `RICH_APPS` program seeded in `iso/target-packages.txt`, and the dependency
+closure of that complete target set in the offline repository. The ext4 fixture exercises
 Minimal; the btrfs and manual fixtures exercise Rich.
 
 For new installations, login passwords must use printable ASCII characters
@@ -286,16 +319,34 @@ shared protocol state, command arguments or saved configuration.
 
 ## Wi-Fi after installation
 
-The worker captures the active Wi-Fi profile before disk work and writes it into the
-mounted target during Settings, including encrypted installations. A successful join
-from the live desktop works without a recorded installer join. With multiple active
-Wi-Fi adapters, a recorded installer join must identify an active profile; otherwise
-the installer reports that Wi-Fi was not copied. With no active Wi-Fi, nothing is copied,
-even if an earlier installer join remains recorded. Saved but unused profiles are never copied.
+The worker chooses one Wi-Fi profile before disk work and writes it into the mounted
+target during Settings, including encrypted installations (`choose_wifi`, DECISIONS
+2026-10-10 «Keep the joined Wi-Fi when the link dropped»):
 
-Only a private, root-owned regular keyfile from NetworkManager's system-connections
-directories is read. NetworkManager normalizes it offline before saved-secret checks,
-removes live-user restrictions and enables autoconnect. Open and personal networks
+1. the one active Wi-Fi connection, joined on the Network page or from the desktop panel;
+2. with several active, the one the Network page joined;
+3. with none active (the link dropped before the install), the network joined on the
+   Network page; a recorded join that is no longer saved copies nothing, never another
+   saved profile;
+4. with none active and no Network page join (a panel join), the live session's only
+   saved Wi-Fi profile if it has ever connected (NetworkManager's `TIMESTAMP` above 0; a
+   failed join never connected). With several saved profiles nothing is chosen: an
+   earlier connection does not say which network the person means now.
+
+If the live session has saved Wi-Fi or a Network page join and nothing is copied, the
+completion page warns «Wi-Fi was not copied; join it again after restarting.». With no
+Wi-Fi profile and no join at all there is nothing to copy and no warning. Every step goes to the install log as a line
+starting `Wi-Fi:`: how many profiles the live session has, the Network page's join, which
+profile was chosen and why, what was captured, installed, or why not. The log names
+profiles by UUID only: no network names, passwords or keyfile contents.
+
+[PLACEHOLDER] Only a private, root-owned regular keyfile from NetworkManager's system-connections
+directories is read; the profile need not be active. NetworkManager normalizes it offline
+before saved-secret checks, removes live-user restrictions, preserves the source
+autoconnect setting for secured, open and OWE profiles, and
+removes `interface-name` (both join paths bind the profile to the live adapter's name,
+which the installed system need not share). A password held by a desktop keyring client or asked
+each time (`psk-flags` not 0) cannot be copied; the log says so. Open and personal networks
 with saved secrets are supported; enterprise credentials and session-only secrets
 remain unsupported and produce the existing completion warning. The root worker
 writes the selected profile as root:root, mode 0600, inside a mode-0700 target directory.
@@ -321,7 +372,7 @@ the disk; unencrypted installations retain the existing login-password rules.
 
 Plans must explicitly include `encryption: "none" | "account" | "separate"`.
 The separate choice also needs `disk_password`; neither password appears in
-the returned review or logs. The 0.5.0 installer window does not offer hibernation:
+the returned review or logs. The 0.6.0 installer window does not offer hibernation:
 the session on tested hardware did not respond after resume. Its controller keeps
 hibernation off and every UI plan explicitly sends `hibernation: false`; root
 and alongside space calculations do not reserve RAM-sized space.
@@ -339,7 +390,7 @@ Only root is encrypted; the ESP remains plain at `/efi`. Manual encryption
 requires formatting root and preserves the existing GPT and ESP. Any other
 data partitions stay unencrypted, as stated in the UI and review. The common
 `storage_layout` planner function applies these options after a layout builder;
-the alongside builder (off in 0.5.0) calls it without duplicating storage policy.
+the alongside builder calls it without duplicating storage policy.
 
 The shipped Arch GRUB 2:2.16-1 includes `luks2`, `argon2`, `cryptodisk` and
 `pbkdf2` modules, verified in the test ISO. Root uses LUKS2/Argon2id with a
@@ -444,13 +495,18 @@ The worker checks the identities again after package verification, immediately
 before disk writes. Open or held volumes and multi-device members remain refused.
 Alongside preserves other encrypted partitions and requires no confirmation for them.
 
-Fixtures are installed at `/usr/share/emaki-installer/fixtures/`. They assume a
+Fixtures live in the source tree at `installer/fixtures/`; the package and the release image do
+not carry them. They assume a
 disposable **40 GiB virtio disk with serial `emaki-target`**, ID
 `/dev/disk/by-id/virtio-emaki-target`, and use the
 public VM-only account `emaki` / `emaki-vm-test-only`. If `--probe` reports a
 different by-id name, replace `disk_id` and manual `partition_id` fields with exactly the
-reported IDs. The fixture repository override is `http://10.0.2.2:8765/stable`;
-the default fixtures keep `online_update` false for deterministic offline tests.
+reported IDs. The fixtures keep `online_update` false and use the signed offline repository
+on the test ISO. They inherit the packaged mirror configuration without an override.
+[PLACEHOLDER] `repo_server` is accepted only by a source-tree test build in test mode (`emaki.test=1`),
+only over HTTPS; the worker writes `SigLevel = Required` beside it. Packaging disables
+repository overrides at build time, including when the release package boots with
+`emaki.test=1`. A runtime test flag cannot enable this source-only capability.
 
 Before any disk mutation, the worker resolves the full offline package set in a
 temporary pacman database and checks package/signature files. Failure reports
@@ -458,14 +514,14 @@ temporary pacman database and checks package/signature files. Failure reports
 be at least 20 GiB; reused ESPs need at least 32 MiB of verified free space.
 
 Run these commands as root **inside the live ISO VM**, each erase fixture on a
-fresh disposable disk:
+fresh disposable disk. Copy the source fixtures into the current guest directory first:
 
 ```sh
 emaki-install-cli --probe
-emaki-install-cli --plan /usr/share/emaki-installer/fixtures/plan-erase-btrfs.json
-emaki-install-cli --plan /usr/share/emaki-installer/fixtures/plan-erase-btrfs.json --yes
+emaki-install-cli --plan ./plan-erase-btrfs.json
+emaki-install-cli --plan ./plan-erase-btrfs.json --yes
 # On a separate fresh VM disk:
-emaki-install-cli --plan /usr/share/emaki-installer/fixtures/plan-erase-ext4.json --yes
+emaki-install-cli --plan ./plan-erase-ext4.json --yes
 ```
 
 For `plan-manual.json`, use GParted in the VM first: GPT, p1 1 GiB FAT32 with
@@ -475,8 +531,8 @@ before unmounting. The fixture preserves p1 and formats only p2 as btrfs:
 
 ```sh
 emaki-install-cli --probe
-emaki-install-cli --plan /usr/share/emaki-installer/fixtures/plan-manual.json
-emaki-install-cli --plan /usr/share/emaki-installer/fixtures/plan-manual.json --yes
+emaki-install-cli --plan ./plan-manual.json
+emaki-install-cli --plan ./plan-manual.json --yes
 ```
 
 Also test a manual preserved `/home` row, explicit btrfs names, and an

@@ -59,15 +59,7 @@ fn data_dir() -> PathBuf {
 }
 
 fn packaged_niri_default() -> String {
-    let authentication = option_env!("EMAKI_POLKIT_AGENT")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            Path::new(option_env!("EMAKI_PREFIX").unwrap_or("/usr"))
-                .join("lib/polkit-kde-authentication-agent-1")
-        });
-    NIRI_DEFAULT
-        .replace("@EMAKI_DATADIR@", &data_dir().to_string_lossy())
-        .replace("@EMAKI_POLKIT_AGENT@", &authentication.to_string_lossy())
+    NIRI_DEFAULT.replace("@EMAKI_DATADIR@", &data_dir().to_string_lossy())
 }
 
 /// Layout names are checked against the installed XKB rules list, because

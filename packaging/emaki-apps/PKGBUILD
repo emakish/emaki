@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # shellcheck shell=bash disable=SC2034,SC2154
 pkgname=emaki-apps
-pkgver=0.5.0
-pkgrel=1
+pkgver=0.6.0
+pkgrel=2
 pkgdesc='Emaki Rich application set and multimedia codecs'
 arch=('any')
 url='https://github.com/emakish/emaki'
@@ -14,18 +14,13 @@ sha256sums=('770e6c1ed6e2c0d22d19062218e794769043423d419b618938fcd746be5958ec'
             '980e9b3a010612537e485ebcfb9baf12d2ef953e7a2fda3a2e8f11f959ec564b')
 depends=(
     'emaki-desktop'
-    'gwenview' 'ark' 'okular' '7zip' 'unrar'
-    'thunderbird' 'qbittorrent'
-    'haruna' 'elisa'
-    'kate' 'libreoffice-fresh'
+    # Archive formats for Ark and the file manager.
+    '7zip' 'unrar'
     # Metric-compatible with Arial/Times/Courier and Calibri, so Office documents keep
     # their page layout; the English spelling dictionary for LibreOffice and KDE apps.
     'ttf-liberation' 'ttf-carlito' 'hunspell-en_us'
-    'spectacle' 'obs-studio'
-    'plasma-systemmonitor' 'partitionmanager' 'filelight' 'discover' 'flatpak'
-    'fwupd' 'isoimagewriter'
-    'cups' 'print-manager' 'skanlite'
-    'kcharselect' 'keepassxc'
+    # Services and Emaki's own Printers entry, not programs a person removes.
+    'flatpak' 'fwupd' 'cups' 'print-manager'
     'gst-plugins-base' 'gst-plugins-good' 'gst-plugins-bad' 'gst-plugins-ugly'
     # The explicit codec contract of the Rich set. ffmpeg already arrives as a
     # dependency of firefox (Minimal) and of thunderbird, haruna, obs-studio and
@@ -33,6 +28,20 @@ depends=(
     # qt6-multimedia-backend (the other is qt6-multimedia-gstreamer); naming it
     # keeps Qt Multimedia on the FFmpeg backend.
     'gst-libav' 'qt6-multimedia-ffmpeg' 'ffmpeg'
+)
+# The preinstalled programs. The installer installs them explicitly (RICH_APPS), so a
+# person can remove one and no update brings it back. As optional dependencies they
+# stay off the orphan list (pacman -Qdt), so systems upgraded from 0.5.0, where they
+# arrived as dependencies, keep them all.
+optdepends=(
+    'gwenview' 'ark' 'okular'
+    'thunderbird' 'qbittorrent'
+    'haruna' 'elisa'
+    'kate' 'libreoffice-fresh'
+    'spectacle' 'obs-studio'
+    'plasma-systemmonitor' 'partitionmanager' 'filelight' 'discover'
+    'isoimagewriter' 'skanlite'
+    'kcharselect' 'keepassxc'
 )
 
 package() {

@@ -123,6 +123,64 @@ class ShellHealth(unittest.TestCase):
         self.assertTrue(any(self.invocation in ' '.join(args)
                             for args in self.calls if Path(args[0]).name == 'journalctl'))
 
+    def trusted_launch(self):
+        os.environ['EMAKI_SHELL_PROCESS_ID'] = '123'
+        self.launch()
+        os.environ.pop('EMAKI_SHELL_PROCESS_ID')
+        # An explicitly started heal service does not receive OnFailure metadata.
+        os.environ.pop('MONITOR_INVOCATION_ID', None)
+
+    def test_trusted_failure_reconciles_compositor_journal_and_restarts_trusted_shell(self):
+        source = self.broken_file()
+        self.trusted_launch()
+        self.helper.reconcile()
+        self.assertEqual(source.read_bytes(), (self.packaged / 'components/Panel.qml').read_bytes())
+        self.assertEqual(self.helper.select_shell(str(self.override)), str(self.packaged))
+        self.assertFalse(self.actions('restart'), 'must not restart a skipped legacy service')
+        self.assertTrue(any(Path(args[0]).name == 'emaki-shell-trusted' and args[1:] == ['restart']
+                            for args in self.calls))
+        show = next(args for args in self.calls if 'show' in args)
+        self.assertEqual(show[-1], 'niri-emaki.service')
+        query = next(args for args in self.calls if args[0] == 'journalctl')
+        self.assertIn(f'_SYSTEMD_INVOCATION_ID={self.invocation}', query)
+        self.assertIn('--since', query)
+
+    def test_trusted_stale_invocation_or_missing_launch_window_only_opens_recovery(self):
+        for stale in (True, False):
+            with self.subTest(stale=stale):
+                source = self.broken_file()
+                original = source.read_bytes()
+                self.trusted_launch()
+                record = self.helper.runtime_dir() / 'launch.json'
+                data = json.loads(record.read_text())
+                if stale:
+                    data['invocation'] = 'b' * 32
+                else:
+                    del data['since']
+                record.write_text(json.dumps(data))
+                self.calls.clear()
+                self.helper.reconcile()
+                self.assert_notice_without_restart()
+                self.assertFalse(any(Path(args[0]).name == 'emaki-shell-trusted'
+                                     for args in self.calls))
+                self.assertEqual(source.read_bytes(), original)
+
+    def test_trusted_packaged_failure_opens_recovery_without_another_automatic_retry(self):
+        self.broken_file()
+        self.trusted_launch()
+        (self.helper.runtime_dir() / 'packaged').touch()
+        self.helper.reconcile()
+        self.assert_notice_without_restart()
+        self.assertFalse(any(Path(args[0]).name == 'emaki-shell-trusted' for args in self.calls))
+
+    def test_failed_trusted_restart_opens_manual_recovery(self):
+        self.broken_file()
+        self.trusted_launch()
+        self.fail_action = 'restart'
+        self.helper.reconcile()
+        self.assert_notice_without_restart()
+        self.assertEqual(self.helper.select_shell(str(self.override)), str(self.packaged))
+
     def test_relative_qml_cause_is_set_aside(self):
         source = self.broken_file('Panel.qml')
         self.journal = 'Failed to load configuration\n  caused by @Panel.qml[12:4]: Syntax error\n'

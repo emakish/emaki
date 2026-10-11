@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import unittest
 import threading
+from unittest.mock import patch
 
 import emaki_installer
 from emaki_installer.constants import GIB, MAX_FRAME
@@ -10,7 +11,7 @@ from emaki_installer.errors import Code, InstallError
 from emaki_installer.latin_layouts import CONSOLE_CHARS
 from emaki_installer.planner import RESERVED_LOGINS
 from emaki_installer.protocol import Controller, Job, decode_frame, encode_frame
-from support import FakeInventory, config, inventory
+from support import alongside_on, FakeInventory, config, inventory
 
 
 class ProtocolTests(unittest.TestCase):
@@ -192,7 +193,8 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(ack['errors'][0]['code'], 'disk_not_found')
         self.assertNotIn('token', ack)
 
-    def test_alongside_is_refused_before_any_probe(self):
+    @patch('emaki_installer.constants.ALONGSIDE', False)
+    def test_disabled_alongside_is_refused_before_any_probe(self):
         probes = []
         self.controller.inventory.probe = lambda: probes.append(1) or inventory()
         c = config('alongside')
@@ -202,6 +204,16 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn('not available', ack['errors'][0]['msg'])
         self.assertNotIn('token', ack)
         self.assertEqual(probes, [])
+
+    @alongside_on()
+    def test_verified_alongside_plan_reaches_review(self):
+        from test_alongside import windows
+        config, current = windows()
+        self.controller.inventory = FakeInventory(current)
+        ack = self.request('plan', config=config)[0]
+        self.assertEqual(ack['errors'], [])
+        self.assertTrue(ack['token'])
+        self.assertTrue(any('Windows keeps' in line for line in ack['summary']))
 
     def test_cancel_only_marks_job_until_boundary(self):
         self.controller.job = Job('job-test')

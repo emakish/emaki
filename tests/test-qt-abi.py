@@ -15,6 +15,7 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from shell_fixture import shell_wrapper
 
 ROOT = Path(__file__).resolve().parent.parent
 loader = importlib.machinery.SourceFileLoader('qt_check', str(ROOT / 'scripts/emaki-qt-check'))
@@ -28,6 +29,7 @@ class QtAbiTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix='emaki-qt-abi-')
         self.addCleanup(self.temp.cleanup)
         self.work = Path(self.temp.name)
+        self.wrapper = shell_wrapper(self.work / 'wrapper', str(self.work) + ':/usr/bin')
         # Wrapper startup records its selection through the real health helper.
         # Keep that state out of the running desktop's login runtime.
         runtime = self.work / 'runtime'
@@ -150,7 +152,7 @@ class QtAbiTests(unittest.TestCase):
             script = self.work / name
             script.write_text('#!/bin/sh\n' + body + '\n')
             script.chmod(0o755)
-        result = subprocess.run(['sh', str(ROOT / 'scripts/emaki-shell')],
+        result = subprocess.run([str(self.wrapper)],
                                 env=dict(os.environ, PATH=str(self.work) + ':' + os.environ['PATH']),
                                 stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -174,14 +176,14 @@ class QtAbiTests(unittest.TestCase):
         for status in ('0', '1'):
             env['QT_STATUS'] = status
             log.unlink(missing_ok=True)
-            result = subprocess.run(['sh', str(ROOT / 'scripts/emaki-shell')], env=env,
+            result = subprocess.run([str(self.wrapper)], env=env,
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(log.read_text().splitlines(),
                              ['qt-check'] * (1 if status == '0' else 2) + ['qs'])
             self.assertEqual((self.work / 'warning').exists(), status == '1')
         log.unlink()
-        result = subprocess.run(['sh', str(ROOT / 'scripts/emaki-shell'), 'recover'], env=env,
+        result = subprocess.run([str(self.wrapper), 'recover'], env=env,
                                 input='', capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(log.read_text().splitlines(), ['qt-check'])
@@ -220,7 +222,7 @@ fi''',
             script.write_text('#!/bin/sh\n' + body + '\n')
             script.chmod(0o755)
         state = self.work / 'check-count'
-        result = subprocess.run(['sh', str(ROOT / 'scripts/emaki-shell')],
+        result = subprocess.run([str(self.wrapper)],
                                 env=dict(os.environ, PATH=str(self.work) + ':' + os.environ['PATH'],
                                          CHECK_STATE=str(state), CHECK_FIXTURES=str(self.work)),
                                 stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)

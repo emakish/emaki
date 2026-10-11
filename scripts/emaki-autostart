@@ -1,21 +1,45 @@
-#!/bin/sh
+#!/usr/bin/python3 -I
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-# A personal marker disables only this login command; never write user configuration.
-[ "$#" -ge 2 ] || exit 64
-case "$1" in
-    wallpaper|clipboard|authentication|automount|shell|sleep-guard) ;;
-    *) exit 64 ;;
-esac
-config_home=${XDG_CONFIG_HOME:-}
-# XDG base directories must be absolute; ignore a relative override.
-case "$config_home" in /*) ;; *) config_home=${HOME:+$HOME/.config} ;; esac
-if [ -n "$config_home" ]; then
-    marker=$config_home/emaki/autostart-disabled/$1
-    if [ -e "$marker" ] || [ -L "$marker" ]; then
-        printf 'emaki-autostart: disabled by %s\n' "$marker" >&2
-        exit 0
-    fi
-fi
-shift
-exec "$@"
+"""Honor the personal opt-out marker for one login command."""
+import json
+import os
+from pathlib import Path
+import sys
+
+
+def main():
+    if len(sys.argv) < 3 or sys.argv[1] not in {
+            'wallpaper', 'clipboard', 'automount', 'shell', 'sleep-guard'}:
+        return 64
+    trusted = 'WAYLAND_SOCKET' in os.environ
+    # The compositor captures this environment once. Restarts must never search
+    # directories where another process running as the session user can write.
+    if trusted:
+        if sys.argv[1] == 'shell':
+            # Carry data only: the trusted shell never evaluates this environment.
+            # Applications recover the compositor's session before PATH is fixed.
+            excluded = {'WAYLAND_SOCKET', 'EMAKI_SHELL_SESSION_ENV',
+                        'EMAKI_SHELL_ORIGINAL_MALLOC_CONF', 'EMAKI_SHELL_PROCESS_ID'}
+            os.environ['EMAKI_SHELL_SESSION_ENV'] = json.dumps(
+                {key: value for key, value in os.environ.items() if key not in excluded},
+                separators=(',', ':'))
+        os.environ['PATH'] = '@EMAKI_TRUSTED_PATH@'
+    config = os.environ.get('XDG_CONFIG_HOME', '')
+    if not os.path.isabs(config):
+        home = os.environ.get('HOME', '')
+        config = home + '/.config' if home else ''
+    if config:
+        marker = Path(config) / 'emaki/autostart-disabled' / sys.argv[1]
+        if marker.exists() or marker.is_symlink():
+            print(f'emaki-autostart: disabled by {marker}', file=sys.stderr)
+            return 78 if trusted and sys.argv[1] == 'shell' else 0
+    try:
+        os.execvpe(sys.argv[2], sys.argv[2:], os.environ)
+    except OSError as error:
+        print(f'emaki-autostart: {error}', file=sys.stderr)
+        return 127
+
+
+if __name__ == '__main__':
+    sys.exit(main())

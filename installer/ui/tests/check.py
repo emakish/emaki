@@ -128,8 +128,13 @@ def main():
         block = (ROOT / 'packaging/emaki-installer/PKGBUILD').read_text().split('# --- installer window ---')[1].split('# --- end installer window ---')[0]
         checked(['bash', '-c', 'set -eu\nstage() {\n' + block + '\n}\nstage\n'], cwd=ROOT, env=dict(os.environ, pkgdir=temp))
         destination = Path(temp) / 'usr/share/emaki-installer/ui'
-        for name in ['shell.qml', 'InstallerController.qml', 'InstallerView.qml', 'GlassPane.qml', 'TimezoneMap.qml', 'Protocol.js', 'Timezones.js', 'ui-helper.py']:
+        for name in ['shell.qml', 'InstallerView.qml', 'GlassPane.qml', 'TimezoneMap.qml', 'Protocol.js', 'Timezones.js', 'ui-helper.py']:
             assert (destination / name).read_bytes() == (UI / name).read_bytes()
+        # The packaged window always uses the root worker's socket; only the source tree's tests override it.
+        override = 'Quickshell.env("EMAKI_INSTALLER_SOCKET") || "/run/emaki-installer/sock"'
+        source = (UI / 'InstallerController.qml').read_text()
+        assert source.count(override) == 1
+        assert (destination / 'InstallerController.qml').read_text() == source.replace(override, '"/run/emaki-installer/sock"')
         for name in ['ZoneData.js', 'timezone-map.png', 'README.md', 'ODbL-1.0.txt', 'generate-timezones.py']:
             assert (destination / 'assets' / name).read_bytes() == (UI / 'assets' / name).read_bytes()
         assert (destination / 'shaders').is_symlink()

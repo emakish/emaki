@@ -1,0 +1,61 @@
+#!@EMAKI_PYTHON@ -I
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Forward minimal turn identities; the broker authenticates the process tree."""
+import hashlib
+import json
+import subprocess
+import sys
+
+MAX_PAYLOAD = 1024 * 1024
+
+
+def identity(value):
+    if not isinstance(value, str) or not value or len(value) > 4096:
+        raise ValueError('invalid identity')
+    return hashlib.sha256(value.encode('utf-8')).hexdigest()[:48]
+
+
+def report(arguments, stream):
+    if not arguments or arguments[0] not in ('claude', 'codex'):
+        return
+    if arguments[0] == 'claude':
+        if len(arguments) != 1:
+            return
+        raw = stream.read(MAX_PAYLOAD + 1)
+    else:
+        if len(arguments) != 2:
+            return
+        raw = arguments[1]
+    if len(raw) > MAX_PAYLOAD:
+        return
+    payload = json.loads(raw)
+    if not isinstance(payload, dict):
+        return
+    if arguments[0] == 'claude':
+        event = payload.get('hook_event_name')
+        if event not in ('UserPromptSubmit', 'Stop'):
+            return
+        operation = 'turn-start' if event == 'UserPromptSubmit' else 'turn-end'
+        token = identity(payload.get('session_id'))
+    else:
+        if payload.get('type') != 'agent-turn-complete':
+            return
+        operation = 'turn-complete'
+        token = identity(payload.get('thread-id')) + ':' + identity(payload.get('turn-id'))
+    subprocess.run(['@EMAKI_BINDIR@/emaki-sudo', operation, token, '--json'],
+                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                   stderr=subprocess.DEVNULL, timeout=3, check=False)
+
+
+def main():
+    try:
+        report(sys.argv[1:], sys.stdin)
+    except (ValueError, TypeError, RecursionError, OSError, subprocess.TimeoutExpired):
+        pass
+    # Reporting must not block the person's agent when the service is absent.
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

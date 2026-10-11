@@ -10,12 +10,29 @@ import select
 import runpy
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 RENDER = runpy.run_path(str(ROOT / 'scripts/render-paths'))
 PATHS = RENDER['paths']()
+
+
+def wrapper(base):
+    directory = base / 'wrapper'
+    directory.mkdir(exist_ok=True)
+    script = directory / 'emaki-shell'
+    values = dict(PATHS, TRUSTED_PATH=str(base) + ':/usr/bin')
+    script.write_text(RENDER['substitute']((ROOT / 'scripts/emaki-shell').read_text(), values))
+    script.chmod(0o700)
+    for name in ('emaki_paths.py', 'emaki-shell-health', 'emaki-shell-trusted',
+                 'emaki-session-files', 'emaki_session_state.py'):
+        destination = directory / name
+        if not destination.exists():
+            fixture = base / name
+            destination.symlink_to(fixture if fixture.is_file() else ROOT / 'scripts' / name)
+    return str(script)
 
 
 class Recovery(unittest.TestCase):
@@ -92,8 +109,8 @@ class Recovery(unittest.TestCase):
                                + ('exit 1\n' if fail_reset else 'exit 0\n'))
             manager.chmod(0o700)
             env = dict(os.environ, PATH=str(base) + os.pathsep + os.environ['PATH'],
-                       CALLS=str(base / 'calls'), XDG_RUNTIME_DIR=str(base))
-            result = subprocess.run(['/bin/sh', str(ROOT / 'scripts/emaki-shell'), command],
+                       CALLS=str(base / 'calls'), XDG_RUNTIME_DIR=str(base), NIRI_SOCKET='')
+            result = subprocess.run([sys.executable, '-I', wrapper(base), command],
                                     input=input_text, text=True, capture_output=True, env=env,
                                     timeout=5)
             calls = (base / 'calls').read_text().splitlines() if (base / 'calls').exists() else []
@@ -145,8 +162,7 @@ class Recovery(unittest.TestCase):
                     ('1', ['launcher', 'toggle', 'extra'], False)]:
                 with self.subTest(status=status, args=args):
                     (base / 'fallback').unlink(missing_ok=True)
-                    result = subprocess.run(['/bin/sh', str(ROOT / 'scripts/emaki-shell'),
-                                             'call', *args], env=dict(env, QS_STATUS=status),
+                    result = subprocess.run([sys.executable, '-I', wrapper(base), 'call', *args], env=dict(env, QS_STATUS=status),
                                             capture_output=True, text=True, timeout=5)
                     self.assertEqual((base / 'fallback').exists(), expected)
                     self.assertEqual(result.returncode, 0 if expected else int(status))
@@ -194,7 +210,7 @@ if 'ipc' not in sys.argv:
             env = dict(os.environ, PATH=str(base) + os.pathsep + os.environ['PATH'],
                        XDG_RUNTIME_DIR=str(base), EMAKI_SHELL_DIR=str(base / 'override'),
                        INVOCATION_ID='a' * 32, CALLS=str(base / 'calls'))
-            process = subprocess.Popen([str(ROOT / 'scripts/emaki-shell')], env=env,
+            process = subprocess.Popen([sys.executable, '-I', wrapper(base)], env=env,
                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                        stderr=subprocess.PIPE, text=True)
             try:
@@ -205,8 +221,7 @@ if 'ipc' not in sys.argv:
                 self.assertIn(launch.get('runtime_shell', '/usr/share/emaki/shell'),
                               (base / 'calls').read_text().splitlines())
                 self.assertNotIn(env['EMAKI_SHELL_DIR'], (base / 'calls').read_text())
-                result = subprocess.run([str(ROOT / 'scripts/emaki-shell'),
-                                         'call', 'launcher', 'status'],
+                result = subprocess.run([sys.executable, '-I', wrapper(base), 'call', 'launcher', 'status'],
                                         env=env, capture_output=True, text=True, timeout=5)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn(launch.get('runtime_shell', '/usr/share/emaki/shell'),
@@ -241,8 +256,7 @@ if 'ipc' not in sys.argv:
                     (runtime / 'emaki-shell-health').mkdir(parents=True)
                     (runtime / 'emaki-shell-health/packaged').touch()
                     env['XDG_RUNTIME_DIR'] = str(runtime)
-                result = subprocess.run(['/bin/sh', str(base / 'emaki-shell'),
-                                         'call', 'launcher', 'status'], env=env,
+                result = subprocess.run([sys.executable, '-I', wrapper(base), 'call', 'launcher', 'status'], env=env,
                                         capture_output=True, text=True, timeout=5)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 expected = '/usr/share/emaki/shell' if repaired else env['EMAKI_SHELL_DIR']

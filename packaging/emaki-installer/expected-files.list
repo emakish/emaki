@@ -6,6 +6,7 @@
 /usr/lib/python3.14/site-packages/emaki_installer/__init__.py
 /usr/lib/python3.14/site-packages/emaki_installer/arch_backend.py
 /usr/lib/python3.14/site-packages/emaki_installer/boot.py
+/usr/lib/python3.14/site-packages/emaki_installer/boot_media.py
 /usr/lib/python3.14/site-packages/emaki_installer/cli.py
 /usr/lib/python3.14/site-packages/emaki_installer/clock.py
 /usr/lib/python3.14/site-packages/emaki_installer/constants.py
@@ -41,9 +42,6 @@
 /usr/lib/tmpfiles.d/emaki-installer.conf
 /usr/share/applications/emaki-install.desktop
 /usr/share/doc/emaki-installer/README.md
-/usr/share/emaki-installer/fixtures/plan-erase-btrfs.json
-/usr/share/emaki-installer/fixtures/plan-erase-ext4.json
-/usr/share/emaki-installer/fixtures/plan-manual.json
 /usr/share/emaki-installer/grub/unlock-24.pf2
 /usr/share/emaki-installer/ui/GlassPane.qml
 /usr/share/emaki-installer/ui/InstallerController.qml

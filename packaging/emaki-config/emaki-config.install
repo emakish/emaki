@@ -8,16 +8,32 @@
 # does when another package replaces this one. A failed purge is named and never
 # stops the removal.
 pre_remove() {
+    # End keys and retry retained timestamp cleanup while the executable remains.
+    systemctl stop emaki-sudo.service emaki-sudo-cleanup.timer emaki-sudo-cleanup.service ||
+        echo 'emaki-config: sudo timestamp cleanup during service stop failed; retrying' >&2
+    if [[ -d /run/emaki-sudo ]]; then
+        /usr/libexec/emaki/emaki-sudo-broker --cleanup ||
+            echo 'emaki-config: sudo timestamp cleanup failed; retained journals need administrator attention' >&2
+    fi
     /usr/bin/emaki-greeter-provision --root / --purge-published ||
         echo 'emaki-config: published wallpaper copies remain in /var/lib/emaki-greeter; an administrator can remove them' >&2
 }
 
 post_install() {
+    # Publication reports its own error; unrelated package work must still run.
+    /usr/bin/python3 -IB /usr/bin/emaki-shell-generations install || :
     /usr/share/libalpm/scripts/emaki-initramfs-refresh --install-hooks
     /usr/share/libalpm/scripts/emaki-system-migrate --mark-fresh
 }
 
 post_upgrade() {
+    /usr/bin/python3 -IB /usr/bin/emaki-shell-generations install || :
+    # The transaction's usual reload hook runs after this scriptlet. Load the
+    # new sandbox and cleanup settings before restarting with the new binary.
+    if systemctl daemon-reload; then
+        systemctl try-restart emaki-sudo.service
+        systemctl start emaki-sudo-cleanup.timer
+    fi
     /usr/share/libalpm/scripts/emaki-initramfs-refresh --install-hooks
     /usr/bin/python3 -I /usr/bin/emaki-migrate-installer-config
 }

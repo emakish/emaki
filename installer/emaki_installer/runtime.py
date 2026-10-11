@@ -146,7 +146,7 @@ class Runner:
         self.progress = progress
 
     def run(self, argv, *, check=True, input=None, secret=False, timeout=None, watch=None, cancelled=None, quiet=False,
-            termination_timeout=None):
+            termination_timeout=None, pass_fds=()):
         """No shell; secret stdin AND all output of secret commands are suppressed.
 
         watch(line) sees each logged line of this command; a failing watch is ignored.
@@ -171,7 +171,7 @@ class Runner:
             with command_process(argv, termination_timeout=termination_timeout,
                                  stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env,
-                                 start_new_session=True) as process:
+                                 start_new_session=True, pass_fds=pass_fds) as process:
                 if input is not None:
                     data = input.encode() if isinstance(input, str) else input
                     try:

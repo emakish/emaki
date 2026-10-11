@@ -1,0 +1,820 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Users: the accounts of the people on this computer.
+
+The session client lists accounts through AccountsService and logind. Administrative changes
+go through a fixed root helper and Emaki's non-retained auth_admin policy; the helper calls
+AccountsService as root. Own-name editing keeps the stock change-own-user-data path. The
+root helper also secures retained homes before a deleted account's numeric ID can be reused.
+
+  emaki-settings-users status [--json]
+  emaki-settings-users add LOGIN NAME --administrator yes|no [--terminal] [--json]
+  emaki-settings-users remove LOGIN --home keep|delete [--json]
+  emaki-settings-users set-name LOGIN NAME [--json]
+  emaki-settings-users set-password LOGIN [--terminal] [--json]
+  emaki-settings-users set-administrator LOGIN yes|no [--json]
+
+A password is never taken from the command line. With --terminal (what Settings uses: no
+password field in the window, DECISIONS 2026-10-10) the program opens the managed terminal,
+asks there twice, applies the change and returns the answer through a private receipt file
+that holds only the JSON answer; without it, the password is one line on stdin. It leaves
+this program only as a salted hash made by the system's crypt library. Every answer is one JSON
+object (schema_version 1) on stdout; exit 0 read/applied, 1 rejected (nothing changed), 2 usage,
+3 uncertain (the change may have happened but could not be confirmed; the answer keeps the
+fresh account list when it could be read). Raw service messages are never printed.
+
+The accounts are the ones the login screen offers: every account in the UID_MIN..UID_MAX range
+of login.defs whose shell is not nologin or false, and that AccountsService does not call a
+system account. Rules no request can bypass: the computer always keeps at least one usable
+(unlocked) administrator; the account that runs this program is never removed; an account
+that is signed in or still has running programs is not removed. Changes from this program
+are serialised by one lock for the whole machine; writers that do not use it are not, and
+every change is confirmed by reading the account back.
+"""
+import ctypes
+import ctypes.util
+import getpass
+import grp
+import io
+import json
+import os
+from pathlib import Path
+import pwd
+import re
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import warnings
+
+SCHEMA = 1
+ACCOUNTS = 'org.freedesktop.Accounts'
+ACCOUNTS_PATH = '/org/freedesktop/Accounts'
+USER = 'org.freedesktop.Accounts.User'
+LOGIN1 = ('org.freedesktop.login1', '/org/freedesktop/login1', 'org.freedesktop.login1.Manager')
+LOGIN_DEFS = '/etc/login.defs'
+READ_TIMEOUT_MS = 5000
+# An administrator prompt waits for a person; the page shows the call as busy meanwhile.
+CALL_TIMEOUT_MS = 120000
+LOCK_WAIT = 10
+# How long a removal waits for the service to drop the removed account's object.
+SETTLE_WAIT = 5
+# An abstract unix socket name: no file, any user can bind it, and it is freed when the
+# process ends, however it ends. Holding the bound socket is holding the lock of a change.
+LOCK = '\0emaki-settings-users'
+# The installer's rules for the first account (installer/emaki_installer/planner.py).
+LOGIN = re.compile(r'[a-z_][a-z0-9_-]{0,31}')
+NAME_LIMIT = 128
+PASSWORD_LIMIT = 1024
+# AccountsService account types.
+STANDARD, ADMINISTRATOR = 0, 1
+# Service errors that mean the call was refused before anything changed.
+REFUSED_ERRORS = {
+    'org.freedesktop.Accounts.Error.PermissionDenied': 'authorization_refused',
+    'org.freedesktop.DBus.Error.AccessDenied': 'authorization_refused',
+    'org.freedesktop.DBus.Error.InteractiveAuthorizationRequired': 'authorization_refused',
+    'org.freedesktop.Accounts.Error.UserExists': 'login_taken',
+    'org.freedesktop.Accounts.Error.UserDoesNotExist': 'user_not_found',
+    'org.freedesktop.DBus.Error.ServiceUnknown': 'accounts_service_unavailable',
+    'org.freedesktop.DBus.Error.NameHasNoOwner': 'accounts_service_unavailable',
+    'org.freedesktop.DBus.Error.UnknownMethod': 'accounts_service_unavailable',
+}
+
+
+class Refusal(Exception):
+    def __init__(self, reason, sent=False):
+        super().__init__(reason)
+        self.reason = reason
+        # The failure may follow a call the service took.
+        self.sent = sent
+
+
+class Usage(Exception):
+    pass
+
+
+class Accounts:
+    """AccountsService and logind on the system bus (EMAKI_USERS_BUS_ADDRESS in tests)."""
+
+    def __init__(self, address=None):
+        try:
+            import gi
+            gi.require_version('Gio', '2.0')
+            from gi.repository import Gio, GLib
+        except (ImportError, ValueError):
+            raise Refusal('accounts_service_unavailable') from None
+        self.Gio, self.GLib = Gio, GLib
+        try:
+            if address:
+                flags = (Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT
+                         | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION)
+                self.bus = Gio.DBusConnection.new_for_address_sync(address, flags, None, None)
+            else:
+                self.bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+        except GLib.Error:
+            raise Refusal('accounts_service_unavailable') from None
+
+    def call(self, name, path, interface, method, args=None, reply=None, interactive=False):
+        Gio, GLib = self.Gio, self.GLib
+        flags = Gio.DBusCallFlags.ALLOW_INTERACTIVE_AUTHORIZATION if interactive else Gio.DBusCallFlags.NONE
+        try:
+            result = self.bus.call_sync(name, path, interface, method, args,
+                                        GLib.VariantType.new(reply) if reply else None, flags,
+                                        CALL_TIMEOUT_MS if interactive else READ_TIMEOUT_MS, None)
+        except GLib.Error as error:
+            remote = Gio.DBusError.get_remote_error(error) if Gio.DBusError.is_remote_error(error) else ''
+            if remote in REFUSED_ERRORS:
+                raise Refusal(REFUSED_ERRORS[remote]) from None
+            if not interactive:
+                # The service answers a lookup of an account that is gone with a plain failure.
+                failed = remote == 'org.freedesktop.Accounts.Error.Failed'
+                raise Refusal('account_lookup_failed' if failed else 'accounts_service_unavailable') from None
+            # A timeout, a lost connection or a failure of the account tools: the service may
+            # have taken the call. The caller reads the account back.
+            raise Refusal('accounts_service_failed', sent=True) from None
+        return result.unpack() if result is not None else ()
+
+    def find(self, uid):
+        try:
+            return self.call(ACCOUNTS, ACCOUNTS_PATH, ACCOUNTS, 'FindUserById',
+                             self.GLib.Variant('(x)', (uid,)), '(o)')[0]
+        except Refusal as refusal:
+            if refusal.reason in ('user_not_found', 'account_lookup_failed'):
+                return None
+            raise
+
+    def properties(self, path):
+        values = self.call(ACCOUNTS, path, 'org.freedesktop.DBus.Properties', 'GetAll',
+                           self.GLib.Variant('(s)', (USER,)), '(a{sv})')[0]
+        return values
+
+    def sessions(self):
+        """The uids logind knows: signed in, closing or lingering."""
+        users = self.call(*LOGIN1, 'ListUsers', None, '(a(uso))')[0]
+        return {int(uid) for uid, _name, _path in users}
+
+    def create(self, login, name, account_type):
+        return self.call(ACCOUNTS, ACCOUNTS_PATH, ACCOUNTS, 'CreateUser',
+                         self.GLib.Variant('(ssi)', (login, name, account_type)), '(o)', True)[0]
+
+    def delete(self, uid, remove_files):
+        self.call(ACCOUNTS, ACCOUNTS_PATH, ACCOUNTS, 'DeleteUser',
+                  self.GLib.Variant('(xb)', (uid, remove_files)), None, True)
+
+    def set_name(self, path, name):
+        self.call(ACCOUNTS, path, USER, 'SetRealName', self.GLib.Variant('(s)', (name,)), None, True)
+
+    def set_password(self, path, hashed):
+        self.call(ACCOUNTS, path, USER, 'SetPassword', self.GLib.Variant('(ss)', (hashed, '')), None, True)
+
+    def set_account_type(self, path, account_type):
+        self.call(ACCOUNTS, path, USER, 'SetAccountType', self.GLib.Variant('(i)', (account_type,)), None, True)
+
+
+class System:
+    """The account database as the system's name service sees it (files in tests)."""
+
+    def __init__(self, passwd=None, group=None, login_defs=LOGIN_DEFS):
+        self.passwd, self.group, self.login_defs = passwd, group, login_defs
+
+    def entries(self):
+        if self.passwd is None:
+            return [(entry.pw_name, entry.pw_uid, entry.pw_shell) for entry in pwd.getpwall()]
+        rows = []
+        for line in Path(self.passwd).read_text().splitlines():
+            fields = line.split(':')
+            if len(fields) == 7 and fields[2].isdigit():
+                rows.append((fields[0], int(fields[2]), fields[6]))
+        return rows
+
+    def uid_range(self):
+        low, high = 1000, 60000
+        try:
+            for line in Path(self.login_defs).read_text().splitlines():
+                words = line.split('#', 1)[0].split()
+                if len(words) == 2 and words[0] in ('UID_MIN', 'UID_MAX') and words[1].isdigit():
+                    if words[0] == 'UID_MIN':
+                        low = int(words[1])
+                    else:
+                        high = int(words[1])
+        except OSError:
+            pass
+        return low, high
+
+    def candidates(self):
+        """Accounts the login screen offers (shell/helpers/greeter-state.py accounts)."""
+        low, high = self.uid_range()
+        return sorted((uid, name) for name, uid, shell in self.entries()
+                      if low <= uid <= high and shell.rsplit('/', 1)[-1] not in ('nologin', 'false'))
+
+    def taken(self, login):
+        """A user or group of this name exists: useradd would refuse or reuse it."""
+        if self.passwd is not None:
+            names = {name for name, _uid, _shell in self.entries()}
+            groups = {line.split(':', 1)[0] for line in Path(self.group).read_text().splitlines()} if self.group else set()
+            return login in names or login in groups
+        for lookup in (pwd.getpwnam, grp.getgrnam):
+            try:
+                lookup(login)
+                return True
+            except KeyError:
+                pass
+        return False
+
+    def home_exists(self, home):
+        try:
+            os.lstat(home)
+            return True
+        except FileNotFoundError:
+            return False
+        except OSError:
+            raise Refusal('home_removal_failed', sent=True) from None
+
+    def retain_home(self, user):
+        """Make retained files unreachable before this account's UID becomes reusable."""
+        sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import users_home
+        home = user['home']
+        for entry in pwd.getpwall():
+            if entry.pw_uid == user['uid']:
+                continue
+            shared = os.path.normpath(entry.pw_dir) == os.path.normpath(home)
+            try:
+                shared = shared or os.path.samefile(entry.pw_dir, home)
+            except OSError:
+                pass
+            if shared:
+                raise Refusal('home_retention_failed')
+        try:
+            return users_home.retain(home, user['uid'])
+        except (OSError, ValueError):
+            # Protection may have happened before the rename failed: never delete the account.
+            raise Refusal('home_retention_failed', sent=True) from None
+
+
+def crypt_password(password):
+    """A salted hash in the system crypt library's preferred method; the password stays here."""
+    library = None
+    for name in ('libcrypt.so.2', 'libcrypt.so.1', ctypes.util.find_library('crypt')):
+        if not name:
+            continue
+        try:
+            library = ctypes.CDLL(name)
+            break
+        except OSError:
+            continue
+    if library is None or not hasattr(library, 'crypt_gensalt'):
+        raise Refusal('password_unavailable')
+    library.crypt_gensalt.restype = ctypes.c_char_p
+    library.crypt_gensalt.argtypes = [ctypes.c_char_p, ctypes.c_ulong, ctypes.c_char_p, ctypes.c_int]
+    library.crypt.restype = ctypes.c_char_p
+    library.crypt.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+    # A null prefix asks for the best available method; null random bytes, the system's.
+    setting = library.crypt_gensalt(None, 0, None, 0)
+    hashed = library.crypt(password.encode(), setting) if setting else None
+    if not hashed or not hashed.startswith(b'$') or library.crypt(password.encode(), hashed) != hashed:
+        raise Refusal('password_unavailable')
+    return hashed.decode('ascii')
+
+
+def valid_login(login):
+    return isinstance(login, str) and LOGIN.fullmatch(login) is not None
+
+
+def valid_name(name):
+    # A colon ends the passwd field and a comma the name inside it.
+    return (isinstance(name, str) and len(name) <= NAME_LIMIT
+            and not any(ord(c) < 32 or c in ':,\x7f' for c in name))
+
+
+def valid_password(password):
+    # Typed at the login screen and the text console: printable characters of a US keyboard.
+    return (isinstance(password, str) and 1 <= len(password.encode()) <= PASSWORD_LIMIT
+            and password.isascii() and password.isprintable())
+
+
+def lock():
+    """The machine-wide lock of a change; the returned socket holds it until it is closed."""
+    held = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    deadline = time.monotonic() + LOCK_WAIT
+    while True:
+        try:
+            held.bind(LOCK)
+            return held
+        except OSError:
+            if time.monotonic() >= deadline:
+                held.close()
+                raise Refusal('users_busy') from None
+        time.sleep(0.05)
+
+
+class Users:
+    def __init__(self, accounts, system, uid, authorize=False, passwords_hashed=False):
+        self.accounts, self.system, self.uid = accounts, system, uid
+        self.authorize, self.passwords_hashed = authorize, passwords_hashed
+
+    def password_hash(self, password):
+        if self.passwords_hashed:
+            if (not isinstance(password, str) or not re.fullmatch(r'\$[A-Za-z0-9./$=,+-]{1,511}', password)):
+                raise Refusal('invalid_password')
+            return password
+        if not valid_password(password):
+            raise Refusal('invalid_password')
+        return crypt_password(password)
+
+    def read(self):
+        sessions = self.accounts.sessions()
+        users = []
+        for uid, login in self.system.candidates():
+            path = self.accounts.find(uid)
+            values = None
+            if path is not None:
+                try:
+                    values = self.accounts.properties(path)
+                except Refusal:
+                    pass
+            if values is not None and values.get('SystemAccount', False):
+                continue
+            if values is None or values.get('UserName') != login or values.get('Uid') != uid:
+                # The service has no working object for an account the system lists (GOTCHAS
+                # 2026-10-11): show it, change nothing, never count it as an administrator.
+                users.append({'login': login, 'name': '', 'uid': uid, 'administrator': False, 'locked': False,
+                              'current': uid == self.uid, 'signed_in': uid in sessions, 'home': '',
+                              'available': False, 'path': None})
+                continue
+            users.append({
+                'available': True,
+                'login': login,
+                'name': str(values.get('RealName', '')),
+                'uid': uid,
+                'administrator': values.get('AccountType') == ADMINISTRATOR,
+                'locked': bool(values.get('Locked', False)),
+                'current': uid == self.uid,
+                'signed_in': uid in sessions,
+                'home': str(values.get('HomeDirectory', '')),
+                'path': path,
+            })
+        return users
+
+    @staticmethod
+    def public(users):
+        return [{key: value for key, value in user.items() if key != 'path'} for user in users]
+
+    @staticmethod
+    def administrators(users):
+        return [user for user in users if user['administrator'] and not user['locked']]
+
+    def answer(self, status, users=None, **fields):
+        reply = {'schema_version': SCHEMA, 'status': status, **fields}
+        if users is not None:
+            reply['users'] = self.public(users)
+            reply['administrators'] = len(self.administrators(users))
+        return reply
+
+    def status(self):
+        return self.answer('read', self.read())
+
+    def target(self, users, login):
+        if not valid_login(login):
+            raise Refusal('invalid_login')
+        for user in users:
+            if user['login'] == login:
+                if not user['available']:
+                    raise Refusal('account_unavailable')
+                return user
+        raise Refusal('user_not_found')
+
+    def settle(self, path):
+        """Wait until the service drops a removed account's object. It does so on its next
+        reload; an account made before that receives the same numeric ID and no object at all
+        until the service restarts (GOTCHAS 2026-10-11)."""
+        deadline = time.monotonic() + SETTLE_WAIT
+        while time.monotonic() < deadline:
+            try:
+                self.accounts.properties(path)
+            except Refusal:
+                return
+            time.sleep(0.1)
+
+    def confirm(self, action, login, check, before):
+        """Read back after a call; applied only when the account shows the change."""
+        try:
+            users = self.read()
+        except Refusal:
+            return self.answer('uncertain', None, action=action, login=login, reason='change_unconfirmed'), 3
+        if check(users):
+            return self.answer('applied', users, action=action, login=login), 0
+        if before(users):
+            return self.answer('rejected', users, action=action, login=login, reason='accounts_service_failed'), 1
+        return self.answer('uncertain', users, action=action, login=login, reason='change_unconfirmed'), 3
+
+    def change(self, action, login, call, check, before):
+        try:
+            call()
+        except Refusal as refusal:
+            if not refusal.sent:
+                return self.answer('rejected', None, action=action, login=login, reason=refusal.reason), 1
+        return self.confirm(action, login, check, before)
+
+    def check_add(self, login, name):
+        """Refusals an add meets before a password is asked for."""
+        if not valid_login(login):
+            raise Refusal('invalid_login')
+        if not valid_name(name):
+            raise Refusal('invalid_name')
+        users = self.read()
+        if self.system.taken(login) or any(user['login'] == login for user in users):
+            raise Refusal('login_taken')
+        return users
+
+    def add(self, login, name, administrator, password):
+        if not valid_login(login):
+            raise Refusal('invalid_login')
+        if not valid_name(name):
+            raise Refusal('invalid_name')
+        hashed = self.password_hash(password)
+        self.check_add(login, name)
+
+        def absent(rows):
+            return all(user['login'] != login for user in rows)
+        try:
+            path = self.accounts.create(login, name, ADMINISTRATOR if administrator else STANDARD)
+        except Refusal as refusal:
+            if not refusal.sent:
+                return self.answer('rejected', None, action='add', login=login, reason=refusal.reason), 1
+            return self.confirm('add', login, lambda rows: False, absent)
+        try:
+            identity = self.accounts.properties(path)
+            created = next((row for row in self.read() if row['login'] == login), None)
+            if (created is None or not created['available'] or created['path'] != path
+                    or created['uid'] != identity.get('Uid') or identity.get('UserName') != login):
+                raise Refusal('account_without_password')
+        except Refusal:
+            return self.answer('uncertain', action='add', login=login, reason='account_without_password'), 3
+        try:
+            self.accounts.set_password(path, hashed)
+        except Refusal as refusal:
+            # CreateUser does not tell us whether it reused a pre-existing home. Never ask
+            # DeleteUser to remove files during rollback; secure that home before UID reuse.
+            retained = None
+            try:
+                current = next((row for row in self.read() if row['login'] == login), None)
+                keys = ('uid', 'login', 'home', 'path', 'available')
+                if current is not None and all(current[key] == created[key] for key in keys):
+                    retained = self.system.retain_home(created)
+                    self.accounts.delete(created['uid'], False)
+                users = self.read()
+            except Refusal:
+                try:
+                    users = self.read()
+                except Refusal:
+                    users = None
+                return self.answer('uncertain', users, action='add', login=login, reason='account_without_password'), 3
+            if absent(users):
+                if retained is not None:
+                    # The account was taken back, but its protected home changed location.
+                    return self.answer('uncertain', users, action='add', login=login, reason='change_unconfirmed'), 3
+                return self.answer('rejected', users, action='add', login=login, reason=refusal.reason), 1
+            return self.answer('uncertain', users, action='add', login=login, reason='account_without_password'), 3
+        return self.confirm('add', login, lambda rows: any(
+            user['login'] == login and user['name'] == name and user['administrator'] == administrator
+            for user in rows), absent)
+
+    def remove(self, login, delete_home):
+        users = self.read()
+        user = self.target(users, login)
+        if user['current']:
+            raise Refusal('current_user')
+        if user['signed_in']:
+            raise Refusal('user_signed_in')
+        if user in self.administrators(users) and len(self.administrators(users)) <= 1:
+            raise Refusal('last_administrator')
+        retained = None
+        if not delete_home:
+            try:
+                retained = self.system.retain_home(user)
+            except Refusal as refusal:
+                return self.answer('uncertain' if refusal.sent else 'rejected', users,
+                                   action='remove', login=login, reason=refusal.reason), 3 if refusal.sent else 1
+        failed_after_call = False
+        try:
+            self.accounts.delete(user['uid'], delete_home)
+        except Refusal as refusal:
+            if not refusal.sent and retained is None:
+                return self.answer('rejected', action='remove', login=login, reason=refusal.reason), 1
+            failed_after_call = True
+        home_remains = False
+        if delete_home:
+            try:
+                home_remains = self.system.home_exists(user['home'])
+            except Refusal:
+                # An unreadable filesystem is not proof that the requested files are gone.
+                home_remains = True
+                failed_after_call = True
+        reply, code = self.confirm('remove', login,
+                                  lambda rows: all(row['login'] != login for row in rows)
+                                  and not home_remains,
+                                  lambda rows: not failed_after_call and retained is None
+                                  and any(row['login'] == login for row in rows))
+        if delete_home and code == 3 and reply.get('users') is not None:
+            if all(row['login'] != login for row in reply['users']) and home_remains:
+                # Partial userdel failure: preserve the evidence and block subsequent UID reuse.
+                try:
+                    self.system.retain_home(user)
+                except Refusal:
+                    pass
+                reply['reason'] = 'home_removal_failed'
+        if code == 0:
+            self.settle(user['path'])
+        return reply, code
+
+    def set_name(self, login, name):
+        users = self.read()
+        user = self.target(users, login)
+        if not valid_name(name):
+            raise Refusal('invalid_name')
+        if user['name'] == name:
+            return self.answer('applied', users, action='set-name', login=login), 0
+        return self.change('set-name', login, lambda: self.accounts.set_name(user['path'], name),
+                           lambda rows: any(row['login'] == login and row['name'] == name for row in rows),
+                           lambda rows: any(row['login'] == login and row['name'] == user['name'] for row in rows))
+
+    def set_password(self, login, password):
+        users = self.read()
+        user = self.target(users, login)
+        hashed = self.password_hash(password)
+        try:
+            self.accounts.set_password(user['path'], hashed)
+        except Refusal as refusal:
+            if not refusal.sent:
+                return self.answer('rejected', None, action='set-password', login=login, reason=refusal.reason), 1
+            # A hash is never read back: a failure the service may have taken stays uncertain.
+            return self.confirm('set-password', login, lambda rows: False, lambda rows: False)
+        return self.confirm('set-password', login,
+                            lambda rows: any(row['login'] == login for row in rows),
+                            lambda rows: False)
+
+    def set_administrator(self, login, administrator):
+        users = self.read()
+        user = self.target(users, login)
+        if user['administrator'] == administrator:
+            return self.answer('applied', users, action='set-administrator', login=login), 0
+        if not administrator and user in self.administrators(users) and len(self.administrators(users)) <= 1:
+            raise Refusal('last_administrator')
+        account_type = ADMINISTRATOR if administrator else STANDARD
+        return self.change('set-administrator', login,
+                           lambda: self.accounts.set_account_type(user['path'], account_type),
+                           lambda rows: any(row['login'] == login and row['administrator'] == administrator for row in rows),
+                           lambda rows: any(row['login'] == login and row['administrator'] == user['administrator'] for row in rows))
+
+
+def yes_no(value):
+    if value not in ('yes', 'no'):
+        raise Usage()
+    return value == 'yes'
+
+
+def read_password(stream):
+    data = stream.readline(PASSWORD_LIMIT + 2)
+    if data.endswith('\n'):
+        data = data[:-1]
+    if '\n' in data:
+        raise Refusal('invalid_password')
+    return data
+
+
+CODES = {'read': 0, 'applied': 0, 'rejected': 1, 'uncertain': 3}
+
+
+def password_problem(password):
+    # The installer's texts for the same rules (installer/ui/Protocol.js accountErrors).
+    if not password or len(password.encode()) > PASSWORD_LIMIT:
+        return 'Enter a password without line breaks, tabs or other control characters (at most 1024 UTF-8 bytes).'
+    if not valid_password(password):
+        return 'Use only letters, digits and symbols of the English (US) keyboard.'
+    return ''
+
+
+def ask(prompt, stdin, out):
+    """One password line: hidden on a terminal, a plain line from a pipe (tests)."""
+    try:
+        if stdin.isatty():
+            # The standard-library fallback echoes input. Never let it read a secret.
+            with warnings.catch_warnings():
+                warnings.simplefilter('error', getpass.GetPassWarning)
+                return getpass.getpass(prompt)
+        out.write(prompt)
+        out.flush()
+        line = stdin.readline(PASSWORD_LIMIT + 2)
+    except (EOFError, KeyboardInterrupt, getpass.GetPassWarning):
+        return None
+    if not line:
+        return None
+    return line[:-1] if line.endswith('\n') else line
+
+
+def prompt_password(login, stdin, out):
+    """Ask twice; None when the person gives up (Ctrl+C, end of input, three failed tries)."""
+    for _attempt in range(3):
+        first = ask(f'[PLACEHOLDER] New password for {login}: ', stdin, out)
+        if first is None:
+            return None
+        if password_problem(first):
+            print(password_problem(first), file=out)
+            continue
+        second = ask('Confirm password: ', stdin, out)
+        if second is None:
+            return None
+        if second != first:
+            print('The passwords do not match.', file=out)
+            continue
+        return first
+    return None
+
+
+def deliver(receipt, reply, words, stdin, out):
+    """Leave only the JSON answer for Settings, tell the person, keep the result visible."""
+    try:
+        fd = os.open(receipt, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, 'w') as output:
+            output.write(json.dumps(reply, sort_keys=True))
+    except OSError:
+        pass  # Settings stopped waiting; it reads the accounts again.
+    applied = reply['status'] == 'applied'
+    if reply['status'] == 'uncertain':
+        print('\n[PLACEHOLDER] The change could not be confirmed. Settings shows the current accounts.', file=out)
+    elif words[0] == 'set-password':
+        print('\n' + ('Password changed.' if applied else 'Password not changed.'), file=out)
+        if applied:
+            print('[PLACEHOLDER] Their login wallet may still use the previous password.', file=out)
+    else:
+        print('\n' + ('[PLACEHOLDER] The account is ready.' if applied else '[PLACEHOLDER] The account was not created.'),
+              file=out)
+    out.flush()
+    try:
+        if stdin.isatty():
+            input('Press Enter to close this window. ')
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
+def through_terminal(words, users):
+    """Ask for the password in the managed terminal; the window answers through a receipt."""
+    with tempfile.TemporaryDirectory(prefix='emaki-users-') as temporary:
+        receipt = Path(temporary) / 'answer'
+        try:
+            subprocess.run(['emaki-terminal', '--', str(Path(__file__).resolve()), '--password-prompt', str(receipt),
+                            *words], check=False, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL)
+            reply = json.loads(receipt.read_text())
+            if (not isinstance(reply, dict) or reply.get('schema_version') != SCHEMA
+                    or reply.get('status') not in CODES or reply.get('action') != words[0]):
+                raise ValueError('receipt')
+            return reply, CODES[reply['status']]
+        except (OSError, ValueError):
+            pass
+    # No answer: the window did not open, closed early or died during the change.
+    try:
+        rows = users.read()
+    except Refusal:
+        rows = None
+    return users.answer('uncertain', rows, action=words[0], login=words[1], reason='password_window_unconfirmed'), 3
+
+
+def parse_request(argv):
+    """Options follow the verb's required fields; display names are always positional."""
+    sizes = {'status': 1, 'add': 5, 'remove': 4, 'set-name': 3,
+             'set-password': 2, 'set-administrator': 3}
+    size = sizes.get(argv[0]) if argv else None
+    if size is None or len(argv) < size:
+        raise Usage()
+    args, options = list(argv[:size]), list(argv[size:])
+    if (any(option not in ('--json', '--terminal') for option in options)
+            or len(options) != len(set(options))):
+        raise Usage()
+    terminal = '--terminal' in options
+    if terminal and args[0] not in ('add', 'set-password'):
+        raise Usage()
+    if args[0] == 'add' and (args[3] != '--administrator' or args[4] not in ('yes', 'no')):
+        raise Usage()
+    if args[0] == 'remove' and (args[2] != '--home' or args[3] not in ('keep', 'delete')):
+        raise Usage()
+    if args[0] == 'set-administrator' and args[2] not in ('yes', 'no'):
+        raise Usage()
+    return args, terminal
+
+
+def authorized_change(args, users, stdin):
+    """One fixed helper invocation; the secret travels only through its private stdin pipe."""
+    sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import emaki_paths
+    action, login = args[:2]
+    if action == 'add':
+        users.check_add(login, args[2])
+    else:
+        users.target(users.read(), login)
+        if action == 'set-name' and not valid_name(args[2]):
+            raise Refusal('invalid_name')
+    secret = None
+    if action in ('add', 'set-password'):
+        secret = users.password_hash(read_password(stdin)) + '\n'
+    try:
+        result = subprocess.run(['pkexec', str(Path(emaki_paths.LIBEXECDIR) / 'emaki-settings-users-root'),
+                                 'apply', *args], input=secret, text=True, capture_output=True,
+                                timeout=CALL_TIMEOUT_MS / 1000 + 30, check=False)
+        if result.returncode in (126, 127):
+            return users.answer('rejected', action=action, login=login, reason='authorization_refused'), 1
+        reply = json.loads(result.stdout)
+        if (not isinstance(reply, dict) or reply.get('schema_version') != SCHEMA
+                or reply.get('status') not in CODES or reply.get('action') != action
+                or reply.get('login') != login or CODES[reply['status']] != result.returncode):
+            raise ValueError('reply')
+        return reply, result.returncode
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return users.answer('uncertain', action=action, login=login, reason='change_unconfirmed'), 3
+
+
+def run(argv, users, stdin):
+    args, terminal = parse_request(argv)
+    command, rest = args[0], args[1:]
+    if command == 'status' and not rest and not terminal:
+        return users.status(), 0
+    if terminal:
+        # Refuse what can be refused before a window opens; the window checks again.
+        if command == 'add' and len(rest) == 4 and rest[2] == '--administrator':
+            yes_no(rest[3])
+            users.check_add(rest[0], rest[1])
+        elif command == 'set-password' and len(rest) == 1:
+            users.target(users.read(), rest[0])
+        else:
+            raise Usage()
+        return through_terminal(args, users)
+    if users.authorize and not (command == 'set-name' and users.target(users.read(), rest[0])['current']):
+        return authorized_change(args, users, stdin)
+    held = lock() if command in ('add', 'remove', 'set-name', 'set-password', 'set-administrator') else None
+    try:
+        if command == 'add' and len(rest) == 4 and rest[2] == '--administrator':
+            return users.add(rest[0], rest[1], yes_no(rest[3]), read_password(stdin))
+        if command == 'remove' and len(rest) == 3 and rest[1] == '--home' and rest[2] in ('keep', 'delete'):
+            return users.remove(rest[0], rest[2] == 'delete')
+        if command == 'set-name' and len(rest) == 2:
+            return users.set_name(rest[0], rest[1])
+        if command == 'set-password' and len(rest) == 1:
+            return users.set_password(rest[0], read_password(stdin))
+        if command == 'set-administrator' and len(rest) == 2:
+            return users.set_administrator(rest[0], yes_no(rest[1]))
+        raise Usage()
+    finally:
+        if held is not None:
+            held.close()
+
+
+def main(argv, stdin=None, accounts=None, system=None, uid=None, out=None, privileged=False):
+    stdin, out = stdin or sys.stdin, out or sys.stdout
+    # Inside the managed terminal: --password-prompt RECEIPT add|set-password ...
+    prompt = argv[:1] == ['--password-prompt'] and len(argv) > 3 and argv[2] in ('add', 'set-password')
+    words = argv[2:] if prompt else argv
+    action = words[0] if words else ''
+    login = words[1] if len(words) > 1 and action not in ('status',) else None
+    authorize = accounts is None and not privileged
+    try:
+        _args, terminal = parse_request(words)
+        if accounts is None:
+            accounts = Accounts(os.environ.get('EMAKI_USERS_BUS_ADDRESS'))
+        if system is None:
+            system = System(os.environ.get('EMAKI_USERS_PASSWD'), os.environ.get('EMAKI_USERS_GROUP'),
+                            os.environ.get('EMAKI_USERS_LOGIN_DEFS', LOGIN_DEFS))
+        users = Users(accounts, system, os.getuid() if uid is None else uid,
+                      authorize=authorize, passwords_hashed=privileged)
+        if prompt:
+            if terminal:
+                raise Usage()
+            password = prompt_password(login, stdin, out)
+            if password is None:
+                raise Refusal('password_not_entered')
+            reply, code = run(words, users, io.StringIO(password + '\n'))
+            password = None
+        else:
+            reply, code = run(argv, users, stdin)
+    except Usage:
+        reply, code = {'schema_version': SCHEMA, 'status': 'rejected', 'reason': 'invalid_request'}, 2
+    except Refusal as refusal:
+        reply = {'schema_version': SCHEMA, 'status': 'rejected', 'reason': refusal.reason}
+        if action != 'status':
+            reply['action'] = action
+            if login is not None:
+                reply['login'] = login
+        code = 1
+    if prompt:
+        deliver(argv[1], reply, words, stdin, out)
+        return code
+    print(json.dumps(reply, sort_keys=True), file=out)
+    return code
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

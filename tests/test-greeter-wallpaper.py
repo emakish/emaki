@@ -422,11 +422,20 @@ def package_removal_checks(base):
     fixture = base / 'package-removal'
     empty_path = fixture / 'no-commands'
     empty_path.mkdir(parents=True)
+    # pre_remove first stops the sudo services (B2c2); that is the only PATH command it may run.
+    systemctl_log = fixture / 'systemctl.jsonl'
+    systemctl = empty_path / 'systemctl'
+    systemctl.write_text('#!' + sys.executable + '''
+import json, os, sys
+with open(os.environ['SYSTEMCTL_LOG'], 'a') as stream:
+    stream.write(json.dumps(sys.argv[1:]) + '\\n')
+''')
+    systemctl.chmod(0o700)
     log = fixture / 'calls.jsonl'
     command = fixture / 'provisioner'
     copy = fixture / 'emaki-config.install'
     copy.write_text(scriptlet.read_text().replace(provisioner_path, str(command)))
-    environment = {'PATH': str(empty_path), 'FIXTURE_LOG': str(log),
+    environment = {'PATH': str(empty_path), 'FIXTURE_LOG': str(log), 'SYSTEMCTL_LOG': str(systemctl_log),
                    'FIXTURE_PROVISIONER': str(ROOT / 'scripts/emaki-greeter-provision')}
 
     def calls():
@@ -448,7 +457,7 @@ def package_removal_checks(base):
     warning = ('emaki-config: published wallpaper copies remain in /var/lib/emaki-greeter; '
                'an administrator can remove them\n')
     # A failed or missing purge is named but never fails the removal. No other command runs:
-    # PATH is empty, so any would fail with "command not found" on stderr.
+    # PATH holds only the systemctl stub, so any other would fail with "command not found" on stderr.
     command.write_text('#!' + sys.executable + '''
 import json, os, sys
 with open(os.environ['FIXTURE_LOG'], 'a') as stream:
@@ -460,6 +469,9 @@ sys.exit(int(os.environ['FIXTURE_EXIT']))
         result = scriptlet_run('pre_remove "$2"', FIXTURE_EXIT=status)
         assert (result.returncode, result.stdout, result.stderr) == (0, '', expected), result
         assert calls() == [['--root', '/', '--purge-published']]
+        stops = [json.loads(line) for line in systemctl_log.read_text().splitlines()]
+        systemctl_log.unlink()
+        assert stops == [['stop', 'emaki-sudo.service', 'emaki-sudo-cleanup.timer', 'emaki-sudo-cleanup.service']], stops
     command.unlink()
     result = scriptlet_run('pre_remove "$2"')
     assert result.returncode == 0 and result.stderr.endswith(warning), result

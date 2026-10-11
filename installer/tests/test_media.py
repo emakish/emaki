@@ -80,6 +80,60 @@ class MediaTests(unittest.TestCase):
                     self.fail('corrupt media accepted')
             self.assertEqual(runner.commands, [])
 
+    def test_ventoy_iso_repository_stays_offline_for_each_mount_layout(self):
+        layouts = (
+            ('/dev/mapper/ventoy', '253:0', '/run/archiso/bootmnt'),
+            ('/dev/loop0', '7:0', '/run/archiso/bootmnt'),
+            ('/dev/loop0', '7:0', '/run/media/Emaki ISO'),
+        )
+        for filesystem in ('exfat', 'ntfs3'):
+            for device, major_minor, mount in layouts:
+                with self.subTest(filesystem=filesystem, device=device, mount=mount), \
+                        tempfile.TemporaryDirectory() as temporary:
+                    root, runner, notices = Path(temporary), Runner(), []
+                    outer = root / 'run/archiso/img_dev'
+                    outer.mkdir(parents=True)
+                    (outer / 'emaki-0.5.0-x86_64.iso').write_bytes(b'ISO fixture')
+                    repo = root / mount.lstrip('/') / 'emaki/repo'
+                    repo.mkdir(parents=True)
+                    escaped_mount = mount.replace(' ', '\\040')
+                    mountinfo = root / 'proc/self/mountinfo'
+                    mountinfo.parent.mkdir(parents=True)
+                    mountinfo.write_text(
+                        '20 1 0:20 / / rw - overlay airootfs rw\n'
+                        f'30 20 8:17 / /run/archiso/img_dev ro - {filesystem} /dev/sdb1 ro\n'
+                        f'31 20 {major_minor} / {escaped_mount} ro - iso9660 {device} ro\n')
+                    shipped = root / 'etc/emaki-installer/pacman-offline.conf'
+                    shipped.parent.mkdir(parents=True)
+                    shipped.write_text('[options]\nArchitecture = auto\n'
+                                       '[emaki-offline]\n'
+                                       'SigLevel = Required DatabaseOptional TrustedOnly\n'
+                                       f'Server = {(root / "run/archiso/bootmnt/emaki/repo").as_uri()}\n')
+                    original = shipped.read_text()
+                    self.assertEqual(discover_repo(root), repo)
+                    with package_source(runner, ['base', 'linux'], online=False, root=root,
+                                        notice=notices.append, work_parent=root / 'work') as source:
+                        self.assertEqual(source.repo, repo)
+                        self.assertIsNone(source.archives)
+                        config = source.config.read_text()
+                        self.assertEqual([line for line in config.splitlines()
+                                          if line.startswith('Server = ')],
+                                         [f'Server = {repo.as_uri()}'])
+                        self.assertIn('SigLevel = Required DatabaseOptional TrustedOnly\n', config)
+                        self.assertIn('LocalFileSigLevel = Required TrustedOnly\n', config)
+                        self.assertNotIn(outer.as_uri(), config)
+                        self.assertNotIn('Include =', config)
+                        self.assertNotIn('https://', config)
+                        OfflinePacman(runner, root / 'target', source).strap(['base', 'linux'])
+                        self.assertEqual(runner.commands, [
+                            ['pacstrap', '-C', str(source.config), '-K', str(root / 'target'),
+                             'base', 'linux', '--noconfirm', '--needed']])
+                        private = source.config
+                    self.assertEqual(notices, [])
+                    self.assertEqual(shipped.read_text(), original)
+                    self.assertFalse(private.exists())
+                    self.assertTrue(repo.is_dir())
+
     def test_hook_directory_must_stay_private_and_empty(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -227,11 +281,13 @@ class BootMarkerTests(unittest.TestCase):
             root = Path(temporary)
             (root / 'proc').mkdir()
             (root / 'proc/cmdline').write_text('copytoram=y archisodevice=/dev/sdb1')
-            nodes = [{'path': '/dev/sdb1', 'name': '/dev/sdb1', 'label': 'LIVE', 'type': 'part'}]
+            nodes = [{'path': '/dev/sdb', 'type': 'disk'},
+                     {'path': '/dev/sdb1', 'name': '/dev/sdb1', 'label': 'LIVE',
+                      'type': 'part', 'pkname': '/dev/sdb'}]
             probe = Inventory(RecordingRunner(), root=root)
-            self.assertEqual(probe._boot_sources(nodes), ({'/dev/sdb1'}, True))
+            self.assertEqual(probe._boot_sources(nodes), ({'/dev/sdb'}, True))
             (root / 'proc/cmdline').write_text('copytoram=y archisolabel=LIVE')
-            self.assertEqual(probe._boot_sources(nodes), ({'/dev/sdb1'}, True))
+            self.assertEqual(probe._boot_sources(nodes), ({'/dev/sdb'}, True))
             nodes.append({'path': '/dev/sdc1', 'name': '/dev/sdc1', 'label': 'LIVE'})
             self.assertEqual(probe._boot_sources(nodes), (set(), False))
             (root / 'proc/cmdline').write_text('copytoram=y')

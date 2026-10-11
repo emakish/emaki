@@ -27,7 +27,7 @@ class MemoryTests(unittest.TestCase):
         self.assertEqual(source.count(marker), 1)
         capture = "printf '%s\\0' " + source.split(marker, 1)[1]
         fixture = ('\n'.join(lines)
-                   + '\ncode=fixture; disk=fixture; network=fixture; socket_runtime=fixture; cd_args=()\n'
+                   + '\ncode=fixture; render=fixture; disk=fixture; network=fixture; socket_runtime=fixture; cd_args=()\n'
                    + capture)
         with tempfile.TemporaryDirectory() as temporary:
             return subprocess.run(['bash', '-c', fixture, 'run-iso-memory-test',

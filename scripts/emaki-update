@@ -1,8 +1,14 @@
 #!/usr/bin/python3
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Run a full update and explain failures, keeping all package protections."""
+"""Run a full update and explain failures, keeping all package protections.
+
+The keyrings are updated first. A package held at the repository version refuses the
+remaining transaction as a whole; declared dependencies cannot prove ABI compatibility.
+The rollback hold hook still checks every transaction.
+"""
 import argparse
+import json
 import os
 from pathlib import Path
 import re
@@ -22,6 +28,47 @@ try:
 except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'update-manager'))
     from emaki_update_space import preflight
+
+
+PACMAN = ('/usr/bin/pacman',)
+HOLDS = Path('/var/lib/emaki/rollback-holds.json')
+# Signatures of everything else are checked with these, so they are never held
+# and are updated in their own transaction first, as Arch's keyring advice says.
+KEYRINGS = ('archlinux-keyring', 'emaki-keyring')
+NAME = re.compile(r'[a-zA-Z0-9@_+][a-zA-Z0-9@_.+:-]*')
+
+
+def upgrades(pacman=PACMAN):
+    """Return name -> repository version for each installed package pacman would upgrade."""
+    result = subprocess.run([*pacman, '-Qu'], stdin=subprocess.DEVNULL, capture_output=True,
+                            text=True, env=dict(os.environ, LC_ALL='C'))
+    candidates = {}
+    for line in result.stdout.splitlines():
+        match = re.fullmatch(r'(\S+) \S+ -> (\S+)(?: \[ignored\])?', line)
+        if not match or not NAME.fullmatch(match[1]) or match[1] in candidates:
+            raise ValueError('unexpected upgrade list')
+        candidates[match[1]] = match[2]
+    # pacman -Qu exits 1 when nothing is upgradable; any other failure is unknown.
+    if result.returncode not in (0, 1) or result.stderr.strip() or (result.returncode == 1 and candidates):
+        raise ValueError('upgrade list unavailable')
+    return candidates
+
+
+def held(candidates, path=HOLDS):
+    """Holds whose exact version is still the repository's: the hook would refuse them."""
+    try:
+        state = json.loads(path.read_text())
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError):
+        # The hook reports an unreadable record itself and does not refuse for it.
+        return {}
+    holds = state.get('holds') if isinstance(state, dict) else None
+    if not isinstance(holds, dict):
+        return {}
+    return {name: version for name, version in sorted(holds.items())
+            if NAME.fullmatch(name) and name not in KEYRINGS
+            and isinstance(version, str) and candidates.get(name) == version}
 
 
 def run(command, fail_on_hook_error=False):
@@ -73,18 +120,60 @@ def run(command, fail_on_hook_error=False):
     return status if status >= 0 else 128 - status
 
 
+def update(noninteractive, pacman=PACMAN, holds=HOLDS, targets=()):
+    """Refresh keyrings before a full upgrade with any requested program targets."""
+    confirm = ['--noconfirm'] if noninteractive else []
+    status = run([*pacman, '-Sy'], fail_on_hook_error=noninteractive)
+    if status:
+        return status
+    try:
+        candidates = upgrades(pacman)
+    except ValueError:
+        print('[PLACEHOLDER] The available package versions could not be checked. '
+              'The update was refused before changing installed packages.', file=sys.stderr)
+        return 1
+    keyrings = [name for name in KEYRINGS if candidates and name in candidates]
+    if keyrings:
+        print('[PLACEHOLDER] Updating the package signing keys first.', flush=True)
+        status = run([*pacman, '-S', *confirm, *keyrings], fail_on_hook_error=noninteractive)
+        if status:
+            return status
+    blocked = held(candidates, holds)
+    if blocked:
+        print('[PLACEHOLDER] The update was refused because these packages are held after a restore: '
+              + ', '.join(f'{name} {version}' for name, version in blocked.items())
+              + '. A newer version will release each hold automatically. '
+                'To allow a held version again, run: '
+              + ' && '.join(f'sudo emaki-rollback release {name}' for name in blocked), file=sys.stderr)
+        return 1
+    command = [*pacman, '-Su', *confirm]
+    if targets:
+        command.extend(['--needed', *targets])
+    return run(command, fail_on_hook_error=noninteractive)
+
+
 def main():
     parser = argparse.ArgumentParser(description='Update all installed packages [pacman].')
     parser.add_argument('--noninteractive', action='store_true',
                         help='use the default answers for the authorized graphical update')
+    parser.add_argument('--install', metavar='REPOSITORY/PACKAGE',
+                        help='[PLACEHOLDER] install one program as part of a full update')
     args = parser.parse_args()
+    if args.install is not None and (len(args.install) > 512 or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9@._+\-]*/[A-Za-z0-9][A-Za-z0-9@._+\-]*', args.install)):
+        parser.error('[PLACEHOLDER] Select one repository program.')
+    targets = [args.install] if args.install else []
     command = ['/usr/bin/pacman', '-Syu'] + (['--noconfirm'] if args.noninteractive else [])
+    if targets:
+        command.extend(['--needed', *targets])
     try:
         # Let pacman explain its root requirement before reading private metadata.
         if os.geteuid() != 0:
             return run(command, fail_on_hook_error=args.noninteractive)
-        preflight()
-        return run(command, fail_on_hook_error=args.noninteractive)
+        if targets:
+            preflight(targets=targets)
+        else:
+            preflight()
+        return update(args.noninteractive, targets=targets)
     except RuntimeError as error:
         print(str(error), file=sys.stderr)
         return 1

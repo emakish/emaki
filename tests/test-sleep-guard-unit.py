@@ -17,11 +17,13 @@ import shutil
 import socket
 import struct
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 import unittest
 from runtime_fixture import short_runtime
+from shell_fixture import shell_wrapper
 import reaper
 reaper.guard()  # nothing this test starts outlives it
 
@@ -72,7 +74,7 @@ class UnitChecks:
             prefix = Path(directory) / 'payload'
             bindir = prefix / 'bin'
             bindir.mkdir(parents=True)
-            for name in ('emaki-shell', 'emaki-settings-power', 'emaki-sleep-guard'):
+            for name in ('emaki-shell', 'emaki-shell-trusted', 'emaki-settings-power', 'emaki-sleep-guard'):
                 shutil.copy2(ROOT / 'scripts' / name, bindir / name)
             unit.write_text(PATH_RENDERER['substitute'](
                 self.UNIT.read_text(), PATH_RENDERER['paths'](str(prefix))))
@@ -101,13 +103,15 @@ class UnitChecks:
                        QS_DISABLE_CRASH_HANDLER='1')
             env.update({key: value.replace('{private}', private) for key, value in environ.items()})
             if self.SCRIPT.name == 'emaki-shell':
-                Path(private, 'run/readlink').symlink_to(shutil.which('readlink'))
                 checker = Path(private, 'run/emaki-qt-check')
                 checker.write_text('#!/bin/sh\nexit 0\n')
                 checker.chmod(0o700)
                 env['PATH'] = private + '/run:' + env.get('PATH', '')
             if callable(argv):
                 argv = argv(private)
+            if self.SCRIPT.name == 'emaki-shell':
+                wrapper = shell_wrapper(Path(private) / 'wrapper', env['PATH'])
+                argv = [sys.executable, '-I', str(wrapper), *argv[1:]]
             done = subprocess.run(argv, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
             return done.returncode, done.stdout + done.stderr
 
@@ -413,7 +417,7 @@ class ShellRestart(UnitChecks, unittest.TestCase):
         self.assertEqual(self.prevented(), {'127'})
 
     def test_qs_missing_is_127(self):
-        status, output = self.exit_status(['/bin/sh', str(self.SCRIPT)], PATH='{private}/run',
+        status, output = self.exit_status([str(self.SCRIPT)], PATH='{private}/run',
                                           EMAKI_SHELL_DIR=str(ROOT / 'shell'))
         self.assertEqual(status, 127, output)
         self.assertIn(str(status), self.prevented())
@@ -427,9 +431,9 @@ class ShellRestart(UnitChecks, unittest.TestCase):
         def broken(private):
             Path(private, 'shell').mkdir()
             Path(private, 'shell/shell.qml').write_text(self.BROKEN)
-            return ['/bin/sh', str(self.SCRIPT)]
+            return [str(self.SCRIPT)]
         for name, argv, shell in (('QML type error', broken, '{private}/shell'),
-                                  ('no shell directory', ['/bin/sh', str(self.SCRIPT)], '{private}/missing')):
+                                  ('no shell directory', [str(self.SCRIPT)], '{private}/missing')):
             with self.subTest(name):
                 status, output = self.exit_status(argv, EMAKI_SHELL_DIR=shell)
                 self.assertEqual(status, 255, output)
@@ -473,7 +477,8 @@ class ShellRestart(UnitChecks, unittest.TestCase):
                        XDG_CONFIG_HOME=private + '/config', EMAKI_SHELL_DIR=private + '/shell',
                        WAYLAND_DISPLAY='wayland-test', QT_QPA_PLATFORM='wayland',
                        QT_QUICK_BACKEND='software', PATH=private + '/run:' + env.get('PATH', ''))
-            shell = subprocess.Popen(['/bin/sh', str(self.SCRIPT)], env=env, stdin=subprocess.DEVNULL,
+            wrapper = shell_wrapper(Path(private) / 'wrapper', env['PATH'])
+            shell = subprocess.Popen([sys.executable, '-I', str(wrapper)], env=env, stdin=subprocess.DEVNULL,
                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             output = []
 

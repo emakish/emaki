@@ -4,6 +4,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import shutil
 import socket
 import signal
@@ -36,13 +37,17 @@ for filename in [*FILES, *map(str, sorted(Path('tests/fixtures').rglob('*.qml'))
 
 lint = subprocess.run([str(TOOLS / 'qmllint'), '--ignore-settings', '-W', '0', '--json', '-',
                        '-I', os.environ.get('QML_IMPORT_DIR', '/usr/lib/qt6/qml'),
-                       '-I', 'shell', *FILES], text=True, capture_output=True, timeout=30)
+                       '-I', 'shell', '-I', str(CACHE / 'sudo-build/qml'), *FILES], text=True, capture_output=True, timeout=30)
 report = json.loads(lint.stdout)
 (CACHE / 'shell-qmllint.json').write_text(lint.stdout)
 known = []
 # Qt 6.11.2 still checks QProcess::ExitStatus metadata for zero-parameter
 # arrow handlers, including DisplaysService and NightLight.
 additional_metadata = {
+    ('CaptureController.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
+    # The installed polkit plugin exposes AuthFlow at runtime but omits its
+    # declarative name from the flow property's qmltypes entry.
+    ('PolkitAdapter.qml', 'unresolved-type', 'Type "AuthFlow" of property "flow" not found. This is likely due to a missing dependency entry or a type not being exposed declaratively.'),
     ('DisplaysService.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('NightLight.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('SettingsNetworkService.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
@@ -50,8 +55,11 @@ additional_metadata = {
     ('SettingsPowerPage.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('SettingsAppsPage.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('SettingsAboutPage.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
+    ('SettingsPrivacyPage.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('SettingsRegionPage.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('SettingsMaintenancePage.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
+    ('SettingsStoragePage.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
+    ('SettingsUsersService.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('NiriService.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('SessionUpdateNotice.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('WelcomeController.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
@@ -73,7 +81,7 @@ for file in report['files']:
             ('uncreatable-type', 'Type PanelWindow is not creatable.'),
             ('missing-type', 'No type found for property "blurRegion". This may be due to a missing import statement or incomplete qmltypes files.'),
         }
-        capture_panel_metadata = (Path(file['filename']).name in ('LockCapturePanel.qml', 'greeter.qml', 'session-cover.qml')
+        capture_panel_metadata = (Path(file['filename']).name in ('LockCapturePanel.qml', 'greeter.qml', 'session-cover.qml', 'PolkitPromptSurface.qml', 'SudoPromptService.qml', 'SudoKeyWarningSurface.qml', 'CaptureOverlay.qml')
             and warning['id'] == 'uncreatable-type' and warning['message'] == 'Type PanelWindow is not creatable.')
         if (Path(file['filename']).name == 'Surfaces.qml'
                 and (warning['id'], warning['message']) in permitted) or capture_panel_metadata or (Path(file['filename']).name, warning['id'], warning['message']) in additional_metadata:
@@ -81,8 +89,10 @@ for file in report['files']:
         else:
             raise AssertionError((file['filename'], warning))
 # Exact Quickshell metadata gaps; runtime tests exercise these handlers.
-# The integrated settings sections add handlers to the installed metadata gaps.
-assert len(known) <= 34, known
+# The integrated settings sections add handlers to the installed metadata gaps;
+# the Apps page's installed-programs request adds one, the Users page's account and password
+# commands add two. Capture adds two process handlers and two panel interfaces (0.6.0).
+assert len(known) <= 47, known
 assert lint.returncode == 0 or known, (lint.returncode, lint.stderr)
 print(f'QML format OK; qmllint raw rc={lint.returncode}, {len(known)} documented QS metadata diagnostics, no others')
 
@@ -96,10 +106,77 @@ if '--lint-only' in sys.argv:
 HIDDEN_IDS = ['avahi-discover', 'bssh', 'bvnc', 'lftp', 'lstopo', 'qv4l2', 'qvidcap',
               'stoken-gui', 'stoken-gui-small', 'vim',
               'qt6ct', 'org.kde.kdeconnect.nonplasma', 'mpv', 'org.kde.kwrite',
-              'blueman-adapters', 'blueman-manager']
+              'blueman-manager']
 _catalog = Path('shell/AppCatalog.qml').read_text()
 _listed = json.loads(_catalog[_catalog.index('hiddenIds: [') + len('hiddenIds: '):].split('\n', 1)[0])
 assert _listed == HIDDEN_IDS, ('AppCatalog.hiddenIds and the fixture list differ', _listed)
+
+
+# OnlyShowIn/NotShowIn fixtures for the desktops "ni ri" and "x;y" (XDG_CURRENT_DESKTOP below):
+# an empty OnlyShowIn still hides, and list escapes decode before matching.
+SHOW_IN_FIXTURES = {
+    'plain': ('', True),
+    'elsewhere': ('OnlyShowIn=XFCE;MATE;', False),
+    'only-empty': ('OnlyShowIn=', False),
+    'only-empty-element': ('OnlyShowIn=;', False),
+    'only-escaped': (r'OnlyShowIn=XFCE;ni\sri;', True),
+    'not-escaped': (r'NotShowIn=XFCE;ni\sri;', False),
+    'only-semicolon': (r'OnlyShowIn=x\;y;', True),
+}
+
+
+def honours_show_in():
+    """Whether this qs leaves OnlyShowIn entries of other desktops out of applications
+    (quickshell-emaki 0006); blueman-adapters relies on it instead of the hidden list.
+    A qs that has 0006 must also get the empty-key and escape cases right."""
+    with tempfile.TemporaryDirectory(prefix='showin-', dir=CACHE) as temporary:
+        base = Path(temporary)
+        for part in ('data/applications', 'qml', 'runtime', 'cache', 'state'):
+            (base / part).mkdir(parents=True, mode=0o700)
+        for name, (key, _shown) in SHOW_IN_FIXTURES.items():
+            (base / f'data/applications/{name}.desktop').write_text(
+                f'[Desktop Entry]\nType=Application\nName={name}\nExec=true\n{key}\n')
+        (base / 'qml/shell.qml').write_text('''import QtQuick
+import Quickshell
+ShellRoot {
+    readonly property var apps: DesktopEntries.applications
+    Timer {
+        interval: 100
+        repeat: true
+        running: true
+        onTriggered: {
+            const ids = DesktopEntries.applications.values.map(e => e.id);
+            if (ids.includes("plain")) {
+                console.info("SHOW_IN " + ids.sort().join(",") + " END");
+                Qt.quit();
+            }
+        }
+    }
+}
+''')
+        env = {key: value for key, value in os.environ.items()
+               if key not in ('WAYLAND_DISPLAY', 'DISPLAY', 'NIRI_SOCKET', 'XDG_CURRENT_DESKTOP')}
+        env.update(HOME=str(base), QT_QPA_PLATFORM='offscreen', XDG_DATA_DIRS=str(base / 'data'),
+                   XDG_DATA_HOME=str(base / 'none'), XDG_RUNTIME_DIR=str(base / 'runtime'),
+                   XDG_CACHE_HOME=str(base / 'cache'), XDG_STATE_HOME=str(base / 'state'),
+                   XDG_CURRENT_DESKTOP='ni ri:x;y')
+        result = subprocess.run([qs, '-p', str(base / 'qml'), '--no-color'], env=env, text=True,
+                                capture_output=True, timeout=30)
+        output = result.stdout + result.stderr
+        found = re.search(r'SHOW_IN (\S*) END', output)
+        assert result.returncode == 0 and found, output
+        listed = set(found[1].split(','))
+        if 'elsewhere' in listed:
+            return False
+        expected = {name for name, (_key, shown) in SHOW_IN_FIXTURES.items() if shown}
+        assert listed == expected, ('OnlyShowIn/NotShowIn decision differs', sorted(listed), sorted(expected))
+        return True
+
+
+SHOW_IN = honours_show_in()
+if not SHOW_IN:
+    print('BLOCKED: this qs predates quickshell-emaki 0006 (OnlyShowIn/NotShowIn); '
+          'the launcher show-in fixture is not checked')
 
 def smoke(width, height, scale, exclusive_zone=None):
     with short_runtime() as runtime:
@@ -121,9 +198,18 @@ def smoke_with_runtime(width, height, scale, exclusive_zone, runtime):
     for desktop_id in HIDDEN_IDS:
         (profile / 'data' / 'applications' / f'{desktop_id}.desktop').write_text(
             f'[Desktop Entry]\nType=Application\nName=Hidden {desktop_id}\nExec=/usr/bin/true\nCategories=Utility;\nKeywords=fixture;\n')
+    if SHOW_IN:
+        # Blueman's adapter dialog: no hidden id, only the standard key keeps it out.
+        (profile / 'data' / 'applications' / 'blueman-adapters.desktop').write_text(
+            '[Desktop Entry]\nType=Application\nName=Hidden blueman-adapters\nExec=/usr/bin/true\n'
+            'Categories=Utility;\nKeywords=fixture;\nOnlyShowIn=XFCE;MATE;\n')
     (profile / 'state' / 'emaki').mkdir(mode=0o700)
-    (profile / 'state' / 'emaki' / 'recent.json').write_text(json.dumps([
-        dict(kind='app', ref='vim', t=3), dict(kind='app', ref='emaki-alpha', t=2), dict(kind='app', ref='avahi-discover', t=1)]))
+    # A Recent log from before 0006 may name blueman-adapters: byId still resolves it, so
+    # Recent must apply the same desktop decision as Apps and search.
+    recent_log = [dict(kind='app', ref='vim', t=3), dict(kind='app', ref='emaki-alpha', t=2), dict(kind='app', ref='avahi-discover', t=1)]
+    if SHOW_IN:
+        recent_log.append(dict(kind='app', ref='blueman-adapters', t=0))
+    (profile / 'state' / 'emaki' / 'recent.json').write_text(json.dumps(recent_log))
     # Deliberately ignores Exec: checks only that the shell passes the selected
     # desktop ID, with no query interpolation. Real gtk-launch is checked in a live session.
     launcher = profile / 'bin' / 'gtk-launch'
@@ -167,7 +253,7 @@ def smoke_with_runtime(width, height, scale, exclusive_zone, runtime):
                 pass
     thread = threading.Thread(target=titles_server, daemon=True)
     thread.start()
-    env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
+    env = dict(os.environ, QML_IMPORT_PATH=str(CACHE / 'sudo-build/qml'), QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
                QML_DISABLE_DISK_CACHE='1', QT_SCALE_FACTOR=str(scale),
                EMAKI_BIN=str(ROOT / 'tests/fixtures/shell-core.py'),
                EMAKI_TERMINAL=str(terminal_capture), EMAKI_SHELL_NOTIFICATIONS='0', EMAKI_SHELL_FIXTURE=str(profile), PATH=str(profile / 'bin') + os.pathsep + os.environ['PATH'],
@@ -285,9 +371,10 @@ def smoke_with_runtime(width, height, scale, exclusive_zone, runtime):
             wait_state(lambda s: s['launcher_panel']['width'] == 720)
             wait_state(lambda s: s['search']['labels'] == 'ready')
             assert private_title not in call('launcher', 'status')
-            # Recent keeps the visible app and skips the two hidden ids logged around it.
+            # Recent keeps the visible app and skips the hidden ids logged around it, including
+            # blueman-adapters, which only OnlyShowIn hides (with a qs that has 0006).
             call('launcher', 'mode', 'All')
-            recent = wait_state(lambda s: s['search']['recent']['state'] == 'ready' and s['search']['recent']['count'] == 3)['search']
+            recent = wait_state(lambda s: s['search']['recent']['state'] == 'ready' and s['search']['recent']['count'] == 3 + SHOW_IN)['search']
             assert recent['result_count'] == 1 and recent['recent']['groups'] == ['Apps'], recent
             # Every fixture entry has the keyword; only the four listed apps may match.
             call('launcher', 'mode', 'Apps')

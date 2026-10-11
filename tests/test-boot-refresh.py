@@ -173,7 +173,9 @@ class ConfigurationChecks(unittest.TestCase):
             stage = Path(directory)
             (stage / 'grub').mkdir()
             (stage / 'btrfs-config').write_text('GRUB_BTRFS_DIRNAME="/@snapshots"\n')
-            with patch.object(refresh, 'run') as command:
+            with patch.object(refresh, 'run') as command, \
+                    patch.object(refresh, 'regular', return_value=b'if loadfont $font ; then\nfi\n'), \
+                    patch.object(refresh.boot, 'boot_framebuffer', return_value=None):
                 refresh.generate(stage)
             self.assertTrue((stage / 'grub/.emaki-snapshots').is_dir())
             calls = [list(map(str, call.args[0])) for call in command.call_args_list]
@@ -1013,6 +1015,50 @@ class RefreshOrchestrationChecks(unittest.TestCase):
             commands = list(f.commands)
             self.assertEqual(self.hook(f, ['--retry'])[0], 0)
             self.assertEqual(f.commands, commands)
+
+    def test_config_font_payload_upgrade_stages_and_promotes_loader_trial(self):
+        """Private-file hook regression; generators and boot completion are simulated."""
+        hook = (ROOT / 'grub/95-emaki-boot-refresh.hook').read_text()
+        trigger = hook.split('[Trigger]', 2)[1]
+        self.assertIn('Operation = Upgrade\n', trigger)
+        self.assertIn('Target = emaki-config\n', trigger)
+        command, = [shlex.split(line.partition('=')[2]) for line in hook.splitlines()
+                    if line.startswith('Exec =')]
+        self.assertEqual(Path(command[0]).name, 'emaki-boot-refresh')
+        self.assertEqual(command[1:], ['--hook'])
+        with self.fixture(False, plain_fsroot='/@') as f:
+            self.assertEqual(self.hook(f, command[1:])[0], 0)
+            old, = f.mapped('/boot/emaki').iterdir()
+            self.complete_boot(f, old)
+            loaders = [f.mapped(name) for name in
+                       ('/efi/EFI/Emaki/grubx64.efi', '/efi/EFI/BOOT/BOOTX64.EFI')]
+            before = [path.read_bytes() for path in loaders]
+            old_signature = json.loads((old / 'manifest.json').read_text())['inputs_sha256']
+            # An older installation has no menu faces; deliver the committed payload.
+            for font in (ROOT / 'grub/fonts').glob('menu-*.pf2'):
+                f.put(f.mapped('/usr/share/emaki/grub/fonts') / font.name, font.read_bytes())
+            self.assertEqual(self.hook(f, command[1:])[0], 0)
+            state_path = f.mapped('/efi/EFI/Emaki/boot-state.json')
+            state = json.loads(state_path.read_text())
+            self.assertEqual(state['good'], old.name)
+            self.assertNotEqual(state['newest'], old.name)
+            candidate = f.mapped('/boot/emaki') / state['newest']
+            self.assertNotEqual(json.loads((candidate / 'manifest.json').read_text())['inputs_sha256'],
+                                old_signature)
+            self.assertEqual([path.read_bytes() for path in loaders], before)
+            self.assertEqual(refresh.trial_state()['emaki_candidate'], candidate.name)
+            self.assertEqual(refresh.trial_state()['emaki_trial'], '0')
+            menu = f.mapped('/boot/grub/grub.cfg').read_text()
+            self.assertIn('chainloader ($emaki_esp)/EFI/Emaki/loader-' + candidate.name + '.efi', menu)
+            self.assertIn('linux /@/boot/vmlinuz-linux ', menu)
+            self.assertEqual(f.mapped('/boot/grub/grub-btrfs.cfg').read_text(), 'new snapshot menu\n')
+            self.complete_boot(f, candidate)
+            self.assertEqual(json.loads(state_path.read_text())['good'], candidate.name)
+            expected = (candidate / 'grub/x86_64-efi/emaki-early.efi').read_bytes()
+            self.assertEqual([path.read_bytes() for path in loaders], [expected, expected])
+            self.assertFalse(old.exists())
+            self.assertEqual(self.hook(f, command[1:])[0], 0)
+            self.assertEqual(json.loads(state_path.read_text())['newest'], candidate.name)
 
     def test_fresh_install_boots_do_not_stage_a_candidate(self):
         for encrypted in (False, True):

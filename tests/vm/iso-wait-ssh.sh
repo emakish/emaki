@@ -6,8 +6,12 @@ iso_parse "$@"
 ((${#ISO_ARGS[@]} == 0)) || iso_die 'Usage: iso-wait-ssh.sh [--dir DIR] [--ssh-port PORT] [--user USER]'
 iso_ssh_args
 start=$SECONDS
+iso_prove_vm 120
 for ((attempt=0; attempt<60; attempt++)); do
-    if "${ISO_SSH[@]}" true 2>"$ISO_VM/wait-ssh.log"; then
+    # iso_ssh proves ownership again before each attempt: the port may change hands while the
+    # guest boots, and a retry must never reach the VM that took it over.
+    if iso_ssh true 2>"$ISO_VM/wait-ssh.log"; then
+        iso_prove_vm >/dev/null  # and it did not change hands during this contact
         printf 'OK: SSH %s after %ss\n' "$ISO_USER" "$((SECONDS-start))"
         exit 0
     fi

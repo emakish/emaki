@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 
 import reaper
 from runtime_fixture import short_runtime
@@ -28,13 +29,15 @@ class Paths(unittest.TestCase):
         self.base = Path(self.temporary.name)
         self.values = RENDER['paths']('/tmp/x', '/opt/emaki-data', '/opt/emaki-tools')
 
-    def command(self, args, **kwargs):
-        result = subprocess.run(args, text=True, capture_output=True, timeout=60, **kwargs)
+    def command(self, args, timeout=60, **kwargs):
+        result = subprocess.run(args, text=True, capture_output=True, timeout=timeout, **kwargs)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return result.stdout + result.stderr
 
     def test_defaults_and_independent_overrides(self):
         default = RENDER['paths']()
+        self.assertEqual(default['LOCALSTATEDIR'], '/var/lib/emaki')
+        self.assertEqual(RENDER['paths'](localstatedir='/state/emaki')['LOCALSTATEDIR'], '/state/emaki')
         self.assertEqual(default['DATADIR'], '/usr/share/emaki')
         self.assertEqual(default['LIBEXECDIR'], '/usr/libexec/emaki')
         self.assertEqual(self.values['PREFIX'], '/tmp/x')
@@ -42,6 +45,8 @@ class Paths(unittest.TestCase):
         self.assertEqual(self.values['LIBEXECDIR'], '/opt/emaki-tools')
         self.assertEqual(self.values['BINDIR'], '/tmp/x/bin')
         self.assertEqual(self.values['LIBDIR'], '/tmp/x/lib/emaki')
+        self.assertEqual(self.values['SUDO_KEY_MARKER'], '/opt/emaki-data/sudo-key.installed')
+        self.assertEqual(RENDER['paths']('/tmp/x')['SUDO_KEY_MARKER'], '/tmp/x/share/emaki/sudo-key.installed')
         self.assertEqual(RENDER['paths']('/tmp/x')['DATADIR'], '/tmp/x/share/emaki')
         # Other packages' files and system defaults do not move with Emaki's prefix.
         for key in RENDER['SYSTEM']:
@@ -76,7 +81,8 @@ class Paths(unittest.TestCase):
         unsafe = ['relative', '/tmp/two words', '/tmp/new\nline', '/tmp/a"b',
                   "/tmp/a'b", '/tmp/$HOME', '/tmp/`id`', '/tmp/a;b',
                   '/tmp/a|b', '/tmp/a&b', '/tmp/a>b', '/tmp/a<b', '/tmp/a\\b']
-        for argument in ('--prefix', '--datadir', '--libexecdir', '--trusted-path'):
+        for argument in ('--prefix', '--datadir', '--libexecdir', '--localstatedir', '--trusted-path',
+                         '--python', '--qs', '--qmldir', '--qt-pluginsdir'):
             for value in unsafe:
                 with self.subTest(argument=argument, value=value):
                     target = self.base / 'rejected'
@@ -87,6 +93,27 @@ class Paths(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn('must be an absolute path', result.stderr)
                     self.assertFalse(target.exists())
+
+    def test_niri_security_commands_use_installed_absolute_paths(self):
+        for prefix in ('/usr', '/tmp/custom-emaki'):
+            with self.subTest(prefix=prefix):
+                values = RENDER['paths'](prefix)
+                rules = self.command([
+                    sys.executable, str(ROOT / 'scripts/render-paths'),
+                    '--prefix', prefix, '--text', str(ROOT / 'niri/fork-rules.kdl')])
+                trusted = (f'spawn-trusted-shell-at-startup "{values["BINDIR"]}/emaki-autostart" '
+                           f'"shell" "{values["BINDIR"]}/emaki-shell"')
+                revoke = ('Super+Ctrl+Escape hotkey-overlay-title="Revoke sudo keys" '
+                          f'{{ spawn "{values["BINDIR"]}/emaki-sudo" "revoke-all" "--json"; }}')
+                self.assertIn(trusted, rules.splitlines())
+                self.assertIn('include optional=true "sudo-key.kdl"', rules.splitlines())
+                self.assertNotIn('@EMAKI_', rules)
+                optional = self.command([
+                    sys.executable, str(ROOT / 'scripts/render-paths'),
+                    '--prefix', prefix, '--text',
+                    str(ROOT / 'packaging/emaki-sudo-key/sudo-key.kdl')])
+                self.assertIn(revoke, [line.strip() for line in optional.splitlines()])
+                self.assertNotIn('@EMAKI_', optional)
 
     def test_one_pass_substitution_and_repeated_install(self):
         text = ('/usr/share/emaki/shell /usr/share/emaki-update-manager/ui '
@@ -103,6 +130,39 @@ class Paths(unittest.TestCase):
                          '/usr/share/emaki/nested/shell')
         self.assertEqual(RENDER['substitute']('/usr/share/emaki/nested/shell', nested),
                          '/usr/share/emaki/nested/shell')
+
+    def test_trusted_runtime_paths_and_isolated_interpreters_are_substituted(self):
+        selected = {'PYTHON': '/system/bin/python3', 'QS': '/system/bin/qs',
+                    'QMLDIR': '/system/qt/qml', 'QT_PLUGINSDIR': '/system/qt/plugins',
+                    'TRUSTED_PATH': '/system/bin:/system/sbin'}
+        values = RENDER['paths'](system=selected, localstatedir='/state/emaki')
+        for key, value in selected.items():
+            self.assertEqual(RENDER['substitute']('@EMAKI_' + key + '@', values), value)
+        shebang = '#!/usr/bin/python3 -I\n'
+        self.assertEqual(RENDER['substitute'](shebang, values), '#!/system/bin/python3 -I\n')
+        self.assertEqual(RENDER['substitute']('#!/usr/bin/python3 -IB\n', values),
+                         '#!/system/bin/python3 -IB\n')
+        self.assertEqual(RENDER['substitute']('@EMAKI_LOCALSTATEDIR@/shell-generations', values),
+                         '/state/emaki/shell-generations')
+
+    def test_trusted_autostart_ignores_inherited_command_search_path(self):
+        trusted = self.base / 'trusted-bin'
+        hostile = self.base / 'hostile-bin'
+        trusted.mkdir()
+        hostile.mkdir()
+        for directory, result in ((trusted, 'trusted'), (hostile, 'hostile')):
+            command = directory / 'shell-fixture'
+            command.write_text('#!/bin/sh\nprintf "' + result + '\\n"\n')
+            command.chmod(0o755)
+        wrapper = self.base / 'autostart'
+        values = RENDER['paths'](system={'TRUSTED_PATH': str(trusted)})
+        wrapper.write_text(RENDER['substitute']((ROOT / 'scripts/emaki-autostart').read_text(), values))
+        wrapper.chmod(0o755)
+        env = dict(os.environ, PATH=str(hostile), HOME=str(self.base), WAYLAND_SOCKET='3')
+        env.pop('XDG_CONFIG_HOME', None)
+        self.assertEqual(self.command([str(wrapper), 'shell', 'shell-fixture'], env=env), 'trusted\n')
+        env.pop('WAYLAND_SOCKET')
+        self.assertEqual(self.command([str(wrapper), 'shell', 'shell-fixture'], env=env), 'hostile\n')
 
     def test_install_preserves_unowned_files_binary_symlinks_and_modes(self):
         root = self.base / 'stage'
@@ -131,6 +191,21 @@ class Paths(unittest.TestCase):
         self.assertEqual(unowned.read_text(), '/usr/share/emaki/personal')
         self.assertTrue(linked.is_symlink())
         self.assertFalse((directory / 'missing').exists())
+
+    def test_rules_reference_the_installed_map_under_custom_paths(self):
+        root = self.base / 'rules-stage'
+        directory = root / 'opt/emaki-data'
+        directory.mkdir(parents=True)
+        for name in ('agent-rules.md', 'agent-rules-setup.md'):
+            shutil.copyfile(ROOT / 'docs' / name, directory / name)
+        RENDER['render_install'](root, self.values, ROOT / 'packaging/emaki-config/expected-files.list')
+        for name in ('agent-rules.md', 'agent-rules-setup.md'):
+            content = (directory / name).read_text()
+            self.assertIn('/opt/emaki-data/system-map.md', content)
+            self.assertNotIn('/usr/share/emaki', content)
+            self.assertNotIn(str(root), content)
+        self.assertIn('/opt/emaki-data/agent-rules.md',
+                      (directory / 'agent-rules-setup.md').read_text())
 
     def check_python(self, path, values):
         code = ('import json, sys; sys.path.insert(0, sys.argv[1]); '
@@ -191,6 +266,13 @@ class Paths(unittest.TestCase):
         self.assertEqual(json.loads(output)['state'], 'ready')
 
     def test_staged_install_text_and_modules(self):
+        # Relocation checks must leave the artifacts for package() untouched.
+        def production_build_state():
+            build = ROOT / '.cache/sudo-build'
+            return {path.relative_to(build): (path.stat().st_size, path.stat().st_mtime_ns)
+                    for path in build.rglob('*') if path.is_file()}
+
+        production = production_build_state()
         # Only the text payload is under test here; delivery checks build the real
         # core and shaders. A fresh executable avoids rebuilding unrelated code.
         core = self.base / 'core'
@@ -203,10 +285,15 @@ class Paths(unittest.TestCase):
                 stage = self.base / ('custom' if custom else 'prefix')
                 args = ['make', '--no-print-directory', 'install', 'install-niri-emaki',
                         'PREFIX=/tmp/x', 'DESTDIR=' + str(stage),
-                        'CORE_BIN=' + str(core), 'SHADERS=']
+                        'CORE_BIN=' + str(core), 'SHADERS=',
+                        'SUDO_BUILD=' + str(self.base / 'sudo-build')]
                 if custom:
                     args += ['DATADIR=' + values['DATADIR'], 'LIBEXECDIR=' + values['LIBEXECDIR']]
-                self.command(args, cwd=ROOT)
+                # Each relocated install can rebuild all native sudo artifacts.
+                # Use the same build budget as the native broker test harness.
+                self.command(args, cwd=ROOT, timeout=180)
+                self.assertEqual(production_build_state(), production,
+                                 'staged installation changed the production sudo build')
                 failures = []
                 count = 0
                 for path in stage.rglob('*'):
@@ -225,6 +312,28 @@ class Paths(unittest.TestCase):
                 self.assertEqual(failures, [], 'unrendered installed files')
                 libexec = stage / values['LIBEXECDIR'].lstrip('/')
                 data = stage / values['DATADIR'].lstrip('/')
+                policy = stage / 'tmp/x/share/polkit-1/actions/org.emaki.privacy.recovery.policy'
+                annotations = {node.get('key'): node.text
+                               for node in ET.parse(policy).findall('action/annotate')}
+                self.assertEqual(annotations['org.freedesktop.policykit.exec.path'],
+                                 values['LIBEXECDIR'] + '/emaki-privacy-recovery')
+                self.assertEqual((libexec / 'emaki-privacy-recovery').stat().st_mode & 0o7777, 0o755)
+                self.assertEqual(policy.stat().st_mode & 0o7777, 0o644)
+                polkit = stage / values['PREFIX'].lstrip('/') / 'share/polkit-1'
+                rule = (polkit / 'rules.d/00-emaki-programs.rules').read_text()
+                self.assertIn('var helper = "' + values['LIBEXECDIR'] + '/emaki-programs-"', rule)
+                for policy, operation in (('org.emaki.programs.install.policy', 'install'),
+                                          ('org.emaki.programs.policy', 'remove')):
+                    text = (polkit / 'actions' / policy).read_text()
+                    self.assertIn(values['LIBEXECDIR'] + '/emaki-programs-' + operation, text)
+                    self.assertIn('$(command_line)', text)
+                flatpak_policy = (polkit / 'actions/org.emaki.programs.flatpak.policy').read_text()
+                self.assertIn(values['LIBEXECDIR'] + '/emaki-programs-flatpak', flatpak_policy)
+                self.assertIn('$(command_line)', flatpak_policy)
+                for operation in ('install', 'remove'):
+                    self.assertIn('org.emaki.programs.flatpak.' + operation, flatpak_policy)
+                    self.assertIn('exec.argv1">' + operation + '</annotate>', flatpak_policy)
+                self.assertTrue((libexec / 'emaki-programs-flatpak').is_file())
                 self.check_python(libexec / 'emaki_paths.py', values)
                 self.check_python(data / 'shell/helpers/emaki_paths.py', values)
                 self.check_shell(libexec / 'paths', values)

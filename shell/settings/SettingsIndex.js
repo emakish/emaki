@@ -235,10 +235,15 @@ var sections = [
         id: "privacy",
         title: "Privacy & Security",
         group: "System",
-        description: "Which apps may use the camera, microphone and screen; firewall; disk encryption.",
+        description: "[PLACEHOLDER] Review recovery, encryption, sudo keys and remembered portal permissions.",
         colors: ["#9db6d0","#6f8cab"],
         items: [
-
+            {"id":"privacy-recovery","title":"[PLACEHOLDER] Snapshots and rollback","keywords":"snapshot rollback recovery boot menu","source":"SettingsPrivacyPage.qml","explanation":"[PLACEHOLDER] Snapshots and rollback"},
+            {"id":"privacy-encryption","title":"[PLACEHOLDER] Disk encryption","keywords":"disk encryption home storage","source":"SettingsPrivacyPage.qml","explanation":"[PLACEHOLDER] System and home storage"},
+            {"id":"privacy-sudo-key","title":"Sudo key","keywords":"sudo key installed active revoke","source":"SettingsPrivacyPage.qml","explanation":"[PLACEHOLDER] Select a key to revoke it."},
+            {"id":"privacy-portals","title":"[PLACEHOLDER] Portal permissions","keywords":"apps screen capture camera microphone permissions revoke","source":"SettingsPrivacyPage.qml","explanation":"[PLACEHOLDER] These are remembered portal grants, not a complete list of application access or active screen captures. Revoking a grant does not stop active sessions."},
+            {"id":"privacy-lock","title":"Lock & Login","keywords":"lock delay inactivity","source":"SettingsPrivacyPage.qml","explanation":"[PLACEHOLDER] Lock screen delay"},
+            {"id":"privacy-reports","title":"[PLACEHOLDER] Crash and report data","keywords":"crash reports logs diagnostics","source":"SettingsPrivacyPage.qml","explanation":"[PLACEHOLDER] Saved reports"}
         ]
     },
     {
@@ -261,17 +266,24 @@ var sections = [
         description: "Your account, picture and password, and other people on this computer.",
         colors: ["#e3a0b6","#c96f8f"],
         items: [
-
+            {"id":"users-your-account","title":"Your account","keywords":"Your account name administrator user","source":"SettingsUsersPage.qml","explanation":""},
+            {"id":"users-password","title":"Password","keywords":"Password change account","source":"SettingsUsersPage.qml","explanation":"Open the system password prompt in your terminal. Your login wallet may still use your previous password; update its password separately.","staticExplanation":true},
+            {"id":"users-other-users","title":"Other users","keywords":"Other users accounts people administrator remove","source":"SettingsUsersPage.qml","explanation":""},
+            {"id":"users-add-user","title":"[PLACEHOLDER] Add user","keywords":"Add user new account person","source":"SettingsUsersPage.qml","explanation":"[PLACEHOLDER] Create an account with its own files and settings.","staticExplanation":true}
         ]
     },
     {
         id: "storage",
         title: "Storage",
         group: "System",
-        description: "What takes space, and cleaning the package cache and old snapshots.",
+        description: "[PLACEHOLDER] Inspect disk use and preview safe cleanup.",
         colors: ["#8f7f70","#5e5045"],
         items: [
-
+            {"id": "storage-disks", "title": "[PLACEHOLDER] System and home", "keywords": "disk usage filesystem btrfs", "source": "SettingsStoragePage.qml", "explanation": ""},
+            {"id": "storage-snapshots", "title": "[PLACEHOLDER] Snapshots", "keywords": "snapshot disk usage", "source": "SettingsStoragePage.qml", "explanation": ""},
+            {"id": "storage-cache", "title": "[PLACEHOLDER] Package cache", "keywords": "package cleanup cache", "source": "SettingsStoragePage.qml", "explanation": ""},
+            {"id": "storage-logs", "title": "[PLACEHOLDER] Logs", "keywords": "old logs cleanup", "source": "SettingsStoragePage.qml", "explanation": ""},
+            {"id": "storage-trash", "title": "[PLACEHOLDER] Trash", "keywords": "trash cleanup", "source": "SettingsStoragePage.qml", "explanation": ""}
         ]
     },
     {

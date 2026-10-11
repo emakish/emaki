@@ -70,6 +70,100 @@ again. The running panel keeps its own copy of its files until it restarts, so a
 replace its helpers while it is running. Nothing restarts by itself. Restart the computer
 after a kernel update.
 
+## Program manager engine
+
+`emaki-programs` also exposes a catalog and transaction engine; the existing windows keep their
+current appearance. Catalogs contain application components from the platform's standard
+AppStream files and enabled, verified Flathub remotes when Flatpak is installed. Metadata includes
+name, summary, plain-text description, icons, categories, screenshot URLs and licence. Sizes are
+integer bytes from the package backend, or JSON `null` when unavailable. Images are references;
+the engine does not download them. Components missing from AppStream are not synthesized from
+every system library. A partial source failure returns warnings with `partial: true`.
+
+Installed metainfo uses the session language, then English, with one description language at
+a time. Metadata input is capped at 64 MiB both on disk and after gzip expansion. XML and YAML
+have depth 32, 500,000-node/event and 1 MiB scalar limits; catalogs have at most 50,000 components.
+DTDs, entity declarations and YAML anchors/aliases are refused. YAML validation requires the
+optional `python-yaml` package; its absence produces a parser-unavailable warning. Descriptions
+are capped at 16 KiB of UTF-8, other strings at 2 KiB and lists at 64 entries. Oversized or unsafe
+identifiers are rejected rather than shortened into different targets. Display strings, including
+diagnostics and progress, omit Unicode format, bidi and control characters except newlines/tabs.
+Local icons must resolve inside the metadata directory and are never accepted from remote catalogs.
+
+```
+emaki-programs catalog --json
+emaki-programs search paint --source arch --category Graphics --json
+emaki-programs search paint --include-aur --json
+emaki-programs details KEY --json
+emaki-programs plan install KEY --json
+emaki-programs execute install KEY TOKEN --json
+emaki-programs plan remove KEY --json
+emaki-programs execute remove KEY TOKEN --json
+emaki-programs plan update --json
+emaki-programs execute update TOKEN --json
+emaki-programs updates --json
+```
+
+Use the returned opaque `key`, never a display name. Read the entire plan before executing its
+token. Plans are recomputed on execution. Native removals retain the existing exact-set preview
+and system/Emaki/dependency refusals, including the privileged recheck. Updates are full updates
+through the same backend as the update window, with its repository-first Flatpak sequence.
+Repository installation also includes a full update; as with the update window, its final fresh
+package list can change. It uses the existing space check and package hooks and a system-owned
+worker, so a started repository installation survives a closed client. Its details are in the
+system journal under `emaki-programs-install.service`.
+
+Native and system Flatpak authentication headlines name the program first. The full helper
+command and preview token remain in folded Details. The polkit display rule rejects
+unsafe command text, but never grants authorization: valid calls still require `auth_admin`.
+Helper argument validation and privileged preview checks remain authoritative.
+
+Flatpak plans resolve dependencies and related extensions through libflatpak. Execution compares
+the operation list, commits, current deployment and remote identity before deployment. New installs
+use the default system installation through a fixed root helper and an authentication prompt,
+including when the distribution supplies only a system Flathub remote. Its rows and plans expose
+`managementScope: "system"` and `requiresAuthentication: true`. Existing user deployments can be
+removed without root, with `managementScope: "user"` and `requiresAuthentication: false`; new user
+installs are refused. Additional system installations remain read-only. A single row per app ref
+lists its `installedCopies` (installation and origin), preferring an existing user deployment
+until it is removed, then an installed system deployment, then the available default system
+edition. Uninstalled user-remote editions are omitted. No remotes are added,
+no unused-runtime cleanup is requested and personal data is
+retained. Flatpak transactions have their own deployment behavior and are outside root snapshots.
+AUR search is opt-in (at least two characters); results offer only build-in-a-terminal advice.
+The old `list`, `preview` and `remove` commands used by Settings retain their protocol.
+
+For integrations, `emaki-programs serve` reads one JSON object per line (maximum 64 KiB). Each
+request supplies `version: 1`, optional scalar `id`, `method`, and an object `params`:
+
+```json
+{"version":1,"id":"lookup","method":"search","params":{"query":"paint","source":"arch","category":"Graphics","installed":false,"offset":0,"limit":100}}
+```
+
+Methods are `catalog`, `search`, `details`, `plan`, `execute` and `updates`. Search/catalog parameters
+are `query`, `source` (`arch`, `flatpak`, `aur`, or empty), `category`, optional boolean `installed`,
+`offset`, `limit` (1–500), `includeAur` and `refresh`. Details takes `key`; plan takes `action`
+(`install`, `remove`, `update`) and `key` (empty for update); execute also requires `token`.
+Updates takes no parameters and reports existing update status. Responses carry the same `id`
+and `version`, `type: "result"`, and `ok`; progress messages use `type: "progress"`. Errors have a
+machine-readable `code`; current explanatory messages marked `[PLACEHOLDER]` await text approval.
+Malformed requests fail individually and do not end the stream. Transactions are sequential
+within a stream. Separate repository clients share the existing privileged transaction lock.
+
+Ordinary catalog discovery uses installed repository databases and cached Flatpak summaries.
+`--refresh` refreshes configured Flathub summaries in the library's unprivileged cache and updates
+user AppStream metadata; system AppStream remains cached. This can enumerate a newly configured
+system remote before its application metadata has been cached.
+It never refreshes the live repository
+database as a side effect of browsing. Standard Flatpak library bookkeeping may initialize its
+own installation state. After an external package operation, refresh or reopen the engine before
+requesting details; execute always reloads state. Network failures are reported without replacing
+successful sources with an empty success. Upstream metadata is data, not trusted interface markup.
+
+On Arch, `appstream` and `archlinux-appstream-data` ship with the engine. Repository metadata and
+application catalogs are refreshed by the normal full update path. A package with no AppStream
+application component is still available through the ordinary terminal package manager.
+
 ## What is signed
 
 Every Emaki package is signed and pacman refuses an unsigned or wrongly signed package. The
@@ -165,15 +259,18 @@ unavailable. The manual paths below remain available.
 | ext4 | There are no snapshots. If a new kernel is the problem, choose the `linux-lts` entry in the boot menu. Otherwise reinstall the previous package from the cache: `sudo pacman -U /var/cache/pacman/pkg/<file of the previous version>`. |
 | Any, desktop does not start | Ctrl+Alt+F3 opens a text console; log in there and run `sudo pacman -Syu` again once a fix is announced. |
 
-After `emaki-rollback`, only package versions that went backwards are held:
+[PLACEHOLDER] After `emaki-rollback`, only package versions that went backwards are held:
 packages added after the snapshot are not held. An update or local install that
 would install exactly a held version stops before installing anything (pacman).
-The message names the package and prints commands to continue. A full upgrade
-that includes a held version stops as a whole. To upgrade the other packages,
-run `sudo pacman -Syu --ignore NAME`, replacing `NAME` with the held package name;
-separate multiple names with commas. Other versions remain available; a newer
-version releases the hold automatically during the next transaction, without a
-background timer.
+The message names the package and prints commands to continue. A plain
+`pacman -Syu` that includes a held version stops as a whole. The update window and
+`sudo emaki-update` refuse the remaining update as a whole and name the held
+packages. Declared package dependencies do not establish that newer programs can
+use an older held library. `archlinux-keyring` and `emaki-keyring` are never held,
+and `emaki-update` updates available keyring versions in their own transaction
+first. If the available versions cannot be checked, the update stops before any
+package changes. Other versions remain available; a newer version releases the
+hold automatically during the next transaction, without a background timer.
 
 To allow a held version again, run `sudo emaki-rollback release NAME`, replacing
 `NAME` with the package name printed in the refusal. To release every hold, run

@@ -8,7 +8,7 @@ import re
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .constants import BTRFS_OPTIONS, GIB, MIB, MIN_DISK, SUBVOLUMES
+from .constants import BTRFS_OPTIONS, GIB, MIB, MIN_DISK, SUBVOLUMES, TEST_REPO_OVERRIDE
 from . import inventory as alongside
 from .errors import Code, require
 from .graphics import planned_packages
@@ -160,7 +160,7 @@ def alongside_fingerprint(disk):
     return hashlib.sha256(json.dumps(evidence, sort_keys=True).encode()).hexdigest()
 
 
-def validate_config(value):
+def validate_config(value, test_mode=False):
     require(isinstance(value, dict), Code.BAD_CONFIG, 'Config must be an object.')
     c = copy.deepcopy(value)
     allowed = {'mode', 'disk_id', 'partition_id', 'fs', 'mounts', 'shrink_bytes', 'hostname', 'timezone',
@@ -172,7 +172,7 @@ def validate_config(value):
     require(not (set(c) - allowed), Code.BAD_CONFIG, 'Unknown config fields.')
     require(c.get('mode') in ('erase', 'manual', 'alongside'), Code.BAD_CONFIG, 'Invalid mode.')
     if c['mode'] == 'alongside':
-        alongside.require_verified()  # Off by default; refused before any disk is looked at.
+        alongside.require_verified()  # Refuse a disabled build before inspecting its disks.
     require(isinstance(c.get('disk_id'), str), Code.BAD_CONFIG, 'A disk ID is required.')
     if c['mode'] != 'manual':
         require(c.get('fs') in ('btrfs', 'ext4'), Code.BAD_CONFIG, 'Choose btrfs or ext4.')
@@ -257,14 +257,17 @@ def validate_config(value):
     require(c['software'] in ('rich', 'minimal'), Code.BAD_CONFIG, 'Choose Rich or Minimal software.')
     require(type(c['online_update']) is bool, Code.BAD_CONFIG, 'online_update must be boolean.')
     server = c.get('repo_server')
-    if server is not None:
+    if 'repo_server' in c:
+        require(TEST_REPO_OVERRIDE and test_mode, Code.BAD_CONFIG,
+                '[PLACEHOLDER] A repository override requires a test build in test mode.')
         require(isinstance(server, str) and len(server) <= 2048
                 and not any(ch.isspace() or ord(ch) < 32 for ch in server),
                 Code.BAD_CONFIG, 'Invalid repository URL.')
         parsed = urlsplit(server)
-        require(parsed.scheme in ('http', 'https') and parsed.hostname
+        require(parsed.scheme == 'https'
+                and parsed.hostname
                 and not parsed.username and not parsed.password and not parsed.fragment,
-                Code.BAD_CONFIG, 'Repository URL must be HTTP(S), without credentials or fragments.')
+                Code.BAD_CONFIG, '[PLACEHOLDER] Repository URL must be HTTPS, without credentials or fragments.')
     scale = c.get('scale_guess')
     require(scale is None or (type(scale) in (int, float) and 0.5 <= scale <= 4),
             Code.BAD_CONFIG, 'Scale must be null or a number from 0.5 to 4.')
@@ -489,8 +492,8 @@ def validate_encrypted_confirmation(config, disk):
         require(identity in config.get('confirmed_encrypted', []), Code.ENCRYPTED_CONFIRMATION, warning)
 
 
-def make_plan(config, inventory):
-    c = validate_config(config)
+def make_plan(config, inventory, test_mode=False):
+    c = validate_config(config, test_mode)
     graphics_packages = planned_packages(inventory)
     hardware = inventory.get("hardware", {})
     if "secure_boot" in hardware and hardware["secure_boot"] is not False:

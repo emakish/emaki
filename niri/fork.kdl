@@ -4,9 +4,17 @@
 //   personal config exists — this file (fork.kdl); otherwise — fork-system.kdl.
 //
 // First include the entire personal config (which also includes Emaki defaults),
-// then the fork rule.
+// then wallpaper defaults, personal fork settings and protected rules.
 include "~/.config/niri/config.kdl"
-include "fork-rules.kdl"
+// Living wallpaper (2026-10-02): niri-emaki draws the pixel ring per workspace above
+// wpaperd, each workspace from its own random start, 1:1 with the camera, with trains.
+// "image" leaves the plain wpaperd wallpaper. The files come from make install.
+emaki-wallpaper {
+    mode "ring"
+}
+
 // The user's own niri-emaki settings (fork-only keys such as emaki-wallpaper, which stock niri
-// would reject in config.kdl). Last, so they override Emaki's session defaults.
+// would reject in config.kdl). These override the wallpaper default above.
 include optional=true "~/.config/emaki/niri-emaki.kdl"
+// Keep the authentication commands and safety keys after personal settings.
+include "fork-rules.kdl"

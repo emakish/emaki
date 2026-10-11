@@ -1,0 +1,57 @@
+#!/usr/bin/python3 -I
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Apply one account mutation after non-retained administrator authorization."""
+import importlib.machinery
+import importlib.util
+import json
+import os
+from pathlib import Path
+import sys
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import emaki_paths
+
+
+def backend():
+    loader = importlib.machinery.SourceFileLoader('settings_users', str(Path(emaki_paths.BINDIR) / 'emaki-settings-users'))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def main(argv):
+    caller = os.environ.get('PKEXEC_UID', '')
+    reason = 'authorization_refused'
+    if os.geteuid() == 0 and caller.isascii() and caller.isdigit():
+        # No environment-supplied bus, NSS fixture, executable path or Python import path.
+        os.environ.clear()
+        os.environ.update(PATH=emaki_paths.TRUSTED_PATH, LC_ALL='C')
+        users = backend()
+        try:
+            args, terminal = users.parse_request(argv[1:])
+            if argv[:1] != ['apply'] or args != argv[1:] or terminal or args[0] == 'status':
+                raise users.Usage()
+            if not users.valid_login(args[1]):
+                raise users.Usage()
+            if args[0] in ('add', 'set-name') and not users.valid_name(args[2]):
+                raise users.Usage()
+        except users.Usage:
+            reason = 'invalid_request'
+        else:
+            try:
+                return users.main(args, accounts=users.Accounts(), system=users.System(),
+                                  uid=int(caller), privileged=True)
+            except users.Refusal as refusal:
+                print(json.dumps({'schema_version': 1, 'status': 'rejected', 'reason': refusal.reason,
+                                  'action': args[0], 'login': args[1]}))
+                return 1
+    print(json.dumps({'schema_version': 1, 'status': 'rejected', 'reason': reason}))
+    return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

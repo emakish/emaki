@@ -264,7 +264,8 @@ class PlannerTests(unittest.TestCase):
         c = config('alongside')
         c['partition_id'] = '/dev/vda2'
         c['shrink_bytes'] = 41 * GIB
-        self.rejects(c, inventory(), Code.UNSUPPORTED_MODE)
+        with patch('emaki_installer.constants.ALONGSIDE', False):
+            self.rejects(c, inventory(), Code.UNSUPPORTED_MODE)
         with alongside_on():
             self.rejects(c, inventory(), Code.SHRINK_BOUNDS)
 
@@ -278,6 +279,28 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(make_plan(config(), inventory()).config['user']['login'], 'vmuser')
         self.assertEqual(list(RESERVED_LOGINS), sorted(set(RESERVED_LOGINS)))
 
+    def test_repository_override_is_test_mode_and_https_only(self):
+        for server, test_mode in (('https://pkgs.example/stable', False),
+                                  ('http://10.0.2.2:8765/stable', False),
+                                  ('http://10.0.2.2:8765/stable', True),
+                                  ('http://pkgs.example/stable', True),
+                                  ('http://10.0.2.3:8765/stable', True),
+                                  ('ftp://10.0.2.2/stable', True)):
+            with self.subTest(server=server, test_mode=test_mode):
+                c = config()
+                c['repo_server'] = server
+                with self.assertRaises(InstallError):
+                    validate_config(c, test_mode)
+                with self.assertRaises(InstallError):
+                    make_plan(c, inventory(), test_mode)
+        for server in ('https://pkgs.example/stable',):
+            c = config()
+            c['repo_server'] = server
+            self.assertEqual(validate_config(c, True)['repo_server'], server)
+        c = config()
+        c.pop('repo_server', None)
+        validate_config(c)
+
     def test_config_rejects_command_and_password_line_injection(self):
         for key, value in [('hostname', 'host\nBAD=1'), ('timezone', '../../etc'),
                            ('layouts', ['us"}']), ('online_update', 'false'), ('scale_guess', float('nan')),
@@ -286,7 +309,7 @@ class PlannerTests(unittest.TestCase):
             c = config()
             c[key] = value
             with self.assertRaises(InstallError):
-                validate_config(c)
+                validate_config(c, test_mode=True)
         c = config()
         c['user']['password'] = 'secret\nroot:injected'
         with self.assertRaises(InstallError):

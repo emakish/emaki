@@ -1,0 +1,1915 @@
+From d40d401233bcda07f470818614c93ce541f79c75 Mon Sep 17 00:00:00 2001
+From: Emaki contributors <emaki@localhost>
+Date: Sat, 10 Oct 2026 21:00:48 +0000
+Subject: [PATCH] services/polkit: run one request at a time and harden the
+ flow
+
+The service activated a request by taking it off the queue, so a second
+request that arrived while a flow was active found a queue of one and
+replaced the active flow. Requests now wait while a flow is active. A
+finished flow is cleared before the next request starts, so
+PolkitAgent.flow passes through null and is never replaced in place.
+
+- The authentication cookie is no longer logged. The polkit library prints
+  it when POLKIT_DEBUG is set, whatever the value; while a session
+  starts, a print handler drops every message that contains it.
+- A request with only unsupported identities is refused and the queue
+  moves on instead of stalling.
+- A session that completes while it is being initiated (no helper, no
+  such user) cancels the request instead of starting another session
+  recursively.
+- Each request returns exactly one result to polkitd, holds its own
+  reference to the cancellable, disconnects its handler and releases its
+  GTask. A request that is already cancelled on arrival is refused.
+- Selecting another identity is no longer counted as a failed attempt,
+  and only identities offered for the request can be selected.
+- Session::respond encodes the reply into a buffer it owns and clears it
+  with explicit_bzero after polkit wrote it to the helper; the
+  QString::toUtf8 copy was freed without being cleared. The QString and
+  any QML copies of the reply cannot be cleared from here.
+- AuthFlow gains details, subjectPid and callerPid (polkit.subject-pid
+  and polkit.caller-pid). They describe the request; they are not an
+  authenticated identity of the program that asked.
+- PolkitAgent.cancelActiveRequest() cancels the active request, for
+  example when the session locks: the caller is told it is not
+  authorized and the queue moves on.
+
+src/services/polkit/test drives the listener entry point with a fake
+session, without the PolKit helper or PAM. A second test runs the
+production Session against the polkit library with POLKIT_DEBUG set, using
+an identity polkit refuses before it looks for a helper, and catches the
+reply before it would reach one.
+---
+ src/services/polkit/CMakeLists.txt       |   4 +
+ src/services/polkit/agentimpl.cpp        | 123 +++--
+ src/services/polkit/agentimpl.hpp        |  13 +-
+ src/services/polkit/flow.cpp             | 111 +++--
+ src/services/polkit/flow.hpp             |  39 ++
+ src/services/polkit/listener.cpp         |  49 +-
+ src/services/polkit/listener.hpp         |  18 +-
+ src/services/polkit/module.md            |  19 +-
+ src/services/polkit/qml.cpp              |   6 +
+ src/services/polkit/qml.hpp              |   7 +
+ src/services/polkit/secret.hpp           |  47 ++
+ src/services/polkit/session.cpp          |  68 ++-
+ src/services/polkit/session.hpp          |   3 +
+ src/services/polkit/test/CMakeLists.txt  |  54 +++
+ src/services/polkit/test/fakesession.cpp |  73 +++
+ src/services/polkit/test/fakesession.hpp |  32 ++
+ src/services/polkit/test/queue.cpp       | 543 +++++++++++++++++++++++
+ src/services/polkit/test/realsession.cpp | 190 ++++++++
+ 18 files changed, 1300 insertions(+), 99 deletions(-)
+ create mode 100644 src/services/polkit/secret.hpp
+ create mode 100644 src/services/polkit/test/CMakeLists.txt
+ create mode 100644 src/services/polkit/test/fakesession.cpp
+ create mode 100644 src/services/polkit/test/fakesession.hpp
+ create mode 100644 src/services/polkit/test/queue.cpp
+ create mode 100644 src/services/polkit/test/realsession.cpp
+
+diff --git a/src/services/polkit/CMakeLists.txt b/src/services/polkit/CMakeLists.txt
+index 51791d8..c014b5d 100644
+--- a/src/services/polkit/CMakeLists.txt
++++ b/src/services/polkit/CMakeLists.txt
+@@ -33,3 +33,7 @@ target_link_libraries(quickshell-service-polkit PRIVATE
+ qs_module_pch(quickshell-service-polkit)
+ 
+ target_link_libraries(quickshell PRIVATE quickshell-service-polkitplugin)
++
++if (BUILD_TESTING)
++	add_subdirectory(test)
++endif()
+diff --git a/src/services/polkit/agentimpl.cpp b/src/services/polkit/agentimpl.cpp
+index 85c62b7..ef2c09d 100644
+--- a/src/services/polkit/agentimpl.cpp
++++ b/src/services/polkit/agentimpl.cpp
+@@ -5,7 +5,9 @@
+ #include <qlist.h>
+ #include <qlogging.h>
+ #include <qloggingcategory.h>
++#include <qnamespace.h>
+ #include <qobject.h>
++#include <qpointer.h>
+ #include <qproperty.h>
+ #include <qtmetamacros.h>
+ 
+@@ -31,9 +33,12 @@ PolkitAgentImpl::PolkitAgentImpl(PolkitAgent* agent)
+ 	qs_polkit_agent_register(this->listener.get(), utf8Path.constData());
+ }
+ 
+-PolkitAgentImpl::~PolkitAgentImpl() { this->cancelAllRequests("PolkitAgent is being destroyed"); }
++PolkitAgentImpl::~PolkitAgentImpl() {
++	// The QML object is being destroyed with us; do not notify it.
++	this->cancelAllRequests("PolkitAgent is being destroyed", false);
++}
+ 
+-void PolkitAgentImpl::cancelAllRequests(const QString& reason) {
++void PolkitAgentImpl::cancelAllRequests(const QString& reason, bool clearActiveFlow) {
+ 	for (; !this->queuedRequests.empty(); this->queuedRequests.pop_back()) {
+ 		AuthRequest* req = this->queuedRequests.back();
+ 		qCDebug(logPolkit) << "destroying queued authentication request for action" << req->actionId;
+@@ -43,13 +48,25 @@ void PolkitAgentImpl::cancelAllRequests(const QString& reason) {
+ 
+ 	auto* flow = this->bActiveFlow.value();
+ 	if (flow) {
+-		flow->cancelAuthenticationRequest();
++		QObject::disconnect(flow, nullptr, this, nullptr);
++		flow->cancelRequest(reason);
++		if (clearActiveFlow) this->bActiveFlow = nullptr;
+ 		flow->deleteLater();
+ 	}
+ 
+ 	if (this->bIsRegistered.value()) qs_polkit_agent_unregister(this->listener.get());
+ }
+ 
++bool PolkitAgentImpl::cancelActiveRequest() {
++	auto* flow = this->bActiveFlow.value();
++	if (!flow || flow->isCompleted().value()) return false;
++
++	qCDebug(logPolkit) << "cancelling the active authentication request for action"
++	                   << flow->actionId();
++	flow->cancelRequest("Authentication request cancelled by the shell");
++	return true;
++}
++
+ PolkitAgentImpl* PolkitAgentImpl::tryGetOrCreate(PolkitAgent* agent) {
+ 	if (instance == nullptr) instance = new PolkitAgentImpl(agent);
+ 	if (instance->qmlAgent == agent) return instance;
+@@ -106,19 +123,23 @@ void PolkitAgentImpl::initiateAuthentication(AuthRequest* request) {
+ 
+ 	this->queuedRequests.emplace_back(request);
+ 
+-	if (this->queuedRequests.size() == 1) {
+-		this->activateAuthenticationRequest();
+-	}
++	// Requests run one at a time. One that arrives while a flow is active waits
++	// until that flow is finished.
++	if (!this->bActiveFlow.value()) this->activateAuthenticationRequest();
+ }
+ 
+ void PolkitAgentImpl::cancelAuthentication(AuthRequest* request) {
+ 	qCDebug(logPolkit) << "cancelling authentication request from agent";
+ 
++	// We are inside the request's cancelled handler, where disconnecting it deadlocks.
++	request->handlerId = 0;
++
+ 	auto* flow = this->bActiveFlow.value();
+ 	if (flow && flow->authRequest() == request) {
+ 		flow->cancelFromAgent();
+-	} else if (auto it = std::ranges::find(this->queuedRequests, request);
+-	           it != this->queuedRequests.end())
++	} else if (
++	    auto it = std::ranges::find(this->queuedRequests, request); it != this->queuedRequests.end()
++	)
+ 	{
+ 		qCDebug(logPolkit) << "removing queued authentication request for action" << (*it)->actionId;
+ 		(*it)->cancel("Authentication request was cancelled");
+@@ -130,51 +151,57 @@ void PolkitAgentImpl::cancelAuthentication(AuthRequest* request) {
+ }
+ 
+ void PolkitAgentImpl::activateAuthenticationRequest() {
+-	if (this->queuedRequests.empty()) return;
+-
+-	AuthRequest* req = this->queuedRequests.front();
+-	this->queuedRequests.pop_front();
+-	qCDebug(logPolkit) << "activating authentication request for action" << req->actionId
+-	                   << ", cookie: " << req->cookie;
+-
+-	QList<Identity*> identities;
+-	for (auto& identity: req->identities) {
+-		auto* obj = Identity::fromPolkitIdentity(identity);
+-		if (obj) identities.append(obj);
+-	}
+-	if (identities.isEmpty()) {
+-		qCWarning(
+-		    logPolkit
+-		) << "no supported identities available for authentication request, cancelling.";
+-		req->cancel("Error requesting authentication: no supported identities available.");
+-		delete req;
+-		return;
++	while (!this->bActiveFlow.value() && !this->queuedRequests.empty()) {
++		AuthRequest* req = this->queuedRequests.front();
++		this->queuedRequests.pop_front();
++		qCDebug(logPolkit) << "activating authentication request for action" << req->actionId;
++
++		QList<Identity*> identities;
++		for (auto& identity: req->identities) {
++			auto* obj = Identity::fromPolkitIdentity(identity);
++			if (obj) identities.append(obj);
++		}
++		if (identities.isEmpty()) {
++			qCWarning(
++			    logPolkit
++			) << "no supported identities available for authentication request, cancelling.";
++			req->cancel("Error requesting authentication: no supported identities available.");
++			delete req;
++			continue;
++		}
++
++		auto* flow = new AuthFlow(req, std::move(identities));
++
++		// Queued, so the flow has returned its result and left its session callbacks
++		// before the next request starts.
++		QObject::connect(
++		    flow,
++		    &AuthFlow::isCompletedChanged,
++		    this,
++		    [this, guard = QPointer(flow)]() {
++			    if (guard) this->finishAuthenticationRequest(guard);
++		    },
++		    Qt::QueuedConnection
++		);
++
++		this->bActiveFlow = flow;
++		emit this->qmlAgent->authenticationRequestStarted();
++
++		// After the signal, so a session that fails at once still finishes a flow QML has seen.
++		flow->start();
+ 	}
+-
+-	this->bActiveFlow = new AuthFlow(req, std::move(identities));
+-
+-	QObject::connect(
+-	    this->bActiveFlow.value(),
+-	    &AuthFlow::isCompletedChanged,
+-	    this,
+-	    &PolkitAgentImpl::finishAuthenticationRequest
+-	);
+-
+-	emit this->qmlAgent->authenticationRequestStarted();
+ }
+ 
+-void PolkitAgentImpl::finishAuthenticationRequest() {
+-	if (!this->bActiveFlow.value()) return;
++void PolkitAgentImpl::finishAuthenticationRequest(AuthFlow* flow) {
++	if (this->bActiveFlow.value() != flow || !flow->isCompleted().value()) return;
+ 
+-	qCDebug(logPolkit) << "finishing authentication request for action"
+-	                   << this->bActiveFlow.value()->actionId();
++	qCDebug(logPolkit) << "finishing authentication request for action" << flow->actionId();
+ 
+-	this->bActiveFlow.value()->deleteLater();
++	QObject::disconnect(flow, nullptr, this, nullptr);
++	// The active flow always passes through null, it is never replaced in place.
++	this->bActiveFlow = nullptr;
++	flow->deleteLater();
+ 
+-	if (!this->queuedRequests.empty()) {
+-		this->activateAuthenticationRequest();
+-	} else {
+-		this->bActiveFlow = nullptr;
+-	}
++	this->activateAuthenticationRequest();
+ }
+ } // namespace qs::service::polkit
+diff --git a/src/services/polkit/agentimpl.hpp b/src/services/polkit/agentimpl.hpp
+index 65ae11a..f3eda98 100644
+--- a/src/services/polkit/agentimpl.hpp
++++ b/src/services/polkit/agentimpl.hpp
+@@ -36,7 +36,12 @@ public:
+ 	void cancelAuthentication(AuthRequest* request) override;
+ 	void registerComplete(bool success) override;
+ 
+-	void cancelAllRequests(const QString& reason);
++	/// Cancel the queue and the active request. Clears the active flow unless the service
++	/// is being destroyed.
++	void cancelAllRequests(const QString& reason, bool clearActiveFlow = true);
++	/// Cancel the active request; polkitd tells its caller it is not authorized and
++	/// the queue moves on. Returns false if no request was active.
++	bool cancelActiveRequest();
+ 
+ signals:
+ 	void activeFlowChanged();
+@@ -47,10 +52,10 @@ private:
+ 
+ 	static PolkitAgentImpl* instance;
+ 
+-	/// Start handling of the next authentication request in the queue.
++	/// Start handling of the next authentication request in the queue, if none is active.
+ 	void activateAuthenticationRequest();
+-	/// Finalize and remove the current authentication request.
+-	void finishAuthenticationRequest();
++	/// Finalize and remove the given flow if it is the active one, then start the next request.
++	void finishAuthenticationRequest(AuthFlow* flow);
+ 
+ 	GObjectRef<QsPolkitAgent> listener;
+ 	PolkitAgent* qmlAgent = nullptr;
+diff --git a/src/services/polkit/flow.cpp b/src/services/polkit/flow.cpp
+index 2a709eb..4447957 100644
+--- a/src/services/polkit/flow.cpp
++++ b/src/services/polkit/flow.cpp
+@@ -7,7 +7,10 @@
+ #include <qobject.h>
+ #include <qproperty.h>
+ #include <qqmlinfo.h>
++#include <qstring.h>
+ #include <qtmetamacros.h>
++#include <qtypes.h>
++#include <qvariant.h>
+ 
+ #include "../../core/logcat.hpp"
+ #include "identity.hpp"
+@@ -16,13 +19,21 @@
+ 
+ namespace {
+ QS_LOGGING_CATEGORY(logPolkitState, "quickshell.service.polkit.state", QtWarningMsg);
++
++qint64 pidDetail(const QVariantMap& details, const QString& key) {
++	auto ok = false;
++	auto pid = details.value(key).toString().toLongLong(&ok);
++	return ok && pid > 0 ? pid : -1;
+ }
++} // namespace
+ 
+ namespace qs::service::polkit {
+ AuthFlow::AuthFlow(AuthRequest* request, QList<Identity*>&& identities, QObject* parent)
+     : QObject(parent)
+     , mRequest(request)
+     , mIdentities(std::move(identities))
++    , mSubjectPid(pidDetail(request->details, QStringLiteral("polkit.subject-pid")))
++    , mCallerPid(pidDetail(request->details, QStringLiteral("polkit.caller-pid")))
+     , bSelectedIdentity(this->mIdentities.isEmpty() ? nullptr : this->mIdentities.first()) {
+ 	// We reject auth requests with no identities before a flow is created.
+ 	// This should never happen.
+@@ -32,42 +43,60 @@ AuthFlow::AuthFlow(AuthRequest* request, QList<Identity*>&& identities, QObject*
+ 	for (auto* identity: this->mIdentities) {
+ 		identity->setParent(this);
+ 	}
+-
+-	this->setupSession();
+ }
+ 
+ AuthFlow::~AuthFlow() { delete this->mRequest; };
+ 
++void AuthFlow::start() {
++	if (this->currentSession) return;
++	this->setupSession();
++}
++
+ void AuthFlow::setSelectedIdentity(Identity* identity) {
+ 	if (this->bSelectedIdentity.value() == identity) return;
+ 	if (!identity) {
+ 		qmlWarning(this) << "Cannot set selected identity to null.";
+ 		return;
+ 	}
++	if (!this->mIdentities.contains(identity)) {
++		qmlWarning(this) << "Cannot select an identity that is not offered for this request.";
++		return;
++	}
++	if (this->bIsCompleted.value()) return;
++
+ 	this->bSelectedIdentity = identity;
+-	this->currentSession->cancel();
+ 	this->setupSession();
+ }
+ 
+ void AuthFlow::cancelFromAgent() {
+-	if (!this->currentSession) return;
++	if (this->bIsCompleted.value()) return;
+ 
+ 	qCDebug(logPolkitState) << "cancelling authentication request from agent";
+ 
+-	// Session cancel can immediately call the cancel handler, which also
+-	// performs property updates.
++	this->cancelRequest("Authentication request cancelled by agent.");
++	emit this->authenticationRequestCancelled();
++}
++
++void AuthFlow::cancelRequest(const QString& reason) {
++	if (this->bIsCompleted.value()) return;
++
++	// Answer the daemon first, so the verdict does not depend on what QML does
++	// with the notifications below.
++	this->mRequest->cancel(reason);
++	this->dropSession();
++
+ 	Qt::beginPropertyUpdateGroup();
+ 	this->bIsCancelled = true;
+-	this->currentSession->cancel();
++	this->bIsResponseRequired = false;
++	this->bInputPrompt = QString();
++	this->bResponseVisible = false;
++	this->bIsSuccessful = false;
++	this->bIsCompleted = true;
+ 	Qt::endPropertyUpdateGroup();
+-
+-	emit this->authenticationRequestCancelled();
+-
+-	this->mRequest->cancel("Authentication request cancelled by agent.");
+ }
+ 
+ void AuthFlow::submit(const QString& value) {
+-	if (!this->currentSession) return;
++	if (!this->currentSession || this->bIsCompleted.value()) return;
+ 
+ 	qCDebug(logPolkitState) << "submitting response to authentication request";
+ 
+@@ -81,36 +110,46 @@ void AuthFlow::submit(const QString& value) {
+ }
+ 
+ void AuthFlow::cancelAuthenticationRequest() {
+-	if (!this->currentSession) return;
++	if (this->bIsCompleted.value()) return;
+ 
+ 	qCDebug(logPolkitState) << "cancelling authentication request by user request";
+ 
+-	// Session cancel can immediately call the cancel handler, which also
+-	// performs property updates.
+-	Qt::beginPropertyUpdateGroup();
+-	this->bIsCancelled = true;
+-	this->currentSession->cancel();
+-	Qt::endPropertyUpdateGroup();
++	this->cancelRequest("Authentication request cancelled by user.");
++}
++
++void AuthFlow::dropSession() {
++	if (!this->currentSession) return;
+ 
+-	this->mRequest->cancel("Authentication request cancelled by user.");
++	// Disconnect first: cancelling emits completed(false), which is no failed attempt.
++	QObject::disconnect(this->currentSession, nullptr, this, nullptr);
++	this->currentSession->cancel();
++	// The session may be the sender of the signal being handled.
++	this->currentSession->deleteLater();
++	this->currentSession = nullptr;
+ }
+ 
+ void AuthFlow::setupSession() {
+-	delete this->currentSession;
++	if (this->bIsCompleted.value()) return;
++
++	this->dropSession();
+ 
+ 	qCDebug(logPolkitState) << "setting up session for identity"
+ 	                        << this->bSelectedIdentity.value()->name();
+ 
+-	this->currentSession = new Session(
++	auto* session = new Session(
+ 	    this->bSelectedIdentity.value()->polkitIdentity.get(),
+ 	    this->mRequest->cookie,
+ 	    this
+ 	);
+-	QObject::connect(this->currentSession, &Session::request, this, &AuthFlow::request);
+-	QObject::connect(this->currentSession, &Session::completed, this, &AuthFlow::completed);
+-	QObject::connect(this->currentSession, &Session::showError, this, &AuthFlow::showError);
+-	QObject::connect(this->currentSession, &Session::showInfo, this, &AuthFlow::showInfo);
+-	this->currentSession->initiate();
++	this->currentSession = session;
++	QObject::connect(session, &Session::request, this, &AuthFlow::request);
++	QObject::connect(session, &Session::completed, this, &AuthFlow::completed);
++	QObject::connect(session, &Session::showError, this, &AuthFlow::showError);
++	QObject::connect(session, &Session::showInfo, this, &AuthFlow::showInfo);
++
++	this->initiating = true;
++	session->initiate();
++	this->initiating = false;
+ }
+ 
+ void AuthFlow::request(const QString& message, bool echo) {
+@@ -125,20 +164,24 @@ void AuthFlow::completed(bool gainedAuthorization) {
+ 	qCDebug(logPolkitState) << "authentication session completed, gainedAuthorization ="
+ 	                        << gainedAuthorization << ", isCancelled =" << this->bIsCancelled.value();
+ 
++	if (this->bIsCompleted.value()) return;
++
+ 	if (gainedAuthorization) {
++		this->mRequest->complete();
++
+ 		Qt::beginPropertyUpdateGroup();
+ 		this->bIsCompleted = true;
+ 		this->bIsSuccessful = true;
+ 		Qt::endPropertyUpdateGroup();
+ 
+-		this->mRequest->complete();
+-
+ 		emit this->authenticationSucceeded();
+-	} else if (this->bIsCancelled.value()) {
+-		Qt::beginPropertyUpdateGroup();
+-		this->bIsCompleted = true;
+-		this->bIsSuccessful = false;
+-		Qt::endPropertyUpdateGroup();
++	} else if (this->initiating) {
++		// The session failed before it started (no helper, unknown user). Starting
++		// another one would fail the same way, recursively.
++		qCWarning(logPolkitState) << "authentication session could not start, cancelling request";
++		this->cancelRequest(
++		    "Error requesting authentication: the authentication session could not start."
++		);
+ 	} else {
+ 		this->bFailed = true;
+ 		emit this->authenticationFailed();
+diff --git a/src/services/polkit/flow.hpp b/src/services/polkit/flow.hpp
+index d6d7bd4..f963498 100644
+--- a/src/services/polkit/flow.hpp
++++ b/src/services/polkit/flow.hpp
+@@ -38,8 +38,28 @@ class AuthFlow
+ 	/// A cookie that identifies this authentication request.
+ 	///
+ 	/// This is an internal identifier and not recommended to show to users.
++	/// Do not log it either.
+ 	Q_PROPERTY(QString cookie READ cookie CONSTANT);
+ 
++	/// Details the PolKit daemon passed with the request, as a map of strings.
++	///
++	/// The daemon fills this map itself. polkit 127 passes `polkit.caller-pid` and
++	/// `polkit.subject-pid` when it can resolve them, and nothing else. These describe
++	/// the request; they are not an authenticated identity of the program that asked.
++	Q_PROPERTY(QVariantMap details READ details CONSTANT);
++
++	/// Process ID of the subject the authorization is for, from the `polkit.subject-pid`
++	/// detail, or -1 when the daemon did not provide one (e.g. for a session subject).
++	///
++	/// This is not an authenticated identity: the process may have exited and its
++	/// ID may have been reused by the time it is read.
++	Q_PROPERTY(qint64 subjectPid READ subjectPid CONSTANT);
++
++	/// Process ID of the caller that asked the daemon to check the authorization
++	/// (usually the privileged mechanism), from the `polkit.caller-pid` detail,
++	/// or -1 when the daemon did not provide one. Same caveats as @@subjectPid.
++	Q_PROPERTY(qint64 callerPid READ callerPid CONSTANT);
++
+ 	/// The list of identities that may be used to authenticate.
+ 	///
+ 	/// Each identity may be a user or a group. You may select any of them to
+@@ -88,10 +108,20 @@ public:
+ 	explicit AuthFlow(AuthRequest* request, QList<Identity*>&& identities, QObject* parent = nullptr);
+ 	~AuthFlow() override;
+ 
++	/// Start the first session. Call after connecting to isCompletedChanged: a session
++	/// that cannot start completes the flow at once.
++	void start();
++
+ 	/// Cancel the ongoing authentication request from the agent side.
+ 	void cancelFromAgent();
++	/// Return "not authorized" to the daemon and complete the flow as cancelled.
++	/// Does nothing once the flow is completed.
++	void cancelRequest(const QString& reason);
+ 
+ 	/// Submit a response to a request that was previously emitted. Typically the password.
++	///
++	/// The UTF-8 copy made for the PolKit helper is wiped after it is written.
++	/// The string passed in, and any copies QML or the input field made, cannot be wiped.
+ 	Q_INVOKABLE void submit(const QString& value);
+ 	/// Cancel the ongoing authentication request from the user side.
+ 	Q_INVOKABLE void cancelAuthenticationRequest();
+@@ -100,6 +130,9 @@ public:
+ 	[[nodiscard]] const QString& iconName() const { return this->mRequest->iconName; };
+ 	[[nodiscard]] const QString& actionId() const { return this->mRequest->actionId; };
+ 	[[nodiscard]] const QString& cookie() const { return this->mRequest->cookie; };
++	[[nodiscard]] const QVariantMap& details() const { return this->mRequest->details; };
++	[[nodiscard]] qint64 subjectPid() const { return this->mSubjectPid; };
++	[[nodiscard]] qint64 callerPid() const { return this->mCallerPid; };
+ 	[[nodiscard]] const QList<Identity*>& identities() const { return this->mIdentities; };
+ 
+ 	[[nodiscard]] QBindable<Identity*> selectedIdentity() { return &this->bSelectedIdentity; };
+@@ -158,10 +191,16 @@ private slots:
+ private:
+ 	/// Start a session for the currently selected identity and the current request.
+ 	void setupSession();
++	/// Cancel and release the current session without treating it as a failed attempt.
++	void dropSession();
+ 
+ 	Session* currentSession = nullptr;
++	/// Set while a session is being initiated; a completion then means it could not start.
++	bool initiating = false;
+ 	AuthRequest* mRequest = nullptr;
+ 	QList<Identity*> mIdentities;
++	qint64 mSubjectPid = -1;
++	qint64 mCallerPid = -1;
+ 
+ 	// clang-format off
+ 	Q_OBJECT_BINDABLE_PROPERTY(AuthFlow, Identity*, bSelectedIdentity, &AuthFlow::selectedIdentityChanged);
+diff --git a/src/services/polkit/listener.cpp b/src/services/polkit/listener.cpp
+index e4bca4c..8c6e603 100644
+--- a/src/services/polkit/listener.cpp
++++ b/src/services/polkit/listener.cpp
+@@ -13,6 +13,8 @@
+ #include <polkitagent/polkitagent.h>
+ #include <qlogging.h>
+ #include <qloggingcategory.h>
++#include <qstring.h>
++#include <qvariant.h>
+ #include <unistd.h>
+ 
+ #include "../../core/logcat.hpp"
+@@ -149,7 +151,7 @@ static void initiate_authentication(
+     const gchar* actionId,
+     const gchar* message,
+     const gchar* iconName,
+-    PolkitDetails* /*unused*/,
++    PolkitDetails* details,
+     const gchar* cookie,
+     GList* identities,
+     GCancellable* cancellable,
+@@ -174,21 +176,43 @@ static void initiate_authentication(
+ 		identityVector.emplace_back(identity);
+ 	}
+ 
++	// polkitd fills the details itself; polkit 127 sends polkit.caller-pid and
++	// polkit.subject-pid only.
++	QVariantMap detailsMap;
++	if (details != nullptr) {
++		gchar** keys = polkit_details_get_keys(details);
++		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
++		for (auto** key = keys; key != nullptr && *key != nullptr; key++) {
++			const auto* value = polkit_details_lookup(details, *key);
++			detailsMap.insert(QString::fromUtf8(*key), QString::fromUtf8(value != nullptr ? value : ""));
++		}
++		g_strfreev(keys);
++	}
++
+ 	// The original strings are freed by the caller after we return, so we
+ 	// copy them into QStrings.
+ 	auto* request = new qs::service::polkit::AuthRequest {
+ 	    .actionId = QString::fromUtf8(actionId),
+ 	    .message = QString::fromUtf8(message),
+ 	    .iconName = QString::fromUtf8(iconName),
++	    .details = std::move(detailsMap),
+ 	    .cookie = QString::fromUtf8(cookie),
+ 	    .identities = std::move(identityVector),
+ 
+ 	    .task = asyncResult,
+-	    .cancellable = cancellable,
++	    .cancellable = cancellable != nullptr ? G_CANCELLABLE(g_object_ref(cancellable)) : nullptr,
+ 	    .handlerId = 0,
+ 	    .cb = self->cb
+ 	};
+ 
++	// g_cancellable_connect runs the handler at once for a cancelled cancellable,
++	// before the request is queued.
++	if (cancellable != nullptr && g_cancellable_is_cancelled(cancellable)) {
++		request->cancel("Authentication request was cancelled");
++		delete request;
++		return;
++	}
++
+ 	if (cancellable != nullptr) {
+ 		request->handlerId = g_cancellable_connect(
+ 		    cancellable,
+@@ -214,9 +238,28 @@ namespace qs::service::polkit {
+ // they are logically non-const since they modify the state of the
+ // authentication request. Therefore, we do not mark them as const.
+ // NOLINTBEGIN(readability-make-member-function-const)
+-void AuthRequest::complete() { g_task_return_boolean(this->task, true); }
++AuthRequest::~AuthRequest() {
++	if (!this->returned) this->cancel("Authentication request was dropped");
++
++	if (this->cancellable != nullptr) {
++		// Disconnecting from inside the cancelled handler deadlocks; that path zeroes handlerId.
++		if (this->handlerId != 0) g_cancellable_disconnect(this->cancellable, this->handlerId);
++		g_object_unref(this->cancellable);
++	}
++
++	g_object_unref(this->task);
++}
++
++void AuthRequest::complete() {
++	if (this->returned) return;
++	this->returned = true;
++	g_task_return_boolean(this->task, true);
++}
+ 
++// polkitd prints the reason to its log, so it must never carry request data.
+ void AuthRequest::cancel(const QString& reason) {
++	if (this->returned) return;
++	this->returned = true;
+ 	auto utf8Reason = reason.toUtf8();
+ 	g_task_return_new_error(
+ 	    this->task,
+diff --git a/src/services/polkit/listener.hpp b/src/services/polkit/listener.hpp
+index 996fa23..2d7d347 100644
+--- a/src/services/polkit/listener.hpp
++++ b/src/services/polkit/listener.hpp
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ #include <qstring.h>
++#include <qvariant.h>
+ 
+ #define POLKIT_AGENT_I_KNOW_API_IS_SUBJECT_TO_CHANGE
+ // This causes a problem with variables of the name.
+@@ -16,26 +17,35 @@
+ namespace qs::service::polkit {
+ class ListenerCb;
+ //! All state that comes in from PolKit about an authentication request.
+-struct AuthRequest {
++//! An aggregate built with designated initializers, never copied.
++struct AuthRequest { // NOLINT(cppcoreguidelines-special-member-functions)
+ 	//! The action ID that this session is for.
+ 	QString actionId;
+ 	//! Message to present to the user.
+ 	QString message;
+ 	//! Icon name according to the FreeDesktop specification. May be empty.
+ 	QString iconName;
+-	// Details intentionally omitted because nothing seems to use them.
++	//! Details polkitd passed with the request, as strings.
++	QVariantMap details;
++	//! Identifies the request to polkitd and its helper. Never log it.
+ 	QString cookie;
+ 	//! List of users/groups that can be used for authentication.
+ 	std::vector<GObjectRef<PolkitIdentity>> identities;
+ 
+-	//! Implementation detail to mark authentication done.
++	//! Implementation detail to mark authentication done. Owned.
+ 	GTask* task;
+ 	//! Implementation detail for requests cancelled by agent.
++	//! Owned reference, may be null.
+ 	GCancellable* cancellable;
+-	//! Callback handler ID for the cancellable.
++	//! Callback handler ID for the cancellable; 0 once it must not be disconnected.
+ 	gulong handlerId;
+ 	//! Callbacks for the listener
+ 	ListenerCb* cb;
++	//! The result was returned to polkitd. A request returns exactly one result.
++	bool returned = false;
++
++	//! Returns a cancellation if no result was returned yet, then releases the task.
++	~AuthRequest();
+ 
+ 	void complete();
+ 	void cancel(const QString& reason);
+diff --git a/src/services/polkit/module.md b/src/services/polkit/module.md
+index 20b5816..20f33ec 100644
+--- a/src/services/polkit/module.md
++++ b/src/services/polkit/module.md
+@@ -25,11 +25,17 @@ It exposes incoming requests via @@Quickshell.Services.Polkit.PolkitAgent.flow a
+ ### Flow of an authentication request
+ 
+ Incoming authentication requests are queued in the order that they arrive.
+-If none is queued, a request starts processing right away.
+-Otherwise, it will wait until prior requests are done.
++If none is active, a request starts processing right away.
++Otherwise, it will wait until prior requests are done: only one request is active at a time.
++When a request is done, @@Quickshell.Services.Polkit.PolkitAgent.flow becomes null before the next request
++becomes active, so a flow is never replaced in place.
+ 
+ A request starts by emitting the @@Quickshell.Services.Polkit.PolkitAgent.authenticationRequestStarted signal.
+ At this point, information like the action to be performed and permitted users that can authenticate is available.
++@@Quickshell.Services.Polkit.AuthFlow.details, @@Quickshell.Services.Polkit.AuthFlow.subjectPid and
++@@Quickshell.Services.Polkit.AuthFlow.callerPid carry what the daemon reports about the request.
++They describe it; they do not authenticate the program that asked.
++Requests whose identities are all unsupported are refused and the queue moves on.
+ 
+ An authentication *session* for the request is immediately started, which internally starts a PAM conversation that is likely to prompt for user input.
+ * Additional prompts may be shared with the user by way of the @@Quickshell.Services.Polkit.AuthFlow.supplementaryMessageChanged / @@Quickshell.Services.Polkit.AuthFlow.supplementaryIsErrorChanged signals and the @@Quickshell.Services.Polkit.AuthFlow.supplementaryMessage and @@Quickshell.Services.Polkit.AuthFlow.supplementaryIsError properties. A common message might be 'Please input your password'.
+@@ -38,6 +44,11 @@ An authentication *session* for the request is immediately started, which intern
+ User replies can be submitted via the @@Quickshell.Services.Polkit.AuthFlow.submit method.
+ A conversation can take multiple turns, for example if second factors are involved.
+ 
++The UTF-8 copy of a reply made for the PolKit helper is wiped after it is written to the helper.
++The string passed to @@Quickshell.Services.Polkit.AuthFlow.submit, the text of the input field and any
++other JavaScript or QML string copies are managed by the QML engine and cannot be wiped; clear the
++field after submitting, but do not rely on that to erase the reply from memory.
++
+ If authentication fails, we automatically create a fresh session so the user can try again.
+ The @@Quickshell.Services.Polkit.AuthFlow.authenticationFailed signal is emitted in this case.
+ 
+@@ -49,4 +60,8 @@ If additional requests are queued, you will receive the @@Quickshell.Services.Po
+ Requests may either be canceled by the user or the PolKit daemon.
+ In this case, we clean up any state and proceed to the next request, if any.
+ 
++@@Quickshell.Services.Polkit.PolkitAgent.cancelActiveRequest() cancels the active request from the shell
++side, for example when the session locks. The program that asked is told it is not authorized and the
++next queued request, if any, becomes active.
++
+ If the request was cancelled by the daemon and not the user, you also receive the @@Quickshell.Services.Polkit.AuthFlow.authenticationRequestCancelled signal.
+diff --git a/src/services/polkit/qml.cpp b/src/services/polkit/qml.cpp
+index 9a08e5d..42b97d5 100644
+--- a/src/services/polkit/qml.cpp
++++ b/src/services/polkit/qml.cpp
+@@ -25,6 +25,12 @@ void PolkitAgent::componentComplete() {
+ 	this->bIsRegistered.setBinding([impl]() { return impl->isRegistered().value(); });
+ }
+ 
++// Logically non-const: it ends the active request.
++bool PolkitAgent::cancelActiveRequest() { // NOLINT(readability-make-member-function-const)
++	auto* impl = PolkitAgentImpl::tryGet(this);
++	return impl != nullptr && impl->cancelActiveRequest();
++}
++
+ void PolkitAgent::setPath(const QString& path) {
+ 	if (this->mPath.isEmpty()) {
+ 		this->mPath = path;
+diff --git a/src/services/polkit/qml.hpp b/src/services/polkit/qml.hpp
+index 5343bcd..0417d37 100644
+--- a/src/services/polkit/qml.hpp
++++ b/src/services/polkit/qml.hpp
+@@ -59,6 +59,13 @@ public:
+ 	[[nodiscard]] QString path() const { return this->mPath; };
+ 	void setPath(const QString& path);
+ 
++	/// Cancel the active authentication request, for example when the session locks.
++	///
++	/// The program that asked is told it is not authorized, the @@flow completes with
++	/// @@AuthFlow.isCancelled set, and the next queued request, if any, becomes the
++	/// active one. Returns false if no request was active.
++	Q_INVOKABLE bool cancelActiveRequest();
++
+ 	[[nodiscard]] QBindable<AuthFlow*> flow() { return &this->bFlow; };
+ 	[[nodiscard]] QBindable<bool> isActive() { return &this->bIsActive; };
+ 	[[nodiscard]] QBindable<bool> isRegistered() { return &this->bIsRegistered; };
+diff --git a/src/services/polkit/secret.hpp b/src/services/polkit/secret.hpp
+new file mode 100644
+index 0000000..62decdd
+--- /dev/null
++++ b/src/services/polkit/secret.hpp
+@@ -0,0 +1,47 @@
++#pragma once
++
++#include <memory>
++#include <string.h> // NOLINT(modernize-deprecated-headers): explicit_bzero
++
++#include <qstring.h>
++#include <qstringconverter.h>
++#include <qtclasshelpermacros.h>
++#include <qtypes.h>
++
++namespace qs::service::polkit {
++//! UTF-8 copy of a secret in a buffer this class owns and wipes.
++///
++/// QString::toUtf8() leaves the bytes in a QByteArray that is freed without
++/// being cleared. This buffer is cleared with explicit_bzero, spare capacity
++/// included, by wipe() and on destruction. The source QString is not touched:
++/// its storage may be shared with QML and cannot be cleared from here.
++class SecretUtf8 {
++public:
++	explicit SecretUtf8(QStringView text) {
++		QStringEncoder encoder(QStringEncoder::Utf8);
++		this->mCapacity = encoder.requiredSpace(text.size()) + 1;
++		this->buffer = std::make_unique<char[]>(this->mCapacity); // NOLINT(*-avoid-c-arrays)
++		auto* end = encoder.appendToBuffer(this->buffer.get(), text);
++		*end = '\0';
++		this->mSize = end - this->buffer.get();
++	}
++
++	~SecretUtf8() { this->wipe(); }
++	Q_DISABLE_COPY_MOVE(SecretUtf8);
++
++	/// Null-terminated UTF-8 bytes; empty after wipe().
++	[[nodiscard]] const char* data() const { return this->buffer.get(); }
++	[[nodiscard]] qsizetype size() const { return this->mSize; }
++	[[nodiscard]] qsizetype capacity() const { return this->mCapacity; }
++
++	void wipe() {
++		if (this->buffer) explicit_bzero(this->buffer.get(), this->mCapacity);
++		this->mSize = 0;
++	}
++
++private:
++	std::unique_ptr<char[]> buffer; // NOLINT(*-avoid-c-arrays)
++	qsizetype mCapacity = 0;
++	qsizetype mSize = 0;
++};
++} // namespace qs::service::polkit
+diff --git a/src/services/polkit/session.cpp b/src/services/polkit/session.cpp
+index 71def68..2d48155 100644
+--- a/src/services/polkit/session.cpp
++++ b/src/services/polkit/session.cpp
+@@ -1,8 +1,14 @@
+ #include "session.hpp"
++#include <atomic>
++#include <cstdio>
++#include <cstring>
+ 
+ #include <glib-object.h>
+ #include <glib.h>
++#include <qbytearray.h>
+ #include <qobject.h>
++#include <qstring.h>
++#include <qtclasshelpermacros.h>
+ #include <qtmetamacros.h>
+ 
+ #define POLKIT_AGENT_I_KNOW_API_IS_SUBJECT_TO_CHANGE
+@@ -11,6 +17,8 @@
+ #include <polkitagent/polkitagent.h>
+ #define signals Q_SIGNALS
+ 
++#include "secret.hpp"
++
+ namespace qs::service::polkit {
+ 
+ namespace {
+@@ -38,11 +46,51 @@ void showInfoCb(PolkitAgentSession* /*session*/, const char* message, gpointer u
+ 	auto* self = static_cast<Session*>(userData);
+ 	emit self->showInfo(QString::fromUtf8(message));
+ }
++
++// polkit_agent_session_initiate prints the cookie with g_print when POLKIT_DEBUG
++// is set, whatever its value (polkit 127). While it runs, a print handler drops
++// every message that contains the cookie and passes the others on.
++std::atomic<const char*> filteredCookie = nullptr; // NOLINT
++GPrintFunc nextPrintHandler = nullptr;             // NOLINT
++
++void printWithoutCookie(const gchar* string) {
++	const auto* cookie = filteredCookie.load();
++	if (cookie && strstr(string, cookie)) return;
++
++	if (nextPrintHandler) {
++		nextPrintHandler(string);
++	} else {
++		fputs(string, stdout);
++		fflush(stdout);
++	}
++}
++
++class CookieFilter {
++public:
++	explicit CookieFilter(const char* cookie): outerCookie(filteredCookie.exchange(cookie)) {
++		// A session started from a signal of another one keeps the outer handler.
++		if (!this->outerCookie) nextPrintHandler = g_set_print_handler(&printWithoutCookie);
++	}
++
++	~CookieFilter() {
++		if (!this->outerCookie) {
++			g_set_print_handler(nextPrintHandler);
++			nextPrintHandler = nullptr;
++		}
++		filteredCookie = this->outerCookie;
++	}
++
++	Q_DISABLE_COPY_MOVE(CookieFilter);
++
++private:
++	const char* outerCookie;
++};
+ } // namespace
+ 
+ Session::Session(PolkitIdentity* identity, const QString& cookie, QObject* parent)
+-    : QObject(parent) {
+-	this->session = polkit_agent_session_new(identity, cookie.toUtf8().constData());
++    : QObject(parent)
++    , cookie(cookie.toUtf8()) {
++	this->session = polkit_agent_session_new(identity, this->cookie.constData());
+ 
+ 	g_signal_connect(G_OBJECT(this->session), "completed", G_CALLBACK(completedCb), this);
+ 	g_signal_connect(G_OBJECT(this->session), "request", G_CALLBACK(requestCb), this);
+@@ -57,12 +105,24 @@ Session::~Session() {
+ 	g_object_unref(this->session);
+ }
+ 
+-void Session::initiate() { polkit_agent_session_initiate(this->session); }
++void Session::initiate() {
++	// An empty cookie would match every message; there is nothing to hide then.
++	if (this->cookie.isEmpty()) {
++		polkit_agent_session_initiate(this->session);
++		return;
++	}
++
++	const CookieFilter filter(this->cookie.constData());
++	polkit_agent_session_initiate(this->session);
++}
+ 
+ void Session::cancel() { polkit_agent_session_cancel(this->session); }
+ 
+ void Session::respond(const QString& response) {
+-	polkit_agent_session_response(this->session, response.toUtf8().constData());
++	// The only copy made here; polkit writes it straight to the helper's pipe and
++	// it is wiped when it leaves scope.
++	const SecretUtf8 utf8(response);
++	polkit_agent_session_response(this->session, utf8.data());
+ }
+ 
+ } // namespace qs::service::polkit
+diff --git a/src/services/polkit/session.hpp b/src/services/polkit/session.hpp
+index 29331b1..f092b7f 100644
+--- a/src/services/polkit/session.hpp
++++ b/src/services/polkit/session.hpp
+@@ -1,5 +1,6 @@
+ #pragma once
+ 
++#include <qbytearray.h>
+ #include <qobject.h>
+ 
+ // _PolkitIdentity and _PolkitAgentSession are considered reserved identifiers,
+@@ -48,5 +49,7 @@ Q_SIGNALS:
+ 
+ private:
+ 	PolkitAgentSession* session = nullptr;
++	/// Kept to filter the polkit library's debug output, see initiate().
++	QByteArray cookie;
+ };
+ } // namespace qs::service::polkit
+diff --git a/src/services/polkit/test/CMakeLists.txt b/src/services/polkit/test/CMakeLists.txt
+new file mode 100644
+index 0000000..ad08faa
+--- /dev/null
++++ b/src/services/polkit/test/CMakeLists.txt
+@@ -0,0 +1,54 @@
++# The service sources are built again with a fake Session, so the tests never
++# start the PolKit helper or reach the system's PAM.
++add_executable(polkitqueue
++	queue.cpp
++	fakesession.cpp
++	fakesession.hpp
++	../agentimpl.cpp
++	../agentimpl.hpp
++	../flow.cpp
++	../flow.hpp
++	../identity.cpp
++	../identity.hpp
++	../listener.cpp
++	../listener.hpp
++	../qml.cpp
++	../qml.hpp
++	../secret.hpp
++	../session.hpp
++)
++
++target_link_libraries(polkitqueue PRIVATE
++	Qt::Qml
++	Qt::Quick
++	Qt::Test
++	quickshell-core
++	quickshell-window
++	quickshell-ui
++	quickshell-io
++	PkgConfig::glib
++	PkgConfig::gobject
++	PkgConfig::polkit_agent
++	PkgConfig::polkit
++)
++
++add_test(NAME polkitqueue WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" COMMAND $<TARGET_FILE:polkitqueue>)
++
++# The production Session against the system's polkit library, without a helper.
++add_executable(polkitsession
++	realsession.cpp
++	../secret.hpp
++	../session.cpp
++	../session.hpp
++)
++
++target_link_libraries(polkitsession PRIVATE
++	Qt::Core
++	Qt::Test
++	PkgConfig::glib
++	PkgConfig::gobject
++	PkgConfig::polkit_agent
++	PkgConfig::polkit
++)
++
++add_test(NAME polkitsession WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" COMMAND $<TARGET_FILE:polkitsession>)
+diff --git a/src/services/polkit/test/fakesession.cpp b/src/services/polkit/test/fakesession.cpp
+new file mode 100644
+index 0000000..c74dd6d
+--- /dev/null
++++ b/src/services/polkit/test/fakesession.cpp
+@@ -0,0 +1,73 @@
++#include "fakesession.hpp"
++
++#include <qlist.h>
++#include <qobject.h>
++#include <qstring.h>
++
++#include "../session.hpp"
++
++namespace fake {
++QList<SessionRecord*>& sessions() {
++	static QList<SessionRecord*> list;
++	return list;
++}
++
++int& createdCount() {
++	static int count = 0;
++	return count;
++}
++
++bool& failInitiate() {
++	static bool fail = false;
++	return fail;
++}
++
++SessionRecord* record(qs::service::polkit::Session* session) {
++	for (auto* rec: sessions()) {
++		if (rec->session == session) return rec;
++	}
++	return nullptr;
++}
++
++void complete(qs::service::polkit::Session* session, bool result) {
++	auto* rec = record(session);
++	if (!rec || rec->completed) return;
++	rec->completed = true;
++	emit session->completed(result);
++}
++
++void reset() {
++	createdCount() = 0;
++	failInitiate() = false;
++}
++} // namespace fake
++
++namespace qs::service::polkit {
++Session::Session(PolkitIdentity* identity, const QString& cookie, QObject* parent)
++    : QObject(parent) {
++	auto* rec = new fake::SessionRecord();
++	rec->session = this;
++	rec->identity = identity;
++	rec->cookie = cookie;
++	fake::sessions().append(rec);
++	fake::createdCount()++;
++}
++
++Session::~Session() {
++	auto* rec = fake::record(this);
++	fake::sessions().removeOne(rec);
++	delete rec;
++}
++
++void Session::initiate() {
++	fake::record(this)->initiated = true;
++	if (fake::failInitiate()) fake::complete(this, false);
++}
++
++void Session::cancel() {
++	fake::record(this)->cancelled = true;
++	fake::complete(this, false);
++}
++
++void Session::respond(const QString& response) { fake::record(this)->responses.append(response); }
++} // namespace qs::service::polkit
+diff --git a/src/services/polkit/test/fakesession.hpp b/src/services/polkit/test/fakesession.hpp
+new file mode 100644
+index 0000000..260f776
+--- /dev/null
++++ b/src/services/polkit/test/fakesession.hpp
+@@ -0,0 +1,32 @@
++#pragma once
++
++#include <qlist.h>
++#include <qstring.h>
++
++#include "../session.hpp"
++
++// Test double for Session: no helper process, no PAM. The test drives completion.
++namespace fake {
++struct SessionRecord {
++	qs::service::polkit::Session* session = nullptr;
++	PolkitIdentity* identity = nullptr;
++	QString cookie;
++	bool initiated = false;
++	bool cancelled = false;
++	bool completed = false;
++	QList<QString> responses;
++};
++
++/// Live sessions in creation order.
++QList<SessionRecord*>& sessions();
++/// Sessions created since the last reset, including destroyed ones.
++int& createdCount();
++/// When set, initiate() completes the session at once with false, like
++/// polkit_agent_session_initiate when the helper cannot be started.
++bool& failInitiate();
++
++SessionRecord* record(qs::service::polkit::Session* session);
++/// Emit completed(result) once, as polkit does.
++void complete(qs::service::polkit::Session* session, bool result);
++void reset();
++} // namespace fake
+diff --git a/src/services/polkit/test/queue.cpp b/src/services/polkit/test/queue.cpp
+new file mode 100644
+index 0000000..9455260
+--- /dev/null
++++ b/src/services/polkit/test/queue.cpp
+@@ -0,0 +1,543 @@
++// Queue, cancellation, request details, logging and response wipe of the polkit service,
++// driven through the real listener entry point with a fake PolKit session.
++
++#include <memory>
++#include <utility>
++#include <vector>
++
++#include <gio/gio.h>
++#include <glib-object.h>
++#include <glib.h>
++#include <qcoreapplication.h>
++#include <qlist.h>
++#include <qlogging.h>
++#include <qloggingcategory.h>
++#include <qobject.h>
++#include <qpointer.h>
++#include <qstring.h>
++#include <qtclasshelpermacros.h>
++#include <qtest.h>
++#include <qtestcase.h>
++#include <qtmetamacros.h>
++#include <qtypes.h>
++#include <qvariant.h>
++#include <unistd.h>
++
++#define POLKIT_AGENT_I_KNOW_API_IS_SUBJECT_TO_CHANGE
++#undef signals
++#include <polkit/polkit.h>
++#include <polkitagent/polkitagent.h>
++#define signals Q_SIGNALS
++
++#include "../agentimpl.hpp"
++#include "../flow.hpp"
++#include "../gobjectref.hpp"
++#include "../listener.hpp"
++#include "../qml.hpp"
++#include "../secret.hpp"
++#include "../session.hpp"
++#include "fakesession.hpp"
++
++using namespace qs::service::polkit;
++
++namespace {
++
++struct Result {
++	bool done = false;
++	bool authorized = false;
++	bool cancelled = false;
++	int calls = 0;
++};
++
++void finished(GObject* source, GAsyncResult* res, gpointer data) {
++	auto* result = static_cast<Result*>(data);
++	GError* error = nullptr;
++	result->authorized = polkit_agent_listener_initiate_authentication_finish(
++	    POLKIT_AGENT_LISTENER(source),
++	    res,
++	    &error
++	);
++	result->cancelled = g_error_matches(error, POLKIT_ERROR, POLKIT_ERROR_CANCELLED);
++	g_clear_error(&error);
++	result->done = true;
++	result->calls++;
++}
++
++struct Request {
++	QString action;
++	Result result;
++	GCancellable* cancellable = g_cancellable_new();
++
++	explicit Request(QString action): action(std::move(action)) {}
++	~Request() { g_object_unref(this->cancellable); }
++	Q_DISABLE_COPY_MOVE(Request);
++};
++
++QList<QString>& messages() {
++	static QList<QString> list;
++	return list;
++}
++
++void captureMessage(QtMsgType /*type*/, const QMessageLogContext& /*ctx*/, const QString& msg) {
++	messages().append(msg);
++}
++
++} // namespace
++
++class QueueTest: public QObject {
++	Q_OBJECT;
++
++private:
++	PolkitAgent* frontend = nullptr;
++	PolkitAgentImpl* impl = nullptr;
++	QsPolkitAgent* listener = nullptr;
++	QList<AuthFlow*> activeHistory;
++	// Results arrive from GLib idle callbacks, possibly after the test function
++	// returned, so requests live until cleanup() has drained them.
++	std::vector<std::unique_ptr<Request>> requests;
++
++	Request& request(const char* action) {
++		return *this->requests.emplace_back(std::make_unique<Request>(QString::fromUtf8(action)));
++	}
++
++	enum class IdentityKind : quint8 { User, Netgroup, TwoUsers };
++
++	void submit(
++	    Request& request,
++	    IdentityKind kind = IdentityKind::User,
++	    PolkitDetails* details = nullptr,
++	    const char* cookie = "cookie"
++	) {
++		auto uid = static_cast<gint>(getuid());
++		PolkitIdentity* identity = kind == IdentityKind::Netgroup
++		                             ? polkit_unix_netgroup_new("emaki-test")
++		                             : polkit_unix_user_new(uid);
++		GList* identities = g_list_append(nullptr, identity);
++		if (kind == IdentityKind::TwoUsers) {
++			identities = g_list_append(identities, polkit_unix_user_new(uid == 0 ? 1 : 0));
++		}
++		auto action = request.action.toUtf8();
++		polkit_agent_listener_initiate_authentication(
++		    POLKIT_AGENT_LISTENER(this->listener),
++		    action.constData(),
++		    "Test message",
++		    "test-icon",
++		    details,
++		    cookie,
++		    identities,
++		    request.cancellable,
++		    &finished,
++		    &request.result
++		);
++		g_list_free_full(identities, g_object_unref);
++	}
++
++	[[nodiscard]] AuthFlow* active() const { return this->impl->activeFlow().value(); }
++
++	// The flow's live session: the newest one not cancelled or completed.
++	static Session* liveSession() {
++		for (auto it = fake::sessions().rbegin(); it != fake::sessions().rend(); ++it) {
++			if (!(*it)->cancelled && !(*it)->completed) return (*it)->session;
++		}
++		return nullptr;
++	}
++
++	static void spin() {
++		for (auto i = 0; i < 5; i++) {
++			QCoreApplication::processEvents();
++			QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
++			while (g_main_context_iteration(nullptr, false)) {}
++		}
++	}
++
++private slots:
++	void initTestCase() {
++		// Double results and other GLib misuse abort the test.
++		g_log_set_always_fatal(static_cast<GLogLevelFlags>(G_LOG_LEVEL_CRITICAL | G_LOG_LEVEL_ERROR));
++	}
++
++	void init() {
++		fake::reset();
++		this->activeHistory.clear();
++		this->frontend = new PolkitAgent();
++		this->impl = PolkitAgentImpl::tryGetOrCreate(this->frontend);
++		QVERIFY(this->impl);
++		this->listener = qs_polkit_agent_new(this->impl);
++		QObject::connect(this->impl, &PolkitAgentImpl::activeFlowChanged, this, [this]() {
++			this->activeHistory.append(this->active());
++		});
++	}
++
++	void cleanup() {
++		delete this->frontend;
++		this->frontend = nullptr;
++		this->impl = nullptr;
++		g_object_unref(this->listener);
++		this->listener = nullptr;
++		spin();
++		for (const auto& request: this->requests) {
++			QVERIFY2(request->result.done, qPrintable(request->action));
++			QCOMPARE(request->result.calls, 1);
++		}
++		this->requests.clear();
++	}
++
++	void secondRequestWaits() {
++		auto& first = this->request("org.emaki.test.first");
++		auto& second = this->request("org.emaki.test.second");
++
++		this->submit(first);
++		auto* flowA = this->active();
++		QVERIFY(flowA);
++		QCOMPARE(flowA->actionId(), QStringLiteral("org.emaki.test.first"));
++
++		this->submit(second);
++		spin();
++		QCOMPARE(this->active(), flowA);
++		QCOMPARE(this->activeHistory, QList<AuthFlow*>({flowA}));
++		QCOMPARE(fake::createdCount(), 1);
++		QVERIFY(!second.result.done);
++
++		auto guardA = QPointer(flowA);
++		fake::complete(liveSession(), true);
++		spin();
++		QVERIFY(first.result.done);
++		QVERIFY(first.result.authorized);
++		QVERIFY(!guardA);
++
++		auto* flowB = this->active();
++		QVERIFY(flowB);
++		QCOMPARE(flowB->actionId(), QStringLiteral("org.emaki.test.second"));
++		QCOMPARE(this->activeHistory.size(), 3);
++		QCOMPARE(this->activeHistory.at(1), nullptr);
++
++		fake::complete(liveSession(), true);
++		spin();
++		QVERIFY(second.result.authorized);
++		QCOMPARE(this->active(), nullptr);
++		QCOMPARE(first.result.calls, 1);
++		QCOMPARE(second.result.calls, 1);
++	}
++
++	void requestDuringCompletionWaits() {
++		auto& first = this->request("org.emaki.test.first");
++		auto& second = this->request("org.emaki.test.second");
++
++		this->submit(first);
++		auto* flowA = this->active();
++		fake::complete(liveSession(), true);
++		// Completed but not yet finished: the next request must still wait.
++		this->submit(second);
++		QCOMPARE(this->active(), flowA);
++		spin();
++		QVERIFY(this->active() != nullptr);
++		QCOMPARE(this->active()->actionId(), QStringLiteral("org.emaki.test.second"));
++		QCOMPARE(this->activeHistory.at(1), nullptr);
++	}
++
++	void unsupportedIdentityAdvancesQueue() {
++		auto& first = this->request("org.emaki.test.first");
++		auto& netgroup = this->request("org.emaki.test.netgroup");
++		auto& third = this->request("org.emaki.test.third");
++
++		this->submit(first);
++		this->submit(netgroup, IdentityKind::Netgroup);
++		this->submit(third);
++
++		fake::complete(liveSession(), true);
++		spin();
++		QVERIFY(netgroup.result.done);
++		QVERIFY(netgroup.result.cancelled);
++		QVERIFY(!netgroup.result.authorized);
++		QVERIFY(this->active());
++		QCOMPARE(this->active()->actionId(), QStringLiteral("org.emaki.test.third"));
++
++		// An unsupported request arriving while idle is refused at once.
++		fake::complete(liveSession(), true);
++		spin();
++		auto& alone = this->request("org.emaki.test.alone");
++		this->submit(alone, IdentityKind::Netgroup);
++		spin();
++		QVERIFY(alone.result.cancelled);
++		QCOMPARE(this->active(), nullptr);
++	}
++
++	void cancelActiveRequestAdvancesQueue() {
++		QVERIFY(!this->frontend->cancelActiveRequest());
++
++		auto& first = this->request("org.emaki.test.first");
++		auto& second = this->request("org.emaki.test.second");
++		this->submit(first);
++		this->submit(second);
++		auto* flowA = this->active();
++		auto* session = liveSession();
++		auto guardA = QPointer(flowA);
++
++		QVERIFY(this->frontend->cancelActiveRequest());
++		QVERIFY(flowA->isCancelled().value());
++		QVERIFY(flowA->isCompleted().value());
++		QVERIFY(!flowA->isSuccessful().value());
++		QVERIFY(!flowA->failed().value());
++		QVERIFY(fake::record(session)->cancelled);
++		// Completed, not yet finished: a second cancel does nothing.
++		QVERIFY(!this->frontend->cancelActiveRequest());
++
++		spin();
++		QVERIFY(first.result.cancelled);
++		QVERIFY(!first.result.authorized);
++		QVERIFY(!guardA);
++		QVERIFY(this->active());
++		QCOMPARE(this->active()->actionId(), QStringLiteral("org.emaki.test.second"));
++		QCOMPARE(this->activeHistory.at(1), nullptr);
++		QCOMPARE(first.result.calls, 1);
++	}
++
++	void daemonCancelQueuedAndActive() {
++		auto& first = this->request("org.emaki.test.first");
++		auto& second = this->request("org.emaki.test.second");
++		auto& third = this->request("org.emaki.test.third");
++		this->submit(first);
++		this->submit(second);
++		this->submit(third);
++		auto* flowA = this->active();
++		auto cancelledSignals = 0;
++		QObject::connect(flowA, &AuthFlow::authenticationRequestCancelled, this, [&]() {
++			cancelledSignals++;
++		});
++
++		g_cancellable_cancel(second.cancellable);
++		spin();
++		QVERIFY(second.result.cancelled);
++		QCOMPARE(this->active(), flowA);
++
++		g_cancellable_cancel(first.cancellable);
++		QCOMPARE(cancelledSignals, 1);
++		spin();
++		QVERIFY(first.result.cancelled);
++		QVERIFY(this->active());
++		QCOMPARE(this->active()->actionId(), QStringLiteral("org.emaki.test.third"));
++	}
++
++	void alreadyCancelledRequestIsRefused() {
++		auto& request = this->request("org.emaki.test.cancelled");
++		g_cancellable_cancel(request.cancellable);
++		this->submit(request);
++		spin();
++		QVERIFY(request.result.cancelled);
++		QCOMPARE(this->active(), nullptr);
++	}
++
++	void sessionThatCannotStartCancels() {
++		fake::failInitiate() = true;
++		auto& first = this->request("org.emaki.test.first");
++		auto& second = this->request("org.emaki.test.second");
++		this->submit(first);
++		this->submit(second);
++		spin();
++		// One session per request, no retry loop.
++		QCOMPARE(fake::createdCount(), 2);
++		QVERIFY(first.result.cancelled);
++		QVERIFY(second.result.cancelled);
++		QCOMPARE(this->active(), nullptr);
++
++		fake::failInitiate() = false;
++		auto& third = this->request("org.emaki.test.third");
++		this->submit(third);
++		QVERIFY(this->active());
++		fake::complete(liveSession(), true);
++		spin();
++		QVERIFY(third.result.authorized);
++	}
++
++	void failedAttemptRetries() {
++		auto& request = this->request("org.emaki.test.retry");
++		this->submit(request);
++		auto* flow = this->active();
++		auto failures = 0;
++		QObject::connect(flow, &AuthFlow::authenticationFailed, this, [&]() { failures++; });
++
++		fake::complete(liveSession(), false);
++		spin();
++		QCOMPARE(failures, 1);
++		QVERIFY(flow->failed().value());
++		QVERIFY(!flow->isCompleted().value());
++		QCOMPARE(this->active(), flow);
++		QCOMPARE(fake::createdCount(), 2);
++		QVERIFY(!request.result.done);
++
++		fake::complete(liveSession(), true);
++		spin();
++		QVERIFY(request.result.authorized);
++	}
++
++	void switchingIdentityIsNoFailure() {
++		auto& request = this->request("org.emaki.test.identity");
++		this->submit(request);
++		auto* flow = this->active();
++		auto* other = new Identity(1, "other", "other", false, GObjectRef<PolkitIdentity>());
++		flow->setSelectedIdentity(other);
++		QCOMPARE(flow->selectedIdentity().value(), flow->identities().first());
++		delete other;
++
++		QVERIFY(!flow->failed().value());
++		QCOMPARE(fake::createdCount(), 1);
++	}
++
++	void switchingBetweenOfferedIdentities() {
++		auto& request = this->request("org.emaki.test.switch");
++		this->submit(request, IdentityKind::TwoUsers);
++		auto* flow = this->active();
++		QCOMPARE(flow->identities().size(), 2);
++		auto* first = flow->identities().at(0);
++		auto* second = flow->identities().at(1);
++		auto failures = 0;
++		QObject::connect(flow, &AuthFlow::authenticationFailed, this, [&]() { failures++; });
++
++		auto* firstSession = liveSession();
++		QCOMPARE(fake::record(firstSession)->identity, first->polkitIdentity.get());
++
++		// The running session is cancelled and one session starts for the new identity.
++		flow->setSelectedIdentity(second);
++		QCOMPARE(flow->selectedIdentity().value(), second);
++		QVERIFY(fake::record(firstSession)->cancelled);
++		QCOMPARE(fake::createdCount(), 2);
++		auto* secondSession = liveSession();
++		QVERIFY(secondSession != firstSession);
++		QVERIFY(fake::record(secondSession)->initiated);
++		QCOMPARE(fake::record(secondSession)->identity, second->polkitIdentity.get());
++
++		spin();
++		QCOMPARE(fake::sessions().size(), 1);
++		QCOMPARE(failures, 0);
++		QVERIFY(!flow->failed().value());
++		QVERIFY(!flow->isCompleted().value());
++		QVERIFY(!flow->isCancelled().value());
++		QCOMPARE(this->active(), flow);
++		QVERIFY(!request.result.done);
++
++		flow->setSelectedIdentity(first);
++		QCOMPARE(fake::createdCount(), 3);
++		QCOMPARE(fake::record(liveSession())->identity, first->polkitIdentity.get());
++		QCOMPARE(failures, 0);
++
++		fake::complete(liveSession(), true);
++		spin();
++		QVERIFY(request.result.authorized);
++		QCOMPARE(request.result.calls, 1);
++		QCOMPARE(fake::createdCount(), 3);
++	}
++
++	void oneResultPerRequest() {
++		auto& request = this->request("org.emaki.test.once");
++		this->submit(request);
++		auto* flow = this->active();
++		fake::complete(liveSession(), true);
++		flow->cancelAuthenticationRequest();
++		flow->submit("late");
++		QVERIFY(!this->frontend->cancelActiveRequest());
++		QVERIFY(!flow->isCancelled().value());
++		QVERIFY(flow->isSuccessful().value());
++		spin();
++		QCOMPARE(request.result.calls, 1);
++		QVERIFY(request.result.authorized);
++	}
++
++	void destroyingAgentCancelsEverything() {
++		auto& first = this->request("org.emaki.test.first");
++		auto& second = this->request("org.emaki.test.second");
++		this->submit(first);
++		this->submit(second);
++		delete this->frontend;
++		this->frontend = new PolkitAgent();
++		spin();
++		QVERIFY(first.result.cancelled);
++		QVERIFY(second.result.cancelled);
++	}
++
++	void requestDetails() {
++		auto* details = polkit_details_new();
++		polkit_details_insert(details, "polkit.subject-pid", "4242");
++		polkit_details_insert(details, "polkit.caller-pid", "17");
++		auto& request = this->request("org.emaki.test.details");
++		this->submit(request, IdentityKind::User, details);
++		g_object_unref(details);
++
++		auto* flow = this->active();
++		QCOMPARE(flow->property("subjectPid").toLongLong(), 4242);
++		QCOMPARE(flow->property("callerPid").toLongLong(), 17);
++		auto map = flow->property("details").toMap();
++		QCOMPARE(map.size(), 2);
++		QCOMPARE(map.value("polkit.subject-pid").toString(), QStringLiteral("4242"));
++		QCOMPARE(flow->property("message").toString(), QStringLiteral("Test message"));
++		QCOMPARE(flow->property("iconName").toString(), QStringLiteral("test-icon"));
++		QCOMPARE(flow->property("actionId").toString(), QStringLiteral("org.emaki.test.details"));
++		fake::complete(liveSession(), true);
++		spin();
++
++		auto* bad = polkit_details_new();
++		polkit_details_insert(bad, "polkit.subject-pid", "12x");
++		polkit_details_insert(bad, "polkit.caller-pid", "-5");
++		auto& malformed = this->request("org.emaki.test.malformed");
++		this->submit(malformed, IdentityKind::User, bad);
++		g_object_unref(bad);
++		QCOMPARE(this->active()->subjectPid(), -1);
++		QCOMPARE(this->active()->callerPid(), -1);
++		fake::complete(liveSession(), true);
++		spin();
++
++		auto& none = this->request("org.emaki.test.none");
++		this->submit(none);
++		QVERIFY(this->active()->details().isEmpty());
++		QCOMPARE(this->active()->subjectPid(), -1);
++		QCOMPARE(this->active()->callerPid(), -1);
++	}
++
++	void noSecretsInLogs() {
++		const auto* cookie = "cookie-sentinel-5f2a";
++		const auto password = QStringLiteral("password-sentinel-9c1e");
++		QLoggingCategory::setFilterRules("quickshell.service.polkit*.debug=true");
++		messages().clear();
++		auto* previous = qInstallMessageHandler(&captureMessage);
++
++		auto& request = this->request("org.emaki.test.logs");
++		this->submit(request, IdentityKind::User, nullptr, cookie);
++		auto* flow = this->active();
++		flow->submit(password);
++		QCOMPARE(fake::record(liveSession())->cookie, QString::fromUtf8(cookie));
++		fake::complete(liveSession(), false);
++		flow->submit(password);
++		this->frontend->cancelActiveRequest();
++		spin();
++
++		qInstallMessageHandler(previous);
++		QLoggingCategory::setFilterRules("");
++
++		// Debug output was on, so the check below saw the service's messages.
++		QVERIFY(messages().size() >= 4);
++		for (const auto& msg: messages()) {
++			QVERIFY2(!msg.contains(QString::fromUtf8(cookie)), qPrintable(msg));
++			QVERIFY2(!msg.contains(password), qPrintable(msg));
++		}
++	}
++
++	void responseBufferIsWiped() {
++		const auto text = QStringLiteral(u"pässwörd \U0001F511");
++		SecretUtf8 secret(text);
++		QCOMPARE(QByteArray(secret.data(), secret.size()), text.toUtf8());
++		QCOMPARE(secret.data()[secret.size()], '\0');
++
++		const auto* bytes = secret.data();
++		const auto capacity = secret.capacity();
++		QVERIFY(capacity > secret.size());
++		secret.wipe();
++		for (auto i = 0; i < capacity; i++) QCOMPARE(bytes[i], '\0');
++		QCOMPARE(secret.size(), 0);
++
++		const SecretUtf8 empty(QStringView {});
++		QCOMPARE(empty.size(), 0);
++		QCOMPARE(empty.data()[0], '\0');
++	}
++};
++
++QTEST_MAIN(QueueTest);
++#include "queue.moc"
+diff --git a/src/services/polkit/test/realsession.cpp b/src/services/polkit/test/realsession.cpp
+new file mode 100644
+index 0000000..907dc4b
+--- /dev/null
++++ b/src/services/polkit/test/realsession.cpp
+@@ -0,0 +1,190 @@
++// The production Session: the polkit library's debug output never carries the cookie,
++// and the response buffer is wiped when Session::respond returns.
++//
++// No helper is started: the identity is a unix group, which polkit refuses before
++// it looks for one, and the response is caught before it would reach the helper.
++
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <new>
++
++#include <glib-object.h>
++#include <glib.h>
++#include <qbytearray.h>
++#include <qbytearrayview.h>
++#include <qcoreapplication.h>
++#include <qlist.h>
++#include <qobject.h>
++#include <qstring.h>
++#include <qtenvironmentvariables.h>
++#include <qtestcase.h>
++#include <qtmetamacros.h>
++#include <sys/mman.h>
++#include <unistd.h>
++
++#define POLKIT_AGENT_I_KNOW_API_IS_SUBJECT_TO_CHANGE
++#undef signals
++#include <polkit/polkit.h>
++#include <polkitagent/polkitagent.h>
++#define signals Q_SIGNALS
++
++#include "../session.hpp"
++
++using namespace qs::service::polkit;
++
++namespace {
++// What polkit_agent_session_response was given, and whether those bytes were
++// zero when the buffer was freed.
++const char* responseBuffer = nullptr; // NOLINT
++QByteArray responseSeen;              // NOLINT
++bool responseFreed = false;           // NOLINT
++bool responseZeroWhenFreed = false;   // NOLINT
++
++QList<QByteArray>& printed() {
++	static QList<QByteArray> list;
++	return list;
++}
++
++void recordPrint(const gchar* string) { printed().append(QByteArray(string)); }
++
++// Runs fn with stdout and stderr going to a file and returns what was written.
++template <typename F>
++QByteArray captureOutput(F fn) {
++	auto file = memfd_create("polkitsession-output", 0);
++	fflush(stdout);
++	fflush(stderr);
++	auto savedOut = dup(STDOUT_FILENO);
++	auto savedErr = dup(STDERR_FILENO);
++	dup2(file, STDOUT_FILENO);
++	dup2(file, STDERR_FILENO);
++
++	fn();
++
++	fflush(stdout);
++	fflush(stderr);
++	dup2(savedOut, STDOUT_FILENO);
++	dup2(savedErr, STDERR_FILENO);
++	close(savedOut);
++	close(savedErr);
++
++	QByteArray output;
++	char buffer[4096]; // NOLINT
++	lseek(file, 0, SEEK_SET);
++	for (auto n = read(file, buffer, sizeof(buffer)); n > 0; n = read(file, buffer, sizeof(buffer)))
++		output.append(buffer, n);
++	close(file);
++	return output;
++}
++} // namespace
++
++// Stands in for the library function: the response is recorded instead of being
++// written to a helper.
++extern "C" void
++polkit_agent_session_response(PolkitAgentSession* /*session*/, const gchar* response) {
++	responseBuffer = response;
++	responseSeen = QByteArray(response);
++}
++
++// new[]/delete[] are replaced so the response buffer can be read just before it is freed.
++void* operator new[](std::size_t size) {
++	if (auto* ptr = std::malloc(size ? size : 1)) return ptr; // NOLINT
++	throw std::bad_alloc();
++}
++
++void operator delete[](void* ptr) noexcept {
++	if (ptr && ptr == responseBuffer) {
++		responseFreed = true;
++		responseZeroWhenFreed = true;
++		// The bytes polkit was given and their terminator.
++		const QByteArrayView bytes(static_cast<const char*>(ptr), responseSeen.size() + 1);
++		for (auto byte: bytes) {
++			if (byte != '\0') responseZeroWhenFreed = false;
++		}
++		responseBuffer = nullptr;
++	}
++	std::free(ptr); // NOLINT
++}
++
++void operator delete[](void* ptr, std::size_t /*size*/) noexcept { operator delete[](ptr); }
++
++class SessionTest: public QObject {
++	Q_OBJECT;
++
++private:
++	static PolkitIdentity* unsupportedIdentity() { return polkit_unix_group_new(0); }
++
++private slots:
++	void initTestCase() {
++		// The polkit library reads it once, on the first initiate.
++		QVERIFY(qEnvironmentVariableIsSet("POLKIT_DEBUG"));
++	}
++
++	void cookieNeverPrinted() {
++		const QByteArray cookie = "cookie-sentinel-3b7d";
++		auto* identity = unsupportedIdentity();
++		auto* session = new Session(identity, QString::fromUtf8(cookie));
++		QList<bool> results;
++		QObject::connect(session, &Session::completed, this, [&](bool ok) { results.append(ok); });
++
++		// GLib's own output path (GLib 2.88 returns its default handler, never null).
++		auto* before = g_set_print_handler(nullptr);
++		auto* glibDefault = g_set_print_handler(nullptr);
++		auto output = captureOutput([&]() { session->initiate(); });
++		auto* after = g_set_print_handler(before);
++		delete session;
++		g_object_unref(identity);
++
++		// Debug output was on, so the cookie would have been printed.
++		QVERIFY2(
++		    output.contains("PolkitAgentSession: emitting ::completed(FALSE)"),
++		    output.constData()
++		);
++		QVERIFY2(!output.contains(cookie), output.constData());
++		QCOMPARE(results, QList<bool>({false}));
++
++		// No handler is left behind.
++		QVERIFY(after == glibDefault);
++	}
++
++	void cookieFilterKeepsPrintHandler() {
++		const QByteArray cookie = "cookie-sentinel-a41e";
++		printed().clear();
++		g_set_print_handler(&recordPrint);
++		auto* identity = unsupportedIdentity();
++		auto* session = new Session(identity, QString::fromUtf8(cookie));
++		session->initiate();
++		delete session;
++		g_object_unref(identity);
++		g_print("after initiate\n");
++		QVERIFY(g_set_print_handler(nullptr) == &recordPrint);
++
++		QVERIFY(printed().contains("PolkitAgentSession: emitting ::completed(FALSE)\n"));
++		QVERIFY(printed().contains("after initiate\n"));
++		for (const auto& line: printed()) QVERIFY2(!line.contains(cookie), line.constData());
++	}
++
++	void responseWipedOnReturn() {
++		const auto password = QStringLiteral(u"pässwörd \U0001F511");
++		auto* identity = unsupportedIdentity();
++		auto* session = new Session(identity, QStringLiteral("cookie"));
++		responseFreed = false;
++		session->respond(password);
++		delete session;
++		g_object_unref(identity);
++
++		QCOMPARE(responseSeen, password.toUtf8());
++		QVERIFY(responseFreed);
++		QVERIFY(responseZeroWhenFreed);
++	}
++};
++
++int main(int argc, char** argv) {
++	// Any value turns the polkit library's debug output on.
++	qputenv("POLKIT_DEBUG", "0");
++	const QCoreApplication app(argc, argv);
++	SessionTest test;
++	return QTest::qExec(&test, argc, argv);
++}
++
++#include "realsession.moc"
+-- 
+2.55.0
+

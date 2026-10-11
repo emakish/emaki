@@ -23,7 +23,11 @@ system_map = importlib.util.module_from_spec(importlib.util.spec_from_loader(loa
 loader.exec_module(system_map)
 # The installed page, so the check proves what shipped rather than this checkout.
 SYSTEM_MAP = '/usr/share/emaki/system-map.md'
-SESSION_ENV = 'XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus'
+# An SSH command does not inherit the desktop session: the compositor socket and the Wayland display
+# are found in the runtime directory, as a terminal inside the session would have them.
+SESSION_ENV = ('XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus '
+               'NIRI_SOCKET=$(ls /run/user/$(id -u)/niri.*.sock 2>/dev/null | head -1) '
+               "WAYLAND_DISPLAY=$(ls /run/user/$(id -u) | grep -E '^wayland-[0-9]+$' | head -1)")
 
 
 def map_state_commands(page):
@@ -41,6 +45,17 @@ def json_answer(output):
     except ValueError:
         return False
     return True
+
+
+def rules_commands():
+    """(key, command) for the read-only commands the rules template names in its own text."""
+    return [(key, system_map.RULES_COMMANDS[key]) for key in system_map.RULES_READ_ONLY]
+
+
+def rules_answer(returncode, output):
+    """emaki exits 1 for a partial observation or unresolved planned paths, still with valid JSON;
+    2 is a rejected command line, as a renamed command would give."""
+    return returncode in (0, 1) and json_answer(output)
 
 
 # Exact QEMU hardware limitations, the duplicate packaged activation names
@@ -269,6 +284,10 @@ def main():
         if status(commands is not None, 'map state commands: installed map readable'):
             for component, command in commands:
                 check(f'map-state-{component}', f'{SESSION_ENV} {command}', predicate=json_answer)
+        for key, command in rules_commands():
+            result = remote(f'{SESSION_ENV} {command}')
+            (run / f'rules-{key}.log').write_bytes(result.stdout + result.stderr)
+            status(rules_answer(result.returncode, result.stdout.decode(errors='replace')), f'rules-{key}')
         # Query both managers after the session has started, when desktop
         # services and their error messages can actually be observed.
         check('failed-units', 'systemctl --failed --no-legend --plain',

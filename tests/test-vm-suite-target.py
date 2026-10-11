@@ -4,10 +4,12 @@
 """Fixture and SSH transport contracts, using an executable fake SSH client."""
 import json
 import os
+import socket
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -37,6 +39,24 @@ class TargetTests(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
 
+    def own_directory(self):
+        """A fake QEMU of this directory on a free port, recorded as its ssh-port: iso-ssh.sh talks
+        only to the VM its directory started (tests/test-iso-vm-owner.py)."""
+        with socket.socket() as probe:
+            probe.bind(('127.0.0.1', 0))
+            port = probe.getsockname()[1]
+        with open(self.base / 'run.lock', 'w') as lock:
+            qemu = subprocess.Popen(
+                ['qemu-system-x86_64', str(HERE / 'fixtures/fake-qemu.py'), '-nic', f'user,hostfwd=tcp:127.0.0.1:{port}-:22',
+                 '-pidfile', str(self.base / 'qemu.pid')], executable=sys.executable, pass_fds=(lock.fileno(),))
+        self.addCleanup(qemu.wait, 10)
+        self.addCleanup(qemu.terminate)
+        deadline = time.monotonic() + 20
+        while not (self.base / 'qemu.pid').exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        (self.base / 'ssh-port').write_text(f'{port}\n')
+        return port
+
     def write_plan(self, *, wrapped=False, user='release_test', password='fixture-secret-42', transport=None):
         config = {'user': {'login': user, 'password': password}}
         data = {'config': config} if wrapped else config
@@ -55,12 +75,12 @@ class TargetTests(unittest.TestCase):
         self.assertIn('UserKnownHostsFile=' + str(self.base / 'known_hosts'), row['argv'])
 
     def test_iso_helper_uses_fixture_and_recorded_transport(self):
-        (self.base / 'ssh-port').write_text('2288\n')
+        port = self.own_directory()
         (self.base / 'ssh-host-generation').write_text('installed-2\n')
         target = Target(fixture=self.fixture, directory=self.base, key=self.key)
         row = json.loads(target.remote('python3 helper.py', data='payload', privileged=True).stdout)
         self.assertIn('release_test@127.0.0.1', row['argv'])
-        self.assertIn('2288', row['argv'])
+        self.assertIn(str(port), row['argv'])
         self.assertIn(str(self.key), row['argv'])
         self.assertIn('UserKnownHostsFile=' + str(self.base / 'known_hosts-release_test-installed-2'), row['argv'])
         self.assertEqual(row['stdin'], 'fixture-secret-42\npayload')
@@ -77,7 +97,7 @@ class TargetTests(unittest.TestCase):
 
     def test_iso_explicit_known_hosts_reaches_ssh(self):
         target = Target(fixture=self.fixture, directory=self.base, key=self.key,
-                        port=2290, known_hosts=self.base / 'custom hosts')
+                        port=self.own_directory(), known_hosts=self.base / 'custom hosts')
         row = json.loads(target.remote('true', data='').stdout)
         self.assertIn('UserKnownHostsFile=' + str(self.base / 'custom hosts'), row['argv'])
 
@@ -85,6 +105,7 @@ class TargetTests(unittest.TestCase):
         fake = self.base / 'ssh'
         fake.write_text('#!/usr/bin/env python3\nimport sys\nsys.stdout.buffer.write(sys.stdin.buffer.read())\n')
         payload = bytes(range(256))
+        self.own_directory()
         result = subprocess.run([str(HERE / 'ssh.sh'), '--fixture', str(self.fixture), '--dir', str(self.base),
                                  '--key', str(self.key), '--', 'cat'], input=payload, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright (C) 2026 Artur Yakymenko -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN" "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Emaki</vendor>
+  <action id="org.emaki.settings-users">
+    <description>[PLACEHOLDER] Change an account</description>
+    <message>[PLACEHOLDER] Enter an administrator password to change an account.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@EMAKI_LIBEXECDIR@/emaki-settings-users-root</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">apply</annotate>
+  </action>
+</policyconfig>

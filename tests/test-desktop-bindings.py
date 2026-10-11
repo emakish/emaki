@@ -13,10 +13,24 @@ CONFIG = (ROOT / "niri/default.kdl").read_text()
 
 
 class DesktopBindings(unittest.TestCase):
-    def binding(self, key):
-        match = re.search(r"^\s*" + re.escape(key) + r"\s+[^\n{]*\{([^}]+)\}", CONFIG, re.M)
+    def binding(self, key, config=CONFIG):
+        match = re.search(r"^\s*" + re.escape(key) + r"\s+[^\n{]*\{([^}]+)\}", config, re.M)
         self.assertIsNotNone(match, key)
         return match.group(1)
+
+    def test_prompt_proof_is_a_physical_compositor_binding(self):
+        fork_rules = (ROOT / "niri/fork-rules.kdl").read_text()
+        self.assertEqual(self.binding("Ctrl+Alt+Delete", fork_rules).strip(), "show-trusted-prompt-mark;")
+        self.assertNotIn("show-trusted-prompt-mark", CONFIG)
+        # Modifier order must not hide a second claim on the proof combination.
+        claims = []
+        for path in ROOT.rglob("*.kdl"):
+            if ".cache" in path.relative_to(ROOT).parts:
+                continue
+            for key in re.findall(r"^\s*([^\s/]+)\s+[^\n{]*\{", path.read_text(), re.M):
+                if set(key.lower().split("+")) == {"ctrl", "alt", "delete"}:
+                    claims.append(path.relative_to(ROOT).as_posix())
+        self.assertEqual(claims, ["niri/fork-rules.kdl"])
 
     def test_keyboard_light_does_not_target_other_leds(self):
         for key, delta in (("XF86KbdBrightnessUp", "10%+"), ("XF86KbdBrightnessDown", "10%-")):

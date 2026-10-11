@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Token-derived GTK and Qt themes, including the administrator prompt."""
+"""Token-derived GTK and Qt themes, for applications."""
 from pathlib import Path
 from runtime_fixture import runtime_path
 import json
@@ -22,13 +22,8 @@ PATHS = RENDER['paths']()
 
 
 class ThemeTests(unittest.TestCase):
-    def test_administrator_prompt_selects_fusion_only_for_its_process(self):
-        self.assertIn('spawn-at-startup "emaki-autostart" "authentication" "env" "QT_QUICK_CONTROLS_STYLE=Fusion" '
-                      '"/usr/lib/polkit-kde-authentication-agent-1"',
-                      RENDER['substitute']((ROOT / 'niri/default.kdl').read_text(), PATHS))
-
-    def test_administrator_controls_use_readable_emaki_palette(self):
-        # Match the agent's QApplication and Kirigami/QtQuick Controls, without
+    def test_application_controls_use_readable_emaki_palette(self):
+        # Match applications using QApplication and Kirigami/QtQuick Controls, without
         # opening a session bus or submitting a real authorization request.
         with tempfile.TemporaryDirectory(prefix='emaki-polkit-') as directory:
             home = Path(directory)

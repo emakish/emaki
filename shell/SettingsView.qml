@@ -249,6 +249,13 @@ FocusScope {
             y: 30
             width: parent.width - 52
             height: 46
+            // The account row opens Users (approved settings mockup, note 10).
+            MouseArea {
+                objectName: "settings-account-row"
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.navigate("users", "")
+            }
             Rectangle {
                 width: 42
                 height: 42

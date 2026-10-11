@@ -56,6 +56,7 @@ Scope {
         value: outputs.pairingOwner?.surfaces.pairingReady ?? true
     }
     property ShellScene previousScene: null
+    signal closing
     property var savedTransient: null
     function followFocus(): void {
         if (previousScene === activeScene)
@@ -74,6 +75,7 @@ Scope {
             instance.surfaces?.sealStartupMaterial();
     }
     function closeAll(): void {
+        closing();
         for (const instance of instances)
             instance.scene.closeAll();
     }

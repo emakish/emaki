@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Allocator defaults stay with shell/lock; scoped and fallback apps keep session env."""
 from runtime_fixture import runtime_path
+from shell_fixture import shell_wrapper
 import json
 import os
 from pathlib import Path
@@ -22,6 +23,7 @@ def run():
         root = Path(directory)
         binary = root / 'bin'
         binary.mkdir()
+        wrapper = shell_wrapper(root / 'wrapper', str(binary))
         (binary / 'readlink').symlink_to(shutil.which('readlink'))
         qt_check = binary / 'emaki-qt-check'
         qt_check.write_text('#!/bin/sh\nexit 0\n')
@@ -34,7 +36,7 @@ def run():
 import Quickshell
 ShellRoot {
     Component.onCompleted: {
-        console.log("ALLOCATOR_ENV=" + JSON.stringify({
+        console.info("ALLOCATOR_ENV=" + JSON.stringify({
             "MALLOC_CONF": Quickshell.env("MALLOC_CONF"),
             "EMAKI_SHELL_ORIGINAL_MALLOC_CONF": Quickshell.env("EMAKI_SHELL_ORIGINAL_MALLOC_CONF"),
             "QS_DISABLE_CRASH_HANDLER": Quickshell.env("QS_DISABLE_CRASH_HANDLER")
@@ -115,7 +117,7 @@ Path(os.environ['EMAKI_ALLOCATOR_RESULT']).write_text(json.dumps(result))
             original_env = dict(env, **{MARKER: '1stale inherited value'})
             if original is not None:
                 original_env['MALLOC_CONF'] = original
-            subprocess.run([str(ROOT / 'scripts/emaki-shell')], env=original_env,
+            subprocess.run([str(wrapper)], env=original_env,
                            check=True, capture_output=True, timeout=3)
             launch = json.loads(capture.read_text())
             assert launch['argv'] == ['-n', '-p', str(qml)], launch
@@ -183,7 +185,7 @@ Path(os.environ['EMAKI_ALLOCATOR_RESULT']).write_text(json.dumps(result))
             environment = dict(offscreen)
             if original is not None:
                 environment['MALLOC_CONF'] = original
-            completed = subprocess.run([str(ROOT / 'scripts/emaki-shell')], env=environment,
+            completed = subprocess.run([str(wrapper)], env=environment,
                                        check=True, capture_output=True, text=True, timeout=5)
             line = next(line for line in (completed.stdout + completed.stderr).splitlines()
                         if 'ALLOCATOR_ENV=' in line)

@@ -211,8 +211,8 @@ class Controller:
                 self.redactor.add(config.get('disk_password'))
             plan_id = secrets.token_hex(16)
             try:
-                validate_config(config)  # An unoffered mode is refused before any probe.
-                plan = make_plan(config, self.inventory.probe())
+                validate_config(config, self.test_mode)  # An unoffered mode is refused before any probe.
+                plan = make_plan(config, self.inventory.probe(), self.test_mode)
                 if self.validate_plan:
                     self.validate_plan(plan)
             except InstallError as exc:

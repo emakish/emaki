@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import runpy
 import subprocess
 import tempfile
 
@@ -168,12 +169,17 @@ def backend_case(name, baseline, answer):
         (session / 'session.json').write_text(json.dumps(baseline))
         tools = base / 'bin'
         tools.mkdir()
+        # Captured observers include the package's generated path module. The
+        # fixture renders both command lookup and the installed binary directory.
+        render = runpy.run_path(str(ROOT / 'scripts/render-paths'))
+        values = render['paths'](prefix=str(base), system={'TRUSTED_PATH': str(tools) + ':/usr/bin'})
+        (base / 'generation/emaki_paths.py').write_text(render['modules'](values)[0])
         (base / 'state.json').write_text(json.dumps(answer))
         command = tools / 'emaki-session-update'
         command.write_text('#!/bin/sh\n: > ' + str(base / 'generation/started') + '\n'
                            '[ "$1" = state ] && exec cat ' + str(base / 'state.json') + '\nexit 2\n')
         command.chmod(0o700)
-        return dict(PATH=str(tools) + ':' + os.environ['PATH'])
+        return {}
     notes, asked, _ = run_case('backend-' + name, '', '''
     Component.onCompleted: notice.ready = true
 ''', fallback=True, duration=2500, setup=setup)

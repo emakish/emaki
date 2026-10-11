@@ -16,7 +16,6 @@ WRAPPER = ROOT / 'scripts/emaki-autostart'
 COMMANDS = {
     'wallpaper': ['emaki-session-wallpaper'],
     'clipboard': ['python3', '-B', '@EMAKI_DATADIR@/shell/helpers/clipboard_store.py', '--watch'],
-    'authentication': ['env', 'QT_QUICK_CONTROLS_STYLE=Fusion', '@EMAKI_POLKIT_AGENT@'],
     'automount': ['udiskie', '--no-automount'],
     'shell': ['systemctl', '--user', 'start', '--no-block', 'emaki-shell.service'],
     'sleep-guard': ['systemctl', '--user', 'start', '--no-block', 'emaki-sleep-guard.service'],
@@ -71,6 +70,34 @@ class AutostartTests(unittest.TestCase):
             self.assertEqual(self.snapshot(), before)
             marker.unlink()
             self.assertEqual(self.run_switch(disabled).returncode, 23)
+
+    def test_trusted_shell_opt_out_has_reserved_exit_status(self):
+        directory = self.home / '.config/emaki/autostart-disabled'
+        directory.mkdir(parents=True)
+        (directory / 'shell').touch()
+        self.env['WAYLAND_SOCKET'] = '73'
+        self.assertEqual(self.run_switch('shell').returncode, 78)
+        self.env.pop('WAYLAND_SOCKET')
+        self.assertEqual(self.run_switch('shell').returncode, 0)
+
+    def test_trusted_shell_captures_session_before_fixing_path(self):
+        self.env.update(WAYLAND_SOCKET='73', PATH='/personal/bin',
+                        QT_QPA_PLATFORMTHEME='personal-theme',
+                        EMAKI_SHELL_SESSION_ENV='old snapshot',
+                        EMAKI_SHELL_ORIGINAL_MALLOC_CONF='old malloc',
+                        EMAKI_SHELL_PROCESS_ID='old process')
+        result = subprocess.run([str(WRAPPER), 'shell', sys.executable, '-I', '-c',
+                                 'import json,os; print(json.dumps(dict(os.environ)))'],
+                                env=self.env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        environment = json.loads(result.stdout)
+        self.assertEqual(environment['PATH'], '@EMAKI_TRUSTED_PATH@')
+        session = json.loads(environment['EMAKI_SHELL_SESSION_ENV'])
+        self.assertEqual(session['PATH'], '/personal/bin')
+        self.assertEqual(session['QT_QPA_PLATFORMTHEME'], 'personal-theme')
+        for key in ('WAYLAND_SOCKET', 'EMAKI_SHELL_SESSION_ENV',
+                    'EMAKI_SHELL_ORIGINAL_MALLOC_CONF', 'EMAKI_SHELL_PROCESS_ID'):
+            self.assertNotIn(key, session)
 
     def test_missing_home_without_absolute_xdg_starts_command(self):
         for home in (None, ''):
@@ -127,13 +154,31 @@ class AutostartTests(unittest.TestCase):
         result = subprocess.run([str(WRAPPER)], env=self.env, capture_output=True)
         self.assertEqual(result.returncode, 64)
 
+    def test_interpreter_ignores_inherited_python_search_paths(self):
+        modules = Path(self.temp.name) / 'modules'
+        modules.mkdir()
+        marker = Path(self.temp.name) / 'injected'
+        (modules / 'sitecustomize.py').write_text(
+            f'from pathlib import Path\nPath({str(marker)!r}).touch()\n')
+        result = subprocess.run([str(WRAPPER), 'invalid', 'unused'],
+                                env=dict(self.env, PYTHONPATH=str(modules),
+                                         PYTHONHOME=str(modules), PATH=str(modules)),
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 64, result.stderr)
+        self.assertFalse(marker.exists())
+
     def test_every_desktop_startup_uses_its_own_switch(self):
         actual = {}
         for path in (ROOT / 'niri').glob('*.kdl'):
             for line in path.read_text().splitlines():
-                if not line.strip().startswith(('spawn-at-startup ', 'spawn-sh-at-startup ')):
+                if not line.strip().startswith(('spawn-at-startup ', 'spawn-sh-at-startup ', 'spawn-trusted-shell-at-startup ')):
                     continue
                 tokens = shlex.split(line.strip(), comments=False)
+                if tokens[0] == 'spawn-trusted-shell-at-startup':
+                    self.assertEqual(path.name, 'fork-rules.kdl')
+                    self.assertEqual(tokens[1:], ['@EMAKI_BINDIR@/emaki-autostart',
+                                                  'shell', '@EMAKI_BINDIR@/emaki-shell'])
+                    continue
                 self.assertEqual(tokens[:2], ['spawn-at-startup', 'emaki-autostart'])
                 self.assertNotIn(tokens[2], actual)
                 actual[tokens[2]] = tokens[3:]

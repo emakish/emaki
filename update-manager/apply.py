@@ -17,6 +17,7 @@ try:
     import update_catalog as catalog
 except ModuleNotFoundError:
     import catalog
+import emaki_update_root
 
 ENV = {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C', 'SYSTEMD_COLORS': '0'}
 SERVICE = 'emaki-update.service'
@@ -49,6 +50,12 @@ def changed(before, after):
     return restart, sign_out
 
 
+def require_update_root():
+    emaki_update_root.require_update_root(
+        run, '[PLACEHOLDER] Restart into the normal system before updating repository packages.',
+        '[PLACEHOLDER] The system restore status could not be checked. The update was not started.')
+
+
 def apply():
     # /run is root-owned; no caller-controlled paths, environment or descriptors
     # reach the service. Its lifetime belongs to the system service manager.
@@ -59,10 +66,16 @@ def apply():
         except BlockingIOError:
             emit('finished', ok=False, message='An update is already running. Wait for it to finish.', restart=False, signOut=False)
             return 1
+        try:
+            require_update_root()
+        except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+            emit('finished', ok=False, notStarted=True, message=str(error), restart=False, signOut=False)
+            return 1
         before = versions()
         since = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
         cursor = ''
         space_refusal = ''
+        update_refusal = ''
         emit('progress', message='Updating all repository packages. You can hide this window; the update will keep running.')
         with subprocess.Popen(['/usr/bin/systemctl', 'start', SERVICE], cwd='/', env=ENV,
                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -83,6 +96,11 @@ def apply():
                                         r'\d+\.\d [GM]B, \d+\.\d [GM]B is free\. '
                                         r'Free some space, then try again\.', message):
                             space_refusal = message
+                        if (message.startswith('[PLACEHOLDER] The update was refused because these packages '
+                                               'are held after a restore: ')
+                                or message == '[PLACEHOLDER] The available package versions could not be checked. '
+                                              'The update was refused before changing installed packages.'):
+                            update_refusal = message
                         emit('progress', message=message)
                     except (ValueError, KeyError):
                         continue
@@ -101,7 +119,9 @@ def apply():
             message = 'Repository updates finished. AUR programs must be updated with your AUR tool.'
         else:
             message = 'The update did not finish. Review the details before trying again.'
-            if before != after:
+            if update_refusal:
+                message = update_refusal
+            elif before != after:
                 message = 'The update did not finish. Some packages changed. Review the details before trying again.'
             elif space_refusal:
                 message = space_refusal

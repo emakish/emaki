@@ -30,6 +30,7 @@ class ReleaseInputs(unittest.TestCase):
         self.write('scripts/make-public.sh', (ROOT / 'scripts/make-public.sh').read_text())
         for name in ('emaki-config', 'emaki-installer'):
             self.write(f'packaging/{name}/PKGBUILD', 'pkgver=0.2.0\npkgrel=1\n')
+        self.write('installer/emaki_installer/constants.py', 'ALONGSIDE = False\n')
         self.write('installer/main.py', 'initial\n')
         self.write('niri/default.kdl', 'initial\n')
         self.write('README.md', 'private\n')
@@ -68,6 +69,81 @@ class ReleaseInputs(unittest.TestCase):
 
     def bump(self, name):
         self.write(f'packaging/{name}/PKGBUILD', 'pkgver=0.2.0\npkgrel=2\n')
+
+    def acceptance(self, **overrides):
+        cells = dict(result='PASS', machine='Windows test laptop', day='2026-10-04',
+                     iso='0123456789abcdef' * 4, evidence='evidence/windows-acceptance.md')
+        cells.update(overrides)
+        return '| H-W-ALONGSIDE | ' + ' | '.join(cells.values()) + ' |\n'
+
+    def test_disabled_default_needs_no_hardware_record(self):
+        release.check_alongside(self.repo)
+
+    def test_enabled_switch_requires_committed_hardware_acceptance(self):
+        self.write('installer/emaki_installer/constants.py', 'ALONGSIDE = True\n')
+        self.commit()
+        with self.assertRaisesRegex(ValueError, 'real-Windows acceptance'):
+            release.check_alongside(self.repo)
+        self.write('docs/hardware-acceptance.md', self.acceptance())
+        with self.assertRaisesRegex(ValueError, 'real-Windows acceptance'):
+            release.check_alongside(self.repo)
+        self.commit()
+        release.check_alongside(self.repo)
+
+    def test_incomplete_failed_or_synthetic_acceptance_is_refused(self):
+        self.write('installer/emaki_installer/constants.py', 'ALONGSIDE = True\n')
+        for overrides in ({'result': 'PENDING'}, {'result': 'FAIL'}, {'machine': '—'},
+                          {'machine': 'synthetic VM'}, {'day': 'not a date'},
+                          {'day': '2999-01-01'}, {'iso': 'abcdef123456'},
+                          {'iso': '0' * 64}, {'evidence': 'pending'}):
+            with self.subTest(overrides=overrides):
+                self.write('docs/hardware-acceptance.md', self.acceptance(**overrides))
+                self.commit()
+                with self.assertRaisesRegex(ValueError, 'real-Windows acceptance'):
+                    release.check_alongside(self.repo)
+        self.write('docs/hardware-acceptance.md', self.acceptance() * 2)
+        self.commit()
+        with self.assertRaisesRegex(ValueError, 'real-Windows acceptance'):
+            release.check_alongside(self.repo)
+
+    def test_unreadable_switch_fails_closed_without_execution(self):
+        for source in ('', 'ALONGSIDE = 0', 'ALONGSIDE = bool(0)',
+                       'ALONGSIDE = False\nALONGSIDE = True',
+                       'ALONGSIDE = False\nif True:\n ALONGSIDE = True', 'ALONGSIDE ='):
+            with self.subTest(source=source):
+                self.write('installer/emaki_installer/constants.py', source)
+                self.commit()
+                with self.assertRaisesRegex(ValueError, 'alongside release switch'):
+                    release.check_alongside(self.repo)
+
+    def test_all_builds_check_alongside_before_dry_run(self):
+        for name in ('build.sh', 'release_inputs.py', 'source_archive.py'):
+            shutil.copy2(ROOT / 'packaging' / name, self.repo / 'packaging' / name)
+        self.write('installer/emaki_installer/constants.py', 'ALONGSIDE = True\n')
+        self.commit()
+        metadata = self.base / 'SOURCES.json'
+        metadata.write_text(json.dumps(self.metadata))
+        for args in ([], ['--only', 'emaki-installer'],
+                     ['--published-sources', str(metadata), '--only', 'emaki-config']):
+            with self.subTest(args=args):
+                result = subprocess.run(['bash', str(self.repo / 'packaging/build.sh'),
+                                         '--dry-run', *args], capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('real-Windows acceptance', result.stderr)
+                self.assertNotIn('Would build from', result.stdout)
+
+    def test_optional_turn_setup_changes_select_its_package(self):
+        previous = self.old
+        for path in ('scripts/emaki-sudo-turn', 'sudo/turn-reporting.md',
+                     'sudo/integrations/example.json'):
+            with self.subTest(path=path):
+                self.write(path, 'updated setup\n')
+                current = self.commit()
+                self.assertTrue(release.changed_inputs(self.repo, 'emaki-sudo-key', previous, current))
+                previous = current
+        self.write('sudo/broker.cpp', 'changed service\n')
+        current = self.commit()
+        self.assertFalse(release.changed_inputs(self.repo, 'emaki-sudo-key', previous, current))
 
     def test_code_change_without_bump_refused(self):
         self.write('niri/default.kdl', 'changed\n')

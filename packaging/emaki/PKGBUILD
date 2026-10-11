@@ -2,19 +2,19 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # shellcheck shell=bash disable=SC2034
 pkgname=emaki
-pkgver=0.5.0
-pkgrel=1
-pkgdesc='Emaki 0.5.0 release marker'
+pkgver=0.6.0
+pkgrel=15
+pkgdesc='Emaki 0.6.0 release marker'
 arch=('any')
 url='https://github.com/emakish/emaki'
 license=('GPL-3.0-or-later')
 depends=(
-    'emaki-config=0.5.0-1'
-    'emaki-desktop=0.5.0-1'
-    'niri-emaki=26.04-13'
-    'quickshell-emaki=0.3.1-8'
-    'emaki-keyring>=0.5.0-1'
-    'emaki-mirrorlist>=0.5.0-1'
+    'emaki-config=0.6.0-14'
+    'emaki-desktop=0.6.0-1'
+    'niri-emaki=26.04-20'
+    'quickshell-emaki=0.3.1-10'
+    'emaki-keyring>=0.6.0-1'
+    'emaki-mirrorlist>=0.6.0-1'
 )
 
 package() {

@@ -26,6 +26,7 @@ SettingsIpcHarness {
         id: test
         name: "SettingsLauncher"
         when: true
+        property int failuresBeforeCase: 0
         onCompletedChanged: if (completed)
             console.log("SETTINGS_LAUNCHER_RESULT " + qtest_results.passCount + " " + qtest_results.failCount)
         function equal(actual, expected) {
@@ -37,6 +38,16 @@ SettingsIpcHarness {
             if (!value)
                 console.error("Settings verification " + new Error().stack);
             verify(value);
+        }
+        function waitForMotion(predicate, description) {
+            // QtTest polls tryVerify every 50 ms, which can skip a narrow
+            // intermediate animation state. Sample within each frame instead.
+            const deadline = Date.now() + 5000;
+            while (!predicate() && Date.now() < deadline)
+                wait(5);
+            if (!predicate())
+                console.error("Settings motion timeout: " + description + " " + new Error().stack);
+            verify(predicate(), description);
         }
         function nodes(item) {
             let found = [item];
@@ -56,6 +67,7 @@ SettingsIpcHarness {
             return harness.controller.view;
         }
         function init() {
+            failuresBeforeCase = qtest_results.failCount;
             harness.catalog.busy = false;
             harness.catalog.calls = [];
             harness.catalog.history = [];
@@ -65,15 +77,21 @@ SettingsIpcHarness {
             harness.window.height = 960;
         }
         function cleanup() {
-            harness.controller.dismiss();
-            quickWindow.visible = false;
-            tryCompare(harness.scene, "launcherPresent", false);
+            try {
+                harness.controller.dismiss();
+                quickWindow.visible = false;
+                tryCompare(harness.scene, "launcherPresent", false);
+            } finally {
+                // Timed assertions bypass equal/check, so report every case here.
+                const failed = qtest_results.failCount > failuresBeforeCase || qtest_results.failed;
+                console.log("SETTINGS_LAUNCHER_CASE " + qtest_results.functionName + " " + (failed ? "FAIL" : "PASS"));
+            }
         }
         function test_integrated_pages_and_search() {
-            const pages = [["panel", "SettingsCorePage", "Panel auto-hide", "panel-panel-auto-hide", "bar.autohide"], ["windows", "SettingsCorePage", "Window gaps", "windows-window-gaps", "appearance.gaps"], ["wifi", "SettingsWifiPage", "Wi-Fi", "wifi-radio", "settings-wifi-power"], ["bluetooth", "SettingsBluetoothPage", "Bluetooth", "bluetooth-radio", "settings-bluetooth-power"], ["network", "SettingsNetworkPage", "Wired", "network-wired", "settings-network-wired"], ["sound", "SoundSettingsPage", "Volume", "sound-volume", "settings-sound-volume"], ["displays", "DisplaysSettingsPage", "Resolution", "displays-resolution", "settings-display-resolution"], ["battery", "SettingsPowerPage", "Power mode", "battery-power-mode", "settings-power-profile"], ["keyboard", "KeyboardSettingsPage", "Keyboard shortcuts", "keyboard-keyboard-shortcuts", "settings-keyboard-shortcuts"], ["mouse", "MouseSettingsPage", "Mouse pointer speed", "mouse-pointer-speed", "mouse.speed"], ["notifications", "NotificationsSettingsPage", "Do Not Disturb", "notifications-do-not-disturb", "notifications.dnd"], ["wallpaper", "SettingsWallpaperPage", "Your own picture", "wallpaper-your-own-picture", "appearance.wallpaper"], ["apps", "SettingsAppsPage", "Startup apps", "apps-startup-apps", "settings-startup-apps"], ["region", "SettingsRegionPage", "Language", "region-language", "settings-language"], ["about", "SettingsAboutPage", "Emaki version", "about-emaki-version", "settings-about-version"], ["updates", "SettingsMaintenancePage", "Update channel", "updates-update-channel", "settings-update-channel"], ["lock", "SettingsMaintenancePage", "Password", "lock-password", "settings-password"]];
+            const pages = [["users", "SettingsUsersPage", "Other users", "users-other-users", "settings-users-others"], ["storage", "SettingsStoragePage", "System and home", "storage-disks", "settings-storage-disks"], ["privacy", "SettingsPrivacyPage", "Disk encryption", "privacy-encryption", "settings-privacy-encryption"], ["panel", "SettingsCorePage", "Panel auto-hide", "panel-panel-auto-hide", "bar.autohide"], ["windows", "SettingsCorePage", "Window gaps", "windows-window-gaps", "appearance.gaps"], ["wifi", "SettingsWifiPage", "Wi-Fi", "wifi-radio", "settings-wifi-power"], ["bluetooth", "SettingsBluetoothPage", "Bluetooth", "bluetooth-radio", "settings-bluetooth-power"], ["network", "SettingsNetworkPage", "Wired", "network-wired", "settings-network-wired"], ["sound", "SoundSettingsPage", "Volume", "sound-volume", "settings-sound-volume"], ["displays", "DisplaysSettingsPage", "Resolution", "displays-resolution", "settings-display-resolution"], ["battery", "SettingsPowerPage", "Power mode", "battery-power-mode", "settings-power-profile"], ["keyboard", "KeyboardSettingsPage", "Keyboard shortcuts", "keyboard-keyboard-shortcuts", "settings-keyboard-shortcuts"], ["mouse", "MouseSettingsPage", "Mouse pointer speed", "mouse-pointer-speed", "mouse.speed"], ["notifications", "NotificationsSettingsPage", "Do Not Disturb", "notifications-do-not-disturb", "notifications.dnd"], ["wallpaper", "SettingsWallpaperPage", "Your own picture", "wallpaper-your-own-picture", "appearance.wallpaper"], ["apps", "SettingsAppsPage", "Startup apps", "apps-startup-apps", "settings-startup-apps"], ["region", "SettingsRegionPage", "Language", "region-language", "settings-language"], ["about", "SettingsAboutPage", "Emaki version", "about-emaki-version", "settings-about-version"], ["updates", "SettingsMaintenancePage", "Update channel", "updates-update-channel", "settings-update-channel"], ["lock", "SettingsMaintenancePage", "Password", "lock-password", "settings-password"]];
             equal(harness.controller.opened, false);
             equal(harness.scene.input.settingsActive, false);
-            compare(Array.from(harness.controller.availablePages).sort(), pages.map(entry => entry[0]).sort());
+            compare(Array.from(harness.controller.availablePages).sort(), pages.map(entry => entry[0]).concat(["assistants"]).sort());
             for (const entry of pages) {
                 const view = show(entry[0]);
                 equal(view.page, entry[0]);
@@ -94,6 +112,31 @@ SettingsIpcHarness {
                 wait(30);
                 check(named(result.target) !== undefined || named("setting-" + result.target) !== undefined);
             }
+            const view = show("about");
+            mouseClick(named("settings-account-row"));
+            equal(view.page, "users");
+        }
+        function test_sudo_key_marker_visibility() {
+            SudoKeySupport.installed = false;
+            const view = show("assistants");
+            const loader = nodes(view).find(item => item.sourceComponent !== undefined && item.item && String(item.item).includes("SudoKeySettingsPage_"));
+            check(loader !== undefined);
+            const row = named("settings-sudo-key");
+            check(row !== undefined);
+            equal(loader.item.sudoKeyInstalled, false);
+            equal(row.visible, false);
+            equal(named("settings-sudo-turn-reporting").visible, false);
+            equal(named("settings-agent-rules").visible, true);
+            equal(named("settings-system-map").visible, true);
+            SudoKeySupport.installed = true;
+            equal(loader.item.sudoKeyInstalled, true);
+            equal(row.visible, true);
+            equal(named("settings-sudo-turn-reporting").visible, true);
+            SudoKeySupport.installed = false;
+            equal(row.visible, false);
+            equal(named("settings-sudo-turn-reporting").visible, false);
+            equal(named("settings-agent-rules").visible, true);
+            check(harness.controller.availablePages.includes("assistants"));
         }
         function test_keyboard_traversal() {
             const view = show("panel");
@@ -318,14 +361,14 @@ SettingsIpcHarness {
             check(status.drops.some(drop => drop.kind === "mode" && drop.alpha > 0.9));
             check(status.drops.some(drop => drop.kind === "category" && drop.alpha > 0.9));
             harness.scene.closeLauncher();
-            tryVerify(() => harness.scene.expansion < 0.98 && harness.scene.expansion > 0.6);
+            waitForMotion(() => harness.scene.expansion < 0.98 && harness.scene.expansion > 0.6, "launcher closing before midpoint");
             check(body.contentAlpha < 1);
             checkGlassGeometry();
             tryCompare(harness.scene, "launcherPresent", false);
 
             harness.controller.open("panel");
             harness.window.requestActivate();
-            tryVerify(() => harness.scene.expansion > 0.6 && harness.scene.expansion < 0.85);
+            waitForMotion(() => harness.scene.expansion > 0.6 && harness.scene.expansion < 0.85, "settings opening before focus enters plate");
             body.takeFocus(true);
             nodes(body).find(item => item.objectName === "launcher-settings").forceActiveFocus();
             status = checkGlassGeometry();
@@ -343,7 +386,7 @@ SettingsIpcHarness {
             tryCompare(harness.scene, "expansion", 1);
             wait(400);
             harness.controller.open("panel");
-            tryVerify(() => body.shownWidth > Metrics.launcherWidth + 5 && body.shownWidth < body.width - 5);
+            waitForMotion(() => body.shownWidth > Metrics.launcherWidth + 5 && body.shownWidth < body.width - 5, "settings width growing");
             const view = harness.controller.view;
             equal(view.width, body.width);
             equal(view.height, body.height - Metrics.launcherHeader);
@@ -355,7 +398,7 @@ SettingsIpcHarness {
             const targetWidth = view.width;
             const targetHeight = view.height;
             harness.scene.closeLauncher();
-            tryVerify(() => harness.scene.expansion < 0.98 && harness.scene.expansion > 0.6);
+            waitForMotion(() => harness.scene.expansion < 0.98 && harness.scene.expansion > 0.6, "settings closing before midpoint");
             check(body.contentAlpha < 1);
             equal(view.width, targetWidth);
             equal(view.height, targetHeight);
@@ -366,7 +409,7 @@ SettingsIpcHarness {
             wait(400);
             harness.controller.view.search.forceActiveFocus();
             keyClick(Qt.Key_Escape);
-            tryVerify(() => body.shownWidth > Metrics.launcherWidth + 5 && body.shownWidth < targetWidth - 5);
+            waitForMotion(() => body.shownWidth > Metrics.launcherWidth + 5 && body.shownWidth < targetWidth - 5, "settings width shrinking");
             status = checkGlassGeometry();
             check(status.drops.some(drop => drop.kind === "mode" && drop.alpha > 0));
             const header = nodes(body).filter(item => item.objectName === "launcher-settings" || item.objectName.startsWith("launcher-tab-"));

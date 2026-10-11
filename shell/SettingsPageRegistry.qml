@@ -27,7 +27,31 @@ QtObject {
     function definition(pageId: string): SettingsPageDefinition {
         return Array.from(definitions).find(entry => entry.pageId === pageId) || null;
     }
-    property list<SettingsPageDefinition> definitions: [
+    readonly property var definitions: Array.from(allDefinitions)
+    property list<SettingsPageDefinition> allDefinitions: [
+        SettingsPageDefinition {
+            pageId: "privacy"
+            description: "[PLACEHOLDER] Review recovery, encryption, sudo keys and remembered portal permissions."
+            searchAnchors: ({
+                    "privacy-recovery": "settings-privacy-recovery",
+                    "privacy-encryption": "settings-privacy-encryption",
+                    "privacy-sudo-key": "settings-privacy-sudo",
+                    "privacy-portals": "settings-privacy-portals",
+                    "privacy-lock": "settings-privacy-lock",
+                    "privacy-reports": "settings-privacy-reports"
+                })
+            component: Component {
+                SettingsPrivacyPage {
+                    onLockRequested: registry.navigateRequested("lock", "settings-lock-delay")
+                }
+            }
+        },
+        SettingsPageDefinition {
+            pageId: "assistants"
+            component: Component {
+                SudoKeySettingsPage {}
+            }
+        },
         SettingsPageDefinition {
             pageId: "panel"
             keys: ["bar.autohide", "bar.overview_workspaces", "dock.on", "dock.auto_hide"]
@@ -241,6 +265,33 @@ QtObject {
                 SettingsAppsPage {
                     catalog: registry.catalog
                 }
+            }
+        },
+        SettingsPageDefinition {
+            pageId: "storage"
+            description: "[PLACEHOLDER] Inspect disk use and preview safe cleanup."
+            searchAnchors: ({
+                    "storage-disks": "settings-storage-disks",
+                    "storage-snapshots": "settings-storage-snapshots",
+                    "storage-cache": "settings-storage-cache",
+                    "storage-logs": "settings-storage-logs",
+                    "storage-trash": "settings-storage-trash"
+                })
+            component: Component {
+                SettingsStoragePage {}
+            }
+        },
+        SettingsPageDefinition {
+            pageId: "users"
+            description: "Your account, picture and password, and other people on this computer."
+            searchAnchors: ({
+                    "users-your-account": "settings-users-account",
+                    "users-password": "settings-users-password",
+                    "users-other-users": "settings-users-others",
+                    "users-add-user": "settings-users-add"
+                })
+            component: Component {
+                SettingsUsersPage {}
             }
         },
         SettingsPageDefinition {

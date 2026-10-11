@@ -62,7 +62,7 @@ class HealthTests(unittest.TestCase):
                 output = 'ext4\n'
             elif command == 'cat ' + boot.SYSTEM_MAP:
                 output, code = ('', 1) if broken == 'map-page' else (PAGE, 0)
-            elif any(state in command for _, state in STATES):
+            elif any(state in command for _, state in STATES + boot.rules_commands()):
                 assert command.startswith('XDG_RUNTIME_DIR=/run/user/$(id -u) '), command
                 output = 'not json\n' if broken == 'map-state' else '{"schema_version": 1}\n'
             elif 'grep -c Emaki' in command:

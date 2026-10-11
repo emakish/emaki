@@ -19,6 +19,9 @@ import time
 sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import emaki_session_state as state
+import emaki_paths
+
+os.environ['PATH'] = emaki_paths.TRUSTED_PATH
 
 SCHEMA = 1
 STATE_SCHEMA = 1
@@ -151,7 +154,8 @@ def prepare(source, binary, wait=False, pid=None):
     before = installed(value)
     files, core = tree(source), digest(binary)
     version = hashlib.sha256(json.dumps([SCHEMA, files, core, digest(Path(__file__)),
-                                        digest(Path(state.__file__))], sort_keys=True).encode()).hexdigest()
+                                        digest(Path(state.__file__)), digest(Path(emaki_paths.__file__))],
+                                       sort_keys=True).encode()).hexdigest()
     target = base / version
     if not target.exists():
         stage = Path(tempfile.mkdtemp(prefix='preparing-', dir=base))
@@ -160,6 +164,7 @@ def prepare(source, binary, wait=False, pid=None):
             shutil.copy2(binary, stage / 'emaki')
             shutil.copy2(Path(__file__), stage / 'watch.py')
             shutil.copy2(Path(state.__file__), stage / 'emaki_session_state.py')
+            shutil.copy2(Path(emaki_paths.__file__), stage / 'emaki_paths.py')
             if tree(stage / 'shell') != files or digest(stage / 'emaki') != core:
                 raise RuntimeError('Desktop files changed while the panel was starting [Emaki].')
             write_json(stage / 'generation.json', dict(schema=SCHEMA, source=str(source), binary=str(binary),
@@ -226,7 +231,9 @@ def changed(generation):
     record = json.loads((generation / 'generation.json').read_text())
     if record['schema'] != SCHEMA:
         return True
-    before = recorded(generation.parent / 'session.json', value)
+    baseline = (runtime(Path(record['source']), create=False) if record.get('trusted')
+                else generation.parent) / 'session.json'
+    before = recorded(baseline, value)
     # Changed files are proof on their own, with or without a baseline.
     stale = (before is not None and differs(before, installed(value))
              or tree(Path(record['source'])) != record['files']
@@ -260,6 +267,10 @@ def main():
     if command == 'prepare':
         print(prepare(Path(sys.argv[2]), Path(sys.argv[3]), wait=True,
                       pid=int(sys.argv[4]) if len(sys.argv) > 4 else os.getppid()))
+    elif command == 'trusted-record':
+        source = Path(sys.argv[2])
+        remember(runtime(source) / 'session.json', answer())
+        record_active(source, Path(sys.argv[3]), int(sys.argv[4]))
     elif command == 'active':
         print(active(Path(sys.argv[2]).absolute()))
     elif command == 'watch':

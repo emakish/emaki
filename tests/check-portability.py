@@ -38,7 +38,7 @@ ALLOW = 'tests/portability-allow.txt'
 
 # Every top-level directory is either checked or exempt with a reason; a new one must be
 # classified here before the check passes. Files at the top level (docs, build files) are exempt.
-CHECKED = ('shell', 'crates', 'scripts', 'update-manager', 'niri', 'greetd', 'systemd')
+CHECKED = ('shell', 'crates', 'scripts', 'update-manager', 'niri', 'greetd', 'systemd', 'sudo', 'capture')
 EXEMPT_TOP = {
     # Build-time directories a package build creates next to the sources (no git there to ignore them).
     '.cache': 'build cache of the package build, not shipped source',
@@ -98,9 +98,15 @@ EXEMPT = {
     'scripts/try-palette.py': 'development tool',
     # The update backend: the one place allowed to speak to the package manager.
     'update-manager/backend.py': 'backend module',
+    'update-manager/storage_arch.py': 'backend module: rollback-aware package cache and snapshot inventory',
     'update-manager/apply.py': 'backend module',
     'update-manager/catalog.py': 'backend module',
+    'update-manager/flatpaks.py': 'backend module',
+    'update-manager/reminder.py': 'backend module',
+    'update-manager/restore.py': 'backend module',
+    'update-manager/privacy_recovery.py': 'backend module: read-only recovery and boot-menu status',
     'update-manager/emaki_update_space.py': 'backend module (class C terminal update path)',
+    'update-manager/programs': 'backend module: installed programs and their removal',
     'scripts/emaki_session_arch.py': 'backend module: Arch producer of the desktop state (seam 4)',
     'update-manager/emaki-update.service': 'backend system service',
     'update-manager/tests/': 'tests',
@@ -161,6 +167,8 @@ def kind(path, first_line):
         return 'shell'
     if name.endswith('.kdl'):
         return 'kdl'
+    if name.endswith(('.c', '.h', '.cpp', '.hpp')):
+        return 'cpp'
     if name.endswith('.rs'):
         return 'rust'
     if name.endswith('.desktop'):
@@ -171,6 +179,7 @@ def kind(path, first_line):
 
 
 COMMENT = {
+    'cpp': ('//', '/*', '*'),
     'qml': ('//', '/*', '*'), 'rust': ('//', '/*', '*'), 'kdl': ('//', '/*', '*'),
     'python': ('#',), 'shell': ('#',), 'desktop': ('#',), 'unit': ('#', ';'),
 }
@@ -358,6 +367,10 @@ def self_test():
 
     qml = 'import QtQuick\nItem { property string p: "/usr/bin/foo" }\n'
     expect('new QML literal fails', {'shell/New.qml': qml}, '', 1, 'shell/New.qml:2: usr-path: /usr/bin/foo')
+    expect('native literal fails', {'sudo/transport.cpp': 'const char *p = "/usr/lib/helper";\n'}, '', 1,
+           'sudo/transport.cpp:1: usr-path: /usr/lib/helper')
+    expect('capture native literal fails', {'capture/recorder.c': 'const char *p = "/usr/lib/helper";\n'}, '', 1,
+           'capture/recorder.c:1: usr-path: /usr/lib/helper')
     expect('class C path passes', {'scripts/emaki-rollback': '#!/bin/sh\nexec "/usr/bin/foo"\n'}, '', 0)
     expect('listed violation passes', {'shell/New.qml': qml},
            'shell/New.qml\tItem { property string p: "/usr/bin/foo" }\tseam 1\n', 0, 'allowed 1, new 0, stale 0')

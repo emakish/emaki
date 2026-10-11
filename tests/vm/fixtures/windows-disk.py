@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Run only inside a disposable test guest, as root. Never on the host.
 
 prepare emits the immutable host-side baseline; check reads it from stdin.
@@ -62,7 +64,15 @@ def hashes(root, names):
     return result
 
 
-def prepare():
+def recovery_digest(device):
+    digest = hashlib.sha256()
+    with open(device, 'rb', buffering=0) as stream:
+        while chunk := stream.read(MIB):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def prepare(no_fallback=False):
     info = disk_info()
     if (info.get('children') or info.get('pttype') or info.get('fstype') or
             any(info.get('mountpoints') or []) or info.get('serial') != 'emaki-target'):
@@ -75,10 +85,13 @@ def prepare():
     if run('blockdev', '--getss', DISK).strip() != '512':
         raise RuntimeError('fixture requires 512-byte logical sectors')
     end = (size // MIB - 1) * MIB // 512 - 1
+    recovery_start = end + 1 - 1024 * MIB // 512
     run('sgdisk', '--clear', '--new=1:2048:206847', '--typecode=1:ef00', '--change-name=1:Windows ESP',
         '--new=2:206848:239615', '--typecode=2:0c01', '--change-name=2:Microsoft reserved',
-        f'--new=3:239616:{end}', '--typecode=3:0700', '--change-name=3:Windows',
-        '--attributes=3:set:63', DISK)
+        f'--new=3:239616:{recovery_start - 1}', '--typecode=3:0700', '--change-name=3:Windows',
+        '--attributes=3:set:63',
+        f'--new=4:{recovery_start}:{end}', '--typecode=4:2700', '--change-name=4:Windows RE tools',
+        '--attributes=4:set:0', '--attributes=4:set:63', DISK)
     run('partprobe', DISK)
     run('udevadm', 'settle', '--timeout=30')
     run('mkfs.fat', '-F', '32', '-n', 'WINESP', DISK + '-part1')
@@ -87,10 +100,19 @@ def prepare():
     esp_files = {'EFI/Microsoft/Boot/bootmgfw.efi': loader,
                  'EFI/Microsoft/Boot/BCD': b'Synthetic BCD presence fixture; no Windows installation.\n',
                  'EFI/BOOT/BOOTX64.EFI': b'Emaki VM foreign fallback - preserve exactly\n'}
+    if no_fallback:
+        del esp_files['EFI/BOOT/BOOTX64.EFI']
     ntfs_files = {'Users/Demo/Documents/keep.txt': b'Windows data must survive the Emaki installer.\n',
                   'Users/Demo/Pictures/pattern.bin': bytes(range(256)) * 16384,
                   'Windows/System32/config/SYSTEM': b'Synthetic Windows fixture; not a real Windows install.\n'}
-    baseline = {}
+    # A trailing recovery partition forces the new root into the middle extent.
+    # Raw sentinels avoid depending on a recovery filesystem or Windows binaries.
+    with open(DISK + '-part4', 'r+b', buffering=0) as recovery:
+        for offset in (0, 512 * MIB, 1024 * MIB - 4096):
+            recovery.seek(offset)
+            recovery.write(b'Windows recovery fixture: preserve every byte.\n'.ljust(4096, b'\0'))
+    baseline = {'recovery_sha256': recovery_digest(DISK + '-part4'),
+                'no_fallback': no_fallback}
     for key, part, fs, files in [('esp', 1, 'vfat', esp_files), ('ntfs', 3, 'ntfs-3g', ntfs_files)]:
         with mounted(DISK + f'-part{part}', fs, readonly=False) as root:
             for name, content in files.items():
@@ -101,7 +123,7 @@ def prepare():
     # Fail if even this clean synthetic volume cannot be probed without force.
     run('ntfsresize', '--info', '--no-action', DISK + '-part3')
     baseline['disk'] = disk_info()
-    baseline['gpt'] = {str(n): run('sgdisk', f'--info={n}', DISK) for n in (1, 2, 3)}
+    baseline['gpt'] = {str(n): run('sgdisk', f'--info={n}', DISK) for n in (1, 2, 3, 4)}
     return baseline
 
 
@@ -156,13 +178,34 @@ def raw_gpt():
     return result
 
 
+def check_added_fallback(root, baseline, installed):
+    if not baseline.get('no_fallback'):
+        return
+    name = 'EFI/BOOT/BOOTX64.EFI'
+    if name in baseline['esp']:
+        raise RuntimeError('no-fallback baseline unexpectedly contains a fallback')
+    fallback = root / name
+    if not installed:
+        if fallback.exists():
+            raise RuntimeError('fallback unexpectedly exists before installation')
+        return
+    if not fallback.is_file():
+        raise RuntimeError('installer did not create the removable EFI loader')
+    loader = fallback.read_bytes()
+    offset = int.from_bytes(loader[60:64], 'little')
+    if (len(loader) < 64 or not loader.startswith(b'MZ') or offset < 64
+            or loader[offset:offset + 6] != b'PE\0\0\x64\x86'):
+        raise RuntimeError('new removable loader is not an x86-64 PE image')
+    print('PASS: new removable EFI loader verified; sha256=' + hashlib.sha256(loader).hexdigest())
+
+
 def check(baseline, freed):
     current = disk_info()
     before = {int(p['partn']): p for p in baseline['disk']['children']}
     after = {int(p['partn']): p for p in current['children']}
     if len(after) != len(before) + (1 if freed else 0):
         raise RuntimeError('unexpected partition count')
-    for number in (1, 2, 3):
+    for number in before:
         for key in ('start', 'partuuid', 'parttype', 'partlabel', 'fstype'):
             if after[number][key] != before[number][key]:
                 raise RuntimeError(f'partition {number} {key} changed')
@@ -177,12 +220,17 @@ def check(baseline, freed):
         with mounted(DISK + f'-part{part}', fs) as root:
             if hashes(root, baseline[key]) != baseline[key]:
                 raise RuntimeError(key + ' file hashes changed')
+            if key == 'esp':
+                check_added_fallback(root, baseline, bool(freed))
     metadata = raw_gpt()
-    for n in (1, 2, 3):
+    for n in before:
         expected = gpt_metadata(baseline['gpt'][str(n)])
         if n == 3:
             expected['Last sector'] -= freed // 512
         assert metadata[n] == expected
+    if 'recovery_sha256' in baseline:
+        if recovery_digest(DISK + '-part4') != baseline['recovery_sha256']:
+            raise RuntimeError('recovery partition bytes changed')
     if freed and Path('/run/archiso/bootmnt').exists():
         dirty = subprocess.run(['ntfsresize', '--info', '--no-action', DISK + '-part3'],
                                capture_output=True, text=True, env=dict(os.environ, LC_ALL='C'))
@@ -195,13 +243,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['prepare', 'check'])
     parser.add_argument('--freed', type=int, default=0)
+    parser.add_argument('--no-fallback', action='store_true',
+                        help='prepare an ESP without a removable loader')
     args = parser.parse_args()
     if os.geteuid() != 0 or run('systemd-detect-virt', '--vm').strip() not in ('qemu', 'kvm'):
         raise RuntimeError('requires root inside the disposable QEMU/KVM guest')
     if args.action == 'prepare':
         if 'emaki.test=1' not in Path('/proc/cmdline').read_text().split() or not Path('/run/archiso/bootmnt').exists():
             raise RuntimeError('requires the live test ISO')
-        print(json.dumps(prepare(), indent=2))
+        print(json.dumps(prepare(no_fallback=args.no_fallback), indent=2))
     else:
         check(json.load(sys.stdin), args.freed)
 

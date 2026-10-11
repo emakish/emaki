@@ -1,0 +1,29 @@
+#!/usr/bin/python3 -IB
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Create and prune protected shell generations after a package install or upgrade."""
+import os
+from pathlib import Path
+import sys
+
+sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+from emaki_shell_tree import publish
+
+
+def main():
+    if os.geteuid() != 0 or sys.argv[1:] != ['install']:
+        raise ValueError('root package installation is required')
+    os.umask(0o022)
+    os.environ['PATH'] = '@EMAKI_TRUSTED_PATH@'
+    publish(Path('@EMAKI_DATADIR@/shell'), Path('@EMAKI_BINDIR@/emaki'),
+            Path('@EMAKI_BINDIR@/emaki-session-files'),
+            [Path('@EMAKI_LIBEXECDIR@') / name
+             for name in ('emaki_session_state.py', 'emaki_paths.py')])
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError) as error:
+        print(f'emaki-shell-generations: {error}', file=sys.stderr)
+        sys.exit(1)

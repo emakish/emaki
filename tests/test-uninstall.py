@@ -101,6 +101,24 @@ class Uninstall(unittest.TestCase):
             for directory in ('hooks', 'install'):
                 self.assertTrue(Path(temporary, 'usr/lib/initcpio', directory).is_dir())
 
+    def test_users_and_network_executables_and_policies_are_removed(self):
+        paths = (
+            'usr/bin/emaki', 'usr/bin/emaki-settings-users',
+            'usr/libexec/emaki/emaki-settings-users-root', 'usr/libexec/emaki/users_home.py',
+            'usr/share/polkit-1/actions/org.emaki.settings-users.policy',
+            'usr/bin/emaki-settings-network', 'usr/libexec/emaki/emaki-wifi-password',
+            'usr/share/polkit-1/actions/org.emaki.wifi-password.policy',
+        )
+        with tempfile.TemporaryDirectory(prefix='emaki-uninstall-') as temporary:
+            for relative in paths:
+                path = Path(temporary, relative)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('staged payload\n')
+            result = uninstall(temporary)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            for relative in paths:
+                self.assertFalse(Path(temporary, relative).exists(), relative)
+
     def test_rendered_unedited_niri_default_is_removed(self):
         with tempfile.TemporaryDirectory(prefix='emaki-uninstall-') as temporary:
             path = Path(temporary, 'etc/niri/config.kdl')

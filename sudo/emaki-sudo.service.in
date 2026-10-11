@@ -1,0 +1,34 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Emaki sudo authentication prompt
+After=systemd-logind.service systemd-tmpfiles-setup.service
+
+[Service]
+Type=simple
+ExecStart=@EMAKI_LIBEXECDIR@/emaki-sudo-broker --serve
+ExecStopPost=@EMAKI_LIBEXECDIR@/emaki-sudo-broker --cleanup
+TimeoutStopSec=45
+KillMode=mixed
+Restart=on-failure
+RestartSec=2
+RuntimeDirectory=emaki-sudo
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+StateDirectory=emaki-sudo
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run/sudo/ts
+ProtectHome=read-only
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX
+LimitCORE=0
+LimitMEMLOCK=8M
+# Mapping identity follows procfs map_files with the narrow checkpoint capability.
+# Discovery children assume the session user's filesystem IDs and clear groups.
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_DAC_READ_SEARCH CAP_SYS_PTRACE CAP_IPC_LOCK CAP_CHECKPOINT_RESTORE
+
+[Install]
+WantedBy=multi-user.target

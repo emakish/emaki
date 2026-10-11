@@ -5,12 +5,15 @@ Suppress that discovery while importing, then use a job-scoped handler. Its
 manual MODIFY also deletes/recreates GPT entries, so our handler formats in
 place and does not call the upstream partition() for manual layouts.
 """
+import fcntl
+from contextlib import contextmanager
 import importlib
 from importlib.metadata import version as dist_version
 import json
 import os
 from pathlib import Path
 import shlex
+import struct
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -205,6 +208,20 @@ def validate_live_plan(api, plan):
     return build_disk_config(api, plan)
 
 
+# linux/fs.h: _IOR(0x12, 128, __u64). The kernel's per-disk sequence number never repeats within a
+# boot, so a disk swapped in under the same /dev name gets another one (Linux 5.15+).
+BLKGETDISKSEQ = 0x80081280
+BLKRRPART = 0x125f
+
+
+def open_exclusive(path):
+    return os.open(path, os.O_RDONLY | os.O_EXCL | os.O_CLOEXEC)
+
+
+def disk_sequence(fd):
+    return struct.unpack('=Q', fcntl.ioctl(fd, BLKGETDISKSEQ, bytes(8)))[0]
+
+
 class DeviceOperations:
     def __init__(self, plan, runner, target=TARGET):
         self.plan, self.runner, self.target = plan, runner, target
@@ -236,10 +253,25 @@ class DeviceOperations:
         lines = ['label: gpt', 'unit: sectors', '']
         for p in self.plan.partitions:
             lines.append(f'start={p.start // sector}, size={p.size // sector}, type={"U" if p.esp else "L"}')
-        self.runner.run(['sfdisk', '--lock=yes', '--wipe=always', '--wipe-partitions=always',
-                         self.plan.disk['path']], input='\n'.join(lines) + '\n')
-        self.runner.run(['partprobe', self.plan.disk['path']])
-        self.runner.run(['udevadm', 'settle', '--timeout=30'])
+        # Keep the checked exclusive open alive through every write and the kernel reread.
+        # sfdisk inherits it; no userspace by-diskseq symlink is trusted for destructive I/O.
+        with self.reviewed_disk() as fd:
+            self.runner.run(['sfdisk', '--lock=yes', '--no-reread', '--no-tell-kernel',
+                             '--wipe=always', '--wipe-partitions=always', f'/proc/self/fd/{fd}'],
+                            input='\n'.join(lines) + '\n', pass_fds=(fd,))
+            self.check_disk_sequence(fd)
+            try:
+                # BLKRRPART on the original O_EXCL descriptor lets the kernel scan under our
+                # existing claim. A child reopening it would have to acquire a competing claim.
+                fcntl.ioctl(fd, BLKRRPART)
+            except OSError as exc:
+                raise InstallError(Code.UNSAFE_DISK, '[PLACEHOLDER] The partition table was written, '
+                                   'but the kernel could not read it. Installation stopped.') from exc
+            self.check_disk_sequence(fd)
+            self.runner.run(['udevadm', 'settle', '--timeout=30'])
+        # Check the current device name again before consuming its partition paths.
+        with self.reviewed_disk():
+            pass
         data = json.loads(self.runner.run(['lsblk', '--tree', '-J', '-b', '-o',
                                           'PATH,TYPE,PARTN,START,SIZE,PTTYPE', self.plan.disk['path']]))
         disk = data['blockdevices'][0]
@@ -253,6 +285,33 @@ class DeviceOperations:
                     'Partition geometry differs from the approved plan.')
             p.path = found['path']
             archpart.dev_path = Path(p.path)
+
+    def check_disk_sequence(self, fd):
+        expected = self.plan.disk.get('_identity', {}).get('disk-seq')
+        require(type(expected) is int or (isinstance(expected, str) and expected.isdecimal()),
+                Code.UNSAFE_DISK, '[PLACEHOLDER] The disk sequence number is unknown. Installation stopped.')
+        expected = int(expected)
+        try:
+            current = disk_sequence(fd)
+        except OSError as exc:
+            raise InstallError(Code.UNSAFE_DISK, '[PLACEHOLDER] The disk sequence number could not '
+                               'be read. Installation stopped.') from exc
+        require(current == expected, Code.DISK_CHANGED,
+                '[PLACEHOLDER] The disk was replaced after the review. Installation stopped.')
+
+    @contextmanager
+    def reviewed_disk(self):
+        """Keep an exclusive, identity-checked disk descriptor open until the caller finishes."""
+        path = self.plan.disk['path']
+        try:
+            fd = open_exclusive(path)
+        except OSError as exc:
+            raise InstallError(Code.DISK_BUSY, f'Device cannot be opened exclusively: {path}.') from exc
+        try:
+            self.check_disk_sequence(fd)
+            yield fd
+        finally:
+            os.close(fd)
 
     def verify_alongside_layout(self, mod):
         data = json.loads(self.runner.run(['lsblk', '--tree', '-J', '-b', '-o',

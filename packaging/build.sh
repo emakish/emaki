@@ -11,7 +11,7 @@
 set -Eeuo pipefail
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(dirname -- "$HERE")
-ORDER=(niri-emaki quickshell-emaki xdg-desktop-portal-gnome-emaki emaki-config emaki-nvidia emaki-desktop emaki-apps
+ORDER=(niri-emaki quickshell-emaki xdg-desktop-portal-gnome-emaki emaki-config emaki-sudo-key emaki-nvidia emaki-desktop emaki-apps
        emaki-installer emaki-keyring emaki-mirrorlist emaki)
 # Packages whose build needs makedepends from Arch (--syncdeps). The others depend at run time on
 # Emaki packages that are not in any repository yet, so their dependencies are not checked here
@@ -96,13 +96,13 @@ if [[ -d $out && -n $(find "$out" -mindepth 1 -maxdepth 1 -print -quit) ]]; then
 fi
 
 commit=$(git -C "$ROOT" rev-parse --verify HEAD)
+release_args=()
 if [[ -n $published_sources ]]; then
     ((${#only[@]})) || fail '--published-sources requires explicit --only selections'
-    release_args=()
-    for name in "${only[@]}"; do release_args+=(--only "$name"); done
-    python3 "$HERE/release_inputs.py" --repo "$ROOT" --published-sources "$published_sources" \
-        "${release_args[@]}"
+    release_args+=(--published-sources "$published_sources")
 fi
+for name in "${only[@]}"; do release_args+=(--only "$name"); done
+python3 "$HERE/release_inputs.py" --repo "$ROOT" "${release_args[@]}"
 if ((dry_run)); then
     printf 'Would build from %s into %s:\n' "$commit" "$out"
     for name in "${selected[@]}"; do

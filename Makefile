@@ -40,18 +40,27 @@ PREFIX  ?= /usr
 DESTDIR ?=
 DATADIR ?= $(PREFIX)/share/emaki
 LIBEXECDIR ?= $(PREFIX)/libexec/emaki
+LOCALSTATEDIR ?= /var/lib/emaki
+# Development installs include the optional setup; the base package disables it.
+INSTALL_SUDO_TURN_INTEGRATION ?= 1
+EMAKI_PYTHON ?= $(PREFIX)/bin/python3
 
 # Other packages' files and system defaults: where the host installs them, not under PREFIX.
 EMAKI_XKB_RULES  ?= /usr/share/X11/xkb/rules/evdev.lst
 EMAKI_PAM_KWALLET_INIT ?= /usr/lib/pam_kwallet_init
-EMAKI_POLKIT_AGENT ?= /usr/lib/polkit-kde-authentication-agent-1
 EMAKI_XDG_DATA_DIRS_DEFAULT ?= /usr/local/share:/usr/share
 EMAKI_TRUSTED_PATH ?= /usr/bin
+EMAKI_PYTHON ?= /usr/bin/python3
+EMAKI_QS ?= /usr/bin/qs
+EMAKI_QMLDIR ?= /usr/lib/qt6/qml
+EMAKI_QT_PLUGINSDIR ?= /usr/lib/qt6/plugins
 
 PATH_ARGS = --prefix "$(PREFIX)" --datadir "$(DATADIR)" --libexecdir "$(LIBEXECDIR)" \
 	--xkb-rules "$(EMAKI_XKB_RULES)" --pam-kwallet-init "$(EMAKI_PAM_KWALLET_INIT)" \
-	--polkit-agent "$(EMAKI_POLKIT_AGENT)" --xdg-data-dirs-default "$(EMAKI_XDG_DATA_DIRS_DEFAULT)" \
-	--trusted-path "$(EMAKI_TRUSTED_PATH)"
+	--xdg-data-dirs-default "$(EMAKI_XDG_DATA_DIRS_DEFAULT)" \
+	--trusted-path "$(EMAKI_TRUSTED_PATH)" \
+	--localstatedir "$(LOCALSTATEDIR)" --python "$(EMAKI_PYTHON)" --qs "$(EMAKI_QS)" \
+	--qmldir "$(EMAKI_QMLDIR)" --qt-pluginsdir "$(EMAKI_QT_PLUGINSDIR)"
 
 BIN     = $(DESTDIR)$(PREFIX)/bin
 SHARE   = $(DESTDIR)$(DATADIR)
@@ -70,17 +79,24 @@ NIRI_ETC = $(DESTDIR)/etc/niri/config.kdl
 # and leave any other /etc/niri/config.kdl alone.
 NIRI_ETC_MARK = Emaki — system niri config
 
-SCRIPTS = scripts/emaki-settings-network scripts/emaki-settings-wallpaper scripts/emaki-wallet-stage scripts/emaki-wallet-start scripts/emaki-keyring-recover scripts/emaki-qt-check scripts/emaki-autostart scripts/emaki-wallet-migrate scripts/emaki-boot-refresh scripts/emaki-migrate-installer-config scripts/emaki-rollback scripts/emaki-drm-hold scripts/emaki-greeter-compositor scripts/emaki-greeter-run scripts/emaki-session-import-environment scripts/emaki-idle scripts/emaki-config-path scripts/emaki-power scripts/emaki-shell scripts/emaki-lock scripts/emaki-greeter-provision scripts/emaki-session-wallpaper scripts/emaki-sleep-guard scripts/emaki-text-session scripts/emaki-shell-health scripts/emaki-settings-power scripts/emaki-settings-apps scripts/emaki-settings-about
+SCRIPTS = scripts/emaki-settings-network scripts/emaki-settings-wallpaper scripts/emaki-wallet-stage scripts/emaki-wallet-start scripts/emaki-keyring-recover scripts/emaki-qt-check scripts/emaki-autostart scripts/emaki-wallet-migrate scripts/emaki-boot-refresh scripts/emaki-migrate-installer-config scripts/emaki-rollback scripts/emaki-drm-hold scripts/emaki-greeter-compositor scripts/emaki-greeter-run scripts/emaki-session-import-environment scripts/emaki-idle scripts/emaki-config-path scripts/emaki-power scripts/emaki-shell scripts/emaki-shell-trusted scripts/emaki-lock scripts/emaki-greeter-provision scripts/emaki-session-wallpaper scripts/emaki-sleep-guard scripts/emaki-text-session scripts/emaki-shell-health scripts/emaki-settings-power scripts/emaki-settings-apps scripts/emaki-settings-about scripts/emaki-settings-storage scripts/emaki-settings-privacy
 # Shell: QML, helpers, shader — copied as is to $(SHARE)/shell. Core: release binary
 # from `make build` (prefix/datadir paths are compiled in; see CORE_ENV below).
 SHELL_SRC = $(shell find shell -type f ! -path '*/__pycache__/*' ! -name '*.pyc' ! -name '*.pyo')
 SCRIPTS += scripts/emaki-update-boot
 SCRIPTS += scripts/emaki-terminal scripts/emaki-session-files scripts/emaki-session-update scripts/emaki-update
-SCRIPTS += scripts/emaki-transaction-inhibit
+SCRIPTS += scripts/emaki-transaction-inhibit scripts/emaki-shell-generations
 # Machine settings (keyboard, time zone, locale) through localed and timedated.
 SCRIPTS += scripts/emaki-machine-settings
+# Users: the accounts of the people on this computer through AccountsService.
+SCRIPTS += scripts/emaki-settings-users
 QSB      ?= $(or $(shell command -v qsb),/usr/lib/qt6/bin/qsb)
 CORE_BIN  = $(CARGO_TARGET_DIR)/release/emaki
+CAPTURE_BUILD ?= $(CURDIR)/.cache/capture-build
+CAPTURE_BIN = $(CAPTURE_BUILD)/emaki-capture-recorder
+SUDO_BUILD = $(CURDIR)/.cache/sudo-build
+SUDO_SRC = $(wildcard sudo/*.cpp sudo/*.hpp sudo/*.in) sudo/CMakeLists.txt sudo/qmldir sudo/plugins.qmltypes
+SUDO_ARTIFACTS = $(SUDO_BUILD)/pam_emaki_sudo.so $(SUDO_BUILD)/emaki-sudo-broker $(SUDO_BUILD)/emaki-sudo $(SUDO_BUILD)/qml/Emaki/Sudo/libemakisudoplugin.so $(SUDO_BUILD)/emaki-sudo-pam $(SUDO_BUILD)/emaki-sudo.service $(SUDO_BUILD)/emaki-sudo-cleanup.service
 
 .PHONY: paths
 paths:
@@ -95,19 +111,52 @@ render: paths
 	python3 scripts/render-system-map
 
 check: paths check-assumptions
+	python3 tests/test-capture.py
+	python3 tests/test-capture-native.py
+	python3 tests/test-capture-import.py
+	python3 tests/test-capture-controller.py
+	python3 tests/test-capture-ui.py
+	python3 tests/test-sudo-broker.py
+	python3 tests/test-sudo-prompt.py
+	python3 tests/test-sudo-packaging.py
+	python3 tests/test-sudo-turn-integration.py
 	python3 tests/test-settings-apps.py
 	python3 tests/test-settings-about.py
+	python3 tests/test-settings-storage.py
+	python3 tests/test-storage-arch.py
+	python3 tests/test-settings-privacy.py
+	python3 tests/test-privacy-recovery.py
+	python3 tests/test-privacy-portals.py
 	python3 tests/test-settings-power.py
 	python3 tests/test-settings-channel.py
 	python3 tests/test-paths.py
+	python3 tests/test-polkit-lock-state.py
+	python3 tests/test-polkit-prompt.py
+	python3 tests/test-polkit-details.py
+	python3 tests/test-prompt-queue.py
 	python3 tests/check-portability.py --self-test
 	python3 tests/check-portability.py
 	python3 tests/check-system-map.py --self-test
 	python3 tests/check-system-map.py
+	python3 tests/test-publish-acceptance.py
 	python3 tests/test-iso-boot-map.py
 	python3 tests/test-wifi-recovery.py
 	python3 tests/test-machine-settings.py
+	python3 tests/test-settings-users.py
+	python3 tests/test-settings-users-home.py
+	python3 tests/test-settings-users-root.py
 	python3 update-manager/tests/test_updates.py
+	python3 update-manager/tests/test_flatpaks.py
+	python3 update-manager/tests/test_reminder.py
+	python3 update-manager/tests/test_restore.py
+	python3 update-manager/tests/test_protocol.py
+	python3 update-manager/tests/test_programs.py
+	node tests/test-programs-auth.mjs
+	python3 update-manager/tests/test_appstream.py
+	python3 update-manager/tests/test_programs_engine.py
+	python3 update-manager/tests/test_programs_install.py
+	python3 update-manager/tests/test_programs_flatpak.py
+	python3 update-manager/tests/test_programs_flatpak_apply.py
 	python3 update-manager/tests/mutants.py
 	python3 tests/test-runtime-fixture.py
 	python3 tests/test-vm-runtime.py
@@ -122,12 +171,15 @@ check: paths check-assumptions
 	python3 tests/test-displays.py
 	python3 tests/test-displays-mutants.py
 	python3 tests/test-session-files.py
+	python3 tests/test-shell-generations.py
 	python3 tests/test-desktop-state.py
 	python3 tests/test-session-update-notice.py
 	python3 tests/test-session-update-hook.py
 	python3 tests/test-update-errors.py
 	python3 tests/test-auth-lockout.py
 	python3 tests/test-shell-recovery.py
+	python3 tests/test-trusted-shell-launch.py
+	python3 tests/test-application-environment.py
 	python3 tests/test-shell-health.py
 	python3 tests/test-shell-recovery-notice.py
 	niri validate -c niri/default.kdl
@@ -149,6 +201,7 @@ check: paths check-assumptions
 	python3 tests/test-boot-refresh-attacks.py
 	python3 tests/test-boot-delivery-guest.py
 	python3 tests/test-boot-refresh-real.py
+	python3 tests/test-menu-font.py
 	python3 tests/test-resume.py
 	python3 tests/test-nvidia.py
 	python3 tests/test-boot-splash.py
@@ -165,6 +218,8 @@ check: paths check-assumptions
 	python3 tests/test-release-notes.py
 	python3 tests/test-status-words.py
 	python3 tests/test-iso-install-harness.py
+	python3 tests/test-iso-vm-owner.py
+	python3 tests/test-windows-fixture.py
 	EMAKI_TEST_UNIX_SOCKET=1 PYTHONPATH=installer python3 -m unittest discover -s installer/tests
 	python3 tests/test-sleep-guard-unit.py
 	python3 tests/test-sleep-guard.py
@@ -229,6 +284,7 @@ check-updates:
 	python3 tests/test-transaction-inhibit.py
 	python3 tests/test-update-space.py
 	python3 tests/test-upkeep-transactions.py
+	python3 tests/test-apps-removal.py
 	python3 tests/test-update-pins.py
 	python3 tests/test-upkeep.py
 	python3 tests/test-system-migrate.py
@@ -284,6 +340,7 @@ install-upkeep:
 	install -Dm644 upkeep/89-emaki-system-migrate.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/89-emaki-system-migrate.hook
 	install -Dm644 upkeep/93-emaki-initramfs-refresh.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/93-emaki-initramfs-refresh.hook
 	install -Dm755 upkeep/emaki-system-migrate $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-system-migrate
+	sed -i 's|@EMAKI_LIBEXECDIR@|$(LIBEXECDIR)|g' $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-system-migrate
 	install -Dm755 upkeep/emaki_boot_defaults.py $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki_boot_defaults.py
 	install -Dm755 upkeep/emaki_initramfs.py $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki_initramfs.py
 	install -Dm644 upkeep/89-emaki-initramfs-begin.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/89-emaki-initramfs-begin.hook
@@ -296,6 +353,16 @@ install-upkeep:
 	install -Dm755 upkeep/emaki-refresh-mirrors $(BIN)/emaki-refresh-mirrors
 	for unit in emaki-refresh-mirrors.service emaki-refresh-mirrors.timer; do install -Dm644 systemd/$$unit $(SYSTEMD)/system/$$unit; done
 
+.PHONY: install-sudo-policy
+# C archive order installs the /etc PAM stack before the selector. The vendor
+# copy survives a deleted local override. A fail-closed pre-transaction hook drops
+# the selector before package removal can remove either service copy.
+install-sudo-policy:
+	install -Dm644 packaging/emaki-config/00-emaki-sudo-remove.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/00-emaki-sudo-remove.hook
+	install -Dm644 $(SUDO_BUILD)/emaki-sudo-pam $(DESTDIR)/etc/pam.d/emaki-sudo
+	install -Dm644 $(SUDO_BUILD)/emaki-sudo-pam $(PAMDIR)/emaki-sudo
+	install -Dm440 sudo/20-emaki-pam $(DESTDIR)/etc/sudoers.d/20-emaki-pam
+
 install: install-upkeep
 	@if [ -e "$(XDG)/fastfetch/config.jsonc" ] && ! grep -qF 'Emaki fetch default.' "$(XDG)/fastfetch/config.jsonc"; then \
 		echo 'make install: existing non-Emaki fastfetch system config; not overwriting.' >&2; exit 1; fi
@@ -306,6 +373,9 @@ install: install-upkeep
 	install -Dm644 polkit/org.emaki.rollback.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.rollback.policy
 	install -Dm755 scripts/emaki-wifi-recover $(DESTDIR)$(PREFIX)/lib/emaki/emaki-wifi-recover
 	install -Dm644 polkit/org.emaki.wifi-recovery.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.wifi-recovery.policy
+	install -Dm644 scripts/users_home.py $(DESTDIR)$(LIBEXECDIR)/users_home.py
+	install -Dm755 scripts/emaki-settings-users-root $(DESTDIR)$(LIBEXECDIR)/emaki-settings-users-root
+	install -Dm644 polkit/org.emaki.settings-users.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.settings-users.policy
 	install -Dm755 scripts/emaki-wifi-password $(DESTDIR)$(LIBEXECDIR)/emaki-wifi-password
 	install -Dm644 polkit/org.emaki.wifi-password.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.wifi-password.policy
 	install -Dm644 systemd/emaki-wifi-recovery.service $(SYSTEMD)/system/emaki-wifi-recovery.service
@@ -314,15 +384,41 @@ install: install-upkeep
 	install -Dm755 update-manager/emaki-update-manager $(BIN)/emaki-update-manager
 	install -Dm755 update-manager/backend.py $(DESTDIR)$(LIBEXECDIR)/update-manager-backend
 	install -Dm644 update-manager/catalog.py $(DESTDIR)$(LIBEXECDIR)/update_catalog.py
+	install -Dm644 update-manager/emaki_update_root.py $(DESTDIR)$(LIBEXECDIR)/emaki_update_root.py
+	install -Dm644 update-manager/flatpaks.py $(DESTDIR)$(LIBEXECDIR)/update_flatpaks.py
+	install -Dm644 update-manager/reminder.py $(DESTDIR)$(LIBEXECDIR)/update_reminder.py
 	install -Dm755 update-manager/apply.py $(DESTDIR)$(LIBEXECDIR)/emaki-update-apply
+	install -Dm755 update-manager/restore.py $(DESTDIR)$(LIBEXECDIR)/emaki-update-restore
+	install -Dm755 update-manager/privacy_recovery.py $(DESTDIR)$(LIBEXECDIR)/emaki-privacy-recovery
+	install -Dm644 update-manager/org.emaki.privacy.recovery.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.privacy.recovery.policy
+	install -Dm644 scripts/emaki_privacy_portals.py $(DESTDIR)$(LIBEXECDIR)/emaki_privacy_portals.py
 	install -Dm644 update-manager/emaki-update.service $(SYSTEMD)/system/emaki-update.service
+	install -Dm644 update-manager/emaki-restore-index.service $(SYSTEMD)/system/emaki-restore-index.service
+	install -Dm644 update-manager/emaki-restore-index.timer $(SYSTEMD)/system/emaki-restore-index.timer
+	install -d $(SYSTEMD)/system/timers.target.wants
+	ln -sfn ../emaki-restore-index.timer $(SYSTEMD)/system/timers.target.wants/emaki-restore-index.timer
 	install -Dm644 update-manager/org.emaki.update.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.update.policy
+	install -Dm644 update-manager/org.emaki.update.restore.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.update.restore.policy
 	install -Dm644 update-manager/emaki-update-manager.desktop $(DESTDIR)$(PREFIX)/share/applications/emaki-update-manager.desktop
 	install -Dm644 -t $(DESTDIR)$(PREFIX)/share/emaki-update-manager/ui update-manager/ui/*.qml
 	install -Dm644 installer/emaki_installer/update_errors.py $(DESTDIR)$(LIBEXECDIR)/emaki_update_errors.py
 	install -Dm644 scripts/emaki_session_state.py $(DESTDIR)$(LIBEXECDIR)/emaki_session_state.py
 	install -Dm644 scripts/emaki_session_arch.py $(DESTDIR)$(LIBEXECDIR)/emaki_session_arch.py
+	install -Dm644 scripts/emaki_shell_tree.py $(DESTDIR)$(LIBEXECDIR)/emaki_shell_tree.py
 	install -Dm644 update-manager/emaki_update_space.py $(DESTDIR)$(LIBEXECDIR)/emaki_update_space.py
+	install -Dm644 scripts/emaki_storage.py $(DESTDIR)$(LIBEXECDIR)/emaki_storage.py
+	install -Dm644 update-manager/storage_arch.py $(DESTDIR)$(LIBEXECDIR)/storage_arch.py
+	install -Dm644 polkit/org.emaki.storage.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.storage.policy
+	install -Dm755 update-manager/programs.py $(BIN)/emaki-programs
+	install -Dm644 update-manager/programs_catalog.py $(DESTDIR)$(LIBEXECDIR)/programs_catalog.py
+	install -Dm644 -t $(DESTDIR)$(LIBEXECDIR) update-manager/programs_appstream.py update-manager/programs_arch.py update-manager/programs_engine.py update-manager/programs_flatpak.py
+	install -Dm755 update-manager/programs_remove.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-remove
+	install -Dm755 update-manager/programs_flatpak_apply.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-flatpak
+	install -Dm644 update-manager/org.emaki.programs.flatpak.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.flatpak.policy
+	install -Dm755 update-manager/programs_install.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-install
+	install -Dm644 update-manager/org.emaki.programs.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.policy
+	install -Dm644 update-manager/org.emaki.programs.install.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.install.policy
+	install -Dm644 update-manager/00-emaki-programs.rules $(DESTDIR)$(PREFIX)/share/polkit-1/rules.d/00-emaki-programs.rules
 	install -Dm644 packaging/emaki-config/00-emaki-transaction-inhibit.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/00-emaki-transaction-inhibit.hook
 	rm -f $(BIN)/emaki-session-cover
 	install -Dm755 $(CORE_BIN) $(BIN)/emaki
@@ -332,6 +428,8 @@ install: install-upkeep
 	install -Dm644 docs/ZONES.md $(DESTDIR)$(PREFIX)/share/doc/emaki/ZONES.md
 	# Rendered from MANIFEST.md by `make render`; `make check` refuses a stale copy.
 	install -Dm644 docs/system-map.md $(SHARE)/system-map.md
+	install -Dm644 docs/agent-rules.md $(SHARE)/agent-rules.md
+	install -Dm644 docs/agent-rules-setup.md $(SHARE)/agent-rules-setup.md
 	# Cancellation now belongs to the attempt's existing greetd connection.
 	rm -f "$(SHARE)/shell/helpers/greeter-cancel.py"
 	# Dock glass shaders: built by `make build` in .cache/shell-shaders; only copied here.
@@ -361,6 +459,7 @@ install: install-upkeep
 	install -Dm644 art/grub/background.png $(SHARE)/grub/background.png
 	install -Dm644 grub/defaults.cfg $(SHARE)/grub/defaults.cfg
 	install -Dm644 installer/assets/grub/unlock-24.pf2 $(SHARE)/grub/unlock-24.pf2
+	install -Dm644 -t $(SHARE)/grub/fonts grub/fonts/menu-24.pf2 grub/fonts/menu-32.pf2 grub/fonts/menu-46.pf2
 	install -Dm644 installer/assets/grub/LICENSE-DejaVu.txt $(DESTDIR)$(PREFIX)/share/licenses/emaki-config/LICENSE-DejaVu.txt
 	install -Dm644 -t $(BOOTLIB) grub/emaki_boot/__init__.py grub/emaki_boot/refresh.py grub/emaki_boot/update.py grub/emaki_boot/update_menu.py grub/emaki_boot/usable.py
 	for module in $(BOOT_SHARED); do install -Dm644 "installer/emaki_installer/$$module.py" "$(BOOTLIB)/$$module.py"; done
@@ -415,12 +514,29 @@ install: install-upkeep
 	install -Dm644 cursors/Emaki/index.theme $(ICONS)/Emaki/index.theme
 	install -dm755 $(ICONS)/Emaki/cursors
 	cp -P --no-preserve=ownership cursors/Emaki/cursors/* $(ICONS)/Emaki/cursors/
-	# Living wallpaper for niri-emaki (emaki-wallpaper in fork-rules.kdl): ring, front layer, train.
+	# Living wallpaper for niri-emaki (emaki-wallpaper in both fork entry points): ring, front layer, train.
 	install -Dm644 -t $(SHARE)/wallpaper art/wallpaper/ring.png art/wallpaper/fallback.png art/wallpaper/ring-front.png art/wallpaper/train-frames.png art/wallpaper/train.json
 	install -Dm644 -t $(SHARE)/fetch fetch/config.jsonc fetch/details.jsonc fetch/render.py fetch/wordmark.png fetch/wordmark.txt
 	install -Dm644 fetch/config.jsonc $(XDG)/fastfetch/config.jsonc
 	install -Dm644 greetd/pam $(PAMDIR)/emaki-greetd
 	install -Dm644 greetd/pam-auth $(PAMDIR)/emaki-greetd-auth
+	$(MAKE) install-sudo-policy
+	install -Dm644 $(SUDO_BUILD)/pam_emaki_sudo.so $(DESTDIR)$(PREFIX)/lib/security/pam_emaki_sudo.so
+	install -Dm755 $(SUDO_BUILD)/emaki-sudo-broker $(DESTDIR)$(LIBEXECDIR)/emaki-sudo-broker
+	install -Dm755 $(CAPTURE_BIN) $(DESTDIR)$(LIBEXECDIR)/emaki-capture-recorder
+	install -Dm644 capture/dmabuf.py $(DESTDIR)$(LIBEXECDIR)/dmabuf.py
+	install -Dm755 $(SUDO_BUILD)/emaki-sudo $(BIN)/emaki-sudo
+ifeq ($(INSTALL_SUDO_TURN_INTEGRATION),1)
+	$(MAKE) install-sudo-turn-integration
+endif
+	install -Dm644 $(SUDO_BUILD)/emaki-sudo.service $(SYSTEMD)/system/emaki-sudo.service
+	install -dm755 $(SYSTEMD)/system/multi-user.target.wants
+	ln -sfn ../emaki-sudo.service $(SYSTEMD)/system/multi-user.target.wants/emaki-sudo.service
+	install -Dm644 $(SUDO_BUILD)/emaki-sudo-cleanup.service $(SYSTEMD)/system/emaki-sudo-cleanup.service
+	install -Dm644 sudo/emaki-sudo-cleanup.timer $(SYSTEMD)/system/emaki-sudo-cleanup.timer
+	install -dm755 $(SYSTEMD)/system/timers.target.wants
+	ln -sfn ../emaki-sudo-cleanup.timer $(SYSTEMD)/system/timers.target.wants/emaki-sudo-cleanup.timer
+	install -Dm644 -t $(SHARE)/shell/Emaki/Sudo $(SUDO_BUILD)/qml/Emaki/Sudo/libemakisudoplugin.so sudo/qmldir sudo/plugins.qmltypes
 	install -Dm644 systemd/emaki-drm-hold.service $(SYSTEMD)/system/emaki-drm-hold.service
 	install -Dm644 systemd/greetd.service.d/emaki.conf $(SYSTEMD)/system/greetd.service.d/emaki.conf
 	install -Dm644 -t $(SYSTEMD)/user systemd/emaki-greeter-wallpaper.path systemd/emaki-greeter-wallpaper.service systemd/emaki-greeter-wallpaper-watch.service
@@ -509,6 +625,9 @@ uninstall-niri-emaki:
 uninstall:
 	@case "$(DESTDIR)" in ""|/*) ;; *) echo "uninstall: DESTDIR must be empty or an absolute path; nothing changed." >&2; exit 1 ;; esac; \
 		case "/$(DESTDIR)/" in */../*) echo "uninstall: DESTDIR must not contain '..' components; nothing changed." >&2; exit 1 ;; esac
+	# Remove our selector before its PAM service so ordinary sudo remains available.
+	@if [ -e $(DESTDIR)/etc/sudoers.d/20-emaki-pam ] && ! cmp -s sudo/20-emaki-pam $(DESTDIR)/etc/sudoers.d/20-emaki-pam; then \
+		echo 'uninstall: sudo PAM selector differs from the shipped file; restore ordinary sudo routing before removal.' >&2; exit 1; fi
 	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/hooks/99-emaki-qt-check.hook
 	rm -f $(DESTDIR)$(PREFIX)/share/themes/Emaki/gtk-3.0/gtk.css
 	rm -f $(DESTDIR)$(PREFIX)/lib/environment.d/60-emaki-xdg.conf
@@ -533,24 +652,44 @@ uninstall:
 	@if ! python3 -I scripts/emaki-greeter-provision --root "$(if $(DESTDIR),$(DESTDIR),/)" --purge-published; then \
 		echo "uninstall: WARNING: published wallpaper cleanup incomplete at $(if $(DESTDIR),$(DESTDIR),)/var/lib/emaki-greeter; retained copies need administrator cleanup. Continuing removal." >&2; \
 	fi
+	# Remove our selector before its PAM service so ordinary sudo remains available (checked unchanged above).
+	rm -f $(DESTDIR)/etc/sudoers.d/20-emaki-pam
+	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/hooks/00-emaki-sudo-remove.hook
+	rm -f $(PAMDIR)/emaki-sudo $(DESTDIR)/etc/pam.d/emaki-sudo $(DESTDIR)$(PREFIX)/lib/security/pam_emaki_sudo.so
+	rm -f $(BIN)/emaki-sudo $(BIN)/emaki-sudo-turn $(DESTDIR)$(LIBEXECDIR)/emaki-sudo-broker
+	rm -f $(DESTDIR)$(LIBEXECDIR)/emaki-capture-recorder $(DESTDIR)$(LIBEXECDIR)/dmabuf.py
+	rm -f $(SYSTEMD)/system/emaki-sudo.service $(SYSTEMD)/system/multi-user.target.wants/emaki-sudo.service
+	rm -f $(SYSTEMD)/system/emaki-sudo-cleanup.service $(SYSTEMD)/system/emaki-sudo-cleanup.timer $(SYSTEMD)/system/timers.target.wants/emaki-sudo-cleanup.timer
+	rm -f $(DESTDIR)$(LIBEXECDIR)/users_home.py $(DESTDIR)$(LIBEXECDIR)/emaki-settings-users-root $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.settings-users.policy
 	rm -f $(BIN)/emaki-settings-network $(DESTDIR)$(LIBEXECDIR)/emaki-wifi-password $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.wifi-password.policy
 	rm -f $(DESTDIR)$(LIBEXECDIR)/emaki_paths.py $(DESTDIR)$(LIBEXECDIR)/paths
 	rm -f $(BIN)/emaki-transaction-inhibit $(DESTDIR)$(PREFIX)/share/libalpm/hooks/00-emaki-transaction-inhibit.hook $(DESTDIR)$(LIBEXECDIR)/emaki_update_space.py
 	rm -f $(BIN)/emaki-update-boot $(DESTDIR)$(PREFIX)/share/libalpm/hooks/04-emaki-update-boot.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/06-emaki-update-boot.hook
-	rm -f $(BIN)/emaki-update-manager $(DESTDIR)$(LIBEXECDIR)/update-manager-backend $(DESTDIR)$(LIBEXECDIR)/update_catalog.py $(DESTDIR)$(LIBEXECDIR)/emaki-update-apply
+	rm -f $(BIN)/emaki-update-manager $(DESTDIR)$(LIBEXECDIR)/update-manager-backend $(DESTDIR)$(LIBEXECDIR)/update_catalog.py $(DESTDIR)$(LIBEXECDIR)/emaki_update_root.py $(DESTDIR)$(LIBEXECDIR)/emaki-update-apply
+	rm -f $(DESTDIR)$(LIBEXECDIR)/update_flatpaks.py
+	rm -f $(DESTDIR)$(LIBEXECDIR)/update_reminder.py
+	rm -f $(DESTDIR)$(LIBEXECDIR)/emaki-update-restore $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.update.restore.policy
+	rm -f $(BIN)/emaki-settings-privacy $(DESTDIR)$(LIBEXECDIR)/emaki-privacy-recovery $(DESTDIR)$(LIBEXECDIR)/emaki_privacy_portals.py
+	rm -f $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.privacy.recovery.policy
+	rm -f $(SYSTEMD)/system/emaki-restore-index.service $(SYSTEMD)/system/emaki-restore-index.timer $(SYSTEMD)/system/timers.target.wants/emaki-restore-index.timer
 	rm -f $(SYSTEMD)/system/emaki-update.service $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.update.policy $(DESTDIR)$(PREFIX)/share/applications/emaki-update-manager.desktop
 	rm -rf $(DESTDIR)$(PREFIX)/share/emaki-update-manager
-	rm -f $(BIN)/emaki-session-files $(BIN)/emaki-session-update $(BIN)/emaki-update $(DESTDIR)$(LIBEXECDIR)/emaki_update_errors.py $(DESTDIR)$(LIBEXECDIR)/emaki_session_state.py $(DESTDIR)$(LIBEXECDIR)/emaki_session_arch.py
+	rm -f $(BIN)/emaki-programs $(DESTDIR)$(LIBEXECDIR)/programs_catalog.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-remove $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.policy
+	rm -f $(DESTDIR)$(LIBEXECDIR)/programs_appstream.py $(DESTDIR)$(LIBEXECDIR)/programs_arch.py $(DESTDIR)$(LIBEXECDIR)/programs_engine.py $(DESTDIR)$(LIBEXECDIR)/programs_flatpak.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-install $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.install.policy
+	rm -f $(DESTDIR)$(LIBEXECDIR)/emaki-programs-flatpak $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.flatpak.policy
+	rm -f $(DESTDIR)$(PREFIX)/share/polkit-1/rules.d/00-emaki-programs.rules
+	rm -f $(BIN)/emaki-shell-generations $(DESTDIR)$(LIBEXECDIR)/emaki_shell_tree.py $(BIN)/emaki-session-files $(BIN)/emaki-session-update $(BIN)/emaki-update $(DESTDIR)$(LIBEXECDIR)/emaki_update_errors.py $(DESTDIR)$(LIBEXECDIR)/emaki_session_state.py $(DESTDIR)$(LIBEXECDIR)/emaki_session_arch.py
 	rm -f $(BIN)/emaki-wallet-stage $(BIN)/emaki-wallet-start $(BIN)/emaki-keyring-recover $(BIN)/emaki-wallet-migrate $(BIN)/emaki-rollback $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.rollback.policy
 	rm -f $(DESTDIR)$(PREFIX)/lib/emaki/emaki-wifi-recover $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.wifi-recovery.policy $(SYSTEMD)/system/emaki-wifi-recovery.service
 	rm -f $(DESTDIR)$(PREFIX)/lib/udev/rules.d/90-emaki-wifi-recovery.rules
 	rm -f $(BIN)/emaki-boot-refresh $(DESTDIR)$(PREFIX)/share/libalpm/hooks/95-emaki-boot-refresh.hook
 	rm -f $(BIN)/emaki-drm-hold $(BIN)/emaki-greeter-compositor $(BIN)/emaki-greeter-run $(BIN)/emaki-text-session $(BIN)/emaki-session-import-environment $(SYSTEMD)/system/emaki-drm-hold.service
 	rm -f $(BIN)/emaki-settings-power $(BIN)/emaki-settings-apps $(BIN)/emaki-settings-about $(DESTDIR)$(LIBEXECDIR)/emaki-charge-limit
+	rm -f $(BIN)/emaki-settings-storage $(DESTDIR)$(LIBEXECDIR)/emaki_storage.py $(DESTDIR)$(LIBEXECDIR)/storage_arch.py $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.storage.policy
 	rm -f $(DESTDIR)$(PREFIX)/lib/udev/rules.d/90-emaki-charge-limit.rules
 	rm -f $(SYSTEMD)/system/emaki-charge-limit.service $(SYSTEMD)/system/multi-user.target.wants/emaki-charge-limit.service
 	rm -f $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.charge-limit.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.channel.policy
-	rm -f $(BIN)/emaki-autostart $(BIN)/emaki-idle $(BIN)/emaki-config-path $(BIN)/emaki-power $(BIN)/emaki-shell $(BIN)/emaki-shell-health $(BIN)/emaki-lock $(BIN)/emaki-session-cover $(BIN)/emaki-session-wallpaper $(BIN)/emaki-machine-settings $(BIN)/emaki
+	rm -f $(BIN)/emaki-autostart $(BIN)/emaki-idle $(BIN)/emaki-config-path $(BIN)/emaki-power $(BIN)/emaki-shell $(BIN)/emaki-shell-trusted $(BIN)/emaki-shell-health $(BIN)/emaki-lock $(BIN)/emaki-session-cover $(BIN)/emaki-session-wallpaper $(BIN)/emaki-machine-settings $(BIN)/emaki-settings-users $(BIN)/emaki
 	# The fork session (install-niri-emaki) goes too: its wrapper reads configs from $(SHARE).
 	rm -f $(BIN)/niri-emaki-session
 	rm -f $(SHARE)/niri/fork.kdl $(SHARE)/niri/fork-system.kdl $(SHARE)/niri/fork-rules.kdl
@@ -614,7 +753,7 @@ EMAKI_NIRI       ?= niri
 CORE_ENV = CARGO_HOME="$(CARGO_HOME)" CARGO_TARGET_DIR="$(CARGO_TARGET_DIR)" \
 	EMAKI_PREFIX="$(EMAKI_PREFIX)" EMAKI_DATADIR="$(EMAKI_DATADIR)" \
 	EMAKI_LIBEXECDIR="$(EMAKI_LIBEXECDIR)" EMAKI_SYSCONFDIR="$(EMAKI_SYSCONFDIR)" \
-	EMAKI_BUSCTL="$(EMAKI_BUSCTL)" EMAKI_PW_CLI="$(EMAKI_PW_CLI)" EMAKI_NIRI="$(EMAKI_NIRI)" EMAKI_XKB_RULES="$(EMAKI_XKB_RULES)" EMAKI_POLKIT_AGENT="$(EMAKI_POLKIT_AGENT)"
+	EMAKI_BUSCTL="$(EMAKI_BUSCTL)" EMAKI_PW_CLI="$(EMAKI_PW_CLI)" EMAKI_NIRI="$(EMAKI_NIRI)" EMAKI_XKB_RULES="$(EMAKI_XKB_RULES)"
 
 .PHONY: build-core
 
@@ -636,8 +775,8 @@ NOT_ROOT   = if [ "$$(id -u)" = 0 ]; then \
 	echo "make: $@ is missing or older than its sources. Build as your regular user:" >&2; \
 	echo "    make build     — then rerun sudo make install" >&2; exit 1; fi
 
-build: paths $(CORE_BIN) $(SHADERS)
-install: $(CORE_BIN) $(SHADERS)
+build: paths $(CORE_BIN) $(SHADERS) build-sudo build-capture
+install: $(CORE_BIN) $(SHADERS) check-sudo-build $(CAPTURE_BIN)
 
 $(CORE_BIN): $(CORE_SRC)
 	@$(NOT_ROOT)
@@ -651,11 +790,14 @@ $(SHADERS) &: $(SHADER_SRC)
 
 # No live Wayland; fixtures use .cache/, with short temporary Unix-socket paths.
 .PHONY: check-shell shell-shots shell-shaders
-check-shell: paths shell-shaders
+check-shell: paths shell-shaders check-sudo-build
+	python3 tests/test-settings-privacy-page.py
 	python3 tests/test-settings-system-pages.py
 	python3 tests/test-settings-apps-page.py
 	python3 tests/test-settings-region-about.py
 	python3 tests/test-settings-maintenance-page.py
+	python3 tests/test-settings-storage-page.py
+	python3 tests/test-settings-users-page.py
 	node tests/test-settings-index.mjs
 	node tests/test-notification-policy.mjs
 	python3 tests/test-notification-store.py
@@ -686,6 +828,7 @@ check-shell: paths shell-shaders
 	env $(CORE_ENV) TMPDIR="$(CURDIR)/.cache/tmp" cargo build -p emaki-cli --locked
 	python3 tests/test-settings-catalog.py "$(CARGO_TARGET_DIR)/debug/emaki"
 	python tests/test-shell.py
+	python3 tests/test-polkit-prompt.py
 	python3 tests/test-shortcuts.py
 	python3 tests/test-launcher-keyboard.py
 	python3 tests/test-system-keyboard.py
@@ -693,12 +836,15 @@ check-shell: paths shell-shaders
 	python3 tests/test-shell-outputs.py
 	python3 tests/test-clipboard-recorder.py
 	python3 tests/test-shell-recovery.py
+	python3 tests/test-trusted-shell-launch.py
+	python3 tests/test-application-environment.py
 	python3 tests/test-shell-health.py
 	python3 tests/test-shell-recovery-notice.py
 	python3 tests/test-session-state.py
 	python3 tests/test-displays.py
 	python3 tests/test-displays-mutants.py
 	python3 tests/test-session-files.py
+	python3 tests/test-shell-generations.py
 	python3 tests/test-desktop-state.py
 	python3 tests/test-session-update-notice.py
 	python3 tests/test-session-update-hook.py
@@ -818,3 +964,41 @@ cursors:
 .PHONY: fetch-assets
 fetch-assets:
 	python3 scripts/build-fetch
+
+# The recorder uses runtime GStreamer plugins; no recorder SDK is needed to build.
+.PHONY: build-capture
+build-capture: $(CAPTURE_BIN) $(CAPTURE_BUILD)/dmabuf.py
+
+$(CAPTURE_BIN): capture/recorder.py
+	@$(NOT_ROOT)
+	install -Dm755 $< "$@"
+
+$(CAPTURE_BUILD)/dmabuf.py: capture/dmabuf.py
+	@$(NOT_ROOT)
+	install -Dm644 $< "$@"
+
+# PAM, root service and the shell's native transport are one base payload.
+.PHONY: build-sudo check-sudo-build
+build-sudo:
+	@$(NOT_ROOT)
+	cmake -S sudo -B "$(SUDO_BUILD)" -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+		-DCMAKE_INSTALL_PREFIX="$(PREFIX)" -DEMAKI_DATADIR="$(DATADIR)" -DEMAKI_LIBEXECDIR="$(LIBEXECDIR)" \
+		-DEMAKI_PAM_MODULE="$(PREFIX)/lib/security/pam_emaki_sudo.so"
+	cmake --build "$(SUDO_BUILD)" --parallel 2
+	touch $(SUDO_ARTIFACTS)
+
+$(SUDO_ARTIFACTS) &: $(SUDO_SRC)
+	@$(NOT_ROOT)
+	$(MAKE) build-sudo
+
+check-sudo-build: $(SUDO_ARTIFACTS)
+	@if [ "$$(cat $(SUDO_BUILD)/install-paths 2>/dev/null)" != '$(PREFIX)|$(DATADIR)|$(LIBEXECDIR)' ]; then \
+		$(NOT_ROOT); $(MAKE) build-sudo; fi
+
+.PHONY: install-sudo-turn-integration
+install-sudo-turn-integration:
+	install -Dm755 scripts/emaki-sudo-turn $(BIN)/emaki-sudo-turn
+	sed -i 's|@EMAKI_PYTHON@|$(EMAKI_PYTHON)|g; s|@EMAKI_BINDIR@|$(PREFIX)/bin|g' $(BIN)/emaki-sudo-turn
+	install -Dm644 sudo/turn-reporting.md $(SHARE)/sudo/turn-reporting.md
+	install -Dm644 -t $(SHARE)/sudo/integrations sudo/integrations/claude-hooks.json sudo/integrations/codex-notify.toml
+	sed -i 's|@EMAKI_BINDIR@|$(PREFIX)/bin|g' $(SHARE)/sudo/integrations/claude-hooks.json $(SHARE)/sudo/integrations/codex-notify.toml

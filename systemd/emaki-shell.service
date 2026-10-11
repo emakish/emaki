@@ -1,13 +1,8 @@
 # Emaki shell as a user service. Installed to /usr/lib/systemd/user/.
 #
-# Why a service instead of a bare spawn-at-startup: if the shell crashes (panel, dock, tray,
-# notification server — all in one process), it restarts automatically after a second;
-# `systemctl --user restart emaki-shell` restarts it after make install;
-# view logs with `journalctl --user -u emaki-shell`.
-#
-# niri-session imports WAYLAND_DISPLAY and NIRI_SOCKET into the
-# systemd --user environment, giving the service the environment it needs.
-# default.kdl starts it via `systemctl --user start` — no need to enable it.
+# Legacy fallback for personal defaults that still launch the shell as a service.
+# Shipped defaults use niri's private trusted-shell connection and supervision.
+# The condition also prevents a previously enabled unit from competing with it.
 [Unit]
 Description=Emaki shell (bar, launcher, drawer, dock, tray, notifications)
 Documentation=https://github.com/emakish/emaki
@@ -32,6 +27,7 @@ StartLimitBurst=20
 
 [Service]
 Type=simple
+ExecCondition=@EMAKI_BINDIR@/emaki-shell-trusted legacy-start
 ExecStart=@EMAKI_BINDIR@/emaki-shell
 Restart=on-failure
 # Skip transient failed states while retrying; OnFailure opens recovery only when

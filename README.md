@@ -6,7 +6,7 @@ Emaki is an Arch-based desktop built around **niri-emaki**, a fork of the
 pixel-art wallpaper: a looping valley at sunset that scrolls with your workspaces, with
 steam trains running through it.
 
-**Status: 0.5.0 alpha — not for everyday use.** See [Release stages](#release-stages). It is
+**Status: 0.6.0 alpha — not for everyday use.** See [Release stages](#release-stages). It is
 tested in QEMU with UEFI firmware (OVMF) and has been installed on one real machine so far, see
 [Tested hardware](#tested-hardware). Where the project is heading: [PLANS.md](PLANS.md).
 
@@ -33,11 +33,13 @@ Beta here is the stage of Emaki as a whole, not a pre-release: every new version
 
 ## What's inside
 
-- **niri-emaki** (`packaging/niri-emaki/`) — niri 26.04 with nine patches: the living
+- **niri-emaki** (`packaging/niri-emaki/`) — niri 26.04 with eleven patches: the living
   wallpaper, glass capture for the shell, a seamless handoff from the login screen, an
   animated overview backdrop, crisp cursors at fractional scale and a distinct exit status
   when no GPU renderer can be created, plus locked-session capture protection, static-blur
-  occlusion accounting and preserved keyboard focus for mapped shell layers.
+  occlusion accounting, preserved keyboard focus for mapped shell layers, and a trusted
+  authentication connection with compositor input isolation and a physical Ctrl+Alt+Delete proof action,
+  and safety key bindings that no other program can change during a session.
 - **The shell** (`shell/`) — bar islands (workspaces, clock, system, privacy), dock,
   launcher, notifications and on-screen display on liquid glass. The login screen (a greetd
   greeter) and the lock screen are drawn by the same shell.
@@ -77,7 +79,7 @@ installer offers two software sets. **Minimal** is the desktop with Dolphin, Fir
 **Rich** (preselected) adds LibreOffice, Thunderbird, Okular, Kate, Gwenview, Ark, Haruna,
 Elisa, Spectacle, OBS Studio, qBittorrent, KeePassXC, Discover with Flatpak, Partition Manager,
 Filelight, System Monitor, ISO Image Writer, KCharSelect, Skanlite, printing and
-media codecs. Not in 0.5.0: BIOS boot, installing alongside Windows.
+media codecs. Not in 0.6.0: BIOS boot, installing alongside Windows.
 
 ## Security notes
 
@@ -104,14 +106,16 @@ session without your password.
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.4.1 | Update from 0.4.0 with `pacman -Syu`, Wi-Fi after the update, screen lock and unlock | No new issues found |
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.4.2 | Update from 0.4.1 with `pacman -Syu`, restart, sound with realtime priority, the snapshot boot menu check at startup | No new issues found |
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.5.0 | Update from 0.4.2 with `pacman -Syu`, restart, then a fresh installation from USB (erase disk), boot, login, desktop | Wi-Fi joined in the installer has to be joined again after installing |
+| MacBook Pro (Retina, 13-inch, Early 2015) | 0.6.0 | Update from 0.5.0 with `pacman -Syu`, restart; then a fresh installation from USB with disk encryption: the Wi-Fi network joined in the installer connects by itself after installing, login, desktop, the password prompt | No new issues found in the installed system |
 
 Installed Emaki on another machine? Reports are welcome in the issues.
 
-### Known issues in 0.5.0
+### Known issues in 0.6.0
 
 - Hibernation: on the tested MacBook the session does not respond after resuming. Do not use
   hibernation.
-- Wi-Fi joined in the installer has to be joined again after installing.
+- The 0.5.0 image: Wi-Fi joined in the installer has to be joined again after installing. The 0.6.0 image,
+  which follows shortly, keeps it.
 - Machines that still update from the old GitHub address print
   "emaki: missing required signature" once after moving to `pkgs.emaki.sh`; the next update is
   clean.

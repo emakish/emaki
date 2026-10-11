@@ -1,0 +1,50 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
+import QtQuick.tooling 1.2
+
+Module {
+    Component {
+        name: "SudoClient"
+        prototype: "QObject"
+        exports: ["Emaki.Sudo/SudoClient 1.0"]
+        exportMetaObjectRevisions: [256]
+        Property { name: "enabled"; type: "bool"; notify: "stateChanged" }
+        Property { name: "connected"; type: "bool"; isReadonly: true }
+        Property { name: "request"; type: "QVariantMap"; isReadonly: true }
+        Property { name: "keys"; type: "QVariantList"; isReadonly: true }
+        Property { name: "installed"; type: "bool"; isReadonly: true }
+        Property { name: "warningAccepted"; type: "bool"; isReadonly: true }
+        Property { name: "btrfs"; type: "bool"; isReadonly: true }
+        Property { name: "snapguardAvailable"; type: "bool"; isReadonly: true }
+        Signal { name: "stateChanged" }
+        Signal { name: "requestChanged" }
+        Signal { name: "keysChanged" }
+        Signal { name: "rejected" }
+        Signal { name: "authenticationFailed" }
+        Method {
+            name: "submit"
+            Parameter { name: "id"; type: "QString" }
+            Parameter { name: "password"; type: "QString" }
+            Parameter { name: "mode"; type: "QString" }
+            Parameter { name: "seconds"; type: "int" }
+        }
+        Method {
+            name: "cancel"
+            Parameter { name: "id"; type: "QString" }
+        }
+        Method {
+            name: "revoke"
+            Parameter { name: "id"; type: "QString" }
+        }
+        Method {
+            name: "revokeAll"
+        }
+        Method {
+            name: "setLocked"
+            Parameter { name: "locked"; type: "bool" }
+        }
+        Method {
+            name: "acknowledgeWarning"
+        }
+    }
+}

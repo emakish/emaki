@@ -53,6 +53,26 @@ class MapStateTests(unittest.TestCase):
         self.assertFalse(boot.json_answer('running\n'))
         self.assertFalse(boot.json_answer('{"cut": '))
 
+    def test_state_commands_get_the_session_sockets(self):
+        # 0.5.0 image check: over SSH without these, niri answered "socket_not_configured" and the
+        # shell IPC found no instance on display "unk".
+        for name in ('XDG_RUNTIME_DIR=', 'DBUS_SESSION_BUS_ADDRESS=', 'NIRI_SOCKET=', 'WAYLAND_DISPLAY='):
+            self.assertIn(name, boot.SESSION_ENV)
+
+    def test_the_rules_read_only_commands_are_run(self):
+        commands = dict(boot.rules_commands())
+        self.assertEqual(commands, {'state': 'emaki state --json', 'map': 'emaki map --json',
+                                    'history': 'emaki settings history --json'})
+        self.assertNotIn('undo', commands)
+        rules = (ROOT / boot.system_map.RULES).read_text()
+        self.assertTrue(all(f'`{command}`' in rules for command in commands.values()))
+
+    def test_a_rules_command_passes_with_json_and_a_partial_answer(self):
+        self.assertTrue(boot.rules_answer(0, '{}'))
+        self.assertTrue(boot.rules_answer(1, '{"status": "partial"}'))
+        self.assertFalse(boot.rules_answer(2, '{}'))
+        self.assertFalse(boot.rules_answer(0, 'Usage: emaki'))
+
     def test_the_shipped_page_promises_a_session_state(self):
         commands = boot.map_state_commands((ROOT / 'docs/system-map.md').read_text())
         self.assertIn(('wifi-recovery', 'emaki-shell call system status'), commands)

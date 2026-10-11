@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'upkeep'))
@@ -21,6 +22,96 @@ loader = importlib.machinery.SourceFileLoader('system_migrate', str(ROOT / 'upke
 spec = importlib.util.spec_from_loader(loader.name, loader)
 migration = importlib.util.module_from_spec(spec)
 loader.exec_module(migration)
+
+
+class SudoRemovalTests(unittest.TestCase):
+    def setUp(self):
+        self.broker = mock.MagicMock(spec=Path)
+        self.broker.__str__.return_value = '/opt/emaki/libexec/emaki-sudo-broker'
+        self.broker.exists.return_value = True
+        self.broker.is_absolute.return_value = True
+        self.broker.is_file.return_value = True
+        self.broker.stat.return_value = mock.Mock(st_uid=0, st_mode=0o100755)
+        self.runtime = mock.Mock(spec=Path)
+        self.runtime.exists.return_value = True
+        self.runtime.is_symlink.return_value = False
+        def path(value):
+            if value == migration.SUDO_BROKER:
+                return self.broker
+            if value == '/run/emaki-sudo':
+                return self.runtime
+            return Path(value)
+        patcher = mock.patch.object(migration, 'Path', side_effect=path)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        patcher = mock.patch.object(migration, 'safe', return_value=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        patcher = mock.patch.object(migration.subprocess, 'run')
+        self.run = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_stop_precedes_checked_bounded_drain(self):
+        migration.drain_sudo_keys(Path('/'))
+        self.assertEqual(self.run.call_args_list, [
+            mock.call(['systemctl', 'stop', 'emaki-sudo.service'], check=True, timeout=120),
+            mock.call([str(self.broker), '--cleanup'], check=True, timeout=40),
+        ])
+
+    def test_stop_failure_vetoes_before_cleanup_or_configuration_changes(self):
+        self.run.side_effect = subprocess.CalledProcessError(1, 'systemctl')
+        with mock.patch.object(migration, 'write') as write:
+            with self.assertRaises(subprocess.CalledProcessError):
+                migration.release_defaults(Path('/'), removing=True)
+            write.assert_not_called()
+        self.assertEqual(self.run.call_count, 1)
+
+    def test_cleanup_failure_and_timeout_veto_removal(self):
+        for error in (subprocess.CalledProcessError(1, 'cleanup'),
+                      subprocess.TimeoutExpired('cleanup', 40)):
+            with self.subTest(error=type(error).__name__):
+                self.run.reset_mock()
+                self.run.side_effect = [None, error]
+                with mock.patch.object(migration, 'write') as write:
+                    with self.assertRaises(type(error)):
+                        migration.release_defaults(Path('/'), removing=True)
+                    write.assert_not_called()
+                self.assertEqual(self.run.call_count, 2)
+
+    def test_absent_old_feature_requires_no_commands(self):
+        self.broker.exists.return_value = False
+        self.runtime.exists.return_value = False
+        migration.drain_sudo_keys(Path('/'))
+        self.run.assert_not_called()
+
+    def test_installed_service_that_never_ran_needs_no_drain(self):
+        self.runtime.exists.return_value = False
+        migration.drain_sudo_keys(Path('/'))
+        self.run.assert_called_once_with(['systemctl', 'stop', 'emaki-sudo.service'],
+                                         check=True, timeout=120)
+
+    def test_missing_broker_with_retained_runtime_refuses(self):
+        self.broker.exists.return_value = False
+        self.broker.is_file.return_value = False
+        self.runtime.exists.return_value = True
+        with self.assertRaises(OSError):
+            migration.drain_sudo_keys(Path('/'))
+        self.run.assert_not_called()
+
+    def test_unsafe_executable_refuses_without_commands(self):
+        for uid, mode in ((1000, 0o100755), (0, 0o100775), (0, 0o100644)):
+            with self.subTest(uid=uid, mode=mode):
+                self.broker.stat.return_value = mock.Mock(st_uid=uid, st_mode=mode)
+                with self.assertRaises(OSError):
+                    migration.drain_sudo_keys(Path('/'))
+        self.run.assert_not_called()
+
+    def test_offline_root_never_probes_or_stops_host(self):
+        with tempfile.TemporaryDirectory() as directory:
+            migration.drain_sudo_keys(Path(directory))
+        self.run.assert_not_called()
+        self.broker.exists.assert_not_called()
+        self.runtime.exists.assert_not_called()
 
 
 class MigrationTests(unittest.TestCase):
@@ -48,6 +139,10 @@ class MigrationTests(unittest.TestCase):
                                 f'"{staged}" "{self.root}"')
         # The per-account installer-config migration has its own tests; it is not part of this root.
         script = script.replace('/usr/bin/python3 -I /usr/bin/emaki-migrate-installer-config', ':')
+        # Broker restart is covered by the sudo packaging test; never contact the host.
+        script = script.replace('systemctl try-restart emaki-sudo.service', ':')
+        # Package lifecycle service operations stay inside the fixture.
+        script = 'systemctl() { :; }\n' + script
         subprocess.run(['bash', '-eu', '-c', script + '\npost_upgrade 0.2.0-4 0.2.0-1\n'
                         + f'\n"{staged}" "{self.root}" --transaction\n'],
                        check=True, capture_output=True, text=True)

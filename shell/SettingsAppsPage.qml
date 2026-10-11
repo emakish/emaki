@@ -42,7 +42,37 @@ Column {
             });
         return result;
     }
-    Component.onCompleted: run(["status"])
+    // Installed programs come from the package backend; this page never names a package manager.
+    property var programs: []
+    property var preview: ({})
+    property string programsMessage: ""
+    readonly property bool programsBusy: programRequest.running
+    function programCommand(args) {
+        if (programRequest.running)
+            return;
+        programRequest.completed = false;
+        programRequest.serial += 1;
+        programRequest.output = "";
+        programRequest.operation = args[0];
+        programRequest.command = ["emaki-programs"].concat(args).concat(["--json"]);
+        programRequest.running = true;
+    }
+    function previewProgram(name) {
+        programsMessage = "";
+        preview = {
+            target: name
+        };
+        programCommand(["preview", name]);
+    }
+    function removeProgram() {
+        if (!preview.ok || !preview.token)
+            return;
+        programCommand(["remove", preview.target, preview.token]);
+    }
+    Component.onCompleted: {
+        run(["status"]);
+        programCommand(["list"]);
+    }
     Connections {
         target: page.catalog
         function onWritingChanged() {
@@ -77,6 +107,64 @@ Column {
                 page.error = String(failure.message || failure);
             }
             output = "";
+        }
+    }
+    Process {
+        id: programRequest
+        property bool completed: false
+        property string output: ""
+        property string operation: ""
+        // A finished removal starts the list request at once: the start check below
+        // belongs to one request only.
+        property int serial: 0
+        onRunningChanged: {
+            const serial = programRequest.serial;
+            if (!running)
+                Qt.callLater(function () {
+                    if (programRequest.serial === serial && !programRequest.completed) {
+                        page.preview = {};
+                        page.programsMessage = "[PLACEHOLDER] Installed programs could not be read. Try again later.";
+                    }
+                });
+        }
+        stdout: StdioCollector {
+            onStreamFinished: programRequest.output = text
+        }
+        onExited: _code => {
+            completed = true;
+            let reply = null;
+            try {
+                reply = JSON.parse(output);
+            } catch (failure) {
+                reply = null;
+            }
+            output = "";
+            if (operation === "list") {
+                if (reply && reply.ok && Array.isArray(reply.programs))
+                    page.programs = reply.programs;
+                else
+                    page.programsMessage = "[PLACEHOLDER] Installed programs could not be read. Try again later.";
+            } else if (operation === "preview") {
+                page.preview = reply ? Object.assign({
+                    target: page.preview.target
+                }, reply) : {};
+                if (!reply)
+                    page.programsMessage = "[PLACEHOLDER] The removal could not be checked. Nothing was removed.";
+            } else if (operation === "remove") {
+                page.programsMessage = reply && reply.message ? reply.message : "[PLACEHOLDER] The removal did not finish as expected. Check the installed programs again.";
+                // The helper passed the new list through every refusal rule; the person
+                // reviews it and confirms again.
+                if (reply && reply.code === "changed" && reply.token)
+                    page.preview = Object.assign({
+                        target: page.preview.target
+                    }, reply, {
+                        ok: true
+                    });
+                else
+                    page.preview = {};
+                // The list changes after any finished removal attempt.
+                Qt.callLater(() => page.programCommand(["list"]));
+            }
         }
     }
     Text {
@@ -173,6 +261,118 @@ Column {
             onValueRequested: value => {
                 if (value)
                     page.run(["add", value]);
+            }
+        }
+    }
+    SettingsCard {
+        width: parent.width
+        objectName: "settings-installed-programs"
+        title: "[PLACEHOLDER] Installed programs"
+        Text {
+            width: parent.width
+            topPadding: 14
+            bottomPadding: 14
+            visible: text !== ""
+            text: page.programsMessage || (page.programs.length === 0 && !page.programsBusy ? "[PLACEHOLDER] No programs can be removed here." : "")
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            color: SettingsTheme.dim
+            font.family: SettingsTheme.fontFamily
+            font.pixelSize: 13
+        }
+        Repeater {
+            model: page.programs
+            Column {
+                id: program
+                required property var modelData
+                required property int index
+                readonly property bool previewing: page.preview.target === modelData.package
+                width: parent.width
+                SettingsRow {
+                    objectName: "program-" + program.modelData.package
+                    width: parent.width
+                    separator: false
+                    title: program.modelData.names.join(", ")
+                    explanation: program.modelData.package
+                    busy: page.programsBusy
+                    controlWidth: 200
+                    control: Component {
+                        // The button keeps its text width at the row's right edge.
+                        Item {
+                            implicitHeight: remove.implicitHeight
+                            SettingsButton {
+                                id: remove
+                                objectName: "program-remove"
+                                anchors.right: parent.right
+                                text: "[PLACEHOLDER] Remove…"
+                                Accessible.name: text + " " + program.modelData.names.join(", ")
+                                onClicked: page.previewProgram(program.modelData.package)
+                            }
+                        }
+                    }
+                }
+                Column {
+                    objectName: "program-preview"
+                    width: parent.width
+                    visible: program.previewing && page.preview.code !== undefined
+                    spacing: 8
+                    bottomPadding: 14
+                    Text {
+                        width: parent.width
+                        text: page.preview.message || ""
+                        textFormat: Text.PlainText
+                        wrapMode: Text.WordWrap
+                        color: SettingsTheme.ink
+                        font.family: SettingsTheme.fontFamily
+                        font.pixelSize: 13
+                    }
+                    Text {
+                        // The full list, read before anything is removed.
+                        objectName: "program-preview-packages"
+                        width: parent.width
+                        visible: text !== ""
+                        text: (page.preview.packages || []).join("\n")
+                        textFormat: Text.PlainText
+                        wrapMode: Text.WrapAnywhere
+                        color: SettingsTheme.ink
+                        font.family: "monospace"
+                        font.pixelSize: 12
+                    }
+                    Text {
+                        width: parent.width
+                        visible: text !== ""
+                        text: (page.preview.requiredBy || []).length ? "[PLACEHOLDER] Needed by: " + page.preview.requiredBy.join(", ") : (page.preview.blocked || []).length ? "[PLACEHOLDER] Kept: " + page.preview.blocked.join(", ") : ""
+                        textFormat: Text.PlainText
+                        wrapMode: Text.WordWrap
+                        color: SettingsTheme.dim
+                        font.family: SettingsTheme.fontFamily
+                        font.pixelSize: 12
+                    }
+                    Row {
+                        spacing: 8
+                        SettingsButton {
+                            objectName: "program-cancel"
+                            text: "Cancel"
+                            enabled: !page.programsBusy
+                            onClicked: page.preview = {}
+                        }
+                        SettingsButton {
+                            objectName: "program-confirm"
+                            visible: page.preview.ok === true
+                            enabled: !page.programsBusy
+                            text: "[PLACEHOLDER] Remove " + (page.preview.packages || []).length + " packages"
+                            onClicked: page.removeProgram()
+                        }
+                    }
+                }
+                Rectangle {
+                    antialiasing: true
+                    x: -18
+                    width: parent.width + 34
+                    height: 1
+                    color: SettingsTheme.rim
+                    visible: program.index < page.programs.length - 1
+                }
             }
         }
     }

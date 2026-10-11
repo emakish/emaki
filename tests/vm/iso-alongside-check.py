@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Synthetic Windows preservation, encrypted install, both EFI targets and resume."""
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Packaged alongside installer: preservation, encrypted boot and snapshot menu."""
 import hashlib
 import importlib.util
 import json
 import os
 from pathlib import Path
 import re
-import secrets
+import shutil
+import socket
 import shlex
 import subprocess
 import sys
@@ -52,22 +55,76 @@ def mode_refused(output):
     return False
 
 
-def main():
-    fs, name = sys.argv[1:3]
+ROOT_LUKS_CHECK = r'''root_device=$(LC_ALL=C cryptsetup status emaki-root | awk '$1 == "device:" {print $2}')
+test -n "$root_device"
+cryptsetup luksDump "$root_device"
+'''
+
+
+def check_owner(vm, port):
+    """The private monitor must identify both the forward and our target image."""
+    network = monitor.command(vm, 'info usernet')
+    blocks = monitor.command(vm, 'info block')
+    forwarded = any(
+        re.search(r'TCP\[HOST_FORWARD\]\s+\S+\s+127\.0\.0\.1\s+'
+                  + re.escape(str(port)) + r'\s+\S+\s+22(?:\s|$)', line)
+        for line in network.splitlines())
+    target = str((vm / 'target.qcow2').resolve())
+    attached = any(re.match(r'^target(?: \(#[A-Za-z0-9_-]+\))?:\s+' + re.escape(target) + r'\s+\(qcow2\)', line)
+                   for line in blocks.splitlines())
+    if not forwarded or not attached:
+        raise RuntimeError('Private monitor does not own the configured SSH port and target disk')
+
+
+def check_free_port(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as connection:
+        connection.bind(('127.0.0.1', port))
+
+
+def clone_disk(target):
+    value = os.environ.get('EMAKI_ALONGSIDE_BASE_DISK', '')
+    if not value or not Path(value).is_file():
+        raise RuntimeError('EMAKI_ALONGSIDE_BASE_DISK must name an existing empty qcow2 fixture base')
+    if target.exists():
+        raise RuntimeError('Refusing to replace an existing target disk')
+    subprocess.run(['cp', '--reflink=always', '--', str(Path(value).resolve()), str(target)], check=True)
+    info = json.loads(subprocess.run(['qemu-img', 'info', '--output=json', str(target)],
+                                    check=True, capture_output=True, text=True).stdout)
+    if info.get('format') != 'qcow2' or info.get('backing-filename') or info.get('encrypted'):
+        raise RuntimeError('Fixture base must be an unencrypted standalone qcow2 image')
+    extents = json.loads(subprocess.run(['qemu-img', 'map', '--output=json', str(target)],
+                                       check=True, capture_output=True, text=True).stdout)
+    # All guest-visible bytes must read as zero: reject prepared/installed bases.
+    if not extents or any(extent.get('zero') is not True for extent in extents):
+        raise RuntimeError('Fixture base must be empty (all guest-visible bytes zero)')
+    size = info.get('virtual-size')
+    if not isinstance(size, int) or size <= 0:
+        raise RuntimeError('Fixture base has an invalid virtual size')
+    if size < 80 * 1024**3:
+        subprocess.run(['qemu-img', 'resize', str(target), '96G'], check=True)
+
+
+def allowed_vm_dir(base):
+    root = (Path.home() / 'VMs').resolve()
+    return base != root and base.is_relative_to(root)
+
+
+def run_scenario(fs, name, *, no_fallback=False):
     assert fs in ('btrfs', 'ext4') and re.fullmatch('[a-z0-9-]+', name)
     iso, iso_record = checked_iso()
     base = Path(os.environ['VMDIR']).resolve()
-    vms = (Path.home() / 'VMs').resolve()
-    assert base != vms and base.is_relative_to(vms), f'VMDIR must be a directory under {vms}'
+    assert allowed_vm_dir(base), 'VMDIR must be strictly inside ~/VMs'
+    port = int(os.environ.get('EMAKI_ISO_SSH_PORT', '2241'))
+    assert 1 <= port <= 65535, 'Invalid SSH port'
     os.umask(0o077)
     vm = base / (fs + '-' + name)
     vm.mkdir()
     (vm / 'iso.txt').write_text(iso_record)
-    env = dict(os.environ, EMAKI_ISO_VM_DIR=str(vm), EMAKI_ISO_SSH_PORT='2241')
+    env = dict(os.environ, EMAKI_ISO_VM_DIR=str(vm), EMAKI_ISO_SSH_PORT=str(port))
     qemu = None
     handles = []
     fixture = json.loads((HERE / 'fixtures/plan-alongside.json').read_text())
-    fixture.update(fs=fs, encryption='account' if fs == 'btrfs' else 'separate', hibernation=True)
+    fixture.update(fs=fs, encryption='account' if fs == 'btrfs' else 'separate', hibernation=False)
     if fs == 'ext4':
         fixture['disk_password'] = 'disk-vm-test-only'
     user = fixture['user']['login']
@@ -75,7 +132,11 @@ def main():
     disk_password = fixture.get('disk_password', password)
 
     def run(script, *args, data=None, timeout=600, check=True):
-        result = subprocess.run(['bash', str(HERE / script), '--dir', str(vm), '--ssh-port', '2241', *args],
+        if script == 'iso-ssh.sh':
+            if qemu is None or qemu.poll() is not None:
+                raise RuntimeError('Owned QEMU process is not running')
+            check_owner(vm, port)
+        result = subprocess.run(['bash', str(HERE / script), '--dir', str(vm), '--ssh-port', str(port), *args],
                                 input=data, capture_output=True, env=env, timeout=timeout)
         if check and result.returncode:
             (vm / 'command-failure.log').write_bytes(result.stdout + result.stderr)
@@ -85,20 +146,37 @@ def main():
     def ssh(command, data=None, account='live', timeout=600):
         return run('iso-ssh.sh', '--user', account, command, data=data, timeout=timeout).stdout
 
+    def wait_ssh(account='live'):
+        for _ in range(60):
+            if qemu.poll() is not None:
+                raise RuntimeError('QEMU exited before SSH became ready')
+            if not (vm / 'mon.sock').exists():
+                time.sleep(1)
+                continue
+            result = run('iso-ssh.sh', '--user', account, 'true', check=False, timeout=15)
+            if result.returncode == 0:
+                return result
+            time.sleep(3)
+        raise RuntimeError('Owned guest SSH did not become ready')
+
     def sudo(command, extra=b''):
         return ssh("sudo -S -p '' bash -c " + shlex.quote(command),
                    data=password.encode() + b'\n' + extra, account=user)
 
     def start(live):
         nonlocal qemu
+        if shutil.disk_usage('/home').free < 3 * 1024**3:
+            raise RuntimeError('not run: disk (less than 3 GiB available on /home)')
+        check_free_port(port)
         output = (vm / f'qemu-{time.time_ns()}.log').open('wb')
         handles.append(output)
         args = ['--iso', str(iso)] if live else ['--no-cd']
-        qemu = subprocess.Popen(['bash', str(HERE / 'run-iso.sh'), '--dir', str(vm), '--ssh-port', '2241', *args],
+        qemu = subprocess.Popen(['bash', str(HERE / 'run-iso.sh'), '--dir', str(vm), '--ssh-port', str(port), *args],
                                 env=env, stdout=output, stderr=subprocess.STDOUT)
 
     def stop():
         if qemu and qemu.poll() is None:
+            check_owner(vm, port)
             monitor.command(vm, 'quit')
             qemu.wait(timeout=60)
         result = run('iso-stop.sh', check=False)
@@ -121,7 +199,7 @@ def main():
             monitor.command(vm, 'sendkey ' + key + ' 30')
             time.sleep(.07)
 
-    def boot(label, windows=False):
+    def boot(label, windows=False, selection=None):
         start(False)
         time.sleep(15)
         capture(label + '-unlock')
@@ -132,7 +210,9 @@ def main():
             monitor.command(vm, 'sendkey up')
             time.sleep(.2)
         capture(label + '-menu')
-        if windows:
+        if selection is not None:
+            resume.select_snapshot_menu(selection, lambda command: monitor.command(vm, command), capture)
+        elif windows:
             monitor.command(vm, 'sendkey home')
             for _ in range(windows_index):
                 monitor.command(vm, 'sendkey down')
@@ -140,7 +220,8 @@ def main():
             capture(label + '-selected')
         else:
             monitor.command(vm, 'sendkey home')
-        monitor.command(vm, 'sendkey ret')
+        if selection is None:
+            monitor.command(vm, 'sendkey ret')
         if windows:
             for _ in range(60):
                 if 'EMAKI_SYNTHETIC_WINDOWS_EFI_OK' in (vm / 'serial.log').read_text(errors='replace'):
@@ -150,18 +231,18 @@ def main():
                 time.sleep(1)
             capture(label + '-failure')
             raise RuntimeError('Windows EFI target marker absent')
-        result = run('iso-wait-ssh.sh', '--user', user, check=False)
+        result = wait_ssh(user)
         (vm / (label + '-ssh.log')).write_bytes(result.stdout + result.stderr)
         if result.returncode:
             capture(label + '-failure')
         assert result.returncode == 0, 'Emaki target did not boot'
 
     try:
-        subprocess.run(['qemu-img', 'create', '-f', 'qcow2', str(vm / 'target.qcow2'), '96G'], check=True)
+        clone_disk(vm / 'target.qcow2')
         start(True)
-        print(run('iso-wait-ssh.sh').stdout.decode(), flush=True)
+        print(wait_ssh().stdout.decode(), flush=True)
         ssh('test -d /run/archiso/bootmnt && grep -qw emaki.test=1 /proc/cmdline')
-        # This release ships with alongside Windows switched off in the installer core.
+        # Older images may ship with alongside Windows switched off in the installer core.
         # Ask the packaged worker for a plan only (no --yes, nothing is written):
         # a refusal of the mode itself means this scenario does not apply.
         ssh('for i in $(seq 1 300); do test -S /run/emaki-installer/sock && exit 0; sleep 1; done; exit 1')
@@ -172,13 +253,14 @@ def main():
             (vm / 'NOT-APPLICABLE').write_text(
                 'The installer in this image does not offer install alongside Windows.\n' + iso_record)
             print('NOT APPLICABLE: the installer in this ISO refuses install alongside Windows '
-                  '(off in this release); nothing was installed or checked', flush=True)
+                  '(disabled in this build); nothing was installed or checked', flush=True)
             return NOT_APPLICABLE
         (vm / 'capabilities.txt').write_bytes(ssh('pacman -Q ntfs-3g ntfsprogs gptfdisk os-prober grub archinstall cryptsetup'))
         ssh('cat > /tmp/windows-efi.cfg', data=b'serial --unit=0 --speed=115200\nterminal_output console serial\necho EMAKI_SYNTHETIC_WINDOWS_EFI_OK\nsleep 3600\n')
         ssh("grub-mkstandalone -O x86_64-efi --locales='' --fonts='' -o /tmp/windows-fixture.efi boot/grub/grub.cfg=/tmp/windows-efi.cfg")
         ssh('cat > /tmp/windows-disk.py', data=(HERE / 'fixtures/windows-disk.py').read_bytes())
-        baseline = ssh('sudo python3 /tmp/windows-disk.py prepare')
+        baseline = ssh('sudo python3 /tmp/windows-disk.py prepare'
+                       + (' --no-fallback' if no_fallback else ''))
         json.loads(baseline)
         (vm / 'windows-before.json').write_bytes(baseline)
         ssh('for i in $(seq 1 300); do test -S /run/emaki-installer/sock && exit 0; sleep 1; done; exit 1')
@@ -193,7 +275,7 @@ def main():
         (vm / 'probe.ndjson').write_bytes(probe)
         (vm / 'plan.json').write_text(json.dumps(fixture))
         ssh('umask 077; cat > /tmp/alongside-plan.json', data=json.dumps(fixture).encode())
-        print('Installing alongside with encryption and hibernation: ' + fs, flush=True)
+        print('Installing alongside with encryption: ' + fs, flush=True)
         result = run('iso-ssh.sh', 'emaki-install-cli --plan /tmp/alongside-plan.json --yes', timeout=5400, check=False)
         (vm / 'install.ndjson').write_bytes(result.stdout)
         (vm / 'install.stderr').write_bytes(result.stderr)
@@ -209,88 +291,62 @@ def main():
 cat /proc/cmdline
 cat /etc/fstab
 swapon --show --bytes
-cryptsetup luksDump /dev/vda4
-test "$(stat -c %s /swap/swapfile)" = 6442450944
+''' + ROOT_LUKS_CHECK + r'''
 test "$(stat -c %a /etc/cryptsetup-keys.d/emaki-root.key)" = 600
 test "$(stat -c %a /boot)" = 700
-test "$(cat /sys/power/resume_offset)" -gt 0
-test "$(busctl call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager CanHibernate)" = 's "yes"'
 test -z "$(systemctl --failed --no-legend)"
 grep -q 'GRUB_DISABLE_OS_PROBER=false' /etc/default/grub
 grep -q 'Windows Boot Manager' /boot/grub/grub.cfg
 if findmnt -n -o FSTYPE / | grep -qx btrfs; then
-    test "$(findmnt -n -o FSROOT /swap)" = /@swap
-    test "$(btrfs inspect-internal map-swapfile -r /swap/swapfile)" = "$(cat /sys/power/resume_offset)"
+    grep -q 'Emaki snapshots' /boot/grub/grub.cfg
+    test -s /boot/grub/grub-btrfs.cfg
     snapper --no-dbus -c root list
 fi
-echo OK: alongside encrypted root and RAM-sized hibernation file
+echo OK: alongside encrypted root and Windows GRUB entry
 '''
         (vm / 'installed-checks.txt').write_bytes(sudo(checks))
         grub = sudo('cat /boot/grub/grub.cfg').decode()
         (vm / 'grub.cfg').write_text(grub)
-        entries = re.findall(r'^(?:menuentry|submenu) .+', grub, re.M)
-        windows_index = next(i for i, entry in enumerate(entries) if 'Windows Boot Manager' in entry)
+        entries = resume.grub_entries(grub)
+        windows_index = next(i for i, entry in enumerate(entries) if 'Windows Boot Manager' in entry['title'])
         ssh('cat > /tmp/windows-disk.py', data=(HERE / 'fixtures/windows-disk.py').read_bytes(), account=user)
         (vm / 'preservation-installed.txt').write_bytes(sudo(
             'python3 /tmp/windows-disk.py check --freed ' + str(fixture['shrink_bytes']), baseline))
-        ssh('cat > /tmp/guest-login.py', data=(HERE / 'guest-login.py').read_bytes(), account=user)
-        time.sleep(10)
-        print(sudo('python3 /tmp/guest-login.py ' + user + ' niri-emaki-session', password.encode()).decode(), flush=True)
-        ssh('''export XDG_RUNTIME_DIR=/run/user/$(id -u)
-export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
-for i in $(seq 1 60); do systemctl --user is-active --quiet niri-emaki.service emaki-shell.service && exit 0; sleep 1; done
-exit 1''', account=user)
-        marker = secrets.token_hex(32)
-        ssh('printf %s ' + shlex.quote(marker) + ' > /run/user/$(id -u)/hibernate-proof', account=user)
-        def resume_probe():
-            return json.loads(ssh(resume.RESUME_PROBE, account=user, timeout=15))
-        before = resume_probe()
-        (vm / 'pre-hibernate.json').write_text(json.dumps(before, indent=2) + '\n')
-        result = run('iso-ssh.sh', '--user', user, "sudo -S -p '' systemctl hibernate",
-                     data=password.encode() + b'\n', timeout=120, check=False)
-        (vm / 'hibernate.log').write_bytes(result.stdout + result.stderr)
-        qemu.wait(timeout=180)
-        (vm / 'hibernate-qemu-exit').write_text(str(qemu.returncode) + '\n')
-        stop()
-        try:
-            boot('resume')
-            resume.observe_resume(before, resume_probe, vm / 'resume-proof.json')
-            capture('resume-after-observation')
-            if resume_probe() != before:
-                raise RuntimeError('Session changed during post-resume screenshot capture')
-        except Exception as error:
-            proof_file = vm / 'resume-proof.json'
-            proof = json.loads(proof_file.read_text()) if proof_file.exists() else {'before': before}
-            proof.update(status='FAIL', error=str(error))
-            proof_file.write_text(json.dumps(proof, indent=2) + '\n')
-            try:
-                capture('resume-failed')
-            except Exception as capture_error:
-                (vm / 'resume-capture-failure.txt').write_text(str(capture_error) + '\n')
-            raise
-        finally:
-            try:
-                diagnostic = run('iso-ssh.sh', '--user', user,
-                                 "sudo -S -p '' journalctl --no-pager -n 2000",
-                                 data=password.encode() + b'\n', check=False, timeout=15)
-                (vm / 'resume-journal.txt').write_bytes(diagnostic.stdout)
-                (vm / 'resume-journal.stderr').write_bytes(diagnostic.stderr)
-                (vm / 'resume-journal-exit').write_text(str(diagnostic.returncode) + '\n')
-            except subprocess.TimeoutExpired as error:
-                (vm / 'resume-journal.txt').write_bytes(error.stdout or b'')
-                (vm / 'resume-journal.stderr').write_bytes((error.stderr or b'') + b'\nSSH timed out\n')
-            except Exception as error:
-                (vm / 'resume-journal.stderr').write_text(str(error) + '\n')
-        print('OK: same boot, volatile marker and desktop processes remained alive for 60 seconds after resume', flush=True)
-        print('NOT TESTED: resumed desktop appearance and real-hardware hibernation', flush=True)
+        if fs == 'btrfs':
+            snapshot_grub = sudo('cat /boot/grub/grub-btrfs.cfg').decode()
+            (vm / 'grub-btrfs.cfg').write_text(snapshot_grub)
+            selection = resume.snapshot_selection(grub, snapshot_grub)
+            (vm / 'snapshot-selection.json').write_text(json.dumps(selection, indent=2) + '\n')
+            sudo('sync')
+            stop()
+            # The initial snapshot predates generated SSH host keys.
+            (vm / 'ssh-host-generation').write_text(str(time.time_ns()) + '\n')
+            boot('snapshot', selection=selection)
+            status = json.loads(ssh('emaki-rollback status --json', account=user))
+            (vm / 'snapshot-status.json').write_text(json.dumps(status, indent=2) + '\n')
+            resume.verify_snapshot(selection, status)
+            (vm / 'snapshot-boot.txt').write_bytes(sudo(
+                'set -eu; findmnt /; test "$(findmnt -n -o FSTYPE /)" = overlay'))
+            print('OK: Windows entry and bootable recovery snapshot coexist', flush=True)
         stop()
         boot('windows', windows=True)
         stop()
-        (vm / 'PASS').write_text('Resize, NTFS/ESP/MSR preservation, encrypted Emaki boot, 60-second resume continuity and synthetic Windows EFI target passed.\nHUMAN REVIEW REQUIRED: unlock, boot menus, target screens and resumed desktop frames are not judged.\nNOT TESTED: real-hardware hibernation.\n' + iso_record)
+        snapshot_result = 'Recovery snapshot boot passed.\n' if fs == 'btrfs' else ''
+        (vm / 'PASS').write_text(('New removable EFI loader verified.\n' if no_fallback
+                                 else 'Existing foreign fallback preserved.\n') + snapshot_result + 'Resize, NTFS/ESP/MSR preservation, encrypted Emaki boot and synthetic Windows EFI target passed.\nHUMAN REVIEW REQUIRED: unlock, boot menus, target screens are not judged.\nNOT TESTED: real Windows boot; synthetic EFI target only.\n' + iso_record)
     finally:
         stop()
         for handle in handles:
             handle.close()
+
+
+def main():
+    fs, name = sys.argv[1:3]
+    for suffix, no_fallback in (('', False), ('-no-fallback', True)):
+        result = run_scenario(fs, name + suffix, no_fallback=no_fallback)
+        if result:
+            return result
+    return 0
 
 
 if __name__ == '__main__':

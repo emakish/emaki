@@ -17,10 +17,16 @@ import tempfile
 sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import emaki_paths
+try:
+    import emaki_update_root
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'update-manager'))
+    import emaki_update_root
 
 STATE = Path('/var/lib/emaki/channel')
 SELECTOR = Path('/etc/emaki/channel')
 MIRRORLIST = Path('/etc/pacman.d/emaki-mirrorlist')
+LOCK = Path('/run/emaki-update-manager.lock')
 ENV = {'PATH': emaki_paths.TRUSTED_PATH, 'LC_ALL': 'C'}
 
 
@@ -62,46 +68,64 @@ def channel_status(config):
                 'The current repository configuration cannot be changed here.')
 
 
+def run_status(command):
+    return subprocess.run(command, capture_output=True, text=True, env=ENV, cwd='/', timeout=20)
+
+
 def switch(channel):
     if channel not in ('stable', 'testing'):
         raise ValueError('Choose Stable or Testing.')
     if os.geteuid() != 0:
         raise ValueError('Authentication is required to change the update channel.')
-    # The root-owned state directory and fixed selector are prepared by packaging.
-    for parent in (STATE.parent, STATE.parent.parent):
-        info = parent.lstat()
-        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
-            raise ValueError('The update channel directory is not safe to change.')
-    fd = os.open(STATE.parent / 'channel.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, 'w') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        before = managed()
-        if detect('/etc/pacman.conf') != before:
-            raise ValueError('The update channel has a custom configuration.')
-        if before == channel:
-            return dict(schema_version=1, status='unchanged', channel=channel, editable=True, default='stable')
-        old = STATE.read_bytes()
-        databases = database()
-        if (databases / 'db.lck').exists():
-            raise ValueError('Another package operation is running. Try again when it finishes.')
-        content = (f'# Copyright (C) 2026 Artur Yakymenko\n'
-                   '# SPDX-License-Identifier: GPL-3.0-or-later\n'
-                   f'Include = {emaki_paths.DATADIR}/mirrors/{channel}.conf\n').encode()
-        replace_state(content)
-        if detect('/etc/pacman.conf') != channel:
-            replace_state(old)
-            raise ValueError('The update channel could not be confirmed. The previous choice was restored.')
+    # Serialize with update, removal and restore before checking the running root.
+    descriptor = os.open(LOCK, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    with os.fdopen(descriptor, 'w') as lock:
         try:
-            forget_database(databases)
-        except OSError:
-            replace_state(old)
-            raise ValueError('The update channel could not be prepared for the next update. '
-                             'The previous choice was restored.') from None
-        return dict(schema_version=1, status='applied', channel=channel, editable=True,
-                    default='stable', message=(
-                        'Your next updates come from Stable. Packages newer than Stable stay until Stable catches up.'
-                        if before == 'testing' and channel == 'stable' else
-                        'The channel changed. Your next updates come from Testing.'))
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ValueError('Another package operation is running. Try again when it finishes.') from None
+        try:
+            # A pending restore discards this root at restart, with the new channel in it.
+            emaki_update_root.require_update_root(
+                run_status, '[PLACEHOLDER] Restart into the normal system before changing the update channel.',
+                '[PLACEHOLDER] The system restore status could not be checked. The channel was not changed.')
+        except RuntimeError as refusal:
+            raise ValueError(str(refusal)) from None
+        # The root-owned state directory and fixed selector are prepared by packaging.
+        for parent in (STATE.parent, STATE.parent.parent):
+            info = parent.lstat()
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+                raise ValueError('The update channel directory is not safe to change.')
+        fd = os.open(STATE.parent / 'channel.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, 'w') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            before = managed()
+            if detect('/etc/pacman.conf') != before:
+                raise ValueError('The update channel has a custom configuration.')
+            if before == channel:
+                return dict(schema_version=1, status='unchanged', channel=channel, editable=True, default='stable')
+            old = STATE.read_bytes()
+            databases = database()
+            if (databases / 'db.lck').exists():
+                raise ValueError('Another package operation is running. Try again when it finishes.')
+            content = (f'# Copyright (C) 2026 Artur Yakymenko\n'
+                       '# SPDX-License-Identifier: GPL-3.0-or-later\n'
+                       f'Include = {emaki_paths.DATADIR}/mirrors/{channel}.conf\n').encode()
+            replace_state(content)
+            if detect('/etc/pacman.conf') != channel:
+                replace_state(old)
+                raise ValueError('The update channel could not be confirmed. The previous choice was restored.')
+            try:
+                forget_database(databases)
+            except OSError:
+                replace_state(old)
+                raise ValueError('The update channel could not be prepared for the next update. '
+                                 'The previous choice was restored.') from None
+            return dict(schema_version=1, status='applied', channel=channel, editable=True,
+                        default='stable', message=(
+                            'Your next updates come from Stable. Packages newer than Stable stay until Stable catches up.'
+                            if before == 'testing' and channel == 'stable' else
+                            'The channel changed. Your next updates come from Testing.'))
 
 
 def database():

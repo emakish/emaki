@@ -1,0 +1,224 @@
+#!/usr/bin/python3 -IB
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Keep the compositor's private connection out of shell preparation helpers."""
+import os
+import sys
+
+# This also covers direct invocation; the shell bootstrap does it before resolving
+# this file through symlinks. No child process runs while the socket is inheritable.
+PRIVATE_SOCKET = os.environ.pop('WAYLAND_SOCKET', None)
+if PRIVATE_SOCKET is not None:
+    PRIVATE_SOCKET = int(PRIVATE_SOCKET)
+    os.set_inheritable(PRIVATE_SOCKET, False)
+
+import json
+from pathlib import Path
+import resource
+import re
+import stat
+import subprocess
+
+LEGACY = 69
+BINDIR = Path('@EMAKI_BINDIR@')
+LIBEXECDIR = Path('@EMAKI_LIBEXECDIR@')
+DATADIR = Path('@EMAKI_DATADIR@')
+PYTHON = '@EMAKI_PYTHON@'
+QS = '@EMAKI_QS@'
+QMLDIR = Path('@EMAKI_QMLDIR@')
+QT_PLUGINSDIR = Path('@EMAKI_QT_PLUGINSDIR@')
+FIXED_PATH = '@EMAKI_TRUSTED_PATH@'
+
+
+def bootstrap():
+    # Check the module before importing it. No checkout fallback is permitted for
+    # a process entrusted with the compositor connection.
+    module = LIBEXECDIR / 'emaki_shell_tree.py'
+    if not module.is_absolute():
+        raise ValueError('the trusted preparation install path was not rendered')
+    for component in (*reversed(module.parents), module):
+        info = component.lstat()
+        if info.st_uid != 0 or info.st_mode & 0o022 or stat.S_ISLNK(info.st_mode):
+            raise ValueError(f'unsafe trusted preparation module: {component}')
+    sys.path.insert(0, str(LIBEXECDIR))
+    import emaki_shell_tree
+    return emaki_shell_tree
+
+
+def environment(generation, inherited):
+    # Drop common loader overrides. This is hygiene within the captured login
+    # environment, not a boundary against a compromised login chain.
+    prefixes = ('QT_', 'QML_', 'QML2_', 'QV4_', 'QSG_', 'QS_', 'LD_', 'PYTHON')
+    data_settings = {'EMAKI_SHELL_DOCK_BACKDROP', 'EMAKI_SHELL_BORDER',
+                     'EMAKI_SHELL_NOTIFICATIONS', 'EMAKI_SHELL_TRAY',
+                     'EMAKI_REDUCED_MOTION', 'EMAKI_LOCK_REDUCED_MOTION', 'EMAKI_LOGIN_HANDOFF'}
+    result = {key: value for key, value in inherited.items()
+              if not key.startswith(prefixes)
+              and (not key.startswith('EMAKI_') or key in data_settings)
+              and key not in ('WAYLAND_SOCKET', 'WAYLAND_DEBUG', 'GCONV_PATH', 'LOCPATH',
+                              'GTK_PATH', 'GTK_MODULES')}
+    shell = generation / 'shell'
+    result.update(PATH=FIXED_PATH, EMAKI_PYTHON=PYTHON, EMAKI_BIN=str(generation / 'emaki'),
+                  EMAKI_SESSION_GENERATION=str(generation), EMAKI_SESSION_SOURCE=str(DATADIR / 'shell'),
+                  EMAKI_SESSION_WATCHER=str(generation / 'watch.py'),
+                  QML_IMPORT_PATH=str(shell) + ':' + str(QMLDIR),
+                  QML2_IMPORT_PATH=str(shell) + ':' + str(QMLDIR),
+                  QT_PLUGIN_PATH=str(QT_PLUGINSDIR), QML_DISABLE_DISK_CACHE='1',
+                  QT_DISABLE_SHADER_DISK_CACHE='1', QSG_RHI_DISABLE_SHADER_DISK_CACHE='1',
+                  MESA_SHADER_CACHE_DISABLE='true',
+                  QT_LOGGING_RULES='*.debug=false', QS_DISABLE_CRASH_HANDLER='1',
+                  EMAKI_LIVE_SESSION=str(int(Path('/etc/emaki-live/greetd.toml').is_file())))
+    # This is inert data in qs and its protocol helpers. Only app_scope restores
+    # it when handing a launch to an ordinary application. Autostart captures it
+    # before fixing PATH; direct compositor launches capture their environment here.
+    result['EMAKI_SHELL_SESSION_ENV'] = inherited.get('EMAKI_SHELL_SESSION_ENV') or json.dumps(
+        {key: value for key, value in inherited.items()
+         if key not in ('WAYLAND_SOCKET', 'EMAKI_SHELL_SESSION_ENV',
+                        'EMAKI_SHELL_ORIGINAL_MALLOC_CONF', 'EMAKI_SHELL_PROCESS_ID')},
+        separators=(',', ':'))
+    for key, default in (('EMAKI_SHELL_BORDER', 'soft'), ('EMAKI_SHELL_NOTIFICATIONS', '1'),
+                         ('EMAKI_SHELL_TRAY', '1')):
+        result[key] = result.get(key) or default
+    result['EMAKI_SHELL_ORIGINAL_MALLOC_CONF'] = ('1' + inherited['MALLOC_CONF']
+                                                if 'MALLOC_CONF' in inherited else '0')
+    result['MALLOC_CONF'] = inherited.get('MALLOC_CONF') or 'thp:never'
+    return result
+
+
+def query_status():
+    """None means an older compositor; errors must not start a competing shell."""
+    if not os.environ.get('NIRI_SOCKET'):
+        return None
+    result = subprocess.run([str(BINDIR / 'niri-emaki'), 'msg', '-j', 'trusted-shell'],
+                            capture_output=True, text=True, timeout=5, check=False)
+    if result.returncode:
+        if ('error parsing request' in result.stderr
+                or "unrecognized subcommand 'trusted-shell'" in result.stderr):
+            return None
+        raise RuntimeError(result.stderr.strip() or 'The compositor status request failed.')
+    value = json.loads(result.stdout)
+    if not isinstance(value, dict) or not isinstance(value.get('configured'), bool):
+        raise ValueError('The compositor returned an invalid trusted shell status.')
+    return value
+
+
+def configured():
+    value = query_status()
+    return None if value is None else value['configured']
+
+
+def restart():
+    if not configured():
+        return LEGACY
+    result = subprocess.run([str(BINDIR / 'niri-emaki'), 'msg', 'restart-trusted-shell'],
+                            timeout=5, check=False)
+    return 0 if result.returncode == 0 else 75
+
+
+def validate_runtime(tree):
+    search = FIXED_PATH.split(os.pathsep)
+    if any(not entry or not Path(entry).is_absolute() for entry in search):
+        raise ValueError('The trusted program search path must contain only absolute directories.')
+    # Executable directories are search roots, not import trees. Unrelated stock
+    # packages may leave dangling commands there (for example optional Java tools).
+    for path in dict.fromkeys((LIBEXECDIR, Path(QS).parent, BINDIR,
+                               *(Path(entry) for entry in search))):
+        tree.trusted_path(path)
+    for path in (Path(QS), Path(PYTHON), BINDIR / 'emaki-session-files',
+                 BINDIR / 'emaki-shell-health', BINDIR / 'emaki-qt-check',
+                 LIBEXECDIR / 'emaki_paths.py', LIBEXECDIR / 'emaki_session_state.py'):
+        tree.trusted_path(path)
+    # Python preparation explicitly adds BINDIR before LIBEXECDIR to sys.path.
+    for name in ('emaki_paths.py', 'emaki_session_state.py'):
+        path = BINDIR / name
+        if path.exists() or path.is_symlink():
+            tree.trusted_path(path)
+    qt_config = Path(QS).parent / 'qt.conf'
+    if qt_config.exists() or qt_config.is_symlink():
+        tree.trusted_path(qt_config)
+    seen = set()
+    for path in (QMLDIR, QT_PLUGINSDIR):
+        # A missing module cannot load. Its existing link targets and ancestors
+        # must still be protected so another account cannot make it load later.
+        tree.trusted_tree(path, seen=seen, allow_dangling=True)
+
+
+def launch():
+    if PRIVATE_SOCKET is None or PRIVATE_SOCKET < 3:
+        raise ValueError('A private compositor connection is required.')
+    if not stat.S_ISSOCK(os.fstat(PRIVATE_SOCKET).st_mode):
+        raise ValueError('The compositor connection is not a socket.')
+    tree = bootstrap()
+    validate_runtime(tree)
+    generation = tree.select(os.getppid())
+    env = environment(generation, os.environ)
+    os.chdir('/')
+    # Only the foreground process holds the socket. All subprocesses use a fixed
+    # interpreter/path and close_fds, including optional warning decoration.
+    preparation = dict(env, EMAKI_SHELL_PROCESS_ID=str(os.getpid()))
+    subprocess.run([PYTHON, '-I', '-B', str(BINDIR / 'emaki-session-files'), 'trusted-record',
+                    str(DATADIR / 'shell'), str(generation / 'shell'), str(os.getpid())],
+                   env=preparation, close_fds=True, timeout=15, check=True)
+    subprocess.run([PYTHON, '-I', '-B', str(BINDIR / 'emaki-shell-health'), 'record',
+                    str(DATADIR / 'shell'), str(generation / 'shell')],
+                   env=preparation, close_fds=True, stdout=subprocess.DEVNULL, timeout=10, check=False)
+    for attempt in range(2):
+        diagnostic = subprocess.run([PYTHON, '-I', '-B', str(BINDIR / 'emaki-qt-check')],
+            env=env, close_fds=True, capture_output=True, text=True, timeout=15, check=False)
+        if not diagnostic.returncode:
+            break
+        message = diagnostic.stdout + diagnostic.stderr
+        print(message.rstrip(), file=sys.stderr)
+        if attempt == 1:
+            try:
+                subprocess.Popen(['kitty', '--title', 'Emaki panel compatibility warning',
+                    'sh', '-c', 'printf "%s\\n" "$1"; '
+                    'printf "\\nThe panel will still start. Press Enter to close this warning.\\n"; '
+                    'IFS= read -r reply', 'emaki-qt-warning', message], env=env, close_fds=True)
+            except OSError:
+                pass
+    if env.get('EMAKI_LOGIN_HANDOFF'):
+        try:
+            result = subprocess.run([PYTHON, '-I', '-B', str(generation / 'shell/helpers/session-start.py'),
+                'shell-token'], env=env, close_fds=True, capture_output=True, text=True, timeout=1, check=False)
+            token = result.stdout.strip()
+            if not result.returncode and re.fullmatch('[0-9a-f]{32}', token):
+                env.update(EMAKI_SESSION_START=token, EMAKI_SESSION_SKIP_INTRO='1')
+        except subprocess.TimeoutExpired:
+            pass
+    env.pop('EMAKI_LOGIN_HANDOFF', None)
+    env['WAYLAND_SOCKET'] = str(PRIVATE_SOCKET)
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    os.set_inheritable(PRIVATE_SOCKET, True)
+    try:
+        os.execve(QS, [QS, '-n', '-p', str(generation / 'shell')], env)
+    finally:
+        os.set_inheritable(PRIVATE_SOCKET, False)
+
+
+def main():
+    if sys.argv[1:] == ['status', '--json']:
+        value = query_status()
+        if value is None:
+            value = dict(configured=False, running=False, prompt_active=False, supported=False)
+        else:
+            if not all(isinstance(value.get(key), bool) for key in ('running', 'prompt_active')):
+                raise ValueError('The compositor returned incomplete trusted prompt status.')
+            value['supported'] = True
+        print(json.dumps(value))
+        return 0
+    if len(sys.argv) == 2 and sys.argv[1] == 'restart':
+        return restart()
+    if len(sys.argv) == 2 and sys.argv[1] == 'legacy-start':
+        return 1 if configured() else 0
+    if not sys.argv[1:]:
+        return launch()
+    raise ValueError('An unknown trusted shell control command was requested.')
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
+        print(f'Trusted shell: {error}', file=sys.stderr)
+        sys.exit(75)

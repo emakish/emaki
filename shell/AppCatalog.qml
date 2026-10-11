@@ -12,10 +12,14 @@ Scope {
     // and the dock still resolves their windows (DECISIONS 2026-10-03).
     // Rich helpers and duplicate indicator entries, including the KDE Connect indicator
     // that upgraded systems may retain (no current software set ships it).
-    // NoDisplay entries are excluded by shown(), without duplicate IDs here.
-    // blueman-adapters carries OnlyShowIn=XFCE;MATE;, which Quickshell 0.3.1 does not read;
-    // blueman-manager is hidden because Bluetooth lives in the shell panel (DECISIONS 2026-10-09).
-    readonly property var hiddenIds: ["avahi-discover", "bssh", "bvnc", "lftp", "lstopo", "qv4l2", "qvidcap", "stoken-gui", "stoken-gui-small", "vim", "qt6ct", "org.kde.kdeconnect.nonplasma", "mpv", "org.kde.kwrite", "blueman-adapters", "blueman-manager"]
+    // NoDisplay entries and those OnlyShowIn/NotShowIn keep from this desktop never reach
+    // DesktopEntries.applications (quickshell-emaki 0006; blueman-adapters is XFCE/MATE only),
+    // and shown() requires that membership, so neither needs an ID here. blueman-manager is
+    // hidden because Bluetooth lives in the shell panel (DECISIONS 2026-10-09).
+    readonly property var hiddenIds: ["avahi-discover", "bssh", "bvnc", "lftp", "lstopo", "qv4l2", "qvidcap", "stoken-gui", "stoken-gui-small", "vim", "qt6ct", "org.kde.kdeconnect.nonplasma", "mpv", "org.kde.kwrite", "blueman-manager"]
+    // IDs in DesktopEntries.applications. byId() still resolves entries left out of it (dock,
+    // window identity), so a list fed by byId (Recent) must check this set, not only NoDisplay.
+    readonly property var listedIds: new Set(DesktopEntries.applications.values.map(entry => entry.id))
     readonly property var entries: DesktopEntries.applications.values.filter(entry => catalog.shown(entry)).sort((a, b) => a.name.localeCompare(b.name))
     readonly property string launcher: Quickshell.env("EMAKI_GTK_LAUNCH") || "gtk-launch"
     property string launchState: "idle"
@@ -37,7 +41,7 @@ Scope {
     })
     // Whether a desktop entry belongs in the launcher's lists (Apps, search, Recent).
     function shown(entry: DesktopEntry): bool {
-        return entry !== null && !entry.noDisplay && !hiddenIds.includes(entry.id);
+        return entry !== null && listedIds.has(entry.id) && !entry.noDisplay && !hiddenIds.includes(entry.id);
     }
     function accepted(): void {
         recordQueue = recordQueue.concat([pendingId]);
