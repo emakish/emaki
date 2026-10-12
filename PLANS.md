@@ -9,9 +9,23 @@ But there is a real problem: hardware. Emaki has only been installed on my own m
 know how it behaves on others, with a different graphics card, different Wi-Fi, a different
 screen.
 
-So the plan is this. I take Emaki to late alpha, when it has everything 1.0 needs. Then I will
-quietly step into the light with one request: help. Install Emaki on a spare machine and tell me
-what broke.
+So the plan is this. First, late alpha. For me that means:
+
+- a terminal that is properly set up, not a bare black window;
+- one program for installing programs and updating the system, in a window;
+- settings finished inside the shell;
+- a polished shell and a polished boot menu;
+- an installer that simply works, including next to Windows;
+- animated wallpapers;
+- a "Report a problem" button;
+- keyboard shortcuts that make sense.
+
+Then, before anyone else installs it, a full check of the whole system: not only the code, but
+installing, updating, hardware, security, speed, the look, every text and every shortcut.
+Everything it finds gets fixed or consciously left for later, and the rough edges get polished.
+
+Only then will I quietly step into the light with one request: help. Install Emaki, use it, and
+tell me what broke.
 
 Emaki becomes a beta when other people use it on their own computers. That is when I will talk
 about it out loud.
@@ -36,7 +50,7 @@ them, how to roll back. One clear Emaki prompt will ask you before anything runs
 showing who is asking and exactly what will run; you answer with your password.
 On btrfs, snapguard, my tool that takes a snapshot before risky actions, becomes part of Emaki. And
 for those who want it, an optional sudo key lets an agent work without asking for a while — at your
-own risk, with a plain warning. The first parts come in 0.5.
+own risk, with a plain warning. The first parts arrived in 0.5 and 0.6.
 
 These are not promises, just my thoughts on where we are going. This text will change along with
 the project.
