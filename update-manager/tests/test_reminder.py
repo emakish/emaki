@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import reminder
@@ -105,6 +105,36 @@ class Persistence(unittest.TestCase):
         (self.proc / 'sys/kernel/random/boot_id').unlink()
         self.assertFalse(self.status()['restart'])
         self.assertFalse(reminder.acknowledge(self.cache, proc=self.proc))
+
+
+class Notifications(unittest.TestCase):
+    def test_only_an_undismissed_restart_reminder_sends_fixed_notification(self):
+        for state in (dict(restart=False, reminder=False), dict(restart=True, reminder=False)):
+            with patch.object(reminder, 'status', return_value=state), patch.object(reminder.subprocess, 'run') as run:
+                self.assertEqual(reminder.notify_restart('cache'), dict(ok=True, notified=False))
+                run.assert_not_called()
+        with patch.object(reminder, 'status', return_value=dict(restart=True, reminder=True)), \
+                patch.object(reminder.subprocess, 'run', return_value=Mock(returncode=0)) as run:
+            self.assertEqual(reminder.notify_restart('cache'), dict(ok=True, notified=True))
+        command = run.call_args.args[0]
+        self.assertEqual(command[:5], ['busctl', '--user', '--timeout=2', 'call', '--'])
+        self.assertIn('Restart to finish the update', command)
+        self.assertIn('Save your work first.', command[14])
+        self.assertNotIn('shell', run.call_args.kwargs)
+        self.assertEqual(command[-7:], ['resident', 'b', 'true', 'urgency', 'y', '1', '0'])
+
+    def test_success_without_restart_uses_fixed_completion_notification(self):
+        with patch.object(reminder.subprocess, "run", return_value=Mock(returncode=0)) as run:
+            self.assertEqual(reminder.notify_completed(), dict(ok=True, notified=True))
+        self.assertEqual(run.call_args.args[0][13:15], ["Updated", "All updates are installed."])
+        self.assertNotIn("shell", run.call_args.kwargs)
+
+    def test_notification_failure_is_reported_without_dismissing_evidence(self):
+        with patch.object(reminder, 'status', return_value=dict(restart=True, reminder=True)), \
+                patch.object(reminder.subprocess, 'run', side_effect=OSError), \
+                patch.object(reminder, 'acknowledge') as acknowledge:
+            self.assertEqual(reminder.notify_restart('cache'), dict(ok=False, notified=False))
+            acknowledge.assert_not_called()
 
 
 if __name__ == '__main__':

@@ -17,6 +17,7 @@ Scope {
     property string publishedRoot: ""
     property bool isolateHelper: false
     property bool refreshManaged: false
+    property string helperPath: Quickshell.shellPath("helpers/wallpaper.py")
     property bool enabled: true
     property string state: "idle"
     property string texture: ""
@@ -35,7 +36,7 @@ Scope {
         const command = [Quickshell.env("EMAKI_PYTHON") || "python3"];
         if (isolateHelper || publishedRoot !== "")
             command.push("-I");
-        command.push("-B", Quickshell.shellPath("helpers/wallpaper.py"), String(outputWidth), String(outputHeight), String(outputScale), outputName, variant);
+        command.push("-B", helperPath, String(outputWidth), String(outputHeight), String(outputScale), outputName, variant);
         return command;
     }
     function helperEnvironment(): var {

@@ -5,19 +5,76 @@
 import argparse
 import ast
 from datetime import date
+import hashlib
 import json
 from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 
 from source_archive import PACKAGES, public_excluded, public_policy, run
 
 
+def committed_bytes(repo, commit, path):
+    return subprocess.run(['git', '-C', str(repo), 'show', f'{commit}:{path}'],
+                          check=True, capture_output=True).stdout
+
+
+def alongside_exception(repo, commit, source):
+    """Verify only committed exception records and public keys, including revocations."""
+    from mirror import publish
+
+    exceptions = publish.release_exceptions
+    gate = 'build.alongside-acceptance'
+    scope = {'installer/emaki_installer/constants.py': hashlib.sha256(source).hexdigest()}
+    with tempfile.TemporaryDirectory(prefix='alongside-exception-') as scratch:
+        root = Path(scratch)
+        directory = root / 'exceptions'
+        directory.mkdir()
+        prefix = 'packaging/mirror/exceptions/'
+        names = run('git', '-C', str(repo), 'ls-tree', '-r', '--name-only', '-z',
+                    commit, '--', prefix).split('\0')
+        for name in names:
+            relative = name.removeprefix(prefix)
+            if name and '/' not in relative:
+                (directory / relative).write_bytes(committed_bytes(repo, commit, name))
+        verifier = None
+
+        def signed_by(data, signature):
+            nonlocal verifier
+            if verifier is None:
+                for name in ('emaki.gpg', 'emaki-trusted', 'emaki-revoked'):
+                    (root / name).write_bytes(committed_bytes(
+                        repo, commit, f'packaging/emaki-keyring/{name}'))
+                verifier = publish.Verifier(root / 'emaki.gpg', root / 'emaki-trusted')
+            revoked = publish.revoked_keys(argparse.Namespace(revoked=root / 'emaki-revoked'))
+            return verifier.signed_by(data, signature, revoked)
+
+        try:
+            record, notes = exceptions.find(directory, gate, scope, publish.utcnow(), signed_by)
+        except (OSError, ValueError, TypeError, subprocess.CalledProcessError) as error:
+            record, notes = None, [f'cannot verify committed exceptions: {error}']
+        finally:
+            if verifier is not None:
+                verifier.close()
+    if record is not None:
+        print(f'PASSED BY EXCEPTION {record["id"]}: {record["reason"]}')
+        return
+    lines = ['alongside requires a PASS real-Windows acceptance row '
+             '(H-W-ALONGSIDE) in docs/hardware-acceptance.md',
+             f'Gate {gate}: only an exception signed with the release key passes it.']
+    lines += [f'  exception {note}' for note in notes]
+    lines.append(f'  packaging/publish.sh exception new {gate} '
+                 'installer/emaki_installer/constants.py --reason "..." covering exactly:')
+    lines += [f'    {name}  {digest}' for name, digest in scope.items()]
+    raise ValueError('\n'.join(lines))
+
+
 def check_alongside(repo):
     """Read the committed build inputs; uncommitted acceptance cannot authorize a build."""
-    source = run('git', '-C', str(repo), 'show',
-                 'HEAD:installer/emaki_installer/constants.py')
+    commit = run('git', '-C', str(repo), 'rev-parse', '--verify', 'HEAD^{commit}').strip()
+    source = committed_bytes(repo, commit, 'installer/emaki_installer/constants.py')
     try:
         tree = ast.parse(source)
     except SyntaxError as error:
@@ -34,9 +91,9 @@ def check_alongside(repo):
     if assignments[0].value.value is False:
         return
     try:
-        acceptance = run('git', '-C', str(repo), 'show', 'HEAD:docs/hardware-acceptance.md')
-    except subprocess.CalledProcessError as error:
-        raise ValueError('alongside requires recorded real-Windows acceptance') from error
+        acceptance = run('git', '-C', str(repo), 'show', f'{commit}:docs/hardware-acceptance.md')
+    except subprocess.CalledProcessError:
+        acceptance = ''
     rows = [line.strip().strip('|').split('|') for line in acceptance.splitlines()
             if line.strip().startswith('| H-W-ALONGSIDE |')]
     if len(rows) == 1 and len(rows[0]) == 6:
@@ -52,8 +109,7 @@ def check_alongside(repo):
                 and machine.lower() not in pending and evidence.lower() not in pending
                 and not re.search(r'placeholder|synthetic|\bvm\b', machine + ' ' + evidence, re.I)):
             return
-    raise ValueError('alongside requires a PASS real-Windows acceptance row '
-                     '(H-W-ALONGSIDE) in docs/hardware-acceptance.md')
+    alongside_exception(repo, commit, source)
 
 
 def changed_inputs(repo, name, old, new):

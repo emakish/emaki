@@ -42,6 +42,7 @@ sys.path.insert(0, str(HERE))
 import r2  # noqa: E402
 import transactions  # noqa: E402
 import acceptance  # noqa: E402
+import release_exceptions  # noqa: E402
 
 CHANNELS = ('testing', 'stable')
 DB_FILES = ('emaki.db', 'emaki.db.sig', 'emaki.files', 'emaki.files.sig')
@@ -61,7 +62,12 @@ GITHUB_DOWNLOAD = 'https://github.com/emakish/packages/releases/download'
 
 
 class Refused(Exception):
-    """A rule of the publishing procedure says no. Nothing that machines read was changed."""
+    """A rule of the publishing procedure says no. Nothing that machines read was changed.
+    `gate` is the stable id of the rule (release_exceptions.EXCEPTABLE or NEVER)."""
+
+    def __init__(self, message, gate=None):
+        super().__init__(message)
+        self.gate = gate
 
 
 class Exists(Exception):
@@ -228,7 +234,7 @@ class R2Backend:
             raise Conflict(key)
 
     def overwrite(self, key, data):
-        raise Refused('the flat layout exists only for the local self-check')
+        raise Refused('the flat layout exists only for the local self-check', gate='cli.flat-layout')
 
     def delete(self, key):
         self.client.delete(key)
@@ -289,7 +295,7 @@ def open_backend(spec, dry_run=False):
     elif kind == 'r2' and value:
         backend = R2Backend(value)
     else:
-        raise Refused(f'unknown backend {spec!r}: use local:DIR or r2:BUCKET')
+        raise Refused(f'unknown backend {spec!r}: use local:DIR or r2:BUCKET', gate='cli.backend')
     return DryRunBackend(backend) if dry_run else backend
 
 
@@ -330,7 +336,7 @@ class GithubTarget:
 
     def upload(self, tag, path, name):
         if name.endswith('.db.sig') or name.endswith('.files.sig'):
-            raise Refused('the old address never serves a database signature')
+            raise Refused('the old address never serves a database signature', gate='github.db-signature')
         if self.dry_run:
             say(f'DRY-RUN: would upload {name} to {self.repo} release {tag} (--clobber)')
             return
@@ -370,7 +376,7 @@ class LocalGithubTarget(GithubTarget):
 
     def upload(self, tag, path, name):
         if name.endswith('.db.sig') or name.endswith('.files.sig'):
-            raise Refused('the old address never serves a database signature')
+            raise Refused('the old address never serves a database signature', gate='github.db-signature')
         if self.dry_run:
             say(f'DRY-RUN: would upload {name} to {self.root / tag}')
             return
@@ -397,9 +403,9 @@ def http_get(url, missing_ok=False):
     except urllib.error.HTTPError as error:
         if missing_ok and error.code == 404:
             return None
-        raise Refused(f'GET {url}: HTTP {error.code}') from None
+        raise Refused(f'GET {url}: HTTP {error.code}', gate='net.get') from None
     except urllib.error.URLError as error:
-        raise Refused(f'GET {url}: {error.reason}') from None
+        raise Refused(f'GET {url}: {error.reason}', gate='net.get') from None
 
 
 def http_last_modified(url):
@@ -422,7 +428,7 @@ def worker_answer(response, what, marker):
     if marker and response.headers.get(marker) != '1':
         raise Refused(f'{what} was not answered by the download Worker (no {marker}: 1, HTTP '
                       f'{response.status}); add its DL binding and the dl.emaki.sh/iso/* route '
-                      '(docs/mirror.md, "The pointer Worker")')
+                      '(docs/mirror.md, "The pointer Worker")', gate='iso.download-worker')
 
 
 def http_range(url, start, end, if_range=None, marker=None):
@@ -437,12 +443,12 @@ def http_range(url, start, end, if_range=None, marker=None):
         with urllib.request.urlopen(request, timeout=120) as response:
             worker_answer(response, f'GET {url} with {sent}', marker)
             if response.status != 206:
-                raise Refused(f'GET {url} with {sent} answered {response.status}, not 206')
+                raise Refused(f'GET {url} with {sent} answered {response.status}, not 206', gate='net.range')
             return response.read()
     except urllib.error.HTTPError as error:
         with error:
             worker_answer(error, f'GET {url} with {sent}', marker)
-        raise Refused(f'GET {url} with {sent}: HTTP {error.code}') from None
+        raise Refused(f'GET {url} with {sent}: HTTP {error.code}', gate='net.range') from None
 
 
 def http_etag(url, marker=None):
@@ -455,11 +461,11 @@ def http_etag(url, marker=None):
     except urllib.error.HTTPError as error:
         with error:
             worker_answer(error, f'HEAD {url}', marker)
-        raise Refused(f'HEAD {url}: HTTP {error.code}') from None
+        raise Refused(f'HEAD {url}: HTTP {error.code}', gate='net.etag') from None
     except urllib.error.URLError as error:
-        raise Refused(f'HEAD {url}: {error.reason}') from None
+        raise Refused(f'HEAD {url}: {error.reason}', gate='net.etag') from None
     if not value or not re.fullmatch(r'"[^"]*"', value):
-        raise Refused(f'HEAD {url} answered no strong ETag ({value!r}); a browser could not resume')
+        raise Refused(f'HEAD {url} answered no strong ETag ({value!r}); a browser could not resume', gate='net.etag')
     return value
 
 
@@ -478,9 +484,9 @@ def check_image_route(address):
             worker_answer(response, f'HEAD {url}', IMAGE_MARKER)
             # A marked 503 means the Worker cannot read its bucket: refuse before uploading.
             if response.status not in (200, 404):
-                raise Refused(f'HEAD {url} answered {response.status} from the download Worker')
+                raise Refused(f'HEAD {url} answered {response.status} from the download Worker', gate='iso.download-worker')
     except urllib.error.URLError as error:
-        raise Refused(f'HEAD {url}: {error.reason}') from None
+        raise Refused(f'HEAD {url}: {error.reason}', gate='iso.download-worker') from None
 
 
 def http_sha256(url):
@@ -492,9 +498,9 @@ def http_sha256(url):
             while chunk := response.read(1 << 20):
                 hasher.update(chunk)
     except urllib.error.HTTPError as error:
-        raise Refused(f'GET {url}: HTTP {error.code}') from None
+        raise Refused(f'GET {url}: HTTP {error.code}', gate='net.get') from None
     except urllib.error.URLError as error:
-        raise Refused(f'GET {url}: {error.reason}') from None
+        raise Refused(f'GET {url}: {error.reason}', gate='net.get') from None
     return hasher.hexdigest()
 
 
@@ -506,7 +512,7 @@ def http_head(url):
     except urllib.error.HTTPError as error:
         return error.code
     except urllib.error.URLError as error:
-        raise Refused(f'HEAD {url}: {error.reason}') from None
+        raise Refused(f'HEAD {url}: {error.reason}', gate='net.head') from None
 
 
 # Packages, databases, MANIFEST --------------------------------------------------------------
@@ -683,7 +689,7 @@ class Signer:
         passphrase = Path.home() / '.config/emaki-signing/passphrase'
         if passphrase.exists():
             raise Refused(f'{passphrase} exists: a passphrase must not lie next to the key. Delete it '
-                          'and type the passphrase when pinentry asks.')
+                          'and type the passphrase when pinentry asks.', gate='signing.stored-passphrase')
         if not self.dry_run:
             # Drop a cached passphrase so this publish asks for it (gpg-agent caches for 600 s).
             subprocess.run(['gpg-connect-agent', '--homedir', str(self.home), 'reloadagent', '/bye'],
@@ -762,6 +768,22 @@ class Verifier:
         primaries = [line.split()[-1] for line in result.stdout.splitlines()
                      if line.startswith('[GNUPG:] VALIDSIG')]
         return result.returncode == 0 and any(fpr in self.trusted for fpr in valid + primaries)
+
+    def signed_by(self, data_path, sig_path, revoked=()):
+        """The trusted primary fingerprint behind good signatures only, or None. Unlike verify(),
+        gpg's exit 0 is not enough: it also exits 0 with VALIDSIG for a signature by a revoked
+        key (REVKEYSIG) or an expired one, and a fingerprint in emaki-revoked counts as none."""
+        result = subprocess.run(['gpg', '--homedir', str(self.home), '--no-autostart', '--batch', '--status-fd',
+                                 '1', '--verify', str(sig_path), str(data_path)], capture_output=True, text=True)
+        status = [line.split()[1:] for line in result.stdout.splitlines() if line.startswith('[GNUPG:] ')]
+        words = [fields[0] for fields in status if fields]
+        primaries = {fields[-1] for fields in status if fields[0] == 'VALIDSIG'}
+        if (result.returncode or not words.count('GOODSIG') or words.count('GOODSIG') != words.count('NEWSIG')
+                or set(words) & {'BADSIG', 'ERRSIG', 'EXPSIG', 'EXPKEYSIG', 'REVKEYSIG', 'KEYREVOKED'}
+                or len(primaries) != 1):
+            return None
+        primary = primaries.pop()
+        return primary if primary in self.trusted and primary not in revoked else None
 
     def close(self):
         stop_gnupg(self.home)
@@ -851,14 +873,14 @@ class ScratchPacman:
                 for name in ('core', 'extra'):
                     source = Path(arch_dbs) / f'{name}.db'
                     if not source.is_file():
-                        raise Refused(f'--arch-dbs {arch_dbs}: missing {name}.db')
+                        raise Refused(f'--arch-dbs {arch_dbs}: missing {name}.db', gate='cli.arch-dbs')
                     shutil.copyfile(source, sync / f'{name}.db')
                     sections.append((name, 'Server = file:///nonexistent'))
             # Sync [emaki] only; supplied Arch databases are used as they are.
             synced = self.run(self._config([emaki], 'Never'), '-Sy')
             config = self._config(sections, 'Never')
         if synced.returncode:
-            raise Refused('closure check: pacman -Sy failed:\n' + synced.stderr.strip())
+            raise Refused('closure check: pacman -Sy failed:\n' + synced.stderr.strip(), gate='release.arch-sync')
         result = self.run(config, '-S', '--print', '--print-format', '%r/%n %v', *targets)
         return result
 
@@ -866,6 +888,9 @@ class ScratchPacman:
 # The publisher -------------------------------------------------------------------------------
 
 class Publisher:
+    # Owner-signed exceptions that passed a gate in this run (rebound, never mutated).
+    passed, passes = frozenset(), 0
+
     def __init__(self, args):
         self.args = args
         self.dry_run = args.dry_run
@@ -901,6 +926,30 @@ class Publisher:
             if self._verifier:
                 self._verifier.close()
 
+    def gate(self, gate, message, artifacts):
+        """A refusal that only an owner-signed exception passes (release_exceptions.py).
+        artifacts: {file name: sha256} the gate is about, or a function returning it."""
+        assert gate in release_exceptions.EXCEPTABLE, gate
+        scope = artifacts() if callable(artifacts) else artifacts
+        record, notes = release_exceptions.find(
+            self.args.exceptions, gate, scope, utcnow(),
+            lambda data, signature: self.verifier.signed_by(data, signature, revoked_keys(self.args)))
+        if record is None:
+            lines = [message, f'Gate {gate}: only an exception signed with the release key passes it.']
+            lines += [f'  exception {note}' for note in notes]
+            lines.append(f'  publish.sh exception new {gate} <files> --reason "..." covering exactly:')
+            lines += [f'    {name}  {digest}' for name, digest in sorted(scope.items())]
+            raise Refused('\n'.join(lines), gate=gate)
+        self.passed = self.passed | {record['id']}
+        self.passes += 1
+        line = f'PASSED BY EXCEPTION {record["id"]}: {record["reason"]}'
+        say(line)
+        if not self.dry_run:
+            # The release log: one line per pass, next to the journals of this machine.
+            with open(self.state / 'release.log', 'a') as log:
+                log.write(f'{utcnow().isoformat(timespec="seconds")} {self.args.command} [{gate}] {line} '
+                          f'(refused: {message.splitlines()[0]})\n')
+
     # pointers, snapshots, records ----------------------------------------------------------
     def pointer(self, channel):
         data, etag = self.backend.get(f'pointers/{channel}')
@@ -908,7 +957,7 @@ class Publisher:
             return None, None
         value = data.decode().strip()
         if not ID_RE.match(value):
-            raise Refused(f'pointers/{channel} holds {value!r}, not a snapshot id')
+            raise Refused(f'pointers/{channel} holds {value!r}, not a snapshot id', gate='state.pointer')
         return value, etag
 
     def snapshot_ids(self, channel):
@@ -920,12 +969,12 @@ class Publisher:
         for name in SNAPSHOT_FILES:
             data, _ = self.backend.get(f'snap/{channel}/{snap_id}/{name}')
             if data is None:
-                raise Refused(f'snap/{channel}/{snap_id}/{name} is missing')
+                raise Refused(f'snap/{channel}/{snap_id}/{name} is missing', gate='snapshot.missing')
             files[name] = data
         manifest = parse_manifest(files['MANIFEST'])
         for name in DB_FILES + SOURCE_FILES:
             if manifest.get(name) != sha256(files[name]):
-                raise Refused(f'snap/{channel}/{snap_id}/{name} does not match its MANIFEST')
+                raise Refused(f'snap/{channel}/{snap_id}/{name} does not match its MANIFEST', gate='snapshot.manifest')
         return files
 
     def all_manifests(self):
@@ -965,6 +1014,8 @@ class Publisher:
     def done(self, journal, step):
         if step not in journal['steps']:
             journal['steps'].append(step)
+        if self.passed:
+            journal['exceptions'] = sorted(set(journal.get('exceptions', [])) | self.passed)
         if not self.dry_run:
             self.save(journal)
         say(f'step {step} done: {STEP_NAMES[journal["kind"]][step]}')
@@ -979,14 +1030,14 @@ class Publisher:
         others = [j for j in self.open_journals() if j not in mine]
         if others:
             raise Refused(f'an unfinished {others[0]["kind"]} {others[0]["channel"]} ({others[0]["id"]}) '
-                          'is open on this machine; re-run it first (status shows it)')
+                          'is open on this machine; re-run it first (status shows it)', gate='state.journal')
         if len(mine) > 1:
-            raise Refused('more than one open journal for this channel; see status')
+            raise Refused('more than one open journal for this channel; see status', gate='state.journal')
         if mine:
             journal = mine[0]
             if journal['inputs'] != inputs:
                 raise Refused(f'an interrupted {kind} {channel} ({journal["id"]}) was started with other '
-                              'inputs; re-run it with the same inputs to finish it')
+                              'inputs; re-run it with the same inputs to finish it', gate='state.journal')
             say(f'resuming {kind} {channel} {journal["id"]} after step {max(journal["steps"], default=0)}')
             return journal
         existing = self.snapshot_ids(channel)
@@ -1010,7 +1061,7 @@ class Publisher:
             # Our own lock from an interrupted run of this very journal (its random token).
             if holder.get('token') != journal['token']:
                 raise Refused(f'locks/publish is held: {held.decode() if held else "?"} — another publish '
-                              'is running or died; `status`, then `unlock --yes` if it is dead') from None
+                              'is running or died; `status`, then `unlock --yes` if it is dead', gate='state.lock') from None
 
     def take_lock(self, journal):
         self.acquire_lock(journal)
@@ -1042,10 +1093,15 @@ class Publisher:
             self.save(journal)
         shutil.rmtree(self.state / journal['id'] / 'work', ignore_errors=True)
         return Refused(f'{error}\nStopped before the flip: nothing that machines read has changed; the lock '
-                       'is released and this run is closed.')
+                       'is released and this run is closed.', gate=getattr(error, 'gate', None))
 
     def finish(self, journal, record):
         """Step 7 tail: write the served record, drop the lock, close the journal."""
+        passed = sorted(set(journal.get('exceptions', [])) | self.passed)
+        if passed:
+            # Public evidence of which owner-signed exceptions let this release through.
+            record = dict(record, exceptions=passed)
+            journal['exceptions'] = passed
         try:
             self.backend.put_new(f'served/{journal["channel"]}/{journal["id"]}',
                                  json.dumps(record, sort_keys=True).encode())
@@ -1069,7 +1125,7 @@ class Publisher:
             expected = sha256_file(data) if isinstance(data, Path) else sha256(data)
             if existing is None or sha256(existing) != expected:
                 raise Refused(f'{key} already exists with other bytes: a published name is never '
-                              f'replaced. {hint}'.strip()) from None
+                              f'replaced. {hint}'.strip(), gate='immutable.name') from None
             return 'already there'
 
     def verify_packages_anonymously(self, channel, packages):
@@ -1080,11 +1136,11 @@ class Publisher:
                 data = http_get(base)
                 signature = http_get(base + '.sig')
                 if sha256(data) != digest or sha256(signature) != sig_digest:
-                    raise Refused(f'anonymous download of {filename} differs from what was uploaded')
+                    raise Refused(f'anonymous download of {filename} differs from what was uploaded', gate='verify.package-download')
                 (Path(temp) / filename).write_bytes(data)
                 (Path(temp) / (filename + '.sig')).write_bytes(signature)
                 if not self.verifier.verify(Path(temp) / filename, Path(temp) / (filename + '.sig')):
-                    raise Refused(f'{filename}.sig does not verify against {self.keyring}')
+                    raise Refused(f'{filename}.sig does not verify against {self.keyring}', gate='signature.package')
         say(f'anonymous check: {len(packages)} packages identical and signed')
 
     def verify_snapshot(self, channel, snap_id, files, targets):
@@ -1092,25 +1148,25 @@ class Publisher:
         self.verify_sources(channel, files)
         for name in SOURCE_FILES:
             if http_get(f'{self.public}/snap/{channel}/{snap_id}/{name}') != files[name]:
-                raise Refused(f'anonymous download of {name} differs from snapshot')
+                raise Refused(f'anonymous download of {name} differs from snapshot', gate='verify.snapshot')
         client = ScratchPacman(self.keyring, self.verifier.trusted)
         try:
             server = f'{self.public}/snap/{channel}/{snap_id}'
             result = client.sync(server)
             if result.returncode:
-                raise Refused(f'scratch pacman cannot sync {server}:\n{result.stderr.strip()}')
+                raise Refused(f'scratch pacman cannot sync {server}:\n{result.stderr.strip()}', gate='signature.database')
             if client.synced_db() != files['emaki.db']:
-                raise Refused(f'{server}/emaki.db is not the database that was built')
+                raise Refused(f'{server}/emaki.db is not the database that was built', gate='verify.snapshot')
             listed = client.run(client.dir / 'pacman.conf', '-Sl', 'emaki')
             if listed.returncode:
-                raise Refused('pacman -Sl emaki failed after sync: ' + listed.stderr.strip())
+                raise Refused('pacman -Sl emaki failed after sync: ' + listed.stderr.strip(), gate='verify.snapshot')
             for filename in db_entries(files['emaki.db']):
                 status = http_head(f'{self.public}/{channel}/x86_64/{filename}')
                 if status != 200:
-                    raise Refused(f'{channel}/x86_64/{filename} answers HTTP {status}')
+                    raise Refused(f'{channel}/x86_64/{filename} answers HTTP {status}', gate='verify.snapshot')
             missing = [t for t in targets if t not in {e['name'] for e in db_entries(files['emaki.db']).values()}]
             if missing:
-                raise Refused('the snapshot lacks ' + ', '.join(missing))
+                raise Refused('the snapshot lacks ' + ', '.join(missing), gate='verify.snapshot')
         finally:
             client.close()
         say(f'snapshot {channel}/{snap_id} verified by a scratch pacman (SigLevel = Required)')
@@ -1122,28 +1178,28 @@ class Publisher:
         server = f'{self.public}/{channel}/x86_64'
         for name in SOURCE_FILES:
             if http_get(f'{server}/{name}') != files[name]:
-                raise Refused(f'{server}/{name} does not serve the new source directions')
+                raise Refused(f'{server}/{name} does not serve the new source directions', gate='verify.channel')
         client = ScratchPacman(self.keyring, self.verifier.trusted)
         try:
             result = client.sync(server)
             if result.returncode:
-                raise Refused(f'pacman -Sy through {server} failed:\n{result.stderr.strip()}')
+                raise Refused(f'pacman -Sy through {server} failed:\n{result.stderr.strip()}', gate='signature.database')
             if client.synced_db() != files['emaki.db']:
-                raise Refused(f'{server} does not serve the new database yet')
+                raise Refused(f'{server} does not serve the new database yet', gate='verify.channel')
         finally:
             client.close()
         say(f'{server}: pacman -Sy serves the new database')
 
     def flip(self, journal, gate):
         """Step 6. `gate` repeats the checks of step 0 that time can change (the stamp, today's
-        Arch) on every run, right before the only write machines see."""
+        Arch, an exception expired or revoked) on every run, right before the only write machines see."""
         channel, snap_id = journal['channel'], journal['id']
         current, etag = self.pointer(channel)
         if current == snap_id:
             say(f'pointers/{channel} already names {snap_id}')
         else:
             if current != journal['pointer_before']:
-                raise Refused(f'pointers/{channel} moved to {current} during this run; stopping')
+                raise Refused(f'pointers/{channel} moved to {current} during this run; stopping', gate='state.pointer-moved')
             try:
                 gate()
             except Refused as error:
@@ -1151,13 +1207,13 @@ class Publisher:
             try:
                 self.backend.put_pointer(f'pointers/{channel}', (snap_id + '\n').encode(), etag)
             except Conflict:
-                raise Refused(f'pointers/{channel} changed under us (If-Match failed); stopping') from None
+                raise Refused(f'pointers/{channel} changed under us (If-Match failed); stopping', gate='state.pointer-moved') from None
             say(f'pointers/{channel}: {current or "(none)"} -> {snap_id}')
         self.done(journal, 6)
 
-    def check_transactions(self, repo_dir, targets, previous=None):
+    def check_transactions(self, repo_dir, targets, previous, artifacts):
         if self.args.arch_dbs == 'skip':
-            raise Refused('Cannot skip the release check [pacman]. Choose auto or a directory holding core.db and extra.db.')
+            raise Refused('Cannot skip the release check [pacman]. Choose auto or a directory holding core.db and extra.db.', gate='cli.arch-dbs')
         if targets:
             profiles = [targets]
         else:
@@ -1165,19 +1221,25 @@ class Publisher:
             sys.path.insert(0, str(ROOT / 'installer'))
             from emaki_installer.worker import software_packages
             profiles = [software_packages('minimal'), software_packages('rich')]
+        passed = True
         for profile in profiles:
             client = ScratchPacman()
+            refused = None
             try:
                 transactions.check_transactions(client, repo_dir, profile, self.args.arch_dbs, previous)
             except transactions.TransactionError as error:
-                raise Refused(str(error)) from None
+                refused = str(error)
             except subprocess.TimeoutExpired:
-                raise Refused('Release check timed out [pacman].') from None
+                refused = 'Release check timed out [pacman].'
             finally:
                 client.close()
-        say('Release check passed [pacman]: fresh install and full system upgrade.')
+            if refused:
+                self.gate('release.transactions', refused, artifacts)
+                passed = False
+        if passed:
+            say('Release check passed [pacman]: fresh install and full system upgrade.')
 
-    def check_release(self, db, channel, targets):
+    def check_release(self, db, channel, targets, artifacts):
         """Check the candidate against the complete package sets machines can already hold."""
         previous = []
         channels = ('testing', 'stable') if channel == 'testing' else ('stable',)
@@ -1191,31 +1253,32 @@ class Publisher:
             directory = Path(temp)
             (directory / 'emaki.db').write_bytes(db)
             for old in previous or [None]:
-                self.check_transactions(directory, targets, old)
+                self.check_transactions(directory, targets, old, artifacts)
 
-    def check_tree(self):
+    def check_tree(self, artifacts):
         tree = Path(self.args.source_tree)
         status = subprocess.run(['git', '-C', str(tree), 'status', '--porcelain'], capture_output=True, text=True)
         if status.returncode or status.stdout.strip():
-            raise Refused(f'the working tree {tree} is not clean; commit first:\n{status.stdout.strip()}')
+            self.gate('publish.tree-clean', f'the working tree {tree} is not clean; commit first:\n'
+                      f'{status.stdout.strip()}', artifacts)
 
     # publish -------------------------------------------------------------------------------
     def collect(self, directory):
         directory = Path(directory)
         packages = sorted(p for p in directory.glob('*.pkg.tar.zst') if '-debug-' not in p.name)
         if not packages:
-            raise Refused(f'no packages in {directory}')
+            raise Refused(f'no packages in {directory}', gate='input.packages')
         found = {}
         for path in packages:
             if not PACKAGE_RE.match(path.name):
-                raise Refused(f'unexpected package file name: {path.name}')
+                raise Refused(f'unexpected package file name: {path.name}', gate='input.packages')
             signature = Path(str(path) + '.sig')
             if not signature.is_file():
-                raise Refused(f'{path.name} has no .sig: run `publish.sh sign {directory}` first')
+                raise Refused(f'{path.name} has no .sig: run `publish.sh sign {directory}` first', gate='signature.package')
             info = read_zst_pkginfo(path)
             expected = f'{info["pkgname"]}-{info["pkgver"]}-{info["arch"]}.pkg.tar.zst'
             if path.name != expected:
-                raise Refused(f'{path.name} does not match its .PKGINFO ({expected})')
+                raise Refused(f'{path.name} does not match its .PKGINFO ({expected})', gate='input.packages')
             found[path.name] = {'path': str(path), 'sha256': sha256_file(path), 'sig': sha256_file(signature),
                                 'name': info['pkgname'], 'version': info['pkgver']}
         by_name = {}
@@ -1224,18 +1287,18 @@ class Publisher:
         for name, filenames in sorted(by_name.items()):
             if len(filenames) > 1:
                 raise Refused(f'{directory} holds {len(filenames)} versions of {name} ({", ".join(filenames)}); '
-                              'one directory is one build: build into an empty directory')
+                              'one directory is one build: build into an empty directory', gate='input.packages')
         provenance = directory / 'BUILDINFO'
         if not provenance.is_file():
-            raise Refused(f'{directory} has no BUILDINFO; rebuild from a clean committed tree')
+            raise Refused(f'{directory} has no BUILDINFO; rebuild from a clean committed tree', gate='provenance.buildinfo')
         lines = provenance.read_text().splitlines()
         if not lines or not re.fullmatch(r'commit [0-9a-f]{40}', lines[0]):
-            raise Refused('BUILDINFO has no full build commit')
+            raise Refused('BUILDINFO has no full build commit', gate='provenance.buildinfo')
         commit = lines[0].split()[1]
         hashes = parse_manifest(('\n'.join(lines[1:]) + '\n').encode())
         def bound(path):
             if not path.is_file() or hashes.get(path.name) != sha256_file(path):
-                raise Refused(f'{path.name} is missing or differs from BUILDINFO')
+                raise Refused(f'{path.name} is missing or differs from BUILDINFO', gate='provenance.buildinfo')
         bound(directory / 'SOURCES.json')
         try:
             metadata = json.loads((directory / 'SOURCES.json').read_bytes())
@@ -1245,17 +1308,17 @@ class Publisher:
             if not isinstance(records, dict) or not all(isinstance(record, dict) for record in records.values()):
                 raise ValueError('packages must map names to source records')
         except (ValueError, KeyError, TypeError) as error:
-            raise Refused(f'invalid SOURCES.json: {error}') from None
+            raise Refused(f'invalid SOURCES.json: {error}', gate='provenance.sources') from None
         for filename, entry in found.items():
             bound(directory / filename)
             record = {'version': entry['version'], 'commit': commit}
             source = records.get(entry['name'], {})
             archive = f'{entry["name"]}-{entry["version"]}.sources.tar.gz'
             if source.get('version') != entry['version'] or source.get('archive') != archive:
-                raise Refused(f'{entry["name"]}: missing or mismatched source archive record')
+                raise Refused(f'{entry["name"]}: missing or mismatched source archive record', gate='provenance.sources')
             bound(directory / archive)
             if source.get('sha256') != hashes[archive]:
-                raise Refused(f'{archive} differs from SOURCES.json')
+                raise Refused(f'{archive} differs from SOURCES.json', gate='provenance.sources')
             record.update(archive=archive, sha256=hashes[archive])
             entry['source'] = record
         return found
@@ -1269,24 +1332,24 @@ class Publisher:
         expected = {'sha256': record['sha256'], 'etag': etag}
         if receipt is None:
             if sha256(http_get(f'{self.public}/{key}')) != record['sha256']:
-                raise Refused(f'{key} differs from source metadata')
+                raise Refused(f'{key} differs from source metadata', gate='sources.upload')
             self.put_or_same(key + '.verified', json.dumps(expected, sort_keys=True).encode())
         elif json.loads(receipt) != expected:
-            raise Refused(f'{key} differs from its verified upload')
+            raise Refused(f'{key} differs from its verified upload', gate='sources.upload')
 
     def verify_sources(self, channel, files):
         manifest = parse_manifest(files['MANIFEST'])
         for record in source_records(files).values():
             name, digest = record['archive'], record['sha256']
             if manifest.get(f'sources/{name}') != digest:
-                raise Refused(f'{name} is not bound by MANIFEST')
+                raise Refused(f'{name} is not bound by MANIFEST', gate='sources.snapshot')
             key = source_key(record)
             receipt, _ = self.backend.get(key + '.verified')
             etag = self.backend.head(key)
             if etag is None or receipt is None or json.loads(receipt) != {'sha256': digest, 'etag': etag}:
-                raise Refused(f'{name} differs from its verified upload or is missing')
+                raise Refused(f'{name} differs from its verified upload or is missing', gate='sources.snapshot')
             if http_head(f'{self.public}/{key}') != 200:
-                raise Refused(f'{name} is not publicly available')
+                raise Refused(f'{name} is not publicly available', gate='sources.snapshot')
 
     def refuse_burnt(self, packages):
         """A file name, or a pkgname with its version under any file name (another arch suffix),
@@ -1301,7 +1364,7 @@ class Publisher:
             if seen and seen != {entry['sha256']}:
                 raise Refused(f'{filename} was already released with other content '
                               f'({", ".join(sorted(d[:12] for d in seen))}); it can never be published. '
-                              'Raise pkgrel and rebuild.')
+                              'Raise pkgrel and rebuild.', gate='immutable.version')
         versions = {}
         for filename, digests in registry.items():
             if PACKAGE_RE.match(filename):
@@ -1311,7 +1374,7 @@ class Publisher:
             if seen and set(seen) != {entry['sha256']}:
                 raise Refused(f'{entry["name"]} {entry["version"]} was already released with other content '
                               f'(as {", ".join(sorted(set(seen.values())))}); {filename} can never be '
-                              'published. Raise pkgrel and rebuild.')
+                              'published. Raise pkgrel and rebuild.', gate='immutable.version')
 
     def refuse_downgrade(self, channel, packages):
         """pacman never installs a lower version over a higher one: a lower version in the
@@ -1324,7 +1387,7 @@ class Publisher:
             old = served.get(entry['name'])
             if old and vercmp(entry['version'], old) < 0:
                 raise Refused(f'{entry["name"]} {entry["version"]} is lower than {old}, which {channel} serves '
-                              f'({current}); machines that have {old} would keep it. Build a higher version.')
+                              f'({current}); machines that have {old} would keep it. Build a higher version.', gate='publish.downgrade')
 
     def previous_db(self, channel, work):
         current, _ = self.pointer(channel)
@@ -1349,7 +1412,7 @@ class Publisher:
             retained.parent.mkdir(parents=True, exist_ok=True)
             retained.write_bytes(signature)
             if not self.verifier.verify(entry['path'], retained):
-                raise Refused(f'{filename}: published signature does not verify against the candidate package')
+                raise Refused(f'{filename}: published signature does not verify against the candidate package', gate='signature.package')
             entry['sig_path'] = str(retained.resolve())
             entry['sig'] = sha256(signature)
 
@@ -1372,19 +1435,21 @@ class Publisher:
         if channel != 'testing':
             # stable changes only through `promote`, behind the acceptance stamp (one gate).
             raise Refused(f'publish writes only testing, not {channel}: stable gets a release through '
-                          '`promote` with the acceptance stamp')
+                          '`promote` with the acceptance stamp', gate='cli.publish-channel')
         targets = self.args.closure.split()
         packages = self.collect(directory)
         inputs = {f: e['sha256'] for f, e in packages.items()}
+        # What the gates of a publish are about: exactly the candidate package files.
+        candidate = dict(sorted(inputs.items()))
         inputs['provenance'] = sha256(json.dumps({f: e['source'] for f, e in packages.items()}, sort_keys=True).encode())
         journal = self.begin('publish', channel, inputs)
         work = self.state / journal['id'] / 'work'
 
         if 0 not in journal['steps']:
-            self.check_tree()
+            self.check_tree(candidate)
             for filename, entry in packages.items():
                 if not self.verifier.verify(entry['path'], entry['path'] + '.sig'):
-                    raise Refused(f'{filename}.sig is not a valid signature by a trusted key in {self.trusted}')
+                    raise Refused(f'{filename}.sig is not a valid signature by a trusted key in {self.trusted}', gate='signature.package')
             self.refuse_burnt(packages)
             self.refuse_downgrade(channel, packages)
             with tempfile.TemporaryDirectory() as temp:
@@ -1392,17 +1457,19 @@ class Publisher:
                 self.build_db(channel, trial, packages, sign=False)
                 (trial / 'emaki.db').unlink(missing_ok=True)
                 shutil.copyfile(trial / 'emaki.db.tar.gz', trial / 'emaki.db')
-                self.check_release((trial / 'emaki.db').read_bytes(), channel, targets)
+                self.check_release((trial / 'emaki.db').read_bytes(), channel, targets, candidate)
             if self.dry_run:
                 self.dry_plan(journal, packages)
                 return
             self.checked(journal)
         elif 6 not in journal['steps']:
             try:
+                # A saved step 0 keeps no exception alive: one revoked since must stop this run.
+                self.check_tree(candidate)
                 with tempfile.TemporaryDirectory() as temp:
                     trial = Path(temp)
                     self.build_db(channel, trial, packages, sign=False)
-                    self.check_release((trial / 'emaki.db.tar.gz').read_bytes(), channel, targets)
+                    self.check_release((trial / 'emaki.db.tar.gz').read_bytes(), channel, targets, candidate)
             except Refused as error:
                 raise self.abandon(journal, error) from None
         self.take_lock(journal)
@@ -1437,17 +1504,17 @@ class Publisher:
                 else:
                     sig, _ = self.backend.get(f'{channel}/x86_64/{filename}.sig')
                     if sig is None:
-                        raise Refused(f'the database names {filename}, which {channel}/x86_64 lacks')
+                        raise Refused(f'the database names {filename}, which {channel}/x86_64 lacks', gate='snapshot.build')
                     named[filename] = (entry['sha256'], sha256(sig))
                 if named[filename][0] != entry['sha256']:
-                    raise Refused(f'database checksum of {filename} differs from the file')
+                    raise Refused(f'database checksum of {filename} differs from the file', gate='snapshot.build')
             current, _ = self.pointer(channel)
             records = source_records(self.snapshot(channel, current)) if current else {}
             records.update({e['name']: e['source'] for e in packages.values()})
             records = {e['name']: records[e['name']] for e in entries.values()}
             for entry in entries.values():
                 if records[entry['name']]['version'] != entry['version']:
-                    raise Refused(f'{entry["name"]}: source version differs from database')
+                    raise Refused(f'{entry["name"]}: source version differs from database', gate='snapshot.build')
             files['SOURCES.json'] = (json.dumps({'format': 1, 'packages': records}, sort_keys=True, indent=2) + '\n').encode()
             files['SOURCES'] = sources_text(records, self.public)
             for name in SOURCE_FILES:
@@ -1475,7 +1542,10 @@ class Publisher:
             self.verify_snapshot(channel, journal['id'], files, targets)
             self.done(journal, 5)
         if 6 not in journal['steps']:
-            self.flip(journal, lambda: self.check_release(files['emaki.db'], channel, targets))
+            def gate():
+                self.check_tree(candidate)
+                self.check_release(files['emaki.db'], channel, targets, candidate)
+            self.flip(journal, gate)
         self.confirm_channel(channel, files)
         self.finish(journal, {'id': journal['id'], 'kind': 'publish', 'manifest': sha256(files['MANIFEST'])})
         self.done(journal, 7)
@@ -1488,13 +1558,13 @@ class Publisher:
         try:
             self.build_db(channel, work, packages, sign=True)
         except subprocess.CalledProcessError as error:
-            raise self.abandon(journal, Refused(f'emaki.db.tar.gz was not signed: repo-add failed ({error})')) \
+            raise self.abandon(journal, Refused(f'emaki.db.tar.gz was not signed: repo-add failed ({error})', gate='signature.database')) \
                 from None
         for name in ('emaki.db.tar.gz', 'emaki.files.tar.gz'):
             signature = work / (name + '.sig')
             if not signature.is_file() or not self.verifier.verify(work / name, signature):
                 raise self.abandon(journal, Refused(f'{name} was not signed by a trusted key (pinentry cancelled '
-                                                    'or timed out, or gpg failed; repo-add only warns then)'))
+                                                    'or timed out, or gpg failed; repo-add only warns then)', gate='signature.database'))
 
     def upload_snapshot(self, journal, files):
         """Step 4. pacman sends If-Modified-Since with the time of the database it holds, at one
@@ -1554,7 +1624,7 @@ class Publisher:
                         data, _ = self.backend.get(destination)
                         expected = packages[filename][1 if suffix else 0]
                         if data is None or sha256(data) != expected:
-                            raise Refused(f'{destination} exists with other bytes') from None
+                            raise Refused(f'{destination} exists with other bytes', gate='immutable.name') from None
             self.done(journal, 2)
         if 3 not in journal['steps']:
             self.verify_packages_anonymously(channel, packages)
@@ -1576,9 +1646,10 @@ class Publisher:
     def promote(self, first):
         current, _ = self.pointer('testing')
         if current is None:
-            raise Refused('testing has no snapshot to promote')
+            raise Refused('testing has no snapshot to promote', gate='state.no-snapshot')
         files = self.snapshot('testing', current)
         manifest_sha = sha256(files['MANIFEST'])
+        artifacts = {'MANIFEST': manifest_sha}
         journal = self.begin('promote', 'stable', {'source': current, 'first': first})
 
         def gate():
@@ -1587,8 +1658,8 @@ class Publisher:
                 self.refuse_second_first(files)
                 say('promote --first: allowed once, while no released mirrorlist names this mirror')
             else:
-                self.check_stamp(manifest_sha)
-            self.check_release(files['emaki.db'], 'stable', self.args.closure.split())
+                self.check_stamp(manifest_sha, artifacts)
+            self.check_release(files['emaki.db'], 'stable', self.args.closure.split(), artifacts)
 
         if 0 not in journal['steps']:
             gate()
@@ -1613,7 +1684,7 @@ class Publisher:
     def refuse_second_first(self, files):
         released = self.backend.list('released/')
         if released:
-            raise Refused('promote --first is spent: ' + released[0] + ' exists. Use the stamped promote.')
+            raise Refused('promote --first is spent: ' + released[0] + ' exists. Use the stamped promote.', gate='promote.first-spent')
         github = open_github(self.args.github, False)
         old = github.fetch('stable', 'emaki.db')
         if old is None:
@@ -1624,53 +1695,64 @@ class Publisher:
             mirror_lists |= {f for f in manifest_packages(manifest) if f.startswith('emaki-mirrorlist-')}
         if on_github.get('emaki-mirrorlist') in mirror_lists:
             raise Refused(f'GitHub stable already serves {on_github["emaki-mirrorlist"]}, a mirrorlist '
-                          'published through this mirror: released machines name it. Use the stamped promote.')
+                          'published through this mirror: released machines name it. Use the stamped promote.', gate='promote.first-spent')
 
-    def check_stamp(self, manifest_sha, bridge=False):
+    def check_stamp(self, manifest_sha, artifacts, bridge=False):
         """bridge: this act puts the first mirror release on GitHub stable, which every unedited
-        0.1.x machine reads; its T2 must have been the unedited old address."""
+        0.1.x machine reads; its T2 must have been the unedited old address. Each refusal is its
+        own gate; an exception for one passes only that one."""
         path = Path(self.args.stamp)
         if not path.is_file():
-            raise Refused(f'no acceptance stamp at {path}: run the upgrade acceptance (tests/vm/upgrade-check.py)')
+            self.gate('stamp.missing', f'no acceptance stamp at {path}: run the upgrade acceptance '
+                      '(tests/vm/upgrade-check.py)', artifacts)
+            return
         stamp = json.loads(path.read_text())
+        passes = self.passes
         if stamp.get('manifest_sha256') != manifest_sha:
-            raise Refused(f'the acceptance stamp is for MANIFEST {stamp.get("manifest_sha256")}, '
-                          f'not for {manifest_sha}')
+            self.gate('stamp.manifest', f'the acceptance stamp is for MANIFEST {stamp.get("manifest_sha256")}, '
+                      f'not for {manifest_sha}', artifacts)
         try:
-            acceptance.validate_runs(stamp.get('runs'), acceptance.required_starts(
-                self.backend, manifest_sha, self.args.machines))
+            starts = acceptance.required_starts(self.backend, manifest_sha, self.args.machines)
         except ValueError as error:
-            raise Refused(str(error)) from None
+            raise Refused(str(error), gate='acceptance.machines') from None
+        try:
+            acceptance.validate_runs(stamp.get('runs'), starts)
+        except ValueError as error:
+            self.gate('stamp.runs', str(error), artifacts)
         if bridge:
             t2 = [entry for entry in stamp.get('via', []) if entry.startswith('T2 ')]
             if not t2 or any(not entry.endswith(' old-address') for entry in t2):
-                raise Refused('this is the bridge (GitHub stable has no release from this mirror yet): its T2 '
-                              'must be the unedited old address, run after promote --first; the stamp has '
-                              + (', '.join(t2) or 'no T2 address'))
+                self.gate('stamp.bridge', 'this is the bridge (GitHub stable has no release from this mirror yet): '
+                          'its T2 must be the unedited old address, run after promote --first; the stamp has '
+                          + (', '.join(t2) or 'no T2 address'), artifacts)
         if 'tested' not in stamp:
-            raise Refused('the acceptance stamp does not say when its runs finished; write it again with stamp')
+            self.gate('stamp.untimed', 'the acceptance stamp does not say when its runs finished; write it again '
+                      'with stamp', artifacts)
+            return
         # 24 hours from the oldest run, not from writing the stamp: Arch and the mirror move meanwhile.
         age = utcnow() - datetime.datetime.fromisoformat(stamp['tested'])
         if age > STAMP_MAX_AGE or age < -datetime.timedelta(minutes=5):
-            raise Refused(f'the oldest run of the acceptance stamp finished {age} ago; it is valid for 24 hours. '
-                          'Run the acceptance again.')
-        say(f'acceptance stamp OK: MANIFEST {manifest_sha[:12]}, {age} old')
+            self.gate('stamp.age', f'the oldest run of the acceptance stamp finished {age} ago; it is valid for '
+                      '24 hours. Run the acceptance again.', artifacts)
+            return
+        if self.passes == passes:
+            say(f'acceptance stamp OK: MANIFEST {manifest_sha[:12]}, {age} old')
 
     def withdraw(self, channel, to):
         current, _ = self.pointer(channel)
         if current is None:
-            raise Refused(f'{channel} has no snapshot')
+            raise Refused(f'{channel} has no snapshot', gate='state.no-snapshot')
         current_manifest = sha256(self.snapshot(channel, current)['MANIFEST'])
         records = self.served(channel)
         withdrawn = {r.get('withdrawn') for r in records if r.get('kind') == 'withdraw'} | {current_manifest}
         if to:
             if to not in {r['id'] for r in records}:
-                raise Refused(f'{channel} never served {to}')
+                raise Refused(f'{channel} never served {to}', gate='withdraw.target')
             target = to
         else:
             candidates = [r for r in records if r['id'] < current and r['manifest'] not in withdrawn]
             if not candidates:
-                raise Refused(f'{channel} has no earlier release to return to')
+                raise Refused(f'{channel} has no earlier release to return to', gate='withdraw.target')
             target = candidates[-1]['id']
         journal = self.begin('withdraw', channel, {'to': target, 'from': current})
         if 0 not in journal['steps']:
@@ -1694,12 +1776,12 @@ class Publisher:
         if manifest_sha is None:
             current, _ = self.pointer('testing')
             if current is None:
-                raise Refused('testing has no snapshot; name the candidate with --manifest')
+                raise Refused('testing has no snapshot; name the candidate with --manifest', gate='state.no-snapshot')
             manifest_sha = sha256(self.snapshot('testing', current)['MANIFEST'])
         try:
             starts = acceptance.required_starts(self.backend, manifest_sha, self.args.machines)
         except ValueError as error:
-            raise Refused(str(error)) from None
+            raise Refused(str(error), gate='acceptance.machines') from None
         runs = acceptance.plan(starts)
         if as_json:
             print(json.dumps({'manifest_sha256': manifest_sha, 'starts': list(starts),
@@ -1725,21 +1807,21 @@ class Publisher:
             say('lock: free')
             return
         if not yes:
-            raise Refused(f'lock held: {lock.decode()}. Only if that publisher is dead: unlock --yes')
+            raise Refused(f'lock held: {lock.decode()}. Only if that publisher is dead: unlock --yes', gate='state.lock')
         self.backend.delete('locks/publish')
         say('lock removed')
 
     def verify(self, channel):
         current, _ = self.pointer(channel)
         if current is None:
-            raise Refused(f'{channel} has no pointer')
+            raise Refused(f'{channel} has no pointer', gate='state.no-snapshot')
         files = self.snapshot(channel, current)
         manifest = parse_manifest(files['MANIFEST'])
         self.confirm_channel(channel, files)
         for filename, digest in manifest_packages(manifest).items():
             status = http_head(f'{self.public}/{channel}/x86_64/{filename}')
             if status != 200:
-                raise Refused(f'{channel}/x86_64/{filename}: HTTP {status}')
+                raise Refused(f'{channel}/x86_64/{filename}: HTTP {status}', gate='verify.channel')
         say(f'{channel} {current}: database signed and served, {len(manifest_packages(manifest))} packages present')
 
     # GitHub ------------------------------------------------------------------------------------
@@ -1756,28 +1838,25 @@ class Publisher:
             stamps = sorted(p for p in backups.glob('*') if (p / 'emaki.db').is_file()
                             and (p / 'emaki.db').read_bytes() not in (serving, mirror))
             if not stamps:
-                raise Refused(f'no saved GitHub {tag} database differs from what GitHub {tag} serves now')
-            if not getattr(self.args, 'allow_sourceless_restore', False):
-                try:
-                    saved = stamps[-1]
-                    records = source_records({'SOURCES.json': (saved / 'SOURCES.json').read_bytes()})
-                    directions = (saved / 'SOURCES').read_text()
-                    for entry in db_entries((saved / 'emaki.db').read_bytes()).values():
-                        record = records.get(entry['name'])
-                        if record is None or record.get('version') != entry['version']:
-                            raise ValueError(f"{entry['name']} {entry['version']}: no matching source record")
-                        key = source_key(record)
-                        if key not in directions or not re.fullmatch('[0-9a-f]{64}', record['sha256']):
-                            raise ValueError(f"{entry['name']}: incomplete source directions")
-                        if http_sha256(f'{self.public}/{key}') != record['sha256']:
-                            raise ValueError(f"{entry['name']}: source archive missing or changed")
-                except (OSError, ValueError, KeyError, TypeError, tarfile.TarError, Refused) as error:
-                    raise Refused('restore refused: saved binaries lack verified corresponding sources '
-                                  f'({error}). Restoring them would publish binaries without source '
-                                  'coverage. Use --allow-sourceless-restore only for an explicit '
-                                  'exception.') from None
-            else:
-                say('WARNING: restoring without corresponding-source checks (--allow-sourceless-restore)')
+                raise Refused(f'no saved GitHub {tag} database differs from what GitHub {tag} serves now', gate='github.restore-none')
+            saved = stamps[-1]
+            try:
+                records = source_records({'SOURCES.json': (saved / 'SOURCES.json').read_bytes()})
+                directions = (saved / 'SOURCES').read_text()
+                for entry in db_entries((saved / 'emaki.db').read_bytes()).values():
+                    record = records.get(entry['name'])
+                    if record is None or record.get('version') != entry['version']:
+                        raise ValueError(f"{entry['name']} {entry['version']}: no matching source record")
+                    key = source_key(record)
+                    if key not in directions or not re.fullmatch('[0-9a-f]{64}', record['sha256']):
+                        raise ValueError(f"{entry['name']}: incomplete source directions")
+                    if http_sha256(f'{self.public}/{key}') != record['sha256']:
+                        raise ValueError(f"{entry['name']}: source archive missing or changed")
+            except (OSError, ValueError, KeyError, TypeError, tarfile.TarError, Refused) as error:
+                # A deliberate legacy recovery passes only by an exception for this saved database.
+                self.gate('github.restore-sources', 'restore refused: saved binaries lack verified corresponding '
+                          f'sources ({error}). Restoring them would publish binaries without source coverage.',
+                          {'emaki.db': sha256_file(saved / 'emaki.db')})
             for path in sorted(stamps[-1].iterdir()):
                 if path.name.endswith(('.pkg.tar.zst', '.pkg.tar.zst.sig', '.sources.tar.gz')):
                     target.upload(tag, path, path.name)
@@ -1798,13 +1877,14 @@ class Publisher:
             say(f'GitHub {tag}: restored emaki.files and emaki.db from {stamps[-1]}')
             return
         if tag not in ('testing', 'stable'):
-            raise Refused('github takes --tag testing or no tag (stable)')
+            raise Refused('github takes --tag testing or no tag (stable)', gate='cli.github-tag')
         current, _ = self.pointer(channel)
         if current is None:
-            raise Refused(f'the mirror has no {channel} snapshot to copy')
+            raise Refused(f'the mirror has no {channel} snapshot to copy', gate='state.no-snapshot')
         files = self.snapshot(channel, current)
         if tag == 'stable':
-            self.check_stamp(sha256(files['MANIFEST']), bridge=not self.backend.list('released/github-stable/'))
+            self.check_stamp(sha256(files['MANIFEST']), {'MANIFEST': sha256(files['MANIFEST'])},
+                             bridge=not self.backend.list('released/github-stable/'))
         # Migration packages may reach the old address only after their destination serves
         # the signed database clients will require on the next synchronization.
         self.confirm_channel(channel, files)
@@ -1816,7 +1896,8 @@ class Publisher:
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)
             (directory / 'emaki.db').write_bytes(files['emaki.db'])
-            self.check_transactions(directory, self.args.closure.split(), previous['emaki.db'])
+            self.check_transactions(directory, self.args.closure.split(), previous['emaki.db'],
+                                    {'MANIFEST': sha256(files['MANIFEST'])})
         if previous['emaki.db'] == files['emaki.db']:
             # A re-run: an earlier run already saved what GitHub served before it.
             say(f'GitHub {tag} already holds the database of mirror {channel} {current}; no backup made')
@@ -1833,13 +1914,13 @@ class Publisher:
                     data, _ = self.backend.get(f'{channel}/x86_64/{name}')
                     expected = manifest[f'packages/{name}']
                     if data is None or sha256(data) != expected:
-                        raise Refused(f'{channel}/x86_64/{name} is missing or differs from the MANIFEST')
+                        raise Refused(f'{channel}/x86_64/{name} is missing or differs from the MANIFEST', gate='snapshot.package')
                     if name in existing:
                         old = target.fetch(tag, name)
                         if old is not None and sha256(old) == expected:
                             continue
                         if not suffix:
-                            raise Refused(f'GitHub {tag} holds another {name}; a published name is never replaced')
+                            raise Refused(f'GitHub {tag} holds another {name}; a published name is never replaced', gate='immutable.name')
                     path = Path(temp) / name
                     path.write_bytes(data)
                     target.upload(tag, path, name)
@@ -1893,7 +1974,7 @@ def key_verifies(publisher, armored, image, signature):
             verifier.close()
 
 
-def check_iso_transactions(image, filenames):
+def check_iso_transactions(publisher, image, filenames, artifacts):
     """Resolve live and target packages against the exact offline database on their image."""
     client = ScratchPacman()
     try:
@@ -1902,7 +1983,7 @@ def check_iso_transactions(image, filenames):
             capture_output=True, check=True, timeout=120).stdout
         entries = db_entries(database)
         if set(entries) != set(filenames):
-            raise Refused('ISO database does not match the image package closure.')
+            raise Refused('ISO database does not match the image package closure.', gate='iso.closure')
         # Legacy repositories also carry live-only packages. Resolve against this image's
         # pinned Arch dependencies, never the installed system's rolling mirrors.
         repository = client.dir / 'image-repository'
@@ -1912,9 +1993,13 @@ def check_iso_transactions(image, filenames):
         transactions.check_transactions(client, repository, targets, 'none')
     except (OSError, ValueError, KeyError, IndexError, tarfile.TarError,
             subprocess.SubprocessError, transactions.TransactionError) as error:
-        raise Refused(f'ISO package transaction failed: {error}') from None
+        failure = f'ISO package transaction failed: {error}'
+    else:
+        failure = None
     finally:
         client.close()
+    if failure:
+        publisher.gate('iso.transactions', failure, artifacts)
 
 
 def check_live_metadata(image, listing, version, root):
@@ -1926,7 +2011,7 @@ def check_live_metadata(image, listing, version, root):
         return None
     for entry in (*metadata, 'emaki/pkglist.x86_64.txt', 'emaki/repo/closure.txt'):
         if entry not in entries:
-            raise Refused(f'{image.name} has no {entry}')
+            raise Refused(f'{image.name} has no {entry}', gate='iso.closure')
         destination = root / entry
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(subprocess.run(
@@ -1955,13 +2040,36 @@ def upload_image_source(publisher, dl, source_key_, source_path):
     expected = {'sha256': source_digest, 'etag': etag}
     if receipt is None:
         if not dry_run and http_sha256(f'{public}/{source_key_}') != source_digest:
-            raise Refused(f'{source_key_} differs from the image source manifest')
+            raise Refused(f'{source_key_} differs from the image source manifest', gate='sources.upload')
         publisher.put_or_same(source_key_ + '.verified',
                               json.dumps(expected, sort_keys=True).encode(), dl)
     elif json.loads(receipt) != expected:
-        raise Refused(f'{source_key_} differs from its verified upload')
+        raise Refused(f'{source_key_} differs from its verified upload', gate='sources.upload')
     elif not dry_run and http_head(f'{public}/{source_key_}') != 200:
-        raise Refused(f'{source_key_} is not publicly available')
+        raise Refused(f'{source_key_} is not publicly available', gate='sources.upload')
+
+
+def record_retry_exceptions(publisher, version, digest):
+    """An interrupted run already wrote released/iso/<version>, which is written once. Exceptions
+    this run passed that no record of the image names yet get a record of their own under
+    released/iso-exceptions/<version>/<id>, before any write that can make the image public."""
+    if not publisher.passed:
+        return
+    backend = publisher.backend
+    prefix = f'released/iso-exceptions/{version}/'
+    named = set()
+    for key in [f'released/iso/{version}', *backend.list(prefix)]:
+        data, _ = backend.get(key)
+        try:
+            named |= set(json.loads(data).get('exceptions', []))
+        except (TypeError, ValueError, UnicodeError, AttributeError):
+            pass
+    if publisher.passed <= named:
+        return
+    record = {'exceptions': sorted(publisher.passed), 'image_sha256': digest}
+    key = prefix + new_id(key[len(prefix):] for key in backend.list(prefix))
+    backend.put_new(key, json.dumps(record, sort_keys=True).encode())
+    say(f'{key}: the image record names other exceptions; recorded the ones of this run')
 
 
 def iso_publish(publisher, path, full_check):
@@ -1974,43 +2082,51 @@ def iso_publish(publisher, path, full_check):
     image = Path(path).resolve()
     match = re.fullmatch(r'emaki-(\d+\.\d+\.\d+)-x86_64\.iso', image.name)
     if not match or not image.is_file():
-        raise Refused(f'{path}: expected an existing emaki-<version>-x86_64.iso')
+        raise Refused(f'{path}: expected an existing emaki-<version>-x86_64.iso', gate='cli.iso')
     version = match.group(1)
+    # What the image gates are about: the image itself, hashed only when a gate refuses.
+    image_digest = []
+
+    def artifacts():
+        if not image_digest:
+            image_digest.append(sha256_file(image))
+        return {image.name: image_digest[0]}
+
     current, _ = publisher.pointer('stable')
     if current is None:
-        raise Refused('stable serves nothing yet; an ISO is published only after its packages are in stable')
+        raise Refused('stable serves nothing yet; an ISO is published only after its packages are in stable', gate='state.no-snapshot')
     files = publisher.snapshot('stable', current)
-    publisher.check_stamp(sha256(files['MANIFEST']))
+    publisher.check_stamp(sha256(files['MANIFEST']), artifacts)
     stable = manifest_packages(parse_manifest(files['MANIFEST']))
 
     listing = subprocess.run(['bsdtar', '-tf', str(image)], capture_output=True, text=True, check=True).stdout
     ours = [entry for entry in listing.split('\n') if entry.startswith('emaki/repo/')
             and entry.endswith('.pkg.tar.zst') and entry.split('/')[-1].rsplit('-', 3)[0] in EMAKI_PACKAGES]
     if not ours:
-        raise Refused(f'{image.name} has no Emaki packages in emaki/repo')
+        raise Refused(f'{image.name} has no Emaki packages in emaki/repo', gate='iso.closure')
     if 'emaki/repo/closure.txt' not in listing.splitlines():
-        raise Refused(f'{image.name} has no emaki/repo/closure.txt')
+        raise Refused(f'{image.name} has no emaki/repo/closure.txt', gate='iso.closure')
     closure = subprocess.run(['bsdtar', '-xOf', str(image), 'emaki/repo/closure.txt'],
                              capture_output=True, check=True).stdout
     try:
         filenames = closure.decode().splitlines()
     except UnicodeError:
-        raise Refused('closure.txt is not UTF-8') from None
+        raise Refused('closure.txt is not UTF-8', gate='iso.closure') from None
     actual = {entry.split('/')[-1] for entry in listing.splitlines()
               if entry.startswith('emaki/repo/') and entry.endswith('.pkg.tar.zst')}
     if not filenames or len(filenames) != len(set(filenames)) or set(filenames) != actual:
-        raise Refused('closure.txt does not match the image package files')
-    check_iso_transactions(image, filenames)
+        raise Refused('closure.txt does not match the image package files', gate='iso.closure')
+    check_iso_transactions(publisher, image, filenames, artifacts)
     try:
         launch = acceptance.launch_mark(publisher.backend, version, getattr(args, 'machines', acceptance.MACHINES))
     except ValueError as error:
-        raise Refused(str(error)) from None
+        raise Refused(str(error), gate='acceptance.machines') from None
     problems = []
     source_manifest = getattr(args, 'arch_sources', None)
     missing_sources = getattr(args, 'missing_sources', None)
     missing_records = {}
     if source_manifest is None:
-        raise Refused('ISO publication requires --arch-sources ARCH-SOURCES.json')
+        raise Refused('ISO publication requires --arch-sources ARCH-SOURCES.json', gate='cli.iso')
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
         expected = {}
@@ -2055,17 +2171,24 @@ def iso_publish(publisher, path, full_check):
             if missing_sources is not None:
                 missing_records = iso_sources.validate_missing(missing_sources, complete_closure, expected)
         except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as error:
-            raise Refused(f'ISO source coverage failed: {error}') from None
+            raise Refused(f'ISO source coverage failed: {error}', gate='iso.sources') from None
     if problems:
-        raise Refused('stable does not serve the packages of this image: ' + ', '.join(problems))
+        publisher.gate('iso.stable-packages', 'stable does not serve the packages of this image: '
+                       + ', '.join(problems), artifacts)
     records = source_records(files)
     image_sources = {}
+    unrecorded = []
     for entry in ours:
         name, version_ = package_version(entry.split('/')[-1])
         record = records.get(name)
         if record is None or record['version'] != version_:
-            raise Refused(f'{name} {version_}: stable has no matching source record')
-        image_sources[name] = record
+            unrecorded.append(f'{name} {version_}')
+        else:
+            image_sources[name] = record
+    if unrecorded:
+        # Passed by exception, SOURCES-ISO.txt names only the packages stable has records for.
+        publisher.gate('iso.emaki-source-record', 'stable has no matching source record for '
+                       + ', '.join(unrecorded), artifacts)
     arch_directions = iso_sources.directions(arch_records, args.dl_public_url,
                                             partial=bool(missing_records))
     if missing_records:
@@ -2089,12 +2212,12 @@ def iso_publish(publisher, path, full_check):
         else:
             env = dict(os.environ, EMAKI_ISO_SIGN_KEY=args.key, EMAKI_SIGNING_GNUPGHOME=str(args.signing_home))
             subprocess.run([str(HERE / 'iso-sums.sh'), str(image)], check=True, env=env)
-    digest = sha256_file(image)
+    digest = image_digest[0] if image_digest else sha256_file(image)
     if not dry_run:
         if sums.read_text() != f'{digest}  {image.name}\n':
-            raise Refused(f'{sums.name} does not match the image')
+            raise Refused(f'{sums.name} does not match the image', gate='iso.checksum')
         if not publisher.verifier.verify(image, signature):
-            raise Refused(f'{signature.name} is not a valid signature by a trusted key in {publisher.trusted}')
+            raise Refused(f'{signature.name} is not a valid signature by a trusted key in {publisher.trusted}', gate='signature.image')
 
     dl = open_backend(args.dl_backend, dry_run)
     public = args.dl_public_url.rstrip('/')
@@ -2109,7 +2232,7 @@ def iso_publish(publisher, path, full_check):
             source_key_ = source_key(record)
             data, _ = publisher.backend.get(source_key_)
             if data is None or sha256(data) != record['sha256']:
-                raise Refused(f'{source_key_}: Emaki source archive missing or changed')
+                raise Refused(f'{source_key_}: Emaki source archive missing or changed', gate='sources.upload')
             source_path = Path(temp) / 'source-archive'
             source_path.write_bytes(data)
             upload_image_source(publisher, dl, source_key_, source_path)
@@ -2135,14 +2258,17 @@ def iso_publish(publisher, path, full_check):
     release = {'stable': current, 'manifest': sha256(files['MANIFEST']), 'image_sha256': digest}
     if launch:
         release['launch'] = True
+    if publisher.passed:
+        # Public evidence of which owner-signed exceptions let this image through.
+        release['exceptions'] = sorted(publisher.passed)
     try:
         publisher.backend.put_new(f'released/iso/{version}', json.dumps(release, sort_keys=True).encode())
     except Exists:
-        pass
+        record_retry_exceptions(publisher, version, digest)
     published, _ = dl.get(key + '.sha256')
     if published is not None:
         if not sums.is_file() or published != sums.read_bytes():
-            raise Refused(f'{key} is already published with other content; an ISO name is never replaced')
+            raise Refused(f'{key} is already published with other content; an ISO name is never replaced', gate='immutable.iso')
         say(f'{key}: already published with these bytes')
     else:
         try:
@@ -2163,7 +2289,7 @@ def iso_publish(publisher, path, full_check):
                 say(f'DRY-RUN: {key} exists; a real run downloads it whole and compares its sha256')
             elif http_sha256(f'{public}/{key}') != digest:
                 raise Refused(f'{key} exists and is another image (the sha256 of the whole download '
-                              'differs)') from None
+                              'differs)', gate='immutable.iso') from None
             else:
                 say(f'{key}: already uploaded by an interrupted run (whole image, sha256 identical)')
         publisher.put_or_same(key + '.sig', signature if signature.is_file() else b'', dl, hint=once)
@@ -2192,12 +2318,12 @@ def iso_publish(publisher, path, full_check):
                 raise ValueError('published source snapshot differs from its digest')
             readback.update(current_sources)
         except (ValueError, UnicodeError) as error:
-            raise Refused(f'ISO source read-back failed: {error}') from None
+            raise Refused(f'ISO source read-back failed: {error}', gate='verify.iso') from None
     for name, data in readback.items():
         if http_get(f'{public}/iso/{version}/{name}') != data:
-            raise Refused(f'the published {name} differs from the image source records')
+            raise Refused(f'the published {name} differs from the image source records', gate='verify.iso')
     if http_get(f'{public}/{key}.sha256') != sums.read_bytes() or http_get(f'{public}/{key}.sig') != signature.read_bytes():
-        raise Refused('the published .sha256 or .sig differs from the local files')
+        raise Refused('the published .sha256 or .sig differs from the local files', gate='verify.iso')
     size = image.stat().st_size
     with image.open('rb') as stream:
         head = stream.read(1048576)
@@ -2208,7 +2334,7 @@ def iso_publish(publisher, path, full_check):
     # range with the whole file.
     if http_range(f'{public}/{key}', 0, len(head) - 1, marker=IMAGE_MARKER) != head or \
             http_range(f'{public}/{key}', size - len(tail), size - 1, marker=IMAGE_MARKER) != tail:
-        raise Refused('the first or last megabyte of the published image differs')
+        raise Refused('the first or last megabyte of the published image differs', gate='verify.iso')
     # A browser resumes an interrupted download with If-Range naming the ETag it kept; any other
     # answer than 206 starts the download again from zero.
     middle = size // 2
@@ -2217,10 +2343,10 @@ def iso_publish(publisher, path, full_check):
         resumed = stream.read(1048576)
     if http_range(f'{public}/{key}', middle, middle + len(resumed) - 1, marker=IMAGE_MARKER,
                   if_range=http_etag(f'{public}/{key}', marker=IMAGE_MARKER)) != resumed:
-        raise Refused('a resumed download of the published image (Range with If-Range) differs')
+        raise Refused('a resumed download of the published image (Range with If-Range) differs', gate='verify.iso')
     if full_check:
         if http_sha256(f'{public}/{key}') != digest:
-            raise Refused('the full anonymous download differs from the image')
+            raise Refused('the full anonymous download differs from the image', gate='verify.iso')
         say('full anonymous download: sha256 identical')
     say(f'published {public}/{key} (+ .sig, .sha256); first and last megabyte read back identical; '
         'a resumed download (If-Range) answers 206')
@@ -2238,7 +2364,7 @@ def iso_add_sources(publisher, version):
     """Complete missing source bases without modifying any published image bytes."""
     import iso_sources
     if not re.fullmatch(r'\d+\.\d+\.\d+', version):
-        raise Refused('expected a published image version, such as 0.2.0')
+        raise Refused('expected a published image version, such as 0.2.0', gate='cli.iso')
     args, dry_run = publisher.args, publisher.dry_run
     dl = open_backend(args.dl_backend, dry_run)
     prefix = f'iso/{version}'
@@ -2248,7 +2374,7 @@ def iso_add_sources(publisher, version):
     checksum, _ = dl.get(f'{prefix}/{image_name}.sha256')
     if (release is None or checksum is None or any(dl.head(f'{prefix}/{name}') is None for name in
             (image_name, image_name + '.sig', 'emaki-signing-key.asc'))):
-        raise Refused(f'{version}: image is not published')
+        raise Refused(f'{version}: image is not published', gate='iso-sources.published')
     try:
         digest = json.loads(release)['image_sha256']
         if not re.fullmatch('[0-9a-f]{64}', digest) or checksum != f'{digest}  {image_name}\n'.encode():
@@ -2328,7 +2454,7 @@ def iso_add_sources(publisher, version):
         if not added and companions != previous:
             raise ValueError('no previously missing source bases were added')
     except (ValueError, TypeError, OSError, KeyError, subprocess.CalledProcessError) as error:
-        raise Refused(f'ISO source addition failed: {error}') from None
+        raise Refused(f'ISO source addition failed: {error}', gate='iso-sources.validate') from None
     # The legacy publication command needs no Worker. Additions require its atomic metadata
     # route, checked before any upload, including on the first migration from flat metadata.
     class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -2348,9 +2474,9 @@ def iso_add_sources(publisher, version):
         with response:
             ready = response.headers.get('X-Emaki-Source-Pointer') == '1'
         if not ready or http_get(f'{public}/{prefix}/SOURCES-ISO.txt') != previous['SOURCES-ISO.txt']:
-            raise Refused('image source pointer route is absent or stale; deploy the download Worker first')
+            raise Refused('image source pointer route is absent or stale; deploy the download Worker first', gate='iso-sources.route')
     except urllib.error.URLError as error:
-        raise Refused(f'image source pointer route is unavailable: {error}') from None
+        raise Refused(f'image source pointer route is unavailable: {error}', gate='iso-sources.route') from None
     for key, path in objects.items():
         upload_image_source(publisher, dl, key, path)
     if companions == previous:
@@ -2363,15 +2489,15 @@ def iso_add_sources(publisher, version):
     if not dry_run:
         for name, data in companions.items():
             if http_get(f'{public}/{destination}/{name}') != data:
-                raise Refused(f'{name}: new source snapshot is not publicly available with these bytes')
+                raise Refused(f'{name}: new source snapshot is not publicly available with these bytes', gate='verify.iso-sources')
     try:
         dl.put_pointer(pointer_key, (snapshot + '\n').encode(), etag)
     except Conflict:
-        raise Refused('image sources changed during this run; retry against the current manifests') from None
+        raise Refused('image sources changed during this run; retry against the current manifests', gate='state.pointer-moved') from None
     if not dry_run:
         for name, data in companions.items():
             if http_get(f'{public}/{prefix}/{name}') != data:
-                raise Refused(f'{name}: source pointer read-back differs from the new snapshot')
+                raise Refused(f'{name}: source pointer read-back differs from the new snapshot', gate='verify.iso-sources')
     say(f'{version}: added {len(added)} package source records; {len(missing)} remain missing')
 
 
@@ -2393,26 +2519,26 @@ def write_stamp(results, path, backend, machines=acceptance.MACHINES):
     loaded = [json.loads(Path(p).read_text()) for p in results]
     manifests = {r.get('manifest_sha256') for r in loaded}
     if len(manifests) != 1 or None in manifests:
-        raise Refused(f'results name different candidates: {sorted(map(str, manifests))}')
+        raise Refused(f'results name different candidates: {sorted(map(str, manifests))}', gate='stamp-write.results')
     now = utcnow()
     green = set()
     for result in loaded:
         if result.get('rehearsal'):
             raise Refused(f'{result["run"]} from {result["start"]} was a rehearsal against a local mirror, '
-                          'not acceptance')
+                          'not acceptance', gate='stamp-write.results')
         finished = datetime.datetime.fromisoformat(result['finished'])
         if now - finished > STAMP_MAX_AGE:
-            raise Refused(f'{result["run"]} from {result["start"]} finished {finished}, more than 24 hours ago')
+            raise Refused(f'{result["run"]} from {result["start"]} finished {finished}, more than 24 hours ago', gate='stamp-write.results')
         if result.get('passed') is not True:
             raise Refused(f'{result["run"]} from {result["start"]} at {result.get("size")} is red '
                           f'({result.get("evidence", "no evidence directory")}); one red result for the '
-                          'candidate refuses the stamp')
+                          'candidate refuses the stamp', gate='stamp-write.results')
         green.add((result['run'], result['start'], result.get('size')))
     try:
         acceptance.validate_runs(sorted(f'{r} {s} {z}' for r, s, z in green),
                                  acceptance.required_starts(backend, next(iter(manifests)), machines))
     except ValueError as error:
-        raise Refused(str(error)) from None
+        raise Refused(str(error), gate='stamp-write.results') from None
     stamp = {'manifest_sha256': manifests.pop(), 'created': now.isoformat(timespec='seconds'),
              'tested': min(datetime.datetime.fromisoformat(r['finished']) for r in loaded).isoformat(),
              'runs': sorted(f'{r} {s} {z}' for r, s, z in green),
@@ -2435,13 +2561,108 @@ def sign_directory(args):
                 if args.dry_run:
                     continue
             if not verifier.verify(path, signature):
-                raise Refused(f'{signature.name} does not verify against {args.keyring}')
+                raise Refused(f'{signature.name} does not verify against {args.keyring}', gate='signature.package')
             say(f'signed: {path.name}')
     finally:
         try:
             signer.close()
         finally:
             verifier.close()
+
+
+def revoked_keys(args):
+    """Fingerprints in emaki-revoked: never a valid signer of an exception."""
+    path = Path(args.revoked)
+    return {line.split(':')[0] for line in path.read_text().split()} if path.is_file() else set()
+
+
+def exception_command(args):
+    """publish.sh exception new|list|show|revoke|gates (release_exceptions.py)."""
+    directory = Path(args.exceptions)
+    now = utcnow()
+    if args.action == 'gates':
+        say('Gates an owner-signed exception can pass:')
+        for gate, text in release_exceptions.EXCEPTABLE.items():
+            say(f'  {gate}: {text}')
+        say('Gates no exception passes:')
+        for gate, text in release_exceptions.NEVER.items():
+            say(f'  {gate}: {text}')
+        return
+    if args.action == 'new':
+        files = [Path(name) for name in args.files]
+        if any(not path.is_file() for path in files) or len({path.name for path in files}) != len(files):
+            raise Refused('exception new takes existing files with distinct names', gate='exception.invalid')
+        scope = {path.name: sha256_file(path) for path in files}
+        if args.gate == 'build.alongside-acceptance':
+            if len(files) != 1 or files[0].name != 'constants.py':
+                raise Refused('build.alongside-acceptance takes installer/emaki_installer/constants.py only',
+                              gate='exception.invalid')
+            scope = {'installer/emaki_installer/constants.py': sha256_file(files[0])}
+        try:
+            record = release_exceptions.new_record(args.gate, scope,
+                                                   args.reason, args.key, args.days, now)
+        except ValueError as error:
+            raise Refused(str(error), gate='exception.invalid') from None
+        path, signature, _ = release_exceptions.paths(directory, record['id'])
+        say(release_exceptions.encode(record).decode().rstrip())
+        if args.dry_run:
+            say(f'DRY-RUN: would write {path} and sign it with {args.key}')
+            return
+        directory.mkdir(parents=True, exist_ok=True)
+        with open(path, 'xb') as stream:
+            stream.write(release_exceptions.encode(record))
+        signer, verifier = Signer(args.key, args.signing_home), Verifier(args.keyring, args.trusted)
+        try:
+            try:
+                signer.sign(path)
+            except subprocess.CalledProcessError:
+                pass
+            if verifier.signed_by(path, signature, revoked_keys(args)) != args.key:
+                path.unlink()
+                signature.unlink(missing_ok=True)
+                raise Refused(f'the exception was not signed by {args.key} (pinentry cancelled or timed out, '
+                              'or the key is not trusted in the keyring); nothing was kept', gate='exception.invalid')
+        finally:
+            try:
+                signer.close()
+            finally:
+                verifier.close()
+        say(f'exception {record["id"]} written: {path} (+ .sig). Commit both; it passes gate {record["gate"]} '
+            f'for exactly these files until {record["expires"]}.')
+        return
+    found = {exception_id: (record, error) for exception_id, record, error in release_exceptions.load(directory)}
+    if args.action in ('show', 'revoke') and args.id not in found:
+        raise Refused(f'no exception {args.id} in {directory}', gate='exception.invalid')
+    if args.action == 'revoke':
+        _, _, revoked = release_exceptions.paths(directory, args.id)
+        if revoked.exists():
+            raise Refused(f'exception {args.id} is already revoked', gate='exception.invalid')
+        if args.dry_run:
+            say(f'DRY-RUN: would write {revoked}')
+            return
+        revoked.write_text(json.dumps({'id': args.id, 'revoked': now.isoformat(timespec='seconds'),
+                                       'reason': args.reason}, indent=1, sort_keys=True) + '\n')
+        say(f'exception {args.id} revoked: {revoked}. Commit it; it passes nothing from now on.')
+        return
+    verifier = Verifier(args.keyring, args.trusted)
+    try:
+        def status(record, error):
+            return error or release_exceptions.problem(
+                directory, record, now, lambda data, sig: verifier.signed_by(data, sig, revoked_keys(args))) or 'valid'
+        if args.action == 'list':
+            if not found:
+                say(f'no exceptions in {directory}')
+            for exception_id, (record, error) in found.items():
+                say(f'{exception_id}  {status(record, error)}' + ('' if record is None else
+                    f'  expires {record["expires"]}: {record["reason"]}'))
+            return
+        record, error = found[args.id]
+        if record is not None:
+            say(json.dumps({key: value for key, value in record.items() if not key.endswith('_at')},
+                           indent=1, sort_keys=True, ensure_ascii=False))
+        say(f'status: {status(record, error)}')
+    finally:
+        verifier.close()
 
 
 def parser():
@@ -2462,6 +2683,9 @@ def parser():
     main.add_argument('--keyring', default=str(ROOT / 'packaging/emaki-keyring/emaki.gpg'))
     main.add_argument('--trusted', default=str(ROOT / 'packaging/emaki-keyring/emaki-trusted'))
     main.add_argument('--registry', default=str(HERE / 'released-packages.sha256'))
+    main.add_argument('--revoked', default=str(ROOT / 'packaging/emaki-keyring/emaki-revoked'))
+    main.add_argument('--exceptions', default=str(HERE / 'exceptions'),
+                      help='owner-signed gate exceptions, kept in git (default %(default)s)')
     main.add_argument('--dl-backend', default=os.environ.get('EMAKI_PUBLISH_DL_BACKEND', 'r2:emaki-dl'),
                       help='where ISO images go: local:DIR or r2:BUCKET (default r2:emaki-dl)')
     main.add_argument('--dl-public-url', default=os.environ.get('EMAKI_PUBLISH_DL_URL', 'https://dl.emaki.sh'))
@@ -2489,8 +2713,6 @@ def parser():
     g = sub.add_parser('github', help='copy the mirror channel to the old GitHub address')
     g.add_argument('--tag', default='stable', choices=('stable', 'testing'))
     g.add_argument('--restore', action='store_true')
-    g.add_argument('--allow-sourceless-restore', action='store_true',
-                   help='explicitly allow restoring legacy binaries without verified corresponding sources')
     s = sub.add_parser('sign', help='sign packages that have no .sig yet')
     s.add_argument('directory')
     i = sub.add_parser('iso', help='publish an ISO image whose packages stable already serves')
@@ -2508,21 +2730,40 @@ def parser():
     ap = sub.add_parser('acceptance-plan', help='print the (run, start, size) list the stamp requires')
     ap.add_argument('--manifest', help="the candidate's MANIFEST sha256 (default: testing's)")
     ap.add_argument('--json', action='store_true')
+    ex = sub.add_parser('exception', help='owner-signed exceptions that pass one refusing gate')
+    actions = ex.add_subparsers(dest='action', required=True)
+    new = actions.add_parser('new', help='write and sign an exception (gpg asks for the passphrase)')
+    new.add_argument('gate')
+    new.add_argument('files', nargs='+', help='exactly the artifacts the refusal lists')
+    new.add_argument('--reason', required=True)
+    new.add_argument('--days', type=int, default=release_exceptions.MAX_DAYS,
+                     help=f'1 to {release_exceptions.MAX_DAYS} (default %(default)s)')
+    actions.add_parser('list')
+    show = actions.add_parser('show')
+    show.add_argument('id')
+    revoke = actions.add_parser('revoke')
+    revoke.add_argument('id')
+    revoke.add_argument('--reason', required=True)
+    actions.add_parser('gates', help='which gates an exception can pass, and which never')
     return main
 
 
 def main(argv=None):
     args = parser().parse_args(argv)
     try:
-        if args.command not in ('status', 'verify', 'stamp', 'acceptance-plan'):
+        if (args.command not in ('status', 'verify', 'stamp', 'acceptance-plan', 'exception')
+                or args.command == 'exception' and args.action == 'new'):
             # Checked as a file, at the start: a missing pinentry prompt would prove nothing,
             # because gpg-agent caches a typed passphrase.
             passphrase = Path.home() / '.config/emaki-signing/passphrase'
             if passphrase.exists():
                 raise Refused(f'{passphrase} exists: a passphrase must not lie next to the key. Delete it '
-                              'and type the passphrase when pinentry asks.')
+                              'and type the passphrase when pinentry asks.', gate='signing.stored-passphrase')
         if args.command == 'sign':
             sign_directory(args)
+            return 0
+        if args.command == 'exception':
+            exception_command(args)
             return 0
         if args.command == 'stamp':
             write_stamp(args.results, args.stamp, open_backend(args.backend, args.dry_run), args.machines)
@@ -2531,7 +2772,7 @@ def main(argv=None):
         try:
             if args.command == 'publish':
                 if args.layout == 'flat' and not args.backend.startswith('local:'):
-                    raise Refused('the flat layout exists only for the local self-check')
+                    raise Refused('the flat layout exists only for the local self-check', gate='cli.flat-layout')
                 publisher.publish(args.channel, args.directory)
             elif args.command == 'status':
                 publisher.status()
@@ -2554,7 +2795,7 @@ def main(argv=None):
         finally:
             publisher.close()
     except Refused as error:
-        print(f'REFUSED: {error}', file=sys.stderr, flush=True)
+        print(f'REFUSED [{error.gate}]: {error}' if error.gate else f'REFUSED: {error}', file=sys.stderr, flush=True)
         return 2
     except (subprocess.CalledProcessError, KeyError, PermissionError, r2.S3Error) as error:
         print(f'ERROR: {error}', file=sys.stderr, flush=True)

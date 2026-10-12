@@ -67,6 +67,35 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(len(result['programs']), 1)
         self.assertEqual(result['categories'], ['Graphics'])
 
+    def test_installed_metainfo_keeps_catalog_icons_in_every_catalog_view(self):
+        installed = dict(METADATA, icons=[], origin='', screenshots=[])
+        catalog = dict(METADATA, screenshots=[], icons=[dict(
+            kind='cached', value='/metadata/icons/64x64/paint.jxl', width=64, height=64)])
+        for records in ([installed, catalog], [catalog, installed]):
+            with self.subTest(installed_first=records[0] is installed):
+                self.metadata.return_value = (deepcopy(records), [])
+                self.engine.rows = None
+                for filters in ({}, {'installed': True}, {'query': 'Paint'}):
+                    result = self.engine.catalog(source='arch', **filters)
+                    self.assertEqual(result['total'], 1)
+                    self.assertTrue(result['programs'][0]['installed'])
+                    self.assertEqual(result['programs'][0]['icons'], catalog['icons'])
+                self.assertEqual(self.engine.details(ARCH_KEY)['program']['icons'], catalog['icons'])
+
+    def test_duplicate_icons_survive_screenshot_preference_without_mutating_metadata(self):
+        first = dict(METADATA, screenshots=[])
+        second = dict(METADATA, icons=[dict(kind='cached', value='/metadata/paint.jxl',
+                                          width=64, height=64)])
+        third = dict(METADATA, icons=first['icons'] + second['icons'], screenshots=[])
+        for records in ([first, second, third], [second, first, third]):
+            with self.subTest(first=records[0]['icons']):
+                original = deepcopy(records)
+                rows = engine.arch_rows(records, {'extra/paint': PACKAGE}, {'paint': '1'})
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0]['screenshots'], second['screenshots'])
+                self.assertCountEqual(rows[0]['icons'], first['icons'] + second['icons'])
+                self.assertEqual(records, original)
+
     def test_invalid_filters_before_backend_calls(self):
         for filters in ({'source': 'bogus'}, {'query': []}, {'limit': 0}, {'offset': True},
                         {'installed': 1}, {'refresh': 'yes'}, {'includeAur': []}):
@@ -108,6 +137,87 @@ class EngineTests(unittest.TestCase):
     def test_no_metadata_does_not_invent_programs_from_libraries(self):
         self.metadata.return_value = ([], [])
         self.assertEqual(self.engine.catalog(source='arch')['total'], 0)
+
+    def test_package_scope_has_inventory_rows_and_exact_program_links(self):
+        available, installed = self.inventory.return_value
+        available['core/library'] = dict(PACKAGE, repository='core', package='library', summary='Audio codec')
+        available['testing/paint'] = dict(PACKAGE, repository='testing')
+        installed['library'] = '3-1'
+        result = self.engine.catalog(scope='packages')
+        rows = {row['key']: row for row in result['programs']}
+        self.assertEqual(set(rows), {'package:core/library', 'package:extra/paint', 'package:testing/paint'})
+        library = rows['package:core/library']
+        self.assertEqual((library['name'], library['installed'], library['installedVersion'], library['actions']),
+                         ('library', True, '3-1', ['remove']))
+        self.assertTrue(library['packageOnly'])
+        self.assertEqual(library['programKey'], '')
+        self.assertEqual(rows['package:extra/paint']['programKey'], ARCH_KEY)
+        self.assertEqual(rows['package:testing/paint']['programKey'], 'arch:testing/paint:org.example.Paint')
+        self.assertEqual(rows['package:extra/paint']['summary'], 'Painter')
+        self.assertEqual(result['categories'], [])
+        self.assertFalse(any(row.get('packageOnly') for row in self.engine.catalog()['programs']))
+
+    def test_package_scope_search_pagination_and_uninstalled_inventory(self):
+        available, _ = self.inventory.return_value
+        available['core/codec'] = dict(PACKAGE, repository='core', package='codec', summary='Audio codec')
+        available['extra/sound'] = dict(PACKAGE, package='sound', summary='Audio tools')
+        self.metadata.return_value = ([], [])
+        result = self.engine.catalog(scope='packages', query='AUDIO', limit=1, offset=1)
+        self.assertEqual((result['total'], result['offset'], result['limit']), (2, 1, 1))
+        self.assertEqual(result['programs'][0]['package'], 'sound')
+        self.assertEqual(result['programs'][0]['actions'], ['install'])
+        self.assertEqual(self.engine.catalog(scope='packages', query='CODEC audio')['total'], 1)
+        self.assertEqual(self.engine.catalog(scope='packages', installed=True)['total'], 1)
+        self.assertEqual(self.engine.catalog()['total'], 1)
+
+    def test_package_scope_rejects_invalid_options_before_inventory(self):
+        for options in ({'scope': 'everything'}, {'scope': []}, {'scope': 'packages', 'includeAur': True},
+                        {'scope': 'packages', 'source': 'flatpak'}, {'scope': 'packages', 'source': 'aur'},
+                        {'scope': 'packages', 'category': 'Graphics'}):
+            with self.subTest(options=options), self.assertRaises(ValueError):
+                self.engine.catalog(**options)
+        self.inventory.assert_not_called()
+
+    def test_invalid_program_identity_does_not_hide_repository_package(self):
+        self.metadata.return_value[0][0]['id'] = 'unsafe\u202eidentifier'
+        result = self.engine.catalog(scope='packages')
+        self.assertEqual(result['total'], 1)
+        self.assertEqual(result['programs'][0]['programKey'], '')
+        self.assertTrue(self.engine.details('package:extra/paint')['ok'])
+
+    def test_generic_package_uses_existing_install_and_remove_transactions(self):
+        self.metadata.return_value = ([], [])
+        key = 'package:extra/paint'
+        with patch.object(engine.arch, 'install_plan', return_value=dict(ok=True, token='a' * 64,
+                          fullUpgrade=True, packages=[])) as install:
+            plan = self.engine.plan('install', key)
+            install.assert_called_once_with('extra/paint')
+            process = Mock(stdout=StringIO(''), wait=Mock(return_value=126))
+            child = Mock(__enter__=Mock(return_value=process), __exit__=Mock(return_value=False))
+            with patch.object(engine.subprocess, 'Popen', return_value=child) as spawn:
+                self.assertEqual(self.engine.execute('install', key, plan['token'], Mock())['code'],
+                                 'not-authorized')
+            arguments = spawn.call_args.args[0]
+            self.assertEqual((arguments[0], Path(arguments[1]).name, arguments[2:]),
+                             ('pkexec', 'emaki-programs-install', ['extra/paint', 'a' * 64]))
+        self.legacy.preview.return_value = removal.assess('paint', 0, 'paint\npaint-data\n', '')
+        plan = self.engine.plan('remove', key)
+        self.remove_native.return_value = dict(ok=True, code='removed')
+        self.assertTrue(self.engine.execute('remove', key, plan['token'], Mock())['ok'])
+        self.remove_native.assert_called_once_with('paint', 'paint,paint-data')
+
+    def test_generic_package_removal_keeps_protections_and_rechecks_state(self):
+        key = 'package:extra/paint'
+        for code, stdout, stderr in [(0, 'paint\nemaki-config\n', ''), (0, 'paint\nlinux\n', ''),
+                                    (1, ":: removing paint breaks dependency 'paint' required by viewer", 'error')]:
+            expected = removal.assess('paint', code, stdout, stderr)
+            self.legacy.preview.return_value = expected
+            self.assertEqual(self.engine.plan('remove', key), expected)
+        self.legacy.preview.return_value = removal.assess('paint', 0, 'paint\n', '')
+        plan = self.engine.plan('remove', key)
+        self.inventory.return_value[1].clear()
+        self.assertEqual(self.engine.execute('remove', key, plan['token'], Mock())['code'], 'not-installed')
+        self.remove_native.assert_not_called()
 
     def test_removal_refusals_are_u3_results_for_every_protected_case(self):
         for code, stdout, stderr in [(0, 'paint\nemaki-config\n', ''), (0, 'paint\nlinux\n', ''),

@@ -104,8 +104,10 @@ class UpdateSequence(unittest.TestCase):
                 patch.object(backend, 'rollback_pending', return_value=False), \
                 patch.object(backend.reminder, 'status', return_value=dict(restart=False, reminder=False, restartPackages=[])), \
                 patch.object(backend.flatpaks, 'update', return_value=True, side_effect=flatpak_error) as update, \
-                patch.object(backend, 'emit') as emit:
+                patch.object(backend, 'emit') as emit, \
+                patch.object(backend.reminder, 'notify_completed') as notify:
             backend.apply(Path('/unused'))
+        self.assertEqual(notify.call_count, int(ok and code == 0 and flatpak_error is None))
         return update, emit
 
     def test_repository_refusal_never_runs_flatpak(self):

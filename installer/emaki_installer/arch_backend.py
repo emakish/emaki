@@ -41,6 +41,7 @@ def resize_partition(plan, runner, changed):
     metadata = alongside.read_gpt(runner, disk, n)
     require(metadata == p['_gpt'], Code.DISK_CHANGED, 'Windows GPT metadata changed after review; disk untouched.')
     alongside.verify_gpt(runner, disk)
+    alongside.check_ntfs_journal(runner, dev, p['size_bytes'], sector)
     runner.log('Alongside: dry-run the exact NTFS size; no disk writes yet.')
     output = runner.run(['ntfsresize', '--no-action', '--size', str(new_size), dev])
     require(not alongside.ntfs_error(output) and 'The read-only test run ended successfully.' in output,

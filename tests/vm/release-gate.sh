@@ -87,6 +87,33 @@ check_image() {
         record "$job" FAIL "iso/verify-image.py ($mode mode) refused $iso (log $log)" "$iso"
         return 1
     fi
+    # Test mode verification also accepts hardware-only alongside images. Neither
+    # input may use those images as evidence for the shipped installer.
+    if ! python3 - "$iso" >>"$log" 2>&1 <<'PYCODE'
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+import tempfile
+
+image = sys.argv[1]
+command = ['xorriso', '-abort_on', 'FAILURE', '-indev', image]
+listing = subprocess.run(command + ['-find', '/', '-type', 'f', '-exec', 'echo', '--'],
+                         check=True, text=True, capture_output=True)
+if '/emaki/TEST-ALONGSIDE' in shlex.split(listing.stdout):
+    raise SystemExit('/emaki/TEST-ALONGSIDE')
+with tempfile.TemporaryDirectory(prefix='gate-buildinfo-') as temporary:
+    buildinfo = Path(temporary) / 'BUILDINFO'
+    subprocess.run(command + ['-osirrox', 'on', '-extract', '/emaki/BUILDINFO', str(buildinfo)],
+                   check=True)
+    if any(line.split() == ['image_mode', 'test-alongside']
+           for line in buildinfo.read_text().splitlines()):
+        raise SystemExit('image_mode test-alongside')
+PYCODE
+    then
+        record "$job" FAIL "this is a test image and cannot count for a release (log $log)" "$iso"
+        return 1
+    fi
     return 0
 }
 

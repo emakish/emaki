@@ -135,6 +135,8 @@ def check_root_listing(listing, test_mode=False, check_hygiene=True):
             name, separator, target = line.partition(' -> ')
             entries['/' + name.removeprefix('squashfs-root').lstrip('/')] = target if separator else None
     paths = ['squashfs-root' + name for name in entries]
+    if not test_mode and '/etc/emaki-test-alongside' in entries:
+        raise ValueError('test-only alongside image cannot be released')
     if check_hygiene:
         check_unit_links(entries)
     if not any(p.startswith('squashfs-root/') for p in paths):
@@ -229,6 +231,8 @@ def inspect_efi(image, reject_payload=True):
 
 def verify(image, test_mode=False, efi_report=None, compare_efi=None):
     paths = iso_files(image)
+    if not test_mode and '/emaki/TEST-ALONGSIDE' in paths:
+        raise ValueError('test-only alongside image cannot be released')
     loader = detect_bootloader(image, paths)
     # Large extracted images stay out of /tmp, including when the input ISO lives there.
     evidence = Path(__file__).resolve().parent.parent / '.cache/evidence'

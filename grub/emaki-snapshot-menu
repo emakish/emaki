@@ -4,6 +4,7 @@
 """Make snapshot menus start with bootable entries."""
 
 import argparse
+from datetime import datetime
 import os
 from pathlib import Path
 import re
@@ -21,6 +22,16 @@ SCRIPT_CHECK = '/usr/bin/grub-script-check'
 HEADER = re.compile(r"menuentry '\|((?:\s*(?:Date|Snapshot|Type|Description)\s*\|)+)' \{ echo \}\n")
 OUTER = re.compile(r"submenu '(\|[^']*)' \{\n")
 TITLE = re.compile(r"    submenu '(\|[^']*)' \{ echo \}\n")
+# A snapshot block as GRUB_BTRFS_TITLE_FORMAT=("date" "snapshot" "type" "description")
+# writes it, the setting boot/defaults/grub-btrfs.conf pins.
+BLOCK = re.compile(r"submenu '\| *(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) *\| *(\S+) *\| *([^|']*?) *\|([^']*)\|' \{\n")
+# A boot row inside a snapshot: kernel & initramfs, or kernel & initramfs & microcode.
+KERNEL = re.compile(r"(    menuentry )'  vmlinuz-(linux|linux-lts) & initramfs-\2(-fallback)?\.img(?: & [^']*)?'")
+# Hourly snapshots past the newest few only lengthen the list; every other kind stays.
+AUTOMATIC_KEPT = 5
+COMMAND_SHOWN = 24
+TITLES = {'linux': 'Emaki', 'linux-lts': 'Emaki (LTS kernel)'}
+MONTHS = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
 
 
 def sync_directory(path):
@@ -79,8 +90,99 @@ def replace_file(path, original, replacement, validate=False):
         Path(temporary).unlink(missing_ok=True)
 
 
+def plain_title(date, kind, description):
+    """The date and a plain description instead of upstream's table row."""
+    moment = datetime.strptime(date, '%Y-%m-%d %H:%M:%S')
+    when = f'{moment.day} {MONTHS[moment.month - 1]} {moment.year}, {moment:%H:%M}'
+    description = ' '.join(description.split())
+    if kind in ('pre', 'post') and len(description) > COMMAND_SHOWN:
+        # snap-pac records the whole pacman command line; long ones only widen the menu.
+        description = description[:COMMAND_SHOWN - 1].rstrip() + '…'
+    if kind == 'single' and description == 'timeline':
+        what = 'automatic'
+    elif kind == 'single' and description.startswith('Fresh Emaki '):
+        what = 'fresh install'
+    elif kind == 'pre':
+        what = 'before update · ' + description if description not in ('', 'N/A') else 'before update'
+    elif kind == 'post':
+        what = 'after update · ' + description if description not in ('', 'N/A') else 'after update'
+    else:
+        what = description if description not in ('', 'N/A') else 'saved by hand'
+    return f'{when} · {what}'
+
+
+def retitle(text):
+    """Plain snapshot titles, newest first, with only the newest automatic ones.
+
+    Works only on menus whose every top-level block is an upstream snapshot row; anything
+    else (a custom format, an already retitled menu) is returned unchanged. Boot commands
+    are kept byte for byte; only the title lines change.
+    """
+    lines = text.splitlines(keepends=True)
+    blocks, outside, index = [], [], 0
+    while index < len(lines):
+        line = lines[index]
+        if line.startswith('submenu '):
+            match = BLOCK.fullmatch(line)
+            if not match:
+                return text
+            end = next((number for number in range(index + 1, len(lines)) if lines[number] == '}\n'), None)
+            if end is None:
+                return text
+            blocks.append((match, lines[index + 1:end]))
+            index = end + 1
+            continue
+        if line.strip():
+            if not blocks:
+                return text
+            outside.append(line)
+        index += 1
+    if not blocks:
+        return text
+    blocks.sort(key=lambda block: block[0][1], reverse=True)
+    automatic = 0
+    result = []
+    for match, body in blocks:
+        date, kind, description = match[1], match[3].strip(), match[4].strip()
+        if kind == 'single' and description == 'timeline':
+            automatic += 1
+            if automatic > AUTOMATIC_KEPT:
+                continue
+        result.append(f"submenu '{plain_title(date, kind, description)}' {{\n")
+        # Boot rows: the ordinary initramfs first, the fallback ones after; anything else first.
+        other, entries, current = [], [], None
+        for row in body:
+            if current is None and row.startswith('    menuentry '):
+                current = [row]
+            elif current is not None:
+                current.append(row)
+                if row == '    }\n':
+                    entries.append(current)
+                    current = None
+            elif row.strip():
+                other.append(row)
+        if current is not None:
+            return text
+        ranked = []
+        for position, rows in enumerate(entries):
+            entry = KERNEL.match(rows[0])
+            rank = (2, 0)
+            if entry:
+                title = TITLES[entry[2]]
+                if entry[3]:
+                    title = title[:-1] + ', all drivers)' if title.endswith(')') else title + ' (all drivers)'
+                rows = [f"{entry[1]}'{title}'" + rows[0][entry.end():], *rows[1:]]
+                rank = (1 if entry[3] else 0, list(TITLES).index(entry[2]))
+            ranked.append((rank, position, rows))
+        result += other
+        for _, _, rows in sorted(ranked, key=lambda item: item[:2]):
+            result += rows
+        result.append('}\n')
+    return ''.join(result + outside)
+
+
 def render(text):
-    """Remove only the v4.14 heading forms; preserve boot commands verbatim."""
+    """Remove only the v4.14 heading forms and give snapshots plain titles."""
     lines = text.splitlines(keepends=True)
     result = []
     outer_title = None
@@ -103,7 +205,7 @@ def render(text):
         outer = OUTER.fullmatch(line)
         outer_title = outer[1] if outer else None
         result.append(line)
-    return ''.join(result)
+    return retitle(''.join(result))
 
 
 def repair_menu(menu):

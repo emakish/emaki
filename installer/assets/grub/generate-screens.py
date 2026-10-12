@@ -39,8 +39,31 @@ def png(image):
             + chunk(b'IDAT', zlib.compress(raw, 9)) + chunk(b'IEND', b''))
 
 
+def panel(image, colors, scale):
+    """The boot menu's panel (grub/theme/generate-theme.py) at the same place and size."""
+    width, height = image.size
+    left, top, panel_width, panel_height = screen.PANEL
+    box = (round(width * left / 100), round(height * top / 100),
+           round(width * (left + panel_width) / 100) - 1, round(height * (top + panel_height) / 100) - 1)
+    # Pillow's rounded rectangle at 4x, reduced: antialiased like the theme's corners.
+    mask = Image.new('L', (width * 4, height * 4))
+    ImageDraw.Draw(mask).rounded_rectangle(tuple(v * 4 for v in box), radius=scale['panel_radius'] * 4,
+                                           fill=round(255 * screen.PANEL_ALPHA))
+    mask = mask.resize(image.size, Image.Resampling.LANCZOS)
+    return Image.composite(Image.new('RGB', image.size, colors['surface']), image, mask), box
+
+
 def backdrop(colors, width, height, variant):
     """Keep the menu wave visible, with a soft dark field under the text."""
+    if variant == 'D':
+        # The menu's own picture, untouched: crop to fill like the theme's desktop-image.
+        with Image.open(ROOT / 'art/grub/background.png') as source:
+            source = source.convert('RGB')
+            factor = max(width / source.width, height / source.height)
+            size = (round(source.width * factor), round(source.height * factor))
+            image = source.resize(size, Image.Resampling.LANCZOS)
+            x, y = (size[0] - width) // 2, (size[1] - height) // 2
+            return image.crop((x, y, x + width, y + height))
     if variant == 'C':
         with Image.open(ROOT / 'art/grub/background.png') as source:
             image = source.convert('RGB').resize((width, height), Image.Resampling.LANCZOS)
@@ -70,19 +93,42 @@ def luminance(color):
                for weight, v in zip((.2126, .7152, .0722), channels))
 
 
-def picture(font_path, colors, width, height, variant, state):
-    size = round(width * 36 / 1024)
-    font = ImageFont.truetype(str(font_path), size)
-    if font.getname()[0] != 'Adwaita Sans':
-        raise ValueError('the artwork requires Adwaita Sans')
-    margin = round(width * 0.12)
-    while max(font.getlength(line) for line in (*screen.TEXT, screen.WRONG, screen.CHECKING)) > width - 2 * margin:
-        size -= 1
+def menu_scale(height):
+    """The theme scale the menu uses at this mode height (boot.menu_theme)."""
+    return screen.SCALES[next((scale for limit, scale in screen.SCALE_HEIGHTS if height < limit),
+                              max(screen.SCALES))]
+
+
+def picture(font_path, colors, width, height, variant, state, menu_font_path=None):
+    if variant == 'D':
+        # The menu's item face and size at this mode, so both screens share their letters.
+        scale = menu_scale(height)
+        size = scale['item']
+        font = ImageFont.truetype(str(menu_font_path), size)
+        if ' '.join(font.getname()) != screen.FONT_FAMILY:
+            raise ValueError(f'the artwork requires {screen.FONT_FAMILY}')
+        image, box = panel(backdrop(colors, width, height, variant), colors, scale)
+        if max(font.getlength(line) for line in (*screen.TEXT, screen.WRONG, screen.CHECKING)) > (
+                box[2] - box[0] - 2 * (scale['panel_radius'] + scale['inset'] + scale['select_radius'])):
+            raise ValueError('a sentence does not fit the menu panel')
+        line_height = scale['row'] + scale['gap']
+        middle = (box[1] + box[3]) // 2
+        # Where the menu draws its item text: panel padding, list padding, selection padding.
+        start = box[0] + scale['panel_radius'] + scale['inset'] + scale['select_radius']
+    else:
+        start = None
+        size = round(width * 36 / 1024)
         font = ImageFont.truetype(str(font_path), size)
-    image = backdrop(colors, width, height, variant)
+        if font.getname()[0] != 'Adwaita Sans':
+            raise ValueError('the artwork requires Adwaita Sans')
+        margin = round(width * 0.12)
+        while max(font.getlength(line) for line in (*screen.TEXT, screen.WRONG, screen.CHECKING)) > width - 2 * margin:
+            size -= 1
+            font = ImageFont.truetype(str(font_path), size)
+        image = backdrop(colors, width, height, variant)
+        line_height = round(size * (1.75 if variant == 'A' else 2.0))
+        middle = height // 2
     draw = ImageDraw.Draw(image)
-    line_height = round(size * (1.75 if variant == 'A' else 2.0))
-    middle = height // 2
     status = screen.CHECKING if state == 'checking' else screen.WRONG
     contrasts = []
     for index, line in enumerate((*screen.TEXT, status)):
@@ -90,7 +136,7 @@ def picture(font_path, colors, width, height, variant, state):
             continue
         color = colors['accent'] if index == len(screen.TEXT) and variant != 'A' else colors['text']
         left, top, right, bottom = draw.textbbox((0, 0), line, font=font)
-        x = (width - (right - left)) // 2 - left
+        x = start - left if start is not None else (width - (right - left)) // 2 - left
         y = middle + (index - 2) * line_height - (bottom - top) // 2 - top
         # Check the entire glyph rectangle before painting; antialiased edges
         # naturally blend, while solid interiors retain this contrast or better.
@@ -114,15 +160,17 @@ def picture(font_path, colors, width, height, variant, state):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--font', type=Path, default=Path('/usr/share/fonts/Adwaita/AdwaitaSans-Regular.ttf'))
+    parser.add_argument('--menu-font', type=Path, default=Path('/usr/share/fonts/noto/NotoSans-Regular.ttf'),
+                        help='the boot menu face (tokens.toml [font] ui), for variant D')
     parser.add_argument('--output', type=Path, default=screen.ARTWORK)
     parser.add_argument('--check', action='store_true', help='compare regenerated bytes without writing')
     args = parser.parse_args()
     tokens = tomllib.loads((ROOT / 'tokens.toml').read_text())
     colors = {name: '#' + value for name, value in tokens['color'].items()}
-    for variant in ('A', 'B', 'C'):
+    for variant in ('A', 'B', 'C', 'D'):
         for width, height in screen.SIZES:
             for state in ('unlock', 'wrong', 'checking'):
-                data = png(picture(args.font, colors, width, height, variant, state))
+                data = png(picture(args.font, colors, width, height, variant, state, args.menu_font))
                 path = args.output / variant / f'{state}-{width}x{height}.png'
                 if args.check:
                     if path.read_bytes() != data:
@@ -130,7 +178,7 @@ def main():
                 else:
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(data)
-    print('Unlock artwork is current.' if args.check else 'Wrote all three unlock variants.')
+    print('Unlock artwork is current.' if args.check else 'Wrote all four unlock variants.')
 
 
 if __name__ == '__main__':

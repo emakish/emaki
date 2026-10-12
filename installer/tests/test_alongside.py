@@ -59,6 +59,9 @@ class AlongsideOnTestCase(unittest.TestCase):
         switch = alongside_on()
         switch.start()
         self.addCleanup(switch.stop)
+        journal = patch.object(ntfs, 'check_ntfs_journal')
+        self.journal = journal.start()
+        self.addCleanup(journal.stop)
 
 
 class NtfsTests(AlongsideOnTestCase):
@@ -128,7 +131,7 @@ class NtfsTests(AlongsideOnTestCase):
     def test_minimum_and_refusals(self):
         self.assertEqual(ntfs.parse_ntfs_minimum(OK), 20 * GIB)
         for output, reason in [('ERROR: Volume is scheduled for check.', 'dirty'),
-                               ('The NTFS partition is hibernated.', 'hibernated'),
+                               ('The NTFS partition is hibernated.', 'hibernation'),
                                ('Metadata kept in Windows cache, refused to mount.', 'Fast Startup'),
                                ('BitLocker -FVE-FS-', 'BitLocker'),
                                ('ERROR: failed to read clusters', 'error'),
@@ -157,7 +160,7 @@ class NtfsTests(AlongsideOnTestCase):
             hiber = root / 'HiBeRfIl.SyS'
             for header in (b'hibr' + bytes(4092), b'HIBR' + bytes(4092), b'wake' + bytes(4092), bytes(4095)):
                 hiber.write_bytes(header)
-                self.assertIn('hibernated', ntfs.hibernation_reason(root))
+                self.assertIn('hibernation', ntfs.hibernation_reason(root))
             hiber.write_bytes(bytes(4096))
             self.assertIsNone(ntfs.hibernation_reason(root))
 
@@ -176,6 +179,7 @@ class NtfsTests(AlongsideOnTestCase):
             (Path(temp) / 'mount').mkdir()
             ntfs.Inventory(runner)._alongside(disk, True)
         self.assertEqual(p['_shrink_probe']['min_bytes'], 20 * GIB)
+        self.journal.assert_called_once_with(runner, p['path'], p['size_bytes'], 512)
         self.assertNotIn('reason', p['shrink'])
         commands = [cmd for cmd, _ in runner.commands]
         self.assertEqual([cmd[0] for cmd in commands], ['sgdisk', 'sgdisk', 'sgdisk', 'ntfsresize', 'ntfs-3g', 'umount'])
@@ -201,6 +205,49 @@ class NtfsTests(AlongsideOnTestCase):
             offer = ntfs.Inventory(runner)._ntfs_shrink(disk, p)
         self.assertIn('dirty', offer['reason'])
         self.assertFalse(any(cmd[0] in ('mount', 'ntfs-3g') for cmd, _ in runner.commands))
+
+    def test_disk_refusals_explain_known_causes_and_remedies(self):
+        for cause in ('hibernation', 'bitlocker', 'space', 'efi', 'efi-unknown'):
+            with self.subTest(cause=cause):
+                _, inv = windows()
+                disk = inv['disks'][0]
+                esp, part = disk['partitions']
+                runner = RecordingRunner()
+                runner.responses[('sgdisk', '--verify', disk['path'])] = 'No problems found.'
+                for p in disk['partitions']:
+                    runner.responses[('sgdisk', f'--info={p["number"]}', disk['path'])] = gpt_text(p['_gpt'])
+                runner.responses[('ntfsresize', '--info', '--no-action', part['path'])] = (
+                    OK if cause != 'space' else f'You might resize at {part["size_bytes"] - 30 * GIB} bytes\n')
+                if cause in ('efi', 'efi-unknown'):
+                    esp['_esp_free_bytes'] = 32 * MIB - 1 if cause == 'efi' else None
+                self.journal.side_effect = (InstallError(
+                    Code.SHRINK_BOUNDS, 'The NTFS writable safety check refused this volume.',
+                    output='The NTFS partition is hibernated.') if cause == 'hibernation' else None)
+                with tempfile.TemporaryDirectory() as temp, \
+                        patch.object(ntfs, 'bitlocker_signature', return_value=cause == 'bitlocker'), \
+                        patch.object(ntfs.tempfile, 'mkdtemp', return_value=str(Path(temp) / 'mount')), \
+                        patch.object(ntfs, 'windows_system', return_value=True):
+                    if cause == 'space':
+                        (Path(temp) / 'mount').mkdir()
+                    ntfs.Inventory(runner)._alongside(disk, True)
+                reason = disk['shrink']['reason']
+                expected = {
+                    'hibernation': ('Windows is asleep, not shut down', 'powercfg /hibernate off',
+                                    'as administrator', 'shut Windows down', 'start from the USB stick again'),
+                    'bitlocker': ('BitLocker', 'turn off BitLocker', 'wait until it finishes'),
+                    'space': ('Not enough free space', '35 GB', 'Delete or move files in Windows'),
+                    'efi': ("disk's startup partition is too full", '34 MB', 'needs a backup and a disk tool'),
+                    'efi-unknown': ('could not be checked', 'check the disk for errors'),
+                }[cause]
+                for text in expected:
+                    self.assertIn(text, reason)
+                self.assertNotIn('[PLACEHOLDER]', reason)
+                self.assertNotIn('Cannot verify NTFS', reason)
+                self.assertEqual(disk['shrink']['max_free_bytes'], 0)
+                self.assertEqual(part['_shrink_probe']['reason'], reason)
+                self.assertEqual(ntfs.public_inventory(disk)['shrink']['reason'], reason)
+                if cause != 'space':
+                    self.assertFalse(any(cmd[0] == 'ntfs-3g' for cmd, _ in runner.commands))
 
     def test_unverifiable_efi_is_an_alongside_refusal_not_an_inventory_failure(self):
         _, inv = windows()
@@ -237,7 +284,12 @@ class NtfsTests(AlongsideOnTestCase):
         _, inv = windows()
         disk = inv['disks'][0]
         with patch.object(ntfs, 'bitlocker_signature', return_value=True):
-            self.assertIn('BitLocker', ntfs.Inventory(RecordingRunner())._ntfs_shrink(disk, disk['partitions'][1])['reason'])
+            runner = RecordingRunner()
+            reason = ntfs.Inventory(runner)._ntfs_shrink(disk, disk['partitions'][1])['reason']
+            self.assertEqual(reason, ntfs.ntfs_error('-FVE-FS-'))
+            self.assertIn('after you changed Secure Boot, change it back', reason)
+            self.assertIn('Never delete or reset the firmware keys', reason)
+            self.assertEqual(runner.commands, [])
         disk['partitions'][0]['esp'] = False
         self.assertIn('ESP', ntfs.Inventory(RecordingRunner())._ntfs_shrink(disk, disk['partitions'][1])['reason'])
 
@@ -455,6 +507,7 @@ class AlongsideTests(AlongsideOnTestCase):
         runner = self.runner(plan)
         changed = Mock()
         resize_partition(plan, runner, changed)
+        self.journal.assert_called_once_with(runner, '/dev/vda2', 96 * GIB, 512)
         commands = [cmd for cmd, _ in runner.commands]
         self.assertEqual([cmd[0] for cmd in commands], ['sgdisk', 'sgdisk', 'ntfsresize', 'ntfsresize',
                          'sgdisk', 'partprobe', 'udevadm', 'sgdisk', 'sgdisk', 'sgdisk', 'partprobe', 'udevadm', 'sgdisk'])

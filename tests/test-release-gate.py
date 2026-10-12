@@ -67,6 +67,18 @@ if __name__ == '__main__':
 XORRISO = r'''#!/usr/bin/env python3
 import pathlib, sys
 image = pathlib.Path(sys.argv[sys.argv.index('-indev') + 1])
+content = image.read_bytes()
+if '-extract' in sys.argv:
+    source, destination = sys.argv[sys.argv.index('-extract') + 1:][:2]
+    assert source == '/emaki/BUILDINFO'
+    if b'buildinfo-unreadable' in content:
+        sys.exit(1)
+    mode = 'test-alongside' if b'buildinfo-alongside' in content else 'test'
+    pathlib.Path(destination).write_text('image_mode ' + mode + '\n')
+    sys.exit(0)
+if b'alongside-marker' in content:
+    print("'/emaki/TEST-ALONGSIDE'")
+print("'/emaki/BUILDINFO'")
 print("'/EFI/BOOT/BOOTX64.EFI'")
 print("'/loader/entries/01-emaki.conf'" if b'systemd-boot' in image.read_bytes() else "'/boot/grub/grub.cfg'")
 '''
@@ -348,6 +360,21 @@ sys.exit(int(os.environ.get('STUB_RC_rollback', '0')))
     def test_test_image_given_as_release_is_refused(self):
         result = self.gate(release=self.test, test=self.test)
         self.assert_last(result, 'RESULT: FAILED at release-image', 1)
+        self.assert_no_vm()
+
+    def test_alongside_test_image_is_refused_as_release_evidence(self):
+        for indicator in (b'alongside-marker', b'buildinfo-alongside'):
+            with self.subTest(indicator=indicator):
+                candidate = self.image(indicator.decode() + '/candidate.iso',
+                                       b'emaki.test=1 ' + indicator)
+                result = self.gate('--out', str(self.base / indicator.decode()), test=candidate)
+                self.assert_last(result, 'RESULT: FAILED at test-image', 1)
+                self.assert_no_vm()
+
+    def test_unreadable_test_buildinfo_is_refused(self):
+        candidate = self.image('unreadable/candidate.iso', b'emaki.test=1 buildinfo-unreadable')
+        result = self.gate(test=candidate)
+        self.assert_last(result, 'RESULT: FAILED at test-image', 1)
         self.assert_no_vm()
 
     def test_release_image_given_as_test_is_refused(self):

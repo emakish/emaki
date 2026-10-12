@@ -63,6 +63,30 @@ never: Enable instructions without the person's choice; overwrite existing perso
 rollback: If snapguard is absent or not working, say plainly that rollback protection for this risky action needs snapguard; do not promise an automatic undo. On ext4 snapguard keeps only file archives; a system rollback needs a btrfs root. Explain the recovery gap before proceeding and let the person decide whether to arrange protection or defer. Existing root snapshots and independent backups may support manual recovery only when verified for this change. Remove only the rules you added to turn this integration off.
 ```
 
+## alongside-test-boot-safety
+
+Protects the shared Windows EFI filesystem in private alongside acceptance installations; recovers a validated existing Emaki boot entry after a manual recovery boot on ordinary UEFI.
+
+- Files: `/usr/bin/emaki-boot-order`, `/usr/lib/systemd/system/emaki-boot-order.service`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: `emaki-boot-order --json` (prints JSON)
+- Change: The installer records the shared ESP identity; on ordinary UEFI its enabled service may move only the matching existing Emaki vendor-loader entry first. Apple firmware requires manual recovery.
+- Never: Replace Microsoft's loader or a foreign fallback loader, write Apple firmware variables, bypass the alongside package-transaction guard or treat this test mode as release acceptance.
+- Rollback: Keep the Windows loader and recovery USB; use the firmware picker or chainload the existing Emaki vendor loader from the USB as documented in hardware acceptance.
+
+```system-map
+component: alongside-test-boot-safety
+what: Protects the shared Windows EFI filesystem in private alongside acceptance installations; recovers a validated existing Emaki boot entry after a manual recovery boot on ordinary UEFI.
+files:
+  /usr/bin/emaki-boot-order
+  /usr/lib/systemd/system/emaki-boot-order.service
+zone: package
+state: emaki-boot-order --json
+change: The installer records the shared ESP identity; on ordinary UEFI its enabled service may move only the matching existing Emaki vendor-loader entry first. Apple firmware requires manual recovery.
+never: Replace Microsoft's loader or a foreign fallback loader, write Apple firmware variables, bypass the alongside package-transaction guard or treat this test mode as release acceptance.
+rollback: Keep the Windows loader and recovery USB; use the firmware picker or chainload the existing Emaki vendor loader from the USB as documented in hardware acceptance.
+```
+
 ## application-defaults
 
 Default application associations, launcher and terminal themes, file-manager preferences, toolkit appearance and desktop portal routing. Skeleton templates are package-owned; copies in a new account are personal files and are not updated in place.
@@ -205,7 +229,7 @@ rollback: Set the supported limit to 100 percent; package removal disables boot/
 
 Boot artwork, boot-loader refresh implementation, update return and boot-completion services, initramfs snapshot mounts and resume integration. Generated boot output describes this machine and must stay consistent with its kernels and root snapshots.
 
-- Files: `/usr/bin/emaki-update-boot`, `/usr/lib/emaki/boot/**`, `/usr/lib/initcpio/hooks/emaki-*`, `/usr/lib/initcpio/install/emaki-*`, `/usr/lib/systemd/system-sleep/emaki-boot-resume`, `/usr/lib/systemd/system/emaki-boot-complete.service`, `/usr/lib/systemd/system/emaki-boot-refresh.service`, `/usr/lib/systemd/system/emaki-update-boot.service`, `/usr/lib/systemd/system/multi-user.target.wants/emaki-boot-complete.service`, `/usr/lib/systemd/system/multi-user.target.wants/emaki-boot-refresh.service`, `/usr/lib/systemd/system/multi-user.target.wants/emaki-update-boot.service`, `/usr/share/emaki/boot/*`, `/usr/share/emaki/grub/*`, `/usr/share/emaki/grub/fonts/*`, `/usr/share/libalpm/hooks/04-emaki-update-boot.hook`, `/usr/share/libalpm/hooks/06-emaki-update-boot.hook`, `/usr/share/libalpm/hooks/95-emaki-boot-refresh.hook`, `/usr/share/libalpm/scripts/emaki_boot_defaults.py`
+- Files: `/usr/bin/emaki-update-boot`, `/usr/lib/emaki/boot/**`, `/usr/lib/initcpio/hooks/emaki-*`, `/usr/lib/initcpio/install/emaki-*`, `/usr/lib/systemd/system-sleep/emaki-boot-resume`, `/usr/lib/systemd/system/emaki-boot-complete.service`, `/usr/lib/systemd/system/emaki-boot-refresh.service`, `/usr/lib/systemd/system/emaki-update-boot.service`, `/usr/lib/systemd/system/multi-user.target.wants/emaki-boot-complete.service`, `/usr/lib/systemd/system/multi-user.target.wants/emaki-boot-refresh.service`, `/usr/lib/systemd/system/multi-user.target.wants/emaki-update-boot.service`, `/usr/share/emaki/boot/*`, `/usr/share/emaki/grub/*`, `/usr/share/emaki/grub/fonts/*`, `/usr/share/emaki/grub/theme/**`, `/usr/share/libalpm/hooks/04-emaki-update-boot.hook`, `/usr/share/libalpm/hooks/06-emaki-update-boot.hook`, `/usr/share/libalpm/hooks/95-emaki-boot-refresh.hook`, `/usr/share/libalpm/scripts/emaki_boot_defaults.py`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
 - State: none yet: boot publication and automatic return have no aggregate read-only JSON command; inspect the boot services' journal and /var/log/emaki-boot-refresh.log.
 - Change: Update through the update manager. Package hooks and boot services regenerate boot output; use the boot menu to choose an available recovery entry.
@@ -230,6 +254,7 @@ files:
   /usr/share/emaki/boot/*
   /usr/share/emaki/grub/*
   /usr/share/emaki/grub/fonts/*
+  /usr/share/emaki/grub/theme/**
   /usr/share/libalpm/hooks/04-emaki-update-boot.hook
   /usr/share/libalpm/hooks/06-emaki-update-boot.hook
   /usr/share/libalpm/hooks/95-emaki-boot-refresh.hook
@@ -1836,9 +1861,9 @@ rollback: Restart into the prepared system; use the existing kept-root restore m
 
 ## updates
 
-The update manager window, terminal update command, privileged update backend and service. The backend decides whether a restart or sign-out is needed and explains refused transactions.
+The separate Programs & Updates window combines Browse, search, program details, Installed, updates and dated restore. Existing program/update backends own previews and transactions. The update backend decides whether a restart or sign-out is needed and explains refused transactions.
 
-- Files: `/usr/bin/emaki-update`, `/usr/bin/emaki-update-manager`, `/usr/lib/systemd/system/emaki-update.service`, `/usr/libexec/emaki/emaki-update-apply`, `/usr/libexec/emaki/emaki_update_*.py`, `/usr/libexec/emaki/update-manager-backend`, `/usr/libexec/emaki/update_catalog.py`, `/usr/libexec/emaki/update_flatpaks.py`, `/usr/share/applications/emaki-update-manager.desktop`, `/usr/share/emaki-update-manager/**`, `/usr/share/polkit-1/actions/org.emaki.update.policy`
+- Files: `/usr/bin/emaki-update`, `/usr/bin/emaki-update-manager`, `/usr/lib/systemd/system/emaki-update.service`, `/usr/libexec/emaki/emaki-update-apply`, `/usr/libexec/emaki/emaki_update_*.py`, `/usr/libexec/emaki/update-manager-backend`, `/usr/libexec/emaki/update_catalog.py`, `/usr/libexec/emaki/update_flatpaks.py`, `/usr/share/applications/emaki-update-manager.desktop`, `/usr/share/emaki-update-manager/**`, `/usr/share/icons/hicolor/scalable/apps/emaki-programs-updates.svg`, `/usr/share/polkit-1/actions/org.emaki.update.policy`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
 - State: `emaki-update-manager --status` (prints JSON)
 - Change: Open `emaki-update-manager` or use `emaki-update` for a full update. Let the backend perform the transaction and follow its restart or sign-out request.
@@ -1847,7 +1872,7 @@ The update manager window, terminal update command, privileged update backend an
 
 ```system-map
 component: updates
-what: The update manager window, terminal update command, privileged update backend and service. The backend decides whether a restart or sign-out is needed and explains refused transactions.
+what: The separate Programs & Updates window combines Browse, search, program details, Installed, updates and dated restore. Existing program/update backends own previews and transactions. The update backend decides whether a restart or sign-out is needed and explains refused transactions.
 files:
   /usr/bin/emaki-update
   /usr/bin/emaki-update-manager
@@ -1859,6 +1884,7 @@ files:
   /usr/libexec/emaki/update_flatpaks.py
   /usr/share/applications/emaki-update-manager.desktop
   /usr/share/emaki-update-manager/**
+  /usr/share/icons/hicolor/scalable/apps/emaki-programs-updates.svg
   /usr/share/polkit-1/actions/org.emaki.update.policy
 zone: package
 state: emaki-update-manager --status

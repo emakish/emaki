@@ -80,9 +80,20 @@ def arch_rows(metadata, available, installed):
                 row['name'] = row.get('name') or name
                 row['summary'] = row.get('summary') or package.get('summary', '')
                 row['licence'] = row.get('licence') or package.get('licence', '')
-                # Prefer the duplicate with more usable screenshots.
-                if key not in rows or len(row.get('screenshots', [])) > len(rows[key].get('screenshots', [])):
+                if key not in rows:
                     rows[key] = row
+                    continue
+                previous = rows[key]
+                # Installed metainfo and repository catalogs can supply different
+                # assets for one edition. Keep its icons even when the record
+                # with more screenshots is the other one.
+                icons = list(previous.get('icons', []))
+                for icon in row.get('icons', []):
+                    if icon not in icons:
+                        icons.append(icon)
+                if len(row.get('screenshots', [])) > len(previous.get('screenshots', [])):
+                    rows[key] = row
+                rows[key]['icons'] = icons
     return list(rows.values())
 
 
@@ -178,12 +189,20 @@ class Engine:
                 row.setdefault(field, [])
             row['name'] = row.get('name') or row['id']
         rows += optional
+        for target, package in available.items():
+            name = package['package']
+            rows.append(dict(package, key='package:' + target, id=name, kind='arch',
+                             target=target, name=name, packageOnly=True,
+                             programKey='',
+                             installed=name in self.installed,
+                             installedVersion=self.installed.get(name, ''),
+                             description='', icons=[], categories=[], screenshots=[], keywords=[]))
         # Do not rewrite executable identities into a different program. Reject
         # unsafe keys before cleaning display fields and indexing the catalog.
         safe_rows = []
         for row in rows:
             identities = [row.get(field, '') for field in
-                          ('key', 'id', 'target', 'package', 'installation', 'origin', 'ref')]
+                          ('key', 'id', 'target', 'package', 'installation', 'origin', 'ref', 'programKey')]
             if any(value != removal.clean_text(value) for value in identities):
                 self.warnings.append('[PLACEHOLDER] Program metadata contains an invalid identifier.')
                 continue
@@ -195,6 +214,13 @@ class Engine:
             else:
                 row['actions'] = ['install'] if not row.get('installed') else ['remove']
             safe_rows.append(row)
+        program_keys = {}
+        for row in sorted(safe_rows, key=lambda item: item['key']):
+            if row['kind'] == 'arch' and not row.get('packageOnly'):
+                program_keys.setdefault(row['target'], row['key'])
+        for row in safe_rows:
+            if row.get('packageOnly'):
+                row['programKey'] = program_keys.get(row['target'], '')
         self.rows = {row['key']: row for row in safe_rows}
         self.warnings = removal.clean_display(self.warnings)
         for row in self.aur.values():
@@ -220,13 +246,22 @@ class Engine:
     def catalog(self, **options):
         refresh = options.pop('refresh', False)
         include_aur = options.pop('includeAur', False)
+        scope = options.pop('scope', 'programs')
         if not isinstance(refresh, bool) or not isinstance(include_aur, bool):
             raise ValueError('Invalid discovery option')
+        if scope not in ('programs', 'packages'):
+            raise ValueError('Invalid catalog scope')
+        if scope == 'packages' and (include_aur or options.get('source', '') not in ('', 'arch')
+                                    or options.get('category', '')):
+            raise ValueError('Invalid package filters')
         select([], **options)
         self.load(refresh)
-        if include_aur or options.get('source') == 'aur':
+        if scope == 'programs' and (include_aur or options.get('source') == 'aur'):
             self.search_aur(options.get('query', ''))
-        result = select(list(self.rows.values()) + list(self.aur.values()), **options)
+        rows = [row for row in self.rows.values() if bool(row.get('packageOnly')) == (scope == 'packages')]
+        if scope == 'programs':
+            rows += list(self.aur.values())
+        result = select(rows, **options)
         return dict(ok=True, **result, warnings=list(dict.fromkeys(self.warnings)), partial=bool(self.warnings))
 
     def details(self, key):
@@ -425,6 +460,7 @@ def main(argv, legacy):
     parser.add_argument('arguments', nargs='*')
     parser.add_argument('--json', action='store_true')
     parser.add_argument('--source', choices=('arch', 'flatpak', 'aur'), default='')
+    parser.add_argument('--scope', choices=('programs', 'packages'), default='programs')
     parser.add_argument('--category', default='')
     parser.add_argument('--installed', action='store_true', default=None)
     parser.add_argument('--refresh', action='store_true')
@@ -447,7 +483,7 @@ def main(argv, legacy):
     if args.method in ('catalog', 'search'):
         params = dict(query=args.arguments[0] if args.arguments else '', source=args.source,
                       category=args.category, installed=args.installed, refresh=args.refresh,
-                      includeAur=args.include_aur, limit=args.limit, offset=args.offset)
+                      includeAur=args.include_aur, scope=args.scope, limit=args.limit, offset=args.offset)
     elif args.method == 'details':
         params = dict(key=args.arguments[0])
     elif args.method in ('plan', 'execute'):

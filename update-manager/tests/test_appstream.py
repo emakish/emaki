@@ -100,9 +100,37 @@ class AppStreamTests(unittest.TestCase):
         self.assertEqual(app['icons'], [
             {'kind': 'stock', 'value': 'painter', 'width': 0, 'height': 0},
             {'kind': 'remote', 'value': 'https://example.org/icon.png', 'width': 64, 'height': 64}])
-        self.assertEqual(app['screenshots'], ['https://example.org/screenshot.png', 'https://example.org/thumb.png'])
+        self.assertEqual(app['screenshots'], ['https://example.org/screenshot.png'])
         self.assertIsNone(app['downloadSize'])
         self.assertIsNone(app['installedSize'])
+
+    def test_screenshots_select_one_source_or_largest_safe_variant(self):
+        scenes = [
+            # Prefer source even when its size is unknown or a thumbnail is larger.
+            '<image type="thumbnail" width="1920" height="1080">https://example.org/large-thumb.png</image>'
+            '<image type="source">https://example.org/source.png</image>',
+            # Without a safe source, choose the largest thumbnail by pixel area.
+            '<image type="source">file:///private.png</image>'
+            '<image type="thumbnail" width="800" height="200">https://example.org/wide.png</image>'
+            '<image type="thumbnail" width="640" height="480">https://example.org/largest.png</image>'
+            '<image type="thumbnail">https://example.org/unknown.png</image>',
+            # Multiple source variants prefer the largest source.
+            '<image type="source" width="640" height="480">https://example.org/small-source.png</image>'
+            '<image type="source" width="1280" height="960">https://example.org/big-source.png</image>',
+            # Repeated logical scenes must not reappear as a different thumbnail.
+            '<image type="source">https://example.org/source.png</image>'
+            '<image type="thumbnail" width="64" height="64">https://example.org/repeated-thumb.png</image>',
+            # No dimensions still gives a deterministic usable fallback.
+            '<image type="thumbnail">https://example.org/no-size.png</image>',
+            '<image type="source">javascript:alert(1)</image>',
+        ]
+        xml = '<component type="desktop-application"><id>org.example.Scenes</id><screenshots>' \
+              + ''.join('<screenshot>' + scene + '</screenshot>' for scene in scenes) \
+              + '</screenshots></component>'
+        row = reader.read_file(self.file('scenes.metainfo.xml', xml))[0]
+        self.assertEqual(row['screenshots'], ['https://example.org/source.png',
+                         'https://example.org/largest.png', 'https://example.org/big-source.png',
+                         'https://example.org/no-size.png'])
 
     def test_metainfo_uses_one_session_language_with_english_fallback(self):
         xml = '<component type="desktop-application"><id>org.example.Locale</id>' \
@@ -283,6 +311,52 @@ class AppStreamTests(unittest.TestCase):
         app = reader.read_file(path)[0]
         self.assertEqual([item['value'] for item in app['icons']], [str(icon)])
         self.assertEqual(reader.read_file(path, origin='flathub')[0]['icons'], [])
+
+    def test_cached_icons_resolve_native_and_flatpak_layouts(self):
+        for folder, filename, origin, scale in (
+                ('swcatalog/xml', 'extra.xml', 'arch-extra', 1),
+                ('swcatalog/yaml', 'extra.xml', 'arch-extra', 2),
+                ('flatpak/checksum', 'appstream.xml', 'flathub', 1)):
+            with self.subTest(folder=folder, scale=scale):
+                metadata = self.root / folder / filename
+                metadata.parent.mkdir(parents=True, exist_ok=True)
+                base = metadata.parent.parent / 'icons' / origin if 'swcatalog' in folder else metadata.parent / 'icons'
+                size = '64x64' + ('@2' if scale == 2 else '')
+                image = base / size / 'painter.png'
+                image.parent.mkdir(parents=True, exist_ok=True)
+                image.write_bytes(b'cached icon')
+                xml = XML.replace('<icon type="stock">painter</icon>',
+                                  f'<icon type="cached" width="64" height="64" scale="{scale}">painter.png</icon>')
+                metadata.write_text(xml)
+                row = reader.read_file(metadata, origin=origin)[0]
+                cached = [icon for icon in row['icons'] if icon['kind'] == 'cached']
+                self.assertEqual(cached, [dict(kind='cached', value=str(image), width=64, height=64)])
+
+    def test_cached_icons_reject_traversal_missing_files_and_symlink_escape(self):
+        metadata = self.root / 'swcatalog' / 'xml' / 'extra.xml'
+        metadata.parent.mkdir(parents=True)
+        images = metadata.parent.parent / 'icons' / 'arch-extra' / '64x64'
+        images.mkdir(parents=True)
+        secret = self.root / 'private.png'
+        secret.write_bytes(b'private')
+        (images / 'escape.png').symlink_to(secret)
+        xml = XML.replace('<icon type="stock">painter</icon>',
+                          '<icon type="cached" width="64" height="64">escape.png</icon>'
+                          '<icon type="cached" width="64" height="64">missing.png</icon>')
+        metadata.write_text(xml)
+        row = reader.read_file(metadata)[0]
+        self.assertFalse(any(icon['kind'] == 'cached' for icon in row['icons']))
+        self.assertTrue(any(icon['kind'] == 'remote' for icon in row['icons']))
+        for name in ('../private.png', '/private.png', '..', 'file:private.png'):
+            self.assertIsNone(reader._cached_icon(metadata, 'arch-extra', name, 64, 64))
+        for origin in ('../private', '/private', '..'):
+            self.assertIsNone(reader._cached_icon(metadata, origin, 'escape.png', 64, 64))
+        # An entire origin-directory symlink cannot widen the allowed icon tree.
+        for child in images.iterdir():
+            child.unlink()
+        images.rmdir()
+        images.symlink_to(self.root, target_is_directory=True)
+        self.assertIsNone(reader._cached_icon(metadata, 'arch-extra', 'private.png', 64, 64))
 
     def test_failure_does_not_discard_other_files(self):
         paths = [self.file('broken.xml', '<components><component'),

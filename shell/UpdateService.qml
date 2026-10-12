@@ -64,7 +64,7 @@ Scope {
     }
     Process {
         id: launcher
-        command: AppLaunch.command("emaki-update-manager", ["emaki-update-manager"])
+        command: AppLaunch.command("emaki-update-manager", ["emaki-update-manager", "--updates"])
         stderr: SplitParser {
             onRead: line => AppLaunch.diagnostic(line)
         }

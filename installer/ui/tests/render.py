@@ -19,7 +19,7 @@ from render_content import validate_frame, validate_restart
 
 UI = Path(__file__).resolve().parents[1]
 ROOT = UI.parents[1]
-SCREENS = ['welcome', 'welcome-bios', 'welcome-no-boot-medium', 'keyboard', 'network', 'timezone', 'timezone-search', 'timezone-empty', 'disk', 'alongside', 'alongside-review', 'manual', 'manual-empty', 'disk-mbr', 'disk-none', 'filesystem', 'encryption', 'encryption-none', 'encryption-account', 'encryption-separate', 'encryption-separate-empty', 'encryption-manual', 'encryption-alongside', 'encryption-mismatch', 'encryption-invalid', 'encryption-revealed', 'encryption-caps', 'encryption-numlock', 'live-keyboard-you', 'live-keyboard-encryption', 'live-keyboard-failed', 'live-keyboard-second', 'you', 'you-valid', 'you-cyrillic', 'you-emoji', 'you-tab', 'you-empty', 'you-console', 'you-paste', 'you-caps', 'you-numlock', 'software', 'software-minimal', 'review', 'review-encrypted', 'plan-errors', 'install', 'install-signatures', 'install-updates', 'install-step', 'done', 'done-restart', 'done-restart-removable', 'done-warning', 'done-no-package-lists', 'done-wifi-not-copied', 'error-login-name', 'error', 'error-details', 'error-real']
+SCREENS = ['welcome', 'welcome-bios', 'welcome-no-boot-medium', 'keyboard', 'network', 'timezone', 'timezone-search', 'timezone-empty', 'disk', 'alongside', 'alongside-review', 'manual', 'manual-empty', 'disk-mbr', 'disk-none', 'disk-refused-hibernation', 'disk-refused-bitlocker', 'disk-refused-space', 'disk-refused-efi', 'filesystem', 'encryption', 'encryption-none', 'encryption-account', 'encryption-separate', 'encryption-separate-empty', 'encryption-manual', 'encryption-alongside', 'encryption-mismatch', 'encryption-invalid', 'encryption-revealed', 'encryption-caps', 'encryption-numlock', 'live-keyboard-you', 'live-keyboard-encryption', 'live-keyboard-failed', 'live-keyboard-second', 'you', 'you-valid', 'you-cyrillic', 'you-emoji', 'you-tab', 'you-empty', 'you-console', 'you-paste', 'you-caps', 'you-numlock', 'software', 'software-minimal', 'review', 'review-encrypted', 'plan-errors', 'install', 'install-signatures', 'install-updates', 'install-step', 'done', 'done-restart', 'done-restart-removable', 'done-warning', 'done-no-package-lists', 'done-wifi-not-copied', 'error-login-name', 'error', 'error-details', 'error-real']
 
 
 def main():
@@ -115,6 +115,8 @@ def main():
                 assert 'ERASE_IN_VIEW' in log, log
             if screen == 'manual-empty':
                 assert 'NO_PARTITIONS_HINT This disk has no partitions yet.' in log, log
+            if screen.startswith('disk-refused-'):
+                assert 'UNSELECTED_REFUSAL_VISIBLE' in log, log
             if screen == 'disk-none':
                 assert 'BLOCKED_REASON Choose a disk.' in log, log
             if screen == 'live-keyboard-failed':

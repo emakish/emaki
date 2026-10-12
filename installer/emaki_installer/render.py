@@ -224,6 +224,13 @@ def normalize_fstab(text, plan):
         fields = line.split()
         require(len(fields) == 6, Code.FSTAB_VERIFY, 'Malformed genfstab output.')
         options = [x for x in fields[3].split(',') if not x.startswith('subvolid=')]
+        if fields[1] == '/efi' and plan.config['mode'] == 'alongside':
+            # Windows can restore Fast Startup without consulting this installation.
+            # No runtime writer may modify its shared FAT filesystem in the test mode.
+            options = [x for x in options if x not in ('rw', 'relatime', 'strictatime', 'atime')]
+            options = list(dict.fromkeys([*options, 'ro', 'noatime']))
+            # fsck is a writer too; never repair a potentially hibernated Windows ESP.
+            fields[5] = '0'
         fields[3] = ','.join(options)
         require(fields[1] not in entries, Code.FSTAB_VERIFY, 'Duplicate fstab mountpoint.')
         entries[fields[1]] = fields

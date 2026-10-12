@@ -1,11 +1,11 @@
 #!/usr/bin/python3 -IB
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Remove exactly one installed program, and only the packages the person reviewed.
+"""Remove one installed program or repository package and its reviewed dependencies.
 
 Run through pkexec with two arguments: the package and the preview token the
 person saw. The preview is computed again here; any difference, an Emaki
-component, a system package or a package that is not a program refuses the
+component, a protected system package or an ineligible target refuses the
 removal before pacman changes anything. Never a cascade (-c) or a dependency
 override (-d): pacman keeps everything another installed package requires.
 """
@@ -17,9 +17,11 @@ import re
 import signal
 import subprocess
 import sys
+import tarfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import programs_catalog as catalog
+import programs_arch as arch
 import emaki_update_root
 
 ENV = {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C'}
@@ -50,8 +52,16 @@ def is_program(name):
     return result.returncode == 0 and any(ENTRY.fullmatch(line) for line in result.stdout.splitlines())
 
 
+def is_repository_package(name):
+    try:
+        available, installed = arch.inventory()
+    except (OSError, ValueError, RuntimeError, tarfile.TarError, subprocess.SubprocessError):
+        return False
+    return name in installed and any(row['package'] == name for row in available.values())
+
+
 def remove(name, expected):
-    if not is_program(name):
+    if not is_program(name) and not is_repository_package(name):
         return emit('not-installed' if pacman('-Q', name).returncode else 'not-program')
     check = pacman('-Rs', '--print', '--print-format', '%n', name)
     answer = catalog.assess(name, check.returncode, check.stdout, check.stderr)

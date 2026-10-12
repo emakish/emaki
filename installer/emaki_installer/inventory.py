@@ -22,11 +22,36 @@ from .media import discover_repo, MISSING_NOTICE
 from .hardware import disk_behind_vmd, secure_boot, vmd_present, VMD_MESSAGE
 from .constants import GIB, MIB
 from .errors import Code, InstallError, require
+from .ntfs_probe import check_ntfs_journal
 
 
 ESP_GUID = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
+MICROSOFT_BASIC_DATA_GUID = "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7"
+WINDOWS_MANAGED_GUIDS = frozenset({
+    "5808c8aa-7e8f-42e0-85d2-e1e90434cfb3",  # LDM metadata
+    "af9b60a0-1431-4f62-bc68-3311714a69ad",  # LDM data
+    "e75caf8f-f680-4cee-afa3-b001e56efc2d",  # Storage Spaces
+})
 MIN_ROOT = 32 * GIB
 WINDOWS_RESERVE = 2 * GIB
+HIBERNATION_REFUSAL = ('Windows is asleep, not shut down (hibernation or Fast Startup is on). '
+                      'In Windows, open Command Prompt as administrator, type powercfg /hibernate off '
+                      'and press Enter. Then shut Windows down and start from the USB stick again.')
+BITLOCKER_REFUSAL = ('Windows is encrypted with BitLocker, so Emaki cannot make room next to it. '
+                     'Windows was not changed. In Windows, turn off BitLocker and wait until it finishes, '
+                     'then shut down and start from the USB stick again. '
+                     'If Windows stopped starting after you changed Secure Boot, change it back. '
+                     'Never delete or reset the firmware keys.')
+
+
+def alongside_type_refusal(disk, part):
+    """A filesystem signature cannot establish a safe Windows partition map."""
+    if any(str(p.get('_parttype', '')).lower() in WINDOWS_MANAGED_GUIDS
+           for p in disk['partitions']):
+        return 'Windows uses this disk as a dynamic disk or in Storage Spaces. Emaki cannot share such a disk.'
+    if str(part.get('_parttype', '')).lower() != MICROSOFT_BASIC_DATA_GUID:
+        return 'The Windows part of this disk is set up in a way Emaki cannot safely shrink.'
+    return None
 
 
 def require_verified():
@@ -38,9 +63,9 @@ def require_verified():
 def ntfs_error(output):
     text = output.lower()
     if 'bitlocker' in text or '-fve-fs-' in text:
-        return 'BitLocker encryption is not supported; Windows was not changed.'
+        return BITLOCKER_REFUSAL
     if any(word in text for word in ('hibernat', 'fast startup', 'windows cache')):
-        return 'Windows is hibernated or Fast Startup is active. Fully shut down Windows and disable Fast Startup first.'
+        return HIBERNATION_REFUSAL
     if any(word in text for word in ('dirty', 'scheduled for check', 'unclean', 'inconsistent', 'chkdsk /f')):
         return 'NTFS is dirty or needs a Windows consistency check. Run chkdsk in Windows and fully shut down first.'
     if any(word in text for word in ('mounted', 'busy', 'already opened')):
@@ -67,7 +92,8 @@ def shrink_offer(minimum, size, start):
     keep = (minimum + WINDOWS_RESERVE + MIB - 1) // MIB * MIB
     free = max(0, size - keep)
     require(free >= MIN_ROOT, Code.SHRINK_BOUNDS,
-            'Less than 32 GiB can be freed while keeping Windows its minimum size plus 2 GiB.')
+            'Not enough free space. Emaki needs about 35 GB that Windows does not use. '
+            'Delete or move files in Windows, then shut it down and start from the USB stick again.')
     return {'min_bytes': minimum, 'max_free_bytes': free}
 
 
@@ -85,7 +111,7 @@ def hibernation_reason(root):
     with matches[0].open('rb') as stream:
         header = stream.read(4096)
     if len(header) != 4096 or any(header):
-        return 'Windows is hibernated or Fast Startup is active (nonzero or incomplete hibernation header). Fully shut down Windows first.'
+        return HIBERNATION_REFUSAL
     return None
 
 
@@ -197,7 +223,7 @@ EFI_MANIFEST_MAX_ENTRIES = 4096
 EFI_MANIFEST_MAX_BYTES = 256 * MIB
 EFI_MANIFEST_MAX_FILE_BYTES = 64 * MIB
 EFI_MANIFEST_MAX_DEPTH = 16
-EFI_MANIFEST_UNSAFE = '[PLACEHOLDER] Cannot safely verify the existing EFI files.'
+EFI_MANIFEST_UNSAFE = "The disk's startup files could not be checked safely, so Emaki stopped."
 
 
 def efi_loaders(root):
@@ -824,7 +850,7 @@ class Inventory:
             root.rmdir()
 
     def _ntfs_shrink(self, disk, part):
-        """Every command in this probe opens NTFS read-only; never recover it."""
+        """The origin stays read-only; writable checks use a disposable snapshot."""
         refusal = {'min_bytes': 0, 'max_free_bytes': 0}
         if disk['_busy'] or part.get('_busy') or part.get('mountpoint'):
             return dict(refusal, reason='The Windows partition or its disk is mounted, held, or in use.')
@@ -832,18 +858,25 @@ class Inventory:
             return dict(refusal, reason='The disk is read-only or is the live boot medium.')
         if disk['_pttype'] != 'gpt' or not any(p['esp'] for p in disk['partitions']):
             return dict(refusal, reason='Alongside Windows requires a GPT disk with an existing ESP.')
+        type_refusal = alongside_type_refusal(disk, part)
+        if type_refusal:
+            return dict(refusal, reason=type_refusal)
         root, mounted = None, False
         try:
             if bitlocker_signature(part['path']):
-                return dict(refusal, reason='BitLocker encryption is not supported; Windows was not changed.')
+                return dict(refusal, reason=BITLOCKER_REFUSAL)
             esps = [p for p in disk['partitions'] if p['esp']]
             require(len(esps) == 1 and esps[0]['fs'] == 'vfat', Code.ESP_SPACE,
                     'Alongside requires exactly one FAT32 ESP.')
             esp = esps[0]
             if esp.get('_efi_error'):
                 return dict(refusal, reason=esp['_efi_error'])
-            require((esp.get('_esp_free_bytes') or 0) >= 32 * MIB, Code.ESP_SPACE,
-                    'ESP needs at least 32 MiB of verified free space.')
+            require(esp.get('_esp_free_bytes') is not None, Code.ESP_SPACE,
+                    "The free space on the disk's startup partition could not be checked. "
+                    'In Windows, check the disk for errors, then try again.')
+            require(esp['_esp_free_bytes'] >= 32 * MIB, Code.ESP_SPACE,
+                    "The disk's startup partition is too full: Emaki needs about 34 MB free there. "
+                    'Making it bigger needs a backup and a disk tool. Do not delete Windows startup files.')
             require('EFI/Microsoft/Boot/bootmgfw.efi' in esp.get('_efi_loaders', {}), Code.SHRINK_BOUNDS,
                     'No verified Microsoft EFI loader exists on this disk.')
             verify_gpt(self.runner, disk['path'])
@@ -859,8 +892,10 @@ class Inventory:
                 original['_gpt'] = metadata
             output = self.runner.run(['ntfsresize', '--info', '--no-action', part['path']])
             minimum = parse_ntfs_minimum(output)
+            check_ntfs_journal(self.runner, part['path'], part['size_bytes'], disk['_sector_size'])
             root = Path(tempfile.mkdtemp(prefix='ntfs-probe-', dir='/run/emaki-installer'))
-            # --readwrite ntfs-3g.probe can change NTFS metadata. Do not use it.
+            # Never use the writable probe on the origin; the snapshot above
+            # already checked the journal without changing Windows metadata.
             self.runner.run(['ntfs-3g', '-o', 'ro,norecover,nodev,nosuid,noexec,show_sys_files',
                              part['path'], str(root)])
             mounted = True
@@ -871,7 +906,11 @@ class Inventory:
                 return dict(refusal, reason=reason)
             return shrink_offer(minimum, part['size_bytes'], part['start_bytes'])
         except (OSError, RuntimeError) as exc:
-            reason = ntfs_error(getattr(exc, 'output', '') or str(exc))
+            output = getattr(exc, 'output', '')
+            if isinstance(exc, InstallError) and exc.code != Code.COMMAND_FAILED:
+                reason = ntfs_error(output) if output else None
+                return dict(refusal, reason=reason or exc.message)
+            reason = ntfs_error(output or str(exc))
             return dict(refusal, reason=reason or 'Cannot verify NTFS, hibernation state or GPT metadata: ' + str(exc))
         finally:
             if mounted:

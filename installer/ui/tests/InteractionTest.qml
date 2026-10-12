@@ -649,6 +649,28 @@ ShellRoot {
                 if (!windowsCard)
                     return test.check(false, "disk cards are named disk-<id>");
                 test.check(windowsCard.detail.endsWith(" · contains Windows"), "the card says the disk contains Windows (" + windowsCard.detail + ")");
+                // Every known refusal is on the unselected Windows card, without opening it.
+                const withoutOffer = JSON.parse(JSON.stringify(controller.session.inventory));
+                const refusals = ["Windows is asleep, not shut down (hibernation or Fast Startup is on). In Windows, open Command Prompt as administrator, type powercfg /hibernate off and press Enter. Then shut Windows down and start from the USB stick again.", "Windows is encrypted with BitLocker, so Emaki cannot make room next to it. Windows was not changed. In Windows, turn off BitLocker and wait until it finishes, then shut down and start from the USB stick again. If Windows stopped starting after you changed Secure Boot, change it back. Never delete or reset the firmware keys.", "Not enough free space. Emaki needs about 35 GB that Windows does not use. Delete or move files in Windows, then shut it down and start from the USB stick again.", "The disk's startup partition is too full: Emaki needs about 34 MB free there. Making it bigger needs a backup and a disk tool. Do not delete Windows startup files."];
+                for (const refusal of refusals) {
+                    const refusedCard = JSON.parse(JSON.stringify(withoutOffer));
+                    refusedCard.disks[0].shrink = {
+                        reason: refusal
+                    };
+                    controller.diskId = "";
+                    controller.mode = "";
+                    controller.session.inventory = refusedCard;
+                    controller.publish();
+                    input.wait(30);
+                    const card = test.find("disk-/dev/vda");
+                    const label = test.findType(card, item => item instanceof Text && item.text === card.detail);
+                    test.check(!controller.selectedDisk && !card.chosen, "refusal is shown before disk selection");
+                    test.check(card.detail.includes("Install alongside Windows is not possible here. " + refusal), "Windows disk card preserves the specific cause and fix");
+                    test.check(label && label.visible && label.height >= label.implicitHeight, "refusal is rendered in full on the disk card");
+                    test.check(!test.find("alongsideChoice").visible && !test.find("continueButton").enabled, "refusal does not enable alongside or Continue");
+                }
+                controller.session.inventory = withoutOffer;
+                controller.chooseDisk("/dev/vda");
                 const mac = JSON.parse(JSON.stringify(controller.session.inventory));
                 mac.disks[0].partitions = [
                     {
@@ -693,6 +715,7 @@ ShellRoot {
                 test.check(warning.visible && warning.text.includes("deletes Windows"), "erase mode names the Windows installation it removes");
                 const choice = test.findItem(content, "alongsideChoice") as C.AbstractButton;
                 test.check(choice.visible, "worker offer exposes alongside choice");
+                test.check(choice.y < test.find("eraseChoice").y && choice.y < test.find("manualChoice").y, "alongside offer precedes erase and manual choices");
                 choice.forceActiveFocus();
                 input.keyClick(Qt.Key_Space);
                 test.check(controller.mode === "alongside", "keyboard selects alongside");

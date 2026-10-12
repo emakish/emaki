@@ -49,6 +49,12 @@ def validate_frame(path, log, screen, width, height, version, *, scrolled=False)
             expected.append('Press Super+D to open the app launcher. Super is the Windows key, or Command on a Mac keyboard.')
         if screen.endswith('-numlock'):
             expected.append('Num Lock is on — the login screen starts with Num Lock off; type digits on the main row.')
+    if screen.startswith('disk-refused-'):
+        refusal = [item for item in body if 'Install alongside Windows is not possible here.' in item['text']]
+        assert len(refusal) == 1, f'Windows refusal must be fully readable before selection [{screen}]'
+        expected_cause = {'hibernation': 'powercfg /hibernate off', 'bitlocker': 'BitLocker',
+                          'space': 'Delete or move files in Windows', 'efi': 'needs a backup and a disk tool'}
+        assert expected_cause[screen.rsplit('-', 1)[1]] in refusal[0]['text'], refusal
     required = []
     for index, sentence in enumerate(expected):
         found = [item for item in texts if item['text'] == sentence and not item['clipped'] and not item['truncated']]

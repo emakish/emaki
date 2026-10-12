@@ -534,6 +534,54 @@ class StaticTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 image_check.check_loaders(directory, True)
 
+    def test_alongside_override_only_modifies_staged_test_image(self):
+        enable = load('enable-test-alongside').enable
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            constants = root / 'usr/lib/python3.14/site-packages/emaki_installer/constants.py'
+            constants.parent.mkdir(parents=True)
+            constants.write_text('ALONGSIDE = False\n')
+            with self.assertRaisesRegex(ValueError, 'staged test image'):
+                enable(root)
+            key = root / 'etc/emaki-test/authorized_keys'
+            key.parent.mkdir(parents=True)
+            key.write_text('test public key\n')
+            cache = constants.parent / '__pycache__/constants.cpython-314.pyc'
+            cache.parent.mkdir()
+            cache.write_bytes(b'stale')
+            enable(root)
+            self.assertEqual(constants.read_text(), 'ALONGSIDE = True\n')
+            self.assertTrue((root / 'etc/emaki-test-alongside').is_file())
+            self.assertFalse(cache.exists())
+            with self.assertRaisesRegex(ValueError, 'shipped literal'):
+                enable(root)
+            constants.write_text('ALONGSIDE = False\nif True:\n ALONGSIDE = True\n')
+            with self.assertRaisesRegex(ValueError, 'shipped literal'):
+                enable(root)
+
+    def test_alongside_build_requires_test_mode_and_never_signs(self):
+        for arguments, environment, reason in (
+                (['--test-alongside'], {}, 'requires --test'),
+                (['--test-alongside', '--test'], {'EMAKI_ISO_SIGN_KEY': 'key'},
+                 'must not be signed')):
+            result = subprocess.run(['bash', str(HERE / 'build.sh'), *arguments],
+                                    env={**os.environ, **environment}, text=True,
+                                    capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(reason, result.stderr)
+
+    def test_alongside_markers_are_unconditionally_refused_for_release(self):
+        # Neither a hardware PASS row nor removal of SSH material can authorize
+        # release of a deliberately modified acceptance image.
+        with patch.object(image_check, 'iso_files', return_value={'/emaki/TEST-ALONGSIDE'}):
+            with self.assertRaisesRegex(ValueError, 'cannot be released'):
+                image_check.verify(Path('acceptance.iso'))
+        clean = 'squashfs-root/etc/emaki-test-alongside\n'
+        with self.assertRaisesRegex(ValueError, 'cannot be released'):
+            image_check.check_root_listing(clean)
+        image_check.check_root_listing(clean + 'squashfs-root/home/live/.ssh\n'
+                                       'squashfs-root/etc/emaki-test\n', True)
+
     def test_mastered_squashfs_guard_rejects_both_test_paths(self):
         clean = 'squashfs-root\nsquashfs-root/etc\nsquashfs-root/home/live\n'
         image_check.check_root_listing(clean)

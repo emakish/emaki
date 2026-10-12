@@ -431,7 +431,7 @@ if findmnt -n -o FSTYPE / | grep -qx btrfs; then
     test "$(btrfs inspect-internal map-swapfile -r /swap/swapfile)" = "$(cat /sys/power/resume_offset)"
     btrfs subvolume list /
     snapper --no-dbus -c root list
-    grep -q 'Emaki snapshots' /boot/grub/grub.cfg
+    grep -q 'Restore from a snapshot' /boot/grub/grub.cfg
     test "$(findmnt -n -o FSROOT /swap)" = /@swap
 fi
 echo OK: encrypted boot, keyfile, swap, resume offset and CanHibernate

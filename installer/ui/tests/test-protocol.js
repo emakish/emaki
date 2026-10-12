@@ -448,6 +448,11 @@ assert.equal(P.diskContents({partitions: [{os_hint: "macos"}]}), " · contains m
 assert.equal(P.diskContents({partitions: [{os_hint: "macos"}, {os_hint: "windows"}]}), " · contains Windows · contains macOS");
 assert.equal(P.diskContents({partitions: [{os_hint: "emaki"}, {}]}), "");
 assert.equal(P.diskContents({}), "");
+assert.equal(P.alongsideRefusal(null), "");
+assert.equal(P.alongsideRefusal({partitions: [{os_hint: "windows"}]}), "");
+assert.equal(P.alongsideRefusal({partitions: [{os_hint: "macos"}], shrink: {reason: "EFI is too small"}}), "");
+assert.equal(P.alongsideRefusal({partitions: [{os_hint: "windows", shrink: {reason: "Windows is hibernated"}}]}), "\nInstall alongside Windows is not possible here. Windows is hibernated");
+assert.equal(P.alongsideRefusal({partitions: [{os_hint: "windows", shrink: {reason: "NTFS check failed"}}], shrink: {reason: "Windows is hibernated"}}), "\nInstall alongside Windows is not possible here. Windows is hibernated");
 assert.equal(P.alongside({partitions: [{os_hint: "windows"}], shrink: null}), false);
 assert.equal(P.alongside({partitions: [{os_hint: "macos"}], shrink: {min_bytes: 1}}), false);
 assert.equal(P.alongside({partitions: [{os_hint: "windows"}], shrink: {min_bytes: 1}}), false);
@@ -455,6 +460,7 @@ const windows = {id: "win", os_hint: "windows", fs: "ntfs", size_bytes: 96 * 107
     shrink: {min_bytes: 20 * 1073741824, max_free_bytes: 74 * 1073741824}};
 const disk = {size_bytes: 100 * 1073741824, partitions: [windows]};
 assert.equal(P.alongside(disk), true);
+assert.equal(P.alongsideRefusal(disk), "");
 assert.equal(P.alongsideDefault(windows), 37 * 1073741824);
 assert.match(P.alongsideReview(windows, 40 * 1073741824), /^Windows keeps 60.13 GB, Emaki gets 42.95 GB; back up your files first\.$/);
 windows.shrink.max_free_bytes = 32 * 1073741824;

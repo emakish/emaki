@@ -4,6 +4,7 @@ niri/local.kdl
 work/
 out/
 /.cache/
+/tmp/
 /target/
 __pycache__/
 *.pyc

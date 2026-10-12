@@ -2,6 +2,11 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Offline selective-release checks against published per-package source commits."""
+import contextlib
+import datetime
+import hashlib
+import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -15,6 +20,12 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'packaging'))
 import release_inputs as release
+
+spec = importlib.util.spec_from_file_location('release_test_publish', ROOT / 'tests/test-publish.py')
+publish_tests = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(publish_tests)
+exceptions = sys.modules['release_exceptions']
+setUpModule, tearDownModule = publish_tests.setUpModule, publish_tests.tearDownModule
 
 
 class ReleaseInputs(unittest.TestCase):
@@ -119,6 +130,8 @@ class ReleaseInputs(unittest.TestCase):
     def test_all_builds_check_alongside_before_dry_run(self):
         for name in ('build.sh', 'release_inputs.py', 'source_archive.py'):
             shutil.copy2(ROOT / 'packaging' / name, self.repo / 'packaging' / name)
+        shutil.copytree(ROOT / 'packaging/mirror', self.repo / 'packaging/mirror',
+                        ignore=shutil.ignore_patterns('__pycache__', 'exceptions'))
         self.write('installer/emaki_installer/constants.py', 'ALONGSIDE = True\n')
         self.commit()
         metadata = self.base / 'SOURCES.json'
@@ -257,6 +270,133 @@ class ReleaseInputs(unittest.TestCase):
         self.assertNotEqual(refused.returncode, 0)
         self.assertIn('add --only emaki-installer', refused.stderr)
         self.assertNotIn('Would build from', refused.stdout)
+
+
+class AlongsideExceptions(unittest.TestCase):
+    """The build uses committed approval and trust data for the exact committed switch."""
+
+    gate = 'build.alongside-acceptance'
+    artifact = 'installer/emaki_installer/constants.py'
+    git, write, commit = ReleaseInputs.git, ReleaseInputs.write, ReleaseInputs.commit
+
+    @classmethod
+    def setUpClass(cls):
+        if not shutil.which('gpg') or not shutil.which('gpgconf'):
+            raise unittest.SkipTest('gpg and gpgconf are required')
+        cls.storage = tempfile.TemporaryDirectory(prefix='alongside-key-')
+        cls.addClassCleanup(cls.storage.cleanup)
+        cls.keys = publish_tests.Keys(cls.storage.name)
+        cls.addClassCleanup(cls.keys.close)
+
+    def setUp(self):
+        ReleaseInputs.setUp(self)
+        self.write(self.artifact, 'ALONGSIDE = True\n')
+        keyring = self.repo / 'packaging/emaki-keyring'
+        keyring.mkdir()
+        shutil.copy2(self.keys.keyring, keyring / 'emaki.gpg')
+        shutil.copy2(self.keys.trusted, keyring / 'emaki-trusted')
+        (keyring / 'emaki-revoked').write_text('')
+        self.directory = self.repo / 'packaging/mirror/exceptions'
+        self.directory.mkdir(parents=True)
+        self.commit()
+
+    def record(self, *, gate=None, digest=None, expired=False, signed=True):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if expired:
+            now -= datetime.timedelta(days=2)
+        digest = digest or hashlib.sha256((self.repo / self.artifact).read_bytes()).hexdigest()
+        record = exceptions.new_record(gate or self.gate, {self.artifact: digest},
+                                       'Owner accepts the pending hardware check', self.keys.fpr, 1, now)
+        path, signature, _ = exceptions.paths(self.directory, record['id'])
+        path.write_bytes(exceptions.encode(record))
+        if signed:
+            self.keys.sign(path)
+        return record, path
+
+    def refused(self):
+        with self.assertRaisesRegex(ValueError, self.gate) as caught:
+            release.check_alongside(self.repo)
+        return str(caught.exception)
+
+    def test_valid_signed_exception_reports_id_and_reason(self):
+        record, _ = self.record()
+        self.commit()
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            release.check_alongside(self.repo)
+        self.assertIn(f'PASSED BY EXCEPTION {record["id"]}: {record["reason"]}', output.getvalue())
+
+    def test_invalid_exceptions_fail_closed(self):
+        cases = {
+            'expired': {'expired': True},
+            'wrong hash': {'digest': '0' * 64},
+            'unsigned': {'signed': False},
+            'tampered': {},
+            'wrong gate': {'gate': 'publish.tree-clean'},
+            'revoked record': {},
+            'revoked key': {},
+        }
+        for case, kwargs in cases.items():
+            with self.subTest(case=case):
+                for path in self.directory.iterdir():
+                    path.unlink()
+                self.write('packaging/emaki-keyring/emaki-revoked', '')
+                record, path = self.record(**kwargs)
+                if case == 'tampered':
+                    record['reason'] = 'Changed after signing'
+                    path.write_bytes(exceptions.encode(record))
+                elif case == 'revoked record':
+                    exceptions.paths(self.directory, record['id'])[2].write_text('Revoked\n')
+                elif case == 'revoked key':
+                    self.write('packaging/emaki-keyring/emaki-revoked', self.keys.fpr + '\n')
+                self.commit()
+                self.refused()
+
+    def test_uncommitted_exception_does_not_authorize(self):
+        self.record()
+        self.refused()
+
+    def test_scope_hashes_raw_committed_bytes(self):
+        (self.repo / self.artifact).write_bytes(b'ALONGSIDE = True\r\n')
+        digest = hashlib.sha256((self.repo / self.artifact).read_bytes()).hexdigest()
+        self.commit()
+        refusal = self.refused()
+        self.assertIn(self.artifact, refusal)
+        self.assertIn(digest, refusal)
+        self.record()
+        self.commit()
+        self.write(self.artifact, 'ALONGSIDE = False\n')
+        release.check_alongside(self.repo)
+        self.write(self.artifact, 'ALONGSIDE = True\n# Changed constants\n')
+        self.commit()
+        self.refused()
+
+    def test_uncommitted_trust_change_cannot_authorize(self):
+        self.record()
+        trusted = self.repo / 'packaging/emaki-keyring/emaki-trusted'
+        trusted.write_text('')
+        self.commit()
+        shutil.copy2(self.keys.trusted, trusted)
+        self.refused()
+
+    def test_valid_exception_survives_clean_checkout(self):
+        self.record()
+        for name in ('build.sh', 'release_inputs.py', 'source_archive.py'):
+            shutil.copy2(ROOT / 'packaging' / name, self.repo / 'packaging' / name)
+        for path in (ROOT / 'packaging/mirror').glob('*.py'):
+            shutil.copy2(path, self.repo / 'packaging/mirror' / path.name)
+        self.commit()
+        clone = self.base / 'clone'
+        subprocess.run(['git', 'clone', '-q', str(self.repo), str(clone)], check=True)
+        result = subprocess.run([sys.executable, str(clone / 'packaging/release_inputs.py'),
+                                 '--repo', str(clone)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('PASSED BY EXCEPTION', result.stdout)
+        build = subprocess.run(['bash', str(clone / 'packaging/build.sh'), '--dry-run',
+                                '--only', 'emaki-installer'], capture_output=True, text=True)
+        self.assertEqual(build.returncode, 0, build.stderr)
+        self.assertIn('PASSED BY EXCEPTION', build.stdout)
+        self.assertIn('Would build from', build.stdout)
 
 
 if __name__ == '__main__':

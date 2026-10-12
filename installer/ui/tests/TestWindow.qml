@@ -197,7 +197,7 @@ ShellRoot {
                 controller.receive(message);
                 if (message.type === "inventory" && !test.prepared) {
                     test.prepared = true;
-                    controller.diskId = test.screenName === "disk-none" ? "" : "/dev/vda";
+                    controller.diskId = test.screenName === "disk-none" || test.screenName.startsWith("disk-refused-") ? "" : "/dev/vda";
                     if (test.screenName === "alongside" || test.screenName === "alongside-review")
                         controller.mode = "alongside";
                     controller.encryption = "none";
@@ -306,7 +306,7 @@ ShellRoot {
                             controller.software = test.screenName === "software-minimal" ? "minimal" : "rich";
                             controller.step = "software";
                         } else
-                            controller.step = ["manual", "manual-empty", "alongside", "disk-mbr", "disk-none"].indexOf(test.screenName) >= 0 ? "disk" : test.screenName === "welcome-bios" ? "welcome" : test.screenName;
+                            controller.step = test.screenName.startsWith("disk-refused-") || ["manual", "manual-empty", "alongside", "disk-mbr", "disk-none"].indexOf(test.screenName) >= 0 ? "disk" : test.screenName === "welcome-bios" ? "welcome" : test.screenName;
                         if (test.screenName === "manual-empty") {
                             // A disk with a partition table and no partitions yet.
                             controller.mode = "manual";
@@ -428,6 +428,17 @@ ShellRoot {
                     return;
                 }
                 console.log("NO_PARTITIONS_HINT " + hint.text);
+            }
+            if (test.screenName.startsWith("disk-refused-")) {
+                const card = test.findItem(content, "disk-/dev/vda");
+                const body = test.findItem(content, "installerBody");
+                const area = card ? card.mapToItem(body, 0, 0, card.width, card.height) : null;
+                if (controller.selectedDisk || !card || card.chosen || !card.detail.includes("Install alongside Windows is not possible here.") || !area || area.y < 0 || area.y + area.height > body.height + 0.5) {
+                    console.error("Unselected Windows refusal is not fully in view");
+                    Qt.quit();
+                    return;
+                }
+                console.log("UNSELECTED_REFUSAL_VISIBLE");
             }
             if (test.screenName === "disk-none") {
                 const reason = test.findItem(content, "blockedReason") as Text;

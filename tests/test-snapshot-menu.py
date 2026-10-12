@@ -77,7 +77,8 @@ header_menu
 
     def assert_bootable(self, text):
         self.assertNotIn('{ echo }', text)
-        self.assertTrue(text.startswith("submenu '|2026"))
+        # Plain titles (N7G1): the date and what the snapshot was, then plain boot rows.
+        self.assertTrue(text.startswith("submenu '6 Oct 2026, 10:00 · before update · pacman -Syu' {\n"))
         for snapshot in ('42', '43'):
             self.assertIn(f'subvol="@snapshots/{snapshot}/snapshot"', text)
         entries = [line.strip() for line in text.splitlines()
@@ -85,9 +86,15 @@ header_menu
         self.assertEqual(len(entries), 6)
         for index in (0, 3):
             self.assertTrue(entries[index].startswith('submenu '))
-            self.assertTrue(entries[index + 1].startswith("menuentry '  vmlinuz-linux &"))
-        before = [line for line in self.original.splitlines() if '{ echo }' not in line]
-        self.assertEqual(text.splitlines(), before)
+            self.assertTrue(entries[index + 1].startswith("menuentry 'Emaki' "))
+            self.assertTrue(entries[index + 2].startswith("menuentry 'Emaki (LTS kernel)' "))
+        # Every boot command line is kept byte for byte; only title rows change.
+        commands = [line for line in self.original.splitlines()
+                    if line.strip() and not line.lstrip().startswith(('submenu ', 'menuentry '))
+                    and line.strip() not in ('}',)]
+        self.assertEqual([line for line in text.splitlines()
+                          if line.strip() and not line.lstrip().startswith(('submenu ', 'menuentry '))
+                          and line.strip() not in ('}',)], commands)
 
     def test_existing_menu_starts_at_bootable_rows_without_changing_generator(self):
         self.assertEqual(self.original.count('{ echo }'), 3)
@@ -102,6 +109,16 @@ header_menu
         before = self.defaults.read_bytes()
         repair.repair(self.generator, self.menu, self.defaults)
         self.assertEqual(self.defaults.read_bytes(), before)
+
+    def test_hand_saved_snapshots_and_fallback_rows_read_plainly(self):
+        # Approved 0.7.0 texts G7, G8 and G13.
+        self.assertEqual(repair.plain_title('2026-10-12 04:37:00', 'single', ''), '12 Oct 2026, 04:37 · saved by hand')
+        rows = ''.join(f"    menuentry '  vmlinuz-{kernel} & initramfs-{kernel}{suffix}.img' {{\n    }}\n"
+                       for kernel in ('linux', 'linux-lts') for suffix in ('', '-fallback'))
+        text = repair.retitle("submenu '| 2026-10-12 04:37:00 | 42 | single | N/A |' {\n" + rows + "}\n")
+        self.assertEqual(re.findall(r"menuentry '([^']*)'", text),
+                         ['Emaki', 'Emaki (LTS kernel)', 'Emaki (all drivers)', 'Emaki (LTS kernel, all drivers)'])
+        self.assertIn("submenu '12 Oct 2026, 04:37 · saved by hand' {", text)
 
     def test_every_new_menu_is_rendered_before_real_syntax_check(self):
         repair.repair(self.generator, self.menu, self.defaults)
@@ -351,6 +368,57 @@ class PacmanMenu(unittest.TestCase):
             self.assertEqual(menu.read_bytes(), before)
             self.assertEqual(list(menu.parent.glob('grub-btrfs.cfg.emaki.*')), [])
 
+
+class UpstreamLimit(unittest.TestCase):
+    """grub-btrfs stops after GRUB_BTRFS_LIMIT snapshots, before our renderer sees any."""
+
+    GENERATOR = r'''#!/bin/bash
+set -e
+source "$1"
+source "$3"
+# 41_snapshots-btrfs v4.14, line 89.
+limit_snap_show="${GRUB_BTRFS_LIMIT:-50}"
+oldIFS=$IFS
+grub_btrfs_directory=$2
+GRUB_BTRFS_SHOW_SNAPSHOTS_FOUND=false
+CLASS='--class snapshots --class gnu-linux --class gnu --class os'
+boot_uuid=1111-2222
+LINUX_ROOT_DEVICE=UUID=1111-2222
+count_warning_menuentries=0
+# Discovery is stubbed: snapper's rows, newest first, as snapshot_list prints them.
+rows=$4
+snapshot_list() { cat "$rows"; }
+grub_btrfs_mount_point=$2/mnt
+boot_directory=/boot
+detect_kernel() { mkdir -p "$boot_dir"; : > "$boot_dir/vmlinuz-linux"; list_kernel=("$boot_dir/vmlinuz-linux"); }
+detect_initramfs() { list_initramfs=(/boot/initramfs-linux.img); }
+detect_microcode() { list_ucode=(x); }
+detect_rootflags() { rootflags=rootflags=; }
+make_system_path_relative_to_its_root() { echo "$1"; }
+: > "$grub_btrfs_directory/grub-btrfs.new"
+boot_bounded
+header_menu
+'''
+
+    def test_every_pre_update_snapshot_reaches_the_renderer(self):
+        # A person who keeps more hourly snapshots than snapper's Emaki limits, or manual ones.
+        rows = [f'2026-10-11 {hour:02d}:{minute:02d}:00 | @snapshots/{300 - index}/snapshot | single | timeline |'
+                for index, (hour, minute) in enumerate((23 - n // 60, 59 - n % 60) for n in range(120))]
+        rows += [f'2026-10-10 0{n}:00:00 | @snapshots/{10 - n}/snapshot | pre | pacman -Syu |' for n in range(3)]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'generator').write_text(self.GENERATOR)
+            (root / 'rows').write_text('\n'.join(rows) + '\n')
+            subprocess.run(['bash', str(root / 'generator'), str(FIXTURE), str(root),
+                            str(ROOT / 'boot/defaults/grub-btrfs.conf'), str(root / 'rows')], check=True)
+            text = repair.render((root / 'grub-btrfs.new').read_text())
+        titles = re.findall(r"^submenu '([^']*)'", text, re.M)
+        self.assertEqual([title for title in titles if 'automatic' in title],
+                         [f'11 Oct 2026, 23:{59 - n:02d} · automatic' for n in range(repair.AUTOMATIC_KEPT)])
+        self.assertEqual([title for title in titles if 'before update' in title],
+                         [f'10 Oct 2026, 0{n}:00 · before update · pacman -Syu' for n in (2, 1, 0)])
+        for number in (8, 9, 10):
+            self.assertIn(f'/@snapshots/{number}/snapshot/boot/vmlinuz-linux', text)
 
 
 if __name__ == '__main__':

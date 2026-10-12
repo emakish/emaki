@@ -24,6 +24,32 @@ TOKEN = '12:' + 'a' * 64
 
 
 class Protocol(unittest.TestCase):
+    def test_restart_notification_is_an_unprivileged_fixed_json_operation(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(sys, 'argv', ['backend', '--notify-restart']), \
+                patch.dict(os.environ, {'XDG_CACHE_HOME': directory}), \
+                patch.object(backend.os, 'geteuid', return_value=1000), \
+                patch.object(backend.signal, 'signal'), patch.object(backend.os, 'umask'), \
+                patch.object(backend.reminder, 'notify_restart', return_value=dict(ok=True, notified=True)) as notify, \
+                patch.object(backend, 'emit') as emit:
+            self.assertEqual(backend.main(), 0)
+            notify.assert_called_once_with(Path(directory) / 'emaki-update-manager')
+            emit.assert_called_once_with('restartNotification', ok=True, notified=True)
+
+    def test_completion_notification_only_follows_success_without_restart(self):
+        for ok, restart, code in ((True, False, 0), (True, True, 0), (False, False, 1), (True, False, 1)):
+            process = Mock()
+            process.__enter__ = Mock(return_value=process)
+            process.__exit__ = Mock(return_value=False)
+            process.stdout = io.StringIO(json.dumps(dict(type='finished', ok=ok)) + '\n')
+            process.wait.return_value = code
+            with patch.object(backend.subprocess, 'Popen', return_value=process), \
+                    patch.object(backend.flatpaks, 'update', return_value=False), \
+                    patch.object(backend, 'local_state', return_value=dict(restart=restart)), \
+                    patch.object(backend, 'emit'), patch.object(backend.reminder, 'notify_completed') as notify:
+                backend.apply(Path('/unused'))
+            self.assertEqual(notify.call_count, int(ok and not restart and code == 0))
+
     def test_invalid_restore_tokens_refuse_before_cache_or_authorization(self):
         for arguments in (['--restore'], ['--restore', '12'], ['--restore', '../x'],
                           ['--restore', TOKEN, 'extra'], ['--restore-points', 'extra']):

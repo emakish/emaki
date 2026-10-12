@@ -98,7 +98,7 @@ class Transactions(unittest.TestCase):
         publish = publisher.Publisher.__new__(publisher.Publisher)
         publish.args = SimpleNamespace(arch_dbs='none')
         with mock.patch.object(transactions, 'check_transactions') as check:
-            publish.check_transactions(self.repo, [])
+            publish.check_transactions(self.repo, [], None, {})
         self.assertEqual([call.args[2] for call in check.call_args_list],
                          [software_packages('minimal'), software_packages('rich')])
 
@@ -130,19 +130,19 @@ class Transactions(unittest.TestCase):
     def test_publisher_tests_stable_baseline_when_publishing_testing(self):
         candidate = database([('shell', '1-2', [], [])])
         publish = publisher.Publisher.__new__(publisher.Publisher)
-        publish.args = SimpleNamespace(arch_dbs='none')
+        publish.args = SimpleNamespace(arch_dbs='none', exceptions=self.repo / 'exceptions')
         publish.pointer = mock.Mock(side_effect=lambda channel: ('snapshot', None))
         publish.snapshot = mock.Mock(side_effect=lambda channel, stamp: {
             'emaki.db': candidate if channel == 'testing' else self.previous})
         with self.assertRaisesRegex(publisher.Refused, r'shell=1-1'):
-            publish.check_release(candidate, 'testing', ['shell'])
+            publish.check_release(candidate, 'testing', ['shell'], {'MANIFEST': 'f' * 64})
         self.assertEqual(publish.pointer.call_args_list,
                          [mock.call('testing'), mock.call('stable')])
         publish.snapshot.assert_any_call('stable', 'snapshot')
 
     def test_publish_refuses_conflicts_before_lock_or_upload(self):
         publish = publisher.Publisher.__new__(publisher.Publisher)
-        publish.args = SimpleNamespace(closure='emaki', arch_dbs='none')
+        publish.args = SimpleNamespace(closure='emaki', arch_dbs='none', exceptions=self.repo / 'exceptions')
         publish.state = self.repo
         publish.dry_run = False
         publish.trusted = 'fixture'
@@ -188,7 +188,7 @@ class Transactions(unittest.TestCase):
         publish = publisher.Publisher.__new__(publisher.Publisher)
         publish.args = SimpleNamespace(arch_dbs='skip')
         with self.assertRaises(publisher.Refused) as caught:
-            publish.check_transactions(self.repo, ['emaki'])
+            publish.check_transactions(self.repo, ['emaki'], None, {})
         self.assertNotIn('none', str(caught.exception))
         self.assertIn('auto', str(caught.exception))
 
@@ -196,11 +196,12 @@ class Transactions(unittest.TestCase):
         publish = publisher.Publisher.__new__(publisher.Publisher)
         publish.args = SimpleNamespace(arch_dbs='skip')
         with self.assertRaisesRegex(publisher.Refused, 'Cannot skip'):
-            publish.check_transactions(self.repo, ['emaki'])
+            publish.check_transactions(self.repo, ['emaki'], None, {})
 
     def bridge(self, candidate, previous):
         publish = publisher.Publisher.__new__(publisher.Publisher)
-        publish.args = SimpleNamespace(github='local:unused', closure='emaki', arch_dbs='none')
+        publish.args = SimpleNamespace(github='local:unused', closure='emaki', arch_dbs='none',
+                                       exceptions=self.repo / 'exceptions')
         publish.dry_run = False
         publish.state = self.repo
         publish.pointer = mock.Mock(return_value=('snapshot', None))

@@ -23,9 +23,13 @@
 /usr/lib/python3.14/site-packages/emaki_installer/grub_artwork/C/checking-2560x1600.png
 /usr/lib/python3.14/site-packages/emaki_installer/grub_artwork/C/unlock-2560x1600.png
 /usr/lib/python3.14/site-packages/emaki_installer/grub_artwork/C/wrong-2560x1600.png
+/usr/lib/python3.14/site-packages/emaki_installer/grub_artwork/D/checking-2560x1600.png
+/usr/lib/python3.14/site-packages/emaki_installer/grub_artwork/D/unlock-2560x1600.png
+/usr/lib/python3.14/site-packages/emaki_installer/grub_artwork/D/wrong-2560x1600.png
 /usr/lib/python3.14/site-packages/emaki_installer/grub_screen.py
 /usr/lib/python3.14/site-packages/emaki_installer/hardware.py
 /usr/lib/python3.14/site-packages/emaki_installer/inventory.py
+/usr/lib/python3.14/site-packages/emaki_installer/ntfs_probe.py
 /usr/lib/python3.14/site-packages/emaki_installer/latin_layouts.py
 /usr/lib/python3.14/site-packages/emaki_installer/media.py
 /usr/lib/python3.14/site-packages/emaki_installer/network_profiles.py

@@ -237,7 +237,7 @@ def main():
     check('grub-emaki', 'grep -c Emaki /boot/grub/grub.cfg', privileged=True,
           predicate=lambda output: output.strip().isdigit() and int(output.strip()) >= 1)
     check('grub-kernels', "sh -c 'grep -q vmlinuz-linux /boot/grub/grub.cfg && grep -q vmlinuz-linux-lts /boot/grub/grub.cfg'", privileged=True)
-    check('grub-lts-title', '''grep -Fq "menuentry 'Emaki, with Linux linux-lts'" /boot/grub/grub.cfg''', privileged=True)
+    check('grub-lts-title', '''grep -Fq "menuentry 'Emaki (LTS kernel)'" /boot/grub/grub.cfg''', privileged=True)
     if config['mode'] == 'alongside':
         check('grub-windows', "grep -E '^menuentry .*Windows Boot Manager' /boot/grub/grub.cfg", privileged=True)
         check('grub-os-prober', 'grep -Fx GRUB_DISABLE_OS_PROBER=false /etc/default/grub', privileged=True)

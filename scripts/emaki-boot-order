@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Recover the existing Emaki boot priority after an explicit recovery boot."""
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+
+MARKER = Path('/var/lib/emaki/alongside-boot.json')
+GUID = r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}'
+
+
+def proposed_order(output, partuuid):
+    """Accept one active vendor entry on the recorded ESP; never create entries."""
+    if not re.fullmatch(GUID, partuuid):
+        raise ValueError('invalid_esp_identity')
+    orders = re.findall(r'^BootOrder: ([0-9A-Fa-f,]+)$', output, re.M)
+    if len(orders) != 1:
+        raise ValueError('invalid_boot_order')
+    order = orders[0].upper().split(',')
+    if any(not re.fullmatch(r'[0-9A-F]{4}', n) for n in order) or len(set(order)) != len(order):
+        raise ValueError('invalid_boot_order')
+    entries = {}
+    matches = []
+    for line in output.splitlines():
+        if not re.match(r'^Boot[0-9A-Fa-f]{4}', line):
+            continue
+        entry = re.fullmatch(r'Boot([0-9A-Fa-f]{4})(\*?)\s+(.+)', line)
+        if not entry or entry[1].upper() in entries:
+            raise ValueError('invalid_boot_entries')
+        number, active, value = entry[1].upper(), entry[2], entry[3]
+        entries[number] = value
+        # efibootmgr separates its display label from the EFI device path with a tab.
+        label, separator, device = value.partition('\t')
+        if label.strip() != 'Emaki':
+            continue
+        loader = r'\\EFI\\Emaki\\grubx64\.efi'
+        expected = (r'HD\([1-9][0-9]*,GPT,(' + GUID + r'),0x[0-9a-fA-F]+,0x[0-9a-fA-F]+\)'
+                    r'/(?:' + loader + r'|File\(' + loader + r'\))')
+        path = re.fullmatch(expected, device, re.I) if separator else None
+        if not active or not path or path[1].lower() != partuuid.lower():
+            raise ValueError('unverified_emaki_entry')
+        matches.append(number)
+    if len(matches) != 1 or matches[0] not in order or any(n not in entries for n in order):
+        raise ValueError('ambiguous_boot_entries')
+    return order, [matches[0]] + [n for n in order if n != matches[0]]
+
+
+def read_marker():
+    fd = os.open(MARKER, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd) as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+            raise ValueError('unsafe_installation_record')
+        data = stream.read(4097)
+        if len(data) > 4096:
+            raise ValueError('invalid_installation_record')
+        marker = json.loads(data)
+    if not isinstance(marker, dict) or marker.get('version') != 1:
+        raise ValueError('invalid_installation_record')
+    identity = marker.get('esp_partuuid')
+    if not isinstance(identity, str) or not re.fullmatch(GUID, identity):
+        raise ValueError('invalid_esp_identity')
+    return identity
+
+
+def command(arguments):
+    return subprocess.run(arguments, check=True, capture_output=True, text=True,
+                          timeout=15, env={'PATH': os.defpath, 'LC_ALL': 'C'}).stdout
+
+
+def recover(partuuid, vendor, run=command, repair=False):
+    if not vendor.strip():
+        raise ValueError('unknown_firmware_vendor')
+    if 'apple' in vendor.casefold():
+        return {'state': 'manual_recovery', 'reason': 'apple_firmware', 'changed': False}
+    before = run(['efibootmgr', '-v'])
+    old, new = proposed_order(before, partuuid)
+    if old == new:
+        return {'state': 'ready', 'changed': False}
+    if not repair:
+        return {'state': 'recovery_available', 'changed': False}
+    # Re-read immediately before mutation: a changed firmware inventory invalidates the plan.
+    if run(['efibootmgr', '-v']) != before:
+        raise ValueError('firmware_changed')
+    try:
+        run(['efibootmgr', '--bootorder', ','.join(new)])
+        confirmed, _ = proposed_order(run(['efibootmgr', '-v']), partuuid)
+        if confirmed != new:
+            raise ValueError('recovery_not_confirmed')
+    except (OSError, ValueError, subprocess.SubprocessError):
+        # A failed command can still have changed NVRAM. Do not claim a read-only refusal.
+        return {'state': 'recovery_uncertain', 'changed': None}
+    return {'state': 'recovered', 'changed': True}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--json', action='store_true')
+    parser.add_argument('--repair', action='store_true')
+    args = parser.parse_args()
+    try:
+        if args.repair and os.geteuid() != 0:
+            raise ValueError('root_required')
+        partuuid = read_marker()
+        vendor = Path('/sys/class/dmi/id/sys_vendor').read_text()
+        result = recover(partuuid, vendor, repair=args.repair)
+        code = 1 if result['state'] == 'recovery_uncertain' else 0
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        result = {'state': 'refused', 'changed': False, 'reason': str(error)}
+        code = 1
+    print(json.dumps(result, sort_keys=True))
+    return code
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

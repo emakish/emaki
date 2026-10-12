@@ -353,13 +353,84 @@ class Checking(unittest.TestCase):
             self.assertEqual(backend.install_date(cache), expected)
             (cache / 'local').mkdir()
             with patch.object(backend, 'package_paths', return_value=(cache, cache / 'missing-log')), \
-                    patch.object(backend, 'command', return_value=''), \
+                    patch.object(backend, 'command', side_effect=lambda args, **kwargs:
+                                 fixtures.TRANSACTION if '-Sup' in args else ''), \
                     patch.object(backend, 'install_date', return_value=expected), \
                     patch.object(backend, 'fetch', side_effect=lambda url, cache, validator: (validator(fixtures.NEWS), False)), \
                     patch.object(backend, 'emit'):
                 data = backend.discover(cache)
             self.assertEqual(len(data['news']), 2)
             self.assertFalse(any('unknown' in line for line in data['warnings']))
+
+    def test_arch_news_requires_a_pending_native_update(self):
+        for native in (False, True):
+            for news_state in ('current', 'stale', 'failed'):
+                with self.subTest(native=native, news_state=news_state), tempfile.TemporaryDirectory() as directory:
+                    cache = Path(directory)
+                    (cache / 'local').mkdir()
+                    def command(args, **kwargs):
+                        if '-Q' in args:
+                            return fixtures.INSTALLED
+                        if '-Sup' in args and native:
+                            return fixtures.TRANSACTION
+                        return ''
+                    def fetch(url, cache, validator):
+                        if news_state == 'failed':
+                            raise RuntimeError('Offline')
+                        return validator(fixtures.NEWS), news_state == 'stale'
+                    with patch.object(backend, 'package_paths', return_value=(cache, cache / 'missing-log')), \
+                            patch.object(backend, 'command', side_effect=command), \
+                            patch.object(backend, 'install_date', return_value=None), \
+                            patch.object(backend, 'fetch', side_effect=fetch) as fetch_call, \
+                            patch.object(backend, 'emit'):
+                        data = backend.discover(cache)
+                    news_warnings = [line for line in data['warnings'] if 'Arch news' in line or 'last full update' in line]
+                    if native:
+                        fetch_call.assert_called_once()
+                        self.assertTrue(any('last full update' in line for line in news_warnings))
+                        self.assertEqual(len(news_warnings), 1 if news_state == 'current' else 2)
+                    else:
+                        self.assertEqual(news_warnings, [])
+                        self.assertEqual(data['news'], [])
+                        fetch_call.assert_not_called()
+
+    def test_aur_only_updates_do_not_fetch_arch_news(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory)
+            (cache / 'local').mkdir()
+            def command(args, **kwargs):
+                return 'paru 2.0.4-1\n' if '-Qm' in args else ''
+            def fetch(url, cache, validator):
+                self.assertIn('/rpc/', url)
+                return validator(json.dumps(fixtures.AUR).encode()), True
+            with patch.object(backend, 'package_paths', return_value=(cache, cache / 'missing-log')), \
+                    patch.object(backend, 'command', side_effect=command), \
+                    patch.object(backend, 'compare', return_value=1), \
+                    patch.object(backend, 'fetch', side_effect=fetch), \
+                    patch.object(backend, 'emit'):
+                data = backend.discover(cache)
+            self.assertEqual(len(data['updates']), 1)
+            self.assertTrue(data['updates'][0]['aur'])
+            self.assertEqual(data['news'], [])
+            self.assertTrue(any('AUR could not be reached' in line for line in data['warnings']))
+
+    def test_empty_native_updates_keep_discovery_warnings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory)
+            (cache / 'local').mkdir()
+            def command(args, **kwargs):
+                return 'example-local 1-1\n' if '-Qm' in args else ''
+            with patch.object(backend, 'package_paths', return_value=(cache, cache / 'missing-log')), \
+                    patch.object(backend, 'command', side_effect=command), \
+                    patch.object(backend, 'install_date', return_value=None), \
+                    patch.object(backend, 'fetch', side_effect=RuntimeError('Offline')), \
+                    patch.object(backend.flatpaks, 'discover', side_effect=RuntimeError('Offline')), \
+                    patch.object(backend, 'emit'):
+                data = backend.discover(cache)
+            self.assertEqual(data['updates'], [])
+            self.assertTrue(any('AUR could not be checked' in line for line in data['warnings']))
+            self.assertTrue(any('Flatpak updates could not be checked' in line for line in data['warnings']))
+            self.assertFalse(any('Arch news' in line for line in data['warnings']))
 
     def test_stale_databases_are_cleaned_only_after_check_lock(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -706,6 +777,23 @@ class Authorization(unittest.TestCase):
 
 
 class Launcher(unittest.TestCase):
+    def test_updates_raises_window_from_before_upgrade(self):
+        with tempfile.TemporaryDirectory(prefix='update-ipc-') as temporary:
+            root = Path(temporary)
+            (root / 'bin').mkdir()
+            stub = root / 'bin/qs'
+            stub.write_text('#!/bin/bash\nprintf "%s\\n" "${@: -1}" >> "$QS_STUB_OUT"\n'
+                            '[[ ${@: -1} == present ]] || exit 1\nprintf "presented\\n"\n')
+            stub.chmod(0o755)
+            env = dict(os.environ, PATH=f'{root / "bin"}:' + os.environ['PATH'],
+                       XDG_RUNTIME_DIR=str(root), QS_STUB_OUT=str(root / 'out'))
+            with (root / 'emaki-update-manager.lock').open('w') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                result = subprocess.run(['bash', str(ROOT / 'update-manager/emaki-update-manager'), '--updates'],
+                                        env=env, capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((root / 'out').read_text().splitlines(), ['presentUpdates', 'present'])
+
     def test_window_starts_without_quickshell_crash_handler(self):
         # The real launcher against a stub qs that records the environment it receives.
         with tempfile.TemporaryDirectory(prefix='update-qs-') as temporary:

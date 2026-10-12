@@ -323,6 +323,8 @@ def alongside_partitions(c, disk):
     candidates = [p for p in disk['partitions'] if p['fs'] in ('ntfs', 'ntfs3')]
     p = next((p for p in candidates if p['id'] == c['partition_id']), None)
     require(p is not None, Code.SHRINK_BOUNDS, 'Selected Windows NTFS partition is not on this disk.')
+    type_refusal = alongside.alongside_type_refusal(disk, p)
+    require(not type_refusal, Code.SHRINK_BOUNDS, type_refusal)
     require(all(p['size_bytes'] > other['size_bytes'] for other in candidates if other is not p),
             Code.SHRINK_BOUNDS, 'Only an unambiguous largest Windows/NTFS partition can be offered.')
     offer = p.get('shrink') or {}

@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # shellcheck shell=bash disable=SC2034,SC2154
 pkgname=emaki-sudo-key
-pkgver=0.6.0
-pkgrel=6
+pkgver=0.7.0
+pkgrel=1
 pkgdesc='Optional scoped sudo grants and their warning screen'
 arch=('any')
 url='https://github.com/emakish/emaki'
 license=('GPL-3.0-or-later')
-depends=('emaki-config>=0.6.0-3' 'sudo')
+depends=('emaki-config>=0.7.0-1' 'sudo')
 makedepends=('git' 'python')
 install=emaki-sudo-key.install
 source=('sudo-key.installed' 'sudo-key.kdl')

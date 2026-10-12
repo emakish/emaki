@@ -42,6 +42,8 @@ locks/publish                                      exists while a publish runs; 
 served/<channel>/<id>                              record of every snapshot a channel served
 released/github-stable/<id>                        record of a release copied to GitHub stable
 released/iso/<version>                             record of an ISO published on dl.emaki.sh
+released/iso-exceptions/<version>/<id>             exceptions a retried `iso` run passed that its
+                                                   image record does not name
 <channel>/x86_64/emaki.db, .files, and their .sig  NOT objects: answered by the Worker
 <channel>/x86_64/SOURCES and SOURCES.json          NOT objects: answered by the Worker
 ```
@@ -210,8 +212,55 @@ successful update it removes old package assets no longer named by the new datab
 binaries without sources do not remain available beside the new release.
 
 GitHub `--restore` verifies saved source directions and archives before restoring binaries.
-An old backup without these is refused; `--allow-sourceless-restore` explicitly overrides that
-refusal for a deliberate legacy recovery.
+An old backup without these is refused; a deliberate legacy recovery passes only with an
+owner-signed exception for gate `github.restore-sources` covering the saved `emaki.db`
+(see "Exceptions").
+
+## Exceptions
+
+Every refusal of `publish.sh` names a stable gate: `REFUSED [stamp.age]: …`. The gates are
+right by default; when the owner decides to take a risk anyway, a gate is passed only by an
+exception the owner signs with the release key, never by editing a script or adding a flag.
+`publish.sh exception gates` lists both kinds.
+
+- **Exceptable** (`EXCEPTABLE` in `packaging/mirror/release_exceptions.py`): `publish.tree-clean`,
+  `release.transactions`, the acceptance stamp (`stamp.missing`, `stamp.manifest`, `stamp.runs`,
+  `stamp.bridge`, `stamp.untimed`, `stamp.age`), `iso.transactions`, `iso.stable-packages`,
+  `iso.emaki-source-record`, `github.restore-sources`.
+- **Never** (`NEVER`): package, database and image signatures (`signature.*`), the release key
+  and its revocation (`emaki-revoked`, revoked or expired key signatures), a typed passphrase
+  (`signing.stored-passphrase`), immutability of published names and versions (`immutable.*`;
+  `publish.downgrade`, which `repo-add --prevent-downgrade` refuses anyway), the publisher's
+  state (lock, pointer, journal), read-backs of what was uploaded (`verify.*`, `snapshot.*`,
+  `sources.*`), image source coverage (`iso.sources`: uncollected sources are declared in
+  `MISSING-SOURCES.json`), malformed input or provenance, the network and the command line.
+
+A refusal of an exceptable gate prints the exact artifacts it is about: the candidate package
+files for `publish`, the promoted or copied `MANIFEST` for `promote` and `github`, the image for
+`iso`, the saved `emaki.db` for `github --restore`. Then
+
+```sh
+packaging/publish.sh exception new iso.stable-packages emaki-0.6.0-x86_64.iso \
+    --reason "config and emaki differ only by the commit stamp; the installer is live-only"
+```
+
+writes `packaging/mirror/exceptions/<id>.json`, with the gate, every file's name and SHA-256,
+the reason, `created`, `expires` (`--days`, 1 to 7, default 7) and the signing key's
+fingerprint, and signs it detached (`<id>.json.sig`) with the release key in the usual signing
+home; pinentry asks for the passphrase (the key daemon is reloaded first and stopped after).
+Commit both files. A gate passes only when a record for that gate verifies against
+`packaging/emaki-keyring` (a good signature by a trusted key not in `emaki-revoked`; gpg also
+exits 0 for a revoked key's signature, so the status lines are read), has not expired or been
+revoked, and its scope equals the artifacts at the gate: the same names, the same SHA-256,
+none more, none less. Each refusal is its own gate: the 0.6.0 image needed
+`iso.stable-packages` and then `iso.emaki-source-record`. A pass prints
+`PASSED BY EXCEPTION <id>: <reason>`, appends it to `release.log` in the state directory, and
+the run's `served/<channel>/<id>` or `released/iso/<version>` record lists the exception ids;
+an `iso` retry whose exceptions that record does not name adds
+`released/iso-exceptions/<version>/<id>` before the image upload.
+`exception list`, `exception show <id>`, `exception revoke <id> --reason "…"` (writes
+`<id>.revoked`, commit it; a revoked record passes nothing). An interrupted run checks its gates
+again when it resumes and right before the pointer moves, so revoking stops it too.
 
 Snapshots created before source indexes existed are refused when selected: source provenance
 cannot be reconstructed from binary names. An existing mirror needs a separately verified

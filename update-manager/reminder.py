@@ -15,6 +15,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import tempfile
 
 EVENT = re.compile(r'^\[([^\]]+)\] \[ALPM\] (?:upgraded|downgraded) ([a-zA-Z0-9@._+:-]+) \(([^ ]+) -> ([^ ]+)\)$')
@@ -193,3 +194,32 @@ def _acknowledge(cache_dir=None, *, proc=Path('/proc')):
     state.setdefault('packages', [])
     write_state(path, state)
     return read_state(path, boot_id).get('dismissed', False)
+
+
+def notify_restart(cache_dir=None):
+    """Send the existing boot's undismissed restart advice through the user bus."""
+    state = status(cache_dir)
+    if not state.get('restart') or not state.get('reminder'):
+        return dict(ok=True, notified=False)
+    return notify('Restart to finish the update',
+                  'The new kernel and system services start after a restart. Save your work first.')
+
+
+def notify_completed():
+    """Report a successful update even when no restart is needed."""
+    return notify('Updated', 'All updates are installed.')
+
+
+def notify(title, body):
+    arguments = ['busctl', '--user', '--timeout=2', 'call', '--',
+                 'org.freedesktop.Notifications', '/org/freedesktop/Notifications',
+                 'org.freedesktop.Notifications', 'Notify', 'susssasa{sv}i',
+                 'Programs & Updates', '0', 'emaki-programs-updates',
+                 title, body,
+                 '0', '2', 'resident', 'b', 'true', 'urgency', 'y', '1', '0']
+    try:
+        result = subprocess.run(arguments, stdin=subprocess.DEVNULL, capture_output=True,
+                                text=True, timeout=3, check=False)
+        return dict(ok=result.returncode == 0, notified=result.returncode == 0)
+    except (OSError, subprocess.SubprocessError):
+        return dict(ok=False, notified=False)

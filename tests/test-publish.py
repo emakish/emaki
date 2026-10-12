@@ -253,6 +253,7 @@ class World:
         self.machines.write_text('launch = ""\n[[machine]]\nname = "test machine"\n'
                                  'installed_from = "0.1.0"\ninstalled = 2026-10-10\n')
         self.github = self.base / 'github'
+        self.exceptions = self.base / 'exceptions'
         self.flat = flat
         self.backend = f'local:{self.bucket}'
         self.extra_env = {}
@@ -263,7 +264,7 @@ class World:
                 '--stamp', self.base / 'stamp.json', '--machines', self.machines, '--key', self.keys.fpr, '--signing-home', self.keys.home,
                 '--keyring', self.keys.keyring, '--trusted', self.keys.trusted, '--registry', self.registry,
                 '--source-tree', self.tree, '--closure', 'emaki emaki-apps', '--arch-dbs', 'none',
-                '--github', f'local:{self.github}']
+                '--github', f'local:{self.github}', '--exceptions', self.exceptions]
         args += self.extra_args
         if self.flat:
             args += ['--layout', 'flat']
@@ -463,7 +464,8 @@ class PublishedAcceptance(unittest.TestCase):
             backend.put_new('released/iso/0.5.0', json.dumps({'manifest': 'c' * 64}).encode())
             publisher = object.__new__(publish.Publisher)
             publisher.backend = backend
-            publisher.args = SimpleNamespace(stamp=root / 'stamp.json', machines=machines)
+            publisher.args = SimpleNamespace(stamp=root / 'stamp.json', machines=machines,
+                                             exceptions=root / 'exceptions')
             current, following = 'a' * 64, 'b' * 64
 
             def results(manifest, starts=('0.5.0',)):
@@ -483,17 +485,17 @@ class PublishedAcceptance(unittest.TestCase):
             stale_stamp = publisher.args.stamp.read_bytes()
             publish.write_stamp(results(current), publisher.args.stamp, backend, machines)
             original_stamp = publisher.args.stamp.read_bytes()
-            publisher.check_stamp(current)
+            publisher.check_stamp(current, {'MANIFEST': current})
             backend.put_new('released/iso/0.6.0', json.dumps({'manifest': current}).encode())
-            publisher.check_stamp(current)
+            publisher.check_stamp(current, {'MANIFEST': current})
             self.assertEqual(publisher.args.stamp.read_bytes(), original_stamp)
             publisher.args.stamp.write_bytes(stale_stamp)
             with self.assertRaisesRegex(publish.Refused, 'T1 from 0.6.0'):
-                publisher.check_stamp(following)
+                publisher.check_stamp(following, {'MANIFEST': following})
             with self.assertRaisesRegex(publish.Refused, 'T1 from 0.6.0'):
                 publish.write_stamp(results(following), publisher.args.stamp, backend, machines)
             publish.write_stamp(results(following, ('0.5.0', '0.6.0')), publisher.args.stamp, backend, machines)
-            publisher.check_stamp(following)
+            publisher.check_stamp(following, {'MANIFEST': following})
 
 
 class SourceProvenance(unittest.TestCase):
@@ -772,7 +774,7 @@ class SourceProvenance(unittest.TestCase):
         publisher._verifier = SimpleNamespace(verify=lambda *args: True)
         publisher.pointer = lambda channel: ('20260101T000000Z', None)
         publisher.snapshot = lambda *args: files
-        publisher.check_stamp = lambda digest: None
+        publisher.check_stamp = lambda digest, artifacts: None
         for record in records.values():
             key = publish.source_key(record)
             publisher.backend.put_new(key, root / record['archive'])
@@ -967,7 +969,7 @@ class SourceProvenance(unittest.TestCase):
         root, publisher = self.directory, self.publisher
         entries = publisher.collect(root)
         records = {entry['name']: entry['source'] for entry in entries.values()}
-        publisher.args = SimpleNamespace(github=f'local:{root / "github"}')
+        publisher.args = SimpleNamespace(github=f'local:{root / "github"}', exceptions=root / 'exceptions')
         publisher.state = root / 'state'
         publisher.public = 'https://pkgs.emaki.sh'
         publisher.dry_run = False
@@ -1017,7 +1019,8 @@ class SourceProvenance(unittest.TestCase):
             (github / name).write_bytes(b'previous database')
         (github / 'SOURCES').write_text('Previous source directions\n')
         (github / 'SOURCES.json').write_text('{"format":1,"packages":{}}')
-        publisher.args = SimpleNamespace(github=f'local:{root / "github"}', closure='emaki')
+        publisher.args = SimpleNamespace(github=f'local:{root / "github"}', closure='emaki',
+                                         exceptions=root / 'exceptions')
         publisher.confirm_channel = mock.Mock()
         publisher.check_transactions = mock.Mock()
         publisher.dry_run = True
@@ -1068,8 +1071,10 @@ class SourceProvenance(unittest.TestCase):
         with self.assertRaisesRegex(publish.Refused, 'saved binaries lack verified corresponding sources'):
             publisher.github('testing', True)
         self.assertEqual({p.name: p.read_bytes() for p in github.iterdir()}, before_restore)
-        publisher.args.allow_sourceless_restore = True
-        publisher.github('testing', True)
+        # An owner-signed exception for this saved database passes the gate (test-publish-exceptions.py).
+        with mock.patch.object(publisher, 'gate') as gate:
+            publisher.github('testing', True)
+        self.assertEqual(gate.call_args.args[0], 'github.restore-sources')
         self.assertEqual((github / '.description').read_text(), publish.source_notes('Previous source directions\n'))
         self.assertEqual((github / 'SOURCES').read_bytes(), before['SOURCES'])
         self.assertEqual((github / 'emaki.db').read_bytes(), before['emaki.db'])
@@ -1084,7 +1089,8 @@ class SourceProvenance(unittest.TestCase):
         for saved in (publisher.state / 'github/testing').glob('*'):
             for name in publish.SOURCE_FILES:
                 (saved / name).unlink(missing_ok=True)
-        publisher.github('testing', True)
+        with mock.patch.object(publisher, 'gate'):  # the same owner-signed exception as above
+            publisher.github('testing', True)
         self.assertFalse((github / 'SOURCES').exists())
         self.assertEqual((github / '.description').read_text(), '')
         self.assertEqual((github / '.upload-log').read_text().splitlines()[-2:], ['emaki.files', 'emaki.db'])
@@ -1112,6 +1118,13 @@ class PublishTests(unittest.TestCase):
     def refused(self, result, text):
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
         self.assertIn(text, result.stderr)
+
+    def except_saved_database(self, tag, database):
+        """An owner-signed exception for restoring the saved GitHub database with these bytes."""
+        saved = next(path for path in (self.world.state / 'github' / tag).glob('*/emaki.db')
+                     if path.read_bytes() == database)
+        self.ok(self.world.publish('exception', 'new', 'github.restore-sources', saved,
+                                   '--reason', 'legacy recovery drill'))
 
     def candidate(self, version, **kwargs):
         directory = self.world.base / f'pkgs-{version}'
@@ -1701,7 +1714,8 @@ class PublishTests(unittest.TestCase):
         self.assertEqual((old / 'emaki.db').read_bytes(), (snap / 'emaki.db').read_bytes())
         self.refused(world.publish("github"), "no stable snapshot")
         self.refused(world.publish('github', '--tag', 'testing', '--restore'), 'saved binaries lack verified corresponding sources')
-        self.ok(world.publish('github', '--tag', 'testing', '--restore', '--allow-sourceless-restore'))
+        self.except_saved_database('testing', old_database)
+        self.assertIn('PASSED BY EXCEPTION', self.ok(world.publish('github', '--tag', 'testing', '--restore')).stdout)
         self.assertEqual((old / 'emaki.db').read_bytes(), old_database)
         # A machine on the old address (no signature) accepts the copied database.
         self.ok(world.publish('github', '--tag', 'testing'))
@@ -1725,7 +1739,8 @@ class PublishTests(unittest.TestCase):
         planted.mkdir(parents=True)
         shutil.copyfile(github / 'emaki.db', planted / 'emaki.db')
         self.refused(world.publish('github', '--restore'), 'saved binaries lack verified corresponding sources')
-        self.ok(world.publish('github', '--restore', '--allow-sourceless-restore'))
+        self.except_saved_database('stable', before[0])
+        self.ok(world.publish('github', '--restore'))
         self.assertEqual((github / 'emaki.db').read_bytes(), before[0])
         self.assertEqual((github / 'emaki.files').read_bytes(), before[1])
         self.refused(world.publish('github', '--restore'), 'differs from what GitHub stable serves')

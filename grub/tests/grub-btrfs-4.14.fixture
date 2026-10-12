@@ -1,6 +1,6 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Unmodified entry, make_menu_entries, trim, title_format and header_menu from:
+# Unmodified entry, make_menu_entries, trim, title_format, header_menu, parse_snapshot_list and boot_bounded from:
 # https://github.com/Antynea/grub-btrfs/blob/v4.14/41_snapshots-btrfs
 # Upstream written by Antynea; distributed under GPL-3.0-or-later.
 entry()
@@ -154,4 +154,50 @@ header_menu()
             header_entry+=$(printf "%${lenght_title_column_left}s%${lenght_title_column_right}s" "${title_column[${GRUB_BTRFS_TITLE_FORMAT[$key],,}]}" "|") # Final "|" is for visuals only
         done
     sed -i "1imenuentry '|${header_entry}' { echo }" "$grub_btrfs_directory/grub-btrfs.new" # First "|" is for visuals only
+}
+
+parse_snapshot_list()
+{
+    snap_date=" $(echo "$item" | cut -d'|' -f1)" # column_1, first space is necessary for pretty formatting
+    snap_date_trim="$(trim "$snap_date")"
+
+    snap_dir_name="$(echo "$item" | cut -d'|' -f2)" # column_2
+    snap_dir_name_trim="$(trim "$snap_dir_name")"
+    snap_snapshot="$snap_dir_name" # Used by "title_format" function
+
+    snap_type="$(echo "$item" | cut -d'|' -f3)" # column_3
+
+    snap_description="$(echo "$item" | cut -d'|' -f4)" # column_4
+}
+
+boot_bounded()
+{
+    # Initialize menu entries
+    IFS=$'\n'
+    for item in $(snapshot_list); do
+        [ "${limit_snap_show}" -le 0 ] && break; # fix: limit_snap_show=0
+        IFS=$oldIFS
+        parse_snapshot_list
+        boot_dir="$grub_btrfs_mount_point/$snap_dir_name_trim$boot_directory"
+        detect_kernel
+        if [ -z "${list_kernel}" ]; then continue; fi
+        name_kernel=("${list_kernel[@]##*"/"}")
+        detect_initramfs
+        name_initramfs=("${list_initramfs[@]##*"/"}")
+        detect_microcode
+        name_microcode=("${list_ucode[@]##*"/"}")
+        detect_rootflags
+        title_format
+        boot_dir_root_grub="$(make_system_path_relative_to_its_root "${boot_dir}")" # convert "boot_directory" to root of GRUB (e.g /boot become /)
+        insmods=("${list_insmods[@]##*"/"}")
+        make_menu_entries
+        # show snapshot found during run "grub-mkconfig"
+        if [ "${GRUB_BTRFS_SHOW_SNAPSHOTS_FOUND:-"true"}" = "true" ]; then
+            printf "Found snapshot: %s\n" "$item" >&2 ;
+        fi
+        # Limit snapshots found during run "grub-mkconfig"
+        count_limit_snap=$((1+count_limit_snap))
+        [ "$count_limit_snap" -ge "$limit_snap_show" ] && break;
+    done
+    IFS=$oldIFS
 }

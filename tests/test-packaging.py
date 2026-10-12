@@ -75,8 +75,8 @@ class MetadataTests(unittest.TestCase):
             /usr/share/libalpm/scripts/emaki-system-migrate() { :; }
             systemctl() { printf 'systemctl'; printf ' <%s>' "$@"; printf '\\n'; }
             source "$1"
-            post_install 0.6.0-11
-            post_upgrade 0.6.0-11 0.6.0-10
+            post_install 0.7.0-1
+            post_upgrade 0.7.0-2 0.7.0-1
         '''
         result = run(['/bin/bash', '-eu', '-c', harness, 'hooks', str(hooks)],
                      env={**os.environ, 'PATH': '/nonexistent'})
@@ -106,7 +106,7 @@ class MetadataTests(unittest.TestCase):
                     /usr/share/libalpm/scripts/emaki-system-migrate() { echo mark-fresh; }
                     systemctl() { printf 'systemctl'; printf ' <%s>' "$@"; printf '\\n'; }
                     source "$1"
-                    "$2" 0.6.0-11 0.6.0-10
+                    "$2" 0.7.0-2 0.7.0-1
                 '''
                 result = run(['/bin/bash', '-eu', '-c', harness, 'hooks', str(hooks), hook],
                              env={**os.environ, 'PATH': '/nonexistent'})
@@ -128,29 +128,26 @@ class MetadataTests(unittest.TestCase):
         self.assertIn('auth       substack    emaki-greetd-auth', (ROOT / 'greetd/pam').read_text())
         self.assertIn('auth       include     system-local-login', (ROOT / 'greetd/pam-auth').read_text())
 
-    def test_release_versions(self, marker_release='15'):
+    def test_release_versions(self):
         for name in ('emaki', 'emaki-config', 'emaki-desktop', 'emaki-apps', 'emaki-keyring', 'emaki-mirrorlist', 'emaki-installer', 'emaki-nvidia', 'emaki-sudo-key'):
             with self.subTest(package=name):
                 info = self.recipes[name]
                 self.assertEqual(info['pkgname'], [name])
-                self.assertEqual(info['pkgver'], ['0.6.0'])
-                self.assertEqual(info['pkgrel'], [marker_release] if name == 'emaki' else
-                                 ['14'] if name == 'emaki-config' else
-                                 ['6'] if name == 'emaki-sudo-key' else
-                                 ['5'] if name == 'emaki-installer' else
-                                 ['2'] if name == 'emaki-apps' else ['1'])
+                self.assertEqual(info['pkgver'], ['0.7.0'])
+                self.assertEqual(info['pkgrel'], ['1'])
                 # emaki-installer also ships the zone map (ODbL) and the GRUB unlock-screen fonts (DejaVu, Bitstream Vera).
                 self.assertEqual(info['license'], ['GPL-3.0-or-later', 'ODbL-1.0', 'Bitstream-Vera']
                                  if name == 'emaki-installer' else ['GPL-3.0-or-later', 'Bitstream-Vera']
                                  if name == 'emaki-config' else ['GPL-3.0-or-later']
                                  if name == 'emaki-nvidia' else ['GPL-3.0-or-later'])
+        self.assertTrue({'kimageformats', 'libjxl'} <= set(self.recipes['emaki-config']['depends']))
         cargo = tomllib.loads((ROOT / 'Cargo.toml').read_text())
-        self.assertEqual(cargo['workspace']['package']['version'], '0.6.0')
+        self.assertEqual(cargo['workspace']['package']['version'], '0.7.0')
         packages = tomllib.loads((ROOT / 'Cargo.lock').read_text())['package']
-        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.6.0'})
+        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.7.0'})
         self.assertEqual(self.recipes['emaki']['depends'], [
-            'emaki-config=0.6.0-14', 'emaki-desktop=0.6.0-1', 'niri-emaki=26.04-20',
-            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.6.0-1', 'emaki-mirrorlist>=0.6.0-1'])
+            'emaki-config=0.7.0-1', 'emaki-desktop=0.7.0-1', 'niri-emaki=26.04-20',
+            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.7.0-1', 'emaki-mirrorlist>=0.7.0-1'])
 
     @unittest.skipUnless(shutil.which('pacman'), 'needs pacman for removal dependency resolution')
     def test_obs_removal_preview_keeps_base_packages(self):
@@ -1073,7 +1070,12 @@ worker.files.read.return_value = 'linux /boot/vmlinuz-linux\\nlinux /boot/vmlinu
 worker.grub_config()
 assert worker.runner.chroot.call_args_list == [
     call(['/usr/share/libalpm/scripts/emaki-grub-title'], '/target', check=False),
-    call(['grub-mkconfig', '-o', '/boot/grub/grub.cfg'], '/target')]
+    call(['env', 'GRUB_THEME=/usr/share/emaki/grub/theme/theme-100.txt',
+          'grub-mkconfig', '-o', '/boot/grub/grub.cfg'], '/target')]
+worker.files.path.return_value.is_file.return_value = False
+worker.runner.chroot.reset_mock()
+worker.grub_config()
+assert worker.runner.chroot.call_args_list[-1] == call(['grub-mkconfig', '-o', '/boot/grub/grub.cfg'], '/target')
 '''], env=dict(os.environ, PYTHONPATH=str(ROOT / 'installer')))
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -1329,7 +1331,7 @@ class PayloadTests(unittest.TestCase):
         binary = self.dest / 'usr/bin/emaki'
         # Keep this payload check independent of the host's installed channel helper.
         self.assertEqual(run([str(binary), 'version'], env={**os.environ, 'PATH': ''}).stdout,
-                         'emaki 0.6.0 [channel: unknown]\n')
+                         'emaki 0.7.0 [channel: unknown]\n')
         result = run(['python3', 'scripts/core-package.py', 'verify-build-paths', '--binary', str(binary)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -1368,7 +1370,7 @@ class PayloadTests(unittest.TestCase):
     def test_defaults_and_presets(self):
         commit = run(['git', 'rev-parse', 'HEAD']).stdout.strip()
         self.assertEqual((self.dest / 'usr/lib/emaki-release').read_text(),
-                         f'VERSION=0.6.0\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
+                         f'VERSION=0.7.0\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
         expected = {'greetd.service', 'NetworkManager.service', 'bluetooth.service', 'grub-btrfsd.service',
                     'snapper-timeline.timer', 'snapper-cleanup.timer', 'fstrim.timer', 'paccache.timer',
                     'emaki-refresh-mirrors.timer', 'emaki-wifi-recovery.service', 'emaki-sudo.service',

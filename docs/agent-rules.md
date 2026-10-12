@@ -41,6 +41,7 @@ a component is absent or broken. Do not run every command for an unrelated chang
 | `emaki niri snapshot --json` | compositor-configuration, compositor-runtime |
 | `emaki settings get appearance.wallpaper --json` | settings-wallpaper, wallpaper |
 | `emaki settings list --json` | command-and-settings-core, settings-input-pages, settings-notifications |
+| `emaki-boot-order --json` | alongside-test-boot-safety |
 | `emaki-machine-settings get --json` | machine-settings |
 | `emaki-programs catalog --json; emaki-programs list --json; emaki-programs preview PACKAGE --json` | installed-programs |
 | `emaki-rollback status --json` | snapshot-recovery, update-restore |

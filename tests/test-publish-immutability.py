@@ -136,12 +136,15 @@ class ResignedPackage(unittest.TestCase):
                 mock.patch.object(self.publisher, 'begin', return_value=journal), \
                 mock.patch.object(self.publisher, 'build_db', side_effect=build_trial), \
                 mock.patch.object(self.publisher, 'check_release'), \
+                mock.patch.object(self.publisher, 'check_tree') as check_tree, \
                 mock.patch.object(self.publisher, 'take_lock'), \
                 mock.patch.object(self.publisher, 'done'), \
                 mock.patch.object(self.publisher, 'verify_packages_anonymously',
                                   side_effect=AnonymousCheckReached) as anonymous:
             with self.assertRaises(AnonymousCheckReached):
                 self.publisher.publish('testing', self.root)
+            # A resumed run repeats the tree gate: an exception revoked since step 0 stops it.
+            check_tree.assert_called_once_with({self.package.name: self.entry['sha256']})
             anonymous.assert_called_once_with('testing', {
                 self.package.name: (self.entry['sha256'], publish.sha256(b'old trusted signature'))})
 

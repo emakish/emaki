@@ -4,7 +4,7 @@
 
 Descriptions are plain text, converted by libappstream. Sizes remain unknown:
 release artifact sizes do not identify the package/bundle being installed.
-Local and cached icons remain metadata references, never files we open here.
+Cached icons resolve only within the catalog's own icon tree; image bytes are not read.
 """
 import gzip
 import io
@@ -161,6 +161,39 @@ def _web_url(value):
         return False
 
 
+def _cached_icon(path, origin, name, width, height, scale=1):
+    """Resolve native and Flatpak icon layouts without trusting catalog paths.
+
+    Native catalogs keep icons beside xml/xmls/yaml, scoped by origin. Flatpak
+    keeps icons beside appstream.xml in its already remote-scoped checkout.
+    A filename or symlink must never turn metadata into an arbitrary local read.
+    """
+    if (not name or name in ('.', '..') or any(char in name for char in '/\\:')
+            or name != clean_text(name)):
+        return None
+    metadata = Path(path).resolve()
+    if metadata.parent.name in ('xml', 'xmls', 'yaml'):
+        if not re.fullmatch(r'[a-zA-Z0-9_+.-]+', origin or '') or origin in ('.', '..'):
+            return None
+        boundary = metadata.parent.parent
+        directory = boundary / 'icons' / origin
+    elif metadata.name in ('appstream.xml', 'appstream.xml.gz'):
+        boundary = metadata.parent
+        directory = boundary / 'icons'
+    else:
+        return None
+    sizes = [(width, height)] if width and height else [(64, 64), (128, 128)]
+    for icon_width, icon_height in sizes:
+        size = f'{icon_width}x{icon_height}' + (f'@{scale}' if scale > 1 else '')
+        try:
+            candidate = (directory / size / name).resolve()
+            if candidate.is_relative_to(directory) and candidate.is_file():
+                return str(candidate)
+        except (OSError, RuntimeError, ValueError):
+            continue
+    return None
+
+
 def _record(component, library, origin, path):
     if component.get_kind() not in (
             library.ComponentKind.DESKTOP_APP, library.ComponentKind.CONSOLE_APP):
@@ -185,6 +218,11 @@ def _record(component, library, origin, path):
             value = icon.get_name()
             if not value or ":" in value or "/" in value or "\\" in value:
                 continue
+            if kind == library.IconKind.CACHED:
+                value = _cached_icon(path, origin or component.get_origin(), value,
+                                     icon.get_width(), icon.get_height(), icon.get_scale())
+                if not value:
+                    continue
         elif kind == library.IconKind.LOCAL:
             value = icon.get_filename()
             if origin or not value or ":" in value or not Path(value).is_absolute():
@@ -208,13 +246,19 @@ def _record(component, library, origin, path):
     for screenshot in component.get_screenshots_all():
         if len(screenshots) == MAX_LIST_ITEMS:
             break
-        for image in screenshot.get_images():
-            if len(screenshots) == MAX_LIST_ITEMS:
-                break
-            url = image.get_url()
-            if _web_url(url) and url not in seen:
-                seen.add(url)
-                screenshots.append(url)
+        images = [image for image in screenshot.get_images() if _web_url(image.get_url())]
+        if not images:
+            continue
+        # One screenshot can carry several thumbnails of the same scene. Prefer
+        # its source image, then the largest available resolution, once per scene.
+        image = max(images, key=lambda candidate: (
+            candidate.get_kind() == library.ImageKind.SOURCE,
+            candidate.get_width() * candidate.get_height(),
+            candidate.get_width(), candidate.get_height()))
+        url = image.get_url()
+        if url not in seen:
+            seen.add(url)
+            screenshots.append(url)
     description = component.get_description() or ""
     if description:
         try:

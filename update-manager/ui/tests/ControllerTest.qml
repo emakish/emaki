@@ -8,7 +8,8 @@ import Quickshell
 ShellRoot {
     id: test
     property bool failed: false
-    UpdateController { id: controller }
+    property int hides: 0
+    UpdateController { id: controller; onHideReady: test.hides += 1 }
     TestCase { id: input; when: false; name: "UpdateControllerProcess" }
     function check(ok: bool, message: string): void {
         if (!ok) { failed = true; console.error("ASSERTION_FAILED " + message); }
@@ -25,6 +26,13 @@ ShellRoot {
             test.settle();
             test.check(controller.phase === "idle" && controller.received, "initial result received");
             const scenario = Quickshell.env("TEST_SCENARIO");
+            if (scenario.startsWith("index-")) {
+                input.wait(100);
+                test.check(controller.restorePoints.length === 0 && !!controller.restoreError, "restore index failure is distinguished from no snapshots");
+                if (scenario === "index-error") test.check(controller.restoreError === "Restore index is unavailable.", "backend restore explanation retained");
+                if (!test.failed) console.log("CONTROLLER_OK");
+                Qt.quit(); return;
+            }
             if (scenario === "flatpak" || scenario === "aur") {
                 test.check(controller.repositoryCount === 0, "non-repository rows excluded from repository count");
                 controller.apply();
@@ -35,7 +43,8 @@ ShellRoot {
             }
             if (scenario === "reminder") {
                 test.check(controller.restart && controller.reminder, "startup restores reminder");
-                controller.hide(); test.settle();
+                controller.dismissReminder(); test.settle();
+                test.check(test.hides === 0, "Later keeps the unified window open");
                 test.check(controller.restart && !controller.reminder, "dismissal keeps restart available");
                 controller.check(); test.settle();
                 test.check(controller.restart && !controller.reminder, "new check preserves dismissed reminder");
@@ -48,7 +57,10 @@ ShellRoot {
                 controller.selectRestore(controller.restorePoints[0]);
                 controller.cancelRestore();
                 test.check(!controller.selectedRestore && !controller.restoreOpen, "cancel drops selection");
-                controller.selectRestore(controller.restorePoints[0]); controller.restore();
+                controller.selectRestore(controller.restorePoints[0]);
+                controller.restorePoints = [{id: 99, date: "2026-10-11T12:00:00Z"}];
+                test.check(controller.selectedRestore.id === 42, "index refresh preserves confirmed restore identity");
+                controller.restore();
                 controller.apply(); controller.reboot(); controller.loadRestorePoints();
                 test.check(controller.phase === "restoring", "restore blocks overlapping actions");
                 test.settle();
@@ -60,6 +72,10 @@ ShellRoot {
                 Qt.quit(); return;
             }
             test.check(controller.data.cached === true && controller.repositoryCount === 1, "startup uses cached check and counts only repository rows");
+            controller.externalBusy = true;
+            controller.apply();
+            test.check(!controller.busy, "program transactions block updates");
+            controller.externalBusy = false;
             controller.check();
             test.check(controller.phase === "checking" && controller.busy, "manual refresh enters checking");
             test.settle();
@@ -78,10 +94,22 @@ ShellRoot {
             }
             test.check(controller.phase === "finished", "apply exits to result screen");
             test.check(controller.output.includes("Preparing the update.") && controller.output.includes("Download detail."), "stdout progress and stderr details are retained");
+            if (scenario === "delayed-index") {
+                input.wait(400);
+                test.check(controller.restorePoints.length === 1, "delayed system index appears without navigation");
+                test.check(controller.restoreRefreshes === 0, "index polling ends after bounded retries");
+                if (!test.failed) console.log("CONTROLLER_OK");
+                Qt.quit(); return;
+            }
             if (scenario === "success") {
                 test.check(controller.succeeded && controller.restart && controller.signOut, "success exposes restart and sign-out advice");
                 test.check(controller.message === "Update complete.", "success result message");
                 const previousOutput = controller.output;
+                let remaining = 5000;
+                while (controller.countRefreshing && remaining > 0) { input.wait(20); remaining -= 20; }
+                test.check(controller.completedUpdates.length === 1 && controller.completedUpdates[0].name === "linux" && !!controller.completedAt, "completed rows and timestamp survive count refresh");
+                test.check(controller.managedCount === 0 && controller.data.updates.length === 1, "completed count comes from backend recheck, retaining AUR");
+                test.check(controller.phase === "finished" && controller.message === "Update complete." && controller.output === previousOutput && controller.restart && controller.signOut, "count refresh preserves completed result and advice");
                 controller.hide(); test.settle();
                 test.check(controller.phase === "finished" && controller.message === "Update complete." && controller.output === previousOutput, "Later preserves completed result until explicit check");
                 test.check(!controller.reminder && controller.restart, "Later dismisses only the reminder");

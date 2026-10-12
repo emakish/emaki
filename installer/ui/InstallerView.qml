@@ -1428,7 +1428,7 @@ Item {
                     objectName: "disk-" + modelData.id
                     width: parent.width
                     text: modelData.model + " · " + view.size(modelData.size_bytes)
-                    detail: view.diskReason(modelData) || modelData.path + " · " + modelData.bus + " · " + modelData.partitions.length + " partitions" + Protocol.diskContents(modelData)
+                    detail: (view.diskReason(modelData) || modelData.path + " · " + modelData.bus + " · " + modelData.partitions.length + " partitions" + Protocol.diskContents(modelData)) + Protocol.alongsideRefusal(modelData)
                     chosen: view.controller.diskId === modelData.id
                     enabled: !view.diskReason(modelData) && !view.controller.locked
                     onClicked: view.controller.chooseDisk(modelData.id)
@@ -1440,6 +1440,16 @@ Item {
                 visible: view.controller.mode === "erase" && !!view.controller.selectedDisk?.partitions?.some(p => p.os_hint === "windows")
                 text: "This disk holds Windows. Erasing it deletes Windows and all files on the disk."
                 color: view.danger
+            }
+            Choice {
+                width: parent.width
+                visible: view.controller.canAlongside
+                objectName: "alongsideChoice"
+                text: "Install alongside Windows"
+                detail: "Keep Windows and use part of its free space for Emaki."
+                chosen: view.controller.mode === "alongside"
+                enabled: !view.controller.locked
+                onClicked: view.controller.mode = "alongside"
             }
             Choice {
                 width: parent.width
@@ -1471,16 +1481,6 @@ Item {
                     view.controller.manualAssignments = false;
                     view.controller.probe();
                 }
-            }
-            Choice {
-                width: parent.width
-                visible: view.controller.canAlongside
-                objectName: "alongsideChoice"
-                text: "Install alongside Windows"
-                detail: "Keep Windows and use part of its free space for Emaki."
-                chosen: view.controller.mode === "alongside"
-                enabled: !view.controller.locked
-                onClicked: view.controller.mode = "alongside"
             }
             Column {
                 id: encryptedWarning

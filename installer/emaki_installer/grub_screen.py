@@ -5,8 +5,32 @@
 import struct
 from pathlib import Path
 
-VARIANT = 'C'  # The chosen look; A and B stay available as one-line alternatives.
+VARIANT = 'D'  # The chosen look; A, B and C stay available as one-line alternatives.
 ARTWORK = Path(__file__).with_name('grub_artwork')
+# The boot menu theme (grub/theme/generate-theme.py) and variant D of the disk-password
+# pictures share one layout, so the two screens read as one: the same picture, a calm
+# panel at the same place, the same face. Percentages of the screen.
+PANEL = (22, 28, 56, 46)  # left, top, width, height
+PANEL_ALPHA = 0.82
+HINT_TOP = 78
+TIMEOUT_TOP = 83
+FONT_FAMILY = 'Noto Sans Regular'  # tokens.toml [font] ui
+# Approved 0.7.0 texts (2026-10-12).
+HINT = '↑ ↓ choose · Enter to start'
+TIMEOUT = 'Starting in %d s'
+# Pixel sizes per menu scale (percent); the generator picks by GRUB's video mode height.
+SCALES = {
+    100: {'item': 22, 'hint': 16, 'row': 40, 'inset': 14, 'gap': 4, 'hint_row': 24,
+          'panel_radius': 16, 'select_radius': 6},
+    150: {'item': 33, 'hint': 24, 'row': 60, 'inset': 21, 'gap': 6, 'hint_row': 36,
+          'panel_radius': 24, 'select_radius': 9},
+    200: {'item': 44, 'hint': 32, 'row': 80, 'inset': 28, 'gap': 8, 'hint_row': 48,
+          'panel_radius': 32, 'select_radius': 12},
+    300: {'item': 66, 'hint': 48, 'row': 120, 'inset': 42, 'gap': 12, 'hint_row': 72,
+          'panel_radius': 48, 'select_radius': 18},
+}
+# The largest mode height each scale is drawn for; taller modes take the next scale.
+SCALE_HEIGHTS = ((1000, 100), (1400, 150), (1900, 200))
 ARTWORK_SIZE = (2560, 1600)
 SIZES = (ARTWORK_SIZE,)
 TEXT = (
@@ -78,7 +102,7 @@ def _hidden_font():
 def assets(variant=None) -> dict[str, bytes]:
     """Return the hidden terminal font and three pre-rendered RGB master pictures."""
     variant = VARIANT if variant is None else variant
-    if variant not in ('A', 'B', 'C'):
+    if variant not in ('A', 'B', 'C', 'D'):
         raise ValueError('unknown unlock artwork variant')
     result = {'hidden.pf2': _hidden_font()}
     for width, height in SIZES:

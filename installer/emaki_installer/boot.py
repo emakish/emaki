@@ -1,6 +1,7 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Shared installed-system and installer GRUB rendering and verification."""
+import collections
 import io
 import re
 import struct
@@ -184,6 +185,375 @@ def menu_font(mode):
             if mode[0] // width >= MENU_GRID[0] and mode[1] // height >= MENU_GRID[1]:
                 return f'{MENU_FONT_DIR}/menu-{size}.pf2'
     return None
+
+
+MENU_THEME_DIR = '/usr/share/emaki/grub/theme'
+
+
+def menu_theme(mode):
+    """The theme drawn for the mode GRUB used; the smallest scale when it is unknown."""
+    height = mode[1] if mode else 0
+    scale = next((scale for limit, scale in grub_screen.SCALE_HEIGHTS if height < limit),
+                 max(grub_screen.SCALES))
+    return f'{MENU_THEME_DIR}/theme-{scale}.txt'
+
+
+def generated_menu_theme(text):
+    """The theme a generated menu sets: a path, None for no theme, '' if not ours."""
+    themes = re.findall(r'^set theme=(\S+)$', text, re.M)
+    if not themes:
+        return None
+    match = re.fullmatch(r'\(\$root\)\S*(/usr/share/emaki/grub/theme/theme-[0-9]+\.txt)', themes[0])
+    return match[1] if len(themes) == 1 and match else ''
+
+
+# 10_linux titles with GRUB_DISABLE_SUBMENU=y, after emaki-grub-title dropped " Linux".
+LINUX_ENTRY = re.compile(r"^menuentry 'Emaki, with Linux (linux|linux-lts)( \(fallback initramfs\))?'([^\n]*\{)\n", re.M)
+ADVANCED = "submenu 'Advanced options' $menuentry_id_option 'emaki-advanced' {\n"
+FIRMWARE = re.compile(r'(### BEGIN /etc/grub\.d/30_uefi-firmware ###\n)(.*?)(### END /etc/grub\.d/30_uefi-firmware ###\n)', re.S)
+SNAPSHOTS_END = '### END /etc/grub.d/41_snapshots-btrfs ###\n'
+HEADER_END = '### END /etc/grub.d/00_header ###\n'
+ENTRY = re.compile(r"^[ \t]*(?:menuentry|submenu) '((?:[^']|'\\'')*)'([^\n]*)\{$")
+ENTRY_ID = re.compile(r"\$menuentry_id_option '([^']+)'")
+GRUB_VARIABLE = re.compile(r'\$(?:\{[^}\n]*\}|[A-Za-z0-9_?#@*]+)')
+# A command word that assigns a variable (`saved_entry="${chosen}"`) rather than naming a command.
+GRUB_ASSIGNMENT = re.compile(r'[A-Za-z_][A-Za-z0-9_]*=')
+# Options of menuentry/submenu that take a value (grub-core/commands/menuentry.c).
+ENTRY_VALUE_OPTIONS = ('--class', '--users', '--hotkey', '--source', '--id')
+# One entry GRUB numbers at the top level, or (`source`) a point after which it numbers what it reads.
+MenuEntry = collections.namedtuple('MenuEntry', 'title id conditional start end source', defaults=(False,))
+MenuEntries = collections.namedtuple('MenuEntries', 'entries complete')
+# Set at the end of the header when an old default number needs the menu in its old order.
+OLD_LAYOUT = 'emaki_old_layout'
+# Commands that read entries from another file: only `source` adds them to this menu's top level.
+GRUB_MENU_READERS = ('source', 'configfile', 'normal', 'extract_entries_source', 'extract_entries_configfile',
+                     'extract_legacy_entries_source', 'extract_legacy_entries_configfile', 'syslinux_source',
+                     'syslinux_configfile')
+# What grub 2:2.16-1's 41_custom writes: custom.cfg runs after the header, may add entries and set the default.
+CUSTOM_TEST = ('if [ -f  ${{config_directory}}/custom.cfg ]; then\n{0}'
+               'elif [ -z "${{config_directory}}" -a -f  $prefix/custom.cfg ]; then\n{1}fi\n')
+CUSTOM_END = '### END /etc/grub.d/41_custom ###\n'
+CUSTOM_BLOCK = ('### BEGIN /etc/grub.d/41_custom ###\n'
+                + CUSTOM_TEST.format('  source ${config_directory}/custom.cfg\n', '  source $prefix/custom.cfg\n')
+                + CUSTOM_END)
+
+
+def grub_quote(value):
+    return "'" + value.replace("'", "'\\''") + "'"
+
+
+def grub_words(text):
+    """GRUB script tokens (kind, value, start, end): a 'word', '{', '}' or ';' (also a newline).
+
+    A word that expands a variable has the value None. Stops with ValueError at an unclosed quote.
+    """
+    position, size = 0, len(text)
+    while position < size:
+        char = text[position]
+        if char in ' \t\r':
+            position += 1
+        elif char in ';\n{}':
+            yield (';' if char == '\n' else char), char, position, position + 1
+            position += 1
+        elif char == '#':
+            end = text.find('\n', position)
+            position = size if end < 0 else end
+        else:
+            start, value, literal = position, [], True
+            while position < size and text[position] not in ' \t\r;\n{}':
+                char = text[position]
+                if char == "'":
+                    end = text.find("'", position + 1)
+                    if end < 0:
+                        raise ValueError(f'unclosed quote at {position}')
+                    value.append(text[position + 1:end])
+                    position = end + 1
+                elif char == '"':
+                    position += 1
+                    while position < size and text[position] != '"':
+                        if text[position] == '\\' and text[position + 1:position + 2] in ('\\', '"', '$', '\n'):
+                            value.append(text[position + 1])
+                            position += 2
+                        elif (variable := GRUB_VARIABLE.match(text, position)):
+                            literal, position = False, variable.end()
+                        else:
+                            value.append(text[position])
+                            position += 1
+                    if position >= size:
+                        raise ValueError(f'unclosed quote at {start}')
+                    position += 1
+                elif char == '\\':
+                    value.append(text[position + 1:position + 2])
+                    position += 2
+                elif (variable := GRUB_VARIABLE.match(text, position)):
+                    literal, position = False, variable.end()
+                else:
+                    value.append(char)
+                    position += 1
+            yield 'word', ''.join(value) if literal else None, start, position
+
+
+def entry_title_and_id(text, words):
+    """The title and id of `menuentry|submenu <words> {`, or None where they depend on variables."""
+    title = identifier = None
+    index = 0
+    while index < len(words):
+        value, raw = words[index][1], text[words[index][2]:words[index][3]]
+        if raw in ('$menuentry_id_option', '${menuentry_id_option}') or value in ENTRY_VALUE_OPTIONS:
+            if index + 1 == len(words) or words[index + 1][1] is None:
+                return None
+            if value in (None, '--id'):
+                identifier = words[index + 1][1]
+            index += 2
+            continue
+        if value is None:
+            return None
+        if value.startswith('--id='):
+            identifier = value[5:]
+        elif not value.startswith('--') and title is None:
+            title = value
+        index += 1
+    return None if title is None else (title, identifier)
+
+
+def top_level_entries(text):
+    """The top-level entries GRUB numbers 0, 1, ... whatever the machine, as MenuEntry.
+
+    `conditional` marks an entry inside a top-level if/elif/else: whether it exists is only
+    known at boot. A top-level `source` is listed too: it can add entries. Reading stops at the
+    first construct this does not follow (a loop, an entry inside a function, a title built
+    from variables, unbalanced braces or quotes); `complete` says whether it reached the end.
+    """
+    tokens, complete = [], True
+    try:
+        tokens.extend(grub_words(text))
+    except ValueError:
+        complete = False
+    entries, blocks, index = [], [], 0
+
+    def found():
+        return MenuEntries([entry for entry in entries if entry.end is not None], False)
+
+    while index < len(tokens):
+        kind = tokens[index][0]
+        if kind == ';':
+            index += 1
+            continue
+        if kind == '}':
+            if not blocks or blocks[-1][0] not in ('entry', 'function'):
+                return found()
+            number = blocks.pop()[1]
+            if number is not None:
+                entries[number] = entries[number]._replace(end=tokens[index][3])
+            index += 1
+            continue
+        if kind == '{':
+            return found()
+        words = []
+        while index < len(tokens) and tokens[index][0] == 'word':
+            words.append(tokens[index])
+            index += 1
+        while words and words[0][1] in ('then', 'else', 'do'):
+            words.pop(0)
+        if not words:
+            continue
+        name = '=' if GRUB_ASSIGNMENT.match(text, words[0][2]) else words[0][1]
+        kinds = [block[0] for block in blocks]
+        # Outside every entry body: what runs here builds the top level (a loop could repeat it).
+        outside = 'entry' not in kinds
+        top = outside and 'function' not in kinds
+        if name in ('if', 'while', 'until', 'for'):
+            blocks.append(('if' if name == 'if' else 'loop', None))
+        elif name in ('fi', 'done'):
+            if not blocks or blocks[-1][0] != ('if' if name == 'fi' else 'loop'):
+                return found()
+            blocks.pop()
+        elif name in ('function', 'menuentry', 'submenu'):
+            if index == len(tokens) or tokens[index][0] != '{':
+                return found()
+            index += 1
+            if name == 'function':
+                blocks.append(('function', None))
+            elif not outside:
+                blocks.append(('entry', None))
+            else:
+                described = entry_title_and_id(text, words[1:])
+                if not top or 'loop' in kinds or described is None:
+                    return found()
+                entries.append(MenuEntry(*described, bool(blocks), words[0][2], None))
+                blocks.append(('entry', len(entries) - 1))
+        elif outside and (name in GRUB_MENU_READERS or name is None):
+            if not top or 'loop' in kinds or name != 'source':
+                return found()
+            entries.append(MenuEntry(None, None, bool(blocks), words[0][2], words[-1][3], True))
+    if blocks or not complete:
+        return found()
+    return MenuEntries(entries, True)
+
+
+def changes_default(text):
+    """Whether GRUB script outside every entry body may change $default.
+
+    That is an assignment to it, `unset default`, `load_env`, a command named by a variable,
+    a command that reads another file, or script that cannot be read (unbalanced braces or quotes).
+    A function body counts as outside: the top level may call it.
+    """
+    try:
+        tokens = list(grub_words(text))
+    except ValueError:
+        return True
+    bodies, words = [], []
+    for kind, value, start, end in tokens:
+        if kind == '{':
+            bodies.append(bool(words) and words[0] in ('menuentry', 'submenu'))
+            words = []
+        elif kind in ('}', ';'):
+            if kind == '}' and not bodies:
+                return True
+            if kind == '}':
+                bodies.pop()
+            words = []
+        elif True not in bodies and (words or value not in ('then', 'else', 'do')):
+            words.append('=' if not words and GRUB_ASSIGNMENT.match(text, start) else value)
+            if (text[start:end].lstrip('\'"').startswith('default=') or words[0] is None
+                    or words[0] in GRUB_MENU_READERS + ('.', 'load_env') or words[0] == 'unset' and value == 'default'):
+                return True
+    return bool(bodies)
+
+
+def default_chain(aliases):
+    """An if/elif chain that points $default at aliases[$default]."""
+    return ''.join(f'{"elif" if index else "if"} [ "$default" = {grub_quote(value)} ]; then\n'
+                   f'  set default={grub_quote(target)}\n'
+                   for index, (value, target) in enumerate(aliases.items())) + ('fi\n' if aliases else '')
+
+
+def selection_remap(before, moved, renamed, first_moved, custom):
+    """GRUB commands that keep an old default (configured, saved or next entry): (header end, after custom.cfg).
+
+    `moved` maps the id (or new title) of each entry put under Advanced options to its (old title,
+    new title), `renamed` maps the old title of each kept entry to its id (or new title), and
+    `first_moved` is where the first moved entry starts in `before`. A title, an id or a number known
+    before boot is pointed at the same entry. Any other number (also the first part of a path such as
+    `5>1`) may count entries that only exist at boot, so it sets OLD_LAYOUT: the menu then keeps its
+    old order. With `custom` (41_custom's block), a custom.cfg that will run sets OLD_LAYOUT as well:
+    it may add entries and set the default itself, in the old numbering. The second part, for the end
+    of that block, then points old titles and names inside Advanced options at the entries in their
+    old places. Returns None when even the numbers before the first moved entry are unknown.
+    """
+    aliases, old_aliases = {}, {}
+    for key, (title, new) in moved.items():
+        aliases.setdefault(key, 'emaki-advanced>' + key)
+        aliases.setdefault(title, 'emaki-advanced>' + key)
+        old_aliases.setdefault(title, key)
+        for submenu in ('emaki-advanced', 'Advanced options'):
+            for name in (key, new):
+                old_aliases.setdefault(f'{submenu}>{name}', key)
+    for title, target in renamed.items():
+        aliases.setdefault(title, target)
+        old_aliases.setdefault(title, target)
+    old = top_level_entries(before).entries
+    # These numbers name the same entry in both orders: nothing before them moves.
+    unchanged = sum(1 for entry in old if entry.start < first_moved and not (entry.conditional or entry.source))
+    if not unchanged:
+        return None
+    for number, entry in enumerate(old):
+        # Up to the first entry that exists only at boot, a number names a known entry.
+        if entry.conditional or entry.source:
+            break
+        target = aliases.get(entry.id) or aliases.get(entry.title) or entry.id
+        if number >= unchanged and target:
+            aliases.setdefault(str(number), target)
+    keep = f'  set {OLD_LAYOUT}=y\n'
+    # `-ge` reads a number the way GRUB reads a default: leading digits, up to a '>' or anything else.
+    header = ('# A default chosen before entries moved under Advanced options keeps its entry.\n'
+              + f'set {OLD_LAYOUT}=\n' + (CUSTOM_TEST.format(keep, keep) if custom else '')
+              + f'if [ -z "${OLD_LAYOUT}" ]; then\n' + default_chain(aliases)
+              + f'if [ "$default" -ge {unchanged} ]; then\n{keep}fi\nfi\n')
+    after = (f'if [ "${OLD_LAYOUT}" ]; then\n'
+             '# The old order: custom.cfg and the header may still name entries the short menu moved or renamed.\n'
+             + default_chain(old_aliases) + 'fi\n') if custom else ''
+    return header, after
+
+
+def menu_layout(text):
+    """A short top level: Emaki, Emaki (LTS kernel), snapshots, Advanced options.
+
+    The fallback initramfs entries and the firmware-settings entry move, unchanged
+    apart from their titles, into one "Advanced options" submenu after the snapshot
+    menu. Only the stock 10_linux and 30_uefi-firmware forms are touched; other
+    entries (Windows, custom ones) keep their place. Entry 0 stays the default kernel.
+    A default that named an entry by title, id or a number known before boot (GRUB_DEFAULT,
+    the saved or the next entry) is pointed at the same entry where the header ends; for
+    any other number, and when 41_custom will run a custom.cfg, the moved entries also stay
+    in their old places, and only one of the two orders exists at boot. Without entries to
+    move, the kernels are only renamed and an old title is pointed at its kernel. A menu that
+    may change the default anywhere else after the header is left unchanged.
+    """
+    if "submenu 'Advanced options'" in text or HEADER_END not in text:
+        return text
+    original = text
+    advanced = []
+    moved = {}
+    renamed = {}
+    starts = []
+    result = []
+    position = 0
+    old_only = f'if [ "${OLD_LAYOUT}" ]; then\n'
+    for match in LINUX_ENTRY.finditer(text):
+        end = text.find('\n}\n', match.end())
+        if end < 0:
+            return text
+        body = text[match.end():end + 3]
+        title = 'Emaki' if match[1] == 'linux' else 'Emaki (LTS kernel)'
+        result.append(text[position:match.start()])
+        identifier = ENTRY_ID.search(match[3])
+        if match[2]:
+            title = 'Emaki (all drivers)' if match[1] == 'linux' else 'Emaki (LTS kernel, all drivers)'
+            advanced.append(f"menuentry '{title}'{match[3]}\n{body}")
+            result.append(old_only + advanced[-1] + 'fi\n')
+            moved[identifier[1] if identifier else title] = (f'Emaki, with Linux {match[1]}{match[2]}', title)
+            starts.append(match.start())
+        else:
+            result.append(f"menuentry '{title}'{match[3]}\n{body}")
+            renamed[f'Emaki, with Linux {match[1]}'] = identifier[1] if identifier else title
+        position = end + 3
+    result.append(text[position:])
+    text = ''.join(result)
+    firmware = FIRMWARE.search(text)
+    if firmware and firmware[2].strip():
+        advanced.append(firmware[2])
+        for line in firmware[2].splitlines():
+            entry = ENTRY.match(line)
+            if entry:
+                identifier = ENTRY_ID.search(entry[2])
+                title = entry[1].replace("'\\''", "'")
+                moved[identifier[1] if identifier else title] = (title, title)
+        starts.append(FIRMWARE.search(original).start(2))
+        text = text[:firmware.start()] + firmware[1] + old_only + firmware[2] + 'fi\n' + firmware[3] + text[firmware.end():]
+    if not advanced and not renamed:
+        return text
+    # The order is chosen where the header ends; a default changed later would be read in the wrong one.
+    late = original[original.index(HEADER_END) + len(HEADER_END):]
+    custom = late.count(CUSTOM_BLOCK)
+    if custom > 1 or changes_default(late.replace(CUSTOM_BLOCK, '')):
+        return original
+    if not advanced:
+        # Only the kernels are renamed: numbers name the same entries, an old title is pointed at its kernel.
+        text = text.replace(CUSTOM_BLOCK, CUSTOM_BLOCK + default_chain(renamed), 1)
+        return text.replace(HEADER_END, '# A default that named a kernel by its old title keeps its entry.\n'
+                            + default_chain(renamed) + HEADER_END, 1)
+    remap = selection_remap(original, moved, renamed, min(starts), custom)
+    if remap is None:
+        return original
+    block = f'if [ -z "${OLD_LAYOUT}" ]; then\n' + ADVANCED + ''.join(advanced) + '}\nfi\n'
+    if SNAPSHOTS_END in text:
+        text = text.replace(SNAPSHOTS_END, SNAPSHOTS_END + block, 1)
+    else:
+        text = text.rstrip('\n') + '\n' + block
+    text = text.replace(CUSTOM_BLOCK, CUSTOM_BLOCK + remap[1], 1)
+    # The header has set $default from GRUB_DEFAULT, saved_entry or next_entry; no entry exists yet.
+    return text.replace(HEADER_END, remap[0] + HEADER_END, 1)
 
 
 def generated_menu_font(text):

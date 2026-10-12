@@ -422,6 +422,26 @@ class RenderTests(unittest.TestCase):
             with self.assertRaises(InstallError):
                 normalize_fstab(altered, plan)
 
+    def test_alongside_shared_esp_is_read_only_and_never_fscked(self):
+        plan = make_plan(config(), inventory())
+        original = self.fstab(plan)
+        original = '\n'.join(
+            line.rsplit(' ', 1)[0] + ' 1' if ' /efi ' in line else line
+            for line in original.splitlines())
+        original = original.replace('umask=0077', 'umask=0077,rw,relatime')
+        plan.config['mode'] = 'alongside'
+        rows = [line.split() for line in normalize_fstab(original, plan).splitlines()]
+        esp = next(row for row in rows if row[1] == '/efi')
+        self.assertTrue({'ro', 'noatime'} <= set(esp[3].split(',')))
+        self.assertNotIn('rw', esp[3].split(','))
+        self.assertNotIn('relatime', esp[3].split(','))
+        self.assertEqual(esp[5], '0')
+        self.assertNotIn('ro', next(row for row in rows if row[1] == '/')[3].split(','))
+        plan.config['mode'] = 'erase'
+        normal = next(line.split() for line in normalize_fstab(original, plan).splitlines()
+                      if line.split()[1] == '/efi')
+        self.assertNotIn('ro', normal[3].split(','))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -54,9 +54,9 @@ class PackagingTests(unittest.TestCase):
         from emaki_installer import grub_screen
         root = Path(__file__).resolve().parents[2]
         recipe = (root / 'packaging/emaki-installer/PKGBUILD').read_text()
-        self.assertIn('for variant in A B C; do', recipe)
+        self.assertIn('for variant in A B C D; do', recipe)
         self.assertIn('$site/emaki_installer/grub_artwork/$variant/${picture##*/}', recipe)
-        for variant in ('A', 'B', 'C'):
+        for variant in ('A', 'B', 'C', 'D'):
             paths = list((grub_screen.ARTWORK / variant).glob('*.png'))
             self.assertEqual({path.name for path in paths}, {
                 f'{state}-{width}x{height}.png'
@@ -158,8 +158,8 @@ for mode in (False, read_test_mode(Path('cmdline'))):
         # The launcher icon lives in hicolor; its index.theme names the scalable/apps directory.
         self.assertIn('hicolor-icon-theme', re.search(r'depends=\(([^)]+)\)', recipe, re.S)[1].split())
         self.assertIn('/usr/share/icons/hicolor/scalable/apps/emaki-install.svg', recipe)
-        self.assertIn('pkgver=0.6.0', recipe)
-        self.assertIn('pkgrel=5', recipe)
+        self.assertIn('pkgver=0.7.0', recipe)
+        self.assertIn('pkgrel=1', recipe)
         for path in ('bin/emaki-installerd', 'bin/emaki-install-cli',
                      'systemd/emaki-installerd.service', 'sysusers.d/emaki-installer.conf',
                      'tmpfiles.d/emaki-installer.conf', 'README.md'):

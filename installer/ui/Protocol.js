@@ -422,6 +422,13 @@ function diskContents(d) {
     const hints = (d.partitions || []).map(p => p.os_hint);
     return [["windows", "Windows"], ["macos", "macOS"]].filter(row => hints.indexOf(row[0]) >= 0).map(row => " · contains " + row[1]).join("");
 }
+// Keep the worker's specific refusal on the disk card before any selection.
+function alongsideRefusal(d) {
+    if (!d || alongside(d) || !(d.partitions || []).some(p => p.os_hint === "windows")) return "";
+    const partition = (d.partitions || []).find(p => p.shrink && p.shrink.reason);
+    const reason = d.shrink?.reason || partition?.shrink.reason || "";
+    return reason ? "\nInstall alongside Windows is not possible here. " + reason : "";
+}
 // planner.manual_partitions refuses every table but GPT; a disk without a table gets one in GParted.
 function manualReason(d) {
     return d && d.partition_table && d.partition_table !== "gpt" ? "Manual installation needs a GPT disk." : "";

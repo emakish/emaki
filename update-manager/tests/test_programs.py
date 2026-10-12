@@ -183,7 +183,7 @@ class Listing(unittest.TestCase):
 
 
 class Helper(unittest.TestCase):
-    def run_helper(self, name, token, preview=('gwenview\n', '', 0), owns=True, after=None):
+    def run_helper(self, name, token, preview=('gwenview\n', '', 0), owns=True, after=None, repository=False):
         calls, removed = [], []
         installed = {'gwenview', 'kimageannotator'}
 
@@ -217,6 +217,8 @@ class Helper(unittest.TestCase):
 
         lines = []
         with patch.object(helper, 'pacman', fake), patch.object(helper.subprocess, 'Popen', Process), \
+                patch.object(helper.arch, 'inventory', return_value=(
+                    {'extra/' + name: {'package': name}} if repository else {}, {name: '1'})), \
                 patch.object(helper.signal, 'signal'), \
                 patch('builtins.print', lambda text, flush=False: lines.append(json.loads(text))):
             helper.remove(name, token)
@@ -257,6 +259,30 @@ class Helper(unittest.TestCase):
     def test_partial_or_failed_removal_is_reported(self):
         _, _, reply = self.run_helper('gwenview', 'gwenview')
         self.assertEqual(reply['code'], 'not-removed')
+
+    def test_repository_package_without_desktop_uses_reviewed_removal(self):
+        calls, removed, reply = self.run_helper('gwenview', 'gwenview', owns=False, repository=True, after=set())
+        self.assertEqual(reply['code'], 'removed')
+        self.assertEqual(removed[0][1:], ['-Rn', '--noconfirm', 'gwenview'])
+        self.assertIn(('-Rs', '--print', '--print-format', '%n', 'gwenview'), calls)
+
+    def test_repository_package_keeps_protections_and_token_revalidation(self):
+        for preview, code in ((('gwenview\nflatpak\n', '', 0), 'system'),
+                              (('gwenview\nemaki-apps\n', '', 0), 'emaki'),
+                              ((BREAKS, FAILED, 1), 'emaki'),
+                              (('gwenview\nkimageannotator\n', '', 0), 'changed')):
+            _, removed, reply = self.run_helper('gwenview', 'gwenview', preview=preview,
+                                                owns=False, repository=True)
+            self.assertEqual((removed, reply['code']), ([], code))
+
+    def test_repository_eligibility_requires_current_installed_and_enabled_inventory(self):
+        for available, installed, expected in (({'extra/codec': {'package': 'codec'}}, {'codec': '1'}, True),
+                                               ({}, {'codec': '1'}, False),
+                                               ({'extra/codec': {'package': 'codec'}}, {}, False)):
+            with patch.object(helper.arch, 'inventory', return_value=(available, installed)):
+                self.assertEqual(helper.is_repository_package('codec'), expected)
+        with patch.object(helper.arch, 'inventory', side_effect=RuntimeError('missing database')):
+            self.assertFalse(helper.is_repository_package('codec'))
 
     def test_pending_restore_removes_nothing(self):
         for mode, code in (('pending', 'restart'), ('snapshot', 'restart'), ('unknown', 'failed')):

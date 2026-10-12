@@ -83,6 +83,8 @@ VIAS = {'github-testing': {'edited': True}, 'old-address': {'edited': False},
 # From 0.3.0 on the mirrorlist only includes the channel selector, which includes one of these.
 CHANNEL_INCLUDE = 'Include = /etc/emaki/channel'
 SELECTOR = 'Include = /usr/share/emaki/mirrors/{}.conf'
+# 0.5.0 and later: /etc/emaki/channel includes the state file that emaki-update-channel writes.
+STATE_SELECTOR = 'Include = /var/lib/emaki/channel'
 GUESTFWD_IP = '10.0.2.100'
 HTOP = 'https://archive.archlinux.org/packages/h/htop/htop-3.5.3-1-x86_64.pkg.tar.zst'
 KDL_MARK = '// emaki-upgrade-check: a line the person added'
@@ -410,6 +412,18 @@ def open_terminal(guest, size):
     if scale != 1:
         output = json.loads(guest.desktop('niri msg -j outputs'))
         guest.desktop(f'niri msg output {shlex.quote(next(iter(output)))} scale {scale}')
+    # The first-login "Welcome to Emaki" window opens a few seconds after the desktop and takes the
+    # focus; at 2560x1600 it came up while the sudo password was being typed and got the keys
+    # (0.7.0 acceptance, 2026-10-12). Wait for it briefly and close it before the terminal opens.
+    for _ in range(12):
+        welcome = [w for w in json.loads(guest.desktop('niri msg -j windows'))
+                   if w.get('title') == 'Welcome to Emaki']
+        if welcome:
+            for w in welcome:
+                guest.desktop(f'niri msg action close-window --id {w["id"]}')
+            time.sleep(1)
+            break
+        time.sleep(2)
     before = {w['id'] for w in json.loads(guest.desktop('niri msg -j windows'))}
     guest.desktop('niri msg action spawn -- kitty')
     for _ in range(30):
@@ -503,13 +517,25 @@ def prepare_old_state(guest, via):
         # From 0.3.0 on (docs/updates.md, Channels): swap which Include of /etc/emaki/channel is
         # commented; the packaged mirrorlist, which only includes the selector, stays untouched.
         mirrorlist = guest.run('cat /etc/pacman.d/emaki-mirrorlist')
+
+        def active(text):
+            return [line.split('#', 1)[0].strip() for line in text.splitlines() if line.split('#', 1)[0].strip()]
+
+        if active(guest.run('cat /etc/emaki/channel')) == [STATE_SELECTOR]:
+            # From 0.5.0 on the selector includes the state file the channel command writes: switch the way a
+            # person does (Settings or emaki-update-channel), never by editing files.
+            switched = json.loads(guest.run('emaki-update-channel set testing --json', root=True))
+            status = json.loads(guest.run('emaki-update-channel status --json', root=False))
+            if switched.get('status') == 'rejected' or status.get('channel') != 'testing':
+                raise RuntimeError(f'emaki-update-channel did not switch to testing: {switched} {status}')
+            after = guest.run('cat /etc/pacman.d/emaki-mirrorlist')
+            if after != mirrorlist:
+                raise RuntimeError(f'the mirrorlist changed while switching the channel:\n{after}')
+            return guest.run('cat /etc/pacman.d/emaki-mirrorlist /etc/emaki/channel; pacman -Q', root=False)
         guest.run(r"sed -i -e 's|^Include = /usr/share/emaki/mirrors/stable\.conf$|# &|' "
                   r"-e 's|^# \(Include = /usr/share/emaki/mirrors/testing\.conf\)$|\1|' /etc/emaki/channel",
                   root=True)
         selector = guest.run('cat /etc/emaki/channel')
-
-        def active(text):
-            return [line.split('#', 1)[0].strip() for line in text.splitlines() if line.split('#', 1)[0].strip()]
 
         if active(selector) != [SELECTOR.format('testing')]:
             raise RuntimeError(f'the channel selector was not switched to testing:\n{selector}')
@@ -622,7 +648,7 @@ def checks_after_restart(guest, result, cand, before_config):
         result[name] = {'ok': bool(ok), 'detail': str(detail)[-2000:]}
         print(('OK  ' if ok else 'BAD ') + name + (f': {detail}' if detail and not ok else ''), flush=True)
 
-    check('shell running after restart', guest.desktop('systemctl --user is-active emaki-shell.service',
+    check('shell running after restart', guest.desktop('emaki-shell-trusted status --json 2>/dev/null | grep -q \'\"running\": true\' || systemctl --user is-active emaki-shell.service',
                                                        check=False).returncode == 0)
     check('Personal configuration unchanged after restart [config.kdl]',
           personal_config(guest) == before_config)

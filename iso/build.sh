@@ -5,7 +5,7 @@ trap 'printf "ERROR: ISO build failed at line %s (rc=%s)\n" "$LINENO" "$?" >&2' 
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(dirname -- "$HERE")
 repo=$ROOT/.cache/repo/testing
-out='' work='' test_key='' test_mode=0
+out='' work='' test_key='' test_mode=0 test_alongside=0
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 while (($#)); do
     case $1 in
@@ -14,12 +14,15 @@ while (($#)); do
             case $1 in --repo) repo=$2 ;; --out) out=$2 ;; --work) work=$2 ;; --test-key) test_key=$2; test_mode=1 ;; esac
             shift 2 ;;
         --test) test_mode=1; shift ;;
+        --test-alongside) test_alongside=1; shift ;;
         --help)
-            echo 'Usage: sudo iso/build.sh [--repo DIR] [--out DIR] [--work DIR] [--test --test-key PUBLIC_KEY]'
+            echo 'Usage: sudo iso/build.sh [--repo DIR] [--out DIR] [--work DIR] [--test --test-key PUBLIC_KEY [--test-alongside]]'
             exit 0 ;;
         *) fail "unknown option: $1" ;;
     esac
 done
+((test_alongside == 0 || test_mode == 1)) || fail '--test-alongside requires --test and --test-key'
+((test_alongside == 0)) || [[ -z ${EMAKI_ISO_SIGN_KEY:-} ]] || fail 'test-alongside images must not be signed'
 preflight_args=(--repo "$repo")
 ((test_mode == 0)) || preflight_args+=(--test)
 "$HERE/preflight.sh" "${preflight_args[@]}"
@@ -39,6 +42,7 @@ arch_server="https://archive.archlinux.org/repos/${arch_snapshot//-/\/}/\$repo/o
 mode=release
 if ((test_mode)); then
     mode='test'
+    ((test_alongside == 0)) || mode='test-alongside'
     [[ -n $test_key && -r $test_key ]] || fail '--test requires --test-key PUBLIC_KEY'
     test_key=$(realpath -- "$test_key")
     ssh-keygen -l -f "$test_key" >/dev/null || fail 'invalid test public key'
@@ -189,6 +193,10 @@ hookdirs=$(grep -E '^[[:space:]]*HookDir[[:space:]]*=' "$work/mk/iso.pacman.conf
 # mkinitcpio wrapper there shadows the target's stock hook while the target has no
 # wrapper yet: no kernel is copied and no preset is made (0.3.0 candidate, Mac install).
 live=$work/mk/x86_64/airootfs
+if ((test_alongside)); then
+    python3 "$HERE/enable-test-alongside.py" "$live"
+    printf 'test-alongside\n' >"$work/mk/iso/emaki/TEST-ALONGSIDE"
+fi
 hook=$live/etc/pacman.d/hooks/90-mkinitcpio-install.hook
 ledger=$live/var/lib/emaki/migrations/mkinitcpio-hook
 if [[ -e $hook || -L $hook ]]; then
@@ -221,6 +229,7 @@ python3 "$ROOT/packaging/mirror/iso_sources.py" --inventory-only \
 # Keep the date, exact build tools and downloaded bytes with the image. This
 # records package-input reproducibility, not a byte-identical ISO guarantee.
 {
+    printf 'image_mode %s\n' "$mode"
     printf 'arch_snapshot %s\narch_server %s\n%s\narchinstall %s\n' "$arch_snapshot" "$arch_server" "$archiso_version" "$pinned_archinstall"
     (
         cd "$work/offline"

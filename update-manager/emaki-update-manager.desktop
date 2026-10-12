@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 [Desktop Entry]
 Type=Application
-Name=Emaki updates
-Comment=Review and install repository updates
+Name=Programs & Updates
+Comment=Install programs and keep your system up to date
 Exec=emaki-update-manager
-Icon=system-software-update
+Icon=emaki-programs-updates
 Terminal=false
 Categories=System;Settings;
-Keywords=update;upgrade;packages;
+Keywords=programs;applications;install;update;upgrade;packages;
 StartupWMClass=emaki-update-manager

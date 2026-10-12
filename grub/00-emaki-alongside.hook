@@ -1,0 +1,14 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Package
+Target = *
+
+[Action]
+Description = Protecting the Windows startup files
+When = PreTransaction
+Exec = /usr/bin/emaki-update-boot guard-alongside
+AbortOnFail

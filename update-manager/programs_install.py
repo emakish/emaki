@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import programs_arch as arch
@@ -95,31 +96,43 @@ def request(target, token):
     # All privileged arguments are reconstructed here, never supplied by the caller.
     update_backend().require_update_root()
     revalidate(target, token)
+    # This root-generated marker survives collection of the transient service.
+    # A new request cannot observe a previous or already-running transaction.
+    request_field = 'EMAKI_INSTALL_REQUEST=' + uuid.uuid4().hex
     emit('progress', message='[PLACEHOLDER] Starting repository installation.')
-    result = subprocess.run(['systemd-run', '--wait', '--collect', '--unit=' + SERVICE,
-                             '--property=Type=exec', '--property=StandardOutput=journal',
-                             '--property=StandardError=journal', '--setenv=LC_ALL=C',
-                             '--setenv=PATH=' + ENV['PATH'], HELPER, '--run', target, token],
-                            cwd='/', env=ENV, stdin=subprocess.DEVNULL, capture_output=True, text=True)
-    # Obtain only this invocation's records. A fixed unit name serializes starts;
-    # monotonic journal ordering alone cannot distinguish an earlier invocation.
-    match = re.search(r'Invocation ID: ([0-9a-f]{32})', result.stdout + result.stderr, re.IGNORECASE)
-    if not match:
-        return finish('unknown', message='[PLACEHOLDER] The service result could not be observed. A started transaction keeps running; check its journal before retrying.')
+    subprocess.run(['systemd-run', '--wait', '--collect', '--unit=' + SERVICE,
+                    '--property=Type=exec', '--property=StandardOutput=journal',
+                    '--property=LogExtraFields=' + request_field,
+                    '--property=StandardError=journal', '--setenv=LC_ALL=C',
+                    '--setenv=PATH=' + ENV['PATH'], HELPER, '--run', target, token],
+                   cwd='/', env=ENV, stdin=subprocess.DEVNULL, capture_output=True, text=True)
+    # systemd-run's optional invocation status line is not a result protocol.
+    # Match trusted service credentials as well as this request's journal field.
     log = subprocess.run(['journalctl', '--quiet', '--no-pager', '-o', 'json',
-                          '_SYSTEMD_INVOCATION_ID=' + match.group(1)],
+                          '_SYSTEMD_UNIT=' + SERVICE + '.service', '_UID=0', request_field],
                          cwd='/', env=ENV, capture_output=True, text=True, timeout=20)
     finished = None
+    details = ""
     if log.returncode == 0:
         for line in log.stdout.splitlines():
             try:
                 message = json.loads(line).get('MESSAGE', '')
-                record = json.loads(message)
+                try:
+                    record = json.loads(message)
+                except (ValueError, TypeError):
+                    if isinstance(message, str):
+                        # Retain only a bounded tail from this exact invocation.
+                        clean = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', message)
+                        clean = ''.join(c for c in clean if c.isprintable() or c in '\n\t')
+                        details = (details + clean + '\n')[-4096:]
+                    continue
                 if record.get('type') == 'finished' and record.get('action') == 'install':
                     finished = record
             except (ValueError, TypeError, AttributeError):
                 continue
     if finished:
+        if not finished.get('ok') and details.strip():
+            finished['message'] = (finished.get('message', '') + '\n' + details.strip()).strip()
         emit('finished', **{key: value for key, value in finished.items() if key != 'type'})
         return 0 if finished.get('ok') else 1
     return finish('unknown', message='[PLACEHOLDER] The service result could not be observed. Check its journal before retrying.')

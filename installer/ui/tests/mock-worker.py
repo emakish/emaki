@@ -54,6 +54,18 @@ class Replay:
             alongside = json.loads((TRANSCRIPTS / 'alongside.json').read_text())
             self.recorded['inventory'] = alongside[1]['responses'][0]
             self.recorded['plan_ack'] = alongside[2]['responses'][0]
+        refusals = {
+            'disk-refused-hibernation': 'Windows is asleep, not shut down (hibernation or Fast Startup is on). In Windows, open Command Prompt as administrator, type powercfg /hibernate off and press Enter. Then shut Windows down and start from the USB stick again.',
+            'disk-refused-bitlocker': 'Windows is encrypted with BitLocker, so Emaki cannot make room next to it. Windows was not changed. In Windows, turn off BitLocker and wait until it finishes, then shut down and start from the USB stick again. If Windows stopped starting after you changed Secure Boot, change it back. Never delete or reset the firmware keys.',
+            'disk-refused-space': 'Not enough free space. Emaki needs about 35 GB that Windows does not use. Delete or move files in Windows, then shut it down and start from the USB stick again.',
+            'disk-refused-efi': "The disk's startup partition is too full: Emaki needs about 34 MB free there. Making it bigger needs a backup and a disk tool. Do not delete Windows startup files.",
+        }
+        if screen in refusals:
+            inventory = copy.deepcopy(self.recorded['inventory'])
+            disk = inventory['disks'][0]
+            disk['shrink'] = {'reason': refusals[screen]}
+            disk['partitions'][0]['os_hint'] = 'windows'
+            self.recorded['inventory'] = inventory
         if screen == 'manual-empty':
             # The system disk has a GPT and no partitions yet.
             inventory = copy.deepcopy(self.recorded['inventory'])

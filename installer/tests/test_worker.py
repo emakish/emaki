@@ -792,6 +792,27 @@ class EncryptedWriteBoundaryTests(unittest.TestCase):
 
 
 class BootAndSnapshotTests(unittest.TestCase):
+    def test_shared_esp_protection_records_identity_and_gates_hibernation(self):
+        self.worker.plan.config['mode'] = 'alongside'
+        esp = next(part for part in self.worker.plan.partitions if part.esp)
+        esp.partuuid = '01234567-89AB-CDEF-0123-456789ABCDEF'
+        self.worker.protect_shared_esp()
+        marker = json.loads(self.worker.files.read('/var/lib/emaki/alongside-boot.json'))
+        self.assertEqual(marker, {'version': 1, 'esp_partuuid': esp.partuuid.lower()})
+        # Status can read this public identity; only root can change the record.
+        self.assertEqual(self.worker.files.path('/var/lib/emaki/alongside-boot.json').stat().st_mode & 0o777,
+                         0o644)
+        for mode in ('hibernate', 'hybrid-sleep', 'suspend-then-hibernate'):
+            text = self.worker.files.read(
+                f'/etc/systemd/system/systemd-{mode}.service.d/50-emaki-shared-esp.conf')
+            self.assertIn('ExecStartPre=umount /efi\n', text)
+            self.assertNotIn('ExecStartPre=-', text)
+            self.assertIn('ExecStopPost=mount -o ro /efi\n', text)
+        self.assertFalse(self.worker.files.path(
+            '/etc/systemd/system/systemd-suspend.service.d/50-emaki-shared-esp.conf').exists())
+        self.assertTrue(any('emaki-boot-order.service' in str(command)
+                            for command in self.worker.runner.commands))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
@@ -1095,7 +1116,7 @@ class BootAndSnapshotTests(unittest.TestCase):
         logs = []
         self.worker.log = logs.append
         with patch.object(worker_module.alongside, 'efi_loaders', side_effect=[
-                {}, InstallError(Code.UNSAFE_DISK, '[PLACEHOLDER] Cannot safely verify the existing EFI files.')]):
+                {}, InstallError(Code.UNSAFE_DISK, "The disk's startup files could not be checked safely, so Emaki stopped.")]):
             with self.assertRaises(InstallError) as caught:
                 self.worker.bootloader()
         self.assertEqual(caught.exception.code, Code.BOOT_VERIFY)
@@ -1239,6 +1260,8 @@ class BootAndSnapshotTests(unittest.TestCase):
 
     def test_fresh_install_snapshot_does_not_contain_the_incomplete_marker(self):
         f = self.worker.files
+        protection = '/var/lib/emaki/alongside-boot.json'
+        f.write(protection, '{"version": 1}\n', 0o600)
         f.mkdir('/.snapshots')
         f.write('/etc/snapper/configs/root', 'SUBVOLUME="/"\nNUMBER_LIMIT="50"\nTIMELINE_CREATE="no"\n')
         f.write(MARKER, 'Emaki installation in progress\n', 0o600)
@@ -1253,6 +1276,9 @@ class BootAndSnapshotTests(unittest.TestCase):
                 # The live root, marker included, is what snapper copies.
                 seen.append(marker.exists())
                 snapshot.mkdir(parents=True, exist_ok=True)
+                saved_protection = snapshot / protection.lstrip('/')
+                saved_protection.parent.mkdir(parents=True, exist_ok=True)
+                saved_protection.write_text(f.read(protection))
                 if marker.exists():
                     (snapshot / MARKER.lstrip('/')).write_bytes(marker.read_bytes())
                 return '1\n'
@@ -1270,6 +1296,7 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.assertIn('--print-number', create)
         self.assertEqual(runner.commands[-1][0], ['btrfs', 'property', 'set', '-ts', str(snapshot), 'ro', 'true'])
         self.assertFalse((snapshot / MARKER.lstrip('/')).exists())
+        self.assertEqual((snapshot / protection.lstrip('/')).read_text(), f.read(protection))
         self.assertEqual(marker.read_text(), 'Emaki installation in progress\n')
         self.assertEqual(marker.stat().st_mode & 0o777, 0o600)
         # A failing snapshot still leaves the installation marked incomplete.

@@ -1,5 +1,6 @@
 """Ordered installation phases. All mutations start only after confirmation."""
 import contextlib
+import json
 from datetime import datetime, timezone
 import os
 from pathlib import Path
@@ -17,7 +18,7 @@ from .constants import GRUB_VISIBLE_FONT, LOG, MARKER, PACKAGES, PHASES, RICH_AP
 from .errors import Code, InstallError, require
 from .update_errors import details as update_error_details
 from .copy_progress import CopyProgress
-from .boot import boot_framebuffer, menu_font, menu_font_fallback
+from .boot import boot_framebuffer, menu_font, menu_font_fallback, menu_layout, menu_theme
 from .clock import ensure_clock
 from .media import discover_repo, package_source
 from .network_profiles import WifiNotCopied, capture_wifi, choose_wifi, install_wifi
@@ -718,11 +719,14 @@ class Worker:
             self.log('WARNING: GRUB menu title adjustment reported a problem; installation continues.')
         # The live mode is a first guess. The generated header retries a smaller face if
         # needed; boot-time repair corrects the choice for the following menu.
-        font = menu_font(boot_framebuffer())
-        font_env = ['env', 'GRUB_FONT=' + font] if font and self.files.path(font).is_file() else []
-        self.runner.chroot([*font_env, 'grub-mkconfig', '-o', '/boot/grub/grub.cfg'], self.target)
+        mode = boot_framebuffer()
+        font, theme = menu_font(mode), menu_theme(mode)
+        env = ['GRUB_FONT=' + font] if font and self.files.path(font).is_file() else []
+        env += ['GRUB_THEME=' + theme] if self.files.path(theme).is_file() else []
+        self.runner.chroot([*(['env', *env] if env else []), 'grub-mkconfig', '-o', '/boot/grub/grub.cfg'],
+                           self.target)
         original = self.files.read('/boot/grub/grub.cfg')
-        safe = menu_font_fallback(original)
+        safe = menu_layout(menu_font_fallback(original))
         if safe != original:
             self.files.write('/boot/grub/grub.cfg', safe)
         verify_grub(self.files.read('/boot/grub/grub.cfg'))
@@ -866,6 +870,9 @@ class Worker:
         if self.test_mode:
             units.append('sshd.service')
         enable_units(self.runner, self.target, units)
+        if self.plan.config['mode'] == 'alongside':
+            # Include the safety policy in the first snapshot as well as the live root.
+            self.protect_shared_esp()
 
     def repositories(self):
         text = self.files.read('/etc/pacman.conf')
@@ -1092,3 +1099,19 @@ class Worker:
         destination = '/var/log/emaki-install/install-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '.log'
         # LOG is flushed by the broker on each line. It never contains stdin.
         self.files.write(destination, LOG.read_bytes(), 0o600)
+
+    def protect_shared_esp(self):
+        esp = next(part for part in self.plan.partitions if part.esp)
+        require(esp.partuuid and re.fullmatch(r'[0-9a-fA-F-]{36}', esp.partuuid),
+                Code.BOOT_VERIFY, "The disk's startup partition could not be identified safely, so Emaki stopped.")
+        self.files.write('/var/lib/emaki/alongside-boot.json',
+                         json.dumps({'version': 1, 'esp_partuuid': esp.partuuid.lower()}) + '\n', 0o644)
+        # The sleep service does not start if the unmount fails. ExecStopPost also
+        # restores the read-only mount after a failed sleep attempt. A system-sleep
+        # hook cannot provide this barrier: failures there do not cancel sleep.
+        dropin = ('# Copyright (C) 2026 Artur Yakymenko\n'
+                  '# SPDX-License-Identifier: GPL-3.0-or-later\n'
+                  '[Service]\nExecStartPre=umount /efi\nExecStopPost=mount -o ro /efi\n')
+        for mode in ('hibernate', 'hybrid-sleep', 'suspend-then-hibernate'):
+            self.files.write(f'/etc/systemd/system/systemd-{mode}.service.d/50-emaki-shared-esp.conf', dropin)
+        enable_units(self.runner, self.target, ['emaki-boot-order.service'])

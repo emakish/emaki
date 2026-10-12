@@ -29,6 +29,90 @@ NEW = '12345678-1234-5678-9abc-123456789abd'
 
 
 class UpdateBoot(unittest.TestCase):
+    def test_alongside_initial_install_hook_skips_before_runtime_protection(self):
+        with patch.object(refresh.Path, 'exists', autospec=True,
+                          side_effect=lambda path: str(path) == '/.emaki-install-incomplete'), \
+                patch.object(refresh, 'shared_esp') as shared, \
+                patch.object(refresh.subprocess, 'run') as run, \
+                patch.object(refresh, 'refresh_attempt') as attempt:
+            self.assertEqual(refresh.main(['--hook']), 0)
+            shared.assert_not_called()
+            run.assert_not_called()
+            attempt.assert_not_called()
+
+    def test_alongside_chroot_hook_skips_before_runtime_protection(self):
+        with patch.object(refresh.Path, 'exists', return_value=False), \
+                patch.object(refresh, 'shared_esp') as shared, \
+                patch.object(refresh.subprocess, 'run',
+                             return_value=types.SimpleNamespace(returncode=0)), \
+                patch.object(refresh, 'refresh_attempt') as attempt:
+            self.assertEqual(refresh.main(['--hook']), 0)
+            shared.assert_not_called()
+            attempt.assert_not_called()
+
+    def test_shared_esp_package_guard_aborts_before_any_disk_or_recovery_operation(self):
+        with patch.object(refresh, 'SHARED_ESP', self.root / 'alongside.json'), \
+                patch.object(update.os, 'geteuid', return_value=0), \
+                patch.object(update, 'supported') as supported, \
+                patch.object(refresh, 'run') as run, redirect_stderr(io.StringIO()):
+            self.assertEqual(update.main(['guard-alongside']), 0)
+            refresh.SHARED_ESP.write_text('{}')
+            self.assertEqual(update.main(['guard-alongside']), 1)
+            with patch.object(update.Path, 'is_file', return_value=True):
+                self.assertEqual(update.main(['guard-alongside']), 0)
+            refresh.SHARED_ESP.unlink()
+            refresh.SHARED_ESP.symlink_to(self.root / 'missing-marker')
+            self.assertEqual(update.main(['guard-alongside']), 1)
+            supported.assert_not_called()
+            run.assert_not_called()
+        hook = ROOT / 'grub/00-emaki-alongside.hook'
+        text = hook.read_text()
+        self.assertIn('When = PreTransaction\n', text)
+        self.assertIn('AbortOnFail\n', text)
+        self.assertIn('Target = *\n', text)
+        self.assertIn('emaki-update-boot guard-alongside\n', text)
+        for directory in ('grub', 'upkeep'):
+            for other in (ROOT / directory).glob('*.hook'):
+                if other != hook and 'When = PreTransaction' in other.read_text():
+                    self.assertLess(hook.name, other.name)
+
+    def test_shared_esp_disables_runtime_and_pre_resume_writers(self):
+        with patch.object(refresh, 'shared_esp', return_value=True), \
+                patch.object(update.os, 'geteuid', return_value=0), \
+                patch.object(update, 'supported') as supported, \
+                patch.object(refresh, 'mount_info') as mounts, \
+                patch.object(refresh, 'sleep_trial') as sleep_trial:
+            with self.assertRaisesRegex(RuntimeError, 'shared with Windows and kept read-only'):
+                refresh.discover()
+            for action in ('prepare', 'mark', 'accept', 'sleep-pre', 'sleep-post'):
+                self.assertEqual(update.main([action]), 0)
+            for phase in ('pre', 'post'):
+                self.assertEqual(refresh.main(['--sleep-phase', phase]), 0)
+            supported.assert_not_called()
+            mounts.assert_not_called()
+            sleep_trial.assert_not_called()
+
+    def test_shared_esp_snapshot_service_skips_without_probing_or_writing(self):
+        with patch.object(refresh.Path, 'exists', return_value=False), \
+                patch.object(refresh.subprocess, 'run',
+                             return_value=types.SimpleNamespace(returncode=1)), \
+                patch.object(refresh, 'shared_esp', return_value=True), \
+                patch.object(refresh, 'snapshot_menu_needs_repair') as menu, \
+                patch.object(refresh, 'menu_font_needs_repair') as font, \
+                patch.object(refresh, 'open_run_lock') as lock, \
+                patch.object(refresh, 'BoundedLog') as log, \
+                patch.object(refresh, 'refresh_attempt') as attempt, \
+                redirect_stderr(io.StringIO()):
+            for needs_repair in (False, True):
+                with self.subTest(needs_repair=needs_repair):
+                    menu.return_value = font.return_value = needs_repair
+                    self.assertEqual(refresh.main(['--repair-snapshots']), 0)
+            menu.assert_not_called()
+            font.assert_not_called()
+            lock.assert_not_called()
+            log.assert_not_called()
+            attempt.assert_not_called()
+
     def test_acceptance_lock_waits_for_boot_maintenance(self):
         # Acceptance must wait on the lock: failing fast here would leave a good boot unaccepted.
         with patch.object(refresh, 'open_run_lock') as opened, patch.object(update.fcntl, 'flock') as flock:

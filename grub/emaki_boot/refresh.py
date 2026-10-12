@@ -43,6 +43,7 @@ PENDING = '/var/lib/emaki/boot-refresh-pending'
 BOOT_RETRIES = 3
 SLEEP_LOCK_TIMEOUT = 2.0
 SLEEP_STATE = Path('/run/emaki-boot-sleep.json')
+SHARED_ESP = Path('/var/lib/emaki/alongside-boot.json')
 FOREIGN = 'The existing boot loaders were kept because the fallback loader is not recognized as Emaki.'
 TRIAL_FAILED = 'The new boot loader did not complete a boot; the old loader was kept.'
 UUID = r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
@@ -465,7 +466,13 @@ def mount_info(path, exact=False):
     return value[0]
 
 
+def shared_esp():
+    # Even a malformed marker must retain the safety barrier.
+    return SHARED_ESP.exists() or SHARED_ESP.is_symlink()
+
+
 def discover():
+    require(not shared_esp(), 'The startup menu cannot be updated on this computer: its startup partition is shared with Windows and kept read-only.')
     root = mount_info('/', True)
     if root['fstype'] == 'overlay' or (root['fstype'] == 'btrfs'
             and root['fsroot'].rstrip('/') not in ('', '/@')):
@@ -541,11 +548,12 @@ def generate(stage):
     # 41_snapshots-btrfs has output side effects even when mkconfig uses stdout.
     bind(stage / 'grub', Path('/boot/grub'))
     # A GRUB_FONT in the machine's defaults is sourced later and wins over this one.
-    font = menu_font()
-    run(['grub-mkconfig', '-o', '/boot/grub/grub.cfg'], {'GRUB_FONT': font} if font else None)
+    font, theme = menu_font(), menu_theme()
+    env = {**({'GRUB_FONT': font} if font else {}), **({'GRUB_THEME': theme} if theme else {})}
+    run(['grub-mkconfig', '-o', '/boot/grub/grub.cfg'], env or None)
     menu = Path('/boot/grub/grub.cfg')
     original = regular(menu).decode()
-    safe = boot.menu_font_fallback(original)
+    safe = boot.menu_layout(boot.menu_font_fallback(original))
     if safe != original:
         # This menu is private staging, never the active canonical menu.
         menu.unlink()
@@ -556,6 +564,12 @@ def menu_font():
     """The packaged face for the mode GRUB drew this boot's menu in, if installed."""
     font = boot.menu_font(boot.boot_framebuffer(Path(boot.BOOT_PARAMS)))
     return font if font and Path(font).is_file() and not Path(font).is_symlink() else None
+
+
+def menu_theme():
+    """The packaged theme scale for the mode GRUB drew this boot's menu in, if installed."""
+    theme = boot.menu_theme(boot.boot_framebuffer(Path(boot.BOOT_PARAMS)))
+    return theme if Path(theme).is_file() and not Path(theme).is_symlink() else None
 
 
 def menu_font_needs_repair():
@@ -569,10 +583,13 @@ def menu_font_needs_repair():
     defaults, menu = Path('/etc/default/grub'), Path('/boot/grub/grub.cfg')
     if any(not path.is_file() or path.is_symlink() for path in (defaults, menu)):
         return False
-    if 'GRUB_FONT' in assignments(regular(defaults).decode()):
-        return False
-    current = boot.generated_menu_font(regular(menu).decode())
-    return current != '' and current != menu_font()
+    local = assignments(regular(defaults).decode())
+    text = regular(menu).decode()
+    current = boot.generated_menu_font(text)
+    font = 'GRUB_FONT' not in local and current != '' and current != menu_font()
+    # A theme drawn for another scale; a local GRUB_THEME or a menu not themed by us stays.
+    theme = boot.generated_menu_theme(text)
+    return font or ('GRUB_THEME' not in local and theme not in ('', None) and theme != menu_theme())
 
 
 def rewrite_menu(text, generation, fsroot):
@@ -1325,11 +1342,15 @@ def main(argv=None):
     args = parser.parse_args(argv)
     previous_sigterm = None
     try:
-        if args.repair_snapshots and not snapshot_menu_needs_repair() and not menu_font_needs_repair():
-            return 0
         if (Path('/.emaki-install-incomplete').exists() or Path('/run/archiso').exists()
                 or subprocess.run(['systemd-detect-virt', '--chroot', '--quiet'],
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0):
+            return 0
+        if shared_esp():
+            if args.sleep_phase or args.repair_snapshots:
+                return 0
+            require(False, 'The startup menu cannot be updated on this computer: its startup partition is shared with Windows and kept read-only.')
+        if args.repair_snapshots and not snapshot_menu_needs_repair() and not menu_font_needs_repair():
             return 0
         require(os.geteuid() == 0, 'Run emaki-boot-refresh as root on the installed system.')
         if args.sleep_phase:

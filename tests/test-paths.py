@@ -34,6 +34,23 @@ class Paths(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return result.stdout + result.stderr
 
+    def test_installer_check_generates_paths_in_a_fresh_tree(self):
+        source = self.base / 'source'
+        (source / 'scripts').mkdir(parents=True)
+        (source / 'shell').mkdir()
+        (source / 'crates').mkdir()
+        shutil.copy2(ROOT / 'Makefile', source / 'Makefile')
+        shutil.copy2(ROOT / 'scripts/render-paths', source / 'scripts/render-paths')
+        # Replace the expensive UI suite with its generated-module precondition;
+        # keep the real target dependencies and path renderer.
+        probe = source / 'probe.mk'
+        probe.write_text('check-installer:\n\t@test -f shell/Platform.qml\n')
+        self.assertFalse((source / 'shell/Platform.qml').exists())
+        self.command(['make', '--no-print-directory', '-j2', '-f', 'Makefile',
+                      '-f', 'probe.mk', 'check-installer'], cwd=source)
+        self.assertIn('pragma Singleton', (source / 'shell/Platform.qml').read_text())
+        self.assertTrue((source / 'shell/helpers/emaki_paths.py').is_file())
+
     def test_defaults_and_independent_overrides(self):
         default = RENDER['paths']()
         self.assertEqual(default['LOCALSTATEDIR'], '/var/lib/emaki')

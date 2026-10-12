@@ -114,7 +114,73 @@ class Transaction(unittest.TestCase):
             self.assertIn('--property=StandardOutput=journal', command)
             self.assertNotIn('--pipe', command)
             self.assertEqual(command[-3:], ['--run', 'extra/hello', 'a' * 64])
-            self.assertEqual(run.call_args_list[1].args[0][-1], '_SYSTEMD_INVOCATION_ID=' + invocation)
+            marker = next(item.removeprefix('--property=LogExtraFields=') for item in command
+                          if item.startswith('--property=LogExtraFields='))
+            self.assertEqual(run.call_args_list[1].args[0][-1], marker)
+            self.assertNotIn('_SYSTEMD_INVOCATION_ID=' + invocation, run.call_args_list[1].args[0])
+
+    def test_finished_result_without_invocation_status_line(self):
+        finished = dict(type='finished', action='install', ok=True, code='success',
+                        restart=True, signOut=True)
+        launch = Mock(returncode=0, stdout='', stderr='Running as unit: emaki-programs-install.service')
+        journal = Mock(returncode=0, stdout=json.dumps({'MESSAGE': json.dumps(finished)}))
+        with patch.object(helper, 'update_backend'), patch.object(helper, 'revalidate'), patch.object(helper.subprocess, 'run', side_effect=[launch, journal]) as run:
+            self.assertEqual(helper.request('extra/hello', 'a' * 64), 0)
+        self.assertEqual(json.loads(self.output.getvalue().splitlines()[-1]), finished)
+        command = run.call_args_list[0].args[0]
+        marker = next(item for item in command if item.startswith('--property=LogExtraFields='))
+        self.assertRegex(marker, r'^--property=LogExtraFields=EMAKI_INSTALL_REQUEST=[0-9a-f]{32}$')
+        self.assertEqual(run.call_args_list[1].args[0], [
+            'journalctl', '--quiet', '--no-pager', '-o', 'json',
+            '_SYSTEMD_UNIT=emaki-programs-install.service', '_UID=0',
+            marker.removeprefix('--property=LogExtraFields=')])
+
+    def test_each_request_ignores_other_service_results(self):
+        old_id = 'e' * 32
+        old = dict(type='finished', action='install', ok=True, code='success', restart=True)
+        records = [{'_SYSTEMD_INVOCATION_ID': old_id,
+                    '_SYSTEMD_UNIT': 'emaki-programs-install.service', '_UID': '0',
+                    'EMAKI_INSTALL_REQUEST': '0' * 32, 'MESSAGE': json.dumps(old)}]
+        markers = []
+
+        def command(argv, **kwargs):
+            if argv[0] == 'systemd-run':
+                self.assertIn('--unit=emaki-programs-install', argv)
+                marker = next((item.removeprefix('--property=LogExtraFields=')
+                               for item in argv if item.startswith('--property=LogExtraFields=')), '')
+                markers.append(marker)
+                # Extra fields are untrusted without the journal's service credentials.
+                if marker:
+                    for credentials in ({'_UID': '1000'}, {'_SYSTEMD_UNIT': 'other.service'}):
+                        records.append(dict(records[0], EMAKI_INSTALL_REQUEST=marker.split('=', 1)[1],
+                                            **credentials))
+                # A failed start must not claim the active or previous unit's result.
+                return Mock(returncode=1, stdout='', stderr='Unit already exists. Invocation ID: ' + old_id)
+            self.assertEqual(argv[0], 'journalctl')
+            matches = [item.split('=', 1) for item in argv if '=' in item]
+            selected = [record for record in records if all(record.get(key) == value for key, value in matches)]
+            return Mock(returncode=0, stdout='\n'.join(json.dumps(record) for record in selected))
+
+        with patch.object(helper, 'update_backend'), patch.object(helper, 'revalidate'), patch.object(helper.subprocess, 'run', side_effect=command):
+            for _ in range(2):
+                self.assertEqual(helper.request('extra/hello', 'a' * 64), 1)
+                self.assertEqual(json.loads(self.output.getvalue().splitlines()[-1])['code'], 'unknown')
+        self.assertNotEqual(markers[0], markers[1])
+        for marker in markers:
+            self.assertRegex(marker, r'^EMAKI_INSTALL_REQUEST=[0-9a-f]{32}$')
+
+    def test_failed_install_retains_invocation_diagnostic(self):
+        finished = dict(type='finished', action='install', ok=False, message='Installation failed.')
+        cause = 'Not enough free space: needs 1.5 GB, 257.5 MB is free.'
+        launch = Mock(returncode=1, stdout='', stderr='Running as unit: emaki-programs-install.service')
+        journal = Mock(returncode=0, stdout='\n'.join(json.dumps({'MESSAGE': text}) for text in
+                       ('x' * 5000, '\x1b[31m' + cause + '\x1b[0m', json.dumps(finished))))
+        with patch.object(helper, 'update_backend'), patch.object(helper, 'revalidate'), patch.object(helper.subprocess, 'run', side_effect=[launch, journal]):
+            self.assertEqual(helper.request('extra/hello', 'a' * 64), 1)
+        result = json.loads(self.output.getvalue().splitlines()[-1])
+        self.assertIn(cause, result['message'])
+        self.assertNotIn('\x1b', result['message'])
+        self.assertLessEqual(len(result['message']), len(finished['message']) + 4097)
 
     def test_busy_worker_never_runs_update(self):
         with tempfile.TemporaryFile(mode='w') as lock, patch.object(helper.os, 'open', return_value=10), patch.object(helper.os, 'fdopen', return_value=contextlib.nullcontext(lock)), patch.object(helper.fcntl, 'flock', side_effect=BlockingIOError), patch.object(helper.subprocess, 'run') as run:

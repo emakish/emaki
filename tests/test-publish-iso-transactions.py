@@ -4,8 +4,10 @@
 """The live installer resolves only against the packages retained on its image."""
 import importlib.util
 import io
+import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -41,6 +43,13 @@ def database(packages):
     return archive(entries)
 
 
+class Gates:
+    """A publisher without exceptions: every gate refuses."""
+
+    def gate(self, gate, message, artifacts):
+        raise publisher.Refused(message, gate=gate)
+
+
 @unittest.skipUnless(all(shutil.which(tool) for tool in ('pacman', 'fakeroot', 'bsdtar')),
                      'pacman, fakeroot and bsdtar required')
 class ImageTransactions(unittest.TestCase):
@@ -62,7 +71,7 @@ class ImageTransactions(unittest.TestCase):
 
     def test_old_archinstall_pin_resolves_from_image_without_current_arch(self):
         filenames = self.image_with()
-        publisher.check_iso_transactions(self.image, filenames)
+        publisher.check_iso_transactions(Gates(), self.image, filenames, {})
 
     def test_broken_iso_pin_is_refused_before_source_checks_or_upload(self):
         self.image_with('4.6-1')
@@ -71,6 +80,7 @@ class ImageTransactions(unittest.TestCase):
         publish.dry_run = False
         publish.pointer.return_value = ('snapshot', None)
         publish.snapshot.return_value = {'MANIFEST': b''}
+        publish.gate.side_effect = Gates().gate
         with self.assertRaisesRegex(publisher.Refused, 'archinstall=4.5-1'):
             publisher.iso_publish(publish, self.image, False)
         publish.backend.put_new.assert_not_called()
@@ -79,7 +89,16 @@ class ImageTransactions(unittest.TestCase):
     def test_image_database_must_describe_exact_image_package_set(self):
         filenames = self.image_with()
         with self.assertRaisesRegex(publisher.Refused, 'database.*closure'):
-            publisher.check_iso_transactions(self.image, filenames + ['unlisted-1-1-any.pkg.tar.zst'])
+            publisher.check_iso_transactions(Gates(), self.image, filenames + ['unlisted-1-1-any.pkg.tar.zst'], {})
+
+
+class MissingTools(unittest.TestCase):
+    def test_image_tests_skip_without_pacman_fakeroot_and_bsdtar(self):
+        with tempfile.TemporaryDirectory(prefix='no-tools-') as empty:
+            result = subprocess.run([sys.executable, __file__, 'ImageTransactions'], capture_output=True,
+                                    text=True, env=dict(os.environ, PATH=empty))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('OK (skipped=3)', result.stderr)
 
 
 if __name__ == '__main__':

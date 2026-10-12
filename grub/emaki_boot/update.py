@@ -350,10 +350,19 @@ def sleep_phase(phase):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('prepare', 'mark', 'accept', 'sleep-pre', 'sleep-post'))
+    parser.add_argument('action', choices=('guard-alongside', 'prepare', 'mark', 'accept', 'sleep-pre', 'sleep-post'))
     args = parser.parse_args(argv)
     try:
         refresh.require(os.geteuid() == 0, 'Update boot protection must run as root.')
+        if args.action == 'guard-alongside':
+            # The installer has just verified Windows and still owns the mounted
+            # target; its initial snapshot strips this incomplete-install marker.
+            refresh.require(not refresh.shared_esp() or Path('/.emaki-install-incomplete').is_file(),
+                            'Installing and updating are switched off on this computer for now: Emaki shares '
+                            'its startup partition with Windows and keeps it read-only to protect Windows.')
+            return 0
+        if refresh.shared_esp():
+            return 0
         identity = supported()
         if identity is None:
             return 0

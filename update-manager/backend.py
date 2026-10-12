@@ -204,23 +204,25 @@ def discover(cache):
         warnings.append('These installed packages were not found in AUR: ' + ', '.join(sorted(missing)) + '.')
     if foreign:
         warnings.append('AUR download sizes are not available. Development packages may need rebuilding even when their listed version has not changed.')
-    try:
-        since = catalog.last_upgrade(logfile.read_text(errors='replace'))
-    except OSError:
-        since = None
-    if since is None:
-        since = install_date()
-    if since is None:
-        warnings.append('The date of the last full update is unknown. Review all the available Arch news notices.')
-    emit('progress', message='Checking Arch news…')
-    try:
-        news, stale = fetch('https://archlinux.org/feeds/news/', cache,
-                            lambda raw: catalog.news_items(raw, since))
-        if stale:
-            warnings.append('Arch news could not be reached. The notices come from an older check.')
-    except (RuntimeError, ValueError, catalog.ET.ParseError):
-        news = []
-        warnings.append('Arch news could not be checked. Visit https://archlinux.org/news/ before updating.')
+    news = []
+    if any(not row.get('aur') for row in updates):
+        try:
+            since = catalog.last_upgrade(logfile.read_text(errors='replace'))
+        except OSError:
+            since = None
+        if since is None:
+            since = install_date()
+        if since is None:
+            warnings.append('The date of the last full update is unknown. Review all the available Arch news notices.')
+        emit('progress', message='Checking Arch news…')
+        try:
+            news, stale = fetch('https://archlinux.org/feeds/news/', cache,
+                                lambda raw: catalog.news_items(raw, since))
+            if stale:
+                warnings.append('Arch news could not be reached. The notices come from an older check.')
+        except (RuntimeError, ValueError, catalog.ET.ParseError):
+            news = []
+            warnings.append('Arch news could not be checked. Visit https://archlinux.org/news/ before updating.')
     warnings += catalog.warnings_for(updates)
     try:
         updates.extend(flatpaks.discover(command))
@@ -399,13 +401,15 @@ def apply(cache):
                 finished.update(ok=False, message='[PLACEHOLDER] System updates finished, but Flatpak updates did not finish. Review the details before trying again.')
         finished.update(local_state(cache))
         emit('finished', **finished)
+        if finished.get('ok') and not finished.get('restart'):
+            reminder.notify_completed()
     # Keep AUR reminders; --status drops versions changed by this transaction,
     # and the database stamp invalidates the next cached check.
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    operations = ('--status', '--check', '--refresh', '--apply', '--restart', '--dismiss-restart', '--restore-points')
+    operations = ('--status', '--check', '--refresh', '--apply', '--restart', '--dismiss-restart', '--restore-points', '--notify-restart')
     # Exactly one fixed operation, or one bound snapshot token; never a command.
     restoring = (len(sys.argv) == 3 and sys.argv[1] == '--restore'
                  and re.fullmatch(r'[1-9][0-9]{0,18}:[0-9a-f]{64}', sys.argv[2]))
@@ -427,6 +431,8 @@ def main():
                 emit('result', data=dict(check(cache, operation == '--refresh'), **local_state(cache)))
         elif operation == '--apply':
             apply(cache)
+        elif operation == '--notify-restart':
+            emit('restartNotification', **reminder.notify_restart(cache))
         elif operation == '--dismiss-restart':
             return 0 if reminder.acknowledge(cache) else 1
         elif operation in ('--restore-points', '--restore'):

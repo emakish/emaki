@@ -298,7 +298,7 @@ test -z "$(systemctl --failed --no-legend)"
 grep -q 'GRUB_DISABLE_OS_PROBER=false' /etc/default/grub
 grep -q 'Windows Boot Manager' /boot/grub/grub.cfg
 if findmnt -n -o FSTYPE / | grep -qx btrfs; then
-    grep -q 'Emaki snapshots' /boot/grub/grub.cfg
+    grep -q 'Restore from a snapshot' /boot/grub/grub.cfg
     test -s /boot/grub/grub-btrfs.cfg
     snapper --no-dbus -c root list
 fi

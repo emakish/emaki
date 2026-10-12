@@ -6,11 +6,14 @@ from contextlib import contextmanager
 import hashlib
 import json
 import os
+import re
+import struct
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 
+from emaki_installer.arch_backend import resize_partition
 from emaki_installer.errors import Code, InstallError
 from emaki_installer.inventory import Inventory
 from emaki_installer.planner import make_plan
@@ -52,6 +55,107 @@ def digest():
                 stream.seek(offset, os.SEEK_END if offset < 0 else os.SEEK_SET)
                 result.update(stream.read(length))
     return result.hexdigest()
+
+
+
+def full_digest():
+    """Hash every origin byte, including unsampled allocated and free clusters."""
+    with open(DISK, 'rb', buffering=0) as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def restart_page(log_size, *, clean=False):
+    """NTFS 1.1 restart page with one active client and valid sector fixups.
+
+    Layout follows libntfs-3g logfile.h. Only RESTART_VOLUME_IS_CLEAN differs
+    between the clean control and the unclean journal; neither changes $Volume.
+    """
+    page = bytearray(4096)
+    struct.pack_into('<4sHHQIIHHHH', page, 0,
+                     b'RSTR', 32, 9, 0, 4096, 4096, 56, 1, 1, 0)
+    struct.pack_into('<QHHHHIHHQ IHHII', page, 56,
+                     0, 1, 0xffff, 0, 2 if clean else 0,
+                     67 - log_size.bit_length(), 208, 48, log_size, 0, 48, 64, 1, 0)
+    struct.pack_into('<HH', page, 56 + 48 + 16, 0xffff, 0xffff)
+    struct.pack_into('<I', page, 56 + 48 + 28, 8)
+    page[56 + 48 + 32:56 + 48 + 40] = 'NTFS'.encode('utf-16le')
+    struct.pack_into('<H', page, 32, 1)
+    for sector in range(1, 9):
+        # Zero original sector tails are saved in the update sequence array.
+        struct.pack_into('<H', page, sector * 512 - 2, 1)
+    return bytes(page)
+
+
+@contextmanager
+def unclean_journal(device):
+    """Temporarily replace only the two restart pages on the guarded fixture."""
+    info = run('ntfsinfo', '-m', device)
+    flags = re.search(r'Volume Flags: 0x([0-9a-fA-F]+)', info)
+    assert flags and not (int(flags[1], 16) & 1), 'fixture must have a clear dirty flag'
+    with open(device, 'rb', buffering=0) as stream:
+        boot = stream.read(512)
+    cluster = int.from_bytes(boot[11:13], 'little') * boot[13]
+    assert cluster >= 512 and cluster & (cluster - 1) == 0
+    listing = run('ntfscluster', '-I', '2', device)
+    assert 'Dump: /$LogFile' in listing
+    runs = [tuple(map(int, row)) for row in re.findall(r'^\s+(\d+)\s+(\d+)\s+(\d+)\s*$', listing, re.M)]
+    assert runs and runs[0][0] == 0 and runs[0][2] * cluster >= 8192
+    log_size = sum(length for _, _, length in runs) * cluster
+    assert log_size >= 50 * 4096
+    offset = runs[0][1] * cluster
+    with open(device, 'r+b', buffering=0) as stream:
+        stream.seek(offset)
+        original = stream.read(8192)
+        assert len(original) == 8192
+        try:
+            stream.seek(offset)
+            stream.write(restart_page(log_size) * 2)
+            os.fsync(stream.fileno())
+            yield
+        finally:
+            stream.seek(offset)
+            stream.write(original)
+            os.fsync(stream.fileno())
+
+
+class JournalRunner(ProbeRunner):
+    def __init__(self):
+        self.unclean_refusals = 0
+
+    def run(self, argv, **kwargs):
+        assert argv[0] != 'ntfsresize', 'unclean journal reached the resize utility'
+        try:
+            return super().run(argv, **kwargs)
+        except InstallError as error:
+            if argv[0] == 'ntfs-3g.probe' and '--readwrite' in argv:
+                # 15 is libntfs-3g NTFS_VOLUME_UNCLEAN_UNMOUNT. A missing
+                # device-mapper target or unavailable command is not a pass.
+                assert error.returncode == 15, (error.returncode, error.output)
+                self.unclean_refusals += 1
+            raise
+
+
+def journal_refusals(config, baseline):
+    plan = make_plan(config, baseline)
+    with unclean_journal(NTFS):
+        os.sync()
+        before, writes = full_digest(), write_counters()
+        runner = JournalRunner()
+        inv = Inventory(runner).probe()
+        disk = next(d for d in inv['disks'] if d['id'] == DISK)
+        assert (disk['shrink'] or {}).get('reason'), disk['shrink']
+        changed = []
+        try:
+            resize_partition(plan, runner, lambda: changed.append(True))
+        except InstallError as error:
+            assert error.code == Code.SHRINK_BOUNDS, error
+        else:
+            raise AssertionError('Unclean journal reached resize')
+        assert runner.unclean_refusals == 2 and not changed
+        assert full_digest() == before, 'Journal refusal changed origin bytes'
+        assert write_counters() == writes, 'Journal refusal wrote to the origin'
+        print('PASS: unclean journal with clean dirty flag refused by inventory and resize; '
+              'full origin SHA-256 and write counters unchanged.', flush=True)
 
 
 def probe(reason=None):
@@ -126,6 +230,7 @@ def main():
     run('ntfsfix', '--clear-dirty', NTFS)
     baseline = probe()
     config = json.load(sys.stdin)
+    journal_refusals(config, baseline)
     for freed in (31 * 1024**3, 95 * 1024**3):
         config['shrink_bytes'] = freed
         os.sync()

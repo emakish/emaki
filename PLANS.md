@@ -52,6 +52,11 @@ On btrfs, snapguard, my tool that takes a snapshot before risky actions, becomes
 for those who want it, an optional sudo key lets an agent work without asking for a while — at your
 own risk, with a plain warning. The first parts arrived in 0.5 and 0.6.
 
+AUR in Programs & Updates. Programs & Updates is not a store of its own: it does what you would do in a terminal, only without the
+terminal. That is why the AUR will be there too, with full install and update. But anyone can publish to the AUR and nobody checks it,
+so it gets its own section that opens only after a plain warning, and you confirm that what you install from it is your decision and
+your responsibility. The risks are the same as in a terminal; Emaki only makes them visible.
+
 These are not promises, just my thoughts on where we are going. This text will change along with
 the project.
 

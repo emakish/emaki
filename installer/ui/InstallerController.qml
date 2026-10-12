@@ -1015,7 +1015,10 @@ Item {
             Socket {
                 id: socket
                 path: Quickshell.env("EMAKI_INSTALLER_SOCKET") || "/run/emaki-installer/sock"
-                connected: true
+                // A constant path can connect during construction, before signal handlers
+                // attach. Start only after completion, including each reconnect's new Socket.
+                connected: false
+                Component.onCompleted: connected = true
                 Component.onDestruction: {
                     if (root.transport === socket)
                         root.transport = null;

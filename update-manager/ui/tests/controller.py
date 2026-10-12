@@ -26,6 +26,9 @@ def emit(event):
     print(json.dumps(event), flush=True)
 scenario = os.environ['TEST_SCENARIO']
 if operation in ('--check', '--refresh'):
+    if Path(os.environ['TEST_CALLS'] + '.applied').exists():
+        emit(dict(type='result', data=dict(updates=[dict(name='foreign', aur=True)], groups=[], news=[], warnings=[], downloadSize=0)))
+        sys.exit(0)
     if scenario == 'flatpak':
         emit(dict(type='result', data=dict(updates=[dict(name='App', kind='flatpak', aur=False)])))
         sys.exit(0)
@@ -38,7 +41,17 @@ if operation in ('--check', '--refresh'):
     emit(dict(type='result', data=dict(updates=[dict(name='linux', aur=False), dict(name='foreign', aur=True)], groups=[], news=[], warnings=[], downloadSize=123, cached=operation == '--check')))
 elif operation == '--dismiss-restart':
     Path(os.environ['TEST_CALLS'] + '.dismissed').touch()
+elif operation == '--notify-restart':
+    emit(dict(type='restartNotification', ok=True, notified=True))
 elif operation == '--restore-points':
+    if scenario == 'index-error':
+        emit(dict(type='restorePoints', points=[], error='Restore index is unavailable.')); sys.exit(0)
+    if scenario == 'index-malformed':
+        print('broken', flush=True); sys.exit(1)
+    if scenario == 'delayed-index':
+        applied = Path(os.environ['TEST_CALLS'] + '.applied')
+        if not applied.exists() or time.time() - applied.stat().st_mtime < 0.15:
+            emit(dict(type='restorePoints', points=[])); sys.exit(0)
     emit(dict(type='restorePoints', points=[dict(id=42, date='2026-10-10T12:00:00Z', description='System update')]))
 elif operation == '--restore':
     time.sleep(0.15)
@@ -58,6 +71,7 @@ elif operation == '--apply':
         print('not json', flush=True)
         sys.exit(0)
     ok = scenario != 'failure'
+    if ok: Path(os.environ['TEST_CALLS'] + '.applied').touch()
     emit(dict(type='finished', ok=ok, message='Update complete.' if ok else 'Update refused.', restart=ok, signOut=ok))
     sys.exit(1 if scenario in ('failure', 'nonzero') else 0)
 elif operation == '--restart':
@@ -70,6 +84,8 @@ else:
 
 def rendered_window():
     """Load the shipped entry point without rewriting imports or QML behavior."""
+    reaper = runpy.run_path(str(ROOT / 'tests/reaper.py'))
+    assert reaper['become_subreaper'](), 'Could not isolate production window descendants'
     renderer = runpy.run_path(str(ROOT / 'scripts/render-paths'))
     with tempfile.TemporaryDirectory(prefix='update-window-') as directory:
         root = Path(directory)
@@ -77,18 +93,29 @@ def rendered_window():
         shell = Path(values['DATADIR']) / 'shell'
         shutil.copytree(ROOT / 'shell', shell)
         shell.joinpath('Platform.qml').write_text(renderer['modules'](values)[2])
+        icon = Path(values['PREFIX']) / 'share/icons/hicolor/scalable/apps/emaki-programs-updates.svg'
+        icon.parent.mkdir(parents=True)
+        shutil.copyfile(UI.parent / 'emaki-programs-updates.svg', icon)
         ui = Path(values['PREFIX']) / 'share/emaki-update-manager/ui'
         ui.mkdir(parents=True)
-        for source in UI.glob('*.qml'):
+        for source in [*UI.glob('*.qml'), *UI.glob('*.js')]:
             (ui / source.name).write_text(renderer['substitute'](source.read_text(), values))
         backend = Path(values['LIBEXECDIR']) / 'update-manager-backend'
         backend.parent.mkdir(parents=True)
         backend.write_text(BACKEND.format(python=sys.executable))
         backend.chmod(0o700)
+        programs = root / 'emaki-programs'
+        programs.write_text('#!' + sys.executable + '\nimport json, sys\n'
+                            'if sys.argv[1] == "list": print(json.dumps(dict(ok=True, programs=[])))\n'
+                            'else:\n'
+                            ' for line in sys.stdin:\n'
+                            '  request = json.loads(line)\n'
+                            '  print(json.dumps(dict(version=1, id=request["id"], type="result", ok=True, programs=[], total=0, warnings=[])), flush=True)\n')
+        programs.chmod(0o700)
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
                    QT_QUICK_CONTROLS_STYLE='Basic', QML_DISABLE_DISK_CACHE='1',
                    QS_DISABLE_CRASH_HANDLER='1', TEST_SCENARIO='success',
-                   TEST_CALLS=str(root / 'calls'))
+                   TEST_CALLS=str(root / 'calls'), PATH=str(root) + os.pathsep + os.environ.get('PATH', ''))
         for name in ('cache', 'config', 'data', 'state'):
             (root / name).mkdir(mode=0o700)
             env['XDG_' + name.upper() + '_HOME'] = str(root / name)
@@ -100,7 +127,7 @@ def rendered_window():
             entry = str(ui / 'shell.qml')
             with (root / 'window.log').open('w+') as stream:
                 process = subprocess.Popen(['qs', '-p', entry, '--no-color'], env=env,
-                                           stdout=stream, stderr=subprocess.STDOUT)
+                                           stdout=stream, stderr=subprocess.STDOUT, start_new_session=True)
                 try:
                     presented = False
                     deadline = time.monotonic() + 15
@@ -125,18 +152,22 @@ def rendered_window():
                     except subprocess.TimeoutExpired:
                         process.kill()
                         process.wait(timeout=5)
+                    # The window can leave wallpaper and backend workers alive.
+                    # Adopt and stop every descendant before deleting its fixture.
+                    left = reaper['stop_all']()
+                    assert not left, 'Production window descendants survived cleanup: ' + str(left)
         print('PASS rendered production window')
 
 
 def run(scenario):
-    with tempfile.TemporaryDirectory(prefix='emaki-update-controller-') as directory:
+    with tempfile.TemporaryDirectory(prefix='uc-', dir=ROOT / '.cache') as directory:
         root = Path(directory)
         backend = root / 'backend'
         backend.write_text(BACKEND.format(python=sys.executable))
         backend.chmod(0o700)
-        controller = (UI / 'UpdateController.qml').read_text().replace('@EMAKI_DATADIR@', str(ROOT))
+        controller = (UI / 'UpdateController.qml').read_text().replace('interval: 10000', 'interval: 50').replace('@EMAKI_DATADIR@', str(ROOT))
         command = 'Shell.Platform.libexecDir + "/update-manager-backend"'
-        assert controller.count(command) == 1
+        assert controller.count(command) == 4
         (root / 'UpdateController.qml').write_text(controller.replace(command, json.dumps(str(backend))))
         shutil.copyfile(UI / 'tests/ControllerTest.qml', root / 'ControllerTest.qml')
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QML_DISABLE_DISK_CACHE='1', QS_DISABLE_CRASH_HANDLER='1', TEST_SCENARIO=scenario, TEST_CALLS=str(root / 'calls'))
@@ -152,17 +183,21 @@ def run(scenario):
         expected = ['--check', '--refresh', '--apply'] + (['--dismiss-restart', '--restart'] if scenario == 'success' else [])
         if scenario == 'flatpak':
             expected = ['--check', '--apply']
-        elif scenario == 'aur':
+        elif scenario in ('aur', 'index-error', 'index-malformed'):
             expected = ['--check']
         elif scenario == 'reminder':
             expected = ['--check', '--dismiss-restart', '--refresh']
         elif scenario.startswith('restore-'):
-            expected = ['--check', '--restore-points', '--restore 42']
-        assert (root / 'calls').read_text().splitlines() == expected
+            expected = ['--check', '--restore 42']
+        calls = (root / 'calls').read_text().splitlines()
+        assert '--restore-points' in calls
+        foreground = [call for index, call in enumerate(calls) if call != '--restore-points' and not (call == '--check' and index > calls.index('--check'))]
+        assert foreground == expected, (foreground, expected)
+        if scenario == 'success': assert calls.count('--check') == 2
         print('PASS controller', scenario)
 
 
 if __name__ == '__main__':
     rendered_window()
-    for scenario in ('success', 'failure', 'empty', 'malformed', 'nonzero', 'cancelled', 'flatpak', 'aur', 'reminder', 'restore-success', 'restore-refused', 'restore-partial'):
+    for scenario in ('success', 'delayed-index', 'failure', 'empty', 'malformed', 'nonzero', 'cancelled', 'flatpak', 'aur', 'reminder', 'restore-success', 'restore-refused', 'restore-partial', 'index-error', 'index-malformed'):
         run(scenario)

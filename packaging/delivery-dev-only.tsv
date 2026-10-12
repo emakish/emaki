@@ -45,6 +45,7 @@ grub/tests/10_linux-2.16.fixture	Regression fixture for boot menu compatibility.
 grub/tests/grub-btrfs-4.14.fixture	Regression fixture for boot menu compatibility.	tests/test-snapshot-menu.py
 installer/assets/grub/README.md	Artwork and prototype-font regeneration instructions.	installer/assets/grub/README.md
 installer/assets/grub/generate-screens.py	Build tool producing installed emaki_installer/grub_artwork PNGs.	installer/assets/grub/README.md
+grub/theme/generate-theme.py	Build tool producing the installed GRUB theme files under grub/theme.	grub/theme/generate-theme.py
 installer/assets/grub/subset-pf2.py	Build tool producing the installed unlock-24.pf2 fallback font.	installer/assets/grub/README.md
 installer/assets/grub/unlock-32.pf2	Unused 32 px font prototype; only unlock-24.pf2 ships.	installer/assets/grub/README.md
 installer/assets/grub/unlock-48.pf2	Unused 48 px font prototype; only unlock-24.pf2 ships.	installer/assets/grub/README.md
@@ -62,6 +63,7 @@ installer/ui/tests/TestWindow.qml	Screenshot fixture window for installer states
 installer/ui/tests/check.py	Installer static validation tool.	Makefile:check-installer-ui
 installer/ui/tests/controller.py	Controller regression runner over a test socket.	Makefile:check-installer-ui
 installer/ui/tests/cut-recording.py	Converts development install recordings into test transcripts.	installer/ui/tests/cut-recording.py:usage
+installer/ui/tests/handshake.py	Source and packaged installer socket handshake regression runner.	Makefile:check-installer
 installer/ui/tests/interactions.py	Installer input interaction test runner.	Makefile:check-installer-ui
 installer/ui/tests/mock-worker.py	Synthetic worker serving recorded test transcripts.	installer/ui/tests/controller.py; installer/ui/tests/test_helpers.py
 installer/ui/tests/real-worker.py	Installer test worker with fake disks and package operations.	installer/ui/tests/controller.py; installer/ui/tests/real-worker.py:module documentation
@@ -244,6 +246,7 @@ update-manager/tests/test_programs_flatpak_apply.py	System application authoriza
 update-manager/tests/test_programs_flatpak.py	Optional application catalog and transaction plan tests.	Makefile:check
 update-manager/ui/tests/InteractionTest.qml	Keyboard-only update-window interaction fixture.	update-manager/ui/tests/interactions.py
 update-manager/ui/tests/interactions.py	Update-window interaction and mutation test runner.	Makefile:check-shell
+update-manager/ui/tests/icons.py	Image decoding and fallback regression runner.	Makefile:check-shell
 update-manager/ui/tests/controller.py	Update-window process protocol test runner.	Makefile:check-shell
 update-manager/ui/tests/ControllerTest.qml	Update-window process protocol fixture.	update-manager/ui/tests/controller.py
 crates/emaki-core/src/settings/live.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
@@ -264,3 +267,5 @@ update-manager/tests/test_flatpaks.py	Flatpak update parsing tests.	Makefile:che
 update-manager/tests/test_protocol.py	Update backend protocol tests.	Makefile:check
 update-manager/tests/test_reminder.py	Restart reminder tests.	Makefile:check
 update-manager/tests/test_restore.py	Restore point tests.	Makefile:check
+update-manager/ui/tests/ProgramsControllerTest.qml	Programs controller protocol fixture.	update-manager/ui/tests/programs_controller.py
+update-manager/ui/tests/programs_controller.py	Programs controller process protocol test runner.	Makefile:check-shell

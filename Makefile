@@ -73,13 +73,15 @@ PAMDIR  = $(DESTDIR)/usr/lib/pam.d
 BOOTLIB = $(DESTDIR)$(PREFIX)/lib/emaki/boot/emaki_boot
 BOOT_SHARED = boot errors grub_screen
 BOOT_ARTWORK = $(wildcard installer/emaki_installer/grub_artwork/*/*.png)
+GRUB_THEME_SCALES = 100 150 200 300
+GRUB_THEME_FILES = $(wildcard grub/theme/theme-*.txt grub/theme/*.pf2)
 # niri only looks here for the system config (src/main.rs); PREFIX does not affect the path.
 NIRI_ETC = $(DESTDIR)/etc/niri/config.kdl
 # Header string from niri/system.kdl: install and uninstall use it to recognize our file
 # and leave any other /etc/niri/config.kdl alone.
 NIRI_ETC_MARK = Emaki — system niri config
 
-SCRIPTS = scripts/emaki-settings-network scripts/emaki-settings-wallpaper scripts/emaki-wallet-stage scripts/emaki-wallet-start scripts/emaki-keyring-recover scripts/emaki-qt-check scripts/emaki-autostart scripts/emaki-wallet-migrate scripts/emaki-boot-refresh scripts/emaki-migrate-installer-config scripts/emaki-rollback scripts/emaki-drm-hold scripts/emaki-greeter-compositor scripts/emaki-greeter-run scripts/emaki-session-import-environment scripts/emaki-idle scripts/emaki-config-path scripts/emaki-power scripts/emaki-shell scripts/emaki-shell-trusted scripts/emaki-lock scripts/emaki-greeter-provision scripts/emaki-session-wallpaper scripts/emaki-sleep-guard scripts/emaki-text-session scripts/emaki-shell-health scripts/emaki-settings-power scripts/emaki-settings-apps scripts/emaki-settings-about scripts/emaki-settings-storage scripts/emaki-settings-privacy
+SCRIPTS = scripts/emaki-boot-order scripts/emaki-settings-network scripts/emaki-settings-wallpaper scripts/emaki-wallet-stage scripts/emaki-wallet-start scripts/emaki-keyring-recover scripts/emaki-qt-check scripts/emaki-autostart scripts/emaki-wallet-migrate scripts/emaki-boot-refresh scripts/emaki-migrate-installer-config scripts/emaki-rollback scripts/emaki-drm-hold scripts/emaki-greeter-compositor scripts/emaki-greeter-run scripts/emaki-session-import-environment scripts/emaki-idle scripts/emaki-config-path scripts/emaki-power scripts/emaki-shell scripts/emaki-shell-trusted scripts/emaki-lock scripts/emaki-greeter-provision scripts/emaki-session-wallpaper scripts/emaki-sleep-guard scripts/emaki-text-session scripts/emaki-shell-health scripts/emaki-settings-power scripts/emaki-settings-apps scripts/emaki-settings-about scripts/emaki-settings-storage scripts/emaki-settings-privacy
 # Shell: QML, helpers, shader — copied as is to $(SHARE)/shell. Core: release binary
 # from `make build` (prefix/datadir paths are compiled in; see CORE_ENV below).
 SHELL_SRC = $(shell find shell -type f ! -path '*/__pycache__/*' ! -name '*.pyc' ! -name '*.pyo')
@@ -194,6 +196,7 @@ check: paths check-assumptions
 	sh tests/test-power.sh
 	python3 tests/test-uninstall.py
 	python3 tests/test-boot-refresh.py
+	python3 tests/test-boot-order.py
 	python3 tests/test-update-boot.py
 	python3 tests/test-sleep-lock.py
 	python3 tests/test-update-menu.py
@@ -202,6 +205,7 @@ check: paths check-assumptions
 	python3 tests/test-boot-delivery-guest.py
 	python3 tests/test-boot-refresh-real.py
 	python3 tests/test-menu-font.py
+	python3 tests/test-grub-menu-layout.py
 	python3 tests/test-resume.py
 	python3 tests/test-nvidia.py
 	python3 tests/test-boot-splash.py
@@ -257,13 +261,15 @@ check-deps:
 # The installer window: lint, helpers, protocol, controller over a real unix socket,
 # pointer/key interactions and offscreen renders.
 .PHONY: check-installer check-iso check-updates check-all
-check-installer:
+check-installer: paths
 	python3 installer/assets/grub/generate-screens.py --check
+	python3 grub/theme/generate-theme.py --check
 	python3 tests/test-grub-artwork.py
 	python3 installer/ui/tests/check.py
 	python3 -m unittest discover -s installer/ui/tests -p 'test_*.py'
 	node installer/ui/tests/test-protocol.js
 	node installer/ui/tests/test-timezones.js
+	python3 installer/ui/tests/handshake.py
 	python3 installer/ui/tests/controller.py --unix
 	python3 installer/ui/tests/interactions.py
 	python3 installer/ui/tests/render.py
@@ -320,6 +326,7 @@ check-updates:
 	python3 tests/test-publish-immutability.py
 	python3 tests/test-publish-transactions.py
 	python3 tests/test-publish-iso-transactions.py
+	python3 tests/test-publish-exceptions.py
 	python3 tests/test-r2-client.py
 	python3 tests/test-upgrade-check.py
 	node tests/test-pointer-worker.mjs
@@ -400,7 +407,8 @@ install: install-upkeep
 	install -Dm644 update-manager/org.emaki.update.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.update.policy
 	install -Dm644 update-manager/org.emaki.update.restore.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.update.restore.policy
 	install -Dm644 update-manager/emaki-update-manager.desktop $(DESTDIR)$(PREFIX)/share/applications/emaki-update-manager.desktop
-	install -Dm644 -t $(DESTDIR)$(PREFIX)/share/emaki-update-manager/ui update-manager/ui/*.qml
+	install -Dm644 -t $(DESTDIR)$(PREFIX)/share/emaki-update-manager/ui update-manager/ui/*.qml update-manager/ui/*.js
+	install -Dm644 update-manager/emaki-programs-updates.svg $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/emaki-programs-updates.svg
 	install -Dm644 installer/emaki_installer/update_errors.py $(DESTDIR)$(LIBEXECDIR)/emaki_update_errors.py
 	install -Dm644 scripts/emaki_session_state.py $(DESTDIR)$(LIBEXECDIR)/emaki_session_state.py
 	install -Dm644 scripts/emaki_session_arch.py $(DESTDIR)$(LIBEXECDIR)/emaki_session_arch.py
@@ -460,10 +468,16 @@ install: install-upkeep
 	install -Dm644 grub/defaults.cfg $(SHARE)/grub/defaults.cfg
 	install -Dm644 installer/assets/grub/unlock-24.pf2 $(SHARE)/grub/unlock-24.pf2
 	install -Dm644 -t $(SHARE)/grub/fonts grub/fonts/menu-24.pf2 grub/fonts/menu-32.pf2 grub/fonts/menu-46.pf2
+	install -Dm644 art/grub/background.png $(SHARE)/grub/theme/background.png
+	install -Dm644 -t $(SHARE)/grub/theme $(GRUB_THEME_FILES)
+	for scale in $(GRUB_THEME_SCALES); do install -Dm644 -t $(SHARE)/grub/theme/$$scale grub/theme/$$scale/*.png; done
 	install -Dm644 installer/assets/grub/LICENSE-DejaVu.txt $(DESTDIR)$(PREFIX)/share/licenses/emaki-config/LICENSE-DejaVu.txt
+	install -Dm644 grub/theme/LICENSE-Noto.txt $(DESTDIR)$(PREFIX)/share/licenses/emaki-config/LICENSE-Noto.txt
 	install -Dm644 -t $(BOOTLIB) grub/emaki_boot/__init__.py grub/emaki_boot/refresh.py grub/emaki_boot/update.py grub/emaki_boot/update_menu.py grub/emaki_boot/usable.py
 	for module in $(BOOT_SHARED); do install -Dm644 "installer/emaki_installer/$$module.py" "$(BOOTLIB)/$$module.py"; done
 	for picture in $(BOOT_ARTWORK); do install -Dm644 "$$picture" "$(BOOTLIB)/$${picture#installer/emaki_installer/}"; done
+	install -Dm644 grub/00-emaki-alongside.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/00-emaki-alongside.hook
+	install -Dm644 systemd/emaki-boot-order.service $(SYSTEMD)/system/emaki-boot-order.service
 	install -Dm644 grub/95-emaki-boot-refresh.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/95-emaki-boot-refresh.hook
 	for hook in 04-emaki-update-boot.hook 06-emaki-update-boot.hook; do install -Dm644 grub/$$hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/$$hook; done
 	install -Dm755 systemd/emaki-boot-resume $(SYSTEMD)/system-sleep/emaki-boot-resume
@@ -639,7 +653,8 @@ uninstall:
 	rm -f $(SYSTEMD)/system/emaki-update-boot.service $(SYSTEMD)/system/multi-user.target.wants/emaki-update-boot.service
 	rm -f $(BOOTLIB)/__init__.py $(BOOTLIB)/refresh.py $(BOOTLIB)/update.py $(BOOTLIB)/update_menu.py $(BOOTLIB)/usable.py $(addprefix $(BOOTLIB)/,$(addsuffix .py,$(BOOT_SHARED)))
 	for picture in $(BOOT_ARTWORK); do rm -f "$(BOOTLIB)/$${picture#installer/emaki_installer/}"; done
-	rm -f $(DESTDIR)$(PREFIX)/share/licenses/emaki-config/LICENSE-DejaVu.txt
+	rm -f $(DESTDIR)$(PREFIX)/share/licenses/emaki-config/LICENSE-DejaVu.txt $(DESTDIR)$(PREFIX)/share/licenses/emaki-config/LICENSE-Noto.txt
+	rm -rf $(SHARE)/grub/theme
 	rm -f $(DESTDIR)/usr/lib/initcpio/hooks/emaki-resume $(DESTDIR)/usr/lib/initcpio/install/emaki-resume
 	rm -f $(DESTDIR)/usr/lib/initcpio/hooks/emaki-snapshot-fstab $(DESTDIR)/usr/lib/initcpio/install/emaki-snapshot-fstab
 	# Point /etc/os-release back at Arch's file before removing ours (source helper, as below).
@@ -673,6 +688,7 @@ uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.privacy.recovery.policy
 	rm -f $(SYSTEMD)/system/emaki-restore-index.service $(SYSTEMD)/system/emaki-restore-index.timer $(SYSTEMD)/system/timers.target.wants/emaki-restore-index.timer
 	rm -f $(SYSTEMD)/system/emaki-update.service $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.update.policy $(DESTDIR)$(PREFIX)/share/applications/emaki-update-manager.desktop
+	rm -f $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/emaki-programs-updates.svg
 	rm -rf $(DESTDIR)$(PREFIX)/share/emaki-update-manager
 	rm -f $(BIN)/emaki-programs $(DESTDIR)$(LIBEXECDIR)/programs_catalog.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-remove $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.policy
 	rm -f $(DESTDIR)$(LIBEXECDIR)/programs_appstream.py $(DESTDIR)$(LIBEXECDIR)/programs_arch.py $(DESTDIR)$(LIBEXECDIR)/programs_engine.py $(DESTDIR)$(LIBEXECDIR)/programs_flatpak.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-install $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.install.policy
@@ -682,6 +698,7 @@ uninstall:
 	rm -f $(BIN)/emaki-wallet-stage $(BIN)/emaki-wallet-start $(BIN)/emaki-keyring-recover $(BIN)/emaki-wallet-migrate $(BIN)/emaki-rollback $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.rollback.policy
 	rm -f $(DESTDIR)$(PREFIX)/lib/emaki/emaki-wifi-recover $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.wifi-recovery.policy $(SYSTEMD)/system/emaki-wifi-recovery.service
 	rm -f $(DESTDIR)$(PREFIX)/lib/udev/rules.d/90-emaki-wifi-recovery.rules
+	rm -f $(BIN)/emaki-boot-order $(SYSTEMD)/system/emaki-boot-order.service $(SYSTEMD)/system/multi-user.target.wants/emaki-boot-order.service $(DESTDIR)$(PREFIX)/share/libalpm/hooks/00-emaki-alongside.hook
 	rm -f $(BIN)/emaki-boot-refresh $(DESTDIR)$(PREFIX)/share/libalpm/hooks/95-emaki-boot-refresh.hook
 	rm -f $(BIN)/emaki-drm-hold $(BIN)/emaki-greeter-compositor $(BIN)/emaki-greeter-run $(BIN)/emaki-text-session $(BIN)/emaki-session-import-environment $(SYSTEMD)/system/emaki-drm-hold.service
 	rm -f $(BIN)/emaki-settings-power $(BIN)/emaki-settings-apps $(BIN)/emaki-settings-about $(DESTDIR)$(LIBEXECDIR)/emaki-charge-limit
@@ -823,6 +840,8 @@ check-shell: paths shell-shaders check-sudo-build
 	python3 tests/test-wifi-recovery-shell.py
 	python3 update-manager/ui/tests/interactions.py
 	python3 update-manager/ui/tests/controller.py
+	python3 update-manager/ui/tests/programs_controller.py
+	python3 update-manager/ui/tests/icons.py
 	python3 tests/test-render-fonts.py
 	mkdir -p "$(CURDIR)/.cache/tmp"
 	env $(CORE_ENV) TMPDIR="$(CURDIR)/.cache/tmp" cargo build -p emaki-cli --locked
