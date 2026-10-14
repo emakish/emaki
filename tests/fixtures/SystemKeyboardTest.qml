@@ -28,12 +28,24 @@ ShellRoot {
     function focusRing(item: Item): Item {
         return panel.focusRing;
     }
-    function checkRing(item: Item, message: string): void {
+    function named(item: Item, name: string): Item {
+        if (item.objectName === name)
+            return item;
+        for (const child of item.children) {
+            const found = named(child, name);
+            if (found)
+                return found;
+        }
+        return null;
+    }
+    // Pale controls: the hover look (1 px light rim); orange ones: the strong rim.
+    function checkRing(item: Item, message: string, strong: bool): void {
         const ring = focusRing(item);
         check(ring !== null && ring.visible, message + " visible");
         if (!ring)
             return;
         check(ring.focused === item, message + " follows focused control");
+        check(ring.strong === strong && ring.border.width === (strong ? 2 : 1), message + (strong ? " strong rim on orange" : " light hover rim"));
         let captured = false;
         ring.grabToImage(result => {
             result.saveToFile(Quickshell.env("EMAKI_TEST_EVIDENCE") + "/" + item.key + ".png");
@@ -42,8 +54,9 @@ ShellRoot {
         for (let tries = 0; !captured && tries < 100; ++tries)
             input.wait(10);
         check(captured, "ring captured");
-        check(ring.border.color.toString() === ShellPalette.text.toString(), message + " light outer edge");
-        check(ring.children[0].border.color.toString() === ShellPalette.background.toString(), message + " dark inner edge");
+        check(Math.abs(ring.border.color.r - LiquidPalette.flatDropRim.r) < .01 && Math.abs(ring.border.color.g - LiquidPalette.flatDropRim.g) < .01 && Math.abs(ring.border.color.b - LiquidPalette.flatDropRim.b) < .01 && ring.border.color.a < 1, message + " existing hover rim");
+        check(ring.color.toString() === LiquidPalette.flatDrop.toString(), message + " existing hover fill");
+        check(ring.children.length === 0, message + " no dark inner frame");
     }
     function tabTo(key: string): Item {
         const item = find(panel, key);
@@ -173,6 +186,42 @@ ShellRoot {
             width: 100
             height: 25
         }
+        Rectangle {
+            id: pixelProbe
+            width: 480
+            height: 80 + snapshotProbe.height
+            color: "#fff8f3"
+            z: 10000
+            Row {
+                x: 20
+                y: 19
+                spacing: 10
+                WelcomeButton {
+                    id: primaryProbe
+                    width: 100
+                    primary: true
+                    text: "Next"
+                }
+                WelcomeButton {
+                    id: selectedProbe
+                    width: 100
+                    selected: true
+                    text: "Selected"
+                }
+                WelcomeButton {
+                    id: paleProbe
+                    width: 100
+                    text: "Back"
+                }
+            }
+            // The recovery prompt's opaque-accent "Keep this state" beside its pale "Not now".
+            SnapshotPrompt {
+                id: snapshotProbe
+                y: 80
+                width: 460
+                snapshot: "42"
+            }
+        }
         TestCase {
             id: input
             when: false
@@ -183,6 +232,31 @@ ShellRoot {
         interval: 400
         running: true
         onTriggered: {
+            const keepProbe = test.named(snapshotProbe, "snapshotKeep");
+            const laterProbe = test.named(snapshotProbe, "snapshotLater");
+            test.check(keepProbe !== null && laterProbe !== null, "snapshot prompt actions exist");
+            for (const entry of [[keepProbe, "keep"], [laterProbe, "later"]]) {
+                const r = entry[0].mapToItem(pixelProbe, 0, 0, entry[0].width, entry[0].height);
+                console.log("CONTRAST_RECT " + entry[1] + " " + r.x + " " + r.y + " " + r.width + " " + r.height);
+            }
+            for (const entry of [[primaryProbe, "primary"], [selectedProbe, "selected"], [paleProbe, "pale"], [keepProbe, "keep"], [laterProbe, "later"]]) {
+                for (const focused of [false, true]) {
+                    if (focused)
+                        entry[0].forceActiveFocus();
+                    else
+                        outside.forceActiveFocus();
+                    input.wait(30);
+                    let captured = false;
+                    pixelProbe.grabToImage(result => {
+                        result.saveToFile(Quickshell.env("EMAKI_TEST_EVIDENCE") + "/contrast-" + entry[1] + "-" + focused + ".png");
+                        captured = true;
+                    });
+                    for (let tries = 0; !captured && tries < 100; ++tries)
+                        input.wait(10);
+                    test.check(captured, "composited focus captured");
+                }
+            }
+            pixelProbe.visible = false;
             niri.connection = "connected";
             niri.model = {
                 overview_open: false,
@@ -225,15 +299,15 @@ ShellRoot {
             input.keyClick(Qt.Key_Tab);
             test.check(panel.keyboardMode, "first Tab from pointer-opened slider enables keyboard mode");
             test.check(panel.Window.window.activeFocusItem !== initial, "first Tab advances from pointer-opened slider");
-            test.checkRing(panel.Window.window.activeFocusItem, "first Tab from pointer-opened slider ring");
+            test.checkRing(panel.Window.window.activeFocusItem, "first Tab from pointer-opened slider ring", false);
             panel.takeFocus(false);
             input.wait(30);
             input.keyClick(Qt.Key_Backtab);
             test.check(panel.keyboardMode, "first Backtab from pointer-opened slider enables keyboard mode");
-            test.checkRing(panel.Window.window.activeFocusItem, "first Backtab from pointer-opened slider ring");
+            test.checkRing(panel.Window.window.activeFocusItem, "first Backtab from pointer-opened slider ring", false);
             panel.takeFocus();
             input.wait(30);
-            test.checkRing(initial, "system slider focus ring");
+            test.checkRing(initial, "system slider focus ring", false);
             const volume = test.tabTo("volume");
             const before = volume.shown;
             input.keyClick(Qt.Key_Left);
@@ -250,7 +324,7 @@ ShellRoot {
             test.check(top >= -1 && top + stream.height <= panel.body.scroller.height + 1, "focused app slider scrolls into view");
             const lightTab = test.tabTo("cell-light");
             input.keyClick(Qt.Key_Return);
-            test.checkRing(lightTab, "selected system tab focus ring");
+            test.checkRing(lightTab, "selected system tab focus ring", true);
             const brightness = test.tabTo("brightness");
             input.keyClick(Qt.Key_Home);
             test.check(service.brightness.percent === 5, "brightness respects minimum");
@@ -260,7 +334,7 @@ ShellRoot {
             input.keyClick(Qt.Key_Space);
             test.check(service.night.on, "night light keyboard toggle");
             input.wait(30);
-            test.checkRing(night, "selected orange switch focus ring");
+            test.checkRing(night, "selected orange switch focus ring", true);
             input.mouseClick(night, night.width / 2, night.height / 2);
             test.check(!test.focusRing(night).visible, "pointer press hides keyboard ring");
             input.keyClick(Qt.Key_Tab);
@@ -340,11 +414,11 @@ ShellRoot {
             test.check(!panel.focusRing.visible, "password pointer press hides ring");
             input.keyClick(Qt.Key_Tab);
             test.check(panel.Window.window.activeFocusItem !== password, "first Tab advances from password");
-            test.checkRing(panel.Window.window.activeFocusItem, "first Tab from pointer-focused password ring");
+            test.checkRing(panel.Window.window.activeFocusItem, "first Tab from pointer-focused password ring", false);
             input.mouseClick(password, password.width / 2, password.height / 2);
             input.keyClick(Qt.Key_Backtab);
             test.check(panel.Window.window.activeFocusItem !== password, "first Backtab advances from password");
-            test.checkRing(panel.Window.window.activeFocusItem, "first Backtab from pointer-focused password ring");
+            test.checkRing(panel.Window.window.activeFocusItem, "first Backtab from pointer-focused password ring", false);
             test.tabTo("hidden-open");
             input.keyClick(Qt.Key_Return);
             test.check(!panel.body.hiddenSecured, "hidden Wi-Fi security choice");

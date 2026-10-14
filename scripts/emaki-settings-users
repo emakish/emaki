@@ -14,6 +14,12 @@ root helper also secures retained homes before a deleted account's numeric ID ca
   emaki-settings-users set-name LOGIN NAME [--json]
   emaki-settings-users set-password LOGIN [--terminal] [--json]
   emaki-settings-users set-administrator LOGIN yes|no [--json]
+  emaki-settings-users picture --set PATH|--clear [--json]
+
+The picture always belongs to the account running this program (the stock change-own-user-data
+path, like the own name). A chosen picture is decoded here, never by the service: PNG, JPEG or
+WebP, turned upright, its centre square at most 384 px wide, saved again as PNG in a private
+runtime folder that AccountsService copies from and that is removed afterwards.
 
 A password is never taken from the command line. With --terminal (what Settings uses: no
 password field in the window, DECISIONS 2026-10-10) the program opens the managed terminal,
@@ -43,6 +49,7 @@ from pathlib import Path
 import pwd
 import re
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -68,6 +75,15 @@ LOCK = '\0emaki-settings-users'
 LOGIN = re.compile(r'[a-z_][a-z0-9_-]{0,31}')
 NAME_LIMIT = 128
 PASSWORD_LIMIT = 1024
+# The account picture: the lock screen helper's rules (shell/helpers/account-picture.py).
+PICTURE_FORMATS = ('PNG', 'JPEG', 'WEBP')
+PICTURE_SOURCE_LIMIT = 8 * 1024 * 1024
+# PNG and WebP decode at full size; JPEG decodes at a reduced scale (draft()), so a phone photo fits.
+PICTURE_PIXEL_LIMIT = 4096 * 4096
+PICTURE_JPEG_PIXEL_LIMIT = 40_000_000
+PICTURE_SIDE = 384
+# AccountsService refuses a picture file larger than this (ICON_FILE_MAX_SIZE).
+PICTURE_SERVICE_LIMIT = 1024 * 1024
 # AccountsService account types.
 STANDARD, ADMINISTRATOR = 0, 1
 # Service errors that mean the call was refused before anything changed.
@@ -171,6 +187,9 @@ class Accounts:
 
     def set_account_type(self, path, account_type):
         self.call(ACCOUNTS, path, USER, 'SetAccountType', self.GLib.Variant('(i)', (account_type,)), None, True)
+
+    def set_icon(self, path, filename):
+        self.call(ACCOUNTS, path, USER, 'SetIconFile', self.GLib.Variant('(s)', (filename,)), None, True)
 
 
 class System:
@@ -280,6 +299,98 @@ def crypt_password(password):
     return hashed.decode('ascii')
 
 
+def read_limited(path, limit):
+    """A regular file's bytes, at most `limit`; a FIFO or device never blocks the open."""
+    descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_size <= 0:
+            raise ValueError('picture_source')
+        if info.st_size > limit:
+            raise ValueError('picture_limit')
+        chunks, remaining = [], limit + 1
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 1024 * 1024))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        if not remaining:
+            raise ValueError('picture_limit')
+        return b''.join(chunks)
+    finally:
+        os.close(descriptor)
+
+
+def picture_png(data):
+    """The centre square of a PNG, JPEG or WebP picture, upright, at most PICTURE_SIDE wide."""
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:
+        raise Refusal('picture_unavailable') from None
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(data), formats=PICTURE_FORMATS) as image:
+                if image.width < 1 or image.height < 1:
+                    raise ValueError('picture_dimensions')
+                limit = PICTURE_JPEG_PIXEL_LIMIT if image.format == 'JPEG' else PICTURE_PIXEL_LIMIT
+                if image.width * image.height > limit:
+                    raise Refusal('picture_too_large')
+                # JPEG decodes at a reduced scale before the centre crop.
+                image.draft('RGB', (PICTURE_SIDE, PICTURE_SIDE))
+                image = ImageOps.exif_transpose(image).convert('RGBA')
+        side = min(image.width, image.height)
+        left, top = (image.width - side) // 2, (image.height - side) // 2
+        image = image.crop((left, top, left + side, top + side))
+        if side > PICTURE_SIDE:
+            image = image.resize((PICTURE_SIDE, PICTURE_SIDE), Image.LANCZOS)
+        if image.getchannel('A').getextrema() == (255, 255):
+            image = image.convert('RGB')  # A photo: no alpha channel to store.
+        output = io.BytesIO()
+        image.save(output, 'PNG')
+    except Refusal:
+        raise
+    except (Image.DecompressionBombWarning, Image.DecompressionBombError):
+        raise Refusal('picture_too_large') from None
+    except Exception:
+        raise Refusal('picture_unreadable') from None
+    png = output.getvalue()
+    if len(png) > PICTURE_SERVICE_LIMIT:
+        raise Refusal('picture_unreadable')
+    return png
+
+
+def picture_source(path):
+    try:
+        return read_limited(path, PICTURE_SOURCE_LIMIT)
+    except ValueError as failure:
+        reason = 'picture_too_large' if str(failure) == 'picture_limit' else 'picture_unreadable'
+        raise Refusal(reason) from None
+    except (OSError, TypeError):
+        raise Refusal('picture_unreadable') from None
+
+
+def picture_content(path):
+    """What the named picture file holds now, or None when it cannot be read."""
+    if not path:
+        return None
+    try:
+        return read_limited(path, PICTURE_SOURCE_LIMIT)
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def has_picture(path):
+    if not isinstance(path, str) or not path.startswith('/'):
+        return False
+    try:
+        info = os.stat(path)
+    except (OSError, ValueError):
+        return False
+    return stat.S_ISREG(info.st_mode) and info.st_size > 0
+
+
 def valid_login(login):
     return isinstance(login, str) and LOGIN.fullmatch(login) is not None
 
@@ -343,8 +454,10 @@ class Users:
                 # 2026-10-11): show it, change nothing, never count it as an administrator.
                 users.append({'login': login, 'name': '', 'uid': uid, 'administrator': False, 'locked': False,
                               'current': uid == self.uid, 'signed_in': uid in sessions, 'home': '',
-                              'available': False, 'path': None})
+                              'available': False, 'picture': False, 'path': None, 'icon': ''})
                 continue
+            icon = values.get('IconFile', '')
+            icon = icon if isinstance(icon, str) else ''
             users.append({
                 'available': True,
                 'login': login,
@@ -355,13 +468,16 @@ class Users:
                 'current': uid == self.uid,
                 'signed_in': uid in sessions,
                 'home': str(values.get('HomeDirectory', '')),
+                # Another person's picture usually sits in a home this account cannot read.
+                'picture': has_picture(icon),
                 'path': path,
+                'icon': icon,
             })
         return users
 
     @staticmethod
     def public(users):
-        return [{key: value for key, value in user.items() if key != 'path'} for user in users]
+        return [{key: value for key, value in user.items() if key not in ('path', 'icon')} for user in users]
 
     @staticmethod
     def administrators(users):
@@ -557,6 +673,81 @@ class Users:
                             lambda rows: any(row['login'] == login for row in rows),
                             lambda rows: False)
 
+    def own(self, users):
+        for user in users:
+            if user['current']:
+                if not user['available']:
+                    raise Refusal('account_unavailable')
+                return user
+        raise Refusal('user_not_found')
+
+    def set_picture(self, source):
+        """Hand AccountsService a private re-encoded copy; the service keeps its own copy."""
+        png = picture_png(picture_source(source))
+        users = self.read()
+        user = self.own(users)
+        login, before = user['login'], user['icon']
+        before_content = picture_content(before)
+        runtime = os.environ.get('XDG_RUNTIME_DIR', '')
+        if not runtime or not os.path.isabs(runtime):
+            raise Refusal('picture_unavailable')
+        try:
+            folder = tempfile.mkdtemp(prefix='emaki-account-picture-', dir=runtime)
+        except OSError:
+            raise Refusal('picture_unavailable') from None
+        handed = os.path.join(folder, 'picture.png')
+        failure = None
+        try:
+            try:
+                descriptor = os.open(handed, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                                     0o600)
+                with os.fdopen(descriptor, 'wb') as stream:
+                    stream.write(png)
+            except OSError:
+                raise Refusal('picture_unavailable') from None
+            try:
+                self.accounts.set_icon(user['path'], handed)
+            except Refusal as refusal:
+                failure = refusal
+        finally:
+            # The service copies the file during the call; nothing of it stays here.
+            for remove in (os.unlink, os.rmdir):
+                try:
+                    remove(handed if remove is os.unlink else folder)
+                except OSError:
+                    pass
+        if failure is not None and not failure.sent:
+            return self.answer('rejected', None, action='picture', login=login, reason=failure.reason), 1
+
+        def mine(rows):
+            return next((row for row in rows if row['login'] == login), None)
+
+        def shown(rows):
+            row = mine(rows)
+            if row is None or not row['icon'] or row['icon'] == handed:
+                return False
+            content = picture_content(row['icon'])
+            return content == png
+
+        def unchanged(rows):
+            row = mine(rows)
+            return row is not None and row['icon'] == before and picture_content(before) == before_content
+        return self.confirm('picture', login, shown, unchanged)
+
+    def clear_picture(self):
+        users = self.read()
+        user = self.own(users)
+        login, before = user['login'], user['icon']
+        if not user['picture']:
+            return self.answer('applied', users, action='picture', login=login), 0
+
+        def icon(rows):
+            return next((row['icon'] for row in rows if row['login'] == login), None)
+        # The service names no file, or (after its reload) ~/.face instead of its own copy.
+        return self.change('picture', login, lambda: self.accounts.set_icon(user['path'], ''),
+                           lambda rows: icon(rows) is not None and icon(rows) != before,
+                           lambda rows: icon(rows) == before)
+
     def set_administrator(self, login, administrator):
         users = self.read()
         user = self.target(users, login)
@@ -687,7 +878,7 @@ def through_terminal(words, users):
 def parse_request(argv):
     """Options follow the verb's required fields; display names are always positional."""
     sizes = {'status': 1, 'add': 5, 'remove': 4, 'set-name': 3,
-             'set-password': 2, 'set-administrator': 3}
+             'set-password': 2, 'set-administrator': 3, 'picture': 3 if argv[1:2] == ['--set'] else 2}
     size = sizes.get(argv[0]) if argv else None
     if size is None or len(argv) < size:
         raise Usage()
@@ -703,6 +894,8 @@ def parse_request(argv):
     if args[0] == 'remove' and (args[2] != '--home' or args[3] not in ('keep', 'delete')):
         raise Usage()
     if args[0] == 'set-administrator' and args[2] not in ('yes', 'no'):
+        raise Usage()
+    if args[0] == 'picture' and args[1] not in ('--set', '--clear'):
         raise Usage()
     return args, terminal
 
@@ -753,9 +946,11 @@ def run(argv, users, stdin):
         else:
             raise Usage()
         return through_terminal(args, users)
-    if users.authorize and not (command == 'set-name' and users.target(users.read(), rest[0])['current']):
+    # The own name and picture keep the stock change-own-user-data path: no administrator.
+    if (users.authorize and command != 'picture'
+            and not (command == 'set-name' and users.target(users.read(), rest[0])['current'])):
         return authorized_change(args, users, stdin)
-    held = lock() if command in ('add', 'remove', 'set-name', 'set-password', 'set-administrator') else None
+    held = lock() if command in ('add', 'remove', 'set-name', 'set-password', 'set-administrator', 'picture') else None
     try:
         if command == 'add' and len(rest) == 4 and rest[2] == '--administrator':
             return users.add(rest[0], rest[1], yes_no(rest[3]), read_password(stdin))
@@ -767,6 +962,10 @@ def run(argv, users, stdin):
             return users.set_password(rest[0], read_password(stdin))
         if command == 'set-administrator' and len(rest) == 2:
             return users.set_administrator(rest[0], yes_no(rest[1]))
+        if command == 'picture' and rest == ['--clear']:
+            return users.clear_picture()
+        if command == 'picture' and len(rest) == 2 and rest[0] == '--set':
+            return users.set_picture(rest[1])
         raise Usage()
     finally:
         if held is not None:
@@ -779,7 +978,7 @@ def main(argv, stdin=None, accounts=None, system=None, uid=None, out=None, privi
     prompt = argv[:1] == ['--password-prompt'] and len(argv) > 3 and argv[2] in ('add', 'set-password')
     words = argv[2:] if prompt else argv
     action = words[0] if words else ''
-    login = words[1] if len(words) > 1 and action not in ('status',) else None
+    login = words[1] if len(words) > 1 and action not in ('status', 'picture') else None
     authorize = accounts is None and not privileged
     try:
         _args, terminal = parse_request(words)

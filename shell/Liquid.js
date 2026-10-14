@@ -153,6 +153,12 @@ function drop(b, dx, dy) {
 function pad(r, p) {
     return [r[0] - p, r[1] - p, r[2] + 2 * p, r[3] + 2 * p];
 }
+// A drop's own target stays wholly above its lens, including growth and melt. A lifetime
+// crossfade leaves a second copy below the lens, where its rim stretches and splits glyphs.
+// Use the same visibility threshold as drop(); coverage of passing targets stays gradual.
+function onGlass(b) {
+    return b && smooth(b.alpha.x) >= .001 ? 1 : 0;
+}
 // dual() by coverage (LauncherBody.coverOf, 27.09): how much of r = [x, y, w, h] the body's
 // drop covers, 0..1 — the overlap on each axis against the smaller of the two, eased; times the
 // body's alpha, so it also melts with it. What a drop covers is drawn on the glass by this much

@@ -440,7 +440,42 @@ function run(sources) {
     toggle('bt');
     assert.equal(overlapping.systemOpen, false);
     assert.deepEqual(Array.from(overlapping.peekIds), [1]);
-    assert.match(sources['ShellScene.qml'], /Keys.onEscapePressed: scene.closeSystem\(\)/);
+    const systemPanel = sources['ShellScene.qml'].split('id: systemPanel')[1];
+    const escapeHandler = systemPanel.match(/Keys.onEscapePressed: ([^\n]+)/);
+    assert.ok(escapeHandler, 'system panel has an Escape handler');
+    for (const fromBar of [false, true]) {
+        const escaped = fixture(true); escaped.showNotification(1);
+        let returned = 0, resets = 0;
+        escaped.barKeyboardActive = false;
+        escaped.barPolicy = {fullscreen: false};
+        escaped.Qt = {TabFocusReason: 'tab', callLater(callback) { callback(); }};
+        const origin = fromBar ? {
+            visible: true, enabled: true,
+            forceActiveFocus(reason) { assert.equal(reason, 'tab'); returned++; }
+        } : null;
+        escaped.keyboardReturnTarget = origin;
+        // The bar keeps the cell until its surface is active (StaticBar.takeFocus/settleReturn).
+        let taken = 0;
+        escaped.closeTimer.start = () => {};
+        escaped.bar = {
+            returnItem: null, returnUntil: 0,
+            takeFocus() { taken++; if (this.returnItem) this.returnItem.forceActiveFocus(escaped.Qt.TabFocusReason); }
+        };
+        escaped.systemBody.reset = () => { resets++; };
+        escaped.closeAll = () => { throw Error('system Escape must preserve the pairing preview'); };
+        escaped.keyboardBack = production('ShellScene.qml', 'keyboardBack', 'systemOnly', escaped);
+        vm.runInContext(escapeHandler[1], escaped);
+        assert.equal(escaped.systemOpen, false, 'Escape closes Bluetooth settings');
+        assert.equal(escaped.systemExpansion, 0);
+        assert.equal(resets, 1, 'Escape executes the production closeSystem path');
+        assert.deepEqual(Array.from(escaped.peekIds), [1], 'Escape preserves the pending pairing preview');
+        assert.equal(escaped.clockExpansion, 1, 'pairing actions remain expanded');
+        assert.equal(escaped.barKeyboardActive, fromBar, 'only a bar-opened panel returns keyboard ownership');
+        assert.equal(escaped.bar.returnItem, origin, 'the bar holds the originating control for its activation');
+        assert.equal(taken, Number(fromBar), 'the bar takes focus once the panel has closed');
+        assert.equal(returned, Number(fromBar), 'Escape restores the originating bar control');
+        assert.equal(escaped.keyboardSurface, fromBar ? 'bar' : '');
+    }
     const outside = fixture(true); outside.showNotification(1);
     outside.bar = {logo: {x: 0, y: 0, width: 40, height: 40}};
     outside.launcherPresent = false; outside.dockPressAt = () => false;
@@ -496,6 +531,9 @@ if (process.argv.includes('--mutations')) {
             '(wifiAction && (wifiRestartRunning || wifiRestart.running))',
             '(wifiRestartRunning || wifiRestart.running)'],
         ['preview stacking', 'ShellScene.qml', 'z: scene.batteryPeekOpen || scene.pairingPeekOpen ? 40 : 0', 'z: 0'],
+        ['system Escape closes all panels', 'ShellScene.qml', 'Keys.onEscapePressed: scene.keyboardBack(true)', 'Keys.onEscapePressed: scene.keyboardBack(false)'],
+        ['system Escape skips close', 'ShellScene.qml', 'Keys.onEscapePressed: scene.keyboardBack(true)', 'Keys.onEscapePressed: void 0'],
+        ['system Escape loses bar return', 'ShellScene.qml', 'Keys.onEscapePressed: scene.keyboardBack(true)', 'Keys.onEscapePressed: scene.closeSystem()'],
         ['panel closing', 'ShellScene.qml', 'closeTimer.restart();\n    }\n    Behavior on systemExpansion', 'peekIds = [];\n        closeTimer.restart();\n    }\n    Behavior on systemExpansion'],
         ['sharing privacy', 'ClockBody.qml', 'hidePreviewBodies ? Object.assign', 'false ? Object.assign']
     ];

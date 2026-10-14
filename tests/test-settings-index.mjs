@@ -8,6 +8,35 @@ const root = new URL('../shell/settings/', import.meta.url);
 const source = fs.readFileSync(new URL('SettingsIndex.js', root), 'utf8');
 const index = vm.createContext({});
 vm.runInContext(source.replace(/^\.pragma library\s*$/m, ''), index);
+// The panel choice remains one atomic setting and its live values agree with both flags.
+const panelChoice = index.search('hide the panel', ['panel'], ['bar.autohide_mode'])[0];
+assert.equal(panelChoice.key, 'bar.autohide_mode');
+assert.equal(panelChoice.enabled, true);
+const corePage = fs.readFileSync(new URL('../SettingsCorePage.qml', root), 'utf8');
+for (const label of ['Always', 'On Desktop Only', 'In Full Screen Only', 'Never'])
+    assert.ok(corePage.includes('label: "' + label + '"'));
+const bridgeSource = fs.readFileSync(new URL('../SettingsBridge.qml', root), 'utf8');
+const signature = 'function apply(rows: string): string {';
+const bridgeBody = bridgeSource.slice(bridgeSource.indexOf(signature) + signature.length,
+    bridgeSource.lastIndexOf('\n        }'));
+const applyRows = new Function('rows', 'bridge', bridgeBody);
+const bridge = { values: [], applyEpoch: 0 };
+const legacyRows = [['bar.autohide', false], ['bar.overview_workspaces', true],
+    ['dock.on', true], ['dock.auto_hide', true]].map(([key, value]) => ({ key, value }));
+assert.equal(applyRows(JSON.stringify({ rows: legacyRows }), bridge), 'applied');
+for (const [mode, desktop, fullscreen] of [['always', true, true], ['desktop', true, false],
+    ['fullscreen', false, true], ['never', false, false]]) {
+    const rows = legacyRows.map(row => row.key === 'bar.autohide' ? { ...row, value: desktop } : row)
+        .concat([{ key: 'bar.autohide_fullscreen', value: fullscreen },
+            { key: 'bar.autohide_mode', value: mode }]);
+    assert.equal(applyRows(JSON.stringify({ rows }), bridge), 'applied');
+    const epoch = bridge.applyEpoch;
+    rows.at(-1).value = 'invalid';
+    assert.equal(applyRows(JSON.stringify({ rows }), bridge), 'invalid_settings');
+    rows.at(-1).value = mode === 'always' ? 'never' : 'always';
+    assert.equal(applyRows(JSON.stringify({ rows }), bridge), 'invalid_settings');
+    assert.equal(bridge.applyEpoch, epoch);
+}
 const ids = ['wifi', 'bluetooth', 'network', 'appearance', 'wallpaper', 'panel',
     'windows', 'displays', 'sound', 'keyboard', 'mouse', 'notifications', 'battery',
     'lock', 'apps', 'updates', 'privacy', 'region', 'users', 'storage',
@@ -75,7 +104,7 @@ for (const section of index.sections) {
     assert.doesNotMatch(svg, /<(?:filter|mask|image|script)\b/);
 }
 const coreKeys = ['appearance.gaps', 'appearance.wallpaper', 'windows.default_column_width', 'windows.focus_follows_mouse', 'keybindings.toggle_window_floating',
-    'keyboard.layouts', 'keyboard.switch_key', 'bar.autohide', 'bar.overview_workspaces',
+    'keyboard.layouts', 'keyboard.switch_key', 'bar.autohide_mode', 'bar.overview_workspaces',
     'dock.on', 'dock.auto_hide', 'defaults.terminal', 'defaults.browser', 'defaults.files'];
 for (const key of coreKeys) {
     const results = index.search(key, available, targets);
@@ -86,7 +115,7 @@ for (const key of coreKeys) {
 const plain = value => JSON.parse(JSON.stringify(value));
 assert.deepEqual(plain(index.search('  DOCK\t Auto-hide\n', ['panel'])),
     plain(index.search('dock auto-hide', ['panel'])));
-assert.equal(index.search('hide the panel', available)[0].key, 'bar.autohide');
+assert.equal(index.search('hide the panel', available)[0].key, 'bar.autohide_mode');
 assert.equal(index.search('show the dock', available)[0].key, 'dock.on');
 assert.equal(index.search('bottom edge', available)[0].key, 'dock.auto_hide');
 assert.equal(index.search('default browser', available)[0].key, 'defaults.browser');
@@ -122,7 +151,7 @@ for (const page of index.sections) {
     }
 }
 assert.equal(index.search('hide the panel', ['panel'], []).length, 0);
-assert.equal(index.search('hide the panel', ['panel'], ['bar.autohide']).length, 1);
+assert.equal(index.search('hide the panel', ['panel'], ['bar.autohide_mode']).length, 1);
 const before = JSON.stringify(index.sections);
 const pages = ['panel'];
 const first = index.search('dock', pages);

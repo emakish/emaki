@@ -1,0 +1,75 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# shellcheck shell=bash disable=SC2034,SC2154
+# snapguard from its public repository: the v0.3.0 release, pinned by the commit its tag names
+# and by a checksum of that commit's tree. The package installs the hook program and its
+# documentation, plus a short Emaki note. Registering the hook is the person's own step, described
+# in /usr/share/doc/snapguard/emaki-setup.md: nothing is written into a home directory.
+pkgname=snapguard
+pkgver=0.3.0
+pkgrel=1
+pkgdesc='Command hook that requires a fresh btrfs snapshot before risky system changes'
+arch=('any')
+url='https://github.com/Yakyman/snapguard'
+license=('MIT')
+depends=('python' 'tar')
+makedepends=('git')
+checkdepends=('python' 'tar')
+optdepends=('snapper: btrfs snapshots that open the gate')
+# The annotated tag v0.3.0 (object 34082f957135d302720d82f4008bcafaaa7f854d) names this commit.
+_commit=17f54ea084e657fadd67ed410e537dbac3b71dba
+source=("$pkgname::git+$url.git#commit=$_commit"
+        expected-files.list)
+sha256sums=('1e5f6e1284954faf1254f656e4336fb616f6b842156210fa2c3160a7d34e0590'
+            '5635d1f28967cc0925c0dff4341b9e2d522d31bcb92661de0ba0b7d222896633')
+
+prepare() {
+    # The pinned commit must still be the release tag's: a new pkgver needs a new pin.
+    local tagged
+    tagged=$(git -C "$srcdir/$pkgname" rev-parse --verify "refs/tags/v$pkgver^{commit}") || return 1
+    [[ $tagged == "$_commit" ]] || { printf 'v%s names %s, not %s\n' "$pkgver" "$tagged" "$_commit" >&2; return 1; }
+}
+
+check() {
+    cd "$srcdir/$pkgname" || return 1
+    # snapguard's own regression suite; it writes only to temporary directories. Its fixture
+    # names /home as the mount that snapper cannot restore, so the home directory the suite sees
+    # must lie under /home even where the builder's does not (a clean chroot builds in /build).
+    # The hook also reads the XDG base directories: the builder's own must not leak in.
+    env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME HOME=/home/snapguard-check \
+        PYTHONDONTWRITEBYTECODE=1 python3 test_snapshot_guard.py
+}
+
+package() {
+    cd "$srcdir/$pkgname" || return 1
+    install -Dm644 snapshot-guard.py "$pkgdir/usr/lib/snapguard/snapshot-guard.py"
+    install -Dm644 -t "$pkgdir/usr/share/doc/snapguard" README.md README.cs.md README.es.md \
+        README.he.md README.ru.md README.uk.md CHANGELOG.md config.example.toml
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/snapguard/LICENSE"
+    # README.md downloads the hook into a home directory; this note names the packaged file.
+    cat > "$pkgdir/usr/share/doc/snapguard/emaki-setup.md" <<'NOTE'
+# snapguard on Emaki
+
+This package installs snapguard and its documentation. It protects nothing by itself:
+protection starts when you register the hook and ends when you remove that registration.
+
+The hook is /usr/lib/snapguard/snapshot-guard.py. Package updates replace it; a copy kept
+anywhere else is not updated.
+
+To set it up, follow "Install" in README.md in this directory, but skip its download step
+and use the packaged file wherever README.md names snapshot-guard.py. The hook command is:
+
+    python3 /usr/lib/snapguard/snapshot-guard.py || exit 2
+
+Then follow "Let the hook see your snapshots" in README.md and run its check with the same
+path. Optional settings: copy config.example.toml from this directory to
+~/.config/snapshot-guard/config.toml.
+
+Remove the hook registration before you remove this package. A registered hook whose file is
+missing fails, and a failing hook refuses every call.
+NOTE
+    # Keep the documented payload equal to the files this build installs.
+    find "$pkgdir" \( -type f -o -type l \) -printf '/%P\n' | LC_ALL=C sort > "$srcdir/actual-files.list"
+    sed '/^#/d; /^[[:space:]]*$/d' "$srcdir/expected-files.list" > "$srcdir/expected-paths.list"
+    diff -u "$srcdir/expected-paths.list" "$srcdir/actual-files.list" || return 1
+}

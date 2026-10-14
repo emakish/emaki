@@ -61,7 +61,9 @@ fn keyboard_menu_edits_resets_and_undoes_through_core() {
         assert!(out.stderr.is_empty(), "{out:?}");
         String::from_utf8(out.stdout).unwrap()
     };
-    let text = menu("bad\nk\nj\n1\ne\n:cancel\ne\n21\nh\nq\n");
+    // The appearance theme, accent and switch times come first; the gaps row is fifth.
+    assert!(menu("").contains("\n   5. appearance.gaps = "));
+    let text = menu("bad\nk\nj\n5\ne\n:cancel\ne\n21\nh\nq\n");
     assert!(text.contains("Unknown command"));
     assert!(text.contains("appearance.gaps = 21"), "{text}");
     let out = command()
@@ -80,7 +82,7 @@ fn keyboard_menu_edits_resets_and_undoes_through_core() {
             .unwrap()
             .contains("gaps = 21")
     );
-    let text = menu("e\n22\nr\nq\n");
+    let text = menu("5\ne\n22\nr\nq\n");
     assert!(text.contains("appearance.gaps = 22"));
     assert!(
         !fs::read_to_string(root.join("config/emaki/settings.toml"))
@@ -170,7 +172,7 @@ with tempfile.TemporaryDirectory(prefix='emaki-settings-pty-') as directory:
 
     menu = Menu()
     try:
-        menu.expect(b'\x1b[7m>  1. appearance.gaps')
+        menu.expect(b'\x1b[7m>  1. appearance.theme')
         menu.expect(b'settings> ')
         active = termios.tcgetattr(menu.slave)
         assert not active[3] & (termios.ICANON | termios.ECHO | termios.ISIG)
@@ -185,6 +187,10 @@ with tempfile.TemporaryDirectory(prefix='emaki-settings-pty-') as directory:
         menu.expect(b'settings> ')
         menu.send(b'\x1b[Z')
         menu.expect(b'\x1b[7m>  1.')
+        menu.expect(b'settings> ')
+        # The gaps row (after the theme, accent and switch times) by number.
+        menu.send(b'5\r')
+        menu.expect(b'\x1b[7m>  5. appearance.gaps')
         menu.expect(b'settings> ')
         menu.send(b'\r')
         menu.expect(b'value> ')
@@ -285,7 +291,7 @@ exit "$SHELL_STATUS"
         fs::read_to_string(&log).unwrap(),
         "4\ncall\nsettings\nopen\n\n"
     );
-    for page in ["wifi", "displays", "lock"] {
+    for page in ["wifi", "displays", "lock", "appearance"] {
         let out = command().arg(page).output().unwrap();
         assert!(out.status.success(), "{out:?}");
         assert_eq!(

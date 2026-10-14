@@ -11,6 +11,7 @@ Scope {
     readonly property var sudoService: sudoLoader.item
     // For the offscreen load test (tests/fixtures/polkit-service-offscreen.qml).
     readonly property PolkitPromptController controller: prompt
+    readonly property var surfaceObject: surfaceLoader.item
     // The native sudo module and its windows must stay out of the headless type graph.
     Loader {
         id: sudoLoader
@@ -38,7 +39,7 @@ Scope {
         onStarted: service.outputs.closeAll()
         onNotice: (title, body) => service.outputs.shared.notifications.local("Emaki", title, body)
     }
-    // Keep the platform-specific root out of the headless shell's type graph.
+    // The protected surface follows the focused output; its body owns the clock morph.
     Loader {
         id: surfaceLoader
         objectName: "authenticationSurfaceLoader"
@@ -46,6 +47,11 @@ Scope {
             "controller": prompt,
             "scene": Qt.binding(() => service.outputs.activeScene)
         })
+    }
+    Binding {
+        target: service.outputs
+        property: "authenticationPrompt"
+        value: service.surfaceObject?.body ?? null
     }
     IpcHandler {
         target: "authentication"

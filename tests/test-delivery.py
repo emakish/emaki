@@ -63,6 +63,33 @@ class Delivery(unittest.TestCase):
         self.assertFalse((self.root / '.cache/capture-build').exists())
         self.assertEqual(self.payloads['niri-emaki'], {'/usr/bin/niri-emaki'})
 
+    def test_snapguard_installs_its_release_files_and_nothing_personal(self):
+        self.assertEqual(self.payloads['snapguard'], {
+            '/usr/lib/snapguard/snapshot-guard.py', '/usr/share/licenses/snapguard/LICENSE',
+            *('/usr/share/doc/snapguard/' + name for name in (
+                'README.md', 'README.cs.md', 'README.es.md', 'README.he.md', 'README.ru.md',
+                'README.uk.md', 'CHANGELOG.md', 'config.example.toml', 'emaki-setup.md'))})
+        for path in self.payloads['snapguard']:
+            # Registering the hook is the person's own step: nothing lands in a home directory.
+            self.assertFalse(path.startswith(('/home/', '/root/', '/etc/')), path)
+            for name, payload in self.payloads.items():
+                if name != 'snapguard':
+                    self.assertNotIn(path, payload, name)
+        self.assertNotRegex((self.root / 'packaging/snapguard/PKGBUILD').read_text(), r'(?m)^install=')
+
+    def test_snapguard_recipe_that_drops_the_hook_fails(self):
+        recipe = self.root / 'packaging/snapguard/PKGBUILD'
+        original = recipe.read_text()
+        line = '    install -Dm644 snapshot-guard.py "$pkgdir/usr/lib/snapguard/snapshot-guard.py"\n'
+        try:
+            self.assertIn(line, original)
+            recipe.write_text(original.replace(line, ''))
+            # package() compares its payload with the inventory itself and stops.
+            with self.assertRaisesRegex(ValueError, r'-/usr/lib/snapguard/snapshot-guard\.py'):
+                delivery.installed_sources(self.root, {})
+        finally:
+            recipe.write_text(original)
+
     def test_turn_setup_belongs_only_to_optional_package(self):
         self.assertIn('/usr/bin/emaki-sudo-turn', self.payloads['emaki-sudo-key'])
         self.assertIn('/usr/share/emaki/sudo-key.installed', self.payloads['emaki-sudo-key'])

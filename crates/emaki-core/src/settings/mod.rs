@@ -20,6 +20,10 @@ const NIRI_DEFAULT: &str = include_str!("../../../../niri/default.kdl");
 const NIRI_THEME: &str = include_str!("../../../../niri/theme.kdl");
 // default.kdl includes shell.kdl (binds and layer rules of the shell) since 2026-09-24.
 const NIRI_SHELL: &str = include_str!("../../../../niri/shell.kdl");
+const THEME: &str = "appearance.theme";
+const ACCENT: &str = "appearance.accent";
+const LIGHT_TIME: &str = "appearance.light_time";
+const DARK_TIME: &str = "appearance.dark_time";
 const GAPS: &str = "appearance.gaps";
 const COLUMN_WIDTH: &str = "windows.default_column_width";
 const FOCUS_MOUSE: &str = "windows.focus_follows_mouse";
@@ -34,6 +38,8 @@ const MAIL: &str = "defaults.mail";
 const EDITOR: &str = "defaults.editor";
 const CLOCK_24_HOUR: &str = "bar.clock_24_hour";
 const BAR_AUTOHIDE: &str = "bar.autohide";
+const BAR_AUTOHIDE_FULLSCREEN: &str = "bar.autohide_fullscreen";
+const BAR_AUTOHIDE_MODE: &str = "bar.autohide_mode";
 const BAR_OVERVIEW: &str = "bar.overview_workspaces";
 const DOCK_ON: &str = "dock.on";
 const DND: &str = "notifications.dnd";
@@ -79,6 +85,22 @@ struct Field {
     secret: bool,
 }
 static SCHEMA: &[Field] = &[
+    Field {
+        key: THEME,
+        secret: false,
+    },
+    Field {
+        key: ACCENT,
+        secret: false,
+    },
+    Field {
+        key: LIGHT_TIME,
+        secret: false,
+    },
+    Field {
+        key: DARK_TIME,
+        secret: false,
+    },
     Field {
         key: SYSTEM_SOUNDS,
         secret: false,
@@ -156,6 +178,10 @@ static SCHEMA: &[Field] = &[
         secret: false,
     },
     Field {
+        key: BAR_AUTOHIDE_FULLSCREEN,
+        secret: false,
+    },
+    Field {
         key: BAR_OVERVIEW,
         secret: false,
     },
@@ -177,6 +203,11 @@ fn recordable(key: &str, schema: &[Field]) -> bool {
 #[derive(Clone, Debug, PartialEq, Eq, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Appearance {
+    theme: Option<String>,
+    accent: Option<String>,
+    light_time: Option<String>,
+    dark_time: Option<String>,
+
     gaps: Option<u16>,
     wallpaper: Option<String>,
 }
@@ -211,6 +242,7 @@ struct Defaults {
 struct Bar {
     clock_24_hour: Option<bool>,
     autohide: Option<bool>,
+    autohide_fullscreen: Option<bool>,
     overview_workspaces: Option<bool>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Default, Deserialize)]
@@ -514,11 +546,24 @@ impl Document {
         for (key, value) in &overrides {
             doc.restore(key, value)?;
         }
+        doc.validate_appearance()?;
         input::validate(&doc)?;
         Ok(doc)
     }
+    fn validate_appearance(&self) -> Result<()> {
+        if self.appearance.light_time.as_deref().unwrap_or("07:00")
+            == self.appearance.dark_time.as_deref().unwrap_or("19:00")
+        {
+            return Err(err("invalid_appearance_schedule"));
+        }
+        Ok(())
+    }
     fn overrides(&self) -> BTreeMap<String, Value> {
         let mut values = BTreeMap::from([
+            (THEME.into(), json!(self.appearance.theme)),
+            (ACCENT.into(), json!(self.appearance.accent)),
+            (LIGHT_TIME.into(), json!(self.appearance.light_time)),
+            (DARK_TIME.into(), json!(self.appearance.dark_time)),
             (GAPS.into(), json!(self.appearance.gaps)),
             (
                 COLUMN_WIDTH.into(),
@@ -539,6 +584,10 @@ impl Document {
             (EDITOR.into(), json!(self.defaults.editor)),
             (CLOCK_24_HOUR.into(), json!(self.bar.clock_24_hour)),
             (BAR_AUTOHIDE.into(), json!(self.bar.autohide)),
+            (
+                BAR_AUTOHIDE_FULLSCREEN.into(),
+                json!(self.bar.autohide_fullscreen),
+            ),
             (BAR_OVERVIEW.into(), json!(self.bar.overview_workspaces)),
             (DOCK_ON.into(), json!(self.dock.on)),
             (DOCK_AUTO_HIDE.into(), json!(self.dock.auto_hide)),
@@ -579,13 +628,21 @@ impl Document {
                     .join(",")
             }
             (
-                FOCUS_MOUSE | CLOCK_24_HOUR | BAR_AUTOHIDE | BAR_OVERVIEW | DOCK_ON
-                | DOCK_AUTO_HIDE | DND | SYSTEM_SOUNDS,
+                FOCUS_MOUSE
+                | CLOCK_24_HOUR
+                | BAR_AUTOHIDE
+                | BAR_AUTOHIDE_FULLSCREEN
+                | BAR_OVERVIEW
+                | DOCK_ON
+                | DOCK_AUTO_HIDE
+                | DND
+                | SYSTEM_SOUNDS,
                 Value::Bool(b),
             ) => b.to_string(),
             (
-                COLUMN_WIDTH | FLOATING | WALLPAPER | SWITCH_KEY | TERMINAL | BROWSER | FILES
-                | MAIL | EDITOR | UNTIL | SCHEDULE | RULES,
+                THEME | ACCENT | LIGHT_TIME | DARK_TIME | COLUMN_WIDTH | FLOATING | WALLPAPER
+                | SWITCH_KEY | TERMINAL | BROWSER | FILES | MAIL | EDITOR | UNTIL | SCHEDULE
+                | RULES,
                 Value::String(s),
             ) => s.clone(),
             _ => return Err(err("history_corrupt")),
@@ -597,6 +654,10 @@ impl Document {
             return input::set(self, key, "");
         }
         match key {
+            THEME => self.appearance.theme = None,
+            ACCENT => self.appearance.accent = None,
+            LIGHT_TIME => self.appearance.light_time = None,
+            DARK_TIME => self.appearance.dark_time = None,
             GAPS => self.appearance.gaps = None,
             COLUMN_WIDTH => self.windows.default_column_width = None,
             FOCUS_MOUSE => self.windows.focus_follows_mouse = None,
@@ -611,6 +672,11 @@ impl Document {
             EDITOR => self.defaults.editor = None,
             CLOCK_24_HOUR => self.bar.clock_24_hour = None,
             BAR_AUTOHIDE => self.bar.autohide = None,
+            BAR_AUTOHIDE_FULLSCREEN => self.bar.autohide_fullscreen = None,
+            BAR_AUTOHIDE_MODE => {
+                self.bar.autohide = None;
+                self.bar.autohide_fullscreen = None;
+            }
             BAR_OVERVIEW => self.bar.overview_workspaces = None,
             DOCK_ON => self.dock.on = None,
             DOCK_AUTO_HIDE => self.dock.auto_hide = None,
@@ -633,6 +699,39 @@ impl Document {
             return self.clear(key);
         }
         match key {
+            THEME => {
+                if !matches!(value, "light" | "dark" | "automatic") {
+                    return Err(err("invalid_theme"));
+                }
+                self.appearance.theme = Some(value.into());
+            }
+            ACCENT => {
+                if !matches!(
+                    value,
+                    "orange" | "coral" | "rose" | "amber" | "green" | "teal" | "blue" | "violet"
+                ) {
+                    return Err(err("invalid_accent"));
+                }
+                self.appearance.accent = Some(value.into());
+            }
+            LIGHT_TIME | DARK_TIME => {
+                let bytes = value.as_bytes();
+                if bytes.len() != 5
+                    || bytes[2] != b':'
+                    || ![bytes[0], bytes[1], bytes[3], bytes[4]]
+                        .iter()
+                        .all(u8::is_ascii_digit)
+                    || value[..2].parse::<u8>().unwrap() > 23
+                    || value[3..].parse::<u8>().unwrap() > 59
+                {
+                    return Err(err("invalid_appearance_time"));
+                }
+                if key == LIGHT_TIME {
+                    self.appearance.light_time = Some(value.into());
+                } else {
+                    self.appearance.dark_time = Some(value.into());
+                }
+            }
             GAPS => {
                 if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
                     return Err(err("invalid_gaps"));
@@ -664,6 +763,18 @@ impl Document {
             EDITOR => self.defaults.editor = Some(desktop_id(value)?),
             CLOCK_24_HOUR => self.bar.clock_24_hour = Some(boolean(value)?),
             BAR_AUTOHIDE => self.bar.autohide = Some(boolean(value)?),
+            BAR_AUTOHIDE_FULLSCREEN => self.bar.autohide_fullscreen = Some(boolean(value)?),
+            BAR_AUTOHIDE_MODE => {
+                let (desktop, fullscreen) = match value {
+                    "always" => (true, true),
+                    "desktop" => (true, false),
+                    "fullscreen" => (false, true),
+                    "never" => (false, false),
+                    _ => return Err(err("invalid_bar_autohide_mode")),
+                };
+                self.bar.autohide = Some(desktop);
+                self.bar.autohide_fullscreen = Some(fullscreen);
+            }
             BAR_OVERVIEW => self.bar.overview_workspaces = Some(boolean(value)?),
             DOCK_ON => self.dock.on = Some(boolean(value)?),
             DOCK_AUTO_HIDE => self.dock.auto_hide = Some(boolean(value)?),
@@ -698,6 +809,10 @@ impl Document {
             vec![
                 self.appearance.gaps.map(|g| format!("gaps = {g}")),
                 string("wallpaper", &self.appearance.wallpaper),
+                string("theme", &self.appearance.theme),
+                string("accent", &self.appearance.accent),
+                string("light_time", &self.appearance.light_time),
+                string("dark_time", &self.appearance.dark_time),
             ],
         );
         section(
@@ -739,6 +854,7 @@ impl Document {
             vec![
                 flag("clock_24_hour", &self.bar.clock_24_hour),
                 flag("autohide", &self.bar.autohide),
+                flag("autohide_fullscreen", &self.bar.autohide_fullscreen),
                 flag("overview_workspaces", &self.bar.overview_workspaces),
             ],
         );
@@ -779,6 +895,20 @@ impl Document {
         let mut layout = String::new();
         if let Some(gaps) = self.appearance.gaps {
             layout.push_str(&format!("    gaps {gaps}\n"));
+        }
+        if let Some(accent) = self
+            .appearance
+            .accent
+            .as_deref()
+            .filter(|name| *name != "orange")
+        {
+            // The embedded palette is shared with the shell; leave all other border fields inherited.
+            static PALETTE: OnceLock<toml::Table> = OnceLock::new();
+            let palette = PALETTE.get_or_init(|| toml::from_str(TOKENS).expect("embedded palette"));
+            let base = palette["accents"][accent]["base"]
+                .as_str()
+                .expect("accent base");
+            layout.push_str(&format!("    border {{ active-color \"#{base}ff\"; }}\n"));
         }
         if let Some(width) = &self.windows.default_column_width {
             let proportion = match width.as_str() {
@@ -887,7 +1017,7 @@ pub enum Operation<'a> {
         key: &'a str,
         value: &'a str,
     },
-    /// Remove the override of any key, including the two that refuse an empty value.
+    /// Remove a key override, or atomically reset the four appearance page keys.
     Reset {
         key: &'a str,
     },
@@ -930,8 +1060,62 @@ const UNDO: &str =
     "settings undo ID: restore previous override/unset, only if no later change of this key";
 const SHELL_ONLY: &str = "acknowledged live shell bindings; read again after session startup";
 fn rows(doc: &Document, gaps: u16) -> Vec<Setting> {
-    let overrides = doc.overrides();
+    let mut overrides = doc.overrides();
+    // A presentation of the two persisted flags, never a third stored source of truth.
+    let mode = match (
+        doc.bar.autohide.unwrap_or(false),
+        doc.bar.autohide_fullscreen.unwrap_or(true),
+    ) {
+        (true, true) => "always",
+        (true, false) => "desktop",
+        (false, true) => "fullscreen",
+        (false, false) => "never",
+    };
+    overrides.insert(
+        BAR_AUTOHIDE_MODE.into(),
+        if doc.bar.autohide.is_some() || doc.bar.autohide_fullscreen.is_some() {
+            json!(mode)
+        } else {
+            Value::Null
+        },
+    );
     let descriptions = [
+        Description {
+            key: THEME,
+            default: json!("dark"),
+            default_source: "shell default (unset)",
+            value_type: "choice",
+            allowed: "light | dark | automatic; empty unsets",
+            application: SHELL_ONLY,
+            validation: "typed appearance policy",
+        },
+        Description {
+            key: ACCENT,
+            default: json!("orange"),
+            default_source: "shell default (unset)",
+            value_type: "choice",
+            allowed: "orange | coral | rose | amber | green | teal | blue | violet; empty unsets",
+            application: "acknowledged live shell bindings and managed niri border reload",
+            validation: "typed appearance policy",
+        },
+        Description {
+            key: LIGHT_TIME,
+            default: json!("07:00"),
+            default_source: "shell default (unset)",
+            value_type: "time",
+            allowed: "HH:MM local time, distinct from dark_time; empty unsets",
+            application: SHELL_ONLY,
+            validation: "typed appearance policy",
+        },
+        Description {
+            key: DARK_TIME,
+            default: json!("19:00"),
+            default_source: "shell default (unset)",
+            value_type: "time",
+            allowed: "HH:MM local time, distinct from light_time; empty unsets",
+            application: SHELL_ONLY,
+            validation: "typed appearance policy",
+        },
         Description {
             key: GAPS,
             default: json!(gaps),
@@ -1030,6 +1214,24 @@ fn rows(doc: &Document, gaps: u16) -> Vec<Setting> {
             allowed: "true | false; empty unsets",
             application: SHELL_ONLY,
             validation: "boolean",
+        },
+        Description {
+            key: BAR_AUTOHIDE_FULLSCREEN,
+            default: json!(true),
+            default_source: "shell default (unset)",
+            value_type: "boolean",
+            allowed: "true | false; empty unsets",
+            application: SHELL_ONLY,
+            validation: "boolean",
+        },
+        Description {
+            key: BAR_AUTOHIDE_MODE,
+            default: json!("fullscreen"),
+            default_source: "shell default (unset)",
+            value_type: "choice",
+            allowed: "always | desktop | fullscreen | never; empty unsets both visibility flags",
+            application: SHELL_ONLY,
+            validation: "choice; atomically sets desktop and fullscreen visibility",
         },
         Description {
             key: CLOCK_24_HOUR,
@@ -1135,7 +1337,7 @@ fn rows(doc: &Document, gaps: u16) -> Vec<Setting> {
         .into_iter()
         .map(|d| {
             let override_value = overrides.get(d.key).cloned().unwrap_or(Value::Null);
-            let secret = !recordable(d.key, SCHEMA);
+            let secret = d.key != BAR_AUTOHIDE_MODE && !recordable(d.key, SCHEMA);
             let set = !override_value.is_null();
             Setting {
                 key: d.key,
@@ -1274,6 +1476,48 @@ pub fn session_config(timeout: Duration) -> std::result::Result<PathBuf, &'stati
 mod tests {
     use super::*;
     #[test]
+    fn panel_visibility_modes_are_atomic_derived_and_resettable() {
+        let mut doc = Document::default();
+        for (mode, desktop, fullscreen) in [
+            ("always", true, true),
+            ("desktop", true, false),
+            ("fullscreen", false, true),
+            ("never", false, false),
+        ] {
+            doc.set(BAR_AUTOHIDE_MODE, mode).unwrap();
+            assert_eq!(doc.bar.autohide, Some(desktop));
+            assert_eq!(doc.bar.autohide_fullscreen, Some(fullscreen));
+            assert_eq!(
+                rows(&doc, 8)
+                    .iter()
+                    .find(|row| row.key == BAR_AUTOHIDE_MODE)
+                    .unwrap()
+                    .value,
+                json!(mode)
+            );
+            assert!(!doc.text().contains("autohide_mode"));
+            assert_eq!(Document::parse(Some(doc.text().as_bytes())).unwrap(), doc);
+            let before = doc.clone();
+            assert!(doc.set(BAR_AUTOHIDE_MODE, "sometimes").is_err());
+            assert_eq!(doc, before);
+        }
+        doc.clear(BAR_AUTOHIDE_MODE).unwrap();
+        assert_eq!(doc, Document::default());
+        for (legacy, mode) in [(true, "always"), (false, "fullscreen")] {
+            let text = format!("schema_version = 1\n[bar]\nautohide = {legacy}\n");
+            let old = Document::parse(Some(text.as_bytes())).unwrap();
+            assert_eq!(
+                rows(&old, 8)
+                    .iter()
+                    .find(|row| row.key == BAR_AUTOHIDE_MODE)
+                    .unwrap()
+                    .value,
+                json!(mode)
+            );
+        }
+    }
+
+    #[test]
     fn embedded_defaults_resolve_install_paths() {
         let files = Document::default().files(8);
         let default = &files
@@ -1330,6 +1574,40 @@ mod tests {
         let mut override_doc = default;
         override_doc.set(GAPS, "4").unwrap();
         assert!(fragment(&override_doc, 12).contains("gaps 4"));
+    }
+
+    #[test]
+    fn appearance_accent_border_uses_palette_and_preserves_other_layout_fields() {
+        let palette: toml::Table = toml::from_str(TOKENS).unwrap();
+        let mut doc = Document::default();
+        doc.set(GAPS, "6").unwrap();
+        doc.set(COLUMN_WIDTH, "half").unwrap();
+        let fragment = |doc: &Document| {
+            doc.files(8)
+                .into_iter()
+                .find(|(name, _)| *name == "niri.kdl")
+                .unwrap()
+                .1
+        };
+        let inherited = fragment(&doc);
+        for (accent, colors) in palette["accents"].as_table().unwrap() {
+            doc.set(ACCENT, accent).unwrap();
+            let text = fragment(&doc);
+            assert_eq!(text.matches("layout {").count(), 1);
+            assert!(text.contains("gaps 6"));
+            assert!(text.contains("default-column-width { proportion 0.5; }"));
+            assert!(!text.contains("inactive-color"));
+            assert!(!text.contains("width 2"));
+            assert!(!text.contains("focus-ring"));
+            if accent == "orange" {
+                assert_eq!(text, inherited);
+            } else {
+                let base = colors["base"].as_str().unwrap();
+                assert!(text.contains(&format!("border {{ active-color \"#{base}ff\"; }}")));
+            }
+            doc.clear(ACCENT).unwrap();
+            assert_eq!(fragment(&doc), inherited);
+        }
     }
 
     #[test]

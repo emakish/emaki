@@ -54,7 +54,10 @@ Item {
                 event.accepted = true;
                 return;
             }
-            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            if ([Qt.Key_Up, Qt.Key_Down].includes(event.key)) {
+                // Keep editing; Tab reaches the reveal control.
+                event.accepted = true;
+            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                 if (!event.isAutoRepeat)
                     input.auth.submit();
                 event.accepted = true;
@@ -110,11 +113,17 @@ Item {
         y: input.toggleY
         visible: input.showToggle && !input.auth.usernameMode
         enabled: input.auth.enabled && !input.auth.checking
-        ink: LiquidPalette.inkOnLight
+        ink: LiquidPalette.ink
         revealed: input.revealed
         onToggled: {
             input.engaged();
             input.revealed = !input.revealed;
+        }
+        Keys.onPressed: event => {
+            if ([Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down].includes(event.key)) {
+                input.takeFocus();
+                event.accepted = true;
+            }
         }
         KeyNavigation.tab: editor
         KeyNavigation.backtab: editor

@@ -175,7 +175,7 @@ Column {
         visible: text !== ""
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
-        color: page.networkSettings.error ? "#a01b45" : SettingsTheme.dim
+        color: page.networkSettings.error ? SettingsTheme.error : SettingsTheme.dim
         font.family: SettingsTheme.fontFamily
         font.pixelSize: 13
     }

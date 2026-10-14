@@ -129,7 +129,11 @@ def report(info):
         ('Block devices', ['lsblk', '-o', 'NAME,TYPE,SIZE,MODEL', '--json']),
     ]:
         parts.extend(['', title, command(args)])
-    text = Redactor().redact('\n'.join(parts) + '\n')
+    # Each detail and each command output is redacted on its own: a value that
+    # never closes its quote may take the rest of its own source, never the
+    # headings and outputs collected after it.
+    redactor = Redactor()
+    text = ''.join(redactor.redact(part + '\n') for part in parts)
     fd, name = tempfile.mkstemp(prefix='problem-', suffix='.txt', dir=directory)
     try:
         with os.fdopen(fd, 'w') as stream:

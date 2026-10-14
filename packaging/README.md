@@ -1,4 +1,4 @@
-# Emaki 0.8.0 packages
+# Emaki 0.8.1 packages
 
 Copyright (C) 2026 Artur Yakymenko. Emaki packaging is GPL-3.0-or-later;
 the Quickshell fork retains its upstream LGPL-3.0-only license.
@@ -11,10 +11,19 @@ it back to Arch's file on removal; `/usr/lib/os-release` stays as `filesystem`
 ships it, so `pacman -Qkk` reports nothing for it. `emaki-desktop` adds the
 Minimal applications (Dolphin, Firefox, kitty), the firmware and graphics drivers of the
 live image (so an install keeps what worked from the stick) and password-only lock PAM
-configuration. The optional `emaki-sudo-key` package (0.8.0-1) owns the sudo-key
+configuration. The optional `emaki-sudo-key` package (0.8.1-1) owns the sudo-key
 marker, revocation binding, turn reporter and its guide/examples. It depends on
-`emaki-config>=0.8.0-1`, which owns the broker, PAM integration, client and shell UI.
+`emaki-config>=0.8.1-1`, which owns the broker, PAM integration, client and shell UI.
 The release marker and desktop packages do not select the optional package.
+The optional `snapguard` package (0.3.0-1) builds the public snapguard release from the
+commit its `v0.3.0` tag names, with a checksum of that tree; `check()` runs snapguard's own
+test suite and `package()` compares the payload with its `expected-files.list`. It installs
+`/usr/lib/snapguard/snapshot-guard.py`, the documentation in `/usr/share/doc/snapguard` and the
+MIT license, has no scriptlet and writes nothing into a home directory: registering the hook is
+the person's own step. Upstream's README downloads the hook into a home directory, so the
+package adds `/usr/share/doc/snapguard/emaki-setup.md`, which names the packaged hook to
+register instead. The From Emaki shelf of Programs & Updates offers `emaki-sudo-key`,
+`snapguard` and, on computers with an NVIDIA display controller, `emaki-nvidia`.
 `xdg-desktop-portal-gnome-emaki` follows Arch's 50.0-1 recipe and sources, removes
 Nautilus from its dependencies and replaces the upstream package. Its source tag is
 signed and makepkg does not import keys by itself: import the two maintainer keys in

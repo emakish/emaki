@@ -52,7 +52,7 @@ layout {{
     border {{
         on
         width {G["border_width"]}
-        active-color "#{rgba("accent")}"
+        active-color "#{T["accents"]["orange"]["base"]}ff"
         inactive-color "#{rgba("border_inactive")}"
     }}
 

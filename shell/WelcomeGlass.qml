@@ -5,12 +5,13 @@ import QtQuick
 Item {
     id: root
     property string wallpaperTexture: ""
+    property real radius: 22
     property real dpr: 1
     readonly property var material: gpu.item
     readonly property bool glassReady: material?.ready ?? false
     Rectangle {
         anchors.fill: parent
-        radius: 22
+        radius: root.radius
         color: Qt.rgba(LiquidPalette.flatPanel.r, LiquidPalette.flatPanel.g, LiquidPalette.flatPanel.b, 1)
     }
     Loader {
@@ -45,7 +46,7 @@ Item {
                 visible: material.ready
                 backdrop: wallpaperBackdrop
                 plate: Qt.rect(0, 0, material.width, material.height)
-                uRadius: 22
+                uRadius: root.radius
                 uCover: wallpaperBackdrop.coverFor(Qt.point(0, 0))
                 uIcons: empty
                 uHasIcons: 0

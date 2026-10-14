@@ -1,12 +1,14 @@
 # Derived from the Arch Linux 'quickshell' package (Maintainer: Caleb Maclennan <caleb@alerque.com>)
 # Emaki: same build + a fix for the wlr-screencopy crash on Smithay compositors (niri),
-# a fix that names the activation each network connection failure belongs to, and a
-# repaired polkit service (one request at a time, no cookie in logs, wiped replies).
+# a fix that names the activation each network connection failure belongs to, a
+# repaired polkit service (one request at a time, no cookie in logs, wiped replies), a
+# desktop entry watch that follows application directories created later, and theme icons
+# found when installed after startup (bindings are told when a missed icon arrives).
 
 _pkgname=quickshell
 pkgname=quickshell-emaki
 pkgver=0.3.1
-pkgrel=10
+pkgrel=12
 pkgdesc='Flexible toolkit for making desktop shells with QtQuick (Emaki patched build)'
 arch=(x86_64 aarch64)
 url="https://git.outfoxxed.me/$_pkgname/$_pkgname"
@@ -46,6 +48,8 @@ source=("$_archive.tar.gz::$url/archive/v$pkgver.tar.gz"
         0004-services-polkit-one-request-at-a-time.patch
         0005-launch-drop-private-wayland-socket.patch
         0006-core-desktopentry-honour-onlyshowin-notshowin.patch
+        0007-core-desktopentry-watch-directories-created-later.patch
+        0008-core-find-theme-icons-installed-after-startup.patch
         expected-files.list)
 sha256sums=('d60592622f1aa1cbb853d4814f605dfde827bc692befbfecffaccf4c90e352d8'
             'b32f0be7920e0dd10cf89bb0fecdd0a7c0ac73f0f113fc93e3b235ad36e894c7'
@@ -54,6 +58,8 @@ sha256sums=('d60592622f1aa1cbb853d4814f605dfde827bc692befbfecffaccf4c90e352d8'
             '7115569ed25736ba4f5ae1cc3da37f4dfbcfc046f813dc0ffb89268232827b4b'
             '3fa5679080c8c18fb8a131f6a3634a1cc4b36c805cae9d55eb93eae8a5d95753'
             '7b54d7516aede6d4eb17138ae27259d0eaf4ff106df2db9eab3564cc526482a6'
+            '5786bb33ebd625d181b6f51f85c8fab828a3da0305f065b070d2cc782416b599'
+            '979342b98e21c517843e8b6e957cf9cf6f8d6a0c46bc347f0ed0d7d55462fcf1'
             'e6d94b7b429509ef67f81f56e69aef932307cb984705267bc89e13ea0f7efd7b')
 
 prepare() {
@@ -64,6 +70,8 @@ prepare() {
 	patch -Np1 -i "$srcdir/0004-services-polkit-one-request-at-a-time.patch"
 	patch -Np1 -i "$srcdir/0005-launch-drop-private-wayland-socket.patch"
 	patch -Np1 -i "$srcdir/0006-core-desktopentry-honour-onlyshowin-notshowin.patch"
+	patch -Np1 -i "$srcdir/0007-core-desktopentry-watch-directories-created-later.patch"
+	patch -Np1 -i "$srcdir/0008-core-find-theme-icons-installed-after-startup.patch"
 }
 
 # Keep the runtime floor equal to the Qt release used for this rebuild.

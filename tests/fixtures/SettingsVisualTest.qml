@@ -45,14 +45,32 @@ Item {
         property string lastStatus: ""
         property bool sessionApplied: true
         property var history: []
+        // The wallpaper page reads the catalog's chooser; nothing here starts it.
+        readonly property var wallpaperChooser: ({
+                busy: false
+            })
+        property string wallpaperChooserError: ""
+        function chooseWallpaper() {
+        }
         property var wallpapers: [
             {
                 name: "Emaki landscape",
                 path: Quickshell.env("EMAKI_FIXTURE_PICTURE")
             }
         ]
+        function value(key) {
+            return row(key).value;
+        }
         function row(key) {
-            const value = key === "appearance.gaps" ? 2 : key === "appearance.wallpaper" ? null : key === "windows.default_column_width" ? "full" : !["bar.autohide", "windows.focus_follows_mouse"].includes(key);
+            const appearance = {
+                "appearance.theme": "light",
+                "appearance.accent": "orange",
+                "appearance.light_time": "07:00",
+                "appearance.dark_time": "19:00"
+            };
+            if (Object.prototype.hasOwnProperty.call(appearance, key))
+                return { key: key, value: appearance[key], default: appearance[key], editable: true };
+            const value = key === "bar.autohide_mode" ? "fullscreen" : key === "appearance.gaps" ? 2 : key === "appearance.wallpaper" ? null : key === "windows.default_column_width" ? "full" : !["bar.autohide", "windows.focus_follows_mouse"].includes(key);
             return {
                 key: key,
                 value: value,

@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import "Keyboard.js" as Keyboard
+import "SystemIcons.js" as SystemIcons
 
 // What the clock panel shows (docs/mockups/liquid-glass/clock.js buildView()), in the
 // panel's frame: (0, 0) is its top left once grown, 560 wide in the drawer, 440 in a peek.
@@ -228,6 +229,13 @@ Item {
         const minutes = Math.max(0, Math.floor((store.now - (time ?? store.now)) / 60000));
         return minutes < 1 ? "now" : minutes < 60 ? minutes + " min" : minutes < 1440 ? Math.floor(minutes / 60) + " h" : Math.floor(minutes / 1440) + " d";
     }
+    // A themed icon by name. Programs & Updates draws its icon in the accent, as the dock
+    // and the launcher do; its installed SVG keeps the default orange.
+    function themedIcon(name: string): string {
+        if (name === "emaki-programs-updates")
+            return SystemIcons.programsSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.accentShade, ShellPalette.managerIconInk);
+        return name ? Quickshell.iconPath(name, true) : "";
+    }
     // The app's icon: the one the notification sent, else its desktop entry by name.
     function iconOf(note: var): string {
         const icon = note?.icon ?? "";
@@ -235,12 +243,12 @@ Item {
             return "file://" + icon;
         if (icon.startsWith("file:") || icon.startsWith("image:"))
             return icon;
-        const path = icon ? Quickshell.iconPath(icon, true) : "";
+        const path = themedIcon(icon);
         if (path)
             return path;
         const app = String(note?.app ?? "").toLocaleLowerCase();
         const entry = app ? DesktopEntries.heuristicLookup(note.app) || DesktopEntries.applications.values.find(e => e.name.toLocaleLowerCase() === app) : null;
-        return entry?.icon ? Quickshell.iconPath(entry.icon, true) : "";
+        return themedIcon(entry?.icon ?? "");
     }
 
     // ---- Drawer head: the island's line, larger ----
@@ -341,6 +349,7 @@ Item {
             key: "dnd"
             label: "Do not disturb"
             drop: false
+            accent: body.store.effectiveDnd
             x: body.side + body.inner - 38
             y: 4
             width: 38

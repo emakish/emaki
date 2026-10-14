@@ -36,11 +36,24 @@ SystemBackend {
     // Stream/Input/Video (camera consumers), so that one comes from media.class directly.
     // The shell's own PwNodePeakMonitor (mic meter of the sound page) is such a stream too:
     // streams of this process never count as "an app using the microphone".
+    // A video stream reading a screencast node is a program watching the screen, not the
+    // camera: `source` (the node it reads) lets the shell tell them apart.
     captures: Pipewire.nodes.values.filter(n => String(n.properties?.["application.process.id"] ?? "") !== String(Quickshell.processId)).map(n => ({
                 kind: (n.type & PwNodeType.AudioInStream) === PwNodeType.AudioInStream ? "mic" : n.properties?.["media.class"] === "Stream/Input/Video" ? "cam" : "",
-                name: String(n.properties?.["application.name"] || n.nickname || n.description || n.name || "")
+                name: String(n.properties?.["application.name"] || n.nickname || n.description || n.name || ""),
+                binary: String(n.properties?.["application.process.binary"] || ""),
+                source: Pipewire.linkGroups.values.find(g => g.target?.id === n.id)?.source?.id ?? -1
             })).filter(c => c.kind !== "")
-    battery: UPower.displayDevice?.ready && UPower.displayDevice.isPresent ? UPower.displayDevice : null
+    // Every non-audio stream reading another node, from PipeWire's links. QS 0.3.1 gives
+    // video streams no type (isStream is false, properties stay empty until bound), so
+    // the links are what finds a screencast's reader; node.name and friends come from the
+    // registry without binding, application.name once the tracker below has bound it.
+    readers: Pipewire.linkGroups.values.filter(g => g.source && g.target && !g.target.audio).map(g => ({
+                source: g.source.id,
+                name: String(g.target.properties?.["application.name"] || g.target.nickname || g.target.description || g.target.name || ""),
+                binary: String(g.target.properties?.["application.process.binary"] || "")
+            }))
+    battery:UPower.displayDevice?.ready && UPower.displayDevice.isPresent ? UPower.displayDevice : null
     charging: battery?.state === UPowerDeviceState.Charging || battery?.state === UPowerDeviceState.PendingCharge
     batteryPower: UPower.onBattery
     networkReady: Networking.backend === NetworkBackendType.NetworkManager
@@ -83,6 +96,12 @@ SystemBackend {
             }))
     PwObjectTracker {
         objects: [native.sink, native.source].concat(native.audioNodes).concat(Pipewire.nodes.values.filter(n => (n.type & PwNodeType.AudioOutStream) === PwNodeType.AudioOutStream)).filter(n => n !== null)
+    }
+    // Video streams (camera and screencast readers) report media.class and the program's
+    // name only once bound. Only linked ones read anything: bind those (a filter on
+    // isStream selects no video stream in QS 0.3.1).
+    PwObjectTracker {
+        objects: Pipewire.linkGroups.values.map(g => g.target).filter(n => n && !n.audio)
     }
     function setWifiEnabled(value: bool): void {
         Networking.wifiEnabled = value;

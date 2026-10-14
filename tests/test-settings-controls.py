@@ -15,8 +15,9 @@ ROOT = Path(__file__).resolve().parent.parent
 with tempfile.TemporaryDirectory(prefix='emaki-controls-') as temporary:
     base = Path(temporary)
     shutil.copytree(ROOT / 'shell/settings', base / 'shell/settings')
-    shutil.copyfile(ROOT / 'shell/ShellPalette.qml', base / 'shell/ShellPalette.qml')
-    (base / 'shell/qmldir').write_text('singleton ShellPalette 1.0 ShellPalette.qml\n')
+    for name in ('ShellPalette.qml', 'Appearance.qml', 'AppearanceLogic.js', 'SettingsBridge.qml'):
+        shutil.copyfile(ROOT / 'shell' / name, base / 'shell' / name)
+    (base / 'shell/qmldir').write_text('singleton ShellPalette 1.0 ShellPalette.qml\nsingleton Appearance 1.0 Appearance.qml\nsingleton SettingsBridge 1.0 SettingsBridge.qml\n')
     fixture = (ROOT / 'tests/fixtures/SettingsControlsTest.qml').read_text()
     fixture = fixture.replace('import "../../shell/settings" as Settings', 'import "settings" as Settings')
     (base / 'shell/controls-test.qml').write_text(fixture)

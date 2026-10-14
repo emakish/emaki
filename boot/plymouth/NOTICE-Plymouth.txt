@@ -1,0 +1,6 @@
+entry.png, bullet.png, lock.png, capslock.png, keyboard.png and keymap-render.png in
+/usr/share/plymouth/themes/emaki are copied unchanged from Plymouth 26.134.222
+(themes/spinner, https://gitlab.freedesktop.org/plymouth/plymouth), the password prompt
+pictures of its stock spinner and bgrt themes. Plymouth is licensed under the GNU General
+Public License, version 2 or (at your option) any later version; the full text is in
+/usr/share/licenses/spdx/GPL-2.0-or-later.txt.

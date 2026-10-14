@@ -40,10 +40,10 @@ a component is absent or broken. Do not run every command for an unrelated chang
 | --- | --- |
 | `emaki niri snapshot --json` | compositor-configuration, compositor-runtime |
 | `emaki settings get appearance.wallpaper --json` | settings-wallpaper, wallpaper |
-| `emaki settings list --json` | command-and-settings-core, settings-input-pages, settings-notifications |
+| `emaki settings list --json` | command-and-settings-core, settings-appearance, settings-input-pages, settings-notifications |
 | `emaki-boot-order --json` | alongside-test-boot-safety |
 | `emaki-machine-settings get --json` | machine-settings |
-| `emaki-programs catalog --json; emaki-programs list --json; emaki-programs preview PACKAGE --json; emaki-programs aur --json; emaki-programs popular --json; emaki-programs ratings APPSTREAM-ID... --json; emaki-programs reviews APPSTREAM-ID... --json` | installed-programs |
+| `emaki-programs list --json; emaki-programs aur --json` | installed-programs |
 | `emaki-rollback status --json` | snapshot-recovery, update-restore |
 | `emaki-session-update state` | desktop-update-signal |
 | `emaki-settings-about status --json` | settings-local-report |
@@ -61,7 +61,7 @@ a component is absent or broken. Do not run every command for an unrelated chang
 | `emaki-update-channel status --json` | channels-and-mirrors |
 | `emaki-update-manager --status` | update-reminder-state, updates |
 
-No JSON state command yet: agent-rules, application-defaults, application-package-policy, authentication-prompt, autostart, boot-loader-and-initramfs, cursor-theme, desktop-package-policy, desktop-portals, install-paths, installer, lock-idle-and-power, login-and-authentication, nvidia-policy, package-transaction-safety, release-identity-and-licenses, release-marker, repository-mirror-data, repository-signing-keys, runtime-compatibility, session-startup, shell-runtime, snapshot-boot-menu, system-map, trusted-shell-generations, wallet-and-secrets.
+No JSON state command yet: agent-rules, application-defaults, application-package-policy, authentication-prompt, autostart, boot-loader-and-initramfs, cursor-theme, desktop-package-policy, desktop-portals, install-paths, installer, lock-idle-and-power, login-and-authentication, nvidia-policy, package-transaction-safety, release-identity-and-licenses, release-marker, repository-mirror-data, repository-signing-keys, runtime-compatibility, session-startup, shell-runtime, snapguard, snapshot-boot-menu, system-map, trusted-shell-generations, wallet-and-secrets.
 Read each component's State entry in the map for the reason; do not invent a command.
 
 ## Make and verify a change

@@ -53,6 +53,8 @@ Item {
     property int tick: 0
     property bool animating: false
     property bool hovered: false
+    // Keyboard focus on the bar's privacy cell: the same drop as the pointer's (StaticBar).
+    property bool keyboardFocused: false
     FrameAnimation {
         running: pill.animating
         onTriggered: {
@@ -60,7 +62,7 @@ Item {
             let active = false;
             if (pill.panelPresent)
                 active = Liquid.vanish(pill.bubble, now) || active;
-            else if (pill.hovered && pill.visible)
+            else if ((pill.hovered || pill.keyboardFocused) && pill.visible)
                 active = Liquid.place(pill.bubble, Liquid.pad([0, 0, pill.width, pill.height], 3), pill.radius + 3, now) || active;
             else
                 Liquid.dissolve(pill.bubble, now);
@@ -71,6 +73,7 @@ Item {
         }
     }
     onHoveredChanged: animating = true
+    onKeyboardFocusedChanged: animating = true
     onWidthChanged: animating = true
     onPanelPresentChanged: animating = true
     readonly property var drops: {
@@ -87,8 +90,8 @@ Item {
         };
     }
 
-    // Ink: always the light glass, whatever lies underneath (2026-09-27).
-    readonly property color alarm: LiquidPalette.dangerOnLight
+    // Ink follows the selected theme independently of the backdrop.
+    readonly property color alarm: LiquidPalette.danger
 
     Rectangle {
         visible: !pill.glassReady && pill.shown
@@ -114,7 +117,7 @@ Item {
     }
     readonly property real hoverAlpha: {
         tick;
-        return Liquid.smooth(bubble.alpha.x);
+        return Liquid.onGlass(bubble);
     }
     // ---- Under the glass (fading while the drop is up; drawn again on it) ----
     Item {

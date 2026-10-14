@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory(prefix='settings-visual-') as temporary:
         assert result['readiness_reached'] and 'llvmpipe' in result['renderer'], result
         state = result['fixture_end']
         assert state['graphics_api'] == 3, state
-        expected = page if page in ('displays', 'keyboard', 'wifi', 'wallpaper', 'panel', 'windows', 'about') else 'panel'
+        expected = page
         assert state['actual_page'] == expected, state
         if page == 'about':
             assert state['about_details'] == details, state

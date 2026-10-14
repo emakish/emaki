@@ -7,6 +7,7 @@ Use --repo-shell to validate the repository material instead of installed files.
 """
 import argparse
 import json
+import re
 import sys
 import os
 from pathlib import Path
@@ -90,6 +91,20 @@ def main():
                                  (5, args.height - 6), (args.width - 6, args.height - 6)):
                         assert frame.getpixel((round(x * ratio), round(y * ratio)))[3] > 128, 'Window corner is hollow'
                     assert frame.getpixel((0, 0))[3] == 0, 'Window corner is square'
+                    # The installer stays light although an unset shell theme is dark. Sample the panel
+                    # in the empty margin between its left edge and the layout inset in it, at mid
+                    # height, so the point lies inside the window at every size down to the 960x480
+                    # minimum and never on a label.
+                    matches = re.findall(r'PANEL_FRAME welcome (\{[^\n]+\})', log)
+                    assert len(matches) == 1, 'Missing or repeated panel evidence'
+                    bounds = json.loads(matches[0])
+                    panel, layout = bounds['panel'], bounds['layout']
+                    assert (panel['x'], panel['y'], panel['width'], panel['height']) == (0, 0, args.width, args.height), bounds
+                    x = (panel['x'] + layout['x']) / 2
+                    y = panel['y'] + panel['height'] / 2
+                    assert layout['x'] - panel['x'] >= 8 and layout['y'] <= y <= layout['y'] + layout['height'], bounds
+                    sample = frame.getpixel((round(x * ratio), round(y * ratio)))
+                    assert min(sample[:3]) > 200, f'Installer panel is not light: {sample} at {x},{y}'
             if args.iso_fonts:
                 assert 'FONT_OK Noto Sans' in log, log
             for diagnostic in ['ReferenceError', 'TypeError', 'Binding loop', 'Unable to assign', 'Cannot assign', 'failed to load', 'Renderer timeout']:

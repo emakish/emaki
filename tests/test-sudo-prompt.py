@@ -34,6 +34,10 @@ def main():
         for name in ('cache', 'config', 'state', 'data', 'tmp'):
             (profile / name).mkdir(mode=0o700)
         shutil.copytree(ROOT / 'shell', profile / 'qml')
+        # Fail-before evidence: KEYBOARD_BASELINE=<an exported 0.8.0 source tree> (never git history).
+        if os.environ.get('KEYBOARD_BASELINE'):
+            shutil.copyfile(Path(os.environ['KEYBOARD_BASELINE']) / 'shell/PolkitPromptCard.qml',
+                            profile / 'qml' / 'PolkitPromptCard.qml')
         shutil.copyfile(ROOT / 'tests/fixtures/SudoPromptTest.qml', profile / 'qml/shell.qml')
         env = dict(os.environ, HOME=str(profile), QT_QPA_PLATFORM='offscreen',
                    QT_QUICK_BACKEND='software', QML_DISABLE_DISK_CACHE='1',

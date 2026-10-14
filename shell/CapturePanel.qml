@@ -3,11 +3,13 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import "CaptureText.js" as CaptureText
+import "Keyboard.js" as Keyboard
 
 Item {
     id: panel
     required property CaptureController controller
-    readonly property bool keyboardMode: true
+    readonly property bool keyboardBoundary: true
+    property bool keyboardMode: true
     readonly property rect selection: controller.area
     readonly property bool selectingArea: controller.target === "area"
     readonly property color shade: Qt.rgba(LiquidPalette.inkOnLight.r, LiquidPalette.inkOnLight.g, LiquidPalette.inkOnLight.b, .48)
@@ -19,15 +21,22 @@ Item {
         const dy = key === Qt.Key_Up ? -1 : key === Qt.Key_Down ? 1 : 0;
         controller.setArea(a.x + (resize ? 0 : dx), a.y + (resize ? 0 : dy), a.width + (resize ? dx : 0), a.height + (resize ? dy : 0));
     }
-    Keys.onEscapePressed: controller.close()
+    Keys.onEscapePressed: {
+        if (selectingArea && !activeFocus)
+            forceActiveFocus();
+        else
+            controller.close();
+    }
     Keys.onReturnPressed: if (controller.canCapture)
         controller.capture()
     Keys.onEnterPressed: if (controller.canCapture)
         controller.capture()
     Keys.onPressed: event => {
-        if (selectingArea && [Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down].indexOf(event.key) >= 0) {
+        if (activeFocus && selectingArea && [Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down].indexOf(event.key) >= 0) {
             moveSelection(event.key, !!(event.modifiers & Qt.ShiftModifier));
             event.accepted = true;
+        } else {
+            Keyboard.handle(panel, event);
         }
     }
     // Four dimmed pieces leave the selected area transparent.
@@ -200,7 +209,7 @@ Item {
                     text: parent.modelData.title || parent.modelData.app_id || CaptureText.untitledWindow
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
-                    color: LiquidPalette.inkOnLight
+                    color: LiquidPalette.ink
                     font.family: ShellPalette.uiFont
                     font.pixelSize: 14
                 }
@@ -209,7 +218,7 @@ Item {
                 anchors.centerIn: parent
                 visible: windowList.count === 0
                 text: CaptureText.noWindows
-                color: LiquidPalette.inkOnLight
+                color: LiquidPalette.ink
                 font.family: ShellPalette.uiFont
                 font.pixelSize: 14
             }
@@ -285,7 +294,7 @@ Item {
                         SymbolIcon {
                             anchors.horizontalCenter: parent.horizontalCenter
                             name: parent.modelData.icon
-                            ink: LiquidPalette.inkOnLight
+                            ink: LiquidPalette.ink
                             width: 24
                             height: 24
                         }
@@ -317,7 +326,7 @@ Item {
                 visible: text !== ""
                 text: panel.controller.error
                 textFormat: Text.PlainText
-                color: LiquidPalette.dangerOnLight
+                color: LiquidPalette.danger
                 font.family: ShellPalette.uiFont
                 font.pixelSize: 13
                 horizontalAlignment: Text.AlignHCenter

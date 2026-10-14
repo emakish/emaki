@@ -13,13 +13,31 @@ Column {
         width: parent.width
         visible: page.section === "panel"
         title: "Panel"
-        SettingsToggleRow {
+        SettingsChoiceRow {
             catalog: page.catalog
-            settingKey: "bar.autohide"
+            settingKey: "bar.autohide_mode"
             width: parent.width
             title: "Hide the panel automatically"
-            fallbackValue: false
-            explanation: value ? "Move to the top edge to show the panel." : "The panel stays visible above your windows."
+            fallbackValue: "fullscreen"
+            explanation: "Choose when the panel hides. Move to the top edge to show it."
+            options: [
+                {
+                    value: "always",
+                    label: "Always"
+                },
+                {
+                    value: "desktop",
+                    label: "On Desktop Only"
+                },
+                {
+                    value: "fullscreen",
+                    label: "In Full Screen Only"
+                },
+                {
+                    value: "never",
+                    label: "Never"
+                }
+            ]
         }
         SettingsToggleRow {
             catalog: page.catalog

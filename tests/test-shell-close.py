@@ -135,6 +135,13 @@ try:
             assert len({(b['width'], b['height']) for b in bubbles}) == 1, bubbles
             assert bubbles[0]['width'] <= 96, bubbles  # inside its grid cell, off the neighbours
             call('prepare')
+            # Escape steps back one level: the first clears the query and keeps the launcher
+            # (and the other popup) open, the second closes everything.
+            count = json.loads(call('status'))['close_count']
+            call('keyEscape')
+            value = wait(lambda s: s['query_length'] == 0)
+            assert value['launcher'] == 'open' and value['extra_popup_open'], value
+            assert value['close_count'] == count and value['input_focused'], value
             call('keyEscape')
             closed()
             call('race')

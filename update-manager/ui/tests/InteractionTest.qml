@@ -6,10 +6,13 @@ import QtQuick.Controls as C
 import QtTest
 import Quickshell
 import ".." as UI
+import "file:@EMAKI_DATADIR@/shell" as Shell
 
 ShellRoot {
     id: test
     property bool failed: false
+    // The colours checked below are the light ones: choose light, since nothing saved is dark.
+    Component.onCompleted: Shell.SettingsBridge.values = [{key: "appearance.theme", value: "light"}]
     UI.UpdateController { id: updates }
     UI.ProgramsController { id: programs; externalBusy: updates.busy || updates.restorePending }
     UI.RealProgramsController { id: real }
@@ -115,7 +118,9 @@ ShellRoot {
                         && position.y + item.height <= card.height, "the full shelf text fits its card: " + text);
                 }
             }
+            test.check(programs.shelf.length === 3 && programs.shelf.every(row => test.named("shelf-" + row.package) && test.named("shelf-" + row.package).visible), "every shelf package the engine offers has its card, snapguard included");
             test.check(test.named("shelf-install-emaki-sudo-key").text === "Install" && test.named("shelf-install-emaki-sudo-key").enabled
+                && test.named("shelf-install-snapguard").text === "Install" && test.named("shelf-install-snapguard").enabled
                 && test.named("shelf-install-emaki-nvidia").text === "Installed" && !test.named("shelf-install-emaki-nvidia").enabled, "a shelf item installs with one button; an installed one says so");
             test.shot("browse-from-emaki");
             test.activate(test.named("shelf-install-emaki-sudo-key"));

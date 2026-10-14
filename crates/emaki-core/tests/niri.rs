@@ -827,6 +827,35 @@ fn cast_by_the_parent_process_is_marked_without_exposing_pid() {
 }
 
 #[test]
+fn cast_names_its_client_program_and_node_without_exposing_pid() {
+    // Another program capturing the screen is named by its process (here: this test);
+    // the shell's own capture gets no name; a PipeWire cast keeps its node for the shell.
+    let me = std::process::id();
+    let comm = std::fs::read_to_string(format!("/proc/{me}/comm")).unwrap();
+    let fake = Fake::new();
+    let mut observer = fake.observer();
+    ready(&mut observer);
+    let mut other = cast(1, json!({"Output":{"name":"A"}}), true);
+    other["kind"] = json!("WlrScreencopy");
+    other["pid"] = json!(me);
+    other["pw_node_id"] = json!(null);
+    let mut own = other.clone();
+    own["stream_id"] = json!(2);
+    own["pid"] = json!(std::os::unix::process::parent_id());
+    let mut portal = cast(3, json!({"Window":{"id":5}}), true);
+    portal["pid"] = json!(null);
+    fake.event(json!({"CastsChanged":{"casts":[other, own, portal]}}));
+    let view = model_until(&mut observer, |m| m.casts.len() == 3);
+    let casts = &view.model.as_ref().unwrap().casts;
+    assert_eq!(casts[&1].client.as_deref(), Some(comm.trim_end()));
+    assert_eq!(casts[&1].pw_node_id, None);
+    assert!(casts[&2].by_parent && casts[&2].client.is_none());
+    assert_eq!((casts[&3].client.as_deref(), casts[&3].pw_node_id), (None, Some(99)));
+    let json = serde_json::to_string(&view).unwrap();
+    assert!(!json.contains("\"pid\"") && !json.contains(&format!(":{me}")));
+}
+
+#[test]
 fn casts_replace_change_stop_and_never_expose_pid() {
     let fake = Fake::new();
     let mut observer = fake.observer();

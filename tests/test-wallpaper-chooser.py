@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Isolated portal callbacks, local URI validation, catalog and mutation checks."""
 import importlib.util
+import json
+import subprocess
 import os
 import signal
 from pathlib import Path
@@ -10,6 +12,7 @@ import sys
 import tempfile
 import types
 import unittest
+import uuid
 from unittest.mock import patch
 
 import gi
@@ -28,8 +31,9 @@ def load(source=None):
 
 class Portal:
     """Real GLib variants and event loop; no session bus or host service calls."""
-    def __init__(self, module, picture, mode='ready'):
-        self.module, self.picture, self.mode = module, picture, mode
+    def __init__(self, module, picture, mode='ready', title='Choose a wallpaper', mime_types=('image/*',)):
+        self.module, self.picture, self.mode, self.title = module, picture, mode, title
+        self.mime_types = mime_types
         self.callback = None
         self.closed = False
         self.unsubscribed = False
@@ -63,9 +67,9 @@ class Portal:
         assert destination == self.module.PORTAL and path == self.module.ROOT
         assert interface == 'org.freedesktop.portal.FileChooser' and method == 'OpenFile'
         parent, title, options = parameters.unpack()
-        assert parent == '' and title == 'Choose a wallpaper'
+        assert parent == '' and title == self.title, title
         assert options['multiple'] is False and options['directory'] is False
-        assert options['filters'] == [('Pictures', [(1, 'image/*')])]
+        assert options['filters'] == [('Pictures', [(1, mime) for mime in self.mime_types])]
         assert options['handle_token'].startswith('emaki_wallpaper_')
         assert timeout == 5000
 
@@ -109,6 +113,55 @@ def exercise(module, picture, mode):
     assert portal.closed == (mode in ('timeout', 'open-timeout', 'terminate'))
 
 
+def serve_portal(address, mode, picture, record):
+    """A portal process on an isolated daemon, with real request objects/signals."""
+    module = load()
+    flags = Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION
+    bus = Gio.DBusConnection.new_for_address_sync(address, flags, None, None)
+    bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus',
+                  'RequestName', GLib.Variant('(su)', (module.PORTAL, 0)), None,
+                  Gio.DBusCallFlags.NONE, 1000, None)
+    info = Gio.DBusNodeInfo.new_for_xml("""<node>
+      <interface name="org.freedesktop.portal.FileChooser"><method name="OpenFile">
+        <arg type="s" direction="in"/><arg type="s" direction="in"/>
+        <arg type="a{sv}" direction="in"/><arg type="o" direction="out"/>
+      </method></interface>
+      <interface name="org.freedesktop.portal.Request"><method name="Close"/>
+        <signal name="Response"><arg type="u"/><arg type="a{sv}"/></signal>
+      </interface></node>""")
+    registrations = []
+
+    def call(connection, sender, object_path, interface, method, parameters, invocation):
+        if method == 'Close':
+            with open(record, 'a') as stream:
+                stream.write(json.dumps({'closed': object_path}) + '\n')
+            invocation.return_value(None)
+            return
+        parent, title, options = parameters.unpack()
+        path = module.ROOT + '/request/' + sender[1:].replace('.', '_') + '/' + options['handle_token']
+        if mode == 'legacy':
+            path = module.ROOT + '/request/legacy/handle'
+        registrations.append(bus.register_object(path, info.interfaces[1], call, None, None))
+        with open(record, 'a') as stream:
+            stream.write(json.dumps({'parent': parent, 'title': title, 'options': options}) + '\n')
+
+        def emit():
+            bus.emit_signal(sender, path, module.REQUEST, 'Response',
+                            GLib.Variant('(ua{sv})', (1 if mode == 'cancel' else 0,
+                                         {'uris': GLib.Variant('as', [Path(picture).as_uri()])})))
+            return False
+
+        if mode == 'early':
+            emit()
+        invocation.return_value(GLib.Variant('(o)', (path,)))
+        if mode not in ('early', 'timeout'):
+            GLib.timeout_add(10, emit)
+
+    registrations.append(bus.register_object(module.ROOT, info.interfaces[0], call, None, None))
+    print('ready', flush=True)
+    GLib.MainLoop().run()
+
+
 class Chooser(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory(prefix='wallpaper-')
@@ -121,6 +174,75 @@ class Chooser(unittest.TestCase):
         for mode in ('ready', 'early', 'cancel', 'failure', 'call-error', 'multiple', 'remote', 'timeout', 'open-timeout', 'terminate'):
             with self.subTest(mode=mode):
                 exercise(self.module, self.picture, mode)
+
+    def test_real_bus_request_lifecycle(self):
+        daemon = subprocess.Popen(['dbus-daemon', '--session', '--nofork',
+                                   '--address=unix:abstract=emaki-chooser-' + uuid.uuid4().hex, '--print-address=1'],
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(daemon.communicate, timeout=5)
+        self.addCleanup(daemon.terminate)
+        address = daemon.stdout.readline().strip()
+        if not address:
+            _, error = daemon.communicate(timeout=5)
+            self.fail('Private D-Bus failed: ' + error.strip())
+        flags = Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION
+        bus = Gio.DBusConnection.new_for_address_sync(address, flags, None, None)
+        self.addCleanup(bus.close_sync, None)
+        accepted = ('image/png', 'image/jpeg', 'image/webp')
+        for mode in ('ready', 'early', 'legacy', 'cancel', 'timeout'):
+            with self.subTest(mode=mode):
+                record = Path(self.folder.name) / (mode + '.jsonl')
+                server = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--portal-fixture',
+                                           address, mode, str(self.picture), str(record)],
+                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                try:
+                    self.assertEqual(server.stdout.readline().strip(), 'ready')
+                    result = self.module.choose_on_bus(bus, Gio, GLib, 200,
+                                                       'Choose your picture', accepted)
+                    expected = {'cancel': 'cancelled', 'timeout': 'portal_timeout'}.get(mode, 'ready')
+                    self.assertEqual(result['state'], expected)
+                    if expected == 'ready':
+                        self.assertEqual(result['path'], str(self.picture))
+                    calls = [json.loads(line) for line in record.read_text().splitlines()]
+                    self.assertEqual(calls[0]['options']['filters'],
+                                     [['Pictures', [[1, mime] for mime in accepted]]])
+                    self.assertEqual(calls[0]['parent'], '')
+                    self.assertEqual(calls[0]['title'], 'Choose your picture')
+                    self.assertEqual(len(calls), 2 if mode == 'timeout' else 1)
+                    if mode == 'timeout':
+                        self.assertTrue(calls[1]['closed'].endswith(calls[0]['options']['handle_token']))
+                finally:
+                    server.terminate()
+                    server.communicate(timeout=5)
+
+    def test_account_picture_title(self):
+        mime_types = ('image/png', 'image/jpeg', 'image/webp')
+        portal = Portal(self.module, self.picture, title='Choose your picture', mime_types=mime_types)
+        result = self.module.choose_on_bus(portal, Gio, GLib, 20, 'Choose your picture', mime_types)
+        self.assertEqual(result, {'state': 'ready', 'path': str(self.picture)})
+        # The wallpaper keeps its title when none is given (the fixture refuses another title).
+        result = self.module.choose_on_bus(Portal(self.module, self.picture, title='Choose your picture'), Gio, GLib, 20)
+        self.assertEqual(result, {'state': 'portal_failed'})
+        with patch.object(Gio, 'bus_get_sync', return_value='bus'), \
+                patch.object(self.module, 'choose_on_bus', return_value={'state': 'cancelled'}) as chooser:
+            self.module.choose()
+            self.module.choose(title='Choose your picture')
+        self.assertEqual([call.args[4] for call in chooser.call_args_list], ['Choose a wallpaper', 'Choose your picture'])
+
+    def test_private_operations_name_their_chooser(self):
+        paths = types.ModuleType('emaki_paths')
+        chooser = types.ModuleType('wallpaper_chooser')
+        chooser.choose = lambda **options: dict(state='ready', options=options)
+        modules = {'emaki_paths': paths, 'app_scope': types.ModuleType('app_scope'),
+                   'clipboard_store': types.ModuleType('clipboard_store'), 'wallpaper_chooser': chooser}
+        spec = importlib.util.spec_from_file_location('chooser_operations', ROOT / 'shell/helpers/launcher-tools.py')
+        tools = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, modules):
+            spec.loader.exec_module(tools)
+            self.assertEqual(tools.handle({'op': 'wallpaper-choose'}), {'state': 'ready', 'options': {}})
+            self.assertEqual(tools.handle({'op': 'account-picture-choose'}),
+                             {'state': 'ready', 'options': {'title': 'Choose your picture',
+                                                       'mime_types': ('image/png', 'image/jpeg', 'image/webp')}})
 
     def test_missing_session_bus(self):
         with patch.object(Gio, 'bus_get_sync', side_effect=RuntimeError('fixture unavailable')):
@@ -147,7 +269,7 @@ class Chooser(unittest.TestCase):
             ('single-file', "or len(uris) != 1", "or len(uris) < 1", 'multiple'),
             ('remote-host', "value.netloc not in ('', 'localhost')", 'False', 'remote'),
             ('close-timeout', "bus.call_sync(PORTAL, handle or predicted, REQUEST, 'Close', None, None,", "None if True else bus.call_sync(PORTAL, handle or predicted, REQUEST, 'Close', None, None,", 'timeout'),
-            ('request-filter', "[(1, 'image/*')]", "[(0, '*')]", 'ready'),
+            ('request-filter', "[(1, mime) for mime in mime_types]", "[(0, '*')]", 'ready'),
         ]
         original = SOURCE.read_text()
         for name, before, after, mode in mutations:
@@ -195,4 +317,7 @@ class Chooser(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    if len(sys.argv) > 1 and sys.argv[1] == '--portal-fixture':
+        serve_portal(*sys.argv[2:])
+    else:
+        unittest.main()

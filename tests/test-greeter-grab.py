@@ -56,6 +56,7 @@ Scope {
     GreeterSession { id: lockSession; auth: controller; started: false; phase: "handoff"; clock: 4 }
     LockEnvironment { id: lockEnvironment }
     QtObject { id: memory; property string wallpaperRoot: "" }
+    QtObject { id: accountPicture; property string url: "" }
     QtObject {
         id: publishPicture
         property list<string> command: []

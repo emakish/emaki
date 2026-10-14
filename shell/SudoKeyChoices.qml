@@ -63,7 +63,7 @@ Column {
         text: choices.amountError
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
-        color: "#9b1730"
+        color: LiquidPalette.polkitKey
         font.pixelSize: 12
     }
     Text {
@@ -71,7 +71,7 @@ Column {
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         text: "Super+Ctrl+Esc revokes every sudo key"
-        color: "#352522"
+        color: LiquidPalette.polkitInk
         font.pixelSize: 12
     }
     Text {
@@ -80,7 +80,7 @@ Column {
         wrapMode: Text.WordWrap
         visible: !choices.grantAllowed
         text: Copy.keyWarningRequired
-        color: "#352522"
+        color: LiquidPalette.polkitInk
         font.pixelSize: 12
     }
 }

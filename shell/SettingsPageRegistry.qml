@@ -30,6 +30,14 @@ QtObject {
     readonly property var definitions: Array.from(allDefinitions)
     property list<SettingsPageDefinition> allDefinitions: [
         SettingsPageDefinition {
+            pageId: "appearance"
+            keys: ["appearance.theme", "appearance.accent", "appearance.light_time", "appearance.dark_time"]
+            description: "Choose light or dark, automatic hours and an accent colour."
+            component: Component {
+                SettingsAppearancePage { catalog: registry.catalog }
+            }
+        },
+        SettingsPageDefinition {
             pageId: "privacy"
             description: "Review recovery, encryption, sudo keys and remembered portal permissions."
             searchAnchors: ({
@@ -54,7 +62,7 @@ QtObject {
         },
         SettingsPageDefinition {
             pageId: "panel"
-            keys: ["bar.autohide", "bar.overview_workspaces", "dock.on", "dock.auto_hide"]
+            keys: ["bar.autohide_mode", "bar.overview_workspaces", "dock.on", "dock.auto_hide"]
             description: "Choose when the panel and dock appear."
             component: Component {
                 SettingsCorePage {

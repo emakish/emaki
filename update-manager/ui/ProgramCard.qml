@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
+import "file:@EMAKI_DATADIR@/shell" as Shell
 import QtQuick.Layouts
 import QtQuick.Controls as C
 
@@ -16,33 +17,39 @@ C.AbstractButton {
     signal installRequested
     // Never shorter than its content, so the stars row stays inside the card.
     implicitHeight: Math.max(featured ? 104 : 74, topPadding + implicitContentHeight + bottomPadding)
-    padding: featured ? 18 : 12
+    // Set by a narrow window: the large card keeps the small card's icon and puts Install under its text.
+    property bool compact: false
+    padding: featured && !compact ? 18 : 12
     focusPolicy: Qt.StrongFocus
     Keys.onReturnPressed: clicked()
     Keys.onEnterPressed: clicked()
     Accessible.name: program.name || ""
     background: Rectangle {
         radius: card.featured ? 16 : 14
-        color: card.hovered ? Qt.rgba(1, .98, .96, .6) : Qt.rgba(1, .98, .96, .42)
+        color: card.hovered ? Qt.alpha(Shell.ShellPalette.managerCream, .6) : Qt.alpha(Shell.ShellPalette.managerCream, .42)
         gradient: card.featured ? featureGradient : null
         Gradient {
             id: featureGradient
             orientation: Gradient.Horizontal
-            GradientStop { position: 0; color: Qt.rgba(226/255, 115/255, 63/255, card.hovered ? .34 : .26) }
-            GradientStop { position: 1; color: Qt.rgba(1, .98, .96, card.hovered ? .6 : .42) }
+            GradientStop { position: 0; color: Qt.alpha(Shell.ShellPalette.accent, card.hovered ? .34 : .26) }
+            GradientStop { position: 1; color: Qt.alpha(Shell.ShellPalette.managerCream, card.hovered ? .6 : .42) }
         }
-        border.color: card.activeFocus ? "#c2481f" : Qt.rgba(36/255,16/255,24/255,.14)
+        border.color: card.activeFocus ? Shell.ShellPalette.accentForeground : Qt.alpha(Shell.ShellPalette.managerInk, .14)
         border.width: card.activeFocus ? 2 : 1
     }
-    contentItem: RowLayout {
-        spacing: card.featured ? 16 : 12
+    contentItem: GridLayout {
+        columns: card.featured && !card.compact ? 3 : 2
+        columnSpacing: card.featured && !card.compact ? 16 : 12
+        rowSpacing: 10
         ProgramIcon {
             program: card.program
-            Layout.preferredWidth: card.featured ? 68 : 46
-            Layout.preferredHeight: card.featured ? 68 : 46
+            Layout.preferredWidth: card.featured && !card.compact ? 68 : 46
+            Layout.preferredHeight: card.featured && !card.compact ? 68 : 46
             Layout.alignment: Qt.AlignVCenter
+            Layout.row: 0; Layout.column: 0
         }
         ColumnLayout {
+            Layout.row: 0; Layout.column: 1
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignVCenter
             spacing: 2
@@ -57,7 +64,7 @@ C.AbstractButton {
             ManagerLabel {
                 text: card.hint || card.program.summary || ""
                 visible: text !== ""
-                color: "#866c70"
+                color: Shell.ShellPalette.managerDim
                 font.pixelSize: 12
                 maximumLineCount: 1
                 elide: Text.ElideRight
@@ -70,12 +77,13 @@ C.AbstractButton {
                 implicitHeight: Math.max(glyphProbe.implicitHeight, textProbe.implicitHeight)
                 Text { id: glyphProbe; visible: false; text: "★"; font.family: "Noto Sans Symbols 2, Noto Sans"; font.pixelSize: 13 }
                 Text { id: textProbe; visible: false; text: "4.6"; font.family: "Noto Sans"; font.pixelSize: 12 }
-                Stars { objectName: "card-rating"; anchors.verticalCenter: parent.verticalCenter; rating: card.hint ? null : card.program.rating || null; showShortCount: card.featured }
+                Stars { objectName: "card-rating"; anchors.verticalCenter: parent.verticalCenter; rating: card.hint ? null : card.program.rating || null; showShortCount: card.featured; maximumWidth: parent.width }
             }
         }
         ManagerButton {
             objectName: "featured-install"
             visible: card.featured
+            Layout.row: card.featured && !card.compact ? 0 : 1; Layout.column: card.featured && !card.compact ? 2 : 1
             text: card.program.installed ? "Installed" : "Install"
             primary: !card.program.installed
             enabled: !card.program.installed && card.installEnabled

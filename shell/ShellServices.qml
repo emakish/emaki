@@ -10,6 +10,8 @@ Scope {
     required property NiriService niri
     property bool live: false
     property bool panelOpen: false
+    // The PipeWire node of the shell's own screen recording (CaptureService; -1: none).
+    property int captureNode: -1
     readonly property alias settings: settings
     readonly property alias settingsController: settingsController
     readonly property alias dockStore: dockStore

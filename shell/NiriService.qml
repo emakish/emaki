@@ -133,15 +133,20 @@ Scope {
         const workspace = workspaces.find(w => w.output === outputName && w.is_active);
         if (!output || !workspace)
             return "unknown";
-        // niri 26.04 fills tile_pos_in_workspace_view only for floating tiles (layout/scrolling.rs
-        // leaves the template's None), so a position is never required here. A fullscreen tile is
-        // at least the output's logical size (Tile::tile_size clamps to view_size); nothing else is.
+        // Fullscreen tiles cover the output, or the area below the fullscreen inset marker.
+        // The fork reports a scrolling tile position only for fullscreen tiles; ordinary
+        // maximized tiles retain no position. The horizontal position may move in animations.
+        // A client may retain its previous larger size until it commits the inset resize.
         const shown = windows.filter(w => w.workspace_id === workspace.id);
         for (const w of shown) {
             const size = w.layout?.tile_size;
             if (!size)
                 return "unknown";
             if (size[0] >= output.width - 1 && size[1] >= output.height - 1)
+                return "covered";
+            const position = w.layout.tile_pos_in_workspace_view;
+            const scrolling = w.layout.pos_in_scrolling_layout;
+            if (!w.is_floating && scrolling && position && Number.isFinite(position[1]) && position[1] > 0 && Number.isFinite(size[1]) && size[1] > 0 && Math.abs(size[0] - output.width) <= 1 && size[1] + position[1] >= output.height - 1)
                 return "covered";
         }
         return "clear";

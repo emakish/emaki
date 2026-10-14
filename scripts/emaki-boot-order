@@ -13,6 +13,7 @@ import sys
 
 MARKER = Path('/var/lib/emaki/alongside-boot.json')
 PENDING = Path('/var/lib/emaki/boot-refresh-pending')
+FSTAB = Path('/etc/fstab')
 GUID = r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}'
 # Some firmware stores the full hardware path before the partition node.
 HARDWARE = r'(?:(?!(?:HD|File)\()[A-Za-z][A-Za-z0-9]*\([^()\t]*\)/)*'
@@ -98,6 +99,24 @@ def command(arguments):
                           env={'PATH': os.defpath, 'LC_ALL': 'C'}).stdout
 
 
+def alongside_evidence():
+    """A lost record cannot make a shared ESP look unshared.
+
+    The boot refresh's shared-ESP evidence without its /efi listing: FAT
+    permissions can hide that directory from the user who asks for status.
+    """
+    stop = MARKER.with_name('shared-esp-stop.json')
+    if MARKER.is_symlink() or stop.exists() or stop.is_symlink():
+        return True
+    if FSTAB.exists():
+        for line in FSTAB.read_text().splitlines():
+            row = line.split()
+            if (len(row) >= 4 and not row[0].startswith('#') and row[1] == '/efi'
+                    and 'ro' in row[3].split(',')):
+                return True
+    return False
+
+
 def windows_entry(output, partuuid):
     # The installed and installer menus use this same firmware parser.
     sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
@@ -171,7 +190,7 @@ def recover(partuuid, vendor, run=command, repair=False, menu=None):
     if not vendor.strip():
         raise ValueError('unknown_firmware_vendor')
     before = run(['efibootmgr', '-v'])
-    def result(state, changed, **extra):
+    def result(state, changed, inventory=before, **extra):
         # Menu reads, resolution and scheduling follow firmware recovery. They must
         # never prevent the order repair or turn a completed repair into a refusal.
         value = {'state': state, 'changed': changed, **extra}
@@ -183,20 +202,24 @@ def recover(partuuid, vendor, run=command, repair=False, menu=None):
                     text = menu
                     if isinstance(menu, Path):
                         text = menu.read_text() if menu.exists() else ''
-                    value['menu'] = refresh_windows_menu(before, partuuid, text, repair)
+                    value['menu'] = refresh_windows_menu(inventory, partuuid, text, repair)
             except (OSError, ValueError, subprocess.SubprocessError):
                 value['menu'] = 'refresh_failed'
         return value
     if 'apple' in vendor.casefold():
         return result('manual_recovery', False, reason='apple_firmware')
-    old, new, activate = recovery_plan(before, partuuid)
+    try:
+        old, new, activate = recovery_plan(before, partuuid)
+    except ValueError as error:
+        return result('refused', False, reason=str(error))
     if old == new and not activate:
         return result('ready', False)
     if not repair:
         return result('recovery_available', False)
     # Re-read immediately before mutation: a changed firmware inventory invalidates the plan.
-    if run(['efibootmgr', '-v']) != before:
-        raise ValueError('firmware_changed')
+    current = run(['efibootmgr', '-v'])
+    if current != before:
+        return result('refused', False, inventory=current, reason='firmware_changed')
     try:
         if activate:
             run(['efibootmgr', '-b', new[0], '-a'])
@@ -223,11 +246,19 @@ def main():
     try:
         if args.repair and os.geteuid() != 0:
             raise ValueError('root_required')
-        partuuid = read_marker()
-        vendor = Path('/sys/class/dmi/id/sys_vendor').read_text()
-        # Every generation prefers this canonical menu; refresh recreates it if absent.
-        result = recover(partuuid, vendor, repair=args.repair, menu=Path('/boot/grub/grub.cfg'))
-        code = 1 if result['state'] == 'recovery_uncertain' else 0
+        try:
+            partuuid = read_marker()
+        except FileNotFoundError:
+            if alongside_evidence():
+                result = {'state': 'refused', 'changed': False,
+                          'reason': 'missing_installation_record'}
+            else:
+                result = {'state': 'not_alongside', 'changed': False}
+        else:
+            vendor = Path('/sys/class/dmi/id/sys_vendor').read_text()
+            # Every generation prefers this canonical menu; refresh recreates it if absent.
+            result = recover(partuuid, vendor, repair=args.repair, menu=Path('/boot/grub/grub.cfg'))
+        code = 1 if result['state'] in ('refused', 'recovery_uncertain') else 0
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         result = {'state': 'refused', 'changed': False, 'reason': str(error)}
         code = 1

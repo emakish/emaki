@@ -82,7 +82,7 @@ with tempfile.TemporaryDirectory(prefix='settings-desktop-') as temporary:
         ('wallpaper-reset', 'SettingsWallpaperPage.qml',
          'page.catalog.reset("appearance.wallpaper")',
          'page.catalog.reset("appearance.gaps")'),
-        ('portal-cancel', 'SettingsWallpaperPage.qml',
+        ('portal-cancel', 'SettingsCatalog.qml',
          'result.state === "ready"',
          '(result.state === "ready" || result.state === "cancelled")'),
     ]

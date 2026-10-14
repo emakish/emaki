@@ -9,6 +9,14 @@ import "Timezones.js" as Timezones
 
 Item {
     id: view
+    // The installer keeps its light look: its text uses the light inks, while the panels come
+    // from the shell palette, whose theme is dark when nothing is saved (the live system).
+    Component.onCompleted: Shell.SettingsBridge.values = [
+        {
+            key: "appearance.theme",
+            value: "light"
+        }
+    ]
     required property InstallerController controller
     property bool inlineNetworkJoinMessage: false
     signal hideRequested
@@ -531,6 +539,7 @@ Item {
         }
     }
     GlassPane {
+        objectName: "installerPanel"
         anchors.fill: parent
         wallpaperTexture: view.wallpaperTexture
     }
@@ -546,6 +555,7 @@ Item {
         }
     }
     RowLayout {
+        objectName: "installerLayout"
         anchors.fill: parent
         anchors.margins: view.height < 600 ? 18 : 28
         spacing: 30

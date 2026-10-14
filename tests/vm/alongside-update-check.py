@@ -209,16 +209,106 @@ def update(guest, label, expect_refusal):
     return output
 
 
+# Boot jobs the evidence waits for, in groups. Each group's budget starts when the
+# group before it has finished. The snapshot menu runs after boot completion and the
+# boot loader retry (up to five minutes) and has its own five-minute timeout; it
+# rewrites grub.cfg, so the boot journal and menu are read only after it ends.
+BOOT_SERVICES = ((('emaki-update-boot.service', 'emaki-boot-complete.service'), 420),
+                 (('emaki-snapshot-menu.service',), 630))
+
+
+def wait_boot_services(guest, groups=BOOT_SERVICES):
+    """Observe the boot jobs finishing; SSH can precede the usable-session trial.
+
+    A never-started inactive unit is not completion. A recorded condition skip is
+    valid on boots without a loader candidate or pending update. Do not start the
+    units here: that could repeat acceptance after the original boot job finished.
+    """
+    outcomes = {}
+    for units, seconds in groups:
+        end = time.monotonic() + seconds
+        for unit in units:
+            outcomes[unit] = wait_boot_service(guest, unit, end)
+    return outcomes
+
+
+def wait_boot_service(guest, unit, end):
+    """'completed' or 'skipped'; a failed, missing or unfinished unit raises."""
+    properties = ('LoadState,ActiveState,Result,ExecMainStatus,'
+                  'ExecMainExitTimestampMonotonic,ConditionResult,ConditionTimestampMonotonic')
+    state = {}
+    while time.monotonic() < end:
+        result = guest.sudo('systemctl show ' + unit + ' --property=' + properties,
+                            timeout=min(20, max(1, end - time.monotonic())))
+        state = dict(line.split('=', 1) for line in result.stdout.decode().splitlines()
+                     if '=' in line)
+        if state.get('LoadState') != 'loaded' or state.get('ActiveState') == 'failed':
+            raise RuntimeError(f'boot service {unit} failed: {state}')
+        if state.get('ActiveState') == 'inactive':
+            skipped = (state.get('ConditionResult') == 'no'
+                       and int(state.get('ConditionTimestampMonotonic', '0')) > 0)
+            exited = int(state.get('ExecMainExitTimestampMonotonic', '0')) > 0
+            if skipped:
+                return 'skipped'
+            if exited:
+                if state.get('Result') != 'success' or state.get('ExecMainStatus') != '0':
+                    raise RuntimeError(f'boot service {unit} failed: {state}')
+                return 'completed'
+        time.sleep(min(1, max(0, end - time.monotonic())))
+    raise RuntimeError(f'timed out waiting for boot service {unit}: {state}')
+
+
+def boot_status(guest):
+    return guest.sudo('cat /proc/cmdline; findmnt -no OPTIONS /efi; systemctl --failed --no-legend; '
+                      'journalctl -b -o cat -u emaki-update-boot -u emaki-boot-complete '
+                      '-u emaki-boot-order -u emaki-snapshot-menu -u emaki-boot-refresh --no-pager',
+                      check=False)
+
+
+def acceptance_state(outcome, journal):
+    """What `emaki-update-boot accept` decided: it exits 0 whether or not it accepted."""
+    if outcome == 'skipped':
+        return 'not_required'
+    # Its own messages carry a prefix; the last decision of the boot counts.
+    for line in reversed(journal.splitlines()):
+        message = line.removeprefix('Update boot protection: ')
+        if message == 'The updated boot was accepted.':
+            return 'accepted'
+        if message.startswith('Acceptance timed out'):
+            return 'timed_out'
+        if message.startswith('Acceptance deferred'):
+            return 'deferred'
+    return 'unconfirmed'
+
+
 def wait_boot(guest, label):
     guest.wait(USER, 600)
+    try:
+        outcomes = wait_boot_services(guest)
+    except Exception as error:
+        # Keep the boot journal of a failed wait, even if the guest stops answering.
+        evidence = (str(error) + '\n').encode()
+        try:
+            status = boot_status(guest)
+            evidence += status.stdout + status.stderr
+        except Exception as capture_error:
+            evidence += f'Boot journal capture failed: {capture_error}\n'.encode()
+        record(guest.vm, f'boot-{label}-failed.txt', evidence)
+        raise
+    trial = guest.sudo('journalctl -b -o cat -u emaki-update-boot --no-pager', check=False)
+    record(guest.vm, f'boot-{label}-update.txt', trial.stdout + trial.stderr)
+    acceptance = acceptance_state(outcomes['emaki-update-boot.service'],
+                                  trial.stdout.decode(errors='replace') if trial.returncode == 0 else '')
+    record(guest.vm, f'boot-{label}-acceptance.json', json.dumps({'state': acceptance}) + '\n')
+    print('Updated boot acceptance: ' + acceptance, flush=True)
     guest.shot(label)
-    status = guest.sudo('cat /proc/cmdline; findmnt -no OPTIONS /efi; systemctl --failed --no-legend; '
-                        'journalctl -b -o cat -u emaki-update-boot -u emaki-boot-complete '
-                        '-u emaki-boot-order -u emaki-snapshot-menu -u emaki-boot-refresh --no-pager | tail -40',
-                        check=False)
+    status = boot_status(guest)
     record(guest.vm, f'boot-{label}.txt', status.stdout + status.stderr)
     # windows-grub picks its entry from the menu of the latest boot.
     record(guest.vm, 'grub.cfg', guest.sudo('cat /boot/grub/grub.cfg').stdout)
+    if acceptance == 'timed_out':
+        # The next boot would return to the previous system.
+        raise RuntimeError('FAIL: the updated boot was not accepted: no session stayed usable')
 
 
 def menu_lines(frame):

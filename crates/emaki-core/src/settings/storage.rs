@@ -431,6 +431,7 @@ fn apply(
         return Ok(("unchanged", "settings_unchanged", None));
     }
     input::guard_personal(profile, original, desired)?;
+    desired.validate_appearance()?;
     input::validate(desired)?;
     desired.generation = Some(id());
     let files = desired.files(gaps);
@@ -655,7 +656,15 @@ pub(super) fn run(
         }
         Operation::Reset { key } => {
             // Same commit path and journal as set: a set entry whose after is null.
-            document.clear(key)?;
+            if key == "appearance" {
+                // The page owns these four keys; gaps and wallpaper belong elsewhere.
+                // Clear the schedule together before validating its distinct times.
+                for key in [THEME, ACCENT, LIGHT_TIME, DARK_TIME] {
+                    document.clear(key)?;
+                }
+            } else {
+                document.clear(key)?;
+            }
             (status, reason, change_id) = apply(
                 &profile,
                 &mut journal,

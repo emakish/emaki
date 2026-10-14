@@ -69,11 +69,11 @@ Item {
     width: 250
     height: 54
 
-    // Ink: always the light glass, whatever lies underneath (2026-09-27).
-    readonly property color ink: LiquidPalette.inkOnLight
-    readonly property color dim: LiquidPalette.dimOnLight
-    readonly property color faint: LiquidPalette.faintOnLight
-    readonly property color accent: LiquidPalette.accentOnLight
+    // Ink follows the selected theme independently of the backdrop.
+    readonly property color ink: LiquidPalette.ink
+    readonly property color dim: LiquidPalette.plateDim
+    readonly property color faint: LiquidPalette.faint
+    readonly property color accent: LiquidPalette.accent
 
     Rectangle {
         visible: !osd.glassReady

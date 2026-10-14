@@ -7,10 +7,54 @@ import "Keyboard.js" as Keyboard
 
 Item {
     id: bar
+    y: policy.barVisible ? 0 : -60
+    Behavior on y {
+        enabled: !bar.skipIntro
+        NumberAnimation {
+            duration: bar.policy.slideDurationMs
+            easing.type: Easing.OutCubic
+        }
+    }
     property bool keyboardBoundary: false
+    property Item privacyItem: null
+    signal privacyClicked
     signal leaveKeyboard
+    // The cell whose panel Escape just closed (ShellScene.keyboardBack). The bar's surface is
+    // activated only after that panel has gone, and Surfaces calls takeFocus() again then:
+    // until the cell really holds the keyboard there, every takeFocus() lands on it. While it
+    // is hidden (the logo under the closing launcher) the first cell holds the keyboard and
+    // hands it on once the cell is back. Moving away from that stand-in, or returnUntil
+    // (ms since epoch) passing, ends the wait.
+    property Item returnItem: null
+    property real returnUntil: 0
+    property Item returnHeld: null
     function takeFocus(): void {
-        Keyboard.focusFirst(bar);
+        if (returnItem && Keyboard.targets(bar).includes(returnItem)) {
+            Keyboard.reveal(returnItem);
+            returnItem.forceActiveFocus(Qt.TabFocusReason);
+            returnHeld = returnItem;
+        } else {
+            returnHeld = Keyboard.focusFirst(bar);
+        }
+    }
+    // The focused cell's label (a system cell: its key), for status().
+    function keyboardName(): string {
+        return Keyboard.name(keyboardItem);
+    }
+    // ShellScene's frame timer asks while returnItem is set; false once nothing is left to do.
+    function settleReturn(): bool {
+        if (!returnItem)
+            return false;
+        const window = bar.Window.window;
+        const item = keyboardItem;
+        if (!keyboardBoundary || Date.now() > returnUntil || item === returnItem || (item && item !== returnHeld)) {
+            returnItem = null;
+            returnHeld = null;
+            return false;
+        }
+        if (window && window.active && returnHeld !== returnItem && Keyboard.targets(bar).includes(returnItem))
+            takeFocus();
+        return true;
     }
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Escape) {
@@ -25,10 +69,13 @@ Item {
         const item = Window.window ? Window.window.activeFocusItem : null;
         return keyboardBoundary && item && Keyboard.boundary(item) === bar ? item : null;
     }
+    // The privacy pill draws its own hover drop for the keyboard (PrivacyPill.keyboardFocused):
+    // this ring, square on a round pill and under it, showed only as dark corner arcs.
+    readonly property bool privacyFocused: keyboardItem !== null && keyboardItem === privacyTarget
     FocusRing {
         anchors.fill: undefined
-        shown: bar.keyboardItem !== null
-        readonly property rect targetRect: bar.keyboardItem ? bar.keyboardItem.mapToItem(bar, 0, 0, bar.keyboardItem.width, bar.keyboardItem.height) : Qt.rect(0, 0, 0, 0)
+        shown: bar.keyboardItem !== null && !bar.privacyFocused
+        readonly property rect targetRect: bar.keyboardItem ? bar.keyboardItem.parent.mapToItem(bar, bar.keyboardItem.x, bar.keyboardItem.y, bar.keyboardItem.width, bar.keyboardItem.height) : Qt.rect(0, 0, 0, 0)
         x: targetRect.x
         y: targetRect.y
         width: targetRect.width
@@ -165,6 +212,19 @@ Item {
         panelPresent: bar.systemPresent
         shift: bar.shift
         onClicked: page => bar.systemClicked(page)
+    }
+    KeyboardTarget {
+        id: privacyTarget
+        anchors.fill: undefined
+        ring: false
+        visible: bar.privacyItem !== null && bar.privacyItem.visible
+        // The pill and bar share the scene parent; keep layout changes reactive.
+        x: bar.privacyItem ? bar.privacyItem.x - bar.x : 0
+        y: bar.privacyItem ? bar.privacyItem.y - bar.y : 0
+        width: bar.privacyItem ? bar.privacyItem.width : 0
+        height: bar.privacyItem ? bar.privacyItem.height : 0
+        label: "Privacy"
+        onActivated: bar.privacyClicked()
     }
     GlassText {
         liquid: bar.wallpaper?.ready === true

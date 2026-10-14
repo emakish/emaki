@@ -253,8 +253,13 @@ class PowerPage(unittest.TestCase):
             base = Path(temporary)
             shutil.copytree(ROOT / 'shell/settings', base / 'settings')
             shutil.copy(ROOT / 'shell/SettingsPowerPage.qml', base / 'SettingsPowerPage.qml')
-            (base / 'qmldir').write_text('singleton ShellPalette 1.0 ShellPalette.qml\nSettingsPowerPage 1.0 SettingsPowerPage.qml\nSystemService 1.0 SystemService.qml\n')
-            (base / 'ShellPalette.qml').write_text('pragma Singleton\nimport QtQuick\nQtObject { property string uiFont: "sans-serif" }')
+            # SettingsTheme reads its colours from the real palette, which needs the
+            # appearance chain (GOTCHAS 2026-10-14 "Palette fixtures need the appearance dependency chain").
+            for name in ('ShellPalette.qml', 'Appearance.qml', 'AppearanceLogic.js', 'SettingsBridge.qml'):
+                shutil.copy(ROOT / 'shell' / name, base / name)
+            (base / 'qmldir').write_text('singleton ShellPalette 1.0 ShellPalette.qml\nsingleton Appearance 1.0 Appearance.qml\n'
+                                         'singleton SettingsBridge 1.0 SettingsBridge.qml\nSettingsPowerPage 1.0 SettingsPowerPage.qml\n'
+                                         'SystemService 1.0 SystemService.qml\n')
             (base / 'SystemService.qml').write_text('import QtQuick\nQtObject { property var profiles: ({state:"ready",profiles:["balanced"],current:"balanced"}); property string actionState: "idle"; property int actionSerial: 0; function act(kind,value) { actionSerial++; actionState = "pending"; return true; } }')
             (base / 'shell.qml').write_text('''import QtQuick
 import Quickshell

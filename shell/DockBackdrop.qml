@@ -50,7 +50,16 @@ Item {
     readonly property vector4d sharpBounds: sharedSharp ? Qt.vector4d(sharpRect.x + .5 / imageWidth, sharpRect.y + .5 / imageHeight, sharpRect.x + sharpRect.z - .5 / imageWidth, sharpRect.y + sharpRect.w - .5 / imageHeight) : Qt.vector4d(0, 0, 1, 1)
     readonly property Item clear: clearV
     readonly property Item regular: regularV
-    readonly property bool ready: (frozenSource !== null ? frozenReady && frozenSource.status === Image.Ready : capturing ? capture.hasContent : still.status === Image.Ready) && shadersReady
+    readonly property bool ready: (frozenSource !== null ? frozenReady && frozenSource.status === Image.Ready : capturing ? captureSettled : still.status === Image.Ready) && shadersReady
+    // A fresh capture is used only after its content has been through two frames of this
+    // window. On the GPU path the frame that first reported content drew the glass over the
+    // capture's first, unsettled textures: a doubled bright rim and the cell's icon streaked
+    // across the drop for one frame when a click opened a panel (0.8.1). Until then the owner draws its
+    // wallpaper fallback, as it already does before the first frame arrives.
+    readonly property int settleFrames: 2
+    property int contentFrames: 0
+    readonly property bool captureSettled: capture.hasContent && contentFrames >= settleFrames
+    onActiveChanged: contentFrames = 0
     readonly property bool shadersReady: halfPass.status !== ShaderEffect.Error && quarterPass.status !== ShaderEffect.Error && clearHPass.status !== ShaderEffect.Error && clearVPass.status !== ShaderEffect.Error && regularHPass.status !== ShaderEffect.Error && regularVPass.status !== ShaderEffect.Error
     // Mockup: Clear blur is σ 9 texels of a 1280-wide map of the wallpaper; the wallpaper
     // covers the screen, so σ is 9/1280 of the screen width. Regular is σ 30 logical px.
@@ -92,6 +101,12 @@ Item {
         captureSource: backdrop.capturing && backdrop.active ? backdrop.screen : null
         live: backdrop.capturing && backdrop.active
         paintCursor: false
+        onHasContentChanged: backdrop.contentFrames = 0
+    }
+    // Counts the frames after the capture's first content; runs only while it settles.
+    FrameAnimation {
+        running: backdrop.capturing && capture.hasContent && backdrop.contentFrames < backdrop.settleFrames
+        onTriggered: ++backdrop.contentFrames
     }
     ShaderEffectSource {
         id: captureSource

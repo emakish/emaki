@@ -12,8 +12,12 @@ ShellRoot {
     readonly property alias catalog: catalog
     readonly property alias service: service
     readonly property alias niri: niri
-    QtObject {
+    SettingsCatalog {
         id: catalog
+        active: false
+        // Keep the real chooser and its setter chain; only core storage is a fixture.
+        function send(action, args) {
+        }
         readonly property bool writing: busy
         property bool busy: false
         property bool rejectNext: false
@@ -27,9 +31,9 @@ ShellRoot {
         property var history: []
         property var values: [
             {
-                key: "bar.autohide",
-                value: false,
-                default: false
+                key: "bar.autohide_mode",
+                value: "fullscreen",
+                default: "fullscreen"
             },
             {
                 key: "bar.overview_workspaces",

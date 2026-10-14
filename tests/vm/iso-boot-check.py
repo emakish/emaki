@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -35,8 +36,41 @@ def map_state_commands(page):
     entries, problems = system_map.components(page, SYSTEM_MAP)
     if problems or not entries:
         raise ValueError('; '.join(problems) or f'no system-map blocks in {SYSTEM_MAP}')
-    return [(entry['component'], command) for entry in entries
-            if (command := system_map.state_command(entry))]
+    commands = []
+    for entry in entries:
+        command = system_map.state_command(entry)
+        if command is None:
+            continue
+        # Map states are simple CLI calls separated by semicolons. Keep quoted
+        # arguments intact and check each JSON document with its own exit code.
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=';')
+        lexer.whitespace_split = True
+        lexer.commenters = ''
+        parts = [[]]
+        for token in lexer:
+            if token == ';':
+                parts.append([])
+            else:
+                parts[-1].append(token)
+        if any(not part for part in parts):
+            raise ValueError(f'empty state command for {entry["component"]}')
+        for index, part in enumerate(parts, 1):
+            name = entry['component'] + (f'-{index}' if index > 1 else '')
+            commands.append((name, shlex.join(part)))
+    return commands
+
+
+def session_command(command):
+    return f'{SESSION_ENV} {command}'
+
+
+def map_answer(component, output, alongside):
+    if not json_answer(output):
+        return False
+    if component == 'alongside-test-boot-safety':
+        answer = json.loads(output)
+        return isinstance(answer, dict) and (answer.get('state') == 'not_alongside') == (not alongside)
+    return True
 
 
 def json_answer(output):
@@ -283,7 +317,8 @@ def main():
                 stream.write(f'\n{error}\n')
         if status(commands is not None, 'map state commands: installed map readable'):
             for component, command in commands:
-                check(f'map-state-{component}', f'{SESSION_ENV} {command}', predicate=json_answer)
+                check(f'map-state-{component}', session_command(command),
+                      predicate=lambda output: map_answer(component, output, config['mode'] == 'alongside'))
         for key, command in rules_commands():
             result = remote(f'{SESSION_ENV} {command}')
             (run / f'rules-{key}.log').write_bytes(result.stdout + result.stderr)

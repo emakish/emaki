@@ -1,0 +1,102 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Frozen 0.8.0 policy from 78b918a; only the repository header is added.
+pragma ComponentBehavior: Bound
+import QtQuick
+
+// Visibility, reserve and edge dwell timers of the dock.
+Item {
+    id: policy
+    property bool on: true
+    property bool autoHide: true
+    property bool overview: false
+    property string presentation: "unknown"
+    property bool keyboardActive: false
+    property bool popupOpen: false
+    property bool dragging: false
+    property bool pointerInside: false
+    property bool edgeHovered: false
+    property bool revealed: false
+    // 11 px margin + 66 px plate: the 84 px bubble (bottom 75 px below the plate top) ends
+    // 2 px above the screen edge (2026-09-25; mockup 74).
+    readonly property int thickness: 77
+    readonly property bool fullscreen: presentation === "covered"
+    // The edge remains reachable over fullscreen windows, including a pinned dock.
+    readonly property bool edgeEnabled: on && (autoHide || fullscreen) && !overview
+    // Overview and fullscreen slide the dock away in the mockup regardless of auto-hide.
+    readonly property bool dockVisible: on && (!overview || keyboardActive) && (keyboardActive || (!autoHide && !fullscreen) || revealed || popupOpen || dragging)
+    readonly property int reserve: on && !autoHide ? thickness : 0
+    function scheduleHide(): void {
+        if (!keyboardActive && !popupOpen && !dragging && !pointerInside && !edgeHovered)
+            hideDelay.restart();
+    }
+    onEdgeHoveredChanged: {
+        if (edgeHovered && edgeEnabled) {
+            hideDelay.stop();
+            revealDelay.restart();
+        } else {
+            revealDelay.stop();
+            scheduleHide();
+        }
+    }
+    onPointerInsideChanged: {
+        if (pointerInside)
+            hideDelay.stop();
+        else
+            scheduleHide();
+    }
+    onKeyboardActiveChanged: {
+        if (keyboardActive)
+            hideDelay.stop();
+        else
+            scheduleHide();
+    }
+    onPopupOpenChanged: {
+        if (popupOpen)
+            hideDelay.stop();
+        else
+            scheduleHide();
+    }
+    onDraggingChanged: {
+        if (dragging)
+            hideDelay.stop();
+        else
+            scheduleHide();
+    }
+    onEdgeEnabledChanged: {
+        if (edgeEnabled && edgeHovered)
+            revealDelay.restart();
+        else
+            revealDelay.stop();
+    }
+    function resetReveal(): void {
+        revealed = false;
+        hideDelay.stop();
+        revealDelay.stop();
+        if (edgeEnabled && edgeHovered)
+            revealDelay.restart();
+    }
+    onFullscreenChanged: {
+        if (fullscreen)
+            resetReveal();
+    }
+    onOverviewChanged: resetReveal()
+    onAutoHideChanged: resetReveal()
+    onOnChanged: resetReveal()
+    Timer {
+        id: revealDelay
+        interval: 100
+        onTriggered: {
+            if (policy.edgeEnabled && policy.edgeHovered)
+                policy.revealed = true;
+        }
+    }
+    Timer {
+        id: hideDelay
+        interval: 100
+        onTriggered: {
+            if (!policy.keyboardActive && !policy.popupOpen && !policy.dragging && !policy.pointerInside && !policy.edgeHovered)
+                policy.revealed = false;
+        }
+    }
+}

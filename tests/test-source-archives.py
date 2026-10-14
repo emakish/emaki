@@ -145,6 +145,30 @@ class Archives(unittest.TestCase):
         run('cargo', 'run', '--frozen', cwd=root / 'src/niri-1.0',
             env=dict(os.environ, CARGO_HOME=str(self.base / 'empty-cargo'), CARGO_NET_OFFLINE='true'))
 
+    def test_snapguard_release_checkout_survives_deleting_original_store(self):
+        recipe = self.recipe('snapguard')
+        origin = self.base / 'origin-snapguard'
+        origin.mkdir()
+        (origin / 'snapshot-guard.py').write_text('guard\n')
+        commit = git_commit(origin)
+        run('git', 'clone', '-q', '--shared', str(origin), str(self.src / 'snapguard'))
+        archive = source.archive(recipe, self.src, self.out, self.commit, '0.3.0-1')
+        self.assertEqual(json.loads((self.out / 'SOURCES.json').read_text())['packages']['snapguard']['archive'],
+                         'snapguard-0.3.0-1.sources.tar.gz')
+        shutil.rmtree(self.src)
+        shutil.rmtree(origin)
+        checkout = self.unpack(archive) / 'src/snapguard'
+        self.assertEqual(run('git', '-C', str(checkout), 'rev-parse', 'HEAD'), commit)
+        run('git', '-C', str(checkout), 'fsck', '--full')
+        self.assertEqual((checkout / 'snapshot-guard.py').read_text(), 'guard\n')
+
+    def test_snapguard_without_its_release_checkout_is_rejected(self):
+        recipe = self.recipe('snapguard')
+        (self.src / 'snapguard').mkdir()
+        (self.src / 'snapguard/snapshot-guard.py').write_text('guard\n')
+        with self.assertRaisesRegex(ValueError, 'missing prepared source: snapguard/.git'):
+            source.archive(recipe, self.src, self.out, self.commit, '0.3.0-1')
+
     def test_missing_second_portal_source_is_rejected(self):
         recipe = self.recipe('xdg-desktop-portal-gnome-emaki')
         (self.src / 'xdg-desktop-portal-gnome').mkdir()

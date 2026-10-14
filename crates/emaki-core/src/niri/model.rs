@@ -63,6 +63,20 @@ pub struct Cast {
     /// The consumer is the process that launched this core — the shell capturing the
     /// screen for its own glass. Compared here so the PID itself never leaves the core.
     pub by_parent: bool,
+    /// The PipeWire node a portal or D-Bus screencast streams to; the shell finds the
+    /// program reading it there.
+    pub pw_node_id: Option<u32>,
+    /// The process name (comm) of a wlr-screencopy consumer other than the shell, read
+    /// here so the PID never leaves the core. PipeWire casts have no PID in niri 26.04.
+    pub client: Option<String>,
+}
+
+/// The kernel's short name of a process, if it still exists and the name is printable.
+fn process_name(pid: i32) -> Option<String> {
+    let pid = u32::try_from(pid).ok().filter(|pid| *pid > 0)?;
+    let name = std::fs::read_to_string(format!("/proc/{pid}/comm")).ok()?;
+    let name = name.trim_end_matches('\n');
+    (!name.is_empty() && name.chars().all(|c| !c.is_control())).then(|| name.to_owned())
 }
 impl From<niri_ipc::Cast> for Cast {
     fn from(c: niri_ipc::Cast) -> Self {
@@ -71,6 +85,9 @@ impl From<niri_ipc::Cast> for Cast {
             niri_ipc::CastTarget::Output { name } => ("output", Some(name), None),
             niri_ipc::CastTarget::Window { id } => ("window", None, Some(id)),
         };
+        let by_parent = c
+            .pid
+            .is_some_and(|pid| u32::try_from(pid).ok() == Some(std::os::unix::process::parent_id()));
         Self {
             stream_id: c.stream_id,
             session_id: c.session_id,
@@ -82,9 +99,9 @@ impl From<niri_ipc::Cast> for Cast {
             output,
             window_id,
             is_active: c.is_active,
-            by_parent: c.pid.is_some_and(|pid| {
-                u32::try_from(pid).ok() == Some(std::os::unix::process::parent_id())
-            }),
+            by_parent,
+            pw_node_id: c.pw_node_id,
+            client: if by_parent { None } else { c.pid.and_then(process_name) },
         }
     }
 }

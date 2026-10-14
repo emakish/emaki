@@ -98,6 +98,8 @@ def desktop_quote(text):
     return '"'+str(text).replace('%','%%').replace('\\','\\\\').replace('"','\\"').replace('`','\\`').replace('$','\\$')+'"'
 
 def terminal(request):
+    uris=request.get('uris', [])
+    if not isinstance(uris,list) or any(not isinstance(uri,str) or '\x00' in uri for uri in uris): raise Refused('invalid_uris')
     Gio, GLib=gio()
     ident=request.get('id','')
     if not isinstance(ident,str) or '/' in ident or len(ident)>512: raise Refused('invalid_desktop_id')
@@ -119,7 +121,7 @@ def terminal(request):
     key.set_boolean('Desktop Entry','Terminal',False)
     key.set_boolean('Desktop Entry','DBusActivatable',False)
     launch=Gio.DesktopAppInfo.new_from_keyfile(key)
-    if not launch or not app_scope.gio_launch(launch, keyfile=key, app_id=ident): raise Refused('launch_failed')
+    if not launch or not app_scope.gio_launch(launch, uris=uris, keyfile=key, app_id=ident): raise Refused('launch_failed')
     return dict(state='requested')
 
 def frequent(request):
@@ -253,6 +255,11 @@ def handle(request):
     if op=='wallpaper-choose':
         import wallpaper_chooser
         return wallpaper_chooser.choose()
+    if op=='account-picture-choose':
+        # Settings > Users hands the chosen path to emaki-settings-users, which decodes it.
+        import wallpaper_chooser
+        return wallpaper_chooser.choose(title='Choose your picture',
+                                       mime_types=('image/png', 'image/jpeg', 'image/webp'))
     if op=='wallpapers':
         # Candidate pictures for the page: the packaged/user Emaki wallpaper folders only.
         roots=[Path(os.environ.get('XDG_DATA_HOME') or Path.home()/'.local/share')]

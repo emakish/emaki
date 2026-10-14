@@ -11,6 +11,33 @@ ComboBox {
     valueRole: "value"
     focusPolicy: Qt.StrongFocus
     hoverEnabled: true
+    property bool keyboardOpened: false
+    Keys.onReleased: event => {
+        if (keyboardOpened && [Qt.Key_Return, Qt.Key_Enter].includes(event.key)) {
+            keyboardOpened = false;
+            event.accepted = true;
+        }
+    }
+    Keys.onPressed: event => {
+        if (!popup.visible && [Qt.Key_Return, Qt.Key_Enter].includes(event.key)) {
+            keyboardOpened = true;
+            popup.open();
+            event.accepted = true;
+        } else if (!popup.visible && [Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down].includes(event.key)) {
+            choice.navigatePage(choice.parent, event);
+        }
+    }
+    // Hands the arrow to the nearest parent that navigates its page (SettingsView's
+    // keyboardNavigate). Untyped on purpose: the parents are plain Items to the type checker.
+    function navigatePage(scope, event): bool {
+        for (; scope; scope = scope.parent) {
+            if (typeof scope.keyboardNavigate === "function") {
+                scope.keyboardNavigate(event);
+                return true;
+            }
+        }
+        return false;
+    }
     font.family: SettingsTheme.fontFamily
     font.pixelSize: 13
     contentItem: Text {
@@ -75,7 +102,7 @@ ComboBox {
         }
         background: Rectangle {
             antialiasing: true
-            color: optionDelegate.highlighted ? SettingsTheme.rim : "#fffaf6"
+            color: optionDelegate.highlighted ? SettingsTheme.rim : SettingsTheme.popup
         }
     }
     popup: Popup {
@@ -98,7 +125,7 @@ ComboBox {
         background: Rectangle {
             antialiasing: true
             radius: 10
-            color: "#fffaf6"
+            color: SettingsTheme.popup
             border.color: SettingsTheme.rim
         }
     }

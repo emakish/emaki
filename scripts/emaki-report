@@ -35,7 +35,11 @@ LOG_LABELS = {
     'install': 'Recent logs of the programs engine',
     'other': 'Recent logs of Emaki components',
 }
-MAX_INPUT = 2 * 1024 * 1024
+
+# Eight collected fields are bounded at 256 Ki characters each; JSON may use
+# twelve ASCII characters per non-BMP character. Leave room for labels and
+# redaction markers while refusing arbitrarily large local helper input.
+MAX_INPUT = 32 * 1024 * 1024
 
 
 def logs(part):
@@ -58,7 +62,7 @@ def logs(part):
             filters.extend(['_SYSTEMD_UNIT=' + unit, '+', 'SYSLOG_IDENTIFIER=' + identifier])
     if filters:
         outputs.append(about.command([*base, *filters]))
-    return '\n'.join(outputs)
+    return outputs
 
 
 def hardware(info):
@@ -90,12 +94,21 @@ def compose(part, since_boot=True):
         'channel': info.get('channel') or UNAVAILABLE,
         'kernel': info.get('kernel') or UNAVAILABLE,
         'hardware': hardware(info),
-        'logs': logs(part) or 'No recent logs are available.',
+        'logs': logs(part),
     }
+    if not '\n'.join(values['logs']):
+        values['logs'] = ['No recent logs are available.']
     redactor = Redactor()
     items = []
     for name, value in values.items():
-        text = redactor.redact(str(value))
+        if name == 'logs':
+            # Each journal output is redacted on its own: a value that never
+            # closes its quote may take the rest of its own output, never the
+            # output read after it.
+            redacted = (redactor.redact(output + '\n')[:-1] for output in value)
+            text = '\n'.join(output for output in redacted if output)
+        else:
+            text = redactor.redact(str(value))
         if name == 'logs':
             text = '\n'.join(text.splitlines()[-200:])
         items.append(dict(id=name, label=LOG_LABELS[part] if name == 'logs' else LABELS[name],

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 
@@ -8,91 +10,82 @@ Item {
     property bool autoHide: true
     property bool overview: false
     property string presentation: "unknown"
+    property string knownPresentation: "unknown"
     property bool keyboardActive: false
     property bool popupOpen: false
     property bool dragging: false
     property bool pointerInside: false
     property bool edgeHovered: false
+    property bool edgeDragging: false
     property bool revealed: false
-    // 11 px margin + 66 px plate: the 84 px bubble (bottom 75 px below the plate top) ends
-    // 2 px above the screen edge (2026-09-25; mockup 74).
+    readonly property int revealDelayMs: 100
+    readonly property int hideDelayMs: 100
+    readonly property int slideDurationMs: 320
+    // The plate and its bottom margin retain the existing 77 px reserve.
     readonly property int thickness: 77
-    readonly property bool fullscreen: presentation === "covered"
-    // The edge remains reachable over fullscreen windows, including a pinned dock.
+    readonly property bool fullscreen: knownPresentation === "covered"
     readonly property bool edgeEnabled: on && (autoHide || fullscreen) && !overview
-    // Overview and fullscreen slide the dock away in the mockup regardless of auto-hide.
-    readonly property bool dockVisible: on && (!overview || keyboardActive) && (keyboardActive || (!autoHide && !fullscreen) || revealed || popupOpen || dragging)
+    readonly property bool interactionActive: keyboardActive || popupOpen || dragging
+    readonly property bool edgeActive: edgeEnabled && (edgeHovered || edgeDragging)
+    readonly property bool held: interactionActive || pointerInside || edgeActive
+    readonly property bool dockVisible: on && (!overview || keyboardActive) && (interactionActive || (!autoHide && !fullscreen) || revealed)
     readonly property int reserve: on && !autoHide ? thickness : 0
     function scheduleHide(): void {
-        if (!keyboardActive && !popupOpen && !dragging && !pointerInside && !edgeHovered)
+        if (!held && revealed)
             hideDelay.restart();
     }
-    onEdgeHoveredChanged: {
-        if (edgeHovered && edgeEnabled) {
+    function updateEdge(): void {
+        if (edgeActive) {
             hideDelay.stop();
-            revealDelay.restart();
+            if (!revealed)
+                revealDelay.restart();
         } else {
             revealDelay.stop();
             scheduleHide();
         }
     }
-    onPointerInsideChanged: {
-        if (pointerInside)
-            hideDelay.stop();
-        else
-            scheduleHide();
-    }
-    onKeyboardActiveChanged: {
-        if (keyboardActive)
-            hideDelay.stop();
-        else
-            scheduleHide();
-    }
-    onPopupOpenChanged: {
-        if (popupOpen)
-            hideDelay.stop();
-        else
-            scheduleHide();
-    }
-    onDraggingChanged: {
-        if (dragging)
-            hideDelay.stop();
-        else
-            scheduleHide();
-    }
-    onEdgeEnabledChanged: {
-        if (edgeEnabled && edgeHovered)
-            revealDelay.restart();
-        else
-            revealDelay.stop();
-    }
     function resetReveal(): void {
-        revealed = false;
         hideDelay.stop();
         revealDelay.stop();
-        if (edgeEnabled && edgeHovered)
-            revealDelay.restart();
+        revealed = on && interactionActive && (!overview || keyboardActive);
+        updateEdge();
     }
-    onFullscreenChanged: {
-        if (fullscreen)
-            resetReveal();
+    onEdgeActiveChanged: updateEdge()
+    onHeldChanged: {
+        if (held)
+            hideDelay.stop();
+        else
+            scheduleHide();
     }
+    onInteractionActiveChanged: {
+        if (on && interactionActive && (!overview || keyboardActive)) {
+            revealed = true;
+            hideDelay.stop();
+        } else
+            scheduleHide();
+    }
+    // An incomplete window snapshot is not a transition out of fullscreen.
+    onPresentationChanged: {
+        if (presentation !== "unknown")
+            knownPresentation = presentation;
+    }
+    onFullscreenChanged: resetReveal()
     onOverviewChanged: resetReveal()
     onAutoHideChanged: resetReveal()
     onOnChanged: resetReveal()
     Timer {
         id: revealDelay
-        interval: 100
+        interval: policy.revealDelayMs
         onTriggered: {
-            if (policy.edgeEnabled && policy.edgeHovered)
+            if (policy.edgeActive)
                 policy.revealed = true;
         }
     }
     Timer {
         id: hideDelay
-        interval: 100
+        interval: policy.hideDelayMs
         onTriggered: {
-            if (!policy.keyboardActive && !policy.popupOpen && !policy.dragging && !policy.pointerInside && !policy.edgeHovered)
+            if (!policy.held)
                 policy.revealed = false;
         }
     }

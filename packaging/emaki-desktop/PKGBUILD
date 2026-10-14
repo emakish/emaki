@@ -6,8 +6,8 @@
 # Desktop applications and the password-only lock PAM service. Runtime helpers
 # and their dependencies are also declared by emaki-config for standalone use.
 pkgname=emaki-desktop
-pkgver=0.8.0
-pkgrel=4
+pkgver=0.8.1
+pkgrel=1
 pkgdesc='Emaki desktop applications, dependencies and lock PAM configuration'
 arch=('any')
 url='https://github.com/emakish/emaki'

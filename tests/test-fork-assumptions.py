@@ -107,6 +107,19 @@ class RebaseGuardTests(unittest.TestCase):
                 self.assertTrue(any(failure.startswith(relative + ':') and 'B2b' in failure
                                     for failure in guard.check(self.source)))
 
+    def test_fullscreen_inset_trust_requires_review(self):
+        self.change('src/layout/workspace.rs', '// changed fullscreen inset marker trust\n')
+        self.assertTrue(any(failure.startswith('src/layout/workspace.rs:') and 'N81M5' in failure
+                            for failure in guard.check(self.source)))
+
+    def test_test_only_fullscreen_inset_accessor_is_rejected(self):
+        accessor = '    pub fn fullscreen_top_inset(&self) -> f64 {\n'
+        self.change('src/layout/scrolling.rs', accessor)
+        self.assertFalse(any('test-only' in failure for failure in guard.check(self.source)))
+        self.change('src/layout/scrolling.rs', '    #[cfg(test)]\n' + accessor)
+        self.assertTrue(any(failure.startswith('src/layout/scrolling.rs:') and 'test-only' in failure
+                            and 'N81M5' in failure for failure in guard.check(self.source)))
+
     def test_missing_source_is_not_a_pass(self):
         (self.source / 'src/layout/scrolling.rs').unlink()
         self.assertTrue(any('missing reviewed source' in failure for failure in guard.check(self.source)))

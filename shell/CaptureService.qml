@@ -19,6 +19,12 @@ Scope {
         notificationStore: service.outputs.shared.notifications
         onOpening: service.outputs.closeAll()
     }
+    // The privacy pill leaves the shell's own recording to its Stop control.
+    Binding {
+        target: service.outputs.shared
+        property: "captureNode"
+        value: controller.streamNode
+    }
     Loader {
         Component.onCompleted: setSource(Qt.resolvedUrl("CaptureOverlay.qml"), {
             controller: controller

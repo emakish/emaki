@@ -95,6 +95,7 @@ scripts/build-boot-splash	Build tool for the unshipped UKI splash prototype.	Mak
 scripts/build-cursors	Build tool producing the installed checked-in cursor theme.	Makefile:cursors
 scripts/build-fetch	Build tool producing the installed checked-in fetch assets.	Makefile:fetch-assets
 scripts/build-lock-wordmark	Build tool producing installed LockWordmarkData.js.	Makefile:lock-wordmark
+scripts/build-plymouth-theme	Build tool producing the installed startup logo watermark.png.	Makefile:plymouth-theme
 scripts/build-shell-shaders	Build tool producing installed compiled QML shaders.	Makefile:SHADERS
 scripts/build-wallpaper-fallback	Build tool producing installed wallpaper/fallback.png.	tests/test-wallpaper-fallback.py; MANIFEST.md:wallpaper fallback
 scripts/check-arch-apps.py	Developer package dependency and size audit.	packaging/README.md
@@ -262,6 +263,8 @@ update-manager/ui/tests/InteractionTest.qml	Keyboard-only update-window interact
 update-manager/ui/tests/interactions.py	Update-window interaction and mutation test runner.	Makefile:check-shell
 update-manager/ui/tests/icons.py	Image decoding and fallback regression runner.	Makefile:check-shell
 update-manager/ui/tests/reviews.py	Ratings and reviews component regression runner.	Makefile:check-shell
+update-manager/ui/tests/layout.py	Update-window layout runner at every niri third and default-size pixel comparison.	Makefile:check-shell
+update-manager/ui/tests/LayoutTest.qml	Update-window layout fixture: every page checked for overflow, overlap and cut text.	update-manager/ui/tests/layout.py
 update-manager/ui/tests/controller.py	Update-window process protocol test runner.	Makefile:check-shell
 update-manager/ui/tests/ControllerTest.qml	Update-window process protocol fixture.	update-manager/ui/tests/controller.py
 crates/emaki-core/src/settings/live.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
@@ -278,9 +281,15 @@ packaging/emaki-desktop/expected-files.list	Exact package payload checked agains
 packaging/emaki-keyring/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
 packaging/emaki-mirrorlist/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
 packaging/emaki-nvidia/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
+packaging/snapguard/PKGBUILD	Package build recipe; packages contain its resulting payload.	packaging/snapguard/PKGBUILD:package
+packaging/snapguard/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
 update-manager/tests/test_flatpaks.py	Flatpak update parsing tests.	Makefile:check
 update-manager/tests/test_protocol.py	Update backend protocol tests.	Makefile:check
 update-manager/tests/test_reminder.py	Restart reminder tests.	Makefile:check
 update-manager/tests/test_restore.py	Restore point tests.	Makefile:check
 update-manager/ui/tests/ProgramsControllerTest.qml	Programs controller protocol fixture.	update-manager/ui/tests/programs_controller.py
 update-manager/ui/tests/programs_controller.py	Programs controller process protocol test runner.	Makefile:check-shell
+scripts/templates/programs-updates.svg	Template for the installed Programs & Updates icon; render-shell-palette fills in the token colours.	scripts/render-shell-palette:57
+update-manager/ui/tests/fixtures/default-colours.json	Frozen default Programs & Updates colour tree for the light-identity check.	update-manager/ui/tests/palette.py:96
+update-manager/ui/tests/palette.py	Live manager colour and default colour tree test runner.	Makefile:check
+update-manager/ui/tests/appearance.py	Manager Appearance-from-store test runner: the installed layout without helpers in the manager UI directory.	Makefile:check-shell

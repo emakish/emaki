@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import "SystemIcons.js" as SystemIcons
 
 // SVG geometry copied from the supplied mockup; no icon theme or network lookup. The power
 // modes (power-saver, balanced, performance: the leaf, see-saw and gauge of Adwaita's symbols,
@@ -48,5 +49,5 @@ Image {
     // Wi-Fi ink: y ~= 4..21; corner ink: x/y = 0..27.25 with round caps.
     // Other paths already pass the painted-bounds test; logo fills its 24 square.
     readonly property string inkViewBox: kind === "corner" ? "-4.375 -4.375 36 36" : kind === "wifi" ? "0 0.5 24 24" : kind === "logout" ? "0.5 0 24 24" : kind === "hibernate" ? "-0.5 0 24 24" : "0 0 24 24"
-    source: 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + inkViewBox + '" color="' + ink + '" fill="' + (kind === "logo" ? 'currentColor' : 'none') + '" stroke="' + (kind === "logo" ? 'none' : 'currentColor') + '" stroke-width="' + (kind === "corner" ? '2.5' : '2') + '" stroke-linecap="round" stroke-linejoin="round">' + (paths[kind] || '') + '</svg>')
+    source: kind === "settings" ? SystemIcons.settingsSvg(ink) : 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + inkViewBox + '" color="' + ink + '" fill="' + (kind === "logo" ? 'currentColor' : 'none') + '" stroke="' + (kind === "logo" ? 'none' : 'currentColor') + '" stroke-width="' + (kind === "corner" ? '2.5' : '2') + '" stroke-linecap="round" stroke-linejoin="round">' + (paths[kind] || '') + '</svg>')
 }

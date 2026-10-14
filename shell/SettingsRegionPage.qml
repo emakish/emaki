@@ -119,7 +119,7 @@ Column {
         text: page.message
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
-        color: "#a01b45"
+        color: SettingsTheme.error
         font.family: SettingsTheme.fontFamily
         font.pixelSize: 13
     }

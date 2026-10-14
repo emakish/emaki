@@ -3,15 +3,18 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Exercise production system controls with real offscreen key events."""
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+from collections import namedtuple
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 EVIDENCE = ROOT / '.cache/evidence/n6b'
 EVIDENCE.mkdir(parents=True, exist_ok=True)
+Rect = namedtuple('Rect', 'x y width height')
 def run_case(case_name, mutation=None):
     with tempfile.TemporaryDirectory(prefix='emaki-system-keys-') as temporary:
         base = Path(temporary)
@@ -91,7 +94,7 @@ def run_case(case_name, mutation=None):
         except subprocess.TimeoutExpired as error:
             raise AssertionError(error.stdout.decode() if isinstance(error.stdout, bytes) else error.stdout) from error
         (EVIDENCE / ('system-' + case_name.replace(' ', '-') + '.log')).write_text(result.stdout)
-        if mutation:
+        if mutation and expected:
             assert 'Configuration Loaded' in result.stdout, result.stdout
             assert 'KEYBOARD_FAIL ' + expected in result.stdout, result.stdout
             assert 'SYSTEM_KEYBOARD_PASS' not in result.stdout, result.stdout
@@ -99,23 +102,91 @@ def run_case(case_name, mutation=None):
             print('PASS: rejected ' + case_name)
             return
         assert result.returncode == 0 and 'SYSTEM_KEYBOARD_PASS' in result.stdout, result.stdout
-        for name in ('volume', 'cell-light', 'night'):
+        if mutation:
+            # A pixel-only mutant: the QML checks pass, the composited rim must not.
+            try:
+                pixels(base, result.stdout)
+            except AssertionError as error:
+                print('PASS: rejected ' + case_name + ':', error.args[0])
+                return
+            raise AssertionError((case_name, 'pixel mutant was not rejected'))
+        for line in pixels(base, result.stdout):
+            print(line)
+        for name, strong in (('volume', False), ('cell-light', True), ('night', True)):
             with Image.open(base / (name + '.png')) as ring:
-                # Two adjacent palette edges remain distinct on both orange and pale fills.
+                # Pale: the hover look's light 1 px rim over its faint fill. Orange (the open
+                # tab, a switch that is on): the strong 2 px rim. Never an opaque dark frame.
                 center = ring.width // 2
-                assert ring.getpixel((center, 0)) == (242, 230, 216, 255), name
-                assert ring.getpixel((center, 1)) == (20, 16, 13, 255), name
+                rim, inner = ring.getpixel((center, 0))[3], ring.getpixel((center, 1))[3]
+                if strong:
+                    assert 170 < rim < 210 and 170 < inner < 210, (name, rim, inner)
+                else:
+                    assert 30 < rim < 60 and inner < 30, (name, rim, inner)
             shutil.copyfile(base / (name + '.png'), EVIDENCE / ('system-focus-' + name + '.png'))
         assert 'Cannot set activeFocusOnTab' not in result.stdout, result.stdout
         assert 'KEYBOARD_FAIL' not in result.stdout and 'TypeError:' not in result.stdout, result.stdout
+
+
+def luminance(pixel):
+    channels = [v / 255 for v in pixel[:3]]
+    linear = [v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4 for v in channels]
+    return sum(v * weight for v, weight in zip(linear, (.2126, .7152, .0722)))
+
+
+def ratio(a, b):
+    a, b = luminance(a), luminance(b)
+    return (max(a, b) + .05) / (min(a, b) + .05)
+
+
+def pixels(base, output):
+    """Focused against unfocused at the same scene pixels, along each control's straight top
+    rim (both rows of a 2 px rim), away from rounded antialiasing and text."""
+    rects = {name: Rect(*(round(float(v)) for v in values)) for name, *values in
+             (match.split() for match in re.findall(r'CONTRAST_RECT (\w+ \S+ \S+ \S+ \S+)', output))}
+    for index, name in enumerate(('primary', 'selected', 'pale')):
+        rects[name] = Rect(20 + index * 110, 19, 100, 42)
+    assert set(rects) == {'primary', 'selected', 'pale', 'keep', 'later'}, rects
+    lines = []
+    for name, rect in rects.items():
+        before_path = base / ('contrast-' + name + '-false.png')
+        after_path = base / ('contrast-' + name + '-true.png')
+        with Image.open(before_path) as before, Image.open(after_path) as after:
+            columns = range(rect.x + 15, rect.x + rect.width - 15)
+            rows = [[ratio(before.getpixel((x, y)), after.getpixel((x, y))) for x in columns]
+                    for y in (rect.y, rect.y + 1)]
+        if name in ('primary', 'selected', 'keep'):
+            # Orange controls: the strong rim, at least 3:1 on both of its rows.
+            low = min(min(row) for row in rows)
+            assert low >= 3, (name, 'focus contrast below 3:1 on orange', low)
+            lines.append(f'PASS: {name} (orange) focus rim minimum contrast {low:.2f}:1')
+        else:
+            # Pale controls: the hover look. Visible, but a light rim, not a dark outline.
+            high = max(rows[0])
+            assert 1.05 <= high <= 2.2, (name, 'pale focus is not the light hover rim', high)
+            lines.append(f'PASS: {name} (pale) hover-look focus rim contrast {high:.2f}:1')
+        for path in (before_path, after_path):
+            shutil.copyfile(path, EVIDENCE / path.name)
+    return lines
+
 
 run_case('system-keyboard')
 print('PASS: system sliders, Wi-Fi, VPN, Bluetooth, layouts, power, tray menus and focus scrolling')
 run_case('hidden system ring', ('SystemPanel.qml', 'shown: panel.opened && belongs', 'shown: false',
                                 'system slider focus ring visible'))
-run_case('orange-only system ring', ('FocusRing.qml', 'border.color: ShellPalette.text',
-                                     'border.color: ShellPalette.accent',
-                                     'system slider focus ring light outer edge'))
+RING = ('border.color: strong ? LiquidPalette.focusOnAccent : LiquidPalette.flatDropRim\n'
+        '    border.width: strong ? 2 : 1')
+run_case('opaque system ring', ('FocusRing.qml', RING,
+                                  'border.color: ShellPalette.background\n    border.width: strong ? 2 : 1',
+                                  'system slider focus ring existing hover rim'))
+# The previous round's ring: the 2 px, 60 % ink rim on every control (a dark outline on pale).
+run_case('dark rim on pale controls', ('FocusRing.qml', RING,
+                                       'border.color: Qt.rgba(LiquidPalette.flatDropRim.r, LiquidPalette.flatDropRim.g, LiquidPalette.flatDropRim.b, .6)\n'
+                                       '    border.width: 2',
+                                       'system slider focus ring light hover rim'))
+# Without the strong rim the focus disappears on orange: the pixel check must refuse it.
+run_case('light rim on orange', ('LiquidPalette.qml',
+                                 'focusOnAccent: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .75)',
+                                 'focusOnAccent: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .16)', None))
 
 run_case('early system focus', ('SystemPanel.qml',
                                'keyboardFocusPending = true;\n        applyKeyboardFocus();',

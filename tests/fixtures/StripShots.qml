@@ -79,6 +79,13 @@ ShellRoot {
     }
     Component.onCompleted: Qt.callLater(() => {
         Quickshell.watchFiles = false;
+        // The digit and mark checks measure the light ink; the default theme is dark.
+        SettingsBridge.values = [
+            {
+                key: "appearance.theme",
+                value: "light"
+            }
+        ];
         // Before the core's first answer (this NiriService has no binary, so its start state is
         // set here), then after a lost connection: the offline text and the island's width.
         const strip = scene.bar.workspaceStrip;

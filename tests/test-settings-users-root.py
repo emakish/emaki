@@ -130,6 +130,14 @@ class Authorization(unittest.TestCase):
         code, reply, _env, _accounts, _system = self.invoke_root(['apply', 'set-name', 'bo', '--terminal'])
         self.assertEqual((code, reply['users'][1]['name']), (0, '--terminal'))
 
+    def test_root_refuses_picture_even_if_the_option_passes_login_validation(self):
+        with mock.patch.object(users, 'valid_login', return_value=True):
+            for args in (['picture', '--set', '/private/photo.png'], ['picture', '--clear']):
+                code, reply, _env, accounts, system = self.invoke_root(['apply', *args])
+                self.assertEqual((code, reply['reason']), (1, 'invalid_request'))
+                accounts.assert_not_called()
+                system.assert_not_called()
+
     def test_root_accepts_hash_over_stdin_without_hashing_it_again(self):
         hashed = users.crypt_password(rules.PASSWORD)
         with mock.patch('sys.stdin', io.StringIO(hashed + '\n')):

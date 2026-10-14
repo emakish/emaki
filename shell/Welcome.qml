@@ -2,9 +2,11 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import "WelcomeContent.js" as Content
+import "Keyboard.js" as Keyboard
 
 FocusScope {
     id: welcome
+    readonly property bool keyboardBoundary: true
     property int page: 0
     property string wallpaperTexture: ""
     property real dpr: 1
@@ -36,23 +38,15 @@ FocusScope {
         return buttons;
     }
     Keys.onPressed: event => {
-        const buttons = focusButtons();
         if (event.key === Qt.Key_Escape) {
             closeRequested();
-        } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
-            const index = buttons.findIndex(b => b.activeFocus);
-            const step = event.key === Qt.Key_Backtab || (event.modifiers & Qt.ShiftModifier) ? -1 : 1;
-            buttons[(index + step + buttons.length) % buttons.length].forceActiveFocus();
-        } else if (event.key === Qt.Key_Left) {
-            turn(-1);
-        } else if (event.key === Qt.Key_Right) {
-            turn(1);
-        } else if (event.key === Qt.Key_Up || event.key === Qt.Key_Down) {
-            body.contentY = Math.max(0, Math.min(body.contentHeight - body.height, body.contentY + (event.key === Qt.Key_Up ? -48 : 48)));
+            event.accepted = true;
+        } else if (event.key === Qt.Key_PageUp || event.key === Qt.Key_PageDown) {
+            body.contentY = Math.max(0, Math.min(body.contentHeight - body.height, body.contentY + (event.key === Qt.Key_PageUp ? -body.height : body.height)));
+            event.accepted = true;
         } else {
-            return;
+            Keyboard.handle(welcome, event);
         }
-        event.accepted = true;
     }
     onPageChanged: body.contentY = 0
     Component.onCompleted: takeFocus()
@@ -62,8 +56,17 @@ FocusScope {
         wallpaperTexture: welcome.wallpaperTexture
         dpr: welcome.dpr
     }
+    // The Settings canvas under the header (logo, title, tabs), which keeps the plain glass.
+    CanvasTint {
+        objectName: "welcome-canvas"
+        y: header.y + header.height + 8
+        width: parent.width
+        height: Math.max(0, parent.height - y)
+        bottomLeftRadius: 22
+        bottomRightRadius: 22
+    }
     component Copy: Text {
-        color: LiquidPalette.inkOnLight
+        color: LiquidPalette.ink
         font.family: ShellPalette.uiFont
         font.pixelSize: 15
         wrapMode: Text.WordWrap
@@ -277,7 +280,7 @@ FocusScope {
             width: parent.width
             visible: welcome.error !== ""
             text: welcome.error
-            color: LiquidPalette.dangerOnLight
+            color: LiquidPalette.danger
             font.pixelSize: 13
             Accessible.role: Accessible.AlertMessage
         }

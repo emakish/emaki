@@ -47,7 +47,7 @@ ShaderEffect {
     // thin lines showed through as stripes (the dock menu 2026-09-25, the dock plate 27.09).
     property real uRegularBlur: 1
     property real uRegularLight: 0
-    property real uRegularDark: 0
+    property real uRegularDark: ShellPalette.dark ? .86 : 0
     property real uRegularContrast: 1
     property real uRegularTint: 1
     property real uRegularSaturation: 1.07
@@ -86,6 +86,9 @@ ShaderEffect {
     property real uActivity: 0
     property real uOpacity: 1
     property vector4d uTrack: none
+    property vector3d uTrackAccent: LiquidPalette.trackAccent
+    property vector3d uTrackRegularAccent: LiquidPalette.trackRegularAccent
+    property real uThemeDark: ShellPalette.dark ? 1 : 0
     property real uTrackValue: 0
     property real uTrackEnabled: 0
     property real uOnlyTrack: 0
@@ -116,15 +119,14 @@ ShaderEffect {
     property real uDropDome: 0
     property real uRimLight: 0
     property real uRimLightWidth: 0
-    // The light base, always: the glass does not adapt to what lies underneath
-    // (2026-09-27). The shader still reads <0 as its automatic palette; nothing sets that now.
-    property real uRegularBase: 1
+    // Follow the selected theme without adapting the ink to the backdrop.
+    property real uRegularBase: ShellPalette.dark ? 0 : 1
     property real uLiveTop: -100000
-    property real uRegularBaseB: 1
+    property real uRegularBaseB: ShellPalette.dark ? 0 : 1
     // The selected / current drop is tinted (2026-09-27): a drop with `selected: true`
     // takes uSelectedColor.rgb for uSelectedColor.a of its body (LiquidPalette.selectedDrop);
     // uDropSelected0/1 carry drops 0–3 / 4–7's `selected`: true or a weight 0..1 (the open
-    // tab's orange comes in with the morph). The rest stay plain glass.
+    // tab's accent comes in with the morph). The rest stay plain glass.
     property color selectedColor: LiquidPalette.selectedDrop
     property vector4d uSelectedColor: Qt.vector4d(selectedColor.r, selectedColor.g, selectedColor.b, selectedColor.a)
     readonly property var selectedFlags: [0, 1, 2, 3, 4, 5, 6, 7].map(i => i < drops.length ? Number(drops[i].selected || 0) : 0)

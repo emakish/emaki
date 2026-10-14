@@ -15,6 +15,17 @@ SettingsRow {
     function flushPending(): void {
         flushRequested();
     }
+    // Hands Up/Down/Tab to the nearest parent that navigates its page (SettingsView's
+    // keyboardNavigate). Untyped on purpose: the parents are plain Items to the type checker.
+    function navigatePage(scope, event): bool {
+        for (; scope; scope = scope.parent) {
+            if (typeof scope.keyboardNavigate === "function") {
+                scope.keyboardNavigate(event);
+                return true;
+            }
+        }
+        return false;
+    }
     controlWidth: 220
     control: Component {
         Slider {
@@ -69,12 +80,14 @@ SettingsRow {
                 }
             }
             Keys.onPressed: event => {
-                if ([Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down, Qt.Key_Home, Qt.Key_End].includes(event.key)) {
+                if ([Qt.Key_Up, Qt.Key_Down, Qt.Key_Tab, Qt.Key_Backtab].includes(event.key) && root.navigatePage(slider.parent, event))
+                    return;
+                if ([Qt.Key_Left, Qt.Key_Right, Qt.Key_Home, Qt.Key_End].includes(event.key)) {
                     if (event.key === Qt.Key_Home)
                         value = from;
                     else if (event.key === Qt.Key_End)
                         value = to;
-                    else if (event.key === Qt.Key_Right || event.key === Qt.Key_Up)
+                    else if (event.key === Qt.Key_Right)
                         increase();
                     else
                         decrease();
@@ -138,7 +151,7 @@ SettingsRow {
                 width: 20
                 height: 20
                 radius: 10
-                color: "#fffaf6"
+                color: SettingsTheme.knob
                 border.width: slider.activeFocus ? 2 : 1
                 border.color: slider.activeFocus ? SettingsTheme.accent : SettingsTheme.rim
             }

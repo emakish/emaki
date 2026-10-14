@@ -98,6 +98,9 @@ Scope {
     }
     // false: another launch is still in flight (the dock shows the pulse on that icon).
     function launch(entry: DesktopEntry): bool {
+        return launchUrls(entry, []);
+    }
+    function launchUrls(entry: DesktopEntry, urls: var): bool {
         if (!entry || busy)
             return false;
         pendingId = entry.id;
@@ -108,6 +111,7 @@ Scope {
             terminal.start({
                 op: "terminal",
                 id: entry.id,
+                uris: urls,
                 terminal: Quickshell.env("EMAKI_TERMINAL") || "emaki-terminal"
             });
             return true;
@@ -117,7 +121,7 @@ Scope {
         // Always pass the file name with ".desktop": gtk-launch keeps a name that already
         // ends in ".desktop" as is, so a bare "org.telegram.desktop" names a missing file.
         launchState = "pending";
-        process.command = AppLaunch.command(entry.id, [launcher, "--", entry.id + ".desktop"]);
+        process.command = AppLaunch.command(entry.id, [launcher, "--", entry.id + ".desktop"].concat(urls));
         process.running = true;
         deadline.restart();
         return true;

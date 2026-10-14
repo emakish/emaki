@@ -61,6 +61,9 @@ Item {
     property bool animating: false
     property GlassTarget hoverTarget: null
     property string hoverKey: ""
+    // The drop keeps its cell through pointer leave, melt and the panel's handover.
+    property GlassTarget hoverOn: null
+    readonly property string dropKey: hoverOn ? hoverOn.key : ""
     function wake(): void {
         animating = true;
     }
@@ -88,29 +91,28 @@ Item {
         if (panelPresent)
             active = Liquid.vanish(bubble, now) || active;
         else if (hoverTarget && hoverTarget.visible) {
+            hoverOn = hoverTarget;
             const p = hoverTarget.mapToItem(ink, 0, 0);
             active = Liquid.place(bubble, Liquid.pad([p.x - islandRect.x, p.y - islandRect.y, hoverTarget.width, hoverTarget.height], 3), 13, now) || active;
         } else
             Liquid.dissolve(bubble, now);
         active = Liquid.advance(bubble, now, dt) || active;
-        // dual() for every cell: the hovered one lies on the glass with the drop's alpha (dual()
-        // of system.js), every other one as much as the drop still covers it (Liquid.cover) —
-        // not only the hovered one. The pointer runs ahead of the flowing drop: the cells the
-        // drop still covered went back under the glass at once, and its 32 px lens mirrored and
-        // split their icons (27.09: "flickers"); leaving the island put the last cell
-        // under the glass for the whole wait and melt of its drop.
+        // The drop's own cell stays wholly above it until it disappears. Cells it flows over
+        // keep their geometric coverage, so the established flow between cells is unchanged.
         const map = {};
-        const alpha = panelPresent ? 0 : Liquid.smooth(bubble.alpha.x);
+        const alpha = panelPresent ? 0 : Liquid.onGlass(bubble);
         for (let i = 0; i < cells.cells.count; ++i) {
             const c = cells.cells.itemAt(i) as GlassTarget;
             if (!c)
                 continue;
             const p = c.mapToItem(ink, 0, 0);
-            const v = c === hoverTarget ? alpha : Liquid.cover(bubble, [p.x - islandRect.x, p.y - islandRect.y, c.width, c.height]);
+            const v = c === hoverOn ? alpha : Liquid.cover(bubble, [p.x - islandRect.x, p.y - islandRect.y, c.width, c.height]);
             if (v > .001)
                 map[c.key] = v;
         }
         coverage = map;
+        if (!Liquid.onGlass(bubble))
+            hoverOn = null;
         ++tick;
         if (!active)
             animating = false;
@@ -129,8 +131,8 @@ Item {
         return d ? [d] : [];
     }
 
-    // Ink: always the light glass, whatever lies underneath (2026-09-27).
-    readonly property color ink: LiquidPalette.inkOnLight
+    // Ink follows the selected theme independently of the backdrop.
+    readonly property color ink: LiquidPalette.ink
 
     // ---- Flat stand-in (no GPU): plate, drop, then the cells on top ----
     Rectangle {

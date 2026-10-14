@@ -38,11 +38,14 @@ Scope {
             account_without_password: "The account was created, but its password was not set. Set a password or remove the account.",
             account_unavailable: "The account service cannot change this account until the computer restarts.",
             password_not_entered: "No password was entered. Nothing was changed.",
-            password_window_unconfirmed: "The password window closed without an answer. Check the list before trying again."
+            password_window_unconfirmed: "The password window closed without an answer. Check the list before trying again.",
+            picture_too_large: "This picture is too large. Choose a smaller picture.",
+            picture_unreadable: "This picture could not be read. Choose a PNG, JPEG or WebP picture.",
+            picture_unavailable: "The picture could not be prepared on this computer. Your picture has not changed."
         })
     readonly property string unavailableText: "Accounts are unavailable. Try again when the system service is ready."
     function validUser(user): bool {
-        return !!user && typeof user.login === "string" && typeof user.name === "string" && typeof user.uid === "number" && typeof user.administrator === "boolean" && typeof user.locked === "boolean" && typeof user.current === "boolean" && typeof user.signed_in === "boolean" && typeof user.home === "string" && (user.available === undefined || typeof user.available === "boolean");
+        return !!user && typeof user.login === "string" && typeof user.name === "string" && typeof user.uid === "number" && typeof user.administrator === "boolean" && typeof user.locked === "boolean" && typeof user.current === "boolean" && typeof user.signed_in === "boolean" && typeof user.home === "string" && (user.available === undefined || typeof user.available === "boolean") && (user.picture === undefined || typeof user.picture === "boolean");
     }
     // Passwords are typed in the managed terminal that --terminal opens, never in this window.
     function run(args): void {
@@ -56,6 +59,34 @@ Scope {
         worker.completed = false;
         pending = true;
         worker.running = true;
+    }
+    readonly property alias pictureChooser: pictureChooser
+    property string pictureError: ""
+    readonly property string pictureChooserFailed: "Could not choose a picture. Your picture has not changed."
+    function choosePicture(): void {
+        if (pending || passwordPending || pictureChooser.busy || !accounts.some(user => user.current))
+            return;
+        pictureError = "";
+        pictureChooser.start({
+            op: "account-picture-choose"
+        });
+    }
+    // The portal hands over a path; emaki-settings-users decodes it and gives AccountsService a copy.
+    PrivateJob {
+        id: pictureChooser
+        timeoutMs: 130000
+        onCompleted: result => {
+            if (result.state === "ready" && typeof result.path === "string" && result.path.startsWith("/")) {
+                root.pictureError = "";
+                root.run(["picture", "--set", result.path]);
+            } else if (result.state !== "cancelled") {
+                root.pictureError = root.pictureChooserFailed;
+            }
+        }
+        onStateChanged: {
+            if (!["idle", "pending", "ready", "cancelled"].includes(state))
+                root.pictureError = root.pictureChooserFailed;
+        }
     }
     function refresh(): void {
         run(["status"]);

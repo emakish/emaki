@@ -1,0 +1,165 @@
+Subject: [PATCH] Report the trusted shell's own PID on its screencasts
+
+Copyright (C) 2026 Artur Yakymenko
+SPDX-License-Identifier: GPL-3.0-or-later
+
+Apply after patches 0001 through 0011 on niri v26.04. The trusted shell connects
+over a socket pair, so its credentials are unknown and its wlr-screencopy casts
+reported no PID; a shell could not tell its own live glass capture from another
+program's. Record the PID of the process the supervisor spawned on that
+connection and report it only for screencasts; the connection still claims no
+socket credentials anywhere else.
+
+diff --git a/src/niri.rs b/src/niri.rs
+index e283ec4..e35ecf0 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -4,7 +4,7 @@ use std::ffi::OsString;
+ use std::os::unix::net::UnixStream;
+ use std::path::PathBuf;
+ use std::rc::Rc;
+-use std::sync::atomic::{AtomicBool, Ordering};
++use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+ use std::sync::mpsc::{self, Receiver, Sender};
+ use std::sync::{Arc, Mutex};
+ use std::time::{Duration, Instant};
+@@ -2749,6 +2749,7 @@ impl Niri {
+             restricted,
+             credentials_unknown,
+             trusted_shell: false,
++            trusted_shell_pid: AtomicI32::new(0),
+             trusted_prompt_denial_logged: AtomicBool::new(false),
+         });
+ 
+@@ -2768,6 +2769,8 @@ impl Niri {
+             // A socket pair reports its creator's PID, not the exec'd shell.
+             credentials_unknown: true,
+             trusted_shell: true,
++            // Set by the supervisor once the shell process exists.
++            trusted_shell_pid: AtomicI32::new(0),
+             trusted_prompt_denial_logged: AtomicBool::new(false),
+         });
+         self.display_handle.insert_client(client, data)
+@@ -7162,6 +7165,10 @@ pub struct ClientState {
+     pub credentials_unknown: bool,
+     /// Set only for the private connection given to the configured shell at startup.
+     pub trusted_shell: bool,
++    /// The PID of the process the trusted-shell supervisor spawned on this connection
++    /// (0 until then). Its socket credentials name the compositor, so the shell's own
++    /// screencasts report this PID; nothing else takes it as the client's credentials.
++    pub trusted_shell_pid: AtomicI32,
+     /// At most one reserved-role refusal warning per connection.
+     pub trusted_prompt_denial_logged: AtomicBool,
+ }
+diff --git a/src/protocols/screencopy.rs b/src/protocols/screencopy.rs
+index 130ac04..b0e8d8a 100644
+--- a/src/protocols/screencopy.rs
++++ b/src/protocols/screencopy.rs
+@@ -24,7 +24,9 @@ use wayland_backend::server::Credentials;
+ use zwlr_screencopy_frame_v1::{Flags, ZwlrScreencopyFrameV1};
+ use zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1;
+ 
+-use crate::utils::{get_credentials_for_client, get_monotonic_time, CastSessionId, CastStreamId};
++use crate::utils::{
++    get_cast_credentials_for_client, get_monotonic_time, CastSessionId, CastStreamId,
++};
+ 
+ const VERSION: u32 = 3;
+ 
+@@ -298,7 +300,7 @@ where
+         let manager = data_init.init(manager, ());
+ 
+         let state = state.screencopy_state();
+-        let credentials = get_credentials_for_client(dh, client);
++        let credentials = get_cast_credentials_for_client(dh, client);
+         let queue = ScreencopyQueue::new(credentials);
+         state.queues.insert(manager.clone(), queue);
+     }
+diff --git a/src/tests/startup_cover.rs b/src/tests/startup_cover.rs
+index 112467b..02d0297 100644
+--- a/src/tests/startup_cover.rs
++++ b/src/tests/startup_cover.rs
+@@ -329,6 +329,7 @@ fn egl_session_lock_request_releases_cover_immediately() {
+                 restricted: false,
+                 credentials_unknown: false,
+                 trusted_shell: false,
++                trusted_shell_pid: std::sync::atomic::AtomicI32::new(0),
+                 trusted_prompt_denial_logged: std::sync::atomic::AtomicBool::new(false),
+             }),
+         )
+diff --git a/src/tests/trusted_prompt.rs b/src/tests/trusted_prompt.rs
+index a91f4e4..3678391 100644
+--- a/src/tests/trusted_prompt.rs
++++ b/src/tests/trusted_prompt.rs
+@@ -958,6 +958,27 @@ fn trusted_prompt_private_connection_does_not_claim_compositor_credentials() {
+     assert!(crate::utils::get_credentials_for_surface(prompt.wl_surface()).is_none());
+ }
+ 
++#[test]
++fn trusted_shell_screencopy_reports_the_spawned_shell_pid() {
++    let mut f = fixture();
++    let shell = f.add_trusted_shell();
++    map(&mut f, shell, NAMESPACE);
++    let prompt = f.niri().trusted_prompt().unwrap();
++    let client = prompt.wl_surface().client().unwrap();
++    let dh = f.niri().display_handle.clone();
++    // Before the supervisor names the process there is nothing to report.
++    assert!(crate::utils::get_cast_credentials_for_client(&dh, &client).is_none());
++    client
++        .get_data::<crate::niri::ClientState>()
++        .unwrap()
++        .trusted_shell_pid
++        .store(4242, std::sync::atomic::Ordering::Relaxed);
++    let creds = crate::utils::get_cast_credentials_for_client(&dh, &client).unwrap();
++    assert_eq!(creds.pid, 4242);
++    // Only casts use it: the connection still claims no credentials elsewhere.
++    assert!(crate::utils::get_credentials_for_client(&dh, &client).is_none());
++}
++
+ fn map_full_output(f: &mut Fixture, id: ClientId, namespace: &str) -> WlSurface {
+     let layer = f.client(id).create_layer(None, Layer::Overlay, namespace);
+     layer.set_configure_props(LayerConfigureProps {
+diff --git a/src/trusted_client.rs b/src/trusted_client.rs
+index c43ff64..5fc6b18 100644
+--- a/src/trusted_client.rs
++++ b/src/trusted_client.rs
+@@ -370,6 +370,11 @@ impl Supervisor {
+                         return Err(err);
+                     }
+                 };
++                // The shell's screencasts carry its own PID (see ClientState).
++                if let Some(data) = wayland_client.get_data::<crate::niri::ClientState>() {
++                    data.trusted_shell_pid
++                        .store(process.identity.pid as i32, Ordering::Relaxed);
++                }
+                 let connection = Arc::new(TrustedConnection {
+                     process,
+                     client: wayland_client,
+diff --git a/src/utils/mod.rs b/src/utils/mod.rs
+index bbeac5b..4e647f2 100644
+--- a/src/utils/mod.rs
++++ b/src/utils/mod.rs
+@@ -490,6 +490,23 @@ pub fn get_credentials_for_client(dh: &DisplayHandle, client: &Client) -> Option
+     client.get_credentials(dh).ok()
+ }
+ 
++/// Credentials reported for a client's screencasts. The trusted shell's socket pair
++/// names no process, so its casts carry the PID of the shell the supervisor spawned.
++pub fn get_cast_credentials_for_client(dh: &DisplayHandle, client: &Client) -> Option<Credentials> {
++    let data = client.get_data::<ClientState>().unwrap();
++    if data.trusted_shell {
++        let pid = data
++            .trusted_shell_pid
++            .load(std::sync::atomic::Ordering::Relaxed);
++        return (pid > 0).then(|| Credentials {
++            pid,
++            uid: unsafe { libc::getuid() },
++            gid: unsafe { libc::getgid() },
++        });
++    }
++    get_credentials_for_client(dh, client)
++}
++
+ pub fn ensure_min_max_size(mut x: i32, min_size: i32, max_size: i32) -> i32 {
+     if max_size > 0 {
+         x = min(x, max_size);

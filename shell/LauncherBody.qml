@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
+import "SystemIcons.js" as SystemIcons
 import Quickshell
 import "Calculator.js" as Calculator
 import "Liquid.js" as Liquid
@@ -35,50 +36,171 @@ Item {
         onPressedChanged: if (pressed)
             body.keyboardMode = false
     }
-    function keyboardControls(): var {
-        let controls = settingsActive ? [closeButton] : [query, closeButton];
+    function headerControls(): var {
+        const controls = [closeButton];
+        if (!settingsActive)
+            controls.push(query);
         for (let i = 0; i < modesRepeater.count; ++i)
             controls.push(modesRepeater.itemAt(i));
         controls.push(settingsButton);
-        if (settingsActive)
-            controls.push(settingsView?.search);
-        for (let i = 0; !settingsActive && i < categoryRepeater.count; ++i)
-            controls.push(categoryRepeater.itemAt(i));
-        if (!settingsActive && list.footerItem && clipActions)
-            controls = controls.concat((list.footerItem as ClipboardFooter).controls);
         return controls.filter(item => item && item.visible && item.enabled);
     }
-    function moveKeyboardFocus(step: int): void {
-        keyboardMode = true;
-        const controls = keyboardControls();
-        const index = controls.findIndex(item => item.activeFocus);
-        const next = controls[(index + step + controls.length) % controls.length];
-        next.forceActiveFocus(Qt.TabFocusReason);
-        if (list.footerItem && (list.footerItem as ClipboardFooter).controls.indexOf(next) >= 0)
-            list.contentY = Math.max(0, list.contentHeight - list.height);
+    function categoryControls(): var {
+        const controls = [];
+        for (let i = 0; i < categoryRepeater.count; ++i)
+            controls.push(categoryRepeater.itemAt(i));
+        return controls.filter(item => item && item.visible && item.enabled);
     }
-    Keys.onPressed: event => {
+    // A mode tab or a category chip: its focus takes the shape of the drop it may carry.
+    function dropShaped(item: Item): bool {
+        for (let i = 0; i < modesRepeater.count; ++i)
+            if (modesRepeater.itemAt(i) === item)
+                return true;
+        return categoryControls().includes(item);
+    }
+    function footerControls(): var {
+        return !settingsActive && list.footerItem && clipActions ? (list.footerItem as ClipboardFooter).controls.filter(item => item.visible && item.enabled) : [];
+    }
+    function keyboardControls(): var {
+        let controls = headerControls();
+        if (settingsActive)
+            controls.push(settingsView?.search);
+        else {
+            controls = controls.concat(categoryControls());
+            if (results.length)
+                controls.push(resultFocus);
+            controls = controls.concat(footerControls());
+        }
+        return controls.filter(item => item && item.visible && item.enabled);
+    }
+    function focusControl(item: Item): void {
+        if (!item)
+            return;
         keyboardMode = true;
-        if (settingsActive && settingsView?.activeFocus) {
-            event.accepted = false;
+        item.forceActiveFocus(Qt.TabFocusReason);
+        if (footerControls().includes(item))
+            list.contentY = Math.max(0, list.contentHeight - list.height);
+        wake();
+    }
+    function focusResults(): void {
+        if (!results.length) {
+            focusControl(query);
             return;
         }
+        moveSelection(0);
+        focusControl(resultFocus);
+    }
+    // While the search has focus the highlighted result is what Enter opens; Down moves that
+    // highlight on to the next result and enters the results there, as before arrow
+    // navigation (0.8.0). Up from the first result still returns to the search.
+    function enterResultsBelow(): void {
+        if (!results.length)
+            return;
+        moveVertical(1);
+        focusControl(resultFocus);
+    }
+    function moveKeyboardFocus(step: int): void {
+        const controls = keyboardControls();
+        const index = controls.findIndex(item => item.activeFocus);
+        focusControl(controls[(index + step + controls.length) % controls.length]);
+        if (resultFocus.activeFocus)
+            moveSelection(0);
+    }
+    function moveArrow(key: int): void {
+        const headers = headerControls();
+        const categories = categoryControls();
+        const footers = footerControls();
+        const header = headers.findIndex(item => item.activeFocus);
+        const chip = categories.findIndex(item => item.activeFocus);
+        const footer = footers.findIndex(item => item.activeFocus);
+        const backwards = key === Qt.Key_Left || key === Qt.Key_Up;
+        if (resultFocus.activeFocus) {
+            if (key === Qt.Key_Up) {
+                if ((!gridMode && selected <= 0) || (gridMode && selected < frequentCount))
+                    focusControl(query);
+                else if (gridMode && selected - frequentCount < 7)
+                    focusControl(categoryRepeater.itemAt(body.categories.indexOf(category)) || categories[0] || query);
+                else
+                    moveVertical(-1);
+            } else if (key === Qt.Key_Down) {
+                if (gridMode && selected < frequentCount && categories.length)
+                    focusControl(categories[0]);
+                else if (selected >= results.length - (gridMode ? 7 : 1) && footers.length)
+                    focusControl(footers[0]);
+                else
+                    moveVertical(1);
+            } else if (gridMode) {
+                const first = selected < frequentCount ? 0 : frequentCount + Math.floor((selected - frequentCount) / 7) * 7;
+                const last = selected < frequentCount ? frequentCount - 1 : Math.min(first + 6, results.length - 1);
+                moveSelection(Math.max(first, Math.min(last, selected + (backwards ? -1 : 1))) - selected);
+            }
+        } else if (header >= 0) {
+            if (key === Qt.Key_Down) {
+                if (settingsActive)
+                    settingsView?.takeFocus();
+                else if (categories.length && !frequentCount)
+                    focusControl(categories[0]);
+                else
+                    focusResults();
+            } else if (key === Qt.Key_Left || key === Qt.Key_Right)
+                focusControl(headers[Math.max(0, Math.min(headers.length - 1, header + (backwards ? -1 : 1)))]);
+        } else if (chip >= 0) {
+            if (key === Qt.Key_Up) {
+                if (frequentCount) {
+                    selectAt(Math.min(chip, frequentCount - 1));
+                    focusResults();
+                } else
+                    focusControl(query);
+            } else if (key === Qt.Key_Down) {
+                if (results.length > frequentCount)
+                    selectAt(frequentCount + Math.min(chip, results.length - frequentCount - 1));
+                focusResults();
+            } else
+                focusControl(categories[Math.max(0, Math.min(categories.length - 1, chip + (backwards ? -1 : 1)))]);
+        } else if (footer >= 0) {
+            if (key === Qt.Key_Up)
+                focusResults();
+            else if (key === Qt.Key_Left || key === Qt.Key_Right)
+                focusControl(footers[Math.max(0, Math.min(footers.length - 1, footer + (backwards ? -1 : 1)))]);
+        }
+    }
+    Keys.onPressed: event => handleKey(event)
+    function handleKey(event): void {
+        keyboardMode = true;
         if (event.key === Qt.Key_Escape) {
             if (settingsActive)
                 leaveSettings();
+            else if (query.text.length) {
+                query.text = "";
+                focusControl(query);
+            } else if (!query.activeFocus)
+                focusControl(query);
             else
-                dismissed();
+                backRequested();
         } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
             moveKeyboardFocus(event.key === Qt.Key_Backtab || (event.modifiers & Qt.ShiftModifier) ? -1 : 1);
-        } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Up) {
-            moveKeyboardFocus(-1);
-        } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down) {
-            moveKeyboardFocus(1);
+        } else if ([Qt.Key_Left, Qt.Key_Up, Qt.Key_Right, Qt.Key_Down].includes(event.key)) {
+            moveArrow(event.key);
+        } else if (!settingsActive && event.text && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) && event.text.charCodeAt(0) >= 32) {
+            focusControl(query);
+            query.insert(query.cursorPosition, event.text);
         } else {
-            event.accepted = true;
+            event.accepted = false;
             return;
         }
         event.accepted = true;
+    }
+    // Results retain their logical selection while list delegates are recycled.
+    Item {
+        id: resultFocus
+        objectName: "launcher-results"
+        visible: !body.settingsActive && body.results.length > 0
+        activeFocusOnTab: activeFocus || visible
+        Keys.onPressed: event => body.handleKey(event)
+        Keys.onReturnPressed: body.activate()
+        Keys.onEnterPressed: body.activate()
+        Keys.onSpacePressed: body.activate()
+        Keys.onDeletePressed: body.deleteSelectedClip()
     }
     property bool liquid: false
     property string wallpaperState: "unknown"
@@ -105,8 +227,10 @@ Item {
     readonly property AppCatalog apps: sharedCatalog ?? localCatalog
     readonly property AppCatalog localCatalog: sharedCatalog ? null : (catalogFactory.createObject(body) as AppCatalog)
     readonly property AppCatalog appCatalog: apps
+    signal backRequested
     signal dismissed
     signal settingsRequested
+    signal openFailed(string reason)
     Component {
         id: catalogFactory
         AppCatalog {}
@@ -118,16 +242,19 @@ Item {
             if (body.pendingRecentApp) {
                 recent.record("app", body.pendingRecentApp);
                 body.pendingRecentApp = "";
-                body.dismissed();
-            } else if (!body.sharedCatalog || body.opened) {
-                body.dismissed();
             }
+        }
+        function onFailed(id: string, name: string, reason: string): void {
+            if (body.pendingRecentApp === id)
+                body.pendingRecentApp = "";
         }
     }
     RecentFiles {
         id: files
         active: body.opened
-        onLaunched: body.dismissed()
+        onOpeningRequested: body.dismissed()
+        onOpenStateChanged: if (!["idle", "pending", "requested"].includes(openState))
+            body.openFailed(body.stateNote("file-open", openState))
     }
     // Clipboard rows are read for the Clipboard mode and for Recent (only if a clip was
     // opened from here before, so the history is not touched without reason).
@@ -219,10 +346,8 @@ Item {
     }
     PrivateJob {
         id: web
-        onCompleted: value => {
-            if (value.state === "requested")
-                body.dismissed();
-        }
+        onStateChanged: if (!["idle", "pending", "requested"].includes(state))
+            body.openFailed(body.stateNote("web", state))
     }
     WindowLabels {
         id: labels
@@ -500,6 +625,7 @@ Item {
         if (Math.abs(p.x - lastHover.x) < .5 && Math.abs(p.y - lastHover.y) < .5)
             return;
         lastHover = p;
+        keyboardMode = false;
         if (selected !== index)
             selectAt(index);
     }
@@ -516,17 +642,25 @@ Item {
                 dismissed();
                 return;
             }
+            if (!row.entry || apps.busy)
+                return;
             pendingRecentApp = row.entry.id; // recorded once the launch is accepted
+            // Release the modal layer before a fast app can map its first window.
+            // Waiting for the helper reply leaves the old panel holding keyboard focus.
+            dismissed();
             apps.launch(row.entry);
         } else if (row.kind === "clip") {
             recent.record("clip", row.id);
             clips.perform(row.id, false);
-        } else if (row.kind === "web")
+        } else if (row.kind === "web") {
+            if (web.busy)
+                return;
+            dismissed();
             web.start({
                 op: "web",
                 query: row.value
             });
-        else if (row.kind === "file") {
+        } else if (row.kind === "file") {
             recent.record("file", row.path);
             files.open(row.path);
         } else if (row.kind === "calculator") {
@@ -616,6 +750,8 @@ Item {
     }
     // The line under the header (launcher.js "note"): only when there is something to say.
     function noteText(): string {
+        if (apps.busy)
+            return stateNote("launch", "pending");
         if (modeIndex === 4) {
             if (clips.state !== "ready")
                 return stateNote("clipboard", clips.state);
@@ -678,8 +814,8 @@ Item {
     // of the bar's button; the active mode, the active category and the selection are Clear
     // drops on it (one bubble per role that changes shape while it flows). Everything the
     // panel shows lies under the glass (uIcons), so a drop's edge bends its neighbours; the
-    // selected item, the active mode and category are drawn again on the glass with the
-    // drop's alpha, so the drop never ghosts its own text (Apple: labels on the material).
+    // selected item, the active mode and category are drawn fully on the glass as soon as
+    // their drop exists, so a growing drop never ghosts its own text.
     // Without a GPU the same layers are drawn flat.
     property DockBackdrop backdrop: null
     // The panel's top left on the screen: the bar's launcher button.
@@ -688,6 +824,8 @@ Item {
     property var logoBubble: null
     readonly property bool glassReady: backdrop !== null && backdrop.ready && GraphicsInfo.api !== GraphicsInfo.Software
     readonly property var modeBubble: Liquid.liquid()
+    // The mode and category drops stand 4 px proud of their tab; keyboard focus does too.
+    readonly property int tabFocusPad: 4
     readonly property var categoryBubble: Liquid.liquid()
     readonly property var selectBubble: Liquid.liquid()
     // The plate's height follows the content on a spring (k 420, ζ .8).
@@ -725,11 +863,11 @@ Item {
     readonly property real shownRadius: Liquid.mix(Metrics.islandRadius, Metrics.panelRadius, morph)
     readonly property real modeAlpha: {
         tick;
-        return Liquid.smooth(modeBubble.alpha.x);
+        return Liquid.onGlass(modeBubble);
     }
     readonly property real categoryAlpha: {
         tick;
-        return Liquid.smooth(categoryBubble.alpha.x);
+        return Liquid.onGlass(categoryBubble);
     }
     readonly property real selectAlpha: {
         tick;
@@ -737,25 +875,25 @@ Item {
     }
     readonly property real logoAlpha: {
         tick;
-        return logoBubble ? Liquid.smooth(logoBubble.alpha.x) : 0;
+        return Liquid.onGlass(logoBubble);
     }
     // Where the active mode, category and selected item are, panel coordinates.
+    // itemAt() is not a dependency: the binding first runs before the Repeater has made its
+    // tabs and got an empty rect, which nothing re-ran until the mode changed, so the first
+    // open put the mode drop on that empty rect (8x8 at -4, -4) and hid the tab's label.
+    // The count re-runs it once the tabs exist; from then on their geometry is tracked.
     readonly property rect modeRect: {
+        modesRepeater.count;
         const mode = settingsActive ? settingsButton : modesRepeater.itemAt(modeIndex);
         return mode ? Qt.rect(mode.x + (settingsActive ? 0 : modesRow.x), mode.y + (settingsActive ? 0 : modesRow.y), mode.width, mode.height) : Qt.rect(0, 0, 0, 0);
     }
     property rect categoryRect: Qt.rect(0, 0, 0, 0)
     property var selection: null
-    // dual() of launcher.js follows the selection bubble, not the selection: an item is drawn
-    // on the glass as much as the bubble covers it. With the plain `selected` flag the new
-    // item jumped onto the glass and the old one back under it the moment the pointer crossed
-    // into the next tile, while the bubble was still flowing over the old one — its rim then
-    // bent and split the old label, and the new label stood crisp outside the bubble: the
-    // dispersion "blinked" on every tile (27.09). `trail` is the item being left.
-    // Worse, the item under the glass followed `selected` at once while its copy on the glass
-    // followed `selection`, set in the next frame(): for one frame the new item was drawn
-    // neither under nor on the glass and vanished (VM frames at 1 and 1.25). Everything here,
-    // `lastSelected` included, is set in frame() together.
+    // The selection is fully on the glass while its drop exists, including growth and melt.
+    // The item being left (`trail`) follows coverage while the drop flows away. Both copies
+    // and their originals use the same frame's selection: updating one from `selected`
+    // immediately would leave a frame with neither copy drawn. Everything here, including
+    // `lastSelected`, is set in frame() together.
     property int trailIndex: -1
     property var trail: null
     property real selectOnGlass: 0
@@ -775,10 +913,12 @@ Item {
         const oy = Math.max(0, Math.min(r.y + r.height, b.y + b.w) - Math.max(r.y, b.y)) / Math.max(1, Math.min(r.height, b.w));
         return Liquid.smooth(Math.min(1, ox) * Math.min(1, oy));
     }
+    onKeyboardModeChanged: wake()
     onMorphChanged: wake()
     onSelectedChanged: wake()
     onHeightChanged: wake()
     onWidthChanged: wake()
+    onModeRectChanged: wake()
     function itemRect(item: Item): rect {
         const p = item.mapToItem(body, 0, 0);
         return Qt.rect(p.x, p.y, item.width, item.height);
@@ -788,7 +928,7 @@ Item {
     // whatever its name (Metrics.launcherTileBubble); rows and cards stand 6 px proud. Null
     // when not on screen.
     function selectedGeometry(): var {
-        return settingsActive ? null : geometryOf(selected);
+        return settingsActive || (keyboardMode && !resultFocus.activeFocus && !query.activeFocus) ? null : geometryOf(selected);
     }
     function geometryOf(i: int): var {
         if (i < 0 || i >= results.length || !opened)
@@ -839,8 +979,8 @@ Item {
         let active = false;
         heightSpring.target = height;
         active = Liquid.step(heightSpring, dt, 420, .8) || active;
-        const mode = settingsActive ? settingsButton : modesRepeater.itemAt(modeIndex);
-        if (mode) {
+        // No drop on a tab without geometry: it would stand on nothing and fade its label out.
+        if (modeRect.width > 0 && modeRect.height > 0) {
             active = Liquid.place(modeBubble, Liquid.pad([modeRect.x, modeRect.y, modeRect.width, modeRect.height], 4), 13, now) || active;
         }
         const chip = categoriesShown ? categoryRepeater.itemAt(categories.indexOf(category)) : null;
@@ -860,15 +1000,15 @@ Item {
             Liquid.dissolve(selectBubble, now);
         for (const b of [modeBubble, categoryBubble, selectBubble])
             active = Liquid.advance(b, now, dt) || active;
-        // dual() by coverage (selectOnGlass): the item left behind stays on the glass while
-        // the bubble still covers it, the new one comes onto it as the bubble arrives.
+        // The selected item is fully lifted while its drop exists; the item left behind
+        // remains on the glass in proportion to the bubble's departing coverage.
         if (selected !== lastSelected) {
             trailIndex = lastSelected >= 0 && selectOnGlass > .01 ? lastSelected : -1;
             lastSelected = selected;
         }
         trail = trailIndex >= 0 && trailIndex !== selected ? geometryOf(trailIndex) : null;
         const onGlass = Liquid.smooth(selectBubble.alpha.x);
-        selectOnGlass = sel ? onGlass * coverOf(sel.rect) : 0;
+        selectOnGlass = sel ? Liquid.onGlass(selectBubble) : 0;
         trailOnGlass = trail ? onGlass * coverOf(trail.rect) : 0;
         if (trailIndex >= 0 && trailOnGlass < .005) {
             trailIndex = -1;
@@ -959,11 +1099,11 @@ Item {
             select_shape: selection?.shape ?? null
         };
     }
-    // Ink: always the light glass, whatever lies underneath (2026-09-27).
-    readonly property color ink: LiquidPalette.inkOnLight
-    readonly property color dim: LiquidPalette.dimOnLight
-    readonly property color faint: LiquidPalette.faintOnLight
-    readonly property color danger: LiquidPalette.dangerOnLight
+    // Ink follows the selected glass theme.
+    readonly property color ink: LiquidPalette.ink
+    readonly property color dim: LiquidPalette.plateDim
+    readonly property color faint: LiquidPalette.faint
+    readonly property color danger: LiquidPalette.danger
 
     // ---- Flat stand-in (no GPU): the plate and the drops, under the content ----
     Rectangle {
@@ -972,6 +1112,18 @@ Item {
         height: body.shownHeight
         radius: body.shownRadius
         color: LiquidPalette.flatPlate
+    }
+    // The Settings canvas of the flat stand-in: over the plate and under the drops, which lie
+    // under the content here (with the glass the drops lie above the content layer and its tint).
+    CanvasTint {
+        objectName: "launcher-canvas-flat"
+        shown: LiquidPalette.sharedCanvas && !body.settingsActive && !body.glassReady && body.morph > 0
+        y: Metrics.launcherHeader
+        width: body.shownWidth
+        height: Math.max(0, body.shownHeight - y)
+        bottomLeftRadius: body.shownRadius
+        bottomRightRadius: body.shownRadius
+        opacity: body.contentAlpha
     }
     Item {
         width: body.shownWidth
@@ -1095,6 +1247,7 @@ Item {
         property color color: body.ink
         signal clicked
         activeFocusOnTab: true
+        Keys.onPressed: event => body.handleKey(event)
         Keys.onReturnPressed: clicked()
         Keys.onEnterPressed: clicked()
         Keys.onSpacePressed: clicked()
@@ -1153,6 +1306,18 @@ Item {
             width: body.shownWidth
             height: body.shownHeight
             clip: body.settingsActive || !body.glassReady
+            // The Settings canvas under the header, as Settings has it (SettingsView draws its
+            // own while it is shown).
+            CanvasTint {
+                objectName: "launcher-canvas"
+                shown: LiquidPalette.sharedCanvas && !body.settingsActive && body.glassReady
+                y: Metrics.launcherHeader
+                width: body.shownWidth
+                height: Math.max(0, body.shownHeight - y)
+                bottomLeftRadius: body.shownRadius
+                bottomRightRadius: body.shownRadius
+                opacity: body.contentAlpha
+            }
             Item {
                 id: content
                 width: Math.max(body.width, body.animatedWidth)
@@ -1164,6 +1329,7 @@ Item {
                     id: closeButton
                     objectName: "launcher-close"
                     activeFocusOnTab: true
+                    Keys.onPressed: event => body.handleKey(event)
                     Keys.onReturnPressed: body.dismissed()
                     Keys.onEnterPressed: body.dismissed()
                     Keys.onSpacePressed: body.dismissed()
@@ -1202,6 +1368,7 @@ Item {
                         Item {
                             id: modeItem
                             activeFocusOnTab: true
+                            Keys.onPressed: event => body.handleKey(event)
                             function activate(): void {
                                 body.leaveSettings();
                                 body.modeIndex = index;
@@ -1209,7 +1376,11 @@ Item {
                             Keys.onReturnPressed: activate()
                             Keys.onEnterPressed: activate()
                             Keys.onSpacePressed: activate()
+                            // The mode drop's shape (pad 4, radius 13): on the open mode it is
+                            // the same bubble, on another one the bubble the arrow moved.
                             FocusRing {
+                                anchors.margins: -body.tabFocusPad
+                                radius: 13
                                 shown: body.keyboardMode && modeItem.activeFocus && !body.glassReady
                             }
                             required property int index
@@ -1248,6 +1419,7 @@ Item {
                     width: 28
                     height: 28
                     activeFocusOnTab: true
+                    Keys.onPressed: event => body.handleKey(event)
                     function activate(): void {
                         if (body.opened && !body.settingsActive)
                             body.settingsRequested();
@@ -1267,7 +1439,8 @@ Item {
                         anchors.centerIn: parent
                         width: 20
                         height: 20
-                        source: Qt.resolvedUrl("settings/icons/gear.svg")
+                        // The gear in the grey of the mode labels beside it (All, Windows, Files).
+                        source: SystemIcons.settingsSvg(body.dim)
                         sourceSize: Qt.size(24, 24)
                     }
                     MouseArea {
@@ -1347,6 +1520,7 @@ Item {
                             Item {
                                 id: chip
                                 activeFocusOnTab: true
+                                Keys.onPressed: event => body.handleKey(event)
                                 function activate(): void {
                                     body.category = modelData;
                                 }
@@ -1354,6 +1528,8 @@ Item {
                                 Keys.onEnterPressed: activate()
                                 Keys.onSpacePressed: activate()
                                 FocusRing {
+                                    anchors.margins: -body.tabFocusPad
+                                    radius: 13
                                     shown: body.keyboardMode && chip.activeFocus && !body.glassReady
                                 }
                                 required property string modelData
@@ -1554,6 +1730,7 @@ Item {
         }
         TextInput {
             id: query
+            objectName: "launcher-search"
             visible: !body.settingsActive
             TapHandler {
                 acceptedButtons: Qt.AllButtons
@@ -1565,8 +1742,17 @@ Item {
                 event.accepted = false;
             }
             activeFocusOnTab: true
-            FocusRing {
-                shown: body.keyboardMode && query.activeFocus && !body.glassReady
+            // Keyboard focus on Search everything: the hover bubble (plain fill, light rim),
+            // under the text.
+            Rectangle {
+                objectName: "launcher-search-focus"
+                anchors.fill: parent
+                radius: 8
+                color: LiquidPalette.flatDrop
+                border.width: 1
+                border.color: LiquidPalette.flatDropRim
+                visible: body.keyboardMode && query.activeFocus
+                z: -1
             }
             x: 56
             y: 14
@@ -1586,7 +1772,7 @@ Item {
             Accessible.name: "Search everything"
             onTextChanged: {
                 body.selectionKey = "";
-                if (body.opened)
+                if (body.opened && !body.apps.busy)
                     body.apps.launchState = "idle";
             }
             Keys.onDeletePressed: event => {
@@ -1609,29 +1795,28 @@ Item {
             }
             Keys.onDownPressed: event => {
                 body.keyboardMode = true;
+                body.enterResultsBelow();
                 event.accepted = true;
-                body.moveVertical(1);
             }
             Keys.onUpPressed: event => {
-                body.keyboardMode = true;
+                body.moveArrow(Qt.Key_Up);
                 event.accepted = true;
-                body.moveVertical(-1);
             }
             Keys.onLeftPressed: event => {
-                body.keyboardMode = true;
-                if (body.horizontalMoves) {
-                    event.accepted = true;
-                    body.moveSelection(-1);
-                } else
+                if (query.text.length)
                     event.accepted = false;
+                else {
+                    body.moveArrow(Qt.Key_Left);
+                    event.accepted = true;
+                }
             }
             Keys.onRightPressed: event => {
-                body.keyboardMode = true;
-                if (body.horizontalMoves) {
-                    event.accepted = true;
-                    body.moveSelection(1);
-                } else
+                if (query.text.length)
                     event.accepted = false;
+                else {
+                    body.moveArrow(Qt.Key_Right);
+                    event.accepted = true;
+                }
             }
             Text {
                 anchors.fill: parent
@@ -1643,25 +1828,19 @@ Item {
                 color: body.faint
             }
             Keys.onEscapePressed: event => {
-                body.keyboardMode = true;
+                if (query.text.length)
+                    query.text = "";
+                else
+                    body.backRequested();
                 event.accepted = true;
-                body.dismissed();
             }
             Keys.onTabPressed: event => {
-                body.keyboardMode = true;
+                body.moveKeyboardFocus(event.modifiers & Qt.ShiftModifier ? -1 : 1);
                 event.accepted = true;
-                if (event.modifiers & Qt.ControlModifier)
-                    body.moveKeyboardFocus(1);
-                else
-                    body.modeIndex = (body.modeIndex + 1) % body.modes.length;
             }
             Keys.onBacktabPressed: event => {
-                body.keyboardMode = true;
+                body.moveKeyboardFocus(-1);
                 event.accepted = true;
-                if (event.modifiers & Qt.ControlModifier)
-                    body.moveKeyboardFocus(-1);
-                else
-                    body.modeIndex = (body.modeIndex + body.modes.length - 1) % body.modes.length;
             }
         }
     }
@@ -1695,16 +1874,19 @@ Item {
         id: glassFocus
         anchors.fill: undefined
         readonly property Item focused: body.Window.window?.activeFocusItem ?? null
-        readonly property bool belongs: focused !== null && body.keyboardControls().includes(focused)
+        readonly property bool belongs: focused !== null && focused !== query && focused !== resultFocus && body.keyboardControls().includes(focused)
+        // Tabs and category chips take the drop's shape (pad 4, radius 13), like the flat rings.
+        readonly property real pad: belongs && body.dropShaped(focused) ? body.tabFocusPad : 0
         readonly property point position: {
             body.tick;
             list.contentY;
             return belongs ? focused.mapToItem(body, 0, 0) : Qt.point(0, 0);
         }
-        x: position.x
-        y: position.y
-        width: belongs ? focused.width : 0
-        height: belongs ? focused.height : 0
+        x: position.x - pad
+        y: position.y - pad
+        width: belongs ? focused.width + 2 * pad : 0
+        height: belongs ? focused.height + 2 * pad : 0
+        radius: pad ? 13 : 8
         readonly property bool contained: belongs && x >= 0 && y >= 0 && x + width <= body.shownWidth && y + height <= body.shownHeight
         readonly property bool eligible: body.keyboardMode && body.opened && contained
         shown: body.glassReady && eligible

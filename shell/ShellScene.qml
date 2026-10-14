@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
+import "ScreenShare.js" as ScreenShare
 
 Item {
     id: scene
@@ -13,6 +14,19 @@ Item {
     required property int testHeight
     required property NiriService niri
     property ShellServices shared: null
+    property var authenticationPrompt: null
+    readonly property bool authenticationPresent: authenticationPrompt?.visible ?? false
+    onAuthenticationPresentChanged: {
+        if (authenticationPresent) {
+            deferredPeekIds = Array.from(new Set(deferredPeekIds.concat(peekIds)));
+            peekIds = [];
+            peekTimer.stop();
+            closeClock();
+        } else {
+            // Output migration transfers the held arrivals before replaying them.
+            Qt.callLater(replayDeferredPeeks);
+        }
+    }
     Connections {
         target: UpdateService
         function onOpening(): void {
@@ -68,7 +82,8 @@ Item {
         skipIntro: scene.skipIntro
         overview: scene.niri.overviewOpen
         presentation: scene.presentationState
-        openUI: scene.modalOpen || scene.peekOpen || scene.barKeyboardActive
+        openUI: scene.modalOpen || scene.peekOpen
+        keyboardActive: scene.barKeyboardActive
         configuredReserve: scene.reservedSpace
         pointerInside: barHover.hovered
         edgeHovered: edgeHover.hovered
@@ -84,7 +99,7 @@ Item {
         x: 56
         y: 0
         width: Math.max(0, scene.viewportWidth - 56)
-        height: 8
+        height: 2
         visible: barPolicy.edgeEnabled
         HoverHandler {
             id: edgeHover
@@ -121,9 +136,10 @@ Item {
         overview: scene.niri.overviewOpen
         presentation: scene.presentationState
         popupOpen: dock.popupOpen
-        dragging: dock.dragging
+        dragging: dock.dragging || dock.externalDragging
         pointerInside: dock.pointerInside
         edgeHovered: dockEdgeHover.hovered
+        edgeDragging: dockEdgeDrop.containsDrag
         onDockVisibleChanged: {
             if (!dockVisible) {
                 dock.leaveKeyboard();
@@ -142,6 +158,16 @@ Item {
         visible: dockPolicy.edgeEnabled
         HoverHandler {
             id: dockEdgeHover
+        }
+        DropArea {
+            id: dockEdgeDrop
+            anchors.fill: parent
+            onEntered: drag => {
+                drag.accepted = drag.hasUrls;
+            }
+            onDropped: drop => {
+                drop.accepted = false;
+            }
         }
     }
     Dock {
@@ -199,6 +225,7 @@ Item {
     property int requestSerial: 0
     property bool drawerOpen: false
     property bool barKeyboardActive: false
+    property Item keyboardReturnTarget: null
     property string keyboardSurface: ""
     property bool shortcutsOpen: false
     readonly property alias shortcuts: shortcuts
@@ -237,10 +264,6 @@ Item {
             return false;
         closeAll();
         if (surface === "bar") {
-            // Top layers remain below fullscreen windows. Do not leave a latent
-            // keyboard request which activates when that window exits fullscreen.
-            if (barPolicy.fullscreen && !niri.overviewOpen)
-                return false;
             keyboardSurface = surface;
             barKeyboardActive = true;
             Qt.callLater(() => {
@@ -265,6 +288,7 @@ Item {
     property bool clockPresent: false
     property real clockExpansion: 0
     property var peekIds: []
+    property var deferredPeekIds: []
     property double peekStarted: 0
     property double peekUntil: 0
     property double peekCooldown: 0
@@ -276,6 +300,38 @@ Item {
     property bool systemPresent: false
     property real systemExpansion: 0
     property string systemPage: ""
+    // Whether the panel's own glass source is live (Surfaces: the overlay's screen capture
+    // has settled; true without a capture). Opening starts the capture; the panel stays hidden
+    // and the island stays as it is until the capture is live, at most systemWarmup ms. Opened
+    // over the wallpaper stand-in, its first frames drew a darker, purple plate on the GPU
+    // path before the capture took over (0.8.1).
+    property bool systemGlassLive: true
+    property bool systemWarming: false
+    // 100 ms timer: the reveal lands within 120 ms including scheduling (measured 126–128 ms with 120).
+    readonly property int systemWarmupMs: 100
+    onSystemGlassLiveChanged: {
+        if (systemGlassLive && systemWarming)
+            revealSystem();
+    }
+    Timer {
+        id: systemWarmup
+        interval: scene.systemWarmupMs
+        onTriggered: scene.revealSystem()
+    }
+    function revealSystem(): void {
+        systemWarmup.stop();
+        if (!systemWarming)
+            return;
+        systemWarming = false;
+        if (!systemOpen)
+            return;
+        systemExpansion = 1;
+        const keyboard = keyboardSurface !== "";
+        Qt.callLater(() => {
+            if (scene.systemOpen)
+                systemPanel.takeFocus(keyboard);
+        });
+    }
     readonly property alias systemPanel: systemPanel
     readonly property alias systemBody: systemPanel.body
     Connections {
@@ -294,24 +350,31 @@ Item {
     // Privacy: capture streams from the backend plus screencasts from the core model.
     // A JS array assigned through a var property can come back as a sequence object without filter/some.
     readonly property var captures: Array.from(services.backend?.captures ?? [])
-    readonly property var privacyRows: scene.captures.filter(c => c.kind === "mic" || c.kind === "cam").map(c => ({
+    // A video stream reading a cast's PipeWire node is that program watching the screen.
+    readonly property var castNodes: ScreenShare.castNodes(niri.casts)
+    // A video stream reading nothing (source -1) uses no camera either.
+    readonly property var deviceCaptures: scene.captures.filter(c => c.kind === "mic" || c.kind === "cam" && c.source !== -1 && !scene.castNodes.includes(c.source))
+    // Only another program seeing the screen right now (ScreenShare.js), named after the
+    // stream reading the cast's node.
+    readonly property var screenShares: ScreenShare.shares(niri.casts, Array.from(services.backend?.readers ?? []), [context.captureNode], word => DesktopEntries.heuristicLookup(word)?.name ?? "")
+    readonly property var privacyRows: scene.deviceCaptures.map(c => ({
                 kind: "info",
                 what: c.kind,
                 label: c.name || "An app",
                 note: c.kind === "mic" ? "Using the microphone" : "Using the camera",
                 tag: "",
                 id: 0
-            })).concat(niri.casts.map(c => ({
+            })).concat(scene.screenShares.map(s => ({
                 kind: "info",
                 what: "cast",
-                label: c.target === "window" ? "Window " + c.window_id : c.target === "output" ? "Screen " + c.output : "Screen share",
-                note: "Sharing the screen",
-                tag: c.is_active ? "" : "Paused",
+                label: s.name,
+                note: s.window ? "Sharing a window" : "Sharing the screen",
+                tag: "",
                 id: 0
             })))
-    readonly property bool privacyMic: scene.captures.some(c => c.kind === "mic")
-    readonly property bool privacyCam: scene.captures.some(c => c.kind === "cam")
-    readonly property bool privacyCast: niri.casts.length > 0
+    readonly property bool privacyMic: scene.deviceCaptures.some(c => c.kind === "mic")
+    readonly property bool privacyCam: scene.deviceCaptures.some(c => c.kind === "cam")
+    readonly property bool privacyCast: scene.screenShares.length > 0
     readonly property bool privacyActive: privacyMic || privacyCam || privacyCast
     // The panel grows out of the pill like the other islands' (open, present while it morphs).
     property bool privacyOpen: false
@@ -364,6 +427,7 @@ Item {
         y: Metrics.top - 70 * shift
         // Drawn under its growing panel until the panel is half open (as the other islands).
         panelPresent: scene.privacyPresent && scene.privacyExpansion > .5
+        keyboardFocused: bar.privacyFocused
         onClicked: scene.togglePrivacy()
     }
     // What the privacy panel, the OSD and the system panel refract in the overlay (Surfaces
@@ -387,8 +451,13 @@ Item {
         kinds: privacy.kinds
         pulse: privacy.pulse
         focus: scene.privacyOpen
-        Keys.onEscapePressed: scene.closeAll()
-        onToggle: scene.togglePrivacy()
+        Keys.onEscapePressed: scene.keyboardBack(false)
+        onToggle: {
+            if (keyboardMode)
+                scene.keyboardBack(false);
+            else
+                scene.togglePrivacy();
+        }
     }
     readonly property alias osd: osd
     Osd {
@@ -420,14 +489,16 @@ Item {
         systemPage = page;
         systemOpen = true;
         systemPresent = true;
-        systemExpansion = 1;
-        Qt.callLater(() => {
-            if (scene.systemOpen)
-                systemPanel.takeFocus(keyboard === true);
-        });
+        systemWarming = true;
+        if (systemGlassLive)
+            revealSystem();
+        else
+            systemWarmup.restart();
         return true;
     }
     function closeSystem(): void {
+        keyboardReturnTarget = null;
+        systemWarming = false;
         systemOpen = false;
         keyboardSurface = "";
         systemExpansion = 0;
@@ -537,6 +608,11 @@ Item {
             return;
         if (!notes.entries.some(e => e.id === id && notes.peekAllowed(e)))
             return;
+        if (authenticationPresent) {
+            if (!deferredPeekIds.includes(id))
+                deferredPeekIds = deferredPeekIds.concat([id]);
+            return;
+        }
         const time = Date.now();
         const critical = notes.entries.some(e => e.id === id && e.critical === true);
         const pairing = notes.entries.some(e => e.id === id && e.critical === true && !e.batteryWarning && e.object);
@@ -561,10 +637,19 @@ Item {
         peekTimer.interval = Math.max(1, peekUntil - time);
         peekTimer.restart();
     }
+    function replayDeferredPeeks(): void {
+        if (authenticationPresent || !focusedOutput)
+            return;
+        const ids = deferredPeekIds;
+        deferredPeekIds = [];
+        for (const id of ids)
+            showNotification(id);
+    }
     // Move transient feedback without replaying an arrival or extending its deadline.
     function exportTransient(): var {
         const state = {
             ids: peekIds.slice(),
+            deferredIds: deferredPeekIds.slice(),
             started: peekStarted,
             until: peekUntil,
             cooldown: peekCooldown,
@@ -572,6 +657,7 @@ Item {
         };
         peekTimer.stop();
         peekIds = [];
+        deferredPeekIds = [];
         if (!drawerOpen) {
             clockExpansion = 0;
             clockPresent = false;
@@ -586,6 +672,11 @@ Item {
         peekStarted = state.started;
         peekUntil = state.until;
         peekIds = state.ids.filter(id => notes.entries.some(e => e.id === id && notes.peekAllowed(e) && (state.until > now || (e.critical && !e.batteryWarning && e.object))));
+        deferredPeekIds = Array.from(new Set(deferredPeekIds.concat(state.deferredIds ?? [])));
+        if (authenticationPresent) {
+            deferredPeekIds = Array.from(new Set(deferredPeekIds.concat(peekIds)));
+            peekIds = [];
+        }
         if (niri.overviewOpen || modalOpen || notes.effectiveDnd || presentationState !== "clear")
             retainCriticalPeek();
         if (peekOpen) {
@@ -597,6 +688,7 @@ Item {
             }
         }
         osd.importState(state.osd);
+        Qt.callLater(replayDeferredPeeks);
     }
     Timer {
         id: peekTimer
@@ -622,6 +714,7 @@ Item {
         outputName: scene.outputName
     }
     readonly property alias bar: bar
+    readonly property alias barHoldBand: barHoldBand
     readonly property alias panel: panel
     readonly property alias input: launcherBody
     // Future drawers/panels/dock popups subscribe here, not directly to niri.
@@ -669,8 +762,29 @@ Item {
     function closeAll(): void {
         closePanels(false);
     }
+    function keyboardBack(systemOnly: bool): void {
+        const target = keyboardReturnTarget;
+        if (systemOnly)
+            closeSystem();
+        else
+            closeAll();
+        if (!target || !enabled || !focusedOutput || !niri.layerFocusSupported || (barPolicy.fullscreen && !niri.overviewOpen))
+            return;
+        keyboardSurface = "bar";
+        // Before barKeyboardActive: Surfaces may activate the bar at once and call takeFocus().
+        bar.returnItem = target;
+        bar.returnUntil = Date.now() + 2000;
+        barKeyboardActive = true;
+        closeTimer.start();
+        Qt.callLater(() => {
+            if (scene.barKeyboardActive)
+                bar.takeFocus();
+        });
+    }
     function closePanels(preserveBattery: bool): void {
         tip.hide();
+        keyboardReturnTarget = null;
+        bar.returnItem = null;
         keyboardSurface = "";
         barKeyboardActive = false;
         shortcutsOpen = false;
@@ -680,6 +794,7 @@ Item {
             closeClock();
         else
             drawerOpen = false;
+        systemWarming = false;
         systemOpen = false;
         systemExpansion = 0;
         systemBody.reset();
@@ -738,6 +853,7 @@ Item {
         interval: 16
         repeat: true
         onTriggered: {
+            const returning = bar.settleReturn();
             if (!scene.launcherOpen && scene.expansion === 0 && !morph.running) {
                 scene.launcherPresent = false;
                 launcherBody.reset();
@@ -748,7 +864,7 @@ Item {
                 scene.systemPresent = false;
             if (!scene.privacyOpen && scene.privacyExpansion === 0 && !privacyMorph.running)
                 scene.privacyPresent = false;
-            if ((!scene.systemPresent || scene.systemOpen) && (!scene.launcherPresent || scene.launcherOpen) && (!scene.clockPresent || scene.drawerOpen || scene.peekOpen) && (!scene.privacyPresent || scene.privacyOpen))
+            if (!returning && (!scene.systemPresent || scene.systemOpen) && (!scene.launcherPresent || scene.launcherOpen) && (!scene.clockPresent || scene.drawerOpen || scene.peekOpen) && (!scene.privacyPresent || scene.privacyOpen))
                 stop();
         }
     }
@@ -771,9 +887,9 @@ Item {
             clock_expansion: clockExpansion,
             clock_head: clockHeadExpansion,
             privacy: {
-                mic: scene.captures.filter(c => c.kind === "mic").length,
-                cam: scene.captures.filter(c => c.kind === "cam").length,
-                cast: niri.casts.length,
+                mic: scene.deviceCaptures.filter(c => c.kind === "mic").length,
+                cam: scene.deviceCaptures.filter(c => c.kind === "cam").length,
+                cast: scene.screenShares.length,
                 visible: privacy.visible,
                 open: privacyOpen,
                 panel: privacyOpen ? "open" : privacyPresent ? "closing" : "closed",
@@ -859,6 +975,11 @@ Item {
             launcher: launcherOpen ? "open" : launcherPresent ? "closing" : "closed",
             input_focused: launcherBody.inputFocused,
             query_length: launcherBody.queryLength,
+            // Which surface owns the keyboard and the bar cell that holds it (live checks).
+            keyboard: {
+                surface: keyboardSurface,
+                bar: bar.keyboardItem ? bar.keyboardName() : null
+            },
             output: output?.name ?? null,
             headless: headless,
             exclusive_zone: barPolicy.effectiveReserve,
@@ -870,6 +991,11 @@ Item {
                 reserve: dockPolicy.reserve,
                 edge_enabled: dockPolicy.edgeEnabled,
                 edge_hovered: dockPolicy.edgeHovered,
+                edge_dragging: dockPolicy.edgeDragging,
+                external_dragging: dock.externalDragging,
+                reveal_delay_ms: dockPolicy.revealDelayMs,
+                hide_delay_ms: dockPolicy.hideDelayMs,
+                slide_duration_ms: dockPolicy.slideDurationMs,
                 visible_amount: dock.visibleAmount,
                 output: outputName,
                 edge_rect: {
@@ -904,12 +1030,18 @@ Item {
             },
             bar_policy: {
                 auto_hide: barPolicy.autoHide,
+                auto_hide_fullscreen: barPolicy.autoHideFullscreen,
+                hide_mode: barPolicy.hideMode,
+                reveal_delay_ms: barPolicy.revealDelayMs,
+                hide_delay_ms: barPolicy.hideDelayMs,
+                slide_duration_ms: barPolicy.slideDurationMs,
                 overview_workspaces: barPolicy.overviewWorkspaces,
                 overview_shift: barPolicy.overviewShift,
                 visible: barPolicy.barVisible,
                 normal_islands: barPolicy.normalIslands,
                 workspace_island: barPolicy.workspaceIsland,
                 edge_enabled: barPolicy.edgeEnabled,
+                fullscreen_inset: barPolicy.fullscreenInset,
                 revealed: barPolicy.revealed,
                 tooltip: tip.shown,
                 needs_core_key: true
@@ -927,17 +1059,17 @@ Item {
     }
     StaticBar {
         id: bar
-        y: barPolicy.barVisible ? 0 : -60
-        Behavior on y {
-            enabled: !scene.skipIntro
-            NumberAnimation {
-                duration: 280
-                easing.type: Easing.OutCubic
-            }
-        }
         policy: barPolicy
         skipIntro: scene.skipIntro
         tip: tip
+        // Keep the hold band under this common hover ancestor so island hover targets
+        // continue receiving events. Only pointer reveals extend input through the gaps.
+        Item {
+            id: barHoldBand
+            width: bar.width
+            height: Metrics.top + Metrics.islandHeight
+            visible: barPolicy.hidesHere && barPolicy.barVisible && barPolicy.pointerRevealed && !barPolicy.overview
+        }
         HoverHandler {
             id: barHover
             enabled: barPolicy.barVisible
@@ -956,19 +1088,35 @@ Item {
         launcherExpansion: scene.launcherPresent ? scene.expansion : 0
         // An island stays drawn under its growing panel (the overlay, above the bar) until the
         // panel is half open: hiding it at once left 30–60 ms with neither drawn (27.09).
-        clockPresent: scene.clockPresent && scene.clockExpansion > .5
+        clockPresent: (scene.authenticationPrompt?.clockCovered ?? false) || (scene.clockPresent && scene.clockExpansion > .5)
         notificationCount: scene.notes.count
         dnd: scene.notes.effectiveDnd
         services: scene.services
+        privacyItem: privacy
+        onPrivacyClicked: {
+            const target = keyboardItem;
+            scene.togglePrivacy(true);
+            scene.keyboardReturnTarget = target;
+        }
         systemPresent: scene.systemPresent && scene.systemExpansion > .5
-        onSystemClicked: page => scene.openSystem(page, scene.barKeyboardActive)
+        onSystemClicked: page => {
+            const target = keyboardItem;
+            scene.openSystem(page, scene.barKeyboardActive);
+            scene.keyboardReturnTarget = target;
+        }
         onClockClicked: {
-            if (scene.barKeyboardActive)
+            const target = keyboardItem;
+            if (scene.barKeyboardActive) {
                 scene.openKeyboard("clock");
-            else
+                scene.keyboardReturnTarget = target;
+            } else
                 scene.toggleDrawer();
         }
-        onLaunch: scene.toggleLauncher(scene.barKeyboardActive)
+        onLaunch: {
+            const target = keyboardItem;
+            scene.toggleLauncher(scene.barKeyboardActive);
+            scene.keyboardReturnTarget = target;
+        }
         keyboardBoundary: scene.barKeyboardActive
         onLeaveKeyboard: scene.closeAll()
     }
@@ -983,6 +1131,8 @@ Item {
         width: Math.min(760, scene.viewportWidth - 32)
         height: Math.min(680, scene.viewportHeight - 32)
         z: 30
+        wallpaperTexture: LiquidPalette.sharedCanvas ? wallpaper.texture : ""
+        dpr: scene.outputScale
         onCloseRequested: scene.closeAll()
     }
     // LauncherBody draws the plate, its content and the drops. This item is the plate's
@@ -1019,7 +1169,9 @@ Item {
             backdrop: scene.launcherBackdrop
             origin: Qt.point(panel.x, panel.y)
             logoBubble: bar.leftIslands.logoBubble
+            onBackRequested: scene.keyboardBack(false)
             onDismissed: scene.closeAll()
+            onOpenFailed: reason => scene.notifications.local("Launcher", reason, "")
             onSettingsRequested: scene.context.settingsController.openOn(scene, "")
         }
     }
@@ -1028,6 +1180,8 @@ Item {
         const auto = scene.settings.value("bar.autohide");
         if (typeof auto === "boolean")
             barPolicy.autoHide = auto;
+        const full = scene.settings.value("bar.autohide_fullscreen");
+        barPolicy.autoHideFullscreen = typeof full === "boolean" ? full : true;
         const ovws = scene.settings.value("bar.overview_workspaces");
         if (typeof ovws === "boolean")
             barPolicy.overviewWorkspaces = ovws;
@@ -1046,7 +1200,7 @@ Item {
     ClockPanel {
         id: clockPanel
         z: scene.batteryPeekOpen || scene.pairingPeekOpen ? 40 : 0
-        visible: scene.clockPresent
+        visible: scene.clockPresent && !(scene.authenticationPrompt?.clockCovered ?? false)
         viewportWidth: scene.viewportWidth
         viewportHeight: scene.viewportHeight
         expansion: scene.clockExpansion
@@ -1066,7 +1220,7 @@ Item {
         islandWidth: bar.clockIsland.islandWidth
         islandBubble: bar.clockIsland.bubble
         focus: scene.drawerOpen
-        Keys.onEscapePressed: scene.closeAll()
+        Keys.onEscapePressed: scene.keyboardBack(false)
         onActivated: scene.closeAll()
         onOpenHistory: scene.openDrawer()
         onToggle: scene.toggleDrawer()
@@ -1076,7 +1230,7 @@ Item {
     // (liquid-glass/system.html): 480 wide at the right edge, the island's cells as its head.
     SystemPanel {
         id: systemPanel
-        visible: scene.systemPresent
+        visible: scene.systemPresent && !scene.systemWarming
         service: scene.services
         niri: scene.niri
         tip: tip
@@ -1089,9 +1243,9 @@ Item {
         islandX: bar.x + bar.systemGlass.islandRect.x
         islandWidth: bar.systemGlass.islandWidth
         islandBubble: bar.systemGlass.bubble
-        islandHoverKey: bar.systemGlass.hoverKey
+        islandHoverKey: bar.systemGlass.dropKey
         focus: scene.systemOpen
-        Keys.onEscapePressed: scene.closeSystem()
+        Keys.onEscapePressed: scene.keyboardBack(true)
         onPageRequested: page => scene.openSystem(page, systemPanel.keyboardMode)
         onSettingsRequested: page => scene.context.settingsController.openOn(scene, page)
     }

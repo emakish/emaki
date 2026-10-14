@@ -1,16 +1,16 @@
 # Maintainer: Yakyman <246958375+Yakyman@users.noreply.github.com>
 #
-# Upstream v26.04 plus Emaki's capture, login handoff, overview, cursor, wallpaper, lock privacy, keyboard focus and trusted authentication patches.
+# Upstream v26.04 plus Emaki's capture, login handoff, overview, cursor, wallpaper, lock privacy, keyboard focus, trusted authentication, shell cast identity and fullscreen panel inset patches.
 # Installs only /usr/bin/niri-emaki alongside stock niri; install the session
 # files through make install-niri-emaki after make install. The dedicated greeter
-# prefers this fork, with stock niri as a recovery fallback. Rebase all eleven patches on updates.
+# prefers this fork, with stock niri as a recovery fallback. Rebase all thirteen patches on updates.
 # Patch 0006 makes the fork exit with status 3 when it has no primary renderer (software EGL,
 # failed driver): emaki-greeter-compositor shows its text failure screen on that status.
 
 pkgname=niri-emaki
 _pkgname=niri
 pkgver=26.04
-pkgrel=20
+pkgrel=22
 pkgdesc="niri with Emaki glass capture, login handoff, overview backdrop, crisp cursors and living wallpaper"
 arch=(x86_64)
 url="https://github.com/niri-wm/niri"
@@ -56,6 +56,8 @@ source=("$_pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
         0009-preserve-mapped-layer-keyboard-focus.patch
         0010-trusted-authentication-prompt.patch
         0011-freeze-session-safety-bindings.patch
+        0012-report-trusted-shell-cast-pid.patch
+        0013-fullscreen-panel-reservation.patch
         check-assumptions.py)
 sha512sums=('ae30446fbf529155907726cf2cba7402bcfc5be2032370d66f9f980efb257f29353b47d495f1218b81ac32c643f15bbb74834dc35882849a4479021b4b9fa97f'
         'de1dbca747b46acdc3c97ec8f7b8686d517f3306e5bf550f5e51873ef2f3620979a87c92a5de425ad1f1962784480fbabdaa76efded2610dae33fbbd6f3bb429'
@@ -69,7 +71,9 @@ sha512sums=('ae30446fbf529155907726cf2cba7402bcfc5be2032370d66f9f980efb257f29353
         '5c564f0e9569043a893e39ed7765f6623937ec1fd029f7a1309d36f024ad9ff49ef13dfe870549529992957b63310b2309346096d01b1d7b011ee2a1cdef4508'
         '7eb796e27081c4a8c1cce59e2d2959f24d8a39af2c6f3eb5c6f2b9a84345d85bba7b43a1d27ad20b06146fd1c29c909d8a097ab43c9a1a962558ead8563265b6'
         '78b50c5063545d28e20c207732fab2fad634bbdc01e2ca3063cb91946548f1ad7f1b4523403b2af57ebbe1cf5f01ff7e982f1944c8cab0fe9d08add69d1dce79'
-        'd5b62f4d457955c5cc81ae336880b2ed99eea0708b699abbb9083372285e74daa3cab9e024757a8577e08b7ee880103c816deef28bcd6e639fc98fa2591a0945')
+        '08c461ec5889e286dab0dba86f9b2eed53f8712316aab7c647a3eaa4ab34f4a2763b8c6f67a6a0ec0f5984ac1ee5c4fd4aa652efe1e2934647463a2838e9e9aa'
+        '4932fdd77bd81f648ab20fcd6b4a0e40570439ae49b4aa43f78edce18de361dad1f7dbb6d6336644749014443a21982db06af93e671b656da9ba2ffd743e0614'
+        '9c40c5267680d0ff4db20f4b19e3fe4ca7094534f0bb3ad78f5916e99a8922e8afbe56517232e9e9fc901f7c5989b94907a02667e3961d1e832d4b91687921ed')
 b2sums=('65fc4df85ab40c1a7a82900a9812c542a8a00467a0f1742f2dede50c0e323bd8957149e91b181a6c71ad077735f6a4db53451bbad0deb768f7d4840ebe798a20'
         '66244823b80fb158ee0623df0989a3090b4b42e12be147a859b50e8badfaa8677d57eda85d324658813d030e71c9d7f765dfef2206e83b32c302fb49437817f8'
         '68022cee01623d211cf7f399f1d5f0fdaec915637f1b7d9b096a1a0896e9c6a89b0b543eb2d2d5a64c99c4156182e6633724ad83e41eaf44ad4bce3e89524fa9'
@@ -82,7 +86,9 @@ b2sums=('65fc4df85ab40c1a7a82900a9812c542a8a00467a0f1742f2dede50c0e323bd8957149e
         '3c029c7099675e1670e2f44f76d3fe1c8ca481d2b87da644263e76996e55a31f4be63ae52886332891d5a6ef8b3713b5fb706293e90058742a15aaead174c518'
         '797cb6f72c2f0fe707f29937bdaf1e4a0ca858078c70283c7d6d0644fe5d0b6f07f5a8a2437db980f6d47d6a694051f2cf77a37b9f4b554a4672035da228c7ad'
         'ed5440850d4812e21935a4966df1767222e2e8bb3576e5fb8f9960c6603ada0395fe31ab2d8215540b9a20d195059dd9f5645e421a860d898177137f37f05338'
-        '5b29f51a4a1e334795d6ae4e3f51c164a6da6acbf521aac611e36cb7b45279f802a5b11dd04266960423353bb4d9159d81fcdebf3edc853a0f5a6d352f0a26a7')
+        '97512a124f7dc69a5db71f38643570a0656f13ae21b79b8474db32cb40e6e3e81903571fdf84647763a35ec13ca52d8d5b8b47c02664ad54780c497e2eb554b0'
+        '29148c4e892d20caf1830d7ae186b4efa1a33fa712145618de75980f2951eba05bb7103abc9896a6463e1c49469f0cd0ed1731e2a3a82b3f5592da883ab67a13'
+        '57493c8d72ca3b2c55ec39fc45a335e9998588287dac46d768e678635fafe400afbcdfea5e21ef8dd76f70a95ddb1db7abfd87398783bb1a934f7ebca2f1876c')
 
 # Keep the cargo cache inside $srcdir: makepkg remaps $srcdir paths in the binary
 # (--remap-path-prefix); otherwise the builder's ~/.cargo leaks into panic messages —
@@ -110,6 +116,8 @@ prepare() {
   patch -Np1 -i ../0009-preserve-mapped-layer-keyboard-focus.patch
   patch -Np1 -i ../0010-trusted-authentication-prompt.patch
   patch -Np1 -i ../0011-freeze-session-safety-bindings.patch
+  patch -Np1 -i ../0012-report-trusted-shell-cast-pid.patch
+  patch -Np1 -i ../0013-fullscreen-panel-reservation.patch
   python "$srcdir/check-assumptions.py" . || return 1
   cargo fetch --locked --target "$(rustc --print host-tuple)"
 }

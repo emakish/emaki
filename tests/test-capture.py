@@ -563,6 +563,7 @@ C.emit('saved', **C.record(dict(target='screen')))
                                  start_new_session=True, env=C.child_environment())
         try:
             self.assertTrue(select.select([child.stdout], [], [], 3)[0], 'recorder startup deadline')
+            self.assertEqual(json.loads(child.stdout.readline()), dict(event='stream', node=123))
             self.assertEqual(json.loads(child.stdout.readline()), dict(event='recording'))
             os.killpg(child.pid, signal.SIGTERM)
             stdout, stderr = child.communicate(timeout=4)

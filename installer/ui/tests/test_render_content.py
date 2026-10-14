@@ -52,7 +52,7 @@ class RenderContentTests(unittest.TestCase):
         self.evidence = {
             'width': 400, 'height': 700, 'footerY': 660,
             'texts': [
-                dict(text='Install · 0.8.0', x=10, y=10, width=160, height=20, body=False, clipped=False, truncated=False),
+                dict(text='Install · 0.8.1', x=10, y=10, width=160, height=20, body=False, clipped=False, truncated=False),
                 dict(text='Welcome to Emaki', x=10, y=60, width=250, height=24, body=True, clipped=False, truncated=False),
                 dict(text='Page details', x=10, y=110, width=250, height=24, body=True, clipped=False, truncated=False),
             ],
@@ -70,7 +70,7 @@ class RenderContentTests(unittest.TestCase):
 
     def validate(self, evidence=None):
         log = 'CONTENT_FRAME welcome ' + json.dumps(evidence or self.evidence)
-        validate_frame(self.path, log, 'welcome', self.evidence['width'], self.evidence['height'], '0.8.0')
+        validate_frame(self.path, log, 'welcome', self.evidence['width'], self.evidence['height'], '0.8.1')
 
     def test_correct_content_passes(self):
         self.validate()
@@ -130,7 +130,7 @@ class RenderContentTests(unittest.TestCase):
 
     def test_missing_evidence_fails(self):
         with self.assertRaisesRegex(AssertionError, 'Missing or repeated'):
-            validate_frame(self.path, 'LAYOUT_OK SCREENSHOT_OK welcome', 'welcome', 400, 700, '0.8.0')
+            validate_frame(self.path, 'LAYOUT_OK SCREENSHOT_OK welcome', 'welcome', 400, 700, '0.8.1')
 
 
 class RenderMutationTests(unittest.TestCase):
@@ -195,3 +195,37 @@ class RenderMutationTests(unittest.TestCase):
                             contextlib.redirect_stdout(io.StringIO()):
                         with self.assertRaisesRegex(AssertionError, 'Password hint, error or Continue state is wrong'):
                             render.main()
+
+
+class MinimumWindowTests(unittest.TestCase):
+    """The welcome panel check samples inside the 960x480 minimum window and sees the light panel."""
+
+    def render_minimum(self, root, mutation=None):
+        import render
+        shutil.copytree(render.UI, root / 'ui', ignore=shutil.ignore_patterns('__pycache__', 'artifacts'))
+        if mutation:
+            view = root / 'ui/InstallerView.qml'
+            original = view.read_text()
+            self.assertEqual(original.count(mutation[0]), 1)
+            view.write_text(original.replace(*mutation))
+        arguments = ['render.py', '--repo-shell', '--screen', 'welcome', '--width', '960', '--height', '480',
+                     '--output', str(root / 'frames')]
+        with patch.object(render, 'UI', root / 'ui'), patch.object(sys, 'argv', arguments), \
+                contextlib.redirect_stdout(io.StringIO()):
+            render.main()
+        return root / 'frames/welcome.png'
+
+    def test_minimum_window_renders_light(self):
+        import render
+        (render.ROOT / '.cache/evidence').mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=render.ROOT / '.cache/evidence', prefix='minimum-window-') as temporary:
+            with Image.open(self.render_minimum(Path(temporary))) as frame:
+                self.assertEqual(frame.size[0] * 480, frame.size[1] * 960)
+
+    def test_minimum_window_rejects_dark_panel(self):
+        import render
+        (render.ROOT / '.cache/evidence').mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=render.ROOT / '.cache/evidence', prefix='minimum-dark-') as temporary:
+            # Without its own light row the installer follows the dark shell default.
+            with self.assertRaisesRegex(AssertionError, 'Installer panel is not light'):
+                self.render_minimum(Path(temporary), ('value: "light"', 'value: "dark"'))

@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import shlex
 import subprocess
 import tempfile
 import time
@@ -66,20 +67,21 @@ with (root/'qs.log').open('w') as log:
         ipc('hover',800,400);ipc('barAuto','true')
         s=wait(lambda s:not s['bar_policy']['visible']);assert s['exclusive_zone']==10
         ipc('hover',5,2);time.sleep(.25);assert not state()['bar_policy']['revealed']
-        ipc('hover',100,2);wait(lambda s:s['bar_policy']['revealed'])
+        ipc('hover',100,1);wait(lambda s:s['bar_policy']['revealed'])
         ipc('hover',28,25);time.sleep(.55);assert state()['bar_policy']['visible']
         ipc('hover',800,400);wait(lambda s:not s['bar_policy']['visible'])
         ipc('open');ipc('hover',800,400);time.sleep(.6);assert state()['bar_policy']['visible']
         ipc('close');wait(lambda s:not s['bar_policy']['visible'])
         ipc('environment','true','false');assert state()['bar_policy']['workspace_island']
         ipc('ovWs','false');assert not state()['bar_policy']['visible']
-        ipc('environment','false','true');ipc('hover',100,2);time.sleep(.25)
-        s=state();assert not s['bar_policy']['edge_enabled'] and not s['bar_policy']['visible']
+        ipc('environment','false','true');ipc('hover',100,1);time.sleep(.25)
+        s=state();assert s['bar_policy']['edge_enabled'] and s['bar_policy']['visible']
+        ipc('hover',800,400);wait(lambda s:not s['bar_policy']['visible'])
         ipc('barAuto','false');assert not state()['bar_policy']['visible']
         ipc('launcher');wait(lambda s:s['launcher']=='open');assert state()['bar_policy']['visible']
         ipc('close');wait(lambda s:not s['bar_policy']['visible'])
-        ipc('barAuto','true');ipc('unknown');ipc('hover',100,2);time.sleep(.25)
-        assert not state()['bar_policy']['edge_enabled']
+        ipc('barAuto','true');ipc('unknown');ipc('hover',100,1);time.sleep(.25)
+        s=wait(lambda s:s['bar_policy']['revealed']);assert s['bar_policy']['edge_enabled'] and s['bar_policy']['visible']
         ipc('barAuto','false');ipc('ovWs','true');ipc('environment','false','false');wait(lambda s:s['bar_policy']['visible'])
         # Overview: the non-workspace islands and the privacy pill slide/fade out over ~300 ms, not at once.
         ipc('casts','1');s=wait(lambda s:s['privacy']['visible'])
@@ -90,6 +92,16 @@ with (root/'qs.log').open('w') as log:
         ipc('casts','1');assert state()['privacy']['visible'];ipc('casts','0');wait(lambda s:not s['privacy']['visible'])
         # The shell's own capture for the glass is not screen sharing: no pill, cast count 0.
         ipc('shellCast');time.sleep(.2);s=state();assert not s['privacy']['visible'] and s['privacy']['cast']==0,s['privacy']
+        # Only another program seeing the screen right now lights it: an idle or paused portal
+        # session does not, nor the shell's own recording; another program is named, not "Screen X".
+        L=lambda casts:json.dumps({'list':casts})
+        c=lambda i,**k:dict({'stream_id':i,'session_id':1,'kind':'pipewire','target':'output','output':'Fixture','window_id':None,'is_active':True,'by_parent':False,'pw_node_id':40+i,'client':None},**k)
+        ipc('castList',L([c(1,is_active=False)]));time.sleep(.2);s=state();assert not s['privacy']['visible'] and s['privacy']['cast']==0,s['privacy']
+        ipc('captureNode',42);ipc('castList',L([c(2)]));time.sleep(.2);s=state();assert not s['privacy']['visible'] and s['privacy']['cast']==0,s['privacy']
+        ipc('captureNode',-1);s=wait(lambda s:s['privacy']['visible']);assert json.loads(ipc('privacyLabels'))==['An app · Sharing the screen']
+        ipc('castList',L([c(3,kind='wlr_screencopy',pw_node_id=None,client='wf-recorder',target='window',output=None,window_id=8)]))
+        s=wait(lambda s:s['privacy']['cast']==1);assert json.loads(ipc('privacyLabels'))==['wf-recorder · Sharing a window']
+        ipc('castList',L([]));wait(lambda s:not s['privacy']['visible'])
         # System panel: a page switch keeps it open; closing morphs back (present while expansion > 0).
         ipc('system','sound');s=wait(lambda s:s['system_panel']=='open' and s['system_expansion']==1)
         ipc('system','tray');s=state();assert s['system_panel']=='open' and s['system_page']=='tray' and s['system_expansion']==1,s
@@ -118,6 +130,13 @@ def remove_block(source,marker):
 m=Path(tempfile.mkdtemp(prefix='bm-',dir=ROOT/'.cache'))
 for d in ('r','cache','config','state','data','tmp'): (m/d).mkdir(mode=0o700)
 mq=m/'q';shutil.copytree(ROOT/'shell',mq);shutil.copyfile(ROOT/'tests/fixtures/BarMaskDriver.qml',mq/'BarMaskDriver.qml')
+plugin=mq/'InputMaskProbe';plugin.mkdir()
+(plugin/'qmldir').write_text('module InputMaskProbe\nplugin inputmask\n')
+source=ROOT/'tests/input-mask-probe.cpp'
+flags=shlex.split(subprocess.check_output(['pkg-config','--cflags','--libs','Qt6Quick','Qt6Qml'],text=True))
+moc=Path(subprocess.check_output(['pkg-config','--variable=libexecdir','Qt6Core'],text=True).strip())/'moc'
+subprocess.run([str(moc),*[flag for flag in flags if flag.startswith('-I')],str(source),'-o',str(plugin/'input-mask-probe.moc')],check=True)
+subprocess.run(['c++','-shared','-fPIC','-std=c++17','-I'+str(plugin),str(source),'-o',str(plugin/'libinputmask.so'),*flags],check=True)
 with (mq/'qmldir').open('a') as f:f.write('BarMaskDriver 1.0 BarMaskDriver.qml\n')
 (mq/'SystemNative.qml').write_text('import QtQuick\nSystemBackend { startupReady: true }\n')
 (mq/'helpers/wallpaper.py').write_text('import json\nprint(json.dumps(dict(state="unavailable", texture="")))\n')
@@ -126,7 +145,7 @@ surf=remove_block((mq/'Surfaces.qml').read_text(),'        anchors {')
 surf=re.sub(r'^        (?:exclusiveZone|exclusionMode|WlrLayershell\.[A-Za-z]+|BackgroundEffect\.blurRegion|implicit(?:Width|Height)):[^\n]*\n','',surf,flags=re.MULTILINE)
 surf=surf.replace('PanelWindow {','FloatingWindow {\n        implicitWidth: surfaces.controller.viewportWidth\n        implicitHeight: surfaces.controller.viewportHeight')
 surf=surf.replace('surfaces.controller.output !== null','true')
-assert surf.count('FloatingWindow {')==3 and surf.count('        mask: ')==3,surf
+assert surf.count('FloatingWindow {')==4 and surf.count('        mask: ')==4,surf  # bar, dock, overlay and the fullscreen inset marker
 (mq/'Surfaces.qml').write_text(surf)
 (mq/'ShellOutputs.qml').write_text((mq/'ShellOutputs.qml').read_text().replace('headless: outputs.headless', 'headless: true').replace('live: !outputs.headless', 'live: false'))
 entry=(mq/'shell.qml').read_text()
@@ -136,7 +155,17 @@ menv=dict(env,EMAKI_SHELL_BORDER='soft',EMAKI_SHELL_HEADLESS='0',EMAKI_SHELL_TES
           EMAKI_SESSION_START='',EMAKI_SESSION_SKIP_INTRO='',HOME=str(m),EMAKI_PYTHON='/usr/bin/python3',
           XDG_RUNTIME_DIR=str(runtime_path(m)),XDG_CACHE_HOME=str(m/'cache'),XDG_CONFIG_HOME=str(m/'config'),XDG_STATE_HOME=str(m/'state'),
           XDG_DATA_HOME=str(m/'data'),XDG_DATA_DIRS=str(m/'data'),TMPDIR=str(m/'tmp'))
-r=subprocess.run(['qs','-p',str(mq/'check.qml'),'--no-color'],env=menv,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=20)
-assert r.returncode==0 and 'BAR_MASK_OK' in r.stdout,r.stdout
+menv['QML_IMPORT_PATH']=str(mq)
+r=subprocess.run(['qs','-p',str(mq/'check.qml'),'--no-color'],env=menv,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
+assert r.returncode==0 and 'BAR_MASK_OK' in r.stdout and 'BAR_BAND_OK' in r.stdout,r.stdout
 assert not any(x in r.stdout for x in ('TypeError','ReferenceError','Binding loop','BAR_MASK_FAILED')),r.stdout
 print('PASS: the bar input mask follows the bar back after a covering window:',next(l for l in r.stdout.splitlines() if 'BAR_MASK_OK' in l).split('BAR_MASK_OK ')[1],m)
+print('PASS: native panel band mask, pointer hold through gaps/top margin, hidden/pinned/UI/keyboard pass-through')
+# Restoring the old broad band must fail at the UI reveal, using the same native mask.
+scene_path=mq/'ShellScene.qml'
+scene_source=scene_path.read_text()
+assert scene_source.count(' && barPolicy.pointerRevealed')==1
+scene_path.write_text(scene_source.replace(' && barPolicy.pointerRevealed',''))
+r=subprocess.run(['qs','-p',str(mq/'check.qml'),'--no-color'],env=menv,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
+assert r.returncode!=0 and 'BAR_MASK_FAILED band mask at 0,25 expected false' in r.stdout,r.stdout
+print('PASS: native mask regression rejects the old band during a UI reveal')

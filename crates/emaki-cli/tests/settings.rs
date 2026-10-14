@@ -621,7 +621,12 @@ fn session_start_after_failed_apply_preserves_the_persons_later_edit() {
 #[test]
 fn installed_shell_keys_apply_and_restore_previous_rows_on_unconfirmed_reply() {
     for (key, value, changed) in [
+        ("appearance.theme", "dark", "automatic"),
+        ("appearance.light_time", "06:30", "08:00"),
+        ("appearance.dark_time", "20:00", "21:30"),
         ("bar.autohide", "true", "false"),
+        ("bar.autohide_fullscreen", "false", "true"),
+        ("bar.autohide_mode", "never", "always"),
         ("bar.overview_workspaces", "false", "true"),
         ("dock.on", "false", "true"),
         ("dock.auto_hide", "false", "true"),
@@ -661,14 +666,17 @@ print('applied' if previous else 'unconfirmed')
             .map(|line| serde_json::from_str(line).unwrap())
             .collect();
         assert_eq!(calls.len(), 2);
-        for (rows, expected) in [(&calls[0], changed == "true"), (&calls[1], value == "true")] {
+        for (rows, expected) in [(&calls[0], changed), (&calls[1], value)] {
             let applied = rows
                 .as_array()
                 .unwrap()
                 .iter()
                 .find(|row| row["key"] == key)
                 .unwrap();
-            assert_eq!(applied["value"], expected);
+            assert_eq!(
+                applied["value"],
+                serde_json::from_str::<Value>(expected).unwrap_or_else(|_| json!(expected))
+            );
         }
     }
 }
@@ -2483,14 +2491,16 @@ fn window_behavior_validation_failure_preserves_source_and_history() {
 }
 
 #[test]
-fn window_behavior_failed_live_load_restores_previous_fragment_and_source() {
+fn window_behavior_and_accent_failed_live_load_restore_previous_fragment_and_source() {
     use std::io::{BufRead, BufReader, Write};
     use std::os::unix::net::UnixListener;
     for (key, value, candidate_node) in [
         ("windows.default_column_width", "half", "proportion 0.5"),
         ("windows.focus_follows_mouse", "true", "focus-follows-mouse"),
+        ("appearance.accent", "teal", "active-color"),
     ] {
         let f = Fixture::new();
+        installed_helper(&f, "emaki-shell", "print('applied')\n");
         f.manual("schema_version = 1\n[appearance]\ngaps = 4\n");
         let source = fs::read(f.source()).unwrap();
         let socket = std::env::temp_dir().join(format!(
@@ -2573,20 +2583,28 @@ fn window_behavior_failed_live_load_restores_previous_fragment_and_source() {
                 .join("state/emaki/history/live-pending.json")
                 .exists()
         );
-        assert!(
-            installed_run(&f, &["history"]).1["history"]
-                .as_array()
-                .unwrap()
-                .is_empty()
+        // The failed change records nothing of its own. A mutation observes the source
+        // that existed before it under the writer lock, ahead of the live change, and
+        // records it once as an import; that entry does not apply the rejected value.
+        let (_, history) = installed_run(&f, &["history"]);
+        let entries = history["history"].as_array().unwrap();
+        assert_eq!(entries.len(), 1, "{key}: {history}");
+        assert_eq!(entries[0]["kind"], "import", "{key}: {history}");
+        assert!(entries[0]["generation"].is_null(), "{key}: {history}");
+        assert_eq!(
+            entries[0]["changes"],
+            json!([{"key": "appearance.gaps", "before": null, "after": 4}]),
+            "{key}: {history}"
         );
     }
 }
 
 #[test]
-fn window_behavior_requires_live_compositor_before_commit() {
+fn window_behavior_and_accent_require_live_compositor_before_commit() {
     for (key, value) in [
         ("windows.default_column_width", "half"),
         ("windows.focus_follows_mouse", "true"),
+        ("appearance.accent", "teal"),
     ] {
         let f = Fixture::new();
         let (out, reply) = installed_run(&f, &["set", key, value]);
@@ -2712,4 +2730,282 @@ fn later_personal_configuration_keeps_stored_device_and_shortcut_overrides_inert
     assert!(!text.contains("touchpad"));
     assert!(!text.contains("spawn"));
     assert_eq!(fs::read(f.source()).unwrap(), source);
+}
+
+#[test]
+fn appearance_persists_resets_and_undoes_with_validated_schedule() {
+    let f = Fixture::new();
+    let defaults = f.run(&["list"]).1;
+    for (key, default, value) in [
+        ("appearance.theme", "dark", "automatic"),
+        ("appearance.accent", "orange", "violet"),
+        ("appearance.light_time", "07:00", "08:15"),
+        ("appearance.dark_time", "19:00", "20:45"),
+    ] {
+        assert_eq!(row(&defaults, key)["value"], default);
+        let changed = f.set(key, value);
+        assert_eq!(row(&changed, key)["value"], value);
+        assert_eq!(row(&f.run(&["list"]).1, key)["value"], value);
+        let (out, reset) = f.run(&["reset", key]);
+        assert!(out.status.success(), "{reset}");
+        assert_eq!(row(&reset, key)["value"], default);
+        let (out, undone) = f.run(&["undo", reset["change_id"].as_str().unwrap()]);
+        assert!(out.status.success(), "{undone}");
+        assert_eq!(row(&undone, key)["value"], value);
+    }
+    let before = tree(&f.root);
+    for (key, value) in [
+        ("appearance.theme", "system"),
+        ("appearance.accent", "red"),
+        ("appearance.light_time", "24:00"),
+        ("appearance.light_time", "7:00"),
+        ("appearance.dark_time", "19:60"),
+        ("appearance.dark_time", "٠7:00"),
+        ("appearance.dark_time", "08:15"),
+    ] {
+        let (out, reply) = f.run(&["set", key, value]);
+        assert!(!out.status.success(), "{reply}");
+        assert_eq!(before, tree(&f.root));
+    }
+    for accent in [
+        "orange", "coral", "rose", "amber", "green", "teal", "blue", "violet",
+    ] {
+        assert_eq!(
+            row(&f.set("appearance.accent", accent), "appearance.accent")["value"],
+            accent
+        );
+    }
+    for theme in ["light", "dark", "automatic"] {
+        assert_eq!(
+            row(&f.set("appearance.theme", theme), "appearance.theme")["value"],
+            theme
+        );
+    }
+}
+
+#[test]
+fn appearance_equal_times_in_manual_source_are_rejected() {
+    let f = Fixture::new();
+    f.manual("schema_version = 1\n[appearance]\nlight_time = \"19:00\"\n");
+    let (out, reply) = f.run(&["list"]);
+    assert!(!out.status.success(), "{reply}");
+}
+
+#[test]
+fn appearance_page_reset_is_atomic_for_reversed_schedule_and_undo() {
+    let f = Fixture::new();
+    f.set("appearance.light_time", "08:00");
+    f.set("appearance.dark_time", "07:00");
+    f.set("appearance.light_time", "19:00");
+    f.set("appearance.theme", "automatic");
+    f.set("appearance.accent", "blue");
+    f.set("appearance.gaps", "4");
+    let count = f.run(&["history"]).1["history"].as_array().unwrap().len();
+    for key in ["appearance.light_time", "appearance.dark_time"] {
+        let (out, rejected) = f.run(&["reset", key]);
+        assert!(!out.status.success(), "{rejected}");
+    }
+    let (out, reset) = f.run(&["reset", "appearance"]);
+    assert!(out.status.success(), "{reset}");
+    for (key, value) in [
+        ("appearance.theme", "dark"),
+        ("appearance.accent", "orange"),
+        ("appearance.light_time", "07:00"),
+        ("appearance.dark_time", "19:00"),
+    ] {
+        assert_eq!(row(&reset, key)["value"], value);
+        assert!(row(&reset, key)["override_value"].is_null());
+    }
+    assert_eq!(row(&reset, "appearance.gaps")["value"], 4);
+    let history = f.run(&["history"]).1;
+    let entries = history["history"].as_array().unwrap();
+    assert_eq!(entries.len(), count + 1);
+    let entry = entries
+        .iter()
+        .find(|entry| entry["id"] == reset["change_id"])
+        .unwrap();
+    assert_eq!(entry["changes"].as_array().unwrap().len(), 4);
+    let (out, undone) = f.run(&["undo", reset["change_id"].as_str().unwrap()]);
+    assert!(out.status.success(), "{undone}");
+    assert_eq!(row(&undone, "appearance.light_time")["value"], "19:00");
+    assert_eq!(row(&undone, "appearance.dark_time")["value"], "07:00");
+    assert_eq!(row(&undone, "appearance.theme")["value"], "automatic");
+    assert_eq!(row(&undone, "appearance.accent")["value"], "blue");
+    let reset = f.run(&["reset", "appearance"]).1;
+    f.set("appearance.accent", "teal");
+    let before = tree(&f.root);
+    let (out, rejected) = f.run(&["undo", reset["change_id"].as_str().unwrap()]);
+    assert!(!out.status.success(), "{rejected}");
+    assert_eq!(rejected["reason"], "undo_conflict");
+    assert_eq!(tree(&f.root), before);
+}
+
+#[test]
+fn appearance_accent_live_reload_reset_and_shell_failure_restore_border() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::unix::net::UnixListener;
+    let f = Fixture::new();
+    f.manual("schema_version = 1\n[appearance]\ngaps = 4\n");
+    installed_helper(&f, "emaki-shell", "print('applied')\n");
+    let socket = std::env::temp_dir().join(format!(
+        "accent-{}-{}",
+        std::process::id(),
+        SERIAL.fetch_add(1, Ordering::Relaxed)
+    ));
+    let listener = UnixListener::bind(&socket).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let server = std::thread::spawn(move || {
+        let accept = || {
+            let deadline = Instant::now() + CHILD_DEADLINE;
+            loop {
+                match listener.accept() {
+                    Ok((stream, _)) => return stream,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(Instant::now() < deadline, "Compositor request timed out");
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(error) => panic!("Compositor socket failed: {error}"),
+                }
+            }
+        };
+        for border in [
+            Some("61b5a5"),
+            None,
+            Some("78aaf0"),
+            Some("61b5a5"),
+            Some("78aaf0"),
+        ] {
+            let mut events = accept();
+            events.set_read_timeout(Some(CHILD_DEADLINE)).unwrap();
+            let mut line = String::new();
+            BufReader::new(&events).read_line(&mut line).unwrap();
+            assert_eq!(serde_json::from_str::<Value>(&line).unwrap(), "EventStream");
+            events
+                .write_all(b"{\"Ok\":\"Handled\"}\n{\"ConfigLoaded\":{\"failed\":false}}\n")
+                .unwrap();
+            let mut action = accept();
+            action.set_read_timeout(Some(CHILD_DEADLINE)).unwrap();
+            line.clear();
+            BufReader::new(&action).read_line(&mut line).unwrap();
+            let request: Value = serde_json::from_str(&line).unwrap();
+            let wrapper = PathBuf::from(
+                request["Action"]["LoadConfigFile"]["path"]
+                    .as_str()
+                    .unwrap(),
+            );
+            let text = fs::read_to_string(&wrapper).unwrap();
+            let fragment_path = text
+                .lines()
+                .filter_map(|line| line.strip_prefix("include \""))
+                .map(|line| line.trim_end_matches('"'))
+                .last()
+                .unwrap();
+            let fragment = fs::read_to_string(fragment_path).unwrap();
+            assert!(fragment.contains("gaps 4"));
+            if let Some(base) = border {
+                assert!(
+                    fragment.contains(&format!("active-color \"#{base}ff\"")),
+                    "{fragment}"
+                );
+            } else {
+                assert!(!fragment.contains("active-color"), "{fragment}");
+            }
+            action.write_all(b"{\"Ok\":\"Handled\"}\n").unwrap();
+            events
+                .write_all(b"{\"ConfigLoaded\":{\"failed\":false}}\n")
+                .unwrap();
+        }
+    });
+    let run = |args: &[&str]| {
+        let out = f
+            .fake("ok")
+            .env("NIRI_SOCKET", &socket)
+            .arg("settings")
+            .args(args)
+            .args(["--json", "--timeout-ms", SLOW_MACHINE_TIMEOUT_MS])
+            .output()
+            .unwrap();
+        let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
+        (out, reply)
+    };
+    for args in [
+        vec!["set", "appearance.accent", "teal"],
+        vec!["reset", "appearance.accent"],
+        vec!["set", "appearance.accent", "blue"],
+    ] {
+        let (out, reply) = run(&args);
+        assert!(out.status.success(), "{reply}");
+        assert_eq!(reply["session_applied"], true);
+        assert_eq!(
+            row(&reply, "appearance.accent")["value"],
+            if args[0] == "reset" {
+                "orange"
+            } else {
+                args[2]
+            }
+        );
+    }
+    let before = fs::read(f.source()).unwrap();
+    let calls = f.root.join("shell-calls");
+    installed_helper(
+        &f,
+        "emaki-shell",
+        &format!(
+            "from pathlib import Path\np = Path({calls:?})\nprint('applied' if p.exists() else 'unconfirmed')\np.touch()\n",
+            calls = calls.to_str().unwrap()
+        ),
+    );
+    let (out, reply) = run(&["set", "appearance.accent", "teal"]);
+    assert!(!out.status.success(), "{reply}");
+    assert_eq!(reply["reason"], "shell_apply_unconfirmed");
+    assert_eq!(reply["session_applied"], false);
+    assert_eq!(fs::read(f.source()).unwrap(), before);
+    assert_no_transaction_candidate(&f);
+    server.join().unwrap();
+    fs::remove_file(socket).unwrap();
+}
+
+#[test]
+fn panel_visibility_choice_round_trips_and_undo_restores_both_flags() {
+    let f = Fixture::new();
+    let initial = f.run(&["list"]).1;
+    assert_eq!(row(&initial, "bar.autohide_mode")["value"], "fullscreen");
+    for (mode, desktop, fullscreen) in [
+        ("always", true, true),
+        ("desktop", true, false),
+        ("fullscreen", false, true),
+        ("never", false, false),
+    ] {
+        let result = f.set("bar.autohide_mode", mode);
+        assert_eq!(row(&result, "bar.autohide")["value"], desktop);
+        assert_eq!(row(&result, "bar.autohide_fullscreen")["value"], fullscreen);
+        assert_eq!(row(&f.run(&["list"]).1, "bar.autohide_mode")["value"], mode);
+    }
+    let before = fs::read(f.source()).unwrap();
+    let (out, invalid) = f.run(&["set", "bar.autohide_mode", "sometimes"]);
+    assert!(!out.status.success());
+    assert_eq!(invalid["reason"], "invalid_bar_autohide_mode");
+    assert_eq!(fs::read(f.source()).unwrap(), before);
+    let changed = f.set("bar.autohide_mode", "always");
+    let (out, undone) = f.run(&["undo", changed["change_id"].as_str().unwrap()]);
+    assert!(out.status.success(), "{undone}");
+    assert_eq!(row(&undone, "bar.autohide_mode")["value"], "never");
+    let (out, reset) = f.run(&["reset", "bar.autohide_mode"]);
+    assert!(out.status.success(), "{reset}");
+    assert_eq!(row(&reset, "bar.autohide_mode")["value"], "fullscreen");
+    for key in [
+        "bar.autohide",
+        "bar.autohide_fullscreen",
+        "bar.autohide_mode",
+    ] {
+        assert!(row(&reset, key)["override_value"].is_null());
+    }
+    assert_eq!(
+        row(&f.set("bar.autohide", "true"), "bar.autohide_mode")["value"],
+        "always"
+    );
+    assert_eq!(
+        row(&f.set("bar.autohide", "false"), "bar.autohide_mode")["value"],
+        "fullscreen"
+    );
 }

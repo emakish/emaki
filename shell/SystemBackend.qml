@@ -57,6 +57,10 @@ Item {
     property var devices: []
     // Capture streams: [{kind: "mic"|"cam", name}] — presentation data, never serialized by status.
     property var captures: []
+    // Streams reading another PipeWire node: [{source: node id, name, binary}]. The privacy
+    // pill names the program behind a screencast from these. Presentation data, never
+    // serialized by status.
+    property var readers: []
     // Keep attempt provenance across NM's asynchronous profile creation. No secrets here.
     // A failure is kept on its attempt and read only by that attempt's own check: it arrives
     // asynchronously, possibly after that check gave up and while another action is pending.

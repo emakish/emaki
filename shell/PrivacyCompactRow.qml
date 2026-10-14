@@ -10,7 +10,7 @@ Item {
     id: line
     property var kinds: []
     property real pulse: 1
-    property color alarm: LiquidPalette.dangerOnLight
+    property color alarm: LiquidPalette.danger
     readonly property var symbols: ({
             mic: "audio-input-microphone-symbolic",
             cam: "camera-web-symbolic",

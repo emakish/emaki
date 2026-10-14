@@ -24,13 +24,22 @@ def run_case(name, mutation=None, fixture='ShellKeyboardTest.qml', marker='SHELL
     with tempfile.TemporaryDirectory(prefix='emaki-keys-') as temporary:
         base = Path(temporary)
         shutil.copytree(ROOT / 'shell', base / 'shell')
+        override = os.environ.get('EMAKI_TEST_SCENE_SOURCE')
+        if override:
+            shutil.copyfile(override, base / 'shell/ShellScene.qml')
+        launcher_override = os.environ.get('EMAKI_TEST_LAUNCHER_SOURCE')
+        if launcher_override:
+            shutil.copyfile(launcher_override, base / 'shell/LauncherBody.qml')
+        bar_override = os.environ.get('EMAKI_TEST_BAR_SOURCE')
+        if bar_override:
+            shutil.copyfile(bar_override, base / 'shell/StaticBar.qml')
         shutil.copytree(ROOT / 'niri', base / 'niri')
         shutil.copyfile(ROOT / 'tests/fixtures' / fixture, base / 'shell/test.qml')
         # Keep the real update entry path while replacing its external application.
         updates = base / 'shell/UpdateService.qml'
-        updates.write_text(updates.read_text().replace(
-            'command: AppLaunch.command("emaki-update-manager", ["/usr/bin/emaki-update-manager"])',
-            'command: ["/usr/bin/true"]'))
+        launch_command = 'command: AppLaunch.command("emaki-update-manager", ["emaki-update-manager", "--updates"])'
+        assert updates.read_text().count(launch_command) == 1, "Update launch fixture must match production"
+        updates.write_text(updates.read_text().replace(launch_command, 'command: ["true"]'))
         if mutation:
             path, before, after = mutation
             target = base / path
@@ -89,7 +98,7 @@ def run_case(name, mutation=None, fixture='ShellKeyboardTest.qml', marker='SHELL
             print('PASS: ' + name)
 
 
-run_case('surface-policy', fixture='SurfaceKeyboardTest.qml', marker='SURFACE_KEYBOARD_RESULT 2 0')
+run_case('surface-policy', fixture='SurfaceKeyboardTest.qml', marker='SURFACE_KEYBOARD_RESULT 3 0')
 run_case('scene-keyboard')
 run_case('mutant-escape', ('shell/ShellScene.qml', 'function closeAll(): void {\n        closePanels(false);',
                          'function closeAll(): void {\n        return;'))
@@ -121,11 +130,11 @@ for layer, identifier in [('bar', 'top'), ('dock', 'dockWindow'), ('panel', 'ove
     binding = re.search(r'WlrLayershell.keyboardFocus: [^\n]+', surfaces.split('id: ' + identifier + '\n', 1)[1])[0]
     run_case('mutant-exclusive-' + layer,
              ('shell/Surfaces.qml', binding, 'WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive'),
-             fixture='SurfaceKeyboardTest.qml', marker='SURFACE_KEYBOARD_RESULT 2 0')
+             fixture='SurfaceKeyboardTest.qml', marker='SURFACE_KEYBOARD_RESULT 3 0')
 run_case('mutant-focus-loss', ('shell/Surfaces.qml', '                controller.closeAll();', '                return;'),
-         fixture='SurfaceKeyboardTest.qml', marker='SURFACE_KEYBOARD_RESULT 2 0')
+         fixture='SurfaceKeyboardTest.qml', marker='SURFACE_KEYBOARD_RESULT 3 0')
 run_case('mutant-logo-order', ('shell/LeftIslands.qml', 'property bool keyboardFirst: true', 'property bool keyboardFirst: false'))
-run_case('mutant-bar-ring', ('shell/KeyboardTarget.qml', 'FocusRing {}', 'FocusRing { shown: false }'))
+run_case('mutant-bar-ring', ('shell/KeyboardTarget.qml', 'shown: target.ring && target.activeFocus', 'shown: false'))
 run_case('mutant-dock-ring', ('shell/Dock.qml', 'shown: dock.keyboardActive && parent.width > 0', 'shown: false'))
 
 run_case('dock-clock-keyboard', fixture='DockClockKeyboardTest.qml', marker='DOCK_CLOCK_KEYBOARD_PASS')

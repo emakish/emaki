@@ -60,9 +60,10 @@ assert helper({'op':'clip-copy','id':image_id})['state']=='copied';assert (root/
 assert helper({'op':'clip-copy','id':'1;touch BAD'})['state']=='invalid_clip_id'
 apps=root/'d/applications';apps.mkdir()
 (apps/'fixture-term.desktop').write_text('[Desktop Entry]\nType=Application\nName=Fixture Terminal\nTerminal=true\nPath='+str(root)+'\nIcon=fixture-icon\nExec=/usr/bin/printf "literal ; $(touch BAD)" %c %i %k %% %U\n')
-assert helper({'op':'terminal','id':'fixture-term','terminal':str(term)})['state']=='requested'
+drop_uris=['file:///tmp/a%20b.txt', 'https://example.invalid/$(touch%20BAD)?a=1&b=2']
+assert helper({'op':'terminal','id':'fixture-term','terminal':str(term),'uris':drop_uris})['state']=='requested'
 wait_for(lambda:(root/'terminal.json').exists())
-cwd,args=json.loads((root/'terminal.json').read_text());assert cwd==str(root) and args==['-e','/usr/bin/printf','literal ; $(touch BAD)','Fixture Terminal','--icon','fixture-icon',str(apps/'fixture-term.desktop'),'%' ],args
+cwd,args=json.loads((root/'terminal.json').read_text());assert cwd==str(root) and args==['-e','/usr/bin/printf','literal ; $(touch BAD)','Fixture Terminal','--icon','fixture-icon',str(apps/'fixture-term.desktop'),'%' ]+['/tmp/a b.txt', drop_uris[1]],args
 assert helper({'op':'terminal','id':'fixture-term','terminal':str(root/'absent')})['state']=='terminal_missing'
 assert helper({'op':'web','query':'PRIVATE_QUERY'})['state']=='no_handler'
 web=root/'web.py';web.write_text('import sys,json\nfrom pathlib import Path\nPath('+repr(str(root/'web.json'))+').write_text(json.dumps(sys.argv[1:]))\n')
@@ -116,8 +117,13 @@ try:
     # Empty All is Recent (nothing yet); Apps keeps the Frequent row + grid. The launcher opens on Apps.
     ipc('mode','All');wait_for(lambda:state()['search']['recent']['state']=='ready');assert state()['search']['result_count']==0 and state()['search']['recent']['count']==0
     ipc('mode','Apps');wait_for(lambda:state()['search']['result_count']==3)   # Frequent tile + two fixture apps
-    ipc('down');assert state()['search']['selected_index']==1
-    ipc('up');assert state()['search']['selected_index']==0
+    # Down from the search moves the shown selection on (Frequent tile -> first grid app) and
+    # enters the results there. Up walks back spatially: the category chips between the rows
+    # keep the selection, the next Up lands on the Frequent tile, the last one on the search.
+    ipc('down');assert state()['search']['selected_index']==1 and not state()['input_focused']
+    ipc('up');assert state()['search']['selected_index']==1 and not state()['input_focused']
+    ipc('up');assert state()['search']['selected_index']==0 and not state()['input_focused']
+    ipc('up');assert state()['search']['selected_index']==0 and state()['input_focused']
     ipc('mode','Clipboard');wait_for(lambda:state()['search']['clipboard']['count']==2)
     # Recorder: started with the shell as `wl-paste --watch cliphist store`; Pause kills it, history stays; Resume restarts.
     wait_for(lambda:(root/'recorder.json').exists() and state()['search']['clipboard']['recorder']=='recording')
@@ -138,9 +144,14 @@ try:
     ipc('enter');wait_for(lambda:state()['launcher']=='closed')
     ipc('launcher')
     assert ipc('mode', 'Settings') == 'false'
-    ipc('mode', 'Clipboard'); ipc('tab', 'false')
-    assert state()['search']['mode'] == 'All'
-    ipc('tab', 'true'); assert state()['search']['mode'] == 'Clipboard'
+    # Tab and Shift+Tab walk the controls in order; they no longer switch modes (Enter or a
+    # click on a mode tab does).
+    ipc('mode', 'Clipboard')
+    # The reopened launcher hands focus to search when it is shown; Tab from there.
+    wait_for(lambda: state()['launcher'] == 'open' and state()['input_focused'])
+    ipc('tab', 'false')
+    wait_for(lambda: not state()['input_focused']); assert state()['search']['mode'] == 'Clipboard'
+    ipc('tab', 'true'); wait_for(lambda: state()['input_focused']); assert state()['search']['mode'] == 'Clipboard'
     ipc('mode', 'All'); ipc('query', 'Top bar')
     wait_for(lambda: state()['search']['selected_kind'] == 'web')
     assert ipc('resultKinds') == 'web'
@@ -169,6 +180,10 @@ try:
     assert described
     assert state()['dock']['on'] == before['dock']['on']
     changed = [dict(row, value=not row['value']) if row['key'] in ('bar.autohide', 'bar.overview_workspaces', 'dock.on', 'dock.auto_hide') else row for row in rows]
+    # A derived mode from the previous flags must be rejected before any values change.
+    assert apply_rows(changed) == 'invalid_settings'
+    assert state()['bar_policy']['auto_hide'] == before['bar_policy']['auto_hide']
+    changed = [row for row in changed if row['key'] != 'bar.autohide_mode']
     assert apply_rows(changed) == 'applied'
     assert json.loads(run(['qs', '-p', str(qml), 'ipc', 'call', 'second-settings', 'described', 'dock.on'])) == described
     for row in changed:

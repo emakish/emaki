@@ -4,16 +4,16 @@
 # makepkg supplies build paths and consumes package metadata.
 # shellcheck disable=SC2034,SC2154
 pkgname=emaki-config
-pkgver=0.8.0
-pkgrel=4
+pkgver=0.8.1
+pkgrel=1
 pkgdesc='Emaki shell, CLI, system defaults, session, greeter and themes'
 arch=('x86_64')
 url='https://github.com/emakish/emaki'
-license=('GPL-3.0-or-later' 'Bitstream-Vera')
+license=('GPL-3.0-or-later' 'Bitstream-Vera' 'GPL-2.0-or-later')  # GPL-2.0-or-later: Plymouth's prompt pictures
 depends=(
     'pacman' 'pacman-contrib' 'fakeroot' 'reflector' 'polkit'
     'glibc' 'libgcc' 'bash' 'coreutils' 'dbus' 'procps-ng' 'systemd>=256' 'util-linux' 'sudo' 'pam' 'qt6-declarative'
-    'niri-emaki>=26.04-20' 'quickshell-emaki>=0.3.1-10'
+    'niri-emaki>=26.04-20' 'quickshell-emaki>=0.3.1-12'
     'python' 'python-gobject' 'python-pillow' 'gtk3'
     'appstream' 'archlinux-appstream-data' 'kimageformats' 'libjxl'
     'wpaperd' 'wl-clipboard' 'cliphist' 'udiskie'
@@ -27,6 +27,7 @@ depends=(
     'greetd' 'greetd-regreet' 'kwallet-pam' 'kwallet>=6.30'
     'accountsservice'  # Settings › Users: accounts and their polkit actions
     'ntfs-3g'  # Windows shutdown check before writing an EFI partition shared with Windows
+    'plymouth'  # the startup logo: boot/plymouth
 )
 makedepends=('git' 'make' 'python' 'rust' 'qt6-shadertools' 'cmake' 'gcc' 'pkgconf')
 checkdepends=('niri' 'nodejs')  # nodejs: shell JavaScript tests in make check
@@ -36,7 +37,8 @@ conflicts=('emaki-core')
 backup=('etc/pam.d/emaki-sudo' 'etc/sudoers.d/10-emaki-wheel'
         'etc/niri/config.kdl' 'etc/xdg/hypr/hyprlock.conf' 'etc/xdg/fastfetch/config.jsonc'
         'etc/xdg/kwalletrc' 'etc/xdg/mimeapps.list' 'etc/xdg/kdeglobals' 'etc/xdg/dolphinrc' 'etc/xdg/qt6ct/qt6ct.conf'
-        'etc/xdg/menus/emaki-applications.menu' 'etc/xdg/xdg-desktop-portal/niri-portals.conf')
+        'etc/xdg/menus/emaki-applications.menu' 'etc/xdg/xdg-desktop-portal/niri-portals.conf'
+        'etc/mkinitcpio.conf.d/50-emaki-splash.conf' 'etc/default/grub.d/50-emaki-splash.cfg')
 options=('!debug' '!lto')
 install=emaki-config.install
 source=()

@@ -4,6 +4,8 @@ CaptureService 1.0 CaptureService.qml
 CaptureOverlay 1.0 CaptureOverlay.qml
 CapturePanel 1.0 CapturePanel.qml
 singleton ShellPalette 1.0 ShellPalette.qml
+singleton Appearance 1.0 Appearance.qml
+SettingsAppearancePage 1.0 SettingsAppearancePage.qml
 singleton Metrics 1.0 Metrics.qml
 Icon 1.0 Icon.qml
 LauncherBody 1.0 LauncherBody.qml
@@ -89,6 +91,7 @@ LockInput 1.0 LockInput.qml
 LockSession 1.0 LockSession.qml
 LockSurface 1.0 LockSurface.qml
 LockEnvironment 1.0 LockEnvironment.qml
+AccountPicture 1.0 AccountPicture.qml
 LockVisual 1.0 LockVisual.qml
 LockWordmark 1.0 LockWordmark.qml
 LockCapture 1.0 LockCapture.qml
@@ -108,6 +111,7 @@ ShellServices 1.0 ShellServices.qml
 SettingsController 1.0 SettingsController.qml
 SettingsView 1.0 SettingsView.qml
 SettingsGlass 1.0 SettingsGlass.qml
+CanvasTint 1.0 CanvasTint.qml
 SettingsCorePage 1.0 SettingsCorePage.qml
 SettingsWallpaperPage 1.0 SettingsWallpaperPage.qml
 SystemSettingsPage 1.0 SystemSettingsPage.qml
@@ -136,6 +140,7 @@ PolkitPromptQueue 1.0 PolkitPromptQueue.qml
 PolkitPromptCard 1.0 PolkitPromptCard.qml
 PolkitHazardFrame 1.0 PolkitHazardFrame.qml
 PolkitPromptSurface 1.0 PolkitPromptSurface.qml
+PolkitPromptBody 1.0 PolkitPromptBody.qml
 PolkitPromptService 1.0 PolkitPromptService.qml
 PolkitLockState 1.0 PolkitLockState.qml
 SudoKeyChoices 1.0 SudoKeyChoices.qml

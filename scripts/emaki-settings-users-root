@@ -33,7 +33,7 @@ def main(argv):
         users = backend()
         try:
             args, terminal = users.parse_request(argv[1:])
-            if argv[:1] != ['apply'] or args != argv[1:] or terminal or args[0] == 'status':
+            if argv[:1] != ['apply'] or args != argv[1:] or terminal or args[0] in ('status', 'picture'):
                 raise users.Usage()
             if not users.valid_login(args[1]):
                 raise users.Usage()

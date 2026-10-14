@@ -129,18 +129,18 @@ class Report(unittest.TestCase):
         self.assertEqual(document['removed']['secret'], 1)
 
     def test_final_english_labels_and_markers(self):
-        with patch.object(self.report.about, 'command', return_value='password=fixture-secret'):
+        with patch.object(self.report.about, 'command', return_value='password=fixture-secret\nlink 192.0.2.7 up'):
             document = self.document()
         self.assertNotIn('[PLACEHOLDER]', json.dumps(document))
-        self.assertIn('[redacted secret]', document['items'][-1]['text'])
+        self.assertEqual('link [redacted ip] up', document['items'][-1]['text'])
         body = parse_qs(urlsplit(self.report.url(document, 'Failure', 'logs')['url']).query)['body'][0]
         self.assertNotIn('[PLACEHOLDER]', body)
         self.assertTrue(body.startswith('### What happened\n'))
 
     def test_collection_redacts_before_json_and_counts(self):
-        planted = ('Authorization: Bearer C8R_SYNTHETIC_SECRET\npassword=C8R_SYNTHETIC_PASSWORD '
+        planted = ('Authorization: Bearer C8R_SYNTHETIC_SECRET\npassword=C8R_SYNTHETIC_PASSWORD\n'
                    'email=fixture.person@example.invalid ip=192.0.2.55 ipv6=2001:db8::55 '
-                   'mac=aa:bb:cc:dd:ee:ff serial=SERIALFIXTURE77 token=TOKENFIXTURE88')
+                   'mac=aa:bb:cc:dd:ee:ff serial=SERIALFIXTURE77\ntoken=TOKENFIXTURE88')
         with patch.object(self.report.about, 'details', return_value=dict(INFO, processor=planted)), \
                 patch.object(self.report.about, 'command', return_value=planted):
             document = self.document()
@@ -148,8 +148,214 @@ class Report(unittest.TestCase):
         for secret in ('C8R_SYNTHETIC_SECRET', 'C8R_SYNTHETIC_PASSWORD', 'fixture.person@example.invalid',
                        '192.0.2.55', '2001:db8::55', 'aa:bb:cc:dd:ee:ff', 'SERIALFIXTURE77', 'TOKENFIXTURE88'):
             self.assertNotIn(secret, encoded)
-        for kind in ('email', 'ip', 'mac', 'serial', 'secret'):
+        for kind in ('email', 'ip', 'mac', 'serial', 'lines'):
             self.assertGreater(document['removed'][kind], 0)
+
+    def test_new_secret_forms_in_composition_and_saved_diagnostics(self):
+        planted = ('PGPASSWORD=planted\npass=planted\npw=planted\nmysql -pplanted\n'
+                   'gho_planted123\ngithub_pat_planted123_456')
+        with patch.object(self.report.about, 'details', return_value=dict(INFO, processor=planted)), \
+                patch.object(self.report.about, 'command', return_value=planted):
+            document = self.document()
+        about_report = self.report.about.report
+        with patch.dict(os.environ, XDG_STATE_HOME=str(self.root)), \
+                patch.dict(about_report.__globals__, command=lambda args: planted):
+            saved = about_report(dict(INFO, processor=planted))
+        with self.subTest(path='saved diagnostics'):
+            self.assertNotIn('planted', Path(saved).read_text())
+        with self.subTest(path='composer'):
+            self.assertNotIn('planted', json.dumps(document))
+
+    def test_plain_word_passwords_in_composition_and_saved_diagnostics(self):
+        planted = ('db_pass=plantedweak\nuser_pw=plantedmonkey\ndb_pass=12345678\n'
+                   'db_pass="planted horse battery"\n{"db_pass":"plantedjson"}\nsetenv DB_PASS plantedcsh\n'
+                   'export USER_PW=plantedexport\n--db-pass plantedarg\nuser_pw: plantedcolon\n'
+                   'PGPASSWORD plantedpg\nPGPASSWORD=plantedpg2; PGPASSWORD plantedpg3\n'
+                   'psql: PGPASSWORD is not set plantedtail\nfirst_pass=done\n')
+        with patch.object(self.report.about, 'details', return_value=dict(INFO, processor=planted)), \
+                patch.object(self.report.about, 'command', return_value=planted):
+            document = self.document()
+        about_report = self.report.about.report
+        with patch.dict(os.environ, XDG_STATE_HOME=str(self.root)), \
+                patch.dict(about_report.__globals__, command=lambda args: planted):
+            saved = Path(about_report(dict(INFO, processor=planted))).read_text()
+        for path, text in (('saved diagnostics', saved), ('composer', json.dumps(document))):
+            with self.subTest(path=path):
+                self.assertNotIn('planted', text)
+                self.assertNotIn('12345678', text)
+                self.assertIn('first_pass=done', text)
+
+    def test_credential_arguments_in_composition_and_saved_diagnostics(self):
+        planted = ('--key KEY_planted1\nsetenv key KEY_planted2\n--key XF86planted3\nsetenv key Escape\n--key Escape\n'
+                   '--key=KEY_planted4\nkey=KEY_planted5\n{"key": "XF86planted6"}\n--pwd /planted7\n'
+                   '--private-key planted8\n--api_key planted9\nkey: KEY_LEFTMETA\n')
+        with patch.object(self.report.about, 'details', return_value=dict(INFO, processor=planted)), \
+                patch.object(self.report.about, 'command', return_value=planted):
+            document = self.document()
+        about_report = self.report.about.report
+        with patch.dict(os.environ, XDG_STATE_HOME=str(self.root)), \
+                patch.dict(about_report.__globals__, command=lambda args: planted):
+            saved = Path(about_report(dict(INFO, processor=planted))).read_text()
+        for path, text in (('saved diagnostics', saved), ('composer', json.dumps(document))):
+            with self.subTest(path=path):
+                self.assertNotIn('planted', text)
+                self.assertNotIn('key Escape', text)
+                self.assertNotIn('setenv', text)
+                self.assertNotIn('--', text)
+                self.assertIn('key: KEY_LEFTMETA', text)
+
+    def test_credential_argument_suffixes_and_quoted_names(self):
+        planted = ('tool --key KEY_head,plantedtail1\nsetenv key KEY_head,plantedtail2\n'
+                   'tool --auth "head"plantedtail3\ntool "--key" KEY_planted4\nsetenv "key" KEY_planted5\n'
+                   'tool "--key=head"plantedtail6 next\n')
+        with patch.object(self.report.about, 'details', return_value=dict(INFO, processor=planted)), \
+                patch.object(self.report.about, 'command', return_value=planted):
+            document = self.document()
+        about_report = self.report.about.report
+        with patch.dict(os.environ, XDG_STATE_HOME=str(self.root)), \
+                patch.dict(about_report.__globals__, command=lambda args: planted):
+            saved = Path(about_report(dict(INFO, processor=planted))).read_text()
+        for path, text in (('saved diagnostics', saved), ('composer', json.dumps(document))):
+            with self.subTest(path=path):
+                self.assertNotIn('planted', text)
+                self.assertNotIn('tool', text)
+                self.assertNotIn('setenv', text)
+
+    def test_quoted_option_name_before_equals_keeps_no_suffix(self):
+        planted = ("tool '--api_key'=alpha]plantedtail1 --verbose\ntool \"--key\"=a]plantedtail2 x\n"
+                   "tool '--password'=a\\ plantedtail3 x\ntool '--auth'=head]plantedtail4\n"
+                   "\"api_key\"=a]plantedtail5 x\nexport PASSWORD=a\\ plantedtail6 x\n")
+        with patch.object(self.report.about, 'details', return_value=dict(INFO, processor=planted)), \
+                patch.object(self.report.about, 'command', return_value=planted):
+            document = self.document()
+        about_report = self.report.about.report
+        with patch.dict(os.environ, XDG_STATE_HOME=str(self.root)), \
+                patch.dict(about_report.__globals__, command=lambda args: planted):
+            saved = Path(about_report(dict(INFO, processor=planted))).read_text()
+        for path, text in (('saved diagnostics', saved), ('composer', json.dumps(document))):
+            with self.subTest(path=path):
+                self.assertNotIn('planted', text)
+                self.assertNotIn('tool', text)
+                self.assertNotIn('PASSWORD', text)
+                self.assertNotIn('api_key', text)
+
+    def test_credential_grid_leaves_no_value_in_composition_or_saved_diagnostics(self):
+        # The property through both paths: for every credential key, separator,
+        # quoting and glued suffix, no end of the value and no key line survives,
+        # and the innocent lines between them are kept.
+        spec = importlib.util.spec_from_file_location('redaction_grid', ROOT / 'tests/test-report-redaction.py')
+        grid = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(grid)
+        about_report = self.report.about.report
+        markers = ('HEADq7', 'TAILz9', 'tool', 'setenv', 'export', 'mysql', 'mariadb', 'Authorization', 'Cookie')
+        for name, lines in grid.all_grids():
+            # Lines whose quote never closes run on over what follows; each goes
+            # in a chunk of its own, after the innocent lines.
+            closed = [line for line in lines if grid.closed(line)]
+            chunks = [closed[start:start + 60] for start in range(0, len(closed), 60)]
+            chunks += [[line] for line in lines if not grid.closed(line)]
+            # Each report item keeps its last 200 lines; a chunk stays below that.
+            for number, part in enumerate(chunks):
+                innocent = [grid.GRID_INNOCENT[index % len(grid.GRID_INNOCENT)] for index in range(len(part))]
+                if len(part) == 1:
+                    planted = ''.join(line + '\n' for line in grid.GRID_INNOCENT) + part[0] + '\n'
+                    innocent = list(grid.GRID_INNOCENT)
+                else:
+                    planted = ''.join(line + '\n' + innocent[index] + '\n' for index, line in enumerate(part))
+                with patch.object(self.report.about, 'details', return_value=dict(INFO, processor=planted)), \
+                        patch.object(self.report.about, 'command', return_value=planted):
+                    document = self.document()
+                with patch.dict(os.environ, XDG_STATE_HOME=str(self.root)), \
+                        patch.dict(about_report.__globals__, command=lambda args: planted):
+                    saved = Path(about_report(dict(INFO, processor=planted))).read_text()
+                for path, text in (('saved diagnostics', saved),
+                                   ('composer', '\n'.join(item['text'] for item in document['items']))):
+                    for marker in markers:
+                        if marker in text:
+                            self.fail(f'{name} {path}: {marker} survived {part!r}')
+                    for line in innocent[:len(grid.GRID_INNOCENT)]:
+                        if line not in text:
+                            self.fail(f'{name} {path}: innocent {line!r} lost in {part!r}')
+
+    def collect(self, journal, part='shell', info=None):
+        """The logs item of a composed report and a saved report, from these outputs."""
+        def command(args):
+            if args[0] == 'journalctl':
+                return journal(args) if callable(journal) else journal
+            return 'UNIT_AFTER' if args[0] == 'systemctl' else 'BLOCK_AFTER'
+        with patch.object(self.report.about, 'command', side_effect=command):
+            if info is not None:
+                with patch.object(self.report.about, 'details', return_value=info):
+                    document = self.report.compose(part)
+            else:
+                document = self.report.compose(part)
+        logs = next(item['text'] for item in document['items'] if item['id'] == 'logs')
+        about_report = self.report.about.report
+        with patch.dict(os.environ, XDG_STATE_HOME=str(self.root)), \
+                patch.dict(about_report.__globals__, command=command):
+            saved = Path(about_report(info or dict(INFO))).read_text()
+        return document, logs, saved
+
+    def test_continuations_found_before_lines_are_refused_in_both_paths(self):
+        # RF8: encoded openers, encoded keys and a header's next or folded line
+        # that opens a quote or ends with a backslash.
+        for planted in ('Authorization: Bearer\n"alpha\nPLANTEDTAIL\n"\nKEPT',
+                        'Authorization: foo\n alpha\\\nPLANTEDTAIL\nKEPT',
+                        'Authorization: foo\n "alpha\nPLANTEDTAIL\n"\nKEPT', 'token="head%20\nPLANTEDTAIL\nend"\nKEPT',
+                        'token%3D%22head\nPLANTEDTAIL\nend%22\nKEPT',
+                        'Authorization: Bearer head%20\n PLANTEDTAIL\nKEPT',
+                        'token=head%20\\\nPLANTEDTAIL\nKEPT'):
+            document, logs, saved = self.collect(planted)
+            for path, text in (('composer', logs), ('saved diagnostics', saved)):
+                with self.subTest(planted=planted, path=path):
+                    self.assertNotIn('PLANTEDTAIL', text)
+                    self.assertNotIn('end"', text)
+                    self.assertNotIn('end%22', text)
+                    self.assertIn('KEPT', text)
+            self.assertEqual(logs, 'KEPT')
+
+    def test_an_unclosed_quote_takes_only_the_rest_of_its_own_source(self):
+        # RF8: an apostrophe after a credential key may take the rest of its own
+        # command output or detail, never the headings and sources after it.
+        info = dict(INFO, processor="token='HEADq7\nTAILz9")
+        document, logs, saved = self.collect("auth: can't open\nJOURNAL_AFTER", info=info)
+        self.assertEqual(logs, '')
+        for marker in ('HEADq7', 'TAILz9', 'JOURNAL_AFTER', "can't"):
+            self.assertNotIn(marker, saved)
+        for line in ('graphics: Fixture GPU', 'disk: 100 GiB', 'Recent journal errors', 'Failed system units',
+                     'Failed user units', 'Block devices', 'BLOCK_AFTER'):
+            self.assertIn(line, saved)
+        self.assertEqual(saved.count('UNIT_AFTER'), 2)
+        self.assertTrue(saved.endswith('\nRecent journal errors\n\nFailed system units\nUNIT_AFTER\n\n'
+                                       'Failed user units\nUNIT_AFTER\n\nBlock devices\nBLOCK_AFTER\n'), saved)
+        # The other part reads two journal outputs; the first one's open quote
+        # leaves the second one.
+        outputs = iter(("auth: can't open\nJOURNAL_AFTER", 'SECOND_SOURCE kept'))
+        document, logs, saved = self.collect(lambda args: next(outputs, 'SAVED_SOURCE'), part='other')
+        self.assertEqual(logs, 'SECOND_SOURCE kept')
+        self.assertIn('Failed system units\nUNIT_AFTER', saved)
+        for item in document['items']:
+            if item['id'] != 'logs':
+                self.assertTrue(item['text'])
+
+    def test_control_heavy_collection_reaches_clipboard_fallback(self):
+        with patch.object(self.report.about, 'command', return_value='\x01' * 262144):
+            document = self.report.compose('other')
+        raw = json.dumps(document)
+        self.assertGreater(len(raw), 2 * 1024 * 1024)
+        code, payload = self.invoke(['url', '--what', 'Failure', '--items', 'logs'], raw)
+        self.assertEqual(code, 0)
+        self.assertEqual(payload, self.report.url(document, 'Failure', 'logs'))
+        self.assertTrue(payload['too_big'])
+        self.assertIn(document['items'][-1]['text'], payload['body'])
+
+    def test_settings_search_describes_local_composer(self):
+        index = (ROOT / 'shell/settings/SettingsIndex.js').read_text()
+        row = next(line for line in index.splitlines() if '"id":"about-report-a-problem"' in line)
+        entry = json.loads(row.strip().rstrip(','))
+        page = (ROOT / 'shell/SettingsAboutPage.qml').read_text()
+        self.assertIn('explanation: ' + json.dumps(entry['explanation']), page)
+        self.assertIn('until you choose Send', entry['explanation'])
 
     def test_selection_exact_and_description_verbatim(self):
         document = self.document()
@@ -252,7 +458,7 @@ class Report(unittest.TestCase):
             '', '{not json', '[' * 100000))
         cases.append((base + ['logs'], json.dumps(dict(document, items=document['items'][:4] +
                       [dict(document['items'][4], text=5)])), 'invalid_report'))
-        cases.append((base + [''], ' ' * (2 * 1024 * 1024 + 1), 'report_too_large'))
+        cases.append((base + [''], ' ' * (32 * 1024 * 1024 + 1), 'report_too_large'))
         self.assertEqual(len(cases), 23)
         for args, stdin, error in cases:
             with self.subTest(args=args, error=error, input_length=len(stdin)):
@@ -315,7 +521,7 @@ class Report(unittest.TestCase):
             dict(document, items=[{'id': 'emaki'}]), dict(document, part='nope'),
             dict(document, version=True)))
         failures.extend((base + [''], text, error) for text, error in (
-            (' ' * (2 * 1024 * 1024 + 1), 'report_too_large'),
+            (' ' * (32 * 1024 * 1024 + 1), 'report_too_large'),
             ('[' * 100000, 'invalid_report'), ('', 'invalid_report')))
         self.assertEqual(len(failures), 15)
         for args, stdin, error in failures:

@@ -11,7 +11,7 @@ Column {
     readonly property var accounts: SettingsUsersService.accounts
     readonly property int administrators: SettingsUsersService.administrators
     readonly property bool received: SettingsUsersService.received
-    readonly property bool pending: SettingsUsersService.pending || SettingsUsersService.passwordPending
+    readonly property bool pending: SettingsUsersService.pending || SettingsUsersService.passwordPending || SettingsUsersService.pictureChooser.busy
     readonly property string message: SettingsUsersService.message
     readonly property bool problem: SettingsUsersService.problem
     property string editing: ""
@@ -57,6 +57,11 @@ Column {
         editing = "";
         removing = "";
     }
+    readonly property var pictureChooser: SettingsUsersService.pictureChooser
+    readonly property string pictureError: SettingsUsersService.pictureError
+    function choosePicture(): void {
+        SettingsUsersService.choosePicture();
+    }
     Component.onCompleted: {
         if (!received && !pending)
             refresh();
@@ -74,7 +79,7 @@ Column {
         text: root.message
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
-        color: root.problem ? "#a01b45" : SettingsTheme.dim
+        color: root.problem ? SettingsTheme.error : SettingsTheme.dim
         font.family: SettingsTheme.fontFamily
         font.pixelSize: 13
     }
@@ -100,6 +105,51 @@ Column {
                     }
                 }
             }
+        }
+        SettingsRow {
+            objectName: "settings-users-picture"
+            width: parent.width
+            title: "Picture"
+            explanation: "Shown in Settings, on the lock screen and on the login screen."
+            busy: root.pending || root.pictureChooser.busy
+            unavailable: root.me?.available === false
+            controlWidth: root.me?.picture === true ? 270 : 180
+            control: Component {
+                Item {
+                    implicitHeight: chooseButton.implicitHeight
+                    SettingsButton {
+                        id: chooseButton
+                        objectName: "settings-users-picture-choose"
+                        width: parent.width - (removeButton.visible ? removeButton.width + 8 : 0)
+                        text: root.pictureChooser.busy ? "Choosing…" : "Choose picture…"
+                        onClicked: root.choosePicture()
+                    }
+                    SettingsButton {
+                        id: removeButton
+                        objectName: "settings-users-picture-remove"
+                        anchors.right: parent.right
+                        width: 82
+                        visible: root.me?.picture === true
+                        text: "Remove"
+                        onClicked: {
+                            SettingsUsersService.pictureError = "";
+                            root.run(["picture", "--clear"]);
+                        }
+                    }
+                }
+            }
+        }
+        Text {
+            objectName: "settings-users-picture-error"
+            width: parent.width
+            visible: root.pictureError !== ""
+            bottomPadding: 12
+            text: root.pictureError
+            textFormat: Text.PlainText
+            color: "#a01b45"
+            font.family: SettingsTheme.fontFamily
+            font.pixelSize: 13
+            wrapMode: Text.WordWrap
         }
         SettingsRow {
             objectName: "settings-users-password"

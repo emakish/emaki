@@ -22,13 +22,13 @@ Region {
         x: Math.floor(r.x)
         y: Math.floor(r.y)
         width: input.plateEnabled ? Math.ceil(r.x + r.width) - x : 0
-        height: Math.ceil(r.y + r.height) - y
+        height: input.plateEnabled ? Math.ceil(r.y + r.height) - y : 0
     }
     Region {
         readonly property rect r: input.popupRect
         x: Math.floor(r.x)
         y: Math.floor(r.y)
         width: input.popupEnabled ? Math.ceil(r.x + r.width) - x : 0
-        height: Math.ceil(r.y + r.height) - y
+        height: input.popupEnabled ? Math.ceil(r.y + r.height) - y : 0
     }
 }

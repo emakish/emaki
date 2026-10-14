@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""Build the startup splash watermark from the lock's canonical pixel wordmark (stdlib only).
+
+The picture is the same wordmark, colours and 3x scale as boot/emaki-splash.bmp, without the
+BMP's black margin: Plymouth's two-step plugin draws it centred on the theme's black
+background. Letters are opaque, everything else is fully transparent.
+"""
+import argparse
+from pathlib import Path
+import runpy
+import struct
+import sys
+import zlib
+
+sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parent.parent
+TARGET = ROOT / 'boot/plymouth/watermark.png'
+SCALE = 3
+SIGNATURE = b'\x89PNG\r\n\x1a\n'
+
+
+def pixels():
+    """Return (width, height, rows): RGBA scanlines of the scaled wordmark."""
+    source = runpy.run_path(str(ROOT / 'scripts/build-lock-wordmark'))
+    _, w, h, letters = source['generate_pixels']()
+    colors = [bytes.fromhex(color[1:]) + b'\xff' for color in source['HOT']]
+    width, height = w * SCALE, h * SCALE
+    rows = [bytearray(width * 4) for _ in range(height)]
+    for x, y, _letter, _neighbours, color in letters:
+        for dy in range(SCALE):
+            rows[y * SCALE + dy][x * SCALE * 4:(x + 1) * SCALE * 4] = colors[color] * SCALE
+    return width, height, [bytes(row) for row in rows]
+
+
+def chunk(kind, data):
+    return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+
+
+def encode(width, height, rows):
+    # 8-bit RGBA, no interlace; every scanline uses filter 0 so decoding needs no unfiltering.
+    header = struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0)
+    raw = b''.join(b'\x00' + row for row in rows)
+    return SIGNATURE + chunk(b'IHDR', header) + chunk(b'IDAT', zlib.compress(raw, 9)) + chunk(b'IEND', b'')
+
+
+def decode(data):
+    """Read back a PNG written by encode(): (width, height, raw filtered scanlines)."""
+    if not data.startswith(SIGNATURE):
+        raise ValueError('not a PNG')
+    offset, header, idat = len(SIGNATURE), None, b''
+    while offset < len(data):
+        length, kind = struct.unpack_from('>I4s', data, offset)
+        body = data[offset + 8:offset + 8 + length]
+        if kind == b'IHDR':
+            header = struct.unpack('>IIBBBBB', body)
+        elif kind == b'IDAT':
+            idat += body
+        offset += 12 + length
+    if header is None or header[2:] != (8, 6, 0, 0, 0):
+        raise ValueError('not an 8-bit RGBA PNG without interlace')
+    return header[0], header[1], zlib.decompress(idat)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument('--check', action='store_true', help='fail if the checked-in watermark is stale')
+    args = parser.parse_args()
+    width, height, rows = pixels()
+    if args.check:
+        # Compare decoded pixels, not bytes: another zlib may compress the same rows differently.
+        expected = (width, height, b''.join(b'\x00' + row for row in rows))
+        try:
+            actual = decode(TARGET.read_bytes())
+        except (OSError, ValueError, zlib.error):
+            actual = None
+        if actual != expected:
+            parser.exit(1, 'boot/plymouth/watermark.png is stale; run python3 scripts/build-plymouth-theme\n')
+        print('PASS: the splash watermark matches the canonical wordmark pixels and Hot colours')
+    else:
+        TARGET.parent.mkdir(exist_ok=True)
+        TARGET.write_bytes(encode(width, height, rows))
+        print(f'Generated boot/plymouth/watermark.png ({width}x{height})')
+
+
+if __name__ == '__main__':
+    main()

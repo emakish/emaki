@@ -11,6 +11,14 @@ Scope {
     property real rejectedAt: 0
     readonly property bool rejection: Quickshell.env("EMAKI_VISUAL_REJECTION") === "1"
     readonly property bool late: Quickshell.env("EMAKI_VISUAL_LATE") === "1"
+    // Empty: nothing saved, as on the real login screen (it loads no settings).
+    readonly property string theme: Quickshell.env("EMAKI_VISUAL_THEME") ?? ""
+    Component.onCompleted: SettingsBridge.values = root.theme ? [
+        {
+            key: "appearance.theme",
+            value: root.theme
+        }
+    ] : []
     function capture(name: string): void {
         capturing = true;
         surface.grabToImage(result => {

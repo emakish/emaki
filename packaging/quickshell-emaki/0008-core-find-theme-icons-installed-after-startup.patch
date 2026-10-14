@@ -1,0 +1,420 @@
+From 1d967e7ff3da048cdaafb52ff90f1008e08b8385 Mon Sep 17 00:00:00 2001
+From: Emaki contributors <emaki@localhost>
+Date: Wed, 14 Oct 2026 06:00:00 +0000
+Subject: [PATCH] core: find theme icons installed after startup
+
+Copyright (C) 2026 Artur Yakymenko
+SPDX-License-Identifier: LGPL-3.0-only
+
+Qt's icon loader reads each theme's directories once, so the icon of a
+program installed while the shell runs stayed missing in
+Quickshell.iconPath(name, true) until the shell restarted. On a miss, load
+the themes again at most every two seconds and look once more. Qt also
+keeps only the icon directories that existed at startup, so the reload adds
+the data directories' icon directories that exist now (the first flatpak
+install creates its export directory).
+
+A missed name is looked up again when the two-second window ends and keeps
+being looked up until two seconds after its miss (a package's icons can land
+just after its desktop entry): one timer serves every miss, and
+Quickshell.iconThemeRevision changes when one of them is found, so a
+binding that reads it shows an icon installed after its first lookup.
+Names still missing then are dropped until their next lookup, not retried
+in a loop.
+---
+ src/core/CMakeLists.txt            |   2 +
+ src/core/qmlglobal.cpp             |  84 +++++++++++++++-
+ src/core/qmlglobal.hpp             |  27 ++++++
+ src/core/test-icon-theme-reload.py | 151 +++++++++++++++++++++++++++++
+ 4 files changed, 263 insertions(+), 1 deletion(-)
+ create mode 100755 src/core/test-icon-theme-reload.py
+
+diff --git a/src/core/CMakeLists.txt b/src/core/CMakeLists.txt
+index 960810e..ec4dbf9 100644
+--- a/src/core/CMakeLists.txt
++++ b/src/core/CMakeLists.txt
+@@ -66,4 +66,6 @@ if (BUILD_TESTING)
+ 	find_package(Python3 COMPONENTS Interpreter REQUIRED)
+ 	add_test(NAME desktop-entry-monitor WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+ 		COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test-desktop-entry-monitor.py $<TARGET_FILE:quickshell>)
++	add_test(NAME icon-theme-reload WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
++		COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test-icon-theme-reload.py $<TARGET_FILE:quickshell>)
+ endif()
+diff --git a/src/core/qmlglobal.cpp b/src/core/qmlglobal.cpp
+index 0bee314..31a7e14 100644
+--- a/src/core/qmlglobal.cpp
++++ b/src/core/qmlglobal.cpp
+@@ -5,6 +5,7 @@
+ #include <qcontainerfwd.h>
+ #include <qcoreapplication.h>
+ #include <qdir.h>
++#include <qelapsedtimer.h>
+ #include <qguiapplication.h>
+ #include <qicon.h>
+ #include <qjsengine.h>
+@@ -16,7 +17,9 @@
+ #include <qqmlengine.h>
+ #include <qqmllist.h>
+ #include <qscreen.h>
++#include <qstandardpaths.h>
+ #include <qtenvironmentvariables.h>
++#include <qtimer.h>
+ #include <qtmetamacros.h>
+ #include <qtversion.h>
+ #include <qtypes.h>
+@@ -74,6 +77,9 @@ void QuickshellSettings::setWatchFiles(bool watchFiles) {
+ }
+ 
+ QuickshellTracked::QuickshellTracked() {
++	this->iconRetry.setSingleShot(true);
++	QObject::connect(&this->iconRetry, &QTimer::timeout, this, &QuickshellTracked::retryMissingIcons);
++
+ 	auto* app = QCoreApplication::instance();
+ 	auto* guiApp = qobject_cast<QGuiApplication*>(app);
+ 
+@@ -105,6 +111,77 @@ QuickshellTracked* QuickshellTracked::instance() {
+ 	return instance;
+ }
+ 
++// Qt's icon loader reads each theme's directories once, so an icon installed while the shell
++// runs (a program from the store) stays missing until the themes are loaded again.
++void QuickshellTracked::reloadIconThemes() {
++	this->sinceIconReload.start();
++
++	// Qt keeps only the icon directories that existed at startup, so add the data directories'
++	// icon directories that exist now (the first flatpak install creates its export directory).
++	auto paths = QIcon::themeSearchPaths();
++	const auto now = QStandardPaths::locateAll(
++	    QStandardPaths::GenericDataLocation,
++	    QStringLiteral("icons"),
++	    QStandardPaths::LocateDirectory
++	);
++	for (const auto& path: now) {
++		if (!paths.contains(path)) paths.append(path);
++	}
++
++	QIcon::setThemeSearchPaths(paths);
++}
++
++bool QuickshellTracked::themeHasIcon(const QString& icon) {
++	if (!QIcon::fromTheme(icon).isNull()) return true;
++
++	if (!this->sinceIconReload.isValid() || this->sinceIconReload.elapsed() >= 2000) {
++		this->reloadIconThemes();
++		if (!QIcon::fromTheme(icon).isNull()) return true;
++	}
++
++	// Still missing, or the themes were reloaded less than two seconds ago: look again when this
++	// window ends, and keep looking for two seconds after this miss (a package's icons can land
++	// just after its desktop entry). One timer serves every miss, so a reload never runs more
++	// often than every two seconds.
++	if (!this->missingIcons.contains(icon)) {
++		if (!this->iconClock.isValid()) this->iconClock.start();
++		this->missingIcons.insert(icon, this->iconClock.elapsed());
++	}
++
++	if (!this->iconRetry.isActive()) {
++		this->iconRetry.start(static_cast<int>(qMax(0, 2000 - this->sinceIconReload.elapsed())));
++	}
++
++	return false;
++}
++
++void QuickshellTracked::retryMissingIcons() {
++	this->reloadIconThemes();
++
++	// Only a found icon changes anything. A name still missing two seconds after its miss is
++	// dropped until its next lookup, so bindings that look again and miss settle after at most
++	// two more reloads.
++	auto found = false;
++	const auto now = this->iconClock.elapsed();
++	for (auto it = this->missingIcons.begin(); it != this->missingIcons.end();) {
++		if (!QIcon::fromTheme(it.key()).isNull()) {
++			found = true;
++			it = this->missingIcons.erase(it);
++		} else if (now - it.value() >= 2000) {
++			it = this->missingIcons.erase(it);
++		} else {
++			++it;
++		}
++	}
++
++	if (!this->missingIcons.isEmpty()) this->iconRetry.start(2000);
++
++	if (found) {
++		this->mIconThemeRevision++;
++		emit this->iconThemeChanged();
++	}
++}
++
+ void QuickshellTracked::updateScreens() {
+ 	auto screens = QGuiApplication::screens();
+ 	auto newScreens = QList<QuickshellScreenInfo*>();
+@@ -142,6 +219,7 @@ QuickshellGlobal::QuickshellGlobal(QObject* parent): QObject(parent) {
+ 	QObject::connect(QuickshellSettings::instance(), &QuickshellSettings::lastWindowClosed, this, &QuickshellGlobal::lastWindowClosed);
+ 
+ 	QObject::connect(QuickshellTracked::instance(), &QuickshellTracked::screensChanged, this, &QuickshellGlobal::screensChanged);
++	QObject::connect(QuickshellTracked::instance(), &QuickshellTracked::iconThemeChanged, this, &QuickshellGlobal::iconThemeRevisionChanged);
+ 	// clang-format on
+ 
+ 	QObject::connect(
+@@ -260,6 +338,10 @@ QString QuickshellGlobal::cacheDir() const { // NOLINT
+ 	return QsPaths::instance()->shellCacheDir().path();
+ }
+ 
++quint32 QuickshellGlobal::iconThemeRevision() {
++	return QuickshellTracked::instance()->iconThemeRevision();
++}
++
+ QString QuickshellGlobal::shellPath(const QString& path) const {
+ 	return this->shellDir() % '/' % path;
+ }
+@@ -327,7 +409,7 @@ QString QuickshellGlobal::iconPath(const QString& icon) {
+ }
+ 
+ QString QuickshellGlobal::iconPath(const QString& icon, bool check) {
+-	if (check && QIcon::fromTheme(icon).isNull()) return "";
++	if (check && !QuickshellTracked::instance()->themeHasIcon(icon)) return "";
+ 	return IconImageProvider::requestString(icon);
+ }
+ 
+diff --git a/src/core/qmlglobal.hpp b/src/core/qmlglobal.hpp
+index 2887a93..52c24ac 100644
+--- a/src/core/qmlglobal.hpp
++++ b/src/core/qmlglobal.hpp
+@@ -2,6 +2,7 @@
+ 
+ #include <qclipboard.h>
+ #include <qcontainerfwd.h>
++#include <qelapsedtimer.h>
+ #include <qhash.h>
+ #include <qjsengine.h>
+ #include <qlist.h>
+@@ -10,6 +11,7 @@
+ #include <qqmlintegration.h>
+ #include <qqmllist.h>
+ #include <qscreen.h>
++#include <qtimer.h>
+ #include <qtmetamacros.h>
+ #include <qtypes.h>
+ #include <qvariant.h>
+@@ -70,13 +72,31 @@ public:
+ 	QVector<QuickshellScreenInfo*> screens;
+ 	QuickshellScreenInfo* screenInfo(QScreen* screen) const;
+ 
++	// Theme icon lookup that also finds icons installed after startup. A miss reloads the
++	// themes at most every two seconds and is looked up again when that window ends, for at least
++	// two seconds after the miss; iconThemeChanged() is sent when one of those misses is found.
++	bool themeHasIcon(const QString& icon);
++	[[nodiscard]] quint32 iconThemeRevision() const { return this->mIconThemeRevision; }
++
+ 	static QuickshellTracked* instance();
+ 
+ private slots:
+ 	void updateScreens();
++	void retryMissingIcons();
+ 
+ signals:
+ 	void screensChanged();
++	void iconThemeChanged();
++
++private:
++	void reloadIconThemes();
++
++	QElapsedTimer sinceIconReload;
++	QTimer iconRetry;
++	QElapsedTimer iconClock;
++	// Icon name -> iconClock time of its first miss.
++	QHash<QString, qint64> missingIcons;
++	quint32 mIconThemeRevision = 0;
+ };
+ 
+ class QuickshellGlobal: public QObject {
+@@ -138,6 +158,10 @@ class QuickshellGlobal: public QObject {
+ 	///
+ 	/// > [!WARNING] Under wayland the clipboard will be empty unless a quickshell window is focused.
+ 	Q_PROPERTY(QString clipboardText READ clipboardText WRITE setClipboardText NOTIFY clipboardTextChanged);
++	/// Changes when an icon that @@iconPath() with `check` set reported missing has been
++	/// installed since. Read it in the binding that calls @@iconPath() to look again, e.g.
++	/// `source: { Quickshell.iconThemeRevision; return Quickshell.iconPath(name, true); }`.
++	Q_PROPERTY(quint32 iconThemeRevision READ iconThemeRevision NOTIFY iconThemeRevisionChanged);
+ 	/// The per-shell data directory.
+ 	///
+ 	/// Usually `~/.local/share/quickshell/by-shell/<shell-id>`
+@@ -286,6 +310,8 @@ public:
+ 	[[nodiscard]] QString stateDir() const;
+ 	[[nodiscard]] QString cacheDir() const;
+ 
++	[[nodiscard]] static quint32 iconThemeRevision();
++
+ 	static QuickshellGlobal* create(QQmlEngine* engine, QJSEngine* /*unused*/);
+ 
+ signals:
+@@ -302,6 +328,7 @@ signals:
+ 	void workingDirectoryChanged();
+ 	void watchFilesChanged();
+ 	void clipboardTextChanged();
++	void iconThemeRevisionChanged();
+ 
+ private slots:
+ 	void onClipboardChanged(QClipboard::Mode mode);
+diff --git a/src/core/test-icon-theme-reload.py b/src/core/test-icon-theme-reload.py
+new file mode 100755
+index 0000000..fbc9ced
+--- /dev/null
++++ b/src/core/test-icon-theme-reload.py
+@@ -0,0 +1,151 @@
++#!/usr/bin/env python3
++# Copyright (C) 2026 Artur Yakymenko
++# SPDX-License-Identifier: LGPL-3.0-only
++"""Quickshell.iconPath(name, true) finds an icon installed after the shell started, also in a
++data directory that did not exist yet (the first flatpak install creates its export directory).
++A binding that read iconThemeRevision looks again by itself when an icon it missed is installed
++within the two seconds after a reload, with nothing calling iconPath again."""
++import os
++from pathlib import Path
++import subprocess
++import sys
++import tempfile
++import time
++
++PNG = bytes.fromhex('89504e470d0a1a0a0000000d4948445200000001000000010806000000'
++                    '1f15c4890000000d49444154789c6360f8cf00000301010018dd8db00000'
++                    '000049454e44ae426082')
++THEME = '[Icon Theme]\nName=Hicolor\nDirectories=48x48/apps\n\n[48x48/apps]\nSize=48\nType=Fixed\n'
++
++with tempfile.TemporaryDirectory(prefix='qs-icon-reload-', dir=os.getcwd()) as directory:
++    root = Path(directory)
++    root.chmod(0o700)
++    apps = root / 'data/icons/hicolor/48x48/apps'
++    apps.mkdir(parents=True)
++    (root / 'data/icons/hicolor/index.theme').write_text(THEME)
++    (apps / 'present.png').write_bytes(PNG)
++    for name in ('home', 'config/qt6ct', 'cache', 'state', 'runtime'):
++        (root / name).mkdir(parents=True, mode=0o700)
++    (root / 'shell.qml').write_text('''import QtQuick
++import Quickshell
++ShellRoot {
++    Component.onCompleted: Quickshell.watchFiles = false
++    Timer {
++        interval: 300; running: true; repeat: true
++        onTriggered: console.info("ICONS " + (Quickshell.iconPath("present", true) !== "")
++                                  + " " + (Quickshell.iconPath("later", true) !== "")
++                                  + " " + (Quickshell.iconPath("fresh", true) !== ""))
++    }
++    Timer { interval: 20000; running: true; onTriggered: Qt.quit() }
++}
++''')
++    # The offscreen platform has no icon theme; qt6ct with an empty configuration gives the
++    # generic hicolor lookup.
++    environment = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QPA_PLATFORMTHEME='qt6ct',
++                       QT_QUICK_BACKEND='software', QML_DISABLE_DISK_CACHE='1',
++                       HOME=str(root / 'home'), XDG_DATA_HOME=str(root / 'home/data'),
++                       XDG_DATA_DIRS=str(root / 'data') + ':' + str(root / 'late'),
++                       XDG_CONFIG_HOME=str(root / 'config'),
++                       XDG_CACHE_HOME=str(root / 'cache'), XDG_STATE_HOME=str(root / 'state'),
++                       XDG_RUNTIME_DIR=str(root / 'runtime'),
++                       DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(root / 'no-bus'))
++    shell = subprocess.Popen([sys.argv[1], '-p', str(root), '--no-color'], env=environment,
++                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
++    log = []
++    try:
++        def wait_for(text, seconds):
++            until = time.monotonic() + seconds
++            while time.monotonic() < until:
++                line = shell.stdout.readline()
++                if not line:
++                    break
++                log.append(line)
++                if text in line:
++                    return True
++            return False
++
++        if not wait_for('ICONS ', 10):
++            raise AssertionError('no icon probe output\n' + ''.join(log))
++        if 'ICONS true' not in log[-1]:
++            print('SKIP: no icon theme lookup on this platform (qt6ct missing?)')
++            sys.exit(0)
++        assert 'ICONS true false false' in log[-1], ''.join(log)
++        (apps / 'later.png').write_bytes(PNG)
++        assert wait_for('ICONS true true false', 5), 'an icon installed later stays missing\n' + ''.join(log[-10:])
++        # A data directory that did not exist at startup: its icons directory appears later.
++        late = root / 'late/icons/hicolor/48x48/apps'
++        late.mkdir(parents=True)
++        (late / 'fresh.png').write_bytes(PNG)
++        assert wait_for('ICONS true true true', 5), \
++            'an icon in a data directory created later stays missing\n' + ''.join(log[-10:])
++    finally:
++        shell.kill()
++        shell.wait()
++
++    # Bindings, no polling: the first lookup reloads, the second falls in the same two seconds,
++    # then both icons are installed within that window.
++    (root / 'bound.qml').write_text('''import QtQuick
++import Quickshell
++ShellRoot {
++    readonly property string first: { Quickshell.iconThemeRevision; return Quickshell.iconPath("first", true); }
++    readonly property string second: { Quickshell.iconThemeRevision; return Quickshell.iconPath("second", true); }
++    readonly property string never: { Quickshell.iconThemeRevision; return Quickshell.iconPath("never", true); }
++    readonly property string both: "BOUND " + (first !== "") + " " + (second !== "")
++    onBothChanged: console.info(both)
++    Connections {
++        target: Quickshell
++        function onIconThemeRevisionChanged() { console.info("REVISION " + Quickshell.iconThemeRevision); }
++    }
++    Component.onCompleted: { Quickshell.watchFiles = false; console.info(both); }
++    Timer { interval: 9000; running: true; onTriggered: Qt.quit() }
++}
++''')
++    shell = subprocess.Popen([sys.argv[1], '-p', str(root / 'bound.qml'), '--no-color'], env=environment,
++                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
++    log = []
++    try:
++        if not wait_for('BOUND ', 10):
++            raise AssertionError('no binding output\n' + ''.join(log))
++        assert 'BOUND false false' in log[-1], ''.join(log)
++        (apps / 'first.png').write_bytes(PNG)
++        (apps / 'second.png').write_bytes(PNG)
++        assert wait_for('BOUND true true', 6), \
++            'a binding stays empty after its icon was installed\n' + ''.join(log[-10:])
++        # An icon that stays missing ("never") is looked up once more and then left alone: the
++        # revision changed once, for the two icons, and not again.
++        assert not wait_for('REVISION 2', 5), 'a missing icon keeps the themes reloading\n' + ''.join(log[-10:])
++        assert any('REVISION 1' in line for line in log), ''.join(log[-10:])
++    finally:
++        shell.kill()
++        shell.wait()
++
++    # A miss late in a reload window, its icon installed just after that window ends (a package's
++    # icons land after its desktop entry): the name is looked up for two seconds after its miss.
++    (root / 'late.qml').write_text('''import QtQuick
++import Quickshell
++ShellRoot {
++    property bool late: false
++    readonly property string early: { Quickshell.iconThemeRevision; return Quickshell.iconPath("early", true); }
++    readonly property string third: { Quickshell.iconThemeRevision; return late ? Quickshell.iconPath("third", true) : ""; }
++    onThirdChanged: console.info("THIRD " + (third !== ""))
++    Component.onCompleted: Quickshell.watchFiles = false
++    Timer { interval: 1500; running: true; onTriggered: { late = true; console.info("LATE " + (third !== "")); } }
++    Timer { interval: 9000; running: true; onTriggered: Qt.quit() }
++}
++''')
++    shell = subprocess.Popen([sys.argv[1], '-p', str(root / 'late.qml'), '--no-color'], env=environment,
++                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
++    log = []
++    try:
++        if not wait_for('LATE ', 10):
++            raise AssertionError('no late lookup\n' + ''.join(log))
++        assert 'LATE false' in log[-1], ''.join(log)
++        time.sleep(.8)  # past the end of the window the first lookup opened
++        (apps / 'third.png').write_bytes(PNG)
++        assert wait_for('THIRD true', 5), \
++            'an icon installed just after the reload window stays missing\n' + ''.join(log[-10:])
++    finally:
++        shell.kill()
++        shell.wait()
++print('PASS: an icon installed after startup is found, also in a data directory created later, '
++      'and bindings that missed it update by themselves')
+-- 
+2.55.0
+

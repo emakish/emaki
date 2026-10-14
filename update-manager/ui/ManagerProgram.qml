@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
+import "file:@EMAKI_DATADIR@/shell" as Shell
 import QtQuick.Layouts
 import QtQuick.Controls as C
 import "ManagerLogic.js" as Logic
@@ -25,16 +26,25 @@ ColumnLayout {
         const count = (receipt.added || []).length;
         return "Installed " + day(receipt.time) + (count > 1 ? " with " + (count - 1) + (count === 2 ? " package" : " packages") + " it needed" : "");
     }
-    RowLayout {
-        spacing: 24
-        ProgramIcon { program: page.program; Layout.preferredWidth: 104; Layout.preferredHeight: 104 }
+    // A narrow page (a niri third or half) puts the install column under the name and
+    // Details under About.
+    readonly property bool narrow: width < 640
+    // Too narrow for the name beside the icon: the name goes under it.
+    readonly property bool tight: width < 330
+    GridLayout {
+        columns: page.narrow ? 2 : 3
+        columnSpacing: page.narrow ? 16 : 24
+        rowSpacing: 20
+        ProgramIcon { program: page.program; Layout.preferredWidth: page.narrow ? 64 : 104; Layout.preferredHeight: page.narrow ? 64 : 104; Layout.row: 0; Layout.column: 0 }
         ColumnLayout {
+            Layout.row: page.tight ? 1 : 0; Layout.column: page.tight ? 0 : 1; Layout.columnSpan: page.tight ? 2 : 1
             Layout.fillWidth: true
             spacing: 7
-            ManagerLabel { text: page.program.name || ""; font.pixelSize: 30; font.weight: Font.DemiBold }
-            ManagerLabel { text: page.program.summary || ""; color: "#866c70"; font.pixelSize: 15 }
-            Stars { objectName: "program-rating"; rating: programReviews.rating; showCount: true; size: 14 }
-            RowLayout {
+            ManagerLabel { text: page.program.name || ""; font.pixelSize: page.narrow ? 24 : 30; font.weight: Font.DemiBold }
+            ManagerLabel { text: page.program.summary || ""; color: Shell.ShellPalette.managerDim; font.pixelSize: 15 }
+            Stars { objectName: "program-rating"; rating: programReviews.rating; showCount: !page.tight; showShortCount: page.tight; size: 14 }
+            Flow {
+                Layout.fillWidth: true
                 spacing: 2
                 Repeater {
                     model: page.controller.selectedProgram?.editions || []
@@ -44,7 +54,7 @@ ColumnLayout {
                         text: modelData.sourceLabel || (modelData.kind === "flatpak" ? "Flathub" : modelData.kind === "aur" ? "AUR" : "Arch")
                         implicitHeight: 28
                         font.pixelSize: 12
-                        background: Rectangle { radius: 8; color: page.program.key === editionButton.modelData.key ? Qt.rgba(1, .98, .96, .8) : Qt.rgba(36/255,16/255,24/255,.065); border.color: editionButton.activeFocus ? "#e2733f" : Qt.rgba(36/255,16/255,24/255,.14) }
+                        background: Rectangle { radius: 8; color: page.program.key === editionButton.modelData.key ? Qt.alpha(Shell.ShellPalette.managerCream, .8) : Qt.alpha(Shell.ShellPalette.managerInk, .065); border.color: editionButton.activeFocus ? Shell.ShellPalette.accent : Qt.alpha(Shell.ShellPalette.managerInk, .14) }
                         enabled: !page.controller.busy
                         onClicked: page.controller.selectEdition(modelData.key)
                     }
@@ -52,8 +62,10 @@ ColumnLayout {
             }
         }
         ColumnLayout {
-            Layout.preferredWidth: 280
-            Layout.maximumWidth: 280
+            Layout.row: page.tight ? 2 : page.narrow ? 1 : 0; Layout.column: page.narrow ? 0 : 2; Layout.columnSpan: page.narrow ? 2 : 1
+            Layout.preferredWidth: page.narrow ? -1 : 280
+            Layout.maximumWidth: page.narrow ? Number.POSITIVE_INFINITY : 280
+            Layout.fillWidth: true
             spacing: 8
             ManagerButton {
                 objectName: "program-install"
@@ -70,7 +82,7 @@ ColumnLayout {
                 objectName: "aur-unchecked"
                 visible: page.program.kind === "aur"
                 text: "From the AUR, nobody checked it."
-                color: "#8a3412"
+                color: Shell.ShellPalette.accentDeepForeground
                 font.pixelSize: 12
                 font.weight: Font.DemiBold
                 horizontalAlignment: Text.AlignHCenter
@@ -79,7 +91,7 @@ ColumnLayout {
                 objectName: "aur-no-snapshots-program"
                 visible: page.aurRefused && !page.controller.mutating
                 text: "Installing from the AUR is not available here: this computer keeps no system snapshots."
-                color: "#a01b45"
+                color: Shell.ShellPalette.managerError
                 font.pixelSize: 12
                 horizontalAlignment: Text.AlignHCenter
             }
@@ -97,7 +109,7 @@ ColumnLayout {
             ManagerLabel {
                 text: Logic.removalStatus(page.program)
                 visible: !!page.program.installed && text !== ""
-                color: "#866c70"
+                color: Shell.ShellPalette.managerDim
                 font.pixelSize: 12
                 horizontalAlignment: Text.AlignHCenter
             }
@@ -105,6 +117,7 @@ ColumnLayout {
                 objectName: "program-aur-update"
                 text: "Build the update · " + (page.program.version || "")
                 Layout.fillWidth: true
+                squeezed: parent.width < implicitWidth
                 visible: !!page.program.installed && page.program.kind === "aur" && page.allowed("install") && !page.controller.mutating
                 enabled: !page.aurRefused && !page.controller.busy && !page.controller.externalBusy
                 onClicked: page.controller.prepareInstall()
@@ -112,6 +125,8 @@ ColumnLayout {
             ManagerButton {
                 objectName: "program-undo"
                 text: "Undo this install"
+                Layout.fillWidth: true; Layout.maximumWidth: implicitWidth
+                squeezed: parent.width < implicitWidth
                 quiet: true
                 Layout.alignment: Qt.AlignHCenter
                 visible: !!page.program.installed && page.allowed("undo") && !page.controller.mutating
@@ -121,7 +136,7 @@ ColumnLayout {
             ManagerLabel {
                 visible: !!page.program.installed && page.allowed("undo") && !page.controller.mutating && !!page.program.undo
                 text: page.undoText(page.program.undo)
-                color: "#866c70"
+                color: Shell.ShellPalette.managerDim
                 font.pixelSize: 12
                 horizontalAlignment: Text.AlignHCenter
             }
@@ -130,19 +145,22 @@ ColumnLayout {
                 text: page.program.installed ? "Installed · version " + (page.program.installedVersion || page.program.version || "—")
                     : page.program.kind === "aur" ? "Version " + (page.program.version || "—") + " · size known after the build"
                     : "This program: " + page.size(page.program.installedSize) + " on disk · " + page.size(page.program.downloadSize) + " to download"
-                color: "#866c70"
+                color: Shell.ShellPalette.managerDim
                 font.pixelSize: 12
                 horizontalAlignment: Text.AlignHCenter
             }
             ManagerLabel {
                 visible: !page.program.installed && (page.program.kind === "arch" || page.program.kind === "aur") && !page.controller.mutating
                 text: page.program.kind === "aur" ? "Building also brings the system up to date." : "Installing also brings the system up to date."
-                color: "#866c70"
+                color: Shell.ShellPalette.managerDim
                 font.pixelSize: 12
                 horizontalAlignment: Text.AlignHCenter
             }
             ManagerButton {
                 text: page.program.kind === "aur" ? "show what will be built" : "show what changes"
+                // A page narrower than the label shortens it.
+                Layout.fillWidth: true; Layout.maximumWidth: implicitWidth
+                squeezed: parent.width < implicitWidth
                 quiet: true
                 Layout.alignment: Qt.AlignHCenter
                 visible: !page.program.installed && (page.program.kind === "arch" || page.program.kind === "aur") && !page.controller.mutating
@@ -156,24 +174,25 @@ ColumnLayout {
                 Layout.fillWidth: true
                 implicitHeight: 8
                 radius: 4
-                color: Qt.rgba(36/255,16/255,24/255,.14)
+                color: Qt.alpha(Shell.ShellPalette.managerInk, .14)
                 clip: true
                 Rectangle {
                     width: progressTrack.width * (page.controller.percent < 0 ? .35 : Math.min(100, Math.max(0, page.controller.percent)) / 100)
                     height: 8
                     radius: 4
-                    color: "#e2733f"
+                    color: Shell.ShellPalette.accent
+                    objectName: "progress-fill"
                     x: page.controller.percent < 0 ? pulse.position : 0
                     QtObject { id: pulse; property real position: 0 }
                     NumberAnimation { target: pulse; property: "position"; from: -progressTrack.width * .35; to: progressTrack.width; duration: 1300; loops: Animation.Infinite; running: page.controller.mutating && page.controller.percent < 0 }
                 }
             }
-            ManagerLabel { visible: page.controller.mutating && page.controller.percent >= 0; text: Math.round(page.controller.percent) + "%"; color: "#866c70"; font.pixelSize: 12 }
+            ManagerLabel { visible: page.controller.mutating && page.controller.percent >= 0; text: Math.round(page.controller.percent) + "%"; color: Shell.ShellPalette.managerDim; font.pixelSize: 12 }
             ManagerLabel {
                 visible: page.controller.mutating
                 text: page.controller.phase === "installing" ? "You can close this window. Installing goes on." : page.working()
                 font.pixelSize: 12
-                color: "#866c70"
+                color: Shell.ShellPalette.managerDim
             }
         }
     }
@@ -182,24 +201,24 @@ ColumnLayout {
         visible: page.program.kind === "aur"
         Layout.fillWidth: true
         implicitHeight: aurFacts.implicitHeight + 32
-        color: Qt.rgba(1,.98,.96,.42)
-        border.color: Qt.rgba(36/255,16/255,24/255,.14)
+        color: Qt.alpha(Shell.ShellPalette.managerCream, .42)
+        border.color: Qt.alpha(Shell.ShellPalette.managerInk, .14)
         radius: 16
         ColumnLayout {
             id: aurFacts
             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
             anchors.margins: 16
             spacing: 10
-            ManagerLabel { text: "WHAT IS KNOWN ABOUT IT"; font.pixelSize: 12; font.weight: Font.DemiBold; color: "#866c70" }
+            ManagerLabel { text: "WHAT IS KNOWN ABOUT IT"; font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim }
             ManagerLabel {
                 objectName: "aur-facts-unknown"
                 visible: !page.known("votes")
                 text: "These AUR details are unavailable. Facts that could not be checked are shown as unknown."
-                color: "#866c70"; font.pixelSize: 12
+                color: Shell.ShellPalette.managerDim; font.pixelSize: 12
             }
             GridLayout {
                 Layout.fillWidth: true
-                columns: 3
+                columns: width >= 520 ? 3 : 2
                 columnSpacing: 18
                 rowSpacing: 10
                 Repeater {
@@ -217,22 +236,27 @@ ColumnLayout {
                         Layout.fillWidth: true
                         Layout.preferredWidth: 1
                         spacing: 2
-                        ManagerLabel { text: parent.modelData[0]; color: "#866c70"; font.pixelSize: 12 }
-                        ManagerLabel { text: parent.modelData[1]; color: parent.modelData[2] ? "#a01b45" : "#241018"; font.pixelSize: 14; font.weight: Font.DemiBold }
+                        ManagerLabel { text: parent.modelData[0]; color: Shell.ShellPalette.managerDim; font.pixelSize: 12 }
+                        ManagerLabel { text: parent.modelData[1]; color: parent.modelData[2] ? Shell.ShellPalette.managerError : Shell.ShellPalette.managerInk; font.pixelSize: 14; font.weight: Font.DemiBold }
                     }
                 }
             }
-            RowLayout {
+            Flow {
+                Layout.fillWidth: true
                 spacing: 4
                 ManagerButton {
                     visible: /^https:\/\/aur\.archlinux\.org\//.test(page.program.recipe || "")
                     text: "See how the program is built"
+                    width: Math.min(implicitWidth, parent.width)
+                    squeezed: parent.width > 0 && implicitWidth > parent.width
                     quiet: true; leftPadding: 0; font.pixelSize: 12
                     onClicked: Qt.openUrlExternally(page.program.recipe)
                 }
                 ManagerButton {
                     visible: /^https:\/\/aur\.archlinux\.org\//.test(page.program.page || "")
                     text: "Its AUR page"
+                    width: Math.min(implicitWidth, parent.width)
+                    squeezed: parent.width > 0 && implicitWidth > parent.width
                     quiet: true; font.pixelSize: 12
                     onClicked: Qt.openUrlExternally(page.program.page)
                 }
@@ -263,13 +287,18 @@ ColumnLayout {
         font.family: "Iosevka Nerd Font Mono"
         font.pixelSize: 12
     }
-    ManagerLabel { visible: (page.program.screenshots || []).length > 0; text: "SCREENSHOTS"; font.pixelSize: 12; font.weight: Font.DemiBold; color: "#866c70" }
+    ManagerLabel { visible: (page.program.screenshots || []).length > 0; text: "SCREENSHOTS"; font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim }
     C.ScrollView {
+        id: shotStrip
+        // A narrower page shows each screenshot smaller, whole; the strip scrolls sideways, the page does not.
+        objectName: "screenshots"
+        readonly property real shotWidth: Math.min(400, width)
+        readonly property real shotHeight: Math.round(shotWidth * 236 / 400)
         visible: (page.program.screenshots || []).length > 0
         Layout.fillWidth: true
-        Layout.preferredHeight: 250
+        Layout.preferredHeight: shotHeight + 14
         contentWidth: shots.width
-        contentHeight: 236
+        contentHeight: shotHeight
         clip: true
         C.ScrollBar.vertical.policy: C.ScrollBar.AlwaysOff
         Row {
@@ -279,8 +308,8 @@ ColumnLayout {
                 model: page.program.screenshots || []
                 Rectangle {
                     required property var modelData
-                    width: 400; height: 236; radius: 12
-                    color: Qt.rgba(36/255,16/255,24/255,.06)
+                    width: shotStrip.shotWidth; height: shotStrip.shotHeight; radius: 12
+                    color: Qt.alpha(Shell.ShellPalette.managerInk, .06)
                     Image {
                         anchors.fill: parent
                         anchors.margins: 1
@@ -292,26 +321,29 @@ ColumnLayout {
             }
         }
     }
-    RowLayout {
+    GridLayout {
         Layout.fillWidth: true
-        spacing: 24
+        columns: page.narrow ? 1 : 2
+        columnSpacing: 24
+        rowSpacing: 24
         ColumnLayout {
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignTop
             spacing: 16
-            ManagerLabel { text: "ABOUT"; font.pixelSize: 12; font.weight: Font.DemiBold; color: "#866c70" }
+            ManagerLabel { text: "ABOUT"; font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim }
             ManagerLabel { text: page.program.description || page.program.summary || ""; lineHeight: 1.5 }
         }
         ColumnLayout {
-            Layout.preferredWidth: 320
-            Layout.maximumWidth: 320
+            Layout.preferredWidth: page.narrow ? -1 : 320
+            Layout.maximumWidth: page.narrow ? Number.POSITIVE_INFINITY : 320
+            Layout.fillWidth: true
             Layout.alignment: Qt.AlignTop
             spacing: 12
-            ManagerLabel { text: "DETAILS"; font.pixelSize: 12; font.weight: Font.DemiBold; color: "#866c70" }
+            ManagerLabel { text: "DETAILS"; font.pixelSize: 12; font.weight: Font.DemiBold; color: Shell.ShellPalette.managerDim }
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: details.implicitHeight + 8
-                color: Qt.rgba(1,.98,.96,.42)
+                color: Qt.alpha(Shell.ShellPalette.managerCream, .42)
                 radius: 16
                 ColumnLayout {
                     id: details
@@ -331,7 +363,7 @@ ColumnLayout {
                             Layout.fillWidth: true
                             Layout.margins: 10
                             spacing: 14
-                            ManagerLabel { text: parent.modelData[0]; color: "#866c70"; Layout.preferredWidth: 70; Layout.fillWidth: false; font.pixelSize: 13 }
+                            ManagerLabel { text: parent.modelData[0]; color: Shell.ShellPalette.managerDim; Layout.preferredWidth: 70; Layout.fillWidth: false; font.pixelSize: 13 }
                             ManagerLabel { text: parent.modelData[1]; horizontalAlignment: Text.AlignRight; font.pixelSize: 13 }
                         }
                     }

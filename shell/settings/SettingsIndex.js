@@ -10,7 +10,7 @@ var sections = [
         title: "Wi-Fi",
         group: "Network",
         description: "Join networks, see saved ones, forget them, show a password.",
-        colors: ["#f39a5f","#e2733f"],
+        colors: ["accentSoft","accent"],
         items: [
             {"id":"wifi-radio","title":"Wi-Fi","keywords":"Wi-Fi wireless radio on off connection","source":"SettingsWifiPage.qml","explanation":"Network status is unavailable. The wireless radio is blocked by the system. On. Emaki joins saved networks by itself. Off. Turn Wi-Fi on to see nearby networks.","searchExplanation":"Emaki joins saved networks by itself."},
             {"id":"wifi-networks","title":"Other networks","keywords":"Networks","source":"SettingsWifiPage.qml","explanation":"Nearby wireless networks appear here."},
@@ -26,7 +26,7 @@ var sections = [
         title: "Bluetooth",
         group: "Network",
         description: "Pair headphones, mice and other devices and see their battery.",
-        colors: ["#9db6d0","#6f8cab"],
+        colors: ["sectionBlueStart","sectionBlueEnd"],
         items: [
             {"id":"bluetooth-radio","title":"Bluetooth","keywords":"Bluetooth wireless adapter on off","source":"SettingsBluetoothPage.qml","explanation":"On. Paired devices can connect. Off. Turn Bluetooth on to connect devices.","searchExplanation":"Paired devices can connect."},
             {"id":"bluetooth-pairing","title":"Nearby devices","keywords":"Pairing","source":"SettingsBluetoothPage.qml","explanation":"Searching… Put a device in pairing mode, then press Search.","searchExplanation":"Put a device in pairing mode, then press Search."},
@@ -39,7 +39,7 @@ var sections = [
         title: "Network",
         group: "Network",
         description: "Wired connections, VPN and DNS.",
-        colors: ["#a8cfc0","#78a796"],
+        colors: ["sectionGreenStart","sectionGreenEnd"],
         items: [
             {"id":"network-wired","title":"Wired","keywords":"Wired","source":"SettingsNetworkPage.qml","explanation":""},
             {"id":"network-vpn-import-from-a-file","title":"Import VPN from a file","keywords":"VPN — import from a file","source":"SettingsNetworkPage.qml","explanation":"Add a saved connection using your provider’s configuration file.","staticExplanation":true},
@@ -52,10 +52,13 @@ var sections = [
         id: "appearance",
         title: "Appearance",
         group: "Personal",
-        description: "Light or dark, the accent colour, the shell style, fonts and the cursor.",
-        colors: ["#f2cc7e","#e3a243"],
+        description: "Choose light or dark, automatic hours and an accent colour.",
+        colors: ["sectionAmberStart","sectionAmberEnd"],
         items: [
-
+            {id: "appearance-theme", title: "Appearance", keywords: "theme light dark automatic", key: "appearance.theme", source: "SettingsAppearancePage.qml", explanation: "Choose light, dark or your own hours.", staticExplanation: true},
+            {id: "appearance-accent", title: "Accent colour", keywords: "orange coral rose amber green teal blue violet color", key: "appearance.accent", source: "SettingsAppearancePage.qml", explanation: "Colour for icons, highlights and controls.", staticExplanation: true},
+            {id: "appearance-light-time", title: "Light starts", keywords: "automatic schedule morning hours", key: "appearance.light_time", source: "SettingsAppearancePage.qml", explanation: "Use local time in 24-hour format (HH:MM).", staticExplanation: true},
+            {id: "appearance-dark-time", title: "Dark starts", keywords: "automatic schedule evening hours", key: "appearance.dark_time", source: "SettingsAppearancePage.qml", explanation: "Use local time in 24-hour format (HH:MM).", staticExplanation: true}
         ]
     },
     {
@@ -63,7 +66,7 @@ var sections = [
         title: "Wallpaper",
         group: "Personal",
         description: "Choose an Emaki wallpaper or your own picture.",
-        colors: ["#f07d6e","#d9534a"],
+        colors: ["sectionRedStart","sectionRedEnd"],
         items: [
             {"id":"wallpaper-emaki-wallpapers","title":"Emaki wallpapers","keywords":"Emaki wallpapers background picture","source":"SettingsWallpaperPage.qml","explanation":""},
             {"id":"wallpaper-your-own-picture","title":"Your own picture","keywords":"Your own picture image file","key":"appearance.wallpaper","source":"SettingsWallpaperPage.qml","explanation":"Choose a picture for every display. Reset restores your inherited wallpaper.","staticExplanation":true}
@@ -74,9 +77,9 @@ var sections = [
         title: "Panel & Dock",
         group: "Personal",
         description: "Choose when the panel and dock appear.",
-        colors: ["#e3a0b6","#c96f8f"],
+        colors: ["sectionPinkStart","sectionPinkEnd"],
         items: [
-            {"id":"panel-panel-auto-hide","title":"Hide the panel automatically","keywords":"Panel auto-hide bar hide","key":"bar.autohide","source":"SettingsCorePage.qml","explanation":"Move to the top edge to show the panel. The panel stays visible above your windows.","searchExplanation":"Move to the top edge to show the panel."},
+            {"id":"panel-panel-auto-hide","title":"Hide the panel automatically","keywords":"Panel auto-hide bar hide","key":"bar.autohide_mode","source":"SettingsCorePage.qml","explanation":"Choose when the panel hides. Move to the top edge to show it.","searchExplanation":"Move to the top edge to show it."},
             {"id":"panel-workspaces-in-overview","title":"Show workspaces in the overview","keywords":"Workspaces in overview panel overview","key":"bar.overview_workspaces","source":"SettingsCorePage.qml","explanation":"Workspace numbers stay visible in the overview. Workspace numbers hide in the overview.","searchExplanation":"Workspace numbers stay visible in the overview."},
             {"id":"panel-show-dock","title":"Show the dock","keywords":"Show dock dock enabled","key":"dock.on","source":"SettingsCorePage.qml","explanation":"Your pinned and running apps appear in the dock. The dock is hidden.","searchExplanation":"Your pinned and running apps appear in the dock."},
             {"id":"panel-dock-auto-hide","title":"Hide the dock automatically","keywords":"Dock auto-hide hide dock","key":"dock.auto_hide","source":"SettingsCorePage.qml","explanation":"Move to the bottom edge to show your apps. The dock stays visible beside your windows.","searchExplanation":"Move to the bottom edge to show your apps."}
@@ -87,7 +90,7 @@ var sections = [
         title: "Windows & Workspaces",
         group: "Personal",
         description: "Choose window spacing, initial width and focus behavior.",
-        colors: ["#f39a5f","#e2733f"],
+        colors: ["accentSoft","accent"],
         items: [
             {"id":"windows-window-gaps","title":"Gaps","keywords":"Window gaps spacing between windows","key":"appearance.gaps","source":"SettingsCorePage.qml","explanation":"px of wallpaper between windows.","searchExplanation":"Wallpaper between windows, in pixels."},
             {"id":"windows-new-window-width","title":"Width of a new window","keywords":"New window width default column size","key":"windows.default_column_width","source":"SettingsCorePage.qml","explanation":"Choose how much of the screen a new column uses.","staticExplanation":true},
@@ -99,7 +102,7 @@ var sections = [
         title: "Displays",
         group: "Devices",
         description: "Arrange your screens and set their resolution, scale and refresh rate.",
-        colors: ["#9db6d0","#6f8cab"],
+        colors: ["sectionBlueStart","sectionBlueEnd"],
         items: [
             {"id":"displays-brightness","title":"Brightness","keywords":"Brightness screen backlight dim","source":"DisplaysSettingsPage.qml","explanation":"ready % of the built-in backlight. No adjustable backlight is available.","searchExplanation":"Built-in backlight level."},
             {"id":"displays-resolution","title":"Resolution","keywords":"Resolution screen pixels","source":"DisplaysSettingsPage.qml","explanation":"Choose how many pixels the screen shows.","staticExplanation":true},
@@ -121,7 +124,7 @@ var sections = [
         title: "Sound",
         group: "Devices",
         description: "Speakers, headphones and microphones, volume per app, system sounds.",
-        colors: ["#e3a0b6","#c96f8f"],
+        colors: ["sectionPinkStart","sectionPinkEnd"],
         items: [
             {"id":"sound-mute","title":"Mute output","keywords":"Mute silence audio output","source":"SoundSettingsPage.qml","explanation":"Silence your speakers or headphones.","staticExplanation":true},
             {"id":"sound-volume","title":"Volume","keywords":"Volume loudness audio speakers headphones","source":"SoundSettingsPage.qml","explanation":"% of the output level. Reset restores 100%.","searchExplanation":"Output level. Reset restores 100%."},
@@ -138,7 +141,7 @@ var sections = [
         title: "Keyboard",
         group: "Devices",
         description: "Layouts and how to switch them, key repeat, and every shortcut.",
-        colors: ["#8f7f70","#5e5045"],
+        colors: ["sectionBrownStart","sectionBrownEnd"],
         items: [
             {"id":"keyboard-keyboard-layouts","title":"Layouts","keywords":"Keyboard layouts language input","key":"keyboard.layouts","source":"KeyboardSettingsPage.qml","explanation":""},
             {"id":"keyboard-switch-layout-shortcut","title":"Switch layouts with","keywords":"Switch layout shortcut language key","key":"keyboard.switch_key","source":"KeyboardSettingsPage.qml","explanation":"Go to the next language in your layout list.","staticExplanation":true},
@@ -153,7 +156,7 @@ var sections = [
         title: "Mouse & Trackpad",
         group: "Devices",
         description: "Pointer speed, scrolling direction, tap to click and gestures.",
-        colors: ["#8f7f70","#5e5045"],
+        colors: ["sectionBrownStart","sectionBrownEnd"],
         items: [
             {"id":"mouse-pointer-speed","title":"Pointer speed","keywords":"Mouse pointer speed acceleration","key":"mouse.speed","source":"MouseSettingsPage.qml","explanation":"Pointer speed:  % of the adjustment range.","searchExplanation":"Pointer speed as a percentage of the adjustment range."},
             {"id":"mouse-natural-scrolling","title":"Natural scrolling","keywords":"Mouse natural scrolling direction","key":"mouse.natural_scroll","source":"MouseSettingsPage.qml","explanation":"Content moves in the direction you scroll. Content moves against the direction you scroll.","searchExplanation":"Content moves in the direction you scroll."},
@@ -171,7 +174,7 @@ var sections = [
         title: "Notifications",
         group: "System",
         description: "Which apps may notify you, and quiet hours with Do Not Disturb.",
-        colors: ["#f07d6e","#d9534a"],
+        colors: ["sectionRedStart","sectionRedEnd"],
         items: [
             {"id":"notifications-apps-that-may-notify","title":"Applications","keywords":"Apps that may notify allow silent off rules","key":"notifications.rules","source":"NotificationsSettingsPage.qml","explanation":"Allow popups, keep only in history, or block notifications.","staticExplanation":true},
             {"id":"notifications-do-not-disturb","title":"Do not disturb now","keywords":"Do Not Disturb quiet now","key":"notifications.dnd","source":"NotificationsSettingsPage.qml","explanation":"Keep notifications in history without showing popups.","staticExplanation":true},
@@ -186,7 +189,7 @@ var sections = [
         title: "Battery & Power",
         group: "System",
         description: "Sleep, the lid, power modes, a charge limit and battery health.",
-        colors: ["#c2cf8a","#93a65a"],
+        colors: ["sectionLimeStart","sectionLimeEnd"],
         items: [
             {"id":"battery-blank-on-battery","title":"Blank the screen on battery","keywords":"Blank the screen on battery inactivity screen off","source":"SettingsPowerPage.qml","explanation":"Turn off the screen after this much inactivity on battery power.","staticExplanation":true},
             {"id":"battery-blank-on-power","title":"Blank the screen when plugged in","keywords":"Blank the screen when plugged in inactivity screen off power","source":"SettingsPowerPage.qml","explanation":"Turn off the screen after this much inactivity on external power.","staticExplanation":true},
@@ -200,7 +203,7 @@ var sections = [
         title: "Lock & Login",
         group: "System",
         description: "Your password, fingerprint or face, when to lock, and the lock screen.",
-        colors: ["#8f7f70","#5e5045"],
+        colors: ["sectionBrownStart","sectionBrownEnd"],
         items: [
             {"id":"lock-password","title":"Change password","keywords":"Change password login wallet terminal","source":"SettingsMaintenancePage.qml","explanation":"Open the system password prompt in your terminal. Your login wallet may still use your previous password; update its password separately.","staticExplanation":true},
             {"id":"lock-when-to-lock","title":"Lock after inactivity","keywords":"When to lock","source":"SettingsPowerPage.qml","explanation":"Require your password after this much time without input.","staticExplanation":true}
@@ -211,7 +214,7 @@ var sections = [
         title: "Apps",
         group: "System",
         description: "Default apps, apps that start with the session, and installed programs.",
-        colors: ["#f2cc7e","#e3a243"],
+        colors: ["sectionAmberStart","sectionAmberEnd"],
         items: [
             {"id":"apps-default-terminal","title":"Terminal","keywords":"Default terminal console application","key":"defaults.terminal","source":"SettingsAppsPage.qml","explanation":"Open a terminal with this app.","staticExplanation":true},
             {"id":"apps-default-browser","title":"Web browser","keywords":"Default browser web links","key":"defaults.browser","source":"SettingsAppsPage.qml","explanation":"Open web links with this app.","staticExplanation":true},
@@ -226,7 +229,7 @@ var sections = [
         title: "Updates & Recovery",
         group: "System",
         description: "Update channel and checks, snapshots, and going back to before an update.",
-        colors: ["#f39a5f","#e2733f"],
+        colors: ["accentSoft","accent"],
         items: [
             {"id":"updates-update-channel","title":"Channel","keywords":"Update channel","source":"SettingsMaintenancePage.qml","explanation":"Choose which releases your next update uses.","staticExplanation":true}
         ]
@@ -236,7 +239,7 @@ var sections = [
         title: "Privacy & Security",
         group: "System",
         description: "Review recovery, encryption, sudo keys and remembered portal permissions.",
-        colors: ["#9db6d0","#6f8cab"],
+        colors: ["sectionBlueStart","sectionBlueEnd"],
         items: [
             {"id":"privacy-recovery","title":"Snapshots and rollback","keywords":"snapshot rollback recovery boot menu","source":"SettingsPrivacyPage.qml","explanation":"Snapshots and rollback"},
             {"id":"privacy-encryption","title":"Disk encryption","keywords":"disk encryption home storage","source":"SettingsPrivacyPage.qml","explanation":"System and home storage"},
@@ -251,7 +254,7 @@ var sections = [
         title: "Region & Time",
         group: "System",
         description: "Language, formats, time zone and the 24-hour clock.",
-        colors: ["#a8cfc0","#78a796"],
+        colors: ["sectionGreenStart","sectionGreenEnd"],
         items: [
             {"id":"region-language","title":"Language","keywords":"Language installed sign out apps","source":"SettingsRegionPage.qml","explanation":"Choose an installed language. Sign out to use it in all apps.","staticExplanation":true},
             {"id":"region-formats","title":"Formats","keywords":"Formats installed locale dates numbers","source":"SettingsRegionPage.qml","explanation":"Choose an installed locale for dates and numbers.","staticExplanation":true},
@@ -264,7 +267,7 @@ var sections = [
         title: "Users",
         group: "System",
         description: "Your account, picture and password, and other people on this computer.",
-        colors: ["#e3a0b6","#c96f8f"],
+        colors: ["sectionPinkStart","sectionPinkEnd"],
         items: [
             {"id":"users-your-account","title":"Your account","keywords":"Your account name administrator user","source":"SettingsUsersPage.qml","explanation":""},
             {"id":"users-password","title":"Password","keywords":"Password change account","source":"SettingsUsersPage.qml","explanation":"Open the system password prompt in your terminal. Your login wallet may still use your previous password; update its password separately.","staticExplanation":true},
@@ -277,7 +280,7 @@ var sections = [
         title: "Storage",
         group: "System",
         description: "Inspect disk use and preview safe cleanup.",
-        colors: ["#8f7f70","#5e5045"],
+        colors: ["sectionBrownStart","sectionBrownEnd"],
         items: [
             {"id": "storage-disks", "title": "System and home", "keywords": "disk usage filesystem btrfs", "source": "SettingsStoragePage.qml", "explanation": ""},
             {"id": "storage-snapshots", "title": "Snapshots", "keywords": "snapshot disk usage", "source": "SettingsStoragePage.qml", "explanation": ""},
@@ -291,7 +294,7 @@ var sections = [
         title: "Accessibility",
         group: "System",
         description: "Larger text, more contrast, less motion, zoom and sticky keys.",
-        colors: ["#9db6d0","#6f8cab"],
+        colors: ["sectionBlueStart","sectionBlueEnd"],
         items: [
 
         ]
@@ -301,11 +304,11 @@ var sections = [
         title: "About",
         group: "System",
         description: "This Emaki version and this computer’s hardware.",
-        colors: ["#f39a5f","#e2733f"],
+        colors: ["accentSoft","accent"],
         items: [
             {"id":"about-emaki-version","title":"Version","keywords":"Emaki version release version","source":"SettingsAboutPage.qml","explanation":""},
             {"id":"about-hardware","title":"This computer","keywords":"Hardware processor memory computer","source":"SettingsAboutPage.qml","explanation":""},
-            {"id":"about-report-a-problem","title":"Report a problem","keywords":"Report a problem bug issue GitHub","source":"SettingsAboutPage.qml","explanation":"Open a new GitHub issue in your browser with the Emaki version, update channel and kernel filled in. Those fields reach GitHub to fill the form; the issue is posted only when you submit it there.","staticExplanation":true},
+            {"id":"about-report-a-problem","title":"Report a problem","keywords":"Report a problem bug issue GitHub","source":"SettingsAboutPage.qml","explanation":"Describe the problem and review exactly what will be sent. Nothing leaves this computer until you choose Send, which opens the issue form on GitHub.","staticExplanation":true},
             {"id":"about-diagnostics-file","title":"Diagnostics file","keywords":"Diagnostics logs report file","source":"SettingsAboutPage.qml","explanation":"Collect logs and a short system summary into a file you can review. Add to a report only what you choose to share.","staticExplanation":true}
         ]
     },
@@ -314,7 +317,7 @@ var sections = [
         title: "AI Assistants",
         group: "System",
         description: "Protection and permissions for installed assistants.",
-        colors: ["#9db6d0","#6f8cab"],
+        colors: ["sectionBlueStart","sectionBlueEnd"],
         items: [
 
         ]

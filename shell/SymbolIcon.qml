@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import "SystemIcons.js" as SystemIcons
 import Quickshell
 
 // A monochrome theme icon (Adwaita "*-symbolic") in the ink of the glass under it, as
@@ -9,8 +10,9 @@ Canvas {
     id: symbol
     required property string name
     property color ink: LiquidPalette.inkOnDark
+    readonly property string gearSource: SystemIcons.isSettings(name) ? SystemIcons.settingsSvg(ink) : ""
     readonly property string path: name ? Quickshell.iconPath(name, true) : ""
-    readonly property bool found: path !== ""
+    readonly property bool found: gearSource !== "" || path !== ""
     property string loadedPath: ""
     width: 18
     height: 18
@@ -26,6 +28,14 @@ Canvas {
     }
     onPathChanged: reload()
     onInkChanged: requestPaint()
+    onGearSourceChanged: requestPaint()
+    Image {
+        anchors.fill: parent
+        source: symbol.gearSource
+        sourceSize.width: Math.ceil(width * 2)
+        sourceSize.height: Math.ceil(height * 2)
+        visible: symbol.gearSource !== ""
+    }
     onWidthChanged: requestPaint()
     onHeightChanged: requestPaint()
     onImageLoaded: requestPaint()
@@ -34,7 +44,7 @@ Canvas {
         const c = getContext("2d");
         c.reset();
         c.clearRect(0, 0, width, height);
-        if (!loadedPath || !isImageLoaded(loadedPath))
+        if (gearSource || !loadedPath || !isImageLoaded(loadedPath))
             return;
         c.globalCompositeOperation = "source-over";
         c.drawImage(loadedPath, 0, 0, width, height);

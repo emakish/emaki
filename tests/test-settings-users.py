@@ -17,6 +17,8 @@ import os
 from pathlib import Path
 import shutil
 import socket
+import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -24,6 +26,9 @@ import time
 import unittest
 from unittest import mock
 import warnings
+import zlib
+
+from PIL import Image, JpegImagePlugin
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / 'scripts/emaki-settings-users'
@@ -46,6 +51,27 @@ with open(base / 'typed') as typed, open(base / 'window', 'w') as window:
 '''
 
 
+def encoded(size, fmt, colour=(40, 90, 200), noise=False, exif=None):
+    if noise:
+        image = Image.frombytes('RGB', size, os.urandom(size[0] * size[1] * 3))
+    else:
+        image = Image.new('RGB', size, colour)
+    output = io.BytesIO()
+    options = {'quality': 95} if fmt == 'JPEG' else {}
+    if exif is not None:
+        options['exif'] = exif
+    image.save(output, fmt, **options)
+    return output.getvalue()
+
+
+def png_header(width, height):
+    """A PNG that only claims its size: Pillow reads the header without decoding pixels."""
+    def chunk(kind, data):
+        return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
+            + chunk(b'IDAT', zlib.compress(b'\0' * 7)) + chunk(b'IEND', b''))
+
+
 def verify(password, hashed):
     library = ctypes.CDLL('libcrypt.so.2')
     library.crypt.restype = ctypes.c_char_p
@@ -61,6 +87,9 @@ class FakeAccounts:
         self.sessions_set = set(sessions)
         self.calls = []
         self.deny, self.fail, self.late, self.other = set(), set(), set(), set()
+        # Where SetIconFile keeps its copies, like /var/lib/AccountsService/icons (None: no copy).
+        self.icons = None
+        self.handed = []
         # Accounts FindUserById answers with an object that no longer exists.
         self.stale = set()
 
@@ -122,6 +151,27 @@ class FakeAccounts:
         self.rows[int(path[5:])]['AccountType'] = account_type
         self.late_failure('set_account_type')
 
+    def set_icon(self, path, filename):
+        self.calls.append(('set_icon', path, filename))
+        if filename:
+            # What the service would read as the caller, and how the file was protected.
+            info, folder = os.stat(filename), os.stat(os.path.dirname(filename))
+            self.handed.append({'data': Path(filename).read_bytes(), 'mode': stat.S_IMODE(info.st_mode),
+                                'folder': stat.S_IMODE(folder.st_mode)})
+        self.check('set_icon')
+        row = self.rows[int(path[5:])]
+        copy = Path(self.icons) / row['UserName'] if self.icons else None
+        if not filename:
+            if copy:
+                copy.unlink(missing_ok=True)
+            row['IconFile'] = ''
+        elif copy:
+            copy.write_bytes(Path(filename).read_bytes())
+            row['IconFile'] = str(copy)
+        else:
+            row['IconFile'] = filename
+        self.late_failure('set_icon')
+
 
 class FakeSystem(users.System):
     def __init__(self, accounts, extra=(), groups=()):
@@ -154,7 +204,9 @@ def account(uid, login, administrator=False, locked=False, name='', system=False
             'Locked': locked, 'SystemAccount': system, 'HomeDirectory': '/home/' + login}
 
 
-class Rules(unittest.TestCase):
+class Machine(unittest.TestCase):
+    """Three accounts over the in-process fakes; ada (1000) runs the program by default."""
+
     def setUp(self):
         # Rule tests isolate account decisions; the socket lock has its own test below.
         self.lock_patch = mock.patch.object(users, 'lock', return_value=mock.Mock())
@@ -179,6 +231,8 @@ class Rules(unittest.TestCase):
     def logins(self, reply):
         return [row['login'] for row in reply['users']]
 
+
+class Rules(Machine):
     def test_an_account_the_service_cannot_describe_is_shown_and_left_alone(self):
         # AccountsService can answer FindUserById with an object it no longer exports.
         self.accounts.stale.add(1002)
@@ -220,7 +274,8 @@ class Rules(unittest.TestCase):
         self.assertEqual(self.logins(reply), ['ada', 'bo', 'cy'])
         ada = reply['users'][0]
         self.assertEqual(ada, {'login': 'ada', 'name': 'Ada', 'uid': 1000, 'administrator': True, 'locked': False,
-                               'current': True, 'signed_in': True, 'home': '/home/ada', 'available': True})
+                               'current': True, 'signed_in': True, 'home': '/home/ada', 'available': True,
+                               'picture': False})
         self.assertEqual(reply['administrators'], 2)
         self.assertNotIn('path', json.dumps(reply))
 
@@ -545,6 +600,250 @@ class Rules(unittest.TestCase):
             self.assertFalse(system.taken('z'))
 
 
+class Pictures(Machine):
+    """The own account picture: decoded here, handed over as a private copy, read back."""
+
+    def setUp(self):
+        super().setUp()
+        self.folder = tempfile.TemporaryDirectory(prefix='settings-users-picture-')
+        self.addCleanup(self.folder.cleanup)
+        base = Path(self.folder.name)
+        self.runtime, self.icons, self.files = base / 'runtime', base / 'icons', base / 'files'
+        for folder in (self.runtime, self.icons, self.files):
+            folder.mkdir(mode=0o700)
+        self.accounts.icons = str(self.icons)
+        environment = mock.patch.dict(os.environ, {'XDG_RUNTIME_DIR': str(self.runtime)})
+        environment.start()
+        self.addCleanup(environment.stop)
+
+    def source(self, name, data):
+        path = self.files / name
+        path.write_bytes(data)
+        return str(path)
+
+    def test_a_big_phone_photo_is_reencoded_and_handed_over_privately(self):
+        exif = Image.Exif()
+        exif[0x0112] = 6  # Shown turned a quarter clockwise, as phones store portrait photos.
+        photo = encoded((2400, 1800), 'JPEG', noise=True, exif=exif)
+        self.assertGreater(len(photo), users.PICTURE_SERVICE_LIMIT)  # Too large for the service as is.
+        self.assertLessEqual(len(photo), users.PICTURE_SOURCE_LIMIT)
+        code, reply = self.run_command('picture', '--set', self.source('phone photo.jpg', photo))
+        self.assertEqual((code, reply['status'], reply['action'], reply['login']), (0, 'applied', 'picture', 'ada'), reply)
+        self.assertTrue(reply['users'][0]['picture'])
+        self.assertEqual([call[:2] for call in self.accounts.calls], [('set_icon', '/User1000')])
+        handed = self.accounts.calls[0][2]
+        self.assertTrue(handed.startswith(str(self.runtime) + '/'), handed)
+        self.assertEqual(list(self.runtime.iterdir()), [], 'the private copy and its folder are gone')
+        given = self.accounts.handed[0]
+        self.assertEqual((given['mode'], given['folder']), (0o600, 0o700))
+        self.assertLessEqual(len(given['data']), users.PICTURE_SERVICE_LIMIT)
+        with Image.open(io.BytesIO(given['data'])) as image:
+            self.assertEqual((image.format, image.size), ('PNG', (users.PICTURE_SIDE, users.PICTURE_SIDE)))
+        self.assertEqual((self.icons / 'ada').read_bytes(), given['data'])
+        self.assertNotIn(handed, json.dumps(reply))
+
+    def test_the_picture_is_turned_upright_and_cropped_to_its_centre(self):
+        upright = Image.new('RGB', (200, 100), (220, 30, 30))
+        upright.paste((30, 30, 220), (0, 50, 200, 100))  # Top half red, bottom half blue.
+        exif = Image.Exif()
+        exif[0x0112] = 6
+        output = io.BytesIO()
+        upright.save(output, 'JPEG', quality=95, exif=exif)
+        code, reply = self.run_command('picture', '--set', self.source('turned.jpg', output.getvalue()))
+        self.assertEqual(code, 0, reply)
+        with Image.open(io.BytesIO(self.accounts.handed[0]['data'])) as image:
+            self.assertEqual(image.size, (100, 100))
+            left, right = image.convert('RGB').getpixel((10, 50)), image.convert('RGB').getpixel((90, 50))
+        self.assertGreater(left[2], 150, left)  # The bottom turned to the left: blue.
+        self.assertGreater(right[0], 150, right)
+
+    def test_pictures_that_cannot_be_read_change_nothing(self):
+        fifo = self.files / 'fifo.png'
+        os.mkfifo(fifo)
+        cases = {'gif': self.source('a.gif', encoded((40, 40), 'GIF')),
+                 'bmp': self.source('a.bmp', encoded((40, 40), 'BMP')),
+                 'corrupt': self.source('broken.jpg', encoded((40, 40), 'JPEG')[:60]),
+                 'text': self.source('notes.png', b'not a picture'),
+                 'empty': self.source('empty.png', b''),
+                 'fifo': str(fifo),
+                 'missing': str(self.files / 'missing.png'), 'folder': str(self.files)}
+        for name, path in cases.items():
+            with self.subTest(name):
+                code, reply = self.run_command('picture', '--set', path)
+                self.assertEqual((code, reply['status'], reply['reason']), (1, 'rejected', 'picture_unreadable'))
+        self.assertEqual(self.accounts.calls, [])
+        self.assertEqual(list(self.runtime.iterdir()), [])
+
+    def test_large_valid_photos_report_size_instead_of_an_unreadable_format(self):
+        big = self.files / 'big.jpg'
+        with big.open('wb') as stream:
+            stream.write(encoded((8, 8), 'JPEG'))
+            stream.truncate(users.PICTURE_SOURCE_LIMIT + 1)
+        with Image.open(big) as image:
+            image.load()
+            self.assertEqual(image.format, 'JPEG')
+        photo = io.BytesIO()
+        Image.new('L', (8000, 6000)).save(photo, 'JPEG')
+        for path in (str(big), self.source('large-photo.jpg', photo.getvalue()),
+                     self.source('huge.png', png_header(8000, 6000))):
+            code, reply = self.run_command('picture', '--set', path)
+            self.assertEqual((code, reply['status'], reply['reason']), (1, 'rejected', 'picture_too_large'))
+        self.assertEqual(self.accounts.calls, [])
+        self.assertEqual(list(self.runtime.iterdir()), [])
+
+    def test_a_large_jpeg_photo_decodes_at_a_reduced_scale(self):
+        # A 24-megapixel phone photo is accepted; PNG and WebP keep the 4096x4096 limit.
+        photo = io.BytesIO()
+        Image.new('RGB', (6000, 4000), (40, 120, 200)).save(photo, 'JPEG', quality=90)
+        self.assertLess(len(photo.getvalue()), users.PICTURE_SOURCE_LIMIT)
+        scales = []
+        load = JpegImagePlugin.JpegImageFile.load
+
+        def record(image):
+            scales.append(image.size)
+            return load(image)
+        with mock.patch.object(JpegImagePlugin.JpegImageFile, 'load', record):
+            code, reply = self.run_command('picture', '--set', self.source('phone.jpg', photo.getvalue()))
+        self.assertEqual(code, 0, reply)
+        self.assertEqual(set(scales), {(750, 500)})  # One eighth: the smallest scale that still covers 384.
+        with Image.open(io.BytesIO(self.accounts.handed[0]['data'])) as image:
+            self.assertEqual(image.size, (users.PICTURE_SIDE, users.PICTURE_SIDE))
+        over = io.BytesIO()
+        Image.new('L', (8000, 5001)).save(over, 'JPEG')
+        for path in (self.source('over.jpg', over.getvalue()), self.source('wide.png', png_header(6000, 4000))):
+            code, reply = self.run_command('picture', '--set', path)
+            self.assertEqual((code, reply['status'], reply['reason']), (1, 'rejected', 'picture_too_large'))
+        self.assertEqual(len(self.accounts.handed), 1)
+
+    def test_tiny_high_resolution_png_is_refused_before_decoding(self):
+        output = io.BytesIO()
+        Image.new('1', (6000, 6000)).save(output, 'PNG')
+        data = output.getvalue()
+        self.assertLess(len(data), 5000)
+        path = self.source('compressed.png', data)
+        with mock.patch('PIL.PngImagePlugin.PngImageFile.load', side_effect=AssertionError('decoded pixels')) as decode:
+            code, reply = self.run_command('picture', '--set', path)
+        decode.assert_not_called()
+        self.assertEqual((code, reply['reason']), (1, 'picture_too_large'))
+        self.assertEqual(self.accounts.calls, [])
+
+    def test_no_private_runtime_folder_is_refused(self):
+        path = self.source('a.png', encoded((40, 40), 'PNG'))
+        for runtime in ('', 'relative/runtime'):
+            with self.subTest(runtime=runtime), mock.patch.dict(os.environ, {'XDG_RUNTIME_DIR': runtime}):
+                code, reply = self.run_command('picture', '--set', path)
+                self.assertEqual((code, reply['reason']), (1, 'picture_unavailable'))
+        with mock.patch.dict(os.environ):
+            os.environ.pop('XDG_RUNTIME_DIR')
+            code, reply = self.run_command('picture', '--set', path)
+            self.assertEqual((code, reply['reason']), (1, 'picture_unavailable'))
+        self.assertEqual(self.accounts.calls, [])
+
+    def test_remove_the_picture(self):
+        code, reply = self.run_command('picture', '--clear')
+        self.assertEqual((code, reply['status']), (0, 'applied'))
+        self.assertEqual(self.accounts.calls, [], 'no picture: nothing to remove')
+        self.run_command('picture', '--set', self.source('a.png', encoded((40, 40), 'PNG')))
+        code, reply = self.run_command('picture', '--clear')
+        self.assertEqual((code, reply['status'], reply['login']), (0, 'applied', 'ada'), reply)
+        self.assertEqual(self.accounts.calls[-1], ('set_icon', '/User1000', ''))
+        self.assertFalse(reply['users'][0]['picture'])
+        self.assertFalse((self.icons / 'ada').exists())
+
+    def test_service_answers_are_read_back(self):
+        path = self.source('a.png', encoded((40, 40), 'PNG'))
+        self.accounts.deny.add('set_icon')
+        code, reply = self.run_command('picture', '--set', path)
+        self.assertEqual((code, reply['status'], reply['reason']), (1, 'rejected', 'authorization_refused'))
+        self.assertEqual(list(self.runtime.iterdir()), [])
+        # Refused before any change (a file over its size limit): the old value stays.
+        self.accounts.deny.clear()
+        self.accounts.fail.add('set_icon')
+        code, reply = self.run_command('picture', '--set', path)
+        self.assertEqual((code, reply['status'], reply['reason']), (1, 'rejected', 'accounts_service_failed'))
+        # The answer was lost after the change: the read-back shows the new copy.
+        self.accounts.fail.clear()
+        self.accounts.late.add('set_icon')
+        code, reply = self.run_command('picture', '--set', path)
+        self.assertEqual((code, reply['status']), (0, 'applied'))
+        # Setting the same picture again is still applied.
+        self.accounts.late.clear()
+        code, reply = self.run_command('picture', '--set', path)
+        self.assertEqual((code, reply['status']), (0, 'applied'))
+        # A service that keeps the handed name instead of a copy: the file is gone, not applied.
+        self.accounts.icons = None
+        code, reply = self.run_command('picture', '--set', path)
+        self.assertEqual((code, reply['status'], reply['reason']), (3, 'uncertain', 'change_unconfirmed'))
+        self.assertFalse(reply['users'][0]['picture'])
+        # A removal the service did not make.
+        self.accounts.icons = str(self.icons)
+        self.run_command('picture', '--set', path)
+        self.accounts.fail.add('set_icon')
+        original = self.accounts.set_icon
+        self.accounts.set_icon = lambda account, filename: (self.accounts.calls.append(('set_icon', account, filename)),
+                                                            self.accounts.check('set_icon'))
+        code, reply = self.run_command('picture', '--clear')
+        self.accounts.set_icon = original
+        self.assertEqual((code, reply['status'], reply['reason']), (1, 'rejected', 'accounts_service_failed'))
+        self.assertTrue(reply['users'][0]['picture'])
+
+    def test_another_writers_picture_does_not_confirm_our_change(self):
+        path = self.source('selected.png', encoded((40, 40), 'PNG'))
+        original = self.accounts.set_icon
+        for moved in (False, True):
+            with self.subTest(moved=moved):
+                before = self.icons / 'ada'
+                before.write_bytes(encoded((40, 40), 'PNG', colour=(200, 40, 40)))
+                self.accounts.rows[1000]['IconFile'] = str(before)
+                other = self.icons / 'another-picture' if moved else before
+                other_content = encoded((40, 40), 'PNG', colour=(40, 200, 40))
+
+                def competing_write(account, filename):
+                    original(account, filename)
+                    other.write_bytes(other_content)
+                    self.accounts.rows[1000]['IconFile'] = str(other)
+
+                with mock.patch.object(self.accounts, 'set_icon', side_effect=competing_write):
+                    code, reply = self.run_command('picture', '--set', path)
+                self.assertNotEqual(other_content, self.accounts.handed[-1]['data'])
+                self.assertEqual((code, reply['status'], reply.get('reason')),
+                                 (3, 'uncertain', 'change_unconfirmed'))
+
+    def test_the_picture_field_names_an_existing_file(self):
+        good = self.source('face.png', encoded((8, 8), 'PNG'))
+        fifo = self.files / 'fifo'
+        os.mkfifo(fifo)
+        self.accounts.rows[1001]['IconFile'] = good
+        self.accounts.rows[1002]['IconFile'] = str(fifo)
+        self.accounts.rows[1000]['IconFile'] = str(self.files / 'missing.png')
+        code, reply = self.run_command('status')
+        self.assertEqual(code, 0)
+        self.assertEqual([row['picture'] for row in reply['users']], [False, True, False])
+        self.assertNotIn(good, json.dumps(reply), 'the file name stays private')
+        self.accounts.stale.add(1001)
+        code, reply = self.run_command('status')
+        self.assertFalse(reply['users'][1]['picture'])
+
+    def test_only_the_own_account_and_never_the_administrator_helper(self):
+        for argv in (('picture',), ('picture', '--bogus'), ('picture', '--clear', 'x'),
+                     ('picture', 'ada', '--clear'), ('picture', '--set', 'a.png', 'b.png')):
+            with self.subTest(argv=argv):
+                code, reply = self.run_command(*argv)
+                self.assertEqual((code, reply['reason']), (2, 'invalid_request'))
+        with self.assertRaises(users.Usage):
+            users.parse_request(['picture', '--set'])
+        path = self.source('a.png', encoded((40, 40), 'PNG'))
+        account = users.Users(self.accounts, self.system, 1001, authorize=True)
+        with mock.patch.object(users, 'authorized_change', side_effect=AssertionError('administrator helper')):
+            reply, code = users.run(['picture', '--set', path], account, io.StringIO())
+        self.assertEqual((code, reply['login']), (0, 'bo'))
+        self.assertEqual(self.accounts.calls[-1][:2], ('set_icon', '/User1001'))
+        # A file named like an option stays the path.
+        flag = self.source('--json', encoded((40, 40), 'PNG'))
+        code, reply = self.run_command('picture', '--set', flag)
+        self.assertEqual(code, 0, reply)
+
+
 class PrivateClient(unittest.TestCase):
     def test_wrapper_injects_private_services_and_isolates_home_operations(self):
         path = ROOT / 'tests/fixtures/users-client.py'
@@ -636,7 +935,7 @@ class Bus(unittest.TestCase):
             process.kill()
             process.wait()
 
-    def program(self, *argv, stdin='', uid=None, typed=None):
+    def program(self, *argv, stdin='', uid=None, typed=None, extra=None):
         """Run the program; `typed` is what the person types in the fake managed terminal."""
         base = Path(self.temporary.name)
         terminal = base / 'bin/emaki-terminal'
@@ -648,7 +947,7 @@ class Bus(unittest.TestCase):
                    EMAKI_USERS_GROUP=str(self.group), EMAKI_USERS_LOGIN_DEFS=str(self.defs),
                    EMAKI_USERS_TEST_UID=str(os.getuid() if uid is None else uid),
                    FAKE_TERMINAL_DIR=str(base), FAKE_TERMINAL_OPEN='1' if typed is not None else '0',
-                   PATH=str(terminal.parent) + ':' + os.environ['PATH'])
+                   PATH=str(terminal.parent) + ':' + os.environ['PATH'], **(extra or {}))
         result = subprocess.run([sys.executable, '-B', str(ROOT / 'tests/fixtures/users-client.py'),
                                  *argv, '--json'], input=stdin, text=True,
                                 capture_output=True, env=env, timeout=30)
@@ -740,6 +1039,40 @@ class Bus(unittest.TestCase):
         code, reply = self.program('--password-prompt', '/tmp/x', 'remove', 'bo', '--home', 'keep')
         self.assertEqual(code, 2)
         self.assertEqual([call['method'] for call in self.mutations()], [])
+
+    def test_own_picture_through_the_service(self):
+        base = Path(self.temporary.name)
+        icons, runtime = base / 'icons', base / 'runtime'
+        icons.mkdir()
+        runtime.mkdir(mode=0o700)
+        data = json.loads(self.state.read_text())
+        data['icons'] = str(icons)
+        self.state.write_text(json.dumps(data))
+        self.stop(self.service)
+        self.start_service()
+        source = base / 'photo.jpg'
+        source.write_bytes(encoded((900, 600), 'JPEG'))
+        extra = {'XDG_RUNTIME_DIR': str(runtime)}
+        code, reply = self.program('status', uid=1000)
+        self.assertFalse(reply['users'][0]['picture'], 'IconFile names a ~/.face that is not there')
+        code, reply = self.program('picture', '--set', str(source), uid=1000, extra=extra)
+        self.assertEqual((code, reply['status'], reply['login']), (0, 'applied', 'ada'), reply)
+        self.assertTrue(reply['users'][0]['picture'])
+        self.assertFalse(reply['users'][1]['picture'])
+        self.assertEqual(json.loads(self.state.read_text())['users']['1000']['IconFile'], str(icons / 'ada'))
+        with Image.open(icons / 'ada') as image:
+            self.assertEqual((image.format, image.size), ('PNG', (384, 384)))
+        call = self.mutations()[-1]
+        self.assertEqual((call['method'], call['path'], call['interactive']),
+                         ('SetIconFile', '/org/freedesktop/Accounts/User1000', True))
+        self.assertTrue(call['args'][0].startswith(str(runtime) + '/'))
+        self.assertEqual(list(runtime.iterdir()), [])
+        code, reply = self.program('picture', '--clear', uid=1000, extra=extra)
+        self.assertEqual((code, reply['status']), (0, 'applied'), reply)
+        self.assertFalse(reply['users'][0]['picture'])
+        self.assertFalse((icons / 'ada').exists())
+        self.assertEqual(self.mutations()[-1]['args'], [''])
+        self.assertEqual([call['method'] for call in self.mutations()], ['SetIconFile', 'SetIconFile'])
 
     def test_no_service_is_a_refusal(self):
         self.stop(self.service)

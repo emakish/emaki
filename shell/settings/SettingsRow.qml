@@ -134,11 +134,11 @@ Item {
                 textFormat: Text.PlainText
                 font.family: SettingsTheme.fontFamily
                 font.pixelSize: 12
-                color: "#fbf3ea"
+                color: SettingsTheme.tooltip
             }
             background: Rectangle {
                 antialiasing: true
-                color: "#241018"
+                color: SettingsTheme.ink
                 radius: 8
                 border.color: SettingsTheme.rim
             }

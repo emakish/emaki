@@ -75,6 +75,10 @@ BOOT_SHARED = boot errors grub_screen
 BOOT_ARTWORK = $(wildcard installer/emaki_installer/grub_artwork/*/*.png)
 GRUB_THEME_SCALES = 100 150 200 300
 GRUB_THEME_FILES = $(wildcard grub/theme/theme-*.txt grub/theme/*.pf2)
+# Startup logo: a Plymouth two-step theme. Plymouth reads themes only from its own fixed
+# directory, whatever PREFIX is (like the initcpio hooks below).
+PLYMOUTH_THEME = $(DESTDIR)/usr/share/plymouth/themes/emaki
+PLYMOUTH_THEME_FILES = boot/plymouth/emaki.plymouth $(wildcard boot/plymouth/*.png)
 # niri only looks here for the system config (src/main.rs); PREFIX does not affect the path.
 NIRI_ETC = $(DESTDIR)/etc/niri/config.kdl
 # Header string from niri/system.kdl: install and uninstall use it to recognize our file
@@ -114,6 +118,12 @@ render: paths
 	python3 scripts/render-system-map
 
 check: paths check-assumptions
+	python3 tests/test-dispersion.py
+	python3 tests/test-backdrop-first-frame.py
+	node tests/test-appearance.mjs
+	node tests/test-appearance-icons.mjs
+	python3 tests/test-theme-palette.py
+	python3 tests/test-shared-canvas.py --static
 	python3 tests/test-capture.py
 	python3 tests/test-capture-native.py
 	python3 tests/test-capture-import.py
@@ -140,12 +150,15 @@ check: paths check-assumptions
 	python3 tests/test-polkit-prompt.py
 	python3 tests/test-polkit-details.py
 	python3 tests/test-prompt-queue.py
+	python3 tests/test-prompt-morph.py
+	python3 tests/test-launch-handoff.py
 	python3 tests/check-portability.py --self-test
 	python3 tests/check-portability.py
 	python3 tests/check-system-map.py --self-test
 	python3 tests/check-system-map.py
 	python3 tests/test-publish-acceptance.py
 	python3 tests/test-iso-boot-map.py
+	python3 tests/test-alongside-boot-wait.py
 	python3 tests/test-wifi-recovery.py
 	python3 tests/test-machine-settings.py
 	python3 tests/test-settings-users.py
@@ -228,6 +241,7 @@ check: paths check-assumptions
 	python3 tests/test-resume.py
 	python3 tests/test-nvidia.py
 	python3 tests/test-boot-splash.py
+	python3 tests/test-plymouth-theme.py
 	python3 tests/test-fetch.py
 	python3 tests/test-cursors.py
 	python3 tests/test-iso-check-env.py
@@ -496,6 +510,11 @@ install: install-upkeep
 	install -Dm644 gtk/Emaki/gtk-3.0/gtk.css $(DESTDIR)$(PREFIX)/share/themes/Emaki/gtk-3.0/gtk.css
 	install -Dm644 art/grub/background.png $(SHARE)/grub/background.png
 	install -Dm644 grub/defaults.cfg $(SHARE)/grub/defaults.cfg
+	install -Dm644 -t $(PLYMOUTH_THEME) $(PLYMOUTH_THEME_FILES)
+	install -Dm644 boot/plymouth/NOTICE-Plymouth.txt $(DESTDIR)$(PREFIX)/share/licenses/emaki-config/NOTICE-Plymouth.txt
+	# Turn the startup logo on: the plymouth hook (mkinitcpio drop-in) and "splash" (GRUB drop-in).
+	install -Dm644 boot/plymouth/mkinitcpio.conf $(DESTDIR)/etc/mkinitcpio.conf.d/50-emaki-splash.conf
+	install -Dm644 boot/plymouth/grub.cfg $(DESTDIR)/etc/default/grub.d/50-emaki-splash.cfg
 	install -Dm644 installer/assets/grub/unlock-24.pf2 $(SHARE)/grub/unlock-24.pf2
 	install -Dm644 -t $(SHARE)/grub/fonts grub/fonts/menu-24.pf2 grub/fonts/menu-32.pf2 grub/fonts/menu-46.pf2
 	install -Dm644 art/grub/background.png $(SHARE)/grub/theme/background.png
@@ -685,6 +704,9 @@ uninstall:
 	for picture in $(BOOT_ARTWORK); do rm -f "$(BOOTLIB)/$${picture#installer/emaki_installer/}"; done
 	rm -f $(DESTDIR)$(PREFIX)/share/licenses/emaki-config/LICENSE-DejaVu.txt $(DESTDIR)$(PREFIX)/share/licenses/emaki-config/LICENSE-Noto.txt
 	rm -rf $(SHARE)/grub/theme
+	rm -rf $(PLYMOUTH_THEME)
+	rm -f $(DESTDIR)$(PREFIX)/share/licenses/emaki-config/NOTICE-Plymouth.txt
+	rm -f $(DESTDIR)/etc/mkinitcpio.conf.d/50-emaki-splash.conf $(DESTDIR)/etc/default/grub.d/50-emaki-splash.cfg
 	rm -f $(DESTDIR)/usr/lib/initcpio/hooks/emaki-resume $(DESTDIR)/usr/lib/initcpio/install/emaki-resume
 	rm -f $(DESTDIR)/usr/lib/initcpio/hooks/emaki-snapshot-fstab $(DESTDIR)/usr/lib/initcpio/install/emaki-snapshot-fstab
 	# Point /etc/os-release back at Arch's file before removing ours (source helper, as below).
@@ -843,6 +865,12 @@ $(SHADERS) &: $(SHADER_SRC)
 # No live Wayland; fixtures use .cache/, with short temporary Unix-socket paths.
 .PHONY: check-shell shell-shots shell-shaders
 check-shell: paths shell-shaders check-sudo-build
+	python3 tests/test-dispersion.py
+	python3 tests/test-backdrop-first-frame.py
+	python3 tests/dispersion-frames.py --regression
+	python3 tests/test-dispersion-frames.py
+	python3 tests/test-settings-appearance.py
+	python3 update-manager/ui/tests/palette.py
 	python3 tests/test-settings-privacy-page.py
 	python3 tests/test-settings-system-pages.py
 	python3 tests/test-settings-apps-page.py
@@ -851,6 +879,7 @@ check-shell: paths shell-shaders check-sudo-build
 	python3 tests/test-settings-maintenance-page.py
 	python3 tests/test-settings-storage-page.py
 	python3 tests/test-settings-users-page.py
+	python3 tests/test-settings-chooser-lifetime.py
 	node tests/test-settings-index.mjs
 	node tests/test-notification-policy.mjs
 	python3 tests/test-notification-store.py
@@ -879,16 +908,26 @@ check-shell: paths shell-shaders check-sudo-build
 	python3 update-manager/ui/tests/programs_controller.py
 	python3 update-manager/ui/tests/icons.py
 	python3 update-manager/ui/tests/reviews.py
+	python3 update-manager/ui/tests/layout.py
 	python3 tests/test-render-fonts.py
 	mkdir -p "$(CURDIR)/.cache/tmp"
 	env $(CORE_ENV) TMPDIR="$(CURDIR)/.cache/tmp" cargo build -p emaki-cli --locked
 	python3 tests/test-settings-catalog.py "$(CARGO_TARGET_DIR)/debug/emaki"
+	python3 tests/test-appearance-live.py "$(CARGO_TARGET_DIR)/debug/emaki"
+	python3 update-manager/ui/tests/appearance.py "$(CARGO_TARGET_DIR)/debug/emaki"
 	python tests/test-shell.py
 	python3 tests/test-polkit-prompt.py
 	python3 tests/test-shortcuts.py
 	python3 tests/test-launcher-keyboard.py
+	python3 tests/test-prompt-morph.py
+	python3 tests/test-launch-handoff.py
+	python3 tests/test-launcher-refresh.py
+	python3 tests/test-launcher-icon-refresh.py
+	python3 tests/test-spatial-keyboard.py
+	python3 tests/test-surface-spatial.py
 	python3 tests/test-system-keyboard.py
 	python3 tests/test-shell-keyboard.py
+	python3 tests/test-keyboard-gaps.py
 	python3 tests/test-shell-outputs.py
 	python3 tests/test-clipboard-recorder.py
 	python3 tests/test-shell-recovery.py
@@ -908,8 +947,10 @@ check-shell: paths shell-shaders check-sudo-build
 	python3 tests/test-auth-lockout.py
 	node tests/test-battery-policy.mjs
 	python3 tests/test-battery-layout.py
+	python3 tests/test-system-warmup.py
 	node tests/test-notification-text.mjs
 	node tests/test-pairing-policy.mjs --mutations
+	node tests/test-screen-share.mjs
 	python3 tests/test-pairing-layout.py
 	python tests/test-app-scope.py
 	python tests/test-allocator-env.py
@@ -918,6 +959,7 @@ check-shell: paths shell-shaders check-sudo-build
 	python tests/test-wallpaper.py
 	python tests/test-backdrop.py
 	python tests/test-dock-region.py
+	python3 tests/test-dock-drop.py
 	python tests/test-greeter-wallpaper.py
 	python tests/test-greeter-state.py
 	python tests/test-greeter-compositor.py
@@ -952,8 +994,11 @@ check-shell: paths shell-shaders check-sudo-build
 	python tests/test-lock-glass.py
 	python tests/test-lock-capture.py
 	python tests/test-lock-session.py
+	python tests/test-lock-avatar.py
+	python tests/test-lock-avatar-startup.py
 	python tests/test-lock-wordmark.py
 	python tests/test-bar.py
+	python3 tests/test-panel-dock-policy.py
 	python tests/test-strip.py
 	python tests/test-shell-niri-actions.py "$(CARGO_TARGET_DIR)/debug/emaki"
 	python tests/test-shell-close.py "$(CARGO_TARGET_DIR)/debug/emaki"
@@ -1013,6 +1058,11 @@ lock-wordmark:
 boot-splash:
 	python3 scripts/build-boot-splash
 
+# Checked-in startup logo watermark, from the same pixels as the BMP above.
+.PHONY: plymouth-theme
+plymouth-theme:
+	python3 scripts/build-plymouth-theme
+
 .PHONY: cursors
 cursors:
 	python3 scripts/build-cursors
@@ -1058,3 +1108,11 @@ install-sudo-turn-integration:
 	install -Dm644 sudo/turn-reporting.md $(SHARE)/sudo/turn-reporting.md
 	install -Dm644 -t $(SHARE)/sudo/integrations sudo/integrations/claude-hooks.json sudo/integrations/codex-notify.toml
 	sed -i 's|@EMAKI_BINDIR@|$(PREFIX)/bin|g' $(SHARE)/sudo/integrations/claude-hooks.json $(SHARE)/sudo/integrations/codex-notify.toml
+
+# Explicit llvmpipe reference comparison; requires the native shell renderer.
+.PHONY: check-theme-pixels
+check-theme-pixels: paths shell-shaders
+	python3 tests/theme-pictures.py --compare-only
+	python3 tests/test-shared-canvas.py
+	python3 tests/test-theme-slider-rims.py
+	python3 tests/test-theme-accent-icons.py

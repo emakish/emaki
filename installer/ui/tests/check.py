@@ -95,7 +95,15 @@ def main():
     desktop_validate = required_tool('desktop-file-validate')
     check_window_corners()
     qmlfiles = sorted(UI.glob('*.qml')) + sorted((UI / 'tests').glob('*.qml'))
-    result = subprocess.run([lint, '--ignore-settings', '-W', '0', '--json', '-', '-I', '/usr/lib/qt6/qml', *map(str, qmlfiles)], text=True, capture_output=True, timeout=30)
+    # Lint against the shell of this checkout, not whichever release is installed on the host
+    # (the installer uses shell types that an older installed shell lacks).
+    with tempfile.TemporaryDirectory(prefix='installer-lint-') as directory:
+        staged = Path(directory) / 'ui'
+        shutil.copytree(UI, staged)
+        for path in list(staged.glob('*.qml')) + list((staged / 'tests').glob('*.qml')):
+            path.write_text(path.read_text().replace('"file:///usr/share/emaki/shell"', '"file://' + str(ROOT / 'shell') + '"'))
+        linted = sorted(staged.glob('*.qml')) + sorted((staged / 'tests').glob('*.qml'))
+        result = subprocess.run([lint, '--ignore-settings', '-W', '0', '--json', '-', '-I', '/usr/lib/qt6/qml', *map(str, linted)], text=True, capture_output=True, timeout=30)
     report = json.loads(result.stdout)
     known = []
     # Exactly the two upstream metadata omissions already allowed by

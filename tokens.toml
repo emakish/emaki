@@ -1,11 +1,13 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Emaki design tokens.
 #
 # The single source of values for all components. None of these values should
 # be entered manually in a component config — only here.
 #
-# Regenerate configs after editing:  ./scripts/render-theme
+# Regenerate configs after editing: make render
 #
-# The palette is fixed; wallpaper colors do not change these values.
+# Theme and accent choices use these values, independently of wallpaper colors.
 # See DECISIONS.md, 2026-09-22: wallpaper-derived colors were cancelled.
 
 [color]
@@ -14,7 +16,7 @@ surface         = "1c1612"  # panel and menu background
 surface_high    = "2a211a"  # selected row, active element
 text            = "f2e6d8"  # main text
 text_muted      = "a39483"  # labels, input prompts, inactive elements
-accent          = "e2733f"  # accent: active border, match, focus
+accent          = "e2733f"  # packaged accent for external application configs
 on_accent       = "2a0f05"  # text on accent
 border_inactive = "2c241e"  # inactive window border
 shadow          = "000000"  # shadow color
@@ -61,3 +63,307 @@ shadow_softness = 8
 
 [motion]
 duration_ms = 150
+
+[shell_light]
+section_blue_start = "9db6d0"
+section_blue_end = "6f8cab"
+section_green_start = "a8cfc0"
+section_green_end = "78a796"
+section_amber_start = "f2cc7e"
+section_amber_end = "e3a243"
+section_red_start = "f07d6e"
+section_red_end = "d9534a"
+section_pink_start = "e3a0b6"
+section_pink_end = "c96f8f"
+section_brown_start = "8f7f70"
+section_brown_end = "5e5045"
+section_lime_start = "c2cf8a"
+section_lime_end = "93a65a"
+settings_popup = "fffaf6"
+settings_avatar_text = "fff8f3"
+settings_error = "a01b45"
+settings_display_idle = "d7d9de"
+settings_tooltip = "fbf3ea"
+settings_sidebar = [1, 0.9647058823529412, 0.9411764705882353, 0.58]
+settings_strip = [1, 0.9647058823529412, 0.9411764705882353, 0.22]
+settings_white_rim = [1, 1, 1, 0.35]
+settings_icon_rim = [1, 1, 1, 0.24]
+track_regular_accent = [0.86, 0.24, 0.48, 1]
+polkit_card = "fff7f2"
+polkit_danger = "b9273f"
+polkit_ink = "352522"
+polkit_field = "fffdfb"
+polkit_border = "d5bfb4"
+polkit_dim = "806c62"
+polkit_key = "9b1730"
+polkit_key_text = "ffffff"
+polkit_hazard = "120506"
+polkit_allow = "120506"
+polkit_allow_text = "ffffff"
+polkit_pressed = "e7d5cb"
+polkit_hover = "f1e5de"
+manager_cream = [1, 0.98, 0.96, 1]
+manager_header = [1, 0.9647058823529412, 0.9411764705882353, 1]
+manager_white = "ffffff"
+manager_error = "a01b45"
+manager_complete = "a8b86a"
+glass_text = "fbf3ea"
+glass_secondary = [1, 0.9568627450980393, 0.9098039215686274, 0.72]
+glass_dim = [1, 0.9568627450980393, 0.9098039215686274, 0.38]
+ink_on_light = "241018"
+ink_on_dark = "f4e9f0"
+dim_on_light = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.55]
+dim_on_dark = [0.9568627450980393, 0.9137254901960784, 0.9411764705882353, 0.6]
+faint_on_light = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.3]
+faint_on_dark = [0.9568627450980393, 0.9137254901960784, 0.9411764705882353, 0.35]
+danger_on_light = "a01b45"
+danger_on_dark = "ffb3c9"
+flat_plate = [1, 0.973, 0.953, 0.7]
+flat_panel = [1, 0.973, 0.953, 0.86]
+flat_drop = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.07]
+flat_drop_rim = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.16]
+settings_ink = "241018"
+settings_dim = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.58]
+settings_faint = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.32]
+settings_drop = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.065]
+settings_drop_hover = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.11]
+settings_rim = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.14]
+settings_field = [1, 1, 1, 0.62]
+settings_card = [1, 0.9803921568627451, 0.9647058823529412, 0.42]
+settings_knob = "fffaf6"
+manager_ink = "241018"
+manager_dim = "866c70"
+manager_body = "4a3438"
+manager_background = "fffaf6"
+manager_panel = "fff9f5"
+manager_icon_ink = "fffaf5"
+manager_warning = "d9962c"
+manager_success = "426448"
+manager_positive = "4c6b2e"
+manager_danger_background = "fff6f8"
+dock_control_fill = "0d17111a"
+dock_dot = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.72]
+dock_line = [0.13, 0.12, 0.16, 0.3]
+metrics_faint = "6d5d4f"
+metrics_dim = "5a4c40"
+metrics_line = "3a2e25"
+
+[shell_dark]
+section_blue_start = "9db6d0"
+section_blue_end = "6f8cab"
+section_green_start = "a8cfc0"
+section_green_end = "78a796"
+section_amber_start = "f2cc7e"
+section_amber_end = "e3a243"
+section_red_start = "f07d6e"
+section_red_end = "d9534a"
+section_pink_start = "e3a0b6"
+section_pink_end = "c96f8f"
+section_brown_start = "8f7f70"
+section_brown_end = "5e5045"
+section_lime_start = "c2cf8a"
+section_lime_end = "93a65a"
+settings_popup = "211815"
+settings_avatar_text = "fff8f3"
+settings_error = "ffb3c9"
+settings_display_idle = "352622"
+settings_tooltip = "211815"
+settings_sidebar = [0.11, 0.075, 0.063, 0.58]
+settings_strip = [0.11, 0.075, 0.063, 0.22]
+settings_white_rim = [1, 1, 1, 0.2]
+settings_icon_rim = [1, 1, 1, 0.24]
+track_regular_accent = [0.86, 0.24, 0.48, 1]
+polkit_card = "211815"
+polkit_danger = "ffb3c9"
+polkit_ink = "f4e9f0"
+polkit_field = "352622"
+polkit_border = "78635b"
+polkit_dim = "cdbcc1"
+polkit_key = "ffb3c9"
+polkit_key_text = "241018"
+polkit_hazard = "120506"
+polkit_allow = "d6b4a6"
+polkit_allow_text = "241018"
+polkit_pressed = "554038"
+polkit_hover = "45322b"
+manager_cream = "2b201c"
+manager_header = "352622"
+manager_white = "352622"
+manager_error = "ffb3c9"
+manager_complete = "bbd58e"
+glass_text = "fbf3ea"
+glass_secondary = [1, 0.9568627450980393, 0.9098039215686274, 0.72]
+glass_dim = [1, 0.9568627450980393, 0.9098039215686274, 0.38]
+ink_on_light = "241018"
+ink_on_dark = "f4e9f0"
+dim_on_light = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.55]
+dim_on_dark = [0.9568627450980393, 0.9137254901960784, 0.9411764705882353, 0.6]
+faint_on_light = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.3]
+faint_on_dark = [0.9568627450980393, 0.9137254901960784, 0.9411764705882353, 0.35]
+danger_on_light = "a01b45"
+danger_on_dark = "ffb3c9"
+flat_plate = [0.11, 0.075, 0.063, 0.92]
+flat_panel = [0.11, 0.075, 0.063, 0.96]
+flat_drop = [0.9568627450980393, 0.9137254901960784, 0.9411764705882353, 0.09]
+flat_drop_rim = [0.9568627450980393, 0.9137254901960784, 0.9411764705882353, 0.2]
+settings_ink = "f4e9f0"
+settings_dim = "cdbcc1"
+settings_faint = "a6959b"
+settings_drop = [0.9568627450980393, 0.9137254901960784, 0.9411764705882353, 0.065]
+settings_drop_hover = [0.9568627450980393, 0.9137254901960784, 0.9411764705882353, 0.11]
+settings_rim = [0.9568627450980393, 0.9137254901960784, 0.9411764705882353, 0.2]
+settings_field = [0.2, 0.14, 0.13, 0.9]
+settings_card = [0.2, 0.14, 0.13, 0.72]
+settings_knob = "fffaf6"
+manager_ink = "f4e9f0"
+manager_dim = "d2c2c7"
+manager_body = "e3d3d8"
+manager_background = "211815"
+manager_panel = "2b201c"
+manager_icon_ink = "fffaf5"
+manager_warning = "edbc66"
+manager_success = "acd8ac"
+manager_positive = "bad98e"
+manager_danger_background = "40242b"
+dock_control_fill = "24f4e9f0"
+dock_dot = [0.9568627450980393, 0.9137254901960784, 0.9411764705882353, 0.85]
+dock_line = [0.9568627450980393, 0.9137254901960784, 0.9411764705882353, 0.3]
+metrics_faint = "cdbcc1"
+metrics_dim = "ded0d4"
+metrics_line = "f4e9f0"
+
+[accents.orange]
+display_selected = "e7b39a"
+avatar_start = "f2cc7e"
+avatar_end = "e05a4f"
+polkit = "f18c50"
+focus = "a67058"
+name = "Orange"
+base = "e2733f"
+on_light = "c2481f"
+on_dark = "ff9b6a"
+text = "2a0f05"
+soft = "f39a5f"
+strong = "c9503a"
+shade = "b94b32"
+deep = "8a3412"
+hover = "a83c18"
+
+[accents.coral]
+display_selected = "f9c9c4"
+avatar_start = "ffb09a"
+avatar_end = "c95555"
+polkit = "ef786b"
+focus = "aa382e"
+name = "Coral"
+base = "ef786b"
+on_light = "aa382e"
+on_dark = "ffaca0"
+text = "300f0c"
+soft = "ffb09a"
+strong = "c95555"
+shade = "b94e4e"
+deep = "82271f"
+hover = "aa382e"
+
+[accents.rose]
+display_selected = "f5ccdd"
+avatar_start = "f5b1cb"
+avatar_end = "c54d89"
+polkit = "e780aa"
+focus = "a32c61"
+name = "Rose"
+base = "e780aa"
+on_light = "a32c61"
+on_dark = "ffb0d2"
+text = "300c1c"
+soft = "f5b1cb"
+strong = "c54d89"
+shade = "b5477e"
+deep = "7c224b"
+hover = "a32c61"
+
+[accents.amber]
+display_selected = "f1dcb5"
+avatar_start = "f0ca78"
+avatar_end = "bc7e2f"
+polkit = "dca745"
+focus = "855716"
+name = "Amber"
+base = "dca745"
+on_light = "855716"
+on_dark = "f4ca79"
+text = "281b04"
+soft = "f0ca78"
+strong = "bc7e2f"
+shade = "ad742b"
+deep = "714713"
+hover = "855716"
+
+[accents.green]
+display_selected = "cde3c3"
+avatar_start = "b2d58e"
+avatar_end = "58964d"
+polkit = "83b969"
+focus = "416b2a"
+name = "Green"
+base = "83b969"
+on_light = "416b2a"
+on_dark = "b4db9c"
+text = "12230b"
+soft = "b2d58e"
+strong = "58964d"
+shade = "518a47"
+deep = "355421"
+hover = "416b2a"
+
+[accents.teal]
+display_selected = "c0e1db"
+avatar_start = "91d4c4"
+avatar_end = "40958f"
+polkit = "61b5a5"
+focus = "25695e"
+name = "Teal"
+base = "61b5a5"
+on_light = "25695e"
+on_dark = "95d9cc"
+text = "08251f"
+soft = "91d4c4"
+strong = "40958f"
+shade = "3b8984"
+deep = "1d5149"
+hover = "25695e"
+
+[accents.blue]
+display_selected = "c9ddf9"
+avatar_start = "a9c9ff"
+avatar_end = "577ed1"
+polkit = "78aaf0"
+focus = "315fab"
+name = "Blue"
+base = "78aaf0"
+on_light = "315fab"
+on_dark = "b0cfff"
+text = "0b1b36"
+soft = "a9c9ff"
+strong = "577ed1"
+shade = "5074c0"
+deep = "274a84"
+hover = "315fab"
+
+[accents.violet]
+display_selected = "e0d4f6"
+avatar_start = "d2b7ff"
+avatar_end = "9269cd"
+polkit = "b294e8"
+focus = "69429b"
+name = "Violet"
+base = "b294e8"
+on_light = "69429b"
+on_dark = "d5bbff"
+text = "211035"
+soft = "d2b7ff"
+strong = "9269cd"
+shade = "8661bd"
+deep = "513177"
+hover = "69429b"

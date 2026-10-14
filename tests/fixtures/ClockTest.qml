@@ -254,6 +254,11 @@ ShellRoot {
             if (fixtureSystem.item)
                 fixtureSystem.item.captures = JSON.parse(value).list; // qs ipc mangles a bare JSON array argument
         }
+        // Streams reading a node ({"list": [{source, name, binary}]}), as SystemNative builds them.
+        function readers(value: string): void {
+            if (fixtureSystem.item)
+                fixtureSystem.item.readers = JSON.parse(value).list;
+        }
         function casts(count: int): void {
             const casts = {};
             for (let i = 1; i <= count; ++i)
@@ -269,6 +274,23 @@ ShellRoot {
             niri.model = Object.assign({}, niri.model, {
                 casts: casts
             });
+        }
+        // Any core cast list ({"list": [...]}; qs ipc mangles a bare JSON array argument).
+        function castList(value: string): void {
+            const casts = {};
+            for (const c of JSON.parse(value).list)
+                casts[String(c.stream_id)] = c;
+            niri.model = Object.assign({}, niri.model, {
+                casts: casts
+            });
+        }
+        // The privacy rows' names (kept out of status on purpose).
+        function privacyLabels(): string {
+            return JSON.stringify(scene.privacyRows.map(r => r.label + " · " + r.note));
+        }
+        // The PipeWire node of the shell's own recording (CaptureService sets it live).
+        function captureNode(node: int): void {
+            scene.context.captureNode = node;
         }
         // The shell's own live capture for the glass (core marks it by_parent).
         function shellCast(): void {

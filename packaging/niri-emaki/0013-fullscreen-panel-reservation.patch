@@ -1,0 +1,962 @@
+Subject: [PATCH] Start fullscreen windows below a pinned panel's inset marker
+
+Copyright (C) 2026 Artur Yakymenko
+SPDX-License-Identifier: GPL-3.0-or-later
+
+Apply after patches 0001 through 0012 on niri v26.04. A mapped layer surface
+with the namespace emaki-fullscreen-inset from the trusted shell connection
+(patch 0010), anchored to the top edge and not to the bottom, sets a top inset
+for fullscreen tiles on its output: its requested height plus its top margin.
+The same namespace from any other client is ignored. Fullscreen tiles start
+below the inset and receive the remaining output height; their configure, size
+clamps, render and input origins follow. The marker reserves no working area,
+so normal and maximized windows never resize when it maps or unmaps. Without
+the marker, fullscreen stays edge to edge as upstream. The IPC tile position is
+reported only for an inset fullscreen scrolling tile, so a shell can recognize
+it.
+
+diff --git a/src/layout/scrolling.rs b/src/layout/scrolling.rs
+--- a/src/layout/scrolling.rs
++++ b/src/layout/scrolling.rs
+@@ -79,6 +79,9 @@
+     /// View size for this space.
+     view_size: Size<f64, Logical>,
+ 
++    /// Top reservation for the pinned fullscreen panel, independent of normal working area.
++    fullscreen_top_inset: f64,
++
+     /// Working area for this space.
+     ///
+     /// Takes into account layer-shell exclusive zones and niri struts.
+@@ -204,6 +207,9 @@
+     /// Latest known view size for this column's workspace.
+     view_size: Size<f64, Logical>,
+ 
++    /// Top reservation for the pinned fullscreen panel, independent of normal working area.
++    fullscreen_top_inset: f64,
++
+     /// Latest known working area for this column's workspace.
+     working_area: Rectangle<f64, Logical>,
+ 
+@@ -292,6 +298,7 @@
+     pub fn new(
+         view_size: Size<f64, Logical>,
+         parent_area: Rectangle<f64, Logical>,
++        fullscreen_top_inset: f64,
+         scale: f64,
+         clock: Clock,
+         options: Rc<Options>,
+@@ -310,6 +317,7 @@
+             view_offset_to_restore: None,
+             closing_windows: Vec::new(),
+             view_size,
++            fullscreen_top_inset,
+             working_area,
+             parent_area,
+             scale,
+@@ -322,6 +330,7 @@
+         &mut self,
+         view_size: Size<f64, Logical>,
+         parent_area: Rectangle<f64, Logical>,
++        fullscreen_top_inset: f64,
+         scale: f64,
+         options: Rc<Options>,
+     ) {
+@@ -329,11 +338,19 @@
+         let working_area = compute_working_area(parent_area, scale, options.layout.struts);
+ 
+         for (column, data) in zip(&mut self.columns, &mut self.data) {
+-            column.update_config(view_size, working_area, parent_area, scale, options.clone());
++            column.update_config(
++                view_size,
++                working_area,
++                parent_area,
++                fullscreen_top_inset,
++                scale,
++                options.clone(),
++            );
+             data.update(column);
+         }
+ 
+         self.view_size = view_size;
++        self.fullscreen_top_inset = fullscreen_top_inset;
+         self.working_area = working_area;
+         self.parent_area = parent_area;
+         self.scale = scale;
+@@ -891,6 +908,7 @@
+             self.view_size,
+             self.working_area,
+             self.parent_area,
++            self.fullscreen_top_inset,
+             self.scale,
+             width,
+             is_full_width,
+@@ -998,6 +1016,7 @@
+             self.view_size,
+             self.working_area,
+             self.parent_area,
++            self.fullscreen_top_inset,
+             self.scale,
+             self.options.clone(),
+         );
+@@ -2499,14 +2518,28 @@
+             .iter()
+             .enumerate()
+             .flat_map(move |(col_idx, col)| {
+-                col.tiles().enumerate().map(move |(tile_idx, (tile, _))| {
+-                    let layout = WindowLayout {
+-                        // Our indices are 1-based, consistent with the actions.
+-                        pos_in_scrolling_layout: Some((col_idx + 1, tile_idx + 1)),
+-                        ..tile.ipc_layout_template()
+-                    };
+-                    (tile, layout)
+-                })
++                col.tiles()
++                    .enumerate()
++                    .map(move |(tile_idx, (tile, tile_pos))| {
++                        let layout = WindowLayout {
++                            // Our indices are 1-based, consistent with the actions.
++                            pos_in_scrolling_layout: Some((col_idx + 1, tile_idx + 1)),
++                            // Report the stable layout position of an inset fullscreen tile.
++                            // The shell uses its bottom edge to retain fullscreen presentation
++                            // after the client accepts the smaller size; animation offsets do
++                            // not change that state. Other scrolling tiles retain None.
++                            tile_pos_in_workspace_view: (tile.sizing_mode().is_fullscreen()
++                                && self.fullscreen_top_inset > 0.)
++                                .then(|| {
++                                    (
++                                        self.column_x(col_idx) - self.view_pos() + tile_pos.x,
++                                        tile_pos.y,
++                                    )
++                                }),
++                            ..tile.ipc_layout_template()
++                        };
++                        (tile, layout)
++                    })
+             })
+     }
+ 
+@@ -3796,6 +3829,10 @@
+         }
+     }
+ 
++    pub fn fullscreen_top_inset(&self) -> f64 {
++        self.fullscreen_top_inset
++    }
++
+     #[cfg(test)]
+     pub fn view_size(&self) -> Size<f64, Logical> {
+         self.view_size
+@@ -4014,6 +4051,7 @@
+         view_size: Size<f64, Logical>,
+         working_area: Rectangle<f64, Logical>,
+         parent_area: Rectangle<f64, Logical>,
++        fullscreen_top_inset: f64,
+         scale: f64,
+         width: ColumnWidth,
+         is_full_width: bool,
+@@ -4055,6 +4093,7 @@
+             tab_indicator: TabIndicator::new(options.layout.tab_indicator),
+             move_animation: None,
+             view_size,
++            fullscreen_top_inset,
+             working_area,
+             parent_area,
+             scale,
+@@ -4091,6 +4130,7 @@
+         view_size: Size<f64, Logical>,
+         working_area: Rectangle<f64, Logical>,
+         parent_area: Rectangle<f64, Logical>,
++        fullscreen_top_inset: f64,
+         scale: f64,
+         options: Rc<Options>,
+     ) {
+@@ -4099,6 +4139,7 @@
+         if self.view_size != view_size
+             || self.working_area != working_area
+             || self.parent_area != parent_area
++            || self.fullscreen_top_inset != fullscreen_top_inset
+         {
+             update_sizes = true;
+         }
+@@ -4130,12 +4171,17 @@
+ 
+         for (tile, data) in zip(&mut self.tiles, &mut self.data) {
+             tile.update_config(view_size, scale, options.clone());
++            tile.set_fullscreen_size(Size::from((
++                view_size.w,
++                view_size.h - fullscreen_top_inset,
++            )));
+             data.update(tile);
+         }
+ 
+         self.tab_indicator
+             .update_config(options.layout.tab_indicator);
+         self.view_size = view_size;
++        self.fullscreen_top_inset = fullscreen_top_inset;
+         self.working_area = working_area;
+         self.parent_area = parent_area;
+         self.scale = scale;
+@@ -4379,6 +4425,10 @@
+ 
+     fn add_tile_at(&mut self, idx: usize, mut tile: Tile<W>) {
+         tile.update_config(self.view_size, self.scale, self.options.clone());
++        tile.set_fullscreen_size(Size::from((
++            self.view_size.w,
++            self.view_size.h - self.fullscreen_top_inset,
++        )));
+ 
+         // Inserting a tile pushes down all tiles below it, but also in always-centering mode it
+         // will affect the X position of all tiles in the column.
+@@ -5258,7 +5308,10 @@
+                 origin.y += self.parent_area.loc.y;
+                 return origin;
+             }
+-            SizingMode::Fullscreen => return origin,
++            SizingMode::Fullscreen => {
++                origin.y = self.fullscreen_top_inset;
++                return origin;
++            }
+         }
+ 
+         origin.y += self.working_area.loc.y + self.options.layout.gaps;
+diff --git a/src/layout/tile.rs b/src/layout/tile.rs
+--- a/src/layout/tile.rs
++++ b/src/layout/tile.rs
+@@ -106,10 +106,11 @@
+     rounded_corner_damage: RoundedCornerDamage,
+ 
+     /// The view size for the tile's workspace.
+-    ///
+-    /// Used as the fullscreen target size.
+     view_size: Size<f64, Logical>,
+ 
++    /// Fullscreen target size after the pinned panel reservation.
++    fullscreen_size: Size<f64, Logical>,
++
+     /// Scale of the output the tile is on (and rounds its sizes to).
+     scale: f64,
+ 
+@@ -209,6 +210,7 @@
+             unmap_snapshot: None,
+             rounded_corner_damage: Default::default(),
+             view_size,
++            fullscreen_size: view_size,
+             scale,
+             clock,
+             options,
+@@ -280,8 +282,8 @@
+ 
+                 let mut tile_size = animate_from.size;
+                 if prev_sizing_mode.is_fullscreen() {
+-                    tile_size.w = f64::max(tile_size.w, self.view_size.w);
+-                    tile_size.h = f64::max(tile_size.h, self.view_size.h);
++                    tile_size.w = f64::max(tile_size.w, self.fullscreen_size.w);
++                    tile_size.h = f64::max(tile_size.h, self.fullscreen_size.h);
+                 } else if prev_sizing_mode.is_normal() && !self.border.is_off() {
+                     let width = self.border.width();
+                     tile_size.w += width * 2.;
+@@ -319,8 +321,8 @@
+                 // Compute like in tile_size().
+                 let mut tile_size = size;
+                 if prev_sizing_mode.is_fullscreen() {
+-                    tile_size.w = f64::max(tile_size.w, self.view_size.w);
+-                    tile_size.h = f64::max(tile_size.h, self.view_size.h);
++                    tile_size.w = f64::max(tile_size.w, self.fullscreen_size.w);
++                    tile_size.h = f64::max(tile_size.h, self.fullscreen_size.h);
+                 } else if prev_sizing_mode.is_normal() && !self.border.is_off() {
+                     let width = self.border.width();
+                     tile_size.w += width * 2.;
+@@ -768,8 +770,8 @@
+         if self.sizing_mode.is_fullscreen() {
+             // Normally we'd just return the fullscreen size here, but this makes things a bit
+             // nicer if a fullscreen window is bigger than the fullscreen size for some reason.
+-            size.w = f64::max(size.w, self.view_size.w);
+-            size.h = f64::max(size.h, self.view_size.h);
++            size.w = f64::max(size.w, self.fullscreen_size.w);
++            size.h = f64::max(size.h, self.fullscreen_size.h);
+             return size;
+         }
+ 
+@@ -787,8 +789,8 @@
+         if self.sizing_mode.is_fullscreen() {
+             // Normally we'd just return the fullscreen size here, but this makes things a bit
+             // nicer if a fullscreen window is bigger than the fullscreen size for some reason.
+-            size.w = f64::max(size.w, self.view_size.w);
+-            size.h = f64::max(size.h, self.view_size.h);
++            size.w = f64::max(size.w, self.fullscreen_size.w);
++            size.h = f64::max(size.h, self.fullscreen_size.h);
+             return size;
+         }
+ 
+@@ -967,9 +969,13 @@
+         );
+     }
+ 
++    pub(super) fn set_fullscreen_size(&mut self, size: Size<f64, Logical>) {
++        self.fullscreen_size = size;
++    }
++
+     pub fn request_fullscreen(&mut self, animate: bool, transaction: Option<Transaction>) {
+         self.window.request_size(
+-            self.view_size.to_i32_round(),
++            self.fullscreen_size.to_i32_round(),
+             SizingMode::Fullscreen,
+             animate,
+             transaction,
+diff --git a/src/layout/workspace.rs b/src/layout/workspace.rs
+--- a/src/layout/workspace.rs
++++ b/src/layout/workspace.rs
+@@ -15,6 +15,7 @@
+ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+ use smithay::utils::{Logical, Point, Rectangle, Serial, Size, Transform};
+ use smithay::wayland::compositor::with_states;
++use smithay::wayland::shell::wlr_layer::{Anchor, LayerSurfaceCachedState};
+ use smithay::wayland::shell::xdg::SurfaceCachedState;
+ 
+ use super::floating::{FloatingSpace, FloatingSpaceRenderElement};
+@@ -37,8 +38,8 @@
+ use crate::utils::id::IdCounter;
+ use crate::utils::transaction::{Transaction, TransactionBlocker};
+ use crate::utils::{
+-    ensure_min_max_size, ensure_min_max_size_maybe_zero, output_size, send_scale_transform,
+-    ResizeEdge,
++    ensure_min_max_size, ensure_min_max_size_maybe_zero, is_mapped, output_size,
++    round_logical_in_physical, send_scale_transform, ResizeEdge,
+ };
+ use crate::window::ResolvedWindowRules;
+ 
+@@ -241,6 +242,7 @@
+         let scrolling = ScrollingSpace::new(
+             view_size,
+             working_area,
++            compute_fullscreen_top_inset(&output),
+             scale.fractional_scale(),
+             clock.clone(),
+             options.clone(),
+@@ -307,6 +309,7 @@
+         let scrolling = ScrollingSpace::new(
+             view_size,
+             working_area,
++            0.,
+             scale.fractional_scale(),
+             clock.clone(),
+             options.clone(),
+@@ -411,6 +414,10 @@
+         self.scrolling.update_config(
+             self.view_size,
+             self.working_area,
++            self.output
++                .as_ref()
++                .map(compute_fullscreen_top_inset)
++                .unwrap_or(0.),
+             self.scale.fractional_scale(),
+             options.clone(),
+         );
+@@ -536,7 +543,13 @@
+         let transform = output.current_transform();
+         let view_size = output_size(output);
+         let working_area = compute_working_area(output);
+-        self.set_view_size(scale, transform, view_size, working_area);
++        self.set_view_size(
++            scale,
++            transform,
++            view_size,
++            working_area,
++            compute_fullscreen_top_inset(output),
++        );
+     }
+ 
+     fn set_view_size(
+@@ -545,11 +558,16 @@
+         transform: Transform,
+         size: Size<f64, Logical>,
+         working_area: Rectangle<f64, Logical>,
++        fullscreen_top_inset: f64,
+     ) {
+         let scale_transform_changed = self.transform != transform
+             || self.scale.integer_scale() != scale.integer_scale()
+             || self.scale.fractional_scale() != scale.fractional_scale();
+-        if !scale_transform_changed && self.view_size == size && self.working_area == working_area {
++        if !scale_transform_changed
++            && self.view_size == size
++            && self.working_area == working_area
++            && self.scrolling.fullscreen_top_inset() == fullscreen_top_inset
++        {
+             return;
+         }
+ 
+@@ -568,6 +586,7 @@
+             self.scrolling.update_config(
+                 size,
+                 working_area,
++                fullscreen_top_inset,
+                 scale.fractional_scale(),
+                 self.options.clone(),
+             );
+@@ -873,7 +892,13 @@
+         });
+         toplevel.with_pending_state(|state| {
+             if state.states.contains(xdg_toplevel::State::Fullscreen) {
+-                state.size = Some(self.view_size.to_i32_round());
++                state.size = Some(
++                    Size::from((
++                        self.view_size.w,
++                        self.view_size.h - self.scrolling.fullscreen_top_inset(),
++                    ))
++                    .to_i32_round(),
++                );
+             } else if state.states.contains(xdg_toplevel::State::Maximized) {
+                 state.size = Some(self.working_area.size.to_i32_round());
+             } else {
+@@ -2116,6 +2141,46 @@
+     }
+ }
+ 
++// Only the trusted shell's fullscreen inset marker opts into fullscreen reservation. The
++// marker carries the inset as its requested height and reserves no working area, so entering
++// or leaving fullscreen never resizes other windows. The same namespace from any other client,
++// and every other layer surface, including the panel and the dock, keep upstream fullscreen.
++pub(super) fn fullscreen_inset_marker(
++    namespace: &str,
++    trusted: bool,
++    mapped: bool,
++    state: &LayerSurfaceCachedState,
++) -> f64 {
++    if namespace != "emaki-fullscreen-inset"
++        || !trusted
++        || !mapped
++        || !state.anchor.contains(Anchor::TOP)
++        || state.anchor.contains(Anchor::BOTTOM)
++    {
++        return 0.;
++    }
++    (f64::from(state.size.h) + f64::from(state.margin.top)).max(0.)
++}
++
++fn compute_fullscreen_top_inset(output: &Output) -> f64 {
++    let map = layer_map_for_output(output);
++    let inset = map
++        .layers()
++        .map(|surface| {
++            fullscreen_inset_marker(
++                surface.namespace(),
++                crate::trusted_prompt::client_is_trusted(surface.wl_surface()),
++                is_mapped(surface.wl_surface()),
++                &surface.cached_state(),
++            )
++        })
++        .fold(0., f64::max);
++    let height = output_size(output).h;
++    let scale = output.current_scale().fractional_scale();
++    let inset = inset.min((height - 1.).max(0.));
++    round_logical_in_physical(scale, inset)
++}
++
+ pub(super) fn compute_working_area(output: &Output) -> Rectangle<f64, Logical> {
+     layer_map_for_output(output).non_exclusive_zone().to_f64()
+ }
+diff --git a/src/layout/tests.rs b/src/layout/tests.rs
+--- a/src/layout/tests.rs
++++ b/src/layout/tests.rs
+@@ -15,6 +15,7 @@
+ 
+ mod animations;
+ mod emaki_backdrop;
++mod emaki_fullscreen_panel;
+ mod emaki_wallpaper;
+ mod fullscreen;
+ 
+diff --git a/src/tests/layer_shell.rs b/src/tests/layer_shell.rs
+--- a/src/tests/layer_shell.rs
++++ b/src/tests/layer_shell.rs
+@@ -503,3 +503,234 @@
+         ));
+     }
+ }
++
++// Copyright (C) 2026 Artur Yakymenko
++// SPDX-License-Identifier: GPL-3.0-or-later
++
++use wayland_client::protocol::wl_surface::WlSurface;
++
++use crate::tests::client::ClientId;
++
++const EMAKI_INSET_MARKER: &str = "emaki-fullscreen-inset";
++
++fn emaki_map_inset_marker(f: &mut Fixture, id: ClientId, height: i32) -> WlSurface {
++    let layer = f
++        .client(id)
++        .create_layer(None, Layer::Overlay, EMAKI_INSET_MARKER);
++    let marker = layer.surface.clone();
++    layer.set_configure_props(LayerConfigureProps {
++        anchor: Some(Anchor::Top | Anchor::Left),
++        size: Some((1, height.try_into().unwrap())),
++        exclusive_zone: Some(-1),
++        ..Default::default()
++    });
++    layer.commit();
++    f.double_roundtrip(id);
++    let layer = f.client(id).layer(&marker);
++    layer.attach_new_buffer();
++    layer.set_size(1, height.try_into().unwrap());
++    layer.ack_last_and_commit();
++    f.double_roundtrip(id);
++    marker
++}
++
++fn emaki_assert_fullscreen_inset(f: &mut Fixture, app: ClientId, surface: &WlSurface, inset: i32) {
++    let window = f.client(app).window(surface);
++    assert_eq!(
++        window.configures_received.last().unwrap().1.size,
++        (1920, 1080 - inset)
++    );
++    window.set_size(1920, (1080 - inset).try_into().unwrap());
++    window.ack_last_and_commit();
++    f.double_roundtrip(app);
++    f.niri_complete_animations();
++    let ws = f.niri().layout.active_workspace().unwrap();
++    let (tile, pos, _) = ws.tiles_with_render_positions().next().unwrap();
++    assert_eq!((pos.x, pos.y), (0., f64::from(inset)));
++    assert_eq!(
++        (tile.tile_size().w, tile.tile_size().h),
++        (1920., f64::from(1080 - inset))
++    );
++    let (_, ipc) = ws.tiles_with_ipc_layouts().next().unwrap();
++    assert_eq!(
++        ipc.tile_pos_in_workspace_view,
++        (inset > 0).then_some((0., f64::from(inset)))
++    );
++}
++
++#[test]
++fn emaki_fullscreen_panel_layer_selection() {
++    let marker = Anchor::Top | Anchor::Left;
++    let bar = Anchor::Top | Anchor::Left | Anchor::Right;
++    let name = EMAKI_INSET_MARKER;
++    let cases = [
++        (Layer::Overlay, name, marker, 52, -1, 0, true, 52),
++        (Layer::Background, name, marker, 52, -1, 0, true, 52),
++        (Layer::Overlay, name, marker, 40, -1, 8, true, 48),
++        (Layer::Overlay, name, marker, 40, -1, -8, true, 32),
++        (Layer::Overlay, name, marker, 52, -1, 0, false, 0),
++        (
++            Layer::Overlay,
++            name,
++            Anchor::Bottom | Anchor::Left,
++            52,
++            -1,
++            0,
++            true,
++            0,
++        ),
++        (Layer::Overlay, "other-marker", marker, 52, -1, 0, true, 0),
++        // The panel's exclusive zone keeps upstream fullscreen behavior on every layer.
++        (Layer::Overlay, "emaki-test-bar", bar, 84, 52, 0, true, 0),
++        (Layer::Top, "emaki-test-bar", bar, 84, 52, 0, true, 0),
++    ];
++    for (level, namespace, anchor, height, zone, margin, mapped, inset) in cases {
++        let mut f = Fixture::new();
++        f.add_output(1, (1920, 1080));
++        // The marker comes from the compositor-owned shell connection; the fullscreen
++        // window from an ordinary client.
++        let shell = f.add_trusted_shell();
++        let app = f.add_client();
++        let layer = f.client(shell).create_layer(None, level, namespace);
++        let panel = layer.surface.clone();
++        let width = if anchor.contains(Anchor::Right) { 0 } else { 1 };
++        layer.set_configure_props(LayerConfigureProps {
++            anchor: Some(anchor),
++            size: Some((width, height)),
++            exclusive_zone: Some(zone),
++            margin: Some(LayerMargin {
++                top: margin,
++                ..Default::default()
++            }),
++            ..Default::default()
++        });
++        layer.commit();
++        f.double_roundtrip(shell);
++        if mapped {
++            let layer = f.client(shell).layer(&panel);
++            layer.attach_new_buffer();
++            layer.set_size(width.max(1).try_into().unwrap(), height.try_into().unwrap());
++            layer.ack_last_and_commit();
++            f.double_roundtrip(shell);
++        }
++        if namespace == name {
++            // The marker never reserves working area, so ordinary windows never reflow.
++            let output = f.niri_output(1);
++            assert_eq!(
++                smithay::desktop::layer_map_for_output(&output).non_exclusive_zone(),
++                smithay::utils::Rectangle::from_size(smithay::utils::Size::from((1920, 1080)))
++            );
++        }
++
++        let window = f.client(app).create_window();
++        let surface = window.surface.clone();
++        window.set_fullscreen(None);
++        window.commit();
++        f.double_roundtrip(app);
++        let window = f.client(app).window(&surface);
++        assert_eq!(window.configures_received.last().unwrap().1.size, (1920, 1080 - inset),
++            "initial configure: {level:?}, {namespace}, {anchor:?}, height={height}, zone={zone}, margin={margin}, mapped={mapped}");
++        window.attach_new_buffer();
++        window.set_size(1920, (1080 - inset).try_into().unwrap());
++        window.ack_last_and_commit();
++        f.double_roundtrip(app);
++        f.niri_complete_animations();
++
++        let ws = f.niri().layout.active_workspace().unwrap();
++        let (tile, pos, _) = ws.tiles_with_render_positions().next().unwrap();
++        assert_eq!((pos.x, pos.y), (0., f64::from(inset)));
++        let size = tile.tile_size();
++        assert_eq!((size.w, size.h), (1920., f64::from(1080 - inset)));
++        let (_, ipc) = ws.tiles_with_ipc_layouts().next().unwrap();
++        assert_eq!(
++            ipc.tile_pos_in_workspace_view,
++            (inset > 0).then_some((0., f64::from(inset)))
++        );
++    }
++}
++
++#[test]
++fn emaki_fullscreen_panel_untrusted_marker_is_ignored() {
++    // Any client can name a layer surface like the shell's marker. Only the trusted shell
++    // connection may shrink fullscreen windows: an ordinary client's marker, even one nearly
++    // as tall as the output, neither creates an inset nor raises the shell's.
++    for (shell_marker, inset) in [(None, 0), (Some(40), 40)] {
++        // The fullscreen window comes from the marker's own client or from a third client.
++        for window_from_marker_client in [true, false] {
++            let mut f = Fixture::new();
++            f.add_output(1, (1920, 1080));
++            let shell = f.add_trusted_shell();
++            let other = f.add_client();
++            if let Some(height) = shell_marker {
++                emaki_map_inset_marker(&mut f, shell, height);
++            }
++            emaki_map_inset_marker(&mut f, other, 1079);
++
++            let app = if window_from_marker_client {
++                other
++            } else {
++                f.add_client()
++            };
++            let window = f.client(app).create_window();
++            let surface = window.surface.clone();
++            window.set_fullscreen(None);
++            window.commit();
++            f.double_roundtrip(app);
++            let window = f.client(app).window(&surface);
++            assert_eq!(
++                window.configures_received.last().unwrap().1.size,
++                (1920, 1080 - inset),
++                "initial configure, shell marker {shell_marker:?}, \
++                 window from marker client {window_from_marker_client}"
++            );
++            window.attach_new_buffer();
++            emaki_assert_fullscreen_inset(&mut f, app, &surface, inset);
++        }
++    }
++}
++
++#[test]
++fn emaki_fullscreen_panel_zone_change_and_unmap() {
++    let mut f = Fixture::new();
++    f.add_output(1, (1920, 1080));
++    let shell = f.add_trusted_shell();
++    let app = f.add_client();
++    let panel = emaki_map_inset_marker(&mut f, shell, 40);
++
++    let window = f.client(app).create_window();
++    let surface = window.surface.clone();
++    window.set_fullscreen(None);
++    window.commit();
++    f.double_roundtrip(app);
++    let window = f.client(app).window(&surface);
++    window.attach_new_buffer();
++    emaki_assert_fullscreen_inset(&mut f, app, &surface, 40);
++
++    for zone in [56, 24, 40] {
++        let layer = f.client(shell).layer(&panel);
++        layer.set_configure_props(LayerConfigureProps {
++            size: Some((1, zone.try_into().unwrap())),
++            ..Default::default()
++        });
++        layer.commit();
++        f.double_roundtrip(shell);
++        f.double_roundtrip(app);
++        emaki_assert_fullscreen_inset(&mut f, app, &surface, zone);
++    }
++
++    // A panel reserves space only on its own output, including after a column move.
++    f.add_output(2, (1920, 1080));
++    for (output_number, inset) in [(2, 0), (1, 40)] {
++        let output = f.niri_output(output_number);
++        f.niri().layout.move_column_to_output(&output, None, true);
++        f.double_roundtrip(app);
++        emaki_assert_fullscreen_inset(&mut f, app, &surface, inset);
++    }
++
++    let layer = f.client(shell).layer(&panel);
++    layer.attach_null();
++    layer.commit();
++    f.double_roundtrip(shell);
++    f.double_roundtrip(app);
++    emaki_assert_fullscreen_inset(&mut f, app, &surface, 0);
++}
+diff --git a/src/layout/tests/emaki_fullscreen_panel.rs b/src/layout/tests/emaki_fullscreen_panel.rs
+new file mode 100644
+--- /dev/null
++++ b/src/layout/tests/emaki_fullscreen_panel.rs
+@@ -0,0 +1,250 @@
++// Copyright (C) 2026 Artur Yakymenko
++// SPDX-License-Identifier: GPL-3.0-or-later
++
++use super::*;
++use crate::layout::scrolling::{ColumnWidth, ScrollingSpace};
++
++fn setup(inset: f64, scale: f64) -> (ScrollingSpace<TestWindow>, TestWindow, Clock) {
++    let view = Size::from((1920., 1080.));
++    let options = Rc::new(Options::default());
++    let mut clock = Clock::with_time(Duration::ZERO);
++    clock.set_complete_instantly(true);
++    let mut space = ScrollingSpace::new(
++        view,
++        Rectangle::from_size(view),
++        inset,
++        scale,
++        clock.clone(),
++        options.clone(),
++    );
++    let window = TestWindow::new(TestWindowParams::new(1));
++    let tile = Tile::new(window.clone(), view, scale, clock.clone(), options);
++    space.add_tile(None, tile, true, ColumnWidth::Proportion(0.5), false, None);
++    settle(&mut space, &window);
++    (space, window, clock)
++}
++
++fn settle(space: &mut ScrollingSpace<TestWindow>, window: &TestWindow) {
++    window.communicate();
++    space.update_window(window.id(), None);
++    space.advance_animations();
++}
++
++fn assert_fullscreen(space: &ScrollingSpace<TestWindow>, window: &TestWindow, inset: f64) {
++    assert_eq!(
++        window.0.requested_size.get(),
++        Some(Size::from((1920, 1080 - inset as i32)))
++    );
++    let (tile, pos, visible) = space.tiles_with_render_positions().next().unwrap();
++    assert!(visible);
++    assert_eq!(pos, Point::from((0., inset)));
++    assert_eq!(tile.tile_size(), Size::from((1920., 1080. - inset)));
++    let (_, ipc) = space.tiles_with_ipc_layouts().next().unwrap();
++    assert_eq!(
++        ipc.tile_pos_in_workspace_view,
++        (inset > 0.).then_some((0., inset))
++    );
++    assert!(space
++        .window_under(Point::from((960., inset + 1.)))
++        .is_some());
++    if inset > 0. {
++        assert!(space
++            .window_under(Point::from((960., inset - 1.)))
++            .is_none());
++    }
++}
++
++#[test]
++fn emaki_fullscreen_panel_geometry_and_hit_testing() {
++    for scale in [1., 1.25, 2.] {
++        for inset in [0., 40., 56.] {
++            let (mut space, window, _clock) = setup(inset, scale);
++            space.set_fullscreen(window.id(), true);
++            settle(&mut space, &window);
++            assert_fullscreen(&space, &window, inset);
++        }
++    }
++}
++
++#[test]
++fn emaki_fullscreen_panel_zone_updates_and_removal() {
++    let (mut space, window, _clock) = setup(40., 1.);
++    space.set_fullscreen(window.id(), true);
++    settle(&mut space, &window);
++    for inset in [40., 56., 0., 32.] {
++        let view = Size::from((1920., 1080.));
++        space.update_config(
++            view,
++            Rectangle::from_size(view),
++            inset,
++            1.,
++            Rc::new(Options::default()),
++        );
++        settle(&mut space, &window);
++        assert_fullscreen(&space, &window, inset);
++    }
++}
++
++#[test]
++fn emaki_fullscreen_panel_preserves_normal_and_maximized_geometry() {
++    for maximized in [false, true] {
++        let (mut baseline, baseline_window, _clock) = setup(0., 1.);
++        let (mut inset, inset_window, _inset_clock) = setup(40., 1.);
++        if maximized {
++            baseline.set_maximized(baseline_window.id(), true);
++            inset.set_maximized(inset_window.id(), true);
++            settle(&mut baseline, &baseline_window);
++            settle(&mut inset, &inset_window);
++        }
++        assert_eq!(
++            baseline_window.0.requested_size.get(),
++            inset_window.0.requested_size.get()
++        );
++        let (baseline_tile, baseline_pos, _) =
++            baseline.tiles_with_render_positions().next().unwrap();
++        let (inset_tile, inset_pos, _) = inset.tiles_with_render_positions().next().unwrap();
++        assert_eq!(baseline_pos, inset_pos);
++        assert_eq!(baseline_tile.tile_size(), inset_tile.tile_size());
++        assert_eq!(
++            inset
++                .tiles_with_ipc_layouts()
++                .next()
++                .unwrap()
++                .1
++                .tile_pos_in_workspace_view,
++            None
++        );
++    }
++}
++
++#[test]
++fn emaki_fullscreen_panel_marker_predicate() {
++    use crate::layout::workspace::fullscreen_inset_marker;
++    use smithay::wayland::shell::wlr_layer::{
++        Anchor, ExclusiveZone, Layer, LayerSurfaceCachedState,
++    };
++
++    let marker = LayerSurfaceCachedState {
++        layer: Layer::Overlay,
++        anchor: Anchor::TOP | Anchor::LEFT,
++        size: Size::from((1, 52)),
++        exclusive_zone: ExclusiveZone::DontCare,
++        ..Default::default()
++    };
++    let inset = |state: &LayerSurfaceCachedState| {
++        fullscreen_inset_marker("emaki-fullscreen-inset", true, true, state)
++    };
++    assert_eq!(inset(&marker), 52.);
++    // Only the trusted shell connection reserves fullscreen space: any other client could
++    // otherwise shrink fullscreen windows on its output, in every panel mode.
++    for state in [
++        marker,
++        LayerSurfaceCachedState {
++            size: Size::from((1, i32::MAX)),
++            ..marker
++        },
++    ] {
++        assert_eq!(
++            fullscreen_inset_marker("emaki-fullscreen-inset", false, true, &state),
++            0.
++        );
++    }
++    // The panel's own exclusive zone never insets fullscreen tiles: it is shared with the
++    // ordinary working area, and changing it would resize every other window.
++    let panel = LayerSurfaceCachedState {
++        anchor: Anchor::TOP | Anchor::LEFT | Anchor::RIGHT,
++        size: Size::from((0, 84)),
++        exclusive_zone: ExclusiveZone::Exclusive(52),
++        ..marker
++    };
++    assert_eq!(
++        fullscreen_inset_marker("emaki-test-bar", true, true, &panel),
++        0.
++    );
++    assert_eq!(
++        fullscreen_inset_marker("emaki-test-dock", true, true, &marker),
++        0.
++    );
++    assert_eq!(
++        fullscreen_inset_marker("other-panel", true, true, &marker),
++        0.
++    );
++    assert_eq!(
++        fullscreen_inset_marker("emaki-fullscreen-inset", true, false, &marker),
++        0.
++    );
++    for layer in [Layer::Background, Layer::Bottom, Layer::Top] {
++        assert_eq!(inset(&LayerSurfaceCachedState { layer, ..marker }), 52.);
++    }
++    for (anchor, expected) in [
++        (Anchor::TOP, 52.),
++        (Anchor::TOP | Anchor::LEFT | Anchor::RIGHT, 52.),
++        (Anchor::LEFT, 0.),
++        (Anchor::BOTTOM | Anchor::LEFT, 0.),
++        (Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT, 0.),
++    ] {
++        assert_eq!(
++            inset(&LayerSurfaceCachedState { anchor, ..marker }),
++            expected
++        );
++    }
++    for exclusive_zone in [
++        ExclusiveZone::Neutral,
++        ExclusiveZone::DontCare,
++        ExclusiveZone::Exclusive(10),
++    ] {
++        assert_eq!(
++            inset(&LayerSurfaceCachedState {
++                exclusive_zone,
++                ..marker
++            }),
++            52.
++        );
++    }
++    for (height, top, expected) in [
++        (40, 8, 48.),
++        (40, -8, 32.),
++        (40, -80, 0.),
++        (i32::MAX, i32::MAX, 4294967294.),
++        (40, i32::MIN, 0.),
++    ] {
++        let mut state = marker;
++        state.size = Size::from((1, height));
++        state.margin.top = top;
++        assert_eq!(inset(&state), expected);
++    }
++}
++
++#[test]
++fn emaki_fullscreen_panel_output_resize_and_column_transfer() {
++    let (mut panel_space, window, clock) = setup(40., 1.);
++    panel_space.set_fullscreen(window.id(), true);
++    settle(&mut panel_space, &window);
++    let view = Size::from((1280., 720.));
++    let options = Rc::new(Options::default());
++    panel_space.update_config(view, Rectangle::from_size(view), 52., 1.25, options.clone());
++    settle(&mut panel_space, &window);
++    assert_eq!(window.0.requested_size.get(), Some(Size::from((1280, 668))));
++    let (tile, pos, _) = panel_space.tiles_with_render_positions().next().unwrap();
++    assert_eq!(pos, Point::from((0., 52.)));
++    assert_eq!(tile.tile_size(), Size::from((1280., 668.)));
++    assert_eq!(pos.y + tile.tile_size().h, view.h);
++
++    let mut plain_space =
++        ScrollingSpace::new(view, Rectangle::from_size(view), 0., 1.25, clock, options);
++    let column = panel_space.remove_column_by_idx(0, None);
++    plain_space.add_column(None, column, true, None);
++    settle(&mut plain_space, &window);
++    assert_eq!(window.0.requested_size.get(), Some(Size::from((1280, 720))));
++    let (tile, pos, _) = plain_space.tiles_with_render_positions().next().unwrap();
++    assert_eq!(pos, Point::from((0., 0.)));
++    assert_eq!(tile.tile_size(), view);
++
++    let column = plain_space.remove_column_by_idx(0, None);
++    panel_space.add_column(None, column, true, None);
++    settle(&mut panel_space, &window);
++    assert_eq!(window.0.requested_size.get(), Some(Size::from((1280, 668))));
++    let (tile, pos, _) = panel_space.tiles_with_render_positions().next().unwrap();
++    assert_eq!(pos, Point::from((0., 52.)));
++    assert_eq!(tile.tile_size(), Size::from((1280., 668.)));
++}

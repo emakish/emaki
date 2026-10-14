@@ -155,7 +155,7 @@ class DesktopApplicationMigrationTests(unittest.TestCase):
         self.apply()
         self.assertEqual(self.explicit(), {'emaki-desktop', *migration.FORMER_DESKTOP_DEPENDENCIES})
         self.assertEqual(lock.read_text(), 'held by the package transaction\n')
-        self.assertEqual(json.loads(self.state.read_text())['version'], 4)
+        self.assertEqual(json.loads(self.state.read_text())['version'], 5)
 
     def test_removed_applications_stay_removed_and_later_reason_changes_stay(self):
         self.package('firefox')
@@ -170,7 +170,7 @@ class DesktopApplicationMigrationTests(unittest.TestCase):
         self.package('firefox')
         self.apply(fresh=True)
         self.assertEqual(self.explicit(), {'emaki-desktop'})
-        self.assertEqual(json.loads(self.state.read_text())['version'], 4)
+        self.assertEqual(json.loads(self.state.read_text())['version'], 5)
 
     def test_without_desktop_package_does_not_change_package_reasons(self):
         shutil.rmtree(self.database / 'local/emaki-desktop-1-1')
@@ -569,7 +569,7 @@ class MigrationTests(unittest.TestCase):
         result = self.as_root('--transaction')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(directory.stat().st_mode & 0o7777, 0o750)
-        self.assertEqual(json.loads(state.read_text())['version'], 4)
+        self.assertEqual(json.loads(state.read_text())['version'], 5)
         # Once only: an administrator's later choice stays.
         directory.chmod(0o755)
         self.assertEqual(self.as_root('--transaction').returncode, 0)
@@ -597,6 +597,81 @@ class MigrationTests(unittest.TestCase):
         (self.root / 'var/lib/emaki/migrations/state.json').unlink()
         self.assertEqual(self.as_root().returncode, 0)
         self.assertEqual(target.stat().st_mode & 0o7777, 0o755)
+
+    @unittest.skipUnless(shutil.which('unshare'), 'unshare unavailable')
+    def test_root_only_flatpak_installation_becomes_readable_once(self):
+        # What Programs & Updates 0.8.0 left with umask 077 (a VM install of one Flathub app).
+        base = self.root / 'var/lib/flatpak'
+        deployment = base / 'app/org.example.App/x86_64/stable/abc123'
+        runtime = base / 'runtime/org.example.Platform/x86_64/25.08/def456'
+        exports = base / 'exports/share/applications'
+        for directory in (deployment / 'files/bin', deployment / 'export/share/applications',
+                          runtime / 'files', exports, base / 'repo/refs/heads/deploy'):
+            directory.mkdir(parents=True)
+        private = deployment / 'files/private'
+        private.mkdir()
+        files = {deployment / 'deploy': 0o600, deployment / 'export/share/applications/a.desktop': 0o600,
+                 exports / 'mimeinfo.cache': 0o600, deployment / 'files/bin/app': 0o700,
+                 deployment / 'metadata': 0o644, base / 'repo/refs/heads/deploy/ref': 0o600}
+        for path, mode in files.items():
+            path.write_text('x\n')
+            path.chmod(mode)
+        (exports / 'org.example.App.desktop').symlink_to(
+            '../../../app/org.example.App/x86_64/stable/abc123/export/share/applications/a.desktop')
+        for directory in (*base.rglob('*'), base / 'exports', base / 'app', base / 'runtime'):
+            if directory.is_dir() and not directory.is_symlink():
+                directory.chmod(0o700)
+        private.chmod(0o700)
+        state = self.root / 'var/lib/emaki/migrations/state.json'
+        state.parent.mkdir(parents=True, exist_ok=True)
+        state.write_text(json.dumps({'version': 4, 'units': sorted(migration.LEGACY_UNITS)}) + '\n')
+        result = self.as_root('--transaction')
+        if 'unshare' in result.stderr and result.returncode:
+            self.skipTest('user namespaces unavailable: ' + result.stderr.strip())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        mode = lambda path: path.lstat().st_mode & 0o7777
+        for directory in (base / 'exports', exports, base / 'app', deployment.parent, deployment,
+                          deployment / 'export/share/applications', runtime, base / 'repo/refs/heads/deploy'):
+            self.assertEqual(mode(directory), 0o755, directory)
+        for path in (deployment / 'deploy', deployment / 'export/share/applications/a.desktop',
+                     exports / 'mimeinfo.cache', base / 'repo/refs/heads/deploy/ref'):
+            self.assertEqual(mode(path), 0o644, path)
+        # The checked-out program keeps its committed modes.
+        self.assertEqual(mode(private), 0o700)
+        self.assertEqual(mode(deployment / 'files/bin/app'), 0o700)
+        self.assertEqual(mode(deployment / 'files/bin'), 0o700)
+        # The files directory itself is libflatpak's in a partial (Locale) checkout.
+        self.assertEqual(mode(deployment / 'files'), 0o755)
+        self.assertEqual(mode(deployment / 'metadata'), 0o644)
+        self.assertEqual(json.loads(state.read_text())['version'], 5)
+        # Once only: a later root-only choice stays.
+        exports.chmod(0o700)
+        self.assertEqual(self.as_root('--transaction').returncode, 0)
+        self.assertEqual(mode(exports), 0o700)
+
+    @unittest.skipUnless(shutil.which('unshare'), 'unshare unavailable')
+    def test_flatpak_entries_of_other_owners_or_with_group_bits_stay(self):
+        exports = self.root / 'var/lib/flatpak/exports'
+        exports.mkdir(parents=True)
+        exports.chmod(0o750)
+        mine = self.root / 'var/lib/flatpak/app'
+        mine.mkdir()
+        mine.chmod(0o700)
+        # Owned by this account outside the namespace, so not by root: unchanged.
+        migration.repair_flatpak_modes(self.root)
+        self.assertEqual(mine.stat().st_mode & 0o7777, 0o700)
+        result = self.as_root('--transaction')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(exports.stat().st_mode & 0o7777, 0o750)
+        # A linked installation is never followed.
+        shutil.rmtree(self.root / 'var/lib/flatpak')
+        target = self.root / 'elsewhere'
+        (target / 'exports').mkdir(parents=True)
+        (target / 'exports').chmod(0o700)
+        (self.root / 'var/lib/flatpak').symlink_to(target)
+        (self.root / 'var/lib/emaki/migrations/state.json').unlink()
+        self.assertEqual(self.as_root('--transaction').returncode, 0)
+        self.assertEqual((target / 'exports').stat().st_mode & 0o7777, 0o700)
 
     def test_symlinked_or_hardlinked_files_stay_untouched(self):
         external = self.put('custom', migration.LEGACY_ZRAM)

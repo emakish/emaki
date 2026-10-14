@@ -112,7 +112,7 @@ Column {
         visible: root.displays.message !== ""
         text: root.displays.message
         textFormat: Text.PlainText
-        color: "#a01b45"
+        color: SettingsTheme.error
         font.family: SettingsTheme.fontFamily
         font.pixelSize: 12
         wrapMode: Text.WordWrap
@@ -172,7 +172,7 @@ Column {
                     width: Math.max(42, modelData.logical.width * canvas.factor)
                     height: Math.max(38, modelData.logical.height * canvas.factor)
                     radius: 8
-                    color: root.selected?.name === modelData.name ? "#e7b39a" : "#d7d9de"
+                    color: root.selected?.name === modelData.name ? SettingsTheme.displaySelected : SettingsTheme.displayIdle
                     border.width: activeFocus || root.selected?.name === modelData.name ? 2 : 1
                     border.color: root.selected?.name === modelData.name ? SettingsTheme.accent : SettingsTheme.rim
                     activeFocusOnTab: true
@@ -500,7 +500,7 @@ Column {
             width: parent.width
             visible: !!root.service.night.error
             text: root.service.night.error || ""
-            color: "#a01b45"
+            color: SettingsTheme.error
             font.family: SettingsTheme.fontFamily
             font.pixelSize: 12
             wrapMode: Text.WordWrap

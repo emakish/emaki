@@ -70,14 +70,19 @@ class ShelfFileTests(unittest.TestCase):
         self.assertEqual(engine.shelf_items([missing]), [])
         self.assertEqual(engine.shelf_items([missing, self.write(GOOD)]), [KEY, NVIDIA])
 
-    def test_the_shipped_file_validates_and_retains_unavailable_items_as_data(self):
+    def test_the_shipped_file_validates_and_every_item_is_built_here(self):
         items = engine.shelf_items([SHIPPED])
         self.assertEqual([item['package'] for item in items], ['emaki-sudo-key', 'snapguard', 'emaki-nvidia'])
         self.assertEqual(items[2]['when'], 'nvidia-gpu')
         self.assertNotIn(('[PLACE' + 'HOLDER]'), SHIPPED.read_text())
         packaging = Path(engine.__file__).resolve().parents[1] / 'packaging'
+        order = (packaging / 'build.sh').read_text()
         for item in items:
-            self.assertEqual((packaging / item['package'] / 'PKGBUILD').is_file(), item['package'] != 'snapguard')
+            # Each shelf package has a recipe and is built with the Emaki repository.
+            self.assertTrue((packaging / item['package'] / 'PKGBUILD').is_file(), item['package'])
+            self.assertRegex(order, r'(?s)\nORDER=\([^)]*\s' + item['package'] + r'\s', item['package'])
+            # A person who installed a shelf package may remove it again.
+            self.assertTrue(engine.removal.assess(item['package'], 0, item['package'] + '\n', '')['ok'], item['package'])
         # The window names no shelf package; the data file does.
         ui = Path(engine.__file__).with_name('ui')
         for source in sorted(ui.glob('*.qml')) + sorted(ui.glob('*.js')):
@@ -202,6 +207,33 @@ class ShelfRowTests(unittest.TestCase):
         self.shelf_file.write_text(json.dumps(dict(GOOD, items=[dict(KEY, package='snapguard'), NVIDIA, KEY])))
         with self.gpu(('0x10de', '0x030000')):
             self.assertEqual([row['package'] for row in self.engine.catalog()['shelf']], ['emaki-nvidia'])
+
+    def test_shipped_snapguard_appears_installs_and_removes_through_the_store_path(self):
+        self.shelf_file.write_text(SHIPPED.read_text())
+        packages, installed = self.inventory.return_value
+        packages['emaki/snapguard'] = package('snapguard')
+        shipped = {item['package']: item for item in engine.shelf_items([SHIPPED])}['snapguard']
+        with self.gpu():
+            rows = self.engine.catalog()['shelf']
+        self.assertEqual([row['package'] for row in rows], ['emaki-sudo-key', 'snapguard'])
+        guard = rows[1]
+        self.assertEqual((guard['name'], guard['summary'], guard['shelf'], guard['actions'], guard['target']),
+                         (shipped['title'], shipped['summary'], True, ['install'], 'emaki/snapguard'))
+        native = dict(ok=True, code='ready', action='install', kind='arch', target='emaki/snapguard',
+                      packages=[], token='c' * 64)
+        with patch.object(engine.arch, 'install_plan', return_value=native) as install_plan:
+            plan = self.engine.plan('install', guard['key'])
+        install_plan.assert_called_once_with('emaki/snapguard', cache=self.engine.cache, refresh=True)
+        self.assertEqual((plan['ok'], plan['action'], plan['key']), (True, 'install', 'package:emaki/snapguard'))
+        installed['snapguard'] = '0.3.0-1'
+        with self.gpu():
+            guard = self.engine.catalog(refresh=True)['shelf'][1]
+        self.assertEqual((guard['installed'], guard['installedVersion'], guard['actions']), (True, '0.3.0-1', ['remove']))
+        # Removal is the removal backend's whole preview; snapguard is not a protected component.
+        self.legacy.preview.return_value = engine.removal.assess('snapguard', 0, 'snapguard\n', '')
+        plan = self.engine.plan('remove', guard['key'])
+        self.legacy.preview.assert_called_once_with('snapguard')
+        self.assertEqual((plan['ok'], plan['transaction']['packages']), (True, ['snapguard']))
 
     def test_the_first_configured_repository_wins(self):
         self.inventory.return_value = ({'emaki-testing/emaki-sudo-key': package('emaki-sudo-key', 'emaki-testing'),

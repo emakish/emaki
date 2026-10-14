@@ -10,8 +10,8 @@ Column {
     readonly property var row: catalog.row("appearance.wallpaper")
     readonly property string currentPath: (row?.value || catalog.inheritedWallpaper || "")
     readonly property string currentName: (catalog.wallpapers || []).find(picture => picture.path === currentPath)?.name || currentPath || "Inherited wallpaper"
-    readonly property alias chooser: chooser
-    property string chooserError: ""
+    readonly property var chooser: catalog.wallpaperChooser
+    readonly property string chooserError: catalog.wallpaperChooserError
     readonly property bool busy: catalog.writing || chooser.busy
     spacing: 20
     function pictureUrl(path): string {
@@ -20,31 +20,12 @@ Column {
     function choosePicture(): void {
         if (busy || !row)
             return;
-        chooserError = "";
-        chooser.start({
-            op: "wallpaper-choose"
-        });
+        catalog.chooseWallpaper();
     }
     function selectPicture(path): void {
         if (!busy && row) {
-            chooserError = "";
+            catalog.wallpaperChooserError = "";
             catalog.set("appearance.wallpaper", path);
-        }
-    }
-    PrivateJob {
-        id: chooser
-        timeoutMs: 130000
-        onCompleted: result => {
-            if (result.state === "ready" && typeof result.path === "string" && result.path.startsWith("/")) {
-                page.chooserError = "";
-                page.catalog.set("appearance.wallpaper", result.path);
-            } else if (result.state !== "cancelled") {
-                page.chooserError = "Could not choose a picture. Your wallpaper has not changed.";
-            }
-        }
-        onStateChanged: {
-            if (!["idle", "pending", "ready", "cancelled"].includes(state))
-                page.chooserError = "Could not choose a picture. Your wallpaper has not changed.";
         }
     }
     SettingsCard {
@@ -60,7 +41,7 @@ Column {
             unavailable: !page.row
             busy: page.busy
             onResetRequested: {
-                page.chooserError = "";
+                page.catalog.wallpaperChooserError = "";
                 page.catalog.reset("appearance.wallpaper");
             }
             control: Component {
@@ -102,7 +83,7 @@ Column {
                 visible: page.chooserError !== ""
                 text: page.chooserError
                 textFormat: Text.PlainText
-                color: "#a01b45"
+                color: SettingsTheme.error
                 font.family: SettingsTheme.fontFamily
                 font.pixelSize: 13
                 wrapMode: Text.WordWrap

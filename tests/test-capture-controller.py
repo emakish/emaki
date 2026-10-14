@@ -42,6 +42,7 @@ else:
     if operation == '--record':
         if scenario == 'slow-start':
             time.sleep(.6)
+        emit({'event':'stream','node':57})
         emit({'event':'recording'})
         line = sys.stdin.readline()
         event({'control':line.strip()})
@@ -119,11 +120,14 @@ def main():
                 assert call('windowId', 22)
                 assert call('output', 'TEST-2')
                 begin()
-                wait(lambda s: s['recording'])
+                # The recording's own PipeWire node is known while it runs (the privacy pill
+                # leaves that cast alone) and forgotten when the worker ends.
+                assert wait(lambda s: s['recording'])['stream_node'] == 57
                 assert not call('present')
                 assert call('finish')
                 state = wait(lambda s: not s['busy'])
                 assert state['notices'][-1]['title'] == 'Recording saved', state
+                assert state['stream_node'] == -1, state
                 operations = [json.loads(line) for line in events.read_text().splitlines()]
                 assert operations[-2]['request']['window_id'] == 22 and operations[-2]['request']['output'] == 'TEST-2'
                 assert operations[-1] == {'control': 'stop'}

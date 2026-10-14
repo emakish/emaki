@@ -101,7 +101,8 @@ def valid_name(value):
 
 
 def is_emaki(name):
-    return bool(EMAKI.fullmatch(name))
+    # An optional package can keep its own project's name (snapguard).
+    return bool(EMAKI.fullmatch(name)) or name in OPTIONAL
 
 
 def is_system(name):

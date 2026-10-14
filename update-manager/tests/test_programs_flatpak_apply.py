@@ -73,12 +73,14 @@ class HelperTests(unittest.TestCase):
                                          'GI_TYPELIB_PATH': '/caller/modules', 'XDG_DATA_HOME': '/caller/data'}), \
                     patch.object(helper.os, 'getuid', return_value=0), \
                     patch.object(helper.os, 'geteuid', return_value=0), \
-                    patch.object(helper.os, 'umask'), patch.object(helper.os, 'chdir'), \
+                    patch.object(helper.os, 'umask') as umask, patch.object(helper.os, 'chdir'), \
                     patch.object(helper.backend, 'execute', side_effect=execute) as apply:
                 status, result = self.invoke([action, 'flathub', REF, TOKEN])
                 self.assertEqual((status, result['code']), (0, 'completed'))
                 self.assertEqual(result['action'], action)
                 apply.assert_called_once()
+                # Every account must read what libflatpak writes (0.8.0 used 077: root-only).
+                self.assertEqual(umask.call_args_list[0].args, (0o022,))
 
     def test_changed_preview_refusal_is_relayed(self):
         with patch.dict(os.environ), patch.object(helper.os, 'getuid', return_value=0), \

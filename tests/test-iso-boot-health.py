@@ -62,6 +62,9 @@ class HealthTests(unittest.TestCase):
                 output = 'ext4\n'
             elif command == 'cat ' + boot.SYSTEM_MAP:
                 output, code = ('', 1) if broken == 'map-page' else (PAGE, 0)
+            elif 'emaki-boot-order --json' in command:
+                output = ('{"changed": false, "state": "refused"}\n' if broken == 'boot-order'
+                          else '{"changed": false, "state": "not_alongside"}\n')
             elif any(state in command for _, state in STATES + boot.rules_commands()):
                 assert command.startswith('XDG_RUNTIME_DIR=/run/user/$(id -u) '), command
                 output = 'not json\n' if broken == 'map-state' else '{"schema_version": 1}\n'
@@ -100,6 +103,7 @@ class HealthTests(unittest.TestCase):
                               ('system-query', 'failed-units'), ('user-query', 'failed-user-units'),
                               ('journal', 'journal-errors'),
                               ('map-page', 'map state commands: installed map readable'),
+                              ('boot-order', 'map-state-alongside-test-boot-safety'),
                               ('map-state', 'map-state-wifi-recovery')]:
             with self.subTest(broken=broken):
                 result, _, summary = self.run_boot(broken)

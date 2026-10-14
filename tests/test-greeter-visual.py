@@ -48,11 +48,21 @@ time.sleep(15)
                    EMAKI_VISUAL_OUTPUT=str(base), QS_DISABLE_CRASH_HANDLER='1')
         for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'QT_LOGGING_RULES', 'EMAKI_PYTHON'):
             env.pop(name, None)
-        for late, rejection, real_wallpaper in ((False, False, False), (True, False, False), (False, True, False), (False, True, True)):
+        # The login screen loads no settings, so it shows the default theme:
+        # dark. The light run sets the theme row in the fixture only, to keep
+        # the light plate of the shared lock surfaces covered.
+        def luminance(rgb):
+            linear = [v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4 for v in (channel / 255 for channel in rgb)]
+            return sum(v * weight for v, weight in zip(linear, (.2126, .7152, .0722)))
+        dark_plate = (28, 19, 16)  # ShellPalette.flatPlate, dark, made opaque
+        for late, rejection, real_wallpaper, theme in ((False, False, False, ''), (True, False, False, ''), (False, True, False, ''),
+                                                       (False, True, False, 'light'), (False, True, True, '')):
+            dark = theme != 'light'
             if real_wallpaper:
                 shutil.copy2(ROOT / 'art/wallpaper/fallback.png', base / 'wallpaper.png')
             result = subprocess.run(['qs', '-p', str(base / 'qml/check.qml'), '--no-color'],
-                                    env=dict(env, EMAKI_VISUAL_LATE=str(int(late)), EMAKI_VISUAL_REJECTION=str(int(rejection))), text=True,
+                                    env=dict(env, EMAKI_VISUAL_LATE=str(int(late)), EMAKI_VISUAL_REJECTION=str(int(rejection)),
+                                             EMAKI_VISUAL_THEME=theme), text=True,
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=20)
             assert result.returncode == 0 and 'GREETER_VISUAL_PASS' in result.stdout, result.stdout
             assert not any(text in result.stdout for text in ('ReferenceError', 'TypeError', 'Binding loop')), result.stdout
@@ -60,31 +70,43 @@ time.sleep(15)
                 with Image.open(base / (name + '.png')) as image:
                     assert image.convert('RGB').getbbox() is None, (name, image.getpixel((20, 20)))
             with Image.open(base / 'pour.png') as image:
-                top, bottom = image.getpixel((20, 20)), image.getpixel((20, 460))
-                assert (real_wallpaper or top[0] > 200) and bottom[:3] == (0, 0, 0), (late, top, bottom)
+                top, bottom = image.getpixel((20, 20))[:3], image.getpixel((20, 460))[:3]
+                # The pour has reached the top: the plate, not the black sheet.
+                poured = (max(top) > 15 and top[0] < 60) if dark else top[0] > 200
+                assert (real_wallpaper or poured) and bottom == (0, 0, 0), (theme, late, top, bottom)
             with Image.open(base / 'locked.png') as image:
-                pixel = image.getpixel((20, 20))
+                pixel = image.getpixel((20, 20))[:3]
                 # A timed-out decode remains the flat palette after the helper
                 # eventually succeeds; a timely image tints the actual plate.
-                assert real_wallpaper or (pixel[1] > 230 if late else pixel[1] < 200), (late, pixel)
+                if dark:
+                    flat = all(abs(a - b) <= 2 for a, b in zip(pixel, dark_plate))
+                    tinted = pixel[0] - dark_plate[0] > 8 and pixel[0] < 60
+                    assert real_wallpaper or (flat if late else tinted), (theme, late, pixel)
+                else:
+                    assert real_wallpaper or (pixel[1] > 230 if late else pixel[1] < 200), (theme, late, pixel)
             if rejection:
+                # Dark: ShellPalette.dangerOnDark on the dark plate; light:
+                # dangerOnLight on the light plate.
+                plate, ink = (dark_plate, (255, 179, 201)) if dark else ((255, 248, 243), (160, 27, 69))
                 with Image.open(base / 'rejected.png') as image:
-                    # The real error label below the field: red Emaki ink, six
+                    # The real error label below the field: Emaki error ink, six
                     # seconds after refusal, still visible while a retry is typed.
                     region = image.convert('RGB').crop((100, 282, 540, 310))
-                    assert sum(r > g * 1.7 and r > b * 1.2 and r < 190 for r, g, b in (region.getpixel((x, y)) for y in range(region.height) for x in range(region.width))) > 30
+                    pixels = [region.getpixel((x, y)) for y in range(region.height) for x in range(region.width)]
+                    if dark:
+                        assert sum(r > 200 and r > g * 1.2 and r > b * 1.1 for r, g, b in pixels) > 30
+                    else:
+                        assert sum(r > g * 1.7 and r > b * 1.2 and r < 190 for r, g, b in pixels) > 30
                     # The fully opaque plate fixes contrast even on a real image.
-                    assert image.convert('RGB').getpixel((320, 280)) == (255, 248, 243)
-                    def luminance(rgb):
-                        linear = [v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4 for v in (channel / 255 for channel in rgb)]
-                        return sum(v * weight for v, weight in zip(linear, (.2126, .7152, .0722)))
-                    assert (160, 27, 69) in region.getdata()
-                    assert (luminance((255, 248, 243)) + .05) / (luminance((160, 27, 69)) + .05) > 7
-                shutil.copy2(base / 'rejected.png', CACHE / ('u3b-greeter-real-wallpaper.png' if real_wallpaper else 'u3b-greeter-rejected.png'))
-                print('PASS: greeter rejection remains visible after six seconds and while typing')
+                    assert image.convert('RGB').getpixel((320, 280)) == plate, (theme, image.convert('RGB').getpixel((320, 280)))
+                    assert ink in pixels, theme
+                    assert (max(luminance(plate), luminance(ink)) + .05) / (min(luminance(plate), luminance(ink)) + .05) > 7
+                name = 'u3b-greeter-real-wallpaper.png' if real_wallpaper else 'u3b-greeter-rejected%s.png' % ('-light' if theme == 'light' else '')
+                shutil.copy2(base / 'rejected.png', CACHE / name)
+                print('PASS: greeter rejection remains visible after six seconds and while typing; theme =', theme or 'default (dark)')
             with Image.open(base / 'finished.png') as image:
                 assert image.getpixel((20, 20))[:3] == (0, 0, 0)
-            print('PASS: greeter black preparation/pour/drain; late decode =', late)
+            print('PASS: greeter black preparation/pour/drain; late decode =', late, '; theme =', theme or 'default (dark)')
 
 
 if __name__ == '__main__':

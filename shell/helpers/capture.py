@@ -552,6 +552,8 @@ class Recorder:
             if time.monotonic() >= deadline:
                 raise CaptureError('capture_timeout')
             time.sleep(.02)
+        # Before anything reads the node: the shell must know this cast is its own.
+        emit('stream', node=self.node)
         self.lock_watch = LockWatch()
         guard()
         if self.input_stopped():

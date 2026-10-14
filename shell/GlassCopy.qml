@@ -3,7 +3,7 @@ import QtQuick
 
 // A GlassTarget drawn once more on the glass while a drop covers it (dual() in the liquid-glass
 // mockups): its own pixels (ShaderEffectSource draws the source without its own opacity, so
-// the copy shows it whole with `alpha` while the original fades under the glass), on a
+// the copy is fully visible while its own drop exists; departing targets follow coverage), on a
 // rectangle snapped to device pixels so text is not resampled at 1.25. `space` is the item the
 // copy's parent shares its origin with (a layer at the screen or bar origin); bump `tick` to
 // re-read where the target is.

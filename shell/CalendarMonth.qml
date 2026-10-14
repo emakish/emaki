@@ -146,6 +146,7 @@ Item {
             readonly property bool inMonth: number > 0 && number <= calendar.days
             readonly property bool isToday: inMonth && calendar.current && number === calendar.today.getDate()
             glass: calendar.glass
+            accent: isToday
             key: "day-" + calendar.year + "-" + calendar.month + "-" + index
             label: String(number)
             pressable: inMonth

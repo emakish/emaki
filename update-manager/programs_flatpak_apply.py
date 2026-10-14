@@ -58,7 +58,10 @@ def main(arguments):
         # may influence the privileged library. Load libflatpak only after this.
         os.environ.clear()
         os.environ.update(PATH=os.defpath, LC_ALL='C', HOME=pwd.getpwuid(0).pw_dir)
-        os.umask(0o077)
+        # libflatpak creates the installation's exports and deployments with this umask, and
+        # every account must read them to list and run its programs (077 left them root-only).
+        # Receipts set their own mode.
+        os.umask(0o022)
         os.chdir('/')
         if action == 'undo':
             path = receipts.DIRECTORY / (identity + '.json')

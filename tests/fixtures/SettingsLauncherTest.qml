@@ -88,7 +88,7 @@ SettingsIpcHarness {
             }
         }
         function test_integrated_pages_and_search() {
-            const pages = [["users", "SettingsUsersPage", "Other users", "users-other-users", "settings-users-others"], ["storage", "SettingsStoragePage", "System and home", "storage-disks", "settings-storage-disks"], ["privacy", "SettingsPrivacyPage", "Disk encryption", "privacy-encryption", "settings-privacy-encryption"], ["panel", "SettingsCorePage", "Panel auto-hide", "panel-panel-auto-hide", "bar.autohide"], ["windows", "SettingsCorePage", "Window gaps", "windows-window-gaps", "appearance.gaps"], ["wifi", "SettingsWifiPage", "Wi-Fi", "wifi-radio", "settings-wifi-power"], ["bluetooth", "SettingsBluetoothPage", "Bluetooth", "bluetooth-radio", "settings-bluetooth-power"], ["network", "SettingsNetworkPage", "Wired", "network-wired", "settings-network-wired"], ["sound", "SoundSettingsPage", "Volume", "sound-volume", "settings-sound-volume"], ["displays", "DisplaysSettingsPage", "Resolution", "displays-resolution", "settings-display-resolution"], ["battery", "SettingsPowerPage", "Power mode", "battery-power-mode", "settings-power-profile"], ["keyboard", "KeyboardSettingsPage", "Keyboard shortcuts", "keyboard-keyboard-shortcuts", "settings-keyboard-shortcuts"], ["mouse", "MouseSettingsPage", "Mouse pointer speed", "mouse-pointer-speed", "mouse.speed"], ["notifications", "NotificationsSettingsPage", "Do Not Disturb", "notifications-do-not-disturb", "notifications.dnd"], ["wallpaper", "SettingsWallpaperPage", "Your own picture", "wallpaper-your-own-picture", "appearance.wallpaper"], ["apps", "SettingsAppsPage", "Startup apps", "apps-startup-apps", "settings-startup-apps"], ["region", "SettingsRegionPage", "Language", "region-language", "settings-language"], ["about", "SettingsAboutPage", "Emaki version", "about-emaki-version", "settings-about-version"], ["updates", "SettingsMaintenancePage", "Update channel", "updates-update-channel", "settings-update-channel"], ["lock", "SettingsMaintenancePage", "Password", "lock-password", "settings-password"]];
+            const pages = [["users", "SettingsUsersPage", "Other users", "users-other-users", "settings-users-others"], ["storage", "SettingsStoragePage", "System and home", "storage-disks", "settings-storage-disks"], ["privacy", "SettingsPrivacyPage", "Disk encryption", "privacy-encryption", "settings-privacy-encryption"], ["panel", "SettingsCorePage", "Panel auto-hide", "panel-panel-auto-hide", "bar.autohide_mode"], ["windows", "SettingsCorePage", "Window gaps", "windows-window-gaps", "appearance.gaps"], ["wifi", "SettingsWifiPage", "Wi-Fi", "wifi-radio", "settings-wifi-power"], ["bluetooth", "SettingsBluetoothPage", "Bluetooth", "bluetooth-radio", "settings-bluetooth-power"], ["network", "SettingsNetworkPage", "Wired", "network-wired", "settings-network-wired"], ["sound", "SoundSettingsPage", "Volume", "sound-volume", "settings-sound-volume"], ["displays", "DisplaysSettingsPage", "Resolution", "displays-resolution", "settings-display-resolution"], ["battery", "SettingsPowerPage", "Power mode", "battery-power-mode", "settings-power-profile"], ["keyboard", "KeyboardSettingsPage", "Keyboard shortcuts", "keyboard-keyboard-shortcuts", "settings-keyboard-shortcuts"], ["mouse", "MouseSettingsPage", "Mouse pointer speed", "mouse-pointer-speed", "mouse.speed"], ["notifications", "NotificationsSettingsPage", "Do Not Disturb", "notifications-do-not-disturb", "notifications.dnd"], ["wallpaper", "SettingsWallpaperPage", "Your own picture", "wallpaper-your-own-picture", "appearance.wallpaper"], ["apps", "SettingsAppsPage", "Startup apps", "apps-startup-apps", "settings-startup-apps"], ["region", "SettingsRegionPage", "Language", "region-language", "settings-language"], ["about", "SettingsAboutPage", "Emaki version", "about-emaki-version", "settings-about-version"], ["updates", "SettingsMaintenancePage", "Update channel", "updates-update-channel", "settings-update-channel"], ["lock", "SettingsMaintenancePage", "Password", "lock-password", "settings-password"]];
             equal(harness.controller.opened, false);
             equal(harness.scene.input.settingsActive, false);
             compare(Array.from(harness.controller.availablePages).sort(), pages.map(entry => entry[0]).concat(["assistants"]).sort());
@@ -113,6 +113,26 @@ SettingsIpcHarness {
                 check(named(result.target) !== undefined || named("setting-" + result.target) !== undefined);
             }
             const view = show("about");
+            // No picture (no account service here): the initial stays; a picture covers it.
+            const avatar = named("settings-account-picture");
+            check(avatar !== undefined);
+            equal(avatar.showsPicture, false);
+            equal(named("settings-account-initial").visible, true);
+            avatar.url = "file://" + Quickshell.env("SETTINGS_ACCOUNT_PICTURE");
+            tryCompare(avatar, "showsPicture", true);
+            equal(named("settings-account-initial").visible, false);
+            // The canvas's own pixels: the picture inside the circle, nothing at its corner.
+            const pixel = (x, y) => Array.from(avatar.getContext("2d").getImageData(x, y, 1, 1).data);
+            tryVerify(() => {
+                const centre = pixel(21, 21);
+                return centre[2] > 180 && centre[0] < 80 && centre[3] === 255;
+            }, 3000, "the account picture is drawn");
+            equal(pixel(1, 1)[3], 0);
+            shot(view, "settings-account-picture.png");
+            avatar.url = "";
+            tryCompare(avatar, "showsPicture", false);
+            equal(named("settings-account-initial").visible, true);
+            tryVerify(() => pixel(21, 21)[3] === 0, 3000, "no picture is drawn");
             mouseClick(named("settings-account-row"));
             equal(view.page, "users");
         }
@@ -140,7 +160,7 @@ SettingsIpcHarness {
         }
         function test_keyboard_traversal() {
             const view = show("panel");
-            const toggle = named("setting-bar.autohide").controlItem;
+            const toggle = named("setting-bar.autohide_mode").controlItem;
             view.search.forceActiveFocus();
             for (let i = 0; i < 80 && !toggle.activeFocus; ++i)
                 keyClick(Qt.Key_Tab);
@@ -539,34 +559,55 @@ SettingsIpcHarness {
         }
         function test_toggle_reset_and_busy() {
             const view = show("panel");
-            const row = named("setting-bar.autohide");
+            const row = named("setting-bar.autohide_mode");
+            const choice = row.controlItem;
             const resetPage = named("settings-reset-page");
             check(!row.resetItem.visible);
             check(!resetPage.visible);
-            mouseClick(row.controlItem);
-            equal(harness.catalog.calls.length, 1);
-            equal(harness.catalog.calls[0].operation, "set");
-            equal(harness.catalog.calls[0].key, "bar.autohide");
-            equal(harness.catalog.calls[0].value, "true");
-            tryCompare(row, "value", true);
+            equal(choice.displayText, "In Full Screen Only");
+            check(!choice.contentItem.truncated);
+            function choose(index) {
+                mouseClick(choice);
+                tryVerify(() => choice.popup.opened);
+                keyClick(Qt.Key_Home);
+                for (let i = 0; i < index; ++i)
+                    keyClick(Qt.Key_Down);
+                keyClick(Qt.Key_Return);
+                tryVerify(() => !choice.popup.opened);
+            }
+            const modes = ["always", "desktop", "fullscreen", "never"];
+            const labels = ["Always", "On Desktop Only", "In Full Screen Only", "Never"];
+            for (let i = 0; i < modes.length; ++i) {
+                choose(i);
+                equal(harness.catalog.calls.length, i + 1);
+                equal(harness.catalog.calls[i].operation, "set");
+                equal(harness.catalog.calls[i].key, "bar.autohide_mode");
+                equal(harness.catalog.calls[i].value, modes[i]);
+                tryCompare(row, "value", modes[i]);
+                equal(choice.displayText, labels[i]);
+                check(!choice.contentItem.truncated);
+            }
             check(row.resetItem.visible);
-            check(resetPage.visible);
             mouseClick(row.resetItem);
-            equal(harness.catalog.calls[1].operation, "reset");
-            tryCompare(row, "value", false);
-            check(!row.resetItem.visible);
+            equal(harness.catalog.calls[4].operation, "reset");
+            tryCompare(row, "value", "fullscreen");
             check(!resetPage.visible);
             harness.catalog.busy = true;
-            mouseClick(row.controlItem);
-            equal(harness.catalog.calls.length, 2);
-            equal(row.controlItem.enabled, false);
+            mouseClick(choice);
+            equal(harness.catalog.calls.length, 5);
+            equal(choice.enabled, false);
             harness.catalog.busy = false;
-            mouseClick(row.controlItem);
+            choose(0);
             tryVerify(() => resetPage.visible);
             mouseClick(resetPage);
-            tryCompare(row, "value", false);
+            tryCompare(row, "value", "fullscreen");
             check(!resetPage.visible);
-            equal(harness.catalog.calls[3].operation, "reset");
+            equal(harness.catalog.calls[6].operation, "reset");
+            mouseClick(choice);
+            tryVerify(() => choice.popup.opened);
+            wait(100);
+            shot(harness.window.contentItem, "settings-panel-choices.png");
+            keyClick(Qt.Key_Escape);
         }
         function test_history_guards() {
             const view = show("panel");
@@ -576,7 +617,7 @@ SettingsIpcHarness {
                     kind: "set",
                     changes: [
                         {
-                            key: "bar.autohide"
+                            key: "bar.autohide_mode"
                         }
                     ]
                 },

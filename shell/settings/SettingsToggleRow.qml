@@ -17,6 +17,8 @@ SettingsRow {
             Accessible.name: root.title
             Accessible.role: Accessible.CheckBox
             Accessible.checked: !!root.value
+            Keys.onReturnPressed: clicked()
+            Keys.onEnterPressed: clicked()
             onClicked: root.requestValue(!root.value)
             background: Rectangle {
                 antialiasing: true
@@ -37,7 +39,7 @@ SettingsRow {
                     width: 20
                     height: 20
                     radius: 10
-                    color: "#fffaf6"
+                    color: SettingsTheme.knob
                 }
             }
         }

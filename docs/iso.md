@@ -558,8 +558,9 @@ After multi-user.target and boot completion, `emaki-boot-refresh.service` runs
 it only recovers a recognized previous-boot refresh lock. Each boot attempt consumes its
 budget before refresh work, including package-lock contention or interruption.
 A held run lock defers retry with exit zero and leaves the marker and attempt
-count unchanged. Success, a kept
-loader or a permanent refusal clears pending retry; kept/refused outcomes are
+count unchanged. Success clears pending retry. On a boot retry, a kept loader or a
+permanent refusal retains the marker with an exhausted budget; an explicit hook or
+manual attempt that ends kept or refused clears it. Kept/refused outcomes are
 recorded and reported once, without a failed unit for permanent refusal. Transient
 command or I/O failures get at most three boot attempts, then stop. A subsequent
 hook or manual refresh can start a new budget. Both retry and boot completion have
@@ -648,7 +649,7 @@ sudo cat /boot/emaki/*/manifest.json
 
 Capture the complete package transaction output. It must show the refresh hook
 and its success message. Do not run a manual refresh before the first reboot:
-that would hide a broken package hook. The 0.8.0 packages must upgrade the installed
+that would hide a broken package hook. The 0.8.1 packages must upgrade the installed
 0.2.0 packages so ordinary `pacman -Syu` selects them. No publication is part of this check.
 
 Reboot and capture the actual framebuffer:

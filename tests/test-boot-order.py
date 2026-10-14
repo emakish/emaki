@@ -4,7 +4,7 @@
 """Firmware priority recovery preserves foreign loaders and ambiguous state."""
 import importlib.machinery
 import importlib.util
-from contextlib import ExitStack, nullcontext, redirect_stderr
+from contextlib import ExitStack, nullcontext, redirect_stderr, redirect_stdout
 import io
 import json
 import tempfile
@@ -53,6 +53,145 @@ class Recovery(unittest.TestCase):
             mock.start()
             self.addCleanup(mock.stop)
 
+    def status(self, marker, fstab_text):
+        """Status without the record: only the fstab is read, never firmware or DMI data."""
+        fstab = self.pending.parent / 'fstab'
+        fstab.write_text(fstab_text)
+        real_read = module.Path.read_text
+        def read_text(path, *args, **kwargs):
+            self.assertEqual(path, fstab)
+            return real_read(path, *args, **kwargs)
+        output = io.StringIO()
+        with patch.object(module, 'MARKER', marker), patch.object(module, 'FSTAB', fstab), \
+                patch.object(module, 'recover') as recover, \
+                patch.object(module.Path, 'read_text', read_text), \
+                patch.object(sys, 'argv', ['emaki-boot-order', '--json']), redirect_stdout(output):
+            code = module.main()
+        recover.assert_not_called()
+        return code, json.loads(output.getvalue())
+
+    def test_non_alongside_status_is_success_without_firmware_access(self):
+        fstab = ('UUID=1111 / btrfs rw,noatime,subvol=/@ 0 0\n'
+                 'UUID=2222 /efi vfat rw,relatime,fmask=0077,dmask=0077,errors=remount-ro 0 2\n')
+        self.assertEqual(self.status(self.pending.parent / 'absent', fstab),
+                         (0, {'state': 'not_alongside', 'changed': False}))
+
+    def test_missing_installation_record_with_surviving_evidence_refuses(self):
+        marker = self.pending.parent / 'alongside-boot.json'
+        stop = marker.with_name('shared-esp-stop.json')
+        # The installer's alongside row: rw and relatime removed, ro and noatime added, no fsck.
+        installed = 'UUID=2222\t/efi\tvfat\tfmask=0022,dmask=0022,codepage=437,ro,noatime\t0\t0\n'
+        for evidence in ('readonly_fstab', 'stop_file', 'stop_symlink', 'marker_symlink'):
+            with self.subTest(evidence=evidence):
+                marker.unlink(missing_ok=True)
+                stop.unlink(missing_ok=True)
+                if evidence == 'stop_file':
+                    stop.write_text('{}\n')
+                elif evidence == 'stop_symlink':
+                    stop.symlink_to('missing-stop')
+                elif evidence == 'marker_symlink':
+                    marker.symlink_to('missing-marker')
+                code, answer = self.status(marker, installed if evidence == 'readonly_fstab' else '')
+                self.assertEqual(code, 1)
+                self.assertEqual(answer['state'], 'refused')
+                if evidence != 'marker_symlink':
+                    # A symlinked record is already refused by the no-follow open.
+                    self.assertEqual(answer, {'state': 'refused', 'changed': False,
+                                              'reason': 'missing_installation_record'})
+
+    def test_missing_record_ignores_unrelated_fstab_rows(self):
+        for row in ('UUID=1234 /efi vfat defaults,rw 0 2',
+                    'UUID=1234 /efi vfat rw,errors=remount-ro 0 2',
+                    'UUID=1234 /boot vfat defaults,ro 0 2',
+                    '# UUID=1234 /efi vfat defaults,ro 0 2',
+                    'UUID=1234 /efi/extra vfat ro 0 2'):
+            with self.subTest(row=row):
+                self.assertEqual(self.status(self.pending.parent / 'absent', row + '\n'),
+                                 (0, {'state': 'not_alongside', 'changed': False}))
+
+    def test_changed_firmware_uses_current_windows_inventory_for_menu(self):
+        menu = (f'# Windows firmware target: {UUID} /EFI/Microsoft/Boot/bootmgfw.efi\n'
+                '  if bootnext 0001; then\n')
+        fresh = inventory('0004,0002,0003').replace('Boot0001*', 'Boot0004*')
+        for current, expected in ((fresh, 'refresh_pending'),
+                                  (inventory('0001,0001,0002'), 'windows_unsafe')):
+            with self.subTest(expected=expected):
+                self.pending.unlink(missing_ok=True)
+                replies = iter((inventory(), current))
+                def run(args):
+                    self.assertEqual(args, ['efibootmgr', '-v'])
+                    return next(replies)
+                result = module.recover(UUID, 'Dell', run, True, menu=menu)
+                self.assertEqual(result, {'state': 'refused', 'changed': False,
+                                         'reason': 'firmware_changed', 'menu': expected})
+                self.assertEqual(self.pending.exists(), expected == 'refresh_pending')
+
+    def test_recovery_refusals_still_check_menu(self):
+        for reason, listing in (
+            ('ambiguous_boot_entries', inventory('0001,0003')),
+            ('unverified_emaki_entry', inventory().replace('grubx64.efi', 'unknown.efi')),
+            ('invalid_boot_order', inventory('0001,0001,0002')),
+            ('firmware_changed', inventory()),
+        ):
+            with self.subTest(reason=reason):
+                self.pending.unlink(missing_ok=True)
+                calls = []
+                def run(args):
+                    self.assertEqual(args, ['efibootmgr', '-v'])
+                    calls.append(args)
+                    return inventory('0003,0001,0002') if len(calls) > 1 else listing
+                result = module.recover(UUID, 'Dell', run, True, menu='')
+                menu = 'windows_unsafe' if reason == 'invalid_boot_order' else 'refresh_pending'
+                self.assertEqual(result, {'state': 'refused', 'changed': False,
+                                         'reason': reason, 'menu': menu})
+                if menu == 'refresh_pending':
+                    self.assertEqual(json.loads(self.pending.read_text()), {'boots': 0})
+                else:
+                    self.assertFalse(self.pending.exists())
+
+    def test_p4_case_h_renumbered_windows_without_ordered_emaki_queues_menu(self):
+        partuuid = '33333333-3333-4333-8333-333333333333'
+        listing = (ROOT / 'tests/fixtures/firmware/mac-booted.txt').read_text()
+        listing = listing.replace('Boot0002* Windows', 'Boot0004* Windows').replace(
+            'BootOrder: 0003,0002,0001,0000,0080', 'BootOrder: 0004,0001,0000,0080')
+        menu = (f'# Windows firmware target: {partuuid} /EFI/Microsoft/Boot/bootmgfw.efi\n'
+                '  if bootnext 0002; then\n')
+        def run(args):
+            self.assertEqual(args, ['efibootmgr', '-v'])
+            return listing
+        result = module.recover(partuuid, 'Dell', run, True, menu=menu)
+        self.assertEqual(result, {'state': 'refused', 'changed': False,
+                                 'reason': 'ambiguous_boot_entries', 'menu': 'refresh_pending'})
+        self.assertEqual(json.loads(self.pending.read_text()), {'boots': 0})
+
+    def test_refusal_from_recovery_exits_nonzero_with_menu(self):
+        result = {'state': 'refused', 'changed': False, 'reason': 'invalid_boot_order',
+                  'menu': 'refresh_available'}
+        output = io.StringIO()
+        with patch.object(module, 'read_marker', return_value=UUID), \
+                patch.object(module.Path, 'read_text', return_value='Dell'), \
+                patch.object(module, 'recover', return_value=result), \
+                patch.object(sys, 'argv', ['emaki-boot-order', '--json']), redirect_stdout(output):
+            self.assertEqual(module.main(), 1)
+        self.assertEqual(json.loads(output.getvalue()), result)
+
+    def test_inaccessible_or_invalid_installation_record_still_refuses(self):
+        for error in (PermissionError('denied'), ValueError('invalid_installation_record')):
+            output = io.StringIO()
+            with self.subTest(error=error), patch.object(module, 'read_marker', side_effect=error), \
+                    patch.object(sys, 'argv', ['emaki-boot-order', '--json']), redirect_stdout(output):
+                self.assertEqual(module.main(), 1)
+            self.assertEqual(json.loads(output.getvalue()),
+                             {'state': 'refused', 'changed': False, 'reason': str(error)})
+
+    def test_missing_firmware_vendor_is_not_non_alongside(self):
+        output = io.StringIO()
+        with patch.object(module, 'read_marker', return_value=UUID), \
+                patch.object(module.Path, 'read_text', side_effect=FileNotFoundError('vendor missing')), \
+                patch.object(sys, 'argv', ['emaki-boot-order', '--json']), redirect_stdout(output):
+            self.assertEqual(module.main(), 1)
+        self.assertEqual(json.loads(output.getvalue())['state'], 'refused')
+
     def test_efibootmgr18_recovers_and_preserves_windows_optional_data(self):
         calls = []
         current = inventory18()
@@ -76,11 +215,12 @@ class Recovery(unittest.TestCase):
             inventory18().replace('\\Emaki\\grubx64.efi', '\\Microsoft\\Boot\\bootmgfw.efi'),
             inventory18().replace('/\\EFI\\Emaki\\grubx64.efi', '/File(\\EFI\\Emaki\\grubx64.efi'),
         ):
-            with self.subTest(data=data), self.assertRaisesRegex(ValueError, 'unverified_emaki_entry'):
+            with self.subTest(data=data):
                 def run(args):
                     self.assertEqual(args, ['efibootmgr', '-v'])
                     return data
-                module.recover(UUID, 'Dell Inc.', run, repair=True)
+                self.assertEqual(module.recover(UUID, 'Dell Inc.', run, repair=True),
+                                 {'state': 'refused', 'changed': False, 'reason': 'unverified_emaki_entry'})
 
     def test_stale_same_loader_entry_does_not_block_current_installation(self):
         stale = inventory().splitlines()[3].replace('Boot0002', 'Boot0004').replace(
@@ -140,11 +280,13 @@ class Recovery(unittest.TestCase):
             inventory('0001,0003'),
         ]
         for data in bad:
-            with self.subTest(data=data), self.assertRaises(ValueError):
+            with self.subTest(data=data):
                 def run(args):
                     self.assertEqual(args, ['efibootmgr', '-v'])
                     return data
-                module.recover(UUID, 'Dell Inc.', run, True)
+                result = module.recover(UUID, 'Dell Inc.', run, True)
+                self.assertEqual(result['state'], 'refused')
+                self.assertFalse(result['changed'])
 
     def test_firmware_expanded_path_and_duplicate_entries(self):
         expanded = inventory().replace(
@@ -191,8 +333,8 @@ class Recovery(unittest.TestCase):
         def run(args):
             self.assertEqual(args, ['efibootmgr', '-v'])
             return next(answers)
-        with self.assertRaisesRegex(ValueError, 'firmware_changed'):
-            module.recover(UUID, 'Dell', run, True)
+        self.assertEqual(module.recover(UUID, 'Dell', run, True),
+                         {'state': 'refused', 'changed': False, 'reason': 'firmware_changed'})
 
     def test_sanitized_firmware_listings(self):
         partuuid = '33333333-3333-4333-8333-333333333333'
@@ -218,8 +360,10 @@ class Recovery(unittest.TestCase):
                 self.assertEqual(calls, [['efibootmgr', '-v']])
                 if name != 'mac-booted':
                     calls.clear()
-                    with self.assertRaisesRegex(ValueError, 'ambiguous_boot_entries'):
-                        module.recover(partuuid, 'Dell', run, True, menu='')
+                    result = module.recover(partuuid, 'Dell', run, True, menu='')
+                    self.assertEqual(result['state'], 'refused')
+                    self.assertEqual(result['reason'], 'ambiguous_boot_entries')
+                    self.assertIn('menu', result)
                     self.assertEqual(calls, [['efibootmgr', '-v']])
 
     def test_inactive_entry_activated_without_creation(self):
@@ -400,6 +544,24 @@ class Recovery(unittest.TestCase):
                 return inventory()
             self.assertEqual(module.recover(UUID, 'Dell', run, True),
                              {'state': 'recovery_uncertain', 'changed': None})
+
+
+class Documentation(unittest.TestCase):
+    def test_the_installed_map_names_the_status_without_a_record(self):
+        # The installed system map is rendered from MANIFEST.md.
+        page = (ROOT / 'docs/system-map.md').read_text()
+        block = page.split('component: alongside-test-boot-safety\n', 1)[1].split('```', 1)[0]
+        change = ' '.join(next(line for line in block.splitlines() if line.startswith('change:')).split())
+        self.assertIn('A refused priority recovery still checks and queues the menu.', change)
+        self.assertIn('not_alongside', change)
+        self.assertIn('missing_installation_record', change)
+
+    def test_retry_marker_text_separates_boot_retries_from_explicit_attempts(self):
+        text = ' '.join((ROOT / 'docs/iso.md').read_text().split())
+        self.assertIn('On a boot retry, a kept loader or a permanent refusal retains the marker with '
+                      'an exhausted budget; an explicit hook or manual attempt that ends kept or '
+                      'refused clears it.', text)
+        self.assertNotIn('Success clears pending retry; a kept loader', text)
 
 
 if __name__ == '__main__':

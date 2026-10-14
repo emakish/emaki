@@ -38,7 +38,7 @@ QtObject {
     readonly property int launcherTileBubble: 88
     readonly property int morphMs: 380
     readonly property var morphCurve: [0.32, 0.72, 0, 1, 1, 1]
-    readonly property color faint: "#6d5d4f"
-    readonly property color dim: "#5a4c40"
-    readonly property color line: "#3a2e25"
+    readonly property color faint: LiquidPalette.metricFaint
+    readonly property color dim: LiquidPalette.metricDim
+    readonly property color line: LiquidPalette.metricLine
 }

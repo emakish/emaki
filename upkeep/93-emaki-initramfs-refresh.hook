@@ -1,9 +1,12 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 [Trigger]
+Operation = Install
 Operation = Upgrade
 Type = Package
 Target = emaki-config
+Target = emaki-apps
+Target = emaki-desktop
 
 [Trigger]
 Type = Path

@@ -81,6 +81,13 @@ Scope {
         id: lockEnvironment
         isolateHelper: true
     }
+    // Only a chosen account's picture: the name step shows the silhouette.
+    AccountPicture {
+        id: accountPicture
+        user: memory.user
+        active: memory.user !== ""
+        isolateHelper: true
+    }
     GreeterSession {
         id: lockSession
         auth: controller
@@ -210,6 +217,8 @@ Scope {
                     environment: lockEnvironment
                     screen: panel.screen
                     wallpaperRoot: memory.wallpaperRoot
+                    avatarUrl: accountPicture.url
+                    avatarPending: accountPicture.pending
                     greeter: true
                     wallpaperSelectionReady: root.selectionLoaded
                 }

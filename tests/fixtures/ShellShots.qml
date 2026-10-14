@@ -11,6 +11,7 @@ ShellRoot {
     readonly property int shotScale: Number(Quickshell.env("QT_SCALE_FACTOR"))
     readonly property string fallback: Quickshell.env("EMAKI_FIXTURE_FALLBACK")
     property int stage: 0
+    property int enteredIndex: -1
     property int wallpaperWaits: 0
     property int iconIndex: 0
     readonly property var kinds: ["logo", "corner", "tray", "file", "wifi", "wired", "bt", "sound", "light", "battery", "power-saver", "balanced", "performance", "lock", "sleep", "restart", "shutdown", "logout", "hibernate"]
@@ -39,6 +40,14 @@ ShellRoot {
 
     SystemFixture {
         id: systemFixture
+        // The pixel checks of tests/shell-shots.py are the light ones (orange selected drops):
+        // choose light, since nothing saved is dark.
+        Component.onCompleted: SettingsBridge.values = [
+            {
+                key: "appearance.theme",
+                value: "light"
+            }
+        ]
     }
     NiriService {
         id: niri
@@ -185,13 +194,22 @@ ShellRoot {
                     throw new Error("Launcher drops missing: " + JSON.stringify(glass));
                 root.save(canvas, "launcher", () => {
                     root.stage = 4;
-                    // The arrows move the one selection bubble to the next tile.
-                    pointer.keyClick(Qt.Key_Right);
+                    // Down moves the highlight on (the 0.8.0 step) and enters results; Left
+                    // then moves the one selection bubble to the neighbouring tile.
+                    if (!scene.input.inputFocused)
+                        throw new Error("Launcher did not begin in the search field");
+                    pointer.keyClick(Qt.Key_Down);
+                    if (canvas.Window.window.activeFocusItem?.objectName !== "launcher-results")
+                        throw new Error("Down did not enter launcher results");
+                    root.enteredIndex = JSON.parse(scene.status()).search.selected_index;
+                    if (root.enteredIndex < 1)
+                        throw new Error("Down did not move the highlight on");
+                    pointer.keyClick(Qt.Key_Left);
                     tick.restart();
                 });
             } else if (root.stage === 4) {
-                if (JSON.parse(scene.status()).search.selected_index !== 1)
-                    throw new Error("Arrow did not move the selection");
+                if (canvas.Window.window.activeFocusItem?.objectName !== "launcher-results" || JSON.parse(scene.status()).search.selected_index !== root.enteredIndex - 1)
+                    throw new Error("Arrow did not move the selection: " + root.enteredIndex + " -> " + JSON.parse(scene.status()).search.selected_index);
                 root.save(canvas, "launcher-selected", () => {
                     root.stage = 200;
                     scene.context.settingsController.openOn(scene, "panel");

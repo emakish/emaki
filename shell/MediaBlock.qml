@@ -178,6 +178,7 @@ Item {
                 required property var modelData
                 readonly property bool active: modelData === media.player
                 glass: media.glass
+                accent: active
                 key: "player-" + (modelData.dbusName || modelData.identity)
                 label: modelData.identity || "Player"
                 width: playerLabel.implicitWidth + 20

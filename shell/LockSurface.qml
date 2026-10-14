@@ -12,6 +12,8 @@ Item {
     readonly property Item glassItem: visual.item as Item
     property string captureUrl: ""
     property string wallpaperRoot: ""
+    property string avatarUrl: ""
+    property bool avatarPending: false
     property bool greeter: false
     property bool wallpaperSelectionReady: true
     readonly property bool revealCapture: session.phase === "pour" || (session.authenticated && session.phase === "drain")
@@ -121,20 +123,65 @@ Item {
             border.color: LiquidPalette.flatDropRim
             visible: !surface.glassReady
         }
+        // The account picture, or a silhouette without one, inside the drop's rim.
         Canvas {
+            id: avatar
+            objectName: "lock-avatar"
+            property string loaded: ""
+            property bool showsPicture: false
+            readonly property color ink: LiquidPalette.faint
+            onInkChanged: requestPaint()
             x: geometry.avatarRect.x
             y: geometry.avatarRect.y
             width: surface.avatarSize
             height: width
             opacity: Math.max(0, (surface.avatarLife - .4) / .6)
+            function follow(): void {
+                const url = surface.avatarUrl;
+                if (url === loaded)
+                    return;
+                if (loaded)
+                    unloadImage(loaded);
+                loaded = url;
+                if (url)
+                    loadImage(url);
+                // A picture shown before comes back from Qt's cache without imageLoaded.
+                showsPicture = url !== "" && isImageLoaded(url);
+                requestPaint();
+            }
+            Component.onCompleted: follow()
+            Connections {
+                target: surface
+                function onAvatarUrlChanged(): void {
+                    avatar.follow();
+                }
+                function onAvatarPendingChanged(): void {
+                    avatar.requestPaint();
+                }
+            }
+            onImageLoaded: {
+                showsPicture = loaded !== "" && isImageLoaded(loaded);
+                requestPaint();
+            }
+            // A surface made while the picture is cached (an output added while locked) paints
+            // only once its context exists.
+            onAvailableChanged: requestPaint()
             onWidthChanged: requestPaint()
             onPaint: {
                 const context = getContext("2d"), r = width / 2 - 5, cx = width / 2, cy = height / 2;
                 context.reset();
-                context.fillStyle = LiquidPalette.faintOnLight;
+                context.fillStyle = avatar.ink;
                 context.beginPath();
                 context.arc(cx, cy, r, 0, 2 * Math.PI);
                 context.clip();
+                if (showsPicture && isImageLoaded(loaded)) {
+                    // The helper's copy is already the centre square: it covers the circle, as
+                    // the approved mockup draws a picture.
+                    context.drawImage(loaded, cx - r, cy - r, 2 * r, 2 * r);
+                    return;
+                }
+                if (surface.avatarPending || (loaded && isImageLoading(loaded)))
+                    return;
                 context.beginPath();
                 context.arc(cx, cy - r * .2, r * .3, 0, 2 * Math.PI);
                 context.fill();
@@ -152,7 +199,7 @@ Item {
                 anchors.centerIn: parent
                 text: surface.auth.usernameMode ? "Username" : surface.auth.prompt === "Password" ? "Password" : "Response"
                 visible: surface.auth.dotCount === 0
-                color: LiquidPalette.dimOnLight
+                color: LiquidPalette.plateDim
                 font.pixelSize: 15
                 font.weight: Font.Medium
                 textFormat: Text.PlainText
@@ -163,7 +210,7 @@ Item {
                 width: Math.min(240, surface.fieldWidth - 88)
                 text: surface.auth.usernameMode || input.revealed ? surface.auth.buffer : ""
                 visible: (surface.auth.usernameMode || input.revealed) && surface.auth.dotCount > 0
-                color: LiquidPalette.inkOnLight
+                color: LiquidPalette.ink
                 font.pixelSize: 15
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideLeft
@@ -179,7 +226,7 @@ Item {
                     width: 9 * pop
                     height: width
                     radius: width / 2
-                    color: LiquidPalette.inkOnLight
+                    color: LiquidPalette.ink
                     opacity: surface.auth.checking && !surface.session.reducedMotion ? .4 + .25 * Math.sin(surface.session.clock * 18) : 1
                 }
             }
@@ -188,7 +235,7 @@ Item {
                 y: -10
                 width: 1.5
                 height: 20
-                color: LiquidPalette.inkOnLight
+                color: LiquidPalette.ink
                 visible: !surface.auth.checking && (surface.session.reducedMotion || surface.session.clock - surface.keyAt < .5 || (surface.session.clock - surface.keyAt) % 1.06 < .53)
             }
         }
@@ -198,7 +245,7 @@ Item {
             width: Math.min(440, surface.width - 24)
             text: surface.auth.usernameMode || surface.auth.prompt === "Password" ? "" : surface.auth.prompt
             opacity: surface.life
-            color: LiquidPalette.dimOnLight
+            color: LiquidPalette.plateDim
             font.pixelSize: 12
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideRight
@@ -221,7 +268,7 @@ Item {
             }
             text: surface.auth.displayMessage || (surface.environment.capsLock ? "Caps Lock is on" : "")
             opacity: surface.life
-            color: ["technical", "pam-error", "wrong", "username"].indexOf(surface.auth.messageKind) >= 0 ? LiquidPalette.dangerOnLight : LiquidPalette.dimOnLight
+            color: ["technical", "pam-error", "wrong", "username"].indexOf(surface.auth.messageKind) >= 0 ? LiquidPalette.danger : LiquidPalette.plateDim
             font.pixelSize: surface.auth._lockoutUntil > 0 ? 16 : 13
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
@@ -231,7 +278,7 @@ Item {
             x: Math.max(12, surface.width / 2 + 174)
             y: surface.height / 2 - height / 2
             text: surface.environment.layout
-            color: LiquidPalette.dimOnLight
+            color: LiquidPalette.plateDim
             opacity: surface.life
             font.pixelSize: 12
             textFormat: Text.PlainText

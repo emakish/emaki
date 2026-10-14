@@ -51,6 +51,16 @@ Scope {
                 if (matches.length !== 1 || typeof matches[0].value !== "boolean")
                     return "invalid_settings";
             }
+            const fullscreen = next.filter(row => row.key === "bar.autohide_fullscreen");
+            const mode = next.filter(row => row.key === "bar.autohide_mode");
+            if (fullscreen.length > 1 || (fullscreen.length === 1 && typeof fullscreen[0].value !== "boolean") || mode.length > 1 || (mode.length === 1 && !["always", "desktop", "fullscreen", "never"].includes(mode[0].value)))
+                return "invalid_settings";
+            // Older senders omit the new fields; their fullscreen behavior remains enabled.
+            const desktopHidden = next.find(row => row.key === "bar.autohide").value;
+            const fullscreenHidden = fullscreen.length ? fullscreen[0].value : true;
+            const derivedMode = desktopHidden ? (fullscreenHidden ? "always" : "desktop") : (fullscreenHidden ? "fullscreen" : "never");
+            if (mode.length && mode[0].value !== derivedMode)
+                return "invalid_settings";
             // The core sends key, value and a set override only; titles and other
             // descriptive fields stay from the last full list.
             const known = new Map(Array.from(bridge.values).map(row => [row.key, row]));

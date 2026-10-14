@@ -18,6 +18,11 @@ ShellRoot {
     property bool presenting: false
     property bool checkPending: false
     Component.onCompleted: Quickshell.watchFiles = false
+    // shellPath() here points into the manager's UI directory, which has no shell helpers.
+    Shell.SettingsCatalog {
+        active: false
+        helper: Shell.Platform.dataDir + "/shell/helpers/launcher-tools.py"
+    }
     UpdateController { id: controller; externalBusy: programs.mutating }
     ProgramsController {
         id: programs
@@ -79,7 +84,9 @@ ShellRoot {
             title: "Programs & Updates"
             implicitWidth: 1180
             implicitHeight: 780
-            minimumSize: Qt.size(960, 600)
+            // The smallest size where every page stays usable (tests/layout.py walks it), within a niri
+            // column of one third on a 1280 px screen at scale 2 (206 × 342).
+            minimumSize: Qt.size(204, 324)
             color: "transparent"
             onClosed: { windowLoader.active = false; Qt.callLater(root.notifyIfHidden); }
             onVisibleChanged: {

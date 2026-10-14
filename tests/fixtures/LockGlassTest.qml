@@ -97,7 +97,10 @@ ShellRoot {
             const flat = visual.flatPlate.getContext("2d");
             const upper = flat.getImageData(200, 100, 1, 1).data;
             root.check(upper[3] === 255 && flat.getImageData(200, 850, 1, 1).data[3] === 0, "flat fallback paints an opaque sheet above the moving edge and leaves the reveal below it");
-            root.check(upper[0] === 255 && Math.abs(upper[1] - 174) <= 2 && Math.abs(upper[2] - 170) <= 2, "flat palette is composited over the actual wallpaper");
+            // Red wallpaper under the flat plate: light 70 % (255,248,243), dark 92 % (28,19,16).
+            // Nothing is saved here, so the plate is the dark default.
+            const expected = ShellPalette.dark ? [46, 18, 15] : [255, 174, 170];
+            root.check(ShellPalette.dark && expected.every((value, index) => Math.abs(upper[index] - value) <= 2), "flat palette is composited over the actual wallpaper");
             root.check(visual.wallpaperImage === visual.plateGlass.wallBackdrop.frozenSource, "wallpaper shader reads the existing Image without a second decode");
             root.check(visual.plateGlass.uWaveEnabled === 1, "lock explicitly opts into wave field");
             root.check(Math.abs(visual.edgePosition - 485) < .001, "pour crosses centre downward");

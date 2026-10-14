@@ -22,8 +22,9 @@ if args.screenshot:
 with tempfile.TemporaryDirectory(prefix='emaki-notification-settings-') as temporary:
     base = Path(temporary)
     shutil.copytree(ROOT / 'shell/settings', base / 'shell/settings')
-    shutil.copyfile(ROOT / 'shell/ShellPalette.qml', base / 'shell/ShellPalette.qml')
-    (base / 'shell/qmldir').write_text('singleton ShellPalette 1.0 ShellPalette.qml\nNotificationsSettingsPage 1.0 NotificationsSettingsPage.qml\n')
+    for name in ('ShellPalette.qml', 'Appearance.qml', 'AppearanceLogic.js', 'SettingsBridge.qml'):
+        shutil.copyfile(ROOT / 'shell' / name, base / 'shell' / name)
+    (base / 'shell/qmldir').write_text('singleton ShellPalette 1.0 ShellPalette.qml\nsingleton Appearance 1.0 Appearance.qml\nsingleton SettingsBridge 1.0 SettingsBridge.qml\nNotificationsSettingsPage 1.0 NotificationsSettingsPage.qml\n')
     shutil.copyfile(ROOT / 'shell/NotificationsSettingsPage.qml', base / 'shell/NotificationsSettingsPage.qml')
     fixture = (ROOT / 'tests/fixtures/NotificationsSettingsPageTest.qml').read_text()
     (base / 'shell/controls-test.qml').write_text(fixture)

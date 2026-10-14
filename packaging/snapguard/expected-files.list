@@ -1,0 +1,13 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+/usr/lib/snapguard/snapshot-guard.py
+/usr/share/doc/snapguard/CHANGELOG.md
+/usr/share/doc/snapguard/README.cs.md
+/usr/share/doc/snapguard/README.es.md
+/usr/share/doc/snapguard/README.he.md
+/usr/share/doc/snapguard/README.md
+/usr/share/doc/snapguard/README.ru.md
+/usr/share/doc/snapguard/README.uk.md
+/usr/share/doc/snapguard/config.example.toml
+/usr/share/doc/snapguard/emaki-setup.md
+/usr/share/licenses/snapguard/LICENSE

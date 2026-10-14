@@ -247,7 +247,7 @@ Column {
         width: parent.width
         visible: !["idle", "confirmed", "ready", "requested"].includes(root.actionResult)
         text: root.actionResult === "wifi_restart_failed" ? "Wi-Fi could not restart. Try again later." : root.awaitingAction ? "Working…" : root.actionResult === "wrong_password" ? "The password was not accepted. Enter it again." : "The change could not be confirmed. Check the current value and try again."
-        color: root.awaitingAction ? SettingsTheme.dim : "#a01b45"
+        color: root.awaitingAction ? SettingsTheme.dim : SettingsTheme.error
         font.family: SettingsTheme.fontFamily
         font.pixelSize: 13
         wrapMode: Text.WordWrap

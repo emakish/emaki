@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Window
 import Quickshell
 import Quickshell.Wayland
 
@@ -9,9 +10,9 @@ PanelWindow {
     id: surface
     required property PolkitPromptController controller
     required property ShellScene scene
-    readonly property bool warningVisible: !controller.opened && card.expansion === 0 && SudoKeySupport.warningNeeded
+    property bool presented: false
     screen: scene?.output ?? null
-    visible: !!scene && (controller.opened || card.expansion > 0 || warningVisible) && !controller.locked
+    visible: body.present
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.namespace: "emaki-auth-prompt"
@@ -23,36 +24,48 @@ PanelWindow {
         left: true
         right: true
     }
-    // The entire output belongs to the prompt while it is visible. The card
-    // handles its controls; empty space consumes pointer and wheel events.
-    MouseArea {
-        anchors.fill: parent
-        acceptedButtons: Qt.AllButtons
-        hoverEnabled: true
-        onWheel: event => event.accepted = true
+    readonly property alias body: body
+    WallpaperSource {
+        id: wallpaper
+        refreshManaged: true
+        variant: "sharp"
+        outputWidth: Math.round(surface.scene?.viewportWidth ?? 0)
+        outputHeight: Math.round(surface.scene?.viewportHeight ?? 0)
+        outputScale: surface.scene?.output?.devicePixelRatio ?? 1
+        outputName: surface.scene?.outputName ?? ""
     }
-    PolkitPromptCard {
-        id: card
+    // Only the wallpaper URL crosses surfaces; each window owns its GPU textures.
+    DockBackdrop {
+        id: promptBackdrop
+        parent: surface.contentItem
+        readonly property real reach: 560 + 2 * 120
+        mode: "wallpaper"
+        screen: surface.screen
+        wallpaperTexture: wallpaper.texture
+        sharedWallpaper: true
+        screenWidth: body.width
+        screenHeight: body.height
+        dpr: surface.scene?.output?.devicePixelRatio ?? 1
+        region: Qt.rect(Math.max(0, Math.floor((screenWidth - reach) / 2)), 0, Math.min(screenWidth, reach), screenHeight)
+        active: body.present && body.card.contentAlpha < 1
+    }
+    PolkitPromptBody {
+        id: body
         controller: surface.controller
-        viewportWidth: surface.width
-        viewportHeight: surface.height
-        islandX: surface.scene ? surface.scene.bar.x + surface.scene.bar.clockIsland.islandRect.x : (viewportWidth - islandWidth) / 2
-        islandWidth: surface.scene?.bar.clockIsland.islandWidth ?? 148
-        reducedMotion: Quickshell.env("EMAKI_REDUCED_MOTION") === "1" || Quickshell.env("EMAKI_LOCK_REDUCED_MOTION") === "1"
+        scene: surface.scene
+        presented: surface.presented
+        backdrop: promptBackdrop
     }
-    SudoKeyWarning {
-        anchors.centerIn: parent
-        visible: surface.warningVisible
-        onVisibleChanged: if (visible)
-            forceActiveFocus()
-        width: Math.min(820, surface.width - 32)
-        height: Math.min(implicitHeight, surface.height - 40)
-        onDismissed: {
-            SudoKeySupport.warningDismissed = true;
-            SudoKeySupport.warningRequested = false;
+    Connections {
+        target: surface.contentItem.Window.window
+        function onFrameSwapped(): void {
+            if (surface.visible)
+                surface.presented = true;
         }
-        onAccepted: SudoKeySupport.warningRequested = false
     }
-    onVisibleChanged: if (visible)
-        Qt.callLater(card.focusPassword)
+    onVisibleChanged: {
+        presented = false;
+        if (visible)
+            Qt.callLater(body.takeFocus);
+    }
 }

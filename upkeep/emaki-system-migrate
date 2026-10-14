@@ -159,6 +159,38 @@ def repair_sudoers_mode(root):
         directory.chmod(0o750)
 
 
+def repair_flatpak_modes(root):
+    """Let every account read the system flatpaks that Programs & Updates 0.8.0 installed.
+
+    Its helper ran libflatpak with umask 077, so the directories and files libflatpak writes
+    (exports, deployments, deploy refs) were root-only: no account could list or run those
+    programs and the launcher never saw them. Only root-owned entries without any group or
+    other bits get read (and search) access; the checked-out program under <commit>/files
+    keeps the modes of its commit, and links are never followed. The files directory itself
+    is libflatpak's in a partial checkout (a Locale extension), so it is checked too."""
+    base = root / 'var/lib/flatpak'
+    if not safe(base) or not base.is_dir():
+        return
+    for top in ('exports', 'app', 'runtime', 'repo/refs'):
+        start = base / top
+        if not safe(start) or not start.is_dir():
+            continue
+        for directory, subdirectories, files in os.walk(start):
+            parts = Path(directory).relative_to(base).parts
+            paths = [directory, *(os.path.join(directory, name) for name in files)]
+            if len(parts) == 5 and parts[0] in ('app', 'runtime') and 'files' in subdirectories:
+                subdirectories.remove('files')
+                paths.append(os.path.join(directory, 'files'))
+            for path in paths:
+                status = os.lstat(path)
+                if stat.S_ISLNK(status.st_mode) or status.st_uid != 0 or status.st_mode & 0o077:
+                    continue
+                mode = stat.S_IMODE(status.st_mode) | 0o044
+                if stat.S_ISDIR(status.st_mode) or status.st_mode & 0o100:
+                    mode |= 0o011
+                os.chmod(path, mode)
+
+
 def drain_sudo_keys(root):
     """Veto live package removal until the outgoing service clears its records."""
     # An offline package root must never stop services or clean the host's cache.
@@ -334,6 +366,10 @@ def apply(root, fresh=False):
         if not fresh:
             preserve_desktop_applications(root)
         state['version'] = 4
+        write(path, json.dumps(state) + '\n')
+    if state.get('version', 0) < 5:
+        repair_flatpak_modes(root)
+        state['version'] = 5
         write(path, json.dumps(state) + '\n')
     from emaki_boot_defaults import apply as boot_defaults
     boot_defaults(root)

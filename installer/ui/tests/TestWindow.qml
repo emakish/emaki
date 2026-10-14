@@ -91,6 +91,25 @@ ShellRoot {
             footerY: footer.mapToItem(content, 0, 0).y,
             texts: texts
         }));
+        // The window panel and the layout inset in it, for colour samples taken inside the actual
+        // window: the margin between them shows the panel alone.
+        const panel = findItem(content, "installerPanel");
+        const layout = findItem(content, "installerLayout");
+        if (panel && layout) {
+            const box = item => {
+                const area = item.mapToItem(content, 0, 0, item.width, item.height);
+                return {
+                    x: area.x,
+                    y: area.y,
+                    width: area.width,
+                    height: area.height
+                };
+            };
+            console.log("PANEL_FRAME " + frame + " " + JSON.stringify({
+                panel: box(panel),
+                layout: box(layout)
+            }));
+        }
     }
     readonly property string warningTarget: screenName.endsWith("-caps") ? (screenName.startsWith("you-") ? "capsLock" : "diskCapsLock") : screenName.endsWith("-numlock") ? (screenName.startsWith("you-") ? "numLock" : "diskNumLock") : ""
     function scrollToTarget(name: string): bool {

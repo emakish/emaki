@@ -48,7 +48,7 @@ FocusScope {
             font.family: ShellPalette.uiFont
             font.pixelSize: 20
             font.weight: Font.DemiBold
-            color: LiquidPalette.inkOnLight
+            color: LiquidPalette.ink
         }
         Text {
             width: parent.width
@@ -56,7 +56,7 @@ FocusScope {
             wrapMode: Text.WordWrap
             font.family: ShellPalette.uiFont
             font.pixelSize: 14
-            color: LiquidPalette.inkOnLight
+            color: LiquidPalette.ink
         }
         Text {
             width: parent.width
@@ -65,7 +65,7 @@ FocusScope {
             wrapMode: Text.WrapAnywhere
             font.family: ShellPalette.uiFont
             font.pixelSize: 14
-            color: prompt.error ? LiquidPalette.dangerOnLight : LiquidPalette.dimOnLight
+            color: prompt.error ? LiquidPalette.danger : LiquidPalette.plateDim
         }
         Row {
             anchors.right: parent.right
@@ -103,6 +103,8 @@ FocusScope {
         activeFocusOnTab: true
         FocusRing {
             shown: action.activeFocus
+            strong: action.accent
+            radius: action.radius
         }
         opacity: enabled ? 1 : .5
         color: accent ? ShellPalette.accent : LiquidPalette.flatDrop
@@ -131,7 +133,7 @@ FocusScope {
             id: labelText
             anchors.centerIn: parent
             text: action.label
-            color: LiquidPalette.inkOnLight
+            color: LiquidPalette.ink
             font.family: ShellPalette.uiFont
             font.pixelSize: 14
             font.weight: Font.Medium

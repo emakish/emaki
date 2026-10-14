@@ -132,10 +132,10 @@ QtObject {
     property int aurChanges: 0
     property var lastAur: null
     property var storefront: JSON.parse(Quickshell.env("TEST_STOREFRONT"))
-    property var shelf: JSON.parse(Quickshell.env("TEST_SHELF")).filter(item => item.package !== "snapguard").map((item, index) => ({
+    property var shelf: JSON.parse(Quickshell.env("TEST_SHELF")).map((item, index) => ({
         key:"package:emaki/" + item.package, id:item.package, package:item.package, kind:"arch", name:item.title,
         summary:item.summary, repository:"emaki", target:"emaki/" + item.package, version:"0.8.0-1",
-        installed:index === 1, installedVersion:index === 1 ? "0.8.0-1" : "", actions:index === 1 ? [] : ["install"], packageOnly:true, shelf:true
+        installed:index === 2, installedVersion:index === 2 ? "0.8.0-1" : "", actions:index === 2 ? [] : ["install"], packageOnly:true, shelf:true
     }))
     property var essentials: ({minimal: true, programs: ["gimp", "inkscape", "krita", "code"]})
     property bool catalogReceived: true
@@ -279,10 +279,11 @@ MUTANTS = {
     'shelf-install':('ManagerView.qml', 'onClicked: view.programs.preparePackage(shelfItem.modelData, "install")', 'onClicked: {}'),
 }
 
-def run(width=1180, height=780, mutant=None, reopen=False):
+def run(width=1180, height=780, mutant=None, reopen=False, entry='InteractionTest.qml', source=UI, extra=None, timeout=30):
+    """Runs a QML entry from tests/ against the UI files in `source`, with the fixture controllers."""
     with tempfile.TemporaryDirectory(prefix='emaki-manager-ui-') as directory:
         root = Path(directory)
-        shutil.copytree(UI, root / 'ui')
+        shutil.copytree(source, root / 'ui')
         for path in (root / 'ui').glob('*.qml'):
             path.write_text(path.read_text().replace('@EMAKI_DATADIR@', str(ROOT)))
         engine = root / 'engine'
@@ -298,7 +299,7 @@ def run(width=1180, height=780, mutant=None, reopen=False):
             path = root / 'ui' / filename
             assert before in path.read_text(), mutant
             path.write_text(path.read_text().replace(before, after))
-        entry = (UI / 'tests/InteractionTest.qml').read_text().replace('".." as UI', '"." as UI')
+        entry = (UI / 'tests' / entry).read_text().replace('".." as UI', '"." as UI').replace('@EMAKI_DATADIR@', str(ROOT))
         if reopen:
             entry = (root / 'ui/shell.qml').read_text().replace('import QtQuick', 'import QtTest\nimport QtQuick', 1)
             entry = re.sub(r'Shell.WallpaperSource \{.*?\n            \}', 'QtObject { id: wallpaper; property string texture: "" }', entry, flags=re.S)
@@ -322,9 +323,10 @@ def run(width=1180, height=780, mutant=None, reopen=False):
         env['TEST_SHELF'] = json.dumps(programs_engine.shelf_items())
         env['TEST_INVENTORY'] = inventory()
         env['TEST_REFUSAL'] = REFUSAL
+        env.update(extra or {})
         with (root / 'runtime.log').open('w') as output:
             try:
-                result = subprocess.run(['qs', '-p', str(root / 'ui/test.qml'), '--no-color'], env=env, stdout=output, stderr=subprocess.STDOUT, text=True, timeout=30)
+                result = subprocess.run(['qs', '-p', str(root / 'ui/test.qml'), '--no-color'], env=env, stdout=output, stderr=subprocess.STDOUT, text=True, timeout=timeout)
             except subprocess.TimeoutExpired as error:
                 raise AssertionError((root / 'runtime.log').read_text()) from error
         log = (root / 'runtime.log').read_text()
@@ -334,6 +336,7 @@ def run(width=1180, height=780, mutant=None, reopen=False):
             assert result.returncode == 0 and 'INTERACTION_OK' in log, log
             assert not any(word in log for word in ('ASSERTION_FAILED', 'ReferenceError', 'TypeError', 'Unable to assign', 'Binding loop')), log
         print('PASS', mutant or ('production reopen' if reopen else f'{width}x{height}'))
+        return log
 
 if __name__ == '__main__':
     run()

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
+import "SystemIcons.js" as SystemIcons
 import Quickshell
 
 // One launcher result as drawn in liquid-glass/launcher.js drawItem(): a tile (Frequent and
@@ -21,6 +22,12 @@ Item {
     readonly property string kind: row?.kind ?? ""
     readonly property var iconCandidates: {
         const name = row?.entry?.icon ?? "";
+        // Quickshell keeps looking up a missing icon for two seconds and changes
+        // iconThemeRevision when it arrives, so a program's icon installed after its tile appears
+        // still shows.
+        Quickshell.iconThemeRevision;
+        if (name === "emaki-programs-updates")
+            return [SystemIcons.programsSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.accentShade, ShellPalette.managerIconInk)];
         const themed = name ? Quickshell.iconPath(name, true) : "";
         if (!["accessories-character-map", "utilities-system-monitor", "system-software-update", "printer"].includes(name))
             return themed ? [themed] : [];

@@ -137,7 +137,10 @@ ShellRoot {
                 keyClick(Qt.Key_Tab);
                 equal(buttons[i % buttons.length].activeFocus, true);
                 equal(buttons[i % buttons.length].focusRing.visible, true);
-                equal(buttons[i % buttons.length].focusRing.border.width, 2);
+                // Pale buttons: the hover look's 1 px light rim; orange ones: the strong rim.
+                const orange = buttons[i % buttons.length].primary || buttons[i % buttons.length].selected;
+                equal(buttons[i % buttons.length].focusRing.strong, orange);
+                equal(buttons[i % buttons.length].focusRing.border.width, orange ? 2 : 1);
             }
             keyClick(Qt.Key_Backtab);
             equal(control("next").activeFocus, true);
@@ -156,8 +159,13 @@ ShellRoot {
                     keyClick(Qt.Key_Return);
             }
             keyClick(Qt.Key_Left);
+            equal(control("back").activeFocus, true);
+            equal(controller.window.view.page, 2);
+            keyClick(Qt.Key_Return);
             equal(controller.window.view.page, 1);
             keyClick(Qt.Key_Right);
+            equal(control("next").activeFocus, true);
+            keyClick(Qt.Key_Return);
             equal(controller.window.view.page, 2);
             mouseClick(control("tab-0"));
             equal(controller.window.view.page, 0);
@@ -194,14 +202,14 @@ ShellRoot {
                 shot("small-" + (page + 1) + "-top");
                 control("next").forceActiveFocus();
                 for (let i = 0; i < 30; ++i)
-                    keyClick(Qt.Key_Down);
+                    keyClick(Qt.Key_PageDown);
                 check(body.contentY > 0);
                 equal(Math.round(body.contentY), Math.round(body.contentHeight - body.height));
                 shot("small-" + (page + 1) + "-bottom");
                 const nextPosition = control("next").mapToItem(controller.window.view, 0, 0);
                 check(nextPosition.y + control("next").height <= controller.window.height);
                 for (let i = 0; i < 30; ++i)
-                    keyClick(Qt.Key_Up);
+                    keyClick(Qt.Key_PageUp);
                 equal(body.contentY, 0);
             }
             controller.window.view.Window.window.width = 800;

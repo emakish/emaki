@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
+import "file:@EMAKI_DATADIR@/shell" as Shell
 import Quickshell
 
 Rectangle {
@@ -10,7 +11,7 @@ Rectangle {
     implicitWidth: 48
     implicitHeight: 48
     radius: width * .25
-    color: Qt.rgba(36/255,16/255,24/255,.09)
+    color: Qt.alpha(Shell.ShellPalette.managerInk, .09)
     readonly property var sources: iconSources()
     property int sourceIndex: 0
     onSourcesChanged: sourceIndex = 0
@@ -25,7 +26,7 @@ Rectangle {
             const value = typeof candidate === "string" ? candidate : candidate.url || candidate.path || candidate.name || candidate.value || "";
             let url = "";
             if (value.startsWith("/")) url = "file://" + value;
-            else if (value.startsWith("file:") || value.startsWith("https://") || value.startsWith("http://")) url = value;
+            else if (value.startsWith("data:image/svg+xml;") || value.startsWith("file:") || value.startsWith("https://") || value.startsWith("http://")) url = value;
             else if (value) url = Quickshell.iconPath(value, true);
             if (url && !urls.includes(url)) urls.push(url);
         }
@@ -63,33 +64,33 @@ Rectangle {
             objectName: "package-body"
             x: 2 * packageIcon.pixel; y: 6 * packageIcon.pixel
             width: 12 * packageIcon.pixel; height: 8 * packageIcon.pixel
-            color: "#c9503a"
+            color: Shell.ShellPalette.accentStrong
         }
         Rectangle {
             x: 3 * packageIcon.pixel; y: 3 * packageIcon.pixel
             width: 10 * packageIcon.pixel; height: 2 * packageIcon.pixel
-            color: "#f39a5f"
+            color: Shell.ShellPalette.accentSoft
         }
         Rectangle {
             x: 2 * packageIcon.pixel; y: 5 * packageIcon.pixel
             width: 12 * packageIcon.pixel; height: 2 * packageIcon.pixel
-            color: "#f39a5f"
+            color: Shell.ShellPalette.accentSoft
         }
         Rectangle {
             x: 3 * packageIcon.pixel; y: 7 * packageIcon.pixel
             width: 10 * packageIcon.pixel; height: 6 * packageIcon.pixel
-            color: "#e2733f"
+            color: Shell.ShellPalette.accent
         }
         Rectangle {
             objectName: "package-tape"
             x: 7 * packageIcon.pixel; y: 3 * packageIcon.pixel
             width: 2 * packageIcon.pixel; height: 7 * packageIcon.pixel
-            color: "#fffaf5"
+            color: Shell.ShellPalette.managerIconInk
         }
         Rectangle {
             x: 4 * packageIcon.pixel; y: 11 * packageIcon.pixel
             width: 3 * packageIcon.pixel; height: packageIcon.pixel
-            color: "#fffaf5"
+            color: Shell.ShellPalette.managerIconInk
         }
     }
 }

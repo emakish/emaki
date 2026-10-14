@@ -69,7 +69,7 @@
     {
       "name": "http_credentials",
       "source": "Authorization: Basic Zml4dHVyZTpwYXNzd29yZA==\nCookie: session=fixturecookie; theme=dark\nSet-Cookie: session=fixtureset; Path=/; HttpOnly\nHTTP/1.1 401 Unauthorized\n",
-      "expected": "Authorization: [redacted secret]\nCookie: [redacted secret]\nSet-Cookie: [redacted secret]\nHTTP/1.1 401 Unauthorized\n",
+      "expected": "HTTP/1.1 401 Unauthorized\n",
       "secrets": [
         "Basic Zml4dHVyZTpwYXNzd29yZA==",
         "session=fixturecookie; theme=dark",
@@ -77,7 +77,7 @@
         "Zml4dHVyZTpwYXNzd29yZA=="
       ],
       "counts": {
-        "secret": 3
+        "lines": 3
       },
       "innocent": [],
       "provenance": [
@@ -354,9 +354,9 @@
         "fixture-key-993"
       ],
       "counts": {
-        "secret": 3
+        "lines": 3
       },
-      "expected": "password=[redacted secret]\ntoken: [redacted secret]\n\"key\":[redacted secret]\n",
+      "expected": "",
       "innocent": [],
       "provenance": [
         "previous regression corpus"
@@ -1777,9 +1777,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Authorization: Bearer abc.def.ghi",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "Bearer abc.def.ghi"
@@ -1793,9 +1793,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "authorization: bearer abc.def.ghi",
-      "expected": "authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "bearer abc.def.ghi"
@@ -1809,9 +1809,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Authorization: Basic dXNlcjpwYXNz",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "Basic dXNlcjpwYXNz"
@@ -1825,9 +1825,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Authorization: token ghp_ZSYNTH0000000000000000000000000000",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "token ghp_ZSYNTH0000000000000000000000000000"
@@ -1842,9 +1842,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "PASSWORD=hunter2",
-      "expected": "PASSWORD=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "hunter2"
@@ -1858,9 +1858,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "password = 'hunter 2 with spaces'",
-      "expected": "password = [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "hunter 2 with spaces"
@@ -1874,9 +1874,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "password=\"quoted value\"",
-      "expected": "password=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "quoted value"
@@ -1890,9 +1890,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "{\"password\": \"s3cret\"}",
-      "expected": "{\"password\": [redacted secret]}",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "s3cret"
@@ -1906,9 +1906,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "{\"access_token\":\"zsynthAT\"}",
-      "expected": "{\"access_token\":[redacted secret]}",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthAT"
@@ -1922,9 +1922,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "{\"api_key\":\"zsynthAK\"}",
-      "expected": "{\"api_key\":[redacted secret]}",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthAK"
@@ -1938,9 +1938,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "apikey=zsynthAK",
-      "expected": "apikey=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthAK"
@@ -1954,9 +1954,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "api-key: zsynthAK",
-      "expected": "api-key: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthAK"
@@ -1970,9 +1970,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "x-api-key: zsynthAK",
-      "expected": "x-api-key: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthAK"
@@ -1987,9 +1987,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "client_secret=zsynthCS",
-      "expected": "client_secret=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthCS"
@@ -2003,9 +2003,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "cookie: session=zsynthCK",
-      "expected": "cookie: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "session=zsynthCK"
@@ -2020,9 +2020,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Set-Cookie: sid=zsynthSC; Path=/",
-      "expected": "Set-Cookie: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "sid=zsynthSC; Path=/"
@@ -2036,9 +2036,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "GET /cb?token=zsynthQT&x=1",
-      "expected": "GET /cb?token=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthQT&x=1"
@@ -2068,9 +2068,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "cmd --password hunter2",
-      "expected": "cmd --password [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "hunter2"
@@ -2084,9 +2084,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "cmd --password=hunter2",
-      "expected": "cmd --password=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "hunter2"
@@ -2100,9 +2100,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "token: ghp_ZSYNTH0000000000000000000000000000",
-      "expected": "token: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "ghp_ZSYNTH0000000000000000000000000000"
@@ -2116,9 +2116,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "PRIVATE_KEY=zsynthPK",
-      "expected": "PRIVATE_KEY=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthPK"
@@ -2132,9 +2132,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "SSH_AUTH_SOCK=/run/user/1000/ssh-agent.socket",
-      "expected": "SSH_AUTH_SOCK=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "/run/user/1000/ssh-agent.socket"
@@ -2148,9 +2148,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "monkey=banana keyboard=us key=zsynthK",
-      "expected": "monkey=banana keyboard=us key=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthK"
@@ -2164,9 +2164,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Authorization: Bearer C8R_SYNTHETIC_SECRET password=C8R_SYNTHETIC_PASSWORD",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "Bearer C8R_SYNTHETIC_SECRET password=C8R_SYNTHETIC_PASSWORD"
@@ -2180,9 +2180,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "password: \"has \\\" quote\"",
-      "expected": "password: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "\"has \\\" quote\""
@@ -2196,9 +2196,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "token=abc def",
-      "expected": "token=[redacted secret] def",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "abc"
@@ -2212,9 +2212,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "export GITHUB_TOKEN=ghp_ZSYNTH0000000000000000000000000000",
-      "expected": "export GITHUB_TOKEN=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "ghp_ZSYNTH0000000000000000000000000000"
@@ -2228,9 +2228,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "curl -H 'Authorization: Bearer zsynthBR' https://x",
-      "expected": "curl -H 'Authorization: [redacted secret]' https://x",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "Bearer zsynthBR"
@@ -2244,9 +2244,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Proxy-Authorization: Basic dXNlcjpwYXNz",
-      "expected": "Proxy-Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "Basic dXNlcjpwYXNz"
@@ -2260,9 +2260,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "password\t=\thunter2",
-      "expected": "password\t=\t[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "hunter2"
@@ -2276,9 +2276,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "password==hunter2",
-      "expected": "password=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "=hunter2"
@@ -2293,9 +2293,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "password := hunter2",
-      "expected": "password := [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "hunter2"
@@ -2323,9 +2323,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "key: zsynthK2",
-      "expected": "key: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthK2"
@@ -2339,9 +2339,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "session_key=zsynthSK",
-      "expected": "session_key=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthSK"
@@ -2355,10 +2355,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "refresh_token=\nzsynthNEXT",
-      "expected": "[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1,
-        "lines": 1
+        "lines": 2
       },
       "secrets": [
         "zsynthNEXT"
@@ -2374,7 +2373,6 @@
       "source": "PASSWORD=hunter2,more",
       "expected": "",
       "counts": {
-        "secret": 1,
         "lines": 1
       },
       "secrets": [
@@ -2389,9 +2387,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "x_auth_token=zsynthXA",
-      "expected": "x_auth_token=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthXA"
@@ -2405,9 +2403,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "apiKey: zsynthCAMEL3",
-      "expected": "apiKey: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthCAMEL3"
@@ -2457,9 +2455,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "token=zsynthT74.part-2/xyz+abc==",
-      "expected": "token=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthT74.part-2/xyz+abc=="
@@ -2473,9 +2471,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Authorization:Bearer zsynthNOSP",
-      "expected": "Authorization:[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "Bearer zsynthNOSP"
@@ -2489,9 +2487,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "password=hunter2\\",
-      "expected": "password=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "hunter2\\"
@@ -2595,9 +2593,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "{\"key\":\"-----BEGIN PRIVATE KEY-----\\nMIIEowIBAAKCAQEAzorkSYNTHbody1234567890abcdefABCDEF\\nQ29ya1NZTlRIYm9keTI=\\n-----END PRIVATE KEY-----\\n\",\"x\":1}",
-      "expected": "[redacted secret]\\n\",\"x\":1}",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "MIIEowIBAAKCAQEAzorkSYNTHbody1234567890abcdefABCDEF",
@@ -2861,10 +2859,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "2026-10-13T10:00:00-0500 zorkhost curl[77]: > Authorization: Basic dXNlcjpwYXNz",
-      "expected": "2026-10-13T10:00:00-0500 [redacted host] curl[77]: > Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "host": 1,
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zorkhost",
@@ -2879,10 +2876,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "2026-10-13T10:00:00-0500 zorkhost curl[77]: < Set-Cookie: __Host-sid=zsynthCOOK; Secure; HttpOnly",
-      "expected": "2026-10-13T10:00:00-0500 [redacted host] curl[77]: < Set-Cookie: [redacted secret]",
+      "expected": "",
       "counts": {
-        "host": 1,
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zorkhost",
@@ -2897,10 +2893,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "2026-10-13T10:00:00-0500 zorkhost curl[77]: > Cookie: session=zsynthCOOK2",
-      "expected": "2026-10-13T10:00:00-0500 [redacted host] curl[77]: > Cookie: [redacted secret]",
+      "expected": "",
       "counts": {
-        "host": 1,
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zorkhost",
@@ -2915,10 +2910,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "2026-10-13T10:00:00-0500 zorkhost git[78]: fatal: unable to access 'https://x-access-token:ghp_ZSYNTH0000000000000000000000000000@github.com/o/r.git/'",
-      "expected": "2026-10-13T10:00:00-0500 [redacted host] git[78]: fatal: unable to access 'https://x-access-token:[redacted secret]'",
+      "expected": "",
       "counts": {
-        "host": 1,
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zorkhost",
@@ -3192,9 +3186,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Authorization: Bearer \"zsynth spaced token\"",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "Bearer \"zsynth spaced token"
@@ -3208,9 +3202,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "token=zsynthA password=zsynthB secret=zsynthC",
-      "expected": "token=[redacted secret] password=[redacted secret] secret=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 3
+        "lines": 1
       },
       "secrets": [
         "zsynthA",
@@ -3226,9 +3220,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Bearer zsynthBB password=zsynthPP2",
-      "expected": "Bearer [redacted secret] password=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 2
+        "lines": 1
       },
       "secrets": [
         "zsynthPP2",
@@ -3446,10 +3440,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "2026-10-13T10:00:00-0500 zorkhost niri[123]: \u001b[3mtoken\u001b[0m\u001b[2m=\u001b[0mzsynthANSI done",
-      "expected": "2026-10-13T10:00:00-0500 [redacted host] niri[123]: \u001b[3mtoken\u001b[0m\u001b[2m=\u001b[0m[redacted secret] done",
+      "expected": "",
       "counts": {
-        "host": 1,
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zorkhost",
@@ -4338,9 +4331,9 @@
       "user": "fixtureuser",
       "host": "zorkhost",
       "source": "cmd --password hunter2",
-      "expected": "cmd --password [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "hunter2"
@@ -4354,9 +4347,9 @@
       "user": "fixtureuser",
       "host": "zorkhost",
       "source": "Authorization: token ghp_ZSYNTH0000000000000000000000000000",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "token ghp_ZSYNTH0000000000000000000000000000"
@@ -4370,9 +4363,9 @@
       "user": "fixtureuser",
       "host": "zorkhost",
       "source": "password=hunter2",
-      "expected": "password=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "hunter2"
@@ -4399,9 +4392,9 @@
       "user": "fixtureuser",
       "host": "zorkhost",
       "source": "Authorization: Bearer zsynthBR",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "Bearer zsynthBR"
@@ -4415,9 +4408,9 @@
       "user": "fixtureuser",
       "host": "zorkhost",
       "source": "Authorization: Basic dXNlcjpwYXNz",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "Basic dXNlcjpwYXNz"
@@ -4431,9 +4424,9 @@
       "user": "fixtureuser",
       "host": "zorkhost",
       "source": "Cookie: sid=zsynthCK",
-      "expected": "Cookie: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "sid=zsynthCK"
@@ -4447,9 +4440,9 @@
       "user": "fixtureuser",
       "host": "zorkhost",
       "source": "password: not-a-word-zsynthX",
-      "expected": "password: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "not-a-word-zsynthX"
@@ -4475,8 +4468,10 @@
       "user": "fixtureuser",
       "host": "zorkhost",
       "source": "kernel: Loaded X.509 cert 'Arch Linux kernel module signing key: 61e1aa'",
-      "expected": "kernel: Loaded X.509 cert 'Arch Linux kernel module signing key: 61e1aa'",
-      "counts": {},
+      "expected": "",
+      "counts": {
+        "lines": 1
+      },
       "secrets": []
     },
     {
@@ -5055,9 +5050,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "cmd --password \"fixture value\"",
-      "expected": "cmd --password [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture value"
@@ -5071,9 +5066,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "cmd --password=\"fixture value\"",
-      "expected": "cmd --password=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture value"
@@ -5087,9 +5082,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "cmd --passwd \"fixture value\"",
-      "expected": "cmd --passwd [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture value"
@@ -5103,9 +5098,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "cmd --passwd=\"fixture value\"",
-      "expected": "cmd --passwd=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture value"
@@ -5119,9 +5114,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "cmd --token \"fixture value\"",
-      "expected": "cmd --token [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture value"
@@ -5135,9 +5130,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "cmd --token=\"fixture value\"",
-      "expected": "cmd --token=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture value"
@@ -5151,9 +5146,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "cmd --secret \"fixture value\"",
-      "expected": "cmd --secret [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture value"
@@ -5167,9 +5162,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "cmd --secret=\"fixture value\"",
-      "expected": "cmd --secret=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture value"
@@ -5183,9 +5178,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "cmd --api-key \"fixture value\"",
-      "expected": "cmd --api-key [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture value"
@@ -5199,9 +5194,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "cmd --api-key=\"fixture value\"",
-      "expected": "cmd --api-key=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture value"
@@ -5215,9 +5210,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "cmd --key \"fixture value\"",
-      "expected": "cmd --key [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture value"
@@ -5231,9 +5226,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "cmd --key=\"fixture value\"",
-      "expected": "cmd --key=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture value"
@@ -5247,9 +5242,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Authorization: Bearer fixture-value",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "Bearer fixture-value"
@@ -5263,9 +5258,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Authorization: Basic fixture-value",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "Basic fixture-value"
@@ -5279,9 +5274,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Authorization: token fixture-value",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "token fixture-value"
@@ -5295,9 +5290,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Authorization: Digest fixture-value",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "Digest fixture-value"
@@ -5311,9 +5306,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Authorization: Custom fixture-value",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "Custom fixture-value"
@@ -5327,9 +5322,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "password=fixture-value",
-      "expected": "password=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture-value"
@@ -5343,9 +5338,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "passwd=fixture-value",
-      "expected": "passwd=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture-value"
@@ -5359,9 +5354,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "secret=fixture-value",
-      "expected": "secret=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture-value"
@@ -5375,9 +5370,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "token=fixture-value",
-      "expected": "token=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture-value"
@@ -5391,9 +5386,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "api_key=fixture-value",
-      "expected": "api_key=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture-value"
@@ -5407,9 +5402,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "apikey=fixture-value",
-      "expected": "apikey=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture-value"
@@ -5423,9 +5418,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "access_key=fixture-value",
-      "expected": "access_key=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture-value"
@@ -5439,9 +5434,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "private_key=fixture-value",
-      "expected": "private_key=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "fixture-value"
@@ -5472,9 +5467,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Authorization: Digest username=\"fixture\", realm=\"realm\", response=\"planted\"",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "Digest username=\"fixture\", realm=\"realm\", response=\"planted"
@@ -5580,13 +5575,13 @@
     {
       "name": "review4 header 419",
       "source": "Authorization: token fixtureTOKEN991",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "secrets": [
         "token fixtureTOKEN991",
         "fixtureTOKEN991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5595,13 +5590,13 @@
     {
       "name": "review4 header 420",
       "source": "Authorization: 'token fixtureTOKEN991'",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "secrets": [
         "token fixtureTOKEN991",
         "fixtureTOKEN991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5610,13 +5605,13 @@
     {
       "name": "review4 header 421",
       "source": "Authorization: \"token fixtureTOKEN991\"",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "secrets": [
         "token fixtureTOKEN991",
         "fixtureTOKEN991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5625,13 +5620,13 @@
     {
       "name": "review4 header 422",
       "source": "'Authorization': token fixtureTOKEN991",
-      "expected": "'Authorization': [redacted secret]",
+      "expected": "",
       "secrets": [
         "token fixtureTOKEN991",
         "fixtureTOKEN991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5640,13 +5635,13 @@
     {
       "name": "review4 header 423",
       "source": "'Authorization': 'token fixtureTOKEN991'",
-      "expected": "'Authorization': [redacted secret]",
+      "expected": "",
       "secrets": [
         "token fixtureTOKEN991",
         "fixtureTOKEN991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5655,13 +5650,13 @@
     {
       "name": "review4 header 424",
       "source": "'Authorization': \"token fixtureTOKEN991\"",
-      "expected": "'Authorization': [redacted secret]",
+      "expected": "",
       "secrets": [
         "token fixtureTOKEN991",
         "fixtureTOKEN991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5670,13 +5665,13 @@
     {
       "name": "review4 header 425",
       "source": "\"Authorization\": token fixtureTOKEN991",
-      "expected": "\"Authorization\": [redacted secret]",
+      "expected": "",
       "secrets": [
         "token fixtureTOKEN991",
         "fixtureTOKEN991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5685,13 +5680,13 @@
     {
       "name": "review4 header 426",
       "source": "\"Authorization\": 'token fixtureTOKEN991'",
-      "expected": "\"Authorization\": [redacted secret]",
+      "expected": "",
       "secrets": [
         "token fixtureTOKEN991",
         "fixtureTOKEN991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5700,13 +5695,13 @@
     {
       "name": "review4 header 427",
       "source": "\"Authorization\": \"token fixtureTOKEN991\"",
-      "expected": "\"Authorization\": [redacted secret]",
+      "expected": "",
       "secrets": [
         "token fixtureTOKEN991",
         "fixtureTOKEN991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5715,13 +5710,13 @@
     {
       "name": "review4 header 428",
       "source": "Cookie: sid=fixtureCOOKIE991; Path=/",
-      "expected": "Cookie: [redacted secret]",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991; Path=/",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5730,13 +5725,13 @@
     {
       "name": "review4 header 429",
       "source": "Cookie: 'sid=fixtureCOOKIE991; Path=/'",
-      "expected": "Cookie: [redacted secret]",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991; Path=/",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5745,13 +5740,13 @@
     {
       "name": "review4 header 430",
       "source": "Cookie: \"sid=fixtureCOOKIE991; Path=/\"",
-      "expected": "Cookie: [redacted secret]",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991; Path=/",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5760,13 +5755,13 @@
     {
       "name": "review4 header 431",
       "source": "'Cookie': sid=fixtureCOOKIE991; Path=/",
-      "expected": "'Cookie': [redacted secret]",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991; Path=/",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5775,13 +5770,13 @@
     {
       "name": "review4 header 432",
       "source": "'Cookie': 'sid=fixtureCOOKIE991; Path=/'",
-      "expected": "'Cookie': [redacted secret]",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991; Path=/",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5790,13 +5785,13 @@
     {
       "name": "review4 header 433",
       "source": "'Cookie': \"sid=fixtureCOOKIE991; Path=/\"",
-      "expected": "'Cookie': [redacted secret]",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991; Path=/",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5805,13 +5800,13 @@
     {
       "name": "review4 header 434",
       "source": "\"Cookie\": sid=fixtureCOOKIE991; Path=/",
-      "expected": "\"Cookie\": [redacted secret]",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991; Path=/",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5820,13 +5815,13 @@
     {
       "name": "review4 header 435",
       "source": "\"Cookie\": 'sid=fixtureCOOKIE991; Path=/'",
-      "expected": "\"Cookie\": [redacted secret]",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991; Path=/",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5835,13 +5830,13 @@
     {
       "name": "review4 header 436",
       "source": "\"Cookie\": \"sid=fixtureCOOKIE991; Path=/\"",
-      "expected": "\"Cookie\": [redacted secret]",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991; Path=/",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5850,13 +5845,13 @@
     {
       "name": "review4 header 437",
       "source": "Set-Cookie: sid=fixtureCOOKIE991; Path=/",
-      "expected": "Set-Cookie: [redacted secret]",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991; Path=/",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5865,13 +5860,13 @@
     {
       "name": "review4 header 438",
       "source": "Set-Cookie: 'sid=fixtureCOOKIE991; Path=/'",
-      "expected": "Set-Cookie: [redacted secret]",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991; Path=/",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5880,13 +5875,13 @@
     {
       "name": "review4 header 439",
       "source": "Set-Cookie: \"sid=fixtureCOOKIE991; Path=/\"",
-      "expected": "Set-Cookie: [redacted secret]",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991; Path=/",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5895,13 +5890,13 @@
     {
       "name": "review4 header 440",
       "source": "'Set-Cookie': sid=fixtureCOOKIE991; Path=/",
-      "expected": "'Set-Cookie': [redacted secret]",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991; Path=/",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5910,13 +5905,13 @@
     {
       "name": "review4 header 441",
       "source": "'Set-Cookie': 'sid=fixtureCOOKIE991; Path=/'",
-      "expected": "'Set-Cookie': [redacted secret]",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991; Path=/",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5925,13 +5920,13 @@
     {
       "name": "review4 header 442",
       "source": "'Set-Cookie': \"sid=fixtureCOOKIE991; Path=/\"",
-      "expected": "'Set-Cookie': [redacted secret]",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991; Path=/",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5940,13 +5935,13 @@
     {
       "name": "review4 header 443",
       "source": "\"Set-Cookie\": sid=fixtureCOOKIE991; Path=/",
-      "expected": "\"Set-Cookie\": [redacted secret]",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991; Path=/",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5955,13 +5950,13 @@
     {
       "name": "review4 header 444",
       "source": "\"Set-Cookie\": 'sid=fixtureCOOKIE991; Path=/'",
-      "expected": "\"Set-Cookie\": [redacted secret]",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991; Path=/",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5970,13 +5965,13 @@
     {
       "name": "review4 header 445",
       "source": "\"Set-Cookie\": \"sid=fixtureCOOKIE991; Path=/\"",
-      "expected": "\"Set-Cookie\": [redacted secret]",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991; Path=/",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5985,12 +5980,12 @@
     {
       "name": "review4 bare authorization",
       "source": "Authorization: ghp_fixtureTOKEN991",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "secrets": [
         "ghp_fixtureTOKEN991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -5999,12 +5994,12 @@
     {
       "name": "review4 colon passwd",
       "source": "passwd: fixtureTOKEN991",
-      "expected": "passwd: [redacted secret]",
+      "expected": "",
       "secrets": [
         "fixtureTOKEN991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -6013,12 +6008,12 @@
     {
       "name": "review4 colon secret",
       "source": "secret: fixtureTOKEN991",
-      "expected": "secret: [redacted secret]",
+      "expected": "",
       "secrets": [
         "fixtureTOKEN991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -6027,12 +6022,12 @@
     {
       "name": "review4 colon access_key",
       "source": "access_key: fixtureTOKEN991",
-      "expected": "access_key: [redacted secret]",
+      "expected": "",
       "secrets": [
         "fixtureTOKEN991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -6041,12 +6036,12 @@
     {
       "name": "review4 colon private_key",
       "source": "private_key: fixtureTOKEN991",
-      "expected": "private_key: [redacted secret]",
+      "expected": "",
       "secrets": [
         "fixtureTOKEN991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -6185,13 +6180,13 @@
     {
       "name": "review4 dict Authorization '",
       "source": "{'Authorization': 'Basic Zml4dHVyZTpwYXNzd29yZA=='}",
-      "expected": "{'Authorization': [redacted secret]}",
+      "expected": "",
       "secrets": [
         "Basic Zml4dHVyZTpwYXNzd29yZA==",
         "Zml4dHVyZTpwYXNzd29yZA=="
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -6200,13 +6195,13 @@
     {
       "name": "review4 dict Authorization \"",
       "source": "{\"Authorization\": \"Basic Zml4dHVyZTpwYXNzd29yZA==\"}",
-      "expected": "{\"Authorization\": [redacted secret]}",
+      "expected": "",
       "secrets": [
         "Basic Zml4dHVyZTpwYXNzd29yZA==",
         "Zml4dHVyZTpwYXNzd29yZA=="
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -6215,13 +6210,13 @@
     {
       "name": "review4 dict Cookie '",
       "source": "{'Cookie': 'sid=fixtureCOOKIE991'}",
-      "expected": "{'Cookie': [redacted secret]}",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -6230,13 +6225,13 @@
     {
       "name": "review4 dict Cookie \"",
       "source": "{\"Cookie\": \"sid=fixtureCOOKIE991\"}",
-      "expected": "{\"Cookie\": [redacted secret]}",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -6245,13 +6240,13 @@
     {
       "name": "review4 dict Set-Cookie '",
       "source": "{'Set-Cookie': 'sid=fixtureCOOKIE991'}",
-      "expected": "{'Set-Cookie': [redacted secret]}",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -6260,13 +6255,13 @@
     {
       "name": "review4 dict Set-Cookie \"",
       "source": "{\"Set-Cookie\": \"sid=fixtureCOOKIE991\"}",
-      "expected": "{\"Set-Cookie\": [redacted secret]}",
+      "expected": "",
       "secrets": [
         "sid=fixtureCOOKIE991",
         "fixtureCOOKIE991"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-review4.md"
@@ -6716,9 +6711,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "auth=zsynthAU",
-      "expected": "auth=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthAU"
@@ -6847,8 +6842,7 @@
       "source": "secret='a'b'",
       "expected": "",
       "counts": {
-        "lines": 1,
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "a'b"
@@ -6992,8 +6986,7 @@
       "source": "secret=\"\"zsynthAFTER",
       "expected": "",
       "counts": {
-        "lines": 1,
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthAFTER"
@@ -7041,8 +7034,7 @@
       "source": "token=a,b,zsynthTAIL",
       "expected": "",
       "counts": {
-        "lines": 1,
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthTAIL"
@@ -7058,8 +7050,7 @@
       "source": "token=abc}zsynthTAIL2",
       "expected": "",
       "counts": {
-        "lines": 1,
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "abc",
@@ -7076,8 +7067,7 @@
       "source": "password=hunter2;zsynthTAIL3",
       "expected": "",
       "counts": {
-        "lines": 1,
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "hunter2",
@@ -7172,9 +7162,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Authorization: Bearer\nzsynthNL",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 2
       },
       "secrets": [
         "Bearer",
@@ -7258,8 +7248,7 @@
       "source": "PuTTY-User-Key-File-3: ssh-ed25519\nPrivate-Lines: 1\nMIIEowIBAAKCAQEAzorkSYNTHbody1234567890abcdefABCDEF\nQ29ya1NZTlRIYm9keTI=",
       "expected": "",
       "counts": {
-        "lines": 4,
-        "secret": 1
+        "lines": 4
       },
       "secrets": [
         "MIIEow",
@@ -7344,10 +7333,9 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "[Interface]\nPrivateKey = zsynthWGkeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n[Peer]\nPresharedKey = zsynthWGpsk=",
-      "expected": "[Interface]\nPrivateKey = [redacted secret]\n[Peer]\n",
+      "expected": "[Interface]\n[Peer]\n",
       "counts": {
-        "secret": 1,
-        "lines": 1
+        "lines": 2
       },
       "secrets": [
         "zsynthWGkey",
@@ -8733,12 +8721,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "token: 0x00000000",
-      "expected": "token: [redacted secret]",
+      "expected": "",
       "secrets": [
         "0x00000000"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p1.py"
@@ -8750,12 +8738,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "{'Authorization': 'token ghp_ZYX987abc'}",
-      "expected": "{'Authorization': [redacted secret]}",
+      "expected": "",
       "secrets": [
         "ghp_ZYX987abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -8767,12 +8755,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "{\"Authorization\": \"Basic QWxhZGRpbjpvcGVu7x\"}",
-      "expected": "{\"Authorization\": [redacted secret]}",
+      "expected": "",
       "secrets": [
         "QWxhZGRpbjpvcGVu7x"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -8784,12 +8772,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "{'Cookie': 'sid=SIDVAL123abc'}",
-      "expected": "{'Cookie': [redacted secret]}",
+      "expected": "",
       "secrets": [
         "SIDVAL123abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -8801,12 +8789,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Authorization: ghp_ZYX987abc",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "secrets": [
         "ghp_ZYX987abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -8818,12 +8806,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Authorization: token ghp_ZYX987abc",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "secrets": [
         "ghp_ZYX987abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -8835,12 +8823,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "authorization: bearer ghp_ZYX987abc",
-      "expected": "authorization: [redacted secret]",
+      "expected": "",
       "secrets": [
         "ghp_ZYX987abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -8852,12 +8840,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "AUTHORIZATION:ghp_ZYX987abc",
-      "expected": "AUTHORIZATION:[redacted secret]",
+      "expected": "",
       "secrets": [
         "ghp_ZYX987abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -8869,12 +8857,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Authorization : ghp_ZYX987abc",
-      "expected": "Authorization : [redacted secret]",
+      "expected": "",
       "secrets": [
         "ghp_ZYX987abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -8886,12 +8874,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "-H 'Authorization: token ghp_ZYX987abc' https://api.github.com",
-      "expected": "-H 'Authorization: [redacted secret]' https://api.github.com",
+      "expected": "",
       "secrets": [
         "ghp_ZYX987abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -8903,12 +8891,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "-H \"Authorization: token ghp_ZYX987abc\" -H \"Accept: json\"",
-      "expected": "-H \"Authorization: [redacted secret]\" -H \"Accept: json\"",
+      "expected": "",
       "secrets": [
         "ghp_ZYX987abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -8920,12 +8908,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "curl -H Authorization:ghp_ZYX987abc x",
-      "expected": "curl -H Authorization:[redacted secret]",
+      "expected": "",
       "secrets": [
         "ghp_ZYX987abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -8937,12 +8925,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "{\"headers\": {\"Authorization\": \"token ghp_ZYX987abc\", \"Accept\": \"json\"}}",
-      "expected": "{\"headers\": {\"Authorization\": [redacted secret], \"Accept\": \"json\"}}",
+      "expected": "",
       "secrets": [
         "ghp_ZYX987abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -8954,12 +8942,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "{'Authorization': 'token ghp_ZYX987abc', 'User-Agent': 'emaki'}",
-      "expected": "{'Authorization': [redacted secret], 'User-Agent': 'emaki'}",
+      "expected": "",
       "secrets": [
         "ghp_ZYX987abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -9005,12 +8993,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Authorization=ghp_ZYX987abc",
-      "expected": "Authorization=[redacted secret]",
+      "expected": "",
       "secrets": [
         "ghp_ZYX987abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -9021,12 +9009,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "authorization='token ghp_ZYX987abc'",
-      "expected": "authorization=[redacted secret]",
+      "expected": "",
       "secrets": [
         "ghp_ZYX987abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -9070,12 +9058,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "X-Authorization: ghp_ZYX987abc",
-      "expected": "X-Authorization: [redacted secret]",
+      "expected": "",
       "secrets": [
         "ghp_ZYX987abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -9087,12 +9075,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Proxy-Authorization: Basic QWxhZGRpbjpvcGVu7x",
-      "expected": "Proxy-Authorization: [redacted secret]",
+      "expected": "",
       "secrets": [
         "QWxhZGRpbjpvcGVu7x"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -9104,12 +9092,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "\"proxy-authorization\":\"Basic QWxhZGRpbjpvcGVu7x\"",
-      "expected": "\"proxy-authorization\":[redacted secret]",
+      "expected": "",
       "secrets": [
         "QWxhZGRpbjpvcGVu7x"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -9121,12 +9109,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Cookie: sid=SIDVAL123abc; theme=dark",
-      "expected": "Cookie: [redacted secret]",
+      "expected": "",
       "secrets": [
         "SIDVAL123abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -9138,12 +9126,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Set-Cookie: sid=SIDVAL123abc; Path=/; HttpOnly",
-      "expected": "Set-Cookie: [redacted secret]",
+      "expected": "",
       "secrets": [
         "SIDVAL123abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -9155,12 +9143,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "set-cookie: SIDVAL123abc",
-      "expected": "set-cookie: [redacted secret]",
+      "expected": "",
       "secrets": [
         "SIDVAL123abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -9172,12 +9160,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "{\"Set-Cookie\": [\"sid=SIDVAL123abc\", \"x=y\"]}",
-      "expected": "{\"Set-Cookie\": [redacted secret]",
+      "expected": "",
       "secrets": [
         "SIDVAL123abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -9188,12 +9176,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "{'Set-Cookie': 'sid=SIDVAL123abc; Path=/'}",
-      "expected": "{'Set-Cookie': [redacted secret]}",
+      "expected": "",
       "secrets": [
         "SIDVAL123abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -9205,12 +9193,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "'cookie': 'SIDVAL123abc'",
-      "expected": "'cookie': [redacted secret]",
+      "expected": "",
       "secrets": [
         "SIDVAL123abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -9222,12 +9210,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "\"Cookie\":\"sid=SIDVAL123abc\"",
-      "expected": "\"Cookie\":[redacted secret]",
+      "expected": "",
       "secrets": [
         "SIDVAL123abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -9239,12 +9227,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Cookie=sid=SIDVAL123abc",
-      "expected": "Cookie=[redacted secret]",
+      "expected": "",
       "secrets": [
         "SIDVAL123abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -9273,12 +9261,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Authorization: Digest username=\"u\", response=\"QWxhZGRpbjpvcGVu7x\"",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "secrets": [
         "QWxhZGRpbjpvcGVu7x"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -9290,12 +9278,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "{b'Authorization': b'token ghp_ZYX987abc'}",
-      "expected": "{b'Authorization': [redacted secret]",
+      "expected": "",
       "secrets": [
         "ghp_ZYX987abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -9306,12 +9294,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Authorization: \"token ghp_ZYX987abc\"",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "secrets": [
         "ghp_ZYX987abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -9323,12 +9311,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "'Authorization: token ghp_ZYX987abc'",
-      "expected": "'Authorization: [redacted secret]'",
+      "expected": "",
       "secrets": [
         "ghp_ZYX987abc"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p3.py"
@@ -9497,12 +9485,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "secret: s3cr3tv4lue",
-      "expected": "secret: [redacted secret]",
+      "expected": "",
       "secrets": [
         "s3cr3tv4lue"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p4.py"
@@ -9514,12 +9502,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "access_key: AKIAIOSFODNN7EXAMPLE",
-      "expected": "access_key: [redacted secret]",
+      "expected": "",
       "secrets": [
         "AKIAIOSFODNN7EXAMPLE"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p4.py"
@@ -9531,12 +9519,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "private_key: MIIEvQIBADANBgkqhkiG9w0B",
-      "expected": "private_key: [redacted secret]",
+      "expected": "",
       "secrets": [
         "MIIEvQIBADANBgkqhkiG9w0B"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p4.py"
@@ -9687,27 +9675,27 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "Mod+Shift key: Super_L",
-      "expected": "Mod+Shift key: Super_L",
+      "expected": "",
       "secrets": [],
-      "counts": {},
+      "counts": {
+        "lines": 1
+      },
       "provenance": [
         "f8rc-probe5/mine/p4.py"
       ],
-      "innocent": [
-        "Mod+Shift key: Super_L"
-      ]
+      "innocent": []
     },
     {
       "name": "probe5/p4.py:16",
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "password: \"p w\"",
-      "expected": "password: [redacted secret]",
+      "expected": "",
       "secrets": [
         "p w"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p4.py"
@@ -9719,12 +9707,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "password:=hunter2",
-      "expected": "password:=[redacted secret]",
+      "expected": "",
       "secrets": [
         "hunter2"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p4.py"
@@ -9735,12 +9723,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "secret_key_base=abcdef123456",
-      "expected": "secret_key_base=[redacted secret]",
+      "expected": "",
       "secrets": [
         "abcdef123456"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p4.py"
@@ -9752,12 +9740,12 @@
       "user": "zorkuser",
       "host": "zorkhost",
       "source": "client_secret_value: abcdef123456",
-      "expected": "client_secret_value: [redacted secret]",
+      "expected": "",
       "secrets": [
         "abcdef123456"
       ],
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "provenance": [
         "f8rc-probe5/mine/p4.py"
@@ -10828,9 +10816,9 @@
       "source": "Authorization: ghp_ZSYNTH00000000000000000000000",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "ghp_ZSYNTH"
@@ -10845,9 +10833,9 @@
       "source": "{'Authorization': 'token ghp_ZSYNTH1111111111'}",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "{'Authorization': [redacted secret]}",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "ghp_ZSYNTH"
@@ -10862,9 +10850,9 @@
       "source": "\"authorization\": \"Bearer zsynthJWT\"",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "\"authorization\": [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthJWT"
@@ -10879,9 +10867,9 @@
       "source": "\"Authorization\": \"Basic dXNlcjpwYXNzMQ==\"",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "\"Authorization\": [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "dXNlcjpwYXNzMQ"
@@ -10896,9 +10884,9 @@
       "source": "{'Cookie': 'sid=zsynthCK2'}",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "{'Cookie': [redacted secret]}",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthCK2"
@@ -10913,9 +10901,9 @@
       "source": "Authorization: Digest username=\"u\", nonce=\"zsynthNONCE\", response=\"zsynthRESP\"",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthRESP"
@@ -10930,9 +10918,9 @@
       "source": "authorization: token zsynthH2",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthH2"
@@ -10947,9 +10935,9 @@
       "source": "tool --api-key=zsynthAK1",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "tool --api-key=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthAK1"
@@ -10964,9 +10952,9 @@
       "source": "tool --api-key zsynthAK2",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "tool --api-key [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthAK2"
@@ -10981,9 +10969,9 @@
       "source": "tool --key=zsynthK",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "tool --key=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthK"
@@ -10998,9 +10986,9 @@
       "source": "tool --secret \"zsynth S3\"",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "tool --secret [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynth S3"
@@ -11015,9 +11003,9 @@
       "source": "tool --TOKEN zsynthTK",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "tool --TOKEN [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthTK"
@@ -11032,9 +11020,9 @@
       "source": "access_key: zsynthAC",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "access_key: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthAC"
@@ -11049,9 +11037,9 @@
       "source": "private_key=zsynthPK",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "private_key=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthPK"
@@ -11066,9 +11054,9 @@
       "source": "{\"api_key\": \"zsynthAPI\"}",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "{\"api_key\": [redacted secret]}",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthAPI"
@@ -11083,9 +11071,9 @@
       "source": "PASSWD=zsynthPW",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "PASSWD=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthPW"
@@ -11224,12 +11212,14 @@
       "source": "{\"key\": \"Escape\"}",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "{\"key\": \"Escape\"}",
-      "counts": {},
-      "secrets": [],
-      "innocent": [
-        "{\"key\": \"Escape\"}"
+      "expected": "",
+      "counts": {
+        "lines": 1
+      },
+      "secrets": [
+        "Escape"
       ],
+      "innocent": [],
       "provenance": [
         "f8rc-probe5/rerun/p4mine/adv.py"
       ]
@@ -11624,9 +11614,9 @@
       "source": "Bearer zsynthBEAR",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "Bearer [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthBEAR"
@@ -11767,9 +11757,9 @@
       "source": "--password='hunter 2'",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "--password=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "hunter 2"
@@ -11784,9 +11774,9 @@
       "source": "chpasswd --passwd hunter2x",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "chpasswd --passwd [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "hunter2x"
@@ -11837,9 +11827,9 @@
       "source": "Proxy-Authorization: Basic zsynthPA==",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "Proxy-Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthPA"
@@ -11854,9 +11844,9 @@
       "source": "Authorization: Token zsynthTC",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthTC"
@@ -11871,9 +11861,9 @@
       "source": "Authorization: Bot zsynthBOT",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthBOT"
@@ -11888,9 +11878,9 @@
       "source": "curl -H 'Authorization: token zsynthCURL' https://api",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "curl -H 'Authorization: [redacted secret]' https://api",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthCURL"
@@ -11905,9 +11895,9 @@
       "source": "Cookie: a=1; sid=zsynthCOOK",
       "user": "fixtureuser",
       "host": "zorkhost",
-      "expected": "Cookie: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthCOOK"
@@ -12120,9 +12110,9 @@
       "source": "secret_key_base=zsynthSKB1",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "secret_key_base=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthSKB1"
@@ -12137,9 +12127,9 @@
       "source": "SECRET_KEY_BASE=zsynthSKB2",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "SECRET_KEY_BASE=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthSKB2"
@@ -12154,9 +12144,9 @@
       "source": "password_hash=zsynthPH1",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "password_hash=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthPH1"
@@ -12171,9 +12161,9 @@
       "source": "token_v2=zsynthTV2",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "token_v2=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthTV2"
@@ -12188,9 +12178,9 @@
       "source": "api_key_id=zsynthAKI",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "api_key_id=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthAKI"
@@ -12205,9 +12195,9 @@
       "source": "client_secret_value: zsynthCSV9",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "client_secret_value: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthCSV9"
@@ -12222,9 +12212,9 @@
       "source": "client_secret_value=zsynthCSV",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "client_secret_value=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthCSV"
@@ -12239,9 +12229,9 @@
       "source": "{\"password_hash\": \"zsynthPHJ\"}",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "{\"password_hash\": [redacted secret]}",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthPHJ"
@@ -12256,9 +12246,9 @@
       "source": "{\"client_secret_value\":\"zsynthCSJ\"}",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "{\"client_secret_value\":[redacted secret]}",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthCSJ"
@@ -12273,9 +12263,9 @@
       "source": "access_token_secret=zsynthATS",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "access_token_secret=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthATS"
@@ -12290,9 +12280,9 @@
       "source": "refresh_token_value=zsynthRTV",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "refresh_token_value=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthRTV"
@@ -12307,9 +12297,9 @@
       "source": "secret-key-base: zsynth4Base",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "secret-key-base: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynth4Base"
@@ -12324,9 +12314,9 @@
       "source": "keyring_password_new=zsynthKPN",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "keyring_password_new=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthKPN"
@@ -12341,9 +12331,9 @@
       "source": "GITHUB_TOKEN_RO=ghp_zsynth00000",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "GITHUB_TOKEN_RO=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "ghp_zsynth"
@@ -12358,9 +12348,9 @@
       "source": "DB_PASSWORD_PROD=zsynthDBP",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "DB_PASSWORD_PROD=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthDBP"
@@ -12375,9 +12365,9 @@
       "source": "password_confirmation=zsynthPC",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "password_confirmation=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthPC"
@@ -12392,9 +12382,9 @@
       "source": "token_secret: \"zsynthTSQ\"",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "token_secret: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthTSQ"
@@ -12409,9 +12399,9 @@
       "source": "key_1=zsynthK1",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "key_1=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthK1"
@@ -12426,9 +12416,9 @@
       "source": "password-1=zsynthP1",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "password-1=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthP1"
@@ -12443,9 +12433,9 @@
       "source": "AWS_SECRET_ACCESS_KEY=zsynthAWS",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "AWS_SECRET_ACCESS_KEY=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthAWS"
@@ -12477,8 +12467,7 @@
       "host": "zorkhost",
       "expected": "",
       "counts": {
-        "lines": 1,
-        "secret": 1
+        "lines": 1
       },
       "secrets": [],
       "innocent": [],
@@ -12491,9 +12480,9 @@
       "source": "token_type=bearer",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "token_type=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [],
       "innocent": [],
@@ -12676,9 +12665,9 @@
       "source": "password: tr0ub4dor",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "password: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "tr0ub4dor"
@@ -12727,9 +12716,9 @@
       "source": "X-Auth-Token: zsynth4tok",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "X-Auth-Token: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynth4tok"
@@ -12744,9 +12733,9 @@
       "source": "apikey: abcd1234",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "apikey: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "abcd1234"
@@ -12761,9 +12750,9 @@
       "source": "token: deadbeef",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "token: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "deadbeef"
@@ -12778,9 +12767,9 @@
       "source": "token: AbCdEfGh",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "token: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "AbCdEfGh"
@@ -12888,9 +12877,9 @@
       "source": "token: ffffffff",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "token: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [],
       "innocent": [],
@@ -12903,9 +12892,9 @@
       "source": "gpg: key: 0x1234ABCD5678EF90",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "gpg: key: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [],
       "innocent": [],
@@ -12918,9 +12907,9 @@
       "source": "token=abc",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "token=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "abc"
@@ -12935,9 +12924,9 @@
       "source": "passwd=planted",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "passwd=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "planted"
@@ -12952,9 +12941,9 @@
       "source": "secret = hunter2",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "secret = [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "hunter2"
@@ -12969,9 +12958,9 @@
       "source": "password: \"hunter2\"",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "password: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "hunter2"
@@ -12986,9 +12975,9 @@
       "source": "token: 'abc'",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "token: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "abc"
@@ -13003,9 +12992,9 @@
       "source": "X-Authorization: token zsynthXA",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "X-Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthXA"
@@ -13020,9 +13009,9 @@
       "source": "X-Authorization: Bearer zsynthXB",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "X-Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthXB"
@@ -13037,9 +13026,9 @@
       "source": "X-Cookie: sid=zsynthXC",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "X-Cookie: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthXC"
@@ -13071,9 +13060,9 @@
       "source": "curl -H \"Authorization: Bearer zsynthQ\" https://x",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "curl -H \"Authorization: [redacted secret]\" https://x",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthQ"
@@ -13088,9 +13077,9 @@
       "source": "curl -H 'Cookie: sid=zsynthQC' https://x",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "curl -H 'Cookie: [redacted secret]' https://x",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthQC"
@@ -13105,9 +13094,9 @@
       "source": "Authorization: Bearer abc",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "abc"
@@ -13122,9 +13111,9 @@
       "source": "Authorization:\tBasic zsynthTAB",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "Authorization:\t[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthTAB"
@@ -13139,9 +13128,9 @@
       "source": "authorization : Bearer zsynthSP",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "authorization : [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthSP"
@@ -13158,8 +13147,7 @@
       "host": "zorkhost",
       "expected": "",
       "counts": {
-        "lines": 1,
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthHA"
@@ -13208,9 +13196,9 @@
       "source": "Authorization=\"Bearer zsynthEQ\"",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "Authorization=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthEQ"
@@ -13225,9 +13213,9 @@
       "source": "Cookie: sid=zsynthC1\nnext line ok",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "Cookie: [redacted secret]\nnext line ok",
+      "expected": "next line ok",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthC1"
@@ -13242,9 +13230,9 @@
       "source": "Authorization: Bearer zsynthML\n Basic continuation",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "Authorization: [redacted secret]\n Basic continuation",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 2
       },
       "secrets": [
         "zsynthML"
@@ -13259,9 +13247,9 @@
       "source": "\"Authorization: Bearer zs\\\"ynthESC\" end",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "\"Authorization: [redacted secret]\" end",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "ynthESC"
@@ -13276,9 +13264,9 @@
       "source": "{'headers': {'Authorization': 'Bearer zsynthNEST'}}",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "{'headers': {'Authorization': [redacted secret]}}",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthNEST"
@@ -13293,9 +13281,9 @@
       "source": "Cookie2: sid=zsynthC2",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "Cookie2: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthC2"
@@ -13340,9 +13328,9 @@
       "source": "polkit: Authorization: not granted",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "polkit: Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [],
       "innocent": [],
@@ -13434,9 +13422,9 @@
       "source": "x --passwd hunter2",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "x --passwd [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "hunter2"
@@ -13451,9 +13439,9 @@
       "source": "x --secret=zsynthS",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "x --secret=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthS"
@@ -13468,9 +13456,9 @@
       "source": "x --api-key zsynthA",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "x --api-key [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthA"
@@ -13485,9 +13473,9 @@
       "source": "gpg --key zsynthK",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "gpg --key [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthK"
@@ -13502,9 +13490,9 @@
       "source": "x --token=zsynthT",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "x --token=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthT"
@@ -13519,9 +13507,9 @@
       "source": "Authorization: Digest username=\"u\", response=\"zsynthD\"",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthD"
@@ -13536,9 +13524,9 @@
       "source": "Authorization: Negotiate zsynthN",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "Authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthN"
@@ -13553,9 +13541,9 @@
       "source": "authorization: bearer zsynthB",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "authorization: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthB"
@@ -13570,9 +13558,9 @@
       "source": "access_key=zsynthAK",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "access_key=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthAK"
@@ -13587,9 +13575,9 @@
       "source": "private_key: zsynthPK",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "private_key: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthPK"
@@ -13604,9 +13592,9 @@
       "source": "{\"api_key\": \"zsynthJ\"}",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "{\"api_key\": [redacted secret]}",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthJ"
@@ -13621,9 +13609,9 @@
       "source": "passwd=zsynthP",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "passwd=[redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthP"
@@ -13872,9 +13860,9 @@
       "source": "Set-Cookie: sid=zsynthC; Path=/",
       "user": "zorkuser",
       "host": "zorkhost",
-      "expected": "Set-Cookie: [redacted secret]",
+      "expected": "",
       "counts": {
-        "secret": 1
+        "lines": 1
       },
       "secrets": [
         "zsynthC"

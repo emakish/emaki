@@ -13,7 +13,7 @@ from pathlib import Path
 import re
 import sys
 
-# Reviewed source: v26.04 with this package's eleven patches. Whole-file hashes
+# Reviewed source: v26.04 with this package's twelve patches. Whole-file hashes
 # deliberately reject even benign edits: a new width-changing layout path or
 # a new action/render path must not slip past a narrow text-pattern check.
 REVIEWED = {
@@ -27,8 +27,8 @@ REVIEWED = {
         '0b200bab287266d2d03ed090abafba62de33b24ec838d13ef734136d959795b4',
         'startup safety capture, exact packaged identity and missing-bind recovery (B2b2)'),
     'src/trusted_client.rs': (
-        '12f3ed9496341ca04ae131d8645914998edf4e1e9d5c3a7ae877269a309517de',
-        'private connection, immutable launch environment and supervised restart (A6)'),
+        '31285aad364ce9fe6c6148220afdff3f6826773ee6016d34b1d1894a0fae0cfb',
+        'private connection, immutable launch environment, supervised restart and the shell PID on its casts (A6, N81S)'),
     'src/trusted_prompt.rs': (
         'd1ee11d459499068f9d93efae92c93014f896dc92238f3a8f8fd81d11b6643b5',
         'trusted role input boundary, lock gating and proof rendering (A6)'),
@@ -54,8 +54,8 @@ REVIEWED = {
         '92dbbab8ccfc603b6541bf18231a21861d6851e6842b2fb2ac8a2a479d46594e',
         'fixed restart and trusted status protocol without a proof action (A6)'),
     'src/tests/trusted_prompt.rs': (
-        '669977711a48bd12c6f3179789d7f6c6d9c824741801d482d827be97ef48271c',
-        'identity, input, proof pixel and lock regressions (A6)'),
+        'bbe138c46e0ce6e7ec63e7eb8705fe60959e5f3d135af78879e3c22152f5f9b9',
+        'identity, input, proof pixel, lock and cast PID regressions (A6, N81S)'),
     'src/handlers/layer_shell.rs': (
         '2f7a7d1462de5c7abd8ffd1d987929e9c49c0f6e7b41b9bb99f8e1a29b246e14',
         'persistent layer keyboard focus (N6c)'),
@@ -64,8 +64,12 @@ REVIEWED = {
         'persistent layer keyboard focus (N6c)'),
 
     'src/layout/scrolling.rs': (
-        '96205fdf0b376d3321648b083f91ca89df380cd5d05b06d19b3b2fa0e397984d',
-        'wallpaper camera assignments and width changes (465)'),
+        'ebdae4f6418f610fe2ea77aa76c3b0207f709f288c45182422e2628a3f148dae',
+        'wallpaper camera assignments and width changes (465); fullscreen inset origin, '
+        'height and IPC position (N81M4)'),
+    'src/layout/workspace.rs': (
+        'e9fc0ded2b22d6515f11f622666acab4e9dc0ad6edf722046404857024b6ba0c',
+        'fullscreen inset marker accepted only from the trusted shell connection (N81M5)'),
     'src/layout/tests/emaki_wallpaper.rs': (
         '783df0bc03ece88a6632466353671dab954f8970da7b2a05dedd6bc4fcf78df3',
         'wallpaper camera regression coverage (465)'),
@@ -79,8 +83,8 @@ REVIEWED = {
         'e9cc29129eafa86517afe0a2d6e90038dfe7678da9d9d37d2e2f1afa0c75240f',
         'geometry, damage and opaque-region output scales (754)'),
     'src/niri.rs': (
-        '3b98563dde0fed29d0f344cd536d0c8c1b8a184cd8b4cec3a0d23a0a4d768a45',
-        'own-layer exclusion, cursor scales, locked rendering static blur and keyboard arbitration and frozen bindings (230, 464, 754, N6c, B2b)'),
+        'e7d90c681356183bc3909cfa8a22d76157dbaa532d263e1db407f2b04315724b',
+        'own-layer exclusion, cursor scales, locked rendering static blur and keyboard arbitration, frozen bindings and the trusted shell PID (230, 464, 754, N6c, B2b, N81S)'),
     'src/render_helpers/xray.rs': (
         'dac33e39cf6f79142cab756d6f93f2b61aab5a6ed980f49bbd32a114707d22c1',
         'static blur opaque coverage and geometry tests (230)'),
@@ -97,6 +101,9 @@ CURSOR_PATHS = {
 }
 CAPTURE_PROTOCOL = re.compile(r'image[_-]copy[_-]capture')
 CURSOR_PATH = re.compile(r'\bCursorRenderElement\b|\brender_pointer\s*\(')
+# Release code reads the fullscreen inset (workspace.rs); a #[cfg(test)] above its accessor
+# compiles under `cargo test` but breaks `cargo build --release` (N81M5).
+TEST_ONLY_INSET_ACCESSOR = re.compile(r'#\[cfg\(test\)\]\s*pub fn fullscreen_top_inset\b')
 
 
 def check(source):
@@ -107,6 +114,11 @@ def check(source):
             failures.append(f'{relative}: missing reviewed source ({reason})')
         elif sha256(path.read_bytes()).hexdigest() != expected:
             failures.append(f'{relative}: source changed; review {reason} and extend its tests')
+
+    scrolling = source / 'src/layout/scrolling.rs'
+    if scrolling.is_file() and TEST_ONLY_INSET_ACCESSOR.search(scrolling.read_text()):
+        failures.append('src/layout/scrolling.rs: fullscreen_top_inset() is test-only but release '
+                        'code calls it; a release build cannot compile (N81M5)')
 
     cursor_paths = set()
     for path in sorted((source / 'src').rglob('*.rs')):

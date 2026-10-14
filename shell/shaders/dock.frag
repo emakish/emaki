@@ -61,6 +61,9 @@ layout(std140, binding = 0) uniform buf {
     float uActivity;
     float uOpacity;
     vec4 uTrack;
+    vec3 uTrackAccent;
+    vec3 uTrackRegularAccent;
+    float uThemeDark;
     float uTrackValue;
     float uTrackEnabled;
     float uOnlyTrack;
@@ -122,7 +125,6 @@ layout(binding = 7) uniform sampler2D uWallBlurred;
 layout(binding = 8) uniform sampler2D uMenu;
 layout(binding = 9) uniform sampler2D uDynamicIcons;
 
-const vec3 ACCENT = vec3(0.886275, 0.450980, 0.247059); // tokens.toml #e2733f
 float luminance(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 
 vec4 dropRect(int i) {
@@ -247,7 +249,7 @@ vec3 localTrack(vec3 c, vec2 p) {
     float mask = 1.0-smoothstep(-0.6, 0.6, roundedRect(p,tr,uTrack.w*0.5));
     float fill = 1.0-smoothstep(-0.6,0.6,p.x-(uTrack.x+uTrack.z*uTrackValue));
     vec3 rest = mix(vec3(0.83,0.78,0.85),vec3(0.20,0.16,0.20),uLightMode);
-    vec3 accent = uMaterial > 0.5 ? vec3(0.86,0.24,0.48) : ACCENT;
+    vec3 accent = uMaterial > 0.5 ? uTrackRegularAccent : uTrackAccent;
     return mix(c, mix(rest, accent, fill), mask*mix(0.42,0.94,fill));
 }
 vec3 sharpSample(vec2 p) { return localTrack(texture(uSharp,sharpUV(p)).rgb,p); }
@@ -322,6 +324,7 @@ vec3 regularMaterial(vec2 p, vec2 n, float slope, float depth) {
     float base = mix(uRegularDark,uRegularLight,lightMode);
     float dock = uIsDock*(1.0-popup);
     base = mix(base,uRegularDock,dock);
+    if (uThemeDark > .5) base = max(base,.86);
     c = mix(c,mix(vec3(0.055,0.050,0.065),vec3(1.0),lightMode),base);
     c = localTrack(c,p);
     c = innerShadow(c,n,depth);
@@ -351,6 +354,9 @@ vec3 unionField(vec3 a, vec3 b, float k) {
     float h=clamp(.5+.5*(b.z-a.z)/k,0.0,1.0);
     return vec3(mix(b.xy,a.xy,h),mix(b.z,a.z,h)-k*h*(1.0-h));
 }
+float dropErosion(float life) {
+    return uBulge.y<.5&&uWaveEnabled<.5?(1.0-life)*26.0:0.0;
+}
 void dockFields(vec2 p, out vec3 whole, out vec3 liquid, out float strength) {
     whole=plateField(p);liquid=vec3(0,0,10000);
     vec3 resting=vec3(0,0,10000);strength=uBulge.y>.5?mix(.32,1.0,uBulge.z):uBulge.z;
@@ -359,7 +365,7 @@ void dockFields(vec2 p, out vec3 whole, out vec3 liquid, out float strength) {
         vec4 dp=dropParams(i);
         vec3 cap=rectField(p,dropRect(i),dp.x);
         if(dp.z>.5) {
-            if(uBulge.y<.5&&uWaveEnabled<.5)cap.z+=(1.0-dp.w)*26.0;
+            cap.z+=dropErosion(dp.w);
             liquid=unionField(liquid,cap,dp.y);
         } else {whole=unionField(whole,cap,uBulge.x);if(cap.z<resting.z)resting=cap;}
     }
@@ -370,6 +376,20 @@ void dockFields(vec2 p, out vec3 whole, out vec3 liquid, out float strength) {
 float dockSlope(float depth,float edge,float thickness) {
     float x=1.0-clamp(depth/max(edge,.1),0.0,1.0);
     return min(8.0,thickness/max(edge,.1)*x/sqrt(max(1.0-x*x,.0025)));
+}
+float dropOpticalScale(vec4 rect, float life) {
+    // Match the cross-section eroded by dockFields. All lens lengths shrink
+    // together: full-size optics inside a small body sample across its far side.
+    float erosion=dropErosion(life);
+    if(life>=1.0||erosion<=0.0) return 1.0;
+    float halfExtent=max(min(rect.z,rect.w)*.5,.001);
+    return max(halfExtent-erosion,0.0)/halfExtent;
+}
+float dropOpticalEdge(vec4 rect, float life) {
+    float edge=min(min(uEdge,23.5),max(min(rect.z,rect.w)*.34,4.0));
+    float scale=dropOpticalScale(rect,life);
+    // The slope reaches zero before the inward normals meet at the centre.
+    return scale<1.0?min(edge,min(rect.z,rect.w)*.5)*scale:edge;
 }
 vec2 fieldNormal(vec3 field) {return field.xy/max(length(field.xy),.0001);}
 float popupMask(vec2 p) {
@@ -386,7 +406,7 @@ vec3 dockRegular(vec2 p,vec2 normal,float depth,float popup) {
     c=mix(mix(uAverage,uAverageB,popup),c,uRegularContrast);
     c=mix(vec3(luminance(c)),c,uRegularTint*uRegularSaturation);
     float light=mix(uLightMode,uLightModeB,popup);
-    c=mix(c,mix(vec3(.055,.05,.065),vec3(1),light),uRegularDock);
+    c=mix(c,mix(vec3(.055,.05,.065),vec3(1),light),uThemeDark > .5 ? max(uRegularDock,.86) : uRegularDock);
     float side=max(0.0,-dot(normal,vec2(cos(uLightAngle),sin(uLightAngle))));
     c*=1.0-.055*exp(-depth/1.8)*(.25+.75*side);
     c+=vec3(.18)*max(0.0,-normal.y)*(1.0-smoothstep(0.0,1.0,depth));
@@ -467,7 +487,7 @@ float selectedShare(vec2 p) {
         float mark=dropSelected(i);
         if(dp.z<.5||mark<=0.0) continue;
         float z=rectField(p,dropRect(i),dp.x).z;
-        if(uBulge.y<.5) z+=(1.0-dp.w)*26.0;
+        z+=dropErosion(dp.w);
         share=max(share,(1.0-smoothstep(-1.2,1.2,z))*mark);
     }
     return share*uSelectedColor.a;
@@ -502,19 +522,22 @@ vec4 mixedDock(vec2 p) {
         // a melting drop was a shard of split colour over the icon (27.09).
         float own=uDropDome>.5?ndLife:1.0;
         amount*=own;
-        float liquidDepth=max(-liquid.z,0.0),edge=min(min(uEdge,23.5),max(min(nd.z,nd.w)*.34,4.0));
+        float opticalScale=dropOpticalScale(nd,ndLife);
+        float liquidDepth=max(-liquid.z,0.0),edge=dropOpticalEdge(nd,ndLife);
         float live=1.0-smoothstep(uLiveTop-6.0,uLiveTop+2.0,p.y);
-        float slope=dockSlope(liquidDepth,edge,uThickness);
+        float slope=dockSlope(liquidDepth,edge,uThickness*opticalScale);
         vec2 normal=fieldNormal(liquid);
         float life=strength*own*(1.0-uDematerialize);
-        float bend=slope/sqrt(1.0+slope*slope)*life;
+        float bend=slope/sqrt(1.0+slope*slope)*life*opticalScale;
         // A drop standing on the plate is fused with it below (meniscus): no lens there.
         if(nd.y<uRect.y&&nd.y+nd.w>uRect.y) bend*=1.0-clamp(normal.y*1.6,0.0,1.0);
         // The hover drop in the menu bends nothing (2026-09-25: "no refraction at all
         // for the menu's bubble"): same glass, no lens. Only drops that reach the plate bend.
         if(nd.y+nd.w<uRect.y) bend=0.0;
         vec2 bent=p-normal*uRefraction*bend;
-        float dispersion=uDispersion*.5*bend;
+        // Splitting a bright glyph across a dark plate creates coloured fringes
+        // in its drop. Keep dark domes achromatic; their lens and rim remain.
+        float dispersion=uThemeDark>.5&&uDropDome>.5?0.0:uDispersion*.5*bend;
         vec3 centre=dockBackdrop(bent,live);
         vec3 sharp=vec3(dockBackdrop(bent-normal*dispersion,live).r,
                          centre.g,dockBackdrop(bent+normal*dispersion,live).b);
@@ -523,7 +546,7 @@ vec4 mixedDock(vec2 p) {
         float plateMask=1.0-smoothstep(-1.0,1.0,min(plateDistance(bent),menuField(bent).z));
         vec3 behind=mix(texture(uWallBlurred,wallpaperUV(bent)).rgb,texture(uBlurred,wallpaperUV(bent)).rgb,live);
         vec3 soft=mix(behind,centre,plateMask);
-        vec3 clear=mix(sharp,soft,smoothstep(0.0,edge,liquidDepth)*uBlur);
+        vec3 clear=mix(sharp,soft,smoothstep(0.0,max(edge,.1),liquidDepth)*uBlur);
         if(uDropDome<.5){clear=brightnessAdaptation(clear);clear=materialTint(clear);clear=saturation(clear);}
         clear=mix(clear,uSelectedColor.rgb,selectedShare(p));
         clear=innerShadow(clear,normal,liquidDepth);

@@ -22,6 +22,7 @@ state = json.loads(state_path.read_text())
 XML = '''<node>
 <interface name="org.freedesktop.Accounts">
  <method name="FindUserById"><arg type="x" direction="in"/><arg type="o" direction="out"/></method>
+ <method name="FindUserByName"><arg type="s" direction="in"/><arg type="o" direction="out"/></method>
  <method name="CreateUser"><arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="i" direction="in"/><arg type="o" direction="out"/></method>
  <method name="DeleteUser"><arg type="x" direction="in"/><arg type="b" direction="in"/></method>
 </interface>
@@ -29,12 +30,14 @@ XML = '''<node>
  <method name="SetRealName"><arg type="s" direction="in"/></method>
  <method name="SetPassword"><arg type="s" direction="in"/><arg type="s" direction="in"/></method>
  <method name="SetAccountType"><arg type="i" direction="in"/></method>
+ <method name="SetIconFile"><arg type="s" direction="in"/></method>
  <property name="UserName" type="s" access="read"/>
  <property name="RealName" type="s" access="read"/>
  <property name="AccountType" type="i" access="read"/>
  <property name="Locked" type="b" access="read"/>
  <property name="SystemAccount" type="b" access="read"/>
  <property name="HomeDirectory" type="s" access="read"/>
+ <property name="IconFile" type="s" access="read"/>
  <property name="Uid" type="t" access="read"/>
 </interface>
 <interface name="org.freedesktop.login1.Manager">
@@ -44,7 +47,7 @@ XML = '''<node>
 node = Gio.DBusNodeInfo.new_for_xml(XML)
 accounts, user_interface, login = node.interfaces
 TYPES = {'UserName': 's', 'RealName': 's', 'AccountType': 'i', 'Locked': 'b', 'SystemAccount': 'b',
-         'HomeDirectory': 's', 'Uid': 't'}
+         'HomeDirectory': 's', 'Uid': 't', 'IconFile': 's'}
 bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 registered = {}
 
@@ -86,6 +89,12 @@ def method(_conn, _sender, object_path, interface, name, args, invocation):
         if uid not in state['users']:
             return error(invocation, 'org.freedesktop.Accounts.Error.Failed', 'Failed to look up user')
         return invocation.return_value(GLib.Variant('(o)', (path(uid),)))
+    if name == 'FindUserByName':
+        login_name = args.unpack()[0]
+        found = [uid for uid, user in state['users'].items() if user['UserName'] == login_name]
+        if not found:
+            return error(invocation, 'org.freedesktop.Accounts.Error.Failed', 'Failed to look up user')
+        return invocation.return_value(GLib.Variant('(o)', (path(found[0]),)))
     if name == 'CreateUser':
         login_name, real_name, account_type = args.unpack()
         if any(user['UserName'] == login_name for user in state['users'].values()):
@@ -115,13 +124,31 @@ def method(_conn, _sender, object_path, interface, name, args, invocation):
         state.setdefault('passwords', {})[user['UserName']] = args.unpack()[0]
     elif name == 'SetAccountType':
         user['AccountType'] = args.unpack()[0]
+    elif name == 'SetIconFile':
+        # Like the daemon: a copy under its own icons directory (state "icons"); "" removes the
+        # copy and reads back as "" until the daemon reloads.
+        source = args.unpack()[0]
+        if not source:
+            if state.get('icons'):
+                (Path(state['icons']) / user['UserName']).unlink(missing_ok=True)
+            user['IconFile'] = ''
+        elif state.get('icons'):
+            copy = Path(state['icons']) / user['UserName']
+            copy.write_bytes(Path(source).read_bytes())
+            user['IconFile'] = str(copy)
+        else:
+            user['IconFile'] = source
     save()
     invocation.return_value(None)
 
 
 def get(_conn, _sender, object_path, _interface, name):
     uid = object_path.rsplit('User', 1)[1]
-    value = int(uid) if name == 'Uid' else state['users'][uid][name]
+    user = state['users'][uid]
+    if name == 'IconFile':
+        # AccountsService names ~/.face while no picture is set, whether or not it exists.
+        return GLib.Variant('s', user.get('IconFile', user['HomeDirectory'] + '/.face'))
+    value = int(uid) if name == 'Uid' else user[name]
     return GLib.Variant(TYPES[name], value)
 
 

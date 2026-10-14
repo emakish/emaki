@@ -115,7 +115,7 @@ Item {
     }
     readonly property real islandAlpha: {
         tick;
-        return islandBubble && morph < .6 ? Liquid.smooth(islandBubble.alpha.x) : 0;
+        return morph < .6 ? Liquid.onGlass(islandBubble) : 0;
     }
     function glassStatus(): var {
         return {
@@ -126,10 +126,10 @@ Item {
         };
     }
 
-    // Ink: always the light glass, whatever lies underneath (2026-09-27).
-    readonly property color ink: LiquidPalette.inkOnLight
-    readonly property color dim: LiquidPalette.dimOnLight
-    readonly property color alarm: LiquidPalette.dangerOnLight
+    // Ink follows the selected theme independently of the backdrop.
+    readonly property color ink: LiquidPalette.ink
+    readonly property color dim: LiquidPalette.plateDim
+    readonly property color alarm: LiquidPalette.danger
     readonly property var symbols: ({
             mic: "audio-input-microphone-symbolic",
             cam: "camera-web-symbolic",
@@ -158,6 +158,18 @@ Item {
         height: panel.shownHeight
         radius: panel.shownRadius
         color: LiquidPalette.flatPlate
+    }
+    // The Settings canvas of the flat stand-in: over the plate and under the drop, which lies
+    // under the content here (with the glass the drop lies above the content layer and its tint).
+    CanvasTint {
+        objectName: "privacy-canvas-flat"
+        shown: LiquidPalette.sharedCanvas && !panel.glassReady
+        y: Metrics.islandHeight
+        width: panel.shownWidth
+        height: Math.max(0, panel.shownHeight - y)
+        bottomLeftRadius: panel.shownRadius
+        bottomRightRadius: panel.shownRadius
+        opacity: panel.contentAlpha
     }
     Repeater {
         model: panel.glassReady ? [] : panel.drops
@@ -199,6 +211,17 @@ Item {
             width: panel.shownWidth
             height: panel.shownHeight
             clip: !panel.glassReady
+            // The Settings canvas under the head's line.
+            CanvasTint {
+                objectName: "privacy-canvas"
+                shown: LiquidPalette.sharedCanvas && panel.glassReady
+                y: Metrics.islandHeight
+                width: panel.shownWidth
+                height: Math.max(0, panel.shownHeight - y)
+                bottomLeftRadius: panel.shownRadius
+                bottomRightRadius: panel.shownRadius
+                opacity: panel.contentAlpha
+            }
             Item {
                 x: panel.frameX - panel.shownX
                 width: panel.targetWidth

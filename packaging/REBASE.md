@@ -32,6 +32,27 @@ one linear stack on top of tag `v26.04`.
 | `0009-preserve-mapped-layer-keyboard-focus.patch` | patch delivered in the distribution tree | `v26.04` with `0001`–`0008` applied |
 | `0010-trusted-authentication-prompt.patch` | patch delivered in the distribution tree | `v26.04` with `0001`–`0009` applied |
 | `0011-freeze-session-safety-bindings.patch` | patch delivered in the distribution tree | `v26.04` with `0001`–`0010` applied |
+| `0012-report-trusted-shell-cast-pid.patch` | patch delivered in the distribution tree | `v26.04` with `0001`–`0011` applied |
+| `0013-fullscreen-panel-reservation.patch` | patch delivered in the distribution tree | `v26.04` with `0001`–`0012` applied |
+
+Patch 0013 keeps a fullscreen top inset per workspace, separate from the working
+area. Its only input is a mapped layer surface named `emaki-fullscreen-inset`
+from the trusted shell connection (`trusted_prompt::client_is_trusted`, patch
+0010), anchored to the top and not the bottom: inset = its requested height plus
+its top margin. The same namespace from any other client is ignored. Never derive
+it from an exclusive zone (GOTCHAS 2026-10-14). On rebase,
+keep the inset in the initial fullscreen configure (`Workspace::configure_new_window`),
+column insert and update paths, tile size clamps, the shared render/input origin
+(`tiles_origin`) and the IPC position reported only for inset fullscreen tiles,
+which the shell's fullscreen detection needs. It changes `src/layout/scrolling.rs`
+and `src/layout/workspace.rs`, so `check-assumptions.py` carries reviewed hashes
+for both, and rejects a `#[cfg(test)]` on `ScrollingSpace::fullscreen_top_inset()`,
+which release code calls. Tests: `cargo test --lib emaki_fullscreen_panel` (layout
+geometry, hit testing, marker predicate with trust, output resize and column
+transfer; protocol fixtures for the trusted shell's marker, an ordinary client's
+ignored marker, the panel's zone, unmap and output moves), part of the package's
+`emaki_` filter. Tests alone are not enough: also build the patched tree without
+`cfg(test)` (`cargo check --lib --bins` or `cargo build --release`).
 
 Check that the stack is linear (in the niri fork clone):
 
@@ -417,6 +438,8 @@ Four patches on Quickshell `v0.3.1`, applied by `prepare()` in this order:
 | `0003-qt-6.12-moc-includes.patch` | upstream backport, see "Qt 6.12 candidate" | `0002` applied |
 | `0004-services-polkit-one-request-at-a-time.patch` | `emaki-0004` (scratch clone only) | `0001`–`0003` applied |
 | `0006-core-desktopentry-honour-onlyshowin-notshowin.patch` | `emaki-0006` (scratch clone only) | `0001`–`0005` applied |
+| `0007-core-desktopentry-watch-directories-created-later.patch` | `emaki-0007` (scratch clone only) | `0001`–`0006` applied |
+| `0008-core-find-theme-icons-installed-after-startup.patch` | `emaki-0008` (scratch clone only) | `0001`–`0007` applied |
 
 Each branch is a single commit on its base. `emaki-network-attempt` was cut on
 2026-10-05 in a separate clone of the fork; until it is fetched into the fork
@@ -846,3 +869,16 @@ revoke-package rendering. Shared defaults must still validate with stock niri.
 The captured revoke command also keeps its startup environment. Its prepared spawn must not
 consult the reloadable child environment; the environment regression checks that ordinary
 commands still see reloads while the captured revoke command does not.
+
+### The trusted shell's PID on its screencasts (2026-10-13)
+
+Patch `0012` follows the complete `0001`–`0011` stack on `v26.04` and ships in
+niri-emaki 26.04-21. The trusted shell's connection keeps `credentials_unknown`, so its
+windows and every other credential consumer still see no PID. `ClientState` gains
+`trusted_shell_pid`, stored by the supervisor right after the shell process is spawned on
+that connection; `utils::get_cast_credentials_for_client` returns it for the trusted shell
+and the socket credentials for everyone else, and only wlr-screencopy's manager bind uses
+it. On a rebase, find every place a cast learns its client (`CastKind::WlrScreencopy` and any
+new capture protocol) and route it through that function; `trusted_shell_screencopy_reports_the_spawned_shell_pid`
+pins the behaviour. In a session, `niri msg --json casts` must show the shell's glass
+capture with the PID of the `qs` process the session started.

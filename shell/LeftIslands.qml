@@ -153,13 +153,13 @@ Item {
     }
     readonly property real logoBubbleAlpha: {
         tick;
-        return Liquid.smooth(logoBubble.alpha.x);
+        return Liquid.onGlass(logoBubble);
     }
 
-    // Ink: always the light glass, whatever lies underneath (2026-09-27).
-    readonly property color ink: LiquidPalette.inkOnLight
-    readonly property color dim: LiquidPalette.dimOnLight
-    readonly property color faint: LiquidPalette.faintOnLight
+    // Ink follows the selected theme independently of the backdrop.
+    readonly property color ink: LiquidPalette.ink
+    readonly property color dim: LiquidPalette.plateDim
+    readonly property color faint: LiquidPalette.faint
 
     // ---- Flat stand-in (no GPU): plate, drops, then the content on top ----
     component FlatPlate: Rectangle {

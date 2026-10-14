@@ -8,6 +8,8 @@ Item {
     id: target
     anchors.fill: parent
     property string label: ""
+    // False where the control draws its own focus (the privacy pill's hover drop).
+    property bool ring: true
     signal activated
     activeFocusOnTab: activeFocus || (enabled && visible)
     Accessible.role: Accessible.Button
@@ -28,5 +30,7 @@ Item {
     }
     onActiveFocusChanged: if (activeFocus)
         Keyboard.reveal(target)
-    FocusRing {}
+    FocusRing {
+        shown: target.ring && target.activeFocus
+    }
 }

@@ -1,40 +1,68 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma Singleton
 import QtQuick
 
 QtObject {
-    readonly property color text: "#fbf3ea"
-    readonly property color secondary: Qt.rgba(1, 244 / 255, 232 / 255, .72)
-    readonly property color dim: Qt.rgba(1, 244 / 255, 232 / 255, .38)
-    readonly property color accentText: "#2a0f05"
-    // Ink on the Regular glass (docs/mockups/liquid-glass, regularPalette): dark ink on a
-    // light plate, light ink on a dark one. Shared by the dock menu, the launcher and the
-    // left bar islands.
-    readonly property color inkOnLight: "#241018"
-    readonly property color inkOnDark: "#f4e9f0"
-    readonly property color dimOnLight: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .55)
-    readonly property color dimOnDark: Qt.rgba(244 / 255, 233 / 255, 240 / 255, .6)
-    readonly property color faintOnLight: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .3)
-    readonly property color faintOnDark: Qt.rgba(244 / 255, 233 / 255, 240 / 255, .35)
-    readonly property color dangerOnLight: "#a01b45"
-    readonly property color dangerOnDark: "#ffb3c9"
-    // Words in the accent on the glass (clock.js accent(): "Show all", "Clear", the unread
-    // dot, a picked day, the DND track): the accent darkened on a light plate, lightened on a
-    // dark one, so it keeps its contrast on both.
-    readonly property color accentOnLight: "#c2481f"
-    readonly property color accentOnDark: "#ff9b6a"
-    // The selected / current drop — today in the calendar, the chosen player, the open page's
-    // tab — is orange, hover stays the plain drop (2026-09-27: "orange, like the Arch
-    // icon"; the colour moves to settings later). The orange is the launcher's Arch arrow
-    // (ShellPalette.accent = tokens.toml accent). Alpha is the share of the drop's body it
-    // takes on the glass (GlassShape uSelectedColor) and the flat stand-in's fill; the rim
-    // light and the highlight stay on top, the dark ink stays readable on it.
-    readonly property color selectedDrop: Qt.rgba(ShellPalette.accent.r, ShellPalette.accent.g, ShellPalette.accent.b, .9)
-    // Without a GPU (software Qt, headless tests) and for the frame before a capture, the glass
-    // is a flat stand-in: the plate and the drops on it. Light like the glass, which is always
-    // the light one (2026-09-27), so the dark ink reads on both and an opening panel
-    // does not flash dark. The dock uses the same plate; its menu and tooltip the denser one.
-    readonly property color flatPlate: Qt.rgba(1, .973, .953, .70)
-    readonly property color flatPanel: Qt.rgba(1, .973, .953, .86)
-    readonly property color flatDrop: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .07)
-    readonly property color flatDropRim: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .16)
+    // Semantic aliases keep the glass and opaque controls on the same palette.
+    // Warm light defaults retain their original floating-point alpha values;
+    // dark glass uses brighter ink independently of wallpaper brightness.
+    readonly property color text: ShellPalette.glassText
+    readonly property color secondary: ShellPalette.glassSecondary
+    readonly property color dim: ShellPalette.glassDim
+    readonly property color accentText: ShellPalette.accentText
+    readonly property color inkOnLight: ShellPalette.inkOnLight
+    readonly property color inkOnDark: ShellPalette.inkOnDark
+    readonly property color dimOnLight: ShellPalette.dimOnLight
+    readonly property color dimOnDark: ShellPalette.dimOnDark
+    readonly property color faintOnLight: ShellPalette.faintOnLight
+    readonly property color faintOnDark: ShellPalette.faintOnDark
+    readonly property color dangerOnLight: ShellPalette.dangerOnLight
+    readonly property color dangerOnDark: ShellPalette.dangerOnDark
+    readonly property color accentOnLight: ShellPalette.accentOnLight
+    readonly property color accentOnDark: ShellPalette.accentOnDark
+    readonly property color ink: ShellPalette.dark ? inkOnDark : inkOnLight
+    readonly property color plateDim: ShellPalette.dark ? ShellPalette.settingsDim : dimOnLight
+    readonly property color faint: ShellPalette.dark ? ShellPalette.settingsFaint : faintOnLight
+    readonly property color danger: ShellPalette.dark ? dangerOnDark : dangerOnLight
+    readonly property color accent: ShellPalette.dark ? accentOnDark : accentOnLight
+    readonly property real selectionShade: ShellPalette.dark ? .32 : 1
+    readonly property color selectedDrop: Qt.rgba(ShellPalette.accent.r * selectionShade, ShellPalette.accent.g * selectionShade, ShellPalette.accent.b * selectionShade, .9)
+    // The Settings canvas (0.8.1 item 16): the body of Settings is the shell's Regular glass
+    // under this cream (light) or brown (dark) tint; its top part is the plain glass. With
+    // sharedCanvas every other surface's body takes the same material under its own top part
+    // (CanvasTint). On since the owner accepted the pictures; off gives back the 0.8.0 surfaces.
+    // Settings, Report a problem and Programs & Updates draw it either way.
+    readonly property bool sharedCanvas: true
+    readonly property color canvas: ShellPalette.settingsSidebar
+    readonly property color flatPlate: ShellPalette.flatPlate
+    readonly property color flatPanel: ShellPalette.flatPanel
+    readonly property color flatDrop: ShellPalette.flatDrop
+    readonly property color flatDropRim: ShellPalette.flatDropRim
+    readonly property color dockControl: ShellPalette.dockControlFill
+    readonly property color dockDot: ShellPalette.dockDot
+    readonly property color dockLine: ShellPalette.dockLine
+    readonly property color metricFaint: ShellPalette.metricsFaint
+    readonly property color metricDim: ShellPalette.metricsDim
+    readonly property color metricLine: ShellPalette.metricsLine
+    readonly property color polkitCard: ShellPalette.polkitCard
+    readonly property color polkitAccent: ShellPalette.polkitAccent
+    readonly property color polkitDanger: ShellPalette.polkitDanger
+    readonly property color polkitInk: ShellPalette.polkitInk
+    readonly property color polkitField: ShellPalette.polkitField
+    readonly property color polkitFocus: ShellPalette.dark ? ShellPalette.accentOnDark : ShellPalette.polkitFocus
+    readonly property color polkitBorder: ShellPalette.polkitBorder
+    readonly property color polkitDim: ShellPalette.polkitDim
+    readonly property color polkitKey: ShellPalette.polkitKey
+    readonly property color polkitKeyText: ShellPalette.polkitKeyText
+    readonly property color polkitHazard: ShellPalette.polkitHazard
+    readonly property color polkitAllow: ShellPalette.polkitAllow
+    readonly property color polkitAllowText: ShellPalette.polkitAllowText
+    readonly property color polkitPressed: ShellPalette.polkitPressed
+    readonly property color polkitHover: ShellPalette.polkitHover
+    readonly property vector3d trackAccent: Appearance.accent === "orange" ? ShellPalette.trackAccent : Qt.vector3d(ShellPalette.accent.r, ShellPalette.accent.g, ShellPalette.accent.b)
+    readonly property vector3d trackRegularAccent: Appearance.accent === "orange" ? ShellPalette.trackRegularAccent : Qt.vector3d(ShellPalette.accent.r, ShellPalette.accent.g, ShellPalette.accent.b)
+    // Keyboard focus on an accent control (FocusRing.strong): the hover rim's ink, dense
+    // enough for 3:1 against the opaque accent. Pale controls keep flatDropRim.
+    readonly property color focusOnAccent: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .75)
 }

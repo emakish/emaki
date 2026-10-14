@@ -10,8 +10,8 @@ import "Keyboard.js" as Keyboard
 // the chosen player (both orange: LiquidPalette.selectedDrop) and the Do not disturb knob;
 // one hover drop (plain) flows to whatever is pressable (GlassTarget) and stays on the last
 // one while the pointer crosses a gap. What the panel shows lies under the glass (uIcons);
-// what a drop covers is drawn once more on the glass, as much as the drop covers it. Without
-// a GPU the same layers are drawn flat.
+// a drop's own target is drawn fully on the glass while the drop exists; a departing
+// target follows coverage. Without a GPU the same layers are drawn flat.
 // The item is the plate's rectangle on the screen (its parent sits at the screen origin):
 // the overlay's input and blur regions and the status read it.
 Item {
@@ -238,8 +238,8 @@ Item {
             active = Liquid.vanish(knobBubble, now) || active;
         for (const b of [hoverBubble, todayBubble, playerBubble, knobBubble])
             active = Liquid.advance(b, now, dt) || active;
-        // dual(): what a drop goes to or rests on lies on the glass with the drop's alpha (kept
-        // while the drop waits and melts there); what it is leaving, as much as it still covers
+        // dual(): what a drop goes to or rests on lies fully on the glass while the drop exists
+        // (including while it waits and melts); what it is leaving, as much as it still covers
         // it (Liquid.cover). By the flag alone the chosen player's old name went back under the
         // glass the moment another was chosen, while its drop still covered it and flowed away,
         // and the drop's rim mirrored and split the name (27.09: players switch "very
@@ -262,7 +262,7 @@ Item {
             return Liquid.cover(b, [r.x, r.y, r.width, r.height]);
         };
         for (const [role, b] of [["hover", hoverBubble], ["player", playerBubble], ["today", todayBubble]]) {
-            put(panel[role + "On"], Liquid.smooth(b.alpha.x));
+            put(panel[role + "On"], Liquid.onGlass(b));
             const trail = panel[role + "Trail"];
             if (put(trail, covered(trail, b)) < .005)
                 panel[role + "Trail"] = null;
@@ -325,7 +325,7 @@ Item {
     }
     readonly property real islandAlpha: {
         tick;
-        return islandBubble ? Liquid.smooth(islandBubble.alpha.x) : 0;
+        return Liquid.onGlass(islandBubble);
     }
     function glassStatus(): var {
         const rect = b => ({
@@ -348,11 +348,11 @@ Item {
         };
     }
 
-    // Ink: always the light glass, whatever lies underneath (2026-09-27).
-    readonly property color ink: LiquidPalette.inkOnLight
-    readonly property color dim: LiquidPalette.dimOnLight
-    readonly property color faint: LiquidPalette.faintOnLight
-    readonly property color accent: LiquidPalette.accentOnLight
+    // Ink follows the selected theme independently of the backdrop.
+    readonly property color ink: LiquidPalette.ink
+    readonly property color dim: LiquidPalette.plateDim
+    readonly property color faint: LiquidPalette.faint
+    readonly property color accent: LiquidPalette.accent
 
     // ---- Input on the plate: presses stay in the panel; the head toggles it; leaving the
     // plate lets the hover drop melt ----
@@ -379,6 +379,18 @@ Item {
         height: panel.shownHeight
         radius: panel.shownRadius
         color: LiquidPalette.flatPlate
+    }
+    // The Settings canvas of the flat stand-in: over the plate and under the drops, which lie
+    // under the content here (with the glass the drops lie above the content layer and its tint).
+    CanvasTint {
+        objectName: "clock-canvas-flat"
+        shown: LiquidPalette.sharedCanvas && !panel.glassReady
+        y: body.opened ? body.header - 7 : Metrics.islandHeight
+        width: panel.shownWidth
+        height: Math.max(0, panel.shownHeight - y)
+        bottomLeftRadius: panel.shownRadius
+        bottomRightRadius: panel.shownRadius
+        opacity: panel.contentAlpha
     }
     Repeater {
         model: panel.glassReady ? [] : panel.drops
@@ -425,6 +437,18 @@ Item {
             width: panel.shownWidth
             height: panel.shownHeight
             clip: !panel.glassReady
+            // The Settings canvas under the top part: the drawer's time and date down to its
+            // hairline, or a notification's island line.
+            CanvasTint {
+                objectName: "clock-canvas"
+                shown: LiquidPalette.sharedCanvas && panel.glassReady
+                y: body.opened ? body.header - 7 : Metrics.islandHeight
+                width: panel.shownWidth
+                height: Math.max(0, panel.shownHeight - y)
+                bottomLeftRadius: panel.shownRadius
+                bottomRightRadius: panel.shownRadius
+                opacity: panel.contentAlpha
+            }
             ClockBody {
                 id: body
                 x: panel.frameX - panel.shownX
@@ -523,7 +547,7 @@ Item {
             height: parent.height
             opacity: panel.contentAlpha
             visible: opacity > .001
-            // What the drops cover, each once, as much as they cover it.
+            // Each drop's target once, fully lifted; departing targets follow coverage.
             Repeater {
                 model: panel.copies
                 GlassCopy {
@@ -564,6 +588,8 @@ Item {
         width: belongs ? focused.width : 0
         height: belongs ? focused.height : 0
         shown: panel.opened && panel.glassReady && belongs
+        // Today and the chosen player rest under orange drops: the strong rim there only.
+        strong: belongs && (focused as GlassTarget)?.accent === true
         radius: 10
     }
 }

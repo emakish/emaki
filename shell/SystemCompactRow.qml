@@ -116,6 +116,7 @@ Item {
                 readonly property string icon: row.iconOf(page)
                 readonly property string text: page === "updates" ? String(UpdateService.pending) : page === "kb" ? row.niri.layoutLabel : page === "power" ? row.batteryText : ""
                 glass: row.glass
+                accent: row.activePage === page
                 key: "cell-" + page
                 label: row.tips[page] ?? ""
                 // system.js cells(): icon 16 + 6 + text + 14; whole pixels keep the next

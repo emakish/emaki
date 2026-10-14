@@ -241,6 +241,8 @@ Scope {
         systemBackdrop.parent = overlay.contentItem;
         systemWallBackdrop.parent = overlay.contentItem;
         controller.systemBackdrop = Qt.binding(() => systemBackdrop.ready || !systemWallBackdrop.item ? systemBackdrop : systemWallBackdrop.item);
+        // The system panel opens over its live capture, not over the wallpaper stand-in.
+        controller.systemGlassLive = Qt.binding(() => systemBackdrop.ready || !systemWallBackdrop.item);
     }
     // Dock: bottom edge; pinned dock reserves 77 px, auto-hidden one only listens at the edge.
     // The surface reaches higher than the band: the menu and tooltip grow inside it.
@@ -447,10 +449,32 @@ Scope {
         exclusiveZone: surfaces.controller.barPolicy.effectiveReserve
         exclusionMode: ExclusionMode.Normal
         WlrLayershell.namespace: "emaki-test-bar"
-        WlrLayershell.layer: WlrLayer.Top
-        WlrLayershell.keyboardFocus: surfaces.controller.enabled && surfaces.controller.barPolicy.barVisible && (!surfaces.controller.barPolicy.fullscreen || surfaces.controller.niri.overviewOpen) && surfaces.controller.barKeyboardActive && surfaces.controller.niri.layerFocusSupported ? (surfaces.pendingLayer === "bar" ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand) : WlrKeyboardFocus.None
+        WlrLayershell.layer: surfaces.controller.barPolicy.fullscreen ? WlrLayer.Overlay : WlrLayer.Top
+        WlrLayershell.keyboardFocus: surfaces.controller.enabled && surfaces.controller.barPolicy.barVisible && surfaces.controller.barKeyboardActive && surfaces.controller.niri.layerFocusSupported ? (surfaces.pendingLayer === "bar" ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand) : WlrKeyboardFocus.None
         mask: barInput
         BackgroundEffect.blurRegion: barBlur
+    }
+    // Fullscreen inset marker for niri-emaki: while it is mapped, fullscreen windows on this
+    // output start below its height, so the panel that stays visible over them never covers
+    // their top rows. It draws nothing, takes no input and reserves nothing, so ordinary
+    // windows keep the panel's reserve above. niri-emaki honours it only from the trusted shell
+    // connection; stock niri ignores it.
+    PanelWindow {
+        id: fullscreenInset
+        screen: surfaces.controller.output
+        visible: surfaces.controller.enabled && surfaces.controller.output !== null && surfaces.controller.barPolicy.fullscreenInset > 0
+        anchors {
+            top: true
+            left: true
+        }
+        implicitWidth: 1
+        implicitHeight: Math.max(1, surfaces.controller.barPolicy.fullscreenInset)
+        color: "transparent"
+        exclusionMode: ExclusionMode.Ignore
+        WlrLayershell.namespace: "emaki-fullscreen-inset"
+        WlrLayershell.layer: WlrLayer.Overlay
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+        mask: Region {}
     }
     // The overlay stays mapped, transparent
     // and without input while nothing is open (mask: the empty clockInput region,
@@ -515,33 +539,30 @@ Scope {
     Region {
         id: barInput
         Region {
-            item: surfaces.controller.edge
-            intersection: surfaces.controller.barPolicy.edgeEnabled ? Intersection.Combine : Intersection.Subtract
+            item: surfaces.controller.barHoldBand.visible ? surfaces.controller.barHoldBand : null
         }
         Region {
-            item: surfaces.controller.bar.logo
-            intersection: surfaces.controller.bar.logo.visible ? Intersection.Combine : Intersection.Subtract
+            item: surfaces.controller.barPolicy.edgeEnabled ? surfaces.controller.edge : null
+        }
+        Region {
+            item: surfaces.controller.bar.logo.visible ? surfaces.controller.bar.logo : null
             radius: Metrics.islandRadius
         }
         Region {
-            item: surfaces.controller.bar.workspaces
-            intersection: surfaces.controller.bar.workspaces.visible ? Intersection.Combine : Intersection.Subtract
+            item: surfaces.controller.bar.workspaces.visible ? surfaces.controller.bar.workspaces : null
             radius: Metrics.islandRadius
         }
         // Hover highlights need pointer input on these islands too.
         Region {
-            item: surfaces.controller.bar.clock
-            intersection: surfaces.controller.bar.clock.visible ? Intersection.Combine : Intersection.Subtract
+            item: surfaces.controller.bar.clock.visible ? surfaces.controller.bar.clock : null
             radius: Metrics.islandRadius
         }
         Region {
-            item: surfaces.controller.bar.systemIsland
-            intersection: surfaces.controller.bar.systemIsland.visible ? Intersection.Combine : Intersection.Subtract
+            item: surfaces.controller.bar.systemIsland.visible ? surfaces.controller.bar.systemIsland : null
             radius: Metrics.islandRadius
         }
         Region {
-            item: surfaces.controller.privacy
-            intersection: surfaces.controller.privacy.visible && surfaces.controller.privacy.shown ? Intersection.Combine : Intersection.Subtract
+            item: surfaces.controller.privacy.visible && surfaces.controller.privacy.shown ? surfaces.controller.privacy : null
             radius: Metrics.islandRadius
         }
     }

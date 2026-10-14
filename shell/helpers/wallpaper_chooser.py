@@ -30,7 +30,7 @@ def local_picture(uri):
     return path
 
 
-def choose(timeout_ms=120000):
+def choose(timeout_ms=120000, title='Choose a wallpaper', mime_types=('image/*',)):
     try:
         import gi
         gi.require_version('Gio', '2.0')
@@ -38,10 +38,10 @@ def choose(timeout_ms=120000):
         bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
     except Exception:
         return dict(state='portal_unavailable')
-    return choose_on_bus(bus, Gio, GLib, timeout_ms)
+    return choose_on_bus(bus, Gio, GLib, timeout_ms, title, mime_types)
 
 
-def choose_on_bus(bus, Gio, GLib, timeout_ms):
+def choose_on_bus(bus, Gio, GLib, timeout_ms, title='Choose a wallpaper', mime_types=('image/*',)):
     loop = GLib.MainLoop()
     token = 'emaki_wallpaper_' + secrets.token_hex(12)
     predicted = ROOT + '/request/' + bus.get_unique_name()[1:].replace('.', '_') + '/' + token
@@ -121,10 +121,10 @@ def choose_on_bus(bus, Gio, GLib, timeout_ms):
             'handle_token': GLib.Variant('s', token),
             'multiple': GLib.Variant('b', False),
             'directory': GLib.Variant('b', False),
-            'filters': GLib.Variant('a(sa(us))', [('Pictures', [(1, 'image/*')])]),
+            'filters': GLib.Variant('a(sa(us))', [('Pictures', [(1, mime) for mime in mime_types])]),
         }
         bus.call(PORTAL, ROOT, 'org.freedesktop.portal.FileChooser', 'OpenFile',
-                 GLib.Variant('(ssa{sv})', ('', 'Choose a wallpaper', options)),
+                 GLib.Variant('(ssa{sv})', ('', title, options)),
                  GLib.VariantType.new('(o)'), Gio.DBusCallFlags.NONE, 5000, None, opened)
         if outcome is None:
             loop.run()

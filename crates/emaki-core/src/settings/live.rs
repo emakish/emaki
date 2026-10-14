@@ -227,14 +227,23 @@ pub(super) fn apply(
     }
     let niri = before.input != after.input
         || before.shortcuts != after.shortcuts
-        || changed(before, after, &[GAPS, FLOATING, COLUMN_WIDTH, FOCUS_MOUSE])
+        || changed(
+            before,
+            after,
+            &[ACCENT, GAPS, FLOATING, COLUMN_WIDTH, FOCUS_MOUSE],
+        )
         || (changed(before, after, &[WALLPAPER]) && std::env::var_os("NIRI_SOCKET").is_some());
     let shell_changed = changed(
         before,
         after,
         &[
+            THEME,
+            ACCENT,
+            LIGHT_TIME,
+            DARK_TIME,
             CLOCK_24_HOUR,
             BAR_AUTOHIDE,
+            BAR_AUTOHIDE_FULLSCREEN,
             BAR_OVERVIEW,
             DOCK_ON,
             DOCK_AUTO_HIDE,

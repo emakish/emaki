@@ -13,6 +13,10 @@ ROOT = Path(__file__).resolve().parent.parent
 with tempfile.TemporaryDirectory(prefix='emaki-eye-') as temporary:
     base = Path(temporary)
     shutil.copytree(ROOT / 'shell', base / 'shell')
+    # Fail-before evidence: KEYBOARD_BASELINE=<an exported 0.8.0 source tree> (never git history).
+    if os.environ.get('KEYBOARD_BASELINE'):
+        shutil.copyfile(Path(os.environ['KEYBOARD_BASELINE']) / 'shell/LockInput.qml',
+                        base / 'shell' / 'LockInput.qml')
     fixture = (ROOT / 'tests/fixtures/PasswordToggleTest.qml').read_text()
     fixture = fixture.replace('import "../../shell" as Shell\n', '').replace('Shell.', '')
     (base / 'shell/password-test.qml').write_text(fixture)

@@ -14,6 +14,7 @@ Use a page name (for example, wifi) to open that page.
   get KEY                    Read one setting
   set KEY VALUE              Validate, save and apply a setting
   reset KEY                  Restore the package default
+  reset appearance           Restore theme, accent and schedule together
   history                    List persisted changes
   undo ID                    Restore changed keys, refusing later-key conflicts
 Options:
@@ -114,7 +115,11 @@ pub(super) fn run(args: &[&str]) -> ExitCode {
     }
 }
 
+// Every page of shell/SettingsPageRegistry.qml, in its order (the test below compares them).
 const PAGES: &[&str] = &[
+    "appearance",
+    "privacy",
+    "assistants",
     "panel",
     "windows",
     "wifi",
@@ -129,6 +134,8 @@ const PAGES: &[&str] = &[
     "wallpaper",
     "region",
     "apps",
+    "storage",
+    "users",
     "about",
     "updates",
     "lock",

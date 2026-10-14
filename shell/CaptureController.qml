@@ -18,6 +18,8 @@ Scope {
     property bool ready: false
     property bool busy: false
     property bool recording: false
+    // The PipeWire node this recording streams to (-1: none): its cast is the shell's own.
+    property int streamNode: -1
     property bool stopping: false
     property string mode: "picture"
     property string target: "area"
@@ -109,6 +111,7 @@ Scope {
         opened = false;
         busy = true;
         recording = false;
+        streamNode = -1;
         stopping = false;
         completed = false;
         receivedEvent = false;
@@ -171,7 +174,9 @@ Scope {
         try {
             const result = JSON.parse(data);
             receivedEvent = true;
-            if (result.event === "recording") {
+            if (result.event === "stream") {
+                streamNode = Number.isInteger(result.node) && result.node >= 0 ? result.node : -1;
+            } else if (result.event === "recording") {
                 startDeadline.stop();
                 recording = !stopping;
                 if (stopping)
@@ -198,6 +203,7 @@ Scope {
             ready: ready,
             busy: busy,
             recording: recording,
+            stream_node: streamNode,
             stopping: stopping,
             mode: mode,
             target: target,
@@ -322,6 +328,7 @@ Scope {
         onExited: {
             startDeadline.stop();
             finishDeadline.stop();
+            controller.streamNode = -1;
             if (!controller.completed && !controller.error)
                 controller.fail("capture_failed");
             controller.busy = false;

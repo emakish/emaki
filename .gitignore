@@ -12,6 +12,8 @@ __pycache__/
 packaging/*/src/
 packaging/*/pkg/
 packaging/*/*.tar.gz
+# the git mirror an in-tree makepkg of snapguard clones (build.sh keeps it in SRCDEST)
+packaging/snapguard/snapguard/
 # installer window test output
 installer/ui/tests/artifacts/
 

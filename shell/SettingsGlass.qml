@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
+import "settings"
 
 Item {
     id: root
@@ -53,9 +54,10 @@ Item {
             }
         }
     }
-    Rectangle {
+    // The Settings canvas: always here, whatever LiquidPalette.sharedCanvas says.
+    CanvasTint {
+        shown: true
         anchors.fill: parent
         radius: 16
-        color: Qt.rgba(1, 246 / 255, 240 / 255, .58)
     }
 }

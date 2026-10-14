@@ -18,7 +18,7 @@ import tempfile
 
 PACKAGES = ('niri-emaki', 'quickshell-emaki', 'xdg-desktop-portal-gnome-emaki',
             'emaki-config', 'emaki-nvidia', 'emaki-desktop', 'emaki-apps', 'emaki-installer',
-            'emaki-keyring', 'emaki-mirrorlist', 'emaki-sudo-key', 'emaki')
+            'emaki-keyring', 'emaki-mirrorlist', 'emaki-sudo-key', 'snapguard', 'emaki')
 
 
 def run(*args, **kwargs):
@@ -192,7 +192,8 @@ def archive(recipe, src, output, commit, version):
                 'emaki-sudo-key': ['emaki-sudo-key/scripts/emaki-sudo-turn',
                                    'emaki-sudo-key/sudo/turn-reporting.md',
                                    'emaki-sudo-key/sudo/integrations'],
-                'emaki-nvidia': ['emaki-nvidia']}.get(name, [])
+                'emaki-nvidia': ['emaki-nvidia'],
+                'snapguard': ['snapguard/.git', 'snapguard/snapshot-guard.py']}.get(name, [])
     for relative in required:
         if not (src / relative).exists():
             raise ValueError(f'missing prepared source: {relative}')

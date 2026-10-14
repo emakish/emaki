@@ -288,15 +288,17 @@ worker.emit('saved', **result)
             try:
                 pending = b''
                 deadline = time.monotonic() + 5
-                while b'\n' not in pending and time.monotonic() < deadline:
+                while pending.count(b'\n') < 2 and time.monotonic() < deadline:
                     if select.select([process.stdout], [], [], max(0, deadline - time.monotonic()))[0]:
                         chunk = os.read(process.stdout.fileno(), 4096)
                         if not chunk:
                             break
                         pending += chunk
-                self.assertIn(b'\n', pending, 'No complete recording event')
-                first, pending = pending.split(b'\n', 1)
-                event = json.loads(first)
+                self.assertGreaterEqual(pending.count(b'\n'), 2, 'No complete recording event')
+                # The shell learns its own cast's node before the recorder reads it.
+                first, second, pending = pending.split(b'\n', 2)
+                self.assertEqual(json.loads(first), dict(event='stream', node=1))
+                event = json.loads(second)
                 self.assertEqual(event['event'], 'recording')
                 # Allow several frames through the real encoder before terminating
                 # the same group that contains both worker and recorder processes.

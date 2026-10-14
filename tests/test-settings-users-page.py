@@ -59,7 +59,22 @@ elif args[0] == 'set-name':
     next(user for user in users if user['login'] == args[1])['name'] = args[2]
 elif args[0] == 'set-administrator':
     next(user for user in users if user['login'] == args[1])['administrator'] = args[2] == 'yes'
+elif args[0] == 'picture':
+    next(user for user in users if user['current'])['picture'] = args[1] == '--set'
 reply('applied', action=args[0])
+'''
+# The private chooser operation (helpers/launcher-tools.py): answers from chooser.json in order.
+CHOOSER = r'''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+base = Path(os.environ['USERS_FIXTURE'])
+request = json.loads(sys.stdin.readline())
+with (base / 'calls.log').open('a') as log:
+    log.write(json.dumps({'args': ['chooser', request.get('op')], 'stdin': ''}) + '\n')
+states = json.loads((base / 'chooser.json').read_text())
+(base / 'chooser.json').write_text(json.dumps(states[1:]))
+print(json.dumps({'schema_version': 1, 'state': states[0] if states else 'ready',
+                  'path': str(base / 'chosen picture.png')}))
 '''
 USERS = [
     {'login': 'ada', 'name': 'Ada', 'uid': 1000, 'administrator': True, 'locked': False, 'current': True,
@@ -85,7 +100,7 @@ Scope {
   property int step: 0
   interval: 500; repeat: true; running: true
   onTriggered: {
-   if (page.pending) return;
+   if (page.pending || page.pictureChooser.busy) return;
    if (step === 0) {
     check(page.received && page.accounts.length === 3, "accounts read");
     check(page.me.login === "ada" && find(page, "settings-users-account").title === "Ada", "your account");
@@ -169,6 +184,29 @@ Scope {
     page.run(["set-name", "bo", "--json"]);
    } else if (step === 15) {
     check(page.accounts.find(user => user.login === "bo").name === "--json", "literal json flag name");
+    const picture = find(page, "settings-users-picture");
+    check(picture && picture.title === "Picture" && picture.explanation === "Shown in Settings, on the lock screen and on the login screen.", "picture row");
+    check(picture.parent === find(page, "settings-users-account").parent && picture.parent === find(page, "settings-users-password").parent, "the picture row is in Your account");
+    check(find(page, "settings-users-account").y < picture.y && picture.y < find(page, "settings-users-password").y, "between the account row and Password");
+    check(find(page, "settings-users-picture-choose").text === "Choose picture…", "choose button");
+    check(!find(page, "settings-users-picture-remove").visible, "nothing to remove without a picture");
+    find(page, "settings-users-picture-choose").clicked();
+    check(page.pictureChooser.state === "pending", "choosing");
+   } else if (step === 16) {
+    check(page.me.picture === true && page.message === "" && !page.problem, "picture set");
+    check(find(page, "settings-users-picture-remove").visible && find(page, "settings-users-picture-remove").text === "Remove", "remove button");
+    check(!find(page, "settings-users-picture-error").visible, "no chooser error");
+    find(page, "settings-users-picture-remove").clicked();
+   } else if (step === 17) {
+    check(page.me.picture === false && !find(page, "settings-users-picture-remove").visible, "picture removed");
+    find(page, "settings-users-picture-choose").clicked();
+   } else if (step === 18) {
+    const error = find(page, "settings-users-picture-error");
+    check(error.visible && error.text === "Could not choose a picture. Your picture has not changed.", "chooser failure shown");
+    find(page, "settings-users-picture-choose").clicked();
+    check(!error.visible, "a new choice clears the failure");
+   } else if (step === 19) {
+    check(!find(page, "settings-users-picture-error").visible && page.me.picture === false, "a cancelled choice changes nothing");
     console.log("USERS_PAGE_PASS"); Qt.quit();
    }
    step++;
@@ -191,13 +229,17 @@ def run(test, mutation=None, missing=False, lifetime=False):
         base = Path(temporary)
         shutil.copytree(ROOT / 'shell', base / 'shell')
         if mutation:
-            path = base / ('shell/SettingsUsersService.qml' if mutation[0].startswith('result.schema') else 'shell/SettingsUsersPage.qml')
+            path = base / ('shell/SettingsUsersService.qml' if mutation[0].startswith(('result.schema', 'op: ', 'pictureError =')) else 'shell/SettingsUsersPage.qml')
             text = path.read_text()
             assert mutation[0] in text, mutation
             path.write_text(text.replace(mutation[0], mutation[1]))
         (base / 'bin').mkdir()
         (base / 'runtime').mkdir(mode=0o700)
         (base / 'state.json').write_text(json.dumps({'users': USERS, 'script': [] if lifetime else SCRIPT}))
+        if not lifetime:
+            # The whole Settings window of the lifetime run needs the real private operations.
+            (base / 'shell/helpers/launcher-tools.py').write_text(CHOOSER)
+            (base / 'chooser.json').write_text(json.dumps(['ready', 'portal_failed', 'cancelled']))
         if not missing:
             fake = base / 'bin/emaki-settings-users'
             fake.write_text(FAKE)
@@ -233,13 +275,17 @@ EXPECTED = [['add', 'dee', 'Dee Person', '--administrator', 'yes', '--terminal']
             ['set-password', 'dee', '--terminal'], ['set-administrator', 'dee', 'no'], ['remove', 'dee', '--home', 'delete'],
             ['set-administrator', 'ada', 'no'], ['set-name', 'bo', 'Bo'], ['set-name', 'bo', 'Bo'],
             ['own-password'], ['add', 'dee', 'Dee', '--administrator', 'no', '--terminal'], ['remove', 'dee', '--home', 'keep'],
-            ['set-name', 'bo', '--terminal'], ['set-name', 'bo', '--json']]
+            ['set-name', 'bo', '--terminal'], ['set-name', 'bo', '--json'],
+            ['chooser', 'account-picture-choose'], ['picture', '--set', 'chosen picture.png'], ['picture', '--clear'],
+            ['chooser', 'account-picture-choose'], ['chooser', 'account-picture-choose']]
 
 
 def requests_ok(calls):
     """Exactly the expected changes; the window never sends a password."""
-    changes = [call for call in calls if call['args'][0] != 'status']
-    return [call['args'] for call in changes] == EXPECTED and all(call['stdin'] == '' for call in calls)
+    changes = [call['args'] for call in calls if call['args'][0] != 'status']
+    # The chosen path lives in the temporary fixture folder.
+    changes = [args[:2] + [Path(args[2]).name] if args[:2] == ['picture', '--set'] else args for args in changes]
+    return changes == EXPECTED and all(call['stdin'] == '' for call in calls)
 
 
 passed, output, calls = run(TEST)
@@ -250,11 +296,14 @@ assert passed, output
 for mutation in (('unavailable: root.lastAdministrator(root.edited)', 'unavailable: false'),
                  ('enabled: !root.pending && !!root.edited && !root.edited.signed_in', 'enabled: !root.pending && !!root.edited'),
                  ('result.schema_version !== 1 ||', ''),
-                 ('root.run(["set-password", root.edited.login, "--terminal"])', 'root.run(["set-password", root.edited.login])')):
+                 ('root.run(["set-password", root.edited.login, "--terminal"])', 'root.run(["set-password", root.edited.login])'),
+                 ('visible: root.me?.picture === true', 'visible: true'),
+                 ('op: "account-picture-choose"', 'op: "wallpaper-choose"'),
+                 ('pictureError = "";\n        pictureChooser.start(', 'pictureChooser.start(')):
     passed, output, calls = run(TEST, mutation)
     assert not (passed and requests_ok(calls)), 'Surviving mutation: ' + str(mutation)
 print('PASS: users page list, add, name, password, role, removal with home choice, refusals, '
-      'broken and missing helper; four mutants killed')
+      'broken and missing helper, own picture: choose, remove, chooser failure and cancel; seven mutants killed')
 
 passed, output, calls = run((ROOT / 'tests/fixtures/SettingsUsersLifetime.qml').read_text(), lifetime=True)
 assert passed, output

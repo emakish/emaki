@@ -70,7 +70,7 @@ class About(unittest.TestCase):
         self.assertEqual(json.loads(output.getvalue())['reason'], 'report_save_failed')
 
     def test_saved_diagnostics_redact_details_and_command_output(self):
-        planted = ('Authorization: Bearer C8R_SYNTHETIC_SECRET password=C8R_SYNTHETIC_PASSWORD '
+        planted = ('Authorization: Bearer C8R_SYNTHETIC_SECRET password=C8R_SYNTHETIC_PASSWORD\n'
                    'person@example.invalid 192.0.2.44 2001:db8::44 aa:bb:cc:dd:ee:ff '
                    'serial=FIXTURE_SERIAL')
         with patch.dict(os.environ, XDG_STATE_HOME=str(self.root)), \
@@ -80,7 +80,9 @@ class About(unittest.TestCase):
         for value in ('C8R_SYNTHETIC_SECRET', 'C8R_SYNTHETIC_PASSWORD', 'person@example.invalid',
                       '192.0.2.44', '2001:db8::44', 'aa:bb:cc:dd:ee:ff', 'FIXTURE_SERIAL'):
             self.assertNotIn(value, text)
-        self.assertIn('[redacted secret]', text)
+        # A line that names a credential is dropped whole; the others keep their markers.
+        self.assertNotIn('Authorization', text)
+        self.assertIn('[redacted email] [redacted ip] [redacted ip] [redacted mac] serial=[redacted serial]', text)
         self.assertNotIn('PRIVATE_BUILD_HASH', text)
         self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 

@@ -73,7 +73,7 @@ Item {
     property real islandX: viewportWidth - Metrics.side - islandWidth
     property real islandWidth: 280
     property var islandBubble: null
-    // The island's hovered cell ("cell-sound"): drawn on the glass under the carried drop.
+    // The island drop's cell ("cell-sound"), retained independently of pointer focus.
     property string islandHoverKey: ""
     signal pageRequested(string page)
     signal settingsRequested(string page)
@@ -158,7 +158,7 @@ Item {
     // GlassTarget: how much of the target lies on the glass. While the morph is young the
     // island's drop rides on the plate over its cell.
     function onGlassOf(key: string): real {
-        return carrying && key === islandHoverKey ? islandAlpha : coverage[key] ?? 0;
+        return coverage[key] ?? 0;
     }
     property int tick: 0
     property bool animating: false
@@ -234,6 +234,7 @@ Item {
     function frame(now: real, elapsed: real): void {
         const dt = Math.min(elapsed > 0 ? elapsed : 1 / 60, .04);
         let active = false;
+        carrying = !(morph > .6);
         heightSpring.target = targetHeight;
         snapIfClosed();
         active = Liquid.step(heightSpring, dt, 420, .8) || active;
@@ -299,8 +300,7 @@ Item {
         active = Liquid.advance(hoverBubble, now, dt) || active;
         for (const key of Object.keys(restBubbles))
             active = Liquid.advance(restBubbles[key], now, dt) || active;
-        // dual(), as in the ClockPanel: what a drop goes to or rests on lies on the glass with the
-        // drop's alpha (the hover drop's target kept while it waits and melts there); what a drop
+        // What a drop goes to or rests on lies wholly on the glass while it exists; what a drop
         // leaves or flows over, as much as it covers it (Liquid.cover). By the flag alone the
         // tab flowing to the next page's cell (newRest) left the cell it came from, and the cells
         // on its way, under the glass while it still covered them: its rim mirrored and split
@@ -325,14 +325,24 @@ Item {
         };
         // By the resting key (a switch's knob is `<key>-knob`: the switch itself never fades).
         for (const key of Object.keys(restBubbles))
-            map[key] = Liquid.smooth(restBubbles[key].alpha.x);
+            map[key] = Liquid.onGlass(restBubbles[key]);
         // The head's cells as the island's: each as much as the tab covers it on its way.
         const tabKey = Object.keys(restBubbles).find(k => k.startsWith("cell-")) ?? "";
         for (let i = 0; tabKey && i < head.cells.count; ++i) {
             const c = head.cells.itemAt(i) as GlassTarget;
             put(c, covered(c, restBubbles[tabKey]));
         }
-        put(hoverOn, Liquid.smooth(hoverBubble.alpha.x));
+        // The overlay takes pointer focus on click. Follow the carried drop's retained target
+        // and geometry, including neighbouring cells, rather than the island's live hover.
+        for (let i = 0; carrying && islandBubble && i < head.cells.count; ++i) {
+            const c = head.cells.itemAt(i) as GlassTarget;
+            if (!c)
+                continue;
+            const r = screenRect(c, Qt.rect(0, 0, c.width, c.height));
+            put(c, c.key === islandHoverKey ? Liquid.onGlass(islandBubble)
+                : Liquid.cover(islandBubble, [r.x - islandX, r.y - Metrics.top, r.width, r.height]));
+        }
+        put(hoverOn, Liquid.onGlass(hoverBubble));
         if (put(hoverTrail, covered(hoverTrail, hoverBubble)) < .005)
             hoverTrail = null;
         if (hoverBubble.alpha.x < .001)
@@ -361,7 +371,6 @@ Item {
         if (!same(dots, restDots))
             restDots = dots;
         // The bar advances the island's drop; keep drawing it while the morph is young.
-        carrying = !(morph > .6);
         if (islandBubble && islandBubble.alpha.x > .001 && morph > 0 && carrying)
             active = true;
         ++tick;
@@ -416,10 +425,6 @@ Item {
     // full when open.
     readonly property real tabTint: Liquid.smooth((morph - .6) / .4)
     readonly property real plateUnion: Liquid.BUBBLE.restUnion * (1 - Liquid.smooth((morph - .5) / .5))
-    readonly property real islandAlpha: {
-        tick;
-        return islandBubble ? Liquid.smooth(islandBubble.alpha.x) : 0;
-    }
     function glassStatus(): var {
         const rect = b => ({
                     alpha: Math.round(Liquid.smooth(b.alpha.x) * 1000) / 1000,
@@ -447,11 +452,11 @@ Item {
         };
     }
 
-    // Ink: always the light glass, whatever lies underneath (2026-09-27).
-    readonly property color ink: LiquidPalette.inkOnLight
-    readonly property color dim: LiquidPalette.dimOnLight
-    readonly property color faint: LiquidPalette.faintOnLight
-    readonly property color accent: LiquidPalette.accentOnLight
+    // Ink follows the selected theme independently of the backdrop.
+    readonly property color ink: LiquidPalette.ink
+    readonly property color dim: LiquidPalette.plateDim
+    readonly property color faint: LiquidPalette.faint
+    readonly property color accent: LiquidPalette.accent
 
     // ---- Input on the plate: presses stay in the panel; leaving the plate lets the hover
     // drop melt ----
@@ -474,6 +479,18 @@ Item {
         height: panel.shownHeight
         radius: panel.shownRadius
         color: LiquidPalette.flatPlate
+    }
+    // The Settings canvas of the flat stand-in: over the plate and under the drops, which lie
+    // under the content here (with the glass the drops lie above the content layer and its tint).
+    CanvasTint {
+        objectName: "system-canvas-flat"
+        shown: LiquidPalette.sharedCanvas && !panel.glassReady
+        y: body.header
+        width: panel.shownWidth
+        height: Math.max(0, panel.shownHeight - y)
+        bottomLeftRadius: panel.shownRadius
+        bottomRightRadius: panel.shownRadius
+        opacity: panel.contentAlpha
     }
     Repeater {
         model: panel.glassReady ? [] : panel.drops
@@ -518,6 +535,17 @@ Item {
             width: panel.shownWidth
             height: panel.shownHeight
             clip: !panel.glassReady
+            // The Settings canvas under the head (the island row and the page tabs).
+            CanvasTint {
+                objectName: "system-canvas"
+                shown: LiquidPalette.sharedCanvas && panel.glassReady
+                y: body.header
+                width: panel.shownWidth
+                height: Math.max(0, panel.shownHeight - y)
+                bottomLeftRadius: panel.shownRadius
+                bottomRightRadius: panel.shownRadius
+                opacity: panel.contentAlpha
+            }
             SystemBody {
                 id: body
                 x: panel.frameX - panel.shownX
@@ -651,13 +679,6 @@ Item {
         y: -Metrics.top
         width: layer.width
         height: layer.height
-        // The island's hovered cell under the island's drop, while the morph is young.
-        GlassCopy {
-            target: panel.carrying && panel.islandHoverKey ? panel.head.cell(panel.islandHoverKey.slice(5)) : null
-            space: layer
-            tick: panel.tick
-            alpha: panel.islandAlpha
-        }
         // What the hover drop is on and what it is leaving (a row, a word, a button), as much as
         // it covers them; a target resting under its own drop has its copy below.
         Repeater {
@@ -674,7 +695,7 @@ Item {
                 alpha: item ? (panel.coverage[item.key] ?? 0) * (item.key.startsWith("cell-") ? 1 : panel.contentAlpha) : 0
             }
         }
-        // The head's cells the flowing tab covers (the tab's own cell has its copy below).
+        // The head's cells under the carried drop or flowing tab (resting targets copy below).
         Repeater {
             model: panel.head.pages
             GlassCopy {
@@ -682,7 +703,7 @@ Item {
                 readonly property GlassTarget item: {
                     panel.tick;
                     const c = panel.head.cell(modelData) as GlassTarget;
-                    return c && !panel.carrying && !panel.restCopies.some(r => r.item === c) ? c : null;
+                    return c && !panel.restCopies.some(r => r.item === c) ? c : null;
                 }
                 target: item
                 space: layer
@@ -740,6 +761,8 @@ Item {
         width: belongs ? focused.width : 0
         height: belongs ? focused.height : 0
         shown: panel.opened && belongs
+        // Only the open page's orange tab takes the strong rim; the rest is the hover look.
+        strong: belongs && (focused as GlassTarget)?.accent === true
         radius: 10
         z: 100
     }

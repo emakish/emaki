@@ -8,6 +8,8 @@ import Quickshell.Io
 // Separate from shell.qml: a shell crash cannot destroy the lock's protocol object.
 Scope {
     id: root
+    // Read and watch this user's managed appearance without opening Settings.
+    SettingsCatalog { active: false }
     property int sleepGeneration: 0
     property bool exiting: false
     LockCapture {
@@ -23,6 +25,9 @@ Scope {
     }
     LockEnvironment {
         id: lockEnvironment
+    }
+    AccountPicture {
+        id: accountPicture
     }
     LockSession {
         id: lockSession
@@ -70,6 +75,8 @@ Scope {
                 environment: lockEnvironment
                 screen: surface.screen
                 captureUrl: capture.urlFor(surface.screen)
+                avatarUrl: accountPicture.url
+                avatarPending: accountPicture.pending
             }
         }
         onSecureStateChanged: root.sendState()

@@ -11,8 +11,8 @@
 set -Eeuo pipefail
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(dirname -- "$HERE")
-ORDER=(niri-emaki quickshell-emaki xdg-desktop-portal-gnome-emaki emaki-config emaki-sudo-key emaki-nvidia emaki-desktop emaki-apps
-       emaki-installer emaki-keyring emaki-mirrorlist emaki)
+ORDER=(niri-emaki quickshell-emaki xdg-desktop-portal-gnome-emaki emaki-config emaki-sudo-key snapguard emaki-nvidia emaki-desktop
+       emaki-apps emaki-installer emaki-keyring emaki-mirrorlist emaki)
 # Packages whose build needs makedepends from Arch (--syncdeps). The others depend at run time on
 # Emaki packages that are not in any repository yet, so their dependencies are not checked here
 # (--nodeps); publish.sh resolves the whole set against Arch before anything is published.

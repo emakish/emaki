@@ -64,17 +64,19 @@ ShellRoot {
                    {kind: "aur", id: "org.kde.krita", package: "krita-git"}]})
     FloatingWindow {
         id: window
-        implicitWidth: 860; implicitHeight: 900
+        implicitWidth: 940; implicitHeight: 900
         color: "#f4e9e4"
         Flickable {
             anchors.fill: parent; anchors.margins: 24
             contentHeight: reviews.implicitHeight
             ProgramReviews { id: reviews; width: parent.width; command: COMMAND; program: ({}) }
         }
+        // A featured card 360 px wide has room for its stars, average and short count beside Install;
+        // a narrower one drops the count (layout.py checks that nothing spills).
         Row {
             y: 700; x: 24; spacing: 16
             ProgramCard { id: plainCard; width: 260; program: ({name: "Obsidian", summary: "Notes", rating: {average: 4.62, count: 1234}}) }
-            ProgramCard { id: featuredCard; featured: true; width: 300; program: ({name: "Obsidian", summary: "Notes", rating: {average: 4.62, count: 1234}}) }
+            ProgramCard { id: featuredCard; featured: true; width: 360; program: ({name: "Obsidian", summary: "Notes", rating: {average: 4.62, count: 1234}}) }
             ProgramCard { id: unratedCard; width: 260; program: ({name: "Paint", summary: "Draw", rating: null}) }
         }
         // Below the window, out of the screenshots: two-line summaries and an unrated featured card.
@@ -83,8 +85,8 @@ ShellRoot {
             readonly property var notes: ({name: "Obsidian", rating: {average: 4.62, count: 1234},
                 summary: "A somewhat longer description of what this note taking program does for everyday notes and writing"})
             ProgramCard { id: longPlainCard; width: 260; program: parent.notes }
-            ProgramCard { id: longFeaturedCard; featured: true; width: 300; program: parent.notes }
-            ProgramCard { id: unratedFeaturedCard; featured: true; width: 300; program: ({name: "Paint", summary: "Draw", rating: null}) }
+            ProgramCard { id: longFeaturedCard; featured: true; width: 360; program: parent.notes }
+            ProgramCard { id: unratedFeaturedCard; featured: true; width: 360; program: ({name: "Paint", summary: "Draw", rating: null}) }
         }
         TestCase { id: input; when: false; name: "ProgramReviews" }
     }
@@ -272,8 +274,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix='reviews-ui-', dir=os.environ.get('TMPDIR')) as directory:
         root = Path(directory)
         for name in ('ProgramReviews.qml', 'Stars.qml', 'ManagerLabel.qml', 'ManagerButton.qml', 'ProgramCard.qml',
-                     'ProgramIcon.qml'):
-            shutil.copyfile(UI / name, root / name)
+                     'ProgramIcon.qml', 'ManagerActions.qml'):
+            (root / name).write_text((UI / name).read_text().replace('@EMAKI_DATADIR@', str(UI.parents[1])))
         (root / 'engine.py').write_text(ENGINE)
         (root / 'submitted.log').write_text('')
         (root / 'test.qml').write_text(QML.replace('COMMAND', json.dumps([sys.executable, str(root / 'engine.py')])))

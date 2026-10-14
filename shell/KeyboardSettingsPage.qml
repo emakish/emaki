@@ -212,7 +212,7 @@ Column {
         visible: ["rejected", "unconfirmed", "uncertain"].includes(page.catalog.lastStatus)
         text: ["unconfirmed", "uncertain"].includes(page.catalog.lastStatus) ? "Could not confirm the change. Reopen Settings to check." : page.failureLine(page.catalog.lastAction)
         textFormat: Text.PlainText
-        color: "#a01b45"
+        color: SettingsTheme.error
         font.family: SettingsTheme.fontFamily
         font.pixelSize: 13
         wrapMode: Text.WordWrap

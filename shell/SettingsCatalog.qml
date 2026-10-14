@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -6,6 +8,8 @@ import Quickshell.Io
 Scope {
     id: settings
     required property bool active
+    // A client outside the shell directory (the manager's own qs) names the installed helper.
+    property string helper: Quickshell.shellPath("helpers/launcher-tools.py")
     readonly property string profile: Quickshell.env("EMAKI_SETTINGS_PROFILE")
     readonly property var values: SettingsBridge.values
     property var history: []
@@ -25,6 +29,32 @@ Scope {
     property int readEpoch: 0
     readonly property bool busy: inFlight || core.busy || queue.length > 0
     readonly property bool writing: (inFlight && ["set", "reset", "undo"].includes(currentAction)) || queue.some(request => ["set", "reset", "undo"].includes(request.action))
+    readonly property alias wallpaperChooser: wallpaperChooser
+    property string wallpaperChooserError: ""
+    function chooseWallpaper(): void {
+        if (writing || wallpaperChooser.busy || !row("appearance.wallpaper"))
+            return;
+        wallpaperChooserError = "";
+        wallpaperChooser.start({
+            op: "wallpaper-choose"
+        });
+    }
+    PrivateJob {
+        id: wallpaperChooser
+        timeoutMs: 130000
+        onCompleted: result => {
+            if (result.state === "ready" && typeof result.path === "string" && result.path.startsWith("/")) {
+                settings.wallpaperChooserError = "";
+                settings.set("appearance.wallpaper", result.path);
+            } else if (result.state !== "cancelled") {
+                settings.wallpaperChooserError = "Could not choose a picture. Your wallpaper has not changed.";
+            }
+        }
+        onStateChanged: {
+            if (!["idle", "pending", "ready", "cancelled"].includes(state))
+                settings.wallpaperChooserError = "Could not choose a picture. Your wallpaper has not changed.";
+        }
+    }
     function send(action: string, args: var): void {
         queue = queue.concat([
             {
@@ -131,15 +161,29 @@ Scope {
         interval: 50
         onTriggered: settings.send("list", [])
     }
+    // Separate shell clients may read the same store at once. A busy read
+    // must retry even when no further file change arrives.
+    Timer {
+        id: readRetry
+        interval: 100
+        onTriggered: settings.send("list", [])
+    }
     // A set/undo the core committed: the page shows "Applied · Undo in History".
     signal applied
     PrivateJob {
         id: core
+        helper: settings.helper
         timeoutMs: 35000
         onCompleted: value => {
             const action = settings.currentAction;
             settings.replyReceived = true;
             settings.state = value.state;
+            if (action === "list") {
+                if (value.state === "settings_busy")
+                    readRetry.restart();
+                else
+                    readRetry.stop();
+            }
             if (["set", "reset", "undo"].includes(action)) {
                 settings.lastStatus = value.status || "rejected";
                 settings.sessionApplied = value.session_applied === true;
@@ -169,14 +213,17 @@ Scope {
     }
     PrivateJob {
         id: defaultsJob
+        helper: settings.helper
         onCompleted: value => settings.defaults = value.entries || []
     }
     PrivateJob {
         id: xkbJob
+        helper: settings.helper
         onCompleted: value => settings.xkbLayouts = value.entries || []
     }
     PrivateJob {
         id: wallpapersJob
+        helper: settings.helper
         onCompleted: value => {
             settings.wallpapers = value.entries || [];
             settings.inheritedWallpaper = value.inheritedPath || "";

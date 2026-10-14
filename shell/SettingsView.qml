@@ -3,11 +3,19 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
+import "Keyboard.js" as Keyboard
 import "settings"
 import "settings/SettingsIndex.js" as Index
 
 FocusScope {
     id: root
+    function sectionColor(color) {
+        return color ? ShellPalette[color] : ShellPalette.accent;
+    }
+    readonly property bool keyboardBoundary: true
+    function keyboardNavigate(event): void {
+        Keyboard.handle(root, event);
+    }
     required property var catalog
     required property SystemService service
     required property NiriService niri
@@ -178,6 +186,10 @@ FocusScope {
         if (!targets.length)
             return;
         const index = targets.indexOf(current);
+        if (index === 0 && step < 0) {
+            search.forceActiveFocus(Qt.BacktabFocusReason);
+            return;
+        }
         const next = targets[(index + step + targets.length) % targets.length];
         next.forceActiveFocus(Qt.TabFocusReason);
         const point = next.mapToItem(navColumn, 0, 0);
@@ -210,6 +222,8 @@ FocusScope {
         if ((event.key === Qt.Key_F && (event.modifiers & Qt.ControlModifier)) || (event.key === Qt.Key_Slash && !search.activeFocus)) {
             search.forceActiveFocus();
             event.accepted = true;
+        } else {
+            Keyboard.handle(root, event);
         }
     }
     SettingsGlass {
@@ -218,12 +232,12 @@ FocusScope {
         wallpaperTexture: root.wallpaperTexture
         dpr: root.dpr
     }
-    Rectangle {
-        visible: root.embedded
+    // Inside the launcher the canvas starts under the launcher's header (the plain glass).
+    CanvasTint {
+        shown: root.embedded
         anchors.fill: parent
         bottomLeftRadius: root.surfaceRadius
         bottomRightRadius: root.surfaceRadius
-        color: Qt.rgba(1, 246 / 255, 240 / 255, .58)
     }
     Rectangle {
         id: side
@@ -236,7 +250,7 @@ FocusScope {
         topRightRadius: root.embedded ? 0 : radius
         bottomLeftRadius: root.embedded ? Math.max(0, root.surfaceRadius - 2) : radius
         antialiasing: true
-        color: Qt.rgba(1, 246 / 255, 240 / 255, .22)
+        color: SettingsTheme.strip
         Rectangle {
             anchors.right: parent.right
             width: 1
@@ -262,11 +276,11 @@ FocusScope {
                 radius: 21
                 antialiasing: true
                 border.width: 1
-                border.color: Qt.rgba(1, 1, 1, .35)
+                border.color: SettingsTheme.whiteRim
                 gradient: Gradient {
                     GradientStop {
                         position: 0
-                        color: "#f2cc7e"
+                        color: ShellPalette.settingsAvatarStart
                     }
                     GradientStop {
                         position: .55
@@ -274,17 +288,75 @@ FocusScope {
                     }
                     GradientStop {
                         position: 1
-                        color: "#e05a4f"
+                        color: ShellPalette.settingsAvatarEnd
                     }
                 }
                 Text {
+                    objectName: "settings-account-initial"
                     anchors.centerIn: parent
+                    visible: !accountCanvas.showsPicture
                     text: root.accountName.charAt(0).toUpperCase()
-                    color: "#fff8f3"
+                    color: ShellPalette.settingsAvatarText
                     font.family: SettingsTheme.fontFamily
                     font.pixelSize: 17
                     font.weight: Font.DemiBold
                 }
+            }
+            // The person's own picture (helpers/account-picture.py, a private PNG copy) covers
+            // the initial; it follows a change made in Users within the helper's poll.
+            AccountPicture {
+                id: accountPicture
+            }
+            Canvas {
+                id: accountCanvas
+                objectName: "settings-account-picture"
+                property string url: accountPicture.url
+                property string loaded: ""
+                property bool showsPicture: false
+                width: 42
+                height: 42
+                onUrlChanged: follow()
+                function follow(): void {
+                    if (url === loaded)
+                        return;
+                    if (loaded)
+                        unloadImage(loaded);
+                    loaded = url;
+                    if (url)
+                        loadImage(url);
+                    // A picture shown before comes back from Qt's cache without imageLoaded.
+                    showsPicture = url !== "" && isImageLoaded(url);
+                    requestPaint();
+                }
+                Component.onCompleted: follow()
+                onImageLoaded: {
+                    showsPicture = loaded !== "" && isImageLoaded(loaded);
+                    requestPaint();
+                }
+                // A picture cached at creation paints only once the context exists.
+                onAvailableChanged: requestPaint()
+                onPaint: {
+                    const context = getContext("2d"), r = width / 2, cx = width / 2, cy = height / 2;
+                    context.reset();
+                    if (!showsPicture || !isImageLoaded(loaded))
+                        return;
+                    context.beginPath();
+                    context.arc(cx, cy, r, 0, 2 * Math.PI);
+                    context.clip();
+                    // The helper's copy is already the centre square: it covers the circle.
+                    context.drawImage(loaded, cx - r, cy - r, 2 * r, 2 * r);
+                }
+            }
+            // The circle's rim stays above the picture.
+            Rectangle {
+                width: 42
+                height: 42
+                radius: 21
+                antialiasing: true
+                visible: accountCanvas.showsPicture
+                color: "transparent"
+                border.width: 1
+                border.color: Qt.rgba(1, 1, 1, .35)
             }
             Column {
                 x: 54
@@ -453,16 +525,16 @@ FocusScope {
                                     radius: 8
                                     antialiasing: true
                                     border.width: 1
-                                    border.color: Qt.rgba(1, 1, 1, .24)
+                                    border.color: SettingsTheme.iconRim
                                     anchors.verticalCenter: parent.verticalCenter
                                     gradient: Gradient {
                                         GradientStop {
                                             position: 0
-                                            color: entry.modelData.colors[0]
+                                            color: root.sectionColor(entry.modelData.colors[0])
                                         }
                                         GradientStop {
                                             position: 1
-                                            color: entry.modelData.colors[1]
+                                            color: root.sectionColor(entry.modelData.colors[1])
                                         }
                                     }
                                     Image {
@@ -539,15 +611,15 @@ FocusScope {
                         radius: 15
                         antialiasing: true
                         border.width: 1
-                        border.color: Qt.rgba(1, 1, 1, .35)
+                        border.color: SettingsTheme.whiteRim
                         gradient: Gradient {
                             GradientStop {
                                 position: 0
-                                color: root.section?.colors[0] ?? SettingsTheme.accent
+                                color: root.sectionColor(root.section?.colors[0])
                             }
                             GradientStop {
                                 position: 1
-                                color: root.section?.colors[1] ?? SettingsTheme.accent
+                                color: root.sectionColor(root.section?.colors[1])
                             }
                         }
                         Image {
@@ -574,6 +646,10 @@ FocusScope {
                         enabled: !root.catalog.writing
                         text: "Reset this page"
                         onClicked: {
+                            if (root.page === "appearance") {
+                                root.catalog.reset("appearance");
+                                return;
+                            }
                             for (const key of root.pageKeys) {
                                 if (root.canReset(key))
                                     root.catalog.reset(key);
@@ -759,7 +835,7 @@ FocusScope {
             width: parent.width
             height: 58
             bottomRightRadius: root.embedded ? Math.max(0, root.surfaceRadius - 2) : 0
-            color: Qt.rgba(1, 246 / 255, 240 / 255, .22)
+            color: SettingsTheme.strip
             Rectangle {
                 width: parent.width
                 height: 1
@@ -770,7 +846,7 @@ FocusScope {
                 width: parent.width - 148
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.catalog.writing ? "Saving…" : root.catalog.lastStatus === "rejected" ? (root.catalog.lastAction === "undo_conflict" ? "This setting changed again. Undo was not applied." : "Could not change the setting. Your previous value is kept.") : root.catalog.lastStatus === "unconfirmed" ? "Could not confirm the change. Reopen Settings to check." : root.catalog.lastStatus === "committed_history_pending" ? "Saved. History recovery is pending." : root.catalog.lastStatus === "committed" ? (root.catalog.sessionApplied ? "Applied · Undo in History" : "Saved to the isolated profile") : "Changes apply as you make them."
-                color: root.catalog.lastStatus === "rejected" ? "#a01b45" : SettingsTheme.dim
+                color: root.catalog.lastStatus === "rejected" ? SettingsTheme.error : SettingsTheme.dim
                 font.family: SettingsTheme.fontFamily
                 font.pixelSize: 12
                 wrapMode: Text.WordWrap

@@ -1,3 +1,5 @@
+/etc/default/grub.d/50-emaki-splash.cfg
+/etc/mkinitcpio.conf.d/50-emaki-splash.conf
 /etc/niri/config.kdl
 /etc/pam.d/emaki-sudo
 /etc/skel/.config/kitty/kitty.conf
@@ -192,6 +194,7 @@
 /usr/share/doc/emaki/ZONES.md
 /usr/share/emaki-update-manager/emaki-shelf.json
 /usr/share/emaki-update-manager/storefront.json
+/usr/share/emaki-update-manager/ui/ManagerActions.qml
 /usr/share/emaki-update-manager/ui/ManagerButton.qml
 /usr/share/emaki-update-manager/ui/ManagerLabel.qml
 /usr/share/emaki-update-manager/ui/ManagerLogic.js
@@ -324,13 +327,17 @@
 /usr/share/emaki/niri/shell.kdl
 /usr/share/emaki/niri/theme.kdl
 /usr/share/emaki/qt6ct/emaki.conf
+/usr/share/emaki/shell/AccountPicture.qml
 /usr/share/emaki/shell/AppCatalog.qml
 /usr/share/emaki/shell/AppIdentity.qml
 /usr/share/emaki/shell/AppLaunch.qml
+/usr/share/emaki/shell/Appearance.qml
+/usr/share/emaki/shell/AppearanceLogic.js
 /usr/share/emaki/shell/AuthController.qml
 /usr/share/emaki/shell/BarPolicy.qml
 /usr/share/emaki/shell/Calculator.js
 /usr/share/emaki/shell/CalendarMonth.qml
+/usr/share/emaki/shell/CanvasTint.qml
 /usr/share/emaki/shell/CaptureController.qml
 /usr/share/emaki/shell/CaptureOverlay.qml
 /usr/share/emaki/shell/CapturePanel.qml
@@ -406,6 +413,7 @@
 /usr/share/emaki/shell/PolkitExpander.qml
 /usr/share/emaki/shell/PolkitHazardFrame.qml
 /usr/share/emaki/shell/PolkitLockState.qml
+/usr/share/emaki/shell/PolkitPromptBody.qml
 /usr/share/emaki/shell/PolkitPromptCard.qml
 /usr/share/emaki/shell/PolkitPromptController.qml
 /usr/share/emaki/shell/PolkitPromptQueue.qml
@@ -422,11 +430,13 @@
 /usr/share/emaki/shell/ReportController.qml
 /usr/share/emaki/shell/ReportView.qml
 /usr/share/emaki/shell/ReportWindow.qml
+/usr/share/emaki/shell/ScreenShare.js
 /usr/share/emaki/shell/SessionCoverState.qml
 /usr/share/emaki/shell/SessionCoverSurface.qml
 /usr/share/emaki/shell/SessionStartup.qml
 /usr/share/emaki/shell/SessionUpdateNotice.qml
 /usr/share/emaki/shell/SettingsAboutPage.qml
+/usr/share/emaki/shell/SettingsAppearancePage.qml
 /usr/share/emaki/shell/SettingsAppsPage.qml
 /usr/share/emaki/shell/SettingsBluetoothPage.qml
 /usr/share/emaki/shell/SettingsBridge.qml
@@ -499,6 +509,7 @@
 /usr/share/emaki/shell/emaki-report.desktop
 /usr/share/emaki/shell/emaki-welcome.desktop
 /usr/share/emaki/shell/greeter.qml
+/usr/share/emaki/shell/helpers/account-picture.py
 /usr/share/emaki/shell/helpers/app_scope.py
 /usr/share/emaki/shell/helpers/capture.py
 /usr/share/emaki/shell/helpers/child-guard.py
@@ -544,7 +555,6 @@
 /usr/share/emaki/shell/settings/icons/check.svg
 /usr/share/emaki/shell/settings/icons/displays.svg
 /usr/share/emaki/shell/settings/icons/down.svg
-/usr/share/emaki/shell/settings/icons/gear.svg
 /usr/share/emaki/shell/settings/icons/keyboard.svg
 /usr/share/emaki/shell/settings/icons/lock.svg
 /usr/share/emaki/shell/settings/icons/minus.svg
@@ -706,6 +716,15 @@
 /usr/share/licenses/emaki-config/LICENSE
 /usr/share/licenses/emaki-config/LICENSE-DejaVu.txt
 /usr/share/licenses/emaki-config/LICENSE-Noto.txt
+/usr/share/licenses/emaki-config/NOTICE-Plymouth.txt
+/usr/share/plymouth/themes/emaki/bullet.png
+/usr/share/plymouth/themes/emaki/capslock.png
+/usr/share/plymouth/themes/emaki/emaki.plymouth
+/usr/share/plymouth/themes/emaki/entry.png
+/usr/share/plymouth/themes/emaki/keyboard.png
+/usr/share/plymouth/themes/emaki/keymap-render.png
+/usr/share/plymouth/themes/emaki/lock.png
+/usr/share/plymouth/themes/emaki/watermark.png
 /usr/share/polkit-1/actions/org.emaki.channel.policy
 /usr/share/polkit-1/actions/org.emaki.charge-limit.policy
 /usr/share/polkit-1/actions/org.emaki.privacy.recovery.policy

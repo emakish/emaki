@@ -5,19 +5,28 @@ import QtQuick
 import ".." as Shell
 
 QtObject {
-    readonly property color ink: "#241018"
-    readonly property color dim: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .58)
-    readonly property color faint: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .32)
-    readonly property color drop: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .065)
-    readonly property color dropHover: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .11)
-    readonly property color rim: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .14)
-    readonly property color field: Qt.rgba(1, 1, 1, .62)
-    readonly property color card: Qt.rgba(1, 250 / 255, 246 / 255, .42)
-    readonly property color accent: "#e2733f"
-    readonly property color accentInk: "#c2481f"
-    readonly property color accentText: "#2a0f05"
-    readonly property color knob: "#fffaf6"
-    readonly property color edge: Qt.rgba(226 / 255, 115 / 255, 63 / 255, .62)
+    readonly property color ink: Shell.ShellPalette.settingsInk
+    readonly property color dim: Shell.ShellPalette.settingsDim
+    readonly property color faint: Shell.ShellPalette.settingsFaint
+    readonly property color drop: Shell.ShellPalette.settingsDrop
+    readonly property color dropHover: Shell.ShellPalette.settingsDropHover
+    readonly property color rim: Shell.ShellPalette.settingsRim
+    readonly property color field: Shell.ShellPalette.settingsField
+    readonly property color card: Shell.ShellPalette.settingsCard
+    readonly property color accent: Shell.ShellPalette.accent
+    readonly property color accentInk: Shell.Appearance.dark ? Shell.ShellPalette.accentOnDark : Shell.ShellPalette.accentOnLight
+    readonly property color accentText: Shell.ShellPalette.accentText
+    readonly property color knob: Shell.ShellPalette.settingsKnob
+    readonly property color edge: Qt.rgba(accent.r, accent.g, accent.b, .62)
+    readonly property color error: Shell.ShellPalette.settingsError
+    readonly property color displaySelected: Shell.ShellPalette.settingsDisplaySelected
+    readonly property color displayIdle: Shell.ShellPalette.settingsDisplayIdle
+    readonly property color tooltip: Shell.ShellPalette.settingsTooltip
+    readonly property color sidebar: Shell.ShellPalette.settingsSidebar
+    readonly property color strip: Shell.ShellPalette.settingsStrip
+    readonly property color whiteRim: Shell.ShellPalette.settingsWhiteRim
+    readonly property color iconRim: Shell.ShellPalette.settingsIconRim
+    readonly property color popup: Shell.ShellPalette.settingsPopup
     readonly property int radius: 16
     readonly property string fontFamily: Shell.ShellPalette.uiFont
 }

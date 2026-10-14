@@ -4,15 +4,18 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "settings"
 import "SudoText.js" as Copy
+import "Keyboard.js" as Keyboard
 
 Rectangle {
     id: warning
+    readonly property bool keyboardBoundary: true
+    Keys.onPressed: event => Keyboard.handle(warning, event)
     property var backend: SudoKeySupport.backend
     signal dismissed
     signal accepted
     focus: true
     Keys.onEscapePressed: dismissed()
-    color: "#fff7f2"
+    color: LiquidPalette.polkitCard
     radius: 20
     implicitHeight: content.implicitHeight + 48
     Flickable {
@@ -37,7 +40,7 @@ Rectangle {
                     font.family: ShellPalette.uiFont
                     font.pixelSize: index === 0 ? 25 : 20
                     font.weight: index === 0 ? Font.DemiBold : Font.Normal
-                    color: "#352522"
+                    color: LiquidPalette.polkitInk
                 }
             }
             Text {
@@ -48,7 +51,7 @@ Rectangle {
                 wrapMode: Text.WordWrap
                 font.family: ShellPalette.uiFont
                 font.pixelSize: 20
-                color: "#352522"
+                color: LiquidPalette.polkitInk
             }
             Flow {
                 width: parent.width

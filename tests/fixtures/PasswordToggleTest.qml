@@ -7,6 +7,10 @@ import "../../shell" as Shell
 ShellRoot {
     Shell.AuthController {
         id: auth
+        property string submitted: ""
+        function submit(): void {
+            submitted = buffer;
+        }
         function edit(value: string): bool {
             buffer = value;
             return true;
@@ -86,9 +90,23 @@ ShellRoot {
                 wait(50);
                 const toggle = descendants(lockInput).find(c => c.toggled !== undefined);
                 verify(toggle !== undefined);
+                const editor = descendants(lockInput).find(c => c.echoMode !== undefined);
+                for (const direction of [Qt.Key_Down, Qt.Key_Up]) {
+                    auth.edit("");
+                    auth.submitted = "";
+                    lockInput.takeFocus();
+                    keyClick(Qt.Key_A);
+                    keyClick(Qt.Key_B);
+                    keyClick(direction);
+                    equal(editor.activeFocus, true);
+                    equal(lockInput.revealed, false);
+                    keyClick(Qt.Key_C);
+                    keyClick(Qt.Key_D);
+                    keyClick(Qt.Key_Return);
+                    equal(auth.submitted, "abcd");
+                    equal(lockInput.revealed, false);
+                }
                 auth.edit("test-secret");
-                equal(lockInput.revealed, false);
-                lockInput.takeFocus();
                 keyClick(Qt.Key_Tab);
                 equal(toggle.activeFocus, true);
                 keyClick(Qt.Key_Space);

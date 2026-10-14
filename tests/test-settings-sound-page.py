@@ -23,9 +23,10 @@ with tempfile.TemporaryDirectory(prefix='sound-page-', dir='/tmp') as temporary:
     for name in names:
         shutil.copyfile(ROOT / f'shell/{name}.qml', shell / f'{name}.qml')
     (shell / 'qmldir').write_text(''.join(f'{name} 1.0 {name}.qml\n' for name in names))
-    shutil.copyfile(ROOT / 'shell/ShellPalette.qml', shell / 'ShellPalette.qml')
+    for name in ('ShellPalette.qml', 'Appearance.qml', 'AppearanceLogic.js', 'SettingsBridge.qml'):
+        shutil.copyfile(ROOT / 'shell' / name, shell / name)
     with (shell / 'qmldir').open('a') as stream:
-        stream.write('singleton ShellPalette 1.0 ShellPalette.qml\n')
+        stream.write('singleton ShellPalette 1.0 ShellPalette.qml\nsingleton Appearance 1.0 Appearance.qml\nsingleton SettingsBridge 1.0 SettingsBridge.qml\n')
     shutil.copytree(ROOT / 'shell/settings', shell / 'settings')
     shutil.copyfile(ROOT / 'tests/fixtures/SoundSettingsPageTest.qml', shell / 'test.qml')
     for part in ('home', 'config', 'data', 'cache', 'state'):

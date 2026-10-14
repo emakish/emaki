@@ -407,7 +407,8 @@ def smoke_with_runtime(width, height, scale, exclusive_zone, runtime):
             assert not (profile / 'launch.json').exists()
             call('launcher', 'query', 'Fail')
             call('launcher', 'activate')
-            wait_state(lambda s: s['search']['launch'] == 'failed' and s['launcher'] == 'open')
+            wait_state(lambda s: s['search']['launch'] == 'failed' and s['launcher'] == 'closed')
+            call('launcher', 'open')
             call('launcher', 'mode', 'All')  # the launcher opens on Apps; the web fallback lives in All
             call('launcher', 'query', '$(touch injected); eval(1)')
             assert json.loads(call('launcher', 'status'))['search']['selected_kind'] == 'web'
@@ -425,10 +426,15 @@ def smoke_with_runtime(width, height, scale, exclusive_zone, runtime):
             call('launcher', 'query', 'RECENT12')
             wait_state(lambda s: s['search']['result_count'] == 1)
             call('launcher', 'activate')
-            wait_state(lambda s: s['search']['files']['open'] == 'no_handler' and not s['search']['files']['opening'] and s['launcher'] == 'open')
+            # A file row closes the launcher once validated; a late failure becomes a Launcher notification.
+            wait_state(lambda s: s['search']['files']['open'] == 'no_handler' and not s['search']['files']['opening'] and s['launcher'] == 'closed')
+            call('launcher', 'open')
+            call('launcher', 'mode', 'Files')
+            call('launcher', 'query', 'RECENT12')
+            wait_state(lambda s: s['search']['files']['state'] == 'ready' and s['search']['result_count'] == 1)
             recent_file.unlink()
             call('launcher', 'activate')
-            wait_state(lambda s: s['search']['files']['open'] == 'file_missing' and s['launcher'] == 'open')
+            wait_state(lambda s: s['search']['files']['open'] == 'file_missing' and s['launcher'] == 'closed')
             recent_file.write_text('Fixture, not user data.\n')
             call('launcher', 'close')
             call('launcher', 'open')
@@ -542,6 +548,8 @@ def smoke_with_runtime(width, height, scale, exclusive_zone, runtime):
     assert not list((profile / 'config').rglob('*'))
     # notifications.json: the failed launch of Fail is reported as a drawer notice.
     assert {str(p.relative_to(profile/'state')) for p in (profile/'state').rglob('*')} == {'emaki','emaki/frequent.lock','emaki/frequent.json','emaki/recent.lock','emaki/recent.json','emaki/notifications.json'}
+    notices = {(e['app'], e['summary']) for e in json.loads((profile/'state/emaki/notifications.json').read_text())['entries']}
+    assert {('Launcher', 'No default application for this file type.'), ('Launcher', 'This file no longer exists.')} <= notices, notices
     launches(profile, ['emaki-alpha', 'emaki-fail', 'emaki-terminal', 'emaki-file-test'])
     assert json.loads((profile/'state/emaki/frequent.json').read_text()) == {'emaki-alpha':1,'emaki-terminal':1}
     assert data_before == {str(p): p.read_bytes() for p in (profile / 'data').rglob('*') if p.is_file()}

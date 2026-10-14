@@ -19,6 +19,7 @@ Rectangle {
     FocusRing {
         id: focusRing
         shown: button.activeFocus
+        strong: button.primary || button.selected
         radius: button.radius
     }
     Accessible.role: Accessible.Button
@@ -32,7 +33,7 @@ Rectangle {
         id: label
         anchors.centerIn: parent
         text: button.text
-        color: LiquidPalette.inkOnLight
+        color: LiquidPalette.ink
         font.family: ShellPalette.uiFont
         font.pixelSize: 14
         font.weight: button.primary || button.selected ? Font.DemiBold : Font.Normal

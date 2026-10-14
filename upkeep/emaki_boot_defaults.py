@@ -9,6 +9,9 @@ import tempfile
 
 
 KERNELS = ('linux', 'linux-lts')
+SPLASH_THEME = 'usr/share/plymouth/themes/emaki'
+# The startup logo's one-time choice of Plymouth theme and the file it replaced.
+SPLASH_LEDGER = 'var/lib/emaki/migrations/plymouth-theme.json'
 GRUB_SOURCE = ('if [ -r /usr/share/emaki/boot/grub-btrfs.conf ]; then '
                '. /usr/share/emaki/boot/grub-btrfs.conf; fi\n')
 
@@ -154,6 +157,65 @@ def release(root, removing=False):
             record_release(root / f'var/lib/emaki/migrations/released-preset-{kernel}',
                            legacy_preset(kernel))
             replace(path, legacy_preset(kernel))
+    config, ledger = root / 'etc/plymouth/plymouthd.conf', root / SPLASH_LEDGER
+    if removing and safe_file(ledger):
+        # The theme leaves with the package: give back the file as it was before, unless
+        # it was edited since; a later reinstallation chooses the theme again.
+        record = json.loads(ledger.read_text())
+        if record.get('adopted') and safe_file(config) and config.read_text() == record['adopted']:
+            replace(config, record['original'])
+        ledger.unlink()
+
+
+def plymouth_theme(text):
+    """Plymouth's configuration with Theme=emaki, or None when it already names a theme."""
+    lines = text.splitlines(keepends=True)
+    section, daemon = None, None
+    for number, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('[') and stripped.endswith(']'):
+            section = stripped[1:-1].strip()
+            daemon = number if section == 'Daemon' and daemon is None else daemon
+        elif section == 'Daemon' and re.match(r'Theme\s*=', stripped):
+            return None
+    if lines and not lines[-1].endswith('\n'):
+        lines[-1] += '\n'
+    if daemon is None:
+        return ''.join(lines) + '[Daemon]\nTheme=emaki\n'
+    lines.insert(daemon + 1, 'Theme=emaki\n')
+    return ''.join(lines)
+
+
+def splash(root):
+    """Choose the packaged startup logo once, unless the administrator named a theme.
+
+    Without a theme Plymouth falls back to Arch's bgrt, which shows the Arch logo. The
+    images carry plymouthd.conf, so they are queued before the choice is written. In an
+    emaki-config transaction the stock mkinitcpio hook builds them (the package ships files
+    under usr/lib/initcpio). A retry after a failed write can come in an emaki-desktop or
+    emaki-apps transaction; there the 93 hook builds them, because it fires for the same
+    packages as the 89 hook. The installer builds the images itself after pacstrap."""
+    if not (safe_file(root / SPLASH_THEME / 'emaki.plymouth')
+            and (root / 'usr/lib/initcpio/install/plymouth').is_file()):
+        return False
+    config, ledger = root / 'etc/plymouth/plymouthd.conf', root / SPLASH_LEDGER
+    if not safe_file(config) or ledger.exists() or ledger.is_symlink():
+        return False
+    original = config.read_text()
+    adopted = plymouth_theme(original)
+    try:
+        # Recorded first and once: a theme the administrator removes later stays removed.
+        record_release(ledger, json.dumps({'original': original, 'adopted': adopted}) + '\n')
+        if adopted is None:
+            return False
+        queue_presets(root, KERNELS)
+        replace(config, adopted)
+    except BaseException:
+        # Not chosen after all (a failed write): the next transaction tries again.
+        if safe_file(ledger):
+            ledger.unlink()
+        raise
+    return True
 
 
 def apply(root):
@@ -213,6 +275,7 @@ def apply(root):
                 or (not assignments and bare in lines)):
             replace(grub, ''.join(GRUB_SOURCE if line in (old, bare) else line for line in lines))
             changed = True
+    changed = splash(root) or changed
     # /etc/default/grub contains the measured swap offset and LUKS/root UUIDs.
     # They remain machine-owned; adopting package defaults never recomputes them.
     return changed

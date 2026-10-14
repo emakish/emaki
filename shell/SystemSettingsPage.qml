@@ -56,7 +56,7 @@ Column {
         visible: !["idle", "confirmed", "applied", "ready"].includes(root.actionResult) && root.page !== "keyboard"
         text: root.awaitingAction ? "Working…" : root.actionResult === "requested" ? "Change requested." : "Could not confirm the change. The current value is shown below."
         textFormat: Text.PlainText
-        color: root.pending ? SettingsTheme.dim : "#a01b45"
+        color: root.pending ? SettingsTheme.dim : SettingsTheme.error
         font.family: SettingsTheme.fontFamily
         font.pixelSize: 12
         wrapMode: Text.WordWrap

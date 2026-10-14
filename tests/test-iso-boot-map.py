@@ -3,8 +3,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The image check's system-map step: which state commands it runs and what passes. No VM."""
 import importlib.util
+import json
 from pathlib import Path
+import subprocess
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location('boot_map', ROOT / 'tests/vm/iso-boot-check.py')
@@ -39,6 +42,44 @@ class MapStateTests(unittest.TestCase):
     def test_continued_state_line_is_one_command(self):
         text = page(('one', 'emaki-one call\n  status'))
         self.assertEqual(boot.map_state_commands(text), [('one', 'emaki-one call status')])
+
+    def test_each_state_command_is_checked_separately(self):
+        text = page(('one', 'emaki-one status --json; emaki-two status --json'))
+        self.assertEqual(boot.map_state_commands(text),
+                         [('one', 'emaki-one status --json'),
+                          ('one-2', 'emaki-two status --json')])
+
+    def test_quoted_semicolon_is_an_argument(self):
+        text = page(('one', "emaki-one 'value;kept'; emaki-two status"))
+        self.assertEqual(boot.map_state_commands(text),
+                         [('one', "emaki-one 'value;kept'"), ('one-2', 'emaki-two status')])
+
+    def test_every_split_command_receives_the_session_environment(self):
+        command = "python3 -c 'import os,json; print(json.dumps(os.environ.get(\"MAP_SESSION\")))'"
+        with mock.patch.object(boot, 'SESSION_ENV', 'MAP_SESSION=ready'):
+            for _, part in boot.map_state_commands(page(('one', command + '; ' + command))):
+                result = subprocess.run(boot.session_command(part), shell=True,
+                                        capture_output=True, text=True, check=True)
+                self.assertEqual(json.loads(result.stdout), 'ready')
+
+    def test_non_alongside_map_requires_a_clean_not_applicable_answer(self):
+        component = 'alongside-test-boot-safety'
+        self.assertTrue(boot.map_answer(component, '{"state": "not_alongside"}', False))
+        self.assertFalse(boot.map_answer(component, '{"state": "refused"}', False))
+        self.assertFalse(boot.map_answer(component, '[]', False))
+        self.assertTrue(boot.map_answer(component, '{"state": "ready"}', True))
+        self.assertFalse(boot.map_answer(component, '{"state": "not_alongside"}', True))
+        self.assertFalse(boot.map_answer(component, '[]', True))
+
+    def test_installed_programs_state_has_no_placeholders_or_consent_requirement(self):
+        paths = ['docs/system-map.md']
+        if (ROOT / 'MANIFEST.md').exists():
+            paths.append('MANIFEST.md')
+        for path in paths:
+            commands = boot.map_state_commands((ROOT / path).read_text())
+            self.assertEqual([command for name, command in commands
+                              if name in ('installed-programs', 'installed-programs-2')],
+                             ['emaki-programs list --json', 'emaki-programs aur --json'])
 
     def test_an_empty_or_broken_map_is_refused(self):
         with self.assertRaisesRegex(ValueError, 'no system-map blocks'):
@@ -76,7 +117,10 @@ class MapStateTests(unittest.TestCase):
     def test_the_shipped_page_promises_a_session_state(self):
         commands = boot.map_state_commands((ROOT / 'docs/system-map.md').read_text())
         self.assertIn(('wifi-recovery', 'emaki-shell call system status'), commands)
-        self.assertTrue(all(command.split()[0].startswith('emaki') for _, command in commands))
+        self.assertIn(('trusted-authentication-path-2',
+                       'niri-emaki msg --json trusted-shell-identity'), commands)
+        self.assertTrue(all(command.split()[0].startswith(('emaki', 'niri-emaki'))
+                            for _, command in commands))
 
 
 if __name__ == '__main__':

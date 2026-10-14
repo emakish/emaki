@@ -7,6 +7,8 @@ Canvas {
     id: tape
     property bool reducedMotion: false
     property color critical: ShellPalette.critical
+    property color hazard: LiquidPalette.polkitHazard
+    onHazardChanged: requestPaint()
     property real phase: 0
     onPhaseChanged: requestPaint()
     onWidthChanged: requestPaint()
@@ -34,7 +36,7 @@ Canvas {
             ctx.closePath();
         }
         rounded(0, 30);
-        ctx.fillStyle = "#120506";
+        ctx.fillStyle = tape.hazard;
         ctx.fill();
         rounded(1.5, 28.5);
         ctx.clip();
@@ -44,7 +46,7 @@ Canvas {
             ctx.beginPath();
             ctx.rect(start, 0, end - start, depth);
             ctx.clip();
-            ctx.fillStyle = "#120506";
+            ctx.fillStyle = tape.hazard;
             ctx.fillRect(0, 0, length, depth);
             ctx.fillStyle = tape.critical;
             for (let x = -depth - 20 + tape.phase; x < length + 20; x += 20) {
@@ -75,7 +77,7 @@ Canvas {
         edge(h, 26, 16, h - 16);
         ctx.restore();
         rounded(8.5, 21.5);
-        ctx.fillStyle = "#120506";
+        ctx.fillStyle = tape.hazard;
         ctx.fill();
     }
 }

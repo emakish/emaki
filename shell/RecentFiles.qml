@@ -16,9 +16,9 @@ Scope {
     property string pendingPath: ""
     property int epoch: 0
     property int readEpoch: -1
-    property int openEpoch: -1
     property bool reloadPending: false
     signal launched
+    signal openingRequested
 
     onActiveChanged: {
         ++epoch;
@@ -26,7 +26,8 @@ Scope {
         limited = false;
         if (active) {
             state = "loading";
-            openState = "idle";
+            if (openState !== "pending")
+                openState = "idle";
             if (reader.running)
                 reloadPending = true;
             else
@@ -49,8 +50,10 @@ Scope {
         if (!active || opener.running || !entries.some(entry => entry.path === path))
             return;
         pendingPath = path;
-        openEpoch = epoch;
+        // Validation is complete; release the modal launcher before starting its helper.
+        // Opening belongs to this request, independently of later list refreshes.
         openState = "pending";
+        openingRequested();
         opener.running = true;
     }
     Process {
@@ -108,7 +111,7 @@ Scope {
         }
         stdout: SplitParser {
             onRead: line => {
-                if (files.openEpoch !== files.epoch || files.openState !== "pending")
+                if (files.openState !== "pending")
                     return;
                 try {
                     const value = JSON.parse(line);
@@ -129,8 +132,11 @@ Scope {
             if (!running) {
                 openDeadline.stop();
                 files.pendingPath = "";
-                if (files.openState === "pending")
-                    files.openState = "helper_failed";
+                // Drain the response before deciding whether the helper failed.
+                Qt.callLater(() => {
+                    if (!opener.running && files.openState === "pending")
+                        files.openState = "helper_failed";
+                });
             }
         }
     }

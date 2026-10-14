@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Window
 import "settings"
+import "Keyboard.js" as Keyboard
 import "PolkitText.js" as Copy
+import "Liquid.js" as Liquid
 
 FocusScope {
     id: card
@@ -15,29 +18,55 @@ FocusScope {
     readonly property bool keyAvailable: sudoKeyInstalled && requestKind === "sudo" && controller.backend.keyOffered !== false
     readonly property bool keyGrantAllowed: keyAvailable && controller.backend.keyEligible === true
     readonly property bool agentRequest: requestKind === "sudo" && controller.backend.agent === true
+    property bool keyboardBoundary: true
+    property bool keyboardMode: true
     property bool detailsOpen: false
     property bool keyOpen: false
     property real shakeOffset: 0
+    // Used only with LiquidPalette.sharedCanvas.
+    property string wallpaperTexture: ""
+    property real dpr: 1
     property real viewportWidth: 1280
     property real viewportHeight: 720
     property real islandX: (viewportWidth - islandWidth) / 2
     property real islandWidth: 148
     property real islandY: Metrics.top
+    property string time: ""
+    property string date: ""
+    property bool dnd: false
+    property int notificationCount: 0
+    property DockBackdrop backdrop: null
+    property var islandBubble: null
     property real expansion: controller.opened ? 1 : 0
+    readonly property real morph: Math.max(0, Math.min(1, expansion))
+    readonly property real contentAlpha: Liquid.smooth((morph - .55) / .45)
+    readonly property real lineAlpha: 1 - Liquid.smooth(morph * 2.5)
+    readonly property real radius: Liquid.mix(Metrics.islandRadius, Metrics.panelRadius, morph)
+    // Reject every foreign texture before it reaches a shader, even while hidden.
+    readonly property DockBackdrop localBackdrop: backdrop !== null && card.Window.window !== null && backdrop.Window.window === card.Window.window && backdrop.sharp.Window.window === card.Window.window && backdrop.clear.Window.window === card.Window.window && backdrop.regular.Window.window === card.Window.window ? backdrop : null
+    readonly property bool glassReady: localBackdrop !== null && localBackdrop.ready && GraphicsInfo.api !== GraphicsInfo.Software
+    readonly property real islandAlpha: islandBubble ? Liquid.smooth(islandBubble.alpha.x) * lineAlpha : 0
+    readonly property var islandDrop: {
+        if (!islandBubble || lineAlpha <= .001)
+            return null;
+        const drop = Liquid.drop(islandBubble, islandX, islandY);
+        if (drop)
+            drop.params.w *= lineAlpha;
+        return drop;
+    }
     readonly property real targetWidth: Math.min(520, viewportWidth - 20)
     readonly property real targetHeight: Math.min(content.implicitHeight + 56, viewportHeight - 72)
-    x: islandX + ((viewportWidth - targetWidth) / 2 - islandX) * expansion
-    y: islandY + (52 - islandY) * expansion
-    width: islandWidth + (targetWidth - islandWidth) * expansion
-    height: Metrics.islandHeight + (targetHeight - Metrics.islandHeight) * expansion
-    opacity: expansion
-    clip: true
-    visible: expansion > 0
+    x: islandX + ((viewportWidth - targetWidth) / 2 - islandX) * morph
+    y: islandY
+    width: islandWidth + (targetWidth - islandWidth) * morph
+    height: Metrics.islandHeight + (targetHeight - Metrics.islandHeight) * morph
+    visible: controller.opened || expansion > 0
     focus: controller.opened
     Behavior on expansion {
         NumberAnimation {
-            duration: card.reducedMotion || card.controller.locked ? 0 : card.controller.opened ? 460 : 320
-            easing.type: Easing.OutCubic
+            duration: card.reducedMotion || card.controller.locked ? 0 : Metrics.morphMs
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Metrics.morphCurve
         }
     }
     onKeyAvailableChanged: if (!keyAvailable)
@@ -47,16 +76,35 @@ FocusScope {
             event.accepted = true;
     }
     Keys.onPressed: event => {
-        if (controller.inputBlocked)
+        if (controller.inputBlocked) {
             event.accepted = true;
+        } else if ([Qt.Key_Return, Qt.Key_Enter].includes(event.key)) {
+            const target = Keyboard.active(card);
+            if (target && target.enabled && target.visible && target !== password && target.clicked !== undefined) {
+                if (!event.isAutoRepeat)
+                    target.clicked();
+                event.accepted = true;
+            }
+        } else {
+            Keyboard.handle(card, event);
+        }
     }
     Keys.onReleased: event => {
         if (controller.inputBlocked)
             event.accepted = true;
     }
     Keys.onEscapePressed: event => {
-        if (!controller.inputBlocked)
-            controller.cancel("cancel");
+        if (!controller.inputBlocked) {
+            if (keyOpen) {
+                keyOpen = false;
+                keyButton.forceActiveFocus(Qt.BacktabFocusReason);
+            } else if (detailsOpen) {
+                detailsOpen = false;
+                detailsButton.forceActiveFocus(Qt.BacktabFocusReason);
+            } else {
+                controller.cancel("cancel");
+            }
+        }
         event.accepted = true;
     }
     function focusPassword(): void {
@@ -134,19 +182,119 @@ FocusScope {
             duration: 70
         }
     }
+    // Carry the clock's plate and compact line through the same morph as its drawer.
+    // The authorization controls retain their own established appearance once grown.
+    Rectangle {
+        anchors.fill: parent
+        visible: !card.glassReady
+        radius: card.radius
+        color: LiquidPalette.flatPlate
+        opacity: 1 - card.contentAlpha
+    }
+    Rectangle {
+        readonly property var drop: card.islandDrop
+        visible: !card.glassReady && drop !== null
+        x: drop ? drop.rect.x - card.x : 0
+        y: drop ? drop.rect.y - card.y : 0
+        width: drop ? drop.rect.z : 0
+        height: drop ? drop.rect.w : 0
+        radius: drop ? drop.params.x : 0
+        opacity: drop ? drop.params.w : 0
+        color: LiquidPalette.flatDrop
+        border.width: 1
+        border.color: LiquidPalette.flatDropRim
+    }
+    Item {
+        id: clockInk
+        x: -card.x
+        y: -card.y
+        width: card.viewportWidth
+        height: card.islandY + Metrics.islandHeight + 16
+        ClockCompactRow {
+            x: card.islandX
+            y: card.islandY
+            width: card.islandWidth
+            time: card.time
+            date: card.date
+            dnd: card.dnd
+            notificationCount: card.notificationCount
+            ink: LiquidPalette.inkOnLight
+            dim: LiquidPalette.dimOnLight
+            accent: LiquidPalette.accentOnLight
+            opacity: card.lineAlpha * (1 - card.islandAlpha)
+        }
+    }
+    ShaderEffectSource {
+        id: clockTexture
+        width: clockInk.width
+        height: clockInk.height
+        sourceItem: clockInk
+        hideSource: card.glassReady
+        live: true
+        visible: false
+    }
+    IslandGlass {
+        visible: card.glassReady && card.contentAlpha < 1
+        backdrop: card.localBackdrop
+        sceneOffset: Qt.point(card.x, card.y)
+        plate: Qt.rect(card.x, card.y, card.width, card.height)
+        drops: card.islandDrop ? [card.islandDrop] : []
+        uRadius: card.radius
+        uIcons: clockTexture
+        uSceneSize: Qt.point(clockInk.width, clockInk.height)
+        uCover: card.localBackdrop ? card.localBackdrop.coverFor(Qt.point(0, 0)) : Qt.vector4d(0, 0, 1, 1)
+        uOpacity: 1 - card.contentAlpha
+    }
+    ClockCompactRow {
+        x: card.islandX - card.x
+        width: card.islandWidth
+        time: card.time
+        date: card.date
+        dnd: card.dnd
+        notificationCount: card.notificationCount
+        ink: LiquidPalette.inkOnLight
+        dim: LiquidPalette.dimOnLight
+        accent: LiquidPalette.accentOnLight
+        opacity: card.lineAlpha * card.islandAlpha
+    }
     PolkitHazardFrame {
         anchors.fill: parent
+        opacity: card.contentAlpha
         reducedMotion: card.reducedMotion
     }
     Rectangle {
+        visible: !LiquidPalette.sharedCanvas
         anchors.fill: parent
         anchors.margins: 10
         radius: 20
-        color: "#fff7f2"
+        color: LiquidPalette.polkitCard
+        opacity: card.contentAlpha
+    }
+    // With the shared canvas the whole card is the Settings material (it has no top part).
+    // It grows in with the card body, like the flat fill it replaces.
+    Loader {
+        anchors.fill: parent
+        anchors.margins: 10
+        opacity: card.contentAlpha
+        active: LiquidPalette.sharedCanvas
+        sourceComponent: Item {
+            WelcomeGlass {
+                anchors.fill: parent
+                radius: 20
+                wallpaperTexture: card.wallpaperTexture
+                dpr: card.dpr
+            }
+            CanvasTint {
+                objectName: "polkit-canvas"
+                anchors.fill: parent
+                radius: 20
+            }
+        }
     }
     Flickable {
         anchors.fill: parent
         anchors.margins: 10
+        opacity: card.contentAlpha
         clip: true
         contentWidth: width
         contentHeight: content.implicitHeight + 36
@@ -165,7 +313,7 @@ FocusScope {
                     width: 44
                     height: 44
                     radius: 14
-                    color: "#f18c50"
+                    color: LiquidPalette.polkitAccent
                     Icon {
                         anchors.centerIn: parent
                         visible: !requestIcon.found
@@ -194,7 +342,7 @@ FocusScope {
                         font.capitalization: Font.AllUppercase
                         font.letterSpacing: 0.6
                         font.weight: Font.DemiBold
-                        color: "#b9273f"
+                        color: LiquidPalette.polkitDanger
                     }
                     Text {
                         width: content.width - 58
@@ -206,7 +354,7 @@ FocusScope {
                         font.family: ShellPalette.uiFont
                         font.pixelSize: 17
                         font.weight: Font.DemiBold
-                        color: "#352522"
+                        color: LiquidPalette.polkitInk
                     }
                 }
             }
@@ -216,9 +364,9 @@ FocusScope {
                 width: parent.width
                 height: 42
                 radius: 12
-                color: "#fffdfb"
+                color: LiquidPalette.polkitField
                 border.width: password.activeFocus || card.controller.wrong ? 2 : 1
-                border.color: card.controller.wrong ? ShellPalette.critical : password.activeFocus ? "#a67058" : "#d5bfb4"
+                border.color: card.controller.wrong ? ShellPalette.critical : password.activeFocus ? LiquidPalette.polkitFocus : LiquidPalette.polkitBorder
                 TextInput {
                     id: password
                     objectName: "polkit-password"
@@ -228,6 +376,7 @@ FocusScope {
                     anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
                     enabled: card.controller.accepting
+                    activeFocusOnTab: true
                     echoMode: reveal.revealed ? TextInput.Normal : TextInput.Password
                     inputMethodHints: Qt.ImhHiddenText | Qt.ImhSensitiveData | Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
                     maximumLength: 1024
@@ -240,6 +389,12 @@ FocusScope {
                             event.accepted = true;
                     }
                     Keys.onPressed: event => {
+                        if ([Qt.Key_Up, Qt.Key_Down].includes(event.key)) {
+                            // Keep editing; Tab reaches the reveal control.
+                            event.accepted = true;
+                        } else if ([Qt.Key_Tab, Qt.Key_Backtab].includes(event.key)) {
+                            Keyboard.handle(card, event);
+                        }
                         if (event.matches(StandardKey.Copy) || event.matches(StandardKey.Cut) || event.matches(StandardKey.SelectAll))
                             event.accepted = true;
                         if ((event.modifiers & Qt.ShiftModifier) && [Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down, Qt.Key_Home, Qt.Key_End, Qt.Key_PageUp, Qt.Key_PageDown].includes(event.key))
@@ -248,7 +403,7 @@ FocusScope {
                     clip: true
                     font.family: ShellPalette.uiFont
                     font.pixelSize: 14
-                    color: "#352522"
+                    color: LiquidPalette.polkitInk
                     onAccepted: card.submit()
                     Text {
                         anchors.fill: parent
@@ -256,7 +411,7 @@ FocusScope {
                         text: "Password for " + (card.controller.backend.accountName || Copy.unavailable)
                         textFormat: Text.PlainText
                         font: password.font
-                        color: "#806c62"
+                        color: LiquidPalette.polkitDim
                         elide: Text.ElideRight
                     }
                 }
@@ -266,8 +421,16 @@ FocusScope {
                     anchors.right: parent.right
                     anchors.rightMargin: 5
                     anchors.verticalCenter: parent.verticalCenter
-                    ink: "#806c62"
+                    ink: LiquidPalette.polkitDim
                     Accessible.name: revealed ? "Hide" : "Show"
+                    Keys.onPressed: event => {
+                        if (event.key === Qt.Key_Up || event.key === Qt.Key_Left) {
+                            card.focusPassword();
+                            event.accepted = true;
+                        } else {
+                            Keyboard.handle(card, event);
+                        }
+                    }
                     enabled: card.controller.accepting
                     onToggled: {
                         password.deselect();
@@ -284,7 +447,7 @@ FocusScope {
                 wrapMode: Text.WordWrap
                 font.family: ShellPalette.uiFont
                 font.pixelSize: 12
-                color: "#b9273f"
+                color: LiquidPalette.polkitDanger
             }
             Column {
                 width: parent.width
@@ -304,7 +467,7 @@ FocusScope {
                             wrapMode: Text.WrapAnywhere
                             font.family: ShellPalette.uiFont
                             font.pixelSize: 11
-                            color: "#806c62"
+                            color: LiquidPalette.polkitDim
                         }
                         Text {
                             width: parent.width
@@ -313,7 +476,7 @@ FocusScope {
                             wrapMode: Text.WrapAnywhere
                             font.family: ShellPalette.uiFont
                             font.pixelSize: 12
-                            color: "#352522"
+                            color: LiquidPalette.polkitInk
                         }
                     }
                 }
@@ -332,6 +495,7 @@ FocusScope {
                 spacing: 4
                 PolkitExpander {
                     id: detailsButton
+                    objectName: "polkit-details"
                     text: "Details"
                     checked: card.detailsOpen
                     onClicked: card.detailsOpen = !card.detailsOpen
@@ -360,7 +524,7 @@ FocusScope {
                     enabled: card.controller.accepting && (!card.keyOpen || (card.keyGrantAllowed && keyChoices.amountValid))
                     background: Rectangle {
                         radius: 12
-                        color: card.keyOpen ? "#9b1730" : "#120506"
+                        color: card.keyOpen ? LiquidPalette.polkitKey : LiquidPalette.polkitAllow
                         opacity: allowButton.enabled ? 1 : 0.5
                         border.width: allowButton.activeFocus ? 2 : 0
                         border.color: ShellPalette.critical
@@ -369,7 +533,7 @@ FocusScope {
                         text: allowButton.text
                         textFormat: Text.PlainText
                         font: allowButton.font
-                        color: "white"
+                        color: card.keyOpen ? LiquidPalette.polkitKeyText : LiquidPalette.polkitAllowText
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }

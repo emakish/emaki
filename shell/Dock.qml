@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import "SystemIcons.js" as SystemIcons
 import Quickshell
 
 // The dock on liquid glass (docs/mockups/liquid-glass/dock.html, accepted
@@ -39,7 +40,8 @@ Item {
             const choices = popup.rows.map((r, i) => r.kind === "line" ? -1 : i).filter(i => i >= 0);
             if (!choices.length)
                 return;
-            keyboardRow = choices[(choices.indexOf(keyboardRow) + step + choices.length) % choices.length];
+            const index = choices.indexOf(keyboardRow);
+            keyboardRow = index < 0 ? choices[step < 0 ? choices.length - 1 : 0] : choices[(index + step + choices.length) % choices.length];
             hoverMenuRow(keyboardRow);
         } else if (iconKeys.length) {
             keyboardKey = iconKeys[(iconKeys.indexOf(keyboardKey) + step + iconKeys.length) % iconKeys.length];
@@ -54,8 +56,28 @@ Item {
                 closePopup();
             else
                 leaveKeyboard();
-        } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab || event.key === Qt.Key_Left || event.key === Qt.Key_Right || event.key === Qt.Key_Up || event.key === Qt.Key_Down) {
-            moveKeyboard(event.key === Qt.Key_Backtab || event.key === Qt.Key_Left || event.key === Qt.Key_Up || (event.modifiers & Qt.ShiftModifier) ? -1 : 1);
+        } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+            moveKeyboard(event.key === Qt.Key_Backtab || (event.modifiers & Qt.ShiftModifier) ? -1 : 1);
+        } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Right) {
+            if (popupOpen)
+                closePopup();
+            moveKeyboard(event.key === Qt.Key_Left ? -1 : 1);
+        } else if (event.key === Qt.Key_Up) {
+            if (popupOpen)
+                moveKeyboard(-1);
+            else {
+                menu(keyboardKey);
+                if (popupOpen) {
+                    keyboardRow = -1;
+                    moveKeyboard(-1);
+                }
+            }
+        } else if (event.key === Qt.Key_Down && popupOpen) {
+            const choices = popup.rows.map((r, i) => r.kind === "line" ? -1 : i).filter(i => i >= 0);
+            if (keyboardRow === choices[choices.length - 1])
+                closePopup();
+            else
+                moveKeyboard(1);
         } else if (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
             menu(keyboardKey);
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
@@ -147,6 +169,7 @@ Item {
     property string dragKey: ""
     property var dragKeys: []
     readonly property bool dragging: dragKey !== ""
+    readonly property bool externalDragging: externalDrop.containsDrag
     // Icon that pulses: the app gtk-launch is starting right now.
     readonly property string launchingKey: catalog.launchState === "pending" ? catalog.pendingId : ""
     readonly property var entries: buildEntries()
@@ -278,8 +301,11 @@ Item {
         wake();
     }
     function launch(item: var): void {
-        if (item?.entry)
+        if (item?.entry && !catalog.busy) {
+            if (keyboardActive)
+                leaveKeyboard();
             catalog.launch(item.entry);
+        }
     }
     // Left click: none → launch, one → focus, several → window list (app.js dockClick).
     function activate(key: string): void {
@@ -296,6 +322,8 @@ Item {
         else if (item.windows.length === 1) {
             aim(visual(key).press, 1, 100);
             visual(key).releaseAt = Date.now() + 100;
+            if (keyboardActive)
+                leaveKeyboard();
             niri.focusWindow(item.windows[0].id);
         } else
             openPopup(key, "windows");
@@ -377,9 +405,11 @@ Item {
         closePopup();
         if (!item)
             return;
-        if (kind === "window")
+        if (kind === "window") {
+            if (keyboardActive)
+                leaveKeyboard();
             niri.focusWindow(value);
-        else if (kind === "new")
+        } else if (kind === "new")
             launch(item);
         else if (kind === "pin")
             store.pin(item.id);
@@ -648,7 +678,7 @@ Item {
             if (dock.skipIntro)
                 dock.snapStartup();
             else
-                dock.aim(dock.visibility, dock.policy.dockVisible ? 1 : 0, 320);
+                dock.aim(dock.visibility, dock.policy.dockVisible ? 1 : 0, dock.policy.slideDurationMs);
             if (!dock.policy.dockVisible)
                 dock.closePopup();
         }
@@ -1231,12 +1261,12 @@ Item {
         };
     }
 
-    // ---- Ink: always the light glass, whatever lies underneath (2026-09-27) ----
-    readonly property color ink: "#241018"
-    readonly property color controlFill: "#0d17111a"
-    readonly property color danger: "#a01b45"
-    readonly property color dotColor: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .72)
-    readonly property color lineColor: Qt.rgba(.13, .12, .16, .30)
+    // ---- Ink: follows the selected glass theme, whatever lies underneath (2026-09-27) ----
+    readonly property color ink: LiquidPalette.ink
+    readonly property color controlFill: LiquidPalette.dockControl
+    readonly property color danger: LiquidPalette.danger
+    readonly property color dotColor: LiquidPalette.dockDot
+    readonly property color lineColor: LiquidPalette.dockLine
 
     // ---- Icon layer: drawn under the glass (uIcons), or directly without glass ----
     Item {
@@ -1303,7 +1333,7 @@ Item {
                         anchors.fill: parent
                         sourceSize.width: 88
                         sourceSize.height: 88
-                        source: icon.item?.icon ?? ""
+                        source: (icon.item?.entry?.icon ?? "") === "emaki-programs-updates" ? SystemIcons.programsSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.accentShade, ShellPalette.managerIconInk) : (icon.item?.icon ?? "")
                         smooth: true
                         mipmap: true
                     }
@@ -1652,6 +1682,28 @@ Item {
     }
 
     // ---- Input on the plate ----
+    DropArea {
+        id: externalDrop
+        x: dock.plateHitRect.x
+        y: dock.plateHitRect.y
+        width: dock.plateHitRect.width
+        height: dock.plateHitRect.height
+        enabled: dock.visibleAmount > .08
+        onEntered: event => {
+            event.accepted = event.hasUrls;
+        }
+        onDropped: event => {
+            event.accepted = false;
+            if (!event.hasUrls)
+                return;
+            const point = mapToItem(dock, event.x, event.y);
+            const item = dock.entries.find(entry => entry.key === dock.keyAt(point.x, point.y));
+            // Keep URI escaping intact: QUrl's display string decodes spaces.
+            const urls = event.getDataAsString("text/uri-list").split(/\r?\n/).filter(url => url && !url.startsWith("#"));
+            if (item?.entry && urls.length && catalog.launchUrls(item.entry, urls))
+                event.accept(Qt.CopyAction);
+        }
+    }
     MouseArea {
         id: plateHit
         x: dock.plateHitRect.x

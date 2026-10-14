@@ -674,6 +674,18 @@ try:
     ipc(q,'clickPrivacy');wait(q,lambda s:s['privacy']['expansion']==1)
     ipc(q,'captures','{"list":[]}');ipc(q,'casts',0);s=wait(q,lambda s:not s['privacy']['visible']);assert s['privacy']['rows']==0 and s['privacy']['panel']=='closed',s['privacy']
     assert not any(x in ipc(q,'status') for x in ('PRIVATE_APP','PRIVATE_OTHER'))
+    # A portal screencast is named after the program whose stream reads its node (the backend's
+    # readers, from PipeWire links: live, video streams have no type and no camera kind); a
+    # video stream reading the cast node is not the camera, nor one left reading nothing.
+    share=dict(stream_id=5,session_id=2,kind='pipewire',target='output',output='Fixture',window_id=None,is_active=True,by_parent=False,pw_node_id=77,client=None)
+    ipc(q,'readers',json.dumps(dict(list=[dict(source=77,name='PRIVATE_SHARE',binary=''),dict(source=78,name='PRIVATE_OTHER_READER',binary='')])));ipc(q,'castList',json.dumps(dict(list=[share])))
+    s=wait(q,lambda s:s['privacy']['cast']==1);assert (s['privacy']['cam'],s['privacy']['rows'])==(0,1),s['privacy']
+    assert json.loads(ipc(q,'privacyLabels'))==['PRIVATE_SHARE · Sharing the screen'] and 'PRIVATE_SHARE' not in ipc(q,'status')
+    ipc(q,'captures',json.dumps(dict(list=[dict(kind='cam',name='PRIVATE_SHARE',binary='',source=77)])))
+    s=wait(q,lambda s:s['privacy']['rows']==1);assert (s['privacy']['cam'],s['privacy']['cast'])==(0,1),s['privacy']
+    ipc(q,'captures',json.dumps(dict(list=[dict(kind='cam',name='PRIVATE_SHARE',binary='',source=-1)])));ipc(q,'readers','{"list":[]}');ipc(q,'castList','{"list":[]}')
+    s=wait(q,lambda s:not s['privacy']['visible']);assert (s['privacy']['cam'],s['privacy']['cast'])==(0,0),s['privacy']
+    ipc(q,'captures','{"list":[]}')
     # A machine on a cable: the Wi-Fi cell and page say wired, with or without a Wi-Fi adapter.
     def cell():return json.loads(ipc(q,'wifiCell'))
     before=cell();action(q,'wifi-disconnect',{'key':'fixture'})

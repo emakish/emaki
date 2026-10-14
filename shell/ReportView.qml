@@ -4,11 +4,18 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import "settings"
+import "Keyboard.js" as Keyboard
 
 // The report window's content: the person's words, the attached items, what was removed
 // for privacy, the exact preview, and Send. Only Send hands anything to the browser.
 FocusScope {
     id: view
+    readonly property bool keyboardBoundary: true
+    Keys.onPressed: event => Keyboard.handle(view, event)
+    function editorKey(editor, event): void {
+        if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab || (event.key === Qt.Key_Up && editor.cursorPosition === 0) || (event.key === Qt.Key_Down && editor.cursorPosition === editor.length))
+            Keyboard.handle(view, event);
+    }
     required property var controller
     property string wallpaperTexture: ""
     property real dpr: 1
@@ -47,7 +54,10 @@ FocusScope {
         return parts.length ? "Removed for privacy before you see it: " + parts.join(", ") + "." : "Your user name, computer name, e-mail and network addresses, serial numbers, passwords and tokens are removed before you see the report. None were found.";
     }
     Keys.onEscapePressed: event => {
-        view.closeRequested();
+        if (view.controller.previewOpen)
+            view.controller.togglePreview();
+        else
+            view.closeRequested();
         event.accepted = true;
     }
     Shortcut {
@@ -107,14 +117,7 @@ FocusScope {
                         onActiveFocusChanged: if (activeFocus)
                             view.reveal(parent)
                         // Tab moves on through the window; it does not type a tab.
-                        Keys.onTabPressed: event => {
-                            nextItemInFocusChain(true).forceActiveFocus(Qt.TabFocusReason);
-                            event.accepted = true;
-                        }
-                        Keys.onBacktabPressed: event => {
-                            nextItemInFocusChain(false).forceActiveFocus(Qt.BacktabFocusReason);
-                            event.accepted = true;
-                        }
+                        Keys.onPressed: event => view.editorKey(whatField, event)
                         background: Rectangle {
                             radius: 10
                             color: SettingsTheme.field
@@ -265,8 +268,9 @@ FocusScope {
                     font.pixelSize: 12
                 }
                 TextEdit {
-                    opacity: view.controller.previewStale ? 0.4 : 1
                     id: previewText
+                    opacity: view.controller.previewStale ? 0.4 : 1
+                    Keys.onPressed: event => view.editorKey(previewText, event)
                     objectName: "report-preview-text"
                     width: parent.width
                     text: view.controller.preview

@@ -22,12 +22,15 @@ ShellRoot {
         property bool snapguardAvailable: false
         property int submissions: 0
         property string submittedMode: ""
+        property string expectedPassword: "PRIVATE_SUDO_FIXTURE_71"
+        property string submittedPassword: ""
         property int submittedSeconds: -1
         property string revoked: ""
         signal authenticationFailed
         signal rejected
         function submit(id: string, password: string, mode: string, seconds: int): void {
-            root.check(id === request.id && password === "PRIVATE_SUDO_FIXTURE_71", "correct request and response forwarded");
+            root.check(id === request.id && password === expectedPassword, "correct request and response forwarded");
+            submittedPassword = password;
             submissions++;
             submittedMode = mode;
             submittedSeconds = seconds;
@@ -146,6 +149,54 @@ ShellRoot {
         const expander = input.findChild(card, "polkit-sudo-key");
         check(controller.opened && controller.accepting && card.agentRequest, "sudo opens with authenticated classification");
         check(!expander.visible && !indicator.visible, "absent package hides all key controls");
+        card.focusPassword();
+        input.wait(20);
+        const reveal = input.findChild(card, "polkit-reveal");
+        const details = input.findChild(card, "polkit-details");
+        for (const direction of [Qt.Key_Down, Qt.Key_Up]) {
+            client.expectedPassword = "abcd";
+            client.submittedPassword = "";
+            input.keyClick(Qt.Key_A);
+            input.keyClick(Qt.Key_B);
+            input.keyClick(direction);
+            check(password.activeFocus, "vertical arrows retain password focus");
+            check(!reveal.revealed, "vertical arrows keep password hidden");
+            input.keyClick(Qt.Key_C);
+            input.keyClick(Qt.Key_D);
+            input.keyClick(Qt.Key_Return);
+            check(client.submittedPassword === "abcd", "vertical arrows preserve complete submitted password");
+            check(!reveal.revealed, "submission keeps password hidden");
+            begin(true);
+            card.focusPassword();
+        }
+        client.expectedPassword = "PRIVATE_SUDO_FIXTURE_71";
+        input.keyClick(Qt.Key_Tab);
+        check(reveal.activeFocus, "Tab reaches password reveal");
+        input.keyClick(Qt.Key_Space);
+        check(reveal.revealed && password.activeFocus, "Space reveals and returns to password");
+        input.keyClick(Qt.Key_Tab);
+        input.keyClick(Qt.Key_Space);
+        check(!reveal.revealed && password.activeFocus, "reveal remains keyboard toggleable");
+        input.keyClick(Qt.Key_Tab);
+        input.keyClick(Qt.Key_Down);
+        check(window.activeFocusItem !== password && window.activeFocusItem !== reveal, "reveal Down reaches footer");
+        for (let i = 0; i < 3 && !details.activeFocus; ++i)
+            input.keyClick(Qt.Key_Left);
+        check(details.activeFocus, "Left reaches details");
+        input.keyClick(Qt.Key_Return);
+        check(card.detailsOpen, "Enter opens details");
+        input.keyClick(Qt.Key_Escape);
+        check(!card.detailsOpen && controller.opened && details.activeFocus, "Escape closes details before cancel");
+        input.keyClick(Qt.Key_Right);
+        check(window.activeFocusItem.text === "Cancel", "Right reaches footer neighbour");
+        card.focusPassword();
+        controller.inputBlocked = true;
+        input.keyClick(Qt.Key_Up);
+        input.keyClick(Qt.Key_Return);
+        input.keyClick(Qt.Key_Escape);
+        check(controller.opened && !card.detailsOpen && !card.keyOpen, "input guard blocks navigation activation and Escape");
+        controller.inputBlocked = false;
+        card.focusPassword();
         password.text = "PRIVATE_SUDO_FIXTURE_71";
         card.submit();
         check(client.submittedMode === "none" && password.text === "" && !controller.accepting, "plain response clears and waits");
@@ -158,6 +209,10 @@ ShellRoot {
         begin(true);
         client.installed = true;
         check(expander.visible && !card.keyGrantAllowed, "warning required before key grants");
+        card.keyOpen = true;
+        card.focusPassword();
+        input.keyClick(Qt.Key_Escape);
+        check(!card.keyOpen && controller.opened && expander.activeFocus, "Escape closes key choices before cancel");
         card.keyOpen = true;
         const before = client.submissions;
         password.text = "PRIVATE_SUDO_FIXTURE_71";

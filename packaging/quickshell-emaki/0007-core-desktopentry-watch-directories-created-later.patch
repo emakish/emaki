@@ -1,0 +1,319 @@
+From 07d4e030a761615825d7b7833f880c14dc193626 Mon Sep 17 00:00:00 2001
+From: Emaki contributors <emaki@localhost>
+Date: Wed, 14 Oct 2026 05:00:00 +0000
+Subject: [PATCH] core/desktopentry: watch application directories created
+ later
+
+Copyright (C) 2026 Artur Yakymenko
+SPDX-License-Identifier: LGPL-3.0-only
+
+The monitor skipped a desktop entry directory that did not exist at startup
+and watched only the first level of subdirectories, so DesktopEntries missed
+the first flatpak install (it creates exports/share/applications), the first
+entry in ~/.local/share/applications and entries in a new subdirectory until
+an unrelated change in a watched ancestor happened to cause a rescan.
+
+Watch the closest existing ancestor of a missing directory and every
+directory above it, watch subdirectories at any depth, and re-arm after each
+change so directories created since then are watched too. A change in an
+ancestor alone no longer rescans unless a desktop entry directory appeared or
+disappeared with it.
+---
+ src/core/CMakeLists.txt                |   3 +
+ src/core/desktopentrymonitor.cpp       |  92 +++++++++++++-----
+ src/core/desktopentrymonitor.hpp       |   9 +-
+ src/core/test-desktop-entry-monitor.py | 127 +++++++++++++++++++++++++
+ 4 files changed, 208 insertions(+), 23 deletions(-)
+ create mode 100755 src/core/test-desktop-entry-monitor.py
+
+diff --git a/src/core/CMakeLists.txt b/src/core/CMakeLists.txt
+index 4824965..960810e 100644
+--- a/src/core/CMakeLists.txt
++++ b/src/core/CMakeLists.txt
+@@ -63,4 +63,7 @@ target_link_libraries(quickshell PRIVATE quickshell-coreplugin)
+ 
+ if (BUILD_TESTING)
+ 	add_subdirectory(test)
++	find_package(Python3 COMPONENTS Interpreter REQUIRED)
++	add_test(NAME desktop-entry-monitor WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
++		COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test-desktop-entry-monitor.py $<TARGET_FILE:quickshell>)
+ endif()
+diff --git a/src/core/desktopentrymonitor.cpp b/src/core/desktopentrymonitor.cpp
+index bed6ef1..b1e345b 100644
+--- a/src/core/desktopentrymonitor.cpp
++++ b/src/core/desktopentrymonitor.cpp
+@@ -10,16 +10,17 @@
+ #include "desktopentry.hpp"
+ 
+ namespace {
+-void addPathAndParents(QFileSystemWatcher& watcher, const QString& path) {
+-	watcher.addPath(path);
+-
+-	auto p = QFileInfo(path).absolutePath();
+-	while (!p.isEmpty()) {
+-		watcher.addPath(p);
+-		const auto parent = QFileInfo(p).dir().absolutePath();
+-		if (parent == p) break;
+-		p = parent;
+-	}
++QStringList cleanDesktopPaths() {
++	auto paths = QStringList();
++	for (const auto& path: DesktopEntryManager::desktopPaths()) paths.append(QDir::cleanPath(path));
++	return paths;
++}
++
++// A directory this process can list and enter. Others cannot be watched (a root-only flatpak
++// installation); their parent reports when they become readable.
++bool usable(const QString& path) {
++	const auto info = QFileInfo(path);
++	return info.isDir() && info.isReadable() && info.isExecutable();
+ }
+ } // namespace
+ 
+@@ -40,29 +41,76 @@ DesktopEntryMonitor::DesktopEntryMonitor(QObject* parent): QObject(parent) {
+ 	    &DesktopEntryMonitor::processChanges
+ 	);
+ 
++	this->roots = DesktopEntryMonitor::existingRoots();
+ 	this->startMonitoring();
+ }
+ 
++// Called again after every change, so directories created since the last call are watched
++// too: a desktop entry directory that did not exist at startup (the flatpak exports before
++// the first install, ~/.local/share/applications) and subdirectories added inside one.
+ void DesktopEntryMonitor::startMonitoring() {
+-	for (const auto& path: DesktopEntryManager::desktopPaths()) {
+-		if (!QDir(path).exists()) continue;
+-		addPathAndParents(this->watcher, path);
+-		this->scanAndWatch(path);
++	for (const auto& path: cleanDesktopPaths()) {
++		// Watch the closest ancestor that can be watched and every directory above it, so the
++		// creation of a missing directory and the replacement of a parent are both seen.
++		auto ancestor = path;
++		while (!usable(ancestor)) {
++			const auto parent = QFileInfo(ancestor).absolutePath();
++			if (parent == ancestor) break;
++			ancestor = parent;
++		}
++
++		for (auto p = ancestor; !p.isEmpty();) {
++			if (usable(p)) this->watch(p);
++			const auto parent = QFileInfo(p).absolutePath();
++			if (parent == p) break;
++			p = parent;
++		}
++
++		if (usable(path)) this->watchTree(path);
+ 	}
+ }
+ 
+-void DesktopEntryMonitor::scanAndWatch(const QString& dirPath) {
+-	auto dir = QDir(dirPath);
+-	if (!dir.exists()) return;
++void DesktopEntryMonitor::watch(const QString& path) {
++	if (!this->watcher.directories().contains(path)) this->watcher.addPath(path);
++}
++
++// The scanner reads subdirectories at any depth (their names prefix the ids), so all are watched.
++void DesktopEntryMonitor::watchTree(const QString& dirPath) {
++	if (!usable(dirPath)) return;
++	this->watch(dirPath);
+ 
+-	this->watcher.addPath(dirPath);
++	const auto subdirs = QDir(dirPath).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
++	for (const auto& subdir: subdirs) this->watchTree(subdir.absoluteFilePath());
++}
++
++bool DesktopEntryMonitor::isEntryDirectory(const QString& path) {
++	const auto clean = QDir::cleanPath(path);
++	for (const auto& root: cleanDesktopPaths())
++		if (clean == root || clean.startsWith(root + u'/')) return true;
++	return false;
++}
+ 
+-	auto subdirs = dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
+-	for (const auto& subdir: subdirs) this->watcher.addPath(subdir.absoluteFilePath());
++QStringList DesktopEntryMonitor::existingRoots() {
++	auto result = QStringList();
++	for (const auto& path: cleanDesktopPaths())
++		if (usable(path)) result.append(path);
++	return result;
+ }
+ 
+-void DesktopEntryMonitor::onDirectoryChanged(const QString& /*path*/) {
++void DesktopEntryMonitor::onDirectoryChanged(const QString& path) {
++	if (DesktopEntryMonitor::isEntryDirectory(path)) this->entriesTouched = true;
+ 	this->debounceTimer.start();
+ }
+ 
+-void DesktopEntryMonitor::processChanges() { emit this->desktopEntriesChanged(); }
+\ No newline at end of file
++// A change in an ancestor alone (a file written in the home directory) rescans nothing
++// unless a desktop entry directory appeared or disappeared with it.
++void DesktopEntryMonitor::processChanges() {
++	this->startMonitoring();
++
++	const auto current = DesktopEntryMonitor::existingRoots();
++	const auto changed = this->entriesTouched || current != this->roots;
++	this->roots = current;
++	this->entriesTouched = false;
++
++	if (changed) emit this->desktopEntriesChanged();
++}
+diff --git a/src/core/desktopentrymonitor.hpp b/src/core/desktopentrymonitor.hpp
+index eb3251d..28f414a 100644
+--- a/src/core/desktopentrymonitor.hpp
++++ b/src/core/desktopentrymonitor.hpp
+@@ -25,8 +25,15 @@ private slots:
+ 
+ private:
+ 	void startMonitoring();
+-	void scanAndWatch(const QString& dirPath);
++	void watch(const QString& path);
++	void watchTree(const QString& dirPath);
++	[[nodiscard]] static bool isEntryDirectory(const QString& path);
++	[[nodiscard]] static QStringList existingRoots();
+ 
+ 	QFileSystemWatcher watcher;
+ 	QTimer debounceTimer;
++	// Desktop entry directories that existed at the last check.
++	QStringList roots;
++	// A watched desktop entry directory changed since the last check.
++	bool entriesTouched = false;
+ };
+diff --git a/src/core/test-desktop-entry-monitor.py b/src/core/test-desktop-entry-monitor.py
+new file mode 100755
+index 0000000..b8309ef
+--- /dev/null
++++ b/src/core/test-desktop-entry-monitor.py
+@@ -0,0 +1,127 @@
++#!/usr/bin/env python3
++# Copyright (C) 2026 Artur Yakymenko
++# SPDX-License-Identifier: LGPL-3.0-only
++"""DesktopEntries.applications follows entries added and removed while the shell runs."""
++import os
++from pathlib import Path
++import queue
++import subprocess
++import sys
++import tempfile
++import threading
++import time
++
++ENTRY = '[Desktop Entry]\nType=Application\nName={}\nExec=true\n'
++
++# Upstream watched every ancestor of a present directory and rescanned on any change there,
++# so a busy ancestor such as /tmp hides a missing watch: keep the tree in the quiet working
++# directory (the build directory under ctest).
++with tempfile.TemporaryDirectory(prefix='qs-desktop-monitor-', dir=os.getcwd()) as directory:
++    root = Path(directory)
++    root.chmod(0o700)
++    home = root / 'home'
++    system = root / 'usr/share'
++    flatpak = root / 'var/lib/flatpak'
++    user_flatpak = home / '.local/share/flatpak'
++    # Present at startup: the system directory. Present without applications/: the
++    # parents of the user directory and of both flatpak export directories, which
++    # flatpak creates on its first install.
++    (system / 'applications').mkdir(parents=True)
++    (system / 'applications/present.desktop').write_text(ENTRY.format('Present'))
++    flatpak.mkdir(parents=True)
++    user_flatpak.mkdir(parents=True)
++    for name in ('config', 'cache', 'state', 'runtime'):
++        (root / name).mkdir(mode=0o700)
++    (root / 'shell.qml').write_text('''import QtQuick
++import Quickshell
++ShellRoot {
++    readonly property string ids: DesktopEntries.applications.values.map(e => e.id).sort().join(" ")
++    onIdsChanged: console.info("APPS [" + ids + "]")
++    Component.onCompleted: {
++        Quickshell.watchFiles = false;
++        console.info("APPS [" + ids + "]");
++    }
++    Timer { interval: 60000; running: true; onTriggered: Qt.quit() }
++}
++''')
++    environment = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
++                       QML_DISABLE_DISK_CACHE='1', HOME=str(home),
++                       XDG_DATA_HOME=str(home / '.local/share'),
++                       XDG_DATA_DIRS=':'.join([str(user_flatpak / 'exports/share'),
++                                               str(flatpak / 'exports/share'), str(system)]),
++                       XDG_CONFIG_HOME=str(root / 'config'), XDG_CACHE_HOME=str(root / 'cache'),
++                       XDG_STATE_HOME=str(root / 'state'), XDG_RUNTIME_DIR=str(root / 'runtime'),
++                       DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(root / 'no-bus'))
++    shell = subprocess.Popen([sys.argv[1], '-p', str(root), '--no-color'], env=environment,
++                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
++    lines = queue.Queue()
++    log = []
++
++    def read():
++        for line in shell.stdout:
++            log.append(line)
++            if 'APPS [' in line:
++                lines.put(line.split('APPS [', 1)[1].rsplit(']', 1)[0].split())
++
++    threading.Thread(target=read, daemon=True).start()
++    current = []
++
++    def expect(ids, why):
++        global current
++        until = time.monotonic() + 5
++        while sorted(ids) != current:
++            try:
++                current = lines.get(timeout=max(.01, until - time.monotonic()))
++            except queue.Empty:
++                shell.kill()
++                raise AssertionError(f'{why}: expected {sorted(ids)}, have {current}\n' + ''.join(log))
++
++    def write(path, name):
++        path.parent.mkdir(parents=True, exist_ok=True)
++        path.write_text(ENTRY.format(name))
++
++    try:
++        expect(['present'], 'startup')
++        write(system / 'applications/repo.desktop', 'Repo')
++        expect(['present', 'repo'], 'a file added to a watched directory')
++        # The first flatpak install creates exports/share/applications under a directory
++        # nothing watched before, here root-only at first (as a umask 077 install left it);
++        # the next install writes into the new directory.
++        write(root / 'stage/exports/share/applications/org.example.First.desktop', 'First')
++        (root / 'stage/exports').rename(flatpak / 'exports')
++        (flatpak / 'exports').chmod(0)
++        time.sleep(.5)
++        while not lines.empty():
++            current = lines.get()
++        assert current == ['present', 'repo'], f'an unreadable exports directory: {current}'
++        (flatpak / 'exports').chmod(0o755)
++        expect(['present', 'repo', 'org.example.First'], 'the system flatpak exports appear')
++        time.sleep(.5)
++        write(flatpak / 'exports/share/applications/org.example.Second.desktop', 'Second')
++        expect(['present', 'repo', 'org.example.First', 'org.example.Second'],
++               'a second entry in the new system exports')
++        write(user_flatpak / 'exports/share/applications/org.example.User.desktop', 'User')
++        expect(['present', 'repo', 'org.example.First', 'org.example.Second', 'org.example.User'],
++               'the user flatpak exports appear')
++        write(home / '.local/share/applications/local.desktop', 'Local')
++        everything = ['present', 'repo', 'org.example.First', 'org.example.Second',
++                      'org.example.User', 'local']
++        expect(everything, 'the user applications directory appears')
++        # A subdirectory made first and filled later (its name prefixes the id).
++        (system / 'applications/vendor').mkdir()
++        time.sleep(.5)
++        write(system / 'applications/vendor/tool.desktop', 'Tool')
++        expect(everything + ['vendor-tool'], 'an entry in a new subdirectory')
++        (system / 'applications/repo.desktop').unlink()
++        (flatpak / 'exports/share/applications/org.example.First.desktop').unlink()
++        everything.remove('repo')
++        everything.remove('org.example.First')
++        expect(everything + ['vendor-tool'], 'removed entries')
++        # An unreadable directory is followed through its parent, never handed to inotify.
++        assert not any('inotify_add_watch' in line for line in log), ''.join(log)
++    finally:
++        if (flatpak / 'exports').exists():
++            (flatpak / 'exports').chmod(0o755)
++        shell.kill()
++        shell.wait()
++print('PASS: entries added to existing, new and nested directories appear; removed ones disappear')
+-- 
+2.55.0
+

@@ -54,6 +54,10 @@ with tempfile.TemporaryDirectory(prefix='settings-launcher-') as temporary:
     for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'NIRI_SOCKET', 'QT_QPA_PLATFORMTHEME',
                 'QT_SCREEN_SCALE_FACTORS', 'QT_LOGGING_RULES'):
         env.pop(key, None)
+    from PIL import Image
+    env['SETTINGS_ACCOUNT_PICTURE'] = str(base / 'account.png')
+    # A square, like the helper's copy.
+    Image.new('RGB', (96, 96), (30, 60, 230)).save(env['SETTINGS_ACCOUNT_PICTURE'])
     result = subprocess.run(['qs', '-p', str(base / 'shell/SettingsLauncherTest.qml'), '--no-color'],
                             env=env, capture_output=True, text=True, timeout=45)
     output = result.stdout + result.stderr
@@ -68,7 +72,7 @@ with tempfile.TemporaryDirectory(prefix='settings-launcher-') as temporary:
     for name in ('settings-launcher.png', 'settings-search.png', 'settings-narrow.png', 'launcher-normal.png',
                  'launcher-output.png', 'settings-output.png', 'settings-grow-mid.png',
                  'settings-shrink-mid.png', 'settings-close-mid.png', 'settings-1280x800.png',
-                 'settings-1024x640.png'):
+                 'settings-1024x640.png', 'settings-account-picture.png', 'settings-panel-choices.png'):
         assert (EVIDENCE / name).stat().st_size > 1000, name
     print('PASS: settings lifecycle, all 21 pages, search anchors, dynamic reset, input, history and screenshots')
 

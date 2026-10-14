@@ -31,8 +31,8 @@ Item {
             return;
         const replacement = Keyboard.targets(scope).find(item => item.key === rememberedKey);
         if (replacement) {
-            replacement.forceActiveFocus(Qt.TabFocusReason);
             Keyboard.reveal(replacement);
+            replacement.forceActiveFocus(Qt.TabFocusReason);
         } else {
             Keyboard.focusFirst(scope);
         }

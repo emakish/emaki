@@ -2,35 +2,24 @@
 
 Hi. I'm Artur, and I make Emaki.
 
-Emaki is in alpha. On my computers and in virtual machines it already works the way I want: it
-installs, updates, rolls back when something goes wrong, and it is a pleasure to use every day.
+Emaki is in alpha, and it already works well. It installs, also next to Windows. It updates and
+rolls back when something goes wrong. Programs & Updates installs programs from Arch, Flathub and
+the AUR. The shell has a light and a dark theme, accent colours, and works with the keyboard. It is
+good-looking, easy to use, and a pleasure every day.
 
-But there is a real problem: hardware. Emaki has only been installed on my own machines. I don't
+There are still small rough edges. But if I polished every one of them, Emaki would never come out.
+So what is left before it goes to people is short: Secure Boot, a few small things, and a website
+where you can download the installation image and see what is new in each update.
+
+Then a full check of the whole system: installing, updating, hardware, security, speed, the look,
+every text and every shortcut. What it finds gets fixed or consciously left for later.
+
+There is one real problem: hardware. Emaki has only been installed on my own machines. I don't
 know how it behaves on others, with a different graphics card, different Wi-Fi, a different
-screen.
+screen. So after the check Emaki goes to people, still as an alpha, with one request: help.
+Install Emaki, use it, and tell me what broke.
 
-So the plan is this. First, late alpha. For me that means:
-
-- a terminal that is properly set up, not a bare black window;
-- one program for installing programs and updating the system, in a window;
-- settings finished inside the shell;
-- a polished shell and a polished boot menu;
-- an installer that simply works, including next to Windows;
-- animated wallpapers;
-- a "Report a problem" button;
-- keyboard shortcuts that make sense.
-
-Then, before anyone else installs it, a full check of the whole system: not only the code, but
-installing, updating, hardware, security, speed, the look, every text and every shortcut.
-Everything it finds gets fixed or consciously left for later, and the rough edges get polished.
-
-Only then will I quietly step into the light with one request: help. Install Emaki, use it, and
-tell me what broke.
-
-Emaki becomes a beta when other people use it on their own computers. That is when I will talk
-about it out loud.
-
-If everything goes well, there will be places to gather: Reddit, Discord and more.
+Emaki becomes a beta when it has been tested on enough different hardware.
 
 Why Arch, and what about NixOS. Emaki is built on Arch Linux because Arch is what I use every day.
 For a long time I wanted to move to NixOS, but when the idea of Emaki came, I understood that Emaki
@@ -46,16 +35,11 @@ commands on their computers. On most systems that means one of two things: keep 
 anything important, or let it do everything without asking. Emaki is being built for a third way: an
 agent may work deep in the system, up to administrator rights, with a safety net at every step. Emaki
 will describe itself to agents: where things are, which files belong to whom, how to check and change
-them, how to roll back. One clear Emaki prompt will ask you before anything runs as administrator,
-showing who is asking and exactly what will run; you answer with your password.
-On btrfs, snapguard, my tool that takes a snapshot before risky actions, becomes part of Emaki. And
-for those who want it, an optional sudo key lets an agent work without asking for a while — at your
-own risk, with a plain warning. The first parts arrived in 0.5 and 0.6.
-
-AUR in Programs & Updates. Programs & Updates is not a store of its own: it does what you would do in a terminal, only without the
-terminal. That is why the AUR will be there too, with full install and update. But anyone can publish to the AUR and nobody checks it,
-so it gets its own section that opens only after a plain warning, and you confirm that what you install from it is your decision and
-your responsibility. The risks are the same as in a terminal; Emaki only makes them visible.
+them, how to roll back. One clear Emaki prompt asks you before anything runs as administrator,
+showing who is asking and exactly what will run; you answer with your password. Snapguard, my tool
+that takes a snapshot before risky actions, is on the From Emaki shelf in Programs & Updates, and an
+optional sudo key lets an agent work without asking for a while — at your own risk, with a plain
+warning.
 
 These are not promises, just my thoughts on where we are going. This text will change along with
 the project.

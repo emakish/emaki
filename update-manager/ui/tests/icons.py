@@ -93,7 +93,7 @@ def main():
         (root / 'cached.svg').write_text(SVG)
         (root / 'remote.svg').write_text(SVG)
         (root / 'broken.jxl').write_bytes(b'unsupported or corrupt image')
-        shutil.copyfile(UI / 'ProgramIcon.qml', root / 'ProgramIcon.qml')
+        (root / 'ProgramIcon.qml').write_text((UI / 'ProgramIcon.qml').read_text().replace('@EMAKI_DATADIR@', str(ROOT)))
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
                    QT_QPA_PLATFORMTHEME='qt6ct', QML_DISABLE_DISK_CACHE='1', QS_DISABLE_CRASH_HANDLER='1')
         for name in ('cache', 'config', 'data', 'state'):

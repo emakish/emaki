@@ -75,8 +75,8 @@ class MetadataTests(unittest.TestCase):
             /usr/share/libalpm/scripts/emaki-system-migrate() { :; }
             systemctl() { printf 'systemctl'; printf ' <%s>' "$@"; printf '\\n'; }
             source "$1"
-            post_install 0.8.0-1
-            post_upgrade 0.8.0-2 0.8.0-1
+            post_install 0.8.1-1
+            post_upgrade 0.8.1-2 0.8.1-1
         '''
         result = run(['/bin/bash', '-eu', '-c', harness, 'hooks', str(hooks)],
                      env={**os.environ, 'PATH': '/nonexistent'})
@@ -106,7 +106,7 @@ class MetadataTests(unittest.TestCase):
                     /usr/share/libalpm/scripts/emaki-system-migrate() { echo mark-fresh; }
                     systemctl() { printf 'systemctl'; printf ' <%s>' "$@"; printf '\\n'; }
                     source "$1"
-                    "$2" 0.8.0-2 0.8.0-1
+                    "$2" 0.8.1-2 0.8.1-1
                 '''
                 result = run(['/bin/bash', '-eu', '-c', harness, 'hooks', str(hooks), hook],
                              env={**os.environ, 'PATH': '/nonexistent'})
@@ -133,21 +133,22 @@ class MetadataTests(unittest.TestCase):
             with self.subTest(package=name):
                 info = self.recipes[name]
                 self.assertEqual(info['pkgname'], [name])
-                self.assertEqual(info['pkgver'], ['0.8.0'])
-                self.assertEqual(info['pkgrel'], ['4'])
-                # emaki-installer also ships the zone map (ODbL) and the GRUB unlock-screen fonts (DejaVu, Bitstream Vera).
+                self.assertEqual(info['pkgver'], ['0.8.1'])
+                self.assertEqual(info['pkgrel'], ['1'])
+                # emaki-installer also ships the zone map (ODbL) and the GRUB unlock-screen fonts (DejaVu, Bitstream Vera);
+                # emaki-config also ships Plymouth's password prompt pictures (GPL-2.0-or-later).
                 self.assertEqual(info['license'], ['GPL-3.0-or-later', 'ODbL-1.0', 'Bitstream-Vera']
-                                 if name == 'emaki-installer' else ['GPL-3.0-or-later', 'Bitstream-Vera']
+                                 if name == 'emaki-installer' else ['GPL-3.0-or-later', 'Bitstream-Vera', 'GPL-2.0-or-later']
                                  if name == 'emaki-config' else ['GPL-3.0-or-later']
                                  if name == 'emaki-nvidia' else ['GPL-3.0-or-later'])
         self.assertTrue({'kimageformats', 'libjxl'} <= set(self.recipes['emaki-config']['depends']))
         cargo = tomllib.loads((ROOT / 'Cargo.toml').read_text())
-        self.assertEqual(cargo['workspace']['package']['version'], '0.8.0')
+        self.assertEqual(cargo['workspace']['package']['version'], '0.8.1')
         packages = tomllib.loads((ROOT / 'Cargo.lock').read_text())['package']
-        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.8.0'})
+        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.8.1'})
         self.assertEqual(self.recipes['emaki']['depends'], [
-            'emaki-config=0.8.0-4', 'emaki-desktop=0.8.0-4', 'niri-emaki=26.04-20',
-            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.8.0-1', 'emaki-mirrorlist>=0.8.0-1'])
+            'emaki-config=0.8.1-1', 'emaki-desktop=0.8.1-1', 'niri-emaki=26.04-22',
+            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.8.1-1', 'emaki-mirrorlist>=0.8.1-1'])
 
     @unittest.skipUnless(shutil.which('pacman'), 'needs pacman for removal dependency resolution')
     def test_obs_removal_preview_keeps_base_packages(self):
@@ -264,7 +265,8 @@ class MetadataTests(unittest.TestCase):
             'etc/sudoers.d/10-emaki-wheel',
             'etc/niri/config.kdl', 'etc/xdg/hypr/hyprlock.conf', 'etc/xdg/fastfetch/config.jsonc',
             'etc/xdg/kwalletrc', 'etc/xdg/mimeapps.list', 'etc/xdg/kdeglobals', 'etc/xdg/dolphinrc', 'etc/xdg/qt6ct/qt6ct.conf',
-            'etc/xdg/menus/emaki-applications.menu', 'etc/xdg/xdg-desktop-portal/niri-portals.conf'})
+            'etc/xdg/menus/emaki-applications.menu', 'etc/xdg/xdg-desktop-portal/niri-portals.conf',
+            'etc/mkinitcpio.conf.d/50-emaki-splash.conf', 'etc/default/grub.d/50-emaki-splash.cfg'})
         for package in ('emaki-config', 'emaki-desktop'):
             self.assertFalse(set(self.recipes[package]['depends']) & {
                 'gnome-keyring', 'polkit-gnome', 'polkit-kde-agent', 'adwaita-cursors',
@@ -273,7 +275,7 @@ class MetadataTests(unittest.TestCase):
         self.assertEqual(set(info['makedepends']), {'git', 'make', 'python', 'rust', 'qt6-shadertools', 'cmake', 'gcc', 'pkgconf'})
         self.assertEqual(set(info['checkdepends']), {'niri', 'nodejs'})
         required = {
-            'niri-emaki>=26.04-20', 'quickshell-emaki>=0.3.1-10', 'python', 'python-gobject', 'python-pillow',
+            'niri-emaki>=26.04-20', 'quickshell-emaki>=0.3.1-12', 'python', 'python-gobject', 'python-pillow',
             'gtk3', 'wpaperd', 'wl-clipboard', 'cliphist', 'udiskie', 'kitty', 'grim', 'gstreamer', 'gst-plugin-pipewire', 'gst-plugins-base',
             'gst-plugins-base-libs', 'gst-plugins-good', 'gst-plugins-bad', 'libglvnd', 'ffmpeg',
             'fastfetch>=2.68.1', 'imagemagick', 'hyprlock', 'playerctl', 'fuzzel', 'qt6ct',
@@ -332,7 +334,7 @@ class MetadataTests(unittest.TestCase):
         self.assertIn('swayidle', desktop['depends'])
         self.assertFalse(any(d.startswith('niri-emaki:') for d in desktop['optdepends']))
         niri = self.recipes['niri-emaki']
-        self.assertEqual((niri['pkgver'], niri['pkgrel']), (['26.04'], ['20']))
+        self.assertEqual((niri['pkgver'], niri['pkgrel']), (['26.04'], ['21']))
         self.assertTrue({'niri>=26.04', 'libdisplay-info.so=3-64', 'libinput.so=10-64',
                          'libseat.so=1-64', 'mesa'} <= set(niri['depends']))
         self.assertIn('export NIRI_BUILD_COMMIT="v$pkgver+emaki.$pkgrel"',
@@ -529,6 +531,48 @@ class MetadataTests(unittest.TestCase):
             self.assertNotIn(name, depends)
         # The installer UI imports the shell modules and shaders under /usr/share/emaki/shell.
         self.assertIn('emaki-config', depends)
+
+    def test_snapguard_recipe_pins_its_public_release(self):
+        info = self.recipes['snapguard']
+        self.assertEqual((info['pkgname'], info['pkgver'], info['pkgrel'], info['arch'], info['license']),
+                         (['snapguard'], ['0.3.0'], ['1'], ['any'], ['MIT']))
+        # The v0.3.0 tag's commit and a checksum of its tree, never a moving branch or SKIP.
+        self.assertEqual(len(info['source']), 2)
+        self.assertRegex(info['source'][0], r'\Asnapguard::git\+https://github\.com/[A-Za-z0-9-]+/snapguard\.git'
+                                            r'#commit=17f54ea084e657fadd67ed410e537dbac3b71dba\Z')
+        self.assertEqual(info['source'][1], 'expected-files.list')
+        self.assertEqual(len(info['sha256sums']), 2)
+        self.assertTrue(all(re.fullmatch('[0-9a-f]{64}', value) for value in info['sha256sums']))
+        self.assertEqual((info['depends'], info['makedepends'], info['checkdepends']),
+                         (['python', 'tar'], ['git'], ['python', 'tar']))
+        # No scriptlet: installing writes no personal configuration and enables nothing.
+        self.assertEqual((info['install'], info['backup']), ([], []))
+        recipe = (ROOT / 'packaging/snapguard/PKGBUILD').read_text()
+        # check() runs snapguard's suite with a home under /home, the uncovered mount its fixture
+        # names, and without the builder's XDG base directories.
+        self.assertRegex(recipe, r'(?m)^check\(\) \{\n(?:.*\n)*?    env -u XDG_CONFIG_HOME -u XDG_DATA_HOME '
+                                 r'-u XDG_STATE_HOME HOME=/home/[a-z-]+ \\\n        PYTHONDONTWRITEBYTECODE=1 '
+                                 r'python3 test_snapshot_guard\.py\n\}')
+        # The Emaki note names the packaged hook, which README.md (a home-directory download) does not.
+        self.assertIn('\n    python3 /usr/lib/snapguard/snapshot-guard.py || exit 2\n', recipe)
+        self.assertIn('/usr/share/doc/snapguard/emaki-setup.md',
+                      (ROOT / 'packaging/snapguard/expected-files.list').read_text().splitlines())
+
+    def test_snapguard_prepare_requires_the_release_tag_commit(self):
+        with tempfile.TemporaryDirectory(prefix='emaki-snapguard-') as temporary:
+            checkout = Path(temporary) / 'snapguard'
+            checkout.mkdir()
+            git = ['git', '-C', str(checkout), '-c', 'user.name=Test', '-c', 'user.email=test@example.com',
+                   '-c', 'commit.gpgsign=false', '-c', 'tag.gpgsign=false']
+            for step in (['init', '-q'], ['commit', '-q', '--allow-empty', '-m', 'release'],
+                         ['tag', '-a', '-m', 'release', 'v0.3.0'], ['commit', '-q', '--allow-empty', '-m', 'later']):
+                self.assertEqual(run(git + step).returncode, 0)
+            release = run(git + ['rev-parse', 'HEAD~1']).stdout.strip()
+            for commit, expected in ((release, 0), (run(git + ['rev-parse', 'HEAD']).stdout.strip(), 1)):
+                with self.subTest(commit=commit):
+                    result = run(['bash', '-c', 'source "$1"; srcdir=$2; _commit=$3; prepare', 'prepare',
+                                  str(ROOT / 'packaging/snapguard/PKGBUILD'), temporary, commit])
+                    self.assertEqual(result.returncode, expected, result.stderr)
 
     def test_local_source_checksums(self):
         for name, info in self.recipes.items():
@@ -1388,7 +1432,7 @@ assert callable(runpy.run_path(str(directory / 'emaki-programs-aur'))['preinstal
         binary = self.dest / 'usr/bin/emaki'
         # Keep this payload check independent of the host's installed channel helper.
         self.assertEqual(run([str(binary), 'version'], env={**os.environ, 'PATH': ''}).stdout,
-                         'emaki 0.8.0 [channel: unknown]\n')
+                         'emaki 0.8.1 [channel: unknown]\n')
         result = run(['python3', 'scripts/core-package.py', 'verify-build-paths', '--binary', str(binary)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -1427,7 +1471,7 @@ assert callable(runpy.run_path(str(directory / 'emaki-programs-aur'))['preinstal
     def test_defaults_and_presets(self):
         commit = run(['git', 'rev-parse', 'HEAD']).stdout.strip()
         self.assertEqual((self.dest / 'usr/lib/emaki-release').read_text(),
-                         f'VERSION=0.8.0\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
+                         f'VERSION=0.8.1\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
         expected = {'greetd.service', 'NetworkManager.service', 'bluetooth.service', 'grub-btrfsd.service',
                     'snapper-timeline.timer', 'snapper-cleanup.timer', 'fstrim.timer', 'paccache.timer',
                     'emaki-refresh-mirrors.timer', 'emaki-wifi-recovery.service', 'emaki-sudo.service',

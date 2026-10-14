@@ -87,6 +87,27 @@ Item {
             glass.wake();
     }
 
+    function stepBack(): bool {
+        if (confirmation)
+            confirmation = "";
+        else if (selectedSub)
+            selectedSub = null;
+        else if (selectedTray)
+            selectedTray = null;
+        else if (hiddenOpen) {
+            hiddenOpen = false;
+            hiddenName = "";
+            hiddenPassword = "";
+        } else if (selectedNetwork) {
+            selectedNetwork = "";
+            wifiPassword = "";
+        } else
+            return false;
+        Qt.callLater(() => Keyboard.focusFirst(body.pages));
+        return true;
+    }
+    Keys.onEscapePressed: event => event.accepted = stepBack()
+
     function reset(): void {
         confirmation = "";
         selectedNetwork = "";
@@ -561,6 +582,8 @@ Item {
         property bool on: false
         glass: body.glass
         drop: false
+        // An orange track (on) takes the strong focus rim; off it is the plain look.
+        accent: on
         width: 38
         height: 20
         readonly property string restKey: key + "-knob"
@@ -756,7 +779,7 @@ Item {
             committed(value);
         }
         Keys.onPressed: event => {
-            if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+            if ([Qt.Key_Tab, Qt.Key_Backtab, Qt.Key_Up, Qt.Key_Down].includes(event.key)) {
                 Keyboard.handle(Keyboard.boundary(slider), event);
                 return;
             }
@@ -765,11 +788,9 @@ Item {
             let next = shown;
             switch (event.key) {
             case Qt.Key_Left:
-            case Qt.Key_Down:
                 next -= 1;
                 break;
             case Qt.Key_Right:
-            case Qt.Key_Up:
                 next += 1;
                 break;
             case Qt.Key_PageDown:

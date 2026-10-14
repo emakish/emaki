@@ -89,7 +89,7 @@ Column {
         visible: !["idle", "confirmed", "ready", "applied"].includes(page.actionResult)
         text: page.awaitingAction ? "Working…" : page.actionResult === "pairing_failed" ? "Couldn’t pair. Make sure it’s in pairing mode." : "Could not confirm the change. The current value is shown below."
         textFormat: Text.PlainText
-        color: page.awaitingAction ? SettingsTheme.dim : "#a01b45"
+        color: page.awaitingAction ? SettingsTheme.dim : SettingsTheme.error
         font.family: SettingsTheme.fontFamily
         font.pixelSize: 13
         wrapMode: Text.WordWrap

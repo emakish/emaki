@@ -91,13 +91,13 @@ Item {
     }
     readonly property real bubbleAlpha: {
         tick;
-        return Liquid.smooth(bubble.alpha.x);
+        return Liquid.onGlass(bubble);
     }
 
-    // Ink: always the light glass, whatever lies underneath (2026-09-27).
-    readonly property color ink: LiquidPalette.inkOnLight
-    readonly property color dim: LiquidPalette.dimOnLight
-    readonly property color accent: LiquidPalette.accentOnLight
+    // Ink follows the selected theme independently of the backdrop.
+    readonly property color ink: LiquidPalette.ink
+    readonly property color dim: LiquidPalette.plateDim
+    readonly property color accent: LiquidPalette.accent
     readonly property bool shown: !panelPresent && shownOpacity > .001
 
     // ---- Flat stand-in (no GPU): plate, drop, then the line on top ----

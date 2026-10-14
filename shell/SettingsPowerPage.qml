@@ -176,7 +176,7 @@ Column {
         width: parent.width
         text: root.error
         textFormat: Text.PlainText
-        color: "#a01b45"
+        color: SettingsTheme.error
         font.family: SettingsTheme.fontFamily
         font.pixelSize: 12
         wrapMode: Text.WordWrap

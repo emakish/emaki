@@ -7,8 +7,12 @@ import Quickshell.Io
 
 FocusScope {
     id: sheet
+    readonly property bool keyboardBoundary: true
     property var rows: []
     property string loadState: "loading"
+    // Used only with LiquidPalette.sharedCanvas.
+    property string wallpaperTexture: ""
+    property real dpr: 1
     readonly property var filtered: rows.filter(row => (row.keys + " " + row.description).toLowerCase().includes(search.text.toLowerCase()))
     signal closeRequested
     function takeFocus(): void {
@@ -25,7 +29,7 @@ FocusScope {
     Keys.onEscapePressed: closeRequested()
     Keys.onTabPressed: {
         if (search.activeFocus)
-            list.forceActiveFocus();
+            (list.count ? list : close).forceActiveFocus();
         else if (list.activeFocus)
             close.forceActiveFocus();
         else
@@ -35,14 +39,37 @@ FocusScope {
         if (search.activeFocus)
             close.forceActiveFocus();
         else if (close.activeFocus)
-            list.forceActiveFocus();
+            (list.count ? list : search).forceActiveFocus();
         else
             search.forceActiveFocus();
     }
     Rectangle {
+        visible: !LiquidPalette.sharedCanvas
         anchors.fill: parent
         radius: 20
         color: LiquidPalette.flatPanel
+    }
+    // With the shared canvas the sheet is on the Settings material: the heading and the search
+    // on the plain glass, the list on the canvas.
+    Loader {
+        anchors.fill: parent
+        active: LiquidPalette.sharedCanvas
+        sourceComponent: Item {
+            WelcomeGlass {
+                anchors.fill: parent
+                radius: 20
+                wallpaperTexture: sheet.wallpaperTexture
+                dpr: sheet.dpr
+            }
+            CanvasTint {
+                objectName: "shortcuts-canvas"
+                y: list.y - 8
+                width: parent.width
+                height: Math.max(0, parent.height - y)
+                bottomLeftRadius: 20
+                bottomRightRadius: 20
+            }
+        }
     }
     Text {
         id: heading
@@ -51,7 +78,7 @@ FocusScope {
         text: "Keyboard shortcuts"
         font.family: ShellPalette.uiFont
         font.pixelSize: 22
-        color: LiquidPalette.inkOnLight
+        color: LiquidPalette.ink
     }
     Text {
         id: source
@@ -61,7 +88,7 @@ FocusScope {
         text: "Emaki defaults · Personal changes may differ."
         font.family: ShellPalette.uiFont
         font.pixelSize: 13
-        color: LiquidPalette.dimOnLight
+        color: LiquidPalette.plateDim
         wrapMode: Text.Wrap
     }
     Rectangle {
@@ -80,18 +107,19 @@ FocusScope {
             activeFocusOnTab: true
             font.family: ShellPalette.uiFont
             font.pixelSize: 15
-            color: LiquidPalette.inkOnLight
+            color: LiquidPalette.ink
             clip: true
             Accessible.name: "Search shortcuts"
             Keys.onDownPressed: {
-                list.forceActiveFocus();
-                sheet.select(0);
+                (list.count ? list : close).forceActiveFocus();
+                list.currentIndex = 0;
+                list.positionViewAtBeginning();
             }
             onTextChanged: list.currentIndex = 0
             Text {
                 visible: !search.text
                 text: "Search shortcuts"
-                color: LiquidPalette.dimOnLight
+                color: LiquidPalette.plateDim
                 font: search.font
             }
         }
@@ -112,8 +140,20 @@ FocusScope {
         activeFocusOnTab: true
         model: sheet.filtered
         currentIndex: 0
-        Keys.onDownPressed: sheet.select(1)
-        Keys.onUpPressed: sheet.select(-1)
+        Keys.onDownPressed: {
+            if (currentIndex >= count - 1)
+                close.forceActiveFocus();
+            else
+                sheet.select(1);
+        }
+        Keys.onUpPressed: {
+            if (currentIndex <= 0)
+                search.forceActiveFocus();
+            else
+                sheet.select(-1);
+        }
+        Keys.onLeftPressed: search.forceActiveFocus()
+        Keys.onRightPressed: close.forceActiveFocus()
         Keys.onPressed: event => {
             if (event.key === Qt.Key_PageDown || event.key === Qt.Key_PageUp) {
                 sheet.select(event.key === Qt.Key_PageDown ? 5 : -5);
@@ -140,7 +180,7 @@ FocusScope {
                 wrapMode: Text.WrapAnywhere
                 font.family: ShellPalette.uiFont
                 font.pixelSize: 13
-                color: LiquidPalette.accentOnLight
+                color: LiquidPalette.accent
             }
             Text {
                 id: description
@@ -151,7 +191,7 @@ FocusScope {
                 wrapMode: Text.WrapAnywhere
                 font.family: ShellPalette.uiFont
                 font.pixelSize: 13
-                color: LiquidPalette.inkOnLight
+                color: LiquidPalette.ink
             }
             FocusRing {
                 anchors.fill: parent
@@ -170,7 +210,7 @@ FocusScope {
             anchors.centerIn: parent
             visible: !list.count
             text: sheet.loadState === "unavailable" ? "Shortcuts could not be read." : sheet.loadState === "loading" ? "Loading shortcuts…" : "No matching shortcuts."
-            color: LiquidPalette.dimOnLight
+            color: LiquidPalette.plateDim
             font.family: ShellPalette.uiFont
             font.pixelSize: 14
         }
@@ -182,6 +222,16 @@ FocusScope {
         y: sheet.height - height - 20
         text: "Close"
         onClicked: sheet.closeRequested()
+        Keys.onUpPressed: {
+            if (list.count) {
+                list.currentIndex = list.count - 1;
+                list.positionViewAtIndex(list.currentIndex, ListView.Contain);
+                list.forceActiveFocus();
+            } else
+                search.forceActiveFocus();
+        }
+        Keys.onLeftPressed: search.forceActiveFocus()
+        Keys.onDownPressed: search.forceActiveFocus()
     }
     Process {
         id: loader
