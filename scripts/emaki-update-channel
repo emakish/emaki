@@ -87,8 +87,8 @@ def switch(channel):
         try:
             # A pending restore discards this root at restart, with the new channel in it.
             emaki_update_root.require_update_root(
-                run_status, '[PLACEHOLDER] Restart into the normal system before changing the update channel.',
-                '[PLACEHOLDER] The system restore status could not be checked. The channel was not changed.')
+                run_status, 'Restart into the normal system before changing the update channel.',
+                'The system restore status could not be checked. The channel was not changed.')
         except RuntimeError as refusal:
             raise ValueError(str(refusal)) from None
         # The root-owned state directory and fixed selector are prepared by packaging.

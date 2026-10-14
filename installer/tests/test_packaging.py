@@ -132,7 +132,7 @@ for mode in (False, read_test_mode(Path('cmdline'))):
             validate_config(dict(config, repo_server=server), mode)
         except InstallError as error:
             assert error.code == Code.BAD_CONFIG
-            assert '[PLACEHOLDER]' in str(error)
+            assert 'repository' in str(error).lower()
         else:
             raise AssertionError((mode, server))
 """.replace('FIXTURE_JSON', repr(json.dumps(config())))
@@ -158,8 +158,8 @@ for mode in (False, read_test_mode(Path('cmdline'))):
         # The launcher icon lives in hicolor; its index.theme names the scalable/apps directory.
         self.assertIn('hicolor-icon-theme', re.search(r'depends=\(([^)]+)\)', recipe, re.S)[1].split())
         self.assertIn('/usr/share/icons/hicolor/scalable/apps/emaki-install.svg', recipe)
-        self.assertIn('pkgver=0.7.0', recipe)
-        self.assertIn('pkgrel=1', recipe)
+        self.assertIn('pkgver=0.8.0', recipe)
+        self.assertIn('pkgrel=4', recipe)
         for path in ('bin/emaki-installerd', 'bin/emaki-install-cli',
                      'systemd/emaki-installerd.service', 'sysusers.d/emaki-installer.conf',
                      'tmpfiles.d/emaki-installer.conf', 'README.md'):

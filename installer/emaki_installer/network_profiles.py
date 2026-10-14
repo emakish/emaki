@@ -179,7 +179,7 @@ def capture_wifi(uuid, *, run=private_command, directories=PROFILE_DIRS, owner=0
     if note:
         secret = 'no secret (open network)' if method in ('open', 'owe') else \
             'secret saved in the keyfile'
-        note(f'[PLACEHOLDER] captured {uuid} from {path.parent}: security {method}, {secret}; '
+        note(f'captured {uuid} from {path.parent}: security {method}, {secret}; '
              'autoconnect preserved, any adapter, every user.')
     return prepared.encode()
 

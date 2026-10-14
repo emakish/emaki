@@ -316,7 +316,7 @@ class PrivatePythonBytecode(unittest.TestCase):
 
     def test_cold_boot_entry_point_imports_without_writing_bytecode(self):
         library = self.root / 'usr/lib/emaki/boot'
-        for module in ('__init__', 'refresh', 'update_menu', 'update', 'usable'):
+        for module in ('__init__', 'refresh', 'shared', 'update_menu', 'update', 'usable'):
             self.stage(f'grub/emaki_boot/{module}.py',
                        f'usr/lib/emaki/boot/emaki_boot/{module}.py')
         for module in ('boot', 'errors', 'grub_screen'):

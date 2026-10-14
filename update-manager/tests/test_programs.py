@@ -7,11 +7,13 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -51,6 +53,12 @@ Version         : 0.43.1-1
 Required By     : emaki-desktop
 Optional For    : None
 Install Reason  : Explicitly installed
+
+Name            : emaki-config
+Required By     : emaki-desktop
+
+Name            : nvidia-settings
+Required By     : None
 '''
 # pacman prints the error to stderr and the broken dependencies to stdout.
 FAILED = 'error: failed to prepare transaction (could not satisfy dependencies)\n'
@@ -132,6 +140,13 @@ class Refusals(unittest.TestCase):
             self.assertEqual((answer['ok'], answer['code'], answer['blocked']), (False, 'system', [name]), name)
             self.assertEqual(answer['token'], '')
 
+    def test_emaki_optional_packages_may_go_but_nothing_they_pull_from_emaki(self):
+        answer = catalog.assess('emaki-sudo-key', 0, 'emaki-sudo-key\n', '')
+        self.assertEqual((answer['ok'], answer['packages']), (True, ['emaki-sudo-key']))
+        refused = catalog.assess('emaki-sudo-key', 0, 'emaki-sudo-key\nemaki-config\n', '')
+        self.assertEqual((refused['code'], refused['blocked']), ('emaki', ['emaki-config']))
+        self.assertTrue(catalog.assess('emaki-nvidia', 0, 'emaki-nvidia\n', '')['ok'])
+
     def test_other_failures(self):
         self.assertEqual(catalog.assess('nothere', 1, '', 'error: target not found: nothere\n')['code'], 'not-installed')
         self.assertEqual(catalog.assess('x', 1, '', 'error: failed to init transaction (unable to lock database)\n')['code'], 'busy')
@@ -151,35 +166,103 @@ class Refusals(unittest.TestCase):
         for app in ('gwenview', 'kate', 'libreoffice-fresh', 'obs-studio', 'thunderbird', 'keepassxc'):
             self.assertFalse(catalog.is_emaki(app) or catalog.is_system(app), app)
 
-    def test_messages_are_marked_placeholders(self):
-        self.assertTrue(all(text.startswith('[PLACEHOLDER] ') for text in catalog.MESSAGES.values()))
+    def test_messages_are_final_text(self):
+        self.assertTrue(all(text and ('[PLACE' + 'HOLDER]') not in text for text in catalog.MESSAGES.values()))
 
 
 class Listing(unittest.TestCase):
     def test_programs_grouped_by_package(self):
         rows = catalog.programs(APPS, catalog.owners(OWNERS), catalog.info(INFO))
-        # kitty is required by emaki-desktop, Updates is Emaki's, NVIDIA Settings is a system
-        # package and the personal entry has no package: none of them is listed.
-        self.assertEqual([row['package'] for row in rows], ['gwenview', 'libreoffice-fresh'])
-        office = rows[1]
+        self.assertEqual([row['package'] for row in rows],
+                         ['gwenview', 'kitty', 'libreoffice-fresh', 'nvidia-settings', 'emaki-config'])
+        for row in rows:
+            protected = row['package'] in ('kitty', 'nvidia-settings', 'emaki-config')
+            self.assertEqual(row['protected'], protected)
+            self.assertEqual(row['actions'], [] if protected else ['remove'])
+        office = rows[2]
         self.assertEqual(office['names'], ['LibreOffice Calc', 'LibreOffice Writer'])
         self.assertEqual(office['ids'], ['libreoffice-calc.desktop', 'libreoffice-writer.desktop'])
         self.assertTrue(office['preinstalled'])
         # A package -Qi did not describe is not listed either.
         self.assertEqual(catalog.programs(APPS, catalog.owners(OWNERS), {}), [])
 
+    def test_required_programs_remain_visible_without_removal(self):
+        for name, blockers, protected in (
+                ('firefox', ['emaki-desktop'], True),
+                ('dolphin', ['emaki-desktop'], True),
+                ('cups', ['emaki-apps', 'other-suite'], True),
+                ('mpv', ['mpvqt'], False),
+                ('avahi', ['cups', 'libcups', 'ostree'], False),
+                ('hwloc', ['onetbb'], False),
+                ('v4l-utils', ['ffmpeg'], False)):
+            path = '/applications/' + name + '.desktop'
+            rows = catalog.programs([dict(id=name + '.desktop', name=name, filename=path)],
+                                    {path: (name, '1')},
+                                    {name: {'Required By': blockers}})
+            self.assertEqual(len(rows), 1, name)
+            self.assertEqual(rows[0]['actions'], [], name)
+            self.assertFalse(rows[0]['removable'], name)
+            self.assertEqual(rows[0]['requiredBy'], sorted(blockers), name)
+            self.assertEqual(rows[0]['protected'], protected, name)
+
+    def test_optional_and_unneeded_programs_can_be_removed(self):
+        for name in ('firefox', 'dolphin', 'mpv'):
+            path = '/applications/' + name + '.desktop'
+            rows = catalog.programs([dict(id=name + '.desktop', name=name, filename=path)],
+                                    {path: (name, '1')},
+                                    {name: {'Required By': [], 'Optional For': ['emaki-desktop']}})
+            self.assertTrue(rows[0]['preinstalled'])
+            self.assertFalse(rows[0]['protected'])
+            self.assertTrue(rows[0]['removable'])
+            self.assertEqual(rows[0]['actions'], ['remove'])
+
+    def test_desktop_programs_installed_explicitly_and_optional(self):
+        from emaki_installer.worker import software_packages
+        recipe = ROOT / 'packaging/emaki-desktop/PKGBUILD'
+        result = subprocess.run(['bash', '-c', 'source "$1"; printf "%s\\n" "${depends[@]}"; '
+                                 'printf "OPTIONAL\\n"; printf "%s\\n" "${optdepends[@]}"',
+                                 '_', str(recipe)], capture_output=True, text=True, check=True)
+        required, optional = result.stdout.split('OPTIONAL\n')
+        for name in constants.DESKTOP_APPS:
+            self.assertNotIn(name, required.splitlines())
+            self.assertIn(name, optional.splitlines())
+            for edition in ('minimal', 'rich'):
+                self.assertIn(name, software_packages(edition))
+        self.assertIn('kitty', required.splitlines())
+
     def test_listing_uses_fixed_queries(self):
         calls = []
 
         def fake(*args):
             calls.append(args)
+            if args[0] == '-Qmq':
+                return subprocess.CompletedProcess(args, 0, 'gwenview\nyay\n', '')
             return subprocess.CompletedProcess(args, 1 if args[0] == '-Qo' else 0,
                                                OWNERS if args[0] == '-Qo' else INFO, '')
         with patch.object(programs, 'desktop_apps', return_value=APPS), patch.object(programs, 'pacman', fake):
             answer = programs.listing()
         self.assertTrue(answer['ok'])
-        self.assertEqual([call[0] for call in calls], ['-Qo', '-Qi'])
-        self.assertEqual(calls[1][1:], ('gwenview', 'kitty', 'libreoffice-fresh'))
+        self.assertEqual([call[0] for call in calls], ['-Qo', '-Qi', '-Qmq'])
+        self.assertEqual(calls[1][1:], ('emaki-config', 'gwenview', 'kitty', 'libreoffice-fresh', 'nvidia-settings'))
+        # A package no configured repository has is marked: the window keeps its AUR identity.
+        self.assertEqual({row['package']: row['foreign'] for row in answer['programs']},
+                         {'gwenview': True, 'kitty': False, 'libreoffice-fresh': False,
+                          'nvidia-settings': False, 'emaki-config': False})
+
+    def test_no_foreign_packages_or_an_unreadable_answer_marks_nothing(self):
+        # pacman -Qmq exits 1 with no output when nothing is foreign; any failure marks nothing either.
+        for code, stdout in ((1, ''), (1, 'gwenview\n'), (0, '')):
+            def fake(*args, code=code, stdout=stdout):
+                if args[0] == '-Qmq':
+                    return subprocess.CompletedProcess(args, code, stdout, 'error')
+                return subprocess.CompletedProcess(args, 1 if args[0] == '-Qo' else 0,
+                                                   OWNERS if args[0] == '-Qo' else INFO, '')
+            with self.subTest(code=code, stdout=stdout), patch.object(programs, 'desktop_apps', return_value=APPS), \
+                    patch.object(programs, 'pacman', fake):
+                rows = programs.listing()['programs']
+            self.assertEqual([row['foreign'] for row in rows], [False] * 5)
+        rows = catalog.programs(APPS, catalog.owners(OWNERS), catalog.info(INFO))
+        self.assertEqual([row['foreign'] for row in rows], [False] * 5)
 
 
 class Helper(unittest.TestCase):
@@ -223,6 +306,20 @@ class Helper(unittest.TestCase):
                 patch('builtins.print', lambda text, flush=False: lines.append(json.loads(text))):
             helper.remove(name, token)
         return calls, removed, lines[-1]
+
+    def test_store_and_vital_target_refused_before_any_query(self):
+        for name in ('emaki-config', 'emaki-desktop', 'kitty'):
+            calls, removed, reply = self.run_helper(name, name)
+            self.assertEqual(calls, [])
+            self.assertEqual(removed, [])
+            self.assertFalse(reply['ok'])
+            self.assertEqual(reply['blocked'], [name])
+
+    def test_store_in_transaction_refuses_otherwise_removable_target(self):
+        _, removed, reply = self.run_helper('gwenview', 'emaki-config,gwenview',
+                                           preview=('gwenview\nemaki-config\n', '', 0))
+        self.assertEqual(removed, [])
+        self.assertEqual(reply['blocked'], ['emaki-config'])
 
     def test_removes_only_the_reviewed_preview(self):
         calls, removed, reply = self.run_helper('gwenview', 'gwenview', after=set())
@@ -384,6 +481,13 @@ class Caller(unittest.TestCase):
             self.assertEqual(programs.main(['preview', 'x']), 2)
             self.assertEqual(programs.main(['remove', 'x', '--json']), 2)
         self.assertEqual(json.loads(lines[0])['code'], 'ready')
+        # Every engine method the system map names is reachable from the command line.
+        engine = SimpleNamespace(main=Mock(return_value=0))
+        with patch.dict(sys.modules, programs_engine=engine):
+            for method in ('catalog', 'search', 'details', 'related', 'plan', 'execute', 'updates', 'aur',
+                           'popular', 'serve'):
+                self.assertEqual(programs.main([method, '--json']), 0)
+        self.assertEqual(engine.main.call_count, 10)
 
     def test_legacy_json_also_cleans_program_labels_and_diagnostics(self):
         dirty = 'Paint\u202e\u2066\u200b\ufeff'
@@ -414,6 +518,249 @@ class Installation(unittest.TestCase):
         for path in ('/usr/bin/emaki-programs', '/usr/libexec/emaki/emaki-programs-remove',
                      '/usr/libexec/emaki/programs_catalog.py', '/usr/share/polkit-1/actions/org.emaki.programs.policy'):
             self.assertIn(path, inventory)
+
+
+class Popularity(unittest.TestCase):
+    # Schema-derived fixtures, not captured live responses. Contracts are linked
+    # beside the production endpoints; the test suite requires no network.
+    ARCH = {'packagePopularities': [{'name': 'firefox', 'popularity': 43.2},
+                                    {'name': 'gimp', 'popularity': 0}]}
+    FLATHUB = {'hits': [{'app_id': 'org.mozilla.firefox', 'installs_last_month': 321}]}
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.cache = catalog.PopularityCache(self.temporary.name)
+        self.cache.cache.mkdir()
+
+    def test_source_contracts(self):
+        self.assertEqual(catalog._parse_popularity(self.ARCH, 'arch'), {'firefox': 43.2, 'gimp': 0})
+        self.assertEqual(catalog._parse_popularity(self.FLATHUB, 'flathub'), {'org.mozilla.firefox': 321})
+        for source, key, identifier, field in (
+                ('arch', 'packagePopularities', 'firefox', 'popularity'),
+                ('flathub', 'hits', 'org.mozilla.firefox', 'installs_last_month')):
+            name = 'name' if source == 'arch' else 'app_id'
+            for score in (True, None, '42', -1, float('nan'), float('inf'), 10 ** 400):
+                with self.subTest(source=source, score=str(score)):
+                    with self.assertRaises(ValueError):
+                        catalog._parse_popularity({key: [{name: identifier, field: score}]}, source)
+            for value in ([], {}, {key: {}}, {key: [None]}, {key: [{}]},
+                          {key: [{name: '../bad', field: 2}]}):
+                with self.assertRaises(ValueError):
+                    catalog._parse_popularity(value, source)
+        with self.assertRaises(ValueError):
+            catalog._parse_popularity({'packagePopularities': [{'name': 'firefox', 'popularity': 101}]}, 'arch')
+        with patch.object(catalog, '_POPULARITY_ROWS', 1), self.assertRaises(ValueError):
+            catalog._parse_popularity(self.ARCH, 'arch')
+
+    def test_snapshot_launches_without_fetching_and_suppresses_repeat(self):
+        with patch.object(catalog.subprocess, 'Popen') as launch, patch.object(catalog, '_fetch_popularity') as fetch:
+            self.assertEqual(self.cache.snapshot(), {'arch': {}, 'flathub': {}})
+            self.cache.snapshot()
+            launch.assert_called_once()
+            fetch.assert_not_called()
+            options = launch.call_args.kwargs
+            self.assertTrue(options['start_new_session'])
+            self.assertTrue(options['close_fds'])
+            for name in ('stdin', 'stdout', 'stderr'):
+                self.assertEqual(options[name], subprocess.DEVNULL)
+
+    def test_bad_rows_are_skipped_unless_they_are_the_majority(self):
+        for source, key, name, field, identifiers in (
+                ('arch', 'packagePopularities', 'name', 'popularity', ('firefox', 'gimp')),
+                ('flathub', 'hits', 'app_id', 'installs_last_month', ('org.mozilla.firefox', 'org.gimp.GIMP'))):
+            good = [{name: identifier, field: 5} for identifier in identifiers]
+            for bad in (None, {}, [], {name: []}, {name: '../bad', field: 3},
+                        {name: identifiers[0], field: None}, {name: identifiers[0], field: 8},
+                        {name: 'x' * 256, field: 4}, {name: identifiers[0], field: float('nan')}):
+                with self.subTest(source=source, bad=bad):
+                    expected = dict.fromkeys(identifiers, 5)
+                    self.assertEqual(catalog._parse_popularity({key: good + [bad]}, source), expected)
+                    # Exactly half invalid remains usable; only a strict majority rejects it.
+                    self.assertEqual(catalog._parse_popularity({key: good + [bad, bad]}, source), expected)
+                    with self.assertRaises(ValueError):
+                        catalog._parse_popularity({key: good + [bad, bad, bad]}, source)
+            self.assertEqual(catalog._parse_popularity({key: []}, source), {})
+
+    def test_cache_values_skip_bad_entries_and_keep_size_bounds(self):
+        values = {'firefox': 4, 'gimp': 3, '../bad': 8}
+        self.assertEqual(catalog._popularity_values(values, 'arch'), {'firefox': 4, 'gimp': 3})
+        self.cache._write('arch', 100000, values)
+        self.assertEqual(self.cache._read('arch', 100001), {'firefox': 4, 'gimp': 3})
+        with self.assertRaises(ValueError):
+            catalog._popularity_values({'firefox': 4, '../bad': 8, 'gimp': None}, 'arch')
+        with patch.object(catalog, '_POPULARITY_ROWS', 2), self.assertRaises(ValueError):
+            catalog._popularity_values(values, 'arch')
+
+    def test_success_daily_expiry_and_atomic_records(self):
+        def fetch(source):
+            return catalog._parse_popularity(self.ARCH if source == 'arch' else self.FLATHUB, source)
+        with patch.object(catalog.time, 'time', return_value=100000), patch.object(catalog, '_fetch_popularity', side_effect=fetch) as network:
+            self.cache.refresh()
+            self.cache.refresh()
+            self.assertEqual(network.call_count, 2)
+            with patch.object(catalog.subprocess, 'Popen') as launch:
+                self.assertEqual(self.cache.snapshot()['arch']['gimp'], 0)
+                launch.assert_not_called()
+        self.assertEqual(sorted(p.name for p in self.cache.cache.iterdir()), ['arch.json', 'flathub.json', 'refresh.lock'])
+        with patch.object(catalog.time, 'time', return_value=186400), patch.object(catalog.subprocess, 'Popen') as launch:
+            self.assertEqual(self.cache.snapshot(), {'arch': {}, 'flathub': {}})
+            launch.assert_called_once()
+
+    def test_failure_is_recorded_before_fetch_and_throttled(self):
+        def fail(source):
+            self.assertEqual(self.cache._read(source, 100000), {})
+            raise OSError('offline')
+        with patch.object(catalog.time, 'time', return_value=100000), patch.object(catalog, '_fetch_popularity', side_effect=fail) as network:
+            self.cache.refresh()
+            catalog.PopularityCache(self.temporary.name).refresh()
+            self.assertEqual(network.call_count, 2)
+            with patch.object(catalog.subprocess, 'Popen') as launch:
+                self.assertEqual(self.cache.snapshot(), {'arch': {}, 'flathub': {}})
+                launch.assert_not_called()
+        with patch.object(catalog.time, 'time', return_value=103599), patch.object(catalog, '_fetch_popularity') as network:
+            self.cache.refresh()
+            network.assert_not_called()
+        with patch.object(catalog.time, 'time', return_value=103600), patch.object(catalog, '_fetch_popularity', return_value={}) as network:
+            self.cache.refresh()
+            self.assertEqual(network.call_count, 2)
+
+    def test_killed_fetch_retries_after_one_hour(self):
+        script = '''import os, signal, sys
+import programs_catalog as catalog
+catalog.time.time = lambda: 100000
+def killed(source):
+    os.kill(os.getpid(), signal.SIGKILL)
+catalog._fetch_popularity = killed
+catalog.PopularityCache(sys.argv[1]).refresh()
+'''
+        result = subprocess.run([sys.executable, '-c', script, self.temporary.name],
+                                cwd=ROOT / 'update-manager', capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, -signal.SIGKILL)
+        record = json.loads((self.cache.cache / 'arch.json').read_text())
+        self.assertTrue(record['failed'])
+        self.assertEqual(record['values'], {})
+        self.assertEqual(self.cache._read('arch', 103599), {})
+        self.assertIsNone(self.cache._read('arch', 103600))
+        with patch.object(catalog.time, 'time', return_value=103600), patch.object(catalog, '_fetch_popularity', return_value={}) as fetch:
+            catalog.PopularityCache(self.temporary.name).refresh()
+            self.assertEqual([call.args[0] for call in fetch.call_args_list], ['arch', 'flathub'])
+
+    def test_serve_launch_throttle_expires_after_one_hour(self):
+        with patch.object(catalog.time, 'time', return_value=100000) as now, patch.object(catalog.subprocess, 'Popen') as launch:
+            self.cache.snapshot()
+            now.return_value = 103599
+            self.cache.snapshot()
+            launch.assert_called_once()
+            now.return_value = 103600
+            self.cache.snapshot()
+            self.assertEqual(launch.call_count, 2)
+
+    def test_failed_worker_launch_retries_after_one_hour(self):
+        with (patch.object(catalog.time, 'time', return_value=100000) as now,
+              patch.object(catalog.subprocess, 'Popen', side_effect=OSError('unavailable')) as launch):
+            self.assertEqual(self.cache.snapshot(), {'arch': {}, 'flathub': {}})
+            now.return_value = 103599
+            self.cache.snapshot()
+            launch.assert_called_once()
+            now.return_value = 103600
+            self.cache.snapshot()
+            self.assertEqual(launch.call_count, 2)
+
+    def test_failed_source_retry_preserves_other_source_daily_hold(self):
+        self.cache._write('arch', 100000, {}, failed=True)
+        self.cache._write('flathub', 100000, {'org.mozilla.firefox': 3})
+        with (patch.object(catalog.time, 'time', return_value=103600),
+              patch.object(catalog, '_fetch_popularity', return_value={'firefox': 4}) as fetch):
+            self.cache.refresh()
+            fetch.assert_called_once_with('arch')
+        self.assertEqual(self.cache._read('arch', 103600), {'firefox': 4})
+        self.assertEqual(self.cache._read('flathub', 103600), {'org.mozilla.firefox': 3})
+
+    def test_empty_success_holds_a_day_but_legacy_attempt_only_an_hour(self):
+        self.cache._write('arch', 100000, {})
+        self.assertEqual(self.cache._read('arch', 103600), {})
+        self.assertEqual(self.cache._read('arch', 186399), {})
+        self.assertIsNone(self.cache._read('arch', 186400))
+        path = self.cache.cache / 'arch.json'
+        path.write_text(json.dumps({'attempted': 100000, 'values': {}}))
+        self.assertEqual(self.cache._read('arch', 103599), {})
+        self.assertIsNone(self.cache._read('arch', 103600))
+        path.write_text(json.dumps({'attempted': 100000, 'values': {'firefox': 3}}))
+        self.assertEqual(self.cache._read('arch', 186399), {'firefox': 3})
+        self.assertIsNone(self.cache._read('arch', 186400))
+
+    def test_source_timeout_does_not_prevent_next_source(self):
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        response.status = 200
+        def read(size):
+            if opener.open.call_count == 1:
+                os.kill(os.getpid(), signal.SIGALRM)
+            return json.dumps(self.FLATHUB).encode()
+        response.read.side_effect = read
+        opener = Mock()
+        opener.open.return_value = response
+        previous = signal.getsignal(signal.SIGALRM)
+        with (patch.object(catalog.urllib.request, 'build_opener', return_value=opener),
+              patch.object(catalog.signal, 'alarm') as alarm,
+              patch.object(catalog.time, 'time', return_value=100000)):
+            self.cache.refresh()
+        self.assertEqual(opener.open.call_count, 2)
+        self.assertGreaterEqual(catalog._POPULARITY_DEADLINE, 60)
+        self.assertEqual([call.args[0] for call in alarm.call_args_list],
+                         [catalog._POPULARITY_DEADLINE, 0, catalog._POPULARITY_DEADLINE, 0])
+        self.assertEqual(signal.getsignal(signal.SIGALRM), previous)
+        self.assertEqual(self.cache._read('arch', 100000), {})
+        self.assertEqual(self.cache._read('flathub', 100000), {'org.mozilla.firefox': 321})
+
+    def test_lock_does_not_wait_or_fetch(self):
+        with (self.cache.cache / 'refresh.lock').open('wb') as lock:
+            catalog.fcntl.flock(lock, catalog.fcntl.LOCK_EX | catalog.fcntl.LOCK_NB)
+            with patch.object(catalog, '_fetch_popularity') as network:
+                self.cache.refresh()
+                network.assert_not_called()
+
+    def test_cache_rejects_future_nonfinite_oversize_and_special_files(self):
+        path = self.cache.cache / 'arch.json'
+        for timestamp in (True, float('nan'), float('inf'), 100001, -1, '100000'):
+            path.write_text(json.dumps({'attempted': timestamp, 'values': {'firefox': 2}}))
+            self.assertIsNone(self.cache._read('arch', 100000))
+        path.write_text('x' * 100)
+        with patch.object(catalog, '_POPULARITY_BYTES', 99):
+            self.assertIsNone(self.cache._read('arch', 100000))
+        path.unlink()
+        os.mkfifo(path)
+        self.assertIsNone(self.cache._read('arch', 100000))
+        path.unlink()
+        path.symlink_to(self.cache.cache / 'missing')
+        self.assertIsNone(self.cache._read('arch', 100000))
+
+    def test_failed_atomic_replace_preserves_previous_record(self):
+        self.cache._write('arch', 100000, {'firefox': 1})
+        with patch.object(catalog.os, 'replace', side_effect=OSError('full')):
+            with self.assertRaises(OSError):
+                self.cache._write('arch', 100001, {'firefox': 2})
+        self.assertEqual(self.cache._read('arch', 100002), {'firefox': 1})
+        self.assertEqual([p.name for p in self.cache.cache.iterdir()], ['arch.json'])
+
+    def test_response_size_and_http_status(self):
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        opener = Mock()
+        opener.open.return_value = response
+        with patch.object(catalog.urllib.request, 'build_opener', return_value=opener):
+            response.status = 503
+            with self.assertRaises(ValueError):
+                catalog._fetch_popularity('arch')
+            response.status = 200
+            response.read.return_value = b'x' * 101
+            with patch.object(catalog, '_POPULARITY_BYTES', 100), self.assertRaises(ValueError):
+                catalog._fetch_popularity('arch')
+            response.read.return_value = json.dumps(self.ARCH).encode()
+            self.assertEqual(catalog._fetch_popularity('arch')['firefox'], 43.2)
 
 
 if __name__ == '__main__':

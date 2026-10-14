@@ -72,6 +72,9 @@ def child_run(channel, inherited, directory, command, phase, mutation):
             stack.enter_context(patch.object(refresh.subprocess, 'run',
                                              return_value=type('Result', (), {'returncode': 1})()))
             stack.enter_context(patch.object(refresh, 'SLEEP_STATE', saved))
+            # The host's /efi and /etc/fstab are no evidence of a shared ESP here (the build VM's /efi is unreadable).
+            stack.enter_context(patch.object(refresh, 'esp_mount_path', return_value=directory / 'efi-absent'))
+            stack.enter_context(patch.object(refresh, 'fstab_path', return_value=directory / 'fstab-absent'))
             stack.enter_context(patch.object(refresh, 'LOG_PATH', str(directory / 'log')))
             stack.enter_context(patch.object(refresh, 'regular', side_effect=lambda path: path.read_bytes()))
             stack.enter_context(patch.object(refresh, 'atomic', side_effect=publish))

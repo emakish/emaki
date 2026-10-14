@@ -1,0 +1,11 @@
+{"blockdevices": [
+ {"path": "/dev/sr0", "type": "rom", "fstype": null, "parttype": null, "mountpoints": []},
+ {"path": "/dev/zram0", "type": "disk", "fstype": "swap", "parttype": null, "mountpoints": ["[SWAP]"]},
+ {"path": "/dev/vda", "type": "disk", "fstype": null, "parttype": null, "mountpoints": [], "children": [
+  {"path": "/dev/vda1", "type": "part", "fstype": "vfat", "parttype": "c12a7328-f81f-11d2-ba4b-00a0c93ec93b", "mountpoints": ["/efi"]},
+  {"path": "/dev/vda2", "type": "part", "fstype": null, "parttype": "e3c9e316-0b5c-4db8-817d-f92df00215ae", "mountpoints": []},
+  {"path": "/dev/vda3", "type": "part", "fstype": "ntfs", "parttype": "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7", "mountpoints": []},
+  {"path": "/dev/vda4", "type": "part", "fstype": null, "parttype": "de94bba4-06d1-4d40-a16a-bfd50179d6ac", "mountpoints": []},
+  {"path": "/dev/vda5", "type": "part", "fstype": "btrfs", "parttype": "0fc63daf-8483-4772-8e79-3d69d8477de4", "mountpoints": ["/var/log", "/var/cache/pacman/pkg", "/.snapshots", "/home", "/"]}
+ ]}
+]}

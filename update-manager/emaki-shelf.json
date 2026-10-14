@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "items": [
+    {"package": "emaki-sudo-key", "title": "Session sudo key", "summary": "Allows password-free administrator commands for a chosen session. Read the warning before granting access."},
+    {"package": "snapguard", "title": "Snapshot guard", "summary": "Restore-point protection for system changes. Read its setup instructions before relying on it."},
+    {"package": "emaki-nvidia", "title": "NVIDIA support", "summary": "Installs the supported NVIDIA driver, graphics libraries and Emaki's session settings.", "when": "nvidia-gpu"}
+  ]
+}

@@ -238,6 +238,124 @@ CUSTOM_BLOCK = ('### BEGIN /etc/grub.d/41_custom ###\n'
                 + CUSTOM_END)
 
 
+
+def firmware_boot_order(listing):
+    """Return an order only when all numbered entries are present and parsed."""
+    orders = re.findall(r'^BootOrder: ([0-9A-Fa-f]{4}(?:,[0-9A-Fa-f]{4})*)$', listing, re.M)
+    if len(orders) != 1 or len(re.findall(r'^BootOrder:', listing, re.M)) != 1:
+        return None
+    order = [entry.upper() for entry in orders[0].split(',')]
+    if len(set(order)) != len(order):
+        return None
+    entries = set()
+    for line in listing.splitlines():
+        if not re.match(r'^Boot[0-9A-Fa-f]', line) or line.startswith('BootCurrent:'):
+            continue
+        entry = re.fullmatch(r'Boot([0-9A-Fa-f]{4})(?:\*| ) +[^\t\n]*\t\S[^\t\n]*', line)
+        if not entry or entry[1].upper() in entries:
+            return None
+        entries.add(entry[1].upper())
+    return order if all(number in entries for number in order) else None
+
+
+WINDOWS_LOADER = '/EFI/Microsoft/Boot/bootmgfw.efi'
+WINDOWS_UNSAFE = ('Windows firmware startup could not be identified safely; '
+                  'boot menu setup stopped.')
+
+
+def windows_firmware_entry(listing, partuuid):
+    """One exact Windows loader on the recorded partition, or genuine absence.
+
+    Labels cannot identify a loader. Accept the File() and bare path formats of
+    efibootmgr, and hardware nodes before the partition. Ignore inactive entries
+    and other partitions; malformed or duplicate targets on this ESP refuse.
+    """
+    guid = r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}'
+    require(isinstance(partuuid, str) and re.fullmatch(guid, partuuid)
+            and firmware_boot_order(listing) is not None, Code.BOOT_VERIFY, WINDOWS_UNSAFE)
+    hardware = r'(?:(?!(?:HD|File)\()[A-Za-z][A-Za-z0-9]*\([^()\t\n]*\)/)*'
+    loader = re.escape(WINDOWS_LOADER.replace('/', chr(92)))
+    pattern = (rf'Boot([0-9A-Fa-f]{{4}})\* +[^\t\n]*\t{hardware}'
+               rf'HD\([1-9][0-9]*,GPT,({guid}),0x[0-9a-f]+,0x[0-9a-f]+\)/'
+               rf'(?:File\({loader}\)(?:[^/\\()\t\n]*)|{loader})')
+    found = []
+    records = re.split(r'(?m)(?=^Boot[0-9A-Fa-f]{4}(?:\*| ))', listing)
+    for record in records:
+        line = record.splitlines()[0] if record else ''
+        if not re.match(r'^Boot[0-9A-Fa-f]{4}(?:\*| )', line):
+            continue
+        # The filename also catches truncated device paths and suffix lookalikes.
+        if 'bootmgfw.efi' not in line.casefold():
+            continue
+        if line[8] != '*':
+            continue
+        partitions = re.findall(rf'HD\([^()]*,GPT,({guid}),', line, re.I)
+        if partitions and all(value.lower() != partuuid.lower() for value in partitions):
+            continue
+        # efibootmgr appends optional data to a bare filename without a separator.
+        # Its verbose data line proves exactly which suffix is data, not filename.
+        data = re.findall(r'^    data: ([0-9a-fA-F]{2}(?: [0-9a-fA-F]{2})*)$', record, re.M)
+        require(len(data) <= 1, Code.BOOT_VERIFY, WINDOWS_UNSAFE)
+        if data and line.lower().endswith(data[0].replace(' ', '').lower()):
+            line = line[:-len(data[0].replace(' ', ''))]
+        match = re.fullmatch(pattern, line, re.I)
+        require(match and match[2].lower() == partuuid.lower(), Code.BOOT_VERIFY, WINDOWS_UNSAFE)
+        found.append(match[1].upper())
+    require(len(found) <= 1, Code.BOOT_VERIFY, WINDOWS_UNSAFE)
+    return found[0] if found else None
+
+
+def windows_bootnext_menu(text, partuuid, esp_uuid, listing):
+    """Replace only os-prober's verified Windows entry, preserving its title/id.
+
+    Resolution is done each time the menu is generated. Stock GRUB bootnext
+    checks that the entry still exists when selected; it cannot detect a number
+    reused for a different entry after generation. Never chainload after a
+    failed BootNext request: only genuine absence at generation permits that.
+    """
+    require(isinstance(esp_uuid, str) and re.fullmatch(r'[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}', esp_uuid),
+            Code.BOOT_VERIFY, WINDOWS_UNSAFE)
+    number = windows_firmware_entry(listing, partuuid)
+    sections = list(re.finditer(r'(### BEGIN /etc/grub\.d/30_os-prober ###\n)(.*?)'
+                               r'(### END /etc/grub\.d/30_os-prober ###)', text, re.S))
+    require(len(sections) == 1, Code.BOOT_VERIFY, WINDOWS_UNSAFE)
+    section = sections[0]
+    entries = top_level_entries(section[2])
+    require(entries.complete, Code.BOOT_VERIFY, WINDOWS_UNSAFE)
+    candidates = []
+    for entry in entries.entries:
+        source = section[2][entry.start:entry.end]
+        if 'bootmgfw.efi' not in source.casefold():
+            continue
+        chains = re.findall(r'^\s*chainloader\s+(\S+)\s*$', source, re.M)
+        searches = re.findall(r'^\s*search\s+([^\n]+)$', source, re.M)
+        require(chains and len(chains) == 1 and chains[0].casefold() == WINDOWS_LOADER.casefold()
+                and searches and all('--fs-uuid' in row.split() and '--set=root' in row.split()
+                                     and row.split()[-1].casefold() == esp_uuid.casefold()
+                                     for row in searches), Code.BOOT_VERIFY, WINDOWS_UNSAFE)
+        candidates.append(entry)
+    require(len(candidates) == 1, Code.BOOT_VERIFY, WINDOWS_UNSAFE)
+    if number is None:
+        return text
+    entry = candidates[0]
+    source = section[2][entry.start:entry.end]
+    opening = next(end for kind, _, _, end in grub_words(source) if kind == '{')
+    # Positive nested guards matter: a failed GRUB command must not reach reboot.
+    body = (f'\n  # Windows firmware target: {partuuid.lower()} {WINDOWS_LOADER}\n'
+            '  if insmod efibootnext; then\n'
+            '    if insmod reboot; then\n'
+            f'      if bootnext {number}; then\n'
+            '        reboot\n'
+            '      else\n'
+            "        echo 'Windows startup could not be selected. Return to Emaki and refresh the boot menu.'\n"
+            '      fi\n'
+            '    fi\n'
+            '  fi\n'
+            '}')
+    start, end = section.start(2) + entry.start, section.start(2) + entry.end
+    return text[:start] + source[:opening] + body + text[end:]
+
+
 def grub_quote(value):
     return "'" + value.replace("'", "'\\''") + "'"
 

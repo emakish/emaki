@@ -75,8 +75,8 @@ class MetadataTests(unittest.TestCase):
             /usr/share/libalpm/scripts/emaki-system-migrate() { :; }
             systemctl() { printf 'systemctl'; printf ' <%s>' "$@"; printf '\\n'; }
             source "$1"
-            post_install 0.7.0-1
-            post_upgrade 0.7.0-2 0.7.0-1
+            post_install 0.8.0-1
+            post_upgrade 0.8.0-2 0.8.0-1
         '''
         result = run(['/bin/bash', '-eu', '-c', harness, 'hooks', str(hooks)],
                      env={**os.environ, 'PATH': '/nonexistent'})
@@ -106,7 +106,7 @@ class MetadataTests(unittest.TestCase):
                     /usr/share/libalpm/scripts/emaki-system-migrate() { echo mark-fresh; }
                     systemctl() { printf 'systemctl'; printf ' <%s>' "$@"; printf '\\n'; }
                     source "$1"
-                    "$2" 0.7.0-2 0.7.0-1
+                    "$2" 0.8.0-2 0.8.0-1
                 '''
                 result = run(['/bin/bash', '-eu', '-c', harness, 'hooks', str(hooks), hook],
                              env={**os.environ, 'PATH': '/nonexistent'})
@@ -133,8 +133,8 @@ class MetadataTests(unittest.TestCase):
             with self.subTest(package=name):
                 info = self.recipes[name]
                 self.assertEqual(info['pkgname'], [name])
-                self.assertEqual(info['pkgver'], ['0.7.0'])
-                self.assertEqual(info['pkgrel'], ['1'])
+                self.assertEqual(info['pkgver'], ['0.8.0'])
+                self.assertEqual(info['pkgrel'], ['4'])
                 # emaki-installer also ships the zone map (ODbL) and the GRUB unlock-screen fonts (DejaVu, Bitstream Vera).
                 self.assertEqual(info['license'], ['GPL-3.0-or-later', 'ODbL-1.0', 'Bitstream-Vera']
                                  if name == 'emaki-installer' else ['GPL-3.0-or-later', 'Bitstream-Vera']
@@ -142,12 +142,12 @@ class MetadataTests(unittest.TestCase):
                                  if name == 'emaki-nvidia' else ['GPL-3.0-or-later'])
         self.assertTrue({'kimageformats', 'libjxl'} <= set(self.recipes['emaki-config']['depends']))
         cargo = tomllib.loads((ROOT / 'Cargo.toml').read_text())
-        self.assertEqual(cargo['workspace']['package']['version'], '0.7.0')
+        self.assertEqual(cargo['workspace']['package']['version'], '0.8.0')
         packages = tomllib.loads((ROOT / 'Cargo.lock').read_text())['package']
-        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.7.0'})
+        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.8.0'})
         self.assertEqual(self.recipes['emaki']['depends'], [
-            'emaki-config=0.7.0-1', 'emaki-desktop=0.7.0-1', 'niri-emaki=26.04-20',
-            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.7.0-1', 'emaki-mirrorlist>=0.7.0-1'])
+            'emaki-config=0.8.0-4', 'emaki-desktop=0.8.0-4', 'niri-emaki=26.04-20',
+            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.8.0-1', 'emaki-mirrorlist>=0.8.0-1'])
 
     @unittest.skipUnless(shutil.which('pacman'), 'needs pacman for removal dependency resolution')
     def test_obs_removal_preview_keeps_base_packages(self):
@@ -318,8 +318,10 @@ class MetadataTests(unittest.TestCase):
     def test_desktop_and_fork_constraints(self):
         desktop = self.recipes['emaki-desktop']
         self.assertTrue({'emaki-config', 'niri-emaki>=26.04-12', 'quickshell-emaki', 'hyprlock',
-                         'firefox', 'noto-fonts', 'dolphin', 'kitty',
-                         'kdegraphics-thumbnailers', 'ffmpegthumbs', 'breeze-icons'} <= set(desktop['depends']))
+                         'noto-fonts', 'kitty', 'breeze-icons'} <= set(desktop['depends']))
+        removable = {'firefox', 'dolphin', 'kdegraphics-thumbnailers', 'ffmpegthumbs'}
+        self.assertTrue(removable.isdisjoint(desktop['depends']))
+        self.assertTrue(removable <= {item.split(':', 1)[0] for item in desktop['optdepends']})
         # niri runs X11 clients only through xwayland-satellite found on PATH.
         self.assertIn('xwayland-satellite', desktop['depends'])
         # Colour emoji outside Firefox (file names, chat, the terminal).
@@ -673,6 +675,44 @@ def stub_repository(directory, name, stubs):
     subprocess.run(['repo-add', '-q', str(directory / f'{name}.db.tar.gz'),
                     *sorted(map(str, directory.glob('*.pkg.tar.zst')))], check=True, capture_output=True)
     return directory
+
+
+class AppstreamUpkeepTests(unittest.TestCase):
+    def test_staged_refresh_runs_as_root_after_network_with_boot_and_weekly_timer(self):
+        for prefix in ('/usr', '/opt/emaki'):
+            with self.subTest(prefix=prefix), tempfile.TemporaryDirectory() as directory:
+                staged = Path(directory)
+                result = run(['make', 'install-upkeep', f'DESTDIR={staged}', f'PREFIX={prefix}'])
+                self.assertEqual(result.returncode, 0, result.stderr)
+                units = staged / prefix.lstrip('/') / 'lib/systemd/system'
+                service = configparser.ConfigParser(interpolation=None)
+                service.read(units / 'emaki-refresh-appstream.service')
+                self.assertEqual(service['Unit']['Wants'], 'network-online.target')
+                self.assertEqual(service['Unit']['After'], 'network-online.target')
+                self.assertEqual(service['Service']['User'], 'root')
+                self.assertEqual(service['Service']['Type'], 'oneshot')
+                self.assertEqual(service['Service']['ExecStart'],
+                                 'flatpak update --system --appstream --noninteractive flathub')
+                self.assertEqual(service['Unit']['ConditionPathIsDirectory'], '/var/lib/flatpak/repo')
+                self.assertEqual(service['Service'].get('Restart', 'no'), 'no')
+                self.assertNotIn('RestartSec', service['Service'])
+                self.assertTrue(service['Service'].getboolean('NoNewPrivileges'))
+                self.assertEqual(service['Service']['ProtectSystem'], 'strict')
+                self.assertEqual(service['Service']['ReadWritePaths'], '/var/lib/flatpak')
+                self.assertEqual(service['Service']['TimeoutStartSec'], '5min')
+                timer = configparser.ConfigParser()
+                timer.read(units / 'emaki-refresh-appstream.timer')
+                self.assertEqual(timer['Timer']['OnBootSec'], '30s')
+                self.assertEqual(timer['Timer']['OnCalendar'], 'weekly')
+                self.assertTrue(timer['Timer'].getboolean('Persistent'))
+                self.assertEqual(timer['Install']['WantedBy'], 'timers.target')
+
+    def test_refresh_payload_and_preset_are_declared(self):
+        expected = (ROOT / 'packaging/emaki-config/expected-files.list').read_text().splitlines()
+        for suffix in ('service', 'timer'):
+            self.assertIn('/usr/lib/systemd/system/emaki-refresh-appstream.' + suffix, expected)
+        preset = (ROOT / 'systemd/50-emaki.preset').read_text().splitlines()
+        self.assertIn('enable emaki-refresh-appstream.timer', preset)
 
 
 @unittest.skipUnless(all(map(shutil.which, ('pacman', 'repo-add', 'bsdtar')))
@@ -1246,6 +1286,21 @@ class PayloadTests(unittest.TestCase):
         license_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / 'LICENSE', license_path)
 
+    def test_program_helpers_import_the_installed_restore_backend(self):
+        directory = self.dest / 'usr/libexec/emaki'
+        check = '''
+import pathlib, runpy, sys
+directory = pathlib.Path(sys.argv[1])
+sys.path.insert(0, str(directory))
+import programs_receipts, restore
+assert pathlib.Path(restore.__file__).parent == directory
+assert programs_receipts.restore is restore
+assert callable(runpy.run_path(str(directory / 'emaki-programs-undo'))['undo'])
+assert callable(runpy.run_path(str(directory / 'emaki-programs-aur'))['preinstall_snapshot'])
+'''
+        result = run([sys.executable, '-IB', '-c', check, str(directory)])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_users_authorization_payload_is_installed(self):
         import xml.etree.ElementTree as ET
         helper = self.dest / 'usr/libexec/emaki/emaki-settings-users-root'
@@ -1272,6 +1327,7 @@ class PayloadTests(unittest.TestCase):
         self.assertEqual(set(re.findall(r'action\.id [!=]== "([^"]+)"', source)), {
             'org.emaki.programs.install', 'org.emaki.programs.remove',
             'org.emaki.programs.flatpak.install', 'org.emaki.programs.flatpak.remove',
+            'org.emaki.programs.flatpak.undo', 'org.emaki.programs.aur', 'org.emaki.programs.undo',
         })
         self.assertEqual(set(re.findall(r'\breturn\s+([^;]+);', source)),
                          {'polkit.Result.NO'})
@@ -1323,6 +1379,7 @@ class PayloadTests(unittest.TestCase):
                     'usr/libexec/emaki/emaki-update-restore', 'usr/libexec/emaki/emaki-privacy-recovery',
                     'usr/libexec/emaki/emaki-programs-remove', 'usr/libexec/emaki/emaki-capture-recorder',
                     'usr/libexec/emaki/emaki-programs-flatpak', 'usr/libexec/emaki/emaki-programs-install',
+                    'usr/libexec/emaki/emaki-programs-aur', 'usr/libexec/emaki/emaki-programs-undo',
                     'usr/lib/emaki/emaki-wifi-recover', 'usr/libexec/emaki/emaki-wifi-password',
                     'usr/libexec/emaki/emaki-charge-limit', 'usr/libexec/emaki/emaki-sudo-broker',
                     'usr/libexec/emaki/emaki-settings-users-root')
@@ -1331,7 +1388,7 @@ class PayloadTests(unittest.TestCase):
         binary = self.dest / 'usr/bin/emaki'
         # Keep this payload check independent of the host's installed channel helper.
         self.assertEqual(run([str(binary), 'version'], env={**os.environ, 'PATH': ''}).stdout,
-                         'emaki 0.7.0 [channel: unknown]\n')
+                         'emaki 0.8.0 [channel: unknown]\n')
         result = run(['python3', 'scripts/core-package.py', 'verify-build-paths', '--binary', str(binary)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -1370,11 +1427,11 @@ class PayloadTests(unittest.TestCase):
     def test_defaults_and_presets(self):
         commit = run(['git', 'rev-parse', 'HEAD']).stdout.strip()
         self.assertEqual((self.dest / 'usr/lib/emaki-release').read_text(),
-                         f'VERSION=0.7.0\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
+                         f'VERSION=0.8.0\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
         expected = {'greetd.service', 'NetworkManager.service', 'bluetooth.service', 'grub-btrfsd.service',
                     'snapper-timeline.timer', 'snapper-cleanup.timer', 'fstrim.timer', 'paccache.timer',
                     'emaki-refresh-mirrors.timer', 'emaki-wifi-recovery.service', 'emaki-sudo.service',
-                    'emaki-sudo-cleanup.timer', 'emaki-restore-index.timer'}
+                    'emaki-sudo-cleanup.timer', 'emaki-restore-index.timer', 'emaki-refresh-appstream.timer'}
         preset = (self.dest / 'usr/lib/systemd/system-preset/50-emaki.preset').read_text().splitlines()
         self.assertEqual({line.split()[1] for line in preset if line.startswith('enable ')}, expected)
         skel = self.dest / 'etc/skel/.config'

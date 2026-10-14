@@ -173,8 +173,10 @@ class ConfigurationChecks(unittest.TestCase):
             stage = Path(directory)
             (stage / 'grub').mkdir()
             (stage / 'btrfs-config').write_text('GRUB_BTRFS_DIRNAME="/@snapshots"\n')
+            # A private ESP: the host's own /efi is no evidence (the build VM's is unreadable).
             with patch.object(refresh, 'run') as command, \
                     patch.object(refresh, 'regular', return_value=b'if loadfont $font ; then\nfi\n'), \
+                    patch.object(refresh, 'shared_esp', return_value=False), \
                     patch.object(refresh.boot, 'boot_framebuffer', return_value=None):
                 refresh.generate(stage)
             self.assertTrue((stage / 'grub/.emaki-snapshots').is_dir())
@@ -185,6 +187,118 @@ class ConfigurationChecks(unittest.TestCase):
                 ['mount', '--bind', str(stage / 'grub'), '/boot/grub'],
                 ['grub-mkconfig', '-o', '/boot/grub/grub.cfg'],
             ])
+
+    def test_shared_generation_resolves_windows_again_and_replaces_chainload(self):
+        partuuid = '14e269ee-0b88-441e-86f3-09b058e1ad76'
+        menu_text = ("### BEGIN /etc/grub.d/30_os-prober ###\n"
+                     "menuentry 'Windows Boot Manager' --id windows {\n"
+                     "  search --no-floppy --fs-uuid --set=root 1234-ABCD\n"
+                     "  chainloader /EFI/Microsoft/Boot/bootmgfw.efi\n"
+                     "}\n### END /etc/grub.d/30_os-prober ###\n")
+        listing = ('BootOrder: 00BC\nBoot00BC* Windows Boot Manager\t'
+                   f'HD(1,GPT,{partuuid},0x800,0x32000)/'
+                   + boot.WINDOWS_LOADER.replace('/', chr(92)) + '\n')
+        with tempfile.TemporaryDirectory(prefix='windows-generate-') as directory:
+            stage = Path(directory)
+            (stage / 'grub').mkdir()
+            menu = stage / 'grub/grub.cfg'
+            menu.write_text(menu_text)
+            path_type = Path
+            def local_path(value):
+                return menu if str(value) == '/boot/grub/grub.cfg' else path_type(value)
+            with patch.object(refresh, 'Path', side_effect=local_path), \
+                    patch.object(refresh, 'bind'), \
+                    patch.object(refresh, 'menu_font', return_value=None), \
+                    patch.object(refresh, 'menu_theme', return_value=None), \
+                    patch.object(refresh, 'run', return_value=listing) as command, \
+                    patch.object(refresh, 'shared_esp', return_value=True), \
+                    patch.object(refresh.shared, 'marker', return_value=partuuid), \
+                    patch.object(refresh.shared, 'mounted_esp') as mounted, \
+                    patch.object(refresh, 'mount_info', return_value={'partuuid': partuuid,
+                                                                      'uuid': '1234-ABCD'}):
+                refresh.generate(stage)
+                mounted.assert_called_once_with(partuuid)
+                command.assert_any_call(['efibootmgr', '-v'])
+                self.assertIn('if bootnext 00BC; then', menu.read_text())
+                self.assertNotIn('chainloader', menu.read_text())
+                # A failed inventory never publishes a chainload fallback.
+                menu.write_text(menu_text)
+                command.return_value = 'BootOrder: 00BC\n'
+                with self.assertRaises(refresh.Refuse):
+                    refresh.generate(stage)
+                self.assertEqual(menu.read_text(), menu_text)
+
+    @contextmanager
+    def captured_windows_generation(self, listing):
+        partuuid = '33333333-3333-4333-8333-333333333333'
+        original = ("### BEGIN /etc/grub.d/30_os-prober ###\n"
+                    "menuentry 'Windows Boot Manager' --id windows {\n"
+                    "  search --no-floppy --fs-uuid --set=root 1234-ABCD\n"
+                    "  chainloader /EFI/Microsoft/Boot/bootmgfw.efi\n"
+                    "}\n### END /etc/grub.d/30_os-prober ###\n")
+        with tempfile.TemporaryDirectory(prefix='captured-windows-') as directory:
+            stage = Path(directory)
+            (stage / 'grub').mkdir()
+            menu = stage / 'grub/grub.cfg'
+            menu.write_text(original)
+            path_type = Path
+
+            def local_path(value):
+                return menu if str(value) == '/boot/grub/grub.cfg' else path_type(value)
+
+            with patch.object(refresh, 'Path', side_effect=local_path), \
+                    patch.object(refresh, 'bind'), \
+                    patch.object(refresh, 'menu_font', return_value=None), \
+                    patch.object(refresh, 'menu_theme', return_value=None), \
+                    patch.object(refresh, 'run', return_value=listing) as command, \
+                    patch.object(refresh, 'shared_esp', return_value=True), \
+                    patch.object(refresh.shared, 'marker', return_value=partuuid), \
+                    patch.object(refresh.shared, 'mounted_esp'), \
+                    patch.object(refresh, 'mount_info', return_value={'partuuid': partuuid,
+                                                                      'uuid': '1234-ABCD'}):
+                yield stage, menu, original, command
+
+    def test_verbatim_firmware_listings_generate_windows_restart(self):
+        for name in ('mac-before', 'mac-created', 'mac-booted'):
+            listing = (ROOT / 'tests/fixtures/firmware' / (name + '.txt')).read_text()
+            with self.subTest(listing=name), self.captured_windows_generation(listing) as data:
+                stage, menu, _, command = data
+                refresh.generate(stage)
+                self.assertIn('if bootnext 0002; then', menu.read_text())
+                self.assertNotIn('chainloader', menu.read_text())
+                command.assert_any_call(['efibootmgr', '-v'])
+
+    def test_foreign_and_inactive_windows_entries_do_not_block_generation(self):
+        listing = (ROOT / 'tests/fixtures/firmware/mac-booted.txt').read_text()
+        foreign = ('Boot0004* Windows Boot Manager\tHD(1,GPT,'
+                   'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee,0x800,0x32000)/'
+                   + boot.WINDOWS_LOADER.replace('/', chr(92)) + '\n')
+        cases = [listing + foreign,
+                 listing.replace('BootOrder: ', 'BootOrder: 0004,') + foreign,
+                 listing.replace('Boot0002*', 'Boot0002 ')]
+        for index, value in enumerate(cases):
+            with self.subTest(case=index), self.captured_windows_generation(value) as data:
+                stage, menu, _, _ = data
+                refresh.generate(stage)
+                if index == 2:
+                    self.assertIn('chainloader', menu.read_text())
+                    self.assertNotIn('bootnext', menu.read_text())
+                else:
+                    self.assertIn('if bootnext 0002; then', menu.read_text())
+                    self.assertNotIn('chainloader', menu.read_text())
+
+    def test_ambiguous_windows_entry_on_recorded_esp_still_refuses_generation(self):
+        listing = (ROOT / 'tests/fixtures/firmware/mac-booted.txt').read_text()
+        duplicate = ('Boot0004* Windows Boot Manager\tHD(1,GPT,'
+                     '33333333-3333-4333-8333-333333333333,0x800,0x32000)/'
+                     + boot.WINDOWS_LOADER.replace('/', chr(92)) + '\n')
+        for value in (listing + duplicate,
+                      listing.replace('bootmgfw.efi', 'bootmgfw.efi.old')):
+            with self.subTest(listing=value), self.captured_windows_generation(value) as data:
+                stage, menu, original, _ = data
+                with self.assertRaises(refresh.Refuse):
+                    refresh.generate(stage)
+                self.assertEqual(menu.read_text(), original)
 
     def test_menu_keeps_live_kernels_and_tags_only_ordinary_entries(self):
         for fsroot in ('', '/@'):
@@ -586,6 +700,208 @@ class RefreshOrchestrationChecks(unittest.TestCase):
             for name, expected in f.originals.items():
                 self.assertEqual(f.mapped(name).read_bytes(), expected)
             self.assertFalse(f.mapped('/boot/emaki').exists())
+
+    @contextmanager
+    def shared_esp(self, f):
+        """Windows' files are never writable; EFI/Emaki only after the gate opened."""
+        esp = f.mapped('/efi')
+        windows = {'EFI/Microsoft/Boot/bootmgfw.efi': image('/windows'),
+                   'EFI/Microsoft/Boot/BCD': b'Windows boot configuration\n'}
+        for name, data in windows.items():
+            f.put(esp / name, data)
+        foreign = {name: (esp / name).read_bytes() for name in (*windows, 'EFI/BOOT/BOOTX64.EFI')}
+        own = esp / 'EFI/Emaki'
+
+        def lock(writable):
+            for path in [p for p in esp.rglob('*') if not p.is_relative_to(own)] + [esp]:
+                path.chmod(0o555 if path.is_dir() else 0o444)
+            for path in [*own.rglob('*'), own]:
+                path.chmod((0o755 if path.is_dir() else 0o644) if writable else
+                           (0o555 if path.is_dir() else 0o444))
+
+        opened = []
+
+        def open_writes():
+            if not opened:
+                lock(True)
+            opened.append(True)
+
+        lock(False)
+        try:
+            with patch.object(refresh, 'shared_esp', return_value=True), \
+                    patch.object(refresh.shared, 'open_writes', side_effect=open_writes):
+                yield SimpleNamespace(opened=opened, relock=lambda: (opened.clear(), lock(False)))
+        finally:
+            for path in [*esp.rglob('*'), esp]:
+                path.chmod(0o755 if path.is_dir() else 0o644)
+        for name, data in foreign.items():
+            self.assertEqual((esp / name).read_bytes(), data, name)
+        self.assertEqual(sorted(str(p.relative_to(esp)) for p in esp.iterdir()), ['EFI'])
+
+    def test_shared_esp_refresh_and_promotion_write_only_inside_emaki(self):
+        for encrypted in (True, False):
+            with self.subTest(encrypted=encrypted), self.fixture(encrypted, foreign=True) as f, \
+                    self.shared_esp(f) as gate:
+                refresh.refresh(f.identity)
+                self.assertTrue(gate.opened)
+                generation, = f.mapped('/boot/emaki').iterdir()
+                state = json.loads(f.mapped('/efi/EFI/Emaki/boot-state.json').read_text())
+                self.assertEqual(state, {'good': None, 'newest': generation.name, 'fallback_sha256': None})
+                self.assertIn('chainloader ($emaki_esp)/EFI/Emaki/loader-' + generation.name,
+                              f.mapped('/boot/grub/grub.cfg').read_text())
+                self.assertFalse(list(f.mapped('/efi/EFI/Emaki').glob('.emaki-stage-*')))
+                staged = [c for c in f.commands if c[0] == 'grub-install' and '--version' not in c]
+                self.assertTrue(all('--efi-directory=' + str(f.mapped('/efi/EFI/Emaki/.emaki-stage-'))
+                                    in ' '.join(c) for c in staged))
+                gate.relock()
+                self.complete_boot(f, generation)
+                self.assertTrue(gate.opened)
+                image_bytes = (generation / 'grub/x86_64-efi/emaki-early.efi').read_bytes()
+                self.assertEqual(f.mapped('/efi/EFI/Emaki/grubx64.efi').read_bytes(), image_bytes)
+                state = json.loads(f.mapped('/efi/EFI/Emaki/boot-state.json').read_text())
+                self.assertEqual(state, {'good': generation.name, 'newest': generation.name,
+                                         'fallback_sha256': None})
+                self.assertIn('The Emaki boot loader was updated', f.output.getvalue())
+                # Nothing left to promote: a later completed boot changes nothing.
+                gate.relock()
+                self.complete_boot(f, generation)
+                self.assertFalse(gate.opened)
+
+    def test_shared_esp_requires_positive_evidence_not_readonly_mount(self):
+        cases = ('fstab', 'mount', 'windows', 'stop', 'dedicated')
+        for evidence in cases:
+            with self.subTest(evidence=evidence), self.fixture(False) as f, \
+                    patch.object(refresh, 'SHARED_ESP', f.mapped('/var/lib/emaki/alongside-boot.json')), \
+                    patch.object(refresh.shared, 'MARKER', f.mapped('/var/lib/emaki/alongside-boot.json')):
+                if evidence == 'fstab':
+                    f.put(f.mapped('/etc/fstab'), 'UUID=ABCD-1234 /efi vfat ro,nofail 0 0\n')
+                elif evidence == 'mount':
+                    f.put(f.mapped('/proc/self/mountinfo'),
+                          '42 1 8:1 / /efi ro,relatime - vfat /dev/vda1 ro\n')
+                elif evidence == 'stop':
+                    f.put(refresh.shared.stop_record(), b'previous unsafe session')
+                elif evidence == 'windows':
+                    f.put(f.mapped('/efi/eFi/mIcRoSoFt/Boot/BCD'), b'Windows BCD')
+                else:
+                    f.put(f.mapped('/etc/fstab'), 'UUID=ABCD-1234 /efi vfat defaults 0 2\n')
+                self.assertEqual(refresh.shared_esp(), evidence in ('fstab', 'windows', 'stop'))
+
+    def test_unreadable_shared_esp_evidence_refuses(self):
+        with self.fixture(False) as f, \
+                patch.object(refresh, 'SHARED_ESP', f.mapped('/var/lib/emaki/alongside-boot.json')):
+            f.put(f.mapped('/etc/fstab'), 'UUID=ABCD-1234 /efi vfat defaults 0 2\n')
+            with patch.object(Path, 'read_text', side_effect=PermissionError('unreadable evidence')):
+                with self.assertRaises(refresh.shared.Refused):
+                    refresh.shared_esp()
+
+    def test_postwrite_stop_is_failure_for_every_refresh_entrypoint(self):
+        for args in (['--hook'], ['--retry'], ['--mark-good'], ['--repair-snapshots']):
+            with self.subTest(args=args), self.fixture(False) as f, \
+                    patch.object(refresh, 'snapshot_menu_needs_repair', return_value=True), \
+                    patch.object(refresh.shared, 'session',
+                                 side_effect=refresh.shared.Stopped(refresh.shared.STOPPED)):
+                status, output = self.hook(f, args)
+                self.assertEqual(status, 1)
+                self.assertIn(refresh.shared.STOPPED, output)
+
+    def test_esp_atomic_publication_refuses_zero_space_before_sidecar(self):
+        with self.fixture(False) as f, patch.object(refresh.os, 'statvfs',
+                return_value=SimpleNamespace(f_bavail=0, f_frsize=4096)) as capacity, \
+                patch.object(refresh, 'shared_esp', return_value=True), \
+                patch.object(refresh.shared, 'open_writes') as opened:
+            target = f.mapped('/efi/EFI/Emaki/update.json')
+            with self.assertRaises(refresh.Refuse):
+                refresh.atomic(target, 'new recovery metadata')
+            capacity.assert_called()
+            opened.assert_not_called()
+            self.assertFalse(target.exists())
+            self.assertFalse(list(target.parent.glob('*.emaki-*')))
+
+    def test_esp_atomic_enospc_removes_partial_sidecar(self):
+        with self.fixture(False) as f:
+            target = f.mapped('/efi/EFI/Emaki/update.env')
+            f.put(target, b'old state')
+            fsync = refresh.os.fsync
+            def fail(fd):
+                if stat.S_ISREG(os.fstat(fd).st_mode):
+                    raise OSError(errno.ENOSPC, 'injected full filesystem')
+                return fsync(fd)
+            with patch.object(refresh.os, 'fsync', side_effect=fail):
+                with self.assertRaises(OSError):
+                    refresh.atomic(target, b'new state')
+            self.assertEqual(target.read_bytes(), b'old state')
+            self.assertFalse(list(target.parent.glob('*.emaki-*')))
+
+    def test_esp_atomic_rename_enospc_removes_completed_sidecar(self):
+        with self.fixture(False) as f:
+            target = f.mapped('/efi/EFI/Emaki/update.cfg')
+            f.put(target, b'old menu')
+            with patch.object(refresh.os, 'replace', side_effect=OSError(errno.ENOSPC, 'full directory')):
+                with self.assertRaises(OSError):
+                    refresh.atomic(target, b'new menu')
+            self.assertEqual(target.read_bytes(), b'old menu')
+            self.assertFalse(list(target.parent.glob('*.emaki-*')))
+
+    def test_full_small_shared_esp_refuses_menu_publication(self):
+        small = SimpleNamespace(f_bavail=0, f_frsize=1, f_blocks=100 * refresh.MIB)
+        statvfs = os.statvfs
+        with self.fixture(True, foreign=True) as f, self.shared_esp(f) as gate, \
+                patch.object(refresh.os, 'statvfs', side_effect=lambda path: small
+                             if Path(path).is_relative_to(f.mapped('/efi')) else statvfs(path)):
+            with self.assertRaises(refresh.Refuse):
+                refresh.refresh(f.identity)
+            for name, expected in f.originals.items():
+                self.assertEqual(f.mapped(name).read_bytes(), expected, name)
+            self.assertFalse(list(f.mapped('/efi').rglob('*.emaki-*')))
+            self.assertFalse(f.mapped('/efi/EFI/Emaki/boot-intent.json').exists())
+            self.assertFalse(gate.opened)
+
+    def test_small_shared_esp_keeps_loader_and_refreshes_menu(self):
+        small = SimpleNamespace(f_bavail=60 * refresh.MIB, f_frsize=1, f_blocks=100 * refresh.MIB)
+        statvfs = os.statvfs
+        with self.fixture(True, foreign=True) as f, self.shared_esp(f) as gate, \
+                patch.object(refresh.os, 'statvfs', side_effect=lambda path: small
+                             if Path(path).is_relative_to(f.mapped('/efi')) else statvfs(path)):
+            refresh.refresh(f.identity)
+            self.assertFalse(list(f.mapped('/boot/emaki').glob('*/manifest.json')))
+            self.assertEqual(f.mapped('/efi/EFI/Emaki/grubx64.efi').read_bytes(),
+                             f.originals['/efi/EFI/Emaki/grubx64.efi'])
+            self.assertFalse(list(f.mapped('/efi/EFI/Emaki').glob('loader-*')))
+            menu = f.mapped('/boot/grub/grub.cfg').read_text()
+            self.assertNotEqual(menu, f.originals['/boot/grub/grub.cfg'].decode())
+            self.assertIn('# BEGIN Emaki update guard', menu)
+            self.assertNotIn('chainloader', menu)
+            self.assertIn(refresh.SMALL_SHARED, f.output.getvalue())
+            # The menu transaction records its intent on the ESP, so the gate opened.
+            self.assertTrue(gate.opened)
+
+    def test_shared_esp_refuses_any_path_outside_emaki(self):
+        with patch.object(refresh, 'shared_esp', return_value=True), \
+                patch.object(refresh.shared, 'open_writes') as opened:
+            for path in ('/efi/EFI/BOOT/BOOTX64.EFI', '/efi/EFI/Microsoft/Boot/BCD',
+                         '/efi/.emaki-stage-' + 'a' * 32, '/efi/EFI/emaki-other/x'):
+                with self.subTest(path=path), self.assertRaisesRegex(refresh.Refuse, 'outside EFI/Emaki'):
+                    refresh.write(Path(path), b'x')
+            opened.assert_not_called()
+            refresh.esp_writable(Path('/boot/grub/grub.cfg'))
+            opened.assert_not_called()
+            refresh.esp_writable(Path('/efi/EFI/Emaki/trial.env'))
+            opened.assert_called_once_with()
+        with patch.object(refresh, 'shared_esp', return_value=False), \
+                patch.object(refresh.shared, 'open_writes') as opened:
+            refresh.esp_writable(Path('/efi/EFI/BOOT/BOOTX64.EFI'))
+            opened.assert_not_called()
+
+    def test_shared_esp_refusal_writes_nothing(self):
+        with self.fixture(True, foreign=True) as f, \
+                patch.object(refresh, 'shared_esp', return_value=True), \
+                patch.object(refresh.shared, 'open_writes',
+                             side_effect=refresh.shared.Refused(refresh.shared.HIBERNATED)):
+            before = {p: p.read_bytes() for p in f.mapped('/efi').rglob('*') if p.is_file()}
+            with self.assertRaises(refresh.shared.Refused):
+                refresh.refresh(f.identity)
+            self.assertEqual(before, {p: p.read_bytes() for p in f.mapped('/efi').rglob('*') if p.is_file()})
+            self.assertEqual(f.mapped('/boot/grub/grub.cfg').read_bytes(), f.originals['/boot/grub/grub.cfg'])
 
     def complete_boot(self, f, generation):
         f.put(f.mapped('/proc/cmdline'), f'root=UUID={FSUUID} emaki.generation={generation.name}\n')
@@ -1077,7 +1393,7 @@ class RefreshOrchestrationChecks(unittest.TestCase):
             self.assertEqual(self.hook(f, discover=fail)[0], 1)
             self.assertTrue(f.mapped(refresh.PENDING).is_file())
 
-    def test_permanent_boot_outcomes_are_reported_once_and_clear_pending(self):
+    def test_permanent_boot_outcomes_are_reported_once_and_exhaust_pending(self):
         for outcome in ('foreign', 'small-esp', 'refused'):
             with self.subTest(outcome=outcome), self.fixture(False, foreign=outcome == 'foreign') as f:
                 f.put(f.mapped(refresh.PENDING), '{"boots": 0}\n')
@@ -1090,7 +1406,7 @@ class RefreshOrchestrationChecks(unittest.TestCase):
                     status, output = self.hook(f, ['--retry'])
                 self.assertEqual(status, 0)
                 self.assertEqual(len(output.strip().splitlines()), 1)
-                self.assertFalse(f.mapped(refresh.PENDING).exists())
+                self.assertEqual(json.loads(f.mapped(refresh.PENDING).read_text()), {'boots': 3})
                 log = f.mapped(refresh.LOG_PATH).read_bytes()
                 self.assertEqual(self.hook(f, ['--retry'])[0], 0)
                 self.assertEqual(f.mapped(refresh.LOG_PATH).read_bytes(), log)
@@ -1102,10 +1418,7 @@ class RefreshOrchestrationChecks(unittest.TestCase):
                 for attempt in range(1, 4):
                     self.assertEqual(self.hook(f, ['--retry'])[0], 0)
                     pending = f.mapped(refresh.PENDING)
-                    if attempt < 3:
-                        self.assertEqual(json.loads(pending.read_text())['boots'], attempt)
-                    else:
-                        self.assertFalse(pending.exists())
+                    self.assertEqual(json.loads(pending.read_text())['boots'], attempt)
                 count = len(f.commands)
                 self.assertEqual(self.hook(f, ['--retry'])[0], 0)
                 self.assertEqual(len(f.commands), count)
@@ -1122,7 +1435,34 @@ class RefreshOrchestrationChecks(unittest.TestCase):
                 self.assertEqual(self.hook(f, ['--retry'])[0], 0)
                 self.assertEqual(lock.read_text(), 'other transaction')
             self.assertEqual(f.commands, [])
-            self.assertFalse(f.mapped(refresh.PENDING).exists())
+            self.assertEqual(json.loads(f.mapped(refresh.PENDING).read_text()), {'boots': 3})
+
+    def test_exhausted_request_only_explicit_refresh_rearms(self):
+        for argv in ([], ['--hook']):
+            with self.subTest(argv=argv), self.fixture(False) as f:
+                pending = f.mapped(refresh.PENDING)
+                f.put(pending, '{"boots": 3}\n')
+                def fail():
+                    self.assertEqual(json.loads(pending.read_text()), {'boots': 0})
+                    raise OSError('temporary storage failure')
+                with patch.object(refresh, 'pacman_lock', side_effect=AssertionError('unexpected lock')):
+                    self.assertEqual(self.hook(f, ['--retry'], discover=fail)[0], 0)
+                self.assertEqual(json.loads(pending.read_text()), {'boots': 3})
+                self.assertEqual(self.hook(f, argv, discover=fail)[0], 1)
+                self.assertEqual(json.loads(pending.read_text()), {'boots': 0})
+                self.assertEqual(self.hook(f, argv)[0], 0)
+                self.assertFalse(pending.exists())
+
+    def test_shared_esp_refusal_exhausts_existing_retry_budget(self):
+        with self.fixture(False) as f:
+            pending = f.mapped(refresh.PENDING)
+            f.put(pending, '{"boots": 0}\n')
+            with patch.object(refresh, 'refresh', side_effect=refresh.shared.Refused('Windows is hibernating.')) as work:
+                for attempt in range(1, 5):
+                    self.assertEqual(self.hook(f, ['--retry'])[0], 0)
+                    self.assertEqual(json.loads(pending.read_text()), {'boots': min(attempt, 3)})
+                self.assertEqual(work.call_count, 3)
+            self.assertFalse(f.mapped('/var/lib/pacman/db.lck').exists())
 
     def test_run_lock_contention_defers_without_consuming_a_boot_attempt(self):
         for record in (None, '{"boots": 0}\n', '{"boots": 2}\n', '{"boots": 3}\n'):
@@ -1161,10 +1501,7 @@ class RefreshOrchestrationChecks(unittest.TestCase):
                 f.put(pending, '{"boots": 0}\n')
                 for attempt in range(1, 5):
                     self.assertEqual(self.hook(f, ['--retry'], flock=refresh.fcntl.flock)[0], 0)
-                    if attempt < 3:
-                        self.assertEqual(json.loads(pending.read_text()), {'boots': attempt})
-                    else:
-                        self.assertFalse(pending.exists())
+                    self.assertEqual(json.loads(pending.read_text()), {'boots': min(attempt, 3)})
                     self.assertEqual(lock.lstat().st_ino, before.st_ino)
                 self.assertEqual(f.commands, [])
                 if kind == 'symlink':
@@ -1243,7 +1580,10 @@ class RefreshOrchestrationChecks(unittest.TestCase):
                 f.put(f.mapped('/proc/sys/kernel/random/boot_id'), FSUUID + '\n')
                 self.assertEqual(self.hook(f, ['--retry'])[0], 0)
                 self.assertFalse(lock.exists())
-                self.assertFalse(pending.exists())
+                if attempts == 0:
+                    self.assertFalse(pending.exists())
+                else:
+                    self.assertEqual(json.loads(pending.read_text()), {'boots': 3})
                 self.assertEqual(f.mapped('/efi/EFI/Emaki/boot-state.json').exists(), attempts == 0)
 
     def test_retry_preserves_foreign_and_malformed_package_locks(self):
@@ -1257,7 +1597,7 @@ class RefreshOrchestrationChecks(unittest.TestCase):
                 self.assertEqual(lock.read_text(), token)
                 self.assertEqual(f.commands, [])
 
-    def test_killed_retry_recovers_after_same_boot_pending_removal(self):
+    def test_killed_retry_recovers_after_same_boot_completion_or_exhaustion(self):
         for completion in ('manual', 'exhausted'):
             with self.subTest(completion=completion), self.fixture(False) as f:
                 pending = f.mapped(refresh.PENDING)
@@ -1273,14 +1613,17 @@ class RefreshOrchestrationChecks(unittest.TestCase):
                 self.assertTrue(os.WIFSIGNALED(status))
                 self.assertEqual(os.WTERMSIG(status), signal.SIGKILL)
                 self.assertEqual(self.hook(f, [] if completion == 'manual' else ['--retry'])[0], 0)
-                self.assertFalse(pending.exists())
+                self.assertEqual(pending.exists(), completion == 'exhausted')
                 self.assertEqual(lock.read_text(), 'emaki-boot-refresh:' + BOOT_ID)
                 commands = list(f.commands)
                 for boot_id in (FSUUID, LUKS):
                     f.put(f.mapped('/proc/sys/kernel/random/boot_id'), boot_id + '\n')
                     self.assertEqual(self.hook(f, ['--retry'])[0], 0)
                     self.assertFalse(lock.exists())
-                    self.assertFalse(pending.exists())
+                    if completion == 'exhausted':
+                        self.assertEqual(json.loads(pending.read_text()), {'boots': 3})
+                    else:
+                        self.assertFalse(pending.exists())
                     self.assertEqual(f.commands, commands)
 
     def test_explicit_refresh_recovers_previous_boot_lock_before_discovery(self):
@@ -1376,11 +1719,11 @@ class RefreshOrchestrationChecks(unittest.TestCase):
             self.assertEqual(lock.read_text(), 'foreign')
 
     def test_invalid_retry_record_stops_without_a_failed_unit(self):
-        for record in ('[]', '{}', 'null', '{"boots": -1}', '{"boots": true}', '{"boots": "2"}'):
+        for record in ('[', '[]', '{}', 'null', '{"boots": -1}', '{"boots": true}', '{"boots": "2"}'):
             with self.subTest(record=record), self.fixture(False) as f:
                 f.put(f.mapped(refresh.PENDING), record)
                 self.assertEqual(self.hook(f, ['--retry'])[0], 0)
-                self.assertFalse(f.mapped(refresh.PENDING).exists())
+                self.assertEqual(json.loads(f.mapped(refresh.PENDING).read_text()), {'boots': 3})
                 self.assertEqual(f.commands, [])
 
     def test_boot_run_holds_pacman_lock_through_publication_and_releases_on_error(self):
@@ -1422,7 +1765,7 @@ class RefreshOrchestrationChecks(unittest.TestCase):
             self.assertEqual(json.loads(f.mapped(refresh.PENDING).read_text())['boots'], 1)
             f.put(f.mapped(refresh.PENDING), '{"boots": 3}\n')
             self.assertEqual(self.hook(f, ['--retry'])[0], 0)
-            self.assertFalse(f.mapped(refresh.PENDING).exists())
+            self.assertEqual(json.loads(f.mapped(refresh.PENDING).read_text()), {'boots': 3})
             self.assertEqual(f.commands, [])
 
     def test_interrupted_confirmation_restarts_snapshots_and_releases_run_lock(self):

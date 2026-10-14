@@ -3,12 +3,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Bounded recovery of a personal shell after a proven QML load failure."""
 import datetime
+from contextlib import contextmanager
+import fcntl
 import filecmp
 import json
 import os
 from pathlib import Path
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import uuid
@@ -131,6 +134,238 @@ def notice():
     run('systemctl', '--user', '--no-block', 'start', NOTICE_UNIT)
 
 
+def boot_id():
+    return str(uuid.UUID(Path('/proc/sys/kernel/random/boot_id').read_text().strip()))
+
+
+def state_dir():
+    root = Path(os.environ.get('XDG_STATE_HOME') or Path.home() / '.local/state')
+    if not root.is_absolute():
+        raise ValueError('The state directory must be absolute.')
+    path = root / 'emaki/shell-health'
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if path.is_symlink() or path.stat().st_uid != os.getuid():
+        raise ValueError('The crash offer directory is not private.')
+    return path
+
+
+@contextmanager
+def state_lock(state):
+    # Python descriptors are close-on-exec; no child inherits this lock.
+    with (state / 'lifecycle.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
+def process_alive(pid):
+    try:
+        os.kill(pid, 0)
+        # A reaped parent is not required: a zombie cannot own a running panel.
+        status = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0]
+        return status not in ('Z', 'X')
+    except (ProcessLookupError, FileNotFoundError):
+        return False
+    except PermissionError:
+        return True
+
+
+def read_running(state):
+    try:
+        data = json.loads((state / 'running.json').read_text())
+    except (OSError, ValueError):
+        return {}
+    if (not isinstance(data, dict) or type(data.get('pid')) is not int
+            or data['pid'] <= 0 or not isinstance(data.get('boot_id'), str)
+            or not isinstance(data.get('token'), str)
+            or not re.fullmatch('[0-9a-f-]{1,128}', data['token'])):
+        return {}
+    return data
+
+
+def clean_receipt(state, pid, token):
+    try:
+        return (state / ('clean-' + token)).read_text().strip() in (str(pid), 'restart:' + str(pid))
+    except (OSError, ValueError):
+        return False
+
+
+def lifecycle_owner(pid, token):
+    pid = int(pid)
+    if pid <= 0 or not re.fullmatch('[0-9a-f-]{1,128}', token):
+        raise ValueError('Invalid shell lifecycle owner.')
+    return pid
+
+
+def started(pid, token):
+    pid = lifecycle_owner(pid, token)
+    if not os.environ.get('XDG_RUNTIME_DIR'):
+        return
+    state = runtime_dir()
+    current_boot = boot_id()
+    crashed_before = False
+    with state_lock(state):
+        if not process_alive(pid) or clean_receipt(state, pid, token):
+            return
+        previous = read_running(state)
+        # A receipt can outlive an early teardown whose registration never ran.
+        for receipt in state.glob('clean-*'):
+            try:
+                owner = int(receipt.read_text().removeprefix('restart:'))
+                if owner > 0 and not process_alive(owner):
+                    # Keep the prior owner's receipt until crash detection below.
+                    if receipt.name != 'clean-' + previous.get('token', ''):
+                        receipt.unlink(missing_ok=True)
+            except (OSError, ValueError):
+                pass
+        if (previous and previous['boot_id'] == current_boot
+                and previous.get('session', '') == os.environ.get('NIRI_SOCKET', '')):
+            alive = process_alive(previous['pid'])
+            if alive and previous['pid'] != pid:
+                # A second shell must not take ownership from a live shell.
+                return
+            crashed_before = not alive and not clean_receipt(
+                state, previous['pid'], previous['token'])
+        marker = dict(boot_id=current_boot, pid=pid, token=token)
+        if os.environ.get('NIRI_SOCKET'):
+            marker['session'] = os.environ['NIRI_SOCKET']
+        write_state(state / 'running.json', json.dumps(marker))
+        if previous and previous['token'] != token:
+            (state / ('clean-' + previous['token'])).unlink(missing_ok=True)
+    if crashed_before and not compositor_gone():
+        mark_crashed(state)
+
+
+def clean_exit(pid, token):
+    pid = lifecycle_owner(pid, token)
+    if not os.environ.get('XDG_RUNTIME_DIR'):
+        return
+    state = runtime_dir()
+    with state_lock(state):
+        previous = read_running(state)
+        owned = previous.get('pid') == pid and previous.get('token') == token
+        if owned:
+            (state / 'running.json').unlink(missing_ok=True)
+        # If cleanup overtakes registration while the process is still alive,
+        # retain the receipt so that late registration cannot leave a marker.
+        if owned or not process_alive(pid):
+            (state / ('clean-' + token)).unlink(missing_ok=True)
+
+
+def restart_begin():
+    if not os.environ.get('XDG_RUNTIME_DIR'):
+        return {}
+    state = runtime_dir()
+    with state_lock(state):
+        previous = read_running(state)
+        if (not previous or previous['boot_id'] != boot_id()
+                or previous.get('session', '') != os.environ.get('NIRI_SOCKET', '')
+                or not process_alive(previous['pid'])):
+            return {}
+        receipt = state / ('clean-' + previous['token'])
+        if receipt.exists():
+            return {}
+        write_state(receipt, 'restart:' + str(previous['pid']))
+        return dict(pid=previous['pid'], token=previous['token'])
+
+
+def restart_cancel(pid, token):
+    pid = lifecycle_owner(pid, token)
+    if not os.environ.get('XDG_RUNTIME_DIR'):
+        return
+    state = runtime_dir()
+    with state_lock(state):
+        previous = read_running(state)
+        receipt = state / ('clean-' + token)
+        if previous.get('pid') == pid and previous.get('token') == token:
+            try:
+                # A real clean teardown may have replaced the restart intent.
+                if receipt.read_text() == 'restart:' + str(pid):
+                    receipt.unlink()
+            except FileNotFoundError:
+                pass
+
+
+def claim_crash_offer(state):
+    # Persist only the boot ID so logging out cannot reset the once-per-boot offer.
+    persistent = state_dir()
+    current_boot = boot_id()
+    with state_lock(persistent):
+        offered = persistent / 'crash-offered'
+        try:
+            if offered.read_text().strip() == current_boot:
+                return False
+        except FileNotFoundError:
+            pass
+        write_state(offered, current_boot + '\n')
+    return True
+
+
+def mark_crashed(state):
+    # Once the shell is back it offers a report. A pending repair notice keeps
+    # its backup; failing to record the crash must not block manual recovery.
+    pending = state / 'repair-notice.json'
+    try:
+        try:
+            data = json.loads(pending.read_text())
+        except (FileNotFoundError, ValueError):
+            data = {}
+        backup = data.get('backup') if isinstance(data, dict) else None
+        # A set-aside file is always named; a bare crash is offered once.
+        if not isinstance(backup, str) and not claim_crash_offer(state):
+            return
+        marker = {'backup': backup} if isinstance(backup, str) else {}
+        marker['crashed'] = True
+        marker['boot_id'] = boot_id()
+        if os.environ.get('NIRI_SOCKET'):
+            marker['session'] = os.environ['NIRI_SOCKET']
+        write_state(pending, json.dumps(marker))
+    except OSError as error:
+        print(clean(f'Could not record the crash notice: {error}'), file=sys.stderr, flush=True)
+
+
+def compositor_gone():
+    # At logout niri exits first and the shell then fails on its Wayland
+    # connection: that is the end of the session, not a shell crash.
+    path = os.environ.get('NIRI_SOCKET')
+    if not path:
+        return False
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+        probe.settimeout(1)
+        try:
+            probe.connect(path)
+        except OSError:
+            return True
+    return False
+
+
+def crashed():
+    # Legacy service failures and exhausted recovery use the same notice as
+    # the shell's own next-start detection.
+    if not compositor_gone():
+        mark_crashed(runtime_dir())
+
+
+# systemd's results for a shell that died by itself (systemd.exec(5), $SERVICE_RESULT).
+CRASH_RESULTS = {'exit-code', 'signal', 'core-dump', 'watchdog', 'oom-kill'}
+
+
+def stopped():
+    # The legacy unit's ExecStopPost runs on every stop and before each automatic
+    # restart. RestartMode=direct keeps OnFailure for exhausted retries, so a
+    # single crash is recorded here; a clean stop reports "success".
+    if os.environ.get('SERVICE_RESULT') in CRASH_RESULTS:
+        crashed()
+    elif os.environ.get('SERVICE_RESULT') == 'success':
+        state = runtime_dir()
+        if not (state / 'running.json').exists():
+            return
+        with state_lock(state):
+            previous = read_running(state)
+            if previous and not process_alive(previous['pid']):
+                (state / 'running.json').unlink(missing_ok=True)
+                (state / ('clean-' + previous['token'])).unlink(missing_ok=True)
+
+
 def reconcile():
     state = runtime_dir()
     launch = {}
@@ -165,6 +400,7 @@ def reconcile():
             candidate = failed_file(log, shell, launch.get('runtime_shell'))
     if candidate is None:
         print('The Emaki panel could not recover automatically. Opening recovery.', flush=True)
+        mark_crashed(state)
         notice()
         return
 
@@ -185,6 +421,7 @@ def reconcile():
         write_state(state / 'repair.txt', message + '\n')
         write_state(state / 'repair-notice.json', json.dumps({
             'backup': clean(str(backup.relative_to(Path(launch['shell'])))),
+            'crashed': True,
         }))
         print(message, flush=True)
         if unit == TRUSTED_UNIT:
@@ -197,6 +434,7 @@ def reconcile():
             run('systemctl', '--user', '--no-block', 'restart', SHELL_UNIT)
     except (OSError, subprocess.SubprocessError):
         print('Automatic shell recovery failed. Opening recovery.', flush=True)
+        mark_crashed(state)
         notice()
 
 
@@ -211,8 +449,21 @@ def repair_notice():
     except FileNotFoundError:
         return
     try:
-        data = json.loads(claimed.read_text())
-        print(json.dumps({'backup': clean(data['backup'])}))
+        try:
+            data = json.loads(claimed.read_text())
+        except ValueError:
+            return
+        if (not isinstance(data, dict) or not isinstance(data.get('backup', ''), str)
+                or not isinstance(data.get('crashed', False), bool)):
+            return
+        shown = {}
+        if 'backup' in data:
+            shown['backup'] = clean(data['backup'])
+        if (data.get('crashed') is True and data.get('boot_id', boot_id()) == boot_id()
+                and data.get('session', os.environ.get('NIRI_SOCKET', '')) == os.environ.get('NIRI_SOCKET', '')):
+            shown['crashed'] = True
+        if shown:
+            print(json.dumps(shown))
     finally:
         claimed.unlink(missing_ok=True)
 
@@ -240,6 +491,18 @@ def main():
             reconcile()
         elif command == 'report':
             report()
+        elif command == 'crashed':
+            crashed()
+        elif command == 'stopped':
+            stopped()
+        elif command == 'restart-begin':
+            print(json.dumps(restart_begin()))
+        elif command == 'restart-cancel':
+            restart_cancel(sys.argv[2], sys.argv[3])
+        elif command == 'started':
+            started(sys.argv[2], sys.argv[3])
+        elif command == 'clean':
+            clean_exit(sys.argv[2], sys.argv[3])
         elif command == 'notice':
             repair_notice()
         else:

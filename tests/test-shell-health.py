@@ -8,7 +8,9 @@ import io
 import json
 import os
 from pathlib import Path
+import socket
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -40,11 +42,15 @@ class ShellHealth(unittest.TestCase):
         self.env = mock.patch.dict(os.environ, {
             'HOME': str(self.home), 'XDG_RUNTIME_DIR': str(self.runtime),
             'XDG_CONFIG_HOME': str(self.home / '.config'),
+            'XDG_STATE_HOME': str(self.home / '.local/state'),
             'INVOCATION_ID': self.invocation,
             'MONITOR_INVOCATION_ID': self.invocation,
         })
         self.env.start()
         self.addCleanup(self.env.stop)
+        # Never probe the live compositor or inherit a running unit's stop result.
+        for name in ('NIRI_SOCKET', 'SERVICE_RESULT'):
+            os.environ.pop(name, None)
         stdout = mock.patch('sys.stdout', new_callable=io.StringIO)
         self.stdout = stdout.start()
         self.addCleanup(stdout.stop)
@@ -102,6 +108,12 @@ class ShellHealth(unittest.TestCase):
         self.assertFalse(self.actions('restart'))
         self.assertTrue(any('emaki-shell-recovery.service' in args
                             for args in self.actions('start')))
+
+    def consume_notice(self):
+        self.stdout.seek(0)
+        self.stdout.truncate()
+        self.helper.repair_notice()
+        return self.stdout.getvalue()
 
     def test_broken_override_preserved_and_packaged_restart_selected(self):
         source = self.broken_file()
@@ -180,6 +192,296 @@ class ShellHealth(unittest.TestCase):
         self.helper.reconcile()
         self.assert_notice_without_restart()
         self.assertEqual(self.helper.select_shell(str(self.override)), str(self.packaged))
+        # The repair already wrote its backup notice; manual recovery keeps it.
+        backup = next(self.override.glob('components/Panel.qml.broken-*'))
+        self.assertEqual(json.loads(self.consume_notice()),
+                         {'backup': str(backup.relative_to(self.override)), 'crashed': True})
+        self.assertEqual(self.consume_notice(), '')
+
+    def test_manual_recovery_leaves_crash_notice_consumed_once(self):
+        self.broken_file()
+        self.helper.reconcile()
+        self.assert_notice_without_restart()
+        pending = self.helper.runtime_dir() / 'repair-notice.json'
+        self.assertEqual(json.loads(pending.read_text()),
+                         {'crashed': True, 'boot_id': self.helper.boot_id()})
+        self.assertEqual(json.loads(self.consume_notice()), {'crashed': True})
+        self.assertFalse(pending.exists())
+        self.assertEqual(self.consume_notice(), '')
+
+    def test_crash_notice_write_failure_still_opens_recovery(self):
+        self.broken_file()
+        original = self.helper.write_state
+
+        def write_state(path, text):
+            if path.name == 'repair-notice.json':
+                raise OSError('read-only runtime')
+            original(path, text)
+
+        with mock.patch.object(self.helper, 'write_state', side_effect=write_state):
+            self.helper.reconcile()
+        self.assert_notice_without_restart()
+        self.assertFalse((self.helper.runtime_dir() / 'repair-notice.json').exists())
+
+    def test_malformed_pending_notice_prints_nothing_and_is_removed(self):
+        state = self.helper.runtime_dir()
+        pending = state / 'repair-notice.json'
+        for payload in (b'not json', b'\xff\xfe', b'[]', b'"text"', b'{}',
+                        b'{"backup": 3}', b'{"backup": null, "crashed": true}',
+                        b'{"crashed": "yes"}', b'{"backup": "a.qml", "crashed": 1}'):
+            with self.subTest(payload=payload):
+                pending.write_bytes(payload)
+                self.assertEqual(self.consume_notice(), '')
+                self.assertFalse(pending.exists())
+                self.assertFalse(list(state.glob('repair-notice*')))
+
+    def fresh_runtime(self, name):
+        runtime = self.base / name
+        runtime.mkdir()
+        return mock.patch.dict(os.environ, {
+            'XDG_RUNTIME_DIR': str(runtime),
+            'XDG_STATE_HOME': str(self.base / ('state-' + name)),
+        })
+
+    def stopped(self, result):
+        # The legacy unit's ExecStopPost passes systemd's stop result.
+        with mock.patch.dict(os.environ, {'SERVICE_RESULT': result}):
+            self.helper.stopped()
+
+    def test_explicit_crash_hook_offers_report_once_per_boot(self):
+        # A direct hook and later recovery share the same offer budget.
+        self.helper.crashed()
+        self.assertEqual(json.loads(self.consume_notice()), {'crashed': True})
+        # A crash loop, or any later crash, offers nothing more this boot.
+        self.helper.crashed()
+        self.helper.crashed()
+        self.assertEqual(self.consume_notice(), '')
+
+    def test_legacy_crash_before_restart_offers_report_once_per_boot(self):
+        for result in ('exit-code', 'signal', 'core-dump', 'watchdog', 'oom-kill'):
+            with self.subTest(result=result), self.fresh_runtime(result):
+                self.stopped(result)
+                self.assertEqual(json.loads(self.consume_notice()), {'crashed': True})
+                self.stopped(result)
+                self.helper.crashed()
+                self.assertEqual(self.consume_notice(), '')
+
+    def test_clean_stop_leaves_no_notice_and_keeps_the_offer(self):
+        for result in ('success', 'exec-condition', 'start-limit-hit', 'timeout', ''):
+            self.stopped(result)
+        self.helper.stopped()
+        self.assertEqual(self.consume_notice(), '')
+        self.assertFalse((self.helper.runtime_dir() / 'running.json').exists())
+        self.assertFalse((self.helper.state_dir() / 'crash-offered').exists())
+        self.stopped('signal')
+        self.assertEqual(json.loads(self.consume_notice()), {'crashed': True})
+
+    def test_shell_lost_with_its_compositor_is_not_a_crash(self):
+        # At logout niri exits first and the shell then fails on its Wayland connection.
+        with mock.patch.dict(os.environ, {'NIRI_SOCKET': str(self.runtime / 'niri.gone.sock')}):
+            self.stopped('exit-code')
+            self.helper.crashed()
+        self.assertEqual(self.consume_notice(), '')
+        # A socket path has a 108-byte limit; package builds run under a deep TMPDIR, so bind in a short directory.
+        short = tempfile.TemporaryDirectory(prefix='nl-', dir='/tmp')
+        self.addCleanup(short.cleanup)
+        path = Path(short.name) / 'niri.sock'
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+            try:
+                server.bind(str(path))
+            except PermissionError:
+                print('NOTE: local socket bind is forbidden; successful compositor probe is mocked.',
+                      file=sys.stderr)
+                with mock.patch.object(self.helper.socket, 'socket') as socket_factory:
+                    with mock.patch.dict(os.environ, {'NIRI_SOCKET': str(path)}):
+                        self.stopped('exit-code')
+                    socket_factory.return_value.__enter__.return_value.connect.assert_called_once_with(str(path))
+            else:
+                server.listen()
+                with mock.patch.dict(os.environ, {'NIRI_SOCKET': str(path)}):
+                    self.stopped('exit-code')
+        with mock.patch.dict(os.environ, {'NIRI_SOCKET': str(path)}):
+            self.assertEqual(json.loads(self.consume_notice()), {'crashed': True})
+
+    def test_recovery_after_an_offered_crash_does_not_offer_again(self):
+        self.helper.crashed()
+        self.assertEqual(json.loads(self.consume_notice()), {'crashed': True})
+        self.broken_file()
+        self.helper.reconcile()
+        self.assert_notice_without_restart()
+        self.assertEqual(self.consume_notice(), '')
+
+    def test_repair_after_an_offered_crash_still_names_the_backup(self):
+        self.helper.crashed()
+        self.consume_notice()
+        source = self.broken_file()
+        self.launch()
+        self.helper.reconcile()
+        backup = str(next(source.parent.glob('*.broken-*')).relative_to(self.override))
+        self.assertEqual(json.loads(self.consume_notice()), {'backup': backup, 'crashed': True})
+
+    def test_crash_commands_succeed_from_the_command_line(self):
+        for command in ('crashed', 'stopped'):
+            with mock.patch.object(sys, 'argv', ['emaki-shell-health', command]):
+                self.assertEqual(self.helper.main(), 0)
+        self.assertEqual(json.loads(self.consume_notice()), {'crashed': True})
+
+    def test_legacy_supervisor_keeps_its_optional_stop_hook(self):
+        unit = (ROOT / 'systemd/emaki-shell.service').read_text()
+        # A failing helper must never fail the unit and so open recovery.
+        self.assertIn('\nExecStopPost=-@EMAKI_BINDIR@/emaki-shell-health stopped\n', unit)
+
+    def start_marker(self, pid=1001, token='a' * 32, boot='boot-one', alive=()):
+        with mock.patch.object(self.helper, 'boot_id', return_value=boot), \
+                mock.patch.object(self.helper, 'process_alive', side_effect=lambda p: p == pid or p in alive):
+            self.helper.started(pid, token)
+        return self.helper.runtime_dir() / 'running.json'
+
+    def lifecycle_notice(self, boot='boot-one'):
+        with mock.patch.object(self.helper, 'boot_id', return_value=boot):
+            return self.consume_notice()
+
+    def test_single_dead_shell_offers_once_after_its_replacement_starts(self):
+        marker = self.start_marker()
+        self.assertEqual(json.loads(marker.read_text()),
+                         {'boot_id': 'boot-one', 'pid': 1001, 'token': 'a' * 32})
+        self.assertEqual(self.lifecycle_notice(), '')
+        self.start_marker(pid=1002, token='b' * 32)
+        self.assertEqual(json.loads(self.lifecycle_notice()), {'crashed': True})
+        self.start_marker(pid=1003, token='c' * 32)
+        self.assertEqual(self.lifecycle_notice(), '')
+        self.assertEqual(json.loads(marker.read_text())['pid'], 1003)
+        self.assertEqual(self.calls, [], 'recording a crash must not open recovery or send a report')
+
+    def test_reboot_ignores_previous_running_shell_and_pending_crash(self):
+        marker = self.start_marker()
+        self.start_marker(pid=1002, token='b' * 32)
+        self.assertTrue((marker.parent / 'repair-notice.json').exists())
+        self.start_marker(pid=1003, token='c' * 32, boot='boot-two')
+        self.assertEqual(self.lifecycle_notice(boot='boot-two'), '')
+        self.assertEqual(json.loads(marker.read_text())['boot_id'], 'boot-two')
+        # A real crash in the new boot gets its own offer despite the old stamp.
+        self.start_marker(pid=1004, token='d' * 32, boot='boot-two')
+        self.assertEqual(json.loads(self.lifecycle_notice(boot='boot-two')), {'crashed': True})
+
+    def test_clean_exit_removes_its_marker_without_spending_the_offer(self):
+        marker = self.start_marker()
+        with mock.patch.object(self.helper, 'boot_id', return_value='boot-one'):
+            self.helper.clean_exit(1001, 'a' * 32)
+        self.assertFalse(marker.exists())
+        self.start_marker(pid=1002, token='b' * 32)
+        self.assertEqual(self.lifecycle_notice(), '')
+        self.start_marker(pid=1003, token='c' * 32)
+        self.assertEqual(json.loads(self.lifecycle_notice()), {'crashed': True})
+
+    def test_live_previous_shell_and_same_process_reload_are_not_crashes(self):
+        self.start_marker()
+        marker = self.start_marker(pid=1002, token='b' * 32, alive=(1001,))
+        self.assertEqual(json.loads(marker.read_text())['pid'], 1001)
+        marker = self.start_marker(pid=1001, token='c' * 32)
+        with mock.patch.object(self.helper, 'boot_id', return_value='boot-one'):
+            # A late callback from the earlier generation cannot erase its successor.
+            self.helper.clean_exit(1001, 'a' * 32)
+            self.helper.clean_exit(1002, 'b' * 32)
+        self.assertEqual(json.loads(marker.read_text())['token'], 'c' * 32)
+        self.assertEqual(self.lifecycle_notice(), '')
+
+    def test_clean_receipt_prevents_a_false_crash_before_detached_cleanup(self):
+        marker = self.start_marker()
+        receipt = marker.parent / ('clean-' + 'a' * 32)
+        receipt.write_text('1001')
+        self.start_marker(pid=1002, token='b' * 32)
+        self.assertEqual(self.lifecycle_notice(), '')
+        with mock.patch.object(self.helper, 'boot_id', return_value='boot-one'):
+            self.helper.clean_exit(1001, 'a' * 32)
+        self.assertEqual(json.loads(marker.read_text())['pid'], 1002)
+
+    def test_clean_receipt_blocks_registration_after_a_fast_clean_exit(self):
+        marker = self.helper.runtime_dir() / 'running.json'
+        (marker.parent / ('clean-' + 'a' * 32)).write_text('1001')
+        self.start_marker()
+        self.assertFalse(marker.exists())
+        self.assertEqual(self.lifecycle_notice(), '')
+
+    def test_requested_restart_receipt_suppresses_only_the_requested_exit(self):
+        self.start_marker()
+        with mock.patch.object(self.helper, 'boot_id', return_value='boot-one'), \
+                mock.patch.object(self.helper, 'process_alive', return_value=True):
+            self.assertEqual(self.helper.restart_begin(), {'pid': 1001, 'token': 'a' * 32})
+        self.start_marker(pid=1002, token='b' * 32)
+        self.assertEqual(self.lifecycle_notice(), '')
+        self.start_marker(pid=1003, token='c' * 32)
+        self.assertEqual(json.loads(self.lifecycle_notice()), {'crashed': True})
+
+    def test_cancelled_restart_restores_crash_detection(self):
+        self.start_marker()
+        with mock.patch.object(self.helper, 'boot_id', return_value='boot-one'), \
+                mock.patch.object(self.helper, 'process_alive', return_value=True):
+            self.helper.restart_begin()
+            self.helper.restart_cancel(1001, 'a' * 32)
+        self.start_marker(pid=1002, token='b' * 32)
+        self.assertEqual(json.loads(self.lifecycle_notice()), {'crashed': True})
+
+    def test_cancelled_restart_cannot_erase_a_completed_clean_exit_receipt(self):
+        marker = self.start_marker()
+        with mock.patch.object(self.helper, 'boot_id', return_value='boot-one'), \
+                mock.patch.object(self.helper, 'process_alive', return_value=True):
+            self.helper.restart_begin()
+            (marker.parent / ('clean-' + 'a' * 32)).write_text('1001')
+            self.helper.restart_cancel(1001, 'a' * 32)
+        self.start_marker(pid=1002, token='b' * 32)
+        self.assertEqual(self.lifecycle_notice(), '')
+
+    def test_clean_legacy_stop_removes_dead_owner_but_preserves_live_owner(self):
+        marker = self.start_marker()
+        with mock.patch.object(self.helper, 'process_alive', return_value=True):
+            self.stopped('success')
+        self.assertTrue(marker.exists())
+        with mock.patch.object(self.helper, 'process_alive', return_value=False):
+            self.stopped('success')
+        self.assertFalse(marker.exists())
+        self.start_marker(pid=1002, token='b' * 32)
+        self.assertEqual(self.lifecycle_notice(), '')
+
+    def test_next_login_ignores_dead_marker_without_spending_crash_offer(self):
+        with mock.patch.object(self.helper, 'compositor_gone', return_value=False):
+            with mock.patch.dict(os.environ, {'NIRI_SOCKET': str(self.runtime / 'old-session')}):
+                self.start_marker()
+            with mock.patch.dict(os.environ, {'NIRI_SOCKET': str(self.runtime / 'new-session')}):
+                self.start_marker(pid=1002, token='b' * 32)
+                self.assertEqual(self.lifecycle_notice(), '')
+                self.start_marker(pid=1003, token='c' * 32)
+                self.assertEqual(json.loads(self.lifecycle_notice()), {'crashed': True})
+
+    def test_next_login_with_retained_runtime_ignores_old_pending_notice(self):
+        with mock.patch.object(self.helper, 'compositor_gone', return_value=False):
+            with mock.patch.dict(os.environ, {'NIRI_SOCKET': str(self.runtime / 'old-session')}):
+                self.start_marker()
+                self.start_marker(pid=1002, token='b' * 32)
+            with mock.patch.dict(os.environ, {'NIRI_SOCKET': str(self.runtime / 'new-session')}):
+                self.start_marker(pid=1003, token='c' * 32)
+                self.assertEqual(self.lifecycle_notice(), '')
+
+    def test_new_runtime_in_same_boot_keeps_the_used_offer(self):
+        self.start_marker()
+        self.start_marker(pid=1002, token='b' * 32)
+        self.assertEqual(json.loads(self.lifecycle_notice()), {'crashed': True})
+        replacement = self.base / 'runtime-after-logout'
+        replacement.mkdir()
+        with mock.patch.dict(os.environ, {'XDG_RUNTIME_DIR': str(replacement)}):
+            self.start_marker(pid=1003, token='c' * 32)
+            self.assertEqual(self.lifecycle_notice(), '')
+            self.start_marker(pid=1004, token='d' * 32)
+            self.assertEqual(self.lifecycle_notice(), '')
+
+    def test_delayed_start_for_dead_process_does_not_replace_current_marker(self):
+        marker = self.start_marker()
+        original = marker.read_bytes()
+        with mock.patch.object(self.helper, 'boot_id', return_value='boot-one'), \
+                mock.patch.object(self.helper, 'process_alive', return_value=False):
+            self.helper.started(1002, 'b' * 32)
+        self.assertEqual(marker.read_bytes(), original)
+        self.assertEqual(self.lifecycle_notice(), '')
 
     def test_relative_qml_cause_is_set_aside(self):
         source = self.broken_file('Panel.qml')
@@ -290,16 +592,10 @@ class ShellHealth(unittest.TestCase):
         self.assertEqual(len(self.actions('restart')), 1)
         pending = self.helper.runtime_dir() / 'repair-notice.json'
         self.assertTrue(pending.exists())
-        self.stdout.seek(0)
-        self.stdout.truncate()
-        self.helper.repair_notice()
-        data = json.loads(self.stdout.getvalue())
-        self.assertEqual(data['backup'], str(next(source.parent.glob('*.broken-*')).relative_to(self.override)))
+        backup = str(next(source.parent.glob('*.broken-*')).relative_to(self.override))
+        self.assertEqual(json.loads(self.consume_notice()), {'backup': backup, 'crashed': True})
         self.assertFalse(pending.exists())
-        self.stdout.seek(0)
-        self.stdout.truncate()
-        self.helper.repair_notice()
-        self.assertEqual(self.stdout.getvalue(), '')
+        self.assertEqual(self.consume_notice(), '')
         self.assertTrue((self.helper.runtime_dir() / 'repair.txt').exists())
 
     def test_packaged_failure_never_restarts(self):
@@ -398,6 +694,7 @@ class ShellHealth(unittest.TestCase):
         self.assertEqual(len(backups), 1)
         self.assertEqual(backups[0].read_bytes(), original)
         self.assertEqual(self.helper.select_shell(str(self.override)), str(self.packaged))
+        self.assertEqual(json.loads(self.consume_notice()), {'crashed': True})
 
     def test_file_symlink_is_preserved(self):
         source = self.broken_file()

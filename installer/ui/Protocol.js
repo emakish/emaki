@@ -452,6 +452,6 @@ function alongsideDefault(p) {
         Math.floor(p.shrink.max_free_bytes / 2 / 1048576) * 1048576)) : 0;
 }
 function alongsideReview(p, freed) {
-    return p ? "Windows keeps " + ((p.size_bytes - freed) / 1e9).toFixed(2) +
+    return p ? "Windows keeps " + ((Math.floor(p.size_bytes / 1048576) * 1048576 - freed) / 1e9).toFixed(2) +
         " GB, Emaki gets " + (freed / 1e9).toFixed(2) + " GB; back up your files first." : "Windows shrink is unavailable. Refresh the disk list.";
 }

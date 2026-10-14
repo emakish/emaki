@@ -10,4 +10,5 @@ Target = *
 [Action]
 Description = Protecting the next start with the pre-update snapshot
 When = PreTransaction
+AbortOnFail
 Exec = /usr/bin/emaki-update-boot mark

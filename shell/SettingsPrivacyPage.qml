@@ -48,25 +48,25 @@ Column {
         available = false;
         snapshot = ({});
         pending = false;
-        message = "[PLACEHOLDER] Privacy status could not be confirmed. Retry to read it again.";
+        message = "Privacy status could not be confirmed. Retry to read it again.";
     }
     function snapshotText() {
         const snapshot = recovery.snapshot;
         if (!snapshot || snapshot.state === "unavailable")
             return "Unavailable";
         if (snapshot.state === "none")
-            return "[PLACEHOLDER] No pre-update snapshot found.";
-        return "[PLACEHOLDER] Snapshot " + snapshot.number + (snapshot.date ? " · " + snapshot.date : "");
+            return "No pre-update snapshot found.";
+        return "Snapshot " + snapshot.number + (snapshot.date ? " · " + snapshot.date : "");
     }
     function rollbackText() {
         const rollback = recovery.rollback;
         if (!rollback)
             return "Unavailable";
         const labels = {
-            normal: "[PLACEHOLDER] Running the normal system.",
-            snapshot: "[PLACEHOLDER] Running a snapshot.",
-            pending: "[PLACEHOLDER] Rollback is pending.",
-            unsupported: "[PLACEHOLDER] Rollback is not supported on this installation."
+            normal: "Running the normal system.",
+            snapshot: "Running a snapshot.",
+            pending: "Rollback is pending.",
+            unsupported: "Rollback is not supported on this installation."
         };
         return labels[rollback.mode] || "Unavailable";
     }
@@ -75,24 +75,24 @@ Column {
         if (!menu)
             return "Unavailable";
         if (menu.state === "checked")
-            return "[PLACEHOLDER] Menu structure checked; bootability has not been tested. " + (menu.latest_snapshot_present === true ? "Latest snapshot entry found." : menu.latest_snapshot_present === false ? "Latest snapshot entry missing." : "Latest snapshot entry could not be confirmed.");
+            return "Menu structure checked; bootability has not been tested. " + (menu.latest_snapshot_present === true ? "Latest snapshot entry found." : menu.latest_snapshot_present === false ? "Latest snapshot entry missing." : "Latest snapshot entry could not be confirmed.");
         if (menu.state === "missing")
-            return "[PLACEHOLDER] Snapshot boot menu is missing.";
+            return "Snapshot boot menu is missing.";
         if (menu.state === "invalid")
-            return "[PLACEHOLDER] Snapshot boot menu needs repair.";
+            return "Snapshot boot menu needs repair.";
         return "Unavailable";
     }
     function encryptionText(value) {
         return ({
-                encrypted: "[PLACEHOLDER] Encrypted",
-                unencrypted: "[PLACEHOLDER] Not encrypted",
-                mixed: "[PLACEHOLDER] Partly encrypted"
+                encrypted: "Encrypted",
+                unencrypted: "Not encrypted",
+                mixed: "Partly encrypted"
             })[value] || "Unavailable";
     }
     function lockText() {
         if (!available || snapshot.lock.state !== "ready" || !Number.isInteger(snapshot.lock.delay) || snapshot.lock.delay < 0)
             return "Unavailable";
-        return snapshot.lock.delay === 0 ? "[PLACEHOLDER] Automatic lock delay is disabled." : "[PLACEHOLDER] Automatic lock delay: " + snapshot.lock.delay + " seconds.";
+        return snapshot.lock.delay === 0 ? "Automatic lock delay is disabled." : "Automatic lock delay: " + snapshot.lock.delay + " seconds.";
     }
     Component.onCompleted: refresh()
     Process {
@@ -116,7 +116,7 @@ Column {
                 root.available = true;
                 root.pending = false;
                 if (root.revoking) {
-                    root.message = result.operation === "revoked" ? "[PLACEHOLDER] Remembered permission revoked. Active sessions are not stopped." : "[PLACEHOLDER] Permission revocation could not be confirmed.";
+                    root.message = result.operation === "revoked" ? "Remembered permission revoked. Active sessions are not stopped." : "Permission revocation could not be confirmed.";
                 }
             } catch (_) {
                 root.failed();
@@ -131,7 +131,7 @@ Column {
             if (!connected || root.pendingKey !== "")
                 return;
             root.pendingKey = String(id);
-            root.sudoMessage = "[PLACEHOLDER] Waiting for sudo key revocation.";
+            root.sudoMessage = "Waiting for sudo key revocation.";
             keyTimer.restart();
             root.sudoBackend.revoke(id);
         }
@@ -139,7 +139,7 @@ Column {
             if (root.pendingKey !== "" && !keys.some(key => String(key.id) === root.pendingKey)) {
                 keyTimer.stop();
                 root.pendingKey = "";
-                root.sudoMessage = connected ? "[PLACEHOLDER] Sudo key revoked." : "[PLACEHOLDER] Sudo key revocation could not be confirmed.";
+                root.sudoMessage = connected ? "Sudo key revoked." : "Sudo key revocation could not be confirmed.";
             }
         }
     }
@@ -148,21 +148,21 @@ Column {
         interval: 5000
         onTriggered: {
             root.pendingKey = "";
-            root.sudoMessage = "[PLACEHOLDER] Sudo key revocation could not be confirmed.";
+            root.sudoMessage = "Sudo key revocation could not be confirmed.";
         }
     }
     SettingsCard {
         width: parent.width
-        title: "[PLACEHOLDER] Privacy status"
+        title: "Privacy status"
         SettingsRow {
             width: parent.width
-            title: root.pending ? "[PLACEHOLDER] Reading privacy status…" : root.available ? "[PLACEHOLDER] Privacy status loaded" : "Unavailable"
+            title: root.pending ? "Reading privacy status…" : root.available ? "Privacy status loaded" : "Unavailable"
             explanation: root.message
             busy: root.pending
             control: Component {
                 SettingsButton {
                     objectName: "privacy-refresh"
-                    text: root.available ? "[PLACEHOLDER] Refresh" : "Retry"
+                    text: root.available ? "Refresh" : "Retry"
                     onClicked: root.refresh()
                 }
             }
@@ -171,34 +171,34 @@ Column {
     SettingsCard {
         width: parent.width
         objectName: "settings-privacy-recovery"
-        title: "[PLACEHOLDER] Snapshots and rollback"
+        title: "Snapshots and rollback"
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: "[PLACEHOLDER] Last pre-update snapshot"
+            title: "Last pre-update snapshot"
             explanation: root.snapshotText()
         }
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: "[PLACEHOLDER] Rollback status"
+            title: "Rollback status"
             explanation: root.rollbackText()
         }
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: "[PLACEHOLDER] Snapshot boot menu"
+            title: "Snapshot boot menu"
             explanation: root.menuText()
         }
     }
     SettingsCard {
         width: parent.width
         objectName: "settings-privacy-encryption"
-        title: "[PLACEHOLDER] Disk encryption"
+        title: "Disk encryption"
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: "[PLACEHOLDER] System and home storage"
+            title: "System and home storage"
             explanation: root.encryptionText(root.available ? root.snapshot.encryption.state : "unavailable")
         }
         Repeater {
@@ -219,8 +219,8 @@ Column {
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: root.sudoSupport && root.sudoSupport.installed ? "[PLACEHOLDER] Package installed" : "[PLACEHOLDER] Package not installed"
-            explanation: !root.sudoSupport || !root.sudoSupport.installed ? "" : !keyActions.connected ? "[PLACEHOLDER] Sudo service unavailable." : keyActions.keys.length === 0 ? "[PLACEHOLDER] No active sudo keys." : "[PLACEHOLDER] Select a key to revoke it."
+            title: root.sudoSupport && root.sudoSupport.installed ? "Package installed" : "Package not installed"
+            explanation: !root.sudoSupport || !root.sudoSupport.installed ? "" : !keyActions.connected ? "Sudo service unavailable." : keyActions.keys.length === 0 ? "No active sudo keys." : "Select a key to revoke it."
             errorText: root.sudoMessage
         }
         SudoKeyIndicator {
@@ -233,18 +233,18 @@ Column {
     SettingsCard {
         width: parent.width
         objectName: "settings-privacy-portals"
-        title: "[PLACEHOLDER] Portal permissions"
+        title: "Portal permissions"
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: "[PLACEHOLDER] Remembered application permissions"
-            explanation: "[PLACEHOLDER] These are remembered portal grants, not a complete list of application access or active screen captures. Revoking a grant does not stop active sessions."
+            title: "Remembered application permissions"
+            explanation: "These are remembered portal grants, not a complete list of application access or active screen captures. Revoking a grant does not stop active sessions."
         }
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: root.portals.state === "ready" ? root.portals.rows.length === 0 ? "[PLACEHOLDER] No remembered portal decisions." : "[PLACEHOLDER] Remembered portal decisions" : root.portals.state === "partial" ? "[PLACEHOLDER] Some portal permissions are unavailable." : "Unavailable"
-            explanation: root.portals.state === "partial" || root.portals.state === "unavailable" ? "[PLACEHOLDER] Unavailable permissions must not be treated as denied." : ""
+            title: root.portals.state === "ready" ? root.portals.rows.length === 0 ? "No remembered portal decisions." : "Remembered portal decisions" : root.portals.state === "partial" ? "Some portal permissions are unavailable." : "Unavailable"
+            explanation: root.portals.state === "partial" || root.portals.state === "unavailable" ? "Unavailable permissions must not be treated as denied." : ""
         }
         Repeater {
             model: root.portals.rows || []
@@ -252,13 +252,13 @@ Column {
                 id: portalRow
                 required property var modelData
                 width: parent.width
-                title: modelData.app || "[PLACEHOLDER] Unidentified application"
-                explanation: "[PLACEHOLDER] " + modelData.table + " · " + modelData.permissions.join(", ")
+                title: modelData.app || "Unidentified application"
+                explanation: "" + modelData.table + " · " + modelData.permissions.join(", ")
                 busy: root.pending
                 control: Component {
                     SettingsButton {
                         objectName: "privacy-portal-revoke"
-                        text: "[PLACEHOLDER] Revoke"
+                        text: "Revoke"
                         visible: portalRow.modelData.can_revoke === true
                         onClicked: root.revokePortal(portalRow.modelData)
                     }
@@ -272,7 +272,7 @@ Column {
         title: "Lock & Login"
         SettingsRow {
             width: parent.width
-            title: "[PLACEHOLDER] Lock screen delay"
+            title: "Lock screen delay"
             explanation: root.lockText()
             control: Component {
                 SettingsButton {
@@ -286,24 +286,24 @@ Column {
     SettingsCard {
         width: parent.width
         objectName: "settings-privacy-reports"
-        title: "[PLACEHOLDER] Crash and report data"
+        title: "Crash and report data"
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: "[PLACEHOLDER] Saved reports"
+            title: "Saved reports"
             explanation: root.available ? root.snapshot.reports.saved : "Unavailable"
         }
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: "[PLACEHOLDER] Temporary shell diagnostics"
+            title: "Temporary shell diagnostics"
             explanation: root.available && root.snapshot.reports.runtime ? root.snapshot.reports.runtime : "Unavailable"
         }
         SettingsRow {
             width: parent.width
             controlWidth: 0
-            title: "[PLACEHOLDER] System journal"
-            explanation: "[PLACEHOLDER] Shell and service errors are in the system journal (emaki-shell.service and niri-emaki.service). This page does not collect or upload reports."
+            title: "System journal"
+            explanation: "Shell and service errors are in the system journal (emaki-shell.service and niri-emaki.service). This page does not collect or upload reports."
         }
     }
 }

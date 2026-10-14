@@ -259,7 +259,7 @@ def validate_config(value, test_mode=False):
     server = c.get('repo_server')
     if 'repo_server' in c:
         require(TEST_REPO_OVERRIDE and test_mode, Code.BAD_CONFIG,
-                '[PLACEHOLDER] A repository override requires a test build in test mode.')
+                'A repository override requires a test build in test mode.')
         require(isinstance(server, str) and len(server) <= 2048
                 and not any(ch.isspace() or ord(ch) < 32 for ch in server),
                 Code.BAD_CONFIG, 'Invalid repository URL.')
@@ -267,7 +267,7 @@ def validate_config(value, test_mode=False):
         require(parsed.scheme == 'https'
                 and parsed.hostname
                 and not parsed.username and not parsed.password and not parsed.fragment,
-                Code.BAD_CONFIG, '[PLACEHOLDER] Repository URL must be HTTPS, without credentials or fragments.')
+                Code.BAD_CONFIG, 'Repository URL must be HTTPS, without credentials or fragments.')
     scale = c.get('scale_guess')
     require(scale is None or (type(scale) in (int, float) and 0.5 <= scale <= 4),
             Code.BAD_CONFIG, 'Scale must be null or a number from 0.5 to 4.')
@@ -337,7 +337,7 @@ def alongside_partitions(c, disk):
     require(type(freed) is int and freed % MIB == 0 and alongside.MIN_ROOT <= freed <= verified['max_free_bytes']
             and freed <= offer.get('max_free_bytes', 0), Code.SHRINK_BOUNDS,
             'Choose a whole-MiB Emaki size within the verified shrink bounds (at least 32 GiB).')
-    new_size = p['size_bytes'] - freed
+    new_size = alongside.usable_size(p['size_bytes']) - freed
     shrink_bounds(new_size, offer['min_bytes'], p['size_bytes'])
     metadata = p.get('_gpt')
     sector = disk['_sector_size']
@@ -357,7 +357,8 @@ def alongside_partitions(c, disk):
     occupied = {part['number'] for part in disk['partitions']}
     number = next((n for n in range(1, 129) if n not in occupied), None)
     require(number is not None, Code.SHRINK_BOUNDS, 'No free GPT partition entry is available.')
-    start, end = p['start_bytes'] + new_size, p['start_bytes'] + p['size_bytes']
+    start = p['start_bytes'] + new_size
+    end = start + freed
     require(all(other is p or end <= other['start_bytes'] or start >= other['start_bytes'] + other['size_bytes']
                 for other in disk['partitions']), Code.SHRINK_BOUNDS, 'Freed extent overlaps another partition.')
     return [Partition(esp['path'], esp['number'], esp['start_bytes'], esp['size_bytes'], 'vfat', False,
@@ -515,7 +516,7 @@ def make_plan(config, inventory, test_mode=False):
         summary.append('Erase all partitions and create a new GPT partition table.')
     if c['mode'] == 'alongside':
         windows = next(p for p in disk['partitions'] if p['id'] == c['partition_id'])
-        keep = windows['size_bytes'] - c['shrink_bytes']
+        keep = alongside.usable_size(windows['size_bytes']) - c['shrink_bytes']
         summary += [f"Windows keeps {keep / 10**9:.2f} GB, Emaki gets {c['shrink_bytes'] / 10**9:.2f} GB; back up your files first.",
                     'Shrink the Windows filesystem and its partition end only; preserve its start, GUID, type, name and files.',
                     'Create and format Emaki root immediately after Windows; preserve all other partitions and reuse the ESP without formatting.',

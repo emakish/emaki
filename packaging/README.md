@@ -1,4 +1,4 @@
-# Emaki 0.7.0 packages
+# Emaki 0.8.0 packages
 
 Copyright (C) 2026 Artur Yakymenko. Emaki packaging is GPL-3.0-or-later;
 the Quickshell fork retains its upstream LGPL-3.0-only license.
@@ -11,9 +11,9 @@ it back to Arch's file on removal; `/usr/lib/os-release` stays as `filesystem`
 ships it, so `pacman -Qkk` reports nothing for it. `emaki-desktop` adds the
 Minimal applications (Dolphin, Firefox, kitty), the firmware and graphics drivers of the
 live image (so an install keeps what worked from the stick) and password-only lock PAM
-configuration. The optional `emaki-sudo-key` package (0.7.0-1) owns the sudo-key
+configuration. The optional `emaki-sudo-key` package (0.8.0-1) owns the sudo-key
 marker, revocation binding, turn reporter and its guide/examples. It depends on
-`emaki-config>=0.7.0-1`, which owns the broker, PAM integration, client and shell UI.
+`emaki-config>=0.8.0-1`, which owns the broker, PAM integration, client and shell UI.
 The release marker and desktop packages do not select the optional package.
 `xdg-desktop-portal-gnome-emaki` follows Arch's 50.0-1 recipe and sources, removes
 Nautilus from its dependencies and replaces the upstream package. Its source tag is

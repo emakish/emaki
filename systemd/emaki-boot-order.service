@@ -3,13 +3,14 @@
 [Unit]
 Description=Recover the existing Emaki firmware boot priority
 After=local-fs.target
+RequiresMountsFor=/boot /efi
 ConditionPathExists=/var/lib/emaki/alongside-boot.json
 ConditionPathExists=/sys/firmware/efi/efivars
 
 [Service]
 Type=oneshot
 ExecStart=@EMAKI_BINDIR@/emaki-boot-order --repair --json
-TimeoutStartSec=75
+TimeoutStartSec=5min
 UMask=0077
 
 [Install]

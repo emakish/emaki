@@ -4,6 +4,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell.Io
 import "file:@EMAKI_DATADIR@/shell" as Shell
+import "ManagerLogic.js" as Logic
 
 Item {
     id: root
@@ -12,7 +13,20 @@ Item {
     property bool hideAfterDismiss: true
     property string phase: "idle"
     property string message: ""
+    // The log keeps only its last 32 KB; the steps are folded line by line as the log grows,
+    // so they outlive the lines that announced them. Change both through these two functions.
     property string output: ""
+    property var progress: Logic.progressStart()
+    function resetOutput(text: string): void {
+        output = text;
+        progress = Logic.updateProgress(text);
+    }
+    function appendOutput(text: string): void {
+        output = (output + text + "\n").slice(-32768);
+        let next = progress;
+        for (const line of text.split("\n")) next = Logic.progressLine(next, line);
+        if (next !== progress) progress = next;
+    }
     property bool restart: false
     property bool reminder: false
     property var restartPackages: []
@@ -31,6 +45,8 @@ Item {
     property bool succeeded: false
     property var applyingUpdates: []
     property var completedUpdates: []
+    property var applyingRelease: null
+    property var completedRelease: null
     property string completedAt: ""
     property bool received: false
     property bool notStarted: false
@@ -44,6 +60,8 @@ Item {
         if (dismissing) dismissalPhase = phase;
         if (operation === "--apply") {
             applyingUpdates = (data.updates || []).filter(row => !row.aur);
+            applyingRelease = data.release || null;
+            completedRelease = null;
             completedUpdates = [];
             completedAt = "";
         }
@@ -51,7 +69,7 @@ Item {
         if (!dismissing) {
             generation += 1;
             message = "";
-            output = "";
+            resetOutput("");
             received = false;
             notStarted = false;
         }
@@ -136,7 +154,7 @@ Item {
                 received = true;
                 succeeded = event.ok === true;
                 message = event.message || "";
-                output = event.details || "";
+                resetOutput(event.details || "");
                 if (succeeded || event.restart === true) {
                     restorePending = true;
                     restoredPoint = selectedRestore;
@@ -145,12 +163,12 @@ Item {
                     restart = true;
                 }
             } else if (event.type === "progress") {
-                output = (output + event.message + "\n").slice(-32768);
+                appendOutput(String(event.message ?? ""));
             } else if (event.type === "finished") {
                 received = true;
                 succeeded = event.ok === true;
                 notStarted = event.notStarted === true;
-                if (notStarted) output = "";
+                if (notStarted) resetOutput("");
                 message = event.message || "";
                 restorePending = restorePending || event.restorePending === true;
                 updateReminder(event);
@@ -174,7 +192,7 @@ Item {
         id: process
         onStarted: startWatch.stop()
         stdout: SplitParser { onRead: line => root.accept(line) }
-        stderr: SplitParser { onRead: line => root.output = (root.output + line + "\n").slice(-32768) }
+        stderr: SplitParser { onRead: line => root.appendOutput(line) }
         onExited: code => {
             const wasApply = root.phase === "applying";
             const wasDismiss = root.phase === "dismissing";
@@ -188,6 +206,7 @@ Item {
             }
             if (wasApply && root.succeeded) {
                 root.completedUpdates = root.applyingUpdates;
+                root.completedRelease = root.applyingRelease;
                 root.completedAt = new Date().toISOString();
             }
             root.phase = wasApply && !root.notStarted ? "finished" : "idle";

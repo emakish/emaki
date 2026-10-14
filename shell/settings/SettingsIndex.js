@@ -235,15 +235,15 @@ var sections = [
         id: "privacy",
         title: "Privacy & Security",
         group: "System",
-        description: "[PLACEHOLDER] Review recovery, encryption, sudo keys and remembered portal permissions.",
+        description: "Review recovery, encryption, sudo keys and remembered portal permissions.",
         colors: ["#9db6d0","#6f8cab"],
         items: [
-            {"id":"privacy-recovery","title":"[PLACEHOLDER] Snapshots and rollback","keywords":"snapshot rollback recovery boot menu","source":"SettingsPrivacyPage.qml","explanation":"[PLACEHOLDER] Snapshots and rollback"},
-            {"id":"privacy-encryption","title":"[PLACEHOLDER] Disk encryption","keywords":"disk encryption home storage","source":"SettingsPrivacyPage.qml","explanation":"[PLACEHOLDER] System and home storage"},
-            {"id":"privacy-sudo-key","title":"Sudo key","keywords":"sudo key installed active revoke","source":"SettingsPrivacyPage.qml","explanation":"[PLACEHOLDER] Select a key to revoke it."},
-            {"id":"privacy-portals","title":"[PLACEHOLDER] Portal permissions","keywords":"apps screen capture camera microphone permissions revoke","source":"SettingsPrivacyPage.qml","explanation":"[PLACEHOLDER] These are remembered portal grants, not a complete list of application access or active screen captures. Revoking a grant does not stop active sessions."},
-            {"id":"privacy-lock","title":"Lock & Login","keywords":"lock delay inactivity","source":"SettingsPrivacyPage.qml","explanation":"[PLACEHOLDER] Lock screen delay"},
-            {"id":"privacy-reports","title":"[PLACEHOLDER] Crash and report data","keywords":"crash reports logs diagnostics","source":"SettingsPrivacyPage.qml","explanation":"[PLACEHOLDER] Saved reports"}
+            {"id":"privacy-recovery","title":"Snapshots and rollback","keywords":"snapshot rollback recovery boot menu","source":"SettingsPrivacyPage.qml","explanation":"Snapshots and rollback"},
+            {"id":"privacy-encryption","title":"Disk encryption","keywords":"disk encryption home storage","source":"SettingsPrivacyPage.qml","explanation":"System and home storage"},
+            {"id":"privacy-sudo-key","title":"Sudo key","keywords":"sudo key installed active revoke","source":"SettingsPrivacyPage.qml","explanation":"Select a key to revoke it."},
+            {"id":"privacy-portals","title":"Portal permissions","keywords":"apps screen capture camera microphone permissions revoke","source":"SettingsPrivacyPage.qml","explanation":"These are remembered portal grants, not a complete list of application access or active screen captures. Revoking a grant does not stop active sessions."},
+            {"id":"privacy-lock","title":"Lock & Login","keywords":"lock delay inactivity","source":"SettingsPrivacyPage.qml","explanation":"Lock screen delay"},
+            {"id":"privacy-reports","title":"Crash and report data","keywords":"crash reports logs diagnostics","source":"SettingsPrivacyPage.qml","explanation":"Saved reports"}
         ]
     },
     {
@@ -269,21 +269,21 @@ var sections = [
             {"id":"users-your-account","title":"Your account","keywords":"Your account name administrator user","source":"SettingsUsersPage.qml","explanation":""},
             {"id":"users-password","title":"Password","keywords":"Password change account","source":"SettingsUsersPage.qml","explanation":"Open the system password prompt in your terminal. Your login wallet may still use your previous password; update its password separately.","staticExplanation":true},
             {"id":"users-other-users","title":"Other users","keywords":"Other users accounts people administrator remove","source":"SettingsUsersPage.qml","explanation":""},
-            {"id":"users-add-user","title":"[PLACEHOLDER] Add user","keywords":"Add user new account person","source":"SettingsUsersPage.qml","explanation":"[PLACEHOLDER] Create an account with its own files and settings.","staticExplanation":true}
+            {"id":"users-add-user","title":"Add user","keywords":"Add user new account person","source":"SettingsUsersPage.qml","explanation":"Create an account with its own files and settings.","staticExplanation":true}
         ]
     },
     {
         id: "storage",
         title: "Storage",
         group: "System",
-        description: "[PLACEHOLDER] Inspect disk use and preview safe cleanup.",
+        description: "Inspect disk use and preview safe cleanup.",
         colors: ["#8f7f70","#5e5045"],
         items: [
-            {"id": "storage-disks", "title": "[PLACEHOLDER] System and home", "keywords": "disk usage filesystem btrfs", "source": "SettingsStoragePage.qml", "explanation": ""},
-            {"id": "storage-snapshots", "title": "[PLACEHOLDER] Snapshots", "keywords": "snapshot disk usage", "source": "SettingsStoragePage.qml", "explanation": ""},
-            {"id": "storage-cache", "title": "[PLACEHOLDER] Package cache", "keywords": "package cleanup cache", "source": "SettingsStoragePage.qml", "explanation": ""},
-            {"id": "storage-logs", "title": "[PLACEHOLDER] Logs", "keywords": "old logs cleanup", "source": "SettingsStoragePage.qml", "explanation": ""},
-            {"id": "storage-trash", "title": "[PLACEHOLDER] Trash", "keywords": "trash cleanup", "source": "SettingsStoragePage.qml", "explanation": ""}
+            {"id": "storage-disks", "title": "System and home", "keywords": "disk usage filesystem btrfs", "source": "SettingsStoragePage.qml", "explanation": ""},
+            {"id": "storage-snapshots", "title": "Snapshots", "keywords": "snapshot disk usage", "source": "SettingsStoragePage.qml", "explanation": ""},
+            {"id": "storage-cache", "title": "Package cache", "keywords": "package cleanup cache", "source": "SettingsStoragePage.qml", "explanation": ""},
+            {"id": "storage-logs", "title": "Logs", "keywords": "old logs cleanup", "source": "SettingsStoragePage.qml", "explanation": ""},
+            {"id": "storage-trash", "title": "Trash", "keywords": "trash cleanup", "source": "SettingsStoragePage.qml", "explanation": ""}
         ]
     },
     {
@@ -305,7 +305,8 @@ var sections = [
         items: [
             {"id":"about-emaki-version","title":"Version","keywords":"Emaki version release version","source":"SettingsAboutPage.qml","explanation":""},
             {"id":"about-hardware","title":"This computer","keywords":"Hardware processor memory computer","source":"SettingsAboutPage.qml","explanation":""},
-            {"id":"about-report-a-problem","title":"Report a problem","keywords":"Report a problem bug diagnostics","source":"SettingsAboutPage.qml","explanation":"Collect logs and a short system summary into a file you can review before sharing.","staticExplanation":true}
+            {"id":"about-report-a-problem","title":"Report a problem","keywords":"Report a problem bug issue GitHub","source":"SettingsAboutPage.qml","explanation":"Open a new GitHub issue in your browser with the Emaki version, update channel and kernel filled in. Those fields reach GitHub to fill the form; the issue is posted only when you submit it there.","staticExplanation":true},
+            {"id":"about-diagnostics-file","title":"Diagnostics file","keywords":"Diagnostics logs report file","source":"SettingsAboutPage.qml","explanation":"Collect logs and a short system summary into a file you can review. Add to a report only what you choose to share.","staticExplanation":true}
         ]
     },
     {

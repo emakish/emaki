@@ -67,10 +67,16 @@ if sys.argv[1] == 'remove':
     assert sys.argv[2] == 'local-editor' and sys.argv[3] == 'b'*64
     removed.touch()
     print(json.dumps(dict(ok=True))); sys.exit(0)
+aur_enabled = False
+if scenario == 'aur': installed = True
 def row(kind, identity='org.example.Editor', key=None):
-    return dict(key=key or kind + ':editor', id=identity, name='Editor', kind=kind, package='editor',
-                installed=installed, actions=['remove'] if installed else ['install'],
-                categories=['Utility'], summary='', icons=[], screenshots=[])
+    value = dict(key=key or kind + ':editor', id=identity, name='Editor', kind=kind, package='editor',
+                 installed=installed, actions=['remove'] if installed else ['install'],
+                 categories=['Utility'], summary='', icons=[], screenshots=[])
+    if scenario == 'aur' and value['key'] == 'arch:editor' and installed:
+        value.update(actions=['remove', 'undo'], undo=dict(id='20261012T120000123456Z-' + 'b' * 32, kind='arch',
+                     name='editor', time='2026-10-12T12:00:00+00:00', target='editor', added=['editor', 'libeditor'], snapshot='17'))
+    return value
 def package_row(i):
     present = i == 0 or i == 2 and package_installed
     return dict(key='package:extra/pkg-' + str(i), id='pkg-' + str(i), package='pkg-' + str(i),
@@ -93,6 +99,25 @@ for line in sys.stdin:
         elif query: rows = [row for row in rows if query.lower() in (row['name'] + ' ' + row['summary']).lower()]
         offset = params.get('offset', 0)
         value.update(programs=rows[offset:offset + 500], total=len(rows))
+    elif method == 'aur':
+        if 'accept' in params: aur_enabled = params['accept'] is True
+        value.update(enabled=aur_enabled, showWarning=params.get('showWarning', True), accepted='', snapshots=True)
+    elif method == 'catalog' and params.get('source') == 'aur':
+        if not aur_enabled:
+            value.update(ok=False, code='aur-closed', message='The AUR section is off.')
+        else:
+            found = [dict(row('aur', 'editor-tools', 'aur:editor-tools'), name='editor-tools', installed=False,
+                          actions=['install'], votes=3, orphan=True)]
+            value.update(programs=found, total=1)
+    elif method == 'popular':
+        if not aur_enabled:
+            value.update(ok=False, code='aur-closed', message='The AUR section is off.')
+        else:
+            value.update(programs=[dict(row('aur', 'yay', 'aur:yay'), name='yay', installed=False, actions=['install'], votes=2649, popularity=20.7),
+                                   dict(row('aur', 'editor-tools', 'aur:editor-tools'), name='editor-tools', installed=False, actions=['install'], votes=3, popularity=0.1)])
+    elif method == 'related':
+        value.update(programs=[dict(row('aur', 'org.example.Editor.desktop', 'aur:editor-bin'), installed=False,
+                                    actions=['install'], sameAs=params['key'])] if aur_enabled else [])
     elif method == 'details':
         index = int(params['key'].removeprefix('package:extra/pkg-'))
         value.update(program=package_row(index))
@@ -103,7 +128,8 @@ for line in sys.stdin:
         protected.update(installed=True, package='emaki-config')
         rows = [row('flatpak'), row('arch', 'org.example.Editor.desktop'), row('arch', 'org.example.Other', 'arch:other'), protected]
         offset = params.get('offset', 0)
-        value.update(programs=rows[offset:offset + 2], total=4, warnings=[])
+        value.update(programs=rows[offset:offset + 2], total=4, warnings=[],
+                     storefront=dict(featured=dict(title='Worth trying', note='Picked by Emaki', programs=['org.example.editor']), rows=[], names={}))
     elif method == 'search':
         query = params['query']
         if query == 'old': time.sleep(.2)
@@ -113,9 +139,26 @@ for line in sys.stdin:
         else: rows = [row('aur', 'editor-aur')]
         offset = params.get('offset', 0)
         value.update(programs=rows[offset:offset + 500], total=len(rows))
+    elif method == 'plan' and params['action'] == 'undo':
+        value.update(key=params['key'], action='undo', token='c'*64,
+                     transaction=dict(receipt='20261012T120000123456Z-' + 'b' * 32, target='editor',
+                                      remove=['editor', 'libeditor'], packages=['editor', 'libeditor'],
+                                      keep={'shared-lib': 'explicit'}, upgraded=['linux'], snapshot='17', token='d'*64))
+    elif method == 'plan' and scenario.startswith('plan-'):
+        if scenario == 'plan-disconnect': sys.exit(1)
+        if scenario == 'plan-malformed':
+            print('broken', flush=True)
+            continue
+        value.update(ok=False, code='recipe-unavailable', message='The build instructions could not be read.')
     elif method == 'plan':
         value.update(key=params['key'], action=params['action'], token='a'*64,
                      transaction=dict(packages=['editor', 'dependency']))
+    elif method == 'execute' and params['action'] == 'undo':
+        assert params['key'] == 'arch:editor' and params['token'] == 'c'*64
+        installed = False
+        print(json.dumps(dict(version=1, id=request['id'], type='progress', message='Removing')), flush=True)
+        time.sleep(.1)
+        value.update(code='undone', message='The install was taken back.')
     elif method == 'execute':
         if scenario == 'packages':
             assert params['key'] == 'package:extra/pkg-2' and params['token'] == 'a'*64
@@ -134,9 +177,19 @@ for line in sys.stdin:
             continue
         installed = scenario == 'success' or scenario.startswith('inventory-')
         if installed: marker.touch()
-        value.update(ok=installed, code='completed' if installed else 'changed', message='Finished' if installed else 'Review the changed plan.')
+        failure = scenario if scenario in ('failed', 'not-authorized', 'metadata-unavailable') else 'changed'
+        value.update(ok=installed, code='completed' if installed else failure, message='Finished' if installed else 'Review the changed plan.')
     print(json.dumps(value), flush=True)
 '''
+# Stands in for the shell's IPC so no test reaches a real running shell.
+REPORT_SHELL = r'''#!PYTHON
+import os, sys
+with open(os.environ['TEST_REPORTS'], 'a') as log: log.write(' '.join(sys.argv[1:]) + '\n')
+'''
+# Only a failed install offers a report; refusals, stale plans and successes do not.
+# 'aur' injects four installs that failed after their pre-install snapshot (partial, failed,
+# unknown, cancelled) and one refusal (refused, nothing installed); only the four offer.
+REPORT_OFFERS = {'failed': 1, 'disconnect': 1, 'malformed': 1, 'aur': 4}
 
 
 def run(scenario):
@@ -178,6 +231,11 @@ def run(scenario):
         env['EMAKI_GTK_LAUNCH'] = str(root / 'missing-launcher')
         env['EMAKI_PYTHON'] = sys.executable
         install(root, env)
+        (root / 'report-bin').mkdir()
+        report_shell = root / 'report-bin/emaki-shell'
+        report_shell.write_text(REPORT_SHELL.replace('PYTHON', sys.executable, 1))
+        report_shell.chmod(0o700)
+        env.update(PATH=str(root / 'report-bin') + os.pathsep + env['PATH'], TEST_REPORTS=str(root / 'reports'))
         if scenario.startswith('launch-'):
             launcher = root / 'gtk-launch'
             launcher.write_text(LAUNCHER.replace('PYTHON', sys.executable, 1))
@@ -196,6 +254,8 @@ def run(scenario):
         assert result.returncode == 0 and 'PROGRAMS_OK' in log, log
         assert not any(word in log for word in ('ASSERTION_FAILED', 'ReferenceError', 'TypeError', 'Unable to assign', 'Binding loop')), log
         requests = [json.loads(line) for line in (root / 'calls').read_text().splitlines()]
+        offers = (root / 'reports').read_text().splitlines() if (root / 'reports').exists() else []
+        assert offers == ['call report offer install'] * REPORT_OFFERS.get(scenario, 0), (scenario, offers)
         if scenario.startswith('launch-'):
             assert json.loads((root / 'launch-args').read_text()) == ['--', 'local-editor.desktop']
             if scenario != 'launch-nonzero':
@@ -211,6 +271,11 @@ def run(scenario):
                 assert application['fds'] == [os.devnull, os.devnull], application
                 assert bool(application['scope']) == (scenario == 'launch-output'), application
             launches(root, ['local-editor'])
+            print('PASS programs controller', scenario)
+            return
+        if scenario.startswith('plan-'):
+            assert any(item['method'] == 'plan' for item in requests)
+            assert not any(item['method'] == 'execute' for item in requests), 'failed plans cannot execute'
             print('PASS programs controller', scenario)
             return
         if scenario == 'presentation':
@@ -231,7 +296,22 @@ def run(scenario):
             assert all(item['params']['token'] == 'a' * 64 for item in mutations if item['method'] == 'execute')
             details = [item for item in requests if item['method'] == 'details']
             assert len(details) == 2 and all(item['params']['key'] == 'package:extra/pkg-2' for item in details)
-            assert all(item['method'] != 'search' or item['params']['includeAur'] for item in requests)
+            assert all(item['method'] != 'search' or item['params']['includeAur'] is False for item in requests)
+            print('PASS programs controller', scenario)
+            return
+        if scenario == 'aur':
+            methods = [(item['method'], item['params']) for item in requests]
+            consent = [index for index, (method, params) in enumerate(methods) if method == 'aur' and params.get('accept') is True]
+            assert len(consent) == 1 and methods[consent[0]][1]['showWarning'] is True, methods
+            assert [params for method, params in methods if method == 'aur' and 'accept' not in params] == [{}], 'state is read once'
+            searches = [index for index, (method, params) in enumerate(methods) if method == 'catalog' and params.get('source') == 'aur']
+            assert searches and all(index > consent[0] for index in searches), 'no AUR search before consent'
+            assert ('related', {'key': 'arch:editor'}) in methods
+            undo = [params for method, params in methods if method == 'execute']
+            assert undo == [{'action': 'undo', 'key': 'arch:editor', 'token': 'c' * 64}], undo
+            assert methods[-2:] == [('aur', {'accept': False}), ('popular', {})], methods[-2:]
+            popular = [index for index, (method, _params) in enumerate(methods) if method == 'popular']
+            assert len(popular) >= 2 and all(index > consent[0] for index in popular), 'the popular list is read only after consent'
             print('PASS programs controller', scenario)
             return
         if scenario == 'inventory-permanent':
@@ -242,11 +322,11 @@ def run(scenario):
         executions = [item for item in requests if item['method'] == 'execute']
         assert len(executions) == 1
         assert executions[0]['params']['token'] == 'a' * 64
-        assert any(item['method'] == 'search' and item['params']['includeAur'] for item in requests)
+        assert any(item['method'] == 'search' and item['params']['includeAur'] is False for item in requests)
         assert any(item['method'] == 'search' and item['params'].get('offset') == 500 for item in requests)
         print('PASS programs controller', scenario)
 
 
 if __name__ == '__main__':
-    for scenario in ('launch-output', 'launch-fallback', 'launch-nonzero', 'presentation', 'packages', 'success', 'changed', 'disconnect', 'malformed', 'missing-preview', 'missing-remove', 'missing-launcher', 'inventory-failed', 'inventory-malformed', 'inventory-missing', 'inventory-empty', 'inventory-permanent'):
+    for scenario in ('plan-refused', 'plan-refresh', 'plan-disconnect', 'plan-malformed', 'launch-output', 'launch-fallback', 'launch-nonzero', 'presentation', 'packages', 'aur', 'success', 'changed', 'disconnect', 'malformed', 'missing-preview', 'missing-remove', 'missing-launcher', 'inventory-failed', 'inventory-malformed', 'inventory-missing', 'inventory-empty', 'inventory-permanent', 'failed', 'not-authorized', 'metadata-unavailable'):
         run(scenario)

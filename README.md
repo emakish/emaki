@@ -6,7 +6,7 @@ Emaki is an Arch-based desktop built around **niri-emaki**, a fork of the
 pixel-art wallpaper: a looping valley at sunset that scrolls with your workspaces, with
 steam trains running through it.
 
-**Status: 0.7.0 alpha — not for everyday use.** See [Release stages](#release-stages). It is
+**Status: 0.8.0 alpha — not for everyday use.** See [Release stages](#release-stages). It is
 tested in QEMU with UEFI firmware (OVMF) and has been installed on one real machine so far, see
 [Tested hardware](#tested-hardware). Where the project is heading: [PLANS.md](PLANS.md).
 
@@ -79,7 +79,7 @@ installer offers two software sets. **Minimal** is the desktop with Dolphin, Fir
 **Rich** (preselected) adds LibreOffice, Thunderbird, Okular, Kate, Gwenview, Ark, Haruna,
 Elisa, Spectacle, OBS Studio, qBittorrent, KeePassXC, Discover with Flatpak, Partition Manager,
 Filelight, System Monitor, ISO Image Writer, KCharSelect, Skanlite, printing and
-media codecs. Not in 0.7.0: BIOS boot, installing alongside Windows.
+media codecs. Not in 0.8.0: BIOS boot, installing alongside Windows.
 
 ## Security notes
 
@@ -110,7 +110,7 @@ session without your password.
 
 Installed Emaki on another machine? Reports are welcome in the issues.
 
-### Known issues in 0.7.0
+### Known issues in 0.8.0
 
 - Hibernation: on the tested MacBook the session does not respond after resuming. Do not use
   hibernation.

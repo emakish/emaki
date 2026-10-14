@@ -52,8 +52,8 @@ def changed(before, after):
 
 def require_update_root():
     emaki_update_root.require_update_root(
-        run, '[PLACEHOLDER] Restart into the normal system before updating repository packages.',
-        '[PLACEHOLDER] The system restore status could not be checked. The update was not started.')
+        run, 'Restart into the normal system before updating repository packages.',
+        'The system restore status could not be checked. The update was not started.')
 
 
 def apply():
@@ -96,9 +96,9 @@ def apply():
                                         r'\d+\.\d [GM]B, \d+\.\d [GM]B is free\. '
                                         r'Free some space, then try again\.', message):
                             space_refusal = message
-                        if (message.startswith('[PLACEHOLDER] The update was refused because these packages '
+                        if (message.startswith('The update was refused because these packages '
                                                'are held after a restore: ')
-                                or message == '[PLACEHOLDER] The available package versions could not be checked. '
+                                or message == 'The available package versions could not be checked. '
                                               'The update was refused before changing installed packages.'):
                             update_refusal = message
                         emit('progress', message=message)

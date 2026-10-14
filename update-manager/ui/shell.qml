@@ -22,6 +22,7 @@ ShellRoot {
     ProgramsController {
         id: programs
         externalBusy: controller.busy || controller.restorePending
+        onRestoreFinished: result => controller.accept(JSON.stringify(Object.assign({}, result, {type: "restoreFinished"})))
         onTransactionFinished: ok => {
             root.checkPending = true;
             Qt.callLater(root.flushCheck);
@@ -42,6 +43,7 @@ ShellRoot {
     }
     Connections {
         target: controller
+        function onRestorePendingChanged(): void { if (controller.restorePending) programs.recoveryPoint = null; }
         function onBusyChanged(): void { if (!controller.busy) Qt.callLater(root.flushCheck); }
         function onReminderChanged(): void {
             if (!controller.reminder) root.notifiedRestart = "";

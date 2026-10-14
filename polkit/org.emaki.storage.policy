@@ -5,8 +5,8 @@
 <policyconfig>
   <vendor>Emaki</vendor>
   <action id="org.emaki.storage.clean">
-    <description>[PLACEHOLDER] Inspect or clean system storage</description>
-    <message>[PLACEHOLDER] Authentication is required to inspect or clean system storage.</message>
+    <description>Inspect or clean system storage</description>
+    <message>Authentication is required to inspect or clean system storage.</message>
     <defaults>
       <allow_any>no</allow_any>
       <allow_inactive>no</allow_inactive>

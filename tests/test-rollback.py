@@ -312,6 +312,9 @@ class Safety(unittest.TestCase):
         self.assertEqual(close.call_count, 2)
 
     def test_failures_around_commit_retain_both_roots(self):
+        stop = Path('var/lib/emaki/shared-esp-stop.json')
+        (self.current / stop).parent.mkdir()
+        (self.current / stop).write_bytes(b'unresolved stop')
         for fail_after_exchange in (False, True):
             with self.subTest(after_exchange=fail_after_exchange):
                 old_inode = self.current.stat().st_ino
@@ -335,11 +338,89 @@ class Safety(unittest.TestCase):
                 record = json.loads(sorted((self.top / '.emaki-rollback').glob('*.json'), key=lambda p: p.stat().st_mtime_ns)[-1].read_text())
                 kept = self.top / record['kept']
                 self.assertTrue(self.current.is_dir() and kept.is_dir())
+                self.assertEqual((self.current / stop).read_bytes(), b'unresolved stop')
+                self.assertEqual((kept / stop).read_bytes(), b'unresolved stop')
                 self.assertEqual(self.source.stat().st_ino, source_inode)
                 self.assertEqual(self.current.stat().st_ino, record['new_id'] if fail_after_exchange else old_inode)
                 self.assertEqual(kept.stat().st_ino, old_inode if fail_after_exchange else record['new_id'])
                 self.assertFalse((kept / 'var/lib/pacman/db.lck').exists())
                 self.assertFalse((self.current / 'var/lib/pacman/db.lck').exists())
+
+    def test_shared_esp_stop_survives_snapshot_and_restore(self):
+        stop = Path('var/lib/emaki/shared-esp-stop.json')
+        live = self.current / stop
+        live.parent.mkdir()
+        # Invalid records are still stops: rollback must not parse or discard them.
+        baseline = b'{"version": 1, "state": "foreign-files-changed"}\n'
+        live.write_bytes(baseline)
+        (self.source / stop).parent.mkdir()
+        (self.source / stop).write_bytes(b'older snapshot baseline')
+        (self.top / '.emaki-rollback').mkdir()
+        def commands(*args):
+            if args[:3] == ('btrfs', 'subvolume', 'snapshot'):
+                shutil.copytree(args[3], args[4])
+            if args[:3] == ('btrfs', 'filesystem', 'sync'):
+                # The replacement must already carry the stop at the durability barrier.
+                for staged in self.top.glob('@emaki-kept-*'):
+                    self.assertEqual((staged / stop).read_bytes(), baseline)
+            return ''
+        with patch.object(m, 'check_layout', return_value=m.fstab_rows(FSTAB, UUID)), \
+                patch.object(m, 'subvolume', side_effect=lambda p, **kw: p.stat().st_ino), \
+                patch.object(m, 'run', side_effect=commands), patch.object(m.signal, 'pthread_sigmask'):
+            m.promote(self.top, self.source, UUID, 'boot', {})
+            self.assertEqual(live.read_bytes(), baseline)
+            kept = next(self.top.glob('@emaki-kept-*'))
+            m.promote(self.top, kept, UUID, 'next-boot', {})
+            self.assertEqual(live.read_bytes(), baseline)
+        self.assertEqual((self.source / stop).read_bytes(), b'older snapshot baseline')
+
+    def test_shared_esp_stop_copy_failure_refuses_exchange(self):
+        stop = Path('var/lib/emaki/shared-esp-stop.json')
+        (self.current / stop).parent.mkdir()
+        (self.current / stop).write_bytes(b'unresolved stop')
+        (self.top / '.emaki-rollback').mkdir()
+        original_open = m.os.open
+        def failing_open(path, *args, **kwargs):
+            if str(path).endswith(str(stop)):
+                raise OSError('injected stop write failure')
+            return original_open(path, *args, **kwargs)
+        def commands(*args):
+            if args[:3] == ('btrfs', 'subvolume', 'snapshot'):
+                shutil.copytree(args[3], args[4])
+            return ''
+        with patch.object(m, 'check_layout', return_value=m.fstab_rows(FSTAB, UUID)), \
+                patch.object(m, 'subvolume', side_effect=lambda p, **kw: p.stat().st_ino), \
+                patch.object(m, 'run', side_effect=commands), \
+                patch.object(m.os, 'open', side_effect=failing_open), \
+                patch.object(m, 'atomic_exchange') as exchange:
+            with self.assertRaisesRegex(OSError, 'injected stop write failure'):
+                m.promote(self.top, self.source, UUID, 'boot', {})
+            exchange.assert_not_called()
+        self.assertEqual((self.current / stop).read_bytes(), b'unresolved stop')
+
+    def test_shared_esp_stop_copies_to_old_root_without_state_directory(self):
+        stop = Path('var/lib/emaki/shared-esp-stop.json')
+        (self.current / stop).parent.mkdir()
+        (self.current / stop).write_bytes(b'damaged but still blocking')
+        m.carry_shared_esp_stop(self.current, self.source)
+        self.assertEqual((self.source / stop).read_bytes(), b'damaged but still blocking')
+        self.assertEqual((self.source / stop).stat().st_mode & 0o777, 0o600)
+        (self.current / stop).unlink()
+        m.carry_shared_esp_stop(self.current, self.source)
+        self.assertEqual((self.source / stop).read_bytes(), b'damaged but still blocking')
+
+    def test_shared_esp_stop_symlinks_are_refused(self):
+        stop = Path('var/lib/emaki/shared-esp-stop.json')
+        for root in (self.current, self.source):
+            (root / stop).parent.mkdir()
+        (self.current / stop).symlink_to('missing')
+        with self.assertRaises(m.Refused):
+            m.carry_shared_esp_stop(self.current, self.source)
+        (self.current / stop).unlink()
+        (self.current / stop).write_bytes(b'unresolved stop')
+        (self.source / stop).symlink_to('missing')
+        with self.assertRaises(OSError):
+            m.carry_shared_esp_stop(self.current, self.source)
 
     def test_snapshot_lock_requires_transaction_boundary(self):
         lock = self.source / 'var/lib/pacman/db.lck'

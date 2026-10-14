@@ -4,16 +4,27 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as C
+import "ManagerLogic.js" as Logic
 
 ColumnLayout {
     id: page
     required property var controller
     readonly property var program: controller.selectedEdition || ({})
-    signal backRequested
     spacing: 24
-    function size(value: var): string { return value === null || value === undefined ? "Size unknown" : Math.round(value / 1048576) + " MB"; }
+    property bool showLog: false
+    function size(value: var): string { return value === null || value === undefined ? "Size unknown" : value < 1048576 ? "Under 1 MB" : Math.round(value / 1048576) + " MB"; }
     function allowed(action: string): bool { return (program.actions || []).includes(action); }
-    ManagerButton { text: "‹  Browse"; quiet: true; onClicked: page.backRequested() }
+    readonly property string unknown: "Unknown"
+    function known(field: string): bool { return program[field] !== undefined && program[field] !== null; }
+    // Decision of 2026-10-13: without system snapshots (ext4) AUR installs are refused; the engine refuses them too.
+    readonly property bool aurRefused: program.kind === "aur" && controller.aurKnown && !controller.aurSnapshots && allowed("install")
+    function day(value: var): string { return value ? Logic.day(value) : ""; }
+    function working(): string { return controller.phase === "removing" ? "Removing…" : controller.phase === "undoing" ? "Undoing the install…" : program.kind === "aur" ? "Building and installing…" : "Installing…"; }
+    function undoText(receipt: var): string {
+        if (!receipt) return "";
+        const count = (receipt.added || []).length;
+        return "Installed " + day(receipt.time) + (count > 1 ? " with " + (count - 1) + (count === 2 ? " package" : " packages") + " it needed" : "");
+    }
     RowLayout {
         spacing: 24
         ProgramIcon { program: page.program; Layout.preferredWidth: 104; Layout.preferredHeight: 104 }
@@ -22,6 +33,7 @@ ColumnLayout {
             spacing: 7
             ManagerLabel { text: page.program.name || ""; font.pixelSize: 30; font.weight: Font.DemiBold }
             ManagerLabel { text: page.program.summary || ""; color: "#866c70"; font.pixelSize: 15 }
+            Stars { objectName: "program-rating"; rating: programReviews.rating; showCount: true; size: 14 }
             RowLayout {
                 spacing: 2
                 Repeater {
@@ -29,7 +41,7 @@ ColumnLayout {
                     ManagerButton {
                         id: editionButton
                         required property var modelData
-                        text: modelData.kind === "flatpak" ? "Flathub" : modelData.kind === "aur" ? "AUR" : "Arch"
+                        text: modelData.sourceLabel || (modelData.kind === "flatpak" ? "Flathub" : modelData.kind === "aur" ? "AUR" : "Arch")
                         implicitHeight: 28
                         font.pixelSize: 12
                         background: Rectangle { radius: 8; color: page.program.key === editionButton.modelData.key ? Qt.rgba(1, .98, .96, .8) : Qt.rgba(36/255,16/255,24/255,.065); border.color: editionButton.activeFocus ? "#e2733f" : Qt.rgba(36/255,16/255,24/255,.14) }
@@ -43,16 +55,33 @@ ColumnLayout {
             Layout.preferredWidth: 280
             Layout.maximumWidth: 280
             spacing: 8
-            visible: page.program.kind !== "aur" || !!page.program.installed
             ManagerButton {
                 objectName: "program-install"
-                text: "Install"
+                text: page.program.kind === "aur" ? "Build and install" : "Install"
                 primary: true
                 implicitHeight: 44
                 Layout.fillWidth: true
                 visible: !page.program.installed && !page.controller.mutating
-                enabled: page.allowed("install") && !page.controller.busy && !page.controller.externalBusy
+                enabled: page.allowed("install") && !page.aurRefused && !page.controller.busy && !page.controller.externalBusy
                 onClicked: page.controller.prepareInstall()
+            }
+            ManagerLabel {
+                // By Install on every AUR page; it cannot be hidden.
+                objectName: "aur-unchecked"
+                visible: page.program.kind === "aur"
+                text: "From the AUR, nobody checked it."
+                color: "#8a3412"
+                font.pixelSize: 12
+                font.weight: Font.DemiBold
+                horizontalAlignment: Text.AlignHCenter
+            }
+            ManagerLabel {
+                objectName: "aur-no-snapshots-program"
+                visible: page.aurRefused && !page.controller.mutating
+                text: "Installing from the AUR is not available here: this computer keeps no system snapshots."
+                color: "#a01b45"
+                font.pixelSize: 12
+                horizontalAlignment: Text.AlignHCenter
             }
             RowLayout {
                 visible: !!page.program.installed && !page.controller.mutating
@@ -60,34 +89,67 @@ ColumnLayout {
                     text: "Open"
                     primary: true
                     Layout.fillWidth: true
-                    visible: !page.program.packageOnly || !!page.controller.selectedLauncher
+                    visible: !page.program.packageOnly && page.program.kind !== "aur" || !!page.controller.selectedLauncher
                     onClicked: page.controller.openInstalled()
                 }
-                ManagerButton { text: "Remove"; danger: true; enabled: page.allowed("remove") && !page.controller.busy && !page.controller.externalBusy; onClicked: page.controller.prepareRemove() }
+                ManagerButton { text: "Remove"; danger: true; visible: page.allowed("remove"); enabled: !page.controller.busy && !page.controller.externalBusy; onClicked: page.controller.prepareRemove() }
             }
             ManagerLabel {
-                visible: !page.controller.mutating
-                text: page.program.installed ? "Installed · version " + (page.program.installedVersion || page.program.version || "—") : "This program: " + page.size(page.program.installedSize) + " on disk · " + page.size(page.program.downloadSize) + " to download"
-                color: "#866c70"
-                font.pixelSize: 12
-                horizontalAlignment: Text.AlignHCenter
-            }
-            ManagerLabel {
-                visible: !page.program.installed && page.program.kind === "arch" && !page.controller.mutating
-                text: "Installing also brings the system up to date."
+                text: Logic.removalStatus(page.program)
+                visible: !!page.program.installed && text !== ""
                 color: "#866c70"
                 font.pixelSize: 12
                 horizontalAlignment: Text.AlignHCenter
             }
             ManagerButton {
-                text: "show what changes"
-                quiet: true
-                Layout.alignment: Qt.AlignHCenter
-                visible: !page.program.installed && page.program.kind === "arch" && !page.controller.mutating
-                enabled: !page.controller.busy && !page.controller.externalBusy
+                objectName: "program-aur-update"
+                text: "Build the update · " + (page.program.version || "")
+                Layout.fillWidth: true
+                visible: !!page.program.installed && page.program.kind === "aur" && page.allowed("install") && !page.controller.mutating
+                enabled: !page.aurRefused && !page.controller.busy && !page.controller.externalBusy
                 onClicked: page.controller.prepareInstall()
             }
-            ManagerLabel { visible: page.controller.mutating; text: page.controller.phase === "removing" ? "Removing…" : "Installing…"; font.weight: Font.DemiBold }
+            ManagerButton {
+                objectName: "program-undo"
+                text: "Undo this install"
+                quiet: true
+                Layout.alignment: Qt.AlignHCenter
+                visible: !!page.program.installed && page.allowed("undo") && !page.controller.mutating
+                enabled: !page.controller.busy && !page.controller.externalBusy
+                onClicked: page.controller.prepareUndo()
+            }
+            ManagerLabel {
+                visible: !!page.program.installed && page.allowed("undo") && !page.controller.mutating && !!page.program.undo
+                text: page.undoText(page.program.undo)
+                color: "#866c70"
+                font.pixelSize: 12
+                horizontalAlignment: Text.AlignHCenter
+            }
+            ManagerLabel {
+                visible: !page.controller.mutating
+                text: page.program.installed ? "Installed · version " + (page.program.installedVersion || page.program.version || "—")
+                    : page.program.kind === "aur" ? "Version " + (page.program.version || "—") + " · size known after the build"
+                    : "This program: " + page.size(page.program.installedSize) + " on disk · " + page.size(page.program.downloadSize) + " to download"
+                color: "#866c70"
+                font.pixelSize: 12
+                horizontalAlignment: Text.AlignHCenter
+            }
+            ManagerLabel {
+                visible: !page.program.installed && (page.program.kind === "arch" || page.program.kind === "aur") && !page.controller.mutating
+                text: page.program.kind === "aur" ? "Building also brings the system up to date." : "Installing also brings the system up to date."
+                color: "#866c70"
+                font.pixelSize: 12
+                horizontalAlignment: Text.AlignHCenter
+            }
+            ManagerButton {
+                text: page.program.kind === "aur" ? "show what will be built" : "show what changes"
+                quiet: true
+                Layout.alignment: Qt.AlignHCenter
+                visible: !page.program.installed && (page.program.kind === "arch" || page.program.kind === "aur") && !page.controller.mutating
+                enabled: page.allowed("install") && !page.aurRefused && !page.controller.busy && !page.controller.externalBusy
+                onClicked: page.controller.prepareInstall()
+            }
+            ManagerLabel { visible: page.controller.mutating; text: page.working(); font.weight: Font.DemiBold }
             Rectangle {
                 id: progressTrack
                 visible: page.controller.mutating
@@ -109,31 +171,95 @@ ColumnLayout {
             ManagerLabel { visible: page.controller.mutating && page.controller.percent >= 0; text: Math.round(page.controller.percent) + "%"; color: "#866c70"; font.pixelSize: 12 }
             ManagerLabel {
                 visible: page.controller.mutating
-                text: page.controller.phase === "removing" ? "Removing…" : "You can close this window. Installing goes on."
+                text: page.controller.phase === "installing" ? "You can close this window. Installing goes on." : page.working()
                 font.pixelSize: 12
                 color: "#866c70"
             }
         }
     }
     Rectangle {
+        objectName: "aur-facts"
         visible: page.program.kind === "aur"
         Layout.fillWidth: true
-        implicitHeight: aurNotice.implicitHeight + 32
+        implicitHeight: aurFacts.implicitHeight + 32
         color: Qt.rgba(1,.98,.96,.42)
         border.color: Qt.rgba(36/255,16/255,24/255,.14)
         radius: 16
         ColumnLayout {
-            id: aurNotice
-            anchors.fill: parent
+            id: aurFacts
+            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
             anchors.margins: 16
-            spacing: 8
-            ManagerLabel { text: "Build in a terminal"; font.weight: Font.DemiBold }
-            ManagerLabel { text: "AUR programs are made by other people and are not checked by Arch or Emaki. This window only shows them; it does not build or install them." }
+            spacing: 10
+            ManagerLabel { text: "WHAT IS KNOWN ABOUT IT"; font.pixelSize: 12; font.weight: Font.DemiBold; color: "#866c70" }
+            ManagerLabel {
+                objectName: "aur-facts-unknown"
+                visible: !page.known("votes")
+                text: "These AUR details are unavailable. Facts that could not be checked are shown as unknown."
+                color: "#866c70"; font.pixelSize: 12
+            }
+            GridLayout {
+                Layout.fillWidth: true
+                columns: 3
+                columnSpacing: 18
+                rowSpacing: 10
+                Repeater {
+                    // A fact the AUR did not give (an installed program read without it) is unknown, never 0 or No.
+                    model: [
+                        ["Votes", page.known("votes") ? String(page.program.votes) : page.unknown, false],
+                        ["Popularity", page.known("popularity") ? String(page.program.popularity) : page.unknown, false],
+                        ["Last update", page.day(page.program.lastModified) || page.unknown, false],
+                        ["Out of date", !page.known("outOfDate") ? page.unknown : page.program.outOfDate ? "Yes, marked " + page.day(page.program.outOfDate) : "No", !!page.program.outOfDate],
+                        ["Maintainer", page.program.orphan === true ? "Orphan — nobody maintains it" : page.program.maintainer || page.unknown, page.program.orphan === true],
+                        ["First published", page.day(page.program.firstSubmitted) || page.unknown, false]
+                    ]
+                    ColumnLayout {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 1
+                        spacing: 2
+                        ManagerLabel { text: parent.modelData[0]; color: "#866c70"; font.pixelSize: 12 }
+                        ManagerLabel { text: parent.modelData[1]; color: parent.modelData[2] ? "#a01b45" : "#241018"; font.pixelSize: 14; font.weight: Font.DemiBold }
+                    }
+                }
+            }
+            RowLayout {
+                spacing: 4
+                ManagerButton {
+                    visible: /^https:\/\/aur\.archlinux\.org\//.test(page.program.recipe || "")
+                    text: "See how the program is built"
+                    quiet: true; leftPadding: 0; font.pixelSize: 12
+                    onClicked: Qt.openUrlExternally(page.program.recipe)
+                }
+                ManagerButton {
+                    visible: /^https:\/\/aur\.archlinux\.org\//.test(page.program.page || "")
+                    text: "Its AUR page"
+                    quiet: true; font.pixelSize: 12
+                    onClicked: Qt.openUrlExternally(page.program.page)
+                }
+            }
         }
     }
-    ManagerLabel {
+    ProgramReviews {
+        // Stars and reviews from ODRS, read in its own process: a slow network never holds the store.
+        id: programReviews
+        objectName: "program-reviews"
+        program: page.controller.selectedProgram && page.program.kind !== "aur"
+            ? Object.assign({}, page.program, {editions: page.controller.selectedProgram.editions || []}) : page.program
+        // "What is known about it" above already shows an AUR package's votes.
+        aurVotes: false
+        Layout.fillWidth: true
+    }
+    ManagerButton {
+        // The raw log stays behind Details.
+        objectName: "program-details"
         visible: page.controller.mutating && page.controller.output !== ""
-        text: page.controller.output.split("\n").slice(-6).join("\n")
+        text: page.showLog ? "Hide details" : "Details"
+        onClicked: page.showLog = !page.showLog
+    }
+    ManagerLabel {
+        objectName: "program-log"
+        visible: page.showLog && page.controller.mutating && page.controller.output !== ""
+        text: page.controller.output.split("\n").slice(-12).join("\n")
         font.family: "Iosevka Nerd Font Mono"
         font.pixelSize: 12
     }
@@ -194,7 +320,7 @@ ColumnLayout {
                     spacing: 0
                     Repeater {
                         model: [
-                            ["Source", (page.program.sourceLabel || (page.program.kind === "flatpak" ? "Flathub" : page.program.kind === "aur" ? "AUR (shown only)" : "Arch")) + (page.program.repository ? " · " + page.program.repository : "")],
+                            ["Source", (page.program.sourceLabel || (page.program.kind === "flatpak" ? "Flathub" : page.program.kind === "aur" ? "AUR" : "Arch")) + (page.program.repository ? " · " + page.program.repository : "")],
                             [page.program.kind === "flatpak" ? "App ID" : "Package", page.program.package || page.program.id || "—"],
                             ["Version", page.program.version || "—"], ["Download", page.size(page.program.downloadSize)],
                             ["On disk", page.size(page.program.installedSize)], ["Licence", page.program.licence || "—"],

@@ -1,0 +1,19 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Refresh Flathub application metadata
+Wants=network-online.target
+After=network-online.target
+ConditionPathIsDirectory=/var/lib/flatpak/repo
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=flatpak update --system --appstream --noninteractive flathub
+TimeoutStartSec=5min
+UMask=0022
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/flatpak
+ProtectHome=yes
+PrivateTmp=yes

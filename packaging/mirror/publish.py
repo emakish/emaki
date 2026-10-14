@@ -725,11 +725,11 @@ class Signer:
             result = subprocess.run(['gpgconf', '--homedir', str(self.home), '--kill', 'gpg-agent'],
                                     capture_output=True, text=True, env=self.env())
         except OSError as error:
-            say(f'[PLACEHOLDER] WARNING: the signing key daemon could not be stopped ({error}); run: '
+            say(f'WARNING: the signing key daemon could not be stopped ({error}); run: '
                 f'gpgconf --homedir {self.home} --kill gpg-agent')
             return
         if result.returncode:
-            say(f'[PLACEHOLDER] WARNING: the signing key daemon could not be stopped; run: '
+            say(f'WARNING: the signing key daemon could not be stopped; run: '
                 f'gpgconf --homedir {self.home} --kill gpg-agent')
 
 

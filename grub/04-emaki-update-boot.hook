@@ -10,4 +10,5 @@ Target = *
 [Action]
 Description = Preparing automatic update recovery
 When = PreTransaction
+AbortOnFail
 Exec = /usr/bin/emaki-update-boot prepare

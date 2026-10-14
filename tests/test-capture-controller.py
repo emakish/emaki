@@ -123,7 +123,7 @@ def main():
                 assert not call('present')
                 assert call('finish')
                 state = wait(lambda s: not s['busy'])
-                assert state['notices'][-1]['title'] == '[PLACEHOLDER] Recording saved', state
+                assert state['notices'][-1]['title'] == 'Recording saved', state
                 operations = [json.loads(line) for line in events.read_text().splitlines()]
                 assert operations[-2]['request']['window_id'] == 22 and operations[-2]['request']['output'] == 'TEST-2'
                 assert operations[-1] == {'control': 'stop'}
@@ -132,7 +132,7 @@ def main():
                 assert call('state')['area'] == {'x':0,'y':598,'width':800,'height':2}
                 begin()
                 state = wait(lambda s: not s['busy'])
-                assert state['notices'][-1]['title'] == '[PLACEHOLDER] Screenshot saved; clipboard unavailable', state
+                assert state['notices'][-1]['title'] == 'Screenshot saved; clipboard unavailable', state
                 prepare('normal')
                 call('lock', True)
                 assert not call('present') and not call('state')['canCapture']
@@ -166,7 +166,7 @@ def main():
                 prepare()
                 begin()
                 state = wait(lambda s: not s['busy'])
-                assert state['notices'][-1]['title'] == '[PLACEHOLDER] Screenshot saved and copied', state
+                assert state['notices'][-1]['title'] == 'Screenshot saved and copied', state
                 assert call('configure', 'slow-inventory')
                 assert call('present')
                 time.sleep(.1)

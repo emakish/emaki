@@ -338,6 +338,30 @@ def package_guard(current, boot_id=None):
             os.close(directory)
 
 
+def carry_shared_esp_stop(current, staged):
+    # The ESP is not rolled back with @. Preserve its unresolved baseline, even
+    # if the record is old or damaged: only the ESP gate may clear a stop.
+    relative = 'var/lib/emaki/shared-esp-stop.json'
+    source = safe_path(current, relative)
+    try:
+        mode = source.lstat().st_mode
+    except FileNotFoundError:
+        return
+    require(stat.S_ISREG(mode),
+            'The shared startup stop record is not a regular file. Nothing changed.')
+    target = safe_path(staged, relative)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    data = source.read_bytes()
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'wb') as stream:
+        os.fchmod(stream.fileno(), 0o600)
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    # The prepared copy is private until promote's filesystem sync and atomic
+    # exchange. A failed copy keeps the original stop and never replaces @.
+
+
 def promote(top, source, fs_uuid, boot_id, history):
     current = top / '@'
     rows = check_layout(top, fs_uuid, boot_id)
@@ -385,6 +409,7 @@ def promote(top, source, fs_uuid, boot_id, history):
             require(fstab_rows(safe_path(staged, 'etc/fstab').read_text(), fs_uuid) == rows,
                     'Mount layout changed during preparation. Nothing changed.')
             safe_path(staged, 'var/lib/pacman/db.lck').unlink(missing_ok=True)
+            carry_shared_esp_stop(current, staged)
             # Capture package differences while the old root's package DB is locked.
             # Carry the protection into snapshots that predate its installation.
             try:

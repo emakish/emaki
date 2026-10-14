@@ -10,11 +10,13 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
+EVIDENCE = ROOT / '.cache/evidence'
+EVIDENCE.mkdir(parents=True, exist_ok=True)
 HEADER = '// Copyright (C) 2026 Artur Yakymenko\n// SPDX-License-Identifier: GPL-3.0-or-later\n'
 
 
-def run(mutation=None, missing=False):
-    with tempfile.TemporaryDirectory(prefix='settings-region-about-') as temporary:
+def run(mutation=None, missing=False, browser_fails=False):
+    with tempfile.TemporaryDirectory(prefix='settings-region-about-', dir=EVIDENCE) as temporary:
         base = Path(temporary)
         shutil.copytree(ROOT / 'shell', base / 'shell')
         with (base / 'shell/qmldir').open('a') as stream:
@@ -44,10 +46,12 @@ print(json.dumps(reply))
 reply={{'schema_version':1,'status':'ready','details':{{'version':'0.5.0','channel':'testing'}}}}
 if sys.argv[1]=='report': reply.update(status='saved',path={str(report)!r})
 if sys.argv[1]=='bad': reply['schema_version']=99
+with open({str(base / 'about-calls')!r},'a') as stream: stream.write(sys.argv[1]+'\\n')
 print(json.dumps(reply))
 ''',
-            'xdg-open': f'''import pathlib,sys
-pathlib.Path({str(base / 'opened')!r}).write_text(sys.argv[1])
+            'xdg-open': f'''import sys
+with open({str(base / 'opened')!r},'a') as stream: stream.write(sys.argv[1]+'\\n')
+sys.exit({3 if browser_fails else 0})
 ''',
         }
         for name, source in scripts.items():
@@ -68,6 +72,12 @@ Scope {
   }
   SettingsRegionPage { id: region; width: 740; catalog: catalog }
   SettingsAboutPage { id: about; width: 740 }
+ }
+ // Stands in for the shell's report controller: the page only names the part to open.
+ QtObject {
+  id: reporter
+  property var calls: []
+  function open(part) { calls = calls.concat([part]); return "opened"; }
  }
  function find(item, name) {
   if (item.objectName === name) return item;
@@ -98,10 +108,27 @@ Scope {
     region.start(["bad"]); about.start("bad");
    } else if (step === 3) {
     check(region.message.length > 0 && about.message.length > 0, "invalid schema visible");
-    about.start("report");
+    check(ReportBridge.controller === null, "no report controller outside the shell");
+    ReportBridge.controller = reporter;
+    about.message = "";
+    find(about, "report-problem").clicked();
    } else if (step === 4) {
+    check(JSON.stringify(reporter.calls) === JSON.stringify(["other"]), "report window opened for other: " + JSON.stringify(reporter.calls));
+    check(about.message === "", "no failure message when the window opened: " + about.message);
+    ReportBridge.controller = null;
+    find(about, "report-problem").clicked();
+   } else if (step === 5) {
+    check(about.message.indexOf("could not be opened") >= 0, "missing report window visible: " + about.message);
+    check(JSON.stringify(reporter.calls) === JSON.stringify(["other"]), "no call without a controller");
+    find(about, "save-diagnostics").clicked();
+   } else if (step === 6) {
     check(about.reportPath.length > 0 && about.message.indexOf("Nothing has been uploaded") >= 0, "report saved for review");
     find(about, "review-report").clicked();
+   } else if (step === 7) {
+    if (BROWSER_FAILS)
+     check(about.message.indexOf("The report could not be opened. You can find it at the path below.") >= 0, "viewer failure visible: " + about.message);
+    else
+     check(about.message.indexOf("Nothing has been uploaded") >= 0, "viewer opened without a failure: " + about.message);
    } else { console.log("PAGES_PASS"); Qt.quit(); }
    step++;
   }
@@ -120,7 +147,7 @@ Scope {
   else { console.error("FAILED missing command"); Qt.exit(1); }
  } }
 }'''
-        (base / 'shell/Test.qml').write_text(test)
+        (base / 'shell/Test.qml').write_text(test.replace('BROWSER_FAILS', 'true' if browser_fails else 'false'))
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
                    QML_DISABLE_DISK_CACHE='1', XDG_RUNTIME_DIR=str(base / 'runtime'), HOME=str(base),
                    PATH=str(base / 'bin') + ':' + os.environ['PATH'],
@@ -130,7 +157,11 @@ Scope {
         result = subprocess.run(['qs', '-p', str(base / 'shell/Test.qml'), '--no-color'],
                                 env=env, capture_output=True, text=True, timeout=12)
         output = result.stdout + result.stderr
-        passed = result.returncode == 0 and 'PAGES_PASS' in output and (missing or ((base / 'opened').exists() and (base / 'opened').read_text() == str(report)))
+        # Only Review report starts the viewer; the report button runs neither a browser nor the helper.
+        opened = (base / 'opened').read_text().splitlines() if (base / 'opened').exists() else []
+        about_calls = (base / 'about-calls').read_text().splitlines() if (base / 'about-calls').exists() else []
+        passed = (result.returncode == 0 and 'PAGES_PASS' in output
+                  and (missing or (opened == [str(report)] and about_calls == ['status', 'bad', 'report'])))
         for error in ('ReferenceError', 'TypeError', 'Binding loop', 'Unable to assign', 'Cannot assign'):
             passed = passed and error not in output
         if not mutation:
@@ -141,7 +172,16 @@ Scope {
 
 run()
 run(missing=True)
+run(browser_fails=True)
 run(('SettingsRegionPage.qml', 'managed: page.row(modelData.key).source === "declared"', 'managed: false'))
 run(('SettingsRegionPage.qml', 'reply.schema_version !== 1', 'false'))
 run(('SettingsAboutPage.qml', 'reply.schema_version !== 1', 'false'))
-print('PASS: page reads, declared values, refused changes, invalid replies, report review; three mutants killed')
+# The report button asks the shell's report window for the "other" part and says when it is missing.
+run(('SettingsAboutPage.qml', 'ReportBridge.open("other")', '"unavailable"'))
+run(('SettingsAboutPage.qml', 'ReportBridge.open("other")', 'ReportBridge.open("shell")'))
+run(('SettingsAboutPage.qml', 'ReportBridge.open("other") === "unavailable"', 'ReportBridge.open("other") === "never"'))
+# A viewer that fails says so.
+run(('SettingsAboutPage.qml', 'if (code !== 0)', 'if (false)'), browser_fails=True)
+print('PASS: page reads, declared values, refused changes, invalid replies, report window opened through '
+      'the bridge with no browser or helper call, missing report window, report review and viewer failure; '
+      'seven mutants killed')

@@ -69,6 +69,21 @@ class About(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(json.loads(output.getvalue())['reason'], 'report_save_failed')
 
+    def test_saved_diagnostics_redact_details_and_command_output(self):
+        planted = ('Authorization: Bearer C8R_SYNTHETIC_SECRET password=C8R_SYNTHETIC_PASSWORD '
+                   'person@example.invalid 192.0.2.44 2001:db8::44 aa:bb:cc:dd:ee:ff '
+                   'serial=FIXTURE_SERIAL')
+        with patch.dict(os.environ, XDG_STATE_HOME=str(self.root)), \
+                patch.object(self.about, 'command', return_value=planted):
+            path = Path(self.about.report({'processor': planted, 'commit': 'PRIVATE_BUILD_HASH'}))
+        text = path.read_text()
+        for value in ('C8R_SYNTHETIC_SECRET', 'C8R_SYNTHETIC_PASSWORD', 'person@example.invalid',
+                      '192.0.2.44', '2001:db8::44', 'aa:bb:cc:dd:ee:ff', 'FIXTURE_SERIAL'):
+            self.assertNotIn(value, text)
+        self.assertIn('[redacted secret]', text)
+        self.assertNotIn('PRIVATE_BUILD_HASH', text)
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
     def test_unknown_command_does_not_collect(self):
         with patch.object(self.about, 'details') as details, contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(self.about.main(['upload', '--json']), 2)
@@ -117,6 +132,125 @@ class About(unittest.TestCase):
         self.assertEqual(info['firmware'], 'Fixture firmware 1.0')
         self.assertEqual(info['disk'], 'Unavailable')
         self.assertEqual(info['graphics'], 'Unavailable')
+
+    def emaki_os_release(self, url='https://github.com/emakish/emaki/issues'):
+        path = self.root / 'lib/emaki/os-release'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f'NAME="Emaki"\nID=arch\nVARIANT_ID=emaki\nBUG_REPORT_URL="{url}"\n')
+
+    def installed(self, text):
+        self.paths.LOCALSTATEDIR = str(self.root / 'var/lib/emaki')
+        path = self.root / 'var/lib/emaki/installed.json'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+
+    def test_issue_address_comes_from_emaki_os_release(self):
+        self.emaki_os_release()
+        self.assertEqual(self.about.issue_target(), 'https://github.com/emakish/emaki/issues/new')
+        self.emaki_os_release('https://github.com/emakish/emaki/issues/')
+        self.assertEqual(self.about.issue_target(), 'https://github.com/emakish/emaki/issues/new')
+        for url in ('https://bugs.archlinux.org/', 'http://github.com/emakish/emaki/issues',
+                    'https://github.com.example/emakish/emaki/issues', 'javascript:alert(1)',
+                    'https://github.com/emakish/emaki/issues?x=1', ''):
+            with self.subTest(url=url):
+                self.emaki_os_release(url)
+                self.assertIsNone(self.about.issue_target())
+        # The host distribution's file (no Emaki variant) never chooses the tracker.
+        (self.root / 'lib/emaki/os-release').write_text(
+            'NAME="Arch Linux"\nID=arch\nBUG_REPORT_URL="https://github.com/emakish/emaki/issues"\n')
+        self.assertIsNone(self.about.issue_target())
+        (self.root / 'lib/emaki/os-release').unlink()
+        self.assertIsNone(self.about.issue_target())
+
+    def test_installation_record(self):
+        self.installed('{"version": 1, "emaki_version": "0.8.0"}\n')
+        self.assertEqual(self.about.installation('0.8.0'), 'Installed with Emaki 0.8.0; current release matches')
+        self.assertEqual(self.about.installation('0.8.1'), 'Installed with Emaki 0.8.0; now on 0.8.1')
+        for text in ('', 'not json', '[]', '{"version": 2, "emaki_version": "0.8.0"}',
+                     '{"version": 1, "emaki_version": "0.8.0\\n- Injected: yes"}', '{"version": 1}'):
+            with self.subTest(text=text):
+                self.installed(text)
+                self.assertTrue(self.about.installation('0.8.0').startswith('Not recorded'))
+
+    def test_issue_url_carries_only_the_named_fields_encoded(self):
+        from urllib.parse import parse_qs, urlsplit
+        self.emaki_os_release()
+        self.installed('{"version": 1, "emaki_version": "0.7.0"}\n')
+        private = {'computer': 'Jane Doe Laptop 14', 'processor': 'Fixture CPU 9000',
+                   'graphics': 'Fixture GPU', 'memory': '31.2 GiB', 'disk': '953.9 GiB · 120.4 GiB free',
+                   'firmware': 'LENOVO N3HET88W', 'window_manager': 'niri 26.04', 'commit': 'abc1234'}
+        info = dict(private, version='0.8.0', label='alpha', channel='testing & more #1',
+                    kernel='6.17.1-arch1-1')
+        url = self.about.issue(info)
+        parts = urlsplit(url)
+        self.assertEqual((parts.scheme, parts.netloc, parts.path), ('https', 'github.com', '/emakish/emaki/issues/new'))
+        # Only the body is prefilled: no title, labels, template or anything GitHub would submit by itself.
+        query = parse_qs(parts.query, keep_blank_values=True, strict_parsing=True)
+        self.assertEqual(list(query), ['body'])
+        for raw in (' ', '\n', '&more', '#1', '+'):
+            self.assertNotIn(raw, parts.query)
+        body = query['body'][0]
+        self.assertEqual(body.split('### System\n')[1].split('\n\n')[0].splitlines(), [
+            '- Emaki: 0.8.0 alpha',
+            '- Update channel: testing & more #1',
+            '- Linux kernel: 6.17.1-arch1-1',
+            '- Installation: Installed with Emaki 0.7.0; now on 0.8.0'])
+        for heading in ('### What happened', '### What I expected', '### Steps to reproduce'):
+            self.assertIn(heading, body)
+        for value in private.values():
+            self.assertNotIn(value, body)
+        # The real account and machine must not leak in. Skip a value that the given fields already contain
+        # (the build VM's user is "arch", which is inside the fixture kernel "6.17.1-arch1-1").
+        for value in (os.environ.get('USER'), str(Path.home()), os.uname().nodename):
+            if value and not any(value in str(field) for field in info.values()):
+                self.assertNotIn(value, body)
+
+    def test_issue_values_cannot_add_lines(self):
+        self.emaki_os_release()
+        self.paths.LOCALSTATEDIR = str(self.root / 'missing')
+        body = self.about.issue_body({'version': '0.8.0', 'channel': 'stable\n- Extra: line', 'kernel': ''})
+        system = body.split('### System\n')[1].split('\n\n')[0].splitlines()
+        self.assertEqual(system, ['- Emaki: 0.8.0', '- Update channel: stable - Extra: line',
+                                  '- Linux kernel: Unavailable',
+                                  '- Installation: Not recorded (please say whether this is a fresh '
+                                  'installation or an updated one)'])
+
+    def test_issue_command_reads_no_hardware_and_writes_nothing(self):
+        from urllib.parse import parse_qs, urlsplit
+        self.emaki_os_release()
+        self.paths.LOCALSTATEDIR = str(self.root / 'missing')
+        (self.root / 'lib/emaki-release').write_text('VERSION=0.8.0\nLABEL=alpha\nEMAKI_COMMIT=abc1234\n')
+        reads, commands = [], []
+        original = self.about.read
+        def read(path):
+            reads.append(str(path))
+            return original(path)
+        def command(args):
+            commands.append(args)
+            return 'stable'
+        output = io.StringIO()
+        with patch.object(self.about, 'read', read), patch.object(self.about, 'command', command), \
+                patch.object(self.about, 'report') as report, patch.object(self.about, 'details') as details, \
+                patch.object(self.about.platform, 'release', return_value='6.17.1-arch1-1'), \
+                contextlib.redirect_stdout(output):
+            self.assertEqual(self.about.main(['issue', '--json']), 0)
+        report.assert_not_called()
+        details.assert_not_called()
+        self.assertEqual(commands, [['emaki-update-channel']])
+        self.assertEqual(sorted(reads), sorted([str(self.root / 'lib/emaki-release'),
+                                                str(self.root / 'lib/emaki/os-release'),
+                                                str(self.root / 'missing/installed.json')]))
+        reply = json.loads(output.getvalue())
+        self.assertEqual(set(reply), {'schema_version', 'status', 'url'})
+        self.assertEqual(reply['status'], 'issue')
+        body = parse_qs(urlsplit(reply['url']).query)['body'][0]
+        self.assertIn('- Emaki: 0.8.0 alpha\n- Update channel: stable\n- Linux kernel: 6.17.1-arch1-1\n', body)
+        self.assertNotIn('abc1234', reply['url'])
+        (self.root / 'lib/emaki/os-release').unlink()
+        output = io.StringIO()
+        with patch.object(self.about, 'identity', return_value={}), contextlib.redirect_stdout(output):
+            self.assertEqual(self.about.main(['issue', '--json']), 1)
+        self.assertEqual(json.loads(output.getvalue())['reason'], 'issue_target_unavailable')
 
     def test_missing_or_invalid_memory_is_unavailable(self):
         for value in ('', 'MemTotal: unknown kB', 'MemTotal: 10 bytes', 'MemTotal: -1 kB'):

@@ -11,14 +11,17 @@ Column {
     property var details: ({})
     property string reportPath: ""
     property string message: ""
+    property string action: ""
     property bool received: false
+    readonly property string failure: "System details or the report could not be read. Try again."
     signal updatesRequested
-    function start(action) {
+    function start(next) {
         if (backend.running)
             return;
         received = false;
         message = "";
-        backend.command = ["emaki-settings-about", action, "--json"];
+        action = next;
+        backend.command = ["emaki-settings-about", next, "--json"];
         backend.running = true;
     }
     Component.onCompleted: start("status")
@@ -28,14 +31,16 @@ Column {
             if (!running)
                 Qt.callLater(function () {
                     if (!page.received)
-                        page.message = "System details or the report could not be read. Try again.";
+                        page.message = page.failure;
                 });
         }
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
                     const reply = JSON.parse(text);
-                    if (reply.schema_version !== 1 || !["ready", "saved"].includes(reply.status) || !reply.details)
+                    if (reply.schema_version !== 1)
+                        throw new Error();
+                    if (!["ready", "saved"].includes(reply.status) || !reply.details)
                         throw new Error();
                     page.received = true;
                     page.details = reply.details;
@@ -44,14 +49,14 @@ Column {
                         page.message = "Report saved. Review it before sharing; it may contain private information. Nothing has been uploaded.";
                     }
                 } catch (error) {
-                    page.message = "System details or the report could not be read. Try again.";
+                    page.message = page.failure;
                 }
             }
         }
         stderr: StdioCollector {}
         onExited: _code => {
             if (!page.received)
-                page.message = "System details or the report could not be read. Try again.";
+                page.message = page.failure;
         }
     }
     Process {
@@ -232,12 +237,31 @@ Column {
             width: parent.width
             objectName: "settings-report-problem"
             title: "Report a problem"
-            explanation: "Collect logs and a short system summary into a file you can review before sharing."
+            explanation: "Describe the problem and review exactly what will be sent. Nothing leaves this computer until you choose Send, which opens the issue form on GitHub."
             controlWidth: 160
-            busy: backend.running
             control: Component {
                 SettingsButton {
+                    objectName: "report-problem"
                     text: "Report a problem…"
+                    onClicked: {
+                        if (ReportBridge.open("other") === "unavailable")
+                            page.message = "The report window could not be opened.";
+                    }
+                }
+            }
+        }
+        SettingsRow {
+            width: parent.width
+            objectName: "settings-diagnostics-file"
+            title: "Diagnostics file"
+            explanation: "Collect logs and a short system summary into a file you can review. Add to a report only what you choose to share."
+            controlWidth: 160
+            busy: backend.running && page.action === "report"
+            control: Component {
+                SettingsButton {
+                    objectName: "save-diagnostics"
+                    text: "Save diagnostics…"
+                    enabled: !backend.running
                     onClicked: page.start("report")
                 }
             }

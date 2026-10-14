@@ -9,13 +9,24 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+import sys
 
 MARKER = Path('/var/lib/emaki/alongside-boot.json')
+PENDING = Path('/var/lib/emaki/boot-refresh-pending')
 GUID = r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}'
+# Some firmware stores the full hardware path before the partition node.
+HARDWARE = r'(?:(?!(?:HD|File)\()[A-Za-z][A-Za-z0-9]*\([^()\t]*\)/)*'
 
 
-def proposed_order(output, partuuid):
-    """Accept one active vendor entry on the recorded ESP; never create entries."""
+def recovery_plan(output, partuuid):
+    """Prefer active vendor entries on the recorded ESP; never create or delete entries.
+
+    efibootmgr 18 prints the loader path bare after HD(...)/ (older versions wrapped
+    it in File(...)), its verbose dp:/data: lines indented, and optional data glued to
+    the path. Several identical verified entries are allowed: the earliest one in
+    BootOrder moves first. An inactive entry is reused only when no active one is
+    ordered. efibootmgr refuses an order that names a missing entry.
+    """
     if not re.fullmatch(GUID, partuuid):
         raise ValueError('invalid_esp_identity')
     orders = re.findall(r'^BootOrder: ([0-9A-Fa-f,]+)$', output, re.M)
@@ -26,10 +37,11 @@ def proposed_order(output, partuuid):
         raise ValueError('invalid_boot_order')
     entries = {}
     matches = []
+    inactive = []
     for line in output.splitlines():
         if not re.match(r'^Boot[0-9A-Fa-f]{4}', line):
             continue
-        entry = re.fullmatch(r'Boot([0-9A-Fa-f]{4})(\*?)\s+(.+)', line)
+        entry = re.fullmatch(r'Boot([0-9A-Fa-f]{4})([* ]) ([^\n]*)', line)
         if not entry or entry[1].upper() in entries:
             raise ValueError('invalid_boot_entries')
         number, active, value = entry[1].upper(), entry[2], entry[3]
@@ -39,15 +51,27 @@ def proposed_order(output, partuuid):
         if label.strip() != 'Emaki':
             continue
         loader = r'\\EFI\\Emaki\\grubx64\.efi'
-        expected = (r'HD\([1-9][0-9]*,GPT,(' + GUID + r'),0x[0-9a-fA-F]+,0x[0-9a-fA-F]+\)'
+        expected = (HARDWARE + r'HD\([1-9][0-9]*,GPT,(' + GUID + r'),0x[0-9a-fA-F]+,0x[0-9a-fA-F]+\)'
                     r'/(?:' + loader + r'|File\(' + loader + r'\))')
         path = re.fullmatch(expected, device, re.I) if separator else None
-        if not active or not path or path[1].lower() != partuuid.lower():
+        if not path:
             raise ValueError('unverified_emaki_entry')
-        matches.append(number)
-    if len(matches) != 1 or matches[0] not in order or any(n not in entries for n in order):
+        # Preserve other installations and stale same-loader entries in their current order.
+        # Only the verified loader on the recorded ESP identifies this installation.
+        if path[1].lower() != partuuid.lower():
+            continue
+        (matches if active == '*' else inactive).append(number)
+    ordered = [n for n in order if n in matches]
+    if not ordered:
+        ordered = [n for n in order if n in inactive]
+    if not ordered or any(n not in entries for n in order):
         raise ValueError('ambiguous_boot_entries')
-    return order, [matches[0]] + [n for n in order if n != matches[0]]
+    return order, [ordered[0]] + [n for n in order if n != ordered[0]], ordered[0] in inactive
+
+
+def proposed_order(output, partuuid):
+    old, new, _ = recovery_plan(output, partuuid)
+    return old, new
 
 
 def read_marker():
@@ -70,32 +94,125 @@ def read_marker():
 
 def command(arguments):
     return subprocess.run(arguments, check=True, capture_output=True, text=True,
-                          timeout=15, env={'PATH': os.defpath, 'LC_ALL': 'C'}).stdout
+                          timeout=15,
+                          env={'PATH': os.defpath, 'LC_ALL': 'C'}).stdout
 
 
-def recover(partuuid, vendor, run=command, repair=False):
+def windows_entry(output, partuuid):
+    # The installed and installer menus use this same firmware parser.
+    sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import emaki_paths
+    sys.path.insert(0, str(Path(emaki_paths.LIBDIR) / 'boot'))
+    from emaki_boot.boot import windows_firmware_entry
+    from emaki_boot.errors import InstallError
+    try:
+        return windows_firmware_entry(output, partuuid)
+    except InstallError as error:
+        raise ValueError(str(error)) from error
+
+
+def normal_boot():
+    """Snapshot and overlay roots do not own the installed generation's menu."""
+    cmdline = Path('/proc/cmdline').read_text()
+    if not re.search(r'(?:^|\s)emaki\.generation=[0-9a-f]{32}(?=\s|$)', cmdline):
+        return False
+    for line in Path('/proc/self/mountinfo').read_text().splitlines():
+        fields = line.split()
+        if len(fields) > 6 and fields[4] == '/':
+            filesystem = line.partition(' - ')[2].split()
+            return bool(filesystem) and filesystem[0] != 'overlay'
+    return False
+
+
+def queue_refresh():
+    """Only an explicit refresh may reset an existing retry budget."""
+    try:
+        fd = os.open(PENDING, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        fd = os.open(PENDING, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd) as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise OSError('invalid_refresh_record')
+            record = json.loads(stream.read(4097))
+        if (not isinstance(record, dict) or type(record.get('boots')) is not int
+                or not 0 <= record['boots'] <= 3):
+            raise OSError('invalid_refresh_record')
+        return 'refresh_exhausted' if record['boots'] >= 3 else 'refresh_pending'
+    with os.fdopen(fd, 'w') as stream:
+        stream.write(json.dumps({'boots': 0}) + '\n')
+        stream.flush()
+        os.fsync(stream.fileno())
+    directory = os.open(PENDING.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+    return 'refresh_pending'
+
+
+def refresh_windows_menu(output, partuuid, text, repair, resolve=windows_entry):
+    try:
+        number = resolve(output, partuuid)
+    except ValueError:
+        return 'windows_unsafe'
+    recorded = re.findall(r'^\s*(?:if\s+)?bootnext\s+([^;\s]+)', text, re.M)
+    target = f'# Windows firmware target: {partuuid.lower()} /EFI/Microsoft/Boot/bootmgfw.efi'
+    matches = bool(text) and (not recorded if number is None else
+                              recorded == [number] and target in text)
+    if matches:
+        return 'ready'
+    if not repair:
+        return 'refresh_available'
+    return queue_refresh()
+
+
+def recover(partuuid, vendor, run=command, repair=False, menu=None):
     if not vendor.strip():
         raise ValueError('unknown_firmware_vendor')
-    if 'apple' in vendor.casefold():
-        return {'state': 'manual_recovery', 'reason': 'apple_firmware', 'changed': False}
     before = run(['efibootmgr', '-v'])
-    old, new = proposed_order(before, partuuid)
-    if old == new:
-        return {'state': 'ready', 'changed': False}
+    def result(state, changed, **extra):
+        # Menu reads, resolution and scheduling follow firmware recovery. They must
+        # never prevent the order repair or turn a completed repair into a refusal.
+        value = {'state': state, 'changed': changed, **extra}
+        if menu is not None:
+            try:
+                if not normal_boot():
+                    value['menu'] = 'skipped_snapshot'
+                else:
+                    text = menu
+                    if isinstance(menu, Path):
+                        text = menu.read_text() if menu.exists() else ''
+                    value['menu'] = refresh_windows_menu(before, partuuid, text, repair)
+            except (OSError, ValueError, subprocess.SubprocessError):
+                value['menu'] = 'refresh_failed'
+        return value
+    if 'apple' in vendor.casefold():
+        return result('manual_recovery', False, reason='apple_firmware')
+    old, new, activate = recovery_plan(before, partuuid)
+    if old == new and not activate:
+        return result('ready', False)
     if not repair:
-        return {'state': 'recovery_available', 'changed': False}
+        return result('recovery_available', False)
     # Re-read immediately before mutation: a changed firmware inventory invalidates the plan.
     if run(['efibootmgr', '-v']) != before:
         raise ValueError('firmware_changed')
     try:
-        run(['efibootmgr', '--bootorder', ','.join(new)])
-        confirmed, _ = proposed_order(run(['efibootmgr', '-v']), partuuid)
-        if confirmed != new:
+        if activate:
+            run(['efibootmgr', '-b', new[0], '-a'])
+            active_output = run(['efibootmgr', '-v'])
+            expected = re.sub(r'^(Boot' + new[0] + r') ', r'\1*', before, flags=re.M)
+            if active_output != expected:
+                raise ValueError('recovery_not_confirmed')
+        if old != new:
+            run(['efibootmgr', '--bootorder', ','.join(new)])
+        confirmed, _, inactive = recovery_plan(run(['efibootmgr', '-v']), partuuid)
+        if confirmed != new or inactive:
             raise ValueError('recovery_not_confirmed')
     except (OSError, ValueError, subprocess.SubprocessError):
         # A failed command can still have changed NVRAM. Do not claim a read-only refusal.
-        return {'state': 'recovery_uncertain', 'changed': None}
-    return {'state': 'recovered', 'changed': True}
+        return result('recovery_uncertain', None)
+    return result('recovered', True)
 
 
 def main():
@@ -108,7 +225,8 @@ def main():
             raise ValueError('root_required')
         partuuid = read_marker()
         vendor = Path('/sys/class/dmi/id/sys_vendor').read_text()
-        result = recover(partuuid, vendor, repair=args.repair)
+        # Every generation prefers this canonical menu; refresh recreates it if absent.
+        result = recover(partuuid, vendor, repair=args.repair, menu=Path('/boot/grub/grub.cfg'))
         code = 1 if result['state'] == 'recovery_uncertain' else 0
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         result = {'state': 'refused', 'changed': False, 'reason': str(error)}

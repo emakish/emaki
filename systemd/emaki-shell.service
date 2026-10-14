@@ -33,6 +33,10 @@ Restart=on-failure
 # Skip transient failed states while retrying; OnFailure opens recovery only when
 # retries end (including start-limit exhaustion), not on each recoverable crash.
 RestartMode=direct
+# Direct mode also hides a single recovered crash from OnFailure, so every stop
+# reports its $SERVICE_RESULT: a crash leaves one notice per boot, and the restarted
+# panel offers (never sends) a problem report. "-": it never fails the unit.
+ExecStopPost=-@EMAKI_BINDIR@/emaki-shell-health stopped
 # No restart heals 127: qs is not installed. 255 is restarted: qs exits with it when it
 # cannot load the shell (a QML error, a missing file; the start limit above ends that
 # loop), but Qt's Wayland client exits with it on every fatal Wayland error too (a

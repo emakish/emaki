@@ -123,7 +123,7 @@ Column {
                 Qt.callLater(function () {
                     if (programRequest.serial === serial && !programRequest.completed) {
                         page.preview = {};
-                        page.programsMessage = "[PLACEHOLDER] Installed programs could not be read. Try again later.";
+                        page.programsMessage = "Installed programs could not be read. Try again later.";
                     }
                 });
         }
@@ -143,15 +143,15 @@ Column {
                 if (reply && reply.ok && Array.isArray(reply.programs))
                     page.programs = reply.programs;
                 else
-                    page.programsMessage = "[PLACEHOLDER] Installed programs could not be read. Try again later.";
+                    page.programsMessage = "Installed programs could not be read. Try again later.";
             } else if (operation === "preview") {
                 page.preview = reply ? Object.assign({
                     target: page.preview.target
                 }, reply) : {};
                 if (!reply)
-                    page.programsMessage = "[PLACEHOLDER] The removal could not be checked. Nothing was removed.";
+                    page.programsMessage = "The removal could not be checked. Nothing was removed.";
             } else if (operation === "remove") {
-                page.programsMessage = reply && reply.message ? reply.message : "[PLACEHOLDER] The removal did not finish as expected. Check the installed programs again.";
+                page.programsMessage = reply && reply.message ? reply.message : "The removal did not finish as expected. Check the installed programs again.";
                 // The helper passed the new list through every refusal rule; the person
                 // reviews it and confirms again.
                 if (reply && reply.code === "changed" && reply.token)
@@ -267,13 +267,13 @@ Column {
     SettingsCard {
         width: parent.width
         objectName: "settings-installed-programs"
-        title: "[PLACEHOLDER] Installed programs"
+        title: "Installed programs"
         Text {
             width: parent.width
             topPadding: 14
             bottomPadding: 14
             visible: text !== ""
-            text: page.programsMessage || (page.programs.length === 0 && !page.programsBusy ? "[PLACEHOLDER] No programs can be removed here." : "")
+            text: page.programsMessage || (page.programs.length === 0 && !page.programsBusy ? "No programs can be removed here." : "")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
             color: SettingsTheme.dim
@@ -304,7 +304,7 @@ Column {
                                 id: remove
                                 objectName: "program-remove"
                                 anchors.right: parent.right
-                                text: "[PLACEHOLDER] Remove…"
+                                text: "Remove…"
                                 Accessible.name: text + " " + program.modelData.names.join(", ")
                                 onClicked: page.previewProgram(program.modelData.package)
                             }
@@ -341,7 +341,7 @@ Column {
                     Text {
                         width: parent.width
                         visible: text !== ""
-                        text: (page.preview.requiredBy || []).length ? "[PLACEHOLDER] Needed by: " + page.preview.requiredBy.join(", ") : (page.preview.blocked || []).length ? "[PLACEHOLDER] Kept: " + page.preview.blocked.join(", ") : ""
+                        text: (page.preview.requiredBy || []).length ? "Needed by: " + page.preview.requiredBy.join(", ") : (page.preview.blocked || []).length ? "Kept: " + page.preview.blocked.join(", ") : ""
                         textFormat: Text.PlainText
                         wrapMode: Text.WordWrap
                         color: SettingsTheme.dim
@@ -360,7 +360,7 @@ Column {
                             objectName: "program-confirm"
                             visible: page.preview.ok === true
                             enabled: !page.programsBusy
-                            text: "[PLACEHOLDER] Remove " + (page.preview.packages || []).length + " packages"
+                            text: "Remove " + (page.preview.packages || []).length + " packages"
                             onClicked: page.removeProgram()
                         }
                     }

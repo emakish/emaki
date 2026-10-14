@@ -1,0 +1,13 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=Refresh Flathub application metadata at boot and each week
+
+[Timer]
+OnBootSec=30s
+OnCalendar=weekly
+RandomizedDelaySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -5,8 +5,8 @@
 <policyconfig>
   <vendor>Emaki</vendor>
   <action id="org.emaki.privacy.recovery">
-    <description>[PLACEHOLDER] Read recovery status</description>
-    <message>[PLACEHOLDER] Read the snapshot and boot menu status.</message>
+    <description>Read recovery status</description>
+    <message>Read the snapshot and boot menu status.</message>
     <defaults>
       <allow_any>no</allow_any>
       <allow_inactive>no</allow_inactive>

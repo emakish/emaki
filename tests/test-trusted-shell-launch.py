@@ -29,6 +29,7 @@ class TrustedLaunch(unittest.TestCase):
         self.bin = self.base / 'bin'
         self.bin.mkdir()
         self.env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.environ['PATH'],
+                        HOME=str(self.base / 'home'), XDG_STATE_HOME=str(self.base / 'state'),
                         XDG_RUNTIME_DIR=str(self.base), NIRI_SOCKET='',
                         CALLS=str(self.base / 'calls'), RESULT=str(self.base / 'result'))
         self.env.pop('WAYLAND_SOCKET', None)
@@ -54,6 +55,9 @@ if sys.argv[-1] == 'trusted-shell':
     print(json.dumps({{'configured': {configured!r}, 'running': False, 'prompt_active': False}}))
     print({stderr!r}, file=sys.stderr)
     sys.exit({query_status})
+if os.environ.get('CHECK_RECEIPT'):
+    Path(os.environ['CHECK_RECEIPT'] + '.seen').write_text(
+        str(Path(os.environ['CHECK_RECEIPT']).exists()))
 sys.exit({restart_status})
 ''')
 
@@ -85,6 +89,42 @@ sys.exit({restart_status})
     def test_failed_trusted_restart_never_selects_legacy_service(self):
         self.mock_compositor(restart_status=1)
         self.assertEqual(self.invoke('restart').returncode, 75)
+
+    def running_health_marker(self):
+        self.script('emaki-shell-health', (ROOT / 'scripts/emaki-shell-health').read_text())
+        (self.bin / 'emaki_paths.py').write_text((ROOT / 'scripts/emaki_paths.py').read_text())
+        state = self.base / 'emaki-shell-health'
+        state.mkdir(mode=0o700)
+        token = 'a' * 32
+        (state / 'running.json').write_text(json.dumps({
+            'boot_id': Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+            'pid': os.getpid(), 'token': token, 'session': self.env['NIRI_SOCKET'],
+        }))
+        receipt = state / ('clean-' + token)
+        self.env['CHECK_RECEIPT'] = str(receipt)
+        return receipt
+
+    def test_requested_restart_records_clean_intent_before_compositor_request(self):
+        self.mock_compositor()
+        receipt = self.running_health_marker()
+        result = self.invoke('restart')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(Path(str(receipt) + '.seen').read_text(), 'True')
+        self.assertEqual(receipt.read_text().strip(), 'restart:' + str(os.getpid()))
+
+    def test_failed_requested_restart_cancels_its_clean_intent(self):
+        self.mock_compositor(restart_status=1)
+        receipt = self.running_health_marker()
+        result = self.invoke('restart')
+        self.assertEqual(result.returncode, 75, result.stderr)
+        self.assertEqual(Path(str(receipt) + '.seen').read_text(), 'True')
+        self.assertFalse(receipt.exists())
+
+    def test_optional_health_failure_does_not_block_requested_restart(self):
+        self.script('emaki-shell-health', 'import sys; sys.exit(1)')
+        self.mock_compositor()
+        result = self.invoke('restart')
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_disconnected_compositor_never_selects_legacy_service(self):
         self.mock_compositor(query_status=1, stderr='connection refused')

@@ -48,14 +48,14 @@ class Refused(RuntimeError):
 
 def require(condition):
     if not condition:
-        raise Refused('[PLACEHOLDER] Package retention could not be verified. Nothing was removed.')
+        raise Refused('Package retention could not be verified. Nothing was removed.')
 
 
 def remaining():
     deadline = DEADLINE.get()
     seconds = SCAN_SECONDS if deadline is None else deadline - time.monotonic()
     if seconds <= 0:
-        raise Refused('[PLACEHOLDER] Storage inventory took too long. Nothing was removed.')
+        raise Refused('Storage inventory took too long. Nothing was removed.')
     return seconds
 
 
@@ -158,7 +158,7 @@ def read_versions(database):
         try:
             name, version = lines[lines.index('%NAME%') + 1], lines[lines.index('%VERSION%') + 1]
         except IndexError as error:
-            raise Refused('[PLACEHOLDER] Package metadata is incomplete.') from error
+            raise Refused('Package metadata is incomplete.') from error
         require(NAME.fullmatch(name) and VERSION.fullmatch(version) and name not in result)
         result[name] = version
     require(bool(result))
@@ -452,11 +452,11 @@ def subvolume_id(path):
 @bounded
 def snapshot_usage():
     """Use an existing exact aggregate, or report individual exclusive data."""
-    unavailable = {'bytes': None, 'reason': '[PLACEHOLDER] Exclusive snapshot usage is unavailable.'}
+    unavailable = {'bytes': None, 'reason': 'Exclusive snapshot usage is unavailable.'}
     try:
         paths = snapshot_paths()
         if not paths:
-            return {'bytes': 0, 'reason': '[PLACEHOLDER] No retained snapshots were found.'}
+            return {'bytes': 0, 'reason': 'No retained snapshots were found.'}
         generation = quota_status()
         wanted = {subvolume_id(path) for path in paths}
         require(len(wanted) == len(paths) and subvolume_id('/') not in wanted)
@@ -474,9 +474,9 @@ def snapshot_usage():
         if aggregate is not None:
             require(aggregate >= total)
             return {'bytes': aggregate, 'exclusive_bytes': total,
-                    'reason': '[PLACEHOLDER] Space exclusively held by retained snapshots, including their shared extents.'}
+                    'reason': 'Space exclusively held by retained snapshots, including their shared extents.'}
         return {'bytes': None, 'exclusive_bytes': total,
-                'reason': '[PLACEHOLDER] Individual snapshots hold at least '
+                'reason': 'Individual snapshots hold at least '
                           f'{total} exclusive bytes; space shared between snapshots is unavailable.'}
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
         return unavailable

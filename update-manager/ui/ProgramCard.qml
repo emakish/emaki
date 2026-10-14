@@ -8,87 +8,78 @@ import QtQuick.Controls as C
 C.AbstractButton {
     id: card
     required property var program
+    // The first pick on Browse: a larger card with its own Install button.
     property bool featured: false
-    property color featureColor: "#a8456e"
-    implicitHeight: featured ? 176 : 150
-    padding: featured ? 18 : 15
+    // Replaces the summary line (the "All N" card of a shelf).
+    property string hint: ""
+    property bool installEnabled: true
+    signal installRequested
+    // Never shorter than its content, so the stars row stays inside the card.
+    implicitHeight: Math.max(featured ? 104 : 74, topPadding + implicitContentHeight + bottomPadding)
+    padding: featured ? 18 : 12
     focusPolicy: Qt.StrongFocus
     Keys.onReturnPressed: clicked()
     Keys.onEnterPressed: clicked()
+    Accessible.name: program.name || ""
     background: Rectangle {
-        radius: 16
-        color: card.featured ? card.featureColor : card.hovered ? Qt.rgba(1, .98, .96, .6) : Qt.rgba(1, .98, .96, .42)
+        radius: card.featured ? 16 : 14
+        color: card.hovered ? Qt.rgba(1, .98, .96, .6) : Qt.rgba(1, .98, .96, .42)
         gradient: card.featured ? featureGradient : null
         Gradient {
             id: featureGradient
             orientation: Gradient.Horizontal
-            GradientStop { position: 0; color: Qt.lighter(card.featureColor, 1.22) }
-            GradientStop { position: 1; color: card.featureColor }
+            GradientStop { position: 0; color: Qt.rgba(226/255, 115/255, 63/255, card.hovered ? .34 : .26) }
+            GradientStop { position: 1; color: Qt.rgba(1, .98, .96, card.hovered ? .6 : .42) }
         }
         border.color: card.activeFocus ? "#c2481f" : Qt.rgba(36/255,16/255,24/255,.14)
         border.width: card.activeFocus ? 2 : 1
     }
-    contentItem: ColumnLayout {
-        spacing: 9
-        RowLayout {
-            spacing: 12
-            ProgramIcon { program: card.program; Layout.preferredWidth: card.featured ? 64 : 48; Layout.preferredHeight: width }
-            ColumnLayout {
-                spacing: 4
-                ManagerLabel {
-                    visible: !card.featured
-                    text: card.program.name || ""
-                    font.weight: Font.DemiBold
-                    maximumLineCount: 1
-                    elide: Text.ElideRight
-                }
-                ManagerLabel {
-                    visible: card.featured
-                    text: (card.program.editions || [card.program]).map(e => e.kind === "flatpak" ? "Flathub" : e.kind === "aur" ? "AUR" : "Arch").filter((s,i,a) => a.indexOf(s) === i).join(" · ")
-                    color: card.featured ? "#fff8f3" : "#2f5f86"
-                    font.pixelSize: 11
-                    font.weight: Font.DemiBold
-                    horizontalAlignment: card.featured ? Text.AlignRight : Text.AlignLeft
-                }
-                RowLayout {
-                    visible: !card.featured
-                    spacing: 4
-                    Repeater {
-                        model: (card.program.editions || [card.program]).map(e => e.kind).filter((kind, i, kinds) => kinds.indexOf(kind) === i)
-                        Rectangle {
-                            required property string modelData
-                            implicitWidth: sourceName.implicitWidth + 12
-                            implicitHeight: 20
-                            radius: 6
-                            color: modelData === "flatpak" ? Qt.rgba(168/255,184/255,106/255,.18) : Qt.rgba(125/255,154/255,184/255,.16)
-                            border.color: modelData === "flatpak" ? Qt.rgba(76/255,107/255,46/255,.35) : Qt.rgba(47/255,95/255,134/255,.35)
-                            Text { id: sourceName; anchors.centerIn: parent; text: parent.modelData === "flatpak" ? "Flathub" : parent.modelData === "aur" ? "AUR" : "Arch"; color: parent.modelData === "flatpak" ? "#4c6b2e" : "#2f5f86"; font.family: "Noto Sans"; font.pixelSize: 11; font.weight: Font.DemiBold }
-                        }
-                    }
-                }
+    contentItem: RowLayout {
+        spacing: card.featured ? 16 : 12
+        ProgramIcon {
+            program: card.program
+            Layout.preferredWidth: card.featured ? 68 : 46
+            Layout.preferredHeight: card.featured ? 68 : 46
+            Layout.alignment: Qt.AlignVCenter
+        }
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.alignment: Qt.AlignVCenter
+            spacing: 2
+            ManagerLabel {
+                text: card.program.name || ""
+                font.pixelSize: card.featured ? 18 : 14
+                font.weight: Font.DemiBold
+                maximumLineCount: 1
+                elide: Text.ElideRight
+                wrapMode: Text.NoWrap
+            }
+            ManagerLabel {
+                text: card.hint || card.program.summary || ""
+                visible: text !== ""
+                color: "#866c70"
+                font.pixelSize: 12
+                maximumLineCount: 1
+                elide: Text.ElideRight
+                wrapMode: Text.NoWrap
+            }
+            // The engine puts {average, count} on catalog rows from the cached ODRS index.
+            // The row keeps its height without a rating, so rated and unrated cards line up.
+            Item {
+                Layout.fillWidth: true
+                implicitHeight: Math.max(glyphProbe.implicitHeight, textProbe.implicitHeight)
+                Text { id: glyphProbe; visible: false; text: "★"; font.family: "Noto Sans Symbols 2, Noto Sans"; font.pixelSize: 13 }
+                Text { id: textProbe; visible: false; text: "4.6"; font.family: "Noto Sans"; font.pixelSize: 12 }
+                Stars { objectName: "card-rating"; anchors.verticalCenter: parent.verticalCenter; rating: card.hint ? null : card.program.rating || null; showShortCount: card.featured }
             }
         }
-        Item { visible: card.featured; Layout.fillHeight: true }
-        ManagerLabel {
+        ManagerButton {
+            objectName: "featured-install"
             visible: card.featured
-            text: card.program.name || ""
-            font.pixelSize: 17
-            font.weight: Font.DemiBold
-            color: "#fff8f3"
-        }
-        ManagerLabel {
-            text: card.program.summary || ""
-            color: card.featured ? "#fff8f3" : Qt.rgba(36/255,16/255,24/255,.58)
-            font.pixelSize: 12
-            maximumLineCount: 2
-            elide: Text.ElideRight
-            Layout.fillHeight: !card.featured
-        }
-        ManagerLabel {
-            visible: !card.featured
-            text: card.program.installed ? "✓ Installed" : card.program.installedSize ? Math.round(card.program.installedSize / 1048576) + " MB" : "Size unknown"
-            color: card.program.installed ? "#c2481f" : Qt.rgba(36/255,16/255,24/255,.4)
-            font.pixelSize: 12
+            text: card.program.installed ? "Installed" : "Install"
+            primary: !card.program.installed
+            enabled: !card.program.installed && card.installEnabled
+            onClicked: card.installRequested()
         }
     }
 }

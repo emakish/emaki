@@ -4,6 +4,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as C
+import Quickshell
 import "ManagerLogic.js" as Logic
 
 ColumnLayout {
@@ -33,11 +34,20 @@ ColumnLayout {
     readonly property var point: offeredRestorePoints[restoreIndex] || null
     readonly property bool running: controller.phase === "applying"
     readonly property bool finished: controller.phase === "finished" && controller.succeeded
+    property bool showLog: false
+    readonly property var progress: controller.progress ?? Logic.updateProgress(controller.output)
+    // A pulse until the restore point; downloading has no count to show.
+    readonly property real fraction: progress.step < 2 ? -1
+        : ((progress.step - 1) + (progress.step === 3 && progress.total ? progress.done / progress.total : progress.step === 4 ? 0.5 : 0)) / progress.steps
+    function stepText(): string {
+        const label = progress.step === 3 && progress.total ? "installing " + progress.done + " of " + progress.total : progress.label.toLowerCase();
+        return progress.step < 1 ? "Getting ready…" : "Step " + progress.step + " of " + progress.steps + " · " + label;
+    }
     readonly property var groups: [
         {name: "Emaki", subtitle: "Made for Emaki"},
         {name: "Arch", subtitle: "The system and programs from Arch"},
         {name: "Flatpak", subtitle: "Programs from Flathub"},
-        {name: "AUR", subtitle: "Updated in the terminal"}
+        {name: "AUR", subtitle: "Not part of Update all"}
     ]
     spacing: 14
     function group(row: var): string {
@@ -71,7 +81,17 @@ ColumnLayout {
         const parsed = new Date(value);
         return isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString(Qt.locale("en_GB"), "ddd d MMM yyyy, HH:mm");
     }
-    function restoreTitle(selected: var): string { return selected ? "Restore the system as it was before the update of " + date(selected.timestamp || selected.date) : "Nothing to restore yet. Emaki saves the system before every update."; }
+    function confirmRestore(selected: var): void {
+        if (locked || controller.restorePending || !selected) return;
+        controller.selectRestore(selected);
+        restoreDialog.open();
+    }
+    function restoreTitle(selected: var): string {
+        if (selected?.operation === "install")
+            return selected.timestamp || selected.date
+                ? "Restore the system as it was before the install of " + date(selected.timestamp || selected.date)
+                : "Restore the system as it was before this install (snapshot " + selected.snapshot + ")";
+        return selected ? "Restore the system as it was before the update of " + date(selected.timestamp || selected.date) : "Nothing to restore yet. Emaki saves the system before every update."; }
     component Card: Rectangle {
         Layout.fillWidth: true
         color: Qt.rgba(1, 250 / 255, 246 / 255, 0.42)
@@ -100,6 +120,52 @@ ColumnLayout {
         }
     }
     Card {
+        id: releaseCard
+        objectName: "whats-new"
+        // The pending Emaki release, or the one the last Update all installed.
+        readonly property var release: root.finished ? root.controller.completedRelease : root.controller.data.release || null
+        readonly property bool linkSafe: /^https:\/\/github\.com\/emakish\/emaki\/releases(\/tag\/v[0-9.]+)?$/.test(release?.url || "")
+        visible: !!release && !!release.version && !root.running
+        implicitHeight: releaseColumn.implicitHeight + 36
+        ColumnLayout {
+            id: releaseColumn
+            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 18 }
+            spacing: 10
+            RowLayout {
+                spacing: 16
+                Image {
+                    source: Quickshell.iconPath("emaki-welcome", true)
+                    visible: status === Image.Ready
+                    sourceSize.width: 44; sourceSize.height: 44
+                    Layout.preferredWidth: 44; Layout.preferredHeight: 44
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    ManagerLabel { text: "What’s new in Emaki " + (releaseCard.release?.version || ""); font.pixelSize: 17; font.bold: true }
+                    Muted { text: root.finished ? "Emaki " + releaseCard.release?.version + " is installed." : "Emaki " + releaseCard.release?.version + " is available. Update all installs it." }
+                }
+                ManagerButton {
+                    visible: releaseCard.linkSafe
+                    text: releaseCard.release?.published ? "Read the release notes" : "See Emaki releases"
+                    quiet: true
+                    onClicked: Qt.openUrlExternally(releaseCard.release.url)
+                }
+            }
+            Repeater {
+                model: releaseCard.release?.items || []
+                RowLayout {
+                    required property string modelData
+                    Layout.fillWidth: true
+                    spacing: 10
+                    ManagerLabel { text: "•"; Layout.fillWidth: false; Layout.alignment: Qt.AlignTop; color: "#c2481f" }
+                    ManagerLabel { text: parent.modelData; font.pixelSize: 13; lineHeight: 1.3 }
+                }
+            }
+            Muted { visible: !(releaseCard.release?.items || []).length; text: "The notes for this release are not published yet." }
+        }
+    }
+    Card {
         implicitHeight: summary.implicitHeight + 36
         ColumnLayout {
             id: summary
@@ -113,9 +179,10 @@ ColumnLayout {
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
-                    ManagerLabel { text: root.running ? "Updating…" : root.controller.phase === "checking" ? "Checking for updates…" : root.finished ? "Updated" : (root.controller.data.updates || []).length + ((root.controller.data.updates || []).length === 1 ? " update" : " updates"); font.pixelSize: 18; font.bold: true }
+                    ManagerLabel { objectName: "update-title"; text: root.running ? "Updating Emaki" : root.controller.phase === "checking" ? "Checking for updates…" : root.finished ? "Updated" : (root.controller.data.updates || []).length + ((root.controller.data.updates || []).length === 1 ? " update" : " updates"); font.pixelSize: 18; font.bold: true }
                     Muted {
-                        text: root.running ? "You can close this window. The update goes on, and Emaki tells you when it is done." : root.finished ? root.completedSummary() : root.bytes(root.controller.data.downloadSize) + " to download" + (root.controller.data.checkedAt ? " · checked " + root.date(root.controller.data.checkedAt) : "")
+                        objectName: "update-step"
+                        text: root.running ? root.stepText() : root.finished ? root.completedSummary() : root.bytes(root.controller.data.downloadSize) + " to download" + (root.controller.data.checkedAt ? " · checked " + root.date(root.controller.data.checkedAt) : "")
                     }
                 }
                 ManagerButton { text: "Check again"; visible: !root.running; enabled: !root.locked; onClicked: root.controller.check() }
@@ -123,6 +190,7 @@ ColumnLayout {
             }
             Rectangle {
                 id: progressTrack
+                objectName: "update-bar"
                 visible: root.running
                 Layout.fillWidth: true
                 implicitHeight: 8
@@ -130,20 +198,32 @@ ColumnLayout {
                 color: "#24241018"
                 clip: true
                 Rectangle {
-                    width: progressTrack.width * 0.35
+                    // Determinate once the update has reached a step; a pulse while it gets ready.
+                    width: root.fraction < 0 ? progressTrack.width * 0.35 : progressTrack.width * root.fraction
                     height: 8
                     radius: 4
                     color: "#e2733f"
-                    NumberAnimation on x { from: -progressTrack.width * 0.35; to: progressTrack.width; duration: 1300; loops: Animation.Infinite; running: root.running }
+                    x: root.fraction < 0 ? pulse.position : 0
+                    QtObject { id: pulse; property real position: 0 }
+                    NumberAnimation { target: pulse; property: "position"; from: -progressTrack.width * 0.35; to: progressTrack.width; duration: 1300; loops: Animation.Infinite; running: root.running && root.fraction < 0 }
                 }
             }
-            Muted { visible: root.running; text: root.controller.output.trim().split("\n").slice(-1)[0] || "Updating…" }
+            Muted { objectName: "update-restore-point"; visible: root.running && root.progress.restorePoint; text: "A restore point was made before the update. You can keep working." }
+            Muted { visible: root.running && !root.progress.restorePoint; text: "You can close this window. The update goes on, and Emaki tells you when it is done." }
+            ManagerButton {
+                // The raw log stays behind Details.
+                objectName: "update-details"
+                visible: root.controller.output.trim().length > 0 && (root.running || root.controller.phase === "finished")
+                text: root.showLog ? "Hide details" : "Details"
+                onClicked: root.showLog = !root.showLog
+            }
             Rectangle {
-                visible: root.running && root.controller.output.length > 0
+                objectName: "update-log"
+                visible: root.showLog && root.controller.output.trim().length > 0 && (root.running || root.controller.phase === "finished")
                 Layout.fillWidth: true
                 implicitHeight: log.implicitHeight + 20
                 color: "#0b241018"; radius: 10; border.color: "#24241018"
-                Muted { id: log; anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 } font.family: "Iosevka Nerd Font Mono"; font.pixelSize: 12; text: root.controller.output.trim().split("\n").slice(-8).join("\n") }
+                Muted { id: log; anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 } font.family: "Iosevka Nerd Font Mono"; font.pixelSize: 12; text: root.controller.output.trim().split("\n").slice(-40).join("\n") }
             }
             Repeater {
                 model: root.running || root.finished ? [] : root.controller.data.warnings || []
@@ -216,7 +296,7 @@ ColumnLayout {
                         }
                     }
                 }
-                Muted { visible: groupCard.modelData.name === "AUR"; Layout.margins: 16; text: "Emaki does not build these. Update them in a terminal with your AUR tool." }
+                Muted { visible: groupCard.modelData.name === "AUR"; Layout.margins: 16; text: "Update all does not build these. Build each update from its page in the AUR tab, or in a terminal with your AUR tool." }
             }
         }
     }
@@ -303,7 +383,7 @@ ColumnLayout {
             ManagerButton {
                 text: "Restore…"
                 enabled: !!root.point && !root.locked && !root.controller.restorePending
-                onClicked: { root.controller.selectRestore(root.point); restoreDialog.open(); }
+                onClicked: root.confirmRestore(root.point)
             }
         }
     }

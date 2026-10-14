@@ -791,6 +791,14 @@ class EncryptedWriteBoundaryTests(unittest.TestCase):
                         self.assertTrue(worker.disk_changed)
 
 
+WINDOWS_CHAINLOAD = ("### BEGIN /etc/grub.d/30_os-prober ###\n"
+                     "menuentry 'Windows Boot Manager (on /dev/vda1)' --class windows --class os "
+                     "$menuentry_id_option 'osprober-efi-1234-ABCD' {\n"
+                     "    search --no-floppy --fs-uuid --set=root 1234-ABCD\n"
+                     "    chainloader /EFI/Microsoft/Boot/bootmgfw.efi\n}\n"
+                     "### END /etc/grub.d/30_os-prober ###\n")
+
+
 class BootAndSnapshotTests(unittest.TestCase):
     def test_shared_esp_protection_records_identity_and_gates_hibernation(self):
         self.worker.plan.config['mode'] = 'alongside'
@@ -805,9 +813,10 @@ class BootAndSnapshotTests(unittest.TestCase):
         for mode in ('hibernate', 'hybrid-sleep', 'suspend-then-hibernate'):
             text = self.worker.files.read(
                 f'/etc/systemd/system/systemd-{mode}.service.d/50-emaki-shared-esp.conf')
-            self.assertIn('ExecStartPre=umount /efi\n', text)
+            # The command saves the counters, then unmounts; its failure cancels sleep.
+            self.assertIn('ExecStartPre=emaki-update-boot hibernate-pre\n', text)
             self.assertNotIn('ExecStartPre=-', text)
-            self.assertIn('ExecStopPost=mount -o ro /efi\n', text)
+            self.assertIn('ExecStopPost=emaki-update-boot hibernate-post\n', text)
         self.assertFalse(self.worker.files.path(
             '/etc/systemd/system/systemd-suspend.service.d/50-emaki-shared-esp.conf').exists())
         self.assertTrue(any('emaki-boot-order.service' in str(command)
@@ -827,6 +836,9 @@ class BootAndSnapshotTests(unittest.TestCase):
 
     def boot_files(self):
         f = self.worker.files
+        esp = next(part for part in self.worker.plan.partitions if part.esp)
+        esp.partuuid, esp.uuid = MAC_ESP, '1234-ABCD'
+        self.worker.runner.responses[('efibootmgr', '-v')] = MAC_LISTING
         if self.worker.plan.btrfs:
             f.write('/etc/default/grub-btrfs/config', '# Package defaults\nGRUB_BTRFS_SUBMENUNAME="Arch Linux snapshots"\n')
         # emaki-config's snapshot boot hook, strapped by copy_packages.
@@ -840,7 +852,7 @@ class BootAndSnapshotTests(unittest.TestCase):
         fstab = []
         for part, mp, sv in self.worker.plan.mounts:
             opts = part.options + (['subvol=/' + sv] if sv else [])
-            fstab.append(f'UUID=uuid-{part.number} {mp} {part.fs} {",".join(opts)} 0 0')
+            fstab.append(f'UUID={part.uuid or f"uuid-{part.number}"} {mp} {part.fs} {",".join(opts)} 0 0')
         self.worker.runner.responses[('genfstab', '-U', '-f', str(self.root), str(self.root))] = '\n'.join(fstab)
 
     def test_selected_vmd_driver_reaches_native_initramfs_config(self):
@@ -1033,7 +1045,7 @@ class BootAndSnapshotTests(unittest.TestCase):
         from emaki_installer.inventory import efi_loaders
         self.worker.plan.disk['partitions'] = [{'esp': True, '_efi_loaders': efi_loaders(self.root / 'efi')}]
         self.worker.files.write('/boot/grub/grub.cfg', self.worker.files.read('/boot/grub/grub.cfg') +
-                                "menuentry 'Windows Boot Manager (on /dev/vda1)' {\n}\n")
+                                WINDOWS_CHAINLOAD)
         self.worker.bootloader()
         commands = [c for c, _ in self.worker.runner.commands]
         self.assertIn(['arch-chroot', str(self.root), 'grub-mkconfig', '-o', '/boot/grub/grub.cfg'], commands)
@@ -1056,10 +1068,12 @@ class BootAndSnapshotTests(unittest.TestCase):
         f.write('/efi/EFI/Microsoft/Boot/BCD', b'configuration')
         f.write('/efi/EFI/BOOT/BOOTX64.EFI', b'fallback')
         self.worker.plan.disk['partitions'] = [{'esp': True, '_efi_loaders': efi_loaders(self.root / 'efi')}]
-        f.write('/boot/grub/grub.cfg', f.read('/boot/grub/grub.cfg') + "menuentry 'Windows Boot Manager' {\n}\n")
+        f.write('/boot/grub/grub.cfg', f.read('/boot/grub/grub.cfg') + WINDOWS_CHAINLOAD)
+        generated = f.read('/boot/grub/grub.cfg')
         original = self.worker.runner.chroot
         for kind, name in (('changed', 'BCD'), ('unexpected', 'unexpected'), ('missing', 'BCD')):
             with self.subTest(kind=kind):
+                f.write('/boot/grub/grub.cfg', generated)
                 logs = []
                 self.worker.log = logs.append
                 self.worker.runner.commands.clear()
@@ -1092,7 +1106,7 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.worker.plan.disk['partitions'] = [{'esp': True, '_efi_loaders': {}}]
         f = self.worker.files
         f.write('/boot/grub/grub.cfg', f.read('/boot/grub/grub.cfg') +
-                "menuentry 'Windows Boot Manager' {\n}\n")
+                WINDOWS_CHAINLOAD)
         logs = []
         self.worker.log = logs.append
         after = {f'EFI/{n:02d}\n' + 'x' * 300: 'digest' for n in range(25)}
@@ -1112,7 +1126,7 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.worker.plan.disk['partitions'] = [{'esp': True, '_efi_loaders': {}}]
         f = self.worker.files
         f.write('/boot/grub/grub.cfg', f.read('/boot/grub/grub.cfg') +
-                "menuentry 'Windows Boot Manager' {\n}\n")
+                WINDOWS_CHAINLOAD)
         logs = []
         self.worker.log = logs.append
         with patch.object(worker_module.alongside, 'efi_loaders', side_effect=[
@@ -1134,7 +1148,7 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.boot_files()
         self.worker.plan.config['mode'] = 'alongside'
         f = self.worker.files
-        f.write('/boot/grub/grub.cfg', f.read('/boot/grub/grub.cfg') + "menuentry 'Windows Boot Manager' {\n}\n")
+        f.write('/boot/grub/grub.cfg', f.read('/boot/grub/grub.cfg') + WINDOWS_CHAINLOAD)
         f.write('/etc/snapper/configs/root', 'SUBVOLUME="/"\n')
         f.mkdir('/.snapshots/1/snapshot')
         original = self.worker.runner.run
@@ -1152,6 +1166,49 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.assertTrue(f.path('/boot/grub/.emaki-snapshots').is_dir())
         self.assertIn('. /usr/share/emaki/boot/grub-btrfs.conf', f.read('/etc/default/grub-btrfs/config'))
         self.assertIn('Windows Boot Manager', f.read('/boot/grub/grub.cfg'))
+
+    def test_alongside_windows_menu_restarts_through_resolved_firmware_entry(self):
+        self.boot_files()
+        self.worker.plan.config['mode'] = 'alongside'
+        f = self.worker.files
+        original = f.read('/boot/grub/grub.cfg') + WINDOWS_CHAINLOAD
+        f.write('/efi/EFI/Microsoft/Boot/bootmgfw.efi', b'preserved-loader')
+        for number in ('0002', '00AF'):
+            with self.subTest(number=number):
+                f.write('/boot/grub/grub.cfg', original)
+                self.worker.runner.responses[('efibootmgr', '-v')] = MAC_LISTING.replace('Boot0002*', 'Boot' + number + '*').replace(
+                    'BootOrder: 0002,', 'BootOrder: ' + number + ',')
+                self.worker.grub_config()
+                menu = f.read('/boot/grub/grub.cfg')
+                self.assertIn('bootnext ' + number, menu)
+                self.assertIn('reboot', menu)
+                self.assertNotIn('chainloader /EFI/Microsoft/Boot/bootmgfw.efi', menu)
+                self.assertEqual(f.read('/efi/EFI/Microsoft/Boot/bootmgfw.efi'), 'preserved-loader')
+                self.assertFalse(any('--bootnext' in command for command, _ in self.worker.runner.commands))
+
+    def test_alongside_windows_without_firmware_entry_keeps_chainload(self):
+        self.boot_files()
+        self.worker.plan.config['mode'] = 'alongside'
+        f = self.worker.files
+        original = f.read('/boot/grub/grub.cfg') + WINDOWS_CHAINLOAD
+        f.write('/boot/grub/grub.cfg', original)
+        self.worker.runner.responses[('efibootmgr', '-v')] = (
+            'BootOrder: 0001\nBoot0001* Other\tHD(1,GPT,' + MAC_ESP +
+            ',0x800,0x32000)/\\EFI\\Other\\loader.efi\n')
+        self.worker.grub_config()
+        self.assertIn('chainloader /EFI/Microsoft/Boot/bootmgfw.efi', f.read('/boot/grub/grub.cfg'))
+        self.assertNotIn('bootnext ', f.read('/boot/grub/grub.cfg'))
+
+    def test_alongside_incomplete_firmware_listing_refuses_windows_rewrite(self):
+        self.boot_files()
+        self.worker.plan.config['mode'] = 'alongside'
+        f = self.worker.files
+        original = f.read('/boot/grub/grub.cfg') + WINDOWS_CHAINLOAD
+        f.write('/boot/grub/grub.cfg', original)
+        self.worker.runner.responses[('efibootmgr', '-v')] = 'BootOrder: 0002\n'
+        with self.assertRaises(InstallError):
+            self.worker.grub_config()
+        self.assertEqual(f.read('/boot/grub/grub.cfg'), original)
 
     @alongside_on()
     def test_alongside_missing_windows_menu_is_fatal(self):
@@ -2288,3 +2345,135 @@ class RepairTests(unittest.TestCase):
             worker.run(plan, threading.Event())
         self.assertEqual(events[-1]['code'], 'unsafe_disk')
         self.assertFalse(events[-1]['retryable'])
+
+
+# Sanitized efibootmgr inventories retain empty labels and verbose continuation lines.
+FIRMWARE_FIXTURES = Path(__file__).resolve().parents[2] / 'tests/fixtures/firmware'
+MAC_LISTING = (FIRMWARE_FIXTURES / 'mac-before.txt').read_text()
+MAC_AFTER_CREATE = (FIRMWARE_FIXTURES / 'mac-created.txt').read_text()
+MAC_CREATED = (FIRMWARE_FIXTURES / 'mac-booted.txt').read_text()
+MAC_ESP = '33333333-3333-4333-8333-333333333333'
+
+
+class FirmwareEntryTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.worker = Worker(None, None, Redactor(), lambda *a, **kw: None, lambda line: None,
+                             target=Path(self.temp.name))
+        self.worker.plan = make_plan(config(), inventory())
+        self.esp = next(part for part in self.worker.plan.partitions if part.esp)
+        self.esp.path, self.esp.partuuid = '/dev/vda1', MAC_ESP.upper()
+        self.worker.runner = RecordingRunner()
+        self.notices = []
+        self.worker.notice = self.notices.append
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def commands(self):
+        return [command for command, _ in self.worker.runner.commands]
+
+    def test_parsers_read_the_real_listing(self):
+        self.assertEqual(worker_module.boot_order(MAC_LISTING), ['0002', '0001', '0000', '0080'])
+        self.assertIsNone(worker_module.emaki_boot_entry(MAC_LISTING, MAC_ESP))
+        self.assertEqual(worker_module.emaki_boot_entry(MAC_CREATED, MAC_ESP), '0003')
+        # The old ESP's entry is Emaki's loader on another disk; older efibootmgr wraps the path in File().
+        self.assertEqual(worker_module.emaki_boot_entry(MAC_LISTING, '22222222-2222-4222-8222-222222222222'), '0001')
+        older = MAC_CREATED.replace(')/\\EFI\\Emaki\\grubx64.efi', ')/File(\\EFI\\Emaki\\grubx64.efi)')
+        self.assertEqual(worker_module.emaki_boot_entry(older, MAC_ESP), '0003')
+        self.assertIsNone(worker_module.emaki_boot_entry(MAC_CREATED.replace('Boot0003* ', 'Boot0003  '), MAC_ESP))
+        self.assertIsNone(worker_module.emaki_boot_entry(
+            MAC_CREATED.replace("\\EFI\\Emaki\\grubx64.efi\n", "\\EFI\\Emaki\\grubx64.efi.old\n"), MAC_ESP))
+        self.assertIsNone(worker_module.boot_order('EFI variables are not supported on this system.\n'))
+
+    def test_verbatim_mac_inventory_table(self):
+        for listing, expected_order, expected_entry in (
+            (MAC_LISTING, ['0002', '0001', '0000', '0080'], None),
+            (MAC_AFTER_CREATE, ['0002', '0001', '0000', '0080'], '0003'),
+            (MAC_CREATED, ['0003', '0002', '0001', '0000', '0080'], '0003'),
+        ):
+            with self.subTest(entry=expected_entry, order=expected_order):
+                self.assertEqual(worker_module.boot_order(listing), expected_order)
+                self.assertEqual(worker_module.emaki_boot_entry(listing, MAC_ESP), expected_entry)
+
+    def test_inactive_entry_is_activated_and_verified_without_duplicate(self):
+        inactive = MAC_AFTER_CREATE.replace('Boot0003* ', 'Boot0003  ')
+        with patch.object(self.worker.runner, 'run', side_effect=[inactive, '', MAC_AFTER_CREATE, '']) as run:
+            self.worker.boot_entry_first()
+        self.assertEqual([call.args[0] for call in run.call_args_list], [
+            ['efibootmgr', '-v'], ['efibootmgr', '-b', '0003', '-a'], ['efibootmgr', '-v'],
+            ['efibootmgr', '--bootorder', '0003,0002,0001,0000,0080']])
+        self.assertEqual(self.notices, [])
+
+    def test_failed_activation_never_creates_or_reorders(self):
+        inactive = MAC_CREATED.replace('Boot0003* ', 'Boot0003  ')
+        for reread in (inactive, 'BootOrder: 0003\n'):
+            with self.subTest(reread=reread):
+                with patch.object(self.worker.runner, 'run', side_effect=[inactive, '', reread]) as run:
+                    self.worker.boot_entry_first()
+                self.assertEqual([call.args[0] for call in run.call_args_list], [
+                    ['efibootmgr', '-v'], ['efibootmgr', '-b', '0003', '-a'], ['efibootmgr', '-v']])
+        self.assertEqual(len(self.notices), 2)
+
+    def test_complete_loader_path_required(self):
+        for suffix in (' old', '.old', '57494e44', '/File(other)', ' '):
+            with self.subTest(suffix=suffix):
+                listing = MAC_CREATED.replace('grubx64.efi\n', 'grubx64.efi' + suffix + '\n')
+                self.assertIsNone(worker_module.emaki_boot_entry(listing, MAC_ESP))
+
+    def test_incomplete_or_malformed_inventory_never_mutates(self):
+        for listing in (
+            MAC_LISTING.replace('BootOrder: 0002,0001,0000,0080', 'BootOrder: 0002,0001,0000,0080,0005'),
+            MAC_CREATED.replace('BootOrder: 0003,0002,0001,0000,0080', 'BootOrder: 0002,0003,0001,0000,0080,0005'),
+            MAC_LISTING.replace('Boot0000* Fixture Linux\tHD', 'Boot0000* Fixture Linux HD'),
+            MAC_LISTING + next(line for line in MAC_LISTING.splitlines() if line.startswith('Boot0000')) + '\n',
+            MAC_LISTING.replace('BootOrder: 0002,0001,0000,0080', 'BootOrder: 0002,0001,0000,0080,0002'),
+            MAC_LISTING + 'BootOrder: broken\n',
+        ):
+            with self.subTest(listing=listing):
+                logs = []
+                self.worker.log = logs.append
+                self.worker.runner.commands.clear()
+                self.worker.runner.responses[('efibootmgr', '-v')] = listing
+                self.worker.boot_entry_first()
+                self.assertEqual(self.commands(), [['efibootmgr', '-v']])
+                self.assertTrue(any('startup order is unchanged' in line for line in logs))
+
+    def test_incomplete_created_inventory_does_not_reorder(self):
+        create = ['efibootmgr', '--create', '--disk', self.worker.plan.disk['path'], '--part', str(self.esp.number),
+                  '--label', 'Emaki', '--loader', worker_module.EMAKI_LOADER]
+        incomplete = MAC_CREATED.replace('0003,0002,0001,0000,0080', '0002,0003,0005')
+        with patch.object(self.worker.runner, 'run', side_effect=[MAC_LISTING, MAC_CREATED, incomplete]) as run:
+            self.worker.boot_entry_first()
+        self.assertEqual([call.args[0] for call in run.call_args_list],
+                         [['efibootmgr', '-v'], create, ['efibootmgr', '-v']])
+        self.assertIn('installation USB', self.notices[0])
+
+    def test_stale_same_path_entry_gets_a_new_first_entry(self):
+        create = ['efibootmgr', '--create', '--disk', self.worker.plan.disk['path'], '--part', str(self.esp.number),
+                  '--label', 'Emaki', '--loader', worker_module.EMAKI_LOADER]
+        with patch.object(self.worker.runner, 'run', side_effect=[MAC_LISTING, '', MAC_CREATED]) as run:
+            self.worker.boot_entry_first()
+        self.assertEqual([call.args[0] for call in run.call_args_list],
+                         [['efibootmgr', '-v'], create, ['efibootmgr', '-v']])
+        self.assertEqual(self.notices, [])
+
+    def test_existing_entry_moves_first_and_a_first_one_stays(self):
+        later = MAC_CREATED.replace('BootOrder: 0003,0002,0001,0000,0080', 'BootOrder: 0002,0001,0003,0000,0080')
+        self.worker.runner.responses[('efibootmgr', '-v')] = later
+        self.worker.boot_entry_first()
+        self.assertEqual(self.commands()[-1], ['efibootmgr', '--bootorder', '0003,0002,0001,0000,0080'])
+        self.worker.runner.commands.clear()
+        self.worker.runner.responses[('efibootmgr', '-v')] = MAC_CREATED
+        self.worker.boot_entry_first()
+        self.assertEqual(self.commands(), [['efibootmgr', '-v']])
+
+    def test_unreadable_variables_change_nothing_and_failures_only_notify(self):
+        self.worker.boot_entry_first()
+        self.assertEqual(self.commands(), [['efibootmgr', '-v']])
+        self.assertEqual(self.notices, [])
+        self.worker.runner.responses[('efibootmgr', '-v')] = MAC_LISTING
+        self.worker.runner.fail = lambda argv: '--create' in argv
+        self.worker.boot_entry_first()
+        self.assertEqual(len(self.notices), 1)
+        self.assertIn('default startup choice', self.notices[0])

@@ -57,7 +57,7 @@ class WifiProfileTests(unittest.TestCase):
     def test_selected_profile_valid_in_installed_tree_and_private(self):
         notes = []
         data = self.capture(note=notes.append)
-        self.assertEqual(notes, ['[PLACEHOLDER] captured ' + UUID + ' from ' + str(self.source) + ': security wpa-psk, '
+        self.assertEqual(notes, ['captured ' + UUID + ' from ' + str(self.source) + ': security wpa-psk, '
                                  'secret saved in the keyfile; autoconnect preserved, any adapter, every user.'])
         target = self.root / 'target'
         target.mkdir()
@@ -99,7 +99,7 @@ class WifiProfileTests(unittest.TestCase):
                                      source != 'autoconnect=false\n')
                     self.assertNotIn('permissions=user:live:', data)
                     self.assertNotIn('interface-name', data)
-                    self.assertIn('[PLACEHOLDER]', notes[0])
+                    self.assertTrue(notes[0].startswith('captured '))
                     self.assertIn('autoconnect preserved', notes[0])
 
     @unittest.skipUnless(shutil.which('nmcli'), 'nmcli is required for offline keyfile validation')

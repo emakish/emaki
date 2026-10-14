@@ -129,18 +129,18 @@ def update(noninteractive, pacman=PACMAN, holds=HOLDS, targets=()):
     try:
         candidates = upgrades(pacman)
     except ValueError:
-        print('[PLACEHOLDER] The available package versions could not be checked. '
+        print('The available package versions could not be checked. '
               'The update was refused before changing installed packages.', file=sys.stderr)
         return 1
     keyrings = [name for name in KEYRINGS if candidates and name in candidates]
     if keyrings:
-        print('[PLACEHOLDER] Updating the package signing keys first.', flush=True)
+        print('Updating the package signing keys first.', flush=True)
         status = run([*pacman, '-S', *confirm, *keyrings], fail_on_hook_error=noninteractive)
         if status:
             return status
     blocked = held(candidates, holds)
     if blocked:
-        print('[PLACEHOLDER] The update was refused because these packages are held after a restore: '
+        print('The update was refused because these packages are held after a restore: '
               + ', '.join(f'{name} {version}' for name, version in blocked.items())
               + '. A newer version will release each hold automatically. '
                 'To allow a held version again, run: '
@@ -156,13 +156,17 @@ def main():
     parser = argparse.ArgumentParser(description='Update all installed packages [pacman].')
     parser.add_argument('--noninteractive', action='store_true',
                         help='use the default answers for the authorized graphical update')
-    parser.add_argument('--install', metavar='REPOSITORY/PACKAGE',
-                        help='[PLACEHOLDER] install one program as part of a full update')
+    targets_group = parser.add_mutually_exclusive_group()
+    targets_group.add_argument('--install', metavar='REPOSITORY/PACKAGE',
+                               help='install one program as part of a full update')
+    targets_group.add_argument('--install-only', nargs='+', metavar='REPOSITORY/PACKAGE',
+                               help=argparse.SUPPRESS)
     args = parser.parse_args()
-    if args.install is not None and (len(args.install) > 512 or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9@._+\-]*/[A-Za-z0-9][A-Za-z0-9@._+\-]*', args.install)):
-        parser.error('[PLACEHOLDER] Select one repository program.')
-    targets = [args.install] if args.install else []
-    command = ['/usr/bin/pacman', '-Syu'] + (['--noconfirm'] if args.noninteractive else [])
+    targets = args.install_only if args.install_only is not None else ([args.install] if args.install else [])
+    if len(targets) > 8 or any(len(target) > 512 or not re.fullmatch(
+            r'[A-Za-z0-9][A-Za-z0-9@._+\-]*/[A-Za-z0-9][A-Za-z0-9@._+\-]*', target) for target in targets):
+        parser.error('Select valid repository programs.')
+    command = [*PACMAN, '-S' if args.install_only else '-Syu'] + (['--noconfirm'] if args.noninteractive else [])
     if targets:
         command.extend(['--needed', *targets])
     try:
@@ -173,6 +177,8 @@ def main():
             preflight(targets=targets)
         else:
             preflight()
+        if args.install_only:
+            return run(command, fail_on_hook_error=args.noninteractive)
         return update(args.noninteractive, targets=targets)
     except RuntimeError as error:
         print(str(error), file=sys.stderr)

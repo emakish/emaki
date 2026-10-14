@@ -31,7 +31,7 @@ QtObject {
     property list<SettingsPageDefinition> allDefinitions: [
         SettingsPageDefinition {
             pageId: "privacy"
-            description: "[PLACEHOLDER] Review recovery, encryption, sudo keys and remembered portal permissions."
+            description: "Review recovery, encryption, sudo keys and remembered portal permissions."
             searchAnchors: ({
                     "privacy-recovery": "settings-privacy-recovery",
                     "privacy-encryption": "settings-privacy-encryption",
@@ -269,7 +269,7 @@ QtObject {
         },
         SettingsPageDefinition {
             pageId: "storage"
-            description: "[PLACEHOLDER] Inspect disk use and preview safe cleanup."
+            description: "Inspect disk use and preview safe cleanup."
             searchAnchors: ({
                     "storage-disks": "settings-storage-disks",
                     "storage-snapshots": "settings-storage-snapshots",
@@ -300,7 +300,8 @@ QtObject {
             searchAnchors: ({
                     "about-hardware": "settings-about-hardware",
                     "about-emaki-version": "settings-about-version",
-                    "about-report-a-problem": "settings-report-problem"
+                    "about-report-a-problem": "settings-report-problem",
+                    "about-diagnostics-file": "settings-diagnostics-file"
                 })
             component: Component {
                 SettingsAboutPage {

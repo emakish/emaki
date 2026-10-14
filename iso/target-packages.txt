@@ -6,6 +6,7 @@ btrfs-progs
 cryptsetup
 discover
 dkms
+dolphin
 dosfstools
 e2fsprogs
 efibootmgr
@@ -17,7 +18,9 @@ emaki-desktop
 emaki-keyring
 emaki-mirrorlist
 emaki-nvidia
+ffmpegthumbs
 filelight
+firefox
 grim
 grub
 grub-btrfs
@@ -28,6 +31,7 @@ intel-ucode
 isoimagewriter
 kate
 kcharselect
+kdegraphics-thumbnailers
 keepassxc
 libreoffice-fresh
 libva-nvidia-driver

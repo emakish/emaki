@@ -220,6 +220,18 @@ class AlongsideScenarioSafetyTests(unittest.TestCase):
                             if resize:
                                 self.assertEqual(resize[0], mock.call(['qemu-img', 'resize', str(target), '96G'], check=True))
 
+    def test_windows_target_requires_firmware_reboot_after_selection(self):
+        marker = 'EMAKI_SYNTHETIC_WINDOWS_EFI_OK'
+        started = 'BdsDxe: starting Boot00A2 "Windows Boot Manager" from HD(...)\r\n'
+        self.assertTrue(self.scenario.firmware_windows_boot(started + marker, '00A2'))
+        self.assertFalse(self.scenario.firmware_windows_boot(marker, '00A2'))
+        self.assertFalse(self.scenario.firmware_windows_boot(marker + started, '00A2'))
+        self.assertFalse(self.scenario.firmware_windows_boot(started + marker, '00A3'))
+        self.assertFalse(self.scenario.firmware_windows_boot(
+            started.replace('starting', 'loading') + marker, '00A2'))
+        with self.assertRaises(ValueError):
+            self.scenario.firmware_windows_boot(started + marker, '.*')
+
     def test_evidence_directories_are_confined(self):
         root = (Path.home() / 'VMs').resolve()
         self.assertFalse(self.scenario.allowed_vm_dir(root))

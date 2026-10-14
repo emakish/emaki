@@ -4,6 +4,7 @@
 """Exercise package adoption and service history on scratch install roots."""
 import importlib.machinery
 import importlib.util
+import ctypes.util
 import json
 import math
 import os
@@ -112,6 +113,81 @@ class SudoRemovalTests(unittest.TestCase):
         self.run.assert_not_called()
         self.broker.exists.assert_not_called()
         self.runtime.exists.assert_not_called()
+
+
+@unittest.skipUnless(ctypes.util.find_library('alpm') and shutil.which('pacman'),
+                     'libalpm and pacman unavailable')
+class DesktopApplicationMigrationTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.database = self.root / 'var/lib/pacman'
+        (self.database / 'local').mkdir(parents=True)
+        (self.database / 'local/ALPM_DB_VERSION').write_text('9\n')
+        self.state = self.root / 'var/lib/emaki/migrations/state.json'
+        self.state.parent.mkdir(parents=True)
+        self.state.write_text('{"version": 3}\n')
+        self.package('emaki-desktop', reason=0)
+
+    def package(self, name, reason=1):
+        directory = self.database / 'local' / (name + '-1-1')
+        directory.mkdir(exist_ok=True)
+        (directory / 'desc').write_text(
+            f'%NAME%\n{name}\n\n%VERSION%\n1-1\n\n%REASON%\n{reason}\n\n')
+
+    def explicit(self):
+        result = subprocess.run(['pacman', '--root', str(self.root), '--dbpath',
+                                 str(self.database), '-Qeq'],
+                                capture_output=True, text=True, check=True)
+        return set(result.stdout.splitlines())
+
+    def apply(self, fresh=False):
+        with mock.patch('emaki_boot_defaults.apply'), mock.patch.object(migration, 'services'):
+            migration.apply(self.root, fresh=fresh)
+
+    def test_existing_applications_become_explicit_under_transaction_lock(self):
+        for name in migration.FORMER_DESKTOP_DEPENDENCIES:
+            self.package(name)
+        self.package('unrelated')
+        lock = self.database / 'db.lck'
+        lock.write_text('held by the package transaction\n')
+        self.apply()
+        self.assertEqual(self.explicit(), {'emaki-desktop', *migration.FORMER_DESKTOP_DEPENDENCIES})
+        self.assertEqual(lock.read_text(), 'held by the package transaction\n')
+        self.assertEqual(json.loads(self.state.read_text())['version'], 4)
+
+    def test_removed_applications_stay_removed_and_later_reason_changes_stay(self):
+        self.package('firefox')
+        self.apply()
+        self.assertEqual(self.explicit(), {'emaki-desktop', 'firefox'})
+        self.assertEqual(len(list((self.database / 'local').glob('*/desc'))), 2)
+        self.package('firefox', reason=1)
+        self.apply()
+        self.assertEqual(self.explicit(), {'emaki-desktop'})
+
+    def test_fresh_install_does_not_change_package_reasons(self):
+        self.package('firefox')
+        self.apply(fresh=True)
+        self.assertEqual(self.explicit(), {'emaki-desktop'})
+        self.assertEqual(json.loads(self.state.read_text())['version'], 4)
+
+    def test_without_desktop_package_does_not_change_package_reasons(self):
+        shutil.rmtree(self.database / 'local/emaki-desktop-1-1')
+        self.package('firefox')
+        self.package('unrelated', reason=0)
+        self.apply()
+        self.assertEqual(self.explicit(), {'unrelated'})
+
+    def test_failed_migration_keeps_version_for_retry(self):
+        with mock.patch.object(migration, 'preserve_desktop_applications',
+                               side_effect=OSError('package database unavailable')):
+            with self.assertRaises(OSError):
+                self.apply()
+        self.assertEqual(json.loads(self.state.read_text())['version'], 3)
+        self.package('firefox')
+        self.apply()
+        self.assertIn('firefox', self.explicit())
 
 
 class MigrationTests(unittest.TestCase):
@@ -493,7 +569,7 @@ class MigrationTests(unittest.TestCase):
         result = self.as_root('--transaction')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(directory.stat().st_mode & 0o7777, 0o750)
-        self.assertEqual(json.loads(state.read_text())['version'], 3)
+        self.assertEqual(json.loads(state.read_text())['version'], 4)
         # Once only: an administrator's later choice stays.
         directory.chmod(0o755)
         self.assertEqual(self.as_root('--transaction').returncode, 0)

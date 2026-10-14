@@ -65,7 +65,7 @@ Plans use `partition_id` for Windows and `shrink_bytes` for **bytes freed for
 Emaki**. The worker reserves the NTFS minimum plus 2 GiB for Windows and at
 least 32 GiB for Emaki. Root must also fit the existing 20 GiB allowance, RAM
 when hibernation is selected, and the LUKS2 header when encrypted. The slider
-starts at half the available space, bounded by those limits. The 0.7.0 UI
+starts at half the available space, bounded by those limits. The 0.8.0 UI
 always sends hibernation off and reserves no RAM-sized space. The review names both resulting sizes,
 preservation behavior, encryption and hibernation, and requires the backup
 acknowledgement before confirmation.
@@ -105,8 +105,8 @@ If the post-write EFI check fails, installation stops and the log identifies cha
 missing or unexpected paths (bounded and escaped). Unreadable EFI evidence also gets a
 post-write failure. The diagnostic distinguishes the earlier Windows post-shrink check
 from the current EFI failure, warns against retrying, and asks to retain the log for recovery.
-Both post-write variants and the pre-write unverifiable-EFI refusal remain explicitly
-`[PLACEHOLDER]` text pending owner approval; the feature remains shipped off.
+Both post-write variants and the pre-write unverifiable-EFI refusal carry their final text;
+the feature ships on in 0.8.0 (DECISIONS 2026-10-13).
 The ESP, MSR and other partitions are preserved; encryption covers Emaki root.
 On a 100 MiB Windows ESP, installed-system loader refresh remains permanently "kept"
 because it requires at least 256 MiB (DECISIONS 2026-10-06). A foreign fallback also
@@ -340,7 +340,7 @@ starting `Wi-Fi:`: how many profiles the live session has, the Network page's jo
 profile was chosen and why, what was captured, installed, or why not. The log names
 profiles by UUID only: no network names, passwords or keyfile contents.
 
-[PLACEHOLDER] Only a private, root-owned regular keyfile from NetworkManager's system-connections
+Only a private, root-owned regular keyfile from NetworkManager's system-connections
 directories is read; the profile need not be active. NetworkManager normalizes it offline
 before saved-secret checks, removes live-user restrictions, preserves the source
 autoconnect setting for secured, open and OWE profiles, and
@@ -372,7 +372,7 @@ the disk; unencrypted installations retain the existing login-password rules.
 
 Plans must explicitly include `encryption: "none" | "account" | "separate"`.
 The separate choice also needs `disk_password`; neither password appears in
-the returned review or logs. The 0.7.0 installer window does not offer hibernation:
+the returned review or logs. The 0.8.0 installer window does not offer hibernation:
 the session on tested hardware did not respond after resume. Its controller keeps
 hibernation off and every UI plan explicitly sends `hibernation: false`; root
 and alongside space calculations do not reserve RAM-sized space.
@@ -503,7 +503,7 @@ public VM-only account `emaki` / `emaki-vm-test-only`. If `--probe` reports a
 different by-id name, replace `disk_id` and manual `partition_id` fields with exactly the
 reported IDs. The fixtures keep `online_update` false and use the signed offline repository
 on the test ISO. They inherit the packaged mirror configuration without an override.
-[PLACEHOLDER] `repo_server` is accepted only by a source-tree test build in test mode (`emaki.test=1`),
+`repo_server` is accepted only by a source-tree test build in test mode (`emaki.test=1`),
 only over HTTPS; the worker writes `SigLevel = Required` beside it. Packaging disables
 repository overrides at build time, including when the release package boots with
 `emaki.test=1`. A runtime test flag cannot enable this source-only capability.

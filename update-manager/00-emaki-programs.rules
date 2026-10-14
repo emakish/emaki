@@ -6,20 +6,38 @@
 polkit.addRule(function(action, subject) {
     var flatpakInstall = action.id === "org.emaki.programs.flatpak.install";
     var flatpakRemove = action.id === "org.emaki.programs.flatpak.remove";
-    if (flatpakInstall || flatpakRemove) {
+    var flatpakUndo = action.id === "org.emaki.programs.flatpak.undo";
+    if (flatpakInstall || flatpakRemove || flatpakUndo) {
         var flatpakHelper = "@EMAKI_LIBEXECDIR@/emaki-programs-flatpak";
         var flatpakCommand = action.lookup("command_line");
         if (action.lookup("program") !== flatpakHelper || typeof flatpakCommand !== "string"
-                || flatpakCommand.length > flatpakHelper.length + 720)
+                || flatpakCommand.length > flatpakHelper.length + 800)
             return polkit.Result.NO;
         var fields = flatpakCommand.split(" ");
-        if (fields.length !== 5 || fields[0] !== flatpakHelper
-                || fields[1] !== (flatpakInstall ? "install" : "remove")
+        if (fields.length !== (flatpakUndo ? 6 : 5) || fields[0] !== flatpakHelper
+                || fields[1] !== (flatpakInstall ? "install" : flatpakRemove ? "remove" : "undo")
                 || /[^\x21-\x7e]/.test(fields.slice(1).join(""))
                 || !/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/.test(fields[2])
                 || fields[3].length > 512
                 || !/^app\/[A-Za-z0-9_][A-Za-z0-9_.-]*\/[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/.test(fields[3])
-                || !/^[0-9a-f]{64}$/.test(fields[4]))
+                || (flatpakUndo && !/^[0-9]{8}T[0-9]{12}Z-[0-9a-f]{32}$/.test(fields[4]))
+                || !/^[0-9a-f]{64}$/.test(fields[fields.length - 1]))
+            return polkit.Result.NO;
+        return;
+    }
+    if (action.id === "org.emaki.programs.aur" || action.id === "org.emaki.programs.undo") {
+        var aur = action.id === "org.emaki.programs.aur";
+        var programHelper = "@EMAKI_LIBEXECDIR@/emaki-programs-" + (aur ? "aur" : "undo");
+        var request = action.lookup("command_line");
+        if (action.lookup("program") !== programHelper || typeof request !== "string"
+                || request.length > programHelper.length + 300 || /[^\x20-\x7e]/.test(request))
+            return polkit.Result.NO;
+        var parts = request.split(" ");
+        // AUR: the package and its reviewed plan. Undo: the receipt, its program and the preview.
+        if (parts.length !== (aur ? 3 : 4) || parts[0] !== programHelper
+                || (!aur && !/^[0-9]{8}T[0-9]{12}Z-[0-9a-f]{32}$/.test(parts[1]))
+                || !/^[a-z0-9@_+][a-z0-9@._+-]{0,127}$/.test(parts[aur ? 1 : 2])
+                || !/^[0-9a-f]{64}$/.test(parts[parts.length - 1]))
             return polkit.Result.NO;
         return;
     }

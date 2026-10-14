@@ -227,13 +227,18 @@ def discover(cache):
     try:
         updates.extend(flatpaks.discover(command))
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
-        warnings.append('[PLACEHOLDER] Flatpak updates could not be checked. Check again before updating applications.')
+        warnings.append('Flatpak updates could not be checked. Check again before updating applications.')
     warnings.append('The upgrade checks the repositories again. Its final package list and download size may change.')
     data = catalog.summary(updates, news, list(dict.fromkeys(warnings)), datetime.now(timezone.utc).isoformat())
     data['databaseStamp'] = initial
+    # A pending Emaki release brings its published notes; nothing is fetched otherwise.
+    version = next(filter(None, (catalog.release_version(row) for row in updates)), '')
+    if version:
+        emit('progress', message='Reading what is new in Emaki…')
+        data['release'] = catalog.release_card(version, lambda url, validate: fetch(url, cache, validate))
     helpers = [name for name in ('paru', 'yay', 'pikaur', 'trizen', 'aura', 'pamac') if shutil.which(name)]
     data['aurHelpers'] = helpers
-    data['aurNotice'] = ('[PLACEHOLDER] AUR: update in a terminal' +
+    data['aurNotice'] = ('AUR: update in a terminal' +
                          (' with ' + ', '.join(helpers) if helpers else ' with your preferred AUR helper') + '.')
     if not any(row.get('aur') for row in updates):
         data['aurNotice'] = ''
@@ -327,8 +332,8 @@ def restore(operation, token=None):
                 pass
         code = process.wait()
     if not received:
-        message = ('[PLACEHOLDER] The system restore request was not authorized.' if code in (126, 127) else
-                   '[PLACEHOLDER] The system restore connection ended. Check the restore status before trying again.')
+        message = ('The system restore request was not authorized.' if code in (126, 127) else
+                   'The system restore connection ended. Check the restore status before trying again.')
         pending = rollback_pending()
         if listing:
             emit(expected, points=[], error=message, restorePending=pending)
@@ -365,6 +370,8 @@ def observe_existing(cache):
                   'The update did not finish. Open the update details with an administrator before trying again [journalctl -u emaki-update.service].'),
          **local_state(cache),
          signOut=any('sign out' in line for line in notices))
+    if not ok:
+        reminder.offer_report('update')
     return True
 
 
@@ -388,6 +395,8 @@ def apply(cache):
                    else 'The update connection ended. Reopen the window to check the result; a started update keeps running.')
         emit('finished', ok=False, notStarted=code in (126, 127), message=message,
              signOut=False, **local_state(cache))
+        if code not in (126, 127):
+            reminder.offer_report('update')
     else:
         finished.pop('type', None)
         if code != 0:
@@ -395,14 +404,16 @@ def apply(cache):
         if finished.get('ok'):
             try:
                 if flatpaks.update(command, emit):
-                    finished['message'] = '[PLACEHOLDER] System and Flatpak updates finished. Update AUR packages in a terminal.'
+                    finished['message'] = 'System and Flatpak updates finished. Update AUR packages in a terminal.'
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
-                emit('progress', message=str(error)[:2500])
-                finished.update(ok=False, message='[PLACEHOLDER] System updates finished, but Flatpak updates did not finish. Review the details before trying again.')
+                emit('progress', stage='failed', message=str(error)[:2500])
+                finished.update(ok=False, message='System updates finished, but Flatpak updates did not finish. Review the details before trying again.')
         finished.update(local_state(cache))
         emit('finished', **finished)
         if finished.get('ok') and not finished.get('restart'):
             reminder.notify_completed()
+        elif not finished.get('ok') and not finished.get('notStarted'):
+            reminder.offer_report('update')
     # Keep AUR reminders; --status drops versions changed by this transaction,
     # and the database stamp invalidates the next cached check.
 
@@ -414,7 +425,7 @@ def main():
     restoring = (len(sys.argv) == 3 and sys.argv[1] == '--restore'
                  and re.fullmatch(r'[1-9][0-9]{0,18}:[0-9a-f]{64}', sys.argv[2]))
     if not restoring and (len(sys.argv) != 2 or sys.argv[1] not in operations):
-        parser.error('[PLACEHOLDER] Choose a fixed update operation or --restore with a restore point token.')
+        parser.error('Choose a fixed update operation or --restore with a restore point token.')
     if os.geteuid() == 0:
         parser.error('open the update manager as a regular user')
     for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):

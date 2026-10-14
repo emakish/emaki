@@ -14,11 +14,12 @@ from urllib.parse import unquote, urlsplit
 from . import __version__
 from .arch_backend import Backend, offline_config
 from . import inventory as alongside
-from .constants import GRUB_VISIBLE_FONT, LOG, MARKER, PACKAGES, PHASES, RICH_APPS, SNAPSHOT_PACKAGES, TARGET, TEST_PACKAGES, WORK
+from .constants import DESKTOP_APPS, GRUB_VISIBLE_FONT, LOG, MARKER, PACKAGES, PHASES, RICH_APPS, SNAPSHOT_PACKAGES, TARGET, TEST_PACKAGES, WORK
 from .errors import Code, InstallError, require
 from .update_errors import details as update_error_details
 from .copy_progress import CopyProgress
-from .boot import boot_framebuffer, menu_font, menu_font_fallback, menu_layout, menu_theme
+from .boot import (boot_framebuffer, firmware_boot_order, menu_font, menu_font_fallback, menu_layout,
+                   menu_theme, windows_bootnext_menu)
 from .clock import ensure_clock
 from .media import discover_repo, package_source
 from .network_profiles import WifiNotCopied, capture_wifi, choose_wifi, install_wifi
@@ -92,6 +93,29 @@ def without_emaki(text):
     return '\n'.join(output).rstrip() + '\n'
 
 
+EMAKI_LOADER = r'\EFI\Emaki\grubx64.efi'
+
+
+def boot_order(listing):
+    """Return an order only when every numbered entry is present and structurally parsed."""
+    return firmware_boot_order(listing)
+
+
+def emaki_boot_entry(listing, partuuid, *, active=True):
+    """The first entry of the requested active state for Emaki's loader on this ESP.
+
+    efibootmgr 18 prints the path bare after HD(...)/, older versions inside
+    File(...); some firmware puts hardware nodes first."""
+    loader = re.escape(EMAKI_LOADER)
+    hardware = r'(?:(?!(?:HD|File)\()[A-Za-z][A-Za-z0-9]*\([^()\t\n]*\)/)*'
+    state = r'\*' if active else ' '
+    pattern = (rf'^Boot([0-9A-Fa-f]{{4}}){state} [^\t\n]*\t{hardware}'
+               rf'HD\([1-9][0-9]*,GPT,{re.escape(partuuid)},0x[0-9a-f]+,0x[0-9a-f]+\)/'
+               rf'(?:File\({loader}\)|{loader})$')
+    found = re.search(pattern, listing, re.M | re.I)
+    return found.group(1).upper() if found else None
+
+
 class DownloadCount:
     """What pacman says while it downloads, through a pipe with LC_ALL=C (pacman 7.1).
 
@@ -127,7 +151,7 @@ def enable_units(runner, target, units):
 
 
 def software_packages(software='rich', *, btrfs=True, graphics=()):
-    return (PACKAGES + ['mkinitcpio'] + (SNAPSHOT_PACKAGES if btrfs else [])
+    return (PACKAGES + DESKTOP_APPS + ['mkinitcpio'] + (SNAPSHOT_PACKAGES if btrfs else [])
             + (['emaki-apps'] + RICH_APPS if software == 'rich' else []) + list(graphics))
 
 
@@ -591,6 +615,8 @@ class Worker:
             self.log('WARNING: preserving existing fallback EFI boot file; removable GRUB copy skipped.')
         require(nvram_ok or removable_ok, Code.BOOT_VERIFY,
                 'GRUB NVRAM registration failed and no removable loader could be installed.')
+        if nvram_ok:
+            self.boot_entry_first()
         if not nvram_ok and removable_ok:
             self.notice('The firmware could not save a startup entry (NVRAM/efibootmgr). '
                         'Emaki installed the standard fallback loader (EFI/BOOT/BOOTX64.EFI). '
@@ -630,7 +656,7 @@ class Worker:
         # Reaching bootloader means prepare completed its post-shrink checks. This
         # says nothing about Windows booting or the current state of the ESP.
         raise InstallError(
-            Code.BOOT_VERIFY, '[PLACEHOLDER] STOP: ' + detail +
+            Code.BOOT_VERIFY, 'STOP: ' + detail +
             ' The Windows data partition passed post-shrink verification before loader installation. '
             'Disk changes have already been made. Do not retry installation. '
             'Save the installation log to another device and seek recovery help before changing this disk.')
@@ -726,16 +752,20 @@ class Worker:
         self.runner.chroot([*(['env', *env] if env else []), 'grub-mkconfig', '-o', '/boot/grub/grub.cfg'],
                            self.target)
         original = self.files.read('/boot/grub/grub.cfg')
-        safe = menu_layout(menu_font_fallback(original))
+        if self.plan.config['mode'] == 'alongside':
+            # Discovery must identify Windows on the reviewed shared partition before
+            # replacing its chainload with a restart through the firmware entry.
+            require(re.search(r'^menuentry [^\n]*Windows Boot Manager', original, re.M), Code.BOOT_VERIFY,
+                    'Windows Boot Manager was not discovered by os-prober; inspect GRUB before rebooting.')
+            esp = next(part for part in self.plan.partitions if part.esp)
+            original_windows = windows_bootnext_menu(
+                original, esp.partuuid, esp.uuid, self.runner.run(['efibootmgr', '-v']))
+        else:
+            original_windows = original
+        safe = menu_layout(menu_font_fallback(original_windows))
         if safe != original:
             self.files.write('/boot/grub/grub.cfg', safe)
         verify_grub(self.files.read('/boot/grub/grub.cfg'))
-        if self.plan.config['mode'] == 'alongside':
-            # 30_os-prober invokes os-prober inside this chroot. Do not invent
-            # a Windows entry when discovery failed.
-            require(re.search(r'^menuentry [^\n]*Windows Boot Manager',
-                              self.files.read('/boot/grub/grub.cfg'), re.M), Code.BOOT_VERIFY,
-                    'Windows Boot Manager was not discovered by os-prober; inspect GRUB before rebooting.')
 
     def account(self):
         user = self.plan.config['user']
@@ -1094,11 +1124,66 @@ class Worker:
             self.runner.chroot(['mkinitcpio', '-p', 'linux', '-p', 'linux-lts'], self.target)
             self.grub_config()
         self.update_notice()
+        self.record_installation()
         self.files.path(MARKER).unlink(missing_ok=True)
         self.log('Installation complete; syncing and unmounting target filesystems.')
         destination = '/var/log/emaki-install/install-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '.log'
         # LOG is flushed by the broker on each line. It never contains stdin.
         self.files.write(destination, LOG.read_bytes(), 0o600)
+
+    def record_installation(self):
+        """Record only the Emaki version this system was installed with. A problem report
+        compares it with the running version to tell a fresh installation from an updated one."""
+        release = self.files.path('/usr/lib/emaki-release')
+        version = ''
+        if release.is_file():
+            for line in release.read_text(errors='replace').splitlines():
+                key, sep, value = line.partition('=')
+                if sep and key == 'VERSION':
+                    version = value.strip().strip('"\'')
+        if not re.fullmatch(r'[0-9A-Za-z][0-9A-Za-z.+~_-]{0,31}', version):
+            self.log('WARNING: the installed Emaki version could not be read; problem reports will not '
+                     'say whether this is a fresh installation.')
+            return
+        self.files.write('/var/lib/emaki/installed.json',
+                         json.dumps({'version': 1, 'emaki_version': version}) + '\n', 0o644)
+
+    def boot_entry_first(self):
+        """grub-install keeps an older entry with the same loader path even when it names an ESP that no
+        longer exists (Emaki installed before on a wiped disk): then nothing starts this Emaki, and the
+        firmware starts Windows. Make sure an entry for this ESP exists and comes first, so Emaki is the
+        default as planned. A listing without BootOrder (no EFI variables) changes nothing."""
+        esp = next(part for part in self.plan.partitions if part.esp)
+        try:
+            partuuid = (esp.partuuid or self.runner.run(['lsblk', '-dno', 'PARTUUID', esp.path])).strip().lower()
+            listing = self.runner.run(['efibootmgr', '-v'])
+            order = boot_order(listing)
+            if order is None or not re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', partuuid):
+                self.log('WARNING: the firmware boot entries could not be read; the startup order is unchanged.')
+                return
+            entry = emaki_boot_entry(listing, partuuid)
+            if entry is None:
+                inactive = emaki_boot_entry(listing, partuuid, active=False)
+                if inactive:
+                    self.runner.run(['efibootmgr', '-b', inactive, '-a'])
+                    listing = self.runner.run(['efibootmgr', '-v'])
+                    entry, order = emaki_boot_entry(listing, partuuid), boot_order(listing)
+                    require(entry == inactive and order, Code.BOOT_VERIFY,
+                            'The firmware entry for Emaki could not be activated.')
+            if entry is None:
+                self.log('No firmware entry starts this Emaki (an older one names another disk); creating one.')
+                self.runner.run(['efibootmgr', '--create', '--disk', self.plan.disk['path'],
+                                 '--part', str(esp.number), '--label', 'Emaki', '--loader', EMAKI_LOADER])
+                listing = self.runner.run(['efibootmgr', '-v'])
+                entry, order = emaki_boot_entry(listing, partuuid), boot_order(listing)
+                require(entry and order, Code.BOOT_VERIFY, 'The new firmware entry for Emaki is not listed.')
+            if order[0] != entry:
+                self.runner.run(['efibootmgr', '--bootorder', ','.join([entry] + [n for n in order if n != entry])])
+        except InstallError as exc:
+            self.log('WARNING: firmware startup order: ' + exc.message)
+            self.notice('Emaki could not make itself the computer\'s default startup choice. '
+                        'If another system starts instead, start the installation USB and use its GRUB console '
+                        'to load EFI/Emaki/grubx64.efi from this installation\'s EFI partition.')
 
     def protect_shared_esp(self):
         esp = next(part for part in self.plan.partitions if part.esp)
@@ -1108,10 +1193,12 @@ class Worker:
                          json.dumps({'version': 1, 'esp_partuuid': esp.partuuid.lower()}) + '\n', 0o644)
         # The sleep service does not start if the unmount fails. ExecStopPost also
         # restores the read-only mount after a failed sleep attempt. A system-sleep
-        # hook cannot provide this barrier: failures there do not cancel sleep.
+        # hook cannot provide this barrier: failures there do not cancel sleep, and
+        # it runs too late to save the update and trial counters GRUB changes.
         dropin = ('# Copyright (C) 2026 Artur Yakymenko\n'
                   '# SPDX-License-Identifier: GPL-3.0-or-later\n'
-                  '[Service]\nExecStartPre=umount /efi\nExecStopPost=mount -o ro /efi\n')
+                  '[Service]\nExecStartPre=emaki-update-boot hibernate-pre\n'
+                  'ExecStopPost=emaki-update-boot hibernate-post\n')
         for mode in ('hibernate', 'hybrid-sleep', 'suspend-then-hibernate'):
             self.files.write(f'/etc/systemd/system/systemd-{mode}.service.d/50-emaki-shared-esp.conf', dropin)
         enable_units(self.runner, self.target, ['emaki-boot-order.service'])

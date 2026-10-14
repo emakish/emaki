@@ -110,9 +110,32 @@ def configured():
 def restart():
     if not configured():
         return LEGACY
-    result = subprocess.run([str(BINDIR / 'niri-emaki'), 'msg', 'restart-trusted-shell'],
-                            timeout=5, check=False)
-    return 0 if result.returncode == 0 else 75
+    # A requested restart uses SIGTERM, which does not run QML teardown. Record
+    # its intent before dispatch so the next shell does not call it a crash.
+    health = [PYTHON, '-I', '-B', str(BINDIR / 'emaki-shell-health')]
+    owner = {}
+    try:
+        begun = subprocess.run([*health, 'restart-begin'], capture_output=True,
+                               text=True, timeout=5, check=False)
+        if begun.returncode == 0:
+            owner = json.loads(begun.stdout)
+            if not isinstance(owner, dict):
+                owner = {}
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    succeeded = False
+    try:
+        result = subprocess.run([str(BINDIR / 'niri-emaki'), 'msg', 'restart-trusted-shell'],
+                                timeout=5, check=False)
+        succeeded = result.returncode == 0
+        return 0 if succeeded else 75
+    finally:
+        if not succeeded and 'pid' in owner and 'token' in owner:
+            try:
+                subprocess.run([*health, 'restart-cancel', str(owner['pid']), str(owner['token'])],
+                               timeout=5, check=False)
+            except (OSError, subprocess.SubprocessError):
+                pass
 
 
 def validate_runtime(tree):

@@ -11,12 +11,12 @@ Column {
     spacing: 20
     SettingsCard {
         width: parent.width
-        title: "[PLACEHOLDER] System rules"
+        title: "System rules"
         SettingsRow {
             objectName: "settings-agent-rules"
             width: parent.width
-            title: "[PLACEHOLDER] Rules template"
-            explanation: "[PLACEHOLDER] Read the system rules and choose whether to add them to your assistant. Opening instructions changes no configuration."
+            title: "Rules template"
+            explanation: "Read the system rules and choose whether to add them to your assistant. Opening instructions changes no configuration."
             controlWidth: 270
             control: SettingsButton {
                 text: "Setup instructions"
@@ -26,11 +26,11 @@ Column {
         SettingsRow {
             objectName: "settings-system-map"
             width: parent.width
-            title: "[PLACEHOLDER] System map"
-            explanation: "[PLACEHOLDER] See components, file zones and commands for asking the system state."
+            title: "System map"
+            explanation: "See components, file zones and commands for asking the system state."
             controlWidth: 270
             control: SettingsButton {
-                text: "[PLACEHOLDER] Open map"
+                text: "Open map"
                 onClicked: Qt.openUrlExternally("file://" + Platform.dataDir + "/system-map.md")
             }
         }

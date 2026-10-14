@@ -3,10 +3,15 @@
 """Exercise the guest fixture's no-write evidence without opening a device."""
 import importlib.util
 import copy
+import hashlib
+import io
+import json
 from contextlib import ExitStack, nullcontext
 from pathlib import Path
 import tempfile
 import sys
+import tarfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -24,6 +29,100 @@ def load(name):
 
 
 class WindowsFixtureTests(unittest.TestCase):
+    def test_alongside_overlay_installs_branch_transaction_hooks(self):
+        harness = load('../alongside-update-check')
+        guest = load('alongside-update-guest')
+        hooks = ('00-emaki-alongside.hook', '04-emaki-update-boot.hook',
+                 '06-emaki-update-boot.hook')
+        data = harness.overlay_archive()
+        with tarfile.open(fileobj=io.BytesIO(data)) as archive:
+            for name in hooks:
+                self.assertIn('hooks/' + name, archive.getnames())
+                self.assertEqual(archive.extractfile('hooks/' + name).read(),
+                                 (ROOT / 'grub' / name).read_bytes())
+        self.assertEqual(guest.OVERLAY['hooks/'],
+                         guest.OVERLAY['bin/'].parent / 'share/libalpm/hooks')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            destinations = {prefix: root / prefix for prefix in guest.OVERLAY}
+            for target in destinations.values():
+                target.mkdir()
+            for name in hooks:
+                (destinations['hooks/'] / name).write_text('old packaged hook\n')
+            archive = root / 'overlay.tar'
+            archive.write_bytes(data)
+            with patch.object(guest, 'OVERLAY', destinations), \
+                    patch.object(guest, 'run', return_value=SimpleNamespace(stdout='', stderr='')):
+                evidence = guest.overlay(archive)
+                self.assertEqual(guest.overlay(archive)['changed'], [])
+            changed = {item['path']: item for item in evidence['changed']}
+            for name in hooks:
+                target = destinations['hooks/'] / name
+                content = (ROOT / 'grub' / name).read_bytes()
+                self.assertEqual(target.read_bytes(), content)
+                self.assertEqual(target.stat().st_mode & 0o777, 0o644)
+                self.assertEqual(changed[str(target)]['sha256'], hashlib.sha256(content).hexdigest())
+                self.assertFalse(changed[str(target)]['new'])
+
+    def test_alongside_manifest_excludes_only_the_emaki_directory(self):
+        fixture = load('alongside-update-guest')
+        with tempfile.TemporaryDirectory() as directory:
+            esp = Path(directory)
+            names = ('EFI/Emaki/loader.efi', 'eFi/eMaKi/trial.env',
+                     'EFI/EmakiOld/loader.efi', 'EFI/EmakiBackup/BCD',
+                     'EFI/Microsoft/Boot/BCD', 'EFI/BOOT/BOOTX64.EFI')
+            for name in names:
+                path = esp / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'original')
+            mount = json.dumps({'filesystems': [{'options': 'ro'}]})
+            with patch.object(fixture, 'Path', return_value=esp), \
+                    patch.object(fixture, 'run', return_value=SimpleNamespace(stdout=mount)):
+                before = fixture.manifest()
+                for name in names[:2]:
+                    (esp / name).write_bytes(b'updated')
+                self.assertEqual(fixture.manifest()['windows_sha256'], before['windows_sha256'])
+                for name in names[2:]:
+                    with self.subTest(path=name):
+                        self.assertIn(name, before['windows'])
+                        (esp / name).write_bytes(b'changed')
+                        self.assertNotEqual(fixture.manifest()['windows_sha256'], before['windows_sha256'])
+                        (esp / name).write_bytes(b'original')
+
+    def test_alongside_update_rejects_emaki_prefixed_foreign_paths(self):
+        fixture = load('../alongside-update-check')
+        with tempfile.TemporaryDirectory() as directory:
+            vm = Path(directory)
+            (vm / 'pkgs').mkdir()
+            guest = SimpleNamespace(vm=vm, ssh=lambda *a, **kw: SimpleNamespace(stdout=b'installed'),
+                                    sudo=lambda *a, **kw: SimpleNamespace(stdout=b'pacman exit 0', stderr=b''))
+            for name, allowed in (('EFI/Emaki/loader.efi', True), ('eFi/eMaKi/trial.env', True),
+                                  ('EFI/EmakiOld/loader.efi', False), ('EFI/EmakiBackup/BCD', False)):
+                with self.subTest(path=name):
+                    before = {'windows': {}, 'files': {}, 'mount': {'options': 'ro'}}
+                    after = dict(before, files={name: 'new'})
+                    with patch.object(fixture, 'manifest', side_effect=[before, after]), \
+                            patch.object(fixture, 'record'), patch('builtins.print'):
+                        if allowed:
+                            fixture.update(guest, 'test', False)
+                        else:
+                            with self.assertRaisesRegex(RuntimeError, 'outside EFI/Emaki'):
+                                fixture.update(guest, 'test', False)
+
+    def test_alongside_refusal_recognizes_the_current_hibernation_message(self):
+        fixture = load('../alongside-update-check')
+        shared = load('../../../grub/emaki_boot/shared')
+        with tempfile.TemporaryDirectory() as directory:
+            vm = Path(directory)
+            (vm / 'pkgs').mkdir()
+            guest = SimpleNamespace(vm=vm, ssh=lambda *a, **kw: SimpleNamespace(stdout=b'installed'),
+                                    sudo=lambda *a, **kw: SimpleNamespace(stdout=b'pacman exit 1',
+                                                                         stderr=shared.HIBERNATED.encode()))
+            unchanged = {'windows': {}, 'files': {}, 'mount': {'options': 'ro'}}
+            with patch.object(fixture, 'manifest', return_value=unchanged), \
+                    patch.object(fixture, 'record'), patch('builtins.print'):
+                fixture.update(guest, 'hibernated', True)
+
     def test_no_fallback_variant_requires_new_x64_loader(self):
         fixture = load('windows-disk')
         baseline = {'no_fallback': True, 'esp': {}}

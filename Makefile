@@ -92,6 +92,7 @@ SCRIPTS += scripts/emaki-transaction-inhibit scripts/emaki-shell-generations
 SCRIPTS += scripts/emaki-machine-settings
 # Users: the accounts of the people on this computer through AccountsService.
 SCRIPTS += scripts/emaki-settings-users
+SCRIPTS += scripts/emaki-report
 QSB      ?= $(or $(shell command -v qsb),/usr/lib/qt6/bin/qsb)
 CORE_BIN  = $(CARGO_TARGET_DIR)/release/emaki
 CAPTURE_BUILD ?= $(CURDIR)/.cache/capture-build
@@ -124,6 +125,9 @@ check: paths check-assumptions
 	python3 tests/test-sudo-turn-integration.py
 	python3 tests/test-settings-apps.py
 	python3 tests/test-settings-about.py
+	python3 tests/test-report-redaction.py
+	python3 tests/test-report-redaction-corpus.py
+	python3 tests/test-report.py
 	python3 tests/test-settings-storage.py
 	python3 tests/test-storage-arch.py
 	python3 tests/test-settings-privacy.py
@@ -154,11 +158,24 @@ check: paths check-assumptions
 	python3 update-manager/tests/test_protocol.py
 	python3 update-manager/tests/test_programs.py
 	node tests/test-programs-auth.mjs
+	node tests/test-programs-logic.mjs
 	python3 update-manager/tests/test_appstream.py
 	python3 update-manager/tests/test_programs_engine.py
+	python3 update-manager/tests/test_programs_report_log.py
+	python3 update-manager/tests/test_programs_shelf.py
 	python3 update-manager/tests/test_programs_install.py
+	python3 update-manager/tests/test_programs_private_db.py
 	python3 update-manager/tests/test_programs_flatpak.py
 	python3 update-manager/tests/test_programs_flatpak_apply.py
+	python3 update-manager/tests/test_programs_aur.py
+	python3 update-manager/tests/test_programs_aur_build.py
+	python3 update-manager/tests/test_programs_aur_pacman.py
+	python3 update-manager/tests/test_programs_aur_consent.py
+	python3 update-manager/tests/test_programs_aur_snapshot_cleanup.py
+	python3 update-manager/tests/test_programs_snapshot_guard.py
+	python3 update-manager/tests/test_programs_receipts.py
+	python3 update-manager/tests/test_programs_reviews.py
+	python3 update-manager/tests/test_programs_nvidia_pacman.py
 	python3 update-manager/tests/mutants.py
 	python3 tests/test-runtime-fixture.py
 	python3 tests/test-vm-runtime.py
@@ -184,6 +201,7 @@ check: paths check-assumptions
 	python3 tests/test-application-environment.py
 	python3 tests/test-shell-health.py
 	python3 tests/test-shell-recovery-notice.py
+	python3 tests/test-report-window.py
 	niri validate -c niri/default.kdl
 	niri validate -c greetd/niri.kdl
 	@if command -v niri-emaki >/dev/null 2>&1; then \
@@ -197,6 +215,7 @@ check: paths check-assumptions
 	python3 tests/test-uninstall.py
 	python3 tests/test-boot-refresh.py
 	python3 tests/test-boot-order.py
+	python3 tests/test-shared-esp.py
 	python3 tests/test-update-boot.py
 	python3 tests/test-sleep-lock.py
 	python3 tests/test-update-menu.py
@@ -359,6 +378,7 @@ install-upkeep:
 	install -d $(DESTDIR)/etc/emaki/sudoers.d
 	install -Dm755 upkeep/emaki-refresh-mirrors $(BIN)/emaki-refresh-mirrors
 	for unit in emaki-refresh-mirrors.service emaki-refresh-mirrors.timer; do install -Dm644 systemd/$$unit $(SYSTEMD)/system/$$unit; done
+	for unit in emaki-refresh-appstream.service emaki-refresh-appstream.timer; do install -Dm644 systemd/$$unit $(SYSTEMD)/system/$$unit; done
 
 .PHONY: install-sudo-policy
 # C archive order installs the /etc PAM stack before the selector. The vendor
@@ -408,6 +428,8 @@ install: install-upkeep
 	install -Dm644 update-manager/org.emaki.update.restore.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.update.restore.policy
 	install -Dm644 update-manager/emaki-update-manager.desktop $(DESTDIR)$(PREFIX)/share/applications/emaki-update-manager.desktop
 	install -Dm644 -t $(DESTDIR)$(PREFIX)/share/emaki-update-manager/ui update-manager/ui/*.qml update-manager/ui/*.js
+	install -Dm644 update-manager/storefront.json $(DESTDIR)$(PREFIX)/share/emaki-update-manager/storefront.json
+	install -Dm644 update-manager/emaki-shelf.json $(DESTDIR)$(PREFIX)/share/emaki-update-manager/emaki-shelf.json
 	install -Dm644 update-manager/emaki-programs-updates.svg $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/emaki-programs-updates.svg
 	install -Dm644 installer/emaki_installer/update_errors.py $(DESTDIR)$(LIBEXECDIR)/emaki_update_errors.py
 	install -Dm644 scripts/emaki_session_state.py $(DESTDIR)$(LIBEXECDIR)/emaki_session_state.py
@@ -415,15 +437,22 @@ install: install-upkeep
 	install -Dm644 scripts/emaki_shell_tree.py $(DESTDIR)$(LIBEXECDIR)/emaki_shell_tree.py
 	install -Dm644 update-manager/emaki_update_space.py $(DESTDIR)$(LIBEXECDIR)/emaki_update_space.py
 	install -Dm644 scripts/emaki_storage.py $(DESTDIR)$(LIBEXECDIR)/emaki_storage.py
+	install -Dm644 scripts/emaki_report_redact.py $(DESTDIR)$(LIBEXECDIR)/emaki_report_redact.py
 	install -Dm644 update-manager/storage_arch.py $(DESTDIR)$(LIBEXECDIR)/storage_arch.py
 	install -Dm644 polkit/org.emaki.storage.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.storage.policy
 	install -Dm755 update-manager/programs.py $(BIN)/emaki-programs
 	install -Dm644 update-manager/programs_catalog.py $(DESTDIR)$(LIBEXECDIR)/programs_catalog.py
-	install -Dm644 -t $(DESTDIR)$(LIBEXECDIR) update-manager/programs_appstream.py update-manager/programs_arch.py update-manager/programs_engine.py update-manager/programs_flatpak.py
+	install -Dm644 -t $(DESTDIR)$(LIBEXECDIR) update-manager/programs_appstream.py update-manager/programs_arch.py update-manager/programs_engine.py update-manager/programs_flatpak.py update-manager/programs_aur.py update-manager/programs_receipts.py update-manager/programs_reviews.py
+	install -Dm644 update-manager/restore.py $(DESTDIR)$(LIBEXECDIR)/restore.py
 	install -Dm755 update-manager/programs_remove.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-remove
 	install -Dm755 update-manager/programs_flatpak_apply.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-flatpak
 	install -Dm644 update-manager/org.emaki.programs.flatpak.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.flatpak.policy
+	install -Dm644 installer/emaki_installer/graphics.py $(DESTDIR)$(LIBEXECDIR)/programs_graphics.py
 	install -Dm755 update-manager/programs_install.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-install
+	install -Dm755 update-manager/programs_aur_build.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-aur
+	install -Dm755 update-manager/programs_undo.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-undo
+	install -Dm644 update-manager/org.emaki.programs.aur.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.aur.policy
+	install -Dm644 update-manager/org.emaki.programs.undo.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.undo.policy
 	install -Dm644 update-manager/org.emaki.programs.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.policy
 	install -Dm644 update-manager/org.emaki.programs.install.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.install.policy
 	install -Dm644 update-manager/00-emaki-programs.rules $(DESTDIR)$(PREFIX)/share/polkit-1/rules.d/00-emaki-programs.rules
@@ -432,6 +461,7 @@ install: install-upkeep
 	install -Dm755 $(CORE_BIN) $(BIN)/emaki
 	for f in $(SHELL_SRC); do install -Dm644 "$$f" "$(SHARE)/$$f"; done
 	install -Dm644 shell/emaki-welcome.desktop $(DESTDIR)$(PREFIX)/share/applications/emaki-welcome.desktop
+	install -Dm644 shell/emaki-report.desktop $(DESTDIR)$(PREFIX)/share/applications/emaki-report.desktop
 	install -Dm644 art/logo/mark.svg $(ICONS)/hicolor/scalable/apps/emaki-welcome.svg
 	install -Dm644 docs/ZONES.md $(DESTDIR)$(PREFIX)/share/doc/emaki/ZONES.md
 	# Rendered from MANIFEST.md by `make render`; `make check` refuses a stale copy.
@@ -473,7 +503,7 @@ install: install-upkeep
 	for scale in $(GRUB_THEME_SCALES); do install -Dm644 -t $(SHARE)/grub/theme/$$scale grub/theme/$$scale/*.png; done
 	install -Dm644 installer/assets/grub/LICENSE-DejaVu.txt $(DESTDIR)$(PREFIX)/share/licenses/emaki-config/LICENSE-DejaVu.txt
 	install -Dm644 grub/theme/LICENSE-Noto.txt $(DESTDIR)$(PREFIX)/share/licenses/emaki-config/LICENSE-Noto.txt
-	install -Dm644 -t $(BOOTLIB) grub/emaki_boot/__init__.py grub/emaki_boot/refresh.py grub/emaki_boot/update.py grub/emaki_boot/update_menu.py grub/emaki_boot/usable.py
+	install -Dm644 -t $(BOOTLIB) grub/emaki_boot/__init__.py grub/emaki_boot/refresh.py grub/emaki_boot/shared.py grub/emaki_boot/update.py grub/emaki_boot/update_menu.py grub/emaki_boot/usable.py
 	for module in $(BOOT_SHARED); do install -Dm644 "installer/emaki_installer/$$module.py" "$(BOOTLIB)/$$module.py"; done
 	for picture in $(BOOT_ARTWORK); do install -Dm644 "$$picture" "$(BOOTLIB)/$${picture#installer/emaki_installer/}"; done
 	install -Dm644 grub/00-emaki-alongside.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/00-emaki-alongside.hook
@@ -651,7 +681,7 @@ uninstall:
 	rm -f $(SYSTEMD)/system/emaki-boot-refresh.service $(SYSTEMD)/system/multi-user.target.wants/emaki-boot-refresh.service
 	rm -f $(SYSTEMD)/system/emaki-snapshot-menu.service $(SYSTEMD)/system/multi-user.target.wants/emaki-snapshot-menu.service
 	rm -f $(SYSTEMD)/system/emaki-update-boot.service $(SYSTEMD)/system/multi-user.target.wants/emaki-update-boot.service
-	rm -f $(BOOTLIB)/__init__.py $(BOOTLIB)/refresh.py $(BOOTLIB)/update.py $(BOOTLIB)/update_menu.py $(BOOTLIB)/usable.py $(addprefix $(BOOTLIB)/,$(addsuffix .py,$(BOOT_SHARED)))
+	rm -f $(BOOTLIB)/__init__.py $(BOOTLIB)/refresh.py $(BOOTLIB)/shared.py $(BOOTLIB)/update.py $(BOOTLIB)/update_menu.py $(BOOTLIB)/usable.py $(addprefix $(BOOTLIB)/,$(addsuffix .py,$(BOOT_SHARED)))
 	for picture in $(BOOT_ARTWORK); do rm -f "$(BOOTLIB)/$${picture#installer/emaki_installer/}"; done
 	rm -f $(DESTDIR)$(PREFIX)/share/licenses/emaki-config/LICENSE-DejaVu.txt $(DESTDIR)$(PREFIX)/share/licenses/emaki-config/LICENSE-Noto.txt
 	rm -rf $(SHARE)/grub/theme
@@ -691,8 +721,11 @@ uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/emaki-programs-updates.svg
 	rm -rf $(DESTDIR)$(PREFIX)/share/emaki-update-manager
 	rm -f $(BIN)/emaki-programs $(DESTDIR)$(LIBEXECDIR)/programs_catalog.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-remove $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.policy
-	rm -f $(DESTDIR)$(LIBEXECDIR)/programs_appstream.py $(DESTDIR)$(LIBEXECDIR)/programs_arch.py $(DESTDIR)$(LIBEXECDIR)/programs_engine.py $(DESTDIR)$(LIBEXECDIR)/programs_flatpak.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-install $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.install.policy
+	rm -f $(DESTDIR)$(LIBEXECDIR)/programs_graphics.py $(DESTDIR)$(LIBEXECDIR)/programs_appstream.py $(DESTDIR)$(LIBEXECDIR)/programs_arch.py $(DESTDIR)$(LIBEXECDIR)/programs_engine.py $(DESTDIR)$(LIBEXECDIR)/programs_flatpak.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-install $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.install.policy
 	rm -f $(DESTDIR)$(LIBEXECDIR)/emaki-programs-flatpak $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.flatpak.policy
+	rm -f $(DESTDIR)$(LIBEXECDIR)/programs_aur.py $(DESTDIR)$(LIBEXECDIR)/programs_receipts.py $(DESTDIR)$(LIBEXECDIR)/programs_reviews.py $(DESTDIR)$(LIBEXECDIR)/emaki-programs-aur $(DESTDIR)$(LIBEXECDIR)/emaki-programs-undo
+	rm -f $(DESTDIR)$(LIBEXECDIR)/restore.py
+	rm -f $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.aur.policy $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.programs.undo.policy
 	rm -f $(DESTDIR)$(PREFIX)/share/polkit-1/rules.d/00-emaki-programs.rules
 	rm -f $(BIN)/emaki-shell-generations $(DESTDIR)$(LIBEXECDIR)/emaki_shell_tree.py $(BIN)/emaki-session-files $(BIN)/emaki-session-update $(BIN)/emaki-update $(DESTDIR)$(LIBEXECDIR)/emaki_update_errors.py $(DESTDIR)$(LIBEXECDIR)/emaki_session_state.py $(DESTDIR)$(LIBEXECDIR)/emaki_session_arch.py
 	rm -f $(BIN)/emaki-wallet-stage $(BIN)/emaki-wallet-start $(BIN)/emaki-keyring-recover $(BIN)/emaki-wallet-migrate $(BIN)/emaki-rollback $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.rollback.policy
@@ -702,6 +735,7 @@ uninstall:
 	rm -f $(BIN)/emaki-boot-refresh $(DESTDIR)$(PREFIX)/share/libalpm/hooks/95-emaki-boot-refresh.hook
 	rm -f $(BIN)/emaki-drm-hold $(BIN)/emaki-greeter-compositor $(BIN)/emaki-greeter-run $(BIN)/emaki-text-session $(BIN)/emaki-session-import-environment $(SYSTEMD)/system/emaki-drm-hold.service
 	rm -f $(BIN)/emaki-settings-power $(BIN)/emaki-settings-apps $(BIN)/emaki-settings-about $(DESTDIR)$(LIBEXECDIR)/emaki-charge-limit
+	rm -f $(BIN)/emaki-report $(DESTDIR)$(LIBEXECDIR)/emaki_report_redact.py
 	rm -f $(BIN)/emaki-settings-storage $(DESTDIR)$(LIBEXECDIR)/emaki_storage.py $(DESTDIR)$(LIBEXECDIR)/storage_arch.py $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.storage.policy
 	rm -f $(DESTDIR)$(PREFIX)/lib/udev/rules.d/90-emaki-charge-limit.rules
 	rm -f $(SYSTEMD)/system/emaki-charge-limit.service $(SYSTEMD)/system/multi-user.target.wants/emaki-charge-limit.service
@@ -713,7 +747,7 @@ uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/lib/systemd/user/niri-emaki.service
 	rm -f $(DESTDIR)$(PREFIX)/share/wayland-sessions/niri-emaki.desktop
 	rm -rf $(SHARE)
-	rm -f $(DESTDIR)$(PREFIX)/share/applications/emaki-welcome.desktop $(ICONS)/hicolor/scalable/apps/emaki-welcome.svg
+	rm -f $(DESTDIR)$(PREFIX)/share/applications/emaki-welcome.desktop $(DESTDIR)$(PREFIX)/share/applications/emaki-report.desktop $(ICONS)/hicolor/scalable/apps/emaki-welcome.svg
 	rm -rf $(ICONS)/Emaki
 	rm -f $(SYSTEMD)/user/emaki-shell.service $(SYSTEMD)/user/emaki-shell-heal.service $(SYSTEMD)/user/emaki-shell-recovery.service $(SYSTEMD)/user/emaki-sleep-guard.service $(SYSTEMD)/user/emaki-idle.service $(SYSTEMD)/user/emaki-wallet-migrate.service $(SYSTEMD)/user/emaki-wallet-start.service $(SYSTEMD)/user/niri.service.d/50-emaki-wallet.conf
 	rm -f $(SYSTEMD)/system-sleep/emaki-boot-resume
@@ -724,6 +758,7 @@ uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/hooks/89-emaki-system-migrate.hook
 	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-initramfs-refresh $(DESTDIR)$(PREFIX)/share/libalpm/hooks/93-emaki-initramfs-refresh.hook
 	rm -f $(BIN)/emaki-refresh-mirrors $(SYSTEMD)/system/emaki-refresh-mirrors.service $(SYSTEMD)/system/emaki-refresh-mirrors.timer $(SYSTEMD)/zram-generator.conf.d/00-emaki.conf
+	rm -f $(SYSTEMD)/system/emaki-refresh-appstream.service $(SYSTEMD)/system/emaki-refresh-appstream.timer
 	for pair in upkeep/defaults/10-emaki-wheel:sudoers.d/10-emaki-wheel; do \
 		source=$${pair%%:*}; target=$(DESTDIR)/etc/$${pair#*:}; if cmp -s "$$source" "$$target"; then rm -f "$$target"; fi; done
 	rm -f $(DESTDIR)$(PREFIX)/share/libalpm/scripts/emaki-rollback-holds $(DESTDIR)$(PREFIX)/share/libalpm/hooks/00-emaki-rollback-holds.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/99-emaki-rollback-holds.hook
@@ -812,6 +847,7 @@ check-shell: paths shell-shaders check-sudo-build
 	python3 tests/test-settings-system-pages.py
 	python3 tests/test-settings-apps-page.py
 	python3 tests/test-settings-region-about.py
+	python3 tests/test-report-window.py
 	python3 tests/test-settings-maintenance-page.py
 	python3 tests/test-settings-storage-page.py
 	python3 tests/test-settings-users-page.py
@@ -842,6 +878,7 @@ check-shell: paths shell-shaders check-sudo-build
 	python3 update-manager/ui/tests/controller.py
 	python3 update-manager/ui/tests/programs_controller.py
 	python3 update-manager/ui/tests/icons.py
+	python3 update-manager/ui/tests/reviews.py
 	python3 tests/test-render-fonts.py
 	mkdir -p "$(CURDIR)/.cache/tmp"
 	env $(CORE_ENV) TMPDIR="$(CURDIR)/.cache/tmp" cargo build -p emaki-cli --locked

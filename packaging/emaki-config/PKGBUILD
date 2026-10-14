@@ -4,8 +4,8 @@
 # makepkg supplies build paths and consumes package metadata.
 # shellcheck disable=SC2034,SC2154
 pkgname=emaki-config
-pkgver=0.7.0
-pkgrel=1
+pkgver=0.8.0
+pkgrel=4
 pkgdesc='Emaki shell, CLI, system defaults, session, greeter and themes'
 arch=('x86_64')
 url='https://github.com/emakish/emaki'
@@ -26,6 +26,7 @@ depends=(
     'pipewire' 'wireplumber' 'pipewire-pulse' 'rtkit' 'wlsunset'
     'greetd' 'greetd-regreet' 'kwallet-pam' 'kwallet>=6.30'
     'accountsservice'  # Settings › Users: accounts and their polkit actions
+    'ntfs-3g'  # Windows shutdown check before writing an EFI partition shared with Windows
 )
 makedepends=('git' 'make' 'python' 'rust' 'qt6-shadertools' 'cmake' 'gcc' 'pkgconf')
 checkdepends=('niri' 'nodejs')  # nodejs: shell JavaScript tests in make check

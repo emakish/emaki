@@ -10,7 +10,12 @@ import "ManagerLogic.js" as Logic
 ShellRoot {
     id: test
     property bool failed: false
-    ProgramsController { id: controller }
+    property int restoreResults: 0
+    property var lastRestore: null
+    ProgramsController {
+        id: controller
+        onRestoreFinished: result => { test.restoreResults++; test.lastRestore = result; }
+    }
     Item {
         id: windowHook
         property var programs: controller
@@ -30,7 +35,10 @@ ShellRoot {
         const original = controller.packageRows[0];
         controller.preparePackage(original, "install"); settle();
         check(controller.previewOpen && !controller.selectedEdition.installed, "uninstalled package has install preview");
-        terminal("install"); windowHook.present(); input.wait(600); packagesReady();
+        terminal("install"); windowHook.present(); input.wait(100);
+        check(controller.previewOpen && controller.refreshPending && !controller.selectedEdition.installed,
+              "presentation waits for the open preview to close before refreshing");
+        controller.cancelPlan(); input.wait(600); packagesReady();
         check(controller.packageRows[0].installed && controller.packageRows[0].actions.includes("remove"),
               "presentation refresh observes terminal install in persistent controller");
         check(controller.selectedEdition.installed && controller.selectedEdition.actions.includes("remove") && !controller.plan,
@@ -57,6 +65,61 @@ ShellRoot {
         controller.externalBusy = false; input.wait(600); packagesReady();
         check(controller.packageRows[0].installed && controller.selectedEdition.installed,
               "presentation queued during external update runs after it finishes");
+    }
+    function aurScenario(): void {
+        check(controller.aurKnown && !controller.aurEnabled, "AUR section starts closed and its state is read");
+        controller.searchAur("editor"); input.wait(400); settle();
+        check(controller.aurRows.length === 0 && !controller.aurSearched, "a closed AUR section sends no AUR search");
+        controller.setAur(true, true); settle();
+        check(controller.aurEnabled && controller.aurShowWarning, "accepting the warning opens the section");
+        check(controller.storefront.featured.programs[0] === "org.example.editor", "Browse's picks arrive with the catalog");
+        controller.readPopular(); settle();
+        check(controller.aurPopularLoaded && controller.aurPopular.map(row => row.key).join() === "aur:yay,aur:editor-tools", "the popular list keeps the engine's order");
+        controller.searchAur("editor"); input.wait(400); settle();
+        check(controller.aurRows.length === 1 && controller.aurRows[0].kind === "aur" && controller.aurSearched, "AUR search lists AUR rows");
+        const app = controller.allPrograms.find(row => row.id === "org.example.Editor.desktop");
+        controller.openProgram(app); input.wait(50); settle();
+        check(controller.selectedProgram.editions.some(row => row.key === "aur:editor-bin"), "the same program from the AUR joins its page");
+        controller.selectEdition("arch");
+        check(controller.selectedEdition.key === "arch:editor" && controller.selectedEdition.actions.includes("undo"), "a recorded install offers undo");
+        controller.prepareUndo(); settle();
+        check(controller.previewOpen && controller.planAction === "undo" && controller.planRows.length === 2
+              && Logic.undoRows(controller.plan)[0].detail === "you installed it yourself", "undo preview lists what goes and what stays");
+        controller.executePlan();
+        check(controller.phase === "undoing" && controller.mutating, "undo is a program transaction");
+        settle(); input.wait(100); settle();
+        check(controller.succeeded && controller.message === "The install was taken back." && !controller.messageIsError, "undo finishes");
+        for (const ok of [true, false]) {
+            controller.phase = "undoing";
+            controller.pending = {id: "snapshot-" + ok, params: {}};
+            controller.accept(JSON.stringify({version: 1, id: controller.pending.id, type: "result", ok: ok,
+                restart: true, code: ok ? "restored" : "restore-failed", message: "Snapshot restore result"}));
+            check(lastRestore?.ok === ok && lastRestore.restart === true, "snapshot restart propagates on success and partial failure");
+            input.wait(100); settle();
+        }
+        check(restoreResults === 2, "both snapshot restore results reached the window");
+        for (const failureCode of ["partial", "failed", "unknown", "cancelled"]) {
+            controller.phase = "installing";
+            controller.pending = {id: "failed-install", params: {}};
+            controller.accept(JSON.stringify({version: 1, id: "failed-install", type: "result", ok: false,
+                code: failureCode, restoreToken: "71:verified", snapshot: "71", message: "Use the pre-install snapshot."}));
+            check(controller.recoveryPoint?.id === "71:verified" && controller.recoveryPoint.operation === "install",
+                  "failed install keeps its exact recovery receipt independently of the restore index");
+            input.wait(100); settle();
+        }
+        controller.phase = "installing";
+        controller.pending = {id: "next-install", params: {}};
+        controller.accept(JSON.stringify({version: 1, id: "next-install", type: "result", ok: false,
+            code: "refused", message: "Nothing was installed."}));
+        check(controller.recoveryPoint === null, "next install result clears the previous recovery offer");
+        input.wait(100); settle();
+        controller.setAur(false, true); settle();
+        check(!controller.aurEnabled && controller.aurRows.length === 0 && controller.aurPopular.length === 0 && !controller.aurPopularLoaded, "closing the section forgets its results");
+        controller.readPopular(); settle();
+        check(controller.aurPopular.length === 0 && controller.aurPopularLoaded && controller.message === "The AUR section is off.", "a closed section gets no popular list");
+        check(Logic.undoRefusal({code: "cannot-undo", requiredBy: ["base-devel"]}) === " base-devel needs what it added."
+              && Logic.undoRefusal({code: "cannot-undo", reason: "explicit"}) === " You installed it yourself since."
+              && Logic.undoRefusal({code: "changed"}) === "", "a refused undo says what blocks it");
     }
     TestCase { id: input; when: false; name: "ProgramsProcess" }
     function check(ok: bool, text: string): void {
@@ -169,8 +232,34 @@ ShellRoot {
             test.check(controller.allPrograms.length === 3, "source editions merged");
             test.check(!controller.installedPrograms.some(row => row.package === "emaki-config"), "protected catalog programs do not become removable rows");
             const scenario = Quickshell.env("TEST_SCENARIO");
+            if (scenario.startsWith("plan-")) {
+                const aur = {key: "aur:editor-tools", id: "editor-tools", name: "Editor tools", kind: "aur", installed: false, actions: ["install"]};
+                controller.openProgram(aur);
+                controller.prepareInstall();
+                if (scenario === "plan-refresh") controller.refresh();
+                test.settle(); input.wait(100);
+                const expected = (scenario === "plan-refused" || scenario === "plan-refresh") ? "The build instructions could not be read."
+                    : scenario === "plan-disconnect" ? "The work stopped before it finished. Look at Installed before trying again."
+                    : "Something went wrong in Programs & Updates. Try again.";
+                test.check(controller.previewOpen && !controller.plan && !controller.busy,
+                           "failed planning keeps preview open without a confirmable plan");
+                test.check(controller.messageIsError && controller.message === expected, "preview retains the real refusal or transport error");
+                if (scenario === "plan-refresh") test.check(controller.refreshPending, "refresh remains queued until failed preview closes");
+                controller.executePlan(); input.wait(100);
+                test.check(!controller.busy && controller.previewOpen && !controller.plan, "failed plan cannot execute");
+                controller.cancelPlan(); input.wait(100); test.settle();
+                test.check(!controller.refreshPending, "queued refresh drains after Cancel");
+                test.check(!controller.previewOpen && !controller.message, "Cancel dismisses failed preview");
+                if (!test.failed) console.log("PROGRAMS_OK");
+                Qt.quit(); return;
+            }
             if (scenario === "presentation") {
                 test.presentationScenario();
+                if (!test.failed) console.log("PROGRAMS_OK");
+                Qt.quit(); return;
+            }
+            if (scenario === "aur") {
+                test.aurScenario();
                 if (!test.failed) console.log("PROGRAMS_OK");
                 Qt.quit(); return;
             }

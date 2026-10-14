@@ -1,0 +1,83 @@
+{
+ "firefox.desktop": {
+  "star0": 0,
+  "star1": 179,
+  "star2": 62,
+  "star3": 59,
+  "star4": 50,
+  "star5": 278,
+  "total": 628
+ },
+ "gimp.desktop": {
+  "star0": 0,
+  "star1": 6,
+  "star2": 1,
+  "star3": 1,
+  "star4": 0,
+  "star5": 10,
+  "total": 18
+ },
+ "org.gimp.GIMP": {
+  "star0": 0,
+  "star1": 141,
+  "star2": 49,
+  "star3": 40,
+  "star4": 81,
+  "star5": 463,
+  "total": 774
+ },
+ "org.gnome.Nautilus": {
+  "star0": 0,
+  "star1": 146,
+  "star2": 92,
+  "star3": 75,
+  "star4": 59,
+  "star5": 167,
+  "total": 539
+ },
+ "org.gnome.Nautilus.desktop": {
+  "star0": 0,
+  "star1": 133,
+  "star2": 77,
+  "star3": 58,
+  "star4": 48,
+  "star5": 139,
+  "total": 455
+ },
+ "org.kde.krita": {
+  "star0": 0,
+  "star1": 92,
+  "star2": 32,
+  "star3": 35,
+  "star4": 70,
+  "star5": 266,
+  "total": 495
+ },
+ "org.kde.krita.desktop": {
+  "star0": 0,
+  "star1": 2,
+  "star2": 0,
+  "star3": 0,
+  "star4": 2,
+  "star5": 8,
+  "total": 12
+ },
+ "org.videolan.VLC": {
+  "star0": 0,
+  "star1": 303,
+  "star2": 107,
+  "star3": 92,
+  "star4": 102,
+  "star5": 822,
+  "total": 1426
+ },
+ "vlc.desktop": {
+  "star0": 0,
+  "star1": 1,
+  "star2": 0,
+  "star3": 0,
+  "star4": 0,
+  "star5": 4,
+  "total": 5
+ }
+}

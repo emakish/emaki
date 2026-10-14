@@ -61,6 +61,15 @@ cryptsetup luksDump "$root_device"
 '''
 
 
+def firmware_windows_boot(serial, number):
+    """Require firmware to start the chosen entry before its target marker."""
+    if not re.fullmatch('[0-9A-Fa-f]{4}', number):
+        raise ValueError('Invalid Windows firmware entry number')
+    started = re.search(r'BdsDxe: starting Boot' + number
+                        + r' "Windows Boot Manager"[^\r\n]*', serial, re.IGNORECASE)
+    return bool(started and 'EMAKI_SYNTHETIC_WINDOWS_EFI_OK' in serial[started.end():])
+
+
 def check_owner(vm, port):
     """The private monitor must identify both the forward and our target image."""
     network = monitor.command(vm, 'info usernet')
@@ -220,17 +229,20 @@ def run_scenario(fs, name, *, no_fallback=False):
             capture(label + '-selected')
         else:
             monitor.command(vm, 'sendkey home')
+        serial_offset = (vm / 'serial.log').stat().st_size
         if selection is None:
             monitor.command(vm, 'sendkey ret')
         if windows:
             for _ in range(60):
-                if 'EMAKI_SYNTHETIC_WINDOWS_EFI_OK' in (vm / 'serial.log').read_text(errors='replace'):
+                serial = (vm / 'serial.log').read_bytes()[serial_offset:].decode(errors='replace')
+                if firmware_windows_boot(serial, windows_boot_number):
+                    (vm / 'windows-firmware-reboot.txt').write_text(serial)
                     capture(label + '-target')
-                    print('OK: GRUB Windows entry executed the preserved diagnostic EFI target', flush=True)
+                    print('OK: GRUB Windows entry rebooted through firmware into the preserved diagnostic EFI target', flush=True)
                     return
                 time.sleep(1)
             capture(label + '-failure')
-            raise RuntimeError('Windows EFI target marker absent')
+            raise RuntimeError('Firmware Windows boot followed by target marker absent')
         result = wait_ssh(user)
         (vm / (label + '-ssh.log')).write_bytes(result.stdout + result.stderr)
         if result.returncode:
@@ -261,7 +273,7 @@ def run_scenario(fs, name, *, no_fallback=False):
         ssh('cat > /tmp/windows-disk.py', data=(HERE / 'fixtures/windows-disk.py').read_bytes())
         baseline = ssh('sudo python3 /tmp/windows-disk.py prepare'
                        + (' --no-fallback' if no_fallback else ''))
-        json.loads(baseline)
+        windows_boot_number = json.loads(baseline)['windows_boot_number']
         (vm / 'windows-before.json').write_bytes(baseline)
         ssh('for i in $(seq 1 300); do test -S /run/emaki-installer/sock && exit 0; sleep 1; done; exit 1')
         ssh('cat > /tmp/windows-refusals.py', data=(HERE / 'fixtures/windows-refusals.py').read_bytes())
@@ -309,6 +321,12 @@ echo OK: alongside encrypted root and Windows GRUB entry
         (vm / 'grub.cfg').write_text(grub)
         entries = resume.grub_entries(grub)
         windows_index = next(i for i, entry in enumerate(entries) if 'Windows Boot Manager' in entry['title'])
+        commands = entries[windows_index]['commands']
+        assert any('bootnext' in command and windows_boot_number.lower() in
+                   [word.lower().rstrip(';') for word in command] for command in commands), \
+            'Windows entry does not set the registered firmware BootNext'
+        assert any(command[0] == 'reboot' for command in commands), 'Windows entry does not reboot'
+        (vm / 'firmware-installed.txt').write_bytes(sudo('efibootmgr -v'))
         ssh('cat > /tmp/windows-disk.py', data=(HERE / 'fixtures/windows-disk.py').read_bytes(), account=user)
         (vm / 'preservation-installed.txt').write_bytes(sudo(
             'python3 /tmp/windows-disk.py check --freed ' + str(fixture['shrink_bytes']), baseline))
@@ -333,7 +351,7 @@ echo OK: alongside encrypted root and Windows GRUB entry
         stop()
         snapshot_result = 'Recovery snapshot boot passed.\n' if fs == 'btrfs' else ''
         (vm / 'PASS').write_text(('New removable EFI loader verified.\n' if no_fallback
-                                 else 'Existing foreign fallback preserved.\n') + snapshot_result + 'Resize, NTFS/ESP/MSR preservation, encrypted Emaki boot and synthetic Windows EFI target passed.\nHUMAN REVIEW REQUIRED: unlock, boot menus, target screens are not judged.\nNOT TESTED: real Windows boot; synthetic EFI target only.\n' + iso_record)
+                                 else 'Existing foreign fallback preserved.\n') + snapshot_result + 'Resize, NTFS/ESP/MSR preservation, encrypted Emaki boot and Windows BootNext firmware reboot into the synthetic EFI target passed.\nHUMAN REVIEW REQUIRED: unlock, boot menus, target screens are not judged.\nNOT TESTED: real Windows boot; synthetic EFI target only.\n' + iso_record)
     finally:
         stop()
         for handle in handles:

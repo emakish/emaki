@@ -17,7 +17,7 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 
-from . import refresh, update_menu, usable
+from . import refresh, shared, update_menu, usable
 
 ESP = Path('/efi/EFI/Emaki')
 SNAPSHOTS = Path('/.snapshots')
@@ -91,6 +91,8 @@ def finish_acceptance(value, env):
     if ((SNAPSHOTS / value['snapshot'] / 'info.xml').exists()
             and (SNAPSHOTS / value['snapshot'] / 'snapshot').is_dir()):
         pin(value['snapshot'], value['cleanup'])
+    if (ESP / 'update.json').exists():
+        refresh.esp_writable(ESP / 'update.json')
     (ESP / 'update.json').unlink(missing_ok=True)
     refresh.sync_directory(ESP)
     write_environment({})
@@ -111,9 +113,11 @@ def locked(blocking=False, timeout=0):
                 except BlockingIOError:
                     remaining = end - time.monotonic()
                     if remaining <= 0:
-                        raise TimeoutError('Boot maintenance is busy; continuing without update recovery protection.')
+                        raise TimeoutError('Boot maintenance is busy. Try again after it finishes.')
                     time.sleep(min(0.1, remaining))
-        yield
+        # A shared ESP returns to read-only before the run lock is released.
+        with shared.session():
+            yield
 
 
 def supported():
@@ -211,9 +215,7 @@ def mark(identity):
     previous = record()
     if previous is not None and missing_snapshot(previous):
         disarm(previous)
-        log('The pending snapshot is missing. Automatic return is disabled; '
-            'this transaction will continue without update recovery protection.')
-        return
+        raise refresh.Refuse('The recovery snapshot is missing. Try again to create a new recovery snapshot.')
     number, (date, cleanup) = current_snapshot(identity)
     if previous is not None:
         env = environment()
@@ -249,8 +251,8 @@ def mark(identity):
                 command(['grub-script-check', candidate])
             refresh.atomic(ESP / 'update.cfg', config)
             install_menu(identity)
-        # Publish the independent counter before package extraction. If protection
-        # fails, the hook reports that failure but still permits package repairs.
+        # Publish the independent counter before package extraction. A shared
+        # Windows startup partition requires this protection to continue.
         refresh.atomic(ESP / 'update.json', json.dumps(value) + '\n')
         write_environment({'emaki_update': value['transaction'], 'emaki_attempt': '0'})
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
@@ -348,20 +350,65 @@ def sleep_phase(phase):
     SLEEP.unlink()
 
 
+def hibernate(phase):
+    """systemd-hibernate's drop-in on a shared ESP: the ESP barrier and its counters.
+
+    The system-sleep hook runs after the shared ESP is unmounted, yet GRUB still
+    counts the resume start as an update or trial attempt. Save the counters while
+    the ESP is still mounted and restore them after it is mounted again. Only the
+    unmount and mount decide whether hibernation may go on.
+    """
+    if phase == 'post' and not os.path.ismount('/efi'):
+        subprocess.run(['mount', '-o', 'ro', '/efi'], check=True, timeout=60)
+    try:
+        if refresh.shared_esp():
+            work_items = []
+            if supported() is not None:
+                work_items.append((SLEEP, sleep_phase, 'Update boot protection'))
+            work_items.append((Path(refresh.SLEEP_STATE), refresh.sleep_trial, 'Boot loader trial'))
+            for saved, work, label in work_items:
+                with refresh.sleep_run_lock(phase, saved, label) as acquired:
+                    if acquired:
+                        with shared.session():
+                            work(phase)
+    except shared.Stopped:
+        raise
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError, ET.ParseError,
+            subprocess.SubprocessError) as error:
+        log(f'Hibernation {phase} bookkeeping did not finish: {error}')
+    if phase == 'pre':
+        subprocess.run(['umount', '/efi'], check=True, timeout=60)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('guard-alongside', 'prepare', 'mark', 'accept', 'sleep-pre', 'sleep-post'))
+    parser.add_argument('action', choices=('guard-alongside', 'prepare', 'mark', 'accept', 'sleep-pre', 'sleep-post',
+                                           'hibernate-pre', 'hibernate-post'))
     args = parser.parse_args(argv)
     try:
         refresh.require(os.geteuid() == 0, 'Update boot protection must run as root.')
         if args.action == 'guard-alongside':
             # The installer has just verified Windows and still owns the mounted
             # target; its initial snapshot strips this incomplete-install marker.
-            refresh.require(not refresh.shared_esp() or Path('/.emaki-install-incomplete').is_file(),
-                            'Installing and updating are switched off on this computer for now: Emaki shares '
-                            'its startup partition with Windows and keeps it read-only to protect Windows.')
+            # Otherwise every later hook may write the shared ESP: refuse the whole
+            # transaction now unless that partition and Windows' state allow it.
+            if refresh.shared_esp() and not Path('/.emaki-install-incomplete').is_file():
+                # A prior interrupted write can now be verified and cleared here.
+                # Serialize that recovery with every other boot writer.
+                with locked(timeout=HOOK_LOCK_TIMEOUT):
+                    shared.check()
             return 0
-        if refresh.shared_esp():
+        if args.action.startswith('hibernate-'):
+            try:
+                hibernate(args.action.removeprefix('hibernate-'))
+            except (OSError, subprocess.SubprocessError) as error:
+                log(f'The startup partition could not be {"unmounted" if args.action.endswith("pre") else "mounted"}: '
+                    f'{error}')
+                return 1
+            return 0
+        if refresh.shared_esp() and args.action.startswith('sleep-'):
+            # The hibernate drop-in has done this work around the unmount; plain
+            # suspend does not start GRUB, so its counters need no repair.
             return 0
         identity = supported()
         if identity is None:
@@ -380,11 +427,27 @@ def main(argv=None):
                 elif args.action == 'mark':
                     mark(identity)
         return 0
+    except shared.Refused as error:
+        if args.action == 'guard-alongside':
+            print(str(error), file=sys.stderr, flush=True)
+            return 1
+        log(str(error))
+        if args.action in ('prepare', 'mark'):
+            if isinstance(error, shared.Stopped) or refresh.shared_esp():
+                log('The package transaction was stopped because startup protection could not be verified.')
+                return 1
+            log('Warning: this package transaction will continue with no recovery protection.')
+            return 0
+        # A preservation failure remains fatal even outside package hooks.
+        return 1 if isinstance(error, shared.Stopped) else 0
     except (OSError, ValueError, KeyError, TypeError, RuntimeError, ET.ParseError,
             subprocess.SubprocessError) as error:
         log(f'Could not finish: {error}')
         if args.action in ('prepare', 'mark'):
-            log('Package management will continue without update recovery protection.')
+            if refresh.shared_esp():
+                log('The package transaction was stopped because update recovery could not be prepared.')
+                return 1
+            log('Warning: this package transaction will continue with no recovery protection.')
             return 0
         return 1
 

@@ -43,7 +43,7 @@ a component is absent or broken. Do not run every command for an unrelated chang
 | `emaki settings list --json` | command-and-settings-core, settings-input-pages, settings-notifications |
 | `emaki-boot-order --json` | alongside-test-boot-safety |
 | `emaki-machine-settings get --json` | machine-settings |
-| `emaki-programs catalog --json; emaki-programs list --json; emaki-programs preview PACKAGE --json` | installed-programs |
+| `emaki-programs catalog --json; emaki-programs list --json; emaki-programs preview PACKAGE --json; emaki-programs aur --json; emaki-programs popular --json; emaki-programs ratings APPSTREAM-ID... --json; emaki-programs reviews APPSTREAM-ID... --json` | installed-programs |
 | `emaki-rollback status --json` | snapshot-recovery, update-restore |
 | `emaki-session-update state` | desktop-update-signal |
 | `emaki-settings-about status --json` | settings-local-report |

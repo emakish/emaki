@@ -4,6 +4,7 @@
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from fnmatch import fnmatchcase
+import json
 import re
 import shlex
 from urllib.parse import urlsplit
@@ -149,6 +150,62 @@ def news_items(raw, since):
         if title:
             result.append(dict(title=title, link=link))
     return result
+
+
+RELEASES = 'https://github.com/emakish/emaki/releases'
+RELEASE_API = 'https://api.github.com/repos/emakish/emaki/releases/tags/v'
+RELEASE_VERSION = re.compile(r'(?:[0-9]+:)?([0-9]+(?:\.[0-9]+){1,3})-[0-9]+(?:\.[0-9]+)?\Z')
+
+
+def release_version(row):
+    """The Emaki release a pending update brings: the release marker package's version."""
+    if row.get('source') != 'Emaki' or row.get('name') != 'emaki' or row.get('aur'):
+        return ''
+    match = RELEASE_VERSION.fullmatch(str(row.get('new', '')))
+    return match[1] if match else ''
+
+
+def plain_markdown(text):
+    """One line of release-page Markdown as plain text: links keep their words."""
+    text = re.sub(r'!?\[([^\]]*)\]\([^)]*\)', r'\1', text)
+    text = re.sub(r'<[^>]*>', '', text)
+    text = re.sub(r'(\*\*|__|`)', '', text)
+    return ' '.join(text.split())
+
+
+def release_notes(raw, version):
+    """The short notes of the published release page: the bullets under its "New" heading."""
+    value = json.loads(raw)
+    if (not isinstance(value, dict) or value.get('tag_name') != 'v' + version
+            or value.get('draft') is not False or not isinstance(value.get('body'), str)):
+        raise ValueError('The release page could not be read.')
+    url = value.get('html_url')
+    parsed = urlsplit(url if isinstance(url, str) else '')
+    if (parsed.scheme != 'https' or parsed.netloc != 'github.com' or parsed.query or parsed.fragment
+            or parsed.path != '/emakish/emaki/releases/tag/v' + version):
+        raise ValueError('The release page has an unexpected address.')
+    items, section = [], None
+    for line in value['body'][:65536].splitlines():
+        heading = re.match(r'#{1,3}\s+(.*)', line)
+        if heading:
+            section = heading[1].strip().lower()
+            continue
+        bullet = re.match(r'\s{0,3}[-*]\s+(.*)', line)
+        if bullet and section == 'new':
+            item = plain_markdown(bullet[1])
+            if item:
+                items.append(item if len(item) <= 400 else item[:399].rstrip() + '…')
+    return dict(version=version, url=url, items=items[:6], published=True)
+
+
+def release_card(version, fetch):
+    """What the Updates tab shows about a pending Emaki release; never fails the check."""
+    card = dict(version=version, url=RELEASES, items=[], published=False)
+    try:
+        notes, _ = fetch(RELEASE_API + version, lambda raw: release_notes(raw, version))
+        return notes
+    except (OSError, ValueError, RuntimeError):
+        return card
 
 
 def warnings_for(updates):

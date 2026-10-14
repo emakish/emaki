@@ -5,8 +5,8 @@
 <policyconfig>
   <vendor>Emaki</vendor>
   <action id="org.emaki.settings-users">
-    <description>[PLACEHOLDER] Change an account</description>
-    <message>[PLACEHOLDER] Enter an administrator password to change an account.</message>
+    <description>Change an account</description>
+    <message>Enter an administrator password to change an account.</message>
     <defaults>
       <allow_any>auth_admin</allow_any>
       <allow_inactive>auth_admin</allow_inactive>

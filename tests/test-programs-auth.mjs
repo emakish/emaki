@@ -88,6 +88,37 @@ for (const prefix of ['/opt/emaki/libexec', '/nix/store/example-emaki/libexec/em
         assert.ok(!action.includes('auth_admin_keep'));
         assert.ok(action.includes('$(command_line)'));
     }
+    const receipt = '20261012T120000123456Z-' + 'b'.repeat(32);
+    const undoRef = 'app/org.example.Program/x86_64/stable';
+    const undoCommand = `${flatpakHelper} undo flathub ${undoRef} ${receipt} ${'a'.repeat(64)}`;
+    assert.equal(decision('flatpak.undo', undoCommand, flatpakHelper), undefined, 'Flatpak undo retains auth_admin');
+    for (const invalid of [
+        undoCommand.replace(' undo ', ' remove '), undoCommand.replace(receipt, '../' + receipt),
+        undoCommand.replace(` ${receipt}`, ''), undoCommand + ' extra', undoCommand.replace(receipt, receipt + '\n'),
+    ]) assert.equal(decision('flatpak.undo', invalid, flatpakHelper), 'no', invalid);
+    const undoAction = flatpakPolicy.match(/<action id="org\.emaki\.programs\.flatpak\.undo">([\s\S]*?)<\/action>/)[1];
+    assert.ok(undoAction.includes('<annotate key="org.freedesktop.policykit.exec.argv1">undo</annotate>'));
+    assert.ok(undoAction.includes('<allow_active>auth_admin</allow_active>') && !undoAction.includes('auth_admin_keep'));
+    // AUR builds and native undo: one package (and receipt) and a reviewed digest only.
+    for (const [operation, middle] of [['aur', 'example-program'], ['undo', `${receipt} example-program`]]) {
+        const helper = `${prefix}/emaki-programs-${operation}`;
+        const command = `${helper} ${middle} ${'a'.repeat(64)}`;
+        assert.equal(decision(operation, command), undefined, `${operation} retains auth_admin`);
+        assert.equal(decision(operation, command, '/tmp/other-helper'), 'no');
+        assert.equal(decision(operation, null), 'no');
+        for (const invalid of [
+            `${helper} --run ${middle} ${'a'.repeat(64)}`, `${helper} --build example-program ${'c'.repeat(40)}`,
+            `${command} extra`, `${helper}  ${middle} ${'a'.repeat(64)}`, `${helper} ${middle}`,
+            command.replace('example-program', 'Example/Program'), command.replace('a'.repeat(64), 'a'.repeat(63)),
+            command.replace('example-program', '-example'),
+        ]) assert.equal(decision(operation, invalid), 'no', invalid);
+        for (const unsafe of ['\n', '\t', '\0', '‮', '​']) assert.equal(decision(operation, command + unsafe), 'no');
+        const policy = fs.readFileSync(new URL(`../update-manager/org.emaki.programs.${operation}.policy`, import.meta.url), 'utf8')
+            .replaceAll('@EMAKI_LIBEXECDIR@', prefix);
+        assert.ok(policy.includes(`<annotate key="org.freedesktop.policykit.exec.path">${helper}</annotate>`));
+        assert.ok(policy.includes('<allow_active>auth_admin</allow_active>') && !policy.includes('auth_admin_keep'));
+        assert.ok(policy.includes('$(command_line)'));
+    }
     assert.equal(rule({id: 'org.example.other', lookup() { throw Error('unrelated action'); }}, {}), undefined);
 }
 

@@ -12,6 +12,7 @@ enable snapper-cleanup.timer
 enable fstrim.timer
 enable paccache.timer
 enable emaki-refresh-mirrors.timer
+enable emaki-refresh-appstream.timer
 enable emaki-restore-index.timer
 # NetworkManager owns networking and resolv.conf; the installed bootloader is GRUB.
 disable systemd-networkd.service

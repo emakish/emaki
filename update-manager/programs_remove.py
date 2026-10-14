@@ -61,6 +61,8 @@ def is_repository_package(name):
 
 
 def remove(name, expected):
+    if catalog.is_protected(name):
+        return emit('emaki' if catalog.is_emaki(name) else 'system', blocked=[name])
     if not is_program(name) and not is_repository_package(name):
         return emit('not-installed' if pacman('-Q', name).returncode else 'not-program')
     check = pacman('-Rs', '--print', '--print-format', '%n', name)

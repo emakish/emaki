@@ -210,6 +210,15 @@ def notify_completed():
     return notify('Updated', 'All updates are installed.')
 
 
+def offer_report(part):
+    """Ask the shell to offer (never send) a problem report; its result changes nothing."""
+    try:
+        subprocess.run(['emaki-shell', 'call', 'report', 'offer', part], stdin=subprocess.DEVNULL,
+                       capture_output=True, timeout=5, check=False)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def notify(title, body):
     arguments = ['busctl', '--user', '--timeout=2', 'call', '--',
                  'org.freedesktop.Notifications', '/org/freedesktop/Notifications',

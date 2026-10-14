@@ -238,7 +238,7 @@ ShellRoot {
                         command_line: command
                     };
                     const headline = Details.headline(action, "generic", metadata, prefix);
-                    check(headline.startsWith(target + " — [PLACEHOLDER] "), "program is first in headline");
+                    check(headline.startsWith(target + " — "), "program is first in headline");
                     check(headline.indexOf(helper) < 0 && headline.indexOf(token) < 0, "headline hides helper and token");
                     check(headline.indexOf(operation === "install" ? "Install" : "Remove") >= 0, "headline shows operation");
                     const commandRow = Details.rows(action, "generic", metadata, "", prefix).filter(row => row.label === "command_line")[0];
@@ -256,6 +256,18 @@ ShellRoot {
                     check(Details.programRequest("unrelated.action", metadata, prefix) === null, "unrelated actions cannot claim program hint");
                     check(Details.programRequest(action, metadata, "/different/prefix") === null, "rendered prefix is required");
                 }
+            }
+            const receipt = "20261012T120000123456Z-" + "b".repeat(32);
+            for (const request of [
+                {action: "org.emaki.programs.aur", helper: "emaki-programs-aur", words: "paint-bin " + "a".repeat(64), headline: "AUR · paint-bin — Build"},
+                {action: "org.emaki.programs.undo", helper: "emaki-programs-undo", words: receipt + " krita " + "a".repeat(64), headline: "krita — Undo"},
+                {action: "org.emaki.programs.flatpak.undo", helper: "emaki-programs-flatpak", words: "undo flathub app/org.gimp.GIMP/x86_64/stable " + receipt + " " + "a".repeat(64), headline: "org.gimp.GIMP — Undo"}
+            ]) {
+                const helper = prefix + "/" + request.helper;
+                const metadata = {program: helper, command_line: helper + " " + request.words};
+                check(Details.headline(request.action, "generic", metadata, prefix).startsWith(request.headline), "source and program lead the headline: " + request.action);
+                for (const bad of [metadata.command_line + " extra", metadata.command_line.replace(" ", " --run "), metadata.command_line + "\n"])
+                    check(Details.programRequest(request.action, {program: helper, command_line: bad}, prefix) === null, "malformed request not displayed: " + request.action);
             }
         }
 

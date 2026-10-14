@@ -28,6 +28,7 @@ import time
 import uuid
 
 from . import boot
+from . import shared
 from . import update_menu
 
 OLD_INCLUDE = '. /usr/share/emaki/grub/defaults.cfg'
@@ -46,6 +47,8 @@ SLEEP_STATE = Path('/run/emaki-boot-sleep.json')
 SHARED_ESP = Path('/var/lib/emaki/alongside-boot.json')
 FOREIGN = 'The existing boot loaders were kept because the fallback loader is not recognized as Emaki.'
 TRIAL_FAILED = 'The new boot loader did not complete a boot; the old loader was kept.'
+SMALL_SHARED = ('The boot menu was updated. The boot loader was kept: the startup partition '
+                'shared with Windows is smaller than 256 MiB.')
 UUID = r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
 # Frozen migration baseline, independent of future packaged menu changes.
 LEGACY = {
@@ -228,10 +231,8 @@ def refresh_attempt(retry):
             require(type(attempts) is int and 0 <= attempts <= BOOT_RETRIES,
                     'The boot loader retry count is invalid; run emaki-boot-refresh again.')
             if attempts == BOOT_RETRIES:
-                # A killed final attempt can leave its lock even with no budget left.
-                with pacman_lock():
-                    pass
-                raise Kept('The boot loader retry limit was reached; run emaki-boot-refresh to try again.')
+                # Retain exhausted requests so boot-time discovery cannot rearm them.
+                return 0
             attempts += 1
         # Persist the budget before work, so interrupted boots also consume it.
         atomic(pending, json.dumps({'boots': attempts}) + '\n')
@@ -246,7 +247,6 @@ def refresh_attempt(retry):
     except (OSError, Transient) as error:
         LOG.write(str(error) + '\n')
         if retry and attempts >= BOOT_RETRIES:
-            clear_pending()
             message = 'The boot loader retry limit was reached; run emaki-boot-refresh to try again.'
         else:
             message = f'The boot loader update did not finish; details are in {LOG_PATH}.'
@@ -254,7 +254,10 @@ def refresh_attempt(retry):
         print(message, file=sys.stderr)
         return 0 if retry else 1
     except (Refuse, ValueError) as error:
-        clear_pending()
+        if retry:
+            atomic(pending, json.dumps({'boots': BOOT_RETRIES}) + '\n')
+        else:
+            clear_pending()
         LOG.write(str(error) + '\n')
         print(str(error), file=sys.stderr if not isinstance(error, Kept) else sys.stdout)
         return 0 if retry or isinstance(error, Kept) else 1
@@ -295,15 +298,38 @@ def sync_directory(path):
         os.close(fd)
 
 
+def esp_writable(path, allocation=None):
+    """Check capacity before opening the shared ESP's EFI/Emaki write gate."""
+    if not path.is_relative_to(Path('/efi')):
+        return
+    alongside = shared_esp()
+    if alongside:
+        require(path.is_relative_to(Path('/efi/EFI/Emaki')),
+                f'{path} is outside EFI/Emaki on a startup partition shared with Windows.')
+    if allocation is not None:
+        # The sidecar needs its full allocation while the old file still exists.
+        # Keep one MiB for FAT metadata and concurrent small boot-state writes.
+        room(Path('/efi'), allocation, MIB)
+    if alongside:
+        shared.open_writes()
+
+
 def write(path, data, mode=0o600):
     """Durable creation for staging and same-directory replacement sidecars."""
+    data = data.encode() if isinstance(data, str) else data
+    esp_writable(path, allocation=len(data))
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode)
-    with os.fdopen(fd, 'wb') as output:
-        output.write(data.encode() if isinstance(data, str) else data)
-        output.flush()
-        os.fsync(output.fileno())
-    sync_directory(path.parent)
+    try:
+        with os.fdopen(fd, 'wb') as output:
+            output.write(data)
+            output.flush()
+            os.fsync(output.fileno())
+        sync_directory(path.parent)
+    except BaseException:
+        path.unlink(missing_ok=True)
+        sync_directory(path.parent)
+        raise
 
 
 def durable_read(path):
@@ -324,15 +350,21 @@ def discard_sidecars(target, sidecars):
     if target.exists():
         durable_read(target)
     for path in sidecars:
+        esp_writable(path)
         path.unlink(missing_ok=True)
     sync_directory(target.parent)
 
 
 def atomic(path, data):
     sidecar = path.with_name(path.name + '.emaki-' + uuid.uuid4().hex)
-    write(sidecar, data)
-    os.replace(sidecar, path)
-    sync_directory(path.parent)
+    try:
+        write(sidecar, data)
+        os.replace(sidecar, path)
+        sync_directory(path.parent)
+    except BaseException:
+        if sidecar.exists():
+            discard_sidecars(path, [sidecar])
+        raise
     expected = data.encode() if isinstance(data, str) else data
     require(durable_read(path) == expected, f'{path} could not be read back after replacement.')
     sync_grub_menu(path)
@@ -466,13 +498,53 @@ def mount_info(path, exact=False):
     return value[0]
 
 
+def fstab_path():
+    return Path('/etc/fstab')
+
+
+def esp_mount_path():
+    return Path('/efi')
+
+
 def shared_esp():
-    # Even a malformed marker must retain the safety barrier.
-    return SHARED_ESP.exists() or SHARED_ESP.is_symlink()
+    # Losing the installation record must not turn a shared ESP into an
+    # unrestricted target. The installation's read-only fstab policy and
+    # Microsoft files are evidence; a filesystem-error remount is not.
+    try:
+        if (SHARED_ESP.exists() or SHARED_ESP.is_symlink()
+                or shared.stop_record().exists() or shared.stop_record().is_symlink()):
+            return True
+        fstab = fstab_path()
+        if fstab.exists():
+            for line in fstab.read_text().splitlines():
+                row = line.split()
+                if len(row) >= 4 and not row[0].startswith('#') and row[1] == '/efi':
+                    if 'ro' in row[3].split(','):
+                        return True
+        esp = esp_mount_path()
+        if esp.exists():
+            for directory in esp.iterdir():
+                if directory.name.casefold() == 'efi':
+                    if directory.is_symlink():
+                        raise shared.Refused(shared.UNCHECKED)
+                    for vendor in directory.iterdir():
+                        if vendor.name.casefold() == 'microsoft':
+                            return True
+        return False
+    except (OSError, UnicodeError) as error:
+        raise shared.Refused(shared.UNCHECKED) from error
+
+
+def fallback_loader():
+    """The removable path belongs to Windows' boot setup on a shared ESP; never write it."""
+    return None if shared_esp() else Path('/efi/EFI/BOOT/BOOTX64.EFI')
+
+
+def stage_parent():
+    return Path('/efi/EFI/Emaki') if shared_esp() else Path('/efi')
 
 
 def discover():
-    require(not shared_esp(), 'The startup menu cannot be updated on this computer: its startup partition is shared with Windows and kept read-only.')
     root = mount_info('/', True)
     if root['fstype'] == 'overlay' or (root['fstype'] == 'btrfs'
             and root['fsroot'].rstrip('/') not in ('', '/@')):
@@ -492,7 +564,8 @@ def discover():
             'A separate /boot filesystem is not supported by the Emaki installer.')
     fsroot = root['fsroot'].rstrip('/')
     require(fsroot in ('', '/@'), 'Refresh from a snapshot or an unfamiliar root subvolume is refused.')
-    require(esp['fstype'] == 'vfat' and 'rw' in esp['options'].split(','),
+    # A shared ESP stays read-only; each write session checks Windows and remounts it.
+    require(esp['fstype'] == 'vfat' and ('rw' in esp['options'].split(',') or shared_esp()),
             '/efi must be the mounted, writable FAT EFI system partition.')
     rows = [line.split() for line in Path('/etc/fstab').read_text().splitlines()
             if line.strip() and not line.lstrip().startswith('#')]
@@ -553,7 +626,18 @@ def generate(stage):
     run(['grub-mkconfig', '-o', '/boot/grub/grub.cfg'], env or None)
     menu = Path('/boot/grub/grub.cfg')
     original = regular(menu).decode()
-    safe = boot.menu_layout(boot.menu_font_fallback(original))
+    safe = boot.menu_font_fallback(original)
+    if shared_esp():
+        partuuid = shared.marker()
+        shared.mounted_esp(partuuid)
+        esp = mount_info('/efi', True)
+        require(str(esp.get('partuuid', '')).lower() == partuuid, shared.WRONG_ESP)
+        try:
+            safe = boot.windows_bootnext_menu(safe, partuuid, esp.get('uuid'),
+                                              run(['efibootmgr', '-v']))
+        except RuntimeError as error:
+            raise Refuse(str(error)) from error
+    safe = boot.menu_layout(safe)
     if safe != original:
         # This menu is private staging, never the active canonical menu.
         menu.unlink()
@@ -782,7 +866,7 @@ def repair_snapshot_menu(identity):
         recover(identity)
         state_path = Path('/efi/EFI/Emaki/boot-state.json')
         if state_path.exists() or state_path.is_symlink():
-            state = read_state(Path('/efi/EFI/Emaki/grubx64.efi'), Path('/efi/EFI/BOOT/BOOTX64.EFI'))
+            state = read_state(Path('/efi/EFI/Emaki/grubx64.efi'), fallback_loader())
         else:
             # A fresh alongside install can retain a foreign fallback forever.
             # Menu-only repair needs no loader ownership or generation state.
@@ -924,6 +1008,7 @@ class Transaction:
             for target, saved, old in reversed(self.changed):
                 try:
                     if old is None:
+                        esp_writable(target)
                         target.unlink()
                     else:
                         atomic(target, regular(saved))
@@ -939,6 +1024,8 @@ class Transaction:
 
     def forget(self):
         if self.intent is not None:
+            if self.intent.exists():
+                esp_writable(self.intent)
             self.intent.unlink(missing_ok=True)
             sync_directory(self.intent.parent)
 
@@ -980,7 +1067,7 @@ def recover(identity):
         pending.append((entry, target, new, saved, actual, loader))
     # A surviving firmware copy can replace a lost FAT rename sidecar during
     # promotion. Its bytes must match the recorded hash, just like any sidecar.
-    for source in (Path('/efi/EFI/Emaki/grubx64.efi'), Path('/efi/EFI/BOOT/BOOTX64.EFI'),
+    for source in (Path('/efi/EFI/Emaki/grubx64.efi'), *filter(None, [fallback_loader()]),
                    *Path('/efi/EFI/Emaki').glob('loader-*.efi')):
         if source.exists():
             data = durable_read(source)
@@ -1015,6 +1102,7 @@ def recover(identity):
         wanted = entry[direction]
         if actual != wanted:
             if wanted is None:
+                esp_writable(target)
                 target.unlink(missing_ok=True)
                 sync_directory(target.parent)
             else:
@@ -1025,6 +1113,7 @@ def recover(identity):
     state = json.loads(regular(state_path)) if state_path.exists() else {'good': None, 'newest': None}
     if any(target.is_relative_to(Path('/boot')) for _, target, *_ in pending):
         refresh_menu(identity, state, recovery=True)
+    esp_writable(intent)
     intent.unlink()
     sync_directory(intent.parent)
     for _, target, new, saved, _, _ in pending:
@@ -1056,8 +1145,11 @@ def tree_size(path):
 
 
 def read_state(vendor, fallback):
+    """Generation state; a shared ESP (fallback None) records no fallback loader."""
     path = Path('/efi/EFI/Emaki/boot-state.json')
     if not path.exists():
+        if fallback is None:
+            return {'good': None, 'newest': None, 'fallback_sha256': None}
         if regular(fallback) != regular(vendor):
             raise Kept(FOREIGN)
         return {'good': None, 'newest': None, 'fallback_sha256': digest(regular(fallback))}
@@ -1065,8 +1157,11 @@ def read_state(vendor, fallback):
     require(isinstance(state, dict) and {'good', 'newest'} <= state.keys() and all(
         state.get(key) is None or re.fullmatch(r'[0-9a-f]{32}', str(state[key]))
         for key in ('good', 'newest')) and
-        re.fullmatch(r'[0-9a-f]{64}', str(state.get('fallback_sha256', ''))),
+        (state.get('fallback_sha256', '') is None if fallback is None else
+         re.fullmatch(r'[0-9a-f]{64}', str(state.get('fallback_sha256', '')))),
         'The boot generation state is invalid; nothing was replaced.')
+    if fallback is None:
+        return state
     actual = digest(regular(fallback))
     if actual != state['fallback_sha256']:
         # Power loss after fallback promotion but before its state rename.
@@ -1094,8 +1189,9 @@ def prune(state):
     for image in Path('/efi/EFI/Emaki').glob('loader-*.efi'):
         match = re.fullmatch(r'loader-([0-9a-f]{32})\.efi', image.name)
         if match and match[1] not in keep and not image.is_symlink():
+            esp_writable(image)
             image.unlink()
-    for target in (Path('/efi/EFI/Emaki/grubx64.efi'), Path('/efi/EFI/BOOT/BOOTX64.EFI'),
+    for target in (Path('/efi/EFI/Emaki/grubx64.efi'), *filter(None, [fallback_loader()]),
                    Path('/efi/EFI/Emaki/boot-state.json'), Path('/etc/default/grub'),
                    Path('/etc/mkinitcpio.conf'), Path('/etc/default/grub-btrfs/config'),
                    Path('/boot/grub/grub.cfg'), Path('/boot/grub/grub-btrfs.cfg'),
@@ -1110,8 +1206,9 @@ def prune(state):
         discard_sidecars(target, sidecars)
         if target.parent.exists():
             sync_directory(target.parent)
-    for directory in Path('/efi').glob('.emaki-stage-*'):
+    for directory in stage_parent().glob('.emaki-stage-*'):
         if re.fullmatch(r'\.emaki-stage-[0-9a-f]{32}', directory.name) and not directory.is_symlink():
+            esp_writable(directory)
             shutil.rmtree(directory)
     if Path('/efi').exists():
         sync_directory(Path('/efi'))
@@ -1130,7 +1227,7 @@ def cleanup():
 def mark_good(identity):
     recover(identity)
     cleanup()
-    vendor, fallback = Path('/efi/EFI/Emaki/grubx64.efi'), Path('/efi/EFI/BOOT/BOOTX64.EFI')
+    vendor, fallback = Path('/efi/EFI/Emaki/grubx64.efi'), fallback_loader()
     state = read_state(vendor, fallback)
     cmdline = regular(Path('/proc/cmdline')).decode()
     tags = re.findall(r'(?:^|\s)emaki\.generation=([0-9a-f]{32})(?=\s|$)', cmdline)
@@ -1164,9 +1261,11 @@ def mark_good(identity):
             'The trial loader changed since this boot; fallback promotion was refused.')
     require(state['newest'] == tag, 'The running loader is not the newest published generation.')
     transaction = Transaction(uuid.uuid4().hex, Path('/efi/EFI/Emaki/boot-intent.json'))
-    updated = regular(fallback) != image
+    # A shared ESP promotes only Emaki's own loader; Windows owns the removable path.
+    targets = (vendor,) if fallback is None else (vendor, fallback)
+    updated = regular(targets[-1]) != image
     try:
-        for target in (vendor, fallback):
+        for target in targets:
             if regular(target) != image:
                 room(Path('/efi'), len(image) * 2, 32 * MIB)
                 transaction.add(target, image)
@@ -1174,13 +1273,14 @@ def mark_good(identity):
         if trial.get('emaki_candidate') == tag and trial.get('emaki_trial') != '0':
             trial['emaki_trial'] = '0'
             transaction.add(Path('/efi/EFI/Emaki/trial.env'), trial_block(trial))
-        new_state = {**state, 'good': tag, 'fallback_sha256': digest(image)}
+        new_state = {**state, 'good': tag, 'fallback_sha256': None if fallback is None else digest(image)}
         if new_state != json.loads(regular(Path('/efi/EFI/Emaki/boot-state.json'))):
             transaction.add(Path('/efi/EFI/Emaki/boot-state.json'), json.dumps(new_state) + '\n')
         if transaction.entries:
             transaction.publish()
         if updated:
-            print('The fallback loader was updated after a completed boot.')
+            print('The fallback loader was updated after a completed boot.' if fallback is not None
+                  else 'The Emaki boot loader was updated after a completed boot.')
     finally:
         transaction.cleanup()
         cleanup()
@@ -1203,12 +1303,18 @@ def refresh(identity):
 
 def _refresh(identity):
     vendor = Path('/efi/EFI/Emaki/grubx64.efi')
-    fallback = Path('/efi/EFI/BOOT/BOOTX64.EFI')
+    fallback = fallback_loader()
     previous = regular(vendor)
     require(previous[:2] == b'MZ', 'The Emaki EFI loader is not recognized.')
     state = read_state(vendor, fallback)
     esp_space = os.statvfs(Path('/efi'))
     if esp_space.f_blocks * esp_space.f_frsize < 256 * MIB:
+        if fallback is None:
+            # Windows' usual 100 MiB ESP: keep the installed loader, still follow
+            # kernel and menu changes on the root filesystem.
+            refresh_menu(identity, state)
+            print(SMALL_SHARED)
+            return
         raise Kept('The EFI system partition is smaller than 256 MiB; the existing boot loaders were kept.')
     defaults = migrate_defaults(regular(Path('/etc/default/grub')).decode(),
                                 regular(Path('/usr/share/emaki/grub/defaults.cfg')).decode())
@@ -1230,7 +1336,9 @@ def _refresh(identity):
     tag = uuid.uuid4().hex
     generation = Path('/boot/emaki') / tag
     generation.mkdir(parents=True, mode=0o700)
-    esp_stage = Path('/efi') / ('.emaki-stage-' + tag)
+    # grub-install needs a FAT target; on a shared ESP it stays inside EFI/Emaki.
+    esp_stage = stage_parent() / ('.emaki-stage-' + tag)
+    esp_writable(esp_stage)
     esp_stage.mkdir(mode=0o700)
     transaction = Transaction(tag, Path('/efi/EFI/Emaki/boot-intent.json'))
     try:
@@ -1346,10 +1454,10 @@ def main(argv=None):
                 or subprocess.run(['systemd-detect-virt', '--chroot', '--quiet'],
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0):
             return 0
-        if shared_esp():
-            if args.sleep_phase or args.repair_snapshots:
-                return 0
-            require(False, 'The startup menu cannot be updated on this computer: its startup partition is shared with Windows and kept read-only.')
+        if shared_esp() and args.sleep_phase:
+            # The hibernate drop-in (emaki-update-boot hibernate-pre/post) does
+            # this around the unmount; plain suspend never starts GRUB.
+            return 0
         if args.repair_snapshots and not snapshot_menu_needs_repair() and not menu_font_needs_repair():
             return 0
         require(os.geteuid() == 0, 'Run emaki-boot-refresh as root on the installed system.')
@@ -1382,21 +1490,34 @@ def main(argv=None):
                     LOG.write('Another boot loader operation is running; retry at the next boot.\n')
                     return 0
                 raise
-            if args.repair_snapshots:
+            # A shared ESP returns to read-only before the run lock is released.
+            with shared.session():
+                if args.repair_snapshots:
+                    identity = discover()
+                    if identity is not None:
+                        remove_previous_boot_lock(Path('/var/lib/pacman/db.lck'), current_boot_id())
+                        with pacman_lock():
+                            repair_snapshot_menu(identity)
+                    return 0
+                if not args.mark_good:
+                    return refresh_attempt(args.retry)
                 identity = discover()
-                if identity is not None:
-                    remove_previous_boot_lock(Path('/var/lib/pacman/db.lck'), current_boot_id())
-                    with pacman_lock():
-                        repair_snapshot_menu(identity)
-                return 0
-            if not args.mark_good:
-                return refresh_attempt(args.retry)
-            identity = discover()
-            if identity is None:
-                return 0
-            with pause_snapshots():
-                mark_good(identity)
+                if identity is None:
+                    return 0
+                with pause_snapshots():
+                    mark_good(identity)
         return 0
+    except shared.Stopped as error:
+        if LOG is not None:
+            LOG.write(str(error) + '\n')
+        print(str(error), file=sys.stderr)
+        return 1
+    except shared.Refused as error:
+        # A pre-write refusal can be checked again at a later start.
+        if LOG is not None:
+            LOG.write(str(error) + '\n')
+        print(str(error), file=sys.stderr)
+        return 0 if args.retry or args.mark_good or args.repair_snapshots else 1
     except Kept as error:
         if LOG is not None:
             LOG.write(str(error) + '\n')

@@ -241,12 +241,27 @@ update-manager/tests/mutants.py	Mutation checks for update parsing and privilege
 update-manager/tests/test_programs.py	Installed programs: preview parsing, refusal rules and removal helper guards.	Makefile:check
 update-manager/tests/test_appstream.py	Standard application metadata parsing tests.	Makefile:check
 update-manager/tests/test_programs_engine.py	Program manager catalog and JSON protocol tests.	Makefile:check
+update-manager/tests/test_programs_report_log.py	Report journal failure diagnostics and progress filtering tests.	Makefile:check
 update-manager/tests/test_programs_install.py	Repository install planning and authorization boundary tests.	Makefile:check
 update-manager/tests/test_programs_flatpak_apply.py	System application authorization boundary tests.	Makefile:check
 update-manager/tests/test_programs_flatpak.py	Optional application catalog and transaction plan tests.	Makefile:check
+update-manager/tests/test_programs_aur.py	AUR section: consent, trust facts, recipe pins, build plans, matching and the popular list.	Makefile:check
+update-manager/tests/test_programs_aur_build.py	AUR build helper: reviewed plans, throwaway builder and build-tool cleanup.	Makefile:check
+update-manager/tests/test_programs_aur_consent.py	Fixed-account AUR consent validation and file safety tests.	Makefile:check
+update-manager/tests/test_programs_aur_pacman.py	Isolated package install-reason tests with user-namespace availability probing.	Makefile:check
+update-manager/tests/test_programs_aur_snapshot_cleanup.py	AUR snapshot cleanup and receipt preservation tests.	Makefile:check
+update-manager/tests/test_programs_snapshot_guard.py	Engine and privileged AUR refusal before changes on unsupported roots.	Makefile:check
+update-manager/tests/test_programs_private_db.py	Private repository download, catalog and planning regression tests.	Makefile:check
+update-manager/tests/test_programs_shelf.py	From Emaki shelf: data file validation, NVIDIA display detection and catalog rows.	Makefile:check
+update-manager/tests/test_programs_receipts.py	Install receipts and the exact undo of one install.	Makefile:check
+update-manager/tests/test_programs_reviews.py	Ratings and reviews from recorded ODRS answers.	Makefile:check
+update-manager/tests/odrs/fetch-krita.json	Recorded ODRS reviews answer, reviewer data replaced.	update-manager/tests/test_programs_reviews.py
+update-manager/tests/odrs/ratings.json	Recorded slice of the ODRS ratings index.	update-manager/tests/test_programs_reviews.py
+update-manager/tests/test_programs_nvidia_pacman.py	NVIDIA restore-only policy against real packages in a private root.	Makefile:check
 update-manager/ui/tests/InteractionTest.qml	Keyboard-only update-window interaction fixture.	update-manager/ui/tests/interactions.py
 update-manager/ui/tests/interactions.py	Update-window interaction and mutation test runner.	Makefile:check-shell
 update-manager/ui/tests/icons.py	Image decoding and fallback regression runner.	Makefile:check-shell
+update-manager/ui/tests/reviews.py	Ratings and reviews component regression runner.	Makefile:check-shell
 update-manager/ui/tests/controller.py	Update-window process protocol test runner.	Makefile:check-shell
 update-manager/ui/tests/ControllerTest.qml	Update-window process protocol fixture.	update-manager/ui/tests/controller.py
 crates/emaki-core/src/settings/live.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py

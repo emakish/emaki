@@ -30,6 +30,7 @@ XML = '''<?xml version="1.0"?>
    <image type="thumbnail" width="200" height="150">https://example.org/thumb.png</image>
   </screenshot><screenshot><image type="source">file:///tmp/private.png</image></screenshot></screenshots>
   <bundle type="flatpak">app/org.example.Painter/x86_64/stable</bundle>
+  <provides><id>painter.desktop</id><id>org.example.Painter</id><id>bad id</id><binary>painter</binary></provides>
  </component>
  <component type="console-application"><id>org.example.Cli</id><name>Cli</name></component>
  <component type="runtime"><id>org.example.Runtime</id><name>Runtime</name></component>
@@ -103,6 +104,9 @@ class AppStreamTests(unittest.TestCase):
         self.assertEqual(app['screenshots'], ['https://example.org/screenshot.png'])
         self.assertIsNone(app['downloadSize'])
         self.assertIsNone(app['installedSize'])
+        # Only the IDs it declares in <provides>: not its own ID, not binaries, nothing malformed.
+        self.assertEqual(app['providedIds'], ['painter.desktop'])
+        self.assertEqual(records[1]['providedIds'], [])
 
     def test_screenshots_select_one_source_or_largest_safe_variant(self):
         scenes = [
@@ -131,6 +135,102 @@ class AppStreamTests(unittest.TestCase):
         self.assertEqual(row['screenshots'], ['https://example.org/source.png',
                          'https://example.org/largest.png', 'https://example.org/big-source.png',
                          'https://example.org/no-size.png'])
+
+    def test_component_types_preserve_desktop_and_console_distinction(self):
+        yaml = YAML + '''---
+Type: console-application
+ID: org.example.Cli
+Name:
+  C: Cli
+'''
+        for name, data in (('catalog.xml', XML), ('catalog.yml', yaml)):
+            with self.subTest(name=name):
+                records = reader.read_file(self.file(name, data))
+                self.assertEqual([row['componentType'] for row in records],
+                                 ['desktop-application', 'console-application'])
+
+    def test_newest_release_date_is_selected_independently_of_order_and_version(self):
+        releases = '<releases><release version="9" date="2024-02-20"/>' \
+                   '<release version="1" date="2025-03-02"/>' \
+                   '<release version="10" date="2025-01-01"/></releases>'
+        xml = XML.replace('<project_license>', releases + '<project_license>')
+        for name, origin in (('catalog.xml', ''), ('appstream.xml.gz', 'flathub')):
+            with self.subTest(name=name):
+                app = reader.read_file(self.file(name, xml), origin=origin)[0]
+                self.assertEqual(app['releaseDate'], '2025-03-02')
+
+    def test_release_timestamp_uses_utc_and_bad_dates_do_not_hide_valid_release(self):
+        releases = '<releases><release version="1" timestamp="1740873600"/>' \
+                   '<release version="2" date="2025-02-30"/>' \
+                   '<release version="3" date="unknown"/>' \
+                   '<release version="4" timestamp="18446744073709551615"/>' \
+                   '<release version="5" date="2025-03-03T00:30:00+02:00"/></releases>'
+        xml = XML.replace('<project_license>', releases + '<project_license>')
+        self.assertEqual(reader.read_file(self.file('catalog.xml', xml))[0]['releaseDate'], '2025-03-02')
+
+    def test_missing_invalid_and_external_releases_leave_date_absent(self):
+        for releases in ('', '<releases/>', '<releases type="external"/>',
+                         '<releases><release version="1"/></releases>',
+                         '<releases><release version="1" date="2025-02-30"/></releases>',
+                         '<releases><release version="1" timestamp="-1"/></releases>',
+                         '<releases><release version="1" timestamp="garbage"/></releases>'):
+            with self.subTest(releases=releases):
+                xml = XML.replace('<project_license>', releases + '<project_license>')
+                self.assertNotIn('releaseDate', reader.read_file(self.file('catalog.xml', xml))[0])
+
+    def test_release_future_tolerance_preserves_exact_one_day_boundary(self):
+        for attributes, expected in (
+                ('timestamp="1740960000"', '2025-03-03'),
+                ('timestamp="1740960001"', None),
+                ('date="2025-03-03T00:00:00Z"', '2025-03-03'),
+                ('date="2025-03-03T00:00:01Z"', None),
+                ('date="2025-03-03"', '2025-03-03'),
+                ('date="2025-03-04"', None)):
+            with self.subTest(attributes=attributes), patch.object(reader.time, 'time', return_value=1740873600):
+                releases = f'<releases><release version="1" {attributes}/></releases>'
+                xml = XML.replace('<project_license>', releases + '<project_license>')
+                app = reader.read_file(self.file('catalog.xml', xml))[0]
+                if expected is None:
+                    self.assertNotIn('releaseDate', app)
+                else:
+                    self.assertEqual(app['releaseDate'], expected)
+
+    def test_future_and_invalid_xml_releases_do_not_hide_newest_valid_date(self):
+        releases = '<releases><release version="99" date="2099-01-01"/>' \
+                   '<release version="2" date="2025-03-02"/>' \
+                   '<release version="3" date="2025-02-30"/>' \
+                   '<release version="100" timestamp="1740960001"/>' \
+                   '<release version="1" date="2025-03-01"/></releases>'
+        xml = XML.replace('<project_license>', releases + '<project_license>')
+        with patch.object(reader.time, 'time', return_value=1740873600):
+            self.assertEqual(reader.read_file(self.file('catalog.xml', xml))[0]['releaseDate'], '2025-03-02')
+
+    def test_future_yaml_releases_do_not_hide_newest_valid_date(self):
+        yaml = YAML + '''Releases:
+  - version: '99'
+    unix-timestamp: 4070908800
+  - version: '2'
+    unix-timestamp: 1740873600
+  - version: '100'
+    unix-timestamp: 1740960001
+  - version: '1'
+    unix-timestamp: 1740787200
+'''
+        with patch.object(reader.time, 'time', return_value=1740873600):
+            self.assertEqual(reader.read_file(self.file('catalog.yml.gz', yaml))[0]['releaseDate'], '2025-03-02')
+
+    def test_yaml_release_timestamps_select_newest_valid_release(self):
+        yaml = YAML + '''Releases:
+  - version: '9'
+    unix-timestamp: 1708387200
+  - version: '1'
+    unix-timestamp: 1740873600
+  - version: '10'
+    unix-timestamp: 1735689600
+  - version: '11'
+'''
+        self.assertEqual(reader.read_file(self.file('catalog.yml.gz', yaml))[0]['releaseDate'], '2025-03-02')
+        self.assertNotIn('releaseDate', reader.read_file(self.file('catalog.yml', YAML))[0])
 
     def test_metainfo_uses_one_session_language_with_english_fallback(self):
         xml = '<component type="desktop-application"><id>org.example.Locale</id>' \
@@ -366,7 +466,7 @@ class AppStreamTests(unittest.TestCase):
         self.assertEqual(len(warnings), 2)
         self.assertIn('invalid', warnings[0])
         self.assertIn('unreadable', warnings[1])
-        self.assertTrue(all(warning.startswith('[PLACEHOLDER]') for warning in warnings))
+        self.assertTrue(all(warning and ('[PLACE' + 'HOLDER]') not in warning for warning in warnings))
         self.assertEqual(reader.components([]), ([], []))
 
     def test_missing_dependency_is_reported(self):

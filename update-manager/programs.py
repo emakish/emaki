@@ -46,9 +46,16 @@ def listing():
     paths = sorted({app['filename'] for app in apps})
     # -Qo exits 1 when one path has no owner (a personal entry); owned lines still print.
     owned = catalog.owners(pacman('-Qo', *paths).stdout) if paths else {}
-    names = sorted({name for name, _ in owned.values() if not (catalog.is_emaki(name) or catalog.is_system(name))})
+    names = sorted({name for name, _ in owned.values()})
     details = catalog.info(pacman('-Qi', *names).stdout) if names else {}
-    return {'ok': True, 'programs': catalog.programs(apps, owned, details)}
+    return {'ok': True, 'programs': catalog.programs(apps, owned, details, foreign=foreign_names())}
+
+
+def foreign_names():
+    """Installed packages that no configured repository has: pacman calls them foreign."""
+    # -Qmq exits 1 with no output when there are none; an unreadable answer marks nothing.
+    result = pacman('-Qmq')
+    return frozenset(result.stdout.split()) if result.returncode == 0 else frozenset()
 
 
 def preview(name):
@@ -110,12 +117,17 @@ def remove(name, expected):
 
 
 def main(argv):
-    if argv and argv[0] in ('catalog', 'search', 'details', 'plan', 'execute', 'updates', 'serve'):
+    if argv and argv[0] in ('catalog', 'search', 'details', 'related', 'plan', 'execute', 'updates', 'aur',
+                            'popular', 'serve'):
         import programs_engine
         return programs_engine.main(argv, sys.modules[__name__])
     if os.geteuid() == 0:
         print(json.dumps(catalog.result('failed')))
         return 2
+    if argv and argv[0] in ('ratings', 'reviews', 'review'):
+        # Its own process beside the engine's: a slow ratings service never holds a store request.
+        import programs_reviews
+        return programs_reviews.main(argv)
     try:
         if argv == ['list', '--json']:
             answer = listing()

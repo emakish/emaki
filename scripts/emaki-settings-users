@@ -619,7 +619,7 @@ def ask(prompt, stdin, out):
 def prompt_password(login, stdin, out):
     """Ask twice; None when the person gives up (Ctrl+C, end of input, three failed tries)."""
     for _attempt in range(3):
-        first = ask(f'[PLACEHOLDER] New password for {login}: ', stdin, out)
+        first = ask(f'New password for {login}: ', stdin, out)
         if first is None:
             return None
         if password_problem(first):
@@ -645,13 +645,13 @@ def deliver(receipt, reply, words, stdin, out):
         pass  # Settings stopped waiting; it reads the accounts again.
     applied = reply['status'] == 'applied'
     if reply['status'] == 'uncertain':
-        print('\n[PLACEHOLDER] The change could not be confirmed. Settings shows the current accounts.', file=out)
+        print('\nThe change could not be confirmed. Settings shows the current accounts.', file=out)
     elif words[0] == 'set-password':
         print('\n' + ('Password changed.' if applied else 'Password not changed.'), file=out)
         if applied:
-            print('[PLACEHOLDER] Their login wallet may still use the previous password.', file=out)
+            print('Their login wallet may still use the previous password.', file=out)
     else:
-        print('\n' + ('[PLACEHOLDER] The account is ready.' if applied else '[PLACEHOLDER] The account was not created.'),
+        print('\n' + ('The account is ready.' if applied else 'The account was not created.'),
               file=out)
     out.flush()
     try:

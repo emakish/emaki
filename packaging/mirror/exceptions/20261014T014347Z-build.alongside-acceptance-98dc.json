@@ -1,0 +1,12 @@
+{
+ "created": "2026-10-14T01:43:47+00:00",
+ "expires": "2026-10-21T01:43:47+00:00",
+ "format": 1,
+ "gate": "build.alongside-acceptance",
+ "id": "20261014T014347Z-build.alongside-acceptance-98dc",
+ "reason": "The real-Windows hardware check runs after testing and before stable; stable waits for its PASS.",
+ "scope": {
+  "installer/emaki_installer/constants.py": "5d3d05d38e1532b8e8c9066d8980f00138b9a6f34a5d6344436fcfaaf46b623f"
+ },
+ "who": "668569956D2D747847D87D01F62680BE583363AC"
+}

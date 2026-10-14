@@ -4,6 +4,7 @@ import io
 import json
 import os
 from pathlib import Path
+import stat
 import tarfile
 import tempfile
 import threading
@@ -188,6 +189,25 @@ class FixTests(unittest.TestCase):
                 worker.files.path('/').chmod(0o555)
                 worker.finish()
                 worker.files.path('/').chmod(0o755)
+
+    def test_finish_records_only_the_installed_version(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            log = Mock()
+            worker = Worker(None, None, Redactor(), Mock(), log, target=root)
+            worker.plan = make_plan(config(), inventory())
+            for name in ('/', '/etc', '/usr', '/var', '/boot'):
+                worker.files.mkdir(name).chmod(0o755)
+            record = worker.files.path('/var/lib/emaki/installed.json')
+            with patch('emaki_installer.worker.LOG') as installer_log:
+                installer_log.read_bytes.return_value = b'log\n'
+                worker.finish()
+                self.assertFalse(record.exists())
+                self.assertTrue(any('version could not be read' in str(call) for call in log.call_args_list))
+                worker.files.write('/usr/lib/emaki-release', 'VERSION="0.8.0"\nLABEL=alpha\nCHANNEL=stable\n')
+                worker.finish()
+            self.assertEqual(json.loads(record.read_text()), {'version': 1, 'emaki_version': '0.8.0'})
+            self.assertEqual(stat.S_IMODE(record.stat().st_mode), 0o644)
 
 
 class RepoPreflightTests(unittest.TestCase):

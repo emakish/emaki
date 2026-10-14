@@ -37,7 +37,9 @@ def resize_partition(plan, runner, changed):
     p = next(p for p in plan.disk['partitions'] if p['id'] == plan.config['partition_id'])
     disk, dev, n = plan.disk['path'], p['path'], p['number']
     sector = plan.disk['_sector_size']
-    new_size = p['size_bytes'] - plan.config['shrink_bytes']
+    new_size = alongside.usable_size(p['size_bytes']) - plan.config['shrink_bytes']
+    require(p['start_bytes'] + new_size == plan.root.start, Code.UNSAFE_DISK,
+            'Windows end and Emaki root start disagree; disk untouched.')
     metadata = alongside.read_gpt(runner, disk, n)
     require(metadata == p['_gpt'], Code.DISK_CHANGED, 'Windows GPT metadata changed after review; disk untouched.')
     alongside.verify_gpt(runner, disk)
@@ -266,7 +268,7 @@ class DeviceOperations:
                 # existing claim. A child reopening it would have to acquire a competing claim.
                 fcntl.ioctl(fd, BLKRRPART)
             except OSError as exc:
-                raise InstallError(Code.UNSAFE_DISK, '[PLACEHOLDER] The partition table was written, '
+                raise InstallError(Code.UNSAFE_DISK, 'The partition table was written, '
                                    'but the kernel could not read it. Installation stopped.') from exc
             self.check_disk_sequence(fd)
             self.runner.run(['udevadm', 'settle', '--timeout=30'])
@@ -290,15 +292,15 @@ class DeviceOperations:
     def check_disk_sequence(self, fd):
         expected = self.plan.disk.get('_identity', {}).get('disk-seq')
         require(type(expected) is int or (isinstance(expected, str) and expected.isdecimal()),
-                Code.UNSAFE_DISK, '[PLACEHOLDER] The disk sequence number is unknown. Installation stopped.')
+                Code.UNSAFE_DISK, 'The disk sequence number is unknown. Installation stopped.')
         expected = int(expected)
         try:
             current = disk_sequence(fd)
         except OSError as exc:
-            raise InstallError(Code.UNSAFE_DISK, '[PLACEHOLDER] The disk sequence number could not '
+            raise InstallError(Code.UNSAFE_DISK, 'The disk sequence number could not '
                                'be read. Installation stopped.') from exc
         require(current == expected, Code.DISK_CHANGED,
-                '[PLACEHOLDER] The disk was replaced after the review. Installation stopped.')
+                'The disk was replaced after the review. Installation stopped.')
 
     @contextmanager
     def reviewed_disk(self):
@@ -323,8 +325,8 @@ class DeviceOperations:
                 Code.UNSAFE_DISK, 'STOP: unexpected partition table after shrinking Windows.')
         for original in self.plan.disk['partitions']:
             found = next((p for p in children if int(p.get('partn') or 0) == original['number']), None)
-            size = original['size_bytes'] - (self.plan.config['shrink_bytes']
-                    if original['id'] == self.plan.config['partition_id'] else 0)
+            size = (alongside.usable_size(original['size_bytes']) - self.plan.config['shrink_bytes']
+                    if original['id'] == self.plan.config['partition_id'] else original['size_bytes'])
             require(found and int(found['start']) * 512 == original['start_bytes']
                     and int(found['size']) == size and found['path'] == original['path']
                     and str(found.get('partuuid')).lower() == str(original.get('_partuuid')).lower()

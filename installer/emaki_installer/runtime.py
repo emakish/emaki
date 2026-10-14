@@ -368,11 +368,16 @@ def cleanup(runner, roots, *, lazy=False, before_unmount=None):
         for root in roots:
             if root.exists():
                 stop_target_processes(runner, root)
-        for command in (['sync'], ['udevadm', 'settle', '--timeout=10']):
-            try:
-                runner.run(command)
-            except InstallError as exc:
-                errors.append(exc.message)
+        try:
+            runner.run(['sync'])
+        except InstallError as exc:
+            errors.append(exc.message)
+        try:
+            runner.run(['udevadm', 'settle', '--timeout=10'])
+        except InstallError as exc:
+            # Only a pause for pending device events: the unmounts below decide whether the
+            # disk was released (on real hardware the udev queue outlived 10 s after a finished install).
+            safe_log(runner.log, 'WARNING: device events still pending before unmounting: ' + exc.message)
         if before_unmount is not None:
             try:
                 before_unmount()

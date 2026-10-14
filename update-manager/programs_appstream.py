@@ -11,6 +11,8 @@ import io
 import os
 import re
 import stat
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from xml.parsers import expat
 from xml.etree import ElementTree
@@ -31,6 +33,7 @@ MAX_SCALAR_BYTES = 1024 * 1024
 MAX_TEXT_BYTES = 2048
 MAX_DESCRIPTION_BYTES = 16 * 1024
 MAX_LIST_ITEMS = 64
+_PROVIDED_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*\Z")
 _UNSAFE_URL = re.compile(r"[\s\x00-\x1f\x7f\\]")
 
 
@@ -39,15 +42,15 @@ def _input_bytes(path):
     with os.fdopen(fd, "rb") as stream:
         info = os.fstat(stream.fileno())
         if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_FILE_BYTES:
-            raise ValueError("[PLACEHOLDER] AppStream input exceeds the file limit.")
+            raise ValueError("AppStream input exceeds the file limit.")
         data = stream.read(MAX_FILE_BYTES + 1)
     if len(data) > MAX_FILE_BYTES:
-        raise ValueError("[PLACEHOLDER] AppStream input exceeds the file limit.")
+        raise ValueError("AppStream input exceeds the file limit.")
     if data.startswith(b"\x1f\x8b"):
         with gzip.GzipFile(fileobj=io.BytesIO(data)) as stream:
             data = stream.read(MAX_FILE_BYTES + 1)
         if len(data) > MAX_FILE_BYTES:
-            raise ValueError("[PLACEHOLDER] AppStream expanded input exceeds the file limit.")
+            raise ValueError("AppStream expanded input exceeds the file limit.")
     return data
 
 
@@ -58,7 +61,7 @@ def _validate_xml(data):
     root_tag = None
 
     def forbidden(*args):
-        raise ValueError("[PLACEHOLDER] AppStream DTDs and entities are not supported.")
+        raise ValueError("AppStream DTDs and entities are not supported.")
 
     def start(name, attrs):
         nonlocal depth, nodes, component_nodes, component_depth, components, scalar_bytes, root_tag
@@ -75,10 +78,10 @@ def _validate_xml(data):
         scalar_bytes = 0
         if (depth > MAX_DEPTH or nodes > MAX_FILE_NODES or component_nodes > MAX_NODES
                 or components > MAX_COMPONENTS):
-            raise ValueError("[PLACEHOLDER] AppStream XML exceeds structural limits.")
+            raise ValueError("AppStream XML exceeds structural limits.")
         for value in attrs.values():
             if len(value.encode("utf-8")) > MAX_SCALAR_BYTES:
-                raise ValueError("[PLACEHOLDER] AppStream XML exceeds the scalar limit.")
+                raise ValueError("AppStream XML exceeds the scalar limit.")
 
     def end(name):
         nonlocal depth, component_depth, scalar_bytes
@@ -91,7 +94,7 @@ def _validate_xml(data):
         nonlocal scalar_bytes
         scalar_bytes += len(value.encode("utf-8"))
         if scalar_bytes > MAX_SCALAR_BYTES:
-            raise ValueError("[PLACEHOLDER] AppStream XML exceeds the scalar limit.")
+            raise ValueError("AppStream XML exceeds the scalar limit.")
 
     parser.StartElementHandler = start
     parser.EndElementHandler = end
@@ -108,13 +111,13 @@ def _validate_yaml(data):
     try:
         import yaml
     except ImportError as exc:
-        raise ImportError("[PLACEHOLDER] AppStream YAML parser unavailable.") from exc
+        raise ImportError("AppStream YAML parser unavailable.") from exc
     depth = nodes = component_nodes = documents = 0
     for event in yaml.parse(data, Loader=yaml.SafeLoader):
         nodes += 1
         component_nodes += 1
         if isinstance(event, yaml.events.AliasEvent) or getattr(event, "anchor", None):
-            raise ValueError("[PLACEHOLDER] AppStream YAML aliases are not supported.")
+            raise ValueError("AppStream YAML aliases are not supported.")
         if isinstance(event, (yaml.events.MappingStartEvent, yaml.events.SequenceStartEvent)):
             depth += 1
         elif isinstance(event, (yaml.events.MappingEndEvent, yaml.events.SequenceEndEvent)):
@@ -124,9 +127,9 @@ def _validate_yaml(data):
             component_nodes = 1
         if (depth > MAX_DEPTH or nodes > MAX_FILE_NODES or component_nodes > MAX_NODES
                 or documents > MAX_COMPONENTS + 1):
-            raise ValueError("[PLACEHOLDER] AppStream YAML exceeds structural limits.")
+            raise ValueError("AppStream YAML exceeds structural limits.")
         if isinstance(event, yaml.events.ScalarEvent) and len(event.value.encode("utf-8")) > MAX_SCALAR_BYTES:
-            raise ValueError("[PLACEHOLDER] AppStream YAML exceeds the scalar limit.")
+            raise ValueError("AppStream YAML exceeds the scalar limit.")
 
 
 def _bounded(value, limit=MAX_TEXT_BYTES):
@@ -192,6 +195,36 @@ def _cached_icon(path, origin, name, width, height, scale=1):
         except (OSError, RuntimeError, ValueError):
             continue
     return None
+
+
+def _provided_ids(component, library):
+    """IDs the component provides as its own; an ID that does not fit unchanged is dropped, never cut."""
+    provided = component.get_provided_for_kind(library.ProvidedKind.ID)
+    found = []
+    for value in (provided.get_items() if provided else []):
+        if (value and value != component.get_id() and value not in found and len(value) <= 255
+                and _PROVIDED_ID.match(value) and len(found) < 16):
+            found.append(value)
+    return found
+
+
+def _release_date(component):
+    """Use only already parsed releases; external release lists stay offline."""
+    newest = None
+    latest_allowed = time.time() + 86400
+    releases = component.get_releases_plain()
+    for release in releases.get_entries() if releases is not None else ():
+        timestamp = release.get_timestamp()
+        # Zero is libappstream's sentinel for missing or malformed dates.
+        if timestamp <= 0 or timestamp > latest_allowed:
+            continue
+        try:
+            date = datetime.fromtimestamp(timestamp, timezone.utc).date().isoformat()
+        except (OverflowError, OSError, ValueError):
+            continue
+        if newest is None or date > newest:
+            newest = date
+    return newest
 
 
 def _record(component, library, origin, path):
@@ -266,8 +299,10 @@ def _record(component, library, origin, path):
         except Exception:
             # Never fall back to passing unconverted markup to a client.
             description = ""
+    release_date = _release_date(component)
     return clean_display(_bounded({
         "id": component.get_id(),
+        "componentType": library.component_kind_to_string(component.get_kind()),
         "name": component.get_name() or "",
         "summary": component.get_summary() or "",
         "description": description,
@@ -279,8 +314,12 @@ def _record(component, library, origin, path):
         "bundles": [{"kind": bundle.get_kind().value_nick, "id": bundle.get_id()}
                     for bundle in component.get_bundles() if bundle.get_id()],
         "keywords": list(component.get_keywords()),
+        # Other IDs this program declares as its own (<provides><id>), like an older
+        # firefox.desktop; the ratings service may list its reviews under them.
+        "providedIds": _provided_ids(component, library),
         "downloadSize": None,
         "installedSize": None,
+        **({"releaseDate": release_date} if release_date else {}),
         "origin": origin or component.get_origin() or "",
         "sourcePath": str(path),
     }))
@@ -334,14 +373,14 @@ def read_file(path, origin=""):
     source = glib.Bytes.new(data)
     del data
     if not metadata.parse_bytes(source, kind):
-        raise ValueError("[PLACEHOLDER] AppStream metadata could not be read.")
+        raise ValueError("AppStream metadata could not be read.")
     # The native parser owns its metadata now; release the expanded catalog before
     # building records so both copies do not remain live for the whole conversion.
     del source
     records = []
     parsed = metadata.get_components().as_array()
     if len(parsed) > MAX_COMPONENTS:
-        raise ValueError("[PLACEHOLDER] AppStream catalog exceeds the component limit.")
+        raise ValueError("AppStream catalog exceeds the component limit.")
     for component in parsed:
         record = _record(component, library, origin, path)
         if record is not None:
@@ -392,7 +431,7 @@ def components(paths=None):
                     reason = "parser unavailable"
                 else:
                     reason = "invalid"
-                warnings.append(f"[PLACEHOLDER] AppStream metadata {reason}: {path}: {exc}")
+                warnings.append(f"AppStream metadata {reason}: {path}: {exc}")
     except Exception as exc:
-        warnings.append(f"[PLACEHOLDER] AppStream discovery unavailable: {exc}")
+        warnings.append(f"AppStream discovery unavailable: {exc}")
     return records, clean_display(warnings)

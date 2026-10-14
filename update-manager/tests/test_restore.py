@@ -53,10 +53,21 @@ class RestorePoints(unittest.TestCase):
         rows = restore.list_points(self.root)
         self.assertEqual([row['id'].split(':')[0] for row in rows], ['4', '2'])
         self.assertFalse(rows[0]['completed'])
-        self.assertIn('[PLACEHOLDER]', rows[0]['notice'])
+        self.assertNotIn(('[PLACE' + 'HOLDER]'), rows[0]['notice'])
         self.assertTrue(rows[1]['completed'])
         self.assertEqual(rows[1]['packages'], 'linux emaki-config')
         self.assertTrue(restore.TOKEN.fullmatch(rows[1]['id']))
+
+    def test_install_point_is_listed_after_the_committed_update(self):
+        self.point(2)
+        self.point(3, 'post', 'base', pre='2', stamp='2026-10-10 12:05:00')
+        directory = self.point(4, description='AUR install', stamp='2026-10-10 12:06:00')
+        rows = restore.list_points(self.root)
+        token = '4:' + restore.receipt(directory)['digest']
+        self.assertEqual(rows[0]['id'], token)
+        self.assertEqual(rows[0]['operation'], 'install')
+        self.assertEqual(rows[0]['notice'], '')
+        self.assertEqual(rows[1]['operation'], 'update')
 
     def test_timestamp_is_converted_before_local_date(self):
         self.point(2, stamp='2026-10-10 00:01:00')
@@ -105,6 +116,29 @@ class RestorePoints(unittest.TestCase):
                     restore.restore_point(value, self.root)
             run.assert_not_called()
 
+    def test_install_restore_binds_exact_pre_snapshot_and_reuses_rollback(self):
+        directory = self.point(2, description='Before program install')
+        token = '2:' + restore.receipt(directory)['digest']
+        with patch.object(restore, 'boot_state', return_value={'mode': 'normal'}), \
+                patch.object(restore, 'run', return_value=subprocess.CompletedProcess([], 0, 'ready', '')) as run:
+            result = restore.restore_install_point(token, self.root)
+            self.assertTrue(result['restart'])
+            run.assert_called_once_with([restore.ROLLBACK, 'snapshot', '2'], timeout=None)
+            run.reset_mock()
+            (directory / 'info.xml').write_text((directory / 'info.xml').read_text().replace('12:00:00', '12:01:00'))
+            with self.assertRaises(restore.Refused):
+                restore.restore_install_point(token, self.root)
+            run.assert_not_called()
+
+    def test_install_restore_rejects_post_snapshot_and_pending_root(self):
+        directory = self.point(2, kind='post')
+        token = '2:' + restore.receipt(directory)['digest']
+        with patch.object(restore, 'run') as run:
+            for mode in ('normal', 'pending', 'unsupported'):
+                with patch.object(restore, 'boot_state', return_value={'mode': mode}), self.assertRaises(restore.Refused):
+                    restore.restore_install_point(token, self.root)
+            run.assert_not_called()
+
     def test_success_delegates_exact_selected_snapshot_and_never_reboots(self):
         self.point(2)
         token = restore.list_points(self.root)[0]['id']
@@ -114,7 +148,7 @@ class RestorePoints(unittest.TestCase):
         run.assert_called_once_with([restore.ROLLBACK, 'snapshot', '2'], timeout=None)
         self.assertTrue(result['ok'])
         self.assertTrue(result['restart'])
-        self.assertIn('/home', result['message'])
+        self.assertIn('Your home folder was left untouched.', result['message'])
 
     def test_refusal_preserves_existing_rollback_details(self):
         self.point(2)
@@ -289,6 +323,15 @@ class RestorePoints(unittest.TestCase):
             self.publish()
         self.assertEqual((self.root / 'index.json').read_bytes(), previous)
         self.assertFalse(list(self.root.glob('.emaki-restore-points-*')))
+
+
+class RestoreIndexTimer(unittest.TestCase):
+    def test_timer_runs_only_where_restore_points_can_exist(self):
+        # Without /.snapshots (ext4 installs, the live stick) refresh-index exits 1; a timer that still
+        # fired would fail its service every 30 s and fill the journal and problem reports.
+        timer = (Path(__file__).resolve().parents[1] / 'emaki-restore-index.timer').read_text()
+        unit = timer.split('[Timer]')[0]
+        self.assertIn('\nConditionPathIsDirectory=/.snapshots\n', unit)
 
 
 if __name__ == '__main__':

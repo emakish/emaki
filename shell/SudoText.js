@@ -10,11 +10,11 @@ var requesterUnavailable = Common.requesterUnavailable;
 var redacted = Common.redacted;
 
 // Unapproved typed amount text stays visibly marked until wording is supplied.
-var keyMinutesInput = "[PLACEHOLDER] Number of minutes";
-var keyTurnsChoice = "[PLACEHOLDER] For a number of turns";
-var keyTurnsInput = "[PLACEHOLDER] Number of turns";
+var keyMinutesInput = "Number of minutes";
+var keyTurnsChoice = "For a number of turns";
+var keyTurnsInput = "Number of turns";
 var keyMinutesError = "At least 5 minutes";
-var keyTurnsError = "[PLACEHOLDER] Enter a whole number of turns from 1 to 1000.";
+var keyTurnsError = "Enter a whole number of turns from 1 to 1000.";
 
 var keyWarningRequired = "Read and accept the warning in Settings › AI Assistants first.";
 var keyWarningTitle = "A sudo key lets an AI agent act as administrator";

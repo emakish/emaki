@@ -36,10 +36,10 @@ LOG_AGE = 7 * 86400
 ARCHIVED_JOURNAL = re.compile(r'(?:system|user-[0-9]+)@[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{16}\.journal\Z')
 MACHINE_DIRECTORY = re.compile(r'[0-9a-f]{32}(?:\.[A-Za-z0-9_.-]+)?\Z')
 DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-UNAVAILABLE = '[PLACEHOLDER] Storage details are unavailable. Try again.'
-STALE = '[PLACEHOLDER] Storage changed after the preview. Preview again before cleaning.'
-ALLOCATED = '[PLACEHOLDER] Allocated file bytes; shared extents may be counted more than once.'
-RECLAIM = ('[PLACEHOLDER] Unshared file data is a conservative estimate, excluding metadata '
+UNAVAILABLE = 'Storage details are unavailable. Try again.'
+STALE = 'Storage changed after the preview. Preview again before cleaning.'
+ALLOCATED = 'Allocated file bytes; shared extents may be counted more than once.'
+RECLAIM = ('Unshared file data is a conservative estimate, excluding metadata '
            'and shared extents. Compressed or unsupported data is unknown. Open files can '
            'delay space returning. Free-space change is measured after cleanup.')
 
@@ -66,9 +66,9 @@ def safe_directory(info, owner, privileged):
     if privileged and (info.st_uid != 0 or info.st_mode & 0o022):
         # A sticky, root-owned traversal directory cannot rename another owner's child.
         if not (info.st_uid == 0 and info.st_mode & stat.S_ISVTX):
-            failure('[PLACEHOLDER] A storage directory is not safe to clean.')
+            failure('A storage directory is not safe to clean.')
     if not privileged and info.st_uid != owner and info.st_mode & 0o022 and not info.st_mode & stat.S_ISVTX:
-        failure('[PLACEHOLDER] A trash ancestor can be changed by another account.')
+        failure('A trash ancestor can be changed by another account.')
 
 
 @contextlib.contextmanager
@@ -86,7 +86,7 @@ def open_directory(path, owner, privileged=False):
             safe_directory(os.fstat(fd), owner, privileged)
         info = os.fstat(fd)
         if info.st_uid != owner or info.st_mode & 0o022:
-            failure('[PLACEHOLDER] A storage directory is not safe to clean.')
+            failure('A storage directory is not safe to clean.')
         yield fd
     finally:
         os.close(fd)
@@ -105,10 +105,10 @@ def home_path():
 
 def trash_path():
     if os.geteuid() == 0 or os.getuid() != os.geteuid():
-        failure('[PLACEHOLDER] Trash cleanup must run as your own account, without authentication.')
+        failure('Trash cleanup must run as your own account, without authentication.')
     data = Path(os.environ.get('XDG_DATA_HOME') or home_path() / '.local/share')
     if not data.is_absolute() or '..' in data.parts:
-        failure('[PLACEHOLDER] The trash location is unavailable.')
+        failure('The trash location is unavailable.')
     return data / 'Trash'
 
 
@@ -166,12 +166,12 @@ class Inventory:
 
     def add(self, root, relative, info):
         if len(self.entries) >= MAX_ENTRIES:
-            failure('[PLACEHOLDER] There are too many files for one safe cleanup preview.')
+            failure('There are too many files for one safe cleanup preview.')
         if info.st_uid != self.owner and self.kind not in ('trash', 'usage'):
-            failure('[PLACEHOLDER] A storage file has unexpected ownership.')
+            failure('A storage file has unexpected ownership.')
         if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)
                 or (self.kind == 'trash' and stat.S_ISLNK(info.st_mode))):
-            failure('[PLACEHOLDER] A storage entry is not a regular file, folder or trash link.')
+            failure('A storage entry is not a regular file, folder or trash link.')
         self.entries.append(dict(root=str(root), relative=str(relative),
                                  path=str(root / relative), bytes=info.st_blocks * 512,
                                  identity=identity(info), directory=stat.S_ISDIR(info.st_mode)))
@@ -196,7 +196,7 @@ def child_info(fd, name, expected_mount):
     child = os.open(name, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=fd)
     try:
         if mount_id(child) != expected_mount:
-            failure('[PLACEHOLDER] A nested mount cannot be included in cleanup.')
+            failure('A nested mount cannot be included in cleanup.')
         return os.fstat(child)
     finally:
         os.close(child)
@@ -204,7 +204,7 @@ def child_info(fd, name, expected_mount):
 
 def walk(inventory, root, fd, prefix=Path('.'), depth=0):
     if depth > MAX_DEPTH:
-        failure('[PLACEHOLDER] A trash folder is too deep for one safe cleanup preview.')
+        failure('A trash folder is too deep for one safe cleanup preview.')
     expected_mount = inventory.roots[str(root)][-1]
     for name in sorted(os.listdir(fd)):
         relative = prefix / name
@@ -230,7 +230,7 @@ def trash_inventory():
                 path = root / directory
                 with open_directory(path, os.getuid()) as fd:
                     if mount_id(fd) != mount_id(parent):
-                        failure('[PLACEHOLDER] A nested mount cannot be included in cleanup.')
+                        failure('A nested mount cannot be included in cleanup.')
                     result.root(path, fd)
                     if directory == 'files':
                         walk(result, path, fd)
@@ -240,12 +240,12 @@ def trash_inventory():
                                 continue
                             info = child_info(fd, name, mount_id(fd))
                             if not stat.S_ISREG(info.st_mode):
-                                failure('[PLACEHOLDER] Trash metadata is not a regular file.')
+                                failure('Trash metadata is not a regular file.')
                             result.add(path, Path(name), info)
     except FileNotFoundError:
         # A half-created trash must not hide files already inventoried.
         if root.exists():
-            failure('[PLACEHOLDER] The trash layout is incomplete. Open it in Files first.')
+            failure('The trash layout is incomplete. Open it in Files first.')
     return result
 
 
@@ -261,14 +261,14 @@ def log_inventory():
                         continue
                     info = child_info(fd, directory, mount_id(fd))
                     if not stat.S_ISDIR(info.st_mode):
-                        failure('[PLACEHOLDER] A journal directory is not safe to clean.')
+                        failure('A journal directory is not safe to clean.')
                     with open_directory(root / directory, 0, True) as machine:
                         for name in sorted(os.listdir(machine)):
                             if not ARCHIVED_JOURNAL.fullmatch(name):
                                 continue
                             info = child_info(machine, name, mount_id(fd))
                             if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
-                                failure('[PLACEHOLDER] An archived journal is not safe to clean.')
+                                failure('An archived journal is not safe to clean.')
                             if info.st_mtime <= cutoff:
                                 result.add(root, Path(directory) / name, info)
         except FileNotFoundError:
@@ -288,7 +288,7 @@ def cache_inventory():
             for path in sorted(Path(path) for path in source['candidates'] if Path(path).parent == root):
                 info = child_info(fd, path.name, mount_id(fd))
                 if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
-                    failure('[PLACEHOLDER] A package archive is not safe to clean.')
+                    failure('A package archive is not safe to clean.')
                 result.add(root, Path(path.name), info)
     if any(Path(path).parent not in roots for path in source['candidates']):
         failure()
@@ -318,15 +318,15 @@ def status():
         try:
             if kind == 'trash':
                 count = sum(item['bytes'] for item in trash_inventory().entries)
-                reason = '[PLACEHOLDER] Home trash only. Other drives are not included. ' + ALLOCATED
+                reason = 'Home trash only. Other drives are not included. ' + ALLOCATED
             elif kind == 'logs':
                 count = sum(allocated_tree(root, 0, True) for root in LOG_ROOTS if root.exists())
-                reason = '[PLACEHOLDER] System journals. Cleanup includes only archives older than seven days. ' + ALLOCATED
+                reason = 'System journals. Cleanup includes only archives older than seven days. ' + ALLOCATED
             else:
                 # The backend owns cache locations; status must not acquire package locks.
                 roots = storage_arch.cache_roots()
                 count = sum(allocated_tree(root, 0, True) for root in roots)
-                reason = '[PLACEHOLDER] Installed and rollback package versions are kept. ' + ALLOCATED
+                reason = 'Installed and rollback package versions are kept. ' + ALLOCATED
             categories[kind] = dict(bytes=count, reason=reason)
         except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
             reason = str(error) if isinstance(error, RuntimeError) else UNAVAILABLE
@@ -470,7 +470,7 @@ def clean(plan, token):
                 removed += 1
     except (OSError, RuntimeError):
         return dict(schema_version=1, status='error', kind=plan.kind, removed_count=removed,
-                    message='[PLACEHOLDER] Cleanup stopped after removing ' + str(removed)
+                    message='Cleanup stopped after removing ' + str(removed)
                     + ' entries. Remaining files were kept. Preview again before retrying.')
     try:
         after = free_pools(plan.roots)
@@ -479,14 +479,14 @@ def clean(plan, token):
         reclaimed = None
     return dict(schema_version=1, status='cleaned', kind=plan.kind, removed_count=removed,
                 reclaimed_bytes=reclaimed,
-                message='[PLACEHOLDER] Cleanup finished. The measured free-space change may also include other disk activity.')
+                message='Cleanup finished. The measured free-space change may also include other disk activity.')
 
 
 def dispatch(action, kind=None, token=None):
     if action == 'status':
         return status()
     if kind in ('cache', 'logs') and os.geteuid() != 0:
-        failure('[PLACEHOLDER] Authentication is required to preview or clean system storage.')
+        failure('Authentication is required to preview or clean system storage.')
     guard = storage_arch.package_guard() if kind == 'cache' else contextlib.nullcontext()
     with guard:
         plan = inventory(kind)
@@ -502,7 +502,7 @@ def main(arguments):
              (len(arguments) == 4 and arguments[0] == 'cleanup' and arguments[1] in ('cache', 'logs', 'trash')
               and re.fullmatch(r'[0-9a-f]{64}', arguments[2]) and arguments[3] == '--json'))
     if not valid:
-        print(json.dumps(dict(schema_version=1, status='error', message='[PLACEHOLDER] Invalid storage command.')))
+        print(json.dumps(dict(schema_version=1, status='error', message='Invalid storage command.')))
         return 2
     try:
         result = dispatch(arguments[0], arguments[1] if len(arguments) > 2 else None,

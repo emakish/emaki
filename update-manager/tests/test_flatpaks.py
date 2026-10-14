@@ -60,7 +60,7 @@ class Flatpaks(unittest.TestCase):
         self.assertEqual(summary['downloadSize'], 30)
         self.assertEqual(summary['updates'][-1]['name'], 'foreign')
         self.assertEqual({row['source'] for row in summary['updates']},
-                         {'Arch core', 'Emaki', catalog.AUR_SOURCE, '[PLACEHOLDER] Flatpak (user)'})
+                         {'Arch core', 'Emaki', catalog.AUR_SOURCE, 'Flatpak (user)'})
 
     def test_same_version_with_new_commit_is_an_update(self):
         local = f'{REF}\t{OLD}\t1\tflathub\tuser\n'
@@ -105,9 +105,11 @@ class UpdateSequence(unittest.TestCase):
                 patch.object(backend.reminder, 'status', return_value=dict(restart=False, reminder=False, restartPackages=[])), \
                 patch.object(backend.flatpaks, 'update', return_value=True, side_effect=flatpak_error) as update, \
                 patch.object(backend, 'emit') as emit, \
-                patch.object(backend.reminder, 'notify_completed') as notify:
+                patch.object(backend.reminder, 'notify_completed') as notify, \
+                patch.object(backend.reminder, 'offer_report') as offer:
             backend.apply(Path('/unused'))
         self.assertEqual(notify.call_count, int(ok and code == 0 and flatpak_error is None))
+        self.assertEqual(offer.call_count, int(not (ok and code == 0 and flatpak_error is None)))
         return update, emit
 
     def test_repository_refusal_never_runs_flatpak(self):

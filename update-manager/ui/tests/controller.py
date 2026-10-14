@@ -67,6 +67,14 @@ elif operation == '--apply':
         sys.exit(0)
     if scenario == 'empty':
         sys.exit(0)
+    if scenario == 'long-log':
+        # Piped pacman: a plain count, then far more ordinary output than the 32 KB log window.
+        emit(dict(type='progress', message='Packages (2) linux-6.1-1  mesa-1-1\\n:: Retrieving packages...\\n'
+                  '(1/2) Performing snapper pre snapshots for the following configurations...\\n==> root: 512'))
+        emit(dict(type='progress', message=':: Processing package changes...'))
+        emit(dict(type='progress', message='upgrading linux...'))
+        for index in range(600):
+            emit(dict(type='progress', message='ordinary line %04d ' % index + 'x' * 60))
     if scenario == 'malformed':
         print('not json', flush=True)
         sys.exit(0)
@@ -170,6 +178,7 @@ def run(scenario):
         assert controller.count(command) == 4
         (root / 'UpdateController.qml').write_text(controller.replace(command, json.dumps(str(backend))))
         shutil.copyfile(UI / 'tests/ControllerTest.qml', root / 'ControllerTest.qml')
+        shutil.copyfile(UI / 'ManagerLogic.js', root / 'ManagerLogic.js')
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QML_DISABLE_DISK_CACHE='1', QS_DISABLE_CRASH_HANDLER='1', TEST_SCENARIO=scenario, TEST_CALLS=str(root / 'calls'))
         for name in ('runtime', 'cache', 'config', 'data', 'state'):
             (root / name).mkdir(mode=0o700)
@@ -183,6 +192,8 @@ def run(scenario):
         expected = ['--check', '--refresh', '--apply'] + (['--dismiss-restart', '--restart'] if scenario == 'success' else [])
         if scenario == 'flatpak':
             expected = ['--check', '--apply']
+        elif scenario == 'long-log':
+            expected = ['--check', '--refresh', '--apply', '--refresh']
         elif scenario in ('aur', 'index-error', 'index-malformed'):
             expected = ['--check']
         elif scenario == 'reminder':
@@ -199,5 +210,5 @@ def run(scenario):
 
 if __name__ == '__main__':
     rendered_window()
-    for scenario in ('success', 'delayed-index', 'failure', 'empty', 'malformed', 'nonzero', 'cancelled', 'flatpak', 'aur', 'reminder', 'restore-success', 'restore-refused', 'restore-partial', 'index-error', 'index-malformed'):
+    for scenario in sys.argv[1:] or ('success', 'long-log', 'delayed-index', 'failure', 'empty', 'malformed', 'nonzero', 'cancelled', 'flatpak', 'aur', 'reminder', 'restore-success', 'restore-refused', 'restore-partial', 'index-error', 'index-malformed'):
         run(scenario)

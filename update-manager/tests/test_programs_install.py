@@ -2,6 +2,7 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Repository inventory, installation previews and privileged transaction boundaries."""
+from datetime import datetime, timezone
 import contextlib
 import io
 import json
@@ -24,6 +25,10 @@ DESC = '%NAME%\nhello\n\n%VERSION%\n2-1\n\n%DESC%\nA greeting\n\n%LICENSE%\nGPL\
 
 
 class Inventory(unittest.TestCase):
+    def setUp(self):
+        self.enterContext(patch.object(arch, 'private_database',
+                                      side_effect=lambda *args, **kwargs: contextlib.nullcontext(Path('/private-db'))))
+
     def test_source_qualified_validation(self):
         self.assertEqual(arch.validate_target('extra/hello+world'), ['extra', 'hello+world'])
         for value in ('hello', '-S/hello', 'extra/--root', 'extra/../root', 'extra/a b', 'extra/a\n', 'extra/a/b', None):
@@ -35,6 +40,12 @@ class Inventory(unittest.TestCase):
         self.assertEqual((row['downloadSize'], row['installedSize']), (42, 90))
         self.assertEqual(row['licence'], 'GPL')
         self.assertIsNone(arch.parse_desc(DESC.replace('42', '-1'), 'extra')['downloadSize'])
+
+    def test_optional_package_names_strip_versions_and_descriptions(self):
+        row = arch.parse_desc(DESC + '\n%OPTDEPENDS%\npaint>=2: Optional editor\n'
+                              'viewer: View documents\ninvalid name: Bad\n../escape\n', 'extra')
+        self.assertEqual(row['optionalPackages'], ['paint', 'viewer'])
+        self.assertEqual(arch.parse_desc(DESC, 'extra')['optionalPackages'], [])
 
     def test_inventory_reads_only_configured_archives(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -63,9 +74,49 @@ class Inventory(unittest.TestCase):
         with patch.object(arch, 'inventory', return_value=({'extra/hello': pkg}, {'base': '1'})), patch.object(arch, 'run', return_value='extra|hello|2-1|42\n') as command:
             first = arch.install_plan('extra/hello')
             self.assertTrue(first['fullUpgrade'])
-            self.assertEqual(command.call_args.args[0], ['pacman', '-Sup', '--needed', '--noconfirm', '--print-format', '%r|%n|%v|%s', 'extra/hello'])
+            self.assertEqual(command.call_args.args[0], ['pacman', '-Sup', '--needed', '--noconfirm', '--print-format', '%r|%n|%v|%s', *arch.database_arguments('/private-db'), 'extra/hello'])
             pkg['version'] = '3-1'
             self.assertNotEqual(first['token'], arch.install_plan('extra/hello')['token'])
+
+    def test_nvidia_preview_uses_installer_selection_and_binds_targets(self):
+        graphics = arch.graphics_policy()
+        devices = ({'vendor': graphics.NVIDIA, 'device': 0x2200},)
+        names = graphics.package_selection(devices)
+        packages = {'extra/' + name: dict(package=name, version='1') for name in names}
+        with patch.object(arch, 'inventory', return_value=(packages, {})), patch.object(arch, 'run', return_value=''), patch.object(arch, 'graphics_devices', return_value=devices):
+            plan = arch.install_plan('extra/emaki-nvidia')
+            self.assertEqual(plan['targets'], ['extra/' + name for name in names])
+            original = plan['token']
+            del packages['extra/nvidia-open']
+            for name in ('nvidia-open-dkms', 'dkms', 'linux-headers', 'linux-lts-headers'):
+                packages['extra/' + name] = dict(package=name, version='1')
+            plan = arch.install_plan('extra/emaki-nvidia')
+            self.assertEqual(plan['targets'], ['extra/' + name for name in graphics.package_selection(devices, ())])
+            self.assertNotEqual(original, plan['token'])
+
+    def test_nvidia_old_or_absent_gpu_refuses_before_preview(self):
+        for devices in ((), ({'vendor': 0x10de, 'device': 0x1000},),
+                        ({'vendor': 0x10de, 'device': 0x2200}, {'vendor': 0x10de, 'device': 0x1000})):
+            with self.subTest(devices=devices), patch.object(arch, 'inventory', return_value=({'extra/emaki-nvidia': {}}, {})), patch.object(arch, 'graphics_devices', return_value=devices), patch.object(arch, 'run') as run:
+                self.assertFalse(arch.install_plan('extra/emaki-nvidia')['ok'])
+                run.assert_not_called()
+
+    def test_nvidia_missing_stack_refuses_before_preview(self):
+        devices = ({'vendor': 0x10de, 'device': 0x2200},)
+        with patch.object(arch, 'inventory', return_value=({'extra/emaki-nvidia': {}}, {})), patch.object(arch, 'graphics_devices', return_value=devices), patch.object(arch, 'run') as run:
+            self.assertFalse(arch.install_plan('extra/emaki-nvidia')['ok'])
+            run.assert_not_called()
+
+    def test_graphics_detection_ignores_nvidia_audio(self):
+        with tempfile.TemporaryDirectory() as directory:
+            device = Path(directory) / 'bus/pci/devices/0000:01:00.0'
+            device.mkdir(parents=True)
+            (device / 'vendor').write_text('0x10de')
+            (device / 'device').write_text('0x2200')
+            (device / 'class').write_text('0x040300')
+            self.assertEqual(arch.graphics_policy().detect(Path(directory)), ())
+            (device / 'class').write_text('0x030000')
+            self.assertEqual(arch.graphics_policy().detect(Path(directory))[0]['device'], 0x2200)
 
     def test_unavailable_target_does_not_preview(self):
         with patch.object(arch, 'inventory', return_value=({}, {})), patch.object(arch, 'run') as command:
@@ -75,6 +126,11 @@ class Inventory(unittest.TestCase):
 
 class Transaction(unittest.TestCase):
     def setUp(self):
+        self.enterContext(patch.object(arch, 'private_database',
+                                      side_effect=lambda *args, **kwargs: contextlib.nullcontext(Path('/private-db'))))
+        self.snapshot_patch = patch.object(helper, 'preinstall_snapshot', return_value=('', ''))
+        self.snapshot = self.snapshot_patch.start()
+        self.addCleanup(self.snapshot_patch.stop)
         self.output = io.StringIO()
         self.capture = contextlib.redirect_stdout(self.output)
         self.capture.__enter__()
@@ -94,7 +150,7 @@ class Transaction(unittest.TestCase):
             run.assert_not_called()
 
     def test_rollback_refuses_before_launch(self):
-        with patch.object(helper, 'update_backend') as backend, patch.object(helper, 'revalidate') as check, patch.object(helper.subprocess, 'run') as run:
+        with patch.object(helper, 'update_backend') as backend, patch.object(helper, 'revalidate', return_value={'targets': ['extra/hello']}) as check, patch.object(helper.subprocess, 'run') as run:
             backend.return_value.require_update_root.side_effect = RuntimeError('pending')
             with self.assertRaises(RuntimeError):
                 helper.request('extra/hello', 'a' * 64)
@@ -106,7 +162,7 @@ class Transaction(unittest.TestCase):
         finished = {'type': 'finished', 'action': 'install', 'ok': True, 'code': 'success'}
         launch = Mock(returncode=0, stdout='', stderr='Running as unit: emaki-programs-install.service; invocation ID: ' + invocation)
         journal = Mock(returncode=0, stdout=json.dumps({'MESSAGE': json.dumps(finished)}))
-        with patch.object(helper, 'update_backend'), patch.object(helper, 'revalidate'), patch.object(helper.subprocess, 'run', side_effect=[launch, journal]) as run:
+        with patch.object(helper, 'update_backend'), patch.object(helper, 'revalidate', return_value={'targets': ['extra/hello']}), patch.object(helper.subprocess, 'run', side_effect=[launch, journal]) as run:
             self.assertEqual(helper.request('extra/hello', 'a' * 64), 0)
             command = run.call_args_list[0].args[0]
             self.assertIn('--wait', command)
@@ -124,7 +180,7 @@ class Transaction(unittest.TestCase):
                         restart=True, signOut=True)
         launch = Mock(returncode=0, stdout='', stderr='Running as unit: emaki-programs-install.service')
         journal = Mock(returncode=0, stdout=json.dumps({'MESSAGE': json.dumps(finished)}))
-        with patch.object(helper, 'update_backend'), patch.object(helper, 'revalidate'), patch.object(helper.subprocess, 'run', side_effect=[launch, journal]) as run:
+        with patch.object(helper, 'update_backend'), patch.object(helper, 'revalidate', return_value={'targets': ['extra/hello']}), patch.object(helper.subprocess, 'run', side_effect=[launch, journal]) as run:
             self.assertEqual(helper.request('extra/hello', 'a' * 64), 0)
         self.assertEqual(json.loads(self.output.getvalue().splitlines()[-1]), finished)
         command = run.call_args_list[0].args[0]
@@ -161,7 +217,7 @@ class Transaction(unittest.TestCase):
             selected = [record for record in records if all(record.get(key) == value for key, value in matches)]
             return Mock(returncode=0, stdout='\n'.join(json.dumps(record) for record in selected))
 
-        with patch.object(helper, 'update_backend'), patch.object(helper, 'revalidate'), patch.object(helper.subprocess, 'run', side_effect=command):
+        with patch.object(helper, 'update_backend'), patch.object(helper, 'revalidate', return_value={'targets': ['extra/hello']}), patch.object(helper.subprocess, 'run', side_effect=command):
             for _ in range(2):
                 self.assertEqual(helper.request('extra/hello', 'a' * 64), 1)
                 self.assertEqual(json.loads(self.output.getvalue().splitlines()[-1])['code'], 'unknown')
@@ -175,7 +231,7 @@ class Transaction(unittest.TestCase):
         launch = Mock(returncode=1, stdout='', stderr='Running as unit: emaki-programs-install.service')
         journal = Mock(returncode=0, stdout='\n'.join(json.dumps({'MESSAGE': text}) for text in
                        ('x' * 5000, '\x1b[31m' + cause + '\x1b[0m', json.dumps(finished))))
-        with patch.object(helper, 'update_backend'), patch.object(helper, 'revalidate'), patch.object(helper.subprocess, 'run', side_effect=[launch, journal]):
+        with patch.object(helper, 'update_backend'), patch.object(helper, 'revalidate', return_value={'targets': ['extra/hello']}), patch.object(helper.subprocess, 'run', side_effect=[launch, journal]):
             self.assertEqual(helper.request('extra/hello', 'a' * 64), 1)
         result = json.loads(self.output.getvalue().splitlines()[-1])
         self.assertIn(cause, result['message'])
@@ -198,11 +254,202 @@ class Transaction(unittest.TestCase):
         backend = Mock()
         backend.versions.side_effect = [{'base': '1'}, {'base': '2'}]
         backend.changed.return_value = (False, True)
-        with tempfile.TemporaryFile(mode='w') as lock, patch.object(helper.os, 'open', return_value=10), patch.object(helper.os, 'fdopen', return_value=contextlib.nullcontext(lock)), patch.object(helper.fcntl, 'flock'), patch.object(helper, 'update_backend', return_value=backend), patch.object(helper, 'revalidate'), patch.object(helper.subprocess, 'run', return_value=Mock(returncode=1)) as run:
+        with tempfile.TemporaryFile(mode='w') as lock, patch.object(helper.os, 'open', return_value=10), patch.object(helper.os, 'fdopen', return_value=contextlib.nullcontext(lock)), patch.object(helper.fcntl, 'flock'), patch.object(helper, 'update_backend', return_value=backend), patch.object(helper, 'revalidate', return_value={'targets': ['extra/hello']}), patch.object(helper.subprocess, 'run', return_value=Mock(returncode=1)) as run:
             self.assertEqual(helper.worker('extra/hello', 'a' * 64), 1)
-            self.assertEqual(run.call_args.args[0][-3:], ['--noninteractive', '--install', 'extra/hello'])
+            self.assertEqual(run.call_args.args[0][-1:], ['--noninteractive'])
+            self.assertEqual(run.call_count, 1)
             self.assertIn('--what=sleep:handle-lid-switch', run.call_args.args[0])
             self.assertEqual(json.loads(self.output.getvalue().splitlines()[-1])['code'], 'partial')
+
+    def test_successful_install_records_what_it_added(self):
+        self.snapshot.return_value = ('5', '5:' + 'a' * 64)
+        backend = Mock()
+        backend.versions.side_effect = [{'base': '1'}, {'base': '2'}, {'base': '2', 'hello': '1-1', 'libhello': '2'}]
+        backend.changed.return_value = (False, False)
+        with tempfile.TemporaryFile(mode='w') as lock, patch.object(helper.os, 'open', return_value=10), patch.object(helper.os, 'fdopen', return_value=contextlib.nullcontext(lock)), patch.object(helper.fcntl, 'flock'), patch.object(helper, 'update_backend', return_value=backend), patch.object(helper, 'revalidate', return_value={'targets': ['extra/hello']}), patch.object(helper.subprocess, 'run', return_value=Mock(returncode=0)) as run, patch.object(helper.receipts, 'snapshot_numbers', return_value={'3'}), patch.object(helper.receipts, 'first_snapshot', return_value='5') as snapshot, patch.object(helper.receipts, 'record', return_value={'id': 'r1'}) as record:
+            self.assertEqual(helper.worker('extra/hello', 'a' * 64), 0)
+        self.assertEqual(record.call_args.args, ('arch', '', 'hello', 'hello', {'base': '2'},
+                                                 {'base': '2', 'hello': '1-1', 'libhello': '2'}, '5'))
+        self.assertEqual(json.loads(self.output.getvalue().splitlines()[-1])['receipt'], 'r1')
+        self.assertEqual(run.call_args_list[0].args[0][-2:], [helper.UPDATE, '--noninteractive'])
+        self.assertEqual(run.call_args_list[1].args[0][-3:], ['--noninteractive', '--install-only', 'extra/hello'])
+        self.snapshot.assert_called_once_with(required=False)
+        backend.changed.assert_called_once_with({'base': '1'}, {'base': '2', 'hello': '1-1', 'libhello': '2'})
+
+    def test_nvidia_worker_reconstructs_and_installs_the_full_stack(self):
+        devices = ({'vendor': 0x10de, 'device': 0x2200},)
+        names = arch.graphics_policy().package_selection(devices)
+        targets = ['extra/' + name for name in names]
+        packages = {target: dict(package=target.split('/')[1], version='1') for target in targets}
+        backend = Mock()
+        backend.versions.side_effect = [{}, {}, dict.fromkeys(names, '1')]
+        backend.changed.return_value = (True, False)
+        with patch.object(arch, 'inventory', return_value=(packages, {})), patch.object(arch, 'graphics_devices', return_value=devices), patch.object(arch, 'run', return_value=''):
+            token = arch.install_plan('extra/emaki-nvidia')['token']
+            with tempfile.TemporaryFile(mode='w') as lock, patch.object(helper.os, 'open', return_value=10), patch.object(helper.os, 'fdopen', return_value=contextlib.nullcontext(lock)), patch.object(helper.fcntl, 'flock'), patch.object(helper, 'update_backend', return_value=backend), patch.object(helper.subprocess, 'run', return_value=Mock(returncode=0)) as run, patch.object(helper.receipts, 'snapshot_numbers', return_value=set()), patch.object(helper.receipts, 'first_snapshot', return_value=''), patch.object(helper.receipts, 'record', return_value={'id': 'stack'}) as record:
+                self.assertEqual(helper.worker('extra/emaki-nvidia', token), 0)
+            self.assertEqual(run.call_args_list[1].args[0][-len(targets):], targets)
+            self.assertEqual(record.call_args.args[5], dict.fromkeys(names, '1'))
+            packages['extra/nvidia-utils']['version'] = '2'
+            with patch.object(helper, 'update_backend'), patch.object(helper.subprocess, 'run') as run:
+                with self.assertRaises(ValueError):
+                    helper.request('extra/emaki-nvidia', token)
+                run.assert_not_called()
+
+    def test_replacement_receipt_keeps_exact_install_snapshot_token(self, failed=False, database_changed=True, target="extra/hello"):
+        backend = Mock()
+        backend.versions.side_effect = [{'base': '1', 'old': '1'},
+                                       {'base': '2', 'old': '1'},
+                                       {'base': '2', 'hello': '1'} if database_changed else {'base': '2', 'old': '1'}]
+        backend.changed.return_value = (False, False)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            snapshots = root / 'snapshots'
+            snapshots.mkdir()
+            def snapshot(number, description):
+                point = snapshots / number
+                (point / 'snapshot').mkdir(parents=True)
+                stamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+                (point / 'info.xml').write_text(
+                    f'<snapshot><num>{number}</num><type>pre</type><date>{stamp}</date>'
+                    f'<description>{description}</description></snapshot>')
+            snapshot('3', 'pacman -Syu')
+            self.snapshot_patch.stop()
+            def command(argv, **kwargs):
+                if 'create' in argv:
+                    snapshot('5', argv[-1])
+                    return Mock(returncode=0, stdout='5\n')
+                if '--install-only' in argv:
+                    snapshot('6', 'pacman -S --noconfirm --needed extra/hello')
+                    return Mock(returncode=int(failed))
+                return Mock(returncode=0, stdout='ro=true\n')
+            original_open = os.open
+            def open_file(path, flags, *args, **kwargs):
+                if path == '/run/emaki-update-manager.lock':
+                    path = root / 'lock'
+                return original_open(path, flags, *args, **kwargs)
+            with patch.object(helper.os, 'open', side_effect=open_file), patch.object(helper, 'SNAPSHOTS', snapshots), patch.object(helper.receipts, 'DIRECTORY', root / 'receipts'), patch.object(helper, 'update_backend', return_value=backend), patch.object(helper, 'revalidate', return_value={'targets': [target]}), patch.object(helper.subprocess, 'run', side_effect=command):
+                self.assertEqual(helper.worker(target, 'a' * 64), int(failed))
+            if failed:
+                result = json.loads(self.output.getvalue().splitlines()[-1])
+                restore = helper.receipts.restore
+                with patch.object(restore, 'boot_state', return_value={'mode': 'normal'}), patch.object(restore, 'run', return_value=Mock(returncode=0, stdout='', stderr='')) as rollback:
+                    self.assertTrue(restore.restore_point(result['restoreToken'], snapshots)['ok'])
+                rollback.assert_called_once_with([restore.ROLLBACK, 'snapshot', '5'], timeout=None)
+                return
+            rows = helper.receipts.receipts(root / 'receipts')
+            self.assertEqual(len(rows), 1)
+            receipt = rows[0]
+            token = '5:' + helper.receipts.restore.receipt(snapshots / '5')['digest']
+            self.assertEqual(receipt['snapshotToken'], token)
+            restore = helper.receipts.restore
+            with patch.object(restore, 'boot_state', return_value={'mode': 'normal'}), patch.object(restore, 'run', return_value=Mock(returncode=0, stdout='restored', stderr='')) as rollback:
+                self.assertTrue(restore.restore_point(token, snapshots)['ok'])
+            rollback.assert_called_once_with([restore.ROLLBACK, 'snapshot', '5'], timeout=None)
+            self.assertEqual(receipt['upgraded'], {})
+            self.assertEqual(receipt['removed'], {'old': '1'})
+            with patch.object(helper.receipts.restore, 'list_points', return_value=[]) as points:
+                plan = helper.receipts.snapshot_plan(receipt)
+            self.assertEqual(plan['restoreToken'], token)
+            points.assert_not_called()
+
+    def test_nvidia_install_point_is_listed_and_restorable(self):
+        self.test_replacement_receipt_keeps_exact_install_snapshot_token(target='extra/emaki-nvidia')
+
+    def test_unverified_snapshot_is_deleted_and_refused(self):
+        self.snapshot_patch.stop()
+        for readonly in ('ro=false', ''):
+            with self.subTest(readonly=readonly), tempfile.TemporaryDirectory() as directory, patch.object(helper, 'SNAPSHOTS', Path(directory)), patch.object(helper.receipts.restore, 'receipt', return_value={'kind': 'pre', 'description': 'Program install', 'digest': 'a' * 64}), patch.object(helper.subprocess, 'run', side_effect=[Mock(returncode=0, stdout='5'), Mock(returncode=0), Mock(returncode=0, stdout=readonly), Mock(returncode=0)]) as run:
+                with self.assertRaisesRegex(RuntimeError, 'snapshot could not be created'):
+                    helper.preinstall_snapshot()
+                self.assertEqual(run.call_args.args[0], ['snapper', '--no-dbus', '-c', 'root', 'delete', '5'])
+
+    def test_repository_install_without_snapshot_support_has_no_recovery_token(self):
+        self.snapshot_patch.stop()
+        with tempfile.TemporaryDirectory() as directory, patch.object(helper, 'SNAPSHOTS', Path(directory) / 'absent'), patch.object(helper.subprocess, 'run') as run:
+            self.assertEqual(helper.preinstall_snapshot(), ('', ''))
+        run.assert_not_called()
+
+    def test_failed_repository_restore_uses_the_real_restore_path(self):
+        self.test_replacement_receipt_keeps_exact_install_snapshot_token(failed=True)
+
+    def test_failed_install_without_database_change_still_restores_files(self):
+        self.test_replacement_receipt_keeps_exact_install_snapshot_token(failed=True, database_changed=False)
+
+    def test_snapshot_failure_prevents_install_transaction(self):
+        self.snapshot.side_effect = RuntimeError('Snapshot failed')
+        backend = Mock()
+        backend.versions.side_effect = [{'base': '1'}, {'base': '2'}]
+        backend.changed.return_value = (True, False)
+        with tempfile.TemporaryFile(mode='w') as lock, patch.object(helper.os, 'open', return_value=10), patch.object(helper.os, 'fdopen', return_value=contextlib.nullcontext(lock)), patch.object(helper.fcntl, 'flock'), patch.object(helper, 'update_backend', return_value=backend), patch.object(helper, 'revalidate', return_value={'targets': ['extra/emaki-nvidia']}), patch.object(helper.subprocess, 'run', return_value=Mock(returncode=0)) as run:
+            self.assertEqual(helper.worker('extra/emaki-nvidia', 'a' * 64), 1)
+        self.snapshot.assert_called_once_with(required=True)
+        self.assertEqual(run.call_count, 1)
+        self.assertNotIn('--install-only', run.call_args.args[0])
+        result = json.loads(self.output.getvalue().splitlines()[-1])
+        self.assertEqual(result['code'], 'refused')
+        self.assertIn('snapshot could not be created', result['message'])
+        self.assertTrue(result['restart'])
+        self.assertFalse(result.get('restoreToken'))
+
+    def test_committed_install_with_failed_hook_still_has_undo(self):
+        backend = Mock()
+        baseline = {'base': '2'}
+        after = dict(baseline, hello='1-1', libhello='2')
+        backend.versions.side_effect = [{'base': '1'}, baseline, after]
+        backend.changed.return_value = (True, False)
+        with tempfile.TemporaryFile(mode='w') as lock, patch.object(helper.os, 'open', return_value=10), patch.object(helper.os, 'fdopen', return_value=contextlib.nullcontext(lock)), patch.object(helper.fcntl, 'flock'), patch.object(helper, 'update_backend', return_value=backend), patch.object(helper, 'revalidate', return_value={'targets': ['extra/hello']}), patch.object(helper.subprocess, 'run', side_effect=[Mock(returncode=0), Mock(returncode=1)]), patch.object(helper.receipts, 'first_snapshot', return_value=''), patch.object(helper.receipts, 'record', return_value={'id': 'committed'}) as record:
+            self.assertEqual(helper.worker('extra/hello', 'a' * 64), 1)
+        record.assert_called_once_with('arch', '', 'hello', 'hello', baseline, after, '', snapshot_token='')
+        result = json.loads(self.output.getvalue().splitlines()[-1])
+        self.assertFalse(result['ok'])
+        self.assertEqual(result['code'], 'partial')
+        self.assertEqual(result['receipt'], 'committed')
+        self.assertTrue(result['restart'])
+
+    def test_failed_repository_install_offers_its_snapshot(self):
+        self.snapshot.return_value = ('42', '42:' + 'a' * 64)
+        backend = Mock()
+        backend.versions.side_effect = [{'base': '1'}, {'base': '2'}, {'base': '2'}]
+        backend.changed.return_value = (True, False)
+        with tempfile.TemporaryFile(mode='w') as lock, patch.object(helper.os, 'open', return_value=10), patch.object(helper.os, 'fdopen', return_value=contextlib.nullcontext(lock)), patch.object(helper.fcntl, 'flock'), patch.object(helper, 'update_backend', return_value=backend), patch.object(helper, 'revalidate', return_value={'targets': ['extra/hello']}), patch.object(helper.subprocess, 'run', side_effect=[Mock(returncode=0), Mock(returncode=1)]), patch.object(helper.receipts, 'first_snapshot', return_value='42'), patch.object(helper.receipts.restore, 'receipt', return_value={'kind': 'pre', 'digest': 'a' * 64}), patch.object(helper.receipts, 'record') as record:
+            self.assertEqual(helper.worker('extra/hello', 'a' * 64), 1)
+        record.assert_not_called()
+        result = json.loads(self.output.getvalue().splitlines()[-1])
+        self.assertEqual(result.get('restoreToken'), '42:' + 'a' * 64)
+
+    def test_failed_install_keeps_completed_update_without_install_receipt(self):
+        backend = Mock()
+        backend.versions.side_effect = [{'base': '1'}, {'base': '2'}, {'base': '2'}]
+        backend.changed.return_value = (True, False)
+        with tempfile.TemporaryFile(mode='w') as lock, patch.object(helper.os, 'open', return_value=10), patch.object(helper.os, 'fdopen', return_value=contextlib.nullcontext(lock)), patch.object(helper.fcntl, 'flock'), patch.object(helper, 'update_backend', return_value=backend), patch.object(helper, 'revalidate', return_value={'targets': ['extra/hello']}), patch.object(helper.subprocess, 'run', side_effect=[Mock(returncode=0), Mock(returncode=1)]) as run, patch.object(helper.receipts, 'record') as record:
+            self.assertEqual(helper.worker('extra/hello', 'a' * 64), 1)
+        self.assertEqual(run.call_count, 2)
+        record.assert_not_called()
+        result = json.loads(self.output.getvalue().splitlines()[-1])
+        self.assertEqual(result['code'], 'partial')
+        self.assertTrue(result['restart'])
+
+
+    def test_install_only_wrapper_does_not_update_again(self):
+        module = runpy.run_path(str(ROOT / 'scripts/emaki-update'))
+        preflight, run, update = Mock(), Mock(return_value=0), Mock()
+        with patch.dict(module['main'].__globals__, preflight=preflight, run=run, update=update), patch.object(os, 'geteuid', return_value=0), patch.object(sys, 'argv', ['emaki-update', '--noninteractive', '--install-only', 'extra/hello', 'extra/library']):
+            self.assertEqual(module['main'](), 0)
+        preflight.assert_called_once_with(targets=['extra/hello', 'extra/library'])
+        update.assert_not_called()
+        self.assertEqual(run.call_args.args[0][1:], ['-S', '--noconfirm', '--needed', 'extra/hello', 'extra/library'])
+        self.assertTrue(run.call_args.kwargs['fail_on_hook_error'])
+
+    def test_install_only_rejects_invalid_targets_before_any_transaction(self):
+        module = runpy.run_path(str(ROOT / 'scripts/emaki-update'))
+        preflight, run = Mock(), Mock()
+        with patch.dict(module['main'].__globals__, preflight=preflight, run=run):
+            for target in ('', '--root/x', 'extra/../x'):
+                with self.subTest(target=target), patch.object(sys, 'argv', ['emaki-update', '--install-only=' + target]), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                    module['main']()
+        preflight.assert_not_called()
+        run.assert_not_called()
 
     def test_install_space_probe_keeps_target_and_private_database(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -96,6 +96,7 @@ class Transaction:
         self.options = {}
         self.committed = False
         self.request = None
+        self.uninstalls = []
         self.fail_commit = False
         self.authenticated = False
         self.after_auth_operations = None
@@ -113,6 +114,7 @@ class Transaction:
 
     def add_uninstall(self, ref):
         self.request = ('remove', ref)
+        self.uninstalls.append(ref)
 
     def get_operations(self):
         return self.operations
@@ -445,6 +447,55 @@ class FlatpakTests(unittest.TestCase):
         self.installation.remotes = [remote(self.path, url='https://example.org/repo')]
         self.assertEqual(backend.plan('install', ROW)['code'], 'remote-refused')
 
+    def test_undo_selects_recorded_runtime_even_with_unrelated_unused_runtime(self):
+        other = 'runtime/org.other.Platform/x86_64/1'
+        self.installation.installed = [reference(), reference(RUNTIME), reference(other)]
+        self.operations = [operation(kind='uninstall'), operation(RUNTIME, kind='uninstall')]
+        receipt = dict(id='receipt', kind='flatpak', target=APP, refs=[APP, RUNTIME], undone='')
+        variants = []
+        glib = SimpleNamespace(Variant=lambda kind, refs: variants.append((kind, refs)) or refs)
+        self.installation.list_unused_refs_with_options = Mock(return_value=[reference(RUNTIME), reference(other)])
+        with patch.dict(sys.modules, {'gi.repository': SimpleNamespace(GLib=glib)}):
+            plan = backend.undo_plan(ROW, receipt)
+            self.assertTrue(plan['ok'], plan)
+            self.assertEqual(plan['remove'], [APP, RUNTIME])
+            self.assertEqual(plan['keep'], {})
+            self.assertEqual(self.transactions[-1].uninstalls, [APP, RUNTIME])
+            self.assertFalse(self.transactions[-1].options['set_include_unused_uninstall_ops'])
+            with patch.object(backend.os, 'getuid', return_value=0), patch.object(backend.os, 'geteuid', return_value=0):
+                result = backend.undo_execute(ROW, receipt, plan['token'], None)
+            self.assertTrue(result['ok'], result)
+        self.assertEqual(variants, [('as', [APP]), ('a{sv}', {'exclude-refs': [APP]})] * 4)
+
+    def test_undo_keeps_recorded_runtime_used_by_another_application(self):
+        self.installation.installed = [reference(), reference(RUNTIME)]
+        self.operations = [operation(kind='uninstall')]
+        receipt = dict(id='receipt', kind='flatpak', target=APP, refs=[APP, RUNTIME], undone='')
+        with patch.object(backend, '_unused_recorded', return_value=set()):
+            plan = backend.undo_plan(ROW, receipt)
+        self.assertTrue(plan['ok'], plan)
+        self.assertEqual(plan['remove'], [APP])
+        self.assertEqual(plan['keep'], {RUNTIME: 'in-use'})
+        self.assertEqual(self.transactions[-1].uninstalls, [APP])
+
+    def test_undo_does_not_claim_success_when_resolver_skips_unused_recorded_runtime(self):
+        self.installation.installed = [reference(), reference(RUNTIME)]
+        self.operations = [operation(kind='uninstall')]
+        receipt = dict(id='receipt', kind='flatpak', target=APP, refs=[APP, RUNTIME], undone='')
+        with patch.object(backend, '_unused_recorded', return_value={RUNTIME}):
+            plan = backend.undo_plan(ROW, receipt)
+        self.assertFalse(plan['ok'])
+        self.assertFalse(self.transactions[-1].committed)
+
+    def test_undo_refuses_runtime_that_becomes_used_before_commit(self):
+        self.installation.installed = [reference(), reference(RUNTIME)]
+        self.operations = [operation(kind='uninstall'), operation(RUNTIME, kind='uninstall')]
+        receipt = dict(id='receipt', kind='flatpak', target=APP, refs=[APP, RUNTIME], undone='')
+        with patch.object(backend, '_unused_recorded', side_effect=[{RUNTIME}, set()]):
+            plan = backend.undo_plan(ROW, receipt)
+        self.assertFalse(plan['ok'])
+        self.assertFalse(self.transactions[-1].committed)
+
     def test_removal_keeps_data_and_unused_runtimes(self):
         self.installation.installed = [reference(), reference(EXTENSION)]
         self.installation.related = [reference(EXTENSION, delete=True)]
@@ -563,7 +614,7 @@ class InstallationIsolationTests(unittest.TestCase):
         self.assertEqual([row['installation'] for row in rows], ['system'])
         self.assertTrue(rows[0]['manageable'])
         self.assertTrue(rows[0]['requiresAuthentication'])
-        self.assertIn('[PLACEHOLDER] Flatpak installation could not be read: user', warnings)
+        self.assertIn('Flatpak installation could not be read: user', warnings)
         result = backend.plan('install', rows[0])
         self.assertTrue(result['ok'], result)
         self.assertEqual(broken.call_count, 1)
@@ -578,7 +629,7 @@ class InstallationIsolationTests(unittest.TestCase):
         self.assertTrue(rows[0]['installed'])
         self.assertTrue(rows[0]['manageable'])
         self.assertFalse(rows[0]['requiresAuthentication'])
-        self.assertIn('[PLACEHOLDER] Flatpak installation could not be read: system', warnings)
+        self.assertIn('Flatpak installation could not be read: system', warnings)
         result = backend.plan('remove', rows[0])
         self.assertTrue(result['ok'], result)
         self.assertEqual(broken.call_count, 1)
@@ -592,8 +643,8 @@ class InstallationIsolationTests(unittest.TestCase):
         rows, warnings = backend.discover()
         self.assertEqual(rows, [])
         self.assertEqual(warnings, [
-            '[PLACEHOLDER] Flatpak installation could not be read: user',
-            '[PLACEHOLDER] Flatpak installation could not be read: system'])
+            'Flatpak installation could not be read: user',
+            'Flatpak installation could not be read: system'])
 
     def test_named_installation_survives_broken_default_without_becoming_writable(self):
         self.break_installation('system')
@@ -603,7 +654,7 @@ class InstallationIsolationTests(unittest.TestCase):
         self.assertEqual([row['installation'] for row in rows], ['games'])
         self.assertFalse(rows[0]['manageable'])
         self.assertEqual(rows[0]['managementNotice'], backend.READ_ONLY_NOTICE)
-        self.assertIn('[PLACEHOLDER] Flatpak installation could not be read: system', warnings)
+        self.assertIn('Flatpak installation could not be read: system', warnings)
         self.assertEqual(backend.plan('remove', rows[0])['code'], 'installation-read-only')
 
     def test_enumerated_default_is_not_added_twice(self):
@@ -619,7 +670,7 @@ class InstallationIsolationTests(unittest.TestCase):
         self.library.get_system_installations.side_effect = RuntimeError('unreadable configuration')
         warnings = []
         self.assertEqual(backend._installations(self.library, warnings), [self.user, self.system])
-        self.assertEqual(warnings, ['[PLACEHOLDER] Additional Flatpak installations could not be read.'])
+        self.assertEqual(warnings, ['Additional Flatpak installations could not be read.'])
 
 
 if __name__ == '__main__':

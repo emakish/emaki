@@ -46,9 +46,11 @@ class Protocol(unittest.TestCase):
             with patch.object(backend.subprocess, 'Popen', return_value=process), \
                     patch.object(backend.flatpaks, 'update', return_value=False), \
                     patch.object(backend, 'local_state', return_value=dict(restart=restart)), \
-                    patch.object(backend, 'emit'), patch.object(backend.reminder, 'notify_completed') as notify:
+                    patch.object(backend, 'emit'), patch.object(backend.reminder, 'notify_completed') as notify, \
+                    patch.object(backend.reminder, 'offer_report') as offer:
                 backend.apply(Path('/unused'))
             self.assertEqual(notify.call_count, int(ok and not restart and code == 0))
+            self.assertEqual(offer.call_count, int(not ok or code != 0))
 
     def test_invalid_restore_tokens_refuse_before_cache_or_authorization(self):
         for arguments in (['--restore'], ['--restore', '12'], ['--restore', '../x'],

@@ -24,17 +24,17 @@ Column {
     property var personalTrash: null
     readonly property var kinds: ["snapshots", "cache", "logs", "trash"]
     readonly property var labels: ({
-            snapshots: "[PLACEHOLDER] Snapshots",
-            cache: "[PLACEHOLDER] Package cache",
-            logs: "[PLACEHOLDER] Logs",
-            trash: "[PLACEHOLDER] Trash"
+            snapshots: "Snapshots",
+            cache: "Package cache",
+            logs: "Logs",
+            trash: "Trash"
         })
     function bytes(value): string {
-        return value === null || value === undefined ? "[PLACEHOLDER] Unknown" : value.toLocaleString(Qt.locale("en_US"), "f", 0) + " B";
+        return value === null || value === undefined ? "Unknown" : value.toLocaleString(Qt.locale("en_US"), "f", 0) + " B";
     }
     function unsharedBytes(details): string {
         if (details.reclaimable_bytes === null && number(details.reclaimable_lower_bound_bytes) && number(details.reclaimable_unknown_files))
-            return "[PLACEHOLDER] At least " + bytes(details.reclaimable_lower_bound_bytes) + "; " + details.reclaimable_unknown_files + " files unknown";
+            return "At least " + bytes(details.reclaimable_lower_bound_bytes) + "; " + details.reclaimable_unknown_files + " files unknown";
         return bytes(details.reclaimable_bytes);
     }
     function number(value): bool {
@@ -122,7 +122,7 @@ Column {
             }
             message = operationMessage + (typeof result.message === "string" ? result.message : "");
             if (operation === "cleanup") {
-                message += "\n[PLACEHOLDER] Removed entries: " + result.removed_count + "\n[PLACEHOLDER] Space returned: " + bytes(result.reclaimed_bytes);
+                message += "\nRemoved entries: " + result.removed_count + "\nSpace returned: " + bytes(result.reclaimed_bytes);
                 const completionMessage = message;
                 pending = true;
                 Qt.callLater(function () {
@@ -133,7 +133,7 @@ Column {
             }
         } catch (_) {
             preview = null;
-            message = operationMessage + (code === 126 ? "[PLACEHOLDER] Authentication was cancelled. Preview again to continue." : "[PLACEHOLDER] Storage could not be confirmed. Refresh and preview again.");
+            message = operationMessage + (code === 126 ? "Authentication was cancelled. Preview again to continue." : "Storage could not be confirmed. Refresh and preview again.");
         }
     }
     Component.onCompleted: refresh(false)
@@ -149,7 +149,7 @@ Column {
                     if (!worker.completed) {
                         root.pending = false;
                         root.preview = null;
-                        root.message = "[PLACEHOLDER] The storage helper could not be started.";
+                        root.message = "The storage helper could not be started.";
                     }
                 });
         }
@@ -161,7 +161,7 @@ Column {
     Text {
         width: parent.width
         visible: root.pending || text !== ""
-        text: root.pending ? "[PLACEHOLDER] Reading storage…" : root.message
+        text: root.pending ? "Reading storage…" : root.message
         textFormat: Text.PlainText
         wrapMode: Text.WrapAnywhere
         color: SettingsTheme.dim
@@ -170,16 +170,16 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "[PLACEHOLDER] Disk use"
+        title: "Disk use"
         SettingsRow {
             objectName: "settings-storage-disks"
             width: parent.width
-            title: "[PLACEHOLDER] System and home"
-            explanation: "[PLACEHOLDER] Shared filesystem totals describe the same pool; do not add them together."
+            title: "System and home"
+            explanation: "Shared filesystem totals describe the same pool; do not add them together."
             busy: root.pending
             control: Component {
                 SettingsButton {
-                    text: "[PLACEHOLDER] Refresh"
+                    text: "Refresh"
                     onClicked: root.refresh(false)
                 }
             }
@@ -191,19 +191,19 @@ Column {
                 required property var modelData
                 width: parent.width
                 title: modelData.path + " (" + modelData.filesystem + ")"
-                explanation: "[PLACEHOLDER] Used: " + root.bytes(modelData.used_bytes) + "\n[PLACEHOLDER] Available: " + root.bytes(modelData.available_bytes) + "\n[PLACEHOLDER] Total: " + root.bytes(modelData.total_bytes) + (modelData.shared_with ? "\n[PLACEHOLDER] Shared pool with: " + modelData.shared_with : "")
+                explanation: "Used: " + root.bytes(modelData.used_bytes) + "\nAvailable: " + root.bytes(modelData.available_bytes) + "\nTotal: " + root.bytes(modelData.total_bytes) + (modelData.shared_with ? "\nShared pool with: " + modelData.shared_with : "")
                 controlWidth: 0
             }
         }
         SettingsRow {
             width: parent.width
-            title: "[PLACEHOLDER] Protected storage details"
-            explanation: "[PLACEHOLDER] Authenticate to inspect system snapshots, cache and logs."
+            title: "Protected storage details"
+            explanation: "Authenticate to inspect system snapshots, cache and logs."
             busy: root.pending
             controlWidth: 180
             control: Component {
                 SettingsButton {
-                    text: "[PLACEHOLDER] Inspect"
+                    text: "Inspect"
                     onClicked: root.refresh(true)
                 }
             }
@@ -211,7 +211,7 @@ Column {
     }
     SettingsCard {
         width: parent.width
-        title: "[PLACEHOLDER] Space by category"
+        title: "Space by category"
         Repeater {
             model: root.kinds
             delegate: SettingsRow {
@@ -224,14 +224,14 @@ Column {
                 objectName: "settings-storage-" + modelData
                 width: parent.width
                 title: root.labels[modelData]
-                explanation: root.bytes(details.bytes) + (details.reason ? "\n" + details.reason : "") + (modelData === "snapshots" ? "\n[PLACEHOLDER] Read only. Cleanup never deletes snapshots." : "")
+                explanation: root.bytes(details.bytes) + (details.reason ? "\n" + details.reason : "") + (modelData === "snapshots" ? "\nRead only. Cleanup never deletes snapshots." : "")
                 busy: root.pending
                 controlWidth: modelData === "snapshots" ? 0 : 180
                 control: modelData === "snapshots" ? null : previewButton
                 Component {
                     id: previewButton
                     SettingsButton {
-                        text: "[PLACEHOLDER] Preview"
+                        text: "Preview"
                         onClicked: root.requestPreview(categoryRow.modelData)
                     }
                 }
@@ -242,10 +242,10 @@ Column {
         objectName: "settings-storage-preview"
         width: parent.width
         visible: root.preview !== null
-        title: "[PLACEHOLDER] Review cleanup"
+        title: "Review cleanup"
         Text {
             width: parent.width
-            text: root.preview ? root.labels[root.preview.kind] + "\n[PLACEHOLDER] Allocated bytes in selected files: " + root.bytes(root.preview.allocated_bytes) + "\n[PLACEHOLDER] Unshared file data: " + root.unsharedBytes(root.preview) + "\n" + root.preview.reason + "\n[PLACEHOLDER] Shared or compressed extents can make returned space smaller. Only these exact entries are selected." : ""
+            text: root.preview ? root.labels[root.preview.kind] + "\nAllocated bytes in selected files: " + root.bytes(root.preview.allocated_bytes) + "\nUnshared file data: " + root.unsharedBytes(root.preview) + "\n" + root.preview.reason + "\nShared or compressed extents can make returned space smaller. Only these exact entries are selected." : ""
             textFormat: Text.PlainText
             wrapMode: Text.WrapAnywhere
             color: SettingsTheme.dim
@@ -290,7 +290,7 @@ Column {
                 }
                 SettingsButton {
                     objectName: "storage-confirm"
-                    text: "[PLACEHOLDER] Delete listed entries"
+                    text: "Delete listed entries"
                     enabled: !root.pending && root.preview !== null && root.preview.entries.length > 0
                     onClicked: root.confirmPreview()
                 }

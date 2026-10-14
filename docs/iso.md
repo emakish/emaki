@@ -435,8 +435,9 @@ cat "$recovery/@snapshots/$number/info.xml"
 ```
 
 The snapshot must report `ro=true`. Prepare a writable copy, clear its old boot
-selection, and remove a copied package lock only for a transaction-boundary
-snapshot (`pre` or `post`):
+selection, remove a copied package lock only for a transaction-boundary snapshot
+(`pre` or `post`), and carry over a stop record of a startup partition shared with
+Windows, so the swap never silently drops that stop:
 
 ```sh
 kept="$recovery/@manual-kept-$(date -u +%Y%m%dT%H%M%SZ)"
@@ -447,6 +448,10 @@ if test -e "$kept/var/lib/pacman/db.lck"; then
     rm -- "$kept/var/lib/pacman/db.lck"
 fi
 grub-editenv "$kept/boot/grub/grubenv" create
+if test -e "$recovery/@/var/lib/emaki/shared-esp-stop.json"; then
+    install -D -m 0600 -o root -g root -- "$recovery/@/var/lib/emaki/shared-esp-stop.json" \
+        "$kept/var/lib/emaki/shared-esp-stop.json"
+fi
 btrfs filesystem sync "$recovery"
 mv --exchange --no-copy -T -- "$recovery/@" "$kept"
 btrfs filesystem sync "$recovery"
@@ -643,7 +648,7 @@ sudo cat /boot/emaki/*/manifest.json
 
 Capture the complete package transaction output. It must show the refresh hook
 and its success message. Do not run a manual refresh before the first reboot:
-that would hide a broken package hook. The 0.7.0 packages must upgrade the installed
+that would hide a broken package hook. The 0.8.0 packages must upgrade the installed
 0.2.0 packages so ordinary `pacman -Syu` selects them. No publication is part of this check.
 
 Reboot and capture the actual framebuffer:

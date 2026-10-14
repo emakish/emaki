@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Compose a redacted local report or encode an explicitly selected issue payload."""
+import sys
+
+# Neither command persists collected data, including import caches.
+sys.dont_write_bytecode = True
+
+import argparse
+import json
+from pathlib import Path
+import re
+import runpy
+from types import SimpleNamespace
+from urllib.parse import quote, urlencode
+
+sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from emaki_report_redact import Redactor
+
+about = SimpleNamespace(**runpy.run_path(str(Path(__file__).with_name('emaki-settings-about'))))
+PARTS = ('shell', 'update', 'install', 'other')
+IDS = ('emaki', 'channel', 'kernel', 'hardware', 'logs')
+UNAVAILABLE = 'Unavailable'
+LABELS = {
+    'emaki': 'Emaki version',
+    'channel': 'Update channel',
+    'kernel': 'Linux kernel',
+    'hardware': 'Hardware',
+}
+LOG_LABELS = {
+    'shell': 'Recent logs of the shell',
+    'update': 'Recent logs of the update manager',
+    'install': 'Recent logs of the programs engine',
+    'other': 'Recent logs of Emaki components',
+}
+MAX_INPUT = 2 * 1024 * 1024
+
+
+def logs(part):
+    """Read only the current boot, including ordinary transaction output."""
+    base = ['journalctl', '-b', '--no-pager', '--quiet', '-o', 'short-iso', '-n', '200']
+    outputs = []
+    if part in ('shell', 'other'):
+        args = [*base, '--user']
+        for unit in ('emaki-shell.service', 'niri-emaki.service', 'niri.service',
+                     'emaki-shell-heal.service'):
+            args.extend(['-u', unit])
+        outputs.append(about.command(args))
+    filters = []
+    for candidate, unit, identifier in (
+            ('update', 'emaki-update.service', 'emaki-update-manager'),
+            ('install', 'emaki-programs-install.service', 'emaki-programs-engine')):
+        if part in (candidate, 'other'):
+            if filters:
+                filters.append('+')
+            filters.extend(['_SYSTEMD_UNIT=' + unit, '+', 'SYSLOG_IDENTIFIER=' + identifier])
+    if filters:
+        outputs.append(about.command([*base, *filters]))
+    return '\n'.join(outputs)
+
+
+def hardware(info):
+    # Ask only for media class and transport, never disk names or serial numbers.
+    media = set()
+    for line in about.command(['lsblk', '-dn', '-o', 'TYPE,ROTA,TRAN']).splitlines():
+        fields = line.split()
+        if len(fields) >= 2 and fields[0] == 'disk' and fields[1] in ('0', '1'):
+            kind = 'HDD' if fields[1] == '1' else 'SSD'
+            transport = fields[2].upper() if len(fields) == 3 else ''
+            media.add(' '.join(filter(None, [kind, transport])))
+    return '\n'.join((
+        'CPU: ' + str(info.get('processor') or UNAVAILABLE),
+        'GPU: ' + str(info.get('graphics') or UNAVAILABLE),
+        'RAM: ' + str(info.get('memory') or UNAVAILABLE),
+        'Disk type: ' + (', '.join(sorted(media)) or UNAVAILABLE),
+    ))
+
+
+def compose(part, since_boot=True):
+    if part not in PARTS:
+        raise ValueError('invalid_part')
+    # --since-boot is accepted for callers that make the scope explicit. Older
+    # boots are never read, including when the option is absent.
+    info = about.details()
+    values = {
+        'emaki': ' '.join(str(value) for value in (info.get('version') or UNAVAILABLE,
+                                                 info.get('label')) if value),
+        'channel': info.get('channel') or UNAVAILABLE,
+        'kernel': info.get('kernel') or UNAVAILABLE,
+        'hardware': hardware(info),
+        'logs': logs(part) or 'No recent logs are available.',
+    }
+    redactor = Redactor()
+    items = []
+    for name, value in values.items():
+        text = redactor.redact(str(value))
+        if name == 'logs':
+            text = '\n'.join(text.splitlines()[-200:])
+        items.append(dict(id=name, label=LOG_LABELS[part] if name == 'logs' else LABELS[name],
+                          text=text, default=True))
+    return dict(version=1, part=part, items=items, removed=redactor.removed)
+
+
+def url(composed, what, items):
+    """Encode the selected preview verbatim. Never recollect or launch a browser."""
+    if (not isinstance(composed, dict) or type(composed.get('version')) is not int
+            or composed['version'] != 1 or composed.get('part') not in PARTS
+            or not isinstance(composed.get('items'), list) or not isinstance(what, str)
+            or not isinstance(items, str)):
+        raise ValueError('invalid_report')
+    chosen = items.split(',') if items else []
+    if len(chosen) != len(set(chosen)) or any(name not in IDS for name in chosen):
+        raise ValueError('invalid_items')
+    indexed = {}
+    for item in composed['items']:
+        if (not isinstance(item, dict) or not isinstance(item.get('id'), str)
+                or item['id'] not in IDS or item['id'] in indexed
+                or not isinstance(item.get('label'), str)
+                or not isinstance(item.get('text'), str)):
+            raise ValueError('invalid_report')
+        indexed[item['id']] = item
+    if any(name not in indexed for name in chosen):
+        raise ValueError('invalid_items')
+    sections = ['### What happened\n\n' + what]
+    for name in IDS:
+        if name in chosen:
+            item = indexed[name]
+            # Literal fences keep logs from becoming Markdown links or headings.
+            longest = max((len(chunk) for chunk in re.findall(r'`+', item['text'])), default=0)
+            fence = '`' * max(3, longest + 1)
+            sections.append('### ' + item['label'] + '\n\n' + fence + '\n' + item['text'] + '\n' + fence)
+    body = '\n\n'.join(sections) + '\n'
+    target = about.issue_target()
+    if target is None:
+        raise ValueError('issue_target_unavailable')
+    address = target + '?' + urlencode({'body': body}, quote_via=quote)
+    return {'too_big': True, 'body': body} if len(address.encode('utf-8')) > 8000 else {'url': address}
+
+
+class Parser(argparse.ArgumentParser):
+    def error(self, message):
+        raise ValueError('invalid_command')
+
+
+def main(args):
+    try:
+        # A person's description may itself start with a dash. Treat the value
+        # following --what as text even when it resembles a command option.
+        args = list(args)
+        if '--what' in args:
+            index = args.index('--what')
+            if index + 1 < len(args):
+                args[index:index + 2] = ['--what=' + args[index + 1]]
+        parser = Parser(add_help=False)
+        commands = parser.add_subparsers(dest='command', required=True)
+        collect = commands.add_parser('compose', add_help=False)
+        collect.add_argument('--part', choices=PARTS, required=True)
+        collect.add_argument('--since-boot', action='store_true')
+        send = commands.add_parser('url', add_help=False)
+        send.add_argument('--what', required=True)
+        send.add_argument('--items', required=True)
+        options = parser.parse_args(args)
+        if options.command == 'compose':
+            result = compose(options.part, options.since_boot)
+        else:
+            raw = sys.stdin.read(MAX_INPUT + 1)
+            if len(raw) > MAX_INPUT:
+                raise ValueError('report_too_large')
+            try:
+                composed = json.loads(raw)
+            except (ValueError, RecursionError):
+                raise ValueError('invalid_report') from None
+            result = url(composed, options.what, options.items)
+    except ValueError as error:
+        print(json.dumps({'error': str(error)}))
+        return 2
+    except (OSError, UnicodeError):
+        print(json.dumps({'error': 'report_unavailable'}))
+        return 1
+    print(json.dumps(result, ensure_ascii=True))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

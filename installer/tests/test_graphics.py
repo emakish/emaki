@@ -96,15 +96,16 @@ class ConsoleFontTests(unittest.TestCase):
 # 8afb2e864657f840075ec24daa7f3914aeb41e44, using the deterministic keyboard fixture below.
 # Package hashes include the common terminus-font addition from 4daab6f; plan hashes stay fixed.
 # Rich package hashes include the explicitly installed Rich programs (RICH_APPS, 0.6.0).
+# 2026-10-13: package hashes moved when firefox, dolphin and both thumbnailers became explicit installs (DESKTOP_APPS).
 BASELINE = {
     'btrfs-minimal': ('135423acba4a58851f74b9fd2d52f138f120221d4e16bc7fcdbf8c1658d3d568',
-                     'd317feee47e2119c760957ff19c3e2b82147aaf402e926e3808cb820561563df'),
+                     '982454ffa46272994b33f1a20a84f1d77ec2e48b0f4f10774dfb9daf9e8a6787'),
     'btrfs-rich': ('12b4cb778eca3cead0b03d3efcaa6d066172a336e660a9c492ae2120f9138d9b',
-                  'c8a8db1f58f8c854f55c641139f95f6fe604e06299b3352ccc540227eaef2c5e'),
+                  'fa51515043ca968c712c3449f72bd3be86958f511202b9059d855975f6e50a61'),
     'ext4-minimal': ('ab33a9debe3b1892c98ba04998d50486f2e229528f5bd8aee776ce8e77ad5e00',
-                    'e1cc27f59e7545956bd3bc4504ba10b3afff9ca0d2ec6daba77ad6f517297fe6'),
+                    '884f456f5ce3995d978d260a97f638ad40597cde92c0b8ffcdf643908cadb56a'),
     'ext4-rich': ('b861d7f51bcddb7f998325c9cf149c9dac7350dcc428a0705e294535e17e0033',
-                 '8124eddec0dc2823535e4879bc3aeaf8f76dcce993534a8f3705796034de446e'),
+                 'd343c77df56e8de26114e43ba4f98d801b5130d05dfb9b29ae297a89e54ecc2f'),
 }
 
 

@@ -14,10 +14,11 @@ import re
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-# The update manager comes with emaki-config, so every set shows it; Blueman's two entries
-# are hidden (Bluetooth lives in the shell panel); Printers comes with emaki-apps (Rich only).
+# The update manager and Report a problem come with emaki-config, so every set shows them;
+# Blueman's two entries are hidden (Bluetooth lives in the shell panel); Printers comes with
+# emaki-apps (Rich only).
 MINIMAL = {'emaki-welcome', 'firefox', 'kitty', 'org.kde.dolphin',
-           'emaki-update-manager'}
+           'emaki-update-manager', 'emaki-report'}
 LIVE = MINIMAL | {'emaki-install', 'gparted'}
 RICH = MINIMAL | {
     'org.kde.ark', 'org.kde.discover', 'org.kde.elisa', 'org.kde.filelight',

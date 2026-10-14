@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Versioned adoption of installer defaults; local changes remain local."""
 import argparse
+import ctypes
 import hashlib
 import json
 import math
@@ -16,6 +17,7 @@ import tempfile
 
 LEGACY_ZRAM = '[zram0]\nzram-size = min(ram / 2, 8192)\nswap-priority = 100\n'
 LEGACY_WHEEL = '%wheel ALL=(ALL:ALL) ALL\n'
+FORMER_DESKTOP_DEPENDENCIES = ('firefox', 'dolphin', 'kdegraphics-thumbnailers', 'ffmpegthumbs')
 SUDO_BROKER = '@EMAKI_LIBEXECDIR@/emaki-sudo-broker'
 # Preserve historical choices and ambiguous preexisting optional services.
 # Only newly introduced preset names are safe to offer without an old state ledger.
@@ -265,6 +267,49 @@ def services(root, state):
     state['units'] = sorted(known | offered)
 
 
+def preserve_desktop_applications(root):
+    """Keep the old desktop applications when their hard dependencies become optional."""
+    database = root / 'var/lib/pacman'
+    if not (database / 'local').is_dir():
+        return
+    # The post-transaction hook already runs under pacman's database lock.
+    # A nested pacman -D would refuse it. libalpm's reason setter writes the local
+    # package record immediately without starting another package transaction.
+    alpm = ctypes.CDLL('libalpm.so')
+    signatures = {
+        'alpm_initialize': ([ctypes.c_char_p, ctypes.c_char_p,
+                             ctypes.POINTER(ctypes.c_int)], ctypes.c_void_p),
+        'alpm_get_localdb': ([ctypes.c_void_p], ctypes.c_void_p),
+        'alpm_db_get_pkg': ([ctypes.c_void_p, ctypes.c_char_p], ctypes.c_void_p),
+        'alpm_pkg_get_reason': ([ctypes.c_void_p], ctypes.c_int),
+        'alpm_pkg_set_reason': ([ctypes.c_void_p, ctypes.c_int], ctypes.c_int),
+        'alpm_release': ([ctypes.c_void_p], ctypes.c_int),
+    }
+    for name, (arguments, result) in signatures.items():
+        function = getattr(alpm, name)
+        function.argtypes = arguments
+        function.restype = result
+    error = ctypes.c_int()
+    handle = alpm.alpm_initialize(os.fsencode(root), os.fsencode(database), ctypes.byref(error))
+    if not handle:
+        raise OSError('Cannot open the package database for desktop migration.')
+    try:
+        local = alpm.alpm_get_localdb(handle)
+        if not local:
+            raise OSError('Cannot read the package database for desktop migration.')
+        if not alpm.alpm_db_get_pkg(local, b'emaki-desktop'):
+            return
+        for name in FORMER_DESKTOP_DEPENDENCIES:
+            package = alpm.alpm_db_get_pkg(local, name.encode())
+            # Missing applications remain removed; later local reason changes
+            # remain local because the migration ledger advances only once.
+            if package and alpm.alpm_pkg_get_reason(package) == 1:
+                if alpm.alpm_pkg_set_reason(package, 0) != 0:
+                    raise OSError(f'Cannot preserve the installed desktop application: {name}')
+    finally:
+        alpm.alpm_release(handle)
+
+
 def apply(root, fresh=False):
     path = root / 'var/lib/emaki/migrations/state.json'
     if not safe(path):
@@ -284,6 +329,11 @@ def apply(root, fresh=False):
     if state.get('version', 0) < 3:
         repair_sudoers_mode(root)
         state['version'] = 3
+        write(path, json.dumps(state) + '\n')
+    if state.get('version', 0) < 4:
+        if not fresh:
+            preserve_desktop_applications(root)
+        state['version'] = 4
         write(path, json.dumps(state) + '\n')
     from emaki_boot_defaults import apply as boot_defaults
     boot_defaults(root)

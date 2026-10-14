@@ -14,5 +14,5 @@ var lockedTitle = "Not done — the screen was locked";
 var blockedTitle = "Not done — password requests are paused";
 var unsupported = "This request can't be answered with a password.";
 var keyUnavailable = "A sudo key can't be given right now.";
-var sudoInterruptedTitle = "[PLACEHOLDER] Sudo request cancelled";
-var sudoInterruptedBody = "[PLACEHOLDER] This sudo request ended before authorization was completed.";
+var sudoInterruptedTitle = "Sudo request cancelled";
+var sudoInterruptedBody = "This sudo request ended before authorization was completed.";

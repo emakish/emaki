@@ -150,3 +150,7 @@ SettingsStoragePage 1.0 SettingsStoragePage.qml
 SettingsPrivacyPage 1.0 SettingsPrivacyPage.qml
 SettingsUsersPage 1.0 SettingsUsersPage.qml
 singleton SettingsUsersService 1.0 SettingsUsersService.qml
+singleton ReportBridge 1.0 ReportBridge.qml
+ReportController 1.0 ReportController.qml
+ReportWindow 1.0 ReportWindow.qml
+ReportView 1.0 ReportView.qml

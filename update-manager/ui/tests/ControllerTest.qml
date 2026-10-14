@@ -93,7 +93,18 @@ ShellRoot {
                 return;
             }
             test.check(controller.phase === "finished", "apply exits to result screen");
+            if (scenario === "long-log") {
+                const progress = controller.progress || {};
+                test.check(controller.output.length <= 32768 && !controller.output.includes("pre snapshots"), "the log window dropped the step markers");
+                test.check(progress.step === 3 && progress.restorePoint === true, "steps and the restore point outlive the log window");
+                test.check(progress.done === 1 && progress.total === 2, "piped pacman lines count against the summary");
+                controller.check(); test.settle();
+                test.check(controller.output === "" && (controller.progress || {}).step === 0 && !(controller.progress || {}).restorePoint, "a new operation clears the log and its steps together");
+                if (!test.failed) console.log("CONTROLLER_OK");
+                Qt.quit(); return;
+            }
             test.check(controller.output.includes("Preparing the update.") && controller.output.includes("Download detail."), "stdout progress and stderr details are retained");
+            test.check((controller.progress || {}).step === 0 && !(controller.progress || {}).restorePoint, "a log without step markers stays at getting ready");
             if (scenario === "delayed-index") {
                 input.wait(400);
                 test.check(controller.restorePoints.length === 1, "delayed system index appears without navigation");

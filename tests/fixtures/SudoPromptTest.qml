@@ -248,7 +248,7 @@ ShellRoot {
         password.text = "PRIVATE_SUDO_FIXTURE_71";
         controller.tick(controller.deadline + 1);
         check(!controller.opened && !adapter.flow && password.text === "", "timeout cancels and clears");
-        check(notices[notices.length - 1].title === "[PLACEHOLDER] Sudo request cancelled", "timeout has its own sudo notice");
+        check(notices[notices.length - 1].title === "Sudo request cancelled", "timeout has its own sudo notice");
         begin(true);
         controller.cancel("cancel");
         check(!adapter.flow, "cancel ends request");
@@ -305,7 +305,7 @@ ShellRoot {
         password.text = "PRIVATE_SUDO_FIXTURE_71";
         client.connected = false;
         check(!controller.opened && password.text === "", "channel loss clears active password");
-        check(notices[notices.length - 1].title === "[PLACEHOLDER] Sudo request cancelled", "channel loss is not labelled a screen lock");
+        check(notices[notices.length - 1].title === "Sudo request cancelled", "channel loss is not labelled a screen lock");
         client.request = {};
         client.connected = true;
         begin(true);
@@ -319,7 +319,7 @@ ShellRoot {
         card.submit();
         client.authenticationFailed();
         client.request = {};
-        check(notices.length === beforeSuccess + 1 && notices[notices.length - 1].title === "[PLACEHOLDER] Sudo request cancelled", "failed submitted request gets its own notice");
+        check(notices.length === beforeSuccess + 1 && notices[notices.length - 1].title === "Sudo request cancelled", "failed submitted request gets its own notice");
         begin(true);
         password.text = "PRIVATE_SUDO_FIXTURE_71";
         card.submit();

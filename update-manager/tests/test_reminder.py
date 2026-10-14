@@ -136,6 +136,18 @@ class Notifications(unittest.TestCase):
             self.assertEqual(reminder.notify_restart('cache'), dict(ok=False, notified=False))
             acknowledge.assert_not_called()
 
+    def test_report_offer_is_a_fixed_bounded_shell_call_whose_failure_is_ignored(self):
+        with patch.object(reminder.subprocess, 'run', return_value=Mock(returncode=1)) as run:
+            self.assertIsNone(reminder.offer_report('update'))
+        run.assert_called_once()
+        self.assertEqual(run.call_args.args[0], ['emaki-shell', 'call', 'report', 'offer', 'update'])
+        self.assertLessEqual(run.call_args.kwargs['timeout'], 5)
+        self.assertIs(run.call_args.kwargs['stdin'], reminder.subprocess.DEVNULL)
+        self.assertNotIn('shell', run.call_args.kwargs)
+        for error in (OSError, reminder.subprocess.TimeoutExpired('emaki-shell', 5)):
+            with patch.object(reminder.subprocess, 'run', side_effect=error):
+                self.assertIsNone(reminder.offer_report('update'))
+
 
 if __name__ == '__main__':
     unittest.main()

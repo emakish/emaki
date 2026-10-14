@@ -2,15 +2,21 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Exercise the combined manager with isolated controller fixtures and real key events."""
+import json
 import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 
 UI = Path(__file__).resolve().parents[1]
 ROOT = UI.parents[1]
+sys.path.insert(0, str(UI.parent))
+import programs_engine  # noqa: E402  (Browse's picks as the engine serves them)
+import programs_catalog  # noqa: E402  (the Installed inventory as the engine builds it)
+
 HEADER = '// Copyright (C) 2026 Artur Yakymenko\n// SPDX-License-Identifier: GPL-3.0-or-later\n'
 UPDATE = '''import QtQuick
 QtObject {
@@ -20,6 +26,10 @@ QtObject {
     property string restoreError: ""
     property string countError: ""
     function notifyRestart() { notifications++ }
+    function accept(line) {
+        const event = JSON.parse(line);
+        if (event.type === "restoreFinished" && event.restart === true) { restorePending = true; restart = true; }
+    }
     property bool busy: false
     property string phase: "idle"
     property bool restart: false
@@ -27,6 +37,7 @@ QtObject {
     property bool restorePending: false
     property bool signOut: false
     property var completedUpdates: []
+    property var completedRelease: null
     property string completedAt: ""
     property bool succeeded: false
     property string message: ""
@@ -94,24 +105,55 @@ QtObject {
         {key:"flatpak:org.kde.krita",id:"org.kde.krita",kind:"flatpak",name:"Krita",summary:"Digital painting",categories:["Graphics"],actions:["install"]},
         {key:"flatpak:md.obsidian.Obsidian",id:"md.obsidian.Obsidian",kind:"flatpak",name:"Obsidian",summary:"Linked notes",categories:["Office"],actions:["install"]},
         {key:"flatpak:net.supertuxkart.SuperTuxKart",id:"net.supertuxkart.SuperTuxKart",kind:"flatpak",name:"SuperTuxKart",summary:"Kart racing",categories:["Game"],actions:["install"]},
-        {key:"arch:inkscape",id:"org.inkscape.Inkscape",package:"inkscape",kind:"arch",name:"Inkscape",summary:"Vector graphics",categories:["Graphics"],version:"1.4",installed:true,actions:["remove","open"]},
+        {key:"arch:inkscape",id:"org.inkscape.Inkscape",package:"inkscape",kind:"arch",name:"Inkscape",summary:"Vector graphics",categories:["Graphics"],version:"1.4",installed:true,actions:["remove","open","undo"],undo:{id:"20261012T120000123456Z-" + "b".repeat(32),kind:"arch",name:"inkscape",time:"2026-10-12T19:40:00+00:00",target:"inkscape",added:["inkscape","libinkscape"],snapshot:"17"}},
         {key:"arch:code",id:"code",package:"code",kind:"arch",name:"Code",summary:"Write code",categories:["Development"],actions:["install"]},
-        {key:"aur:code-minimap",id:"code-minimap",package:"code-minimap",kind:"aur",name:"code-minimap",summary:"Code minimap",categories:[],actions:[]},
-        {key:"arch:gimp",id:"org.gimp.GIMP",package:"gimp",kind:"arch",name:"GNU Image Manipulation Program",summary:"Create images and edit photographs",categories:["Graphics"],actions:["install"]}
+        {key:"aur:code-minimap",id:"code-minimap",package:"code-minimap",kind:"aur",name:"code-minimap",summary:"Code minimap",categories:[],actions:["install"],version:"0.6.8-1",votes:42,popularity:1.25,maintainer:"",orphan:true,outOfDate:"2026-09-30T10:00:00+00:00",firstSubmitted:"2021-03-04T10:00:00+00:00",lastModified:"2026-08-01T10:00:00+00:00",recipe:"https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=code-minimap",page:"https://aur.archlinux.org/packages/code-minimap"},
+        {key:"arch:gimp",id:"org.gimp.GIMP",package:"gimp",kind:"arch",name:"GNU Image Manipulation Program",summary:"Create images and edit photographs",categories:["Graphics"],actions:["install"],releaseDate:"2026-10-01"},
+        {key:"arch:dolphin",id:"org.kde.dolphin",package:"dolphin",kind:"arch",name:"Dolphin",summary:"Files",categories:["System"],installed:true,protected:true,actions:[],releaseDate:"2026-09-01"}
     ].map(row => Object.assign({}, row, {icons: row.kind === "aur" ? [] : [{kind:"local", url:Quickshell.env("TEST_ICON")}], screenshots: row.package === "krita" ? [Quickshell.env("TEST_SCREENSHOT")] : []}))
     readonly property var allPrograms: Logic.merge(allRows.filter(row => row.kind !== "aur"))
     readonly property var programs: Logic.filter(query ? Logic.merge(allRows) : allPrograms, query, category)
     readonly property var installedPrograms: allRows.filter(row => row.installed)
     signal transactionFinished(bool ok)
+    signal restoreFinished(var result)
     function selectCategory(value) { category = value; query = "" }
     function search(value) { query = value; category = "" }
     function refresh() {}
     function openProgram(row) { selectedProgram = Logic.merge(allRows).find(item => Logic.identity(item) === Logic.identity(row)); selectedEdition = selectedProgram.editions[0] }
     function selectEdition(kind) { selectedEdition = Logic.edition(selectedProgram, kind) }
-    function prepareInstall() { planAction = "install"; plan = {ok:true,token:"test",transaction:{packages:[{package:"krita",downloadSize:1048576},{package:"linux",downloadSize:2097152}]}}; planRows = [{name:"linux",detail:"6.12"},{name:"krita",detail:"5.2"}]; previewOpen = true }
+    property bool aurKnown: true
+    property bool aurEnabled: false
+    property bool aurShowWarning: true
+    property bool aurSnapshots: true
+    property string aurQuery: ""
+    property var aurRows: []
+    property bool aurSearched: false
+    property var recoveryPoint: null
+    property int aurChanges: 0
+    property var lastAur: null
+    property var storefront: JSON.parse(Quickshell.env("TEST_STOREFRONT"))
+    property var shelf: JSON.parse(Quickshell.env("TEST_SHELF")).filter(item => item.package !== "snapguard").map((item, index) => ({
+        key:"package:emaki/" + item.package, id:item.package, package:item.package, kind:"arch", name:item.title,
+        summary:item.summary, repository:"emaki", target:"emaki/" + item.package, version:"0.8.0-1",
+        installed:index === 1, installedVersion:index === 1 ? "0.8.0-1" : "", actions:index === 1 ? [] : ["install"], packageOnly:true, shelf:true
+    }))
+    property var essentials: ({minimal: true, programs: ["gimp", "inkscape", "krita", "code"]})
+    property bool catalogReceived: true
+    property var aurPopular: []
+    property bool aurPopularLoaded: false
+    property int popularReads: 0
+    function readPopular() { popularReads++; aurPopular = [
+        {key:"aur:yay",id:"yay",package:"yay",kind:"aur",name:"yay",summary:"Yet another yogurt",categories:[],actions:["install"],version:"12.5-1",votes:2649,popularity:20.7,maintainer:"someone",orphan:false,outOfDate:"",icons:[]},
+        allRows.find(row => row.kind === "aur")
+    ].concat(Array.from({length: 40}, (_, index) => ({key:"aur:tool-" + index,id:"tool-" + index,package:"tool-" + index,kind:"aur",name:"tool-" + index,summary:"A tool",categories:[],actions:["install"],version:"1-1",votes:40 - index,popularity:1,maintainer:"someone",orphan:false,outOfDate:"",icons:[]}))); aurPopularLoaded = true }
+    function setAur(accept, showWarning) { aurChanges++; lastAur = {accept: accept, showWarning: showWarning}; aurEnabled = accept; aurShowWarning = !accept || showWarning; if (!accept) aurRows = [] }
+    function searchAur(text) { aurQuery = text; aurRows = text.length < 2 ? [] : allRows.filter(row => row.kind === "aur" && row.name.includes(text)); aurSearched = text.length >= 2 }
+    function prepareUndo() { planAction = "undo"; plan = {ok:true,token:"test",key:selectedEdition.key,transaction:{receipt:selectedEdition.undo.id,target:"inkscape",remove:["inkscape","libinkscape"],packages:["inkscape","libinkscape"],keep:{"shared-fonts":"explicit"},upgraded:["linux"],snapshot:"17"}}; planRows = [{name:"inkscape",detail:""},{name:"libinkscape",detail:""}]; previewOpen = true }
+    function prepareInstall() { if (selectedEdition && selectedEdition.kind === "aur") { planAction = "install"; plan = {ok:true,token:"test",transaction:{kind:"aur",target:"code-minimap",fullUpgrade:true,builds:[{packageBase:"rust-helper",packages:[{package:"rust-helper",version:"1.0-1"}],commit:"0123456789abcdef0123456789abcdef01234567",version:"1.0-1",purpose:"build",maintainer:"someone",orphan:false,outOfDate:"",recipe:"https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=rust-helper&id=0123456789abcdef0123456789abcdef01234567"},{packageBase:"code-minimap",packages:[{package:"code-minimap",version:"0.6.8-1"}],commit:"89abcdef0123456789abcdef0123456789abcdef",version:"0.6.8-1",purpose:"run",maintainer:"",orphan:true,outOfDate:"2026-09-30T10:00:00+00:00",recipe:"https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=code-minimap&id=89abcdef0123456789abcdef0123456789abcdef"}],packages:[{repository:"core",package:"base-devel",version:"1-2",purpose:"build"},{repository:"extra",package:"git",version:"2.51-1",purpose:"build"},{repository:"extra",package:"libgit2",version:"1.9-1",purpose:"run"}]}}; planRows = Logic.planRows(plan); previewOpen = true; return }
+        planAction = "install"; plan ={ok:true,token:"test",transaction:{packages:[{package:"krita",downloadSize:1048576},{package:"linux",downloadSize:2097152}]}}; planRows = [{name:"linux",detail:"6.12"},{name:"krita",detail:"5.2"}]; previewOpen = true }
     function prepareRemove(row) { if(row) openProgram(row); planAction = "remove"; plan = {ok:true,token:"test"}; planRows = [{name:"inkscape",detail:"the program"},{name:"unused-library",detail:"nothing else needs it"}]; previewOpen = true }
     function cancelPlan() { previewOpen = false; plan = null }
-    function executePlan() { executions++; previewOpen = false; mutating = true; busy = true; phase = planAction === "remove" ? "removing" : "installing" }
+    function executePlan() { executions++; previewOpen = false; mutating = true; busy = true; phase = planAction === "remove" ? "removing" : planAction === "undo" ? "undoing" : "installing" }
     function openInstalled() { opens++ }
 }
 '''
@@ -146,6 +188,11 @@ REOPEN = '''
             windowLoader.item.manager.query = "code"; windowLoader.item.manager.page = "search"; programs.search("code");
             windowLoader.active = false; root.present();
             root.check(windowLoader.item.manager.page === "search" && windowLoader.item.manager.query === "code" && programs.query === "code", "recreated window retains search query and results");
+            programs.searchAur("code");
+            windowLoader.active = false; root.present();
+            const findAur = item => item.objectName === "aur-search" ? item : (item.children || []).reduce((found, child) => found || findAur(child), null);
+            const aurField = findAur(windowLoader.item.manager);
+            root.check(!!aurField && aurField.text === "code" && programs.aurQuery === "code", "recreated window shows the AUR search its results follow");
             programs.mutating = false;
             controller.busy = true; controller.phase = "checking";
             const beforePending = controller.checks;
@@ -153,6 +200,15 @@ REOPEN = '''
             root.check(root.checkPending && controller.checks === beforePending, "transaction recheck waits for active check");
             controller.busy = false; controller.phase = "idle"; lifecycleInput.wait(30);
             root.check(!root.checkPending && controller.checks === beforePending + 1, "queued transaction recheck runs after active check");
+            for (const ok of [true, false]) {
+                controller.restorePending = false; controller.restart = false;
+                programs.recoveryPoint = {id: "71:verified", snapshot: "71", operation: "install"};
+                programs.restoreFinished({ok: ok, restart: true});
+                root.check(programs.recoveryPoint === null, "completed restore clears failed-install recovery");
+                root.check(controller.restorePending && controller.restart && programs.externalBusy,
+                    "snapshot Undo result reaches Updates and blocks further changes, including partial failure");
+            }
+            controller.restorePending = false;
             controller.restartPackages = ["linux"]; controller.reminder = true;
             root.check(controller.notifications === 0, "visible restart banner does not notify");
             root.present();
@@ -168,13 +224,59 @@ REOPEN = '''
         }
     }
 '''
+# The shipped controller behind a scripted engine: its own JSON transport, refusal handling
+# and Installed list, fed by the real inventory code (programs_catalog.programs).
+REFUSAL = 'Building needs packages that could not be found: base-devel.'
+ENGINE = r'''#!PYTHON
+import json, os, sys
+if sys.argv[1] == 'list':
+    print(os.environ['TEST_INVENTORY']); sys.exit(0)
+minimap = dict(key='aur:code-minimap', id='code-minimap', package='code-minimap', kind='aur', name='code-minimap',
+               summary='Code minimap', categories=[], actions=['install'], version='0.6.8-1', votes=42, icons=[], screenshots=[])
+dolphin = dict(key='arch:dolphin', id='org.kde.dolphin', package='dolphin', kind='arch', name='Dolphin', summary='Files',
+               categories=['System'], installed=True, actions=['remove'], icons=[], screenshots=[])
+for line in sys.stdin:
+    request = json.loads(line)
+    method, params = request['method'], request['params']
+    value = dict(version=1, id=request['id'], type='result', ok=True)
+    if method == 'plan':
+        value.update(ok=False, code='missing-dependency', message=os.environ['TEST_REFUSAL'])
+    elif method == 'aur':
+        value.update(enabled=False, showWarning=True, accepted='', snapshots=True)
+    elif method == 'catalog' and not params.get('source') and not params.get('scope'):
+        value.update(programs=[minimap, dolphin], total=2, warnings=[], shelf=[])
+    else:
+        value.update(programs=[], total=0)
+    print(json.dumps(value), flush=True)
+'''
+
+
+def inventory():
+    """The engine's own `list` answer for Dolphin, which Emaki's app set needs: protected, kept."""
+    apps = [{'id': 'org.kde.dolphin.desktop', 'name': 'Dolphin', 'filename': '/apps/org.kde.dolphin.desktop'}]
+    owned = {'/apps/org.kde.dolphin.desktop': ('dolphin', '25.08-1')}
+    details = {'dolphin': {'Required By': ['emaki-apps'], 'Optional For': []}}
+    return json.dumps({'ok': True, 'programs': programs_catalog.programs(apps, owned, details)})
+
+
 MUTANTS = {
-    'package-launcher': ('ManagerProgram.qml', 'visible: !page.program.packageOnly || !!page.controller.selectedLauncher', 'visible: true'),
+    'package-launcher': ('ManagerProgram.qml', 'visible: !page.program.packageOnly && page.program.kind !== "aur" || !!page.controller.selectedLauncher', 'visible: true'),
     'apply': ('ManagerUpdates.qml', 'onClicked: root.controller.apply()', 'onClicked: {}'),
     'later': ('ManagerUpdates.qml', 'onClicked: root.controller.dismissReminder()', 'onClicked: {}'),
     'remove-preview': ('ManagerView.qml', 'onClicked: rowItem.packageRow ? view.programs.preparePackage(rowItem.row, "remove") : view.programs.prepareRemove(rowItem.row)', 'onClicked: {}'),
     'busy': ('ManagerUpdates.qml', 'enabled: !root.locked && root.controller.managedCount', 'enabled: root.controller.managedCount'),
     'keyboard': ('ManagerButton.qml', 'focusPolicy: visible && enabled ? Qt.StrongFocus : Qt.NoFocus', 'focusPolicy: Qt.NoFocus'),
+    'aur-stripe': ('ManagerView.qml', 'visible: view.aurOpen && view.page === "aur"', 'visible: false'),
+    'back-control': ('ManagerView.qml', 'onClicked: view.page === "program" ? view.goBack() : view.navigate("browse")', 'onClicked: {}'),
+    'part-of-emaki': ('ManagerLogic.js', 'function partOfEmaki(row) { return !!row && (row.protected === true || row.self === true); }', 'function partOfEmaki(row) { return false; }'),
+    'update-details': ('ManagerUpdates.qml', 'visible: root.showLog && root.controller.output.trim().length > 0', 'visible: root.controller.output.trim().length > 0'),
+    'browse-top': ('ManagerView.qml', 'visible: view.page === "browse" || view.page === "search"', 'visible: true'),
+    'pinned-stretch': ('ManagerView.qml', 'objectName: "pinned"\n            Layout.fillHeight: false', 'objectName: "pinned"'),
+    'unknown-facts': ('ManagerProgram.qml', '["Votes", page.known("votes") ? String(page.program.votes) : page.unknown, false]', '["Votes", String(page.program.votes || 0), false]'),
+    'no-snapshots': ('ManagerProgram.qml', 'readonly property bool aurRefused: program.kind === "aur" && controller.aurKnown && !controller.aurSnapshots && allowed("install")', 'readonly property bool aurRefused: false'),
+    'refused-plan': ('RealProgramsController.qml', 'if (previous === "planning") plan = null;', 'if (previous === "planning") { plan = null; previewOpen = false; }'),
+    'long-heading': ('ManagerView.qml', 'Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.maximumWidth: implicitWidth', 'Layout.fillWidth: false'),
+    'shelf-install':('ManagerView.qml', 'onClicked: view.programs.preparePackage(shelfItem.modelData, "install")', 'onClicked: {}'),
 }
 
 def run(width=1180, height=780, mutant=None, reopen=False):
@@ -183,6 +285,12 @@ def run(width=1180, height=780, mutant=None, reopen=False):
         shutil.copytree(UI, root / 'ui')
         for path in (root / 'ui').glob('*.qml'):
             path.write_text(path.read_text().replace('@EMAKI_DATADIR@', str(ROOT)))
+        engine = root / 'engine'
+        engine.write_text(ENGINE.replace('PYTHON', sys.executable, 1))
+        engine.chmod(0o700)
+        real = (root / 'ui/ProgramsController.qml').read_text()
+        assert real.count('"emaki-programs"') >= 2, 'the shipped controller names its engine'
+        (root / 'ui/RealProgramsController.qml').write_text(real.replace('"emaki-programs"', json.dumps(str(engine))))
         (root / 'ui/UpdateController.qml').write_text(HEADER + UPDATE)
         (root / 'ui/ProgramsController.qml').write_text(HEADER + PROGRAMS)
         if mutant:
@@ -202,7 +310,7 @@ def run(width=1180, height=780, mutant=None, reopen=False):
             env['XDG_' + name.upper() + ('_DIR' if name == 'runtime' else '_HOME')] = str(root / name)
         for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'NIRI_SOCKET'):
             env.pop(name, None)
-        evidence = ROOT / '.cache/evidence/W1b/screenshots'
+        evidence = Path(os.environ.get('EMAKI_UI_SHOTS') or ROOT / '.cache/evidence/W1b/screenshots')
         evidence.mkdir(parents=True, exist_ok=True)
         env['TEST_SHOTS'] = str(evidence) if not mutant else ''
         env['TEST_ICON'] = 'file:' + str(UI.parent / 'emaki-programs-updates.svg')
@@ -210,6 +318,10 @@ def run(width=1180, height=780, mutant=None, reopen=False):
         screenshot = root / 'program-screen.svg'
         screenshot.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="472"><!-- Copyright (C) 2026 Artur Yakymenko; SPDX-License-Identifier: GPL-3.0-or-later --><rect width="800" height="472" fill="#d2809a"/><rect x="48" y="40" width="704" height="400" rx="12" fill="#fff9f5"/><rect x="68" y="60" width="100" height="360" fill="#e4d9d2"/><rect x="188" y="80" width="544" height="320" fill="#eed0dd"/></svg>')
         env['TEST_SCREENSHOT'] = str(screenshot)
+        env['TEST_STOREFRONT'] = json.dumps(programs_engine.storefront())
+        env['TEST_SHELF'] = json.dumps(programs_engine.shelf_items())
+        env['TEST_INVENTORY'] = inventory()
+        env['TEST_REFUSAL'] = REFUSAL
         with (root / 'runtime.log').open('w') as output:
             try:
                 result = subprocess.run(['qs', '-p', str(root / 'ui/test.qml'), '--no-color'], env=env, stdout=output, stderr=subprocess.STDOUT, text=True, timeout=30)

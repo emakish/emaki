@@ -84,13 +84,20 @@ def parse_ntfs_minimum(output):
     return int(matches[0])
 
 
+def usable_size(size):
+    """The Windows extent on the 1 MiB grid. Windows Setup can end C: off the grid before its recovery
+    partition (seen on real hardware, 2026-10-13); that sub-MiB tail stays unused, so Windows' new end and the
+    whole Emaki root are aligned."""
+    return size // MIB * MIB
+
+
 def shrink_offer(minimum, size, start):
     require(type(minimum) is int and 0 < minimum < size, Code.SHRINK_BOUNDS,
             'NTFS minimum size is invalid.')
-    require(start > 0 and start % MIB == 0 and size % MIB == 0, Code.SHRINK_BOUNDS,
-            'Windows partition boundaries must be aligned to 1 MiB; this layout is unsupported.')
+    require(start > 0 and start % MIB == 0, Code.SHRINK_BOUNDS,
+            'The Windows partition does not start on a 1 MiB boundary; this layout is unsupported.')
     keep = (minimum + WINDOWS_RESERVE + MIB - 1) // MIB * MIB
-    free = max(0, size - keep)
+    free = max(0, usable_size(size) - keep)
     require(free >= MIN_ROOT, Code.SHRINK_BOUNDS,
             'Not enough free space. Emaki needs about 35 GB that Windows does not use. '
             'Delete or move files in Windows, then shut it down and start from the USB stick again.')
@@ -213,8 +220,14 @@ def read_gpt(runner, disk, number):
     return parse_gpt_info(runner.run(['sgdisk', f'--info={number}', disk]))
 
 
+# sgdisk's only note on a consistent table whose partition ends off its alignment grid. Windows Setup
+# leaves C: like that; every other caution, warning or error still refuses.
+UNALIGNED_END = re.compile(r"Caution: Partition [0-9]+ doesn't end on a [0-9]+-sector boundary\. This may\n"
+                           r"result in problems with some disk encryption tools\.\n?")
+
+
 def verify_gpt(runner, disk):
-    output = runner.run(['sgdisk', '--verify', disk])
+    output = UNALIGNED_END.sub('', runner.run(['sgdisk', '--verify', disk]))
     require('No problems found.' in output and not re.search(r'warning|error|caution', output, re.I),
             Code.UNSAFE_DISK, 'GPT validation failed; Windows will not be resized.')
 

@@ -20,27 +20,27 @@ Scope {
     readonly property bool passwordPending: passwordProcess.running
     signal editorsClosed
     readonly property var reasons: ({
-            authorization_refused: "[PLACEHOLDER] Nothing was changed: authentication was cancelled or refused.",
-            users_busy: "[PLACEHOLDER] Another account change is in progress. Wait a moment, then try again.",
-            last_administrator: "[PLACEHOLDER] This computer needs at least one administrator. Make another account an administrator first.",
-            current_user: "[PLACEHOLDER] You cannot remove the account you are using.",
-            user_signed_in: "[PLACEHOLDER] This person is signed in or still has programs running. They need to sign out first.",
-            login_taken: "[PLACEHOLDER] This login is already used by an account or group on this computer.",
-            invalid_login: "[PLACEHOLDER] Use 1–32 lowercase letters, digits, _ or - for the login, starting with a letter or _.",
-            invalid_name: "[PLACEHOLDER] The full name must be at most 128 characters and contain no comma, colon or control characters.",
+            authorization_refused: "Nothing was changed: authentication was cancelled or refused.",
+            users_busy: "Another account change is in progress. Wait a moment, then try again.",
+            last_administrator: "This computer needs at least one administrator. Make another account an administrator first.",
+            current_user: "You cannot remove the account you are using.",
+            user_signed_in: "This person is signed in or still has programs running. They need to sign out first.",
+            login_taken: "This login is already used by an account or group on this computer.",
+            invalid_login: "Use 1–32 lowercase letters, digits, _ or - for the login, starting with a letter or _.",
+            invalid_name: "The full name must be at most 128 characters and contain no comma, colon or control characters.",
             invalid_password: "Use only letters, digits and symbols of the English (US) keyboard.",
-            user_not_found: "[PLACEHOLDER] This account is no longer on this computer. Refresh the list.",
-            accounts_service_failed: "[PLACEHOLDER] The system could not change this account. Nothing was changed.",
-            password_unavailable: "[PLACEHOLDER] The password could not be prepared on this computer. Nothing was changed.",
+            user_not_found: "This account is no longer on this computer. Refresh the list.",
+            accounts_service_failed: "The system could not change this account. Nothing was changed.",
+            password_unavailable: "The password could not be prepared on this computer. Nothing was changed.",
             change_unconfirmed: "The change could not be confirmed. Check the current value before trying again.",
             home_retention_failed: "The change could not be confirmed. Check the current value before trying again.",
             home_removal_failed: "The change could not be confirmed. Check the current value before trying again.",
-            account_without_password: "[PLACEHOLDER] The account was created, but its password was not set. Set a password or remove the account.",
-            account_unavailable: "[PLACEHOLDER] The account service cannot change this account until the computer restarts.",
-            password_not_entered: "[PLACEHOLDER] No password was entered. Nothing was changed.",
-            password_window_unconfirmed: "[PLACEHOLDER] The password window closed without an answer. Check the list before trying again."
+            account_without_password: "The account was created, but its password was not set. Set a password or remove the account.",
+            account_unavailable: "The account service cannot change this account until the computer restarts.",
+            password_not_entered: "No password was entered. Nothing was changed.",
+            password_window_unconfirmed: "The password window closed without an answer. Check the list before trying again."
         })
-    readonly property string unavailableText: "[PLACEHOLDER] Accounts are unavailable. Try again when the system service is ready."
+    readonly property string unavailableText: "Accounts are unavailable. Try again when the system service is ready."
     function validUser(user): bool {
         return !!user && typeof user.login === "string" && typeof user.name === "string" && typeof user.uid === "number" && typeof user.administrator === "boolean" && typeof user.locked === "boolean" && typeof user.current === "boolean" && typeof user.signed_in === "boolean" && typeof user.home === "string" && (user.available === undefined || typeof user.available === "boolean");
     }
@@ -49,7 +49,7 @@ Scope {
         if (pending || passwordPending)
             return;
         problem = false;
-        message = (args[0] === "add" || args[0] === "set-password") && args[args.length - 1] === "--terminal" ? "[PLACEHOLDER] Enter the new password in the terminal window." : "";
+        message = (args[0] === "add" || args[0] === "set-password") && args[args.length - 1] === "--terminal" ? "Enter the new password in the terminal window." : "";
         reply = "";
         operation = args[0];
         worker.command = ["emaki-settings-users"].concat(args, ["--json"]);
@@ -86,7 +86,7 @@ Scope {
             if (result.reason === "accounts_service_unavailable" || result.reason === "account_lookup_failed")
                 message = unavailableText;
             else
-                message = reasons[result.reason] ?? "[PLACEHOLDER] Accounts could not be read.";
+                message = reasons[result.reason] ?? "Accounts could not be read.";
         } catch (_) {
             problem = true;
             message = operation === "status" ? unavailableText : reasons.change_unconfirmed;

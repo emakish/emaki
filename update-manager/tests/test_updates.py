@@ -314,8 +314,9 @@ class Checking(unittest.TestCase):
         process.stdout = []
         process.wait.return_value = 126
         with patch.object(backend.subprocess, 'Popen', return_value=process) as opening, \
-                patch.object(backend, 'emit') as emit:
+                patch.object(backend, 'emit') as emit, patch.object(backend.reminder, 'offer_report') as offer:
             backend.apply(Path('/unused'))
+            offer.assert_not_called()
             self.assertTrue(emit.call_args.kwargs['notStarted'])
             self.assertEqual(emit.call_args.kwargs['message'], 'The update was not started.')
         self.assertEqual(opening.call_args.args[0],
@@ -393,6 +394,68 @@ class Checking(unittest.TestCase):
                         self.assertEqual(news_warnings, [])
                         self.assertEqual(data['news'], [])
                         fetch_call.assert_not_called()
+
+    def test_release_card_reads_the_new_section_of_the_published_page_only(self):
+        body = ('**A note first.** Not a new thing.\n\n## New\n\n- [Programs & Updates](https://x.example). '
+                'Browse `programs`.\n* Updates live in the same program.\n- <b>Tags</b> go.\n\n'
+                '## Fixed\n\n- Not shown.\n')
+        page = dict(tag_name='v0.8.0', draft=False, body=body,
+                    html_url='https://github.com/emakish/emaki/releases/tag/v0.8.0')
+        notes = catalog.release_notes(json.dumps(page).encode(), '0.8.0')
+        self.assertEqual(notes['items'], ['Programs & Updates. Browse programs.',
+                                          'Updates live in the same program.', 'Tags go.'])
+        self.assertEqual((notes['url'], notes['published']), (page['html_url'], True))
+        for changed in (dict(tag_name='v0.7.0'), dict(draft=True), dict(body=None),
+                        dict(html_url='https://github.com/emakish/emaki/releases/tag/v0.8.0?x=1'),
+                        dict(html_url='https://evil.example/emakish/emaki/releases/tag/v0.8.0'),
+                        dict(html_url='http://github.com/emakish/emaki/releases/tag/v0.8.0')):
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                catalog.release_notes(json.dumps(dict(page, **changed)).encode(), '0.8.0')
+        long = dict(page, body='## New\n' + ''.join(f'- Item {index} ' + 'x' * 500 + '\n' for index in range(9)))
+        items = catalog.release_notes(json.dumps(long).encode(), '0.8.0')['items']
+        self.assertEqual((len(items), max(map(len, items))), (6, 400))
+
+    def test_release_version_is_the_emaki_marker_only(self):
+        row = dict(source='Emaki', name='emaki', old='0.7.0-1', new='0.8.0-1', aur=False)
+        self.assertEqual(catalog.release_version(row), '0.8.0')
+        self.assertEqual(catalog.release_version(dict(row, new='1:0.8.1-2')), '0.8.1')
+        for other in (dict(name='emaki-config'), dict(source='Arch extra'), dict(aur=True), dict(new='0.8.0'),
+                      dict(new='../0.8.0-1'), dict(new='0.8.0.0.1-1')):
+            self.assertEqual(catalog.release_version(dict(row, **other)), '', other)
+
+    def test_pending_emaki_release_brings_its_card_and_a_missing_page_never_fails_the_check(self):
+        page = dict(tag_name='v0.8.0', draft=False, body='## New\n- The AUR section.\n',
+                    html_url='https://github.com/emakish/emaki/releases/tag/v0.8.0')
+        for state in ('published', 'missing', 'none'):
+            with self.subTest(state=state), tempfile.TemporaryDirectory() as directory:
+                cache = Path(directory)
+                (cache / 'local').mkdir()
+                def command(args, **kwargs):
+                    if '-Sup' in args:
+                        return fixtures.TRANSACTION + ('' if state == 'none' else 'emaki|emaki|0.8.0-1|1000\n')
+                    return fixtures.INSTALLED + 'emaki 0.7.0-1\n' if '-Q' in args else ''
+                def fetch(url, cache, validator):
+                    if 'api.github.com' not in url:
+                        raise RuntimeError('Offline')
+                    self.assertEqual(url, 'https://api.github.com/repos/emakish/emaki/releases/tags/v0.8.0')
+                    if state == 'missing':
+                        raise RuntimeError('404')
+                    return validator(json.dumps(page).encode()), False
+                with patch.object(backend, 'package_paths', return_value=(cache, cache / 'missing-log')), \
+                        patch.object(backend, 'command', side_effect=command), \
+                        patch.object(backend, 'install_date', return_value=None), \
+                        patch.object(backend, 'fetch', side_effect=fetch) as fetched, \
+                        patch.object(backend.flatpaks, 'discover', return_value=[]), \
+                        patch.object(backend, 'emit'):
+                    data = backend.discover(cache)
+                if state == 'none':
+                    self.assertNotIn('release', data)
+                    self.assertFalse([call for call in fetched.call_args_list if 'github' in call.args[0]])
+                elif state == 'missing':
+                    self.assertEqual(data['release'], dict(version='0.8.0', url='https://github.com/emakish/emaki/releases',
+                                                           items=[], published=False))
+                else:
+                    self.assertEqual((data['release']['items'], data['release']['published']), (['The AUR section.'], True))
 
     def test_aur_only_updates_do_not_fetch_arch_news(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -543,9 +606,24 @@ with patch.object(backend, 'package_paths', return_value=(root / 'system', root 
         with tempfile.TemporaryDirectory() as directory, \
                 patch.object(backend, 'service_state', side_effect=[dict(ActiveState='activating'), {}]), \
                 patch.object(backend.time, 'sleep'), patch.object(backend, 'emit') as emit, \
-                patch.object(backend, 'command', return_value=''):
+                patch.object(backend, 'command', return_value=''), \
+                patch.object(backend.reminder, 'offer_report') as offer:
             self.assertTrue(backend.observe_existing(Path(directory)))
             self.assertFalse(emit.call_args.kwargs['ok'])
+            offer.assert_called_once_with('update')
+
+    def test_observed_failure_offers_a_report_once_and_success_offers_none(self):
+        for final, offers in ((dict(ActiveState='failed', Result='exit-code', ExecMainStatus='1'), 1),
+                              (dict(ActiveState='inactive', Result='success', ExecMainStatus='0'), 0)):
+            with self.subTest(final=final), tempfile.TemporaryDirectory() as directory, \
+                    patch.object(backend, 'service_state', side_effect=[dict(ActiveState='active'), final]), \
+                    patch.object(backend.time, 'sleep'), patch.object(backend, 'emit') as emit, \
+                    patch.object(backend, 'command', return_value=''), \
+                    patch.object(backend.reminder, 'offer_report') as offer:
+                self.assertTrue(backend.observe_existing(Path(directory)))
+                self.assertEqual(emit.call_args.args, ('finished',))
+                self.assertEqual(emit.call_args.kwargs['ok'], not offers)
+                self.assertEqual(offer.call_args_list, [call('update')] * offers)
 
 
 class Authorization(unittest.TestCase):
@@ -682,10 +760,10 @@ class Authorization(unittest.TestCase):
 
     def test_hold_refusal_reaches_final_error_even_after_keyring_updates(self):
         refusals = (
-            '[PLACEHOLDER] The update was refused because these packages are held after a restore: '
+            'The update was refused because these packages are held after a restore: '
             'libfoo 1.2-1. A newer version will release each hold automatically. '
             'To allow a held version again, run: sudo emaki-rollback release libfoo',
-            '[PLACEHOLDER] The available package versions could not be checked. '
+            'The available package versions could not be checked. '
             'The update was refused before changing installed packages.',
         )
         for refusal in refusals:
@@ -808,6 +886,63 @@ class Launcher(unittest.TestCase):
                                     env=env, capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual((root / 'out').read_text(), '1')
+
+
+class ReportOffer(unittest.TestCase):
+    """A failed update offers a report through the shell; nothing else does."""
+    OFFER = ['emaki-shell', 'call', 'report', 'offer', 'update']
+
+    def apply(self, *, finished=None, code=0, run=None):
+        process = Mock()
+        process.__enter__ = Mock(return_value=process)
+        process.__exit__ = Mock(return_value=False)
+        process.stdout = io.StringIO('' if finished is None else json.dumps(dict(type='finished', **finished)) + '\n')
+        process.wait.return_value = code
+        # The real offer helper runs; only its process is replaced, never the real shell.
+        with patch.object(backend.subprocess, 'Popen', return_value=process), \
+                patch.object(backend.flatpaks, 'update', return_value=False), \
+                patch.object(backend, 'local_state', return_value=dict(restart=False)), \
+                patch.object(backend.reminder, 'notify_completed'), \
+                patch.object(backend.reminder.subprocess, 'run', **(run or dict(return_value=Mock(returncode=0)))) as shell, \
+                patch.object(backend, 'emit') as emit:
+            self.assertIsNone(backend.apply(Path('/unused')))
+        self.assertEqual(emit.call_args.args, ('finished',))
+        return [item.args[0] for item in shell.call_args_list], emit.call_args.kwargs
+
+    def test_failed_update_offers_once(self):
+        for finished, code in ((dict(ok=False, message='failed'), 1), (dict(ok=True, message='done'), 1)):
+            with self.subTest(finished=finished, code=code):
+                calls, result = self.apply(finished=finished, code=code)
+                self.assertEqual(calls, [self.OFFER])
+                self.assertFalse(result['ok'])
+
+    def test_successful_update_does_not_offer(self):
+        calls, result = self.apply(finished=dict(ok=True, message='done'))
+        self.assertEqual(calls, [])
+        self.assertTrue(result['ok'])
+
+    def test_refused_or_cancelled_permission_does_not_offer(self):
+        for code in (126, 127):
+            with self.subTest(code=code):
+                calls, result = self.apply(code=code)
+                self.assertEqual(calls, [])
+                self.assertTrue(result['notStarted'])
+        calls, _ = self.apply(finished=dict(ok=False, notStarted=True, message='refused'), code=1)
+        self.assertEqual(calls, [])
+
+    def test_ended_connection_offers(self):
+        calls, result = self.apply(code=1)
+        self.assertEqual(calls, [self.OFFER])
+        self.assertFalse(result['notStarted'])
+
+    def test_offer_failure_never_changes_the_update_result(self):
+        for error in (OSError('missing'), subprocess.TimeoutExpired(self.OFFER, 5)):
+            with self.subTest(error=error):
+                calls, result = self.apply(finished=dict(ok=False, message='failed'), code=1,
+                                           run=dict(side_effect=error))
+                self.assertEqual(calls, [self.OFFER])
+                self.assertFalse(result['ok'])
+                self.assertEqual(result['message'], 'failed')
 
 
 if __name__ == '__main__':

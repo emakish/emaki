@@ -4,8 +4,8 @@
 # shellcheck disable=SC2034,SC2154
 # Build from the local checkout; no source downloads or disk access in check().
 pkgname=emaki-installer
-pkgver=0.7.0
-pkgrel=1
+pkgver=0.8.0
+pkgrel=4
 pkgdesc='Emaki live ISO installation worker and protocol CLI'
 arch=('any')
 url='https://github.com/emakish/emaki'
@@ -38,7 +38,8 @@ prepare() {
     mkdir -p "$srcdir/emaki-installer"
     git -C "$startdir/../.." archive --format=tar \
         --output="$srcdir/emaki-installer.tar" "$_emaki_commit" installer LICENSE \
-        packaging/emaki-installer/PKGBUILD packaging/emaki-installer/expected-files.list
+        packaging/emaki-installer/PKGBUILD packaging/emaki-installer/expected-files.list \
+        tests/fixtures/firmware
     tar -xf "$srcdir/emaki-installer.tar" -C "$srcdir/emaki-installer"
 }
 
@@ -95,7 +96,7 @@ package() {
     sed -i 's|Quickshell.env("EMAKI_INSTALLER_SOCKET") \|\| "/run/emaki-installer/sock"|"/run/emaki-installer/sock"|' \
         "$pkgdir/usr/share/emaki-installer/ui/InstallerController.qml"
     if grep -q EMAKI_INSTALLER_SOCKET "$pkgdir/usr/share/emaki-installer/ui/InstallerController.qml"; then
-        echo '[PLACEHOLDER] emaki-installer: the packaged window still honours EMAKI_INSTALLER_SOCKET' >&2
+        echo 'emaki-installer: the packaged window still honours EMAKI_INSTALLER_SOCKET' >&2
         return 1
     fi
     for ui_file in timezone-map.png ZoneData.js README.md ODbL-1.0.txt generate-timezones.py; do

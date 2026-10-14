@@ -11,6 +11,7 @@ from contextlib import contextmanager
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -72,7 +73,7 @@ def recovery_digest(device):
     return digest.hexdigest()
 
 
-def prepare(no_fallback=False):
+def prepare(no_fallback=False, esp_mib=100):
     info = disk_info()
     if (info.get('children') or info.get('pttype') or info.get('fstype') or
             any(info.get('mountpoints') or []) or info.get('serial') != 'emaki-target'):
@@ -86,9 +87,12 @@ def prepare(no_fallback=False):
         raise RuntimeError('fixture requires 512-byte logical sectors')
     end = (size // MIB - 1) * MIB // 512 - 1
     recovery_start = end + 1 - 1024 * MIB // 512
-    run('sgdisk', '--clear', '--new=1:2048:206847', '--typecode=1:ef00', '--change-name=1:Windows ESP',
-        '--new=2:206848:239615', '--typecode=2:0c01', '--change-name=2:Microsoft reserved',
-        f'--new=3:239616:{recovery_start - 1}', '--typecode=3:0700', '--change-name=3:Windows',
+    # Windows' own default ESP is 100 MiB (260 MiB on 4Kn disks); MSR is 16 MiB.
+    esp_end = 2048 + esp_mib * MIB // 512 - 1
+    msr_end = esp_end + 16 * MIB // 512
+    run('sgdisk', '--clear', f'--new=1:2048:{esp_end}', '--typecode=1:ef00', '--change-name=1:Windows ESP',
+        f'--new=2:{esp_end + 1}:{msr_end}', '--typecode=2:0c01', '--change-name=2:Microsoft reserved',
+        f'--new=3:{msr_end + 1}:{recovery_start - 1}', '--typecode=3:0700', '--change-name=3:Windows',
         '--attributes=3:set:63',
         f'--new=4:{recovery_start}:{end}', '--typecode=4:2700', '--change-name=4:Windows RE tools',
         '--attributes=4:set:0', '--attributes=4:set:63', DISK)
@@ -122,6 +126,21 @@ def prepare(no_fallback=False):
             baseline[key] = hashes(root, files)
     # Fail if even this clean synthetic volume cannot be probed without force.
     run('ntfsresize', '--info', '--no-action', DISK + '-part3')
+    # Register the preserved target through firmware, not only os-prober.
+    run('efibootmgr', '--create', '--disk', os.path.realpath(DISK), '--part', '1',
+        '--label', 'Windows Boot Manager', '--loader', r'\EFI\Microsoft\Boot\bootmgfw.efi')
+    inventory = run('efibootmgr', '-v')
+    partuuid = run('blkid', '-s', 'PARTUUID', '-o', 'value', DISK + '-part1').strip()
+    entries = re.findall(
+        r'^Boot([0-9A-Fa-f]{4})\* Windows Boot Manager\s+HD\(1,GPT,'
+        + re.escape(partuuid) + r',[^)]*\)/(?:File\(\\EFI\\Microsoft\\Boot\\bootmgfw\.efi\)|'
+        r'\\EFI\\Microsoft\\Boot\\bootmgfw\.efi)[ \t]*$',
+        inventory, re.MULTILINE | re.IGNORECASE)
+    if len(entries) != 1:
+        raise RuntimeError('Synthetic Windows firmware entry is absent or ambiguous')
+    baseline['windows_boot_number'] = entries[0].upper()
+    baseline['windows_esp_partuuid'] = partuuid.lower()
+    baseline['firmware_inventory'] = inventory
     baseline['disk'] = disk_info()
     baseline['gpt'] = {str(n): run('sgdisk', f'--info={n}', DISK) for n in (1, 2, 3, 4)}
     return baseline
@@ -243,6 +262,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['prepare', 'check'])
     parser.add_argument('--freed', type=int, default=0)
+    parser.add_argument('--esp-mib', type=int, choices=(100, 260, 512), default=100,
+                        help='size of the Windows ESP (Windows uses 260 MiB on 4Kn disks; 512 MiB exercises the full loader refresh)')
     parser.add_argument('--no-fallback', action='store_true',
                         help='prepare an ESP without a removable loader')
     args = parser.parse_args()
@@ -251,7 +272,7 @@ def main():
     if args.action == 'prepare':
         if 'emaki.test=1' not in Path('/proc/cmdline').read_text().split() or not Path('/run/archiso/bootmnt').exists():
             raise RuntimeError('requires the live test ISO')
-        print(json.dumps(prepare(no_fallback=args.no_fallback), indent=2))
+        print(json.dumps(prepare(no_fallback=args.no_fallback, esp_mib=args.esp_mib), indent=2))
     else:
         check(json.load(sys.stdin), args.freed)
 

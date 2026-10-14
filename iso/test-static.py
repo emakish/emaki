@@ -367,7 +367,8 @@ class StaticTests(unittest.TestCase):
         result = subprocess.run(['bash', '-c', 'source "$1"; printf "%s\\n" "${depends[@]}"', '_', str(recipe)],
                                 capture_output=True, text=True, check=True)
         names = {re.split(r'[<>=]', line, maxsplit=1)[0] for line in result.stdout.splitlines()}
-        self.assertIn('firefox', names)
+        self.assertNotIn('firefox', names)
+        self.assertNotIn('dolphin', names)
         # The portal is required by its upstream name; the image names the fork that provides it.
         names = {'xdg-desktop-portal-gnome-emaki' if n == 'xdg-desktop-portal-gnome' else n for n in names}
         extra = set((HERE / 'packages-extra.txt').read_text().split())

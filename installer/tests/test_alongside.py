@@ -142,7 +142,8 @@ class NtfsTests(AlongsideOnTestCase):
 
     def test_too_small_and_alignment(self):
         self.assertEqual(ntfs.shrink_offer(20 * GIB, 54 * GIB, MIB)['max_free_bytes'], 32 * GIB)
-        for size, start in [(54 * GIB - MIB, MIB), (60 * GIB, MIB + 512), (60 * GIB - 512, MIB)]:
+        # An unaligned end is fine (UnalignedWindowsEndTests); 54 GiB less 512 bytes keeps only 31 GiB whole.
+        for size, start in [(54 * GIB - MIB, MIB), (60 * GIB, MIB + 512), (54 * GIB - 512, MIB)]:
             with self.assertRaises(InstallError):
                 ntfs.shrink_offer(20 * GIB, size, start)
         with self.assertRaises(InstallError):
@@ -378,8 +379,10 @@ class EfiManifestTests(unittest.TestCase):
 
 
 class AlongsideDefaultTests(unittest.TestCase):
-    def test_default_switch_is_off(self):
-        self.assertIs(constants.ALONGSIDE, False)
+    def test_switch_is_a_plain_boolean(self):
+        # 0.8.0 ships alongside on (DECISIONS 2026-10-13); the release-input gate, not this test,
+        # requires the real-Windows acceptance row or an owner-signed exception.
+        self.assertIsInstance(constants.ALONGSIDE, bool)
 
 
 class AlongsideOffTests(unittest.TestCase):
@@ -647,6 +650,118 @@ class AlongsideTests(AlongsideOnTestCase):
         runner.responses[query] = json.dumps({'blockdevices': [{'pttype': 'gpt', 'children': children}]})
         with self.assertRaisesRegex(InstallError, 'existing partition changed'):
             ops.verify_alongside_layout(SimpleNamespace(partitions=[archroot]))
+
+
+# sgdisk --verify on a real Windows 10 disk as Windows Setup laid it out (2026-10-13).
+MAC_VERIFY = ("Caution: Partition 3 doesn't end on a 2048-sector boundary. This may\n"
+              "result in problems with some disk encryption tools.\n"
+              "No problems found. 6412 free sectors (3.1 MiB) available in 3\n"
+              "segments, the largest of which is 4063 (2.0 MiB) in size.\n")
+
+
+class UnalignedWindowsEndTests(AlongsideOnTestCase):
+    """Windows Setup ended C: 335 sectors short of the 1 MiB grid, its recovery partition after it.
+    The sub-MiB tail stays unused: Windows' new end and the whole Emaki root are aligned."""
+    TAIL = 335 * 512
+
+    def setUp(self):
+        super().setUp()
+        self.c, self.inv = windows()
+        p = self.inv['disks'][0]['partitions'][1]
+        p['size_bytes'] = 96 * GIB - self.TAIL
+        p['_gpt']['end'] = (p['start_bytes'] + p['size_bytes']) // 512 - 1
+        p['shrink'] = ntfs.shrink_offer(20 * GIB, p['size_bytes'], p['start_bytes'])
+        self.windows = p
+        # 96 GiB less the tail, floored to whole MiB, less 40 GiB for Emaki.
+        self.new_size = 56 * GIB - MIB
+
+    def test_offer_counts_only_whole_mib(self):
+        self.assertEqual(self.windows['shrink'], {'min_bytes': 20 * GIB, 'max_free_bytes': 74 * GIB - MIB})
+        with self.assertRaisesRegex(InstallError, 'does not start on a 1 MiB boundary'):
+            ntfs.shrink_offer(20 * GIB, 96 * GIB, MIB + 512)
+
+    def test_gpt_check_ignores_only_the_alignment_caution(self):
+        runner = RecordingRunner()
+        runner.responses[('sgdisk', '--verify', '/dev/sda')] = MAC_VERIFY
+        ntfs.verify_gpt(runner, '/dev/sda')
+        for output in (MAC_VERIFY + 'Warning! Secondary partition table overlaps the last partition by 33 blocks!\n',
+                       'Caution: invalid backup GPT header, but valid main header; regenerating\n' + MAC_VERIFY,
+                       MAC_VERIFY.replace('No problems found.', 'Problem: partition 3 is too big for the disk.'),
+                       MAC_VERIFY.replace('This may\n', 'This may\n\n'),
+                       'Caution: Partition 3 doesn\'t end on a 2048-sector boundary.\nNo problems found.\n'):
+            runner.responses[('sgdisk', '--verify', '/dev/sda')] = output
+            with self.subTest(output=output), self.assertRaisesRegex(InstallError, 'GPT validation failed'):
+                ntfs.verify_gpt(runner, '/dev/sda')
+
+    def test_plan_aligns_windows_end_and_root(self):
+        plan = make_plan(self.c, self.inv)
+        root = plan.root
+        self.assertEqual(root.start, self.windows['start_bytes'] + self.new_size)
+        self.assertEqual(root.size, 40 * GIB)
+        self.assertEqual(root.start % MIB, 0)
+        self.assertEqual((root.start + root.size) % MIB, 0)
+        self.assertEqual(self.windows['start_bytes'] + self.windows['size_bytes'] - (root.start + root.size),
+                         MIB - self.TAIL)
+        self.assertIn(f'Windows keeps {self.new_size / 10**9:.2f} GB, Emaki gets 42.95 GB; back up your files first.',
+                      plan.summary)
+
+    @patch.object(ntfs, 'verify_resized_ntfs')
+    def test_resize_uses_the_aligned_windows_size(self, verify):
+        plan = make_plan(self.c, self.inv)
+        meta = self.windows['_gpt']
+        runner = RecordingRunner()
+        runner.responses[('sgdisk', '--info=2', '/dev/vda')] = gpt_text(meta)
+        runner.responses[('sgdisk', '--info=1', '/dev/vda')] = gpt_text(plan.disk['partitions'][0]['_gpt'])
+        runner.responses[('sgdisk', '--verify', '/dev/vda')] = MAC_VERIFY.replace('Partition 3', 'Partition 2')
+        size = str(self.new_size)
+        runner.responses[('ntfsresize', '--no-action', '--size', size, '/dev/vda2')] = 'The read-only test run ended successfully.'
+        runner.responses[('ntfsresize', '--size', size, '/dev/vda2')] = "Successfully resized NTFS on device '/dev/vda2'."
+        original_run = runner.run
+
+        def run(argv, **kwargs):
+            result = original_run(argv, **kwargs)
+            if argv[:2] == ['sgdisk', '--delete=2']:
+                runner.responses[('sgdisk', '--info=2', '/dev/vda')] = gpt_text(dict(meta, end=plan.root.start // 512 - 1))
+                runner.responses[('sgdisk', '--verify', '/dev/vda')] = 'No problems found.'
+            return result
+        runner.run = run
+        resize_partition(plan, runner, Mock())
+        commands = [cmd for cmd, _ in runner.commands]
+        self.assertIn(['ntfsresize', '--size', size, '/dev/vda2'], commands)
+        self.assertIn(['sgdisk', '--delete=2', f'--new=2:{meta["start"]}:{plan.root.start // 512 - 1}',
+                       f'--partition-guid=2:{GUID}', f'--typecode=2:{TYPE}', "--change-name=2:Windows owner's data",
+                       '--attributes=2:=:0x8000000000000000', '/dev/vda'], commands)
+        self.assertIn(['sgdisk', f'--new=3:{plan.root.start // 512}:{(plan.root.start + plan.root.size) // 512 - 1}',
+                       '--typecode=3:8300', '--change-name=3:Emaki', '/dev/vda'], commands)
+        verify.assert_called_once_with(runner, '/dev/vda2', self.new_size)
+
+    def test_resize_refuses_a_root_that_does_not_follow_windows(self):
+        plan = make_plan(self.c, self.inv)
+        plan.root.start += MIB
+        runner = RecordingRunner()
+        changed = Mock()
+        with self.assertRaisesRegex(InstallError, 'disagree'):
+            resize_partition(plan, runner, changed)
+        self.assertEqual(runner.commands, [])
+        changed.assert_not_called()
+
+    def test_readback_expects_the_aligned_windows_size(self):
+        plan = make_plan(self.c, self.inv)
+        runner = RecordingRunner()
+        children = [dict(path=p['path'], partn=p['number'], start=p['start_bytes'] // 512,
+                         size=self.new_size if p['number'] == 2 else p['size_bytes'],
+                         partuuid=p['_partuuid'], parttype=p['_parttype']) for p in plan.disk['partitions']]
+        children.append(dict(path='/dev/vda3', partn=3, start=plan.root.start // 512,
+                             size=plan.root.size, partuuid='new-root-guid'))
+        query = ('lsblk', '--tree', '-J', '-b', '-o', 'PATH,TYPE,PARTN,START,SIZE,PTTYPE,PARTUUID,PARTTYPE', '/dev/vda')
+        runner.responses[query] = json.dumps({'blockdevices': [{'pttype': 'gpt', 'children': children}]})
+        archroot = SimpleNamespace(partn=3, dev_path=None)
+        DeviceOperations(plan, runner).verify_alongside_layout(SimpleNamespace(partitions=[archroot]))
+        self.assertEqual(archroot.dev_path, Path('/dev/vda3'))
+        children[1]['size'] = self.windows['size_bytes'] - 40 * GIB
+        runner.responses[query] = json.dumps({'blockdevices': [{'pttype': 'gpt', 'children': children}]})
+        with self.assertRaisesRegex(InstallError, 'existing partition changed'):
+            DeviceOperations(plan, runner).verify_alongside_layout(SimpleNamespace(partitions=[archroot]))
 
 
 if __name__ == '__main__':

@@ -39,8 +39,28 @@ Item {
     }
     property string phase: "idle"
     readonly property bool busy: phase !== "idle"
-    readonly property bool mutating: phase === "installing" || phase === "removing"
+    readonly property bool mutating: phase === "installing" || phase === "removing" || phase === "undoing"
+    // The AUR section stays closed until this person accepts its warning (engine-side consent).
+    property bool aurKnown: false
+    property bool aurEnabled: false
+    property bool aurShowWarning: true
+    property bool aurSnapshots: false
+    property string aurQuery: ""
+    property var aurRows: []
+    property bool aurSearched: false
+    property var aurPopular: []
+    property bool aurPopularLoaded: false
+    // Browse's picks arrive with the catalog (update-manager/storefront.json).
+    property var storefront: ({featured: {title: "", note: "", programs: []}, rows: [], names: {}})
+    // The full install's programs, offered on Browse only after a minimal install. Sent by the engine
+    // with the catalog as {minimal, programs}; until it is, nothing is offered.
+    property var essentials: ({minimal: false, programs: []})
+    // Emaki's own optional packages for this computer (update-manager/emaki-shelf.json, read by the engine).
+    property var shelf: []
+    // Background reads (consent state, AUR editions) wait for the single request slot.
+    property var deferred: []
     property bool externalBusy: false
+    property var recoveryPoint: null
     property string message: ""
     property bool messageIsError: true
     property string output: ""
@@ -48,6 +68,7 @@ Item {
     property var warnings: []
     property var plan: null
     property string planAction: ""
+    property string planKey: ""
     readonly property var planRows: Logic.planRows(plan)
     property bool previewOpen: false
     property bool succeeded: false
@@ -64,14 +85,27 @@ Item {
     property int inventoryRetriesRemaining: 0
     property bool ready: false
     property bool refreshPending: false
-    onBusyChanged: if (!busy && refreshPending) Qt.callLater(drainRefresh)
+    onPreviewOpenChanged: if (!previewOpen && refreshPending) Qt.callLater(drainRefresh)
+    onBusyChanged: if (!busy) Qt.callLater(refreshPending ? drainRefresh : drainDeferred)
     onExternalBusyChanged: if (!externalBusy && refreshPending) Qt.callLater(drainRefresh)
     onInventoryLoadingChanged: if (!inventoryLoading && refreshPending) Qt.callLater(drainRefresh)
     signal transactionFinished(bool ok)
+    signal restoreFinished(var result)
 
+    function later(method: string, params: var, nextPhase: string): void {
+        if (!busy && !refreshPending) { request(method, params, nextPhase); return; }
+        // One pending read per method: a newer page or choice replaces an older one.
+        deferred = deferred.filter(item => item.method !== method).concat([{method: method, params: params, phase: nextPhase}]);
+    }
+    function drainDeferred(): void {
+        if (busy || refreshPending || !deferred.length) return;
+        const next = deferred[0];
+        deferred = deferred.slice(1);
+        request(next.method, next.params, next.phase);
+    }
     function request(method: string, params: var, nextPhase: string): void {
         if (busy) return;
-        if (nextPhase === "planning" || nextPhase === "installing" || nextPhase === "removing") {
+        if (nextPhase === "planning" || nextPhase === "installing" || nextPhase === "removing" || nextPhase === "undoing") {
             message = ""; messageIsError = true;
         }
         phase = nextPhase;
@@ -98,7 +132,7 @@ Item {
     function drainRefresh(): void {
         // A presentation can arrive while a request or update is still running.
         // Keep one refresh queued until all readers can take a fresh snapshot.
-        if (!refreshPending || busy || externalBusy || inventoryLoading) return;
+        if (!refreshPending || busy || externalBusy || inventoryLoading || previewOpen) return;
         refreshPending = false;
         plan = null; planAction = ""; previewOpen = false;
         searchRows = []; packageRows = []; packageTotal = 0;
@@ -150,31 +184,55 @@ Item {
     }
     function openProgram(row: var): void {
         if (busy) return;
-        const merged = Logic.merge(installedPrograms.concat(allRows, searchRows)).find(item => Logic.identity(item) === Logic.identity(row));
+        const merged = Logic.merge(installedPrograms.concat(allRows, searchRows, aurRows, aurPopular)).find(item => Logic.identity(item) === Logic.identity(row));
         selectedProgram = merged || Object.assign({}, row, {editions: row.editions || [row]});
-        selectedEdition = row.editions ? Logic.edition(selectedProgram) : (selectedProgram.editions.find(item => item.key === row.key) || selectedProgram.editions[0]);
+        selectedEdition = row.editions ? Logic.edition(selectedProgram) : Logic.edition(selectedProgram, row.key);
         clearPlan();
+        loadRelated();
+    }
+    function loadRelated(): void {
+        // The same program built from the AUR joins its page once the section is open.
+        const program = selectedProgram;
+        const base = (program?.editions || []).find(row => (row.kind === "arch" || row.kind === "flatpak") && !row.packageOnly && !String(row.key).startsWith("legacy:"));
+        // After the caller's own request (a removal preview opens the page first).
+        if (aurEnabled && base && !(program.editions || []).some(row => row.kind === "aur"))
+            Qt.callLater(() => root.later("related", {key: base.key}, "related"));
     }
     function selectEdition(kind: string): void {
         if (busy || !selectedProgram) return;
         selectedEdition = Logic.edition(selectedProgram, kind);
         clearPlan();
     }
-    function clearPlan(): void { plan = null; planAction = ""; previewOpen = false; message = ""; messageIsError = true; }
+    function clearPlan(): void { plan = null; planAction = ""; planKey = ""; previewOpen = false; message = ""; messageIsError = true; }
     function prepareInstall(): void { prepare("install"); }
     function prepareRemove(row: var): void {
         if (row) openProgram(row);
         prepare("remove");
     }
+    function prepareUndo(): void { prepare("undo"); }
     function prepare(action: string): void {
         if (busy || externalBusy || refreshPending || !selectedEdition || !(selectedEdition.actions || []).includes(action)) return;
         plan = null; planAction = action; previewOpen = true;
-        request("plan", {action: action, key: selectedEdition.key}, "planning");
+        // An Installed row keeps its removal identity; undo goes to the recorded catalog edition.
+        planKey = action === "undo" && selectedEdition.undoKey ? selectedEdition.undoKey
+            : action === "install" && selectedEdition.catalogKey ? selectedEdition.catalogKey : selectedEdition.key;
+        request("plan", {action: action, key: planKey}, "planning");
     }
     function executePlan(): void {
-        if (busy || externalBusy || refreshPending || !plan || !plan.ok || !plan.token || !selectedEdition || plan.key !== selectedEdition.key) return;
+        if (busy || externalBusy || refreshPending || !plan || !plan.ok || !plan.token || !selectedEdition || plan.key !== planKey) return;
         output = ""; percent = -1; succeeded = false;
-        request("execute", {action: planAction, key: plan.key, token: plan.token}, planAction === "install" ? "installing" : "removing");
+        request("execute", {action: planAction, key: plan.key, token: plan.token},
+                planAction === "install" ? "installing" : planAction === "undo" ? "undoing" : "removing");
+    }
+    function readAur(): void { later("aur", {}, "aur"); }
+    function setAur(accept: bool, showWarning: bool): void {
+        if (externalBusy && accept) return;
+        later("aur", accept ? {accept: true, showWarning: showWarning} : {accept: false}, "aur");
+    }
+    function readPopular(): void { later("popular", {}, "aurPopular"); }
+    function searchAur(text: string): void {
+        aurQuery = text; aurRows = []; aurSearched = false;
+        aurDelay.restart();
     }
     function cancelPlan(): void { if (!busy) clearPlan(); }
     function openInstalled(): void {
@@ -196,7 +254,7 @@ Item {
         // A fresh catalog can reconcile the open page even while the separate
         // removable-program inventory is unavailable. Keep its last good list.
         const rows = installedReceived ? installedPrograms.concat(Logic.consolidate(allRows)) : Logic.consolidate(allRows);
-        const current = rows.find(row => row.key === previous.key)
+        const current = rows.find(row => row.key === previous.key || row.catalogKey === previous.key)
             || rows.find(row => previous.package && row.package === previous.package && row.kind === previous.kind);
         if (current) {
             selectedProgram = Logic.merge(rows).find(row => (row.editions || []).some(item => item.key === current.key));
@@ -215,13 +273,52 @@ Item {
         const previous = phase;
         const params = pending.params;
         pending = null; phase = "idle";
+        if (previous === "undoing" && event.restart === true) restoreFinished(event);
+        if (previous === "installing") {
+            recoveryPoint = !event.ok && event.restoreToken
+                ? {id: String(event.restoreToken), snapshot: String(event.snapshot || ""), operation: "install"}
+                : null;
+        }
         if (!event.ok) {
+            // A missing AUR edition is not an error of the page the person is reading.
+            if (previous === "related") return;
+            if (previous === "aurSearch") aurSearched = true;
+            if (previous === "aur") aurKnown = true;
+            if (previous === "aurPopular") { aurPopular = []; aurPopularLoaded = true; }
             messageIsError = true;
-            message = event.message || "The install or removal could not finish. See the details below.";
+            message = (event.message || "The install or removal could not finish. See the details below.") + Logic.undoRefusal(event);
             if (previous === "packageDetails" && selectedEdition?.key === params.key)
                 selectedEdition = Object.assign({}, selectedEdition, {actions: []});
-            if (previous === "planning" || previous === "installing" || previous === "removing") { plan = null; previewOpen = false; }
-            if (previous === "installing" || previous === "removing") { transactionFinished(false); refreshAfterTransaction(); }
+            if (previous === "planning") plan = null;
+            if (mutatingPhase(previous)) { plan = null; previewOpen = false; }
+            if (mutatingPhase(previous)) { transactionFinished(false); refreshAfterTransaction(); }
+            if (previous === "installing" && !event.notStarted && !installRefusals.includes(event.code)) offerReport();
+            if (event.code === "aur-closed") { aurEnabled = false; aurRows = []; }
+            return;
+        }
+        if (previous === "aur") {
+            aurKnown = true;
+            aurEnabled = event.enabled === true;
+            aurShowWarning = event.showWarning !== false;
+            aurSnapshots = event.snapshots === true;
+            if (!aurEnabled) { aurRows = []; aurSearched = false; aurPopular = []; aurPopularLoaded = false; }
+            return;
+        }
+        if (previous === "aurPopular") {
+            aurPopular = event.programs || [];
+            aurPopularLoaded = true;
+            return;
+        }
+        if (previous === "related") {
+            const found = (event.programs || []).filter(row => row.kind === "aur" && row.sameAs === params.key);
+            const editions = selectedProgram?.editions || [];
+            if (found.length && editions.some(row => row.key === params.key))
+                selectedProgram = Object.assign({}, selectedProgram, {editions: editions.concat(found.filter(row => !editions.some(other => other.key === row.key)))});
+            return;
+        }
+        if (previous === "aurSearch") {
+            if (params.query === aurQuery) { aurRows = event.programs || []; aurSearched = true; }
+            else aurDelay.restart();
             return;
         }
         warnings = event.warnings || warnings;
@@ -231,11 +328,19 @@ Item {
                 request("catalog", {limit: 500, offset: collected.length}, "catalog");
             } else {
                 allRows = collected;
+                if (event.storefront) storefront = event.storefront;
+                shelf = Array.isArray(event.shelf) ? event.shelf : [];
+                essentials = event.essentials?.minimal === true && Array.isArray(event.essentials.programs)
+                    ? {minimal: true, programs: event.essentials.programs} : {minimal: false, programs: []};
                 catalogReceived = true;
                 reconcileSelection();
                 if (selectedEdition?.packageOnly)
                     request("details", {key: selectedEdition.key}, "packageDetails");
                 if (query || scope === "packages") searchDelay.restart();
+                if (aurEnabled && aurQuery) aurDelay.restart();
+                // Installed marks on the popular list follow the fresh catalog.
+                if (aurEnabled && aurPopularLoaded) readPopular();
+                if (!aurKnown) readAur();
             }
         } else if (previous === "packageDetails") {
             if (event.program?.key === params.key && selectedEdition?.key === params.key) {
@@ -260,11 +365,11 @@ Item {
                 searchCollected = searchCollected.concat(event.programs || []);
                 searchRows = searchCollected;
                 if (searchCollected.length < event.total && (event.programs || []).length)
-                    request("search", {query: query, includeAur: true, limit: 500, offset: searchCollected.length}, "search");
+                    request("search", {query: query, includeAur: false, limit: 500, offset: searchCollected.length}, "search");
             }
         } else if (previous === "planning") {
             plan = event;
-        } else if (previous === "installing" || previous === "removing") {
+        } else if (mutatingPhase(previous)) {
             succeeded = true; previewOpen = false; plan = null;
             messageIsError = false;
             message = event.message || "";
@@ -272,15 +377,28 @@ Item {
             refreshAfterTransaction();
         }
     }
+    function mutatingPhase(name: string): bool { return name === "installing" || name === "removing" || name === "undoing"; }
     function refreshAfterTransaction(): void {
         // Even a failed operation may have changed the installed state.
         Qt.callLater(() => root.refresh());
     }
     function fail(text: string): void {
-        const changing = mutating;
-        pending = null; phase = "idle"; plan = null; previewOpen = false; messageIsError = true; message = text;
+        const changing = mutating, installing = phase === "installing", planning = phase === "planning";
+        pending = null; phase = "idle"; plan = null;
+        if (!planning) previewOpen = false;
+        messageIsError = true; message = text;
         if (changing) { transactionFinished(false); refreshAfterTransaction(); }
+        if (installing) offerReport();
     }
+    // Install results that are refusals by design or a stale plan (authorization, consent,
+    // snapshot policy, a plan that no longer holds): nothing broke, so nothing is offered.
+    readonly property var installRefusals: ["not-authorized", "changed", "plan-changed", "refused", "aur-closed",
+        "snapshots-unavailable", "metadata-unavailable", "not-found", "up-to-date", "missing-dependency", "dependency-cycle",
+        "recipe-unavailable", "too-large"]
+    // Offer, never send, a problem report; the shell's answer changes nothing here.
+    function offerReport(): void { if (!reportOffer.running) reportOffer.running = true; }
+    Process { id: reportOffer; command: ["emaki-shell", "call", "report", "offer", "install"] }
+    Timer { interval: 5000; running: reportOffer.running; onTriggered: reportOffer.running = false }
     Timer {
         id: searchDelay
         interval: 250
@@ -291,7 +409,15 @@ Item {
             root.activeSearchGeneration = root.searchGeneration;
             if (root.scope === "packages")
                 root.request("catalog", {scope: "packages", query: root.query, limit: 500, offset: 0}, "packages");
-            else root.request("search", {query: root.query, includeAur: true, limit: 500, offset: 0}, "search");
+            else root.request("search", {query: root.query, includeAur: false, limit: 500, offset: 0}, "search");
+        }
+    }
+    Timer {
+        id: aurDelay
+        interval: 300
+        onTriggered: {
+            if (!root.aurEnabled || root.aurQuery.trim().length < 2) { root.aurRows = []; root.aurSearched = false; return; }
+            root.later("catalog", {query: root.aurQuery, source: "aur", limit: 100, offset: 0}, "aurSearch");
         }
     }
     Timer {

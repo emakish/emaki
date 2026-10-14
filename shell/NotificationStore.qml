@@ -293,11 +293,26 @@ Scope {
             arrived(id);
     }
     property int systemId: -1
+    // A local action runs nothing here: the store only names it to the shell part that
+    // offered it (the report window), which decides what opens.
+    signal localActionRequested(string action)
     // A notice from the shell itself (no D-Bus object): negative IDs, no actions.
     function local(app: string, summary: string, body: string): int {
         return localNotice(app, summary, body, false, false);
     }
+    // A local notice with one action. It lives only in memory; restored history is inert.
+    function offer(app: string, summary: string, body: string, action: string, label: string): int {
+        return addLocal(app, summary, body, false, false, [
+            {
+                id: action,
+                text: label.slice(0, 128)
+            }
+        ]);
+    }
     function localNotice(app: string, summary: string, body: string, batteryWarning: bool, sessionUpdate: bool): int {
+        return addLocal(app, summary, body, batteryWarning, sessionUpdate, []);
+    }
+    function addLocal(app: string, summary: string, body: string, batteryWarning: bool, sessionUpdate: bool, actions: var): int {
         const appId = "name:" + app.slice(0, 128);
         if (!batteryWarning && !sessionUpdate)
             rememberApplication(appId, app);
@@ -316,7 +331,7 @@ Scope {
                 body: body.slice(0, 4096),
                 time: Date.now(),
                 object: null,
-                actions: [],
+                actions: actions,
                 deadline: 0
             }
         ].concat(entries);
@@ -343,6 +358,13 @@ Scope {
     }
     function activate(id: int, action: string): bool {
         const entry = entries.find(e => e.id === id);
+        if (entry && !entry.object && action !== "default" && entry.actions.some(a => a.id === action)) {
+            // Like a nonresident D-Bus action: choosing it closes the notice.
+            entries = entries.filter(e => e.id !== id);
+            actionState = "requested";
+            localActionRequested(action);
+            return true;
+        }
         const selected = entry?.object?.actions.find(a => a.identifier === action);
         if (!selected) {
             actionState = "action_unavailable";

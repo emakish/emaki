@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Read system details and save a private, local diagnostic report for review."""
+"""Read system details, save a private local diagnostic report, or build a prefilled issue address."""
 import json
 import os
 from pathlib import Path
 import platform
+import re
 import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
+from urllib.parse import quote, urlencode
 
 sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import emaki_paths
+from emaki_report_redact import Redactor
 
 UNKNOWN = 'Unavailable'
 
@@ -29,7 +32,7 @@ def read(path):
 def command(args):
     try:
         result = subprocess.run(args, capture_output=True, text=True, timeout=10,
-                                env=dict(os.environ, LC_ALL='C'))
+                                env=dict(os.environ, LC_ALL='C', PYTHONDONTWRITEBYTECODE='1'))
         return result.stdout.strip()[:262144] if result.returncode == 0 else UNKNOWN
     except (OSError, subprocess.SubprocessError, UnicodeError):
         return UNKNOWN
@@ -77,8 +80,15 @@ def graphics_names(output):
     return '\n'.join(names) or UNKNOWN
 
 
-def details():
+def identity():
+    """The software facts a public problem report may carry; no hardware is read here."""
     info = release()
+    return {'version': info.get('VERSION', UNKNOWN), 'label': info.get('LABEL', ''),
+            'channel': info.get('CHANNEL') or command(['emaki-update-channel']),
+            'commit': info.get('EMAKI_COMMIT', UNKNOWN), 'kernel': platform.release()}
+
+
+def details():
     cpu = next((line.partition(':')[2].strip() for line in read('/proc/cpuinfo').splitlines()
                 if line.startswith(('model name', 'Hardware'))), UNKNOWN)
     memory = next((line.partition(':')[2].strip() for line in read('/proc/meminfo').splitlines()
@@ -98,11 +108,8 @@ def details():
                                     read('/sys/class/dmi/id/bios_version')])) or UNKNOWN
     model = ' '.join(filter(None, [read('/sys/class/dmi/id/sys_vendor'),
                                  read('/sys/class/dmi/id/product_name')])) or UNKNOWN
-    return {'version': info.get('VERSION', UNKNOWN), 'label': info.get('LABEL', ''),
-            'channel': info.get('CHANNEL') or command(['emaki-update-channel']),
-            'commit': info.get('EMAKI_COMMIT', UNKNOWN), 'computer': model,
-            'processor': cpu, 'graphics': graphics, 'memory': memory, 'disk': storage,
-            'firmware': firmware, 'kernel': platform.release(),
+    return {**identity(), 'computer': model, 'processor': cpu, 'graphics': graphics,
+            'memory': memory, 'disk': storage, 'firmware': firmware,
             'window_manager': command(['niri', '--version'])}
 
 
@@ -114,7 +121,7 @@ def report(info):
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     parts = ['Emaki problem report', 'Review this file before sharing. It may contain private information.',
              'This file has not been uploaded.', '', 'System details']
-    parts.extend(f'{key}: {value}' for key, value in info.items())
+    parts.extend(f'{key}: {value}' for key, value in info.items() if key != 'commit')
     for title, args in [
         ('Recent journal errors', ['journalctl', '-b', '-p', 'err', '-n', '200', '--no-pager']),
         ('Failed system units', ['systemctl', '--failed', '--no-legend', '--no-pager']),
@@ -122,17 +129,85 @@ def report(info):
         ('Block devices', ['lsblk', '-o', 'NAME,TYPE,SIZE,MODEL', '--json']),
     ]:
         parts.extend(['', title, command(args)])
+    text = Redactor().redact('\n'.join(parts) + '\n')
     fd, name = tempfile.mkstemp(prefix='problem-', suffix='.txt', dir=directory)
     try:
         with os.fdopen(fd, 'w') as stream:
-            stream.write('\n'.join(parts) + '\n')
+            stream.write(text)
     except BaseException:
         Path(name).unlink(missing_ok=True)
         raise
     return name
 
 
+VERSION = re.compile(r'[0-9A-Za-z][0-9A-Za-z.+~_-]{0,31}')
+
+
+def issue_target():
+    """The issue tracker named by Emaki's own os-release, never the host distribution's."""
+    fields = {}
+    for line in read(Path(emaki_paths.LIBDIR) / 'os-release').splitlines():
+        key, sep, value = line.partition('=')
+        if sep:
+            try:
+                fields[key] = ' '.join(shlex.split(value))
+            except ValueError:
+                pass
+    url = fields.get('BUG_REPORT_URL', '')
+    if fields.get('VARIANT_ID') != 'emaki' or not re.fullmatch(
+            r'https://github\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/issues/?', url):
+        return None
+    return url.rstrip('/') + '/new'
+
+
+def installation(version):
+    """Compare the version the installer recorded with the running one."""
+    try:
+        record = json.loads(read(Path(emaki_paths.LOCALSTATEDIR) / 'installed.json'))
+        installed = record['emaki_version'] if record.get('version') == 1 else None
+    except (ValueError, TypeError, AttributeError, KeyError):
+        installed = None
+    if not isinstance(installed, str) or not VERSION.fullmatch(installed):
+        return 'Not recorded (please say whether this is a fresh installation or an updated one)'
+    if installed == version:
+        return f'Installed with Emaki {installed}; current release matches'
+    return f'Installed with Emaki {installed}; now on {version}'
+
+
+def one_line(value):
+    return ' '.join(str(value or '').split())[:120] or UNKNOWN
+
+
+def issue_body(info):
+    """Only the fields named here enter the issue: no hardware, names, paths or logs. The build
+    commit is left out: it is not a commit of the public repository."""
+    version = ' '.join(filter(None, [info.get('version') or UNKNOWN, info.get('label')]))
+    system = [('Emaki', version), ('Update channel', info.get('channel')),
+              ('Linux kernel', info.get('kernel')),
+              ('Installation', installation(info.get('version')))]
+    return '\n'.join([
+        '### What happened', '', '', '### What I expected', '', '',
+        '### Steps to reproduce', '1. ', '2. ', '3. ', '',
+        '### System', *(f'- {name}: {one_line(value)}' for name, value in system), '',
+        '<!-- Nothing else was collected from your computer. Logs help, but add them only if you '
+        'choose to: Settings > About can save a diagnostics file for you to review first. -->', ''])
+
+
+def issue(info):
+    target = issue_target()
+    if target is None:
+        return None
+    return target + '?' + urlencode({'body': issue_body(info)}, quote_via=quote)
+
+
 def main(args):
+    if args == ['issue', '--json']:
+        url = issue(identity())
+        if url is None:
+            print(json.dumps({'schema_version': 1, 'status': 'error', 'reason': 'issue_target_unavailable'}))
+            return 1
+        print(json.dumps({'schema_version': 1, 'status': 'issue', 'url': url}))
+        return 0
     if args not in (['status', '--json'], ['report', '--json']):
         print(json.dumps({'schema_version': 1, 'status': 'error', 'reason': 'invalid_command'}))
         return 2

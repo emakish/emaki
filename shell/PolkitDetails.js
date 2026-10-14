@@ -50,8 +50,11 @@ function programRequest(action, details, libexecDir) {
     const operations = {
         "org.emaki.programs.install": "install",
         "org.emaki.programs.remove": "remove",
+        "org.emaki.programs.aur": "aur",
+        "org.emaki.programs.undo": "undo",
         "org.emaki.programs.flatpak.install": "install",
-        "org.emaki.programs.flatpak.remove": "remove"
+        "org.emaki.programs.flatpak.remove": "remove",
+        "org.emaki.programs.flatpak.undo": "undo"
     };
     if (!Object.prototype.hasOwnProperty.call(operations, action))
         return null;
@@ -66,15 +69,28 @@ function programRequest(action, details, libexecDir) {
     if (words[0] !== helper)
         return null;
     const digest = /^[0-9a-f]{64}$/;
+    const receipt = /^[0-9]{8}T[0-9]{12}Z-[0-9a-f]{32}$/;
+    const packageName = /^[a-z0-9@_+][a-z0-9@._+-]{0,127}$/;
     let target;
     if (flatpak) {
-        if (words.length !== 5 || words[1] !== operation
+        const undo = operation === "undo";
+        if (words.length !== (undo ? 6 : 5) || words[1] !== operation
                 || !/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/.test(words[2])
                 || words[3].length > 512
                 || !/^app\/[A-Za-z0-9_][A-Za-z0-9_.-]*\/[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/.test(words[3])
-                || !digest.test(words[4]))
+                || (undo && !receipt.test(words[4]))
+                || !digest.test(words[words.length - 1]))
             return null;
         target = words[3].split("/")[1];
+    } else if (operation === "aur") {
+        if (words.length !== 3 || !packageName.test(words[1]) || !digest.test(words[2]))
+            return null;
+        // The source comes first: nobody checked what the AUR builds.
+        target = "AUR · " + words[1];
+    } else if (operation === "undo") {
+        if (words.length !== 4 || !receipt.test(words[1]) || !packageName.test(words[2]) || !digest.test(words[3]))
+            return null;
+        target = words[2];
     } else {
         if (words.length !== 3 || words[1].length > 512)
             return null;
@@ -86,8 +102,10 @@ function programRequest(action, details, libexecDir) {
         target = words[1];
     }
     const wording = operation === "remove" ? "Remove program"
+                   : operation === "undo" ? "Undo the install of this program"
+                   : operation === "aur" ? "Build and install program and update repository packages"
                    : flatpak ? "Install program" : "Install program and update repository packages";
-    return {headline: target + " — [PLACEHOLDER] " + wording, command: command};
+    return {headline: target + " — " + wording, command: command};
 }
 
 function headline(action, message, details, libexecDir) {

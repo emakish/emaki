@@ -227,6 +227,25 @@ class RuntimeTests(unittest.TestCase):
                 self.assertEqual(order, ['stop', 'sync', 'udevadm', 'check', 'umount', 'umount'])
                 self.assertTrue(any('Permission denied' in line for line in logs), logs)
 
+    def test_cleanup_survives_a_udev_queue_that_does_not_settle(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            logs = []
+            runner = RecordingRunner(logs.append)
+            with patch('emaki_installer.runtime.mounts_under', return_value=[root / 'home', root]), \
+                    patch('emaki_installer.runtime.stop_target_processes'):
+                runner.fail = lambda argv: argv[0] == 'udevadm'
+                cleanup(runner, [root])
+                self.assertEqual([c for c, _ in runner.commands if c[0] == 'umount'],
+                                 [['umount', '--', str(root / 'home')], ['umount', '--', str(root)]])
+                self.assertTrue(any('device events still pending' in line for line in logs), logs)
+                # A failed sync and a failed unmount still fail the cleanup.
+                for failing in ('sync', 'umount'):
+                    runner.fail = lambda argv, failing=failing: argv[0] == failing
+                    with self.subTest(failing=failing), patch('emaki_installer.runtime.time.sleep'), \
+                            self.assertRaises(InstallError):
+                        cleanup(runner, [root])
+
     def test_cleanup_with_a_failing_log_still_unmounts(self):
         def full_log(line):
             raise OSError(28, 'No space left on device')

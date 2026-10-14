@@ -58,6 +58,13 @@ ShellRoot {
         store: outputs.shared.notifications
         ready: root.valid && !root.headless && !startup.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
     }
+    ReportController {
+        id: report
+        store: outputs.shared.notifications
+        enabled: root.valid && !root.headless
+        onOpening: outputs.closeAll()
+        Component.onCompleted: ReportBridge.controller = report
+    }
     SessionUpdateNotice {
         store: outputs.shared.notifications
         ready: root.valid && !root.headless && !startup.coverActive && !(root.scene?.pairingPeekOpen ?? false) && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)

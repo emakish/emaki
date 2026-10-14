@@ -2,7 +2,7 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Rootless update acceptance, transaction fencing and interrupted publication."""
-from contextlib import ExitStack, nullcontext, redirect_stderr
+from contextlib import ExitStack, contextmanager, nullcontext, redirect_stderr
 import io
 import json
 import inspect
@@ -29,6 +29,76 @@ NEW = '12345678-1234-5678-9abc-123456789abd'
 
 
 class UpdateBoot(unittest.TestCase):
+    def test_zero_space_refuses_recovery_publication_and_transaction(self):
+        self.stack.enter_context(patch.object(refresh, 'shared_esp', return_value=True))
+        opened = self.stack.enter_context(patch.object(update.shared, 'open_writes'))
+        update.prepare(self.identity)
+        self.snapshot()
+        empty = types.SimpleNamespace(f_bavail=0, f_frsize=4096)
+        with patch.object(refresh, 'Path', side_effect=lambda path: self.esp.parent.parent / str(path).removeprefix('/efi').lstrip('/') if str(path).startswith('/efi') else Path(path)), \
+                patch.object(refresh.os, 'statvfs', return_value=empty) as space, \
+                patch.object(update.os, 'geteuid', return_value=0), \
+                patch.object(update, 'supported', return_value=self.identity), \
+                redirect_stderr(io.StringIO()):
+            self.assertEqual(update.main(['mark']), 1)
+        self.assertTrue(space.called)
+        opened.assert_not_called()
+        self.assertEqual(list(self.esp.iterdir()), [])
+
+    def test_missing_shared_record_refuses_package_guard(self):
+        (self.esp.parent / 'Microsoft').mkdir()
+        with patch.object(refresh, 'SHARED_ESP', self.root / 'absent.json'), \
+                patch.object(refresh, 'Path', side_effect=lambda path: self.esp.parent.parent if str(path) == '/efi' else self.root / str(path).lstrip('/')), \
+                patch.object(refresh, 'esp_mount_path', return_value=self.esp.parent.parent), \
+                patch.object(refresh, 'fstab_path', return_value=self.root / 'etc/fstab'), \
+                patch.object(update.shared, 'MARKER', self.root / 'absent.json'), \
+                patch.object(update.os, 'geteuid', return_value=0), \
+                redirect_stderr(io.StringIO()):
+            self.assertEqual(update.main(['guard-alongside']), 1)
+
+    def test_foreign_file_post_write_failure_aborts_recovery_hooks(self):
+        @contextmanager
+        def post_write_failure(**kwargs):
+            yield
+            raise update.shared.Stopped(update.shared.STOPPED)
+
+        for action in ('prepare', 'mark'):
+            with self.subTest(action=action), \
+                    patch.object(update.os, 'geteuid', return_value=0), \
+                    patch.object(update, 'supported', return_value=self.identity), \
+                    patch.object(update, 'locked', side_effect=post_write_failure), \
+                    patch.object(update, action), redirect_stderr(io.StringIO()):
+                self.assertEqual(update.main([action]), 1)
+
+    def test_shared_ext4_hibernation_preserves_loader_trial_counters(self):
+        session = types.SimpleNamespace(foreign_root=lambda: False)
+        counter = {'emaki_candidate': 'a' * 32, 'emaki_trial': '0'}
+        saved = self.root / 'trial-sleep.json'
+        with patch.dict(sys.modules, {'emaki_session_state': session}), \
+                patch.object(refresh, 'Path', side_effect=lambda path: self.esp / 'trial.env' if str(path) == '/efi/EFI/Emaki/trial.env' else Path(path)), \
+                patch.object(refresh, 'SLEEP_STATE', str(saved)), \
+                patch.object(refresh, 'esp_writable'), \
+                patch.object(refresh, 'trial_state', side_effect=lambda: dict(counter)), \
+                patch.object(refresh, 'mount_info', return_value={'fstype': 'ext4', 'fsroot': '/'}), \
+                patch.object(refresh, 'shared_esp', return_value=True), \
+                patch.object(update.os, 'geteuid', return_value=0), \
+                patch.object(update.os.path, 'ismount', return_value=True), \
+                patch.object(refresh, 'sleep_run_lock', side_effect=lambda *args: nullcontext(True)), \
+                patch.object(update.shared, 'session', side_effect=nullcontext), \
+                patch.object(update, 'sleep_phase') as snapshots, \
+                patch.object(refresh, 'sleep_trial', wraps=refresh.sleep_trial) as trial, \
+                patch.object(update.subprocess, 'run') as run:
+            self.assertEqual(update.main(['hibernate-pre']), 0)
+            trial.assert_called_once_with('pre')
+            self.assertEqual(json.loads(saved.read_text()), counter)
+            counter['emaki_trial'] = '1'
+            self.assertEqual(update.main(['hibernate-post']), 0)
+            self.assertEqual(trial.call_args_list[-1].args, ('post',))
+            snapshots.assert_not_called()
+            self.assertIn(b'emaki_trial=0', (self.esp / 'trial.env').read_bytes())
+            self.assertFalse(saved.exists())
+            run.assert_called_once_with(['umount', '/efi'], check=True, timeout=60)
+
     def test_alongside_initial_install_hook_skips_before_runtime_protection(self):
         with patch.object(refresh.Path, 'exists', autospec=True,
                           side_effect=lambda path: str(path) == '/.emaki-install-incomplete'), \
@@ -50,19 +120,57 @@ class UpdateBoot(unittest.TestCase):
             shared.assert_not_called()
             attempt.assert_not_called()
 
-    def test_shared_esp_package_guard_aborts_before_any_disk_or_recovery_operation(self):
+    def test_shared_guard_recovers_only_while_holding_the_boot_lock(self):
+        events = []
+
+        @contextmanager
+        def locked(**kwargs):
+            events.append('locked')
+            yield
+            events.append('unlocked')
+
+        with patch.object(refresh, 'shared_esp', return_value=True), \
+                patch.object(update.Path, 'is_file', return_value=False), \
+                patch.object(update.os, 'geteuid', return_value=0), \
+                patch.object(update, 'locked', side_effect=locked), \
+                patch.object(update.shared, 'check', side_effect=lambda: events.append('checked')):
+            self.assertEqual(update.main(['guard-alongside']), 0)
+        self.assertEqual(events, ['locked', 'checked', 'unlocked'])
+
+    def test_shared_esp_package_guard_refuses_only_unsafe_states_before_any_disk_operation(self):
+        refusal = update.shared.Refused(update.shared.HIBERNATED)
         with patch.object(refresh, 'SHARED_ESP', self.root / 'alongside.json'), \
+                patch.object(update.shared, 'MARKER', self.root / 'alongside.json'), \
                 patch.object(update.os, 'geteuid', return_value=0), \
                 patch.object(update, 'supported') as supported, \
-                patch.object(refresh, 'run') as run, redirect_stderr(io.StringIO()):
+                patch.object(update.shared, 'run') as shared_run, \
+                patch.object(refresh, 'run') as run:
+            # No shared ESP: nothing to check.
             self.assertEqual(update.main(['guard-alongside']), 0)
+            # A malformed record (not root-owned, not version 1) refuses before any probe.
             refresh.SHARED_ESP.write_text('{}')
-            self.assertEqual(update.main(['guard-alongside']), 1)
-            with patch.object(update.Path, 'is_file', return_value=True):
+            errors = io.StringIO()
+            with redirect_stderr(errors):
+                self.assertEqual(update.main(['guard-alongside']), 1)
+            self.assertIn('record of the startup partition', errors.getvalue())
+            shared_run.assert_not_called()
+            # The installer owns an unfinished target: allowed without probing Windows.
+            with patch.object(update.Path, 'is_file', return_value=True), \
+                    patch.object(update.shared, 'check') as check:
                 self.assertEqual(update.main(['guard-alongside']), 0)
+                check.assert_not_called()
+            with patch.object(update.shared, 'check') as check:
+                self.assertEqual(update.main(['guard-alongside']), 0)
+                check.assert_called_once_with()
+                check.side_effect = refusal
+                errors = io.StringIO()
+                with redirect_stderr(errors):
+                    self.assertEqual(update.main(['guard-alongside']), 1)
+                self.assertEqual(errors.getvalue(), update.shared.HIBERNATED + '\n')
             refresh.SHARED_ESP.unlink()
             refresh.SHARED_ESP.symlink_to(self.root / 'missing-marker')
-            self.assertEqual(update.main(['guard-alongside']), 1)
+            with redirect_stderr(io.StringIO()):
+                self.assertEqual(update.main(['guard-alongside']), 1)
             supported.assert_not_called()
             run.assert_not_called()
         hook = ROOT / 'grub/00-emaki-alongside.hook'
@@ -76,42 +184,140 @@ class UpdateBoot(unittest.TestCase):
                 if other != hook and 'When = PreTransaction' in other.read_text():
                     self.assertLess(hook.name, other.name)
 
-    def test_shared_esp_disables_runtime_and_pre_resume_writers(self):
+    def test_shared_esp_skips_sleep_bookkeeping_without_probing(self):
+        # Hibernation unmounts the shared ESP first; user.slice is frozen meanwhile.
         with patch.object(refresh, 'shared_esp', return_value=True), \
                 patch.object(update.os, 'geteuid', return_value=0), \
+                patch.object(refresh.subprocess, 'run',
+                             return_value=types.SimpleNamespace(returncode=1)), \
                 patch.object(update, 'supported') as supported, \
-                patch.object(refresh, 'mount_info') as mounts, \
+                patch.object(update.shared, 'check') as check, \
                 patch.object(refresh, 'sleep_trial') as sleep_trial:
-            with self.assertRaisesRegex(RuntimeError, 'shared with Windows and kept read-only'):
-                refresh.discover()
-            for action in ('prepare', 'mark', 'accept', 'sleep-pre', 'sleep-post'):
+            for action in ('sleep-pre', 'sleep-post'):
                 self.assertEqual(update.main([action]), 0)
             for phase in ('pre', 'post'):
                 self.assertEqual(refresh.main(['--sleep-phase', phase]), 0)
             supported.assert_not_called()
-            mounts.assert_not_called()
+            check.assert_not_called()
             sleep_trial.assert_not_called()
 
-    def test_shared_esp_snapshot_service_skips_without_probing_or_writing(self):
+    def test_shared_esp_hibernation_saves_counters_around_its_unmount_barrier(self):
+        events = []
+
+        @contextmanager
+        def sleep_lock(phase, saved, label):
+            events.append(('lock', saved.name))
+            yield True
+
+        @contextmanager
+        def session():
+            events.append('session')
+            yield
+
+        def run(argv, check, timeout):
+            events.append(tuple(argv))
+            if failing and argv[0] in failing:
+                raise update.subprocess.CalledProcessError(32, argv)
+            return types.SimpleNamespace(returncode=0)
+
+        mounted = [True]
+        failing = set()
+        with patch.object(refresh, 'shared_esp', return_value=True), \
+                patch.object(update.os, 'geteuid', return_value=0), \
+                patch.object(update.os.path, 'ismount', side_effect=lambda path: mounted[0]), \
+                patch.object(update, 'supported', return_value={'uuid': FS}), \
+                patch.object(refresh, 'sleep_run_lock', side_effect=sleep_lock), \
+                patch.object(update.shared, 'session', side_effect=session), \
+                patch.object(update, 'sleep_phase', side_effect=lambda phase: events.append('update-' + phase)), \
+                patch.object(refresh, 'sleep_trial', side_effect=lambda phase: events.append('trial-' + phase)), \
+                patch.object(update.subprocess, 'run', side_effect=run):
+            self.assertEqual(update.main(['hibernate-pre']), 0)
+            # Counters are saved while the ESP is mounted; the unmount comes last.
+            self.assertEqual(events, [('lock', 'sleep.json'), 'session', 'update-pre',
+                                      ('lock', 'emaki-boot-sleep.json'), 'session', 'trial-pre',
+                                      ('umount', '/efi')])
+            events.clear()
+            mounted[0] = False
+            self.assertEqual(update.main(['hibernate-post']), 0)
+            self.assertEqual(events[0], ('mount', '-o', 'ro', '/efi'))
+            self.assertEqual(events[1:], [('lock', 'sleep.json'), 'session', 'update-post',
+                                          ('lock', 'emaki-boot-sleep.json'), 'session', 'trial-post'])
+            # After a cancelled sleep the ESP is still mounted: no second mount.
+            events.clear()
+            mounted[0] = True
+            self.assertEqual(update.main(['hibernate-post']), 0)
+            self.assertNotIn(('mount', '-o', 'ro', '/efi'), events)
+            # A refused write (Windows asleep) is logged; hibernation still goes on.
+            events.clear()
+            errors = io.StringIO()
+            with patch.object(update, 'sleep_phase', side_effect=update.shared.Refused(update.shared.HIBERNATED)), \
+                    redirect_stderr(errors):
+                self.assertEqual(update.main(['hibernate-pre']), 0)
+            self.assertEqual(events[-1], ('umount', '/efi'))
+            self.assertIn('Hibernation pre bookkeeping did not finish', errors.getvalue())
+            # Only a failed unmount or mount refuses: the sleep service then does not start.
+            failing.add('umount')
+            with redirect_stderr(io.StringIO()):
+                self.assertEqual(update.main(['hibernate-pre']), 1)
+            mounted[0] = False
+            failing.add('mount')
+            events.clear()
+            with redirect_stderr(io.StringIO()):
+                self.assertEqual(update.main(['hibernate-post']), 1)
+            self.assertNotIn('update-post', events)
+        # Without a shared ESP the barrier alone runs.
+        events.clear()
+        failing.clear()
+        with patch.object(refresh, 'shared_esp', return_value=False), \
+                patch.object(update.os, 'geteuid', return_value=0), \
+                patch.object(update, 'supported') as supported, \
+                patch.object(update.subprocess, 'run', side_effect=run):
+            self.assertEqual(update.main(['hibernate-pre']), 0)
+            supported.assert_not_called()
+        self.assertEqual(events, [('umount', '/efi')])
+
+    def test_shared_esp_runtime_work_runs_and_defers_on_refusal(self):
+        refusal = update.shared.Refused(update.shared.HIBERNATED)
+        with patch.object(refresh, 'shared_esp', return_value=True), \
+                patch.object(update.os, 'geteuid', return_value=0), \
+                patch.object(update, 'supported', return_value={'uuid': FS}) as supported, \
+                patch.object(update, 'locked', return_value=nullcontext()), \
+                patch.object(update, 'monitor', side_effect=refusal) as monitor, \
+                patch.object(update, 'prepare', side_effect=refusal) as prepare:
+            errors = io.StringIO()
+            with redirect_stderr(errors):
+                # Acceptance waits for a later start instead of failing the boot service.
+                self.assertEqual(update.main(['accept']), 0)
+                # A refusal after the guard still stops package extraction.
+                self.assertEqual(update.main(['prepare']), 1)
+            monitor.assert_called_once()
+            prepare.assert_called_once()
+            self.assertEqual(supported.call_count, 2)
+            self.assertIn('package transaction was stopped', errors.getvalue())
+            self.assertIn(update.shared.HIBERNATED, errors.getvalue())
+
+    def test_shared_esp_snapshot_service_repairs_through_the_gate(self):
         with patch.object(refresh.Path, 'exists', return_value=False), \
                 patch.object(refresh.subprocess, 'run',
                              return_value=types.SimpleNamespace(returncode=1)), \
                 patch.object(refresh, 'shared_esp', return_value=True), \
-                patch.object(refresh, 'snapshot_menu_needs_repair') as menu, \
-                patch.object(refresh, 'menu_font_needs_repair') as font, \
-                patch.object(refresh, 'open_run_lock') as lock, \
-                patch.object(refresh, 'BoundedLog') as log, \
-                patch.object(refresh, 'refresh_attempt') as attempt, \
-                redirect_stderr(io.StringIO()):
-            for needs_repair in (False, True):
-                with self.subTest(needs_repair=needs_repair):
-                    menu.return_value = font.return_value = needs_repair
-                    self.assertEqual(refresh.main(['--repair-snapshots']), 0)
-            menu.assert_not_called()
-            font.assert_not_called()
-            lock.assert_not_called()
-            log.assert_not_called()
-            attempt.assert_not_called()
+                patch.object(refresh.os, 'geteuid', return_value=0), \
+                patch.object(refresh, 'snapshot_menu_needs_repair', return_value=True), \
+                patch.object(refresh, 'menu_font_needs_repair', return_value=False), \
+                patch.object(refresh, 'open_run_lock'), patch.object(refresh, 'wait_run_lock'), \
+                patch.object(refresh, 'BoundedLog'), \
+                patch.object(refresh, 'discover', return_value={'uuid': FS}), \
+                patch.object(refresh, 'remove_previous_boot_lock'), \
+                patch.object(refresh, 'current_boot_id', return_value=OLD), \
+                patch.object(refresh, 'pacman_lock', return_value=nullcontext()), \
+                patch.object(refresh, 'repair_snapshot_menu') as repair, \
+                redirect_stderr(io.StringIO()) as errors:
+            self.assertEqual(refresh.main(['--repair-snapshots']), 0)
+            repair.assert_called_once_with({'uuid': FS})
+            # A refused write session defers boot-time repair without failing the service.
+            repair.side_effect = update.shared.Refused(update.shared.HIBERNATED)
+            self.assertEqual(refresh.main(['--repair-snapshots']), 0)
+            self.assertIn(update.shared.HIBERNATED, errors.getvalue())
 
     def test_acceptance_lock_waits_for_boot_maintenance(self):
         # Acceptance must wait on the lock: failing fast here would leave a good boot unaccepted.
@@ -120,13 +326,13 @@ class UpdateBoot(unittest.TestCase):
                 pass
             flock.assert_called_with(opened.return_value.__enter__.return_value, update.fcntl.LOCK_EX)
 
-    def test_delivered_hooks_bracket_snap_pac_without_blocking_repairs(self):
+    def test_delivered_hooks_bracket_snap_pac_and_abort_failed_protection(self):
         hooks = ('04-emaki-update-boot.hook', '05-snap-pac-pre.hook', '06-emaki-update-boot.hook')
         self.assertEqual(list(hooks), sorted(hooks))
         for name, action in ((hooks[0], 'prepare'), (hooks[2], 'mark')):
             text = (ROOT / 'grub' / name).read_text()
             self.assertIn('When = PreTransaction\n', text)
-            self.assertNotIn('AbortOnFail', text)
+            self.assertIn('AbortOnFail\n', text)
             self.assertIn('Target = *\n', text)
             for operation in ('Install', 'Upgrade', 'Remove'):
                 self.assertIn('Operation = ' + operation + '\n', text)
@@ -145,6 +351,10 @@ class UpdateBoot(unittest.TestCase):
         self.menu = self.root / 'boot' / 'grub' / 'grub.cfg'
         for path in (self.esp, self.snapshots, self.menu.parent):
             path.mkdir(parents=True)
+        # Keep refresh.shared_esp() hermetic: the host's own /efi and /etc/fstab are no evidence here (the package
+        # build VM has an /efi its build user cannot read).
+        self.stack.enter_context(patch.object(refresh, 'esp_mount_path', return_value=self.root / 'host-efi-absent'))
+        self.stack.enter_context(patch.object(refresh, 'fstab_path', return_value=self.root / 'host-fstab-absent'))
         self.menu.write_text("set default=0\nmenuentry 'Emaki' {\n  linux /@/boot/vmlinuz-linux root=UUID=" + FS + " rootflags=subvol=@\n  initrd /@/boot/initramfs-linux.img\n}\n")
         self.identity = {'uuid': FS, 'esp_uuid': '1234-ABCD'}
         self.boot_id = OLD
@@ -274,16 +484,15 @@ class UpdateBoot(unittest.TestCase):
         self.assertEqual(update.environment()['emaki_attempt'], '2')
         self.assertEqual(self.pins, [('10', '')])
 
-    def test_deleted_pending_snapshot_disarms_and_allows_second_update(self):
+    def test_deleted_pending_snapshot_disarms_and_refuses_unprotected_update(self):
         self.transaction()
         shutil.rmtree(self.snapshots / '10')
         update.prepare(self.identity)
         self.snapshot('11')
-        with redirect_stderr(io.StringIO()) as messages:
+        with self.assertRaisesRegex(refresh.Refuse, 'recovery snapshot is missing'):
             update.mark(self.identity)
         self.assertIsNone(update.record())
         self.assertEqual(update.environment(), {})
-        self.assertEqual(messages.getvalue().count('pending snapshot is missing'), 1)
         self.assertEqual(self.pins, [('10', '')])
         # Further transactions can protect a fresh boundary without repeating the warning.
         with redirect_stderr(io.StringIO()) as messages:
@@ -295,7 +504,8 @@ class UpdateBoot(unittest.TestCase):
         self.transaction()
         shutil.rmtree(self.snapshots / '10')
         (self.root / 'snap-pac-pre_root').unlink()
-        update.mark(self.identity)
+        with self.assertRaisesRegex(refresh.Refuse, 'recovery snapshot is missing'):
+            update.mark(self.identity)
         self.assertIsNone(update.record())
         self.assertEqual(update.environment(), {})
 
@@ -322,14 +532,62 @@ class UpdateBoot(unittest.TestCase):
             ['snapper', '-c', 'root', 'modify', '--cleanup-algorithm', '', '10'],
             ['snapper', '-c', 'root', 'modify', '--cleanup-algorithm', 'number', '10']])
 
-    def test_hook_errors_never_abort_package_management(self):
+    def test_shared_hook_errors_abort_package_management(self):
+        self.stack.enter_context(patch.object(refresh, 'shared_esp', return_value=True))
         for action in ('prepare', 'mark'):
             with self.subTest(action=action), patch.object(update.os, 'geteuid', return_value=0), \
                     patch.object(update, 'supported', return_value=self.identity), \
                     patch.object(update, action, side_effect=OSError('unavailable')), \
                     redirect_stderr(io.StringIO()) as messages:
-                self.assertEqual(update.main([action]), 0)
-                self.assertIn('continue without update recovery protection', messages.getvalue())
+                self.assertEqual(update.main([action]), 1)
+                self.assertIn('package transaction was stopped', messages.getvalue())
+
+    def test_normal_missing_or_stale_receipt_warns_and_continues(self):
+        for case in ('missing', 'stale'):
+            with self.subTest(case=case):
+                if case == 'stale':
+                    self.snapshot('9')
+                update.prepare(self.identity)
+                if case == 'stale':
+                    (self.root / 'snap-pac-pre_root').write_text('9')
+                with patch.object(refresh, 'shared_esp', return_value=False), \
+                        patch.object(update.os, 'geteuid', return_value=0), \
+                        patch.object(update, 'supported', return_value=self.identity), \
+                        redirect_stderr(io.StringIO()) as messages:
+                    self.assertEqual(update.main(['mark']), 0)
+                    self.assertIn('no recovery protection', messages.getvalue())
+                    self.assertNotIn('transaction was stopped', messages.getvalue())
+                self.assertEqual(list(self.esp.iterdir()), [])
+
+    def test_normal_startup_and_recovery_failures_warn_and_continue(self):
+        for action in ('prepare', 'mark'):
+            for stage in ('supported', action):
+                for error in (OSError('unavailable'), refresh.Refuse('snapshot unavailable'),
+                              update.shared.Refused('startup unavailable'), TimeoutError('busy')):
+                    with self.subTest(action=action, stage=stage, error=type(error).__name__), \
+                            patch.object(refresh, 'shared_esp', return_value=False), \
+                            patch.object(update.os, 'geteuid', return_value=0), \
+                            patch.object(update, 'supported', return_value=self.identity), \
+                            patch.object(update, stage, side_effect=error), \
+                            redirect_stderr(io.StringIO()) as messages:
+                        self.assertEqual(update.main([action]), 0)
+                        self.assertIn('no recovery protection', messages.getvalue())
+                        self.assertNotIn('transaction was stopped', messages.getvalue())
+
+    def test_shared_missing_or_stale_receipt_aborts(self):
+        for case in ('missing', 'stale'):
+            with self.subTest(case=case):
+                if case == 'stale':
+                    self.snapshot('9')
+                update.prepare(self.identity)
+                if case == 'stale':
+                    (self.root / 'snap-pac-pre_root').write_text('9')
+                with patch.object(refresh, 'shared_esp', return_value=True), \
+                        patch.object(update.os, 'geteuid', return_value=0), \
+                        patch.object(update, 'supported', return_value=self.identity), \
+                        redirect_stderr(io.StringIO()) as messages:
+                    self.assertEqual(update.main(['mark']), 1)
+                    self.assertIn('transaction was stopped', messages.getvalue())
 
     def test_failed_menu_build_releases_the_incomplete_snapshot_pin(self):
         update.prepare(self.identity)
@@ -341,7 +599,8 @@ class UpdateBoot(unittest.TestCase):
         self.assertIsNone(update.record())
         self.assertEqual(update.environment(), {})
 
-    def test_hook_lock_timeout_is_bounded_and_nonfatal(self):
+    def test_hook_lock_timeout_is_bounded_and_aborts_transaction(self):
+        self.stack.enter_context(patch.object(refresh, 'shared_esp', return_value=True))
         def wait(seconds):
             self.clock += seconds
 
@@ -353,7 +612,7 @@ class UpdateBoot(unittest.TestCase):
                 patch.object(update.os, 'geteuid', return_value=0), \
                 patch.object(update, 'supported', return_value=self.identity), \
                 patch.object(update, 'prepare') as prepare, redirect_stderr(io.StringIO()) as messages:
-            self.assertEqual(update.main(['prepare']), 0)
+            self.assertEqual(update.main(['prepare']), 1)
             prepare.assert_not_called()
             self.assertEqual(self.clock, update.HOOK_LOCK_TIMEOUT)
             self.assertIn('Boot maintenance is busy', messages.getvalue())
@@ -595,7 +854,7 @@ class UpdateBoot(unittest.TestCase):
                         fixture.snapshot()
                         with self.assertRaises(OSError):
                             fixture.publication_steps(lambda: update.mark(fixture.identity), index, after)
-                        # Direct preparation reports failure; hooks permit repair.
+                        # Failed preparation aborts package extraction; retry repairs the state.
                         # Repeating its receipt may finish the same preparation.
                         update.mark(fixture.identity)
                         state = update.record()

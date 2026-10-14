@@ -45,23 +45,23 @@ if action == 'preview':
     previous=int(marker.read_text()) if marker.exists() else 0
     marker.write_text(str(previous+1))
     if kind == 'logs' and previous >= 3:
-        reply('ready',1,message='[PLACEHOLDER] Invalid failed status.')
+        reply('ready',1,message='Invalid failed status.')
     if kind == 'cache' and previous:
         sys.exit(126)
     if kind == 'trash' and previous == 1:
         print('{bad json')
         sys.exit(0)
-    reply('preview', kind=kind,token='a'*64,entries=[dict(path='/fixture/'+kind+'/first',bytes=50),dict(path='/fixture/'+kind+'/line\nbreak<literal>',bytes=50)] + ([dict(path='/fixture/trash/'+str(index),bytes=0) for index in range(2,20000)] if kind == 'trash' and previous == 0 else []),allocated_bytes=100,reclaimable_bytes=None,reclaimable_lower_bound_bytes=50,reclaimable_unknown_files=1,reason='[PLACEHOLDER] Fixture shared extents.')
+    reply('preview', kind=kind,token='a'*64,entries=[dict(path='/fixture/'+kind+'/first',bytes=50),dict(path='/fixture/'+kind+'/line\nbreak<literal>',bytes=50)] + ([dict(path='/fixture/trash/'+str(index),bytes=0) for index in range(2,20000)] if kind == 'trash' and previous == 0 else []),allocated_bytes=100,reclaimable_bytes=None,reclaimable_lower_bound_bytes=50,reclaimable_unknown_files=1,reason='Fixture shared extents.')
 if action == 'cleanup':
     assert args[2:] == ['a'*64,'--json']
     if kind == 'logs':
         marker = base / 'logs-cleanup-seen'
         if marker.exists():
-            reply('error',1,message='[PLACEHOLDER] Cleanup stopped after removing 1 entries. Preview again.',removed_count=1)
+            reply('error',1,message='Cleanup stopped after removing 1 entries. Preview again.',removed_count=1)
         marker.touch()
-        reply('error',1,message='[PLACEHOLDER] Fixture stale preview.')
+        reply('error',1,message='Fixture stale preview.')
     (base / ('cleaned-'+kind)).touch()
-    reply('cleaned',kind=kind,removed_count=2,reclaimed_bytes=None,message='[PLACEHOLDER] Fixture cleaned.')
+    reply('cleaned',kind=kind,removed_count=2,reclaimed_bytes=None,message='Fixture cleaned.')
 raise AssertionError(args)
 '''
     for command in ('emaki-settings-storage', 'pkexec'):

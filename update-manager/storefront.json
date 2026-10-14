@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "featured": {
+    "title": "Picked by Emaki",
+    "note": "A good place to start",
+    "programs": ["org.kde.krita", "md.obsidian.Obsidian", "net.supertuxkart.SuperTuxKart"]
+  },
+  "rows": [],
+  "names": {"org.gimp.GIMP": "GIMP"}
+}

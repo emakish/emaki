@@ -1,0 +1,11 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Desktop Entry]
+Type=Application
+Name=Report a problem
+Comment=Describe a problem and review what will be sent before anything leaves this computer
+Exec=emaki-shell call report open other
+Icon=emaki-welcome
+Terminal=false
+Categories=Utility;
+Keywords=report;problem;bug;issue;crash;feedback;help;

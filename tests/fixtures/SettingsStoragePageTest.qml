@@ -16,7 +16,7 @@ ShellRoot {
         function test_preview_contract() {
             const mode = Quickshell.env("STORAGE_FIXTURE_MODE");
             if (mode === "missing") {
-                tryCompare(page, "message", "[PLACEHOLDER] The storage helper could not be started.");
+                tryCompare(page, "message", "The storage helper could not be started.");
                 compare(page.pending, false);
                 return;
             }
@@ -35,13 +35,13 @@ ShellRoot {
             page.requestPreview("cache"); // Duplicate input while pending is ignored.
             tryVerify(() => page.preview !== null);
             compare(page.preview.entries.length, 20000);
-            compare(page.unsharedBytes(page.preview), "[PLACEHOLDER] At least 50 B; 1 files unknown");
+            compare(page.unsharedBytes(page.preview), "At least 50 B; 1 files unknown");
             compare(page.unsharedBytes({
                 reclaimable_bytes: 100
             }), "100 B");
             compare(page.unsharedBytes({
                 reclaimable_bytes: null
-            }), "[PLACEHOLDER] Unknown");
+            }), "Unknown");
             const entries = findChild(page, "settings-storage-preview-entries");
             tryCompare(entries, "count", 20000);
             verify(entries.height <= 320 && entries.height > 0);
@@ -58,7 +58,7 @@ ShellRoot {
             tryVerify(() => page.preview !== null);
             findChild(page, "storage-confirm").clicked();
             page.confirmPreview();
-            tryVerify(() => !page.pending && page.message.startsWith("[PLACEHOLDER] Fixture cleaned."));
+            tryVerify(() => !page.pending && page.message.startsWith("Fixture cleaned."));
             compare(page.preview, null);
             compare(page.inventory.filesystems.length, 2);
             compare(page.inventory.categories.trash.bytes, 99);
@@ -70,28 +70,28 @@ ShellRoot {
             page.requestPreview("logs");
             tryVerify(() => page.preview !== null);
             page.confirmPreview(); // Backend rejects stale inventory.
-            tryCompare(page, "message", "[PLACEHOLDER] Fixture stale preview.");
+            tryCompare(page, "message", "Fixture stale preview.");
             compare(page.preview, null);
             page.requestPreview("logs");
             tryVerify(() => page.preview !== null);
             page.confirmPreview(); // A partial cleanup must retain the backend disclosure.
-            tryCompare(page, "message", "[PLACEHOLDER] Cleanup stopped after removing 1 entries. Preview again.");
+            tryCompare(page, "message", "Cleanup stopped after removing 1 entries. Preview again.");
             compare(page.preview, null);
             page.requestPreview("trash"); // Malformed preview cannot enable deletion.
-            tryCompare(page, "message", "[PLACEHOLDER] Storage could not be confirmed. Refresh and preview again.");
+            tryCompare(page, "message", "Storage could not be confirmed. Refresh and preview again.");
             compare(page.preview, null);
             page.requestPreview("cache"); // Authentication cancelled.
-            tryCompare(page, "message", "[PLACEHOLDER] Authentication was cancelled. Preview again to continue.");
+            tryCompare(page, "message", "Authentication was cancelled. Preview again to continue.");
             compare(page.preview, null);
             page.requestPreview("trash");
             tryVerify(() => page.preview !== null);
             page.confirmPreview();
-            tryVerify(() => !page.pending && page.message.startsWith("[PLACEHOLDER] Fixture cleaned."));
+            tryVerify(() => !page.pending && page.message.startsWith("Fixture cleaned."));
             compare(page.preview, null);
             compare(page.inventory.filesystems.length, 2);
             compare(page.inventory.categories.trash.bytes, 98);
             page.requestPreview("logs"); // Nonzero status without a valid error remains generic.
-            tryCompare(page, "message", "[PLACEHOLDER] Storage could not be confirmed. Refresh and preview again.");
+            tryCompare(page, "message", "Storage could not be confirmed. Refresh and preview again.");
             compare(page.preview, null);
         }
         onCompletedChanged: if (completed)
