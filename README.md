@@ -56,11 +56,11 @@ Beta here is the stage of Emaki as a whole, not a pre-release: every new version
 
 ## The ISO
 
-Download: https://dl.emaki.sh/iso/0.5.0/emaki-0.5.0-x86_64.iso (5.0 GB). Its checksum and
+Download: https://dl.emaki.sh/iso/0.8.0/emaki-0.8.0-x86_64.iso (5.1 GB). Its checksum and
 signature are at the same address with `.sha256` and `.sig` added; the key that signed it is
-https://dl.emaki.sh/iso/0.5.0/emaki-signing-key.asc.
+https://dl.emaki.sh/iso/0.8.0/emaki-signing-key.asc.
 
-`emaki-0.5.0-x86_64.iso` boots into a live Emaki session with the installer open. Emaki
+`emaki-0.8.0-x86_64.iso` boots into a live Emaki session with the installer open. Emaki
 needs a computer with 64-bit UEFI; legacy BIOS computers are refused by the installer. If
 Windows on the computer uses BitLocker or device encryption, save its recovery key first:
 changing firmware security settings can make Windows ask for it.
@@ -71,6 +71,11 @@ The installer offers:
   menu) or **ext4** (no system snapshots).
 - **Manual partitioning**: prepare partitions in GParted, then assign mount points in the
   installer; an existing EFI system partition can be reused.
+- **Install alongside Windows**: keep Windows and give part of its free space to Emaki, at
+  least 32 GiB. Windows appears in Emaki's boot menu, and choosing it restarts the computer
+  straight into Windows. The EFI system partition is shared and never formatted. The installer
+  refuses Windows that is asleep (hibernation or Fast Startup) or encrypted with BitLocker, and
+  says what to change in Windows first.
 - **Offline installation** from the signed package repository on the USB stick. When the
   machine is online, the installer can also update Emaki at the end.
 
@@ -79,7 +84,7 @@ installer offers two software sets. **Minimal** is the desktop with Dolphin, Fir
 **Rich** (preselected) adds LibreOffice, Thunderbird, Okular, Kate, Gwenview, Ark, Haruna,
 Elisa, Spectacle, OBS Studio, qBittorrent, KeePassXC, Discover with Flatpak, Partition Manager,
 Filelight, System Monitor, ISO Image Writer, KCharSelect, Skanlite, printing and
-media codecs. Not in 0.8.0: BIOS boot, installing alongside Windows.
+media codecs. Not in 0.8.0: BIOS boot, Secure Boot, installing alongside another Linux.
 
 ## Security notes
 
@@ -107,6 +112,7 @@ session without your password.
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.4.2 | Update from 0.4.1 with `pacman -Syu`, restart, sound with realtime priority, the snapshot boot menu check at startup | No new issues found |
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.5.0 | Update from 0.4.2 with `pacman -Syu`, restart, then a fresh installation from USB (erase disk), boot, login, desktop | Wi-Fi joined in the installer has to be joined again after installing |
 | MacBook Pro (Retina, 13-inch, Early 2015) | 0.6.0 | Update from 0.5.0 with `pacman -Syu`, restart; then a fresh installation from USB with disk encryption: the Wi-Fi network joined in the installer connects by itself after installing, login, desktop, the password prompt | No new issues found in the installed system |
+| MacBook Pro (Retina, 13-inch, Early 2015) | 0.8.0 | Installation alongside Windows 10 from USB, Emaki and Windows started from Emaki's boot menu, update from the testing channel, Programs & Updates: installing and removing programs from Arch and the AUR, ratings and reviews | A program installed from Programs & Updates may not appear in the app launcher right away |
 
 Installed Emaki on another machine? Reports are welcome in the issues.
 
@@ -114,8 +120,9 @@ Installed Emaki on another machine? Reports are welcome in the issues.
 
 - Hibernation: on the tested MacBook the session does not respond after resuming. Do not use
   hibernation.
-- The 0.5.0 image: Wi-Fi joined in the installer has to be joined again after installing. The 0.7.0 image,
-  which follows shortly, keeps it.
+- Next to Windows, Emaki installs, updates or removes system packages only while Windows is
+  fully shut down. If Windows is asleep (hibernation or Fast Startup), Emaki stops before
+  changing anything and says how to turn that off.
 - Machines that still update from the old GitHub address print
   "emaki: missing required signature" once after moving to `pkgs.emaki.sh`; the next update is
   clean.
