@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Shared by the ISO-only harness. This file does not start or stop a VM.
 # Values are consumed by the scripts sourcing this file.
 # shellcheck disable=SC2034

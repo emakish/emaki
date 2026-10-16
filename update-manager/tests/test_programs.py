@@ -166,6 +166,12 @@ class Refusals(unittest.TestCase):
         for app in ('gwenview', 'kate', 'libreoffice-fresh', 'obs-studio', 'thunderbird', 'keepassxc'):
             self.assertFalse(catalog.is_emaki(app) or catalog.is_system(app), app)
 
+    def test_secure_boot_loader_is_never_offered_for_removal(self):
+        # The firmware starts the machine through these files: not a shelf item, not removable.
+        self.assertIn('emaki-shim-signed', recipe_names())
+        self.assertNotIn('emaki-shim-signed', catalog.OPTIONAL)
+        self.assertTrue(catalog.is_protected('emaki-shim-signed'))
+
     def test_messages_are_final_text(self):
         self.assertTrue(all(text and ('[PLACE' + 'HOLDER]') not in text for text in catalog.MESSAGES.values()))
 

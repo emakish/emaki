@@ -11,7 +11,7 @@ import runpy
 import shutil
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SUPPORT = runpy.run_path(str(ROOT / 'tests/test-boot-refresh.py'))
@@ -92,7 +92,6 @@ class SnapshotRepairChecks(unittest.TestCase):
                 f.put(f.mapped('/efi/EFI/Microsoft/Boot/bootmgfw.efi'), b'Windows loader')
                 f.put(f.mapped('/efi/EFI/Microsoft/Boot/BCD'), b'Windows boot data')
                 esp = f.mapped('/efi')
-                before = {p: p.read_bytes() for p in esp.rglob('*') if p.is_file()}
                 writes = []
                 atomic = refresh.atomic
                 statvfs = refresh.os.statvfs
@@ -110,13 +109,19 @@ class SnapshotRepairChecks(unittest.TestCase):
 
                 with patch.object(refresh, 'atomic', side_effect=record), \
                         patch.object(refresh.os, 'statvfs', side_effect=space):
-                    refresh.repair_snapshot_menu(f.identity)
-                    self.assert_repaired(f)
-                    self.assertTrue(writes)
-                    self.assertEqual(set(writes), {f.mapped('/efi/EFI/Emaki/boot-intent.json')})
-                    self.assertEqual(before, {p: p.read_bytes() for p in esp.rglob('*') if p.is_file()})
-                    self.assertFalse(f.mapped('/efi/EFI/Emaki/boot-state.json').exists())
-                    with self.assertRaisesRegex(refresh.Kept, 'fallback loader is not recognized'):
+                    with SUPPORT['RefreshOrchestrationChecks'].shared_esp(self, f) as gate:
+                        before = {p: p.read_bytes() for p in esp.rglob('*') if p.is_file()}
+                        refresh.repair_snapshot_menu(f.identity)
+                        self.assertTrue(gate.opened)
+                        self.assert_repaired(f)
+                        self.assertTrue(writes)
+                        self.assertEqual(set(writes), {f.mapped('/efi/EFI/Emaki/boot-intent.json')})
+                        self.assertEqual(before, {p: p.read_bytes() for p in esp.rglob('*') if p.is_file()})
+                        self.assertFalse(f.mapped('/efi/EFI/Emaki/boot-state.json').exists())
+                    # Outside the simulated alongside operation, a foreign fallback
+                    # must still prevent a dedicated-ESP loader refresh.
+                    with patch.object(refresh, 'shared_esp', return_value=False), \
+                            self.assertRaisesRegex(refresh.Kept, 'fallback loader is not recognized'):
                         refresh.refresh(f.identity)
                     self.assertEqual(before, {p: p.read_bytes() for p in esp.rglob('*') if p.is_file()})
 
@@ -351,13 +356,17 @@ class SnapshotRepairChecks(unittest.TestCase):
                     patch.object(refresh, 'open_run_lock') as run_lock, \
                     patch.object(refresh, 'BoundedLog') as log, \
                     patch.object(refresh.os, 'geteuid', return_value=1000) as uid, \
-                    patch.object(refresh.subprocess, 'run') as process:
+                    patch.object(refresh.subprocess, 'run', return_value=SimpleNamespace(returncode=1)) as process:
                 for boot in range(3):
                     with self.subTest(boot=boot):
                         self.assertEqual(refresh.main(['--repair-snapshots']), 0)
                         self.assertEqual(contents(), original)
-                for operation in (discover, pacman, run_lock, log, uid, process):
+                for operation in (discover, pacman, run_lock, log, uid):
                     operation.assert_not_called()
+                self.assertEqual(process.call_args_list, [
+                    call(['systemd-detect-virt', '--chroot', '--quiet'],
+                         stdout=refresh.subprocess.DEVNULL, stderr=refresh.subprocess.DEVNULL)
+                ] * 3)
             self.assertEqual(lock.read_text(), 'another package operation\n')
             self.assertEqual(lock.stat().st_mtime_ns, before.st_mtime_ns)
             self.assertEqual(f.commands, [])

@@ -20,7 +20,9 @@ def main():
             # Carry data only: the trusted shell never evaluates this environment.
             # Applications recover the compositor's session before PATH is fixed.
             excluded = {'WAYLAND_SOCKET', 'EMAKI_SHELL_SESSION_ENV',
-                        'EMAKI_SHELL_ORIGINAL_MALLOC_CONF', 'EMAKI_SHELL_PROCESS_ID'}
+                        'EMAKI_SHELL_ORIGINAL_MALLOC_CONF', 'EMAKI_SHELL_PROCESS_ID',
+                        'EMAKI_LOGIN_HANDOFF', 'EMAKI_SESSION_START', 'EMAKI_SESSION_SKIP_INTRO',
+                        'EMAKI_STARTUP_COVER', 'EMAKI_SESSION_TAKEOVER'}
             os.environ['EMAKI_SHELL_SESSION_ENV'] = json.dumps(
                 {key: value for key, value in os.environ.items() if key not in excluded},
                 separators=(',', ':'))

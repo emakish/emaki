@@ -9,6 +9,9 @@ import Quickshell.Io
 // Only text is stored; restored entries are inert (no actions). Never returned in IPC diagnostics.
 Scope {
     id: store
+    // The apps whose notices are held (hold()): never saved, and dropped from an older cache.
+    // SecureBoot.js `title`; tests/test-secureboot-notice.py checks that they match.
+    readonly property var heldApps: ["Secure Boot"]
     property bool dnd: false
     property var catalog: null
     property bool dndMigrated: false
@@ -34,7 +37,16 @@ Scope {
         // keeps the old cache value for a retry on the next shell start.
     }
     readonly property var managedValues: catalog ? catalog.values : []
-    readonly property bool effectiveDnd: manualDnd() || Number(policyValue("notifications.until", "0")) > now || scheduleActive(policyJson("notifications.schedule", {}), now)
+    property double scheduleSuppressedUntil: 0
+    property string suppressedSchedule: ""
+    readonly property var schedule: policyJson("notifications.schedule", {})
+    readonly property bool scheduleSuppressed: scheduleSuppressedUntil > now && suppressedSchedule === JSON.stringify(schedule)
+    readonly property string scheduleResumeNote: scheduleSuppressed && !effectiveDnd ? "Do not disturb returns " + Qt.formatDateTime(new Date(scheduleSuppressedUntil), "ddd HH:mm") + "." : ""
+    readonly property bool effectiveDnd: manualDnd() || Number(policyValue("notifications.until", "0")) > now || (!scheduleSuppressed && scheduleActive(schedule, now))
+    onScheduleSuppressedUntilChanged: if (restored)
+        saveTimer.restart()
+    onSuppressedScheduleChanged: if (restored)
+        saveTimer.restart()
     readonly property var rules: policyJson("notifications.rules", {})
     readonly property bool systemSounds: policyValue("sound.system_sounds", true) === true
     // A playback provider can query this policy without bypassing quiet rules.
@@ -60,6 +72,19 @@ Scope {
         return policyValue("notifications.dnd", dnd) === true;
     }
     function setDnd(enabled: bool): void {
+        // Skip this occurrence, including across a shell restart. The next start
+        // is a local calendar time, not a fixed 24-hour delay across daylight saving.
+        if (!enabled && scheduleActive(schedule, now)) {
+            const next = new Date(now);
+            next.setHours(Number(schedule.start.slice(0, 2)), Number(schedule.start.slice(3)), 0, 0);
+            if (next.getTime() <= now)
+                next.setDate(next.getDate() + 1);
+            suppressedSchedule = JSON.stringify(schedule);
+            scheduleSuppressedUntil = next.getTime();
+        } else if (enabled) {
+            scheduleSuppressedUntil = 0;
+            suppressedSchedule = "";
+        }
         if (catalog) {
             catalog.set("notifications.dnd", enabled ? "true" : "false");
             if (!enabled)
@@ -115,7 +140,14 @@ Scope {
         saveTimer.restart()
     onDndChanged: if (restored)
         saveTimer.restart()
-    Component.onCompleted: restore()
+    Component.onCompleted: {
+        restore();
+        persistence.submit(null);
+    }
+    function sessionUpdateEntry(entry: var): bool {
+        // Older history files saved only text, without the sessionUpdate flag.
+        return entry.sessionUpdate === true || (entry.app === "Desktop update" && entry.summary === "Sign out and sign in again to finish updating the desktop.");
+    }
     function restore(): void {
         try {
             const file = JSON.parse(stateFile.text() || "{}");
@@ -123,12 +155,17 @@ Scope {
             const saved = store.foreign ? {} : file;
             store.dnd = saved.dnd === true;
             store.dndMigrated = saved.dndMigrated === true;
+            store.scheduleSuppressedUntil = typeof saved.scheduleSuppressedUntil === "number" && Number.isFinite(saved.scheduleSuppressedUntil) ? saved.scheduleSuppressedUntil : 0;
+            store.suppressedSchedule = typeof saved.suppressedSchedule === "string" ? saved.suppressedSchedule : "";
             // Older caches listed internal warnings even though their rules never apply.
-            store.applications = (Array.isArray(saved.applications) ? saved.applications : []).filter(a => a && typeof a.id === "string" && a.id.length <= 512 && typeof a.name === "string" && !["name:Battery low", "name:Battery critical", "name:Desktop update"].includes(a.id)).slice(-256).map(a => ({
+            store.applications = (Array.isArray(saved.applications) ? saved.applications : []).filter(a => a && typeof a.id === "string" && a.id.length <= 512 && typeof a.name === "string" && !["name:Battery low", "name:Battery critical", "name:Desktop update"].concat(store.heldApps.map(app => "name:" + app)).includes(a.id)).slice(-256).map(a => ({
                         id: a.id,
                         name: a.name.slice(0, 128)
                     }));
-            store.entries = (Array.isArray(saved.entries) ? saved.entries : []).filter(e => e && typeof e.summary === "string" && typeof e.time === "number").slice(0, 200).map(e => ({
+            // Held notices are never saved; a cache from before they were held may still hold
+            // their old copies, which would show a stale warning or a second card.
+            // The update observer recreates its notice only if this session still needs it.
+            store.entries = (Array.isArray(saved.entries) ? saved.entries : []).filter(e => e && typeof e.summary === "string" && typeof e.time === "number" && !store.heldApps.includes(String(e.app || "")) && !store.sessionUpdateEntry(e)).slice(0, 200).map(e => ({
                         id: store.systemId--,
                         app: String(e.app || "Application").slice(0, 128),
                         summary: e.summary.slice(0, 512),
@@ -150,16 +187,44 @@ Scope {
         atomicWrites: true
         printErrors: false
     }
+    // FileView's default creation mode follows umask. Keep all writes and startup
+    // permission repair in the same serialized private writer.
+    Process {
+        id: persistence
+        property bool pending: false
+        property var nextText: null
+        property var activeText: null
+        command: [Quickshell.env("EMAKI_PYTHON") || "python3", decodeURIComponent(Qt.resolvedUrl("helpers/private-state.py").toString().replace(/^file:\/\//, ""))]
+        stdinEnabled: true
+        function submit(text: var): void {
+            nextText = text;
+            pending = true;
+            flush();
+        }
+        function flush(): void {
+            if (running || !pending)
+                return;
+            activeText = nextText;
+            pending = false;
+            running = true;
+        }
+        onStarted: write(JSON.stringify({
+            text: activeText
+        }) + "\n")
+        onExited: Qt.callLater(flush)
+    }
     Timer {
         id: saveTimer
         interval: 500
         onTriggered: if (!store.foreign)
-            stateFile.setText(JSON.stringify({
+            persistence.submit(JSON.stringify({
                 version: 1,
                 dnd: store.dndMigrated ? store.manualDnd() : store.dnd,
                 dndMigrated: store.dndMigrated,
+                scheduleSuppressedUntil: store.scheduleSuppressedUntil,
+                suppressedSchedule: store.suppressedSchedule,
                 applications: store.applications,
-                entries: store.entries.map(e => ({
+                entries: store.entries.filter(e => e.held !== true && !store.sessionUpdateEntry(e)).map(e => ({
                             app: e.app,
                             summary: e.summary,
                             body: e.body,
@@ -288,7 +353,7 @@ Scope {
                 store.entries = store.entries.filter(e => e.id !== id);
         });
         if (entries.length > 200)
-            dismiss(entries.slice(200).map(e => e.id));
+            dismiss(entries.filter(e => e.held !== true).slice(200).map(e => e.id));
         if (rule === "allow" || entry.critical)
             arrived(id);
     }
@@ -308,6 +373,38 @@ Scope {
                 text: label.slice(0, 128)
             }
         ]);
+    }
+    // A local notice that stays (the Secure Boot notices): critical, so its preview ignores quiet
+    // rules and its card shows the whole body, and held, so the shell shows its preview again
+    // until the person chooses its action or dismisses it (ShellScene.showHeld). It lives only in
+    // memory and is never saved with the history: the part that raised it raises it again at the
+    // next login while the problem remains, so a stale copy never outlives the fix. The
+    // 200-entry limit never drops it.
+    function hold(app: string, summary: string, body: string, action: string, label: string): int {
+        const id = systemId--;
+        entries = [
+            {
+                id: id,
+                app: app.slice(0, 128),
+                critical: true,
+                held: true,
+                summary: summary.slice(0, 512),
+                body: body.slice(0, 4096),
+                time: Date.now(),
+                object: null,
+                actions: [
+                    {
+                        id: action,
+                        text: label.slice(0, 128)
+                    }
+                ],
+                deadline: 0
+            }
+        ].concat(entries);
+        if (entries.length > 200)
+            dismiss(entries.filter(e => e.held !== true).slice(200).map(e => e.id));
+        arrived(id);
+        return id;
     }
     function localNotice(app: string, summary: string, body: string, batteryWarning: bool, sessionUpdate: bool): int {
         return addLocal(app, summary, body, batteryWarning, sessionUpdate, []);
@@ -336,7 +433,7 @@ Scope {
             }
         ].concat(entries);
         if (entries.length > 200)
-            dismiss(entries.slice(200).map(e => e.id));
+            dismiss(entries.filter(e => e.held !== true).slice(200).map(e => e.id));
         if (rule === "allow" || batteryWarning || sessionUpdate)
             arrived(id);
         return id;

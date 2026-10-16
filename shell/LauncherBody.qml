@@ -194,6 +194,10 @@ Item {
     Item {
         id: resultFocus
         objectName: "launcher-results"
+        Accessible.role: Accessible.ListItem
+        Accessible.name: body.results[body.selected]?.label ?? ""
+        Accessible.selected: body.selected >= 0 && body.selected < body.results.length
+        Accessible.onPressAction: body.activate()
         visible: !body.settingsActive && body.results.length > 0
         activeFocusOnTab: activeFocus || visible
         Keys.onPressed: event => body.handleKey(event)
@@ -467,15 +471,18 @@ Item {
         }
         return total;
     }
-    function rankApps(text: string): var {
-        const words = text.split(/\s+/).filter(w => w.length > 0);
-        if (!words.length)
-            return [];
-        return apps.entries.map(entry => ({
-                    entry: entry,
-                    score: appScore(entry, words),
-                    uses: apps.counts[entry.id] || 0
-                })).filter(row => row.score > 0).sort((a, b) => b.score - a.score || b.uses - a.uses || a.entry.name.localeCompare(b.entry.name)).map(row => row.entry);
+    function settingsScore(words: var): int {
+        let total = 0;
+        for (const word of words) {
+            if (word.length < 3)
+                return 0;
+            const aliases = ["settings", "preferences", "control", "panel"];
+            const matches = aliases.filter(alias => alias.startsWith(word));
+            if (!matches.length)
+                return 0;
+            total += Math.max(...matches.map(alias => fieldScore(alias, word, alias === "settings" ? 3 : 1)));
+        }
+        return total;
     }
     readonly property var categoryMapping: ({
             Development: ["Development"],
@@ -521,18 +528,32 @@ Item {
                 });
         }
         if (modeIndex < 2 && (text || modeIndex === 1)) {
-            // Apps mode lists every match (the list scrolls); All keeps the five best beside
-            // windows, files and the web row.
-            let found = text ? rankApps(text).slice(0, modeIndex === 1 ? 64 : 5) : apps.entries.filter(a => matchesCategory(a));
-            for (const entry of found)
-                rows.push({
-                    kind: "app",
+            const words = text.split(/\s+/).filter(word => word.length > 0);
+            const found = text ? apps.entries : apps.entries.filter(entry => matchesCategory(entry));
+            const appRows = found.map(entry => ({
+                        kind: "app",
+                        group: "Apps",
+                        entry: entry,
+                        label: entry.name,
+                        score: text ? appScore(entry, words) : 0,
+                        uses: apps.counts[entry.id] || 0,
+                        // An app row names its category, as launcher.js does ("Internet").
+                        detail: entry.runInTerminal ? "Terminal app" : categoryOf(entry) || entry.genericName || ""
+                    })).filter(row => !text || row.score > 0);
+            const score = text && !assignFor ? settingsScore(words) : 0;
+            if (score > 0)
+                appRows.push({
+                    kind: "settings",
                     group: "Apps",
-                    entry: entry,
-                    label: entry.name,
-                    // An app row names its category, as launcher.js does ("Internet").
-                    detail: entry.runInTerminal ? "Terminal app" : categoryOf(entry) || entry.genericName || ""
+                    label: "Settings",
+                    detail: "",
+                    score: score,
+                    uses: 0
                 });
+            // Score Settings alongside apps before applying the shared result limit.
+            if (text)
+                appRows.sort((a, b) => b.score - a.score || b.uses - a.uses || a.label.localeCompare(b.label));
+            rows.push(...(text ? appRows.slice(0, modeIndex === 1 ? 64 : 5) : appRows));
         }
         if (modeIndex === 2 || (modeIndex === 0 && text)) {
             for (const w of niri.windows) {
@@ -635,7 +656,9 @@ Item {
         const row = results[selected];
         if (!row)
             return;
-        if (row.kind === "app" || row.kind === "frequent") {
+        if (row.kind === "settings") {
+            settingsRequested();
+        } else if (row.kind === "app" || row.kind === "frequent") {
             if (assignFor) {
                 identity?.learn(assignFor, row.entry.id);
                 assignFor = "";
@@ -1180,6 +1203,14 @@ Item {
         required property int index
         property int offset: 0
         readonly property int resultIndex: index + offset
+        objectName: "launcher-result-" + resultIndex
+        Accessible.role: Accessible.ListItem
+        Accessible.name: modelData.label ?? ""
+        Accessible.selected: body.selected === resultIndex
+        Accessible.onPressAction: {
+            body.selectAt(resultIndex);
+            body.activate();
+        }
         LauncherItem {
             anchors.fill: parent
             row: tile.modelData
@@ -1205,6 +1236,14 @@ Item {
         id: line
         required property var modelData
         required property int index
+        objectName: "launcher-result-" + index
+        Accessible.role: Accessible.ListItem
+        Accessible.name: modelData.label ?? ""
+        Accessible.selected: body.selected === index
+        Accessible.onPressAction: {
+            body.selectAt(index);
+            body.activate();
+        }
         LauncherItem {
             anchors.fill: parent
             row: line.modelData
@@ -1367,6 +1406,10 @@ Item {
                         model: body.modes
                         Item {
                             id: modeItem
+                            Accessible.role: Accessible.PageTab
+                            Accessible.name: modelData
+                            Accessible.selected: !body.settingsActive && body.modeIndex === index
+                            Accessible.onPressAction: activate()
                             activeFocusOnTab: true
                             Keys.onPressed: event => body.handleKey(event)
                             function activate(): void {
@@ -1519,6 +1562,10 @@ Item {
                             model: body.categoriesShown ? body.categories : []
                             Item {
                                 id: chip
+                                Accessible.role: Accessible.PageTab
+                                Accessible.name: modelData
+                                Accessible.selected: current
+                                Accessible.onPressAction: activate()
                                 activeFocusOnTab: true
                                 Keys.onPressed: event => body.handleKey(event)
                                 function activate(): void {

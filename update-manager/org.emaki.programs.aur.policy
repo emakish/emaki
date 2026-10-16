@@ -6,7 +6,7 @@
   <vendor>Emaki</vendor>
   <action id="org.emaki.programs.aur">
     <description>Build and install a program from the AUR and update repository packages</description>
-    <message>Authentication is required to build and install the AUR program in this command and update repository packages: $(command_line)</message>
+    <message>Enter an administrator password to build and install the AUR program and update repository packages.</message>
     <defaults>
       <allow_any>no</allow_any>
       <allow_inactive>no</allow_inactive>

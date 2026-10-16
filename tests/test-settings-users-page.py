@@ -88,6 +88,7 @@ SCRIPT = [[['set-administrator', 'ada', 'no'], 'refuse:last_administrator'],
           [['set-name', 'bo', 'Bo'], 'refuse:authorization_refused'], [['set-name', 'bo', 'Bo'], 'bad'], [['status'], 'schema']]
 TEST = HEADER + r'''import QtQuick
 import Quickshell
+import "settings"
 Scope {
  Item { width: 760; SettingsUsersPage { id: page; width: 740 } }
  function find(item, name) {
@@ -118,6 +119,18 @@ Scope {
     find(page, "settings-users-done").clicked();
     find(page, "settings-users-add-open").clicked();
     check(page.adding, "add form");
+    for (const theme of ["dark", "light"]) {
+     SettingsBridge.values = [{key: "appearance.theme", value: theme}];
+     check(Appearance.dark === (theme === "dark"), "explicit " + theme + " theme");
+     for (const name of ["add-name", "add-login", "edit-name"]) {
+      const field = find(page, "settings-users-" + name);
+      check(field.background.color.toString() === SettingsTheme.field.toString(), theme + " " + name + " background");
+      check(field.color.toString() === SettingsTheme.ink.toString(), theme + " " + name + " text");
+      check(field.placeholderTextColor.toString() === SettingsTheme.faint.toString(), theme + " " + name + " placeholder");
+      check(field.selectionColor.toString() === SettingsTheme.accent.toString(), theme + " " + name + " selection");
+      check(field.selectedTextColor.toString() === SettingsTheme.accentText.toString(), theme + " " + name + " selected text");
+     }
+    }
     find(page, "settings-users-add-name").text = "Dee Person";
     find(page, "settings-users-add-login").text = "Dee";
     check(!find(page, "settings-users-add-confirm-button").enabled, "invalid login blocks adding");
@@ -260,6 +273,7 @@ def run(test, mutation=None, missing=False, lifetime=False):
                    DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(base / 'no-bus'),
                    DBUS_SYSTEM_BUS_ADDRESS='unix:path=' + str(base / 'no-system-bus'))
         env.pop('WAYLAND_DISPLAY', None)
+        env.pop('DISPLAY', None)
         result = subprocess.run(['qs', '-p', str(base / 'shell/Test.qml'), '--no-color'], stdin=subprocess.DEVNULL,
                                 env=env, capture_output=True, text=True, timeout=30)
         output = result.stdout + result.stderr
@@ -302,7 +316,7 @@ for mutation in (('unavailable: root.lastAdministrator(root.edited)', 'unavailab
                  ('pictureError = "";\n        pictureChooser.start(', 'pictureChooser.start(')):
     passed, output, calls = run(TEST, mutation)
     assert not (passed and requests_ok(calls)), 'Surviving mutation: ' + str(mutation)
-print('PASS: users page list, add, name, password, role, removal with home choice, refusals, '
+print('PASS: users page fields in dark and light themes, list, add, name, password, role, removal with home choice, refusals, '
       'broken and missing helper, own picture: choose, remove, chooser failure and cancel; seven mutants killed')
 
 passed, output, calls = run((ROOT / 'tests/fixtures/SettingsUsersLifetime.qml').read_text(), lifetime=True)

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The window's console warning (Protocol.js consoleUnsafeChars) is the planner's
 console_unsafe_chars on the table the worker's hello carries."""
 import importlib.util

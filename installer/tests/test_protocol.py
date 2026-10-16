@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 import io
 import json
 from pathlib import Path
@@ -28,6 +30,23 @@ class ProtocolTests(unittest.TestCase):
 
     def confirm(self, ack):
         return self.request('confirm', plan_id=ack['plan_id'], token=ack.get('token', ''))
+
+    def test_request_failure_shows_plain_message_and_logs_cause(self):
+        with patch.object(self.controller.inventory, 'probe', side_effect=RuntimeError('fixture')):
+            reply = self.request('probe')[0]
+        self.assertEqual(reply['code'], 'internal')
+        self.assertEqual(reply['msg'], 'The request could not be completed. Check the installation log for details.')
+        self.assertIn('Request failed: RuntimeError', self.log.getvalue())
+
+    def test_busy_requests_use_installer_wording(self):
+        for stopping in (False, True):
+            self.controller.stopping = stopping
+            self.controller.job = None if stopping else Job('running')
+            for kind in ('set_timezone', 'plan', 'probe', 'renew', 'confirm'):
+                with self.subTest(stopping=stopping, kind=kind):
+                    reply = self.request(kind)[0]
+                    self.assertEqual(reply['code'], 'busy')
+                    self.assertEqual(reply['msg'], 'The installer is busy or stopping. Wait before trying again.')
 
     def test_review_renewal_rotates_token_without_resending_password(self):
         ack = self.plan()
@@ -109,6 +128,51 @@ class ProtocolTests(unittest.TestCase):
             else:
                 self.plan()
             self.assertEqual(self.confirm(ack)[0]['code'], 'token_invalid')
+
+    def test_another_clients_requests_keep_the_plan(self):
+        # The live session autostarts the window; its probe on connect came between a CLI
+        # plan and its confirm (N-D2, token_invalid). Its time zone apply and cancel can too.
+        cli, window = object(), object()
+        self.controller.set_timezone_fn = lambda name: {'timezone': name}
+        ack = self.controller.handle({'type': 'plan', 'id': 'cli-1', 'config': config()}, cli)[0]
+        for kind in ('probe', 'set_timezone', 'cancel'):
+            response = self.controller.handle({'type': kind, 'id': 'window-1', 'timezone': 'UTC'}, window)[0]
+            self.assertTrue(response.get('ok', True), response)
+        self.assertEqual(self.controller.redactor.secrets, {'a-secret-for-tests'})
+        confirm = {'type': 'confirm', 'id': 'cli-2', 'plan_id': ack['plan_id'], 'token': ack['token']}
+        self.assertTrue(self.controller.handle(confirm, cli)[0]['ok'])
+
+    def test_own_requests_still_invalidate_the_plan(self):
+        cli, window = object(), object()
+        self.controller.set_timezone_fn = lambda name: {'timezone': name}
+        for kind in ('probe', 'set_timezone', 'cancel'):
+            ack = self.controller.handle({'type': 'plan', 'id': 'window-1', 'config': config()}, window)[0]
+            self.controller.handle({'type': 'probe', 'id': 'cli-1'}, cli)
+            self.controller.handle({'type': kind, 'id': 'window-2', 'timezone': 'UTC'}, window)
+            confirm = {'type': 'confirm', 'id': 'window-3', 'plan_id': ack['plan_id'], 'token': ack['token']}
+            self.assertEqual(self.controller.handle(confirm, window)[0]['code'], 'token_invalid', kind)
+            self.assertEqual(self.controller.redactor.secrets, set(), kind)
+
+    def test_plan_is_confirmed_only_by_the_client_that_reviewed_it(self):
+        cli, window = object(), object()
+        ack = self.controller.handle({'type': 'plan', 'id': 'cli-1', 'config': config()}, cli)[0]
+        for kind in ('confirm', 'renew'):
+            foreign = {'type': kind, 'id': 'window-1', 'plan_id': ack['plan_id'], 'token': ack['token']}
+            self.assertEqual(self.controller.handle(foreign, window)[0]['code'], 'token_invalid', kind)
+        self.assertIsNone(self.controller.job)
+        # A newer plan from any client still replaces it: one writer, one outstanding plan.
+        self.controller.handle({'type': 'plan', 'id': 'window-2', 'config': config()}, window)
+        own = {'type': 'confirm', 'id': 'cli-2', 'plan_id': ack['plan_id'], 'token': ack['token']}
+        self.assertEqual(self.controller.handle(own, cli)[0]['code'], 'token_invalid')
+
+    def test_closed_connection_drops_its_plan_and_secrets(self):
+        cli, window = object(), object()
+        self.controller.handle({'type': 'plan', 'id': 'cli-1', 'config': config()}, cli)
+        self.controller.release(window)
+        self.assertIsNotNone(self.controller.pending)
+        self.controller.release(cli)
+        self.assertIsNone(self.controller.pending)
+        self.assertEqual(self.controller.redactor.secrets, set())
 
     def test_busy_confirm_no_second_writer(self):
         ack = self.plan()
@@ -420,7 +484,7 @@ class ProtocolTests(unittest.TestCase):
                 ('preparing', 'Log export is unavailable during restart preparation.'),
                 ('ready', 'Log export is unavailable after restart preparation.'),
                 ('forced', 'Log export is unavailable after restart preparation.'),
-                (None, 'Log export is unavailable while the worker is stopping.')):
+                (None, 'The installation log cannot be saved while the installer is stopping.')):
             with self.subTest(state=state):
                 self.controller.restart_state = state
                 reply = self.request('save_log', dest='usb')[0]

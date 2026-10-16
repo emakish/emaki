@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 EVIDENCE = ROOT / '.cache/evidence/n6b'
 EVIDENCE.mkdir(parents=True, exist_ok=True)
 Rect = namedtuple('Rect', 'x y width height')
-def run_case(case_name, mutation=None):
+def run_case(case_name, mutation=None, theme=None):
     with tempfile.TemporaryDirectory(prefix='emaki-system-keys-') as temporary:
         base = Path(temporary)
         shutil.copytree(ROOT / 'shell', base / 'qml')
@@ -87,6 +87,8 @@ def run_case(case_name, mutation=None):
                    DBUS_SYSTEM_BUS_ADDRESS='unix:path=' + str(base / 'missing-system-bus'))
         for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'NIRI_SOCKET', 'QT_LOGGING_RULES'):
             env.pop(key, None)
+        if theme:
+            env['EMAKI_TEST_THEME'] = theme
         try:
             result = subprocess.run(['qs', '-p', str(base / 'qml'), '--no-color'], env=env,
                                     text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -110,8 +112,11 @@ def run_case(case_name, mutation=None):
                 print('PASS: rejected ' + case_name + ':', error.args[0])
                 return
             raise AssertionError((case_name, 'pixel mutant was not rejected'))
-        for line in pixels(base, result.stdout):
-            print(line)
+        # The contrast stage is the light plate (#fff8f3, the Welcome buttons straight on it):
+        # its pixels are measured in light. Dark rims over dark plates: test-keyboard-gaps.py.
+        if theme != 'dark':
+            for line in pixels(base, result.stdout):
+                print(line)
         for name, strong in (('volume', False), ('cell-light', True), ('night', True)):
             with Image.open(base / (name + '.png')) as ring:
                 # Pale: the hover look's light 1 px rim over its faint fill. Orange (the open
@@ -122,7 +127,7 @@ def run_case(case_name, mutation=None):
                     assert 170 < rim < 210 and 170 < inner < 210, (name, rim, inner)
                 else:
                     assert 30 < rim < 60 and inner < 30, (name, rim, inner)
-            shutil.copyfile(base / (name + '.png'), EVIDENCE / ('system-focus-' + name + '.png'))
+            shutil.copyfile(base / (name + '.png'), EVIDENCE / ('system-focus-' + name + '-' + (theme or 'light') + '.png'))
         assert 'Cannot set activeFocusOnTab' not in result.stdout, result.stdout
         assert 'KEYBOARD_FAIL' not in result.stdout and 'TypeError:' not in result.stdout, result.stdout
 
@@ -169,11 +174,13 @@ def pixels(base, output):
     return lines
 
 
+# Light is the default (nothing saved) and owns the contrast stage; dark stays covered.
 run_case('system-keyboard')
+run_case('system-keyboard dark', theme='dark')
 print('PASS: system sliders, Wi-Fi, VPN, Bluetooth, layouts, power, tray menus and focus scrolling')
 run_case('hidden system ring', ('SystemPanel.qml', 'shown: panel.opened && belongs', 'shown: false',
                                 'system slider focus ring visible'))
-RING = ('border.color: strong ? LiquidPalette.focusOnAccent : LiquidPalette.flatDropRim\n'
+RING = ('border.color: strong ? strongInk : LiquidPalette.flatDropRim\n'
         '    border.width: strong ? 2 : 1')
 run_case('opaque system ring', ('FocusRing.qml', RING,
                                   'border.color: ShellPalette.background\n    border.width: strong ? 2 : 1',
@@ -186,7 +193,19 @@ run_case('dark rim on pale controls', ('FocusRing.qml', RING,
 # Without the strong rim the focus disappears on orange: the pixel check must refuse it.
 run_case('light rim on orange', ('LiquidPalette.qml',
                                  'focusOnAccent: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .75)',
-                                 'focusOnAccent: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .16)', None))
+                                 'focusOnAccent: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .16)', None),
+         theme='light')
+# Dark shades the selected drop: the warm dark ink on it is lost (1.25:1 in test-keyboard-gaps).
+run_case('dark ink on the dark selected tab', ('LiquidPalette.qml',
+                                                'focusOnSelected: ShellPalette.dark ? Qt.rgba(flatDropRim.r, flatDropRim.g, flatDropRim.b, focusOnAccent.a) : focusOnAccent',
+                                                'focusOnSelected: focusOnAccent',
+                                                'selected system tab focus ring existing hover rim'), theme='dark')
+# The two-colour rim's outer row is for the snapshot prompt's accent button only: given to
+# every strong rim (here as a dark frame), it must be refused on the system panel.
+run_case('two-colour rim on every strong control', ('FocusRing.qml',
+                                                    'property color outerInk: "transparent"',
+                                                    'property color outerInk: "black"',
+                                                    'selected system tab focus ring no dark inner frame'))
 
 run_case('early system focus', ('SystemPanel.qml',
                                'keyboardFocusPending = true;\n        applyKeyboardFocus();',

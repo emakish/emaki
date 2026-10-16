@@ -6,6 +6,11 @@ desktop-image: "background.png"
 desktop-image-scale-method: "crop"
 desktop-color: "#14100d"
 terminal-font: "Unifont Regular 16"
+terminal-left: "0"
+terminal-top: "0"
+terminal-width: "100%"
+terminal-height: "100%"
+terminal-border: "0"
 
 + boot_menu {
     left = 22%
@@ -17,7 +22,7 @@ terminal-font: "Unifont Regular 16"
     item_font = "Noto Sans Regular 66"
     selected_item_font = "Noto Sans Regular 66"
     item_color = "#f2e6d8"
-    selected_item_color = "#2a0f05"
+    selected_item_color = "#300c1c"
     item_height = 84
     item_padding = 42
     item_spacing = 48

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -14,7 +16,18 @@ import "SystemIcons.js" as SystemIcons
 Item {
     id: body
     property bool keyboardMode: false
+    property bool historyExpanded: false
+    onOpenedChanged: if (!opened) {
+        historyExpanded = false;
+        list.contentY = 0;
+    }
     readonly property alias scroller: list
+    function revealHistory(y: real): void {
+        historyExpanded = true;
+        Qt.callLater(() => {
+            list.contentY = Math.max(0, Math.min(y, list.contentHeight - list.height));
+        });
+    }
     function findTarget(item: var, key: string): var {
         if (item.key === key)
             return item;
@@ -74,6 +87,11 @@ Item {
     property var peekIds: []
     property bool hidePreviewBodies: false
     property string serverState: "disabled"
+    onServerStateChanged: {
+        // checking and registering are the normal start (NotificationService); only other states are faults.
+        if (!["active", "disabled", "owned_elsewhere", "checking", "registering"].includes(serverState))
+            console.warn("Notification server state: " + serverState);
+    }
     property date today: new Date()
     property string time: ""
     property string longDate: ""
@@ -101,12 +119,11 @@ Item {
     readonly property real calendarTop: header + (hasMedia ? player.implicitHeight + 14 : 0)
     readonly property real notesTop: calendarTop + calendar.height + 16
     readonly property bool serverNote: serverState !== "active"
-    readonly property real listTop: notesTop + 36 + (serverNote ? 22 : 0)
+    readonly property real listTop: notesTop + 36 + (store.scheduleResumeNote ? 22 : 0) + (serverNote ? 22 : 0)
     readonly property string actionNote: store.actionState === "action_unavailable" ? "This notification has no available action" : ""
-    // The panel is not a page (clock.js): at most six rows, fewer if the screen is short;
-    // the rest is a count.
+    // Keep the initial drawer compact; scrolling or the overflow action opens history.
     readonly property var plan: {
-        if (keyboardMode)
+        if (keyboardMode || historyExpanded)
             return notePlan(Math.max(1, store.count));
         let chosen = null;
         for (let cap = 6; cap >= 1; --cap) {
@@ -134,7 +151,20 @@ Item {
             font.weight: Font.Medium
         }
     }
+    // Every body wraps to the card's width. A critical notice (a battery warning, a pairing
+    // request, the desktop update, the held Secure Boot notices) shows all of it; any other at
+    // most bodyLines lines, the last one elided, its spaces and line breaks run together. A body
+    // that fits on one line keeps the one-line row it always had.
+    readonly property int bodyLines: 3
+    function bodyText(note: var): string {
+        return note.critical ? (note.body || "") : (note.body || "").replace(/\s+/g, " ");
+    }
+    function bodyLineLimit(note: var): int {
+        return note.critical ? 2147483647 : bodyLines;
+    }
     property var bodyHeights: ({})
+    // Measured heights by width, line limit and text: an arrival measures only itself.
+    property var measuredHeights: ({})
     Component.onCompleted: Qt.callLater(measureBodies)
     onInnerChanged: Qt.callLater(measureBodies)
     Connections {
@@ -144,21 +174,31 @@ Item {
         }
     }
     function measureBodies(): void {
+        const width = Math.max(1, inner - 130);
+        const known = Object.keys(measuredHeights).length > 512 ? {} : measuredHeights;
         const heights = {};
         for (const note of store.entries) {
-            if (!note.critical || !note.body)
+            if (!note.body)
                 continue;
-            const measure = bodyMeasure.createObject(null, {
-                width: Math.max(1, inner - 130),
-                text: note.body
-            }) as Text;
-            heights[note.id] = Math.max(20, Math.ceil(measure.implicitHeight));
-            measure.destroy();
+            const text = bodyText(note);
+            const lines = bodyLineLimit(note);
+            const key = width + " " + lines + " " + text;
+            if (known[key] === undefined) {
+                const measure = bodyMeasure.createObject(null, {
+                    width: width,
+                    maximumLineCount: lines,
+                    text: text
+                }) as Text;
+                known[key] = Math.max(20, Math.ceil(measure.implicitHeight));
+                measure.destroy();
+            }
+            heights[note.id] = known[key];
         }
+        measuredHeights = known;
         bodyHeights = heights;
     }
     function noteBodyHeight(note: var): real {
-        return note.critical && note.body ? (bodyHeights[note.id] ?? 20) : 20;
+        return note.body ? (bodyHeights[note.id] ?? 20) : 20;
     }
     function noteHeight(note: var): real {
         return 30 + noteBodyHeight(note) + (actionsOf(note).length ? 28 : 0);
@@ -230,10 +270,12 @@ Item {
         return minutes < 1 ? "now" : minutes < 60 ? minutes + " min" : minutes < 1440 ? Math.floor(minutes / 60) + " h" : Math.floor(minutes / 1440) + " d";
     }
     // A themed icon by name. Programs & Updates draws its icon in the accent, as the dock
-    // and the launcher do; its installed SVG keeps the default orange.
+    // and the launcher do; its installed SVG keeps the default accent.
     function themedIcon(name: string): string {
         if (name === "emaki-programs-updates")
             return SystemIcons.programsSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.accentShade, ShellPalette.managerIconInk);
+        if (name === "emaki-welcome")
+            return SystemIcons.welcomeSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.managerIconInk);
         return name ? Quickshell.iconPath(name, true) : "";
     }
     // The app's icon: the one the notification sent, else its desktop entry by name.
@@ -368,14 +410,30 @@ Item {
     readonly property rect knobRect: Qt.rect(side + inner - 38 + (store.effectiveDnd ? 18 : 0), notesTop + 3, 20, 22)
     readonly property bool knobShown: opened
     Text {
-        visible: body.opened && body.serverNote
+        objectName: "dnd-schedule-resume"
+        visible: body.opened && body.store.scheduleResumeNote !== ""
         x: body.side
         y: body.notesTop + 36
         width: body.inner
         height: 18
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
-        text: body.serverState === "owned_elsewhere" ? "Notifications are shown by another program" : body.serverState === "disabled" ? "Notification server disabled" : "Notification service: " + body.serverState
+        text: body.store.scheduleResumeNote
+        textFormat: Text.PlainText
+        font.family: ShellPalette.uiFont
+        font.pixelSize: 11
+        font.weight: Font.Medium
+        color: body.dim
+    }
+    Text {
+        visible: body.opened && body.serverNote
+        x: body.side
+        y: body.notesTop + 36 + (body.store.scheduleResumeNote ? 22 : 0)
+        width: body.inner
+        height: 18
+        verticalAlignment: Text.AlignVCenter
+        elide: Text.ElideRight
+        text: body.serverState === "owned_elsewhere" ? "Notifications are shown by another program" : body.serverState === "disabled" ? "Notifications are off" : body.serverState === "checking" || body.serverState === "registering" ? "Notifications are starting…" : "Notifications are unavailable"
         textFormat: Text.PlainText
         font.family: ShellPalette.uiFont
         font.pixelSize: 11
@@ -425,10 +483,13 @@ Item {
             font.weight: Font.DemiBold
             color: body.dim
         }
+        // The summary ends 8 px before "App · age": a long app name shortens it, it never runs
+        // under the label.
         Text {
+            objectName: "note-summary"
             x: 50
             y: 25 - 8 - 10
-            width: row.width - 130
+            width: Math.max(1, Math.min(row.width - 130, appAge.x - 8 - x))
             height: 20
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
@@ -441,15 +502,16 @@ Item {
         }
         Text {
             id: message
+            objectName: "note-body"
             x: 50
             y: 25
             width: Math.max(1, row.width - 130)
             height: body.noteBodyHeight(row.note)
             verticalAlignment: row.note.critical ? Text.AlignTop : Text.AlignVCenter
             elide: row.note.critical ? Text.ElideNone : Text.ElideRight
-            wrapMode: row.note.critical ? Text.Wrap : Text.NoWrap
-            maximumLineCount: row.note.critical ? 2147483647 : 1
-            text: row.note.critical ? (row.note.body || "") : (row.note.body || "").replace(/\s+/g, " ")
+            wrapMode: Text.Wrap
+            maximumLineCount: body.bodyLineLimit(row.note)
+            text: body.bodyText(row.note)
             textFormat: Text.PlainText
             font.family: ShellPalette.uiFont
             font.pixelSize: 13
@@ -457,6 +519,7 @@ Item {
             color: body.dim
         }
         Text {
+            id: appAge
             x: row.width - 12 - width
             y: 25 - 8 - 10
             height: 20
@@ -480,7 +543,9 @@ Item {
             height: 24
             bubblePad: 0
             bubbleRadius: 12
-            visible: row.open && !row.peek
+            // A held notice's preview stays until it is acted on or dismissed: its close is
+            // always there.
+            visible: row.peek ? row.note.held === true : row.open
             onClicked: body.store.dismiss([row.note.id])
             SymbolIcon {
                 id: closeIcon
@@ -563,11 +628,23 @@ Item {
         visible: body.opened
         y: body.listTop
         width: parent.width
-        height: body.keyboardMode ? Math.max(48, body.maxHeight - body.listTop - 14 - (body.actionNote ? 22 : 0)) : body.plan.height
+        height: Math.min(body.plan.height, Math.max(48, body.maxHeight - body.listTop - 14 - (body.actionNote ? 22 : 0)))
         contentHeight: body.plan.height
         contentWidth: width
-        clip: body.keyboardMode
-        interactive: body.keyboardMode
+        clip: true
+        interactive: true
+        WheelHandler {
+            target: null
+            onWheel: event => {
+                const delta = event.pixelDelta.y || event.angleDelta.y / 3;
+                if (delta < 0)
+                    body.historyExpanded = true;
+                Qt.callLater(() => {
+                    list.contentY = Math.max(0, Math.min(list.contentHeight - list.height, list.contentY - delta));
+                });
+                event.accepted = true;
+            }
+        }
         Repeater {
             model: body.opened ? body.plan.items : []
             Item {
@@ -613,7 +690,7 @@ Item {
                     }
                 }
                 Text {
-                    visible: entry.kind === "more" || entry.kind === "hidden"
+                    visible: entry.kind === "more"
                     x: body.side + 10
                     width: body.inner - 200
                     height: 26
@@ -625,6 +702,14 @@ Item {
                     font.pixelSize: 13
                     font.weight: Font.Medium
                     color: body.dim
+                }
+                Word {
+                    visible: entry.kind === "hidden"
+                    x: body.side
+                    key: entry.kind === "hidden" ? "history-more" : ""
+                    label: entry.kind === "hidden" ? "+" + entry.modelData.count + " more" : ""
+                    color: body.dim
+                    onClicked: body.revealHistory(entry.modelData.y)
                 }
                 Loader {
                     active: entry.kind === "more"
@@ -658,7 +743,7 @@ Item {
     Text {
         visible: body.opened && body.actionNote !== ""
         x: body.side
-        y: body.listTop + body.plan.height
+        y: body.listTop + list.height
         width: body.inner
         height: 18
         verticalAlignment: Text.AlignVCenter

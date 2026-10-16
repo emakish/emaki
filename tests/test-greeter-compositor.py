@@ -1,4 +1,6 @@
 #!/usr/bin/python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """emaki-greeter-compositor failure path and emaki-text-session, without a VM.
 
 The wrapper runs on a pty that stands for the login VT greetd hands it, with stubs for

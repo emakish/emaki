@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Provision fixed greeter directories; never inspect a user's home or wallpaper.
 
 Invoked by explicit make enable-greeter or make uninstall steps. --root supports an

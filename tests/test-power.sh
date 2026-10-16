@@ -1,4 +1,6 @@
 #!/bin/sh
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Isolated emaki-power test: fuzzel, systemctl, niri, busctl and emaki-lock are PATH fakes.
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -16,6 +18,7 @@ cp "$(dirname "$S")/emaki-config-path" "$T/emaki-config-path"
 cp "$(dirname "$S")/paths" "$T/paths"
 # The test runner's personal files must not affect the result.
 export XDG_CONFIG_HOME="$T/config"
+export XDG_RUNTIME_DIR="$T/runtime"
 mk emaki-wallet-start 'echo "wallet $*" >> "'"$LOG"'"; if [ -f "'"$T"'/wallet-stall" ]; then trap "" TERM; while :; do sleep 1; done; fi; [ ! -f "'"$T"'/wallet-fail" ]'
 mk systemctl 'echo "systemctl $*" >> "'"$LOG"'"'
 # logind's CanHibernate answer, as busctl --json=short prints it; "yes" unless the test says otherwise.
@@ -82,6 +85,33 @@ config_is() {   # config_is "<name>" "<expected path>"
     if [ "$got" = "$2" ]; then echo "ok   $1"; else echo "FAIL $1: got [$got] want [$2]"; fail=1; fi
 }
 config_is "fuzzel config: Emaki default"   "/usr/share/emaki/fuzzel/fuzzel.ini"
+# The session's copy in the chosen accent comes between ours and the person's (DECISIONS 2026-10-15).
+accent_copy="$XDG_RUNTIME_DIR/emaki-settings/accent/fuzzel/fuzzel.ini"
+mkdir -p "${accent_copy%/*}"
+printf '%s\n' '[colors]' > "$accent_copy"
+config_is "fuzzel config: a foreign accent file is not used" "/usr/share/emaki/fuzzel/fuzzel.ini"
+accent_header='# Emaki accent: written by the session from settings.toml; edits are replaced.'
+# The header alone, a broken body behind an intact header, a truncated or extended copy: ours.
+printf '%s\n' "$accent_header" > "$accent_copy"
+config_is "fuzzel config: a header-only accent file is not used" "/usr/share/emaki/fuzzel/fuzzel.ini"
+printf '%s\n' "$accent_header" '[colors]' 'selection=invalid' > "$accent_copy"
+config_is "fuzzel config: an invalid accent body is not used" "/usr/share/emaki/fuzzel/fuzzel.ini"
+accent_lines() {
+    printf '%s\n' "$accent_header" 'include=/usr/share/emaki/fuzzel/fuzzel.ini' '' '[colors]' \
+        'match=e2733fff' 'selection=e2733fff' 'selection-text=2a0f05ff' 'selection-match=2a0f05ff' \
+        'border=e2733fff'
+}
+accent_lines | head -n 6 > "$accent_copy"
+config_is "fuzzel config: a truncated accent file is not used" "/usr/share/emaki/fuzzel/fuzzel.ini"
+{ accent_lines; printf '%s\n' 'background=000000ff'; } > "$accent_copy"
+config_is "fuzzel config: an extended accent file is not used" "/usr/share/emaki/fuzzel/fuzzel.ini"
+accent_lines | sed 's/^border=e2733fff$/border=e2733f/' > "$accent_copy"
+config_is "fuzzel config: a malformed accent colour is not used" "/usr/share/emaki/fuzzel/fuzzel.ini"
+# A NUL inside a key (the shell's read drops it; fuzzel rejects the file): ours (R9A2).
+{ accent_lines | head -n 4; printf 'ma\000tch=e2733fff\n'; accent_lines | tail -n 4; } > "$accent_copy"
+config_is "fuzzel config: an accent file with a NUL byte is not used" "/usr/share/emaki/fuzzel/fuzzel.ini"
+accent_lines > "$accent_copy"
+config_is "fuzzel config: the chosen accent"   "$accent_copy"
 mkdir -p "$T/config/fuzzel"; : > "$T/config/fuzzel/fuzzel.ini"
 config_is "fuzzel config: personal wins"   "$T/config/fuzzel/fuzzel.ini"
 

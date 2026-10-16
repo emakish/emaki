@@ -21,6 +21,7 @@ SYSTEM = {
     'XDG_DATA_DIRS_DEFAULT': '/usr/local/share:/usr/share',
     'TRUSTED_PATH': '/usr/bin',
     'PYTHON': '/usr/bin/python3',
+    'SYSTEMCTL': '/usr/bin/systemctl',
     'QS': '/usr/bin/qs',
     'QMLDIR': '/usr/lib/qt6/qml',
     'QT_PLUGINSDIR': '/usr/lib/qt6/plugins',

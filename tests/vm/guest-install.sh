@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # F0, runs INSIDE the VM: install Emaki from ~/emaki as a user following the repo instructions would.
 # Each step prints “STEP <name> rc=<code>”; a failed step does not stop later ones —
 # we need the full list of failures. The script exits 1 at the end if any step failed.

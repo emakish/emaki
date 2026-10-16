@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Release walk: record every frame a person sees on the
 RELEASE image under ~/VMs/eyes/<iso-sha12>/walk-<date>/ and keep walk.toml, the record that
 eyes-gate.py judges.

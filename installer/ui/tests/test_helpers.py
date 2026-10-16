@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 import fcntl
 import importlib.util
 import io
@@ -62,41 +64,6 @@ REOPEN_PROBE = '''
             reopenProbe.clears++;
         }
     }
-'''
-
-
-# Test-only probe for the partition editor: gparted() opens it as the warning's button does,
-# on a disk whose stable id differs from its device path, as on real hardware (the mock worker's
-# manual-by-id screen; Open GParted probes the disks again before GParted starts).
-EDITOR_PROBE = '''
-    IpcHandler {
-        target: "installertest"
-        function state(): string {
-            const window = windowLoader.item as FloatingWindow;
-            return JSON.stringify({
-                ready: controller.session.ready && !!controller.session.inventory,
-                shown: !!window && window.backingWindowVisible,
-                partitioning: controller.partitioning,
-                step: controller.step
-            });
-        }
-        function gparted(): string {
-            controller.diskId = controller.session.inventory.disks[0].id;
-            if (controller.diskId !== "/dev/disk/by-id/virtio-emaki-target")
-                return "unexpected disk id " + controller.diskId;
-            controller.mode = "manual";
-            controller.step = "disk";
-            controller.partitionEditorCommand = [Quickshell.env("EMAKI_TEST_EDITOR")];
-            controller.gpartedWarning = true;
-            controller.openGparted();
-            return "opened";
-        }
-    }
-'''
-EDITOR = '''#!/bin/sh
-printf '%s\\n' "$@" > "$EMAKI_TEST_EDITOR_ARGS"
-i=0
-while [ ! -e "$EMAKI_TEST_EDITOR_RELEASE" ] && [ "$i" -lt 300 ]; do sleep 0.1; i=$((i + 1)); done
 '''
 
 
@@ -656,79 +623,25 @@ class Helpers(unittest.TestCase):
             for diagnostic in ['ReferenceError', 'TypeError', 'Binding loop', 'Unable to assign']:
                 self.assertNotIn(diagnostic, log.read_text())
 
-    @unittest.skipUnless(shutil.which('qs'), 'Quickshell is not installed')
-    def test_window_steps_aside_while_the_partition_editor_runs(self):
-        """GParted opens tiled, under the floating installer (VM walk B3, frame B-19), and on the
-        first disk it finds, the live stick. The real window and launcher, offscreen: the editor
-        gets the chosen disk's device path, the window hides while it runs and comes back after."""
-        with tempfile.TemporaryDirectory(prefix='eir-') as temporary, \
-                tempfile.TemporaryDirectory(prefix='eir-', dir='/tmp') as runtime:
-            root = Path(temporary)
-            worker = subprocess.Popen([sys.executable, '-B', str(UI / 'tests/mock-worker.py'), '--socket', str(Path(runtime) / 'w.sock'),
-                                       '--screen', 'manual-by-id', '--delay', '0'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            self.addCleanup(worker.wait, 5)
-            self.addCleanup(worker.terminate)
-            if worker.stdout.readline().strip() != str(Path(runtime) / 'w.sock'):
-                self.skipTest('the mock worker could not bind its socket: ' + worker.stderr.read())
-            ui = root / 'ui'
-            shutil.copytree(UI, ui, ignore=shutil.ignore_patterns('__pycache__', 'tests'))
-            if not Path('/usr/share/emaki/shell/qmldir').exists():
-                for filename in ui.glob('*.qml'):
-                    filename.write_text(filename.read_text().replace('"file:///usr/share/emaki/shell"', '"file://' + str(ROOT / 'shell') + '"'))
-            shell = ui / 'shell.qml'
-            text = shell.read_text().rstrip()
-            shell.write_text(text[:-1] + EDITOR_PROBE + '}\n')
-            launcher = root / 'emaki-install'
-            launcher.write_text((UI / 'emaki-install').read_text().replace(INSTALLED_UI, str(shell)))
-            launcher.chmod(0o700)
-            editor = root / 'editor'
-            editor.write_text(EDITOR)
-            editor.chmod(0o700)
-            for name in ['cache', 'config', 'state', 'data']:
-                (root / name).mkdir(mode=0o700)
-            env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QML_DISABLE_DISK_CACHE='1',
-                       QS_DISABLE_CRASH_HANDLER='1', XDG_RUNTIME_DIR=runtime, XDG_CACHE_HOME=str(root / 'cache'),
-                       XDG_CONFIG_HOME=str(root / 'config'), XDG_STATE_HOME=str(root / 'state'), XDG_DATA_HOME=str(root / 'data'),
-                       EMAKI_INSTALLER_SOCKET=str(Path(runtime) / 'w.sock'), EMAKI_TEST_EDITOR=str(editor),
-                       EMAKI_TEST_EDITOR_ARGS=str(root / 'args'), EMAKI_TEST_EDITOR_RELEASE=str(root / 'release'))
-            for key in ['WAYLAND_DISPLAY', 'DISPLAY', 'NIRI_SOCKET', 'DBUS_SESSION_BUS_ADDRESS']:
-                env.pop(key, None)
+    def test_manual_editor_transcript_is_the_fixture_disk(self):
+        """The manual-editor scenario's recorded inventory is editor_fixture.py's disk, whose plans
+        mock-worker.py answers with the real planner: the two cannot drift apart."""
+        sys.path.insert(0, str(UI / 'tests'))
+        import editor_fixture
+        rows = json.loads((UI / 'tests/transcripts/manual-editor.json').read_text())
+        expected = dict(editor_fixture.public(editor_fixture.inventory()), type='inventory')
+        probes = [row['responses'][0] for row in rows if row['expect'] == 'probe']
+        # Disk step, then the editor reads the disk again when it opens (FX18), then Back to the disk step.
+        self.assertEqual(probes, [expected, expected, expected])
+        self.assertEqual([row.get('planner') for row in rows if row['expect'] == 'plan'], ['editor', 'editor'])
 
-            def probe(function):
-                result = subprocess.run(['qs', 'ipc', '-p', str(shell), 'call', 'installertest', function], env=env,
-                                        capture_output=True, text=True, timeout=10)
-                return result.stdout.strip() if result.returncode == 0 else ''
-
-            def until(**expected):
-                deadline = time.monotonic() + 15
-                reply = ''
-                while time.monotonic() < deadline:
-                    reply = probe('state')
-                    state = json.loads(reply) if reply.startswith('{') else {}
-                    if all(state.get(key) == value for key, value in expected.items()):
-                        return state
-                    time.sleep(.1)
-                self.fail(f'window never reached {expected}; last state {reply!r}; log:\n' + log.read_text())
-
-            log = root / 'qs.log'
-            with log.open('w') as output:
-                first = subprocess.Popen([str(launcher)], env=env, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
-            try:
-                until(ready=True, shown=True, partitioning=False)
-                self.assertEqual(probe('gparted'), 'opened')
-                until(partitioning=True, shown=False)
-                deadline = time.monotonic() + 5
-                while not (root / 'args').exists() and time.monotonic() < deadline:
-                    time.sleep(.05)
-                self.assertEqual((root / 'args').read_text().splitlines(), ['/dev/vda'])
-                (root / 'release').touch()
-                state = until(partitioning=False, shown=True)
-                self.assertEqual(state['step'], 'disk')
-            finally:
-                os.killpg(first.pid, signal.SIGTERM)
-                first.wait(timeout=10)
-            for diagnostic in ['ReferenceError', 'TypeError', 'Binding loop', 'Unable to assign']:
-                self.assertNotIn(diagnostic, log.read_text())
+    def test_the_window_starts_no_partition_editor(self):
+        """Partitions are edited inside the installer (DECISIONS 0.9.0): the window never starts
+        GParted or any other program as root, and never steps aside for one."""
+        for name in ('InstallerController.qml', 'InstallerView.qml', 'shell.qml', 'Protocol.js'):
+            source = (UI / name).read_text()
+            for word in ('gparted', 'GParted', '"sudo"', 'partitionEditorCommand', 'onPartitioningChanged'):
+                self.assertNotIn(word, source, name)
 
     @unittest.skipUnless(shutil.which('qs') and Path('/usr/lib/qt6/plugins/platformthemes/libqt6ct.so').exists()
                          and Path('/usr/share/icons/hicolor/index.theme').exists(),

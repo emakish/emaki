@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Build the startup splash watermark from the lock's canonical pixel wordmark (stdlib only).
 
 The picture is the same wordmark, colours and 3x scale as boot/emaki-splash.bmp, without the

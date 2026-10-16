@@ -198,10 +198,19 @@ ShellRoot {
                 welcome.page = 1;
                 const next = findChild(welcome, "welcome-next");
                 const back = findChild(welcome, "welcome-back");
+                const close = findChild(welcome, "welcome-close");
+                // The tour's arrows turn its pages; Up and Down walk the buttons by place.
                 next.forceActiveFocus();
                 keyClick(Qt.Key_Left);
-                check(back.activeFocus, "Welcome Left focuses Back");
+                equal(welcome.page, 0);
+                keyClick(Qt.Key_Right);
                 equal(welcome.page, 1);
+                back.forceActiveFocus();
+                keyClick(Qt.Key_Up);
+                check(close.activeFocus, "Welcome Up from Back reaches the close button");
+                keyClick(Qt.Key_Down);
+                check(next.activeFocus, "Welcome Down from close returns to Next");
+                back.forceActiveFocus();
                 keyClick(Qt.Key_Return);
                 equal(welcome.page, 0);
                 welcome.visible = false;

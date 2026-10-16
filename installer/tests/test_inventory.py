@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Inventory tests use lsblk-shaped fixtures and fake runners; no disk access."""
 
 import copy
@@ -94,6 +96,18 @@ class ParseInventoryTests(unittest.TestCase):
         after = copy.deepcopy(before)
         after["blockdevices"][0]["children"][0]["partuuid"] = "different"
         self.assertNotEqual(parse_lsblk(before)[0]["_identity"], parse_lsblk(after)[0]["_identity"])
+
+    def test_public_layout_identity_tracks_partition_and_disk_replacement(self):
+        data = fixture('windows')
+        original = public_inventory(parse_lsblk(data))[0]['layout_id']
+        self.assertEqual(original, public_inventory(parse_lsblk(copy.deepcopy(data)))[0]['layout_id'])
+        for key, value, partition in [('partuuid', 'replacement', True), ('start', 8192, True),
+                                      ('disk-seq', 99999, False), ('ptuuid', 'replacement', False)]:
+            with self.subTest(key=key):
+                changed = copy.deepcopy(data)
+                node = changed['blockdevices'][0]
+                (node['children'][0] if partition else node)[key] = value
+                self.assertNotEqual(original, public_inventory(parse_lsblk(changed))[0]['layout_id'])
 
     def test_identity_changes_on_same_geometry_vm_hotplug(self):
         before = fixture("blank")
@@ -282,6 +296,144 @@ class ProbeSafetyTests(unittest.TestCase):
                 patch.object(inventory, "_inspect"), \
                 patch("emaki_installer.inventory._online", return_value=False):
             return public_inventory(inventory.probe())["disks"][0]
+
+    def test_pending_editor_refresh_precedes_probe_and_retries_after_failure(self):
+        data = fixture("windows")
+        events = []
+        runner = Mock()
+
+        def run(argv):
+            events.append(argv[0])
+            return json.dumps(data) if argv[0] == 'lsblk' else ''
+
+        runner.run.side_effect = run
+        inventory = Inventory(runner)
+        attempts = 0
+
+        def refresh():
+            nonlocal attempts
+            events.append('refresh')
+            attempts += 1
+            if attempts == 1:
+                raise InstallError(Code.DISK_BUSY, 'The kernel partition view is still busy.', retryable=True)
+            data['blockdevices'][0]['children'][2]['size'] -= GIB
+
+        with patch.object(inventory, '_boot_sources', return_value=(set(), False)), \
+                patch.object(inventory, '_stable_ids', return_value={}), \
+                patch.object(inventory, '_holders', return_value={}), \
+                patch('emaki_installer.inventory._online', return_value=False):
+            before = inventory.probe()['disks'][0]
+            inventory.pending_partition_refresh = {before['path']: refresh}
+            events.clear()
+            blocked = inventory.probe()['disks'][0]
+            self.assertTrue(blocked['_busy'])
+            self.assertEqual(blocked['reason'], 'The disk is still being read. Try again in a moment.')
+            self.assertEqual(events[:2], ['refresh', 'lsblk'])
+            self.assertIs(inventory.pending_partition_refresh[before['path']], refresh)
+            events.clear()
+            after = inventory.probe()['disks'][0]
+            self.assertEqual(events[:2], ['refresh', 'lsblk'])
+            self.assertEqual(inventory.pending_partition_refresh, {})
+            self.assertEqual(after['partitions'][2]['size_bytes'],
+                             before['partitions'][2]['size_bytes'] - GIB)
+            self.assertNotEqual(fingerprint(after), fingerprint(before))
+            events.clear()
+            inventory.probe()
+            self.assertNotIn('refresh', events)
+
+    def test_terminal_editor_recovery_is_dropped_and_other_disks_remain_available(self):
+        for code in (Code.DISK_CHANGED, Code.DISK_NOT_FOUND, Code.DISK_BUSY, Code.UNSAFE_DISK):
+            with self.subTest(code=code):
+                data = fixture('windows')
+                data['blockdevices'].extend(fixture('blank')['blockdevices'])
+                runner = Mock()
+                runner.run.side_effect = lambda argv: json.dumps(data) if argv[0] == 'lsblk' else ''
+                inventory = Inventory(runner)
+                refresh = Mock(side_effect=InstallError(code, 'Recovery stopped.'))
+                # Exercise the old single-callback interface too when checking the regression.
+                inventory.pending_partition_refresh = ({'/dev/nvme0n1': refresh}
+                    if isinstance(inventory.pending_partition_refresh, dict) else refresh)
+                with patch.object(inventory, '_boot_sources', return_value=(set(), True)), \
+                        patch.object(inventory, '_stable_ids', return_value={}), \
+                        patch.object(inventory, '_holders', return_value={}), \
+                        patch.object(inventory, '_inspect'), \
+                        patch('emaki_installer.inventory._online', return_value=False):
+                    disks = inventory.probe()['disks']
+                    self.assertFalse(next(d for d in disks if d['path'] == '/dev/vda')['_busy'])
+                    self.assertEqual(inventory.pending_partition_refresh, {})
+                    self.assertEqual(len(inventory.probe()['disks']), len(disks))
+                    refresh.assert_called_once()
+                    runner.log.assert_called_once()
+
+    def test_retryable_editor_recovery_has_plain_reason_and_logs_raw_failure(self):
+        cases = [(Code.COMMAND_FAILED, 'udevadm timed out.'),
+                 (Code.COMMAND_FAILED, 'udevadm exited with status 1.'),
+                 (Code.DISK_BUSY, 'The kernel partition view is still busy.')]
+        for code, message in cases:
+            with self.subTest(code=code, message=message):
+                data = fixture('windows')
+                runner = Mock()
+                runner.run.side_effect = lambda argv: json.dumps(data) if argv[0] == 'lsblk' else ''
+                inventory = Inventory(runner)
+                refresh = Mock(side_effect=InstallError(code, message, retryable=True))
+                inventory.pending_partition_refresh = {'/dev/nvme0n1': refresh}
+                with patch.object(inventory, '_boot_sources', return_value=(set(), True)), \
+                        patch.object(inventory, '_stable_ids', return_value={}), \
+                        patch.object(inventory, '_holders', return_value={}), \
+                        patch.object(inventory, '_inspect') as inspect, \
+                        patch('emaki_installer.inventory._online', return_value=False):
+                    disk = inventory.probe()['disks'][0]
+                self.assertTrue(disk['_busy'])
+                self.assertEqual(public_inventory({'disks': [disk]})['disks'][0]['reason'],
+                                 'The disk is still being read. Try again in a moment.')
+                inspect.assert_not_called()
+                self.assertIs(inventory.pending_partition_refresh[disk['path']], refresh)
+                self.assertTrue(any(message in call.args[0] for call in runner.log.call_args_list))
+
+    def test_terminal_command_failure_has_plain_reason_and_logs_raw_failure(self):
+        for message in ('lsblk exited with status 1.', 'sfdisk exited with status 1.'):
+            with self.subTest(message=message):
+                data = fixture('windows')
+                data['blockdevices'].extend(fixture('blank')['blockdevices'])
+                runner = Mock()
+                runner.run.side_effect = lambda argv: json.dumps(data) if argv[0] == 'lsblk' else ''
+                inventory = Inventory(runner)
+                refresh = Mock(side_effect=InstallError(Code.COMMAND_FAILED, message, retryable=False))
+                inventory.pending_partition_refresh = {'/dev/nvme0n1': refresh}
+                with patch.object(inventory, '_boot_sources', return_value=(set(), True)), \
+                        patch.object(inventory, '_stable_ids', return_value={}), \
+                        patch.object(inventory, '_holders', return_value={}), \
+                        patch.object(inventory, '_inspect') as inspect, \
+                        patch('emaki_installer.inventory._online', return_value=False):
+                    disks = inventory.probe()['disks']
+                disk = next(d for d in disks if d['path'] == '/dev/nvme0n1')
+                self.assertTrue(disk['_busy'])
+                self.assertFalse(next(d for d in disks if d['path'] == '/dev/vda')['_busy'])
+                inspect.assert_not_called()
+                self.assertEqual(inventory.pending_partition_refresh, {})
+                refresh.assert_called_once()
+                self.assertTrue(any(message in call.args[0] for call in runner.log.call_args_list))
+                self.assertEqual(public_inventory({'disks': [disk]})['disks'][0]['reason'],
+                                 'The disk could not be read. Installation stopped.')
+
+    def test_busy_editor_recovery_does_not_inspect_its_disk_or_block_another_disk(self):
+        data = fixture('windows')
+        data['blockdevices'].extend(fixture('blank')['blockdevices'])
+        runner = Mock()
+        runner.run.side_effect = lambda argv: json.dumps(data) if argv[0] == 'lsblk' else ''
+        inventory = Inventory(runner)
+        refresh = Mock(side_effect=InstallError(Code.DISK_BUSY, 'Still busy.', retryable=True))
+        inventory.pending_partition_refresh = {'/dev/nvme0n1': refresh}
+        with patch.object(inventory, '_boot_sources', return_value=(set(), True)), \
+                patch.object(inventory, '_stable_ids', return_value={}), \
+                patch.object(inventory, '_holders', return_value={}), \
+                patch.object(inventory, '_inspect') as inspect, \
+                patch('emaki_installer.inventory._online', return_value=False):
+            disks = inventory.probe()['disks']
+            self.assertTrue(next(d for d in disks if d['path'] == '/dev/nvme0n1')['_busy'])
+            self.assertFalse(next(d for d in disks if d['path'] == '/dev/vda')['_busy'])
+            inspect.assert_not_called()
+            self.assertIs(inventory.pending_partition_refresh['/dev/nvme0n1'], refresh)
 
     def test_busy_disk_carries_a_public_reason(self):
         def lvm(disk):
@@ -779,8 +931,8 @@ class MembershipTests(unittest.TestCase):
                 self.assertEqual(volume['warning'], unconfirmed_identity_warning(device))
                 self.assertEqual(volume['warning'],
                                  f'{device} has no readable volume ID, so the installer cannot erase this device safely. '
-                                 'Choose another target or wipe this device in the partition editor. '
-                                 'If this is a partition, you can also leave it unformatted in Manual mode.')
+                                 f'Choose another target, or clear this device in a terminal [wipefs --all {device}] '
+                                 'and refresh disks. If this is a partition, you can also leave it unchanged in Manual mode.')
                 self.assertNotIn('Type ERASE', volume['warning'])
 
     def test_held_apfs_containers_stay_busy(self):

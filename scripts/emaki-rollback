@@ -27,8 +27,9 @@ KEPT = re.compile(r'@emaki-kept-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}')
 SNAPSHOT = re.compile(r'/@snapshots/([1-9][0-9]*)/snapshot')
 SHARED = {'/home': '@home', '/var/log': '@log', '/var/cache/pacman/pkg': '@pkg',
           '/.snapshots': '@snapshots'}
-# Present only on installs with hibernation; checked like a shared one when listed.
-OPTIONAL = {'/swap': '@swap'}
+# Present only on installs with hibernation (@swap) or Secure Boot (@secureboot: the machine
+# key, kept out of the root's snapshots); checked like a shared one when listed.
+OPTIONAL = {'/swap': '@swap', '/var/lib/emaki/secureboot': '@secureboot'}
 ENV = {'PATH': '/usr/bin:/usr/sbin', 'LC_ALL': 'C'}
 HOLD_HELPER = '/usr/share/libalpm/scripts/emaki-rollback-holds'
 HOLD_FALLBACK = '/var/lib/emaki/emaki-rollback-holds'
@@ -40,6 +41,13 @@ def hold_helper():
 
 class Refused(RuntimeError):
     pass
+
+
+class UnmarkedPackageLock(Refused):
+    def __init__(self, identity, boot_id):
+        super().__init__('An unfinished package operation left a lock. Restart, then try again.')
+        self.identity = identity
+        self.boot_id = boot_id
 
 
 def require(ok, message):
@@ -132,7 +140,7 @@ def fstab_rows(text, fs_uuid):
             raise Refused(f'Unsupported separate mount: {target}.')
         rows[target] = (source, kind, frozenset(opts), dump, passno)
     require({'/', '/efi', *SHARED} <= rows.keys(), 'The installed Emaki fstab layout is required.')
-    require(rows['/efi'][1] == 'vfat', 'The EFI system partition must be mounted at /efi.')
+    require(rows['/efi'][1] == 'vfat', 'The startup partition must be available at /efi.')
     return rows
 
 
@@ -192,18 +200,22 @@ def atomic_exchange(left, right):
 
 
 def write_record(path, data):
-    temp = path.with_suffix('.tmp')
-    with temp.open('x') as stream:
-        json.dump(data, stream, sort_keys=True)
-        stream.write('\n')
-        stream.flush()
-        os.fsync(stream.fileno())
-    os.replace(temp, path)
-    fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    descriptor, name = tempfile.mkstemp(prefix=path.name + '.', suffix='.tmp', dir=path.parent)
+    temp = Path(name)
     try:
-        os.fsync(fd)
+        with os.fdopen(descriptor, 'w') as stream:
+            json.dump(data, stream, sort_keys=True)
+            stream.write('\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp, path)
+        fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
     finally:
-        os.close(fd)
+        temp.unlink(missing_ok=True)
 
 
 @contextmanager
@@ -236,7 +248,7 @@ def records(top):
     return directory, found
 
 
-def check_layout(top, fs_uuid, boot_id=None):
+def check_layout(top, fs_uuid, boot_id=None, *, allow_unmarked=False):
     current = top / '@'
     subvolume(current, readonly=False)
     empty_children(current)
@@ -251,20 +263,27 @@ def check_layout(top, fs_uuid, boot_id=None):
         require(actual['uuid'] == fs_uuid and actual['fsroot'] == '/' + name and actual['fstype'] == 'btrfs',
                 f'{target} is not mounted from the expected shared subvolume.')
     efi = mount_info('/efi')
-    require(rows['/efi'][0] == 'UUID=' + efi['uuid'], 'The mounted EFI partition differs from fstab.')
+    require(rows['/efi'][0] == 'UUID=' + efi['uuid'], 'The mounted startup partition does not match the system disk configuration.')
     for target in ('/boot', '/usr', '/etc', '/var', '/var/lib', '/var/lib/pacman'):
         result = subprocess.run(['findmnt', '--mountpoint', target], env=ENV, capture_output=True)
         require(result.returncode == 1, f'Separate or uninspectable mount at {target}.')
     directory = os.open(safe_path(current, 'var/lib/pacman'), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
-        previous_refresh_lock(directory, boot_id)
+        try:
+            previous_refresh_lock(directory, boot_id)
+        except UnmarkedPackageLock:
+            # Only promotion enters package_guard to record the observation.
+            # Cleanup must refuse an unfinished operation instead of bypassing it.
+            if not allow_unmarked:
+                raise Refused('An unfinished package operation left a lock. '
+                              'Resolve the unfinished package operation before deleting previous systems.') from None
     finally:
         os.close(directory)
     return rows
 
 
 def previous_refresh_lock(directory, boot_id):
-    """Inspect a stale refresh token without changing the package database."""
+    """Inspect previous-boot proof without changing the database or its lock."""
     message = 'A package transaction is active or unfinished.'
     def identity(info):
         return (info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
@@ -289,8 +308,49 @@ def previous_refresh_lock(directory, boot_id):
     except OSError:
         raise Refused(message) from None
     match = re.fullmatch(
-        rb'emaki-boot-refresh:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', token)
-    require(match is not None and match[1].decode() != boot_id, message)
+        rb'emaki-(?:boot-refresh|pacman):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', token)
+    unmarked = False
+    if not token:
+        try:
+            marker = os.open('emaki-package-lock.json', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                             dir_fd=directory)
+            try:
+                require(stat.S_ISREG(os.fstat(marker).st_mode), message)
+                record = json.loads(os.read(marker, 4096))
+            finally:
+                os.close(marker)
+        except FileNotFoundError:
+            record = {}
+        except (OSError, ValueError):
+            raise Refused(message) from None
+        require(isinstance(record, dict), message)
+        # The adjacent root-controlled path binds this record to its database.
+        # Btrfs st_dev may change at boot, so it is only a live race check.
+        if record.get('identity') == list(before[1:]):
+            recorded_boot = record.get('boot_id')
+            require(isinstance(recorded_boot, str) and re.fullmatch(
+                r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', recorded_boot), message)
+        else:
+            unmarked = True
+    else:
+        require(match is not None and match[1].decode() != boot_id, message)
+    try:
+        for process in Path('/proc').iterdir():
+            if not process.name.isdigit():
+                continue
+            try:
+                require((process / 'comm').read_text().strip() != 'pacman', message)
+            except FileNotFoundError:
+                # A process that exited during inspection no longer owns a transaction.
+                require(not process.exists(), message)
+    except OSError:
+        raise Refused(message) from None
+    require(identity(os.stat('db.lck', dir_fd=directory, follow_symlinks=False)) == before, message)
+    if unmarked:
+        raise UnmarkedPackageLock(before, boot_id)
+    if not token:
+        require(recorded_boot != boot_id,
+                'An unfinished package operation left a lock. Restart, then try again.')
     return before
 
 
@@ -307,10 +367,33 @@ def package_guard(current, boot_id=None):
             raise Refused('A boot loader operation is running; try rollback again later.') from None
         directory = os.open(safe_path(current, 'var/lib/pacman'), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
-            previous = previous_refresh_lock(directory, boot_id)
+            try:
+                previous = previous_refresh_lock(directory, boot_id)
+            except UnmarkedPackageLock as observed:
+                # An empty lock from download or database sync has no hook proof.
+                # Record this boot now; only another boot may recover this inode.
+                temporary = '.emaki-package-lock-' + uuid.uuid4().hex
+                try:
+                    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                                 0o600, dir_fd=directory)
+                    with os.fdopen(fd, 'w') as output:
+                        json.dump({'boot_id': observed.boot_id,
+                                   'identity': list(observed.identity[1:])}, output)
+                        output.write('\n')
+                        output.flush()
+                        os.fsync(output.fileno())
+                    os.replace(temporary, 'emaki-package-lock.json',
+                               src_dir_fd=directory, dst_dir_fd=directory)
+                    os.fsync(directory)
+                finally:
+                    try:
+                        os.unlink(temporary, dir_fd=directory)
+                    except FileNotFoundError:
+                        pass
+                raise Refused(str(observed)) from None
             if previous is not None:
                 # Recheck both identity and contents before removing a previous boot's
-                # refresh token, then acquire our own lock exclusively as usual.
+                # transaction token, then acquire our own lock exclusively as usual.
                 require(previous_refresh_lock(directory, boot_id) == previous,
                         'The package lock changed during recovery.')
                 os.unlink('db.lck', dir_fd=directory)
@@ -320,20 +403,20 @@ def package_guard(current, boot_id=None):
                 raise Refused('A package transaction is active or unfinished.') from None
             owned = os.fstat(lock)
             try:
-                try:
-                    token = 'emaki-rollback:' + uuid.uuid4().hex
-                    os.write(lock, token.encode())
-                    os.fsync(lock)
-                finally:
-                    os.close(lock)
+                token = 'emaki-rollback:' + uuid.uuid4().hex
+                os.write(lock, token.encode())
+                os.fsync(lock)
                 yield token
             finally:
-                # The directory descriptor still refers to the previous root after
-                # the exchange. Never remove a new root's unrelated package lock.
-                present = os.stat('db.lck', dir_fd=directory, follow_symlinks=False)
-                require((present.st_dev, present.st_ino) == (owned.st_dev, owned.st_ino),
-                        'The package lock changed during rollback.')
-                os.unlink('db.lck', dir_fd=directory)
+                try:
+                    # The directory descriptor still refers to the previous root after
+                    # the exchange. Never remove a new root's unrelated package lock.
+                    present = os.stat('db.lck', dir_fd=directory, follow_symlinks=False)
+                    require((present.st_dev, present.st_ino) == (owned.st_dev, owned.st_ino),
+                            'The package lock changed during rollback.')
+                    os.unlink('db.lck', dir_fd=directory)
+                finally:
+                    os.close(lock)
         finally:
             os.close(directory)
 
@@ -364,7 +447,7 @@ def carry_shared_esp_stop(current, staged):
 
 def promote(top, source, fs_uuid, boot_id, history):
     current = top / '@'
-    rows = check_layout(top, fs_uuid, boot_id)
+    rows = check_layout(top, fs_uuid, boot_id, allow_unmarked=True)
     require(fstab_rows(safe_path(source, 'etc/fstab').read_text(), fs_uuid) == rows,
             'The selected root has a different mount layout. Nothing changed.')
     empty_children(source)

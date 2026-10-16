@@ -42,6 +42,14 @@ Scope {
     Timer {
         interval: 50; running: true; repeat: true
         onTriggered: {
+            if (fixture.mode === "future") {
+                if (++fixture.step === 23) {
+                    fixture.check(notes.foreign && notes.count === 0, "future cache untouched");
+                    console.log(fixture.failed ? "POLICY_FAILED" : "POLICY_PASS");
+                    Qt.quit();
+                }
+                return;
+            }
             const migrating = fixture.mode === "legacy";
             if (fixture.step === 0) {
                 fixture.check(notes.effectiveDnd === ["legacy", "explicit", "marked"].includes(fixture.mode), "legacy before catalog");
@@ -88,30 +96,49 @@ Scope {
 
 with tempfile.TemporaryDirectory(prefix="notification-store-", dir="/tmp") as temporary:
     base = Path(temporary)
-    for mode in ("legacy", "explicit", "marked", "empty-cache", "fresh", "fresh-save"):
+    for mode in ("legacy", "explicit", "marked", "empty-cache", "fresh", "fresh-home", "fresh-missing-parent", "fresh-save", "future"):
         work = base / mode
         work.mkdir()
         for name in ("config", "state", "data", "cache", "runtime"):
+            if name == "state" and mode == "fresh-missing-parent":
+                continue
             (work / name).mkdir(mode=0o700)
         state = work / "state/emaki/notifications.json"
-        state.parent.mkdir()
-        initial = json.dumps({"version":1, "dnd": mode in ("legacy", "explicit", "marked"), "dndMigrated": mode == "marked", "entries":[]})
+        if mode not in ("fresh-home", "fresh-missing-parent", "fresh-save"):
+            state.parent.mkdir(mode=0o755)
+            state.parent.chmod(0o755)
+        initial = json.dumps({"version":99 if mode == "future" else 1, "dnd": mode in ("legacy", "explicit", "marked"), "dndMigrated": mode == "marked", "entries":[]})
         if not mode.startswith("fresh"):
             state.write_text(initial)
+            state.chmod(0o644)
         shutil.copyfile(ROOT / "shell/NotificationStore.qml", work / "NotificationStore.qml")
+        (work / "helpers").mkdir()
+        for helper in ("private-state.py", "clipboard_store.py"):
+            shutil.copyfile(ROOT / "shell/helpers" / helper, work / "helpers" / helper)
         (work / "shell.qml").write_text(QML.replace("@MODE@", mode))
-        env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_QUICK_BACKEND="software", QML_DISABLE_DISK_CACHE="1",
+        env = dict(os.environ, HOME=str(work), QT_QPA_PLATFORM="offscreen", QT_QUICK_BACKEND="software", QML_DISABLE_DISK_CACHE="1",
                    XDG_CONFIG_HOME=str(work/"config"), XDG_STATE_HOME=str(work/"state"), XDG_DATA_HOME=str(work/"data"),
                    XDG_CACHE_HOME=str(work/"cache"), XDG_RUNTIME_DIR=str(work/"runtime"),
                    DBUS_SESSION_BUS_ADDRESS="unix:path="+str(work/"missing"), DBUS_SYSTEM_BUS_ADDRESS="unix:path="+str(work/"missing"))
         for key in ("DISPLAY", "WAYLAND_DISPLAY", "NIRI_SOCKET"):
             env.pop(key, None)
-        result = subprocess.run(["qs", "-p", str(work / "shell.qml"), "--no-color"], env=env, capture_output=True, text=True, timeout=10)
+        result = subprocess.run(["qs", "-p", str(work / "shell.qml"), "--no-color"], env=env, capture_output=True, text=True, timeout=10, umask=0o022)
         output = result.stdout + result.stderr
         assert result.returncode == 0 and "POLICY_PASS" in output and "POLICY_FAIL" not in output, (mode, output)
-        if mode == "fresh":
+        if mode in ("fresh-home", "fresh-missing-parent"):
+            assert not state.parent.exists(), (mode, "startup repair must not create a directory")
+            assert all(not list((work / part).rglob("*")) for part in ("config", "state", "data")), mode
+        else:
+            assert state.parent.stat().st_mode & 0o777 == 0o700, (mode, "directory permissions")
+        if state.exists():
+            assert state.stat().st_mode & 0o777 == 0o600, (mode, "file permissions")
+        if mode == "fresh-missing-parent":
+            assert not (work / "state").exists(), "startup repair must not create the XDG parent"
+        else:
+            assert (work / "state").stat().st_mode & 0o777 == 0o700, "XDG parent unchanged"
+        if mode.startswith("fresh") and mode != "fresh-save":
             assert not state.exists(), "pristine migration must not create a state file"
-        elif mode == "empty-cache":
+        elif mode in ("empty-cache", "future"):
             assert state.read_text() == initial, "no-op migration must not rewrite an existing empty cache"
         else:
             saved = json.loads(state.read_text())

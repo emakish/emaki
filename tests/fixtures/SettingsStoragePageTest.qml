@@ -16,7 +16,7 @@ ShellRoot {
         function test_preview_contract() {
             const mode = Quickshell.env("STORAGE_FIXTURE_MODE");
             if (mode === "missing") {
-                tryCompare(page, "message", "The storage helper could not be started.");
+                tryCompare(page, "message", "Storage information could not be opened. Try again.");
                 compare(page.pending, false);
                 return;
             }

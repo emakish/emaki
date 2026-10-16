@@ -112,8 +112,11 @@ ShellRoot {
             || find(reviews.C.Overlay.overlay, item => item.objectName === name);
     }
     function cards() { return all(reviews, item => item.objectName === "review-card" && item.visible); }
+    // Items laid out since the last frame: a click at their coordinates hits what is on screen, not them.
+    function settled() { return !input.isPolishScheduled(window.contentItem.Window.window); }
     function click(item) {
         check(!!item && item.visible, "clickable " + (item && item.objectName));
+        check(settled(), "laid out before the click on " + (item && item.objectName));
         if (!item) return;
         input.mouseMove(item, item.width / 2, item.height / 2);
         input.mouseClick(item, item.width / 2, item.height / 2);
@@ -123,7 +126,19 @@ ShellRoot {
         input.grabImage(window.contentItem).save(Quickshell.env("TEST_SHOTS") + "/" + name + ".png");
     }
     function summaryText() { return find(named("reviews-summary"), item => item.objectName === "stars-text")?.text; }
-    // Each step waits for its condition (polled, never a nested wait), then acts and checks.
+    function checkRating(rating) {
+        check(named("review-dialog").stars === rating, "the chosen rating is " + rating);
+        for (let i = 1; i <= 5; i++) {
+            const star = named("review-star-" + i);
+            check(star.Accessible.name === "Rate " + i + " of 5", "each star names its rating");
+            check(star.Accessible.role === Accessible.RadioButton, "each star is a radio button");
+            check(star.checkable && star.Accessible.checkable, "each star exposes a checkable rating");
+            check(star.checked === (i === rating), "only the chosen rating is checked");
+            check(star.Accessible.checked === (i === rating), "rating " + rating + ": star " + i + " is announced as checked: " + star.Accessible.checked);
+            check(star.Accessible.selected === (i === rating), "only the chosen rating is selected");
+        }
+    }
+    // Each step waits for its condition and a laid-out window (polled, never a nested wait), then acts and checks.
     readonly property var steps: [
         [() => true, () => {
             const stars = card => find(card, item => item.objectName === "card-rating");
@@ -173,8 +188,34 @@ ShellRoot {
         }],
         [() => named("review-dialog").opened, () => {
             check(!named("review-send").enabled, "Send waits for stars, a title and text");
+            checkRating(0);
             click(named("review-star-4"));
-            check(named("review-dialog").stars === 4, "the fourth star sets four");
+            checkRating(4);
+        }],
+        [() => true, () => {
+            named("review-star-2").forceActiveFocus();
+            input.keyClick(Qt.Key_Space);
+            checkRating(2);
+        }],
+        [() => true, () => {
+            named("review-star-5").forceActiveFocus();
+            input.keyClick(Qt.Key_Return);
+            checkRating(5);
+        }],
+        [() => true, () => {
+            click(named("review-star-4"));
+            checkRating(4);
+        }],
+        [() => true, () => {
+            click(named("review-star-4"));
+            checkRating(4);
+            const editor = named("review-text");
+            editor.forceActiveFocus();
+            input.keyClick(Qt.Key_Tab);
+            check(named("review-name").activeFocus && editor.text === "", "Tab leaves review text without inserting a tab");
+            editor.forceActiveFocus();
+            input.keyClick(Qt.Key_Backtab);
+            check(named("review-title").activeFocus, "Backtab leaves review text for title");
             named("review-title").text = "Good for drawing";
             named("review-text").text = "Works with my tablet.";
         }],
@@ -193,6 +234,7 @@ ShellRoot {
         }],
         [() => named("review-dialog").opened, () => {
             check(named("review-dialog").stars === 0 && named("review-title").text === "", "a new dialog starts empty");
+            checkRating(0);
             click(named("review-star-2"));
             named("review-title").text = "Again";
             named("review-text").text = "Second try.";
@@ -255,7 +297,7 @@ ShellRoot {
             }
             const [ready, act] = test.steps[test.step];
             let ok = false;
-            try { ok = ready(); } catch (_) { ok = false; }
+            try { ok = ready() && test.settled(); } catch (_) { ok = false; }
             if (!ok) {
                 test.waited += interval;
                 if (test.waited > 10000) test.check(false, "step " + test.step + " never became ready");

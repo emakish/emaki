@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Build the Emaki xcursor theme (cursors/Emaki) from art/cursor/haze.py (stdlib only).
 
 One art cell is drawn as k×k image pixels with k = round(nominal size / 15), so the 30 px image

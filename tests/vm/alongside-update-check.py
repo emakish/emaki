@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Package updates on an alongside install whose ESP is shared with a synthetic Windows.
+"""Package updates on an alongside install next to a synthetic Windows: Emaki's own ESP
+(FAT32 EMAKI, rw at /efi) is the only ESP Emaki writes; Windows' ESP stays unmounted.
 
 Phases, run in order against one VM directory strictly inside ~/VMs:
 
@@ -14,13 +15,18 @@ Phases, run in order against one VM directory strictly inside ~/VMs:
   boot              boot the installed disk and wait for the installed user's SSH
   overlay           install the candidate boot files from this checkout over the
                     packaged ones (the test image predates them; nothing is signed)
-  manifest LABEL    record the shared ESP's full file manifest and firmware entries
-  order-check LABEL record them and require Emaki first with Windows' entry kept
+  manifest LABEL    record Emaki's ESP file manifest, Windows' ESP digest, the
+                    alongside-boot.json marker and firmware entries
+  order-check LABEL record them and require Emaki first on its own ESP with Windows'
+                    entry kept on Windows' ESP
   hibernate/wake    put/remove a Fast Startup record on the synthetic Windows volume
-  update LABEL      reinstall the copied packages with pacman; --expect-refusal
-                    requires the shared-ESP refusal and an unchanged ESP and package set
+  update LABEL      reinstall the copied packages with pacman; it must succeed, change
+                    only EFI/Emaki and EFI/BOOT on Emaki's ESP and leave Windows' ESP
+                    byte-identical and unmounted; --windows-hibernated (after the
+                    hibernate phase) also requires no refusal: Emaki's ESP is its own
   hibernate-attempt start systemd-hibernate.service (no swap: sleep fails) and require
-                    the drop-in to restore a read-only /efi and the update counters
+                    /efi still read-write, the update counters unchanged and no
+                    shared-ESP hibernate drop-in
   windows-grub      reboot, choose Windows Boot Manager in GRUB, require its marker
   windows-first     imitate a Windows update putting its boot manager first
   next-boot LABEL   set BootNext to a firmware entry (a one-time firmware menu choice)
@@ -61,8 +67,8 @@ PACKAGES = ('grub', 'linux')
 WINDOWS_MARKER = 'EMAKI_SYNTHETIC_WINDOWS_EFI_OK'
 OVERLAY = {
     'boot/': [ROOT / 'grub/emaki_boot' / name for name in
-              ('__init__.py', 'refresh.py', 'shared.py', 'update.py', 'update_menu.py', 'usable.py')]
-             + [ROOT / 'installer/emaki_installer' / (name + '.py') for name in ('boot', 'errors', 'grub_screen')],
+              ('__init__.py', 'esp_records.py', 'refresh.py', 'shared.py', 'update.py', 'update_menu.py', 'usable.py')]
+             + [ROOT / 'installer/emaki_installer' / (name + '.py') for name in ('boot', 'errors', 'grub_screen', 'secureboot')],
     'bin/': [ROOT / 'scripts/emaki-boot-order'],
     'hooks/': [ROOT / 'grub' / name for name in
                ('00-emaki-alongside.hook', '04-emaki-update-boot.hook', '06-emaki-update-boot.hook')],
@@ -169,7 +175,7 @@ def guest_step(guest, action, *args):
     return json.loads(result.stdout)
 
 
-def update(guest, label, expect_refusal):
+def update(guest, label, windows_hibernated):
     vm = guest.vm
     before = manifest(guest, label + '-before')
     names = sorted(path.name for path in (vm / 'pkgs').iterdir() if path.name.endswith('.pkg.tar.zst'))
@@ -182,30 +188,29 @@ def update(guest, label, expect_refusal):
     record(vm, f'pacman-{label}.log', output)
     status = int(re.search(r'pacman exit (\d+)', output)[1])
     after = manifest(guest, label + '-after')
-    if after['windows'] != before['windows']:
-        raise RuntimeError('FAIL: files outside EFI/Emaki changed')
+    if after['windows']['mounted'] or before['windows']['mounted']:
+        raise RuntimeError("FAIL: Windows' ESP is mounted: " + repr(after['windows']['mounted']))
+    if after['windows']['sha256'] != before['windows']['sha256']:
+        raise RuntimeError("FAIL: Windows' ESP bytes changed")
     options = after['mount']['options'].split(',')
-    if 'ro' not in options:
-        raise RuntimeError('FAIL: the shared ESP was left writable: ' + after['mount']['options'])
-    if expect_refusal:
-        if status == 0 or 'Windows is hibernated' not in output:
-            raise RuntimeError('FAIL: the unsafe update was not refused')
-        if after['files'] != before['files']:
-            raise RuntimeError('FAIL: the refused update changed the ESP')
-        if guest.ssh('pacman -Q ' + ' '.join(PACKAGES), user=USER).stdout != installed:
-            raise RuntimeError('FAIL: the refused update changed packages')
-        print('PASS: update refused while Windows is hibernated; ESP and packages unchanged', flush=True)
-    else:
-        if status != 0:
-            raise RuntimeError('FAIL: the update did not succeed')
-        changed = sorted(name for name in set(before['files']) | set(after['files'])
-                         if before['files'].get(name) != after['files'].get(name))
-        record(vm, f'esp-changes-{label}.txt', '\n'.join(changed) + '\n')
-        if any(name.casefold() != 'efi/emaki' and not name.casefold().startswith('efi/emaki/')
-               for name in changed):
-            raise RuntimeError('FAIL: a path outside EFI/Emaki changed: ' + repr(changed))
-        print('PASS: update succeeded; only EFI/Emaki changed; Windows files identical; ESP read-only: '
-              + ', '.join(changed), flush=True)
+    if 'rw' not in options or 'ro' in options:
+        raise RuntimeError("FAIL: Emaki's own ESP is not mounted read-write: " + after['mount']['options'])
+    if str(after['mount'].get('partuuid')).lower() != str(after['marker'].get('emaki_esp_partuuid')).lower():
+        raise RuntimeError("FAIL: /efi is not the ESP alongside-boot.json names as Emaki's own: "
+                           + repr((after['mount'], after['marker'])))
+    if status != 0:
+        raise RuntimeError('FAIL: the update did not succeed')
+    if windows_hibernated and 'Windows is hibernated' in output:
+        raise RuntimeError("FAIL: a hibernated Windows was reported for an update of Emaki's own ESP")
+    changed = sorted(name for name in set(before['files']) | set(after['files'])
+                     if before['files'].get(name) != after['files'].get(name))
+    record(vm, f'esp-changes-{label}.txt', '\n'.join(changed) + '\n')
+    if any(name.casefold() not in ('efi/emaki', 'efi/boot')
+           and not name.casefold().startswith(('efi/emaki/', 'efi/boot/')) for name in changed):
+        raise RuntimeError('FAIL: a path outside EFI/Emaki and EFI/BOOT changed: ' + repr(changed))
+    print("PASS: update succeeded; only EFI/Emaki and EFI/BOOT changed on Emaki's own ESP (read-write); "
+          "Windows' ESP byte-identical and unmounted"
+          + (' while Windows is hibernated' if windows_hibernated else '') + ': ' + ', '.join(changed), flush=True)
     return output
 
 
@@ -355,7 +360,7 @@ def main():
     parser.add_argument('--ssh-port', type=int, required=True)
     parser.add_argument('--iso')
     parser.add_argument('--esp-mib', type=int, choices=(100, 260, 512), default=100)
-    parser.add_argument('--expect-refusal', action='store_true')
+    parser.add_argument('--windows-hibernated', action='store_true')
     parser.add_argument('--windows', action='store_true')
     parser.add_argument('phase')
     parser.add_argument('label', nargs='?')
@@ -437,27 +442,38 @@ def main():
     elif args.phase == 'manifest':
         manifest(guest, args.label)
     elif args.phase == 'order-check':
-        text = manifest(guest, args.label or 'order-check')['efibootmgr']
+        found = manifest(guest, args.label or 'order-check')
+        text, marker = found['efibootmgr'], found['marker']
         labels = dict(re.findall(r'^Boot([0-9A-F]{4})\*? ([^\t]+)\t', text, re.M))
+        disks = {number: guid.lower() for number, guid in
+                 re.findall(r'^Boot([0-9A-F]{4})\*? [^\t]+\tHD\(\d+,\w+,([0-9A-Fa-f-]{36}),', text, re.M)}
         order = re.search(r'^BootOrder: (\S+)$', text, re.M)[1].split(',')
-        if labels.get(order[0], '').strip() != 'Emaki' or 'Windows Boot Manager' not in map(str.strip, labels.values()):
+        windows = [n for n, name in labels.items() if name.strip() == 'Windows Boot Manager']
+        if labels.get(order[0], '').strip() != 'Emaki' or not windows:
             raise RuntimeError('FAIL: Emaki is not first or the Windows entry is gone: ' + ','.join(order))
-        print('PASS: Emaki is first again; the Windows Boot Manager entry is kept: ' + ','.join(order), flush=True)
+        if disks.get(order[0]) != str(marker.get('emaki_esp_partuuid')).lower():
+            raise RuntimeError("FAIL: the first Emaki entry is not on Emaki's own ESP: " + repr(disks.get(order[0])))
+        if any(disks.get(n) != str(marker.get('esp_partuuid')).lower() for n in windows):
+            raise RuntimeError("FAIL: a Windows Boot Manager entry is not on Windows' ESP")
+        print("PASS: Emaki is first again on its own ESP; the Windows Boot Manager entry is kept on Windows' ESP: "
+              + ','.join(order), flush=True)
     elif args.phase in ('hibernate', 'wake'):
         guest_step(guest, args.phase + '-windows')
     elif args.phase == 'update':
-        update(guest, args.label, args.expect_refusal)
+        update(guest, args.label, args.windows_hibernated)
     elif args.phase == 'hibernate-attempt':
         result = guest_step(guest, 'hibernate-attempt')
         before, after = result['before'], result['after']
-        if 'ro' not in after['efi_options'].split(',') or 'rw' in after['efi_options'].split(','):
-            raise RuntimeError('FAIL: /efi is not mounted read-only after the hibernate attempt')
+        if result['shared_esp_dropins']:
+            raise RuntimeError("FAIL: shared-ESP hibernate drop-ins on Emaki's own ESP: "
+                               + ', '.join(result['shared_esp_dropins']))
+        if 'rw' not in after['efi_options'].split(',') or 'ro' in after['efi_options'].split(','):
+            raise RuntimeError('FAIL: /efi is not mounted read-write after the hibernate attempt: '
+                               + repr(after['efi_options']))
         if after['update_env'] != before['update_env']:
-            raise RuntimeError('FAIL: the update counters were not restored')
-        if before['update_env'] is not None and after['update_env_mtime'] == before['update_env_mtime']:
-            raise RuntimeError('FAIL: the drop-in did not write the update counters')
-        print('PASS: hibernate drop-in saved and restored the counters through the gate; /efi read-only',
-              flush=True)
+            raise RuntimeError('FAIL: the update counters changed')
+        print('PASS: hibernate attempt left /efi read-write and the update counters unchanged; '
+              'no shared-ESP drop-in', flush=True)
     elif args.phase == 'windows-grub':
         print(guest.stop(), flush=True)
         (vm / 'serial.log').write_bytes(b'')

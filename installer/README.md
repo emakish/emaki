@@ -24,15 +24,77 @@ second transaction is separate work. The value is monotonic and capped at 99
 until the copy phase returns successfully; without a resolved package total the
 bar remains indeterminate while the same running-step text is shown.
 
-The installer offers two layouts: erase and manual. Erase supports btrfs and
+The installer offers erase, manual and alongside-Windows layouts, with alongside available
+only after read-only probes establish a safe shrink offer. Erase supports btrfs and
 ext4. Manual supports existing GPT partitions, explicit format flags, ESP
-reuse, and btrfs subvolume assignments. Both share optional LUKS2 root
+reuse, and btrfs subvolume assignments. The layouts share optional LUKS2 root
 encryption and a RAM-sized hibernation file. BIOS installation is unsupported.
+
+## Manual partitioning
+
+Manual opens the installer's own partition editor on the Disk step; no other
+program is started. It shows the chosen disk as a bar and a list (partitions,
+partitions of other systems, new and deleted ones, free space). It creates
+partitions in free space (`/`, `/home`, `/efi` as a FAT32 EFI system partition,
+or swap; btrfs or ext4; LUKS2 on or off), deletes and formats partitions, sets
+mount points, keeps an existing ESP, and makes a new GPT table on an empty disk.
+It never resizes; making room next to Windows stays the alongside mode.
+
+Nothing is written until Install. The plan carries the changes as
+`config.partitioning` (manual mode only):
+
+```json
+"partitioning": {
+  "new_table": false,
+  "delete": [{"partition_id": "/dev/vda3",
+              "confirm": {"path": "/dev/vda3", "start_bytes": 64961380352,
+                          "size_bytes": 42949672960, "system": "Linux"}}],
+  "create": [{"id": "new-1", "type": "linux", "start_bytes": 64961380352,
+              "size_bytes": 42949672960}]
+},
+"mounts": [{"partition_id": "/dev/vda1", "mountpoint": "/efi", "fs": "vfat", "format": false},
+           {"partition_id": "new-1", "mountpoint": "/", "fs": "btrfs", "format": true}]
+```
+
+`type` is `esp`, `linux` or `swap`; a mount row names a new partition by its `id`.
+New partitions are whole MiB inside the disk's usable space (1 MiB stays at each
+end for the GPT), overlap nothing, and take the lowest free GPT entries in their
+order (a deleted entry included). An ESP the installer formats needs 512 MiB
+(FAT32, both Secure Boot slots), swap 256 MiB, another new partition 1 GiB, root its
+existing 20 GiB. Every new partition needs a use. Swap rows use `"mountpoint": "swap"`
+and `"fs": "swap"`. `"encrypt": true` puts LUKS2 on a formatted `/home`, data or swap
+partition; it needs an encrypted root, which keeps their keys: the disk password
+opens their first slot, a random key in `/etc/cryptsetup-keys.d` the second, and
+`/etc/crypttab` opens them at startup. New partitions get the generic Linux type
+(the ESP its own), so systemd's GPT auto-discovery never mounts or unlocks one by
+itself.
+
+A partition of another system (`other_system` in the inventory: Windows, macOS,
+Linux, an ESP with another system's EFI loaders, or files Emaki cannot check: a file
+system the probe does not read or could not read) is never formatted or mounted; an
+earlier Emaki is not another system;
+only an ESP may be kept, unformatted, at `/efi`. Deleting one needs `confirm`, its
+current path, start, size and system: the window asks for the word DELETE first.
+Deleting or formatting a locked encrypted volume also needs `confirmed_encrypted`.
+A new table is made only on a disk without partitions, data outside partitions or a
+locked volume. The Review step lists every change in order, and asks for agreement
+when a partition is deleted or a new table is made.
+
+At Install the worker re-probes and compares the disk as before, then reads the
+partition table through its exclusive, sequence-checked descriptor: a table that is
+no longer the reviewed one, or whose own usable area does not hold the new partitions,
+is refused before any write. It applies each deletion
+and each new partition with its own `sfdisk` run (`--delete`, `--append`), or one
+run for a new table, reads the table back and requires every kept entry to be the
+same byte for byte (start, size, type, GUID, name, attributes), every deleted one
+gone and every new one exactly where the plan put it. Only then does the kernel
+reread the table and the formatting start. A failure once writing began stops with
+"the disk may have been changed"; nothing is formatted then.
 
 ## Alongside Windows
 
-**Shipped off pending real-Windows acceptance.** The retained implementation uses the
-existing Disk and Review path; it adds no new screens. One source switch,
+**Enabled since 0.8.0** (`ALONGSIDE = True`, commit `14ad386`, 2026-10-13).
+The implementation uses the existing Disk and Review path; it adds no new screens. One source switch,
 `ALONGSIDE` in `emaki_installer/constants.py`, gates inventory, planner, worker
 and backend. There is no environment, protocol or `emaki.test=1` override.
 Disabled builds still refuse plans before disk access. The packaged
@@ -41,9 +103,10 @@ Disabled builds still refuse plans before disk access. The packaged
 Real Windows shrink, BitLocker and hardware acceptance remain open (the
 2026-10-04 acceptance decision and checklist below). The synthetic fixture
 proves preservation and EFI chainloading, not a functioning Windows system.
-The tests assert the shipped default is off and enable the path through `alongside_on()`.
-Package builds reject an enabled source switch until a complete real-Windows PASS row is
-committed in `docs/hardware-acceptance.md` (`H-W-ALONGSIDE`).
+The tests assert the shipped default is on and also exercise disabled-switch refusals.
+Package builds require a complete real-Windows PASS row committed in
+`docs/hardware-acceptance.md` (`H-W-ALONGSIDE`) or an owner-signed exception covering the
+committed constants file. An exception permits the build; it is not hardware acceptance.
 
 With the switch on, the Disk step offers "Install alongside Windows" only when the worker reports
 a shrinkable Windows system volume. Read-only probes require an unambiguous
@@ -65,7 +128,7 @@ Plans use `partition_id` for Windows and `shrink_bytes` for **bytes freed for
 Emaki**. The worker reserves the NTFS minimum plus 2 GiB for Windows and at
 least 32 GiB for Emaki. Root must also fit the existing 20 GiB allowance, RAM
 when hibernation is selected, and the LUKS2 header when encrypted. The slider
-starts at half the available space, bounded by those limits. The 0.8.1 UI
+starts at half the available space, bounded by those limits. The 0.9.0 UI
 always sends hibernation off and reserves no RAM-sized space. The review names both resulting sizes,
 preservation behavior, encryption and hibernation, and requires the backup
 acknowledgement before confirmation.
@@ -285,7 +348,7 @@ against the union of `/usr/share/zoneinfo/zone1970.tab` and `zone.tab`, plus UTC
 the resolved file must stay inside zoneinfo and contain TZif data. Only then
 does it run `timedatectl set-timezone` with a fixed argument vector. This lets
 systemd-timedated update the live clock outside the worker's private mount
-namespace. Busy/stopping workers refuse the request; it invalidates any pending
+namespace. Busy/stopping workers refuse the request; it invalidates the sender's pending
 installation token. The installed target still uses the plan's `timezone` field.
 
 Software adds `software: "rich" | "minimal"` to the plan config. Omitted means
@@ -372,7 +435,7 @@ the disk; unencrypted installations retain the existing login-password rules.
 
 Plans must explicitly include `encryption: "none" | "account" | "separate"`.
 The separate choice also needs `disk_password`; neither password appears in
-the returned review or logs. The 0.8.1 installer window does not offer hibernation:
+the returned review or logs. The 0.9.0 installer window does not offer hibernation:
 the session on tested hardware did not respond after resume. Its controller keeps
 hibernation off and every UI plan explicitly sends `hibernation: false`; root
 and alongside space calculations do not reserve RAM-sized space.
@@ -476,6 +539,13 @@ the active job. A completed last job can be replayed with `--follow --job-id ID`
 2 request/job failure (including a pending earlier restart), 3 invalid plan, 4 busy. JSON event lines go to stdout;
 neither the password nor the plan token is printed by the CLI.
 
+The worker holds one outstanding plan, and it belongs to the connection that
+reviewed it: only that connection can `renew` or `confirm` it, even with the
+right token, and the plan is dropped when that connection closes. A `plan` from
+any connection replaces it. `probe`, `set_timezone` and `cancel` invalidate only
+the sender's own plan, so the window, which the live session starts and which
+probes as soon as it connects, cannot void a plan the CLI is about to confirm.
+
 Closed LUKS, BitLocker and FileVault 2 volumes appear in the selected disk's
 `closed_encrypted` inventory list with a warning, device path, format and UUID.
 Read each warning before confirming destruction. For Erase, explicitly add every
@@ -524,9 +594,10 @@ emaki-install-cli --plan ./plan-erase-btrfs.json --yes
 emaki-install-cli --plan ./plan-erase-ext4.json --yes
 ```
 
-For `plan-manual.json`, use GParted in the VM first: GPT, p1 1 GiB FAT32 with
-the ESP flag, p2 the remainder. Leave both unmounted. Put a sentinel file and a
-foreign `EFI/BOOT/BOOTX64.EFI` on p1 and record its SHA256 and partition GUIDs
+For `plan-manual.json`, prepare the disk in the VM first with `sfdisk` and `mkfs.fat`
+as root: GPT, p1 1 GiB FAT32 with the ESP type, p2 the remainder. Leave both
+unmounted. Put a sentinel file and a foreign `EFI/BOOT/BOOTX64.EFI` on p1 and
+record its SHA256 and partition GUIDs
 before unmounting. The fixture preserves p1 and formats only p2 as btrfs:
 
 ```sh

@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """New installs select package defaults without losing their machine choices."""
 import itertools
+import shlex
+import subprocess
 from pathlib import Path
 import unittest
 
@@ -86,9 +88,36 @@ menuentry 'Windows Boot Manager (on /dev/sda1)' --class windows $menuentry_id_op
         text = self.render(self.listing(wrapper=True, label='Different name', suffix='WINDOWS....'))
         self.assertIn('if bootnext 000A; then', text)
 
-    def test_plain_chainload_only_for_complete_inventory_without_windows_entry(self):
-        listing = 'BootOrder: 0001\nBoot0001* Shell\tFvFile(1234)\n'
-        self.assertEqual(self.render(listing), self.MENU)
+    def execute_menu_declarations(self, text, secure):
+        # Run the generated condition with actual shell test semantics. Replace
+        # GRUB declarations by recording calls; their bodies stay inert strings.
+        entries = boot.top_level_entries(text)
+        self.assertTrue(entries.complete)
+        for entry in reversed(entries.entries):
+            body = text[entry.start:entry.end]
+            text = text[:entry.start] + 'printf "%s\\n" ' + shlex.quote(body) + text[entry.end:]
+        return subprocess.run(['bash', '-c', text], check=True, capture_output=True,
+                              text=True, env={'shim_lock': 'y' if secure else ''}).stdout
+
+    def assert_secure_fallback(self, listing):
+        text = self.render(listing)
+        for secure in (True, False):
+            with self.subTest(secure=secure):
+                visible = self.execute_menu_declarations(text, secure)
+                if secure:
+                    self.assertNotIn('chainloader', visible)
+                    self.assertNotIn('bootnext ', visible)
+                    self.assertIn('Windows startup help', visible)
+                    self.assertIn('Boot from File', visible)
+                    self.assertIn(boot.WINDOWS_LOADER, visible)
+                    self.assertIn('Windows recovery media', visible)
+                else:
+                    self.assertIn('chainloader ' + boot.WINDOWS_LOADER, visible)
+                    self.assertIn('osprober-efi-1234-ABCD', visible)
+                    self.assertNotIn('Windows startup help', visible)
+
+    def test_absent_entry_hides_chainload_at_secure_boot_menu_execution(self):
+        self.assert_secure_fallback('BootOrder: 0001\nBoot0001* Shell\tFvFile(1234)\n')
 
     def test_missing_or_truncated_inventory_refuses(self):
         valid = self.listing()
@@ -117,12 +146,12 @@ menuentry 'Windows Boot Manager (on /dev/sda1)' --class windows $menuentry_id_op
                 with self.subTest(menu=menu, listing=listing), self.assertRaises(InstallError):
                     self.render(listing, menu)
 
-    def test_inactive_firmware_entry_keeps_chainload(self):
-        self.assertEqual(self.render(self.listing().replace('000A*', '000A ')), self.MENU)
+    def test_inactive_firmware_entry_hides_secure_boot_chainload(self):
+        self.assert_secure_fallback(self.listing().replace('000A*', '000A '))
 
     def test_foreign_windows_entries_are_skipped_inside_and_outside_boot_order(self):
         foreign = self.listing('000B').replace(self.PARTUUID, 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee')
-        self.assertEqual(self.render(foreign), self.MENU)
+        self.assert_secure_fallback(foreign)
         for ordered in (False, True):
             with self.subTest(ordered=ordered):
                 listing = self.listing() + foreign.splitlines(keepends=True)[1]

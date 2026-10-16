@@ -1,4 +1,8 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 import contextlib
+import copy
+import errno
 import json
 import os
 import sys
@@ -92,6 +96,49 @@ class BackendTests(unittest.TestCase):
                                                                                   Path('/dev/fake2'))
                 self.assertEqual(runner.commands, [(argv, {})])
 
+    def formatted(self, plan, path, fs='fat32'):
+        for p in plan.partitions:
+            p.path = p.path or f'/dev/vda{p.number}'
+        runner = RecordingRunner()
+        DeviceOperations(plan, runner).format(SimpleNamespace(value=fs), Path(path))
+        return runner.commands
+
+    def test_an_esp_the_installer_formats_is_labelled_emaki(self):
+        # MokManager's "Enroll key from disk" lists a FAT volume by its label, otherwise by a
+        # long device path; the done page names EMAKI for an ESP the installer formatted.
+        own = manual()
+        own['mounts'][0]['format'] = True
+        for name, plan in (('erase', make_plan(config(), inventory())),
+                           ('manual, ESP formatted', make_plan(own, inventory(partitions=True)))):
+            with self.subTest(name):
+                # Without Secure Boot the install stays as before: no label.
+                self.assertIsNone(plan.esp_label)
+                self.assertEqual(self.formatted(plan, '/dev/vda1'), [(['mkfs.fat', '-F', '32', '/dev/vda1'], {})])
+                plan.secure_boot = 'both'
+                self.assertEqual(plan.esp_label, 'EMAKI')
+                self.assertEqual(self.formatted(plan, '/dev/vda1'),
+                                 [(['mkfs.fat', '-F', '32', '-n', 'EMAKI', '/dev/vda1'], {})])
+
+    def test_a_kept_esp_and_fat_data_partitions_get_no_label(self):
+        kept = make_plan(manual(), inventory(partitions=True))
+        kept.secure_boot = 'both'
+        self.assertIsNone(kept.esp_label)
+        data = inventory(partitions=True)
+        disk = data['disks'][0]
+        root = disk['partitions'][1]
+        root['size_bytes'] -= 4 * 1024 ** 3
+        disk['partitions'].append(dict(copy.deepcopy(root), id='/dev/vda3', path='/dev/vda3', number=3,
+                                       uuid='uuid-3', fs='vfat', _partuuid='partuuid-3',
+                                       start_bytes=root['start_bytes'] + root['size_bytes'],
+                                       size_bytes=4 * 1024 ** 3))
+        layout = manual()
+        layout['mounts'][0]['format'] = True
+        layout['mounts'].append({'partition_id': '/dev/vda3', 'mountpoint': '/data', 'fs': 'vfat', 'format': True})
+        plan = make_plan(layout, data)
+        plan.secure_boot = 'both'
+        self.assertEqual(plan.esp_label, 'EMAKI')
+        self.assertEqual(self.formatted(plan, '/dev/vda3'), [(['mkfs.fat', '-F', '32', '/dev/vda3'], {})])
+
     def disk_identity(self, plan, sequences):
         """Fake the device while preserving the production exclusive-open flags and lifetime."""
         plan.disk['_identity']['disk-seq'] = 42
@@ -120,7 +167,7 @@ class BackendTests(unittest.TestCase):
         runner.responses[query] = json.dumps({'blockdevices': [{'pttype': 'gpt', 'children': [
             {'path': f'/dev/vda{p.number}', 'partn': p.number, 'start': p.start // 512, 'size': p.size}
             for p in plan.partitions]}]})
-        opened, patches = self.disk_identity(plan, [42, 42, 42, 42])
+        opened, patches = self.disk_identity(plan, [42] * 6)
         with contextlib.ExitStack() as stack:
             for item in patches:
                 stack.enter_context(item)
@@ -132,11 +179,61 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(command[-1], f'/proc/self/fd/{fd}')
         self.assertIn('--no-reread', command)
         self.assertIn('--no-tell-kernel', command)
-        self.assertEqual(runner.commands[1][0], ['udevadm', 'settle', '--timeout=30'])
+        self.assertEqual(runner.commands[1][0], ['udevadm', 'settle', '--timeout=1'])
+        self.assertEqual(runner.commands[2], (['udevadm', 'settle', '--timeout=30'], {'timeout': 31}))
         with self.assertRaises(OSError):
             os.fstat(fd)
         # linux/fs.h: BLKGETDISKSEQ _IOR(0x12, 128, __u64)
         self.assertEqual(arch_backend.BLKGETDISKSEQ, (2 << 30) | (8 << 16) | (0x12 << 8) | 128)
+
+    def test_erase_retries_busy_on_the_original_descriptor(self):
+        for failures, expected, succeeds in (([errno.EBUSY] * 2, 3, True),
+                                             ([errno.EBUSY] * 5, 5, False),
+                                             ([errno.EIO], 1, False)):
+            with self.subTest(failures=failures):
+                plan = make_plan(config(), inventory())
+                runner = RecordingRunner()
+                logs = []
+                runner.log = logs.append
+                query = ('lsblk', '--tree', '-J', '-b', '-o',
+                         'PATH,TYPE,PARTN,START,SIZE,PTTYPE', '/dev/vda')
+                runner.responses[query] = json.dumps({'blockdevices': [{'pttype': 'gpt', 'children': [
+                    {'path': f'/dev/vda{p.number}', 'partn': p.number, 'start': p.start // 512, 'size': p.size}
+                    for p in plan.partitions]}]})
+                _, patches = self.disk_identity(plan, [42] * 20)
+                pending, calls = list(failures), []
+
+                def reread(fd, request):
+                    os.fstat(fd)
+                    calls.append(fd)
+                    self.assertEqual(fd, runner.commands[0][1]['pass_fds'][0])
+                    self.assertEqual(request, arch_backend.BLKRRPART)
+                    self.assertEqual(runner.commands[-1][0], ['udevadm', 'settle', '--timeout=1'])
+                    if pending:
+                        raise OSError(pending.pop(0), 'read failed')
+
+                mod = SimpleNamespace(wipe=True, partitions=[SimpleNamespace(dev_path=None)
+                                                            for _ in plan.partitions])
+                with contextlib.ExitStack() as stack:
+                    for item in patches:
+                        stack.enter_context(item)
+                    stack.enter_context(patch.object(arch_backend.time, 'sleep'))
+                    arch_backend.fcntl.ioctl.side_effect = reread
+                    if succeeds:
+                        DeviceOperations(plan, runner).partition(mod)
+                        self.assertTrue(all(p.dev_path for p in mod.partitions))
+                    else:
+                        with self.assertRaises(InstallError) as raised:
+                            DeviceOperations(plan, runner).partition(mod)
+                        self.assertEqual(raised.exception.retryable, failures[0] == errno.EBUSY)
+                        self.assertTrue(all(p.dev_path is None for p in mod.partitions))
+                        self.assertFalse(any(c[0] == 'lsblk' for c, _ in runner.commands))
+                self.assertEqual(len(calls), expected)
+                self.assertTrue(all(line.startswith('Erase disk: BLKRRPART attempt ') for line in logs))
+                self.assertEqual(len(logs), expected)
+                self.assertEqual(sum(c[0] == 'sfdisk' for c, _ in runner.commands), 1)
+                with self.assertRaises(OSError):
+                    os.fstat(calls[0])
 
     def test_swapped_or_unknown_disk_is_never_written(self):
         for sequences, identity, code in (
@@ -228,6 +325,8 @@ class BackendTests(unittest.TestCase):
             descriptor = []
 
             def run(argv, **kwargs):
+                if argv[0] == 'udevadm':
+                    return ''
                 fd, = kwargs['pass_fds']
                 descriptor.append(fd)
                 os.fstat(fd)
@@ -236,7 +335,7 @@ class BackendTests(unittest.TestCase):
                 return ''
 
             runner.run = run
-            _, patches = self.disk_identity(plan, [42, 42])
+            _, patches = self.disk_identity(plan, [42] * 20)
             with contextlib.ExitStack() as stack:
                 for item in patches:
                     stack.enter_context(item)
@@ -255,7 +354,7 @@ class BackendTests(unittest.TestCase):
             {'path': f'/dev/vda{p.number}', 'partn': p.number, 'start': p.start // 512, 'size': p.size}
             for p in plan.partitions]}]})
         archparts = [SimpleNamespace(dev_path=None) for _ in plan.partitions]
-        _, patches = self.disk_identity(plan, [42, 42, 42, 42])
+        _, patches = self.disk_identity(plan, [42] * 6)
         with contextlib.ExitStack() as stack:
             for item in patches:
                 stack.enter_context(item)
@@ -271,7 +370,7 @@ class BackendTests(unittest.TestCase):
         runner = RecordingRunner()
         query = ('lsblk', '--tree', '-J', '-b', '-o', 'PATH,TYPE,PARTN,START,SIZE,PTTYPE', '/dev/vda')
         runner.responses[query] = '{"blockdevices":[{"pttype":"gpt","children":[]}]}'
-        _, patches = self.disk_identity(plan, [42, 42, 42, 42])
+        _, patches = self.disk_identity(plan, [42] * 6)
         with contextlib.ExitStack() as stack, self.assertRaises(InstallError):
             for item in patches:
                 stack.enter_context(item)

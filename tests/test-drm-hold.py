@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """DRM fd ownership/error/hotplug boundaries; no actual GPU node is opened."""
 import errno
 import importlib.machinery

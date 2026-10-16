@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Right island: production QML/controller, fake devices/CLIs, isolated tray bus."""
 from runtime_fixture import runtime_path
 import json
@@ -22,7 +24,7 @@ if '--inside' not in sys.argv:
     root = Path(tempfile.mkdtemp(prefix='sy-', dir=ROOT/'.cache'))
     for d in ('r','config','state','data','cache','tmp'): (root/d).mkdir(mode=0o700)
     (root/'bus.conf').write_text(f'<busconfig><type>session</type><listen>unix:path={runtime_path(root)}/bus</listen><auth>EXTERNAL</auth><policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>')
-    env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QML_DISABLE_DISK_CACHE='1', PYTHONDONTWRITEBYTECODE='1',
+    env = dict(os.environ, HOME=str(root), QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QML_DISABLE_DISK_CACHE='1', PYTHONDONTWRITEBYTECODE='1',
                XDG_RUNTIME_DIR=str(runtime_path(root)), XDG_CONFIG_HOME=str(root/'config'), XDG_STATE_HOME=str(root/'state'), XDG_DATA_HOME=str(root/'data'), XDG_DATA_DIRS=str(root/'data'), XDG_CACHE_HOME=str(root/'cache'), TMPDIR=str(root/'tmp'),
                EMAKI_SHELL_NOTIFICATIONS='0', EMAKI_TEST_SYSTEM='1', EMAKI_TEST_MPRIS='0', EMAKI_SETTINGS_PROFILE='', NIRI_SOCKET='', EMAKI_BIN='',
                DBUS_SYSTEM_BUS_ADDRESS='unix:path='+str(root/'missing'), PIPEWIRE_REMOTE='emaki-no-pipewire')
@@ -775,4 +777,4 @@ finally:
 for file in root.glob('*.log'):
     data=file.read_text()
     assert not any(x in data for x in ('WARN','ERROR','TypeError','ReferenceError','PRIVATE_WIFI','PRIVATE_BT','PRIVATE_TRAY','PRIVATE_HIDDEN','PRIVATE:VPN','PRIVATE_SUB','PRIVATE_APP','PRIVATE_MEDIA','fixture-password')),data
-assert launches(root, ['fixture-web']) == ['fixture-web']
+assert launches(root, ['xdg-open']) == ['xdg-open']

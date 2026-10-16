@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -12,6 +14,9 @@ Scope {
     property bool pending: false
     property bool presentedThisRun: false
     property string shortcutError: ""
+    // Opens the shell's searchable shortcut list, the one Super + / opens (shell.qml sets it to
+    // the active scene's openKeyboard("shortcuts")); returns whether it opened.
+    property var openShortcutList: null
     readonly property WelcomeWindow window: windowLoader.item as WelcomeWindow
     readonly property alias store: store
     readonly property bool opened: windowLoader.active
@@ -38,11 +43,15 @@ Scope {
         windowLoader.active = false;
     }
     function allShortcuts(): void {
-        if (shortcutProcess.running)
-            return;
         shortcutError = "";
-        shortcutDeadline.restart();
-        shortcutProcess.running = true;
+        let shown = false;
+        try {
+            shown = typeof openShortcutList === "function" && openShortcutList() === true;
+        } catch (_) {
+            shown = false;
+        }
+        if (!shown)
+            shortcutError = "Could not open the shortcut list. Try Super + /.";
     }
     onReadyChanged: Qt.callLater(maybePresent)
     onEnabledChanged: Qt.callLater(maybePresent)
@@ -66,30 +75,6 @@ Scope {
             onDismissRequested: controller.dismiss()
             onClosed: controller.dismiss()
             onShortcutsRequested: controller.allShortcuts()
-        }
-    }
-    Process {
-        id: shortcutProcess
-        command: ["niri", "msg", "action", "show-hotkey-overlay"]
-        stdout: SplitParser {
-            onRead: _line => {}
-        }
-        stderr: SplitParser {
-            onRead: _line => {}
-        }
-        onExited: code => {
-            shortcutDeadline.stop();
-            if (code !== 0)
-                controller.shortcutError = "Could not open the shortcut list. Try Super + Shift + /.";
-        }
-    }
-    Timer {
-        id: shortcutDeadline
-        interval: 3000
-        onTriggered: {
-            if (shortcutProcess.running)
-                shortcutProcess.signal(9);
-            controller.shortcutError = "Could not open the shortcut list. Try Super + Shift + /.";
         }
     }
     IpcHandler {

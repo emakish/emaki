@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """GPU pictures of the liquid glass without a live session (opt-in: `make glass-shots`).
 
 Offscreen Qt draws no ShaderEffect, so `make check-shell` sees the glass only as its flat

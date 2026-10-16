@@ -114,7 +114,7 @@ class PaletteTests(unittest.TestCase):
 
     def test_no_literal_accent_in_components(self):
         offenders = []
-        paths = [path for tree in ('shell', 'update-manager', 'niri')
+        paths = [path for tree in ('shell', 'update-manager', 'niri', 'installer/ui')
                  for extension in ('*.qml', '*.js', '*.frag', '*.vert', '*.svg', '*.kdl')
                  for path in (ROOT / tree).rglob(extension)
                  if 'tests' not in path.parts]
@@ -149,19 +149,42 @@ class PaletteTests(unittest.TestCase):
                 self.assertEqual(literal_accents(constructor + '(' + args + ', .8)', '.qml'), {value})
         self.assertEqual(literal_accents('Qt.rgba(accent.r, accent.g, accent.b, 1)', '.qml'), set())
 
+    def test_default_accent_is_rose_everywhere(self):
+        # DECISIONS 2026-10-14: nothing chosen means Rose, not Orange; Orange stays a choice.
+        default = TOKENS['defaults']['accent']
+        self.assertEqual(default, 'rose')
+        rose = TOKENS['accents'][default]
+        self.assertIn('orange', TOKENS['accents'])
+        self.assertEqual((TOKENS['color']['accent'], TOKENS['color']['on_accent']), (rose['base'], rose['text']))
+        fallback = re.search(r'"appearance\.accent", "(\w+)"\)', (ROOT / 'shell/Appearance.qml').read_text())
+        self.assertEqual(fallback.group(1), default)
+        palette = (ROOT / 'shell/ShellPalette.qml').read_text()
+        self.assertIn(f'readonly property string defaultAccent: "{default}"', palette)
+        self.assertIn('|| accents.find(entry => entry.id === defaultAccent)', palette)
+        self.assertIn(f'active-color "#{rose["base"]}ff"', (ROOT / 'niri/theme.kdl').read_text())
+        icon = (ROOT / 'update-manager/emaki-programs-updates.svg').read_text()
+        self.assertTrue(all('#' + rose[key] in icon for key in ('base', 'strong', 'soft', 'shade')))
+        installer = (ROOT / 'installer/ui/InstallerView.qml').read_text()
+        self.assertIn('readonly property color accent: Shell.ShellPalette.accent', installer)
+        self.assertIn('readonly property color accentInk: Shell.LiquidPalette.accentOnLight', installer)
+        # The installer is light: its focus rims and marks use the on-light ink, 3:1 on white glass.
+        for name, accent in TOKENS['accents'].items():
+            self.assertGreaterEqual(contrast(accent['on_light'], 'ffffff'), 3, name)
+
     def test_generated_palette_matches(self):
         subprocess.run(['python3', str(ROOT / 'scripts/render-shell-palette'), '--check'], check=True)
 
     def test_original_light_glass_values(self):
-        # Exact floating-point values, including pre-quantization alpha: the old
-        # renderer receives the same input values when settings are absent.
+        # Preserve the material, accent and distinct secondary ink levels;
+        # the secondary ink must also meet the readable-text threshold.
         light = TOKENS['shell_light']
         expected = dict(ink_on_light='241018', ink_on_dark='f4e9f0', glass_text='fbf3ea',
                         flat_plate=[1,.973,.953,.70], flat_panel=[1,.973,.953,.86],
                         flat_drop=[36/255,16/255,24/255,.07], flat_drop_rim=[36/255,16/255,24/255,.16],
-                        dim_on_light=[36/255,16/255,24/255,.55], faint_on_light=[36/255,16/255,24/255,.3],
-                        settings_ink='241018', settings_dim=[36/255,16/255,24/255,.58],
-                        settings_faint=[36/255,16/255,24/255,.32], settings_drop=[36/255,16/255,24/255,.065],
+                        dim_on_light=[36/255,16/255,24/255,.68], faint_on_light=[36/255,16/255,24/255,.625],
+                        settings_ink='241018', settings_dim=[36/255,16/255,24/255,.68],
+                        settings_faint=[36/255,16/255,24/255,.625],
+                        settings_drop=[36/255,16/255,24/255,.065],
                         settings_drop_hover=[36/255,16/255,24/255,.11], settings_rim=[36/255,16/255,24/255,.14],
                         settings_field=[1,1,1,.62], settings_card=[1,250/255,246/255,.42], settings_knob='fffaf6')
         for key, value in expected.items():
@@ -169,6 +192,24 @@ class PaletteTests(unittest.TestCase):
         orange = TOKENS['accents']['orange']
         self.assertEqual([orange[k] for k in ('base','on_light','on_dark','text','soft','strong')],
                          ['e2733f','c2481f','ff9b6a','2a0f05','f39a5f','c9503a'])
+
+    def test_light_secondary_contrast(self):
+        light = TOKENS['shell_light']
+        # The shared Settings canvas covers Regular glass, including its darkest backdrop.
+        fields = [composite(light['settings_sidebar'], composite(light['flat_plate'], back))
+                  for back in ('000000', 'ffffff')]
+        fields += [light['manager_background'], light['manager_panel']]
+        for ink in ('settings_dim', 'settings_faint', 'dim_on_light', 'faint_on_light', 'manager_dim'):
+            ratios = [contrast(composite(light[ink], field), field) for field in fields]
+            print(f'light {ink}: minimum {min(ratios):.2f}:1')
+            self.assertGreaterEqual(min(ratios), 4.5, (ink, min(ratios)))
+
+    def test_update_secondary_uses_readable_ink(self):
+        source = (ROOT / 'update-manager/ui/ManagerUpdates.qml').read_text()
+        self.assertIn('component Muted: ManagerLabel { color: Shell.ShellPalette.managerDim;', source)
+        package_label = next(line for line in source.splitlines() if 'text: root.plainName(updateRow.modelData) !==' in line)
+        self.assertIn('color: Shell.ShellPalette.managerDim;', package_label)
+        self.assertNotIn('opacity: modelData.name === "AUR"', source)
 
     def test_dark_body_contrast(self):
         dark = TOKENS['shell_dark']

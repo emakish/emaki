@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Pixel icon for the "Install Emaki" launcher entry (2026-10-03).
 
 Each variant is a 16×16 drawing in the Emaki palette: tokens.toml colours plus the mark's

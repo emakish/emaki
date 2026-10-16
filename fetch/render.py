@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Select a native Kitty image or the same wordmark in terminal half blocks.
 
 Called by fastfetch's command module, whose stdout/stderr are captured. Inspect

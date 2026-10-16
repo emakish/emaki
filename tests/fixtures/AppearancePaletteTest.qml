@@ -28,47 +28,64 @@ ShellRoot {
                 SettingsBridge.values = [];
             }
             function test_liveTheme() {
-                // Unset theme: dark, with the orange accent.
-                compare(Appearance.theme, "dark");
-                compare(ShellPalette.dark, true);
-                compare(ShellPalette.accent, Qt.color("#e2733f"));
-                compare(LiquidPalette.ink, Qt.color("#f4e9f0"));
-                SettingsBridge.values = [
-                    {
-                        key: "appearance.theme",
-                        value: "light"
-                    }
-                ];
+                // Unset theme: light, with the rose accent (2026-10-15); orange stays a choice,
+                // and an unknown saved name falls back to the default too.
+                compare(Appearance.theme, "light");
+                compare(Appearance.accent, "rose");
                 compare(ShellPalette.dark, false);
-                compare(LiquidPalette.ink, Qt.color("#241018"));
-                compare(LiquidPalette.flatPlate, Qt.rgba(1, .973, .953, .70));
-                SettingsBridge.values = [];
-                compare(ShellPalette.dark, true);
-                compare(LiquidPalette.ink, Qt.color("#f4e9f0"));
-            }
-            function test_unsetThemeRendersDark() {
-                wait(20);
-                const unset = grabImage(surface);
+                compare(ShellPalette.accent, Qt.color("#e780aa"));
                 SettingsBridge.values = [
-                    {
-                        key: "appearance.theme",
-                        value: "dark"
-                    },
                     {
                         key: "appearance.accent",
                         value: "orange"
                     }
                 ];
+                compare(ShellPalette.accent, Qt.color("#e2733f"));
+                SettingsBridge.values = [
+                    {
+                        key: "appearance.accent",
+                        value: "purple"
+                    }
+                ];
+                compare(ShellPalette.accent, Qt.color("#e780aa"));
+                SettingsBridge.values = [];
+                compare(LiquidPalette.ink, Qt.color("#241018"));
+                SettingsBridge.values = [
+                    {
+                        key: "appearance.theme",
+                        value: "dark"
+                    }
+                ];
+                compare(ShellPalette.dark, true);
+                compare(LiquidPalette.ink, Qt.color("#f4e9f0"));
+                SettingsBridge.values = [];
+                compare(ShellPalette.dark, false);
+                compare(LiquidPalette.ink, Qt.color("#241018"));
+                compare(LiquidPalette.flatPlate, Qt.rgba(1, .973, .953, .70));
+            }
+            function test_unsetThemeRendersLight() {
                 wait(20);
-                verify(unset.equals(grabImage(surface)), "An unset theme renders the dark pixels");
+                const unset = grabImage(surface);
                 SettingsBridge.values = [
                     {
                         key: "appearance.theme",
                         value: "light"
+                    },
+                    {
+                        key: "appearance.accent",
+                        value: "rose"
                     }
                 ];
                 wait(20);
-                verify(!unset.equals(grabImage(surface)), "An unset theme does not render the light pixels");
+                verify(unset.equals(grabImage(surface)), "An unset theme renders the light pixels");
+                SettingsBridge.values = [
+                    {
+                        key: "appearance.theme",
+                        value: "dark"
+                    }
+                ];
+                wait(20);
+                verify(!unset.equals(grabImage(surface)), "An unset theme does not render the dark pixels");
             }
             function test_liveAccents() {
                 for (const entry of ShellPalette.accents) {
@@ -121,7 +138,7 @@ ShellRoot {
                 compare(Appearance.clock.enabled, false);
             }
             function test_lightPixels() {
-                // The released light pixels, now when light is chosen explicitly.
+                // The released light pixels remain reproducible after changing themes.
                 SettingsBridge.values = [
                     {
                         key: "appearance.theme",

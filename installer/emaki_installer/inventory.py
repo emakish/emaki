@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Read-only device inventory. No probe command partitions or repairs a filesystem.
 
 Device IDs prefer udev's /dev/disk/by-id links. Machines without a disk serial
@@ -20,9 +22,11 @@ from . import constants
 from .boot_media import BootMedia
 from .media import discover_repo, MISSING_NOTICE
 from .hardware import disk_behind_vmd, secure_boot, vmd_present, VMD_MESSAGE
+from .secureboot import firmware_cas
 from .constants import GIB, MIB
 from .errors import Code, InstallError, require
 from .ntfs_probe import check_ntfs_journal
+from .runtime import safe_log
 
 
 ESP_GUID = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
@@ -51,6 +55,59 @@ def alongside_type_refusal(disk, part):
         return 'Windows uses this disk as a dynamic disk or in Storage Spaces. Emaki cannot share such a disk.'
     if str(part.get('_parttype', '')).lower() != MICROSOFT_BASIC_DATA_GUID:
         return 'The Windows part of this disk is set up in a way Emaki cannot safely shrink.'
+    return None
+
+
+# GPT types only another system makes: Microsoft reserved and recovery, Apple's volumes.
+OTHER_SYSTEM_TYPES = {
+    "e3c9e316-0b5c-4db8-817d-f92df00215ae": "Windows",
+    "de94bba4-06d1-4d40-a16a-bfd50179d6ac": "Windows",
+    **{guid: "Windows" for guid in WINDOWS_MANAGED_GUIDS},
+    "7c3457ef-0000-11aa-aa11-00306543ecac": "macOS",
+    "48465300-0000-11aa-aa11-00306543ecac": "macOS",
+    "426f6f74-0000-11aa-aa11-00306543ecac": "macOS",
+    "52637672-7900-11aa-aa11-00306543ecac": "macOS",
+}
+
+
+# What the probe reads read-only (_inspect), the file systems a swap or an empty partition has,
+# and a LUKS container (destroyed only after its typed ERASE): anything else, or one of these the
+# probe could not read, may hold another system, so the editor treats it as one.
+CHECKED_FS = frozenset((None, "vfat", "ext4", "btrfs", "ntfs", "ntfs3", "swap", "crypto_LUKS"))
+UNCHECKED = "files Emaki cannot check"
+
+
+def other_system(part):
+    """The system a partition belongs to when it is not Emaki's to change, else None.
+
+    The partition editor never formats or mounts such a partition; it deletes one only after a
+    typed confirmation that names this system. Evidence: the probe's os_hint, the file system
+    type, the GPT type, and on an ESP any EFI loader outside EFI/Emaki and the EFI/BOOT fallback
+    (whose owner the probe cannot tell). Missing evidence is not taken for an empty partition: a
+    file system the probe does not read, or could not read, is UNCHECKED. An earlier Emaki
+    (os_hint 'emaki' or 'emaki-incomplete') is Emaki's to reuse.
+    """
+    hint = part.get("os_hint")
+    fs = part.get("fs")
+    if hint == "windows" or fs in ("ntfs", "ntfs3", "BitLocker"):
+        return "Windows"
+    if hint == "macos" or fs in ("apfs", "hfs", "hfsplus", "cs_fvault2"):
+        return "macOS"
+    if hint == "linux":
+        return "Linux"
+    system = OTHER_SYSTEM_TYPES.get(str(part.get("_parttype") or "").lower())
+    if system:
+        return system
+    vendors = {name.split("/")[1].casefold() for name in (part.get("_efi_loaders") or {})
+               if name.count("/") >= 2}
+    if "microsoft" in vendors:
+        return "Windows"
+    if vendors - {"boot", "emaki"}:
+        return "another system"
+    if fs not in CHECKED_FS or part.get("_unreadable") or part.get("_efi_error"):
+        return UNCHECKED
+    if hint in ("emaki", "emaki-incomplete"):
+        return None
     return None
 
 
@@ -220,14 +277,20 @@ def read_gpt(runner, disk, number):
     return parse_gpt_info(runner.run(['sgdisk', f'--info={number}', disk]))
 
 
-# sgdisk's only note on a consistent table whose partition ends off its alignment grid. Windows Setup
-# leaves C: like that; every other caution, warning or error still refuses.
+# Complete, known harmless diagnostics only: Windows Setup can leave an unaligned end,
+# and util-linux can reserve a gap before the first usable sector. All other warnings refuse.
 UNALIGNED_END = re.compile(r"Caution: Partition [0-9]+ doesn't end on a [0-9]+-sector boundary\. This may\n"
                            r"result in problems with some disk encryption tools\.\n?")
+FIRST_USABLE_GAP = re.compile(
+    r"^Warning: There is a gap between the main partition table \(ending sector [0-9]+\)\n"
+    r"and the first usable sector \([0-9]+\)\. This is helpful in some exotic configurations,\n"
+    r"but is unusual\. The util-linux fdisk program often creates disks like this\.\n"
+    r"Using 'j' on the experts' menu can adjust this gap\.\n?", re.M)
 
 
 def verify_gpt(runner, disk):
     output = UNALIGNED_END.sub('', runner.run(['sgdisk', '--verify', disk]))
+    output = FIRST_USABLE_GAP.sub('', output)
     require('No problems found.' in output and not re.search(r'warning|error|caution', output, re.I),
             Code.UNSAFE_DISK, 'GPT validation failed; Windows will not be resized.')
 
@@ -331,8 +394,8 @@ def encrypted_warning(path, kind):
 
 def unconfirmed_identity_warning(path):
     return (f"{path} has no readable volume ID, so the installer cannot erase this device safely. "
-            "Choose another target or wipe this device in the partition editor. "
-            "If this is a partition, you can also leave it unformatted in Manual mode.")
+            f"Choose another target, or clear this device in a terminal [wipefs --all {path}] and refresh "
+            "disks. If this is a partition, you can also leave it unchanged in Manual mode.")
 
 
 # Signatures that live on one device only: erasing such a device cannot damage
@@ -532,9 +595,12 @@ def parse_lsblk(payload, *, stable_ids=None, boot_sources=(), holders=None):
                 "mountpoint": mounts[0] if mounts else None, "label": child.get("label") or None,
                 "os_hint": "macos" if fs in {"apfs", "hfs", "hfsplus"} else None,
                 "esp": parttype in {ESP_GUID, "0xef", "ef"},
+                # Public: the system that owns this partition (other_system), set after the probe.
+                "other_system": None,
                 "_identity": identity, "_partuuid": child.get("partuuid"),
                 "_partlabel": child.get("partlabel") or '',
-                "_parttype": parttype, "_esp_free_bytes": None, "_subvolumes": None,
+                "_parttype": parttype, "_esp_free_bytes": None, "_esp_cluster_bytes": None,
+                "_subvolumes": None,
                 "_btrfs_devices": None, "_mountpoints": mounts,
                 "_busy": bool(mounts or holders.get(child_path) or child.get("children")),
                 "_read_only": _truth(child.get("ro")),
@@ -545,6 +611,10 @@ def parse_lsblk(payload, *, stable_ids=None, boot_sources=(), holders=None):
         identity["partitions"] = [p["_identity"] for p in parts]
         disks.append({
             "id": disk_id, "path": path, "model": _model(node),
+            # Opaque identity for retaining an editor draft across a fresh read.
+            "layout_id": hashlib.sha256(json.dumps(
+                [identity, node.get("pttype"), node.get("log-sec")],
+                sort_keys=True).encode()).hexdigest(),
             "size_bytes": _number(node.get("size")), "bus": _bus(node),
             "removable": _truth(node.get("rm")),
             "is_boot_medium": any(_path(item) in boot_sources for item in descendants),
@@ -580,17 +650,27 @@ def _safe_file(root, relative):
     try:
         for part in Path(relative).parts:
             current = current / part
-            if current.is_symlink():
+            mode = current.lstat().st_mode
+            if stat.S_ISLNK(mode):
                 return ""
-        return _read(current, 16384) if current.is_file() else ""
-    except OSError:
+        if stat.S_ISREG(mode):
+            with current.open(encoding="utf-8", errors="replace") as stream:
+                return stream.read(16384)
+        return ""
+    except FileNotFoundError:
         return ""
 
 
 def _root_hint(root):
-    if (root / ".emaki-install-incomplete").is_file():
-        return "emaki-incomplete"
+    try:
+        if stat.S_ISREG((root / ".emaki-install-incomplete").lstat().st_mode):
+            return "emaki-incomplete"
+    except FileNotFoundError:
+        pass
     release = _safe_file(root, "etc/os-release") or _safe_file(root, "usr/lib/os-release")
+    # An earlier Emaki is Emaki's to reuse in Manual (inventory.other_system); any other system is not.
+    if re.search(r"^VARIANT_ID=[\"']?emaki[\"']?$", release, re.MULTILINE):
+        return "emaki"
     return "linux" if re.search(r"^ID=", release, re.MULTILINE) else None
 
 
@@ -646,6 +726,9 @@ class Inventory:
         self._timezone_thread = None
         self._timezone_lock = threading.Lock()
         self._timezone_done = threading.Event()
+        # Only a failed editor write registers recovery of its known changed partitions.
+        # It refreshes the kernel's view without writing the disk; ordinary probes only read.
+        self.pending_partition_refresh = {}
 
     def start_timezone_lookup(self):
         """Start the session's one best-effort lookup, outside every disk probe."""
@@ -820,10 +903,14 @@ class Inventory:
                     self.runner.run(["mount", "--types", fs, "--options", options, "--", part["path"], str(root)])
                 mounted = True
             except (OSError, RuntimeError):
+                # Unread: the partition editor will not take it for empty (other_system).
+                part["_unreadable"] = True
                 return
             if part["esp"]:
                 usage = os.statvfs(root)
                 part["_esp_free_bytes"] = usage.f_bavail * usage.f_frsize
+                # FAT reports its cluster size there (fat_statfs f_bsize, copied to f_frsize).
+                part["_esp_cluster_bytes"] = usage.f_frsize
                 if _has_windows(root):
                     part["os_hint"] = "windows"
                 try:
@@ -841,20 +928,37 @@ class Inventory:
                 output = self.runner.run(["btrfs", "subvolume", "list", str(root)])
                 names = [line.split(" path ", 1)[1] for line in output.splitlines() if " path " in line]
                 part["_subvolumes"] = names
-                # Manual layouts can name root something other than @. Inspect
-                # only top-level subvolumes, never nested historical snapshots.
-                candidates = [name for name in names if "/" not in name and name not in (".", "..")]
+                # Roots can be nested, and a foreign root must not be lost even when it
+                # shares a filesystem with Emaki. Bound the work, not the ownership check.
+                candidates = names
+                if len(candidates) > 256:
+                    # Bounded inspection cannot establish ownership of the unvisited roots.
+                    part["_unreadable"] = True
                 for name in sorted(candidates, key=lambda name: name not in ("@", "root"))[:256]:
-                    if (root / name).is_symlink():
+                    components = name.split("/")
+                    if any(component in ("", ".", "..") for component in components):
+                        part["_unreadable"] = True
                         continue
-                    hint = _root_hint(root / name)
-                    if hint == "emaki-incomplete":
-                        part["os_hint"] = hint
-                        break
-                    part["os_hint"] = part["os_hint"] or hint
+                    candidate = root
+                    for component in components:
+                        candidate = candidate / component
+                        if not stat.S_ISDIR(candidate.lstat().st_mode):
+                            part["_unreadable"] = True
+                            break
+                    else:
+                        hint = _root_hint(candidate)
+                        # A filesystem can hold roots of several distributions. An Emaki root
+                        # never authorizes formatting the other system's subvolumes with it.
+                        if hint == "linux" or part["os_hint"] == "linux":
+                            part["os_hint"] = "linux"
+                        elif hint == "emaki-incomplete":
+                            part["os_hint"] = hint
+                        else:
+                            part["os_hint"] = part["os_hint"] or hint
         except OSError:
             # Unknown free space remains None and cannot authorize ESP reuse.
             part["_esp_free_bytes"] = None
+            part["_unreadable"] = True
         finally:
             if mounted:
                 # A cleanup failure must abort inventory. Never recursively
@@ -870,7 +974,7 @@ class Inventory:
         if disk['_read_only'] or disk['is_boot_medium']:
             return dict(refusal, reason='The disk is read-only or is the live boot medium.')
         if disk['_pttype'] != 'gpt' or not any(p['esp'] for p in disk['partitions']):
-            return dict(refusal, reason='Alongside Windows requires a GPT disk with an existing ESP.')
+            return dict(refusal, reason='Installing next to Windows requires a GPT disk with an existing startup partition.')
         type_refusal = alongside_type_refusal(disk, part)
         if type_refusal:
             return dict(refusal, reason=type_refusal)
@@ -880,16 +984,12 @@ class Inventory:
                 return dict(refusal, reason=BITLOCKER_REFUSAL)
             esps = [p for p in disk['partitions'] if p['esp']]
             require(len(esps) == 1 and esps[0]['fs'] == 'vfat', Code.ESP_SPACE,
-                    'Alongside requires exactly one FAT32 ESP.')
+                    'Installing next to Windows requires exactly one FAT32 startup partition.')
             esp = esps[0]
             if esp.get('_efi_error'):
                 return dict(refusal, reason=esp['_efi_error'])
-            require(esp.get('_esp_free_bytes') is not None, Code.ESP_SPACE,
-                    "The free space on the disk's startup partition could not be checked. "
-                    'In Windows, check the disk for errors, then try again.')
-            require(esp['_esp_free_bytes'] >= 32 * MIB, Code.ESP_SPACE,
-                    "The disk's startup partition is too full: Emaki needs about 34 MB free there. "
-                    'Making it bigger needs a backup and a disk tool. Do not delete Windows startup files.')
+            # Its free space does not matter: Emaki creates its own ESP in the freed space and
+            # never writes this one. Its Microsoft loader is read for GRUB's Windows entry.
             require('EFI/Microsoft/Boot/bootmgfw.efi' in esp.get('_efi_loaders', {}), Code.SHRINK_BOUNDS,
                     'No verified Microsoft EFI loader exists on this disk.')
             verify_gpt(self.runner, disk['path'])
@@ -952,6 +1052,24 @@ class Inventory:
         disk['shrink'] = dict(selected['shrink'], partition_id=selected['id'])
 
     def probe(self):
+        refresh_failures = {}
+        for path, refresh in list(self.pending_partition_refresh.items()):
+            try:
+                refresh()
+            except InstallError as exc:
+                safe_log(self.runner.log, f'Partition recovery for {path}: {exc.code}; {exc}; '
+                         + ('will retry on the next probe.' if exc.retryable else 'recovery discarded.'))
+                if not exc.retryable:
+                    del self.pending_partition_refresh[path]
+                # Changed or missing media can be listed afresh. Otherwise its kernel
+                # entries may still be stale: refuse this disk, not the entire inventory.
+                if exc.retryable or exc.code not in (Code.DISK_CHANGED, Code.DISK_NOT_FOUND, Code.DISK_BUSY):
+                    refresh_failures[path] = ('The disk is still being read. Try again in a moment.'
+                                              if exc.retryable else
+                                              'The disk could not be read. Installation stopped.'
+                                              if exc.code == Code.COMMAND_FAILED else str(exc))
+            else:
+                del self.pending_partition_refresh[path]
         payload = json.loads(self.runner.run(["lsblk", "--json", "--bytes", "--paths", "--tree",
                                              "--output", LSBLK_COLUMNS]))
         nodes = list(_walk(payload.get("blockdevices", [])))
@@ -959,6 +1077,9 @@ class Inventory:
         disks = parse_lsblk(payload, stable_ids=self._stable_ids(), boot_sources=boot_sources,
                             holders=self._holders(nodes))
         for disk in disks:
+            if disk['path'] in refresh_failures:
+                self._refuse(disk, refresh_failures[disk['path']])
+                continue
             if disk_behind_vmd(disk["path"], self.root):
                 disk["_vmd"] = True
             if not boot_known or disk["_busy"] or disk["is_boot_medium"] or disk["_read_only"]:
@@ -1004,6 +1125,9 @@ class Inventory:
                 self._inspect(disk, part)
             self._alongside(disk, boot_known)
         for disk in disks:
+            for part in disk["partitions"]:
+                part["other_system"] = other_system(part)
+        for disk in disks:
             # _inspect can still raise _busy above, so this runs last. The
             # interface words the boot medium and mounted partitions itself.
             if (disk["_busy"] and not disk["is_boot_medium"]
@@ -1030,6 +1154,9 @@ class Inventory:
         state = secure_boot(self.root)
         if state is not False:
             hardware["secure_boot"] = state
+        if state is True:
+            # 'both', '2011', '2023', 'none', or None when db cannot be read.
+            hardware["secure_boot_cas"] = firmware_cas(self.root)
         if vmd_present(self.root, pci) and not any(not d["is_boot_medium"] for d in disks):
             hardware["disk_notice"] = VMD_MESSAGE
         if discover_repo(self.root) is None:

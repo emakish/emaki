@@ -94,8 +94,8 @@ pass = "GL"
 expected = "The disk card names the NVMe model; a visible reason when Continue is refused."
 
 [stages."10"]
-actions = ["gparted-open", "gparted-close"]
-action_expected = { gparted-open = "The partition editor [GParted] shows the target disk; the installer is hidden.", gparted-close = "After closing the partition editor [GParted], the installer returns with refreshed partition choices." }
+actions = ["editor-new-table", "editor-create"]
+action_expected = { editor-new-table = "The installer's partition editor plans a new GPT partition table; the bar shows the whole disk free.", editor-create = "The new partition appears in the bar and the list as New; nothing is written to the disk before Install." }
 resolutions = ["1280x800", "1366x768", "1920x1080", "2560x1600"]
 title = "Installer Disk, Manual sub-page on a blank disk"
 pass = "GL"

@@ -1,0 +1,14 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = *
+
+[Action]
+Description = Checking space retained by root snapshots
+When = PreTransaction
+Exec = @PREFIX@/share/libalpm/scripts/emaki-update-space
+NeedsTargets
+AbortOnFail

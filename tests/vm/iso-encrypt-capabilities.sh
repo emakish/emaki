@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Read the shipped boot tools in a disposable live guest.
 set -Eeuo pipefail
 [[ $# == 1 && $1 =~ ^[a-zA-Z0-9][a-zA-Z0-9-]*$ ]] || {

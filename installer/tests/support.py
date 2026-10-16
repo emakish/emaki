@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 import copy
 import json
 from pathlib import Path
@@ -43,6 +45,26 @@ def manual(fs='btrfs', format=True):
     c = config('manual', fs)
     c['mounts'] = [{'partition_id': '/dev/vda1', 'mountpoint': '/efi', 'fs': 'vfat', 'format': False},
                    {'partition_id': '/dev/vda2', 'mountpoint': '/', 'fs': fs, 'format': format}]
+    return c
+
+
+def replaced(c, disk, number, mountpoint='/', fs='btrfs', kind='linux'):
+    """c with the partition editor deleting partition `number` of disk and creating a new one of
+    the same extent in its place, used at mountpoint; another system's partition is confirmed."""
+    from emaki_installer.planner import deletion_identity
+    from emaki_installer.inventory import other_system
+    old = next(p for p in disk['partitions'] if p['number'] == number)
+    delete = {'partition_id': old['id']}
+    if other_system(old):
+        delete['confirm'] = deletion_identity(old)
+    start = (old['start_bytes'] + MIB - 1) // MIB * MIB
+    size = (old['start_bytes'] + old['size_bytes']) // MIB * MIB - start
+    c = copy.deepcopy(c)
+    c['partitioning'] = {'delete': [delete], 'create': [
+        {'id': 'new-1', 'type': kind, 'start_bytes': start, 'size_bytes': size}]}
+    c['mounts'] = [row for row in c['mounts'] if row['partition_id'] != old['id'] and row['mountpoint'] != mountpoint]
+    c['mounts'].append({'partition_id': 'new-1', 'mountpoint': mountpoint,
+                        'fs': 'swap' if kind == 'swap' else fs, 'format': True})
     return c
 
 

@@ -62,12 +62,12 @@ class Sources(unittest.TestCase):
         self.missing.write_text(json.dumps(self.missing_data))
         return filename, expected
 
-    def test_partial_manifest_requires_explicit_exact_missing_sources(self):
+    def test_missing_gpl_source_refused_for_publication(self):
         filename, expected = self.partial_fixture()
         with self.assertRaisesRegex(ValueError, 'missing required'):
             m.validate(self.manifest, self.closure, self.root)
-        self.assertEqual(m.validate(self.manifest, self.closure, self.root,
-                                    missing_sources=self.missing), ({}, {}))
+        with self.assertRaisesRegex(ValueError, 'missing required copyleft sources'):
+            m.validate(self.manifest, self.closure, self.root, missing_sources=self.missing)
         missing = m.validate_missing(self.missing, self.closure, expected)
         text = m.missing_directions(missing)
         self.assertIn(filename, text)
@@ -110,6 +110,17 @@ class Sources(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'missing required'):
             m.validate(self.manifest, self.closure, self.root, missing_sources=self.missing)
 
+    def test_copyleft_license_families_collected(self):
+        licenses = ('GPL-2.0-only', 'LGPL-2.1-or-later', 'AGPL-3.0-only', 'MPL-2.0',
+                    'EPL-2.0', 'CDDL-1.0', 'CPL-1.0', 'EUPL-1.2', 'OSL-3.0',
+                    'QPL-1.0', 'RPL-1.5', 'APSL-2.0', 'CECILL-2.1', 'LPPL-1.3c',
+                    'GFDL-1.3-only', 'CC-BY-SA-4.0', 'Sleepycat', 'SSPL-1.0',
+                    '(MIT OR MPL-2.0)', 'custom:CDDL', 'LicenseRef-GPL')
+        for index, license_ in enumerate(licenses):
+            filename = self.package(f'copyleft-{index}', license_)
+            with self.subTest(license=license_):
+                self.assertIn(filename, m.inventory(self.closure, self.root))
+
     def test_inventory_licenses_and_missing_hash(self):
         selected = self.package()
         self.package('library', 'LGPL-2.1-or-later')
@@ -120,6 +131,46 @@ class Sources(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'recipe hash'):
             m.inventory(self.closure, self.root)
         self.assertTrue(selected)
+
+    def test_custom_source_obligations_reach_image_offer(self):
+        required = {
+            self.package('libfdk-aac', 'custom'),
+            self.package('nmap', 'LicenseRef-Nmap-Public-Source-License-Version-0.95'),
+            self.package('vim', 'custom:vim'),
+            self.package('vim-runtime', 'custom:vim'),
+            self.package('linux-firmware-other', 'LicenseRef-WHENCE'),
+        }
+        self.package('permissive-custom', 'custom')
+        selected = m.inventory(self.closure, self.root)
+        self.assertEqual(set(selected), required)
+        metadata = self.root / 'inventory.json'
+        m.write_image_inventory(self.closure, self.root, metadata)
+        self.assertEqual(m.inventory(self.closure, metadata), selected)
+        manifest = self.root / 'ARCH-SOURCES.json'
+        manifest.write_text(json.dumps({'schema': 1, 'closure_sha256': m.digest(self.closure),
+                                        'packages': {}}))
+        for packages in (self.root, metadata):
+            with self.subTest(packages=packages):
+                with self.assertRaisesRegex(ValueError, 'missing required'):
+                    m.validate(manifest, self.closure, packages)
+        saved = json.loads(metadata.read_text())
+        for filename in required:
+            with self.subTest(missing=filename):
+                incomplete = {**saved, 'sources': {name: record for name, record in selected.items()
+                                                  if name != filename}}
+                metadata.write_text(json.dumps(incomplete))
+                with self.assertRaisesRegex(ValueError, 'regenerate'):
+                    m.inventory(self.closure, metadata)
+        metadata.write_text(json.dumps(saved))
+
+    def test_custom_source_obligations_by_name_and_license(self):
+        for name in ('libfdk-aac', 'nmap', 'vim', 'vim-runtime', 'linux-firmware-other'):
+            with self.subTest(name=name):
+                self.assertTrue(m.copyleft({'pkgname': [name], 'license': ['custom']}))
+        for license_ in ('LicenseRef-FDK-AAC', 'LicenseRef-Nmap-Public-Source-License-Version-0.95',
+                         'Vim', 'custom:vim'):
+            with self.subTest(license=license_):
+                self.assertTrue(m.copyleft({'pkgname': ['renamed'], 'license': [license_]}))
 
     def test_live_closure_exactly_covers_installed_and_target_packages(self):
         target = self.package()
@@ -685,14 +736,20 @@ class Sources(unittest.TestCase):
         self.assertFalse((nested / 'objects/info/alternates').exists())
 
     def test_collection_split_packages_and_manifest_validation(self):
-        filename = self.package()
+        self.collection_split_packages_and_manifest_validation()
+
+    def test_firefox_mpl_collected(self):
+        self.collection_split_packages_and_manifest_validation('firefox', 'MPL-2.0')
+
+    def collection_split_packages_and_manifest_validation(self, name='demo', license_='GPL'):
+        filename = self.package(name, license_)
         self.package('demo-library', 'LGPL')
         calls = []
 
         def fake_run(*args, **kwargs):
             calls.append(args)
             if args[:2] == ('makepkg', '--printsrcinfo'):
-                return 'pkgname = demo\npkgname = demo-library\npkgver = 1\npkgrel = 1\n'
+                return f'pkgname = {name}\npkgname = demo-library\npkgver = 1\npkgrel = 1\n'
             if args[:2] == ('makepkg', '--allsource'):
                 self.assertEqual(kwargs['env']['EMAKI_SWH_VAULT_COOK'], '0')
                 archive = Path(kwargs['env']['SRCPKGDEST']) / 'demo.src.tar.gz'
@@ -700,7 +757,7 @@ class Sources(unittest.TestCase):
                     member = tarfile.TarInfo('demo/PKGBUILD')
                     member.size = len(self.recipe)
                     out.addfile(member, io.BytesIO(self.recipe))
-                    metadata = b'pkgname = demo\npkgname = demo-library\npkgver = 1\npkgrel = 1\n'
+                    metadata = f'pkgname = {name}\npkgname = demo-library\npkgver = 1\npkgrel = 1\n'.encode()
                     member = tarfile.TarInfo('demo/.SRCINFO')
                     member.size = len(metadata)
                     out.addfile(member, io.BytesIO(metadata))
@@ -745,14 +802,14 @@ class Sources(unittest.TestCase):
             'bases': [{'base': 'demo', 'version': '1-1', 'recipe_sha256': self.sha,
                        'packages': {filename: m.inventory(self.closure, self.root)[filename]},
                        'reason': 'Download refused', 'upstream_url': 'https://example.org/demo'}]}))
-        partial, partial_objects = m.validate(manifest, self.closure, self.root, missing_sources=missing)
-        self.assertEqual(len(partial), 1)
-        self.assertEqual(partial_objects, objects)
+        with self.assertRaisesRegex(ValueError, 'missing required copyleft sources'):
+            m.validate(manifest, self.closure, self.root, missing_sources=missing)
+        manifest.write_text(saved)
         source = next(iter(objects.values()))
         original_source = source.read_bytes()
         source.write_bytes(b'broken')
         with self.assertRaisesRegex(ValueError, 'bytes differ'):
-            m.validate(manifest, self.closure, self.root, missing_sources=missing)
+            m.validate(manifest, self.closure, self.root)
         source.write_bytes(original_source)
         data['closure_sha256'] = '0' * 64
         manifest.write_text(json.dumps(data))

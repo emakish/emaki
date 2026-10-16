@@ -16,6 +16,8 @@
 /etc/xdg/mimeapps.list
 /etc/xdg/qt6ct/qt6ct.conf
 /etc/xdg/xdg-desktop-portal/niri-portals.conf
+/etc/zsh/emaki.zsh
+/etc/zsh/zshenv
 /usr/bin/emaki
 /usr/bin/emaki-autostart
 /usr/bin/emaki-boot-order
@@ -36,6 +38,7 @@
 /usr/bin/emaki-refresh-mirrors
 /usr/bin/emaki-report
 /usr/bin/emaki-rollback
+/usr/bin/emaki-secureboot
 /usr/bin/emaki-session-files
 /usr/bin/emaki-session-import-environment
 /usr/bin/emaki-session-update
@@ -70,6 +73,7 @@
 /usr/lib/emaki/boot/emaki_boot/__init__.py
 /usr/lib/emaki/boot/emaki_boot/boot.py
 /usr/lib/emaki/boot/emaki_boot/errors.py
+/usr/lib/emaki/boot/emaki_boot/esp_records.py
 /usr/lib/emaki/boot/emaki_boot/grub_artwork/A/checking-2560x1600.png
 /usr/lib/emaki/boot/emaki_boot/grub_artwork/A/unlock-2560x1600.png
 /usr/lib/emaki/boot/emaki_boot/grub_artwork/A/wrong-2560x1600.png
@@ -83,7 +87,10 @@
 /usr/lib/emaki/boot/emaki_boot/grub_artwork/D/unlock-2560x1600.png
 /usr/lib/emaki/boot/emaki_boot/grub_artwork/D/wrong-2560x1600.png
 /usr/lib/emaki/boot/emaki_boot/grub_screen.py
+/usr/lib/emaki/boot/emaki_boot/package_lock.py
 /usr/lib/emaki/boot/emaki_boot/refresh.py
+/usr/lib/emaki/boot/emaki_boot/secureboot.py
+/usr/lib/emaki/boot/emaki_boot/secureboot_tool.py
 /usr/lib/emaki/boot/emaki_boot/shared.py
 /usr/lib/emaki/boot/emaki_boot/update.py
 /usr/lib/emaki/boot/emaki_boot/update_menu.py
@@ -95,6 +102,7 @@
 /usr/lib/initcpio/hooks/emaki-snapshot-fstab
 /usr/lib/initcpio/install/emaki-resume
 /usr/lib/initcpio/install/emaki-snapshot-fstab
+/usr/lib/initcpio/post/emaki-secureboot
 /usr/lib/pam.d/emaki-greetd
 /usr/lib/pam.d/emaki-greetd-auth
 /usr/lib/pam.d/emaki-sudo
@@ -113,6 +121,7 @@
 /usr/lib/systemd/system/emaki-refresh-mirrors.timer
 /usr/lib/systemd/system/emaki-restore-index.service
 /usr/lib/systemd/system/emaki-restore-index.timer
+/usr/lib/systemd/system/emaki-secureboot-status.service
 /usr/lib/systemd/system/emaki-snapshot-menu.service
 /usr/lib/systemd/system/emaki-sudo-cleanup.service
 /usr/lib/systemd/system/emaki-sudo-cleanup.timer
@@ -124,6 +133,7 @@
 /usr/lib/systemd/system/multi-user.target.wants/emaki-boot-complete.service
 /usr/lib/systemd/system/multi-user.target.wants/emaki-boot-refresh.service
 /usr/lib/systemd/system/multi-user.target.wants/emaki-charge-limit.service
+/usr/lib/systemd/system/multi-user.target.wants/emaki-secureboot-status.service
 /usr/lib/systemd/system/multi-user.target.wants/emaki-snapshot-menu.service
 /usr/lib/systemd/system/multi-user.target.wants/emaki-sudo.service
 /usr/lib/systemd/system/multi-user.target.wants/emaki-update-boot.service
@@ -161,8 +171,11 @@
 /usr/libexec/emaki/emaki-update-apply
 /usr/libexec/emaki/emaki-update-restore
 /usr/libexec/emaki/emaki-wifi-password
+/usr/libexec/emaki/emaki_lock_fallback.py
+/usr/libexec/emaki/emaki_package_lock.py
 /usr/libexec/emaki/emaki_paths.py
 /usr/libexec/emaki/emaki_privacy_portals.py
+/usr/libexec/emaki/emaki_redaction.py
 /usr/libexec/emaki/emaki_report_redact.py
 /usr/libexec/emaki/emaki_session_arch.py
 /usr/libexec/emaki/emaki_session_state.py
@@ -368,6 +381,7 @@
 /usr/share/emaki/shell/GreeterAuth.qml
 /usr/share/emaki/shell/GreeterSession.qml
 /usr/share/emaki/shell/GreeterState.qml
+/usr/share/emaki/shell/GreeterUsers.qml
 /usr/share/emaki/shell/HoverTip.qml
 /usr/share/emaki/shell/Icon.qml
 /usr/share/emaki/shell/IslandGlass.qml
@@ -431,6 +445,9 @@
 /usr/share/emaki/shell/ReportView.qml
 /usr/share/emaki/shell/ReportWindow.qml
 /usr/share/emaki/shell/ScreenShare.js
+/usr/share/emaki/shell/SecureBoot.js
+/usr/share/emaki/shell/SecureBootNotice.qml
+/usr/share/emaki/shell/SecureBootSettings.qml
 /usr/share/emaki/shell/SessionCoverState.qml
 /usr/share/emaki/shell/SessionCoverSurface.qml
 /usr/share/emaki/shell/SessionStartup.qml
@@ -480,6 +497,8 @@
 /usr/share/emaki/shell/SudoPromptService.qml
 /usr/share/emaki/shell/SudoText.js
 /usr/share/emaki/shell/Surfaces.qml
+/usr/share/emaki/shell/Switcher.js
+/usr/share/emaki/shell/SwitcherCapture.qml
 /usr/share/emaki/shell/SymbolIcon.qml
 /usr/share/emaki/shell/SystemBackend.qml
 /usr/share/emaki/shell/SystemBody.qml
@@ -504,6 +523,7 @@
 /usr/share/emaki/shell/WelcomeStore.qml
 /usr/share/emaki/shell/WelcomeWindow.qml
 /usr/share/emaki/shell/WindowLabels.qml
+/usr/share/emaki/shell/WindowSwitcher.qml
 /usr/share/emaki/shell/WorkspaceStrip.qml
 /usr/share/emaki/shell/XkbCodes.js
 /usr/share/emaki/shell/emaki-report.desktop
@@ -523,6 +543,7 @@
 /usr/share/emaki/shell/helpers/launcher-tools.py
 /usr/share/emaki/shell/helpers/lock-environment.py
 /usr/share/emaki/shell/helpers/polkit-lock-state.py
+/usr/share/emaki/shell/helpers/private-state.py
 /usr/share/emaki/shell/helpers/publish-wallpaper.py
 /usr/share/emaki/shell/helpers/recent-files.py
 /usr/share/emaki/shell/helpers/session-start.py
@@ -684,13 +705,17 @@
 /usr/share/icons/Emaki/cursors/zoom-out
 /usr/share/icons/Emaki/index.theme
 /usr/share/icons/hicolor/scalable/apps/emaki-programs-updates.svg
+/usr/share/icons/hicolor/scalable/apps/emaki-report.svg
 /usr/share/icons/hicolor/scalable/apps/emaki-welcome.svg
 /usr/share/libalpm/hooks/00-emaki-alongside.hook
+/usr/share/libalpm/hooks/00-emaki-package-lock.hook
 /usr/share/libalpm/hooks/00-emaki-rollback-holds.hook
 /usr/share/libalpm/hooks/00-emaki-sudo-remove.hook
 /usr/share/libalpm/hooks/00-emaki-transaction-inhibit.hook
+/usr/share/libalpm/hooks/00-emaki-update-space.hook
 /usr/share/libalpm/hooks/01-emaki-config-release.hook
 /usr/share/libalpm/hooks/02-emaki-config-remove.hook
+/usr/share/libalpm/hooks/03-emaki-secureboot-check.hook
 /usr/share/libalpm/hooks/04-emaki-update-boot.hook
 /usr/share/libalpm/hooks/06-emaki-update-boot.hook
 /usr/share/libalpm/hooks/50-emaki-os-release-remove.hook
@@ -700,9 +725,11 @@
 /usr/share/libalpm/hooks/90-emaki-grub-title.hook
 /usr/share/libalpm/hooks/91-emaki-snapshot-menu.hook
 /usr/share/libalpm/hooks/93-emaki-initramfs-refresh.hook
+/usr/share/libalpm/hooks/94-emaki-secureboot-sign.hook
 /usr/share/libalpm/hooks/95-emaki-boot-refresh.hook
 /usr/share/libalpm/hooks/99-emaki-qt-check.hook
 /usr/share/libalpm/hooks/99-emaki-rollback-holds.hook
+/usr/share/libalpm/hooks/zzz-emaki-restore-index.hook
 /usr/share/libalpm/hooks/zzz-emaki-session-update.hook
 /usr/share/libalpm/scripts/emaki-grub-title
 /usr/share/libalpm/scripts/emaki-initramfs-refresh
@@ -711,12 +738,14 @@
 /usr/share/libalpm/scripts/emaki-snapshot-menu
 /usr/share/libalpm/scripts/emaki-snapshot-policy
 /usr/share/libalpm/scripts/emaki-system-migrate
+/usr/share/libalpm/scripts/emaki-update-space
 /usr/share/libalpm/scripts/emaki_boot_defaults.py
 /usr/share/libalpm/scripts/emaki_initramfs.py
 /usr/share/licenses/emaki-config/LICENSE
 /usr/share/licenses/emaki-config/LICENSE-DejaVu.txt
 /usr/share/licenses/emaki-config/LICENSE-Noto.txt
 /usr/share/licenses/emaki-config/NOTICE-Plymouth.txt
+/usr/share/licenses/emaki-config/THIRD-PARTY-NOTICES
 /usr/share/plymouth/themes/emaki/bullet.png
 /usr/share/plymouth/themes/emaki/capslock.png
 /usr/share/plymouth/themes/emaki/emaki.plymouth
@@ -734,6 +763,7 @@
 /usr/share/polkit-1/actions/org.emaki.programs.policy
 /usr/share/polkit-1/actions/org.emaki.programs.undo.policy
 /usr/share/polkit-1/actions/org.emaki.rollback.policy
+/usr/share/polkit-1/actions/org.emaki.secureboot.policy
 /usr/share/polkit-1/actions/org.emaki.settings-users.policy
 /usr/share/polkit-1/actions/org.emaki.storage.policy
 /usr/share/polkit-1/actions/org.emaki.update.policy

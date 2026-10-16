@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Bounded, nonblocking local IPC and helper processes. No temporary files.
 use crate::state::{Failure, Status};
 use rustix::fs::{OFlags, fcntl_getfl, fcntl_setfl};

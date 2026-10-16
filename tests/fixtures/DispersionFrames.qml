@@ -23,7 +23,9 @@ Item {
     property bool pointerHovered: false
     property bool pointerClicked: false
     property bool pointerLeft: false
-    DispersionPointer { id: pointer }
+    DispersionPointer {
+        id: pointer
+    }
     readonly property bool ready: captured
     readonly property var renderStats: ({
             scenario: shot,

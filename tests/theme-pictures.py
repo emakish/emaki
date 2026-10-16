@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Render real theme surfaces with llvmpipe and compare the original light pixels (light chosen explicitly)."""
+"""Render real theme surfaces with llvmpipe and compare the original light pixels (theme unset)."""
 import argparse
 import ast
 import importlib.util
@@ -60,6 +60,9 @@ def stage(source, destination):
     text = text.replace('function row(key) {', '''function row(key) {
             const saved = SettingsBridge.values.find(row => row.key === key)?.value;
             if (saved !== undefined) return {key: key, value: saved, default: saved, editable: true};''')
+    # With no saved rows, the controls must show the same defaults as the palette.
+    text = text.replace('"appearance.theme": "light"', '"appearance.theme": Appearance.theme')
+    text = text.replace('"appearance.accent": "orange"', '"appearance.accent": Appearance.accent')
     settings.write_text(text)
     fixtures = constants(ROOT / 'update-manager/ui/tests/interactions.py')
     for name, key in [('PictureUpdates.qml', 'UPDATE'), ('PicturePrograms.qml', 'PROGRAMS')]:
@@ -336,7 +339,7 @@ def main():
             old = Image.open(REFERENCES / f'{shot}.png').convert('RGB')
             tree = canvas_off if shot in CANVAS_SHOTS else current
             for attempt in range(2):
-                capture(tree, CACHE / f'default-{shot}', shot, reference_text=True)
+                capture(tree, CACHE / f'default-{shot}', shot, theme='', reference_text=True)
                 new = Image.open(CACHE / f'default-{shot}.png').convert('RGB')
                 diff = ImageChops.difference(old, new)
                 count = sum(pixel != (0, 0, 0) for pixel in diff.getdata())

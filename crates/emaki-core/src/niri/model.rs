@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Public model deliberately excludes titles, app IDs, PIDs, workspace names and serials.
 use crate::state::{Failure, Status};
 use niri_ipc::{Event, KeyboardLayouts, LogicalOutput, Mode, WindowLayout};

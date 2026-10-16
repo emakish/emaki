@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Paint the sun disc out of a panel: every row of the disc is refilled by interpolating between
 the sky just left and right of it (the sky is horizontal bands, so this keeps bands and clouds).
 

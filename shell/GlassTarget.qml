@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import "Keyboard.js" as Keyboard
@@ -46,6 +48,8 @@ Item {
     FocusRing {
         shown: target.activeFocus && !(target.glass && (target.glass.glassReady || target.glass.drawsKeyboardFocus === true))
         strong: target.accent
+        // Under its own drop (the selected one) or on a flat accent track (drop: false).
+        strongInk: target.drop ? LiquidPalette.focusOnSelected : LiquidPalette.focusOnAccent
         radius: target.bubbleRadius
     }
     readonly property bool pointerInside: hoverHandler.hovered

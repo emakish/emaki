@@ -45,6 +45,7 @@ a component is absent or broken. Do not run every command for an unrelated chang
 | `emaki-machine-settings get --json` | machine-settings |
 | `emaki-programs list --json; emaki-programs aur --json` | installed-programs |
 | `emaki-rollback status --json` | snapshot-recovery, update-restore |
+| `emaki-secureboot status --json` | secure-boot |
 | `emaki-session-update state` | desktop-update-signal |
 | `emaki-settings-about status --json` | settings-local-report |
 | `emaki-settings-apps status --json` | settings-startup-apps |
@@ -61,7 +62,7 @@ a component is absent or broken. Do not run every command for an unrelated chang
 | `emaki-update-channel status --json` | channels-and-mirrors |
 | `emaki-update-manager --status` | update-reminder-state, updates |
 
-No JSON state command yet: agent-rules, application-defaults, application-package-policy, authentication-prompt, autostart, boot-loader-and-initramfs, cursor-theme, desktop-package-policy, desktop-portals, install-paths, installer, lock-idle-and-power, login-and-authentication, nvidia-policy, package-transaction-safety, release-identity-and-licenses, release-marker, repository-mirror-data, repository-signing-keys, runtime-compatibility, session-startup, shell-runtime, snapguard, snapshot-boot-menu, system-map, trusted-shell-generations, wallet-and-secrets.
+No JSON state command yet: agent-rules, application-defaults, application-package-policy, authentication-prompt, autostart, boot-loader-and-initramfs, cursor-theme, desktop-package-policy, desktop-portals, install-paths, installer, lock-idle-and-power, login-and-authentication, nvidia-policy, package-transaction-safety, release-identity-and-licenses, release-marker, repository-mirror-data, repository-signing-keys, runtime-compatibility, secure-boot-loader, session-startup, shell-runtime, snapguard, snapshot-boot-menu, system-map, trusted-shell-generations, wallet-and-secrets.
 Read each component's State entry in the map for the reason; do not invent a command.
 
 ## Make and verify a change

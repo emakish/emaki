@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Try a palette: replace colors in tokens.toml without touching the rest of the file.
 
   scripts/try-palette.py key=value ...     e.g.  accent=e2733f background=14100d

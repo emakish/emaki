@@ -118,7 +118,7 @@ def valid(value):
 
 def read(path, trusted=True):
     """Read one receipt; the privileged helper accepts only root-owned files."""
-    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
     with os.fdopen(descriptor, 'rb') as source:
         metadata = os.fstat(source.fileno())
         if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > LIMIT:

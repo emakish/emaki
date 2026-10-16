@@ -114,11 +114,11 @@ Column {
             width: parent.width
             title: "Do not disturb now"
             explanation: "Keep notifications in history without showing popups."
-            value: page.value("notifications.dnd", false)
+            value: page.store ? page.store.effectiveDnd : page.value("notifications.dnd", false)
             defaultValue: false
             busy: page.catalog.writing
             unavailable: !page.catalog.row("notifications.dnd")
-            onValueRequested: next => page.catalog.set("notifications.dnd", String(next))
+            onValueRequested: next => page.store ? page.store.setDnd(next) : page.catalog.set("notifications.dnd", String(next))
             onResetRequested: page.catalog.reset("notifications.dnd")
         }
         SettingsChoiceRow {
@@ -199,7 +199,8 @@ Column {
     }
     Text {
         width: parent.width
-        text: page.store && page.store.effectiveDnd ? "Do not disturb is active. Timers and schedules apply even when the manual switch is off." : "Do not disturb is off."
+        objectName: "settings-notifications-status"
+        text: page.store && page.store.effectiveDnd ? "Do not disturb is active." : "Do not disturb is off." + (page.store && page.store.scheduleResumeNote ? " " + page.store.scheduleResumeNote : "")
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         font.family: SettingsTheme.fontFamily

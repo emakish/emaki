@@ -1,9 +1,17 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 #[path = "../../../tests/socket_dir.rs"]
 mod socket_dir;
 
 use std::process::{Command, Output};
+use std::sync::Mutex;
+
+// Every child spawn in this test binary shares the lock with helper writes.
+// Otherwise a concurrent fork can inherit the writable script and cause ETXTBSY.
+static CHILD_SPAWN: Mutex<()> = Mutex::new(());
 
 fn run(args: &[&str]) -> Output {
+    let _spawn = CHILD_SPAWN.lock().unwrap();
     Command::new(env!("CARGO_BIN_EXE_emaki"))
         .args(args)
         // Version and help must work without a desktop session or user profile.
@@ -28,6 +36,7 @@ fn version_is_available_without_session_or_home() {
 
 #[test]
 fn version_reports_the_effective_channel() {
+    let _spawn = CHILD_SPAWN.lock().unwrap();
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
     let directory = std::env::temp_dir().join(format!("emaki-channel-test-{}", std::process::id()));
@@ -226,6 +235,7 @@ fn niri_snapshot_without_socket_is_explicit_and_help_does_not_connect() {
 
 #[test]
 fn niri_watch_flushes_status_lines_before_exit() {
+    let _spawn = CHILD_SPAWN.lock().unwrap();
     use std::io::{BufRead, BufReader};
     use std::process::Stdio;
     let mut child = Command::new(env!("CARGO_BIN_EXE_emaki"))
@@ -259,6 +269,7 @@ fn niri_watch_flushes_status_lines_before_exit() {
 #[cfg(unix)]
 #[test]
 fn non_utf8_argument_is_a_usage_error_not_a_panic() {
+    let _spawn = CHILD_SPAWN.lock().unwrap();
     use std::ffi::OsString;
     use std::os::unix::ffi::OsStringExt;
 
@@ -324,12 +335,14 @@ fn niri_snapshot_against(
         }
         let _ = client_exited.recv();
     });
+    let _spawn = CHILD_SPAWN.lock().unwrap();
     let result = Command::new(env!("CARGO_BIN_EXE_emaki"))
         .args(["niri", "snapshot", "--json", "--timeout-ms", timeout_ms])
         .env_clear()
         .env("NIRI_SOCKET", &path)
         .output()
         .unwrap();
+    drop(_spawn);
     let _ = exited.send(());
     server.join().unwrap();
     std::fs::remove_file(path).unwrap();

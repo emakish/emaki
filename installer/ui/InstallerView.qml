@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
@@ -23,7 +25,10 @@ Item {
     signal requestPlan
     readonly property color ink: Shell.LiquidPalette.inkOnLight
     readonly property color dim: Shell.LiquidPalette.dimOnLight
-    readonly property color accent: "#e2733f"
+    // Nothing is saved in the installer: the default accent. It fills areas; lines and marks
+    // on the light glass take its on-light ink (3:1 or more, as the shell's accentForeground).
+    readonly property color accent: Shell.ShellPalette.accent
+    readonly property color accentInk: Shell.LiquidPalette.accentOnLight
     readonly property color danger: Shell.LiquidPalette.dangerOnLight
     readonly property var titles: ({
             welcome: "Welcome",
@@ -61,12 +66,15 @@ Item {
     function formats(mountpoint: string, current: var): var {
         if (mountpoint === "none" && current)
             return [current];
-        return mountpoint === "/efi" ? ["vfat"] : ["btrfs", "ext4"];
+        return mountpoint === "/efi" ? ["vfat"] : mountpoint === "swap" ? ["swap"] : ["btrfs", "ext4"];
     }
     // Shown on the welcome page and on the Disk step: one sentence for both.
     readonly property var hardware: controller.session.inventory?.hardware || ({})
-    readonly property bool secureBootRefused: hardware.secure_boot === true || hardware.secure_boot === null
-    readonly property string secureBootRefusal: hardware.secure_boot === null ? "The firmware signature setting could not be read (Secure Boot). Restart into your firmware settings, turn Secure Boot off, then start the USB again." : "Emaki cannot start with firmware signature checking enabled (Secure Boot). Restart into your firmware settings, turn Secure Boot off, then start the USB again."
+    // Secure Boot on is fine when the firmware trusts a Microsoft third-party CA (the planner's check).
+    readonly property bool secureBootReady: hardware.secure_boot === true && ["both", "2011", "2023"].indexOf(hardware.secure_boot_cas) >= 0
+    readonly property bool secureBootRefused: (hardware.secure_boot === true && !secureBootReady) || hardware.secure_boot === null
+    readonly property string secureBootRefusal: hardware.secure_boot === true && hardware.secure_boot_cas === "none" ? "Secure Boot is on, but this computer does not trust the Microsoft certificate Emaki starts with. In your firmware settings, turn on the third-party certificate option (often \"Allow Microsoft 3rd Party UEFI CA\") or turn Secure Boot off, then start the USB again." : "The firmware signature setting could not be read (Secure Boot). Restart into your firmware settings, turn Secure Boot off, then start the USB again."
+    readonly property string secureBootNotice: secureBootReady ? "Secure Boot is on. After the restart, a blue screen asks you to confirm Emaki's key with a password shown at the end of the installation. You do this only once." : ""
     readonly property bool uefiRefused: !!controller.session.inventory && !controller.session.inventory.uefi
     readonly property string uefiRefusal: controller.session.inventory?.uefi_bits === 32 ? "64-bit UEFI is required." : "Emaki installs only on computers with UEFI. If the boot menu offers a UEFI entry for the USB stick, choose it; otherwise this computer is not supported."
     function capture(path: string): void {
@@ -112,7 +120,7 @@ Item {
         if (c.mode === "alongside" && !c.alongsideSizeValid)
             return "Windows shrink is unavailable. Refresh the disk list.";
         if (c.mode === "manual")
-            return Protocol.manualReason(c.selectedDisk) || (c.manualAssignments && !c.manualReady ? "Exactly one / and one /efi are required." : "");
+            return Protocol.manualReason(c.selectedDisk) || (c.manualAssignments && c.unusedNew ? "Every new partition needs a use: choose its mount point or remove it." : c.manualAssignments && !c.manualReady ? "Exactly one / and one /efi are required." : "");
         return "";
     }
     function accountChoiceRefusal(): string {
@@ -191,7 +199,7 @@ Item {
             radius: 17
             color: button.destructive ? view.danger : button.primary ? view.accent : button.hovered ? "#20241018" : Shell.LiquidPalette.flatDrop
             border.width: button.activeFocus ? 2 : 1
-            border.color: button.activeFocus ? view.accent : Shell.LiquidPalette.flatDropRim
+            border.color: button.activeFocus ? view.accentInk : Shell.LiquidPalette.flatDropRim
         }
     }
     component Field: C.TextField {
@@ -208,7 +216,7 @@ Item {
             radius: 15
             color: "#bfffffff"
             border.width: field.activeFocus ? 2 : 1
-            border.color: field.activeFocus ? view.accent : Shell.LiquidPalette.flatDropRim
+            border.color: field.activeFocus ? view.accentInk : Shell.LiquidPalette.flatDropRim
         }
     }
     component PasswordField: Field {
@@ -363,9 +371,9 @@ Item {
             Keys.onEnterPressed: clicked()
             background: Rectangle {
                 radius: 10
-                color: eye.hovered || eye.checked ? "#20e2733f" : "transparent"
+                color: eye.hovered || eye.checked ? Qt.alpha(view.accent, 32 / 255) : "transparent"
                 border.width: eye.activeFocus ? 2 : 0
-                border.color: view.accent
+                border.color: view.accentInk
             }
             contentItem: Canvas {
                 id: eyeDrawing
@@ -412,7 +420,7 @@ Item {
             radius: 7
             color: check.checked ? view.accent : "#60ffffff"
             border.width: check.activeFocus ? 2 : 1
-            border.color: check.activeFocus ? view.accent : view.dim
+            border.color: check.activeFocus ? view.accentInk : view.dim
             Copy {
                 anchors.centerIn: parent
                 text: check.checked ? "✓" : ""
@@ -445,9 +453,9 @@ Item {
         }
         background: Rectangle {
             radius: 18
-            color: choice.chosen ? "#35e2733f" : choice.hovered ? "#16241018" : Shell.LiquidPalette.flatDrop
+            color: choice.chosen ? Qt.alpha(view.accent, 53 / 255) : choice.hovered ? "#16241018" : Shell.LiquidPalette.flatDrop
             border.width: choice.chosen || choice.activeFocus ? 2 : 1
-            border.color: choice.chosen || choice.activeFocus ? view.accent : Shell.LiquidPalette.flatDropRim
+            border.color: choice.chosen || choice.activeFocus ? view.accentInk : Shell.LiquidPalette.flatDropRim
         }
         contentItem: RowLayout {
             spacing: 16
@@ -458,7 +466,7 @@ Item {
                 radius: 10
                 color: choice.chosen ? view.accent : "transparent"
                 border.width: 1
-                border.color: choice.chosen ? view.accent : view.dim
+                border.color: choice.chosen ? view.accentInk : view.dim
             }
             Column {
                 id: words
@@ -495,10 +503,80 @@ Item {
             radius: 12
             color: "#aaffffff"
             border.width: select.activeFocus ? 2 : 1
-            border.color: select.activeFocus ? view.accent : Shell.LiquidPalette.flatDropRim
+            border.color: select.activeFocus ? view.accentInk : Shell.LiquidPalette.flatDropRim
         }
     }
 
+    FileView {
+        id: mapNotice
+        path: Qt.resolvedUrl("assets/README.md")
+        preload: false
+    }
+    FileView {
+        id: mapLicence
+        path: Qt.resolvedUrl("assets/ODbL-1.0.txt")
+        preload: false
+    }
+    C.Popup {
+        id: mapLegal
+        property Item opener: null
+        parent: C.Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(760, view.width - 48)
+        height: Math.min(600, view.height - 48)
+        modal: true
+        focus: true
+        padding: 20
+        closePolicy: C.Popup.CloseOnEscape
+        onOpened: mapLegalText.forceActiveFocus()
+        onClosed: if (opener)
+            opener.forceActiveFocus()
+        background: Rectangle {
+            radius: 16
+            color: Qt.rgba(Shell.LiquidPalette.flatPanel.r, Shell.LiquidPalette.flatPanel.g, Shell.LiquidPalette.flatPanel.b, 1)
+            border.color: Shell.LiquidPalette.flatDropRim
+        }
+        contentItem: ColumnLayout {
+            spacing: 14
+            Copy {
+                Layout.fillWidth: true
+                text: "Map sources and licence"
+                font.pixelSize: 20
+                font.weight: Font.DemiBold
+            }
+            C.ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                C.TextArea {
+                    id: mapLegalText
+                    objectName: "mapLegalText"
+                    text: mapNotice.text() + "\n\n" + mapLicence.text()
+                    textFormat: TextEdit.PlainText
+                    readOnly: true
+                    selectByMouse: true
+                    selectByKeyboard: true
+                    wrapMode: TextEdit.Wrap
+                    color: view.ink
+                    selectionColor: view.accent
+                    selectedTextColor: view.ink
+                    font.family: Shell.ShellPalette.uiFont
+                    font.pixelSize: 14
+                    Accessible.name: "Map sources and licence"
+                    background: Rectangle {
+                        color: "#60ffffff"
+                        border.color: mapLegalText.activeFocus ? view.accentInk : Shell.LiquidPalette.flatDropRim
+                    }
+                }
+            }
+            Action {
+                objectName: "closeMapLegal"
+                Layout.alignment: Qt.AlignRight
+                text: "Close"
+                onClicked: mapLegal.close()
+            }
+        }
+    }
     C.Popup {
         id: removeUsb
         objectName: "removeUsbPrompt"
@@ -648,7 +726,7 @@ Item {
                 Layout.fillWidth: true
                 implicitHeight: notice.implicitHeight + 24
                 radius: 12
-                color: "#20e2733f"
+                color: Qt.alpha(view.accent, 32 / 255)
                 visible: view.controller.session.notice !== ""
                 Copy {
                     id: notice
@@ -734,7 +812,7 @@ Item {
                 objectName: "agreementCheck"
                 Layout.fillWidth: true
                 visible: view.controller.step === "review" && !!view.controller.session.plan?.token && view.controller.needsAgreement
-                text: view.controller.mode === "alongside" ? "I have backed up my files and understand Windows will be resized" : "I understand " + view.diskLabel() + " will be erased"
+                text: view.controller.mode === "alongside" ? "I have backed up my files and understand Windows will be resized" : view.controller.mode === "manual" ? "I understand the deleted partitions lose all their files" : "I understand " + view.diskLabel() + " will be erased"
                 checked: view.controller.agreed
                 onToggled: view.controller.agreed = checked
             }
@@ -792,7 +870,7 @@ Item {
                     id: continueAction
                     objectName: "continueButton"
                     visible: ["keyboard", "network", "timezone", "disk", "filesystem", "encryption"].indexOf(view.controller.step) >= 0
-                    text: view.controller.partitioning ? "GParted is open…" : "Continue"
+                    text: "Continue"
                     primary: true
                     enabled: !view.controller.locked && (view.controller.step !== "encryption" || (view.controller.encryptionReady && view.controller.secretsChecked)) && (view.controller.step !== "timezone" || (view.controller.timezoneChosen && view.controller.timezoneInfo?.timezone === view.controller.timezone && !view.controller.applyingTimezone)) && (view.controller.step !== "disk" || (!view.secureBootRefused && view.controller.session.inventory?.uefi && !!view.controller.selectedDisk && !!view.controller.mode && view.controller.encryptedConfirmed && !view.diskReason(view.controller.selectedDisk) && (view.controller.mode !== "alongside" || view.controller.alongsideSizeValid) && (view.controller.mode !== "manual" || (!Protocol.manualReason(view.controller.selectedDisk) && (!view.controller.manualAssignments || view.controller.manualReady)))))
                     onClicked: view.controller.next()
@@ -1229,17 +1307,22 @@ Item {
                 if (zoneList.currentIndex >= 0 && zoneList.currentIndex < filtered.length)
                     view.controller.chooseTimezone(filtered[zoneList.currentIndex]);
             }
-            // Height of everything but the zone list; never reads the list's own height (binding loop).
-            function otherHeight(): real {
+            // Height of everything but the given children, with all the spacing; never reads
+            // the excluded children's own heights (binding loop).
+            function heightWithout(excluded: var): real {
                 let total = 0, shown = 0;
                 for (const child of children) {
-                    if (!child.visible || (child !== zoneList && child.height <= 0))
+                    const skip = excluded.indexOf(child) >= 0;
+                    if (!child.visible || (!skip && child.height <= 0))
                         continue;
                     ++shown;
-                    if (child !== zoneList)
+                    if (!skip)
                         total += child.height;
                 }
                 return total + Math.max(0, shown - 1) * spacing;
+            }
+            function otherHeight(): real {
+                return heightWithout([zoneList]);
             }
             Timer {
                 id: syncZone
@@ -1285,11 +1368,17 @@ Item {
                 onClicked: view.controller.chooseTimezone("UTC")
             }
             TimezoneMap {
+                id: zoneMap
                 objectName: "timezoneMap"
                 width: parent.width
-                height: Math.max(120, Math.min(260, scroll.availableHeight - 290))
+                // The map keeps its proportions and takes the free height first, up to its full
+                // Mercator height; the list keeps at least its minimum below.
+                height: Math.max(140, Math.min(width * geometry.height / geometry.width, Math.floor(scroll.availableHeight - zonePage.heightWithout([zoneList, zoneMap]) - 108)))
                 timezone: view.controller.timezone
                 availableZones: view.controller.catalog.zones
+                accent: view.accent
+                accentInk: view.accentInk
+                fontFamily: Shell.ShellPalette.uiFont
                 onPicked: zone => {
                     zoneSearch.clear();
                     view.controller.chooseTimezone(zone);
@@ -1357,9 +1446,9 @@ Item {
                     }
                     background: Rectangle {
                         radius: 10
-                        color: zoneChoice.primary ? "#45e2733f" : "#60ffffff"
+                        color: zoneChoice.primary ? Qt.alpha(view.accent, 69 / 255) : "#60ffffff"
                         border.width: zoneList.activeFocus && zoneList.currentIndex === zoneChoice.index ? 2 : 0
-                        border.color: view.accent
+                        border.color: view.accentInk
                     }
                 }
                 Hint {
@@ -1368,10 +1457,28 @@ Item {
                     text: "No matching zones. Try a nearby city or region."
                 }
             }
-            Hint {
+            Action {
+                id: mapAttribution
+                objectName: "mapAttribution"
                 width: parent.width
-                font.pixelSize: 12
-                text: "Map: Timezone Boundary Builder / © OpenStreetMap contributors · ODbL 1.0"
+                implicitHeight: contentItem.implicitHeight + 8
+                text: "Map: Timezone Boundary Builder / © OpenStreetMap contributors · ODbL 1.0 · Natural Earth"
+                Accessible.description: "Open map sources and licence"
+                contentItem: Hint {
+                    text: mapAttribution.text
+                    font.pixelSize: 12
+                    font.underline: true
+                }
+                background: Rectangle {
+                    radius: 4
+                    color: mapAttribution.hovered ? "#16241018" : "transparent"
+                    border.width: mapAttribution.activeFocus ? 2 : 0
+                    border.color: view.accentInk
+                }
+                onClicked: {
+                    mapLegal.opener = mapAttribution;
+                    mapLegal.open();
+                }
             }
             RowLayout {
                 width: parent.width
@@ -1396,7 +1503,7 @@ Item {
             spacing: (view.height < 550 || view.width < 900) ? 6 : 14
             Heading {
                 width: parent.width
-                text: view.controller.manualAssignments && view.controller.mode === "manual" ? "Assign your partitions" : "Where should Emaki go?"
+                text: view.controller.manualAssignments && view.controller.mode === "manual" ? "Partitions" : "Where should Emaki go?"
             }
             Lead {
                 width: parent.width
@@ -1412,8 +1519,8 @@ Item {
             Copy {
                 objectName: "hardwareNotice"
                 width: parent.width
-                visible: view.secureBootRefused || !!view.hardware.disk_notice || !!view.hardware.media_notice
-                text: view.secureBootRefused ? view.secureBootRefusal : (view.hardware.disk_notice || view.hardware.media_notice || "")
+                visible: view.secureBootRefused || !!view.hardware.disk_notice || !!view.hardware.media_notice || view.secureBootReady
+                text: view.secureBootRefused ? view.secureBootRefusal : (view.hardware.disk_notice || view.hardware.media_notice || view.secureBootNotice)
                 color: view.secureBootRefused || !!view.hardware.disk_notice ? view.danger : view.ink
             }
             Row {
@@ -1478,7 +1585,7 @@ Item {
                 compact: (view.height < 550 || view.width < 900)
                 objectName: "manualChoice"
                 text: "Manual"
-                detail: Protocol.manualReason(view.controller.selectedDisk) || "Prepare partitions in GParted, then assign their mountpoints."
+                detail: Protocol.manualReason(view.controller.selectedDisk) || "Create, delete and format partitions here, then choose where Emaki goes."
                 chosen: view.controller.mode === "manual"
                 enabled: !view.controller.locked && !Protocol.manualReason(view.controller.selectedDisk)
                 onClicked: view.controller.mode = "manual"
@@ -1489,7 +1596,7 @@ Item {
                 enabled: !view.controller.locked
                 onClicked: {
                     view.controller.manualAssignments = false;
-                    view.controller.probe();
+                    view.controller.probe(false);
                 }
             }
             Column {
@@ -1566,113 +1673,438 @@ Item {
                 text: "Windows shrink is unavailable. Refresh the disk list."
                 color: view.danger
             }
+            // The partition editor (manual mode, after Continue): the chosen disk as a bar and a list.
+            // Every change waits in the plan (controller.partitionEdits); nothing is written until Install.
             Column {
+                id: editor
+                objectName: "partitionEditor"
                 width: parent.width
                 spacing: 12
-                visible: view.controller.mode === "manual"
-                Action {
-                    text: "Open GParted"
-                    enabled: !view.controller.locked && view.controller.session.ready
-                    onClicked: view.controller.gpartedWarning = true
-                }
-                Rectangle {
+                visible: view.controller.mode === "manual" && view.controller.manualAssignments && !!view.controller.selectedDisk
+                readonly property var disk: view.controller.selectedDisk
+                readonly property var rows: view.controller.editorRows
+                readonly property real total: disk ? Math.max(1, disk.size_bytes) : 1
+                // The free extent whose "New partition" form is open ("" for none).
+                property string openFree: ""
+                onRowsChanged: if (openFree && !rows.some(r => r.id === openFree))
+                    openFree = ""
+                Hint {
                     width: parent.width
-                    height: warning.implicitHeight + 32
-                    radius: 18
-                    color: "#20a01b45"
-                    visible: view.controller.gpartedWarning
-                    Column {
-                        id: warning
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.margins: 16
-                        y: 16
-                        spacing: 12
-                        Copy {
-                            width: parent.width
-                            color: view.danger
-                            text: "GParted writes changes to your disks immediately when you apply them. Its changes are separate from this installer and cannot be undone here."
-                        }
-                        Row {
-                            spacing: 12
-                            Action {
-                                text: "Go back"
-                                onClicked: view.controller.gpartedWarning = false
-                            }
-                            Action {
-                                text: "Open GParted"
-                                destructive: true
-                                onClicked: view.controller.openGparted()
+                    text: "Nothing on the disk changes until you press Install. The Review step lists every change."
+                }
+                Column {
+                    objectName: "newTable"
+                    width: parent.width
+                    spacing: 8
+                    visible: !!editor.disk && !(editor.disk.partitions || []).length
+                    Copy {
+                        objectName: "noPartitions"
+                        width: parent.width
+                        text: view.controller.partitionEdits.new_table ? "A new GPT partition table will be created. Add the partitions Emaki needs in its free space." : (editor.disk?.closed_encrypted || []).length ? "This disk has no partitions; it holds a locked volume. Go back and choose Erase disk to clear it." : Protocol.canNewTable(editor.disk) ? "This disk has no partitions yet. Create a GPT partition table, then add partitions in its free space." : "This disk has no partitions yet. Add the partitions Emaki needs in its free space."
+                    }
+                    Action {
+                        objectName: "newTableAction"
+                        visible: Protocol.canNewTable(editor.disk) || view.controller.partitionEdits.new_table
+                        text: view.controller.partitionEdits.new_table ? "Undo the new partition table" : "Create a GPT partition table"
+                        enabled: !view.controller.locked
+                        onClicked: view.controller.newPartitionTable(!view.controller.partitionEdits.new_table)
+                    }
+                }
+                // The disk from start to end: partitions, new ones, deleted ones and free space.
+                Rectangle {
+                    id: bar
+                    objectName: "partitionBar"
+                    width: parent.width
+                    height: 40
+                    radius: 12
+                    clip: true
+                    color: "#30ffffff"
+                    border.color: Shell.LiquidPalette.flatDropRim
+                    // An empty disk without GPT shows its space once the new table is planned.
+                    visible: !!editor.disk && ((editor.disk.partitions || []).length > 0 || editor.disk.partition_table === "gpt" || view.controller.partitionEdits.new_table)
+                    Repeater {
+                        model: editor.rows
+                        delegate: Rectangle {
+                            id: segment
+                            required property var modelData
+                            objectName: "segment-" + modelData.id
+                            x: 2 + modelData.start / editor.total * (bar.width - 4)
+                            y: 2
+                            width: Math.max(3, modelData.size / editor.total * (bar.width - 4) - 2)
+                            height: bar.height - 4
+                            radius: 9
+                            readonly property bool system: modelData.kind === "partition" && !!modelData.partition.other_system
+                            color: modelData.kind === "new" ? Qt.alpha(view.accent, .75) : modelData.kind === "deleted" ? Qt.alpha(view.danger, .28) : modelData.kind === "free" ? "transparent" : system ? "#735b7aa6" : "#38241018"
+                            border.width: modelData.kind === "free" ? 1 : 0
+                            border.color: view.dim
+                            Copy {
+                                anchors.centerIn: parent
+                                visible: segment.width > 34
+                                text: segment.modelData.kind === "free" ? "" : String(segment.modelData.number)
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
                             }
                         }
                     }
                 }
-                Copy {
-                    text: "Assign mountpoints"
-                    font.pixelSize: 22
-                    font.weight: Font.DemiBold
+                Flow {
+                    objectName: "partitionLegend"
+                    width: parent.width
+                    spacing: 18
+                    visible: bar.visible
+                    Repeater {
+                        model: [["Partition", "#38241018", 0], ["Other system", "#735b7aa6", 0], ["New", Qt.alpha(view.accent, .75), 0], ["Deleted", Qt.alpha(view.danger, .28), 0], ["Free", "transparent", 1]]
+                        delegate: Row {
+                            required property var modelData
+                            spacing: 6
+                            Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 14
+                                height: 14
+                                radius: 4
+                                color: parent.modelData[1]
+                                border.width: parent.modelData[2]
+                                border.color: view.dim
+                            }
+                            Hint {
+                                text: parent.modelData[0]
+                            }
+                        }
+                    }
                 }
                 Hint {
                     width: parent.width
-                    text: "Choose / for the system, /efi for the EFI System Partition, and optionally /home. Format deletes the data on that partition. Other partitions stay unassigned."
-                }
-                Hint {
-                    objectName: "noPartitions"
-                    width: parent.width
-                    visible: !!view.controller.selectedDisk && view.controller.selectedDisk.partitions.length === 0
-                    text: "This disk has no partitions yet. Create them with the partition editor button above, then assign them here."
+                    text: "Choose / for the system and /efi for the EFI system partition; /home and swap are optional. Format and Delete erase a partition's files when you press Install. Partitions of other systems are kept unless you delete them."
                 }
                 Repeater {
-                    model: view.controller.selectedDisk?.partitions || []
+                    model: bar.visible ? editor.rows : []
                     delegate: Column {
                         id: partitionRow
                         required property var modelData
+                        objectName: "editorRow-" + modelData.id
                         width: parent.width
                         spacing: 6
+                        readonly property var part: modelData.partition || null
+                        readonly property bool system: !!part && !!part.other_system
                         property var assignment: view.controller.mounts.find(m => m.partition_id === modelData.id) || null
                         function apply(): void {
                             // A format the new mountpoint does not offer falls back to the partition's own.
-                            const formats = view.formats(mountSelect.currentText, partitionRow.modelData.fs);
-                            const fs = formats.indexOf(fsSelect.currentText) >= 0 ? fsSelect.currentText : formats.indexOf(modelData.fs) >= 0 ? modelData.fs : formats[0];
-                            view.controller.assign(modelData, mountSelect.currentText, fs, formatCheck.checked);
+                            const formats = view.formats(mountSelect.currentText, partitionRow.part.fs);
+                            const fs = formats.indexOf(fsSelect.currentText) >= 0 ? fsSelect.currentText : formats.indexOf(part.fs) >= 0 ? part.fs : formats[0];
+                            const format = mountSelect.currentText === "swap" && part.fs !== "swap" ? true : formatCheck.checked;
+                            view.controller.assign(part, mountSelect.currentText, fs, format, encryptCheck.checked);
                         }
+                        // A partition the disk has now.
                         Copy {
                             width: parent.width
-                            text: partitionRow.modelData.path + " · " + view.size(partitionRow.modelData.size_bytes) + " · " + (partitionRow.modelData.fs || "unformatted") + (partitionRow.modelData.esp ? " · EFI" : "")
+                            visible: partitionRow.modelData.kind === "partition"
+                            text: partitionRow.part ? "Partition " + partitionRow.part.number + " · " + Protocol.partitionText(partitionRow.part) : ""
                         }
                         RowLayout {
                             width: parent.width
                             spacing: 12
+                            visible: partitionRow.modelData.kind === "partition"
                             Select {
                                 id: mountSelect
                                 objectName: "mountSelect-" + partitionRow.modelData.id
                                 Layout.fillWidth: true
-                                model: ["none", "/", "/efi", "/home"]
-                                currentIndex: partitionRow.assignment ? model.indexOf(partitionRow.assignment.mountpoint) : 0
+                                // Another system's partition can only be its ESP, kept as it is at /efi.
+                                model: partitionRow.system ? (partitionRow.part?.esp ? ["none", "/efi"] : ["none"]) : ["none", "/", "/efi", "/home", "swap"]
+                                enabled: !view.controller.locked && model.length > 1
+                                currentIndex: partitionRow.assignment ? Math.max(0, model.indexOf(partitionRow.assignment.mountpoint)) : 0
                                 onActivated: partitionRow.apply()
+                                Accessible.name: "Use of partition " + (partitionRow.part?.number || "")
                             }
                             Select {
                                 id: fsSelect
                                 objectName: "fsSelect-" + partitionRow.modelData.id
                                 Layout.preferredWidth: 130
-                                model: view.formats(mountSelect.currentText, partitionRow.modelData.fs)
-                                currentIndex: Math.max(0, model.indexOf(partitionRow.assignment?.fs || partitionRow.modelData.fs))
+                                model: view.formats(mountSelect.currentText, partitionRow.part?.fs)
+                                enabled: !view.controller.locked && model.length > 1
+                                currentIndex: Math.max(0, model.indexOf(partitionRow.assignment?.fs || partitionRow.part?.fs))
                                 onActivated: partitionRow.apply()
+                                Accessible.name: "File system of partition " + (partitionRow.part?.number || "")
                             }
                             Check {
                                 id: formatCheck
+                                objectName: "formatCheck-" + partitionRow.modelData.id
                                 text: "Format"
+                                enabled: !view.controller.locked && !partitionRow.system && mountSelect.currentText !== "none"
                                 checked: partitionRow.assignment?.format || false
                                 onToggled: partitionRow.apply()
                             }
+                            Check {
+                                id: encryptCheck
+                                objectName: "encryptCheck-" + partitionRow.modelData.id
+                                text: "Encrypt"
+                                visible: ["/home", "swap"].indexOf(mountSelect.currentText) >= 0
+                                enabled: !view.controller.locked && formatCheck.checked && view.controller.encryption === "encrypted"
+                                checked: partitionRow.assignment?.encrypt === true
+                                onToggled: partitionRow.apply()
+                            }
+                            Action {
+                                objectName: "deletePartition-" + partitionRow.modelData.id
+                                text: "Delete"
+                                implicitHeight: 44
+                                enabled: !view.controller.locked && view.controller.selectedDisk?.partition_table === "gpt"
+                                onClicked: view.controller.deletePartition(partitionRow.part)
+                                Accessible.name: "Delete partition " + (partitionRow.part?.number || "")
+                            }
                         }
-                        // The planner's root minimum, before the review refuses it.
                         Hint {
                             objectName: "rootMinimum-" + partitionRow.modelData.id
                             width: parent.width
-                            visible: partitionRow.assignment?.mountpoint === "/"
+                            // A new root's size was checked when it was added.
+                            visible: partitionRow.modelData.kind === "partition" && partitionRow.assignment?.mountpoint === "/"
                             text: "Root needs at least " + view.size(view.controller.rootMinimum) + "."
-                            color: partitionRow.modelData.size_bytes < view.controller.rootMinimum ? view.danger : view.dim
+                            color: (partitionRow.part?.size_bytes || 0) < view.controller.rootMinimum ? view.danger : view.dim
+                        }
+                        Hint {
+                            width: parent.width
+                            visible: encryptCheck.visible && view.controller.encryption !== "encrypted"
+                            text: "Encrypting this partition needs an encrypted root, which keeps its key."
+                        }
+                        // Another system's partition: deleting it needs its typed DELETE.
+                        Rectangle {
+                            objectName: "deleteConfirm-" + partitionRow.modelData.id
+                            width: parent.width
+                            height: confirmColumn.implicitHeight + 32
+                            radius: 18
+                            color: "#20a01b45"
+                            visible: view.controller.deleteRequest?.id === partitionRow.modelData.id
+                            onVisibleChanged: if (visible)
+                                Qt.callLater(() => confirmField.forceActiveFocus())
+                            Column {
+                                id: confirmColumn
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.margins: 16
+                                y: 16
+                                spacing: 12
+                                Copy {
+                                    width: parent.width
+                                    color: view.danger
+                                    text: partitionRow.part ? "Partition " + partitionRow.part.number + " holds " + partitionRow.part.other_system + ". Deleting it removes the partition and all its files when you press Install. Type DELETE to confirm." : ""
+                                }
+                                Field {
+                                    id: confirmField
+                                    objectName: "deleteConfirmField-" + partitionRow.modelData.id
+                                    width: parent.width
+                                    placeholderText: "Type DELETE"
+                                    Accessible.name: "Confirm deleting partition " + (partitionRow.part?.number || "")
+                                    onVisibleChanged: text = ""
+                                }
+                                Row {
+                                    spacing: 12
+                                    Action {
+                                        text: "Keep it"
+                                        onClicked: view.controller.deleteRequest = null
+                                    }
+                                    Action {
+                                        objectName: "deleteConfirmAction-" + partitionRow.modelData.id
+                                        text: "Delete partition"
+                                        destructive: true
+                                        enabled: confirmField.text === "DELETE"
+                                        onClicked: view.controller.confirmDelete(confirmField.text)
+                                    }
+                                }
+                            }
+                        }
+                        // A partition the plan deletes.
+                        RowLayout {
+                            width: parent.width
+                            spacing: 12
+                            visible: partitionRow.modelData.kind === "deleted"
+                            Copy {
+                                Layout.fillWidth: true
+                                color: view.danger
+                                text: partitionRow.part ? "Partition " + partitionRow.part.number + " · " + Protocol.partitionText(partitionRow.part) + " will be deleted." : ""
+                            }
+                            Action {
+                                objectName: "keepPartition-" + partitionRow.modelData.id
+                                text: "Keep it"
+                                implicitHeight: 44
+                                enabled: !view.controller.locked
+                                onClicked: view.controller.keepPartition(partitionRow.modelData.id)
+                            }
+                        }
+                        // A partition the plan creates.
+                        RowLayout {
+                            width: parent.width
+                            spacing: 12
+                            visible: partitionRow.modelData.kind === "new"
+                            Copy {
+                                Layout.fillWidth: true
+                                text: partitionRow.modelData.kind === "new" ? "New partition " + partitionRow.modelData.number + " · " + view.size(partitionRow.modelData.size) + " · " + (partitionRow.assignment ? (partitionRow.assignment.mountpoint === "swap" ? "swap" : partitionRow.assignment.mountpoint + " · " + (partitionRow.assignment.fs === "vfat" ? "FAT32" : partitionRow.assignment.fs)) : "") + (partitionRow.assignment?.encrypt || (partitionRow.assignment?.mountpoint === "/" && view.controller.encryption === "encrypted") ? " · encrypted" : "") : ""
+                            }
+                            Action {
+                                objectName: "removeNew-" + partitionRow.modelData.id
+                                text: "Remove"
+                                implicitHeight: 44
+                                enabled: !view.controller.locked
+                                onClicked: view.controller.removeNew(partitionRow.modelData.id)
+                            }
+                        }
+                        // Free space: a new partition goes at its start.
+                        RowLayout {
+                            width: parent.width
+                            spacing: 12
+                            visible: partitionRow.modelData.kind === "free"
+                            Hint {
+                                Layout.fillWidth: true
+                                text: "Free space · " + view.size(partitionRow.modelData.size)
+                            }
+                            Action {
+                                objectName: "newPartition-" + partitionRow.modelData.id
+                                text: "New partition"
+                                implicitHeight: 44
+                                enabled: !view.controller.locked && (view.controller.selectedDisk?.partition_table === "gpt" || view.controller.partitionEdits.new_table)
+                                onClicked: {
+                                    editor.openFree = editor.openFree === partitionRow.modelData.id ? "" : partitionRow.modelData.id;
+                                    if (editor.openFree)
+                                        Qt.callLater(() => useSelect.forceActiveFocus());
+                                }
+                            }
+                        }
+                        Rectangle {
+                            id: createForm
+                            objectName: "createForm-" + partitionRow.modelData.id
+                            width: parent.width
+                            height: createColumn.implicitHeight + 32
+                            radius: 18
+                            color: Shell.LiquidPalette.flatDrop
+                            border.color: Shell.LiquidPalette.flatDropRim
+                            visible: partitionRow.modelData.kind === "free" && editor.openFree === partitionRow.modelData.id
+                            property string error: ""
+                            readonly property string use: useSelect.currentValue || "/"
+                            // The whole free space for / and /home, 1 GiB for /efi, 4 GiB for swap.
+                            function defaultBytes(): real {
+                                const free = partitionRow.modelData.size;
+                                return use === "/efi" ? Math.min(free, 1073741824) : use === "swap" ? Math.min(free, 4 * 1073741824) : free;
+                            }
+                            // Shown with two decimals; left as it is, it still means the whole default.
+                            function defaultSize(): string {
+                                return String(Math.floor(defaultBytes() / 1048576 / 1024 * 100) / 100);
+                            }
+                            onVisibleChanged: if (visible) {
+                                error = "";
+                                sizeField.text = defaultSize();
+                            }
+                            onUseChanged: {
+                                error = "";
+                                sizeField.text = defaultSize();
+                            }
+                            Column {
+                                id: createColumn
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.margins: 16
+                                y: 16
+                                spacing: 10
+                                Copy {
+                                    text: "New partition"
+                                    font.weight: Font.DemiBold
+                                }
+                                RowLayout {
+                                    width: parent.width
+                                    spacing: 12
+                                    Select {
+                                        id: useSelect
+                                        objectName: "createUse-" + partitionRow.modelData.id
+                                        Layout.fillWidth: true
+                                        textRole: "text"
+                                        valueRole: "value"
+                                        model: [
+                                            {
+                                                value: "/",
+                                                text: "/ (the system)"
+                                            },
+                                            {
+                                                value: "/home",
+                                                text: "/home (your files)"
+                                            },
+                                            {
+                                                value: "/efi",
+                                                text: "/efi (EFI system partition, FAT32)"
+                                            },
+                                            {
+                                                value: "swap",
+                                                text: "swap"
+                                            }
+                                        ]
+                                        Accessible.name: "Use of the new partition"
+                                    }
+                                    Select {
+                                        id: createFs
+                                        objectName: "createFs-" + partitionRow.modelData.id
+                                        Layout.preferredWidth: 130
+                                        visible: createForm.use === "/" || createForm.use === "/home"
+                                        model: ["btrfs", "ext4"]
+                                        Accessible.name: "File system of the new partition"
+                                    }
+                                }
+                                RowLayout {
+                                    width: parent.width
+                                    spacing: 12
+                                    Field {
+                                        id: sizeField
+                                        objectName: "createSize-" + partitionRow.modelData.id
+                                        Layout.preferredWidth: 180
+                                        inputMethodHints: Qt.ImhFormattedNumbersOnly
+                                        Accessible.name: "Size of the new partition in GiB"
+                                        onTextEdited: createForm.error = ""
+                                        onAccepted: createAction.clicked()
+                                    }
+                                    Copy {
+                                        text: "GiB of " + view.size(partitionRow.modelData.size)
+                                    }
+                                    Item {
+                                        Layout.fillWidth: true
+                                    }
+                                    Check {
+                                        id: createEncrypt
+                                        objectName: "createEncrypt-" + partitionRow.modelData.id
+                                        text: "Encrypt (LUKS2)"
+                                        visible: createForm.use !== "/efi"
+                                        // Root's choice is the Encryption step's; the others need an encrypted root.
+                                        enabled: createForm.use === "/" || view.controller.encryption === "encrypted"
+                                        checked: createForm.use === "/" && view.controller.encryption === "encrypted"
+                                    }
+                                }
+                                Hint {
+                                    width: parent.width
+                                    visible: createForm.use !== "/" && createForm.use !== "/efi" && view.controller.encryption !== "encrypted"
+                                    text: "To encrypt /home or swap, encrypt root first; it keeps their keys."
+                                }
+                                Hint {
+                                    objectName: "createError-" + partitionRow.modelData.id
+                                    width: parent.width
+                                    visible: createForm.error !== ""
+                                    text: createForm.error
+                                    color: view.danger
+                                }
+                                Row {
+                                    spacing: 12
+                                    Action {
+                                        text: "Cancel"
+                                        onClicked: editor.openFree = ""
+                                    }
+                                    Action {
+                                        id: createAction
+                                        objectName: "createAction-" + partitionRow.modelData.id
+                                        text: "Add partition"
+                                        primary: true
+                                        enabled: !view.controller.locked
+                                        onClicked: {
+                                            const size = sizeField.text === createForm.defaultSize() ? createForm.defaultBytes() : Protocol.sizeFromGiB(sizeField.text);
+                                            const error = view.controller.createPartition(partitionRow.modelData, createForm.use, createFs.currentText, size, createEncrypt.checked);
+                                            createForm.error = error;
+                                            if (!error)
+                                                editor.openFree = "";
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -2235,7 +2667,7 @@ Item {
                     Copy {
                         width: parent.width
                         color: view.danger
-                        text: view.controller.mode === "erase" ? "Everything on this disk will be deleted. This cannot be undone." : view.controller.mode === "alongside" ? Protocol.alongsideReview(view.controller.windowsPartition, view.controller.shrinkBytes) : "Formatted partitions will lose their data. Emaki will write system and account files to the assigned partitions."
+                        text: view.controller.mode === "erase" ? "Everything on this disk will be deleted. This cannot be undone." : view.controller.mode === "alongside" ? Protocol.alongsideReview(view.controller.windowsPartition, view.controller.shrinkBytes) : "Deleted and formatted partitions lose their files. Emaki writes system and account files to the partitions it uses. Nothing on the disk changes until you press Install."
                     }
                 }
             }
@@ -2307,9 +2739,11 @@ Item {
                         width: parent.width
                         height: 32
                         readonly property bool current: view.controller.session.phase === modelData
+                        readonly property bool skipped: Protocol.phaseSkipped(view.controller.session, modelData)
                         Copy {
-                            text: phaseRow.index < view.phaseKeys.indexOf(view.controller.session.phase) ? "✓" : phaseRow.current ? "●" : "○"
-                            color: phaseRow.current ? view.accent : view.dim
+                            objectName: "phaseMarker-" + phaseRow.modelData
+                            text: phaseRow.skipped ? "—" : phaseRow.index < view.phaseKeys.indexOf(view.controller.session.phase) ? "✓" : phaseRow.current ? "●" : "○"
+                            color: phaseRow.current ? view.accentInk : view.dim
                         }
                         Copy {
                             Layout.fillWidth: true
@@ -2318,15 +2752,15 @@ Item {
                             font.weight: phaseRow.current ? Font.DemiBold : Font.Normal
                         }
                         C.BusyIndicator {
-                            visible: phaseRow.current && view.controller.session.indeterminate
+                            visible: phaseRow.current && !phaseRow.skipped && view.controller.session.indeterminate
                             running: visible
                             implicitWidth: 28
                             implicitHeight: 28
                         }
                         Hint {
-                            objectName: phaseRow.current ? "phaseStatus" : ""
-                            visible: phaseRow.current
-                            text: view.controller.session.indeterminate ? Protocol.activityText(view.controller.session.activity) || "Working…" : view.controller.session.phasePct === null ? "Skipped" : Math.round(view.controller.session.phasePct) + "%"
+                            objectName: phaseRow.current ? "phaseStatus" : phaseRow.skipped ? "phaseSkipped-" + phaseRow.modelData : ""
+                            visible: phaseRow.current || phaseRow.skipped
+                            text: phaseRow.skipped ? Protocol.skippedPhaseText(phaseRow.modelData) : view.controller.session.indeterminate ? Protocol.activityText(view.controller.session.activity) || "Working…" : view.controller.session.phasePct === null ? "Skipped" : Math.round(view.controller.session.phasePct) + "%"
                         }
                     }
                 }
@@ -2399,6 +2833,34 @@ Item {
             Copy {
                 width: parent.width
                 text: "Press Super+D to open the app launcher. Super is the Windows key, or Command on a Mac keyboard."
+            }
+            // Secure Boot: the machine key waits for MokManager at the next start (done.secure_boot).
+            Column {
+                objectName: "secureBootSteps"
+                width: parent.width
+                spacing: 10
+                visible: !!view.controller.session.secureBoot
+                Copy {
+                    width: parent.width
+                    font.weight: Font.DemiBold
+                    text: "One more step after the restart"
+                }
+                Copy {
+                    width: parent.width
+                    text: "A blue screen asks to confirm Emaki's key. Press any key within 10 seconds, choose Enroll MOK, then Continue and Yes, type this password and choose Reboot."
+                }
+                Heading {
+                    objectName: "secureBootPassword"
+                    text: view.controller.session.secureBoot?.password || ""
+                    font.family: "monospace"
+                }
+                // An EFI partition the installer formatted (also Emaki's own one next to Windows)
+                // is listed by its label; a kept one has a label Emaki does not know.
+                Copy {
+                    objectName: "secureBootRecovery"
+                    width: parent.width
+                    text: "If you miss it, restart the computer: after a short error message the blue screen comes back. Choose Enroll key from disk, then " + (view.controller.session.secureBoot?.espLabel || "the disk entry") + ", EFI, Emaki, a and emaki-machine-key.cer, then Continue, Yes and Reboot."
+                }
             }
             Copy {
                 text: "Installed in " + view.duration(Math.round(view.controller.session.seconds)) + "."

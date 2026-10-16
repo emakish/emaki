@@ -29,6 +29,9 @@ Files that an update replaces whole:
 - /usr/share/doc/emaki/**  (this page)
 - /usr/lib/initcpio/{hooks,install}/emaki-snapshot-fstab  (a boot hook
   for starting a snapshot from the boot menu)
+- /usr/lib/initcpio/{hooks,install}/emaki-resume  (resume from hibernation)
+- /usr/lib/initcpio/post/emaki-secureboot  (sign boot files after rebuilding the initramfs)
+- /etc/sudoers.d/20-emaki-pam  (selects the packaged sudo PAM service)
 - /etc/skel/.config/{kitty,qt6ct,wpaperd}/*  (templates that are
   copied into the home of a new account; see zone 3)
 
@@ -44,6 +47,11 @@ prints a warning (see "HANDLING CONFIG FILES" in `man pacman`):
   /etc/xdg/xdg-desktop-portal/niri-portals.conf,
   /etc/xdg/fastfetch/config.jsonc, /etc/xdg/hypr/hyprlock.conf
 - /etc/pam.d/emaki-lock, /etc/pacman.d/emaki-mirrorlist
+- /etc/pam.d/emaki-sudo, /etc/sudoers.d/10-emaki-wheel
+- /etc/xdg/kwalletrc
+- /etc/mkinitcpio.conf.d/50-emaki-splash.conf, /etc/default/grub.d/50-emaki-splash.cfg
+- /etc/mkinitcpio.conf.d/60-emaki-nvidia.conf
+- /etc/zsh/zshenv, /etc/zsh/emaki.zsh
 
 Editing these needs sudo. A file of your own in zone 3 is the better
 place for a change.
@@ -104,7 +112,8 @@ welcome state under `$XDG_STATE_HOME/emaki/`; these are outside settings history
 
 ## 3. Your zone
 
-Owner: you. Emaki never writes these files in your home.
+Owner: you. Emaki leaves these files alone, with the narrow exception below for an
+untouched Qt configuration copied from Emaki's account template.
 How to change: any way you like.
 History: yours to keep; a system snapshot does not cover your home.
 
@@ -119,11 +128,26 @@ Your files:
   "niri (Emaki)" session, if it exists.
 - ~/.config/kitty/kitty.conf, ~/.config/qt6ct/qt6ct.conf,
   ~/.config/wpaperd/config.toml  Copied from /etc/skel when your account
-  was made; they only point at Emaki's files in zone 1.
+  was made; they point at Emaki's packaged defaults or managed session palette.
 - ~/.config/mimeapps.list  Your default applications.
 - ~/.config/fuzzel/fuzzel.ini, ~/.config/hypr/hyprlock.conf  If one of
   these exists, it replaces Emaki's file of the same name whole.
+- ~/.zshrc (or $ZDOTDIR/.zshrc)  If it exists, Emaki's shell setup in
+  zone 1 is not applied.
 - everything else in your home.
+
+At session start, Emaki may atomically replace `qt6ct/qt6ct.conf`
+under `$XDG_CONFIG_HOME` (default `~/.config`) with the current account template
+only when it is byte for byte a historical template Emaki shipped. It must be
+a readable regular file owned by you, with exactly one hard link, not a symbolic
+link, and at most 64 KiB. The replacement preserves its permission bits.
+This lets untouched configurations in older homes follow the chosen accent.
+Edited or unknown contents, unreadable or missing files, links, special files,
+oversized files and files owned by someone else are left alone; a missing file
+is never created. A successful migration logs one line and is not repeated.
+Migration also requires the current template to name the scheme this session
+writes. It names the default state directory, so if you set `XDG_STATE_HOME`
+elsewhere, the old file is left untouched and no migration is logged.
 
 The machine's own settings, initially written by the installer from your
 answers. Emaki packages do not own these files; you change them with sudo

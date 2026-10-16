@@ -5,6 +5,7 @@
 import hashlib
 import importlib.util
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import unittest
@@ -18,6 +19,46 @@ spec.loader.exec_module(guard)
 
 
 class RebaseGuardTests(unittest.TestCase):
+    def test_patch_hunk_counts_match_the_complete_body(self):
+        # A short new-file count can make patch silently discard its final line.
+        for path in sorted(CHECKER.parent.glob('*.patch')):
+            lines = path.read_text().splitlines()
+            hunks = 0
+            for index, line in enumerate(lines):
+                header = re.match(r'^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@', line)
+                if header is None:
+                    continue
+                hunks += 1
+                body = []
+                for entry in lines[index + 1:]:
+                    if entry.startswith(('@@ ', 'diff ', '-- ')):
+                        break
+                    body.append(entry)
+                # Older patches have unprefixed blank context lines; an empty
+                # line between file diffs or before the mail footer is a separator.
+                separators = 0
+                for entry in reversed(body):
+                    if entry:
+                        break
+                    separators += 1
+                old = new = 0
+                for entry in body:
+                    if not entry or entry.startswith(' '):
+                        old += 1
+                        new += 1
+                    elif entry.startswith('-'):
+                        old += 1
+                    elif entry.startswith('+'):
+                        new += 1
+                    else:
+                        self.assertTrue(entry.startswith('\\'), (path.name, index + 1, entry))
+                expected = tuple(int(count) if count is not None else 1
+                                 for count in header.groups())
+                self.assertIn(expected, [(old - count, new - count)
+                                         for count in range(separators + 1)],
+                              (path.name, index + 1, (old, new)))
+            self.assertGreater(hunks, 0, path.name)
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

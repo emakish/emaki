@@ -7,10 +7,12 @@ import io
 import os
 from pathlib import Path
 import runpy
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
+import tarfile
 import time
 from types import SimpleNamespace
 import unittest
@@ -64,7 +66,7 @@ class Space(unittest.TestCase):
         self.assertEqual(space.requirements(100, -200, filesystem(7, 3000), filesystem(8, 2000), pools=('/dev/root', '/dev/cache'))[0][0], space.MARGIN)
 
     def test_refusal_numbers_and_boundary(self):
-        with self.assertRaisesRegex(RuntimeError, '^Not enough free space for this update: it needs about 1.1 GB, 500.0 MB is free. Free some space, then try again.$'):
+        with self.assertRaisesRegex(RuntimeError, '^Not enough free space for this update: it needs about 1.1 GB, 500.0 MB is free. Delete unneeded files or clear the package cache in Settings > Storage, then try again.$'):
             space.check_space(10 ** 6, 10 ** 6, filesystem(7, 500 * 10 ** 6), filesystem(7, 500 * 10 ** 6))
         space.check_space(100, 200, filesystem(7, space.MARGIN + 300), filesystem(7, space.MARGIN + 300))
         with self.assertRaisesRegex(RuntimeError, '10.0 MB, 9.0 MB'):
@@ -124,20 +126,41 @@ class Space(unittest.TestCase):
         with self.assertRaises(AssertionError):
             self.assert_visible_mounts(namespace['mount_details'])
 
-    def test_real_mount_table_agrees_with_findmnt(self):
+    def findmnt_details(self, path, table=None):
         findmnt = Path('/usr/bin/findmnt')
         if not findmnt.exists():
             self.skipTest('findmnt is not installed')
+        # Search from the visible end of a stack, returning exactly that mount.
+        command = [str(findmnt), '-n', '-o', 'SOURCE,FSTYPE',
+                   '--first-only', '--direction', 'backward', '--target', str(path)]
+        if table is not None:
+            command += ['--tab-file', str(table)]
+        result = subprocess.run(command, capture_output=True, text=True, check=True)
+        source, kind = result.stdout.split()
+        source = source.split('[', 1)[0]
+        expected = os.path.realpath(source) if source.startswith('/dev/') else None
+        return expected, kind
+
+    def test_findmnt_selects_visible_stacked_mount(self):
+        with tempfile.TemporaryDirectory() as work:
+            cache = Path(work) / 'cache'
+            cache.mkdir()
+            package = cache / 'package.pkg.tar.zst'
+            package.touch()
+            mounts = self.STACKED.replace('/var/cache/pacman/pkg', str(cache))
+            table = Path(work) / 'mountinfo'
+            table.write_text(mounts)
+            for path in (cache, package):
+                with self.subTest(path=path):
+                    self.assertEqual(self.findmnt_details(path, table), ('/dev/visible', 'ext4'))
+                    self.assertEqual(space.mount_details(path, mounts), self.findmnt_details(path, table))
+
+    def test_real_mount_table_agrees_with_findmnt(self):
         for path in ('/', '/var/cache/pacman/pkg', tempfile.gettempdir()):
             if not Path(path).exists():
                 continue
-            result = subprocess.run([str(findmnt), '-n', '-o', 'SOURCE,FSTYPE', '--target', path],
-                                    capture_output=True, text=True, check=True)
-            source, kind = result.stdout.split()
-            source = source.split('[', 1)[0]
-            expected = os.path.realpath(source) if source.startswith('/dev/') else None
             with self.subTest(path=path):
-                self.assertEqual(space.mount_details(path), (expected, kind))
+                self.assertEqual(space.mount_details(path), self.findmnt_details(path))
 
     def test_snapshot_root_charges_installed_not_only_net(self):
         with patch.object(Path, 'is_dir', return_value=True):
@@ -160,6 +183,33 @@ class Space(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'could not finish'):
             space.command([sys.executable, '-c', source + '; raise SystemExit(1)'])
 
+    def test_probe_refusals_preserve_first_error(self):
+        diagnostic = 'error: failed to prepare transaction (could not satisfy dependencies)'
+        output = diagnostic + '\nerror: a later failure\n'
+        for ending in ('raise SystemExit(1)', 'raise SystemExit(0)',
+                       f'print({SUMMARY!r}, flush=True); assert input() == "n"; raise SystemExit(1)',
+                       f'print({SUMMARY!r}, flush=True); assert input() == "n"; raise SystemExit(2)',
+                       'print(":: Unexpected operation? [Y/n]", flush=True); input()'):
+            source = f'print({output!r}, flush=True)\n' + ending
+            with self.subTest(ending=ending):
+                with self.assertRaises(RuntimeError) as caught:
+                    space.command([sys.executable, '-c', source], probe=True)
+                self.assertEqual(str(caught.exception), space.FAILURE + '\n' + diagnostic)
+
+    def test_refresh_failure_preserves_first_error(self):
+        diagnostic = 'error: failed retrieving file core.db from mirror'
+        source = f'print({diagnostic!r}); raise SystemExit(1)'
+        with self.assertRaises(RuntimeError) as caught:
+            space.command([sys.executable, '-c', source])
+        self.assertEqual(str(caught.exception), space.FAILURE + '\n' + diagnostic)
+
+    def test_unknown_estimate_failure_does_not_advise_deleting_files(self):
+        with self.assertRaises(RuntimeError) as caught:
+            space.transaction_sizes('incomplete summary')
+        self.assertEqual(str(caught.exception),
+                         'The free-space check could not finish. The update was not started.')
+        self.assertNotIn('Settings > Storage', str(caught.exception))
+
     def test_conflict_and_skip_prompts_are_accepted_only_in_probe(self):
         for prompt in (':: old and new are in conflict. Remove old? [y/N]',
                        ':: Do you want to skip the above package for this upgrade? [y/N]',
@@ -171,18 +221,6 @@ class Space(unittest.TestCase):
             with self.subTest(prompt=prompt):
                 self.assertEqual(space.transaction_sizes(space.command([sys.executable, '-c', source], probe=True)),
                                  space.transaction_sizes(SUMMARY))
-
-    def test_unpreparable_probe_hands_off_without_retry_loop(self):
-        with tempfile.TemporaryDirectory() as directory:
-            database = Path(directory)
-            (database / 'local').mkdir()
-            replies = [str(database), str(database), '', RuntimeError(space.FAILURE)]
-            with patch.object(space, 'command', side_effect=replies), \
-                    patch.object(space, 'check_space') as check, \
-                    contextlib.redirect_stderr(io.StringIO()) as errors:
-                space.preflight()
-            check.assert_not_called()
-            self.assertIn('continuing with pacman', errors.getvalue())
 
     def test_probe_accepts_replacement_default_but_never_installation(self):
         source = ('import sys\n'
@@ -230,26 +268,57 @@ class Space(unittest.TestCase):
                             process.kill()
                             process.communicate()
 
-    def assert_wrapper_refuses(self, module):
-        with patch.dict(module['main'].__globals__, preflight=Mock(side_effect=RuntimeError('space refusal')),
-                        run=Mock(return_value=0)), patch.object(os, 'geteuid', return_value=0):
-            for arguments in (['emaki-update'], ['emaki-update', '--noninteractive']):
-                with patch.object(sys, 'argv', arguments), contextlib.redirect_stderr(io.StringIO()) as errors:
+    def test_wrapper_keeps_preflight_before_package_changes(self):
+        module = runpy.run_path(str(ROOT / 'scripts/emaki-update'))
+        for arguments in ([], ['--noninteractive'], ['--install', 'extra/example'],
+                          ['--install-only', 'extra/example']):
+            with self.subTest(arguments=arguments):
+                check = Mock(side_effect=space.InsufficientSpace('measured shortage'))
+                run = Mock(return_value=0)
+                with patch.dict(module['main'].__globals__, preflight=check, run=run,
+                                upgrades=Mock(return_value={})), \
+                        patch.object(os, 'geteuid', return_value=0), \
+                        patch.object(sys, 'argv', ['emaki-update', *arguments]), \
+                        contextlib.redirect_stderr(io.StringIO()):
                     self.assertEqual(module['main'](), 1)
-                    self.assertEqual(errors.getvalue().strip(), 'space refusal')
-            module['main'].__globals__['run'].assert_not_called()
+                check.assert_called_once_with(**({'targets': ['extra/example']}
+                                                if 'extra/example' in arguments else {}))
+                run.assert_not_called()
 
-    def test_wrapper_refuses_before_real_pacman(self):
-        self.assert_wrapper_refuses(runpy.run_path(str(ROOT / 'scripts/emaki-update')))
+    def test_wrapper_successful_preflight_precedes_transaction(self):
+        module = runpy.run_path(str(ROOT / 'scripts/emaki-update'))
+        calls = []
+        with patch.dict(module['main'].__globals__,
+                        preflight=lambda: calls.append('preflight'),
+                        update=lambda *a, **kw: calls.append('transaction') or 0), \
+                patch.object(os, 'geteuid', return_value=0), \
+                patch.object(sys, 'argv', ['emaki-update']):
+            self.assertEqual(module['main'](), 0)
+        self.assertEqual(calls, ['preflight', 'transaction'])
 
-    def test_mutant_skipped_check_is_rejected(self):
-        path = ROOT / 'scripts/emaki-update'
-        source = path.read_text()
-        self.assertEqual(source.count('        preflight()'), 1)
-        namespace = {'__file__': str(path), '__name__': 'space_mutant'}
-        exec(compile(source.replace('        preflight()', '        pass'), str(path), 'exec'), namespace)
-        with self.assertRaises(AssertionError):
-            self.assert_wrapper_refuses(namespace)
+    def test_probe_answers_group_selection_before_declining_installation(self):
+        source = ('print("Enter a selection (default=all): ", end="", flush=True)\n'
+                  'assert input() == ""\n'
+                  f'print({SUMMARY!r}, end="", flush=True)\n'
+                  'assert input() == "n"\nraise SystemExit(1)\n')
+        # Bound the regression run instead of waiting for the production deadline.
+        monotonic = time.monotonic
+        with patch.object(space.time, 'monotonic', side_effect=lambda: monotonic() * 100):
+            self.assertEqual(space.transaction_sizes(space.command([sys.executable, '-c', source], probe=True)),
+                             space.transaction_sizes(SUMMARY))
+
+    def test_parent_identity_rejects_unrelated_launcher_and_non_pacman(self):
+        for supplied in ('', '-1', '1/../2', 'unrecognized'):
+            with self.subTest(pid=supplied), self.assertRaises(ValueError):
+                space.parent_selection(supplied)
+        with patch.object(space.os, 'getppid', return_value=100), \
+                patch.object(space, 'process_parent', return_value=200), \
+                self.assertRaisesRegex(ValueError, 'unrelated launcher'):
+            space.parent_selection('300')
+        with patch.object(space.os, 'getppid', return_value=100), \
+                patch.object(space, 'process_parent', return_value=os.getpid()), \
+                self.assertRaisesRegex(ValueError, 'unknown package manager'):
+            space.parent_selection('100')
 
     def test_private_database_no_download_or_system_sync(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -263,9 +332,9 @@ class Space(unittest.TestCase):
             calls = []
             def command(arguments, probe=False):
                 calls.append(arguments)
-                if arguments == ['/usr/bin/pacman-conf', 'DBPath']:
+                if arguments == ['pacman-conf', 'DBPath']:
                     return str(database)
-                if arguments == ['/usr/bin/pacman-conf', 'CacheDir']:
+                if arguments == ['pacman-conf', 'CacheDir']:
                     return str(cache)
                 private = Path(arguments[arguments.index('--dbpath') + 1])
                 self.assertNotEqual(private, database)
@@ -293,9 +362,116 @@ class Space(unittest.TestCase):
             self.assertEqual(set(database.iterdir()), {database / 'local', database / 'sync'})
             self.assertEqual((database / 'sync/core.db').read_bytes(), b'unchanged database')
             (database / 'db.lck').touch()
-            with patch.object(space, 'command', side_effect=command), self.assertRaisesRegex(RuntimeError, 'Another package operation'):
+            with patch.object(space, 'command', side_effect=command), \
+                    patch.object(space, 'lock_message', return_value='The package database lock appears abandoned.') as diagnose, \
+                    self.assertRaisesRegex(RuntimeError, 'lock appears abandoned'):
                 space.preflight()
-            self.assertEqual(calls[-1], ['/usr/bin/pacman-conf', 'CacheDir'])
+            diagnose.assert_called_once_with(database / 'db.lck')
+            self.assertEqual(calls[-1], ['pacman-conf', 'CacheDir'])
+
+
+class TransactionSpace(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('pacman'), 'pacman is required for native selection output')
+    def test_native_print_selection_uses_only_private_database(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            local = root / 'local/example-1-1'
+            local.mkdir(parents=True)
+            (root / 'local/ALPM_DB_VERSION').write_text('9\n')
+            (local / 'files').write_text('%FILES%\n')
+            (local / 'desc').write_text('%NAME%\nexample\n\n%VERSION%\n1-1\n\n%ARCH%\nany\n\n%SIZE%\n100\n')
+            (root / 'sync').mkdir()
+            record = ('%NAME%\nexample\n\n%VERSION%\n2-1\n\n%ARCH%\nany\n\n'
+                      '%FILENAME%\nexample-2-1-any.pkg.tar.zst\n\n%CSIZE%\n100\n\n%ISIZE%\n200\n')
+            with tarfile.open(root / 'sync/fixture.db', 'w:gz') as archive:
+                entry = tarfile.TarInfo('example-2-1/desc')
+                entry.size = len(record)
+                archive.addfile(entry, io.BytesIO(record.encode()))
+            config = root / 'pacman.conf'
+            config.write_text('[options]\nArchitecture = auto\nSigLevel = Never\n'
+                              '[fixture]\nServer = file:///missing\n')
+            selection = space.sync_selection(['-Syu'])
+            result = space.command(['pacman', *selection, '--config', str(config),
+                                    '--dbpath', str(root), '--logfile', '/dev/null',
+                                    '--print', '--print-format', '%n', '--noconfirm'])
+            self.assertEqual(result.splitlines(), ['example'])
+            self.assertFalse((root / 'db.lck').exists())
+            self.assertIn('1-1', (local / 'desc').read_text())
+
+    def test_sync_selection_preserves_upgrade_and_repository_targets(self):
+        for arguments, expected in (
+                (['-Syu'], ['-Su']),
+                (['--sync', '--refresh', '--sysupgrade'], ['-Su']),
+                (['-S', '--noconfirm', '--needed', 'extra/example'], ['-S', '--needed', 'extra/example']),
+                (['-Syyuu', 'core/example'], ['-Suu', 'core/example'])):
+            self.assertEqual(space.sync_selection(arguments), expected)
+        for arguments in (['-U', 'example.pkg.tar.zst'], ['-R', 'example'],
+                          ['-Syu', '--root', '/target'], ['-Syu', '--dbpath=/target'],
+                          ['-Syu', '--config', '/custom'], ['-S', '-'], ['-Syu', '--ignore=example']):
+            with self.subTest(arguments=arguments), self.assertRaises(ValueError):
+                space.sync_selection(arguments)
+
+    def test_fits_shortage_and_unknown_with_parent_database_lock(self):
+        for summary, free, status, warning in (
+                (SUMMARY, space.MARGIN + 110 * 1024 ** 2, 0, False),
+                (SUMMARY, space.MARGIN + 50 * 1024 ** 2, 1, False),
+                ('odd output', 0, 0, True),
+                (OSError('tool missing'), 0, 0, True),
+                (RuntimeError('probe failed'), 0, 0, True)):
+            with self.subTest(summary=summary, free=free), tempfile.TemporaryDirectory() as directory:
+                database = Path(directory)
+                (database / 'local').mkdir()
+                lock = database / 'db.lck'
+                lock.write_text('parent transaction')
+                replies = [str(database), str(database), 'new-package\n', summary]
+                with patch.object(space, 'command', side_effect=replies) as probe, \
+                        patch.object(space, 'parent_selection', return_value=['-Su']), \
+                        patch.object(space, 'mount_details', return_value=('/dev/test', 'btrfs')), \
+                        patch.object(space, 'root_snapshots', return_value=True), \
+                        patch.object(space.os, 'statvfs', return_value=filesystem(1, free)), \
+                        contextlib.redirect_stderr(io.StringIO()) as errors:
+                    self.assertEqual(space.transaction_preflight(['new-package']), status)
+                self.assertEqual(lock.read_text(), 'parent transaction')
+                self.assertEqual(probe.call_count, 4)
+                self.assertNotIn('-Sy', [arg for call in probe.call_args_list for arg in call.args[0]])
+                private = Path(probe.call_args.args[0][probe.call_args.args[0].index('--dbpath') + 1])
+                self.assertFalse(private.exists())
+                if warning:
+                    self.assertEqual(errors.getvalue(), space.WARNING + '\n')
+                elif status:
+                    self.assertEqual(len(errors.getvalue().splitlines()), 1)
+                    self.assertIn('it needs about ', errors.getvalue())
+                    self.assertIn(' is free. ' + space.SPACE_ADVICE, errors.getvalue())
+                else:
+                    self.assertEqual(errors.getvalue(), '')
+
+    def test_non_btrfs_and_missing_mount_data_warn_without_probing(self):
+        for kind in ('ext4', None):
+            with patch.object(space, 'mount_details', return_value=(None, kind)), \
+                    patch.object(space, 'preflight') as check, \
+                    contextlib.redirect_stderr(io.StringIO()) as errors:
+                self.assertEqual(space.transaction_preflight(['example']), 0)
+            check.assert_not_called()
+            self.assertEqual(errors.getvalue(), space.WARNING + '\n')
+
+    def test_unrecognized_parent_and_changed_target_selection_warn(self):
+        with patch.object(space, 'mount_details', return_value=('/dev/test', 'btrfs')), \
+                patch.object(space, 'parent_selection', side_effect=ValueError('local archive')), \
+                patch.object(space, 'preflight') as check, \
+                contextlib.redirect_stderr(io.StringIO()) as errors:
+            self.assertEqual(space.transaction_preflight(['example']), 0)
+        check.assert_not_called()
+        self.assertEqual(errors.getvalue(), space.WARNING + '\n')
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / 'local').mkdir()
+            with patch.object(space, 'command', side_effect=[directory, directory, 'other\n']), \
+                    patch.object(space, 'parent_selection', return_value=['-Su']), \
+                    patch.object(space, 'mount_details', return_value=('/dev/test', 'btrfs')), \
+                    patch.object(space, 'check_space') as check, \
+                    contextlib.redirect_stderr(io.StringIO()) as errors:
+                self.assertEqual(space.transaction_preflight(['example']), 0)
+            check.assert_not_called()
+            self.assertEqual(errors.getvalue(), space.WARNING + '\n')
 
 
 if __name__ == '__main__':

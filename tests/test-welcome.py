@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Welcome input, renders, persistence and real IPC in private offscreen profiles."""
 from runtime_fixture import runtime_path
 import configparser
@@ -12,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 
 from PIL import Image, ImageOps
 import reaper
@@ -22,29 +25,78 @@ SHOTS = ROOT / '.cache/evidence/welcome-shots'
 SHOTS.mkdir(parents=True, exist_ok=True)
 
 
+# The old orange demo "E": the flat mark (art/logo/mark.svg) and the same slanted E in any colour.
+DEMO_MARK = ('M3 22L7.161 22L12.896 2L8.735 2Z', '#e2733f', 'mark.svg', 'mark-large.svg', 'kind: "logo"')
+
+
 def content_contract():
     script = (ROOT / 'shell/WelcomeContent.js').read_text().replace('.pragma library', '')
     pages = json.loads(subprocess.check_output(
-        ['node', '-e', script + '\nconsole.log(JSON.stringify(pages));'], text=True))
-    config = (ROOT / 'niri/default.kdl').read_text()
-    binds = {match[1]: match[2].strip() for match in re.finditer(
-        r'^[ \t]*(Mod\+\S+)[ \t]+[^\n{]*\{[ \t]*([^}]+)\}', config, re.M)}
+        ['node', '-e', script + '\nconsole.log(JSON.stringify(pages.map(page => Object.assign({}, page, {allBinds: binds(page)}))));'], text=True))
+    # A short tour: a few pages, one idea each, a big title and a line or two.
+    assert [page['id'] for page in pages] == ['welcome', 'super', 'move', 'system', 'keys'], pages
     for page in pages:
-        for action in page['actions']:
-            for binding, command in action['binds'].items():
-                assert binds[binding].startswith(command), (binding, command, binds.get(binding))
+        assert page['title'] and len(page['title']) <= 30, page['title']
+        assert page['text'] and len(page['text']) <= 120 and page['text'].count('. ') <= 1, page['text']
+    assert pages[0]['title'] == 'Welcome to Emaki' and pages[0]['text'].startswith('Emaki is ')
+    super_page = pages[1]
+    assert 'Windows key' in super_page['text'] and 'Command on a Mac' in super_page['text'], super_page
+    words = json.dumps(pages)
+    for needed in ('Programs & Updates', 'Settings', 'Report a problem', 'Super + /', 'Super + Ctrl + H'):
+        assert needed in words, needed
+    config = (ROOT / 'niri/default.kdl').read_text()
+    matches = list(re.finditer(
+        r'^[ \t]*(Mod\+\S+)[ \t]+[^\n{]*\{[ \t]*([^}]+)\}', config, re.M))
+    binds = {match[1]: match[2].strip() for match in matches}
+    assert len(binds) == len(matches), 'duplicate shipped Welcome bindings'
+    shown = {}
+    for page in pages:
+        for binding, command in page['allBinds'].items():
+            assert binding in binds, ('Welcome shows a key niri does not bind', binding)
+            assert binds[binding].startswith(command), (binding, command, binds.get(binding))
+            shown[binding] = page['id']
+    # The keys the tour must teach, the 0.9 ones among them.
+    for binding in ('Mod+Left', 'Mod+Right', 'Mod+Up', 'Mod+Down', 'Mod+O', 'Mod+D', 'Mod+Return', 'Mod+Q',
+                    'Mod+E', 'Mod+Slash', 'Mod+Ctrl+H'):
+        assert binding in shown, binding
     assert '"emaki-shell" "call" "launcher" "toggle"' in binds['Mod+D']
-    assert binds['Mod+Shift+Slash'] == 'show-hotkey-overlay;'
     assert 'mod-key "Super"' in config
     desktop = configparser.ConfigParser(interpolation=None)
     desktop.read(ROOT / 'shell/emaki-welcome.desktop')
     assert desktop['Desktop Entry']['Name'] == 'Welcome to Emaki'
     assert desktop['Desktop Entry']['Exec'] == 'emaki-shell call welcome present'
+    assert desktop['Desktop Entry']['Icon'] == 'emaki-welcome'
     main = (ROOT / 'shell/shell.qml').read_text()
     assert 'enabled: root.valid && !root.headless' in main
     assert 'ready: !startup.coverActive' in main
     assert 'onOpening: outputs.closeAll()' in main
-    print('PASS: displayed shortcuts match shipped bindings; launcher and startup hooks')
+    # All shortcuts opens the list Super + / opens, not niri's overlay.
+    assert 'openShortcutList: () => root.scene?.openKeyboard("shortcuts") ?? false' in main
+    assert binds['Mod+Slash'] == 'spawn "emaki-shell" "call" "keyboard" "open" "shortcuts";'
+    assert 'show-hotkey-overlay' not in (ROOT / 'shell/WelcomeController.qml').read_text()
+    print('PASS: a five-page tour; every key it shows is a shipped binding; launcher and startup hooks')
+
+
+def no_demo_logo():
+    """No demo "E" anywhere in Welcome: its window, its texts, its launcher icon."""
+    for path in sorted((ROOT / 'shell').glob('Welcome*')) + [ROOT / 'shell/emaki-welcome.desktop']:
+        text = path.read_text()
+        for mark in DEMO_MARK:
+            assert mark not in text, (path.name, mark)
+    welcome = (ROOT / 'shell/Welcome.qml').read_text()
+    assert 'import "LockWordmarkData.js" as Data' in welcome and 'objectName: "welcome-wordmark"' in welcome
+    makefile = (ROOT / 'Makefile').read_text()
+    assert 'install -Dm644 art/icons/emaki-welcome.svg $(ICONS)/hicolor/scalable/apps/emaki-welcome.svg' in makefile
+    assert 'art/logo/mark.svg $(ICONS)/hicolor/scalable/apps/emaki-welcome.svg' not in makefile
+    icon = (ROOT / 'art/icons/emaki-welcome.svg').read_text()
+    for mark in DEMO_MARK:
+        assert mark not in icon, mark
+    # The installed icon is the shell's live drawing in the default accent.
+    tokens = tomllib.loads((ROOT / 'tokens.toml').read_text())
+    accent = tokens['accents'][tokens['defaults']['accent']]
+    for key in ('base', 'strong', 'soft'):
+        assert 'fill="#' + accent[key] + '"' in icon, key
+    print('PASS: no demo "E" in the Welcome window, its texts or its launcher icon')
 
 
 def prepare(base, scale):
@@ -131,16 +183,19 @@ def ipc_cases(base, env, *, expected_seen, expected_opened, save_failed=False, q
             time.sleep(.15)
             assert not status()['opened']
             assert call('welcome', 'present') == 'presented'
-            (base / 'fail-shortcuts').touch()
+            call('welcomeTest', 'shortcuts')
+            wait_for(lambda: status().get('listOpened') == 1)
+            assert status()['error'] == '', status()
+            call('welcomeTest', 'failShortcuts')
             call('welcomeTest', 'shortcuts')
             wait_for(lambda: status()['error'])
+            assert status()['error'] == 'Could not open the shortcut list. Try Super + /.', status()
             assert status()['opened']
         finally:
             proc.terminate()
             proc.wait(timeout=5)
             log.seek(0)
             clean_log(log.read())
-            (base / 'fail-shortcuts').unlink(missing_ok=True)
 
 
 def content_regions(output):
@@ -150,16 +205,18 @@ def content_regions(output):
 
 
 def rendered_copy(path, dimensions, scale, regions):
-    """Require text ink in every semantically checked, unclipped text region."""
+    """Require text ink in every semantically checked, unclipped text region: pixels that stand
+    clearly apart from the region's own background, light text on dark or dark on light."""
     assert regions, (path, 'No visible copy regions')
     with Image.open(path) as frame:
         assert frame.size == tuple(value * scale for value in dimensions), (path, frame.size)
         for region in regions:
             box = tuple(round(value * scale) for value in (
                 region['x'], region['y'], region['x'] + region['width'], region['y'] + region['height']))
-            pixels = frame.crop(box).convert('L')
-            dark = sum(count for value, count in enumerate(pixels.histogram()) if value < 100)
-            assert dark >= max(8, len(region['text'])) * scale * scale, (path, region['text'], 'Missing rendered text ink')
+            histogram = frame.crop(box).convert('L').histogram()
+            background = max(range(256), key=lambda value: histogram[value])
+            ink = sum(count for value, count in enumerate(histogram) if abs(value - background) > 60)
+            assert ink >= max(4, len(region['text'].strip())) * scale * scale, (path, region['text'], 'Missing rendered text ink')
 
 
 def content_mutations(base, env):
@@ -170,6 +227,9 @@ def content_mutations(base, env):
         ('missing title', 'text: welcome.current.title', 'text: ""', 'Expected welcome copy:'),
         ('hidden body', 'id: body', 'id: body\n        opacity: 0', 'Welcome copy is opaque:'),
         ('clipped title', 'text: welcome.current.title', 'x: -100\n                text: welcome.current.title', 'Welcome copy stays inside'),
+        ('demo logo', 'id: band', 'id: band\n        Icon {\n            kind: "logo"\n        }', 'Welcome draws no letter mark'),
+        ('arrows do not turn', 'turn(event.key === Qt.Key_Left ? -1 : 1);', '', 'Welcome comparison'),
+        ('card text overflows', 'height: places.stacked ? Math.max(74, words.implicitHeight + 24) : 16 + 48 + 12 + places.tallest + 18', 'height: places.stacked ? 40 : 120', 'Welcome copy stays inside the picture'),
     )
     try:
         for name, old, new, failure in mutations:
@@ -198,7 +258,7 @@ def glass_renders(cache, regions_by_scale):
     with Image.open(ROOT / 'art/wallpaper/ring.png') as wallpaper:
         ImageOps.fit(wallpaper, (800, 660)).save(texture)
     for scale in (1, 2):
-        for page in range(3):
+        for page in range(5):
             target = SHOTS / f'glass-{page + 1}@{scale}x.png'
             output = renderer.render(
                 ROOT / 'shell/Welcome.qml', png=target,
@@ -215,6 +275,8 @@ def glass_renders(cache, regions_by_scale):
 
 def content_only():
     """Exercise page content without using the blocked Unix IPC transport."""
+    content_contract()
+    no_demo_logo()
     for scale in (1, 2):
         with tempfile.TemporaryDirectory(prefix='ewf-', dir='/tmp') as temporary:
             base = Path(temporary)
@@ -225,7 +287,7 @@ def content_only():
             (SHOTS / f'content@{scale}x.log').write_text(output)
             assert result.returncode == 0 and 'WELCOME_TEST_RESULT 2 0' in output, output
             regions = content_regions(output)
-            assert len(regions) == 12, regions.keys()
+            assert len(regions) == 20, regions.keys()
             for name, copy in regions.items():
                 dimensions = (560, 420) if name.startswith('small-') else (800, 648) if name.startswith('1366x768-') else (800, 660)
                 rendered_copy(SHOTS / f'{name}@{scale}x.png', dimensions, scale, copy)
@@ -246,6 +308,7 @@ def content_only():
 
 def main():
     content_contract()
+    no_demo_logo()
     regions_by_scale = {}
     for scale in (1, 2):
         with tempfile.TemporaryDirectory(prefix='ew-', dir='/tmp') as temporary:
@@ -261,10 +324,10 @@ def main():
             clean_log(output)
             state_file = base / 'state/emaki/welcome.json'
             assert json.loads(state_file.read_text()) == {'version': 1, 'seen': True}
-            assert json.loads((base / 'niri-args.json').read_text()) == ['msg', 'action', 'show-hotkey-overlay']
+            assert not (base / 'niri-args.json').exists(), 'All shortcuts must not start niri\'s overlay'
             regions_by_scale[scale] = content_regions(output)
             for size, dimensions in (('page', (800, 660)), ('1366x768', (800, 648)), ('small', (560, 420))):
-                for page in range(1, 4):
+                for page in range(1, 6):
                     for suffix in ('-top', '-bottom') if size == 'small' else ('',):
                         path = SHOTS / f'{size}-{page}{suffix}@{scale}x.png'
                         rendered_copy(path, dimensions, scale, regions_by_scale[scale][f'{size}-{page}{suffix}'])

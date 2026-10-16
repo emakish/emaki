@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """GUEST ONLY, as root: one JSON snapshot for tests/vm/check-graphics-fallback.py.
 
 Read-only. Reports the active VT; the mode and keyboard mode of tty1 (KDGETMODE and KDGKBMODE

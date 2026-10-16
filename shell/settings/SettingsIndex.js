@@ -202,7 +202,7 @@ var sections = [
         id: "lock",
         title: "Lock & Login",
         group: "System",
-        description: "Your password, fingerprint or face, when to lock, and the lock screen.",
+        description: "Change your password and choose when to lock.",
         colors: ["sectionBrownStart","sectionBrownEnd"],
         items: [
             {"id":"lock-password","title":"Change password","keywords":"Change password login wallet terminal","source":"SettingsMaintenancePage.qml","explanation":"Open the system password prompt in your terminal. Your login wallet may still use your previous password; update its password separately.","staticExplanation":true},
@@ -228,7 +228,7 @@ var sections = [
         id: "updates",
         title: "Updates & Recovery",
         group: "System",
-        description: "Update channel and checks, snapshots, and going back to before an update.",
+        description: "Choose an update channel and review snapshot recovery.",
         colors: ["accentSoft","accent"],
         items: [
             {"id":"updates-update-channel","title":"Channel","keywords":"Update channel","source":"SettingsMaintenancePage.qml","explanation":"Choose which releases your next update uses.","staticExplanation":true}
@@ -287,16 +287,6 @@ var sections = [
             {"id": "storage-cache", "title": "Package cache", "keywords": "package cleanup cache", "source": "SettingsStoragePage.qml", "explanation": ""},
             {"id": "storage-logs", "title": "Logs", "keywords": "old logs cleanup", "source": "SettingsStoragePage.qml", "explanation": ""},
             {"id": "storage-trash", "title": "Trash", "keywords": "trash cleanup", "source": "SettingsStoragePage.qml", "explanation": ""}
-        ]
-    },
-    {
-        id: "accessibility",
-        title: "Accessibility",
-        group: "System",
-        description: "Larger text, more contrast, less motion, zoom and sticky keys.",
-        colors: ["sectionBlueStart","sectionBlueEnd"],
-        items: [
-
         ]
     },
     {

@@ -42,6 +42,91 @@ class Shortcuts(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn('SHORTCUT_KEYBOARD_RESULT 2 0', result.stdout + result.stderr)
 
+    def test_overlay_titles_stay_bounded(self):
+        # Preserve the overlay's existing rows; shell labels must not expand it.
+        expected = {
+            'Mod+Ctrl+Shift+Left': 'Move column to left monitor',
+            'Mod+Ctrl+Shift+Right': 'Move column to right monitor',
+            'Mod+Ctrl+Shift+Up': 'Move column to monitor above',
+            'Mod+Ctrl+Shift+Down': 'Move column to monitor below',
+            'Mod+T': 'Open terminal',
+            'Mod+Return': 'Open terminal',
+            'Mod+E': 'Open files',
+            'Mod+D': 'Open launcher',
+            'Mod+N': 'Notifications, calendar and music',
+            'Mod+B': 'Focus top bar',
+            'Mod+J': 'Focus dock',
+            'Mod+Ctrl+N': 'Focus newest notification',
+            'Mod+Ctrl+S': 'Sound and app volume',
+            'Mod+Ctrl+L': 'Brightness and night light',
+            'Mod+Ctrl+W': 'Wi-Fi and VPN',
+            'Mod+Ctrl+B': 'Bluetooth',
+            'Mod+Ctrl+P': 'Battery, profiles and session',
+            'Mod+Ctrl+K': 'Keyboard layouts',
+            'Mod+Ctrl+T': 'Tray applications',
+            'Mod+Ctrl+I': 'Privacy and capture activity',
+            'Mod+Ctrl+H': 'Welcome to Emaki',
+            'Mod+Slash': 'Search keyboard shortcuts',
+            'Mod+Period': 'Search keyboard shortcuts',
+            'Ctrl+Alt+T': 'Open terminal (works without Super)',
+            'Alt+Tab': 'Switch windows',
+            'Alt+Shift+Tab': 'Switch windows backwards',
+            'Alt+grave': 'Switch windows of the same app',
+            'Alt+Shift+grave': 'Switch windows of the same app backwards',
+            'Mod+Q': 'Close window',
+            'Mod+C': 'Close window',
+            'Mod+Minus': 'Make column narrower',
+            'Mod+Equal': 'Make column wider',
+            'Mod+Shift+F': 'Float or tile window',
+            'Mod+BracketLeft': 'Move window into or out of left column',
+            'Mod+BracketRight': 'Move window into or out of right column',
+            'Mod+V': 'Clipboard history',
+            'Mod+L': 'Lock screen',
+            'Mod+Escape': 'Power menu',
+            'Mod+Shift+S': 'Take an interactive screenshot',
+            'Mod+Alt+R': 'Record screen',
+        }
+        actual = {}
+        for head, children in shortcuts.nodes((ROOT / 'niri/default.kdl').read_text()):
+            if head[0] == 'binds':
+                for binding, _ in children:
+                    if 'hotkey-overlay-title' in binding:
+                        actual[binding[0]] = binding[binding.index('hotkey-overlay-title') + 2]
+        self.assertEqual(actual, expected)
+
+    def test_every_shipped_binding_has_a_plain_title(self):
+        config = ROOT / 'niri/default.kdl'
+        raw_descriptions = {
+            '; '.join(' '.join(action) for action, _ in actions)
+            for head, children in shortcuts.nodes(config.read_text()) if head[0] == 'binds'
+            for _, actions in children
+        }
+        result = subprocess.run(['python3', str(ROOT / 'shell/helpers/shortcuts.py')],
+                                capture_output=True, text=True, check=True)
+        reference = json.loads(result.stdout)
+        self.assertEqual(reference['state'], 'ready')
+        for row in reference['rows']:
+            with self.subTest(row=row):
+                self.assertNotIn(row['description'], raw_descriptions)
+        self.assertIn({'keys': 'XF86AudioMute', 'description': 'Mute or unmute sound'},
+                      reference['rows'])
+
+    def test_shell_labels_follow_actions_and_respect_explicit_titles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'default.kdl'
+            path.write_text('''binds {
+                Mod+A { focus-workspace 10; }
+                Mod+B hotkey-overlay-title="My workspace" { focus-workspace 10; }
+                Mod+C hotkey-overlay-title=null { focus-column-left; }
+                Mod+D { spawn "custom-command"; }
+            }''')
+            self.assertEqual(shortcuts.read_shortcuts(path), [
+                {'keys': 'Super+A', 'description': 'Go to workspace 10'},
+                {'keys': 'Super+B', 'description': 'My workspace'},
+                {'keys': 'Super+C', 'description': 'Focus left column'},
+                {'keys': 'Super+D', 'description': 'spawn custom-command'},
+            ])
+
     def test_real_defaults_and_removed_binding(self):
         config = ROOT / 'niri/default.kdl'
         rows = shortcuts.read_shortcuts(config)

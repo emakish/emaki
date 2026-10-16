@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Expected locations and ownership; never stat, create or rewrite user files.
 //!
 //! Every entry names its zone as docs/ZONES.md defines it (installed as
@@ -271,10 +273,13 @@ pub fn collect() -> Map {
         "existing_layout",
         PACKAGE,
     );
-    // The snapshot boot hook, named in HOOKS on btrfs installs.
+    // Packaged boot hooks and the post-build signing hook.
     for (id, suffix) in [
         ("snapshot_hook", "hooks/emaki-snapshot-fstab"),
         ("snapshot_hook_install", "install/emaki-snapshot-fstab"),
+        ("resume_hook", "hooks/emaki-resume"),
+        ("resume_hook_install", "install/emaki-resume"),
+        ("secureboot_post_hook", "post/emaki-secureboot"),
     ] {
         add(
             id,
@@ -290,6 +295,7 @@ pub fn collect() -> Map {
         ("skel_kitty", "skel/.config/kitty/kitty.conf"),
         ("skel_qt6ct", "skel/.config/qt6ct/qt6ct.conf"),
         ("skel_wpaperd", "skel/.config/wpaperd/config.toml"),
+        ("sudo_pam_selector", "sudoers.d/20-emaki-pam"),
     ] {
         let lifecycle = "existing_layout";
         add(
@@ -314,6 +320,14 @@ pub fn collect() -> Map {
         ("xdg_hyprlock", "xdg/hypr/hyprlock.conf"),
         ("lock_pam", "pam.d/emaki-lock"),
         ("mirrorlist", "pacman.d/emaki-mirrorlist"),
+        ("sudo_pam", "pam.d/emaki-sudo"),
+        ("sudo_wheel", "sudoers.d/10-emaki-wheel"),
+        ("xdg_kwallet", "xdg/kwalletrc"),
+        ("splash_initramfs", "mkinitcpio.conf.d/50-emaki-splash.conf"),
+        ("splash_grub", "default/grub.d/50-emaki-splash.cfg"),
+        ("nvidia_initramfs", "mkinitcpio.conf.d/60-emaki-nvidia.conf"),
+        ("zsh_env", "zsh/zshenv"),
+        ("zsh_setup", "zsh/emaki.zsh"),
     ] {
         let lifecycle = "existing_layout";
         add(

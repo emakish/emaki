@@ -1,0 +1,3 @@
+# Fedora's shim-x64 for the Secure Boot install medium (iso/secureboot.sh): URL and SHA-256 of the RPM.
+# 16.1-7 carries both Microsoft signatures (UEFI CA 2011 and UEFI CA 2023); secureboot.sh refuses a shim without both.
+https://kojipkgs.fedoraproject.org/packages/shim/16.1/7/x86_64/shim-x64-16.1-7.x86_64.rpm 0a119f3488e5da27ca55c1864ee8e131afa5ecf27689385ba09b805eb00dd608

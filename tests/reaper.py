@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Nothing a test starts outlives the test.
 
 A test script calls `reaper.guard()` before it starts anything. The process forks: the child

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Emaki's GRUB background: a smooth wave in the logo colours on a deep magenta field.
 
 The layout follows EndeavourOS's GRUB splash (one picture, no theme), mirrored: GRUB prints

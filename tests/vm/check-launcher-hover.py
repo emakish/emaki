@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """C11, on the host: check for a launcher tile disappearing for one frame as the selection bubble follows the pointer.
   python3 tests/vm/check-launcher-hover.py <desktop> <frames-directory> <scale>
 login.sh (guest-hover-frames.sh) supplies frames: the first tile row (logical x 0..740, starting

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """tests/vm/release-gate.sh with every VM script, make, bwrap, verify-image and eyes-gate
 replaced by stubs in a copied tree. Never starts QEMU."""
 import hashlib

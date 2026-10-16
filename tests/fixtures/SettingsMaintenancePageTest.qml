@@ -31,7 +31,7 @@ ShellRoot {
             const mode = Quickshell.env("MAINTENANCE_FIXTURE_MODE");
             if (mode === "missing-channel") {
                 page.page = "updates";
-                tryCompare(page, "message", "The update channel helper could not be started.");
+                tryCompare(page, "message", "Update channel settings could not be opened. Try again.");
                 compare(page.pending, false);
                 compare(page.channel.channel, undefined);
                 verify(visibleMessage(page.message));

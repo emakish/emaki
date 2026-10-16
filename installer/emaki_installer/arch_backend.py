@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The pinned 4.5 adapter. No archinstall import until daemon startup.
 
 4.5's global DeviceHandler discovers and mounts every existing btrfs filesystem.
@@ -5,6 +7,8 @@ Suppress that discovery while importing, then use a job-scoped handler. Its
 manual MODIFY also deletes/recreates GPT entries, so our handler formats in
 place and does not call the upstream partition() for manual layouts.
 """
+import ctypes
+import errno
 import fcntl
 from contextlib import contextmanager
 import importlib
@@ -14,11 +18,13 @@ import os
 from pathlib import Path
 import shlex
 import struct
+import time
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from .constants import GRUB_VISIBLE_FONT, OFFLINE_CONF, OFFLINE_REPO, TARGET, WORK
 from . import inventory as alongside
+from . import planner
 from .errors import Code, InstallError, require
 from .runtime import TargetFiles
 from .graphics import console_font
@@ -32,14 +38,24 @@ from .render import GRUB_EARLY_MODULES, validate_xkb_layouts, vconsole_conf
 GRUB_ARGON2_PASSES = 5
 
 
+def own_esp(plan):
+    """The ESP this alongside plan creates in the freed extent (Windows' ESP is never planned)."""
+    esp = next(part for part in plan.partitions if part.esp)
+    require(esp.format and esp.number not in {part['number'] for part in plan.disk['partitions']},
+            Code.UNSAFE_DISK, "Emaki's startup partition is not a new one; disk untouched.")
+    return esp
+
+
 def resize_partition(plan, runner, changed):
-    """Shrink NTFS before its GPT extent; verify before allocating Emaki root."""
+    """Shrink NTFS before its GPT extent; verify before allocating Emaki's ESP and root."""
     p = next(p for p in plan.disk['partitions'] if p['id'] == plan.config['partition_id'])
     disk, dev, n = plan.disk['path'], p['path'], p['number']
     sector = plan.disk['_sector_size']
     new_size = alongside.usable_size(p['size_bytes']) - plan.config['shrink_bytes']
-    require(p['start_bytes'] + new_size == plan.root.start, Code.UNSAFE_DISK,
-            'Windows end and Emaki root start disagree; disk untouched.')
+    esp, root = own_esp(plan), plan.root
+    require(p['start_bytes'] + new_size == esp.start and esp.start + esp.size == root.start
+            and root.start + root.size == p['start_bytes'] + new_size + plan.config['shrink_bytes'],
+            Code.UNSAFE_DISK, "Windows end, Emaki's startup partition and Emaki root disagree; disk untouched.")
     metadata = alongside.read_gpt(runner, disk, n)
     require(metadata == p['_gpt'], Code.DISK_CHANGED, 'Windows GPT metadata changed after review; disk untouched.')
     alongside.verify_gpt(runner, disk)
@@ -79,9 +95,11 @@ def resize_partition(plan, runner, changed):
         if original['number'] != n:
             require(alongside.read_gpt(runner, disk, original['number']) == original['_gpt'],
                     Code.UNSAFE_DISK, 'STOP: preserved GPT metadata changed. No Emaki root was created.')
-    root = plan.root
-    runner.log('Alongside: create the Emaki root only inside the freed Windows extent.')
-    runner.run(['sgdisk', f'--new={root.number}:{root.start // sector}:{(root.start + root.size) // sector - 1}',
+    runner.log("Alongside: create Emaki's own EFI system partition and root only inside the freed Windows extent.")
+    # One sgdisk run writes both entries or, on an error, neither.
+    runner.run(['sgdisk', f'--new={esp.number}:{esp.start // sector}:{(esp.start + esp.size) // sector - 1}',
+                f'--typecode={esp.number}:EF00', f'--change-name={esp.number}:Emaki EFI',
+                f'--new={root.number}:{root.start // sector}:{(root.start + root.size) // sector - 1}',
                 f'--typecode={root.number}:8300', f'--change-name={root.number}:Emaki', disk])
     runner.run(['partprobe', disk])
     runner.run(['udevadm', 'settle', '--timeout=30'])
@@ -171,7 +189,8 @@ def build_disk_config(api, plan):
                                     total_size=size(plan.disk['size_bytes']), sector_size=sector),
         partition_infos=[])
     parts = []
-    for p in plan.partitions:
+    # Swap partitions are made by the worker itself (Backend.prepare); archinstall never sees them.
+    for p in (p for p in plan.partitions if not p.swap):
         status = (d.ModificationStatus.CREATE if plan.config['mode'] == 'erase' or p.path is None else
                   d.ModificationStatus.MODIFY if p.format else d.ModificationStatus.EXIST)
         parts.append(d.PartitionModification(
@@ -215,6 +234,50 @@ def validate_live_plan(api, plan):
 # boot, so a disk swapped in under the same /dev name gets another one (Linux 5.15+).
 BLKGETDISKSEQ = 0x80081280
 BLKRRPART = 0x125f
+BLKSSZGET = 0x1268
+BLKPG = 0x1269
+BLKPG_ADD_PARTITION, BLKPG_DEL_PARTITION = 1, 2
+REREAD_ATTEMPTS = 5
+REREAD_SECONDS = 15
+LINUX_GUID = '0fc63daf-8483-4772-8e79-3d69d8477de4'
+SFDISK_TYPES = {'U': alongside.ESP_GUID, 'L': LINUX_GUID}
+
+
+def usable_bytes(output):
+    """(first, end) bytes the GPT in `sfdisk --json` output lets partitions use (first-lba to
+    last-lba, half open); None without a GPT that names them."""
+    start = output.find('{')
+    if start < 0:
+        return None
+    table = json.loads(output[start:output.rfind('}') + 1])['partitiontable']
+    if table.get('label') != 'gpt' or 'firstlba' not in table or 'lastlba' not in table:
+        return None
+    sector = int(table['sectorsize'])
+    return int(table['firstlba']) * sector, (int(table['lastlba']) + 1) * sector
+
+
+def table_rows(output, device, gpt=True):
+    """Partition number -> {start, size, type, uuid, name, attrs} (bytes, lowercase GUIDs) from
+    `sfdisk --json` of device (a /proc/self/fd path); None when it holds no partition table.
+    gpt=False also reads another table type (an empty disk's old MBR before a new GPT)."""
+    start = output.find('{')
+    if start < 0:
+        return None
+    table = json.loads(output[start:output.rfind('}') + 1])['partitiontable']
+    require(not gpt or table.get('label') == 'gpt', Code.UNSAFE_DISK,
+            'The disk does not hold a GPT partition table.')
+    sector = int(table['sectorsize'])
+    rows = {}
+    for row in table.get('partitions', []):
+        node = row['node']
+        require(node.startswith(device), Code.UNSAFE_DISK, 'Unexpected partition name from sfdisk.')
+        # A device name that ends in a digit gets "p" before the number, as /dev/nvme0n1p1.
+        number = node[len(device):].removeprefix('p')
+        require(number.isdecimal(), Code.UNSAFE_DISK, 'Unexpected partition name from sfdisk.')
+        rows[int(number)] = {'start': int(row['start']) * sector, 'size': int(row['size']) * sector,
+                             'type': str(row.get('type', '')).lower(), 'uuid': str(row.get('uuid', '')).lower(),
+                             'name': row.get('name', ''), 'attrs': row.get('attrs', '')}
+    return rows
 
 
 def open_exclusive(path):
@@ -225,12 +288,35 @@ def disk_sequence(fd):
     return struct.unpack('=Q', fcntl.ioctl(fd, BLKGETDISKSEQ, bytes(8)))[0]
 
 
+class KernelPartition(ctypes.Structure):
+    # linux/blkpg.h uses native alignment, byte offsets and a pointer to this structure.
+    _fields_ = [('start', ctypes.c_longlong), ('length', ctypes.c_longlong),
+                ('number', ctypes.c_int), ('devname', ctypes.c_char * 64),
+                ('volname', ctypes.c_char * 64)]
+
+
+class KernelPartitionArgument(ctypes.Structure):
+    _fields_ = [('op', ctypes.c_int), ('flags', ctypes.c_int),
+                ('datalen', ctypes.c_int), ('data', ctypes.c_void_p)]
+
+
+def kernel_partition(fd, number, row=None):
+    """Update one kernel entry without reopening the exclusively claimed disk."""
+    partition = KernelPartition(row['start'] if row else 0, row['size'] if row else 0, number)
+    argument = KernelPartitionArgument(BLKPG_ADD_PARTITION if row else BLKPG_DEL_PARTITION,
+                                       0, ctypes.sizeof(partition), ctypes.addressof(partition))
+    return fcntl.ioctl(fd, BLKPG, bytes(argument))
+
+
 class DeviceOperations:
     def __init__(self, plan, runner, target=TARGET):
         self.plan, self.runner, self.target = plan, runner, target
         self.temp = WORK / 'btrfs-top'
         self.mapping_open = False
+        # Device-mapper names this job opened, in order; closed in reverse.
+        self.mappings = []
         self.changed = lambda: None
+        self.pending_reread = None
 
     def umount_all_existing(self, device_path):
         # The upstream routine actively unmounts arbitrary existing mounts.
@@ -249,6 +335,9 @@ class DeviceOperations:
             resize_partition(self.plan, self.runner, self.changed)
             self.verify_alongside_layout(mod)
             return
+        if not mod.wipe and self.plan.edits is not None:
+            self.apply_edits(mod)
+            return
         if not mod.wipe:
             self.runner.log('Manual mode: preserving the partition table, starts, GUIDs and flags.')
             return
@@ -263,15 +352,7 @@ class DeviceOperations:
                              '--wipe=always', '--wipe-partitions=always', f'/proc/self/fd/{fd}'],
                             input='\n'.join(lines) + '\n', pass_fds=(fd,))
             self.check_disk_sequence(fd)
-            try:
-                # BLKRRPART on the original O_EXCL descriptor lets the kernel scan under our
-                # existing claim. A child reopening it would have to acquire a competing claim.
-                fcntl.ioctl(fd, BLKRRPART)
-            except OSError as exc:
-                raise InstallError(Code.UNSAFE_DISK, 'The partition table was written, '
-                                   'but the kernel could not read it. Installation stopped.') from exc
-            self.check_disk_sequence(fd)
-            self.runner.run(['udevadm', 'settle', '--timeout=30'])
+            self.reread_partition_table(fd)
         # Check the current device name again before consuming its partition paths.
         with self.reviewed_disk():
             pass
@@ -288,6 +369,285 @@ class DeviceOperations:
                     'Partition geometry differs from the approved plan.')
             p.path = found['path']
             archpart.dev_path = Path(p.path)
+
+    def apply_edits(self, mod):
+        """The partition editor's reviewed changes, through the reviewed disk's exclusive descriptor.
+
+        The table is read first and must still be the reviewed one. A new table on an empty disk is
+        one sfdisk run; otherwise each deletion and each new partition is its own sfdisk run that
+        leaves every other GPT entry as it is. After each step every kept entry must be byte for byte
+        the same (start, size, type, GUID, name, attributes), every deleted one gone and every new
+        one exactly where the plan put it, before the kernel rereads the table and anything is
+        formatted. sfdisk --append fills the first free entry, as the plan numbered them (its -N
+        does the same for an entry that does not exist yet, whatever number it is given).
+        New partitions must lie inside the usable area the table itself names (checked
+        before writing); a failure once writing began says the disk may have been changed.
+        """
+        edits, sector = self.plan.edits, self.plan.disk['_sector_size']
+        reviewed = {p['number']: p for p in self.plan.disk['partitions']}
+        new = {p.number: p for p in self.plan.partitions if p.create}
+        with self.reviewed_disk() as fd:
+            device = f'/proc/self/fd/{fd}'
+            metadata = {}
+
+            def table(gpt=True):
+                nonlocal metadata
+                output = self.runner.run(['sfdisk', '--json', device], pass_fds=(fd,), check=False)
+                try:
+                    if '{' in output:
+                        metadata = json.loads(output[output.find('{'):output.rfind('}') + 1])['partitiontable']
+                        require(int(metadata['sectorsize']) == sector, Code.DISK_CHANGED,
+                                'The disk sector size changed. Installation stopped.')
+                    return table_rows(output, device, gpt), usable_bytes(output)
+                except (ValueError, KeyError, TypeError, AttributeError) as exc:
+                    raise InstallError(Code.UNSAFE_DISK,
+                                       'The partition table could not be read. Installation stopped.') from exc
+
+            before, usable = table(gpt=not edits.new_table)
+            if edits.new_table:
+                # An empty disk has no table metadata to validate the reviewed units.
+                try:
+                    current_sector = struct.unpack('=I', fcntl.ioctl(fd, BLKSSZGET, bytes(4)))[0]
+                except OSError as exc:
+                    raise InstallError(Code.UNSAFE_DISK, 'The disk sector size could not be read. '
+                                       'The disk was not changed.') from exc
+                require(current_sector == sector, Code.DISK_CHANGED,
+                        'The disk sector size changed. The disk was not changed; start a new review.')
+                require(not before, Code.DISK_CHANGED,
+                        'The disk is no longer empty. The disk was not changed; start a new review.')
+            else:
+                require(before is not None and set(before) == set(reviewed) and all(
+                    before[n]['start'] == p['start_bytes'] and before[n]['size'] == p['size_bytes']
+                    and (not p.get('_partuuid') or before[n]['uuid'] == str(p['_partuuid']).lower())
+                    and (not p.get('_parttype') or before[n]['type'] == str(p['_parttype']).lower())
+                    for n, p in reviewed.items()), Code.DISK_CHANGED,
+                    'The partition table changed after the review. The disk was not changed; start a new review.')
+                # The plan measured the usable space as erase does; this table's own limits decide.
+                require(usable is not None and all(usable[0] <= p.start and p.start + p.size <= usable[1]
+                                                   for p in new.values()), Code.UNSAFE_DISK,
+                        "A new partition lies outside the space this disk's partition table lets partitions "
+                        'use. The disk was not changed.')
+            self.runner.log('Partition editor: applying the reviewed changes.')
+            expected = dict(before or {})
+            header = {key: metadata.get(key) for key in ('label', 'id', 'firstlba', 'sectorsize')}
+
+            def verify_step(deleted=None, created=None):
+                nonlocal usable
+                if deleted is not None:
+                    expected.pop(deleted)
+                added = created or {}
+                actual, current_usable = table()
+                # A grown disk's first write can relocate the backup table to its new end.
+                # The usable end may grow, but must never shrink from the preceding readback.
+                require(actual is not None
+                        and (edits.new_table or (all(metadata.get(key) == value for key, value in header.items())
+                             and current_usable is not None and current_usable[1] >= usable[1]))
+                        and set(actual) == set(expected) | set(added)
+                        and all(actual[n] == row for n, row in expected.items())
+                        and all(actual[n]['start'] == p.start and actual[n]['size'] == p.size
+                                and actual[n]['type'] == SFDISK_TYPES[planner.NEW_TYPES[p.create]]
+                                for n, p in added.items()), Code.UNSAFE_DISK,
+                        'The partition table differs from the reviewed change. Installation stopped.')
+                expected.update({n: actual[n] for n in added})
+                usable = current_usable
+                self.check_disk_sequence(fd)
+
+            try:
+                self.write_edits(edits, new, device, fd, sector, verify_step)
+            except (InstallError, OSError) as exc:
+                raise InstallError(Code.UNSAFE_DISK, 'STOP: changing the partition table failed after it '
+                                   'had begun, so the disk may have been changed. Nothing was formatted; '
+                                   'inspect the disk and the installation log before trying again.') from exc
+            # The final step already read and validated the complete resulting table.
+            after = expected
+            gone = {p['number'] for p in edits.deleted}
+            kept = set(before or {}) - gone
+            require(set(after) == kept | set(new) and all(after[n] == before[n] for n in kept) and all(
+                after[n]['start'] == p.start and after[n]['size'] == p.size
+                and after[n]['type'] == SFDISK_TYPES[planner.NEW_TYPES[p.create]] for n, p in new.items()),
+                Code.UNSAFE_DISK, 'STOP: the partition table differs from the reviewed changes after writing. '
+                'Nothing was formatted; inspect the disk and the installation log.')
+            # Keep enough information to retry kernel synchronization after a stop, without
+            # repeating any on-disk write or reusing the old installation plan.
+            self.pending_reread = (after, gone, set(new), kept, reviewed)
+            self.reread_edits(fd, after, gone, set(new))
+        children = self.verify_edited_kernel(after, kept, reviewed)
+        self.pending_reread = None
+        for number, p in new.items():
+            p.path, p.partuuid = children[number]['path'], children[number].get('partuuid')
+            for archpart in mod.partitions:
+                if archpart.partn == number:
+                    archpart.dev_path = Path(p.path)
+
+    def reread_edits(self, fd, after, gone, added):
+        """Bounded udev/EBUSY retries, then BLKPG for precisely the reviewed changes."""
+        self.reread_partition_table(fd, (after, gone, added))
+
+    def reread_partition_table(self, fd, changes=None):
+        """Retry on the original exclusive descriptor; erase never uses partial updates."""
+        deadline = time.monotonic() + REREAD_SECONDS
+        prefix = 'Partition editor' if changes is not None else 'Erase disk'
+
+        def settle():
+            try:
+                self.runner.run(['udevadm', 'settle', '--timeout=1'], timeout=2)
+            except InstallError as exc:
+                if exc.code != Code.COMMAND_FAILED:
+                    raise
+                self.runner.log(f'{prefix}: udev settle did not complete; checking the kernel directly.')
+
+        def attempt(label, operation, absent_ok=False):
+            for number in range(1, REREAD_ATTEMPTS + 1):
+                if time.monotonic() >= deadline:
+                    self.runner.log(f'{prefix}: {label}: retry deadline reached.')
+                    return False
+                settle()
+                self.check_disk_sequence(fd)
+                try:
+                    operation()
+                except OSError as exc:
+                    self.runner.log(f'{prefix}: {label} attempt {number}: errno={exc.errno} ({exc.strerror}).')
+                    self.check_disk_sequence(fd)
+                    if absent_ok and exc.errno == errno.ENXIO:
+                        return True
+                    if exc.errno != errno.EBUSY:
+                        raise InstallError(Code.UNSAFE_DISK, 'The partition table was written, but the kernel '
+                                           'could not read it. Nothing was formatted; read the disk again.') from exc
+                    if number < REREAD_ATTEMPTS:
+                        time.sleep(min(0.2, max(0, deadline - time.monotonic())))
+                else:
+                    self.runner.log(f'{prefix}: {label} attempt {number}: errno=0.')
+                    self.check_disk_sequence(fd)
+                    return True
+            return False
+
+        def completed(success, message):
+            if not success:
+                raise InstallError(Code.DISK_BUSY, message, retryable=True)
+
+        if not attempt('BLKRRPART', lambda: fcntl.ioctl(fd, BLKRRPART)):
+            completed(changes is not None, 'The partition table was written, but the disk is still busy. '
+                      'Nothing was formatted; read the disk again.')
+            after, gone, added = changes
+            self.runner.log('Partition editor: whole-disk reread is busy; updating only changed kernel entries.')
+            # A replaced number must first lose its old extent. Kept partitions are never
+            # deleted or resized, even if they are the reason the whole disk is busy.
+            # Include newly added numbers too: a previous partial synchronization may have
+            # installed some already. ENXIO means the entry is absent and needs no removal.
+            for number in sorted(gone | added):
+                completed(attempt(f'BLKPG delete {number}', lambda n=number: kernel_partition(fd, n), absent_ok=True),
+                        'The partition table was written, but a changed partition is still busy. '
+                        'Nothing was formatted; read the disk again.')
+            for number in sorted(added):
+                completed(attempt(f'BLKPG add {number}', lambda n=number: kernel_partition(fd, n, after[n])),
+                        'The partition table was written, but the kernel could not read a new '
+                        'partition. Nothing was formatted; read the disk again.')
+        self.settle_partition_table(fd)
+
+    def settle_partition_table(self, fd):
+        # The kernel's geometry is immediate; PARTUUID comes from udev's database.
+        # Give queued probes their full budget and never verify against an unsettled view.
+        try:
+            self.runner.run(['udevadm', 'settle', '--timeout=30'], timeout=31)
+        except InstallError as exc:
+            if (exc.code == Code.COMMAND_FAILED and not isinstance(exc.__cause__, OSError)
+                    and exc.returncode in (None, 1)):
+                exc.retryable = True
+            raise
+        finally:
+            self.check_disk_sequence(fd)
+
+    def kernel_geometry_matches(self, fd, after):
+        """Read kernel extents through the claimed disk without trusting pending udev identities."""
+        try:
+            output = self.runner.run(['lsblk', '--tree', '-J', '-b', '-o', 'PARTN,START,SIZE',
+                                      f'/proc/self/fd/{fd}'], pass_fds=(fd,))
+            data = json.loads(output)
+            rows = data['blockdevices'][0].get('children', [])
+            # PARTN comes from udev and may be absent until its queued probes finish.
+            if any(row.get('partn') is None for row in rows):
+                return False
+            geometry = {int(row['partn']): (int(row['start']) * 512, int(row['size'])) for row in rows}
+            return len(rows) == len(geometry) and geometry == {
+                number: (row['start'], row['size']) for number, row in after.items()}
+        except (ValueError, KeyError, TypeError, AttributeError, IndexError) as exc:
+            raise InstallError(Code.UNSAFE_DISK,
+                               'The partitions on the disk could not be read. Installation stopped.') from exc
+        finally:
+            self.check_disk_sequence(fd)
+
+    def verify_edited_kernel(self, after, kept, reviewed):
+        with self.reviewed_disk():
+            pass
+        try:
+            data = json.loads(self.runner.run(['lsblk', '--tree', '-J', '-b', '-o',
+                                              'PATH,TYPE,PARTN,START,SIZE,PTTYPE,PARTUUID', self.plan.disk['path']]))
+            disk = data['blockdevices'][0]
+            rows = disk.get('children', [])
+            children = {int(row.get('partn') or 0): row for row in rows}
+            require(disk.get('pttype') == 'gpt' and len(rows) == len(children) and set(children) == set(after),
+                    Code.UNSAFE_DISK, 'Unexpected partition count or table type after write. Nothing was formatted.')
+            for number, row in children.items():
+                require(int(row['start']) * 512 == after[number]['start'] and int(row['size']) == after[number]['size'],
+                        Code.UNSAFE_DISK, 'Partition geometry differs from the approved plan.')
+                require(str(row.get('partuuid') or '').lower() == after[number]['uuid'], Code.UNSAFE_DISK,
+                        'Partition identity differs from the written table. Nothing was formatted.')
+            for number in kept:
+                require(children[number]['path'] == reviewed[number]['path'], Code.UNSAFE_DISK,
+                        'A kept partition changed its name. Nothing was formatted.')
+            return children
+        except (ValueError, KeyError, TypeError, AttributeError, IndexError) as exc:
+            raise InstallError(Code.UNSAFE_DISK,
+                               'The partitions on the disk could not be read. Installation stopped.') from exc
+
+    def recover_edits(self):
+        """Refresh a failed editor write before inventory is read again; never write the table."""
+        if self.pending_reread is None:
+            return
+        after, gone, added, kept, reviewed = self.pending_reread
+        with self.reviewed_disk() as fd:
+            device = f'/proc/self/fd/{fd}'
+            output = self.runner.run(['sfdisk', '--json', device], pass_fds=(fd,))
+            try:
+                current = table_rows(output, device)
+            except (ValueError, KeyError, TypeError, AttributeError) as exc:
+                raise InstallError(Code.UNSAFE_DISK,
+                                   'The partition table could not be read. Installation stopped.') from exc
+            require(current == after, Code.DISK_CHANGED,
+                    'The disk was read again and its partition table changed after installation stopped. '
+                    'Close the installer and inspect the disk before starting a new review.')
+            if self.kernel_geometry_matches(fd, after):
+                self.settle_partition_table(fd)
+            else:
+                self.reread_edits(fd, after, gone, added)
+        self.verify_edited_kernel(after, kept, reviewed)
+        self.pending_reread = None
+        self.runner.log('Partition editor: the disk was read again; its kernel view matches the written table.')
+
+    def write_edits(self, edits, new, device, fd, sector, verify_step):
+        """The sfdisk runs of apply_edits, through the reviewed descriptor; nothing else is written."""
+        sfdisk = ['sfdisk', '--lock=yes', '--no-reread', '--no-tell-kernel']
+        if edits.new_table:
+            lines = ['label: gpt', 'unit: sectors', '']
+            for number in sorted(new):
+                require(number == len(lines) - 2, Code.UNSAFE_DISK, 'New partitions are out of order.')
+                p = new[number]
+                lines.append(f'start={p.start // sector}, size={p.size // sector}, '
+                             f'type={planner.NEW_TYPES[p.create]}')
+            self.runner.run([*sfdisk, '--wipe=always', '--wipe-partitions=always', device],
+                            input='\n'.join(lines) + '\n', pass_fds=(fd,))
+            verify_step(created=new)
+            return
+        for p in edits.deleted:
+            self.runner.log(f"Partition editor: delete partition {p['number']} ({p['path']}).")
+            self.runner.run([*sfdisk, '--delete', device, str(p['number'])], pass_fds=(fd,))
+            verify_step(deleted=p['number'])
+        for number, p in sorted(new.items()):
+            self.runner.log(f'Partition editor: create partition {number}.')
+            self.runner.run([*sfdisk, '--wipe=never', '--wipe-partitions=always', '--append', device],
+                            input=f'start={p.start // sector}, size={p.size // sector}, '
+                                  f'type={planner.NEW_TYPES[p.create]}\n', pass_fds=(fd,))
+            verify_step(created={number: p})
 
     def check_disk_sequence(self, fd):
         expected = self.plan.disk.get('_identity', {}).get('disk-seq')
@@ -309,7 +669,8 @@ class DeviceOperations:
         try:
             fd = open_exclusive(path)
         except OSError as exc:
-            raise InstallError(Code.DISK_BUSY, f'Device cannot be opened exclusively: {path}.') from exc
+            raise InstallError(Code.DISK_BUSY, f'Device cannot be opened exclusively: {path}.',
+                               retryable=exc.errno == errno.EBUSY) from exc
         try:
             self.check_disk_sequence(fd)
             yield fd
@@ -321,7 +682,7 @@ class DeviceOperations:
                                           'PATH,TYPE,PARTN,START,SIZE,PTTYPE,PARTUUID,PARTTYPE', self.plan.disk['path']]))
         disk = data['blockdevices'][0]
         children = disk.get('children', [])
-        require(disk.get('pttype') == 'gpt' and len(children) == len(self.plan.disk['partitions']) + 1,
+        require(disk.get('pttype') == 'gpt' and len(children) == len(self.plan.disk['partitions']) + 2,
                 Code.UNSAFE_DISK, 'STOP: unexpected partition table after shrinking Windows.')
         for original in self.plan.disk['partitions']:
             found = next((p for p in children if int(p.get('partn') or 0) == original['number']), None)
@@ -332,25 +693,58 @@ class DeviceOperations:
                     and str(found.get('partuuid')).lower() == str(original.get('_partuuid')).lower()
                     and str(found.get('parttype')).lower() == str(original.get('_parttype')).lower(),
                     Code.UNSAFE_DISK, 'STOP: an existing partition changed unexpectedly; formatting refused.')
-        p = self.plan.root
-        found = next((row for row in children if int(row.get('partn') or 0) == p.number), None)
-        require(found and int(found['start']) * 512 == p.start and int(found['size']) == p.size
-                and found.get('partuuid') and found['path'] not in {p['path'] for p in self.plan.disk['partitions']},
-                Code.UNSAFE_DISK, 'STOP: Emaki root differs from the approved freed extent; formatting refused.')
-        p.path, p.partuuid = found['path'], found['partuuid']
-        for archpart in mod.partitions:
-            if archpart.partn == p.number:
-                archpart.dev_path = Path(p.path)
+        existing = {original['path'] for original in self.plan.disk['partitions']}
+        for p, name in ((own_esp(self.plan), "Emaki's startup partition"), (self.plan.root, 'Emaki root')):
+            found = next((row for row in children if int(row.get('partn') or 0) == p.number), None)
+            require(found and int(found['start']) * 512 == p.start and int(found['size']) == p.size
+                    and found.get('partuuid') and found['path'] not in existing
+                    and (not p.esp or str(found.get('parttype')).lower() == alongside.ESP_GUID),
+                    Code.UNSAFE_DISK, f'STOP: {name} differs from the approved freed extent; formatting refused.')
+            p.path, p.partuuid = found['path'], found['partuuid'].lower()
+            for archpart in mod.partitions:
+                if archpart.partn == p.number:
+                    archpart.dev_path = Path(p.path)
+
+    def open_luks(self, path, name):
+        """LUKS2 on path with the plan's disk password, opened as /dev/mapper/name."""
+        require(not Path('/dev/mapper', name).exists(), Code.DISK_BUSY,
+                f'The installer mapping {name} is already in use.')
+        self.runner.run(['cryptsetup', 'luksFormat', '--batch-mode', '--type', 'luks2',
+                         '--pbkdf', 'argon2id', '--pbkdf-memory', '65536',
+                         '--pbkdf-parallel', '1',
+                         '--pbkdf-force-iterations', str(GRUB_ARGON2_PASSES),
+                         '--key-file', '-', str(path)], input=self.plan.disk_password, secret=True)
+        self.runner.run(['cryptsetup', 'open', '--key-file', '-', str(path), name],
+                        input=self.plan.disk_password, secret=True)
+        self.mappings.append(name)
+        uuid = self.runner.run(['cryptsetup', 'luksUUID', str(path)]).strip()
+        require(bool(uuid), Code.BOOT_VERIFY, f'The encrypted partition {path} could not be identified.')
+        return '/dev/mapper/' + name, uuid
+
+    def make_swap(self, p):
+        """Format a swap partition (inside LUKS2 when chosen) and record its UUID for fstab."""
+        if p.encrypt:
+            p.mapper, p.luks_uuid = self.open_luks(p.path, p.mapper_name)
+        self.runner.run(['mkswap', p.device])
+        p.uuid = self.runner.run(['blkid', '-s', 'UUID', '-o', 'value', p.device]).strip()
+        require(bool(p.uuid), Code.UNSAFE_DISK, 'The swap partition could not be identified.')
 
     def format(self, fs_type, path):
         if self.plan.config['mode'] == 'alongside':
             alongside.require_verified()
-            require(self.plan.root.path == str(path) and fs_type.value == self.plan.root.fs,
-                    Code.UNSAFE_DISK, 'Alongside can format only the newly created Emaki root.')
+            esp, existing = own_esp(self.plan), {p['path'] for p in self.plan.disk['partitions']}
+            require(str(path) not in existing and (
+                        (self.plan.root.path == str(path) and fs_type.value == self.plan.root.fs)
+                        or (esp.path == str(path) and fs_type.value == 'fat32')),
+                    Code.UNSAFE_DISK, "Alongside can format only Emaki's newly created startup partition and root.")
         # No discard of the device while formatting (mkfs.fat has none): a broken one left no
         # superblock behind a successful mkfs. The installed system trims with fstrim.timer.
         commands = {'btrfs': ['mkfs.btrfs', '-f', '-K'], 'ext4': ['mkfs.ext4', '-F', '-E', 'nodiscard'],
                     'fat32': ['mkfs.fat', '-F', '32']}
+        argv = commands[fs_type.value]
+        if fs_type.value == 'fat32' and self.plan.esp_label and any(
+                p.esp and p.format and p.path == str(path) for p in self.plan.partitions):
+            argv = [*argv, '-n', self.plan.esp_label]
         if self.plan.encrypted and str(path) == self.plan.root.path:
             root = self.plan.root
             require(not Path('/dev/mapper/emaki-root').exists(), Code.DISK_BUSY,
@@ -363,26 +757,39 @@ class DeviceOperations:
             self.runner.run(['cryptsetup', 'open', '--key-file', '-', str(path), 'emaki-root'],
                             input=self.plan.disk_password, secret=True)
             self.mapping_open = True
+            self.mappings.append('emaki-root')
             root.mapper = '/dev/mapper/emaki-root'
             root.luks_uuid = self.runner.run(['cryptsetup', 'luksUUID', str(path)]).strip()
-            require(bool(root.luks_uuid), Code.BOOT_VERIFY, 'Encrypted root has no LUKS UUID.')
+            require(bool(root.luks_uuid), Code.BOOT_VERIFY, 'The encrypted system partition could not be identified.')
             path = root.device
-        self.runner.run([*commands[fs_type.value], str(path)])
+        part = next((p for p in self.plan.partitions if p.encrypt and p.path == str(path)), None)
+        if part is not None:
+            part.mapper, part.luks_uuid = self.open_luks(path, part.mapper_name)
+            path = part.device
+        self.runner.run([*argv, str(path)])
 
     def close(self):
-        if self.mapping_open:
-            self.runner.run(['cryptsetup', 'close', 'emaki-root'])
-            self.mapping_open = False
+        # Every mapping this job opened, the last first; each is closed even when one fails.
+        failure = None
+        for name in reversed(self.mappings):
+            try:
+                self.runner.run(['cryptsetup', 'close', name])
+            except Exception as exc:
+                failure = failure or exc
+        self.mappings = []
+        self.mapping_open = False
+        if failure:
+            raise failure
 
     def fetch_part_info(self, path):
         data = json.loads(self.runner.run(['lsblk', '-J', '-b', '-o', 'PATH,PARTN,PARTUUID,UUID', str(path)]))
         row = next((row for row in data['blockdevices'] if row['path'] == str(path)), {})
         require(row.get('uuid') and row.get('partuuid'), Code.UNSAFE_DISK,
-                'Formatted partition has no UUID or PARTUUID.')
+                'The formatted partition could not be identified.')
         p = next(p for p in self.plan.partitions if p.path == str(path))
         if p.mapper:
             row['uuid'] = self.runner.run(['blkid', '-s', 'UUID', '-o', 'value', p.device]).strip()
-            require(bool(row['uuid']), Code.UNSAFE_DISK, 'Root filesystem UUID is missing.')
+            require(bool(row['uuid']), Code.UNSAFE_DISK, 'The system partition could not be identified.')
         p.uuid, p.partuuid = row['uuid'], row['partuuid']
         return SimpleNamespace(partn=int(row['partn']), partuuid=row['partuuid'], uuid=row['uuid'])
 
@@ -458,6 +865,8 @@ class Backend:
         for p in self.plan.partitions:
             if p.fs == 'btrfs' and not p.format:
                 self.devices.ensure_subvolumes(p)
+            if p.swap and p.format:
+                self.devices.make_swap(p)
         module, backend = self.api.installer, self
 
         class EmakiInstaller(module.Installer):

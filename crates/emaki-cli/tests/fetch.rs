@@ -1,3 +1,9 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
+#[path = "../../../tests/child_process.rs"]
+mod child_process;
+use child_process::{CommandExt, write_executable};
+
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
@@ -17,7 +23,7 @@ fn bare_emaki_execs_fastfetch_with_the_packaged_config() {
     let directory = std::env::temp_dir().join(format!("emaki-fetch-test-{}", std::process::id()));
     fs::create_dir(&directory).unwrap();
     let fake = directory.join("fastfetch");
-    fs::write(
+    write_executable(
         &fake,
         "#!/bin/sh\nprintf '%s\\n' \"$$\" \"$#\" \"$@\"\nexit 37\n",
     )
@@ -28,7 +34,7 @@ fn bare_emaki_execs_fastfetch_with_the_packaged_config() {
         .env("PATH", &directory)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()
+        .guarded_spawn()
         .unwrap();
     let pid = child.id();
     let output = child.wait_with_output().unwrap();
@@ -46,7 +52,7 @@ fn missing_fastfetch_prints_one_diagnostic_and_the_unchanged_help() {
     let output = Command::new(env!("CARGO_BIN_EXE_emaki"))
         .env_clear()
         .env("PATH", "/nonexistent-emaki-fetch-test")
-        .output()
+        .guarded_output()
         .unwrap();
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
@@ -62,7 +68,7 @@ fn missing_fastfetch_prints_one_diagnostic_and_the_unchanged_help() {
             .arg(arg)
             .env_clear()
             .env("PATH", "/nonexistent-emaki-fetch-test")
-            .output()
+            .guarded_output()
             .unwrap();
         assert!(output.status.success());
         assert!(output.stderr.is_empty());

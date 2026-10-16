@@ -50,7 +50,7 @@ QtObject {
     property int managedCount: 3
     property var selectedRestore: null
     property var restorePoints: [{id:"42:digest",timestamp:"2026-10-11T12:00:00Z",packages:"linux mesa"}]
-    property var data: ({updates:[{source:"Emaki",name:"emaki-config",old:"0.6",new:"0.7",downloadSize:200000,aur:false},{source:"Arch core",name:"linux",old:"1",new:"2",downloadSize:150000000,aur:false},{source:"Flatpak",kind:"flatpak",name:"org.kde.krita",old:"1",new:"2",aur:false},{source:"AUR",name:"foreign",old:"1",new:"2",aur:true}],warnings:["The kernel will change. Restart the computer after updating."],news:[],downloadSize:150200000,checkedAt:"2026-10-11T12:00:00Z"})
+    property var data: ({foreignPackageCount:1,updates:[{source:"Emaki",name:"emaki-config",old:"0.6",new:"0.7",downloadSize:200000,aur:false},{source:"Arch core",name:"linux",old:"1",new:"2",downloadSize:150000000,aur:false},{source:"Flatpak",kind:"flatpak",name:"org.kde.krita",old:"1",new:"2",aur:false},{source:"AUR",name:"foreign",old:"1",new:"2",aur:true}],warnings:["The kernel will change. Restart the computer after updating."],news:[],downloadSize:150200000,checkedAt:"2026-10-11T12:00:00Z"})
     function refreshRestorePoints() {}
     function dismissReminder() { dismissals++; reminder = false }
     function reboot() { reboots++ }
@@ -260,6 +260,7 @@ def inventory():
 
 
 MUTANTS = {
+    'aur-off-empty': ('ManagerUpdates.qml', ' && (root.controller.data.foreignPackageCount || 0) > 0', ''),
     'package-launcher': ('ManagerProgram.qml', 'visible: !page.program.packageOnly && page.program.kind !== "aur" || !!page.controller.selectedLauncher', 'visible: true'),
     'apply': ('ManagerUpdates.qml', 'onClicked: root.controller.apply()', 'onClicked: {}'),
     'later': ('ManagerUpdates.qml', 'onClicked: root.controller.dismissReminder()', 'onClicked: {}'),

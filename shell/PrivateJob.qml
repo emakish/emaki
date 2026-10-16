@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -12,6 +14,14 @@ Scope {
     property bool launchRequest: false
     readonly property bool busy: process.running
     signal completed(var response)
+    // A list inside the response reaches `completed` handlers as a QVariantList sequence with
+    // quickshell-emaki 0.3.1-12 on Qt 6.12, and Array.isArray is false for it (GOTCHAS
+    // 2026-10-15). A handler that checks a list takes it through list(): a plain Array, or null
+    // when the value is not a list.
+    function list(value: var): var {
+        const plain = JSON.parse(JSON.stringify(value === undefined ? null : value));
+        return Array.isArray(plain) ? plain : null;
+    }
     function start(value: var): bool {
         if (busy)
             return false;

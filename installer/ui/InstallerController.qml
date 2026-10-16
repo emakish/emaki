@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -46,7 +48,15 @@ Item {
     readonly property bool encryptionReady: encryption === "none" || (encryption === "encrypted" && ((encryptionPassword === "account" && accountUnlocks) || (encryptionPassword === "separate" && !Protocol.diskPasswordError(diskPassword) && diskPassword === diskConfirmation)))
     // Until encryption is chosen the header is counted: the number shown never grows later.
     readonly property real rootMinimum: Protocol.rootMinimum(session.inventory?.memory_bytes || 0, false, encryption !== "none")
-    readonly property bool manualReady: mounts.filter(m => m.mountpoint === "/").length === 1 && mounts.filter(m => m.mountpoint === "/efi").length === 1
+    readonly property bool manualReady: mounts.filter(m => m.mountpoint === "/").length === 1 && mounts.filter(m => m.mountpoint === "/efi").length === 1 && !unusedNew
+    // A new partition whose use went to another partition (planner: every new partition needs a use).
+    readonly property bool unusedNew: partitionEdits.create.some(c => !mounts.some(m => m.partition_id === c.id))
+    // The partition editor's changes (Protocol.emptyEdits): nothing is written until Install; the
+    // plan carries them as config.partitioning and the Review step lists each one.
+    property var partitionEdits: Protocol.emptyEdits()
+    readonly property var editorRows: Protocol.editorLayout(selectedDisk, partitionEdits)
+    // A partition of another system waiting for its typed DELETE (the editor's confirmation panel).
+    property var deleteRequest: null
     // Kept only between You and Software; never passed to the shared protocol state.
     property string accountPassword: ""
     property bool onlineUpdate: true
@@ -156,18 +166,10 @@ Item {
     }
     signal keyboardOutbound(var request)
     property bool manualAssignments: false
-    property bool gpartedWarning: false
     property bool editorPending: false
-    // Open GParted waits for a fresh probe: the disk list can be minutes old, and a replugged disk
-    // can take the chosen disk's /dev name. editorDisk is the chosen disk as the list showed it.
-    property bool editorProbing: false
-    property var editorDisk: null
-    // The device GParted is given: the chosen disk's path, checked against that probe.
-    property string editorPath: ""
-    // sudo resets the environment: without the session's Wayland display GParted cannot open a window.
-    property var partitionEditorCommand: ["sudo", "-n", "--preserve-env=WAYLAND_DISPLAY,XDG_RUNTIME_DIR", "gparted"]
-    // GParted shows only the devices it is given; without one it opens on the first disk, the live stick.
-    readonly property var partitionEditorArgv: partitionEditorCommand.concat(editorPath ? [editorPath] : [])
+    property bool inventoryRefresh: false
+    property string editorLayout: ""
+    property string diskRefreshNotice: ""
     property real clockMs: Date.now()
     property int retryDelay: 500
     // Test transport is injected only by the separate tests entry point.
@@ -181,9 +183,8 @@ Item {
         diskPassword = "";
         diskConfirmation = "";
     }
-    readonly property bool locked: session.running || session.confirming || session.planning || session.probing || gparted.running
+    readonly property bool locked: session.running || session.confirming || session.planning || session.probing
     readonly property bool helperBusy: helper.running
-    readonly property bool partitioning: gparted.running
     // Set by the Socket itself: a local socket can connect synchronously while the Loader is
     // still creating it, before wire.item exists, and the hello sent then would be dropped.
     property Socket transport: null
@@ -194,10 +195,12 @@ Item {
             return nodes;
         if (mode !== "manual")
             return [];
-        const paths = mounts.filter(m => m.format).map(m => selectedDisk.partitions.find(p => p.id === m.partition_id)?.path);
+        // A deletion destroys a locked volume as a format does (planner.validate_encrypted_confirmation).
+        const ids = mounts.filter(m => m.format).map(m => m.partition_id).concat(partitionEdits.delete.map(row => row.partition_id));
+        const paths = ids.map(id => (selectedDisk?.partitions || []).find(p => p.id === id)?.path);
         return nodes.filter(node => paths.indexOf(node.path) >= 0);
     }
-    readonly property string encryptedIdentity: JSON.stringify([diskId, mode, mounts, encryptedTargets])
+    readonly property string encryptedIdentity: JSON.stringify([diskId, mode, mounts, partitionEdits, encryptedTargets])
     property string encryptedEraseText: ""
     onEncryptedIdentityChanged: encryptedEraseText = ""
     readonly property string encryptedRefusal: encryptedTargets.find(node => !node.uuid)?.warning || ""
@@ -218,7 +221,8 @@ Item {
                 root.shrinkBytes = Math.min(root.alongsideMinimum, root.windowsPartition.shrink.max_free_bytes);
         });
     }
-    readonly property bool needsAgreement: mode === "erase" || mode === "alongside"
+    // Manual asks for it when the plan deletes a partition or makes a new partition table.
+    readonly property bool needsAgreement: mode === "erase" || mode === "alongside" || (mode === "manual" && (partitionEdits.delete.length > 0 || partitionEdits.new_table))
     readonly property var steps: mode === "manual" ? ["welcome", "keyboard", "network", "timezone", "disk", "encryption", "you", "software", "review", "install", "done"] : ["welcome", "keyboard", "network", "timezone", "disk", "filesystem", "encryption", "you", "software", "review", "install", "done"]
     readonly property int elapsed: Math.max(0, Math.floor((clockMs - session.started) / 1000))
 
@@ -243,11 +247,10 @@ Item {
         publish();
     }
     function receive(message: var): void {
+        const probeReply = session.pending[message.for_id || message.id] === "probe";
         const guessReply = session.pending[message.for_id || message.id] === "get_timezone_guess";
         const rebootPrepared = session.pending[message.for_id || message.id] === "prepare_reboot";
         const timezoneReply = session.pending[message.for_id || message.id] === "set_timezone";
-        // Only one probe is in flight at a time: this answers the one Open GParted waits for.
-        const editorReply = editorProbing && session.pending[message.for_id || message.id] === "probe";
         const wasPlanning = session.planning;
         const wasConfirming = session.confirming;
         const replies = Protocol.receive(session, message, Date.now());
@@ -298,15 +301,36 @@ Item {
                 diskReasons = reasons;
             }
         }
-        if (message.type === "inventory" && session.inventory) {
+        if (probeReply && message.type === "inventory" && session.inventory) {
             acceptTimezoneGuess(message.tz_guess);
             if (!selectedDisk)
                 diskId = "";
-            mounts = [];
+            if (!editorLayout || editorLayout !== Protocol.diskLayoutKey(selectedDisk)) {
+                mounts = [];
+                resetEdits();
+            }
+            editorLayout = "";
             diskReasons = ({});
             if (step === "timezone")
                 applyTimezone();
             shrinkBytes = defaultAlongsideSize();
+            if (inventoryRefresh) {
+                diskRefreshNotice = "The disk was read again. Check its current partitions and prepare a new review.";
+                session.notice = diskRefreshNotice;
+                inventoryRefresh = false;
+            }
+            if (editorPending) {
+                manualAssignments = !!selectedDisk;
+                editorPending = false;
+            }
+            publish();
+        }
+        if (probeReply && message.type === "reply" && !message.ok) {
+            editorPending = false;
+            inventoryRefresh = false;
+            editorLayout = "";
+            mounts = [];
+            resetEdits();
         }
         if (message.type === "reply" && !message.ok && wasConfirming)
             step = session.plan ? "review" : "you";
@@ -320,8 +344,6 @@ Item {
             clearPasswords();
         if (step === "done" || step === "error")
             callHelper("media", {});
-        if (editorReply)
-            startEditor(message.type === "inventory");
         messageReceived(message);
     }
     function lost(): void {
@@ -329,8 +351,6 @@ Item {
         timezoneGuessRequest = false;
         applyingTimezone = "";
         timezoneInfo = null;
-        editorProbing = false;
-        editorDisk = null;
         Protocol.disconnected(session);
         publish();
         clearPasswords();
@@ -343,11 +363,17 @@ Item {
                 reconnect.restart();
             });
     }
-    function probe(): void {
-        if (session.running || session.confirming || session.planning || session.probing || partitioning)
+    function probe(preserveEdits: bool): void {
+        if (session.running || session.confirming || session.planning || session.probing)
             return;
         agreed = false;
-        mounts = [];
+        editorLayout = preserveEdits ? Protocol.diskLayoutKey(selectedDisk) : "";
+        if (!editorLayout) {
+            mounts = [];
+            resetEdits();
+        }
+        inventoryRefresh = true;
+        session.notice = "Reading the disk again…";
         send("probe", {});
     }
     function edit(target: string): void {
@@ -358,6 +384,8 @@ Item {
         publish();
         clearPasswords();
         step = target;
+        if (target === "disk" && mode === "manual" && manualAssignments)
+            openEditor(true);
     }
     function next(): void {
         if (locked)
@@ -373,7 +401,7 @@ Item {
         if (step === "disk" && mode === "manual" && Protocol.manualReason(selectedDisk))
             return;
         if (step === "disk" && mode === "manual" && !manualAssignments) {
-            manualAssignments = true;
+            openEditor(false);
             return;
         }
         if (step === "disk" && mode === "manual" && !manualReady)
@@ -381,6 +409,11 @@ Item {
         const index = steps.indexOf(step);
         if (index >= 0 && index < steps.indexOf("you"))
             step = steps[index + 1];
+    }
+    function openEditor(preserveEdits: bool): void {
+        manualAssignments = false;
+        editorPending = true;
+        probe(preserveEdits);
     }
     function back(): void {
         if (locked)
@@ -396,6 +429,7 @@ Item {
             mode = "";
         shrinkBytes = defaultAlongsideSize();
         mounts = [];
+        resetEdits();
         agreed = false;
         manualAssignments = false;
         Protocol.invalidate(session);
@@ -600,17 +634,130 @@ Item {
         if (!keyboardBusy && keyboardFailed && keyboardOp === "trial")
             readLayouts();
     }
-    function assign(partition: var, mountpoint: string, fs: string, format: bool): void {
-        mounts = mounts.filter(m => m.partition_id !== partition.id).concat(mountpoint === "none" ? [] : [
-            {
-                partition_id: partition.id,
-                mountpoint: mountpoint,
-                fs: fs,
-                format: format,
-                subvolume: null
-            }
-        ]);
+    function assign(partition: var, mountpoint: string, fs: string, format: bool, encrypt: var): void {
+        // One use per mount point: choosing / or /efi here takes it from another partition.
+        const row = {
+            partition_id: partition.id,
+            mountpoint: mountpoint,
+            fs: mountpoint === "swap" ? "swap" : fs,
+            format: format,
+            subvolume: null
+        };
+        // LUKS2 of its own: /home, data and swap, formatted, with an encrypted root (planner.manual_partitions).
+        if (encrypt === true && mountpoint !== "/" && mountpoint !== "/efi" && format && encryption === "encrypted")
+            row.encrypt = true;
+        mounts = mounts.filter(m => m.partition_id !== partition.id && (mountpoint === "none" || m.mountpoint !== mountpoint)).concat(mountpoint === "none" ? [] : [row]);
+        editsChanged();
     }
+    function editsChanged(): void {
+        Protocol.invalidate(session);
+        agreed = false;
+        publish();
+    }
+    function resetEdits(): void {
+        partitionEdits = Protocol.emptyEdits();
+        deleteRequest = null;
+    }
+    // A new GPT partition table on an empty disk (or back to none).
+    function newPartitionTable(on: bool): void {
+        if (locked || (on && !Protocol.canNewTable(selectedDisk)))
+            return;
+        partitionEdits = Object.assign(Protocol.emptyEdits(), {
+            new_table: on
+        });
+        mounts = [];
+        editsChanged();
+    }
+    // A new partition in a free extent: its use decides its kind (Protocol.EDITOR_KINDS). Returns why
+    // not, or "" when it was added. encrypt: LUKS2 (root: the Encryption step's choice).
+    function createPartition(free: var, use: string, fs: string, size: real, encrypt: bool): string {
+        // Until encryption is chosen the LUKS2 header is counted, as rootMinimum does: the root never
+        // becomes too small later, on the Encryption step.
+        const error = locked ? "Wait until the installer is ready." : Protocol.newPartitionError(free, use, size, Protocol.rootMinimum(session.inventory?.memory_bytes || 0, false, use === "/" && (encrypt || encryption !== "none")));
+        if (error)
+            return error;
+        if (selectedDisk.partition_table !== "gpt" && !partitionEdits.new_table)
+            return "Create a GPT partition table first.";
+        let n = 1;
+        while (partitionEdits.create.some(row => row.id === "new-" + n))
+            ++n;
+        const created = {
+            id: "new-" + n,
+            type: Protocol.EDITOR_KINDS[use],
+            start_bytes: free.start,
+            size_bytes: size
+        };
+        partitionEdits = Object.assign({}, partitionEdits, {
+            create: partitionEdits.create.concat([created])
+        });
+        if (use === "/")
+            encryption = encrypt ? "encrypted" : "none";
+        assign({
+            id: created.id
+        }, use, use === "/efi" ? "vfat" : use === "swap" ? "swap" : fs, true, encrypt);
+        return "";
+    }
+    // Remove a new partition from the plan; its space is free again.
+    function removeNew(id: string): void {
+        if (locked)
+            return;
+        partitionEdits = Object.assign({}, partitionEdits, {
+            create: partitionEdits.create.filter(row => row.id !== id)
+        });
+        mounts = mounts.filter(m => m.partition_id !== id);
+        editsChanged();
+    }
+    // Delete a partition when Install runs. Another system's partition first asks for its typed
+    // DELETE (deleteRequest; confirmDelete), with its identity in the plan (Protocol.deletionIdentity).
+    function deletePartition(partition: var): void {
+        if (locked)
+            return;
+        if (partition.other_system) {
+            deleteRequest = partition;
+            return;
+        }
+        addDelete({
+            partition_id: partition.id
+        });
+    }
+    function confirmDelete(typed: string): bool {
+        const partition = deleteRequest;
+        if (locked || !partition || typed !== "DELETE")
+            return false;
+        deleteRequest = null;
+        addDelete({
+            partition_id: partition.id,
+            confirm: Protocol.deletionIdentity(partition)
+        });
+        return true;
+    }
+    function addDelete(row: var): void {
+        partitionEdits = Object.assign({}, partitionEdits, {
+            delete: partitionEdits.delete.filter(d => d.partition_id !== row.partition_id).concat([row])
+        });
+        mounts = mounts.filter(m => m.partition_id !== row.partition_id);
+        editsChanged();
+    }
+    // Keep a partition marked for deletion; new partitions in its place go first.
+    function keepPartition(id: string): void {
+        if (locked)
+            return;
+        const kept = selectedDisk.partitions.find(p => p.id === id);
+        partitionEdits = Object.assign({}, partitionEdits, {
+            delete: partitionEdits.delete.filter(d => d.partition_id !== id),
+            create: partitionEdits.create.filter(c => !kept || c.start_bytes + c.size_bytes <= kept.start_bytes || c.start_bytes >= kept.start_bytes + kept.size_bytes)
+        });
+        const ids = partitionEdits.create.map(c => c.id);
+        mounts = mounts.filter(m => !m.partition_id.startsWith("new-") || ids.indexOf(m.partition_id) >= 0);
+        editsChanged();
+    }
+    // Without an encrypted root no other partition can keep its key: their LUKS2 goes too.
+    onEncryptionChanged: if (encryption !== "encrypted" && mounts.some(m => m.encrypt))
+        mounts = mounts.map(m => {
+            const row = Object.assign({}, m);
+            delete row.encrypt;
+            return row;
+        })
     function acceptTimezoneGuess(name: var): void {
         if (!name || timezoneEdited || locked)
             return;
@@ -737,8 +884,12 @@ Item {
             config.wifi_uuid = joinedWifiUuid;
         if (config.encryption === "separate")
             config.disk_password = diskPassword;
-        if (mode === "manual")
+        if (mode === "manual") {
             config.mounts = mounts;
+            const partitioning = Protocol.editsConfig(partitionEdits);
+            if (partitioning)
+                config.partitioning = partitioning;
+        }
         if (mode === "alongside") {
             if (!alongsideSizeValid) {
                 helperMessage = "Windows shrink is unavailable. Refresh the disk list.";
@@ -801,47 +952,12 @@ Item {
         session.notice = accountError ? "Check your account settings and enter your password again for a new review." : "Check the disk and enter your password again for a new review.";
         publish();
         step = accountError ? "you" : "disk";
-        if (!accountError)
-            probe();
-    }
-    function openGparted(): void {
-        if (locked || !gpartedWarning || !session.ready)
-            return;
-        Protocol.invalidate(session);
-        publish();
-        agreed = false;
-        mounts = [];
-        gpartedWarning = false;
-        editorDisk = selectedDisk ? {
-            id: selectedDisk.id,
-            path: selectedDisk.path,
-            size_bytes: selectedDisk.size_bytes
-        } : null;
-        editorProbing = true;
-        probe();
-    }
-    // The fresh probe has answered (probed: with an inventory). GParted gets the chosen disk's path
-    // only while the disk with the same id (its by-id link, or its path without one) is still there
-    // under that path and size; the refreshed list is already on the Disk page.
-    function startEditor(probed: bool): void {
-        const chosen = editorDisk;
-        const fresh = probed && chosen ? session.inventory.disks.find(d => d.id === chosen.id) || null : null;
-        editorProbing = false;
-        editorDisk = null;
-        if (!probed || (chosen && !(fresh && fresh.path === chosen.path && fresh.size_bytes === chosen.size_bytes))) {
-            helperMessage = probed ? "The chosen disk changed or was unplugged, so GParted was not opened. Check the disk list and open GParted again." : "The disk list could not be refreshed, so GParted was not opened. Try again.";
-            helperFailed = true;
-            return;
+        if (!accountError) {
+            if (mode === "manual" && manualAssignments)
+                openEditor(false);
+            else
+                probe(false);
         }
-        editorPath = fresh ? fresh.path : "";
-        editorPending = true;
-        gparted.running = true;
-    }
-    function gpartedExited(code: int): void {
-        manualAssignments = true;
-        helperMessage = code === 0 ? "Assign the partitions below. The disk list has been refreshed." : "GParted could not complete successfully. The disk list has been refreshed.";
-        helperFailed = code !== 0;
-        probe();
     }
     function clearJoinResult(): void {
         if (helperMessage === joinMessage)
@@ -879,7 +995,7 @@ Item {
         else if (helperOp === "media")
             media = result.media || [];
         else if (helperOp === "join" && result.ok)
-            probe();
+            probe(false);
         if (result.message)
             helperMessage = result.message;
         else if (helperOp !== "network")
@@ -895,6 +1011,13 @@ Item {
         });
     }
     onStepChanged: {
+        if (step !== "disk" && diskRefreshNotice) {
+            if (session.notice === diskRefreshNotice) {
+                session.notice = "";
+                publish();
+            }
+            diskRefreshNotice = "";
+        }
         helperMessage = "";
         clearJoinResult();
         keyboardDiscarded = false;
@@ -1039,7 +1162,7 @@ Item {
                         try {
                             root.receive(JSON.parse(data));
                         } catch (_) {
-                            root.session.notice = "The worker sent an unreadable message.";
+                            root.session.notice = "The installer sent an unreadable message.";
                             root.lost();
                         }
                     }
@@ -1136,26 +1259,6 @@ Item {
         onTriggered: {
             if (wanted !== layoutEvents.running)
                 layoutEvents.running = wanted;
-        }
-    }
-    Process {
-        id: gparted
-        command: root.partitionEditorArgv
-        onExited: code => {
-            root.editorPending = false;
-            // Process emits exited before runningChanged in Quickshell 0.3.1.
-            // Defer until the cached partitioning/locked bindings are updated.
-            Qt.callLater(function () {
-                root.gpartedExited(code);
-            });
-        }
-        onRunningChanged: {
-            if (!running && root.editorPending) {
-                root.editorPending = false;
-                Qt.callLater(function () {
-                    root.gpartedExited(-1);
-                });
-            }
         }
     }
 }

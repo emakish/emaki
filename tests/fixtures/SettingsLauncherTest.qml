@@ -4,6 +4,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtTest
 import Quickshell
+import "SystemIcons.js" as SystemIcons
 
 SettingsIpcHarness {
     id: harness
@@ -88,7 +89,7 @@ SettingsIpcHarness {
             }
         }
         function test_integrated_pages_and_search() {
-            const pages = [["users", "SettingsUsersPage", "Other users", "users-other-users", "settings-users-others"], ["storage", "SettingsStoragePage", "System and home", "storage-disks", "settings-storage-disks"], ["privacy", "SettingsPrivacyPage", "Disk encryption", "privacy-encryption", "settings-privacy-encryption"], ["panel", "SettingsCorePage", "Panel auto-hide", "panel-panel-auto-hide", "bar.autohide_mode"], ["windows", "SettingsCorePage", "Window gaps", "windows-window-gaps", "appearance.gaps"], ["wifi", "SettingsWifiPage", "Wi-Fi", "wifi-radio", "settings-wifi-power"], ["bluetooth", "SettingsBluetoothPage", "Bluetooth", "bluetooth-radio", "settings-bluetooth-power"], ["network", "SettingsNetworkPage", "Wired", "network-wired", "settings-network-wired"], ["sound", "SoundSettingsPage", "Volume", "sound-volume", "settings-sound-volume"], ["displays", "DisplaysSettingsPage", "Resolution", "displays-resolution", "settings-display-resolution"], ["battery", "SettingsPowerPage", "Power mode", "battery-power-mode", "settings-power-profile"], ["keyboard", "KeyboardSettingsPage", "Keyboard shortcuts", "keyboard-keyboard-shortcuts", "settings-keyboard-shortcuts"], ["mouse", "MouseSettingsPage", "Mouse pointer speed", "mouse-pointer-speed", "mouse.speed"], ["notifications", "NotificationsSettingsPage", "Do Not Disturb", "notifications-do-not-disturb", "notifications.dnd"], ["wallpaper", "SettingsWallpaperPage", "Your own picture", "wallpaper-your-own-picture", "appearance.wallpaper"], ["apps", "SettingsAppsPage", "Startup apps", "apps-startup-apps", "settings-startup-apps"], ["region", "SettingsRegionPage", "Language", "region-language", "settings-language"], ["about", "SettingsAboutPage", "Emaki version", "about-emaki-version", "settings-about-version"], ["updates", "SettingsMaintenancePage", "Update channel", "updates-update-channel", "settings-update-channel"], ["lock", "SettingsMaintenancePage", "Password", "lock-password", "settings-password"]];
+            const pages = [["users", "SettingsUsersPage", "Other users", "users-other-users", "settings-users-others"], ["storage", "SettingsStoragePage", "System and home", "storage-disks", "settings-storage-disks"], ["privacy", "SettingsPrivacyPage", "Disk encryption", "privacy-encryption", "settings-privacy-encryption"], ["panel", "SettingsCorePage", "Panel auto-hide", "panel-panel-auto-hide", "bar.autohide_mode"], ["windows", "SettingsCorePage", "Window gaps", "windows-window-gaps", "appearance.gaps"], ["wifi", "SettingsWifiPage", "Wi-Fi", "wifi-radio", "settings-wifi-power"], ["bluetooth", "SettingsBluetoothPage", "Bluetooth", "bluetooth-radio", "settings-bluetooth-power"], ["network", "SettingsNetworkPage", "Wired", "network-wired", "settings-network-wired"], ["sound", "SoundSettingsPage", "Volume", "sound-volume", "settings-sound-volume"], ["displays", "DisplaysSettingsPage", "Resolution", "displays-resolution", "settings-display-resolution"], ["battery", "SettingsPowerPage", "Power mode", "battery-power-mode", "settings-power-profile"], ["keyboard", "KeyboardSettingsPage", "Keyboard shortcuts", "keyboard-keyboard-shortcuts", "settings-keyboard-shortcuts"], ["mouse", "MouseSettingsPage", "Mouse pointer speed", "mouse-pointer-speed", "mouse.speed"], ["notifications", "NotificationsSettingsPage", "Do Not Disturb", "notifications-do-not-disturb", "notifications.dnd"], ["wallpaper", "SettingsWallpaperPage", "Your own picture", "wallpaper-your-own-picture", "appearance.wallpaper"], ["apps", "SettingsAppsPage", "Startup apps", "apps-startup-apps", "settings-startup-apps"], ["region", "SettingsRegionPage", "Language", "region-language", "settings-language"], ["about", "SettingsAboutPage", "Emaki version", "about-emaki-version", "settings-about-version"], ["updates", "SettingsMaintenancePage", "Update channel", "updates-update-channel", "settings-update-channel"], ["lock", "SettingsMaintenancePage", "Password", "lock-password", "settings-password"], ["appearance", "SettingsAppearancePage", "Accent colour", "appearance-accent", "appearance.accent"]];
             equal(harness.controller.opened, false);
             equal(harness.scene.input.settingsActive, false);
             compare(Array.from(harness.controller.availablePages).sort(), pages.map(entry => entry[0]).concat(["assistants"]).sort());
@@ -292,6 +293,82 @@ SettingsIpcHarness {
                 equal(Number(harness.catalog.row("appearance.gaps").value), before + 2);
             }
         }
+        function test_launcher_settings_search() {
+            const body = harness.scene.input;
+            const gear = nodes(body).find(item => item.objectName === "launcher-settings");
+            harness.scene.openLauncher();
+            tryCompare(harness.scene, "expansion", 1);
+            mouseClick(gear);
+            tryCompare(harness.controller, "opened", true);
+            const gearPage = harness.controller.view.page;
+            harness.controller.dismiss();
+            tryCompare(harness.scene, "launcherPresent", false);
+            for (const mode of [0, 1]) {
+                for (const term of ["set", "settings", "SETTINGS", "pref", "preferences", "control panel"]) {
+                    harness.scene.openLauncher();
+                    tryCompare(harness.scene, "expansion", 1);
+                    body.modeIndex = mode;
+                    body.setQuery(term);
+                    const matches = body.results.filter(row => row.kind === "settings");
+                    equal(matches.length, 1);
+                    equal(matches[0].label, "Settings");
+                    if (mode === 1) {
+                        waitForMotion(() => nodes(body).some(item => item.row === matches[0] && item.shape === "tile"), "Settings search tile");
+                        const tile = nodes(body).find(item => item.row === matches[0] && item.shape === "tile");
+                        equal(tile.icon, SystemIcons.settingsSvg(tile.dim));
+                        waitForMotion(() => nodes(tile).some(item => item.source !== undefined && String(item.source) !== "" && item.status === Image.Ready), "Settings tile icon ready");
+                    }
+                    body.selectAt(body.results.indexOf(matches[0]));
+                    body.takeFocus();
+                    keyClick(Qt.Key_Return);
+                    tryCompare(harness.controller, "opened", true);
+                    equal(harness.controller.view.page, gearPage);
+                    check(body.settingsActive);
+                    harness.controller.dismiss();
+                    tryCompare(harness.scene, "launcherPresent", false);
+                }
+            }
+            harness.scene.openLauncher();
+            tryCompare(harness.scene, "expansion", 1);
+            for (const mode of [0, 1]) {
+                body.modeIndex = mode;
+                for (const pair of [["f", "Firefox"], ["co", "Code"], ["control", "Control"]]) {
+                    body.setQuery(pair[0]);
+                    tryVerify(() => body.results.length > 0);
+                    equal(body.results[0].kind, "app");
+                    equal(body.results[0].label, pair[1]);
+                    if (pair[0].length < 3)
+                        equal(body.results.filter(row => row.kind === "settings").length, 0);
+                    else
+                        equal(body.results.filter(row => row.kind === "settings").length, 1);
+                    if (pair[0].length < 3) {
+                        body.takeFocus();
+                        keyClick(Qt.Key_Return);
+                        equal(body.appCatalog.pendingName, pair[1]);
+                        check(!body.settingsActive);
+                        tryCompare(harness.scene, "launcherPresent", false);
+                        tryCompare(body.appCatalog, "busy", false);
+                        harness.scene.openLauncher();
+                        tryCompare(harness.scene, "expansion", 1);
+                        body.modeIndex = mode;
+                    }
+                }
+                for (const term of ["f", "co", "tings", "ferences", "anel", "unrelated word"]) {
+                    body.setQuery(term);
+                    equal(body.results.filter(row => row.kind === "settings").length, 0);
+                }
+                body.setQuery("settings");
+                equal(body.results[0].kind, "settings");
+            }
+            body.modeIndex = 1;
+            body.setQuery("unrelated word");
+            equal(body.results.filter(row => row.kind === "settings").length, 0);
+            for (let mode = 2; mode < body.modes.length; mode++) {
+                body.modeIndex = mode;
+                body.setQuery("settings");
+                equal(body.results.filter(row => row.kind === "settings").length, 0);
+            }
+        }
         function test_lifecycle() {
             equal(harness.controller.opened, false);
             const gear = nodes(harness.scene.input).find(item => item.objectName === "launcher-settings");
@@ -319,7 +396,7 @@ SettingsIpcHarness {
             show("windows");
             equal(harness.controller.view.Window.window, first);
             equal(view.page, "windows");
-            equal(JSON.parse(harness.controller.open("appearance")).status, "unavailable");
+            equal(JSON.parse(harness.controller.open("accessibility")).status, "unavailable");
             equal(view.page, "windows");
             harness.controller.enabled = false;
             equal(JSON.parse(harness.controller.open("panel")).status, "unavailable");
@@ -473,9 +550,9 @@ SettingsIpcHarness {
             check(harness.scene.launcherOpen && body.settingsActive);
             equal(harness.controller.view.page, "windows");
         }
-        function test_sections_keyboard_and_disabled() {
+        function test_sections_keyboard_and_unavailable() {
             const view = show("panel");
-            equal(view.sidebar.count, 23);
+            equal(view.sidebar.count, 22);
             const windows = named("section-windows");
             windows.forceActiveFocus();
             keyClick(Qt.Key_Return);
@@ -486,17 +563,10 @@ SettingsIpcHarness {
             equal(view.search.text, "");
             equal(view.page, "windows");
             view.navigate("panel", "");
-            const appearance = named("section-appearance");
-            check(appearance !== undefined);
-            equal(appearance.enabled, false);
-            equal(appearance.hoverEnabled, false);
-            equal(appearance.focusPolicy, Qt.NoFocus);
-            mouseClick(appearance);
+            // Unavailable sections have no sidebar entry and cannot be opened.
+            check(named("section-accessibility") === undefined);
+            check(!view.navigate("accessibility", ""));
             equal(view.page, "panel");
-            appearance.forceActiveFocus();
-            keyClick(Qt.Key_Space);
-            equal(view.page, "panel");
-            check(!view.navigate("appearance", ""));
             view.search.forceActiveFocus();
             keyClick(Qt.Key_Down);
             check(named("section-wifi").activeFocus);

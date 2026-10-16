@@ -243,6 +243,13 @@ ColumnLayout {
                             objectName: "review-star-" + (index + 1)
                             // Five stars always fit the dialog's width.
                             implicitWidth: Math.min(34, Math.floor((dialog.availableWidth - 8) / 5)); implicitHeight: 34
+                            Accessible.name: "Rate " + (index + 1) + " of 5"
+                            Accessible.role: Accessible.RadioButton
+                            Accessible.selected: dialog.stars === index + 1
+                            checkable: true
+                            autoExclusive: true
+                            checked: dialog.stars === index + 1
+                            Accessible.checked: checked
                             focusPolicy: Qt.StrongFocus
                             Keys.onReturnPressed: clicked()
                             Keys.onSpacePressed: clicked()
@@ -279,6 +286,9 @@ ColumnLayout {
                         objectName: "review-text"
                         placeholderText: "What is good or bad about it?"
                         wrapMode: TextEdit.Wrap
+                        KeyNavigation.priority: KeyNavigation.BeforeItem
+                        KeyNavigation.tab: author
+                        KeyNavigation.backtab: title
                         font.family: "Noto Sans"; font.pixelSize: 14
                         color: Shell.ShellPalette.managerInk
                         onTextChanged: if (length > 3000) remove(3000, length)

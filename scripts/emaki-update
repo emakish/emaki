@@ -29,7 +29,6 @@ except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'update-manager'))
     from emaki_update_space import preflight
 
-
 PACMAN = ('/usr/bin/pacman',)
 HOLDS = Path('/var/lib/emaki/rollback-holds.json')
 # Signatures of everything else are checked with these, so they are never held
@@ -173,6 +172,8 @@ def main():
         # Let pacman explain its root requirement before reading private metadata.
         if os.geteuid() != 0:
             return run(command, fail_on_hook_error=args.noninteractive)
+        # Keep the wrapper's early protection. The hook also measures the actual
+        # transaction; no environment marker can bypass either check.
         if targets:
             preflight(targets=targets)
         else:

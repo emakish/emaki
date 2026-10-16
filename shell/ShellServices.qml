@@ -80,10 +80,12 @@ Scope {
         id: identity
         catalog: catalog
     }
+    // Titles, application IDs and focus order of the windows: the dock and the window switcher
+    // (Alt+Tab, which works with the dock off too) read them.
     WindowLabels {
         id: labels
         niri: context.niri
-        active: dockStore.on
+        active: true
         onAppeared: (id, appId) => identity.windowAppeared(appId)
     }
 }

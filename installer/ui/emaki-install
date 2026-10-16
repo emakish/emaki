@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # One installer process per session keeps the in-memory plan while its window is hidden or
 # closed; running emaki-install again brings that window back.
 set -eu

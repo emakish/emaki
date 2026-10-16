@@ -7,6 +7,8 @@ ConditionPathIsDirectory=/var/lib/emaki-greeter/users/%u
 
 [Path]
 PathChanged=%h/.config/wpaperd/config.toml
+# The look (theme, accent) the login screen shows for this account.
+PathChanged=%h/.config/emaki/settings.toml
 Unit=emaki-greeter-wallpaper.service
 
 [Install]

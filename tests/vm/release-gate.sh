@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Release gate for one release candidate.
 # Usage: release-gate.sh --release-iso FILE --test-iso FILE [--walk DIR] [--out DIR] [--jobs a,b,...]
 # Rollback: --candidate EMAKI_COMMIT --rollback-base DIR --rollback-provenance JSON

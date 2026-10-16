@@ -421,5 +421,119 @@ header_menu
             self.assertIn(f'/@snapshots/{number}/snapshot/boot/vmlinuz-linux', text)
 
 
+def upstream_snapshot(number, kernels=('linux', 'linux-lts'), root='/@snapshots'):
+    """One snapshot block as grub-btrfs 4.14 writes it (title row, then one row per kernel)."""
+    rows = ''.join(
+        f"\n    menuentry '  vmlinuz-{kernel} & initramfs-{kernel}.img' --class snapshots {{\n"
+        f"        echo 'Loading Kernel: vmlinuz-{kernel} ...'\n"
+        f'        linux "{root}/{number}/snapshot/boot/vmlinuz-{kernel}" root=UUID=1111-2222  '
+        f'rootflags=subvol="@snapshots/{number}/snapshot"\n'
+        f'        initrd "{root}/{number}/snapshot/boot/initramfs-{kernel}.img"\n'
+        '    }\n' for kernel in kernels)
+    return (f"submenu '|2026-10-06 10:{number:02d}:00|{number}      |pre |pacman -Syu|' {{\n"
+            f"    submenu '| 2026-10-06 10:{number:02d}:00 | {number} | pre | pacman -Syu |' {{ echo }}\n"
+            + rows + '}\n')
+
+
+HEADING = "menuentry '|        Date       |Snapshot|Type|Description|' { echo }\n"
+
+
+class SecureBootSnapshots(unittest.TestCase):
+    """With the machine key, snapshot rows GRUB would refuse (unsigned kernel) are left out."""
+
+    def test_rows_with_unsigned_kernels_and_emptied_snapshots_are_dropped(self):
+        text = HEADING + upstream_snapshot(42) + upstream_snapshot(43) + upstream_snapshot(44)
+        asked = []
+
+        def signed(number, kernel):
+            asked.append((number, kernel))
+            return (number, kernel) in {('43', '/boot/vmlinuz-linux'), ('44', '/boot/vmlinuz-linux'),
+                                        ('44', '/boot/vmlinuz-linux-lts')}
+
+        rendered = repair.render(text, signed)
+        self.assertEqual(sorted(set(asked)), [(n, '/boot/vmlinuz-' + k) for n in ('42', '43', '44')
+                                              for k in ('linux', 'linux-lts')])
+        self.assertEqual(re.findall(r'/@snapshots/(\d+)/snapshot/boot/vmlinuz-([a-z-]+)"', rendered),
+                         [('44', 'linux'), ('44', 'linux-lts'), ('43', 'linux')])
+        self.assertEqual(re.findall(r"^submenu '([^']*)'", rendered, re.M),
+                         ['6 Oct 2026, 10:44 · before update · pacman -Syu',
+                          '6 Oct 2026, 10:43 · before update · pacman -Syu'])
+        # Without the key the same menu keeps every row.
+        self.assertEqual(len(re.findall(r'vmlinuz-[a-z-]+"', repair.render(text))), 6)
+
+    def test_no_signed_snapshot_leaves_a_note_not_an_empty_menu(self):
+        text = HEADING + upstream_snapshot(42)
+        rendered = repair.render(text, lambda number, kernel: False)
+        self.assertEqual(rendered, repair.NO_SIGNED_SNAPSHOT)
+        # Boot-time repair regenerates only empty menus or menus naming deleted snapshots.
+        self.assertTrue(rendered.strip())
+        self.assertNotIn('/@snapshots/', rendered)
+
+    def test_submenus_in_another_layout_are_kept_unchecked(self):
+        custom = ("submenu 'My recovery' {\n  menuentry 'Rescue' {\n    linux /boot/vmlinuz-linux\n  }\n}\n"
+                  "submenu 'Nested' {\n    submenu 'Inner' {\n        menuentry 'X' { echo }\n    }\n}\n")
+        text = HEADING + custom + upstream_snapshot(42)
+        for answer in (True, False):
+            with self.subTest(signed=answer):
+                rendered = repair.signed_only(text, lambda number, kernel: answer)
+                self.assertIn(custom, rendered)
+                self.assertEqual('/@snapshots/42/' in rendered, answer)
+        self.assertEqual(repair.render(HEADING + custom, lambda *_: True), repair.render(HEADING + custom))
+
+    def test_rows_naming_no_snapshot_kernel_are_kept(self):
+        text = upstream_snapshot(42, root='/@other')
+        self.assertEqual(repair.signed_only(text, lambda number, kernel: False), text)
+        self.assertEqual(repair.signed_only('# No snapshots available.\n', lambda *_: False),
+                         '# No snapshots available.\n')
+
+    def test_check_asks_the_machine_key_once_per_kernel(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for number in ('42', '43'):
+                kernel = root / '.snapshots' / number / 'snapshot/boot/vmlinuz-linux'
+                kernel.parent.mkdir(parents=True)
+                kernel.write_bytes(b'kernel ' + number.encode())
+            library = ROOT / 'installer/emaki_installer/secureboot.py'
+            with patch.object(repair, 'SECUREBOOT', root / 'missing.py'):
+                self.assertIsNone(repair.kernel_signature_check(root))
+            with patch.object(repair, 'SECUREBOOT', library):
+                self.assertIsNone(repair.kernel_signature_check(root))
+                state = root / 'var/lib/emaki/secureboot'
+                state.mkdir(parents=True)
+                (state / 'machine.key').write_bytes(b'private test key\n')
+                (state / 'machine.crt').write_bytes(b'certificate\n')
+                calls = []
+
+                def sbverify(argv, **kwargs):
+                    calls.append(argv)
+                    self.assertEqual(argv[:3], ['sbverify', '--cert', str(state / 'machine.crt')])
+                    if argv[3].endswith('/43/snapshot/boot/vmlinuz-linux'):
+                        return subprocess.CompletedProcess(argv, 0, 'Signature verification OK\n', '')
+                    raise subprocess.CalledProcessError(1, argv)
+
+                with patch.object(repair.subprocess, 'run', side_effect=sbverify):
+                    signed = repair.kernel_signature_check(root)
+                    answers = [signed(n, k) for n, k in (('42', '/boot/vmlinuz-linux'), ('43', '/boot/vmlinuz-linux'),
+                                                         ('42', '/boot/vmlinuz-linux'), ('44', '/boot/vmlinuz-linux'))]
+                self.assertEqual(answers, [False, True, False, False])
+                # One question per existing kernel; a missing kernel is never handed to sbverify.
+                self.assertEqual(len(calls), 2)
+
+    def test_menu_check_filters_before_publication(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stage = Path(directory) / repair.STAGING
+            stage.mkdir()
+            menu = stage / 'grub-btrfs.new'
+            menu.write_text(HEADING + upstream_snapshot(42) + upstream_snapshot(43))
+            with patch.object(repair, 'kernel_signature_check', return_value=lambda n, k: n == '43'), \
+                    patch.object(repair, 'SCRIPT_CHECK', shutil.which('true')), \
+                    patch.object(repair.subprocess, 'run', wraps=lambda argv, check: subprocess.CompletedProcess(argv, 0)), \
+                    patch.object(sys, 'argv', ['emaki-snapshot-menu', '--check', str(menu)]):
+                self.assertEqual(repair.main(), 0)
+            published = (Path(directory) / 'grub-btrfs.cfg').read_text()
+            self.assertIn('/@snapshots/43/snapshot/', published)
+            self.assertNotIn('/@snapshots/42/snapshot/', published)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -7,6 +7,8 @@ import io
 import json
 import os
 from pathlib import Path
+import runpy
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -97,6 +99,26 @@ class RestorePoints(unittest.TestCase):
         (linked / 'info.xml').unlink()
         (linked / 'info.xml').symlink_to(good / 'info.xml')
         self.assertEqual(len(restore.list_points(self.root)), 1)
+
+    def test_fifo_receipt_is_rejected_without_blocking_inventory(self):
+        directory = self.point(2)
+        receipt = directory / 'info.xml'
+        receipt.unlink()
+        os.mkfifo(receipt)
+        code = """
+import sys
+from pathlib import Path
+import unittest
+import restore
+root = Path(sys.argv[1])
+with unittest.TestCase().assertRaisesRegex(ValueError, 'invalid snapshot receipt'):
+    restore.receipt(root / '2')
+assert restore.list_points(root) == []
+"""
+        result = subprocess.run([sys.executable, '-c', code, str(self.root)],
+                                cwd=Path(restore.__file__).parent, capture_output=True,
+                                text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_ambiguous_or_older_post_does_not_claim_completed_transaction(self):
         self.point(2)
@@ -247,6 +269,19 @@ class RestorePoints(unittest.TestCase):
             self.assertEqual(restore.main(['list']), 0)
         self.assertEqual(json.loads(output.getvalue())['points'], published['points'])
 
+    def test_inventory_survives_refresh_interval_but_still_expires(self):
+        self.point(2)
+        published = self.publish()
+        index = self.root / 'index.json'
+        for age in (330, 601):
+            stamp = time.time() - age
+            os.utime(index, (stamp, stamp))
+            if age == 330:
+                self.assertEqual(self.read_public(), published['points'])
+            else:
+                with self.assertRaises(restore.Refused):
+                    self.read_public()
+
     def test_scan_failure_replaces_previous_inventory_with_unavailable(self):
         self.point(2)
         self.publish()
@@ -291,7 +326,7 @@ class RestorePoints(unittest.TestCase):
             self.read_public()
         index.unlink()
         for mode, age, content in ((0o666, 0, '{"points": [], "error": ""}'),
-                                   (0o644, 121, '{"points": [], "error": ""}'),
+                                   (0o644, restore.INDEX_MAX_AGE + 1, '{"points": [], "error": ""}'),
                                    (0o644, -60, '{"points": [], "error": ""}'),
                                    (0o644, 0, 'broken'), (0o644, 0, '[]'),
                                    (0o644, 0, '{"points": [{}], "error": ""}')):
@@ -326,6 +361,37 @@ class RestorePoints(unittest.TestCase):
 
 
 class RestoreIndexTimer(unittest.TestCase):
+    def test_transaction_refresh_is_queued_after_post_snapshot(self):
+        root = Path(__file__).resolve().parents[2]
+        hook = root / 'upkeep/zzz-emaki-restore-index.hook'
+        self.assertTrue(hook.is_file(), 'snapshot transactions must queue an index refresh')
+        text = hook.read_text()
+        self.assertGreater(hook.name, 'zz-snap-pac-post.hook')
+        for operation in ('Install', 'Upgrade', 'Remove'):
+            self.assertIn(f'Operation = {operation}\n', text)
+        for line in ('Type = Package', 'Target = *', 'When = PostTransaction',
+                     'Exec = @EMAKI_SYSTEMCTL@ --no-block start emaki-restore-index.service'):
+            self.assertIn(line + '\n', text)
+        # ext4 installs and the live system have no snap-pac: a Depends line would make pacman print
+        # "error: unable to run hook … could not satisfy dependencies" after every transaction (RV10).
+        self.assertNotIn('Depends', text)
+        service = (root / 'update-manager/emaki-restore-index.service').read_text()
+        self.assertIn('ConditionPathIsDirectory=/.snapshots\n', service.split('[Service]')[0])
+        render = runpy.run_path(str(root / 'scripts/render-paths'))
+        with tempfile.TemporaryDirectory() as directory:
+            command = Path(directory) / 'systemctl'
+            recorded = Path(directory) / 'arguments.json'
+            command.write_text(f'#!{sys.executable}\nimport json, sys\n'
+                               f'open({str(recorded)!r}, "w").write(json.dumps(sys.argv[1:]))\n')
+            command.chmod(0o755)
+            values = render['paths']('/relocated', system={'SYSTEMCTL': str(command)})
+            rendered = render['substitute'](text, values)
+            execute = next(line.removeprefix('Exec = ') for line in rendered.splitlines()
+                           if line.startswith('Exec = '))
+            subprocess.run(shlex.split(execute), check=True, timeout=5)
+            self.assertEqual(json.loads(recorded.read_text()),
+                             ['--no-block', 'start', 'emaki-restore-index.service'])
+
     def test_timer_runs_only_where_restore_points_can_exist(self):
         # Without /.snapshots (ext4 installs, the live stick) refresh-index exits 1; a timer that still
         # fired would fail its service every 30 s and fill the journal and problem reports.

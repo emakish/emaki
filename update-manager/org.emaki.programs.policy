@@ -6,7 +6,7 @@
   <vendor>Emaki</vendor>
   <action id="org.emaki.programs.remove">
     <description>Remove an installed program</description>
-    <message>Authentication is required to remove the program in this command: $(command_line)</message>
+    <message>Enter an administrator password to remove the program.</message>
     <defaults>
       <allow_any>no</allow_any>
       <allow_inactive>no</allow_inactive>

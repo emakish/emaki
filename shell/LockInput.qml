@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 
@@ -20,6 +22,7 @@ Item {
     }
     signal engaged
     signal edited
+    signal step(int delta)
     function takeFocus(): void {
         editor.forceActiveFocus();
     }
@@ -56,6 +59,10 @@ Item {
             }
             if ([Qt.Key_Up, Qt.Key_Down].includes(event.key)) {
                 // Keep editing; Tab reaches the reveal control.
+                event.accepted = true;
+            } else if ([Qt.Key_Left, Qt.Key_Right].includes(event.key) && !input.auth.buffer.length && !input.auth.checking) {
+                // An empty field: Left and Right choose another person on the login screen.
+                input.step(event.key === Qt.Key_Left ? -1 : 1);
                 event.accepted = true;
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                 if (!event.isAutoRepeat)

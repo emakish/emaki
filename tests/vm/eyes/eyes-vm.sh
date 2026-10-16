@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Eyes launcher: one QEMU pass of a release walk, driven only by eyes.py (QMP + VNC).
 # Usage: eyes-vm.sh --walk DIR --run W1 --display gl|fw --res 1920x1080 [--firmware uefi|bios]
 #                   (--iso FILE [--usb] | --no-cd) [--ram 4G] [--smp 2]

@@ -40,7 +40,7 @@ for (const [mode, desktop, fullscreen] of [['always', true, true], ['desktop', t
 const ids = ['wifi', 'bluetooth', 'network', 'appearance', 'wallpaper', 'panel',
     'windows', 'displays', 'sound', 'keyboard', 'mouse', 'notifications', 'battery',
     'lock', 'apps', 'updates', 'privacy', 'region', 'users', 'storage',
-    'accessibility', 'about', 'assistants'];
+    'about', 'assistants'];
 assert.deepEqual(Array.from(index.sections, section => section.id), ids);
 assert.deepEqual([...new Set(index.sections.map(section => section.group))],
     ['Network', 'Personal', 'Devices', 'System']);
@@ -122,8 +122,11 @@ assert.equal(index.search('default browser', available)[0].key, 'defaults.browse
 assert.equal(index.search('layouts', available).filter(result => !result.section).length, 2);
 assert.ok(!index.search('dock', available).some(result => result.key === 'bar.overview_workspaces'));
 assert.equal(index.search('fingerprint', ['lock']).length, 0);
-for (const query of ['slideshow', 'animations', 'panel position', 'dark', 'installed programs'])
+for (const query of ['slideshow', 'animations', 'panel position', 'installed programs'])
     assert.equal(index.search(query, available).length, 0, query);
+// Dark appearance exists since the Appearance page (light/dark themes with automatic hours).
+assert.deepEqual(plain(index.search('dark', available).map(result => [result.page, result.key])),
+    [['appearance', 'appearance.theme'], ['appearance', 'appearance.dark_time']]);
 for (const query of ['', ' \t\n', 'unfindable-word', 'dock fingerprint'])
     assert.equal(index.search(query, available).length, 0, query);
 assert.equal(index.search('keyboard').length, 0);

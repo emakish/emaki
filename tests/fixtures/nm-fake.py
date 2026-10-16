@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Minimal NetworkManager stand-in on a private bus.
 
 Usage: nm-fake.py <root>. Two users:

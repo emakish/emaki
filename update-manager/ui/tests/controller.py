@@ -131,6 +131,12 @@ def rendered_window():
             env.pop(name, None)
         # Keep Unix socket names short while retaining all scratch in the worktree.
         with tempfile.TemporaryDirectory(prefix='', dir=ROOT / '.cache') as runtime:
+            # Quickshell's IPC socket is <runtime>/quickshell/by-id/<11 characters>/ipc.sock;
+            # a Unix socket path holds at most 107 bytes, else `qs ipc` cannot reach the window.
+            socket = len(os.fsencode(runtime)) + len('/quickshell/by-id/') + 11 + len('/ipc.sock')
+            assert socket <= 107, (f'checkout path too long: the IPC socket path would be {socket} bytes '
+                                   f'(limit 107); check the tree out at a path at least {socket - 107} '
+                                   f'characters shorter than {ROOT}')
             env['XDG_RUNTIME_DIR'] = runtime
             entry = str(ui / 'shell.qml')
             with (root / 'window.log').open('w+') as stream:

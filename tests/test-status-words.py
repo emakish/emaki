@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Honest status words (plans/eyes-acceptance.md 5.5): status documents and release gates report
 a check only in the vocabulary of tests/vm/status-words.toml.
 

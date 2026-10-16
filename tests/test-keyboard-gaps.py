@@ -100,6 +100,9 @@ run_case('mutant-snapshot-right', *GAPS, mutation=(
     'Keys.onRightPressed: later.forceActiveFocus()'))
 run_case('mutant-snapshot-pale-keep', *GAPS, mutation=(
     'shell/SnapshotPrompt.qml', 'strong: action.accent', 'strong: false'))
+# The dark Keep this state: one dark ink cannot face both the dark plate and the bright accent.
+run_case('mutant-keep-one-ink-rim', *GAPS, mutation=(
+    'shell/SnapshotPrompt.qml', 'outerInk: LiquidPalette.focusOuterOnAccent', 'outerInk: "transparent"'))
 # Item 18: Return on a SettingsButton (Cancel, the warning's buttons) must activate it.
 run_case('mutant-sudo-return', *GAPS, mutation=(
     'shell/settings/SettingsButton.qml',
@@ -108,13 +111,19 @@ run_case('mutant-sudo-return', *GAPS, mutation=(
 # Item 24: a ring drawn without ink is not seen on either backdrop.
 run_case('mutant-invisible-ring', *GAPS, mutation=(
     'shell/FocusRing.qml',
-    'color: LiquidPalette.flatDrop\n    border.color: strong ? LiquidPalette.focusOnAccent : LiquidPalette.flatDropRim',
-    'color: "transparent"\n    border.color: strong ? LiquidPalette.focusOnAccent : "transparent"'))
-# Item 24: a rim in light ink, as a dark plate would want, is lost on the light plate.
+    'color: LiquidPalette.flatDrop\n    border.color: strong ? strongInk : LiquidPalette.flatDropRim',
+    'color: "transparent"\n    border.color: strong ? strongInk : "transparent"'))
+# Item 24: a rim in light ink, as a dark plate would want, is lost on the light plate. The
+# rim comes from ShellPalette (tokens.toml) since the themes round; LiquidPalette passes it on.
 run_case('mutant-light-ink-rim', *GAPS, mutation=(
     'shell/LiquidPalette.qml',
-    'flatDropRim: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .16)',
+    'flatDropRim: ShellPalette.flatDropRim',
     'flatDropRim: Qt.rgba(1, 1, 1, .16)'))
+# Dark shades the selected drop to a third of the accent: the warm dark ink is lost there.
+run_case('mutant-dark-ink-on-dark-selected-drop', *GAPS, mutation=(
+    'shell/LiquidPalette.qml',
+    'focusOnSelected: ShellPalette.dark ? Qt.rgba(flatDropRim.r, flatDropRim.g, flatDropRim.b, focusOnAccent.a) : focusOnAccent',
+    'focusOnSelected: focusOnAccent'))
 
 run_case('pointer pass on bar, panels and dock', *SCENE)
 # Item 23: pointer focus must not draw the keyboard ring, Escape must not hand the bar the keyboard.

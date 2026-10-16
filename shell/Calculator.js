@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Arithmetic only. No JavaScript evaluation, names, strings or function calls.
 function calculate(input) {
     if (input.length > 1024 || !/[+\-*/%^]/.test(input)) return null;

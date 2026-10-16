@@ -1,4 +1,6 @@
 #!/usr/bin/python -B
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 from emaki_installer.cli import main
 
 raise SystemExit(main())

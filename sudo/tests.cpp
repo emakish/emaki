@@ -216,6 +216,16 @@ void heartbeats() {
   check(!freshHeartbeat(100, UINT64_MAX), "clock failure fails closed");
 }
 void requesters() {
+  const auto knownRequester = [](const std::string &executable,
+                                   const std::vector<std::string> &arguments) {
+    const auto label = emaki::sudo_channel::knownRequester(executable, arguments);
+    // Keep every recognized result within the broker's status-row proof,
+    // including JSON quotes and the maximum two-byte escaping per byte.
+    check(label.size() <= 11, "requester label fits status row bound");
+    check(escapeJson(label).size() <= 24,
+          "escaped requester label fits status row bound");
+    return label;
+  };
   check(knownRequester("/opt/bin/claude", {}) == "Claude Code",
         "named native requester is recognized");
   check(knownRequester("/home/test/.local/share/claude/versions/2.1.296", {}) ==

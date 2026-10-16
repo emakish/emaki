@@ -5,6 +5,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -39,6 +40,10 @@ else:
     if scenario == 'error':
         emit({'event':'error','reason':'fixture_refused'})
         sys.exit(1)
+    if scenario == 'held-picture':
+        release = Path(os.environ['CAPTURE_EVENTS']).with_name('release')
+        while not release.exists():
+            time.sleep(.02)
     if operation == '--record':
         if scenario == 'slow-start':
             time.sleep(.6)
@@ -53,7 +58,35 @@ else:
 '''
 
 
+def production_handler(source):
+    # Keep the production IPC block verbatim; only the desktop dependencies are fixtures.
+    handlers = re.findall(r'^    IpcHandler \{\n.*?^    \}', source, re.MULTILINE | re.DOTALL)
+    assert len(handlers) == 1, 'Expected one production capture IPC handler'
+    handler = handlers[0]
+    assert re.search(r'target:\s*"capture"', handler), 'Missing capture IPC target'
+    assert re.search(r'function record\(\): bool\s*\{\s*return controller\.record\(\);\s*\}', handler), 'Missing recording IPC route'
+    return handler
+
+
+def check_routing():
+    source = (ROOT / 'shell/CaptureService.qml').read_text()
+    handler = production_handler(source)
+    for changed in (source.replace('function record()', 'function removed()'),
+                    source.replace('return controller.record();', 'return false;'),
+                    source.replace('target: "capture"', 'target: "wrong"')):
+        try:
+            production_handler(changed)
+        except AssertionError:
+            continue
+        raise AssertionError('Broken production recording route passed the check')
+    return handler
+
+
 def main():
+    handler = check_routing()
+    if sys.argv[1:] == ['--check-routing']:
+        print('Capture routing: production handler and three regression mutations passed')
+        return
     qs = shutil.which('qs')
     assert qs, 'qs is required'
     with tempfile.TemporaryDirectory(prefix='capture-controller-', dir='/tmp') as folder, short_runtime() as runtime:
@@ -62,7 +95,9 @@ def main():
         qml.mkdir()
         for name in ('CaptureController.qml', 'CaptureText.js'):
             shutil.copyfile(ROOT / 'shell' / name, qml / name)
-        shutil.copyfile(ROOT / 'tests/fixtures/capture-controller.qml', qml / 'shell.qml')
+        fixture = (ROOT / 'tests/fixtures/capture-controller.qml').read_text()
+        assert fixture.count('// PRODUCTION_CAPTURE_IPC') == 1
+        (qml / 'shell.qml').write_text(fixture.replace('    // PRODUCTION_CAPTURE_IPC', handler))
         (qml / 'qmldir').write_text('CaptureController 1.0 CaptureController.qml\nsingleton Platform 1.0 Platform.qml\n')
         (qml / 'Platform.qml').write_text('pragma Singleton\nimport QtQuick\nQtObject { readonly property string python: ' + json.dumps(sys.executable) + ' }\n')
         helper = profile / 'helper.py'
@@ -83,7 +118,8 @@ def main():
         with (profile / 'output.log').open('w') as log:
             process = subprocess.Popen([qs, '-p', str(qml), '--no-color'], env=env, stdout=log, stderr=subprocess.STDOUT)
             def call(method, *args):
-                result = subprocess.run([qs, 'ipc', '--pid', str(process.pid), 'call', 'tests', method,
+                target = 'capture' if method == 'record' else 'tests'
+                result = subprocess.run([qs, 'ipc', '--pid', str(process.pid), 'call', target, method,
                                          *[str(arg).lower() if isinstance(arg, bool) else str(arg) for arg in args]],
                                         env=env, text=True, capture_output=True, timeout=5)
                 assert result.returncode == 0, result.stdout + result.stderr + (profile / 'output.log').read_text()
@@ -189,7 +225,30 @@ def main():
                 begin()
                 state = wait(lambda s: bool(s['reason']) and not s['busy'])
                 assert state['reason'] == 'capture_failed' and len(state['notices']) == 1, state
-                print('Capture controller: selection, recording stop, notifications, lock races, errors, missing helpers and inventory closure passed')
+                # Super+Alt+R (2026-10-15): the overlay opens ready to record; the same key
+                # stops the recording it started, and never cancels a picture in progress.
+                assert call('configure', 'normal') and call('mode', 'picture')
+                assert call('record')
+                state = wait(lambda s: s['ready'])
+                assert state['opened'] and state['mode'] == 'recording', state
+                assert call('record'), 'the key again keeps the open overlay on recording'
+                assert call('targetKind', 'screen')
+                begin()
+                wait(lambda s: s['recording'])
+                assert call('record')
+                state = wait(lambda s: not s['busy'])
+                assert state['notices'][-1]['title'] == 'Recording saved' and not state['opened'], state
+                assert json.loads(events.read_text().splitlines()[-1]) == {'control': 'stop'}
+                # The picture's helper holds its reply until the fixture releases it, so the
+                # picture is still being taken whatever the load (not raced against a timer).
+                prepare('held-picture', mode='picture')
+                call('begin')
+                assert not call('record') and call('state')['busy'], 'a picture in progress is left alone'
+                assert call('state')['mode'] == 'picture'
+                (profile / 'release').touch()
+                state = wait(lambda s: not s['busy'], timeout=8)
+                assert state['notices'][-1]['title'] == 'Screenshot saved and copied', state
+                print('Capture controller: selection, recording stop, notifications, lock races, errors, missing helpers and inventory closure, record key passed')
             finally:
                 process.terminate()
                 try:

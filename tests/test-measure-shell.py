@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Measure-shell fixtures: fake proc/sys, no service manager or live process reads."""
 import contextlib
 import argparse

@@ -4,22 +4,23 @@
 # makepkg supplies build paths and consumes package metadata.
 # shellcheck disable=SC2034,SC2154
 pkgname=emaki-config
-pkgver=0.8.1
+pkgver=0.9.0
 pkgrel=1
 pkgdesc='Emaki shell, CLI, system defaults, session, greeter and themes'
 arch=('x86_64')
 url='https://github.com/emakish/emaki'
-license=('GPL-3.0-or-later' 'Bitstream-Vera' 'GPL-2.0-or-later')  # GPL-2.0-or-later: Plymouth's prompt pictures
+license=('GPL-3.0-or-later' 'Bitstream-Vera' 'OFL-1.1' 'GPL-2.0-or-later')  # GPL-2.0-or-later: Plymouth's prompt pictures
 depends=(
     'pacman' 'pacman-contrib' 'fakeroot' 'reflector' 'polkit'
     'glibc' 'libgcc' 'bash' 'coreutils' 'dbus' 'procps-ng' 'systemd>=256' 'util-linux' 'sudo' 'pam' 'qt6-declarative'
-    'niri-emaki>=26.04-20' 'quickshell-emaki>=0.3.1-12'
+    'niri-emaki=26.04-28' 'quickshell-emaki>=0.3.1-13'
     'python' 'python-gobject' 'python-pillow' 'gtk3'
     'appstream' 'archlinux-appstream-data' 'kimageformats' 'libjxl'
     'wpaperd' 'wl-clipboard' 'cliphist' 'udiskie'
     'grim' 'gstreamer' 'gst-plugin-pipewire' 'gst-plugins-base'
     'gst-plugins-base-libs' 'gst-plugins-good' 'gst-plugins-bad' 'libglvnd' 'ffmpeg'
     'kitty' 'fastfetch>=2.68.1' 'imagemagick' 'hyprlock' 'playerctl' 'fuzzel' 'qt6ct' 'noto-fonts' 'breeze-icons' 'adwaita-icon-theme'
+    'emaki-font-iosevka'  # the terminal's font, Iosevka Nerd Font Mono (kitty/theme.conf, 2026-10-15)
     'terminus-font'
     'xdg-desktop-portal-gnome' 'xdg-desktop-portal-gtk'  # Upstream name; see emaki-desktop.
     'brightnessctl' 'power-profiles-daemon' 'networkmanager' 'upower' 'blueman' 'bluez'
@@ -28,6 +29,7 @@ depends=(
     'accountsservice'  # Settings › Users: accounts and their polkit actions
     'ntfs-3g'  # Windows shutdown check before writing an EFI partition shared with Windows
     'plymouth'  # the startup logo: boot/plymouth
+    'zsh' 'zsh-autosuggestions' 'zsh-syntax-highlighting'  # the default shell for new accounts: zsh/
 )
 makedepends=('git' 'make' 'python' 'rust' 'qt6-shadertools' 'cmake' 'gcc' 'pkgconf')
 checkdepends=('niri' 'nodejs')  # nodejs: shell JavaScript tests in make check
@@ -38,7 +40,8 @@ backup=('etc/pam.d/emaki-sudo' 'etc/sudoers.d/10-emaki-wheel'
         'etc/niri/config.kdl' 'etc/xdg/hypr/hyprlock.conf' 'etc/xdg/fastfetch/config.jsonc'
         'etc/xdg/kwalletrc' 'etc/xdg/mimeapps.list' 'etc/xdg/kdeglobals' 'etc/xdg/dolphinrc' 'etc/xdg/qt6ct/qt6ct.conf'
         'etc/xdg/menus/emaki-applications.menu' 'etc/xdg/xdg-desktop-portal/niri-portals.conf'
-        'etc/mkinitcpio.conf.d/50-emaki-splash.conf' 'etc/default/grub.d/50-emaki-splash.cfg')
+        'etc/mkinitcpio.conf.d/50-emaki-splash.conf' 'etc/default/grub.d/50-emaki-splash.cfg'
+        'etc/zsh/emaki.zsh' 'etc/zsh/zshenv')
 options=('!debug' '!lto')
 install=emaki-config.install
 source=()
@@ -79,7 +82,12 @@ prepare() {
     # Refuse an old commit with new recipe metadata, before fetching anything.
     python -c 'import sys,tomllib; assert tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"] == sys.argv[1], "archive version differs from pkgver"' "$pkgver"
     test -f packaging/emaki-config/expected-files.list || return 1
-    cargo fetch --locked --target "$(rustc --print host-tuple)"
+    _emaki_make prepare-core || return 1
+    cargo metadata --locked --offline --filter-platform "$(rustc --print host-tuple)" \
+        --format-version 1 > "$srcdir/rust-metadata.json" || return 1
+    python packaging/rust_notices.py --lock Cargo.lock --metadata "$srcdir/rust-metadata.json" \
+        --project "$PWD" --output "$srcdir/THIRD-PARTY-NOTICES" || return 1
+    rm -f -- "$srcdir/rust-metadata.json"
 }
 
 build() {
@@ -97,6 +105,7 @@ package() {
     _emaki_make install install-niri-emaki DESTDIR="$pkgdir" INSTALL_SUDO_TURN_INTEGRATION=0
     python scripts/core-package.py verify-build-paths --binary "$pkgdir/usr/bin/emaki"
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 "$srcdir/THIRD-PARTY-NOTICES" "$pkgdir/usr/share/licenses/$pkgname/THIRD-PARTY-NOTICES"
     # Review changes to the committed contract; never generate it in package().
     find "$pkgdir" \( -type f -o -type l \) -printf '/%P\n' | LC_ALL=C sort > "$srcdir/actual-files.list"
     diff -u packaging/emaki-config/expected-files.list "$srcdir/actual-files.list"

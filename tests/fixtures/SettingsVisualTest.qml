@@ -69,7 +69,12 @@ Item {
                 "appearance.dark_time": "19:00"
             };
             if (Object.prototype.hasOwnProperty.call(appearance, key))
-                return { key: key, value: appearance[key], default: appearance[key], editable: true };
+                return {
+                    key: key,
+                    value: appearance[key],
+                    default: appearance[key],
+                    editable: true
+                };
             const value = key === "bar.autohide_mode" ? "fullscreen" : key === "appearance.gaps" ? 2 : key === "appearance.wallpaper" ? null : key === "windows.default_column_width" ? "full" : !["bar.autohide", "windows.focus_follows_mouse"].includes(key);
             return {
                 key: key,

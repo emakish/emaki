@@ -57,11 +57,14 @@ with tempfile.TemporaryDirectory(prefix='emaki-launcher-refresh-', dir=QUIET) as
     shell = subprocess.Popen(['qs', '-p', str(base / 'shell/launcher-refresh-test.qml'), '--no-color'],
                              env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     lists = queue.Queue()
+    revision = queue.Queue()
     log = []
 
     def read():
         for line in shell.stdout:
             log.append(line)
+            if 'ICON_REVISION ' in line:
+                revision.put(line.split('ICON_REVISION ', 1)[1].strip())
             if 'CATALOG [' in line:
                 lists.put(line.split('CATALOG [', 1)[1].rsplit(']', 1)[0].split())
 
@@ -83,6 +86,19 @@ with tempfile.TemporaryDirectory(prefix='emaki-launcher-refresh-', dir=QUIET) as
         path.write_text(ENTRY.format(path.stem))
 
     try:
+        # Without 0007 a directory created later is seen only after an unrelated change in an
+        # ancestor: the result would be chance, so say what is missing instead.
+        try:
+            probe = revision.get(timeout=15)
+        except queue.Empty:
+            raise AssertionError('the fixture never reported its Quickshell\n' + ''.join(log[-40:])) from None
+        if probe != 'number':
+            version = subprocess.run(['qs', '--version'], capture_output=True, text=True).stdout.strip()
+            print('SKIP: needs quickshell-emaki 0.3.1-12 or later (patch 0007 watches application '
+                  f'directories created later); the qs in PATH is {version!r} without it (typeof '
+                  f'Quickshell.iconThemeRevision is {probe!r}). Install the packaged fork '
+                  '(packaging/quickshell-emaki, Qt 6.12) or put its qs first in PATH.')
+            raise SystemExit(0)
         apps = ['org.example.Present']
         expect(apps, 'startup')
         for why, path in (

@@ -6,7 +6,7 @@
   <vendor>Emaki</vendor>
   <action id="org.emaki.programs.undo">
     <description>Undo the install of a program</description>
-    <message>Authentication is required to undo the program install in this command: $(command_line)</message>
+    <message>Enter an administrator password to undo the program install.</message>
     <defaults>
       <allow_any>no</allow_any>
       <allow_inactive>no</allow_inactive>

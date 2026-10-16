@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Canonical pixels, approved HTML motion, and actual Qt Canvas physical pixels.
 
 Every temporary profile/image stays in the worktree. No Wayland, bus, socket IPC,

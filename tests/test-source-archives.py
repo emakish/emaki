@@ -38,6 +38,7 @@ class Archives(unittest.TestCase):
         self.base = Path(temp.name)
         self.repo = self.base / 'repo'
         self.repo.mkdir()
+        shutil.copy2(ROOT / 'LICENSE', self.repo / 'LICENSE')
         self.src = self.base / 'prepared'
         self.src.mkdir()
         self.out = self.base / 'out'
@@ -48,6 +49,11 @@ class Archives(unittest.TestCase):
         path.mkdir(parents=True)
         (path / 'PKGBUILD').write_text(f'pkgname={name}\npkgver=1.0\npkgrel=1\n')
         (path / 'fix.patch').write_text('fixture patch\n')
+        if name in ('niri-emaki', 'emaki-config'):
+            (self.src / 'THIRD-PARTY-NOTICES').write_text('Locked Rust notices\n')
+        if name == 'niri-emaki':
+            (self.repo / 'packaging/rust_notices.py').write_text('# notice generator fixture\n')
+            (path / 'rust_notices.py').write_text('# checksummed notice generator fixture\n')
         self.commit = git_commit(self.repo)
         return path
 
@@ -57,6 +63,19 @@ class Archives(unittest.TestCase):
         with tarfile.open(archive) as tar:
             tar.extractall(destination, filter='data')
         return destination / archive.name.removesuffix('.sources.tar.gz')
+
+    def test_font_archive_requires_and_preserves_all_faces_and_notices(self):
+        recipe = self.recipe('emaki-font-iosevka')
+        with self.assertRaisesRegex(ValueError, 'missing prepared source'):
+            source.archive(recipe, self.src, self.out, self.commit, '3.5.1-1')
+        names = [f'IosevkaNerdFontMono-{style}.ttf'
+                 for style in ('Regular', 'Bold', 'Italic', 'BoldItalic')] + ['LICENSE.md', 'README.md']
+        for name in names:
+            (self.src / name).write_text('upstream ' + name)
+        archive = source.archive(recipe, self.src, self.out, self.commit, '3.5.1-1')
+        root = self.unpack(archive)
+        for name in names:
+            self.assertEqual((root / 'src' / name).read_bytes(), (self.src / name).read_bytes())
 
     def test_optional_turn_setup_source_archive_keeps_prepared_payload(self):
         recipe = self.recipe('emaki-sudo-key')
@@ -140,10 +159,60 @@ class Archives(unittest.TestCase):
         shutil.rmtree(dependency)
         root = self.unpack(archive)
         self.assertFalse((root / 'src/cargo-home').exists())
+        self.assertEqual((root / 'src/THIRD-PARTY-NOTICES').read_text(), 'Locked Rust notices\n')
+        self.assertTrue((root / 'rust_notices.py').is_file())
         self.assertTrue((root / 'src/niri-1.0/vendor/fixture-dep/.cargo-checksum.json').exists() or
                         list((root / 'src/niri-1.0/vendor').glob('*/.cargo-checksum.json')))
         run('cargo', 'run', '--frozen', cwd=root / 'src/niri-1.0',
             env=dict(os.environ, CARGO_HOME=str(self.base / 'empty-cargo'), CARGO_NET_OFFLINE='true'))
+
+    @unittest.skipUnless(shutil.which('cargo') and shutil.which('rustc'), 'Cargo and Rust required')
+    def test_prepare_core_fills_selected_cache_for_offline_build(self):
+        dependency = self.base / 'dependency'
+        (dependency / 'src').mkdir(parents=True)
+        (dependency / 'Cargo.toml').write_text(
+            '[package]\nname="fixture-dep"\nversion="0.1.0"\nedition="2021"\n')
+        (dependency / 'src/lib.rs').write_text('pub fn value() -> u8 { 7 }\n')
+        revision = git_commit(dependency)
+        project = self.base / 'project'
+        (project / 'src').mkdir(parents=True)
+        (project / 'crates').mkdir()
+        (project / 'Cargo.toml').write_text(
+            '[workspace]\n[package]\nname="fixture-core"\nversion="0.1.0"\nedition="2021"\n'
+            '[dependencies]\nfixture-dep = { git = "' + dependency.as_uri()
+            + '", rev = "' + revision + '" }\n')
+        (project / 'src/main.rs').write_text('fn main() { assert_eq!(fixture_dep::value(), 7); }\n')
+        shutil.copyfile(ROOT / 'Makefile', project / 'Makefile')
+        seed = self.base / 'seed-cache'
+        # The only fetch is a local file URL, including when the enclosing build is offline.
+        preparation_env = dict(os.environ, CARGO_NET_OFFLINE='false')
+        run('cargo', 'generate-lockfile', cwd=project,
+            env=dict(preparation_env, CARGO_HOME=str(seed)))
+        lock = (project / 'Cargo.lock').read_bytes()
+        shutil.rmtree(seed)
+        cache = self.base / 'selected-cache'
+        target = self.base / 'target'
+        env = dict(os.environ, CARGO_HOME=str(cache), CARGO_TARGET_DIR=str(target))
+        missing = subprocess.run(['cargo', 'build', '--locked', '--offline'], cwd=project,
+                                 env=env, capture_output=True)
+        self.assertNotEqual(missing.returncode, 0)
+        run('make', 'prepare-core', f'CARGO_HOME={cache}', f'CARGO_TARGET_DIR={target}',
+            cwd=project, env=preparation_env)
+        shutil.rmtree(dependency)
+        run('cargo', 'run', '--locked', '--offline', cwd=project,
+            env=dict(env, CARGO_NET_OFFLINE='true'))
+        self.assertEqual((project / 'Cargo.lock').read_bytes(), lock)
+        self.assertFalse((project / '.cache/cargo-home').exists())
+
+    def test_niri_archive_keeps_checksummed_recipe_helper(self):
+        recipe = self.recipe('niri-emaki')
+        (self.src / 'niri-1.0/vendor').mkdir(parents=True)
+        (self.src / 'niri-1.0/.cargo').mkdir()
+        (self.src / 'niri-1.0/.cargo/config.toml').write_text('[net]\noffline = true\n')
+        archive = source.archive(recipe, self.src, self.out, self.commit, '1.0-1')
+        root = self.unpack(archive)
+        self.assertEqual((root / 'rust_notices.py').read_bytes(),
+                         (recipe / 'rust_notices.py').read_bytes())
 
     def test_snapguard_release_checkout_survives_deleting_original_store(self):
         recipe = self.recipe('snapguard')
@@ -169,6 +238,55 @@ class Archives(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'missing prepared source: snapguard/.git'):
             source.archive(recipe, self.src, self.out, self.commit, '0.3.0-1')
 
+    def shim_sources(self):
+        """Lay out src/ as makepkg leaves it: downloads linked from SRCDEST, the RPM unpacked."""
+        store = self.base / 'srcdest'
+        store.mkdir()
+        for name, data in (('shim-x64-16.1-7.x86_64.rpm', b'fedora rpm\n'), ('shim-16.1-COPYRIGHT', b'bsd text\n')):
+            (store / name).write_bytes(data)
+            (self.src / name).symlink_to(store / name)
+        (self.src / 'shim-16.1.tar.bz2').write_bytes(b'upstream source fixture')
+        for name in ('shim-16.1/COPYRIGHT', 'shim-16.1/gnu-efi/README.efilib',
+                     'shim-16.1/Cryptlib/OpenSSL/LICENSE', 'notices/SHIM-NOTICES',
+                     'notices/GNU-EFI-NOTICES', 'notices/CRYPTLIB-NOTICES', 'notices/OPENSSL-NOTICES'):
+            path = self.src / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('upstream terms fixture\n')
+        efi = self.src / 'rpm/usr/lib/efi/shim/16.1-7/EFI/fedora'
+        efi.mkdir(parents=True)
+        for name in ('shimx64.efi', 'mmx64.efi'):
+            (efi / name).write_bytes(name.encode())
+        return store, efi
+
+    def test_shim_archive_keeps_the_pinned_rpm_after_its_download_store_is_gone(self):
+        recipe = self.recipe('emaki-shim-signed')
+        store, _ = self.shim_sources()
+        archive = source.archive(recipe, self.src, self.out, self.commit, '16.1+fedora+7-1')
+        self.assertEqual(json.loads((self.out / 'SOURCES.json').read_text())['packages']['emaki-shim-signed']['archive'],
+                         'emaki-shim-signed-16.1+fedora+7-1.sources.tar.gz')
+        shutil.rmtree(self.src)
+        shutil.rmtree(store)
+        root = self.unpack(archive) / 'src'
+        rpm = root / 'shim-x64-16.1-7.x86_64.rpm'
+        self.assertFalse(rpm.is_symlink())
+        self.assertEqual(rpm.read_bytes(), b'fedora rpm\n')
+        self.assertEqual((root / 'shim-16.1-COPYRIGHT').read_bytes(), b'bsd text\n')
+        self.assertEqual((root / 'rpm/usr/lib/efi/shim/16.1-7/EFI/fedora/shimx64.efi').read_bytes(), b'shimx64.efi')
+
+    def test_shim_without_its_unpacked_loaders_is_rejected(self):
+        recipe = self.recipe('emaki-shim-signed')
+        _, efi = self.shim_sources()
+        (efi / 'mmx64.efi').unlink()
+        with self.assertRaisesRegex(ValueError, 'missing prepared source: rpm/usr/lib/efi/shim/16.1-7/EFI/fedora/mmx64.efi'):
+            source.archive(recipe, self.src, self.out, self.commit, '16.1+fedora+7-1')
+
+    def test_shim_without_its_rpm_is_rejected(self):
+        recipe = self.recipe('emaki-shim-signed')
+        self.shim_sources()
+        (self.src / 'shim-x64-16.1-7.x86_64.rpm').unlink()
+        with self.assertRaisesRegex(ValueError, 'missing prepared source: shim-x64-16.1-7.x86_64.rpm'):
+            source.archive(recipe, self.src, self.out, self.commit, '16.1+fedora+7-1')
+
     def test_missing_second_portal_source_is_rejected(self):
         recipe = self.recipe('xdg-desktop-portal-gnome-emaki')
         (self.src / 'xdg-desktop-portal-gnome').mkdir()
@@ -189,6 +307,14 @@ class Archives(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'another build'):
             source.archive(recipe, self.src, self.out, self.commit, '1.0-1')
 
+    def test_recipe_without_committed_gpl_text_is_rejected(self):
+        recipe = self.recipe('emaki')
+        (self.repo / 'LICENSE').unlink()
+        self.commit = git_commit(self.repo)
+        with self.assertRaises(subprocess.CalledProcessError):
+            source.archive(recipe, self.src, self.out, self.commit, '1.0-1')
+        self.assertFalse(list(self.out.glob('*.sources.tar.gz')))
+
     def test_empty_metapackage_is_self_contained(self):
         recipe = self.recipe('emaki')
         archive = source.archive(recipe, self.src, self.out, self.commit, '1.0-1')
@@ -197,6 +323,7 @@ class Archives(unittest.TestCase):
         self.assertTrue((root / 'src').is_dir())
         self.assertEqual((root / 'PKGBUILD').read_text(), 'pkgname=emaki\npkgver=1.0\npkgrel=1\n')
         self.assertNotIn('/tree/', (root / 'REBUILD.txt').read_text())
+        self.assertEqual((root / 'LICENSE').read_bytes(), (ROOT / 'LICENSE').read_bytes())
 
     def checkout_fixture(self):
         if not (ROOT / 'scripts/make-public.sh').is_file():
@@ -249,6 +376,7 @@ class Archives(unittest.TestCase):
         identity = '@'.join(('private-person', 'private.invalid'))
         (self.repo / 'identity.txt').write_text(identity)
         commit = git_commit(self.repo)
+        shutil.copy2(ROOT / 'LICENSE', self.repo / 'LICENSE')
         (self.repo / '.gitignore').write_text('identity.txt\n')
         commit = git_commit(self.repo)
         with self.assertRaisesRegex(ValueError, 'identity.txt'):
@@ -318,6 +446,7 @@ class BuildWiring(unittest.TestCase):
         self.repo = self.base / 'tree'
         recipe = self.repo / 'packaging/quickshell-emaki'
         recipe.mkdir(parents=True)
+        shutil.copy2(ROOT / 'LICENSE', self.repo / 'LICENSE')
         (self.repo / '.gitignore').write_text('__pycache__/\n')
         for filename in ('build.sh', 'source_archive.py', 'release_inputs.py'):
             shutil.copy2(ROOT / 'packaging' / filename, self.repo / 'packaging' / filename)

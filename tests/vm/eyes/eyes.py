@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Eyes harness: QMP input and VNC capture for one QEMU pass started by eyes-vm.sh.
 
 No ssh and no guest agent: input is QMP send-key / input-send-event, output is the real

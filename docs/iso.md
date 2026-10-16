@@ -151,6 +151,59 @@ scp -P 2222 -i "$HOME/VMs/emaki-vm/id_vm" \
   "$HOME/VMs/iso/test/"
 ```
 
+## Secure Boot install medium (0.9.0)
+
+`iso/build.sh --secure-boot-key PREFIX` builds a medium that starts with Secure Boot on.
+`PREFIX.key` and `PREFIX.crt` are the Emaki release key: a PEM private key and its
+code-signing certificate (RSA-2048; not the module-signing-only usage, which shim refuses).
+That path is the only setting; a test key and the release key differ in nothing else. Which key
+may sign which image is checked right after preflight (`iso/secureboot.sh --check-only`): a
+release image must be signed, only with the Emaki Secure Boot release key whose certificate is
+pinned in `iso/secureboot-release.crt`, unlocked into a RAM file system of the build VM (owner
+only, swap off) by `iso/secureboot-key-to-vm.sh` for that one build (docs/signing.md, section 5);
+a test image may be unsigned, as before, or signed with any other key, never the release key. A
+passphrase-protected key is refused at once (`sbsign` cannot get a passphrase in a detached build),
+and so is a key under the checkout, work or output directory. Between archiso's two passes
+`iso/secureboot.sh`:
+
+- takes `shimx64.efi` and `mmx64.efi` from Fedora's `shim-x64` RPM pinned by SHA-256 in
+  `iso/secureboot-shim.txt` (downloaded once into `<work>/secureboot-cache`) and refuses a shim
+  that `sbverify --list` does not show signed by both Microsoft UEFI CA 2011 and UEFI CA 2023;
+- builds one GRUB with `grub-mkstandalone`, shim lock on, Arch's `sbat.csv` plus a
+  `grub.emaki,1` line, and every module the medium's menus need built in: archiso's own list
+  (`iso/secureboot-grub-base.txt`) plus each module a command or `insmod` of `grub-embed.cfg` and
+  `boot/grub/grub.cfg` needs (`iso/secureboot-grub-modules.py`, from GRUB's `command.lst`; an
+  unknown command fails the build). Under Secure Boot GRUB loads no module from disk;
+- signs that GRUB and both kernels (`vmlinuz-linux`, `vmlinuz-linux-lts`) with the release key
+  and checks each with `sbverify --cert`;
+- puts shim at `EFI/BOOT/BOOTx64.EFI`, GRUB at `EFI/BOOT/grubx64.efi`, MokManager at
+  `EFI/BOOT/mmx64.efi` and the certificate at `/emaki.cer`, on the ESP (rebuilt with archiso's
+  sizing) and on ISO 9660, and records the certificate and shim in `/emaki/SECUREBOOT`.
+
+GRUB 2.16 under Secure Boot refuses fonts from the stick (the PNG background still loads), so the
+menu font also rides in GRUB's memdisk and the staged `boot/grub/grub.cfg` loads it from
+`(memdisk)`; the ESP is labelled `EMAKI`, the name MokManager lists.
+
+What a person sees on a PC with Secure Boot on (OVMF, 2026-10-14): the first start of the stick
+shows shim's "Verification failed: (0x1A) Security Violation" with OK, then the blue "Shim UEFI
+key management" with a 10-second "Press any key" countdown. Key → "Enroll key from disk" →
+`EMAKI` → `emaki.cer` → "Continue" → "Enroll the key(s)?" "Yes" → "Reboot" (no password); from
+then on the stick goes straight to its menu with Secure Boot on. When the countdown runs out,
+shim shows the same error again and then gives the firmware back; starting from the stick again
+brings MokManager back. The enrolled key stays in the PC's MOK list and trusts other images
+signed with that key. To remove it later, start the installed system, where `mokutil` is
+available, and mount the USB. Run `sudo mokutil --delete /path/to/mounted-usb/emaki.cer`,
+replacing `/path/to/mounted-usb` with the USB's mount location, and choose a temporary password.
+Restart from the USB and confirm the deletion in MokManager with that password. Future starts of release
+media with Secure Boot on will need enrolment again. This removes the medium's release key,
+not the installed system's separate machine key. With Secure Boot off nothing
+changes: shim starts GRUB without checks. Initramfs images are not verified by shim. The UEFI
+Shell entry and the 32-bit `BOOTIA32.EFI` stay unsigned and are refused under Secure Boot.
+`iso/verify-image.py` refuses a medium whose ESP holds only part of those files. Offline tests:
+`python3 iso/test-secureboot.py` (part of `iso/check.sh`) and, for the release key tools,
+`python3 tests/test-secureboot-release-key.py` (part of `make check`); the VM proof uses the Secure Boot
+firmware of `tests/vm/README.md`.
+
 ## Live and installer layout
 
 mkarchiso v91 replaces profile `HookDir` settings with the live root's
@@ -297,9 +350,9 @@ undecodable or black captures fail, and no desktop screenshot is substituted as
 GRUB evidence. Decoded frames are reported as `SHOT`, with an unjudged `.json`
 sidecar. Screenshots alone do not prove the menu text is correct.
 
-Repeat with `erase-ext4` and a fresh directory. For `manual`, use GParted in the
-live ISO first: create GPT, a FAT32 EFI System Partition as partition 1, and a root
-partition as partition 2 on the disposable target. The installer's primary fixture currently
+Repeat with `erase-ext4` and a fresh directory. For `manual`, prepare the disposable
+target in a root shell of the live ISO first (`sfdisk` and `mkfs.fat`): create GPT, a FAT32
+EFI System Partition as partition 1, and a root partition as partition 2. The installer's primary fixture currently
 preserves the formatted ESP and formats partition 2 as btrfs; the fallback fixture
 formats both and uses ext4. Inspect the selected fixture before running it.
 A blank disk alone is not a manual-partition fixture. Rollback booting from a
@@ -422,7 +475,8 @@ ls "$recovery/@snapshots"
 
 Replace `7` below with the chosen snapshot number. Read its mount table and boot
 entries: `/` must use `subvol=@`, the shared mounts must use `@home`, `@log`, `@pkg`
-and `@snapshots`, and normal boot entries must use `/@/boot/` and `rootflags=subvol=@`
+and `@snapshots` (with Secure Boot also `@secureboot` at `/var/lib/emaki/secureboot`, with
+hibernation `@swap` at `/swap`), and normal boot entries must use `/@/boot/` and `rootflags=subvol=@`
 (or `subvol=/@`) with the installed filesystem UUID. Stop if the layout differs.
 
 ```sh
@@ -649,7 +703,7 @@ sudo cat /boot/emaki/*/manifest.json
 
 Capture the complete package transaction output. It must show the refresh hook
 and its success message. Do not run a manual refresh before the first reboot:
-that would hide a broken package hook. The 0.8.1 packages must upgrade the installed
+that would hide a broken package hook. The 0.9.0 packages must upgrade the installed
 0.2.0 packages so ordinary `pacman -Syu` selects them. No publication is part of this check.
 
 Reboot and capture the actual framebuffer:

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The text console types what the login screen types: the same keys give the same characters.
 
 KEYMAP in /etc/vconsole.conf is render.CONSOLE's map for the first layout: the text console

@@ -6,6 +6,11 @@ import Quickshell.Io
 
 QtObject {
     id: root
+    property bool active: true
+    property var niri: null
+    // The shared compositor model already follows events and output changes.
+    readonly property string topology: JSON.stringify(niri?.model?.outputs ?? {})
+    property bool refreshQueued: false
     property var outputs: []
     property string main: ""
     property bool pending: false
@@ -53,6 +58,27 @@ QtObject {
         closing = true;
         worker.stdinEnabled = false;
     }
+    function refreshState(): void {
+        if (closing)
+            return;
+        if (!worker.running) {
+            busy = true;
+            worker.running = true;
+        } else if (!send({
+            op: "state"
+        })) {
+            refreshQueued = true;
+        }
+    }
+    onActiveChanged: {
+        if (active)
+            refreshState();
+    }
+    onTopologyChanged: {
+        // Retain the last-screen rescue after a session-only disable, even off-page.
+        if (active || pending || outputs.some(output => output.enabled === false))
+            refreshState();
+    }
     Component.onDestruction: close()
     property Process worker: Process {
         id: worker
@@ -79,6 +105,10 @@ QtObject {
                     root.message = "Display settings returned an invalid response.";
                 }
                 root.busy = false;
+                if (root.refreshQueued) {
+                    root.refreshQueued = false;
+                    root.refreshState();
+                }
             }
         }
         stderr: SplitParser {
@@ -91,19 +121,17 @@ QtObject {
                 root.message = "Display settings stopped. Trying to reconnect.";
         }
     }
+    property Timer countdown: Timer {
+        interval: 1000
+        repeat: true
+        running: root.active && root.pending && root.seconds > 0
+        onTriggered: root.seconds -= 1
+    }
     property Timer refresh: Timer {
         interval: 2000
         repeat: true
-        running: !root.closing
-        onTriggered: {
-            if (!worker.running) {
-                root.busy = true;
-                worker.running = true;
-            } else {
-                root.send({
-                    op: "state"
-                });
-            }
-        }
+        // Legacy/standalone clients without the shared model need an open-page fallback.
+        running: !root.closing && root.active && (!root.niri || !root.niri.connected || !worker.running)
+        onTriggered: root.refreshState()
     }
 }

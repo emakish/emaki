@@ -139,6 +139,10 @@ ShellRoot {
         });
         check(adapter.detailRows[1].value === "fixture program ", "command controls and direction overrides sanitized");
         client.request = Object.assign({}, client.request, {
+            command: "සත්\u200dයාපනය\u200bمی\u200cشود\uDB40\uDC01"
+        });
+        check(adapter.detailRows[1].value === "සත්\u200dයාපනය می\u200cشود ", "command preserves script joiners and spaces other format characters");
+        client.request = Object.assign({}, client.request, {
             command: ""
         });
         check(adapter.detailRows[1].value === Copy.unavailable, "missing program uses unavailable placeholder");

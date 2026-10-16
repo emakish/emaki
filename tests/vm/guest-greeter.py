@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Disposable QEMU ONLY, root: operations for host check-greeter.py.
 
 No password handling, arbitrary commands, host sockets, or greetd restarts.

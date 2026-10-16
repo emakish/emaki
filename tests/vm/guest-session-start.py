@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Disposable QEMU/KVM ONLY, root: capture both sides of one login handoff.
 
 No authentication, service changes or signalling of desktop processes. Every

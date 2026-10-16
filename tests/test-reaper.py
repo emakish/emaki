@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """tests/reaper.py seen from outside: what reaches a guarded test, and how its run ends.
 
 Every case runs a small guarded script as a child process, never this process. Terminal keys
@@ -34,6 +36,8 @@ mode, log = sys.argv[1:3]
 def note(text):
     with open(log, 'a') as f:
         f.write(text + '\\n')
+    if mode == 'ready-signal' and text.startswith('ready '):
+        os.kill(os.getpid(), signal.SIGHUP)
 
 
 send = signal.pidfd_send_signal
@@ -61,9 +65,9 @@ def stop(sig, _frame):
 
 for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
     signal.signal(sig, stop)
-note(f'ready {os.getppid()}')
 try:
     try:
+        note(f'ready {os.getppid()}')
         time.sleep(30)
     finally:
         # Cleanup that must run to its end: busy, then a short sleep.
@@ -177,7 +181,6 @@ class Signals(unittest.TestCase):
             self.assertTrue(wait_for(lambda: any(line.startswith('ready ') for line in self.lines())),
                             self.lines())
             pid = int(next(line for line in self.lines() if line.startswith('ready ')).split()[1])
-            time.sleep(.2)
             closed = act(master, pid)
             if closed:
                 os.close(master)
@@ -193,6 +196,12 @@ class Signals(unittest.TestCase):
         lines = [line for line in self.lines() if not line.startswith('ready ')]
         sent = [line for line in lines if line.startswith('passed on ')]
         return sent, [line for line in lines if line not in sent], process.returncode
+
+    def test_signal_at_readiness_still_runs_cleanup(self):
+        result = subprocess.run([sys.executable, '-I', str(self.target),
+                                 'ready-signal', str(self.log)], timeout=15)
+        self.assertEqual(result.returncode, -signal.SIGHUP)
+        self.assertEqual(self.lines()[1:], ['got SIGHUP', 'cleanup done'])
 
     def test_ctrl_c_reaches_the_test_once(self):
         # The terminal sends SIGINT to its whole foreground process group, the test included.

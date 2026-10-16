@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Restart policy of the session units. The sleep guard must always come back. The shell
 and the idle policy come back after a crash, but not after an exit no restart can heal,
 and a tight crash loop of the shell stops. Reads the unit files; runs the start scripts

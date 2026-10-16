@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Emaki cursor art: the Haze set (picked 2026-10-01, arrow 7 of the mockup
 docs/mockups/cursor/cursor.html; the full set was approved on docs/mockups/cursor/set.html).
 

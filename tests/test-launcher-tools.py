@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Actual helpers, cliphist/GIO, QS UI, fake terminal/wl-copy/MPRIS; private profile/bus."""
 from runtime_fixture import runtime_path
 import json
@@ -17,7 +19,7 @@ if '--inside' not in sys.argv:
     root=Path(tempfile.mkdtemp(prefix='lt-',dir=ROOT/'.cache'))
     for d in ('r','c','s','d','cache','tmp','bin'):(root/d).mkdir(mode=0o700)
     cfg=root/'bus.conf';cfg.write_text(f'<busconfig><type>session</type><listen>unix:path={runtime_path(root)}/bus</listen><auth>EXTERNAL</auth><policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>')
-    env=dict(os.environ,QT_QPA_PLATFORM='offscreen',QT_QUICK_BACKEND='software',QML_DISABLE_DISK_CACHE='1',PYTHONDONTWRITEBYTECODE='1',EMAKI_BIN='',EMAKI_SHELL_NOTIFICATIONS='0',EMAKI_TEST_MPRIS='1',GSETTINGS_BACKEND='memory',XDG_CONFIG_HOME=str(root/'c'),XDG_STATE_HOME=str(root/'s'),XDG_DATA_HOME=str(root/'d'),XDG_DATA_DIRS=str(root/'d'),XDG_CACHE_HOME=str(root/'cache'),XDG_RUNTIME_DIR=str(runtime_path(root)),TMPDIR=str(root/'tmp'),DBUS_SYSTEM_BUS_ADDRESS='unix:path='+str(root/'missing'))
+    env=dict(os.environ, HOME=str(root),QT_QPA_PLATFORM='offscreen',QT_QUICK_BACKEND='software',QML_DISABLE_DISK_CACHE='1',PYTHONDONTWRITEBYTECODE='1',EMAKI_BIN='',EMAKI_SHELL_NOTIFICATIONS='0',EMAKI_TEST_MPRIS='1',GSETTINGS_BACKEND='memory',XDG_CONFIG_HOME=str(root/'c'),XDG_STATE_HOME=str(root/'s'),XDG_DATA_HOME=str(root/'d'),XDG_DATA_DIRS=str(root/'d'),XDG_CACHE_HOME=str(root/'cache'),XDG_RUNTIME_DIR=str(runtime_path(root)),TMPDIR=str(root/'tmp'),DBUS_SYSTEM_BUS_ADDRESS='unix:path='+str(root/'missing'))
     for k in ('DISPLAY','WAYLAND_DISPLAY','NIRI_SOCKET','DBUS_SESSION_BUS_ADDRESS','QT_SCALE_FACTOR','QT_LOGGING_RULES'):env.pop(k,None)
     subprocess.run(['dbus-run-session','--config-file='+str(cfg),'--',sys.executable,'-B',__file__,'--inside',str(root)],env=env,check=True,timeout=90)
     raise SystemExit
@@ -65,7 +67,7 @@ assert helper({'op':'terminal','id':'fixture-term','terminal':str(term),'uris':d
 wait_for(lambda:(root/'terminal.json').exists())
 cwd,args=json.loads((root/'terminal.json').read_text());assert cwd==str(root) and args==['-e','/usr/bin/printf','literal ; $(touch BAD)','Fixture Terminal','--icon','fixture-icon',str(apps/'fixture-term.desktop'),'%' ]+['/tmp/a b.txt', drop_uris[1]],args
 assert helper({'op':'terminal','id':'fixture-term','terminal':str(root/'absent')})['state']=='terminal_missing'
-assert helper({'op':'web','query':'PRIVATE_QUERY'})['state']=='no_handler'
+assert helper({'op':'web','query':'PRIVATE_QUERY'})['state']=='open_failed'
 web=root/'web.py';web.write_text('import sys,json\nfrom pathlib import Path\nPath('+repr(str(root/'web.json'))+').write_text(json.dumps(sys.argv[1:]))\n')
 (apps/'fixture-web.desktop').write_text('[Desktop Entry]\nType=Application\nName=Fixture Browser\nExec=python3 -B '+str(web)+' %u\nMimeType=x-scheme-handler/https;\n')
 (root/'c/mimeapps.list').write_text('[Default Applications]\nx-scheme-handler/https=fixture-web.desktop\n')
@@ -241,5 +243,5 @@ finally:
 assert helper({'op':'clip-clear'})['state']=='deleted'
 assert helper({'op':'clip-list'})['entries']==[]
 content=(root/'qs.log').read_text();assert not any(s in content for s in ['PRIVATE_','WARN','ERROR','TypeError','ReferenceError']),content
-assert launches(root, ['fixture-term', 'fixture-web', 'wl-copy']).count('fixture-term') >= 3
-print('PASS: cliphist text/image/copy/delete/private UI; owned recorder pause/resume/no orphan; GIO web/terminal field codes; persistent frequent; launcher settings removed; retained dock core keys, bar.* applied at start; real QS MPRIS against private player;',root.relative_to(ROOT))
+assert launches(root, ['fixture-term', 'xdg-open', 'wl-copy']).count('fixture-term') >= 3
+print('PASS: cliphist text/image/copy/delete/private UI; owned recorder pause/resume/no orphan; xdg-open web/GIO terminal field codes; persistent frequent; launcher settings removed; retained dock core keys, bar.* applied at start; real QS MPRIS against private player;',root.relative_to(ROOT))

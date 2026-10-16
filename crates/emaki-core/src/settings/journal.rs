@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Append-only semantic records. Every write crosses the schema allowlist.
 use super::storage::{Profile, id, io, mkdir, read, safe_path, sync_dir, write_new};
 use super::*;

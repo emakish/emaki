@@ -52,4 +52,19 @@ const normalize = value => value.replace(/<!--[\s\S]*?-->/g, '').replace(/>\s+</
 assert.equal(normalize(dynamicSvg), normalize(staticSvg));
 const alternate = svg(icons.programsSvg('#102030', '#203040', '#304050', '#405060', '#ffffff'));
 for (const paint of paints.slice(0, 4)) assert.ok(!alternate.includes(paint));
+// Welcome to Emaki has its own tile (two pixel sparkles), drawn live in the accent by the same
+// consumers; its installed SVG is that drawing in the default accent, never the old letter mark.
+for (const file of ['shell/Dock.qml', 'shell/LauncherItem.qml', 'shell/ClockBody.qml'])
+    assert.match(read(file), /"emaki-welcome"[^\n]*\n?[^\n]*welcomeSvg\(ShellPalette\.accent, ShellPalette\.accentStrong, ShellPalette\.accentSoft, ShellPalette\.managerIconInk\)/, file);
+{
+    const staticWelcome = read('art/icons/emaki-welcome.svg');
+    const welcomePaints = [...staticWelcome.matchAll(/<path fill="([^"]+)"/g)].map(match => match[1]);
+    assert.equal(welcomePaints.length, 4);
+    const dynamicWelcome = svg(icons.welcomeSvg(welcomePaints[1], welcomePaints[0], welcomePaints[2], welcomePaints[3]));
+    assert.equal(normalize(dynamicWelcome), normalize(staticWelcome));
+    assert.deepEqual(welcomePaints.slice(0, 3), paints.slice(0, 3));
+    assert.doesNotMatch(staticWelcome, /M3 22L7\.161 22L12\.896 2L8\.735 2Z|#e2733f/);
+    const otherWelcome = svg(icons.welcomeSvg('#102030', '#203040', '#304050', '#ffffff'));
+    for (const paint of welcomePaints.slice(0, 3)) assert.ok(!otherWelcome.includes(paint));
+}
 console.log('PASS: the grey Settings gear is the only Settings drawing; app icon geometry and live accent consumers');

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Check the Emaki xcursor theme: reproducible, valid Xcursor files, exact pixel cells, every name
 niri and apps ask for, and the niri configs that select it."""
 from pathlib import Path

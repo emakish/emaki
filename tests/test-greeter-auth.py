@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Real framed greetd workers + production QML auth/session, isolated offscreen.
 
 No passwords enter IPC/files/logs: fixture actions select a fixed dummy password.

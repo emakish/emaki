@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Real pointer/key events in the production view; offscreen and isolated.
 
 Runs at every window size in SIZES by default: the short- and tall-window checks in
@@ -20,6 +22,8 @@ UI = Path(__file__).resolve().parents[1]
 ROOT = UI.parents[1]
 sys.path.insert(0, str(ROOT / 'installer'))
 from emaki_installer.inventory import encrypted_warning, unconfirmed_identity_warning
+sys.path.insert(0, str(UI / 'tests'))
+import editor_fixture  # noqa: E402
 
 SIZES = ['960x640', '1024x700', '1280x800', '1366x768', '1536x886']
 WIFI_NETWORKS = [dict(ssid=f'Apartment {index:02}', bssid=f'02:00:00:00:00:{index:02x}',
@@ -48,6 +52,7 @@ def run(width, height, test='InteractionTest', marker='INTERACTION_OK', scale=1)
             for letter, kind in zip('abcd', ('crypto_LUKS', 'BitLocker', 'cs_fvault2', 'apfs'))
         ]))
         entry = entry.replace('["__WIFI_NETWORKS__"]', json.dumps(WIFI_NETWORKS))
+        entry = entry.replace('["__EDITOR_INVENTORY__"]', json.dumps(editor_fixture.public(editor_fixture.inventory())))
         (root / 'ui/interaction-test.qml').write_text(entry)
         if test == 'InteractionTest':
             # Only the external helper is replaced; production view/controller handle real events.
@@ -92,13 +97,32 @@ def run(width, height, test='InteractionTest', marker='INTERACTION_OK', scale=1)
         for diagnostic in ('ASSERTION_FAILED', 'ReferenceError', 'TypeError', 'FAIL!', 'Binding loop', 'Unable to assign'):
             assert diagnostic not in log, log
         if test == 'InteractionTest':
-            print(f'PASS real pointer/key events at {width}x{height}: Wi-Fi selection, focus, Enter and failed joins; encrypted warning viewport and focus, map, search, software and all password toggles', flush=True)
+            # What the partition editor's keys and clicks made, through the real planner.
+            edits = [json.loads(line.split('EDITOR_PLAN ', 1)[1]) for line in log.splitlines() if 'EDITOR_PLAN ' in line]
+            assert len(edits) == 1, log
+            check_editor_plan(edits[0])
+        if test == 'InteractionTest':
+            print(f'PASS real pointer/key events at {width}x{height}: Wi-Fi selection, focus, Enter and failed joins; encrypted warning viewport and focus, map, search, software, all password toggles and the partition editor (its plan accepted by the planner)', flush=True)
         elif test == 'KeyboardTest':
             print(f'PASS live keyboard at {width}x{height}: ' + log.split(marker, 1)[1].splitlines()[0].strip(), flush=True)
         elif test == 'PasteTest':
             print(f'PASS no paste into a password field at {width}x{height}: ' + log.split(marker, 1)[1].splitlines()[0].strip(), flush=True)
         else:
             print(f'PASS no copy out of a password field at {width}x{height}: ' + log.split(marker, 1)[1].splitlines()[0].strip(), flush=True)
+
+
+def check_editor_plan(edits):
+    """The window's partition changes and mounts are a plan the planner accepts, as the review shows it."""
+    config = dict(mode='manual', disk_id='/dev/vda', encryption='none', hibernation=False, layouts=['us'],
+                  user=dict(name='Demo User', login='demo', password='interaction-only'), timezone='UTC',
+                  mounts=edits['mounts'], partitioning=edits['partitioning'])
+    ack = editor_fixture.plan_ack(config, editor_fixture.inventory())
+    assert not ack['errors'], ack['errors']
+    for line in ('Delete partition 3 (/dev/vda3, 40.00 GiB, ext4, Linux): all its files are lost.',
+                 "Keep partition 1 (/dev/vda1, 0.50 GiB, vfat) and its files; use: /efi. It holds another system's startup files; its fallback loader will not be changed."):
+        assert line in ack['summary'], ack['summary']
+    assert any(line.startswith('Create partition 3: 40.00 GiB, btrfs; use: @ → /') for line in ack['summary']), ack['summary']
+    assert any(line.startswith('Create partition 4: ') and line.endswith(', swap; use: swap.') for line in ack['summary']), ack['summary']
 
 
 def main():

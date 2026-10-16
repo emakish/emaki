@@ -1,0 +1,13 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Package
+Target = *
+
+[Action]
+Description = Recording package transaction boot identity (pacman)
+When = PreTransaction
+Exec = /bin/sh -c '@PREFIX@/share/libalpm/scripts/emaki-rollback-holds mark-lock || :'

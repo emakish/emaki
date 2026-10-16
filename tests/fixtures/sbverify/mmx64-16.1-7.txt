@@ -1,0 +1,6 @@
+signature 1
+image signature issuers:
+ - /C=US/ST=Massachusetts/L=Cambridge/O=Red Hat, Inc./OU=Fedora Secure Boot CA 20200709/CN=fedoraca
+image signature certificates:
+ - subject: /C=US/ST=Massachusetts/L=Cambridge/O=Red Hat, Inc./OU=Fedora Secure Boot Signer/OU=bkernel01 kernel/CN=kernel-signer
+   issuer:  /C=US/ST=Massachusetts/L=Cambridge/O=Red Hat, Inc./OU=Fedora Secure Boot CA 20200709/CN=fedoraca

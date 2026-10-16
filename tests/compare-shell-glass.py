@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Real Qt glass before/after PNGs using isolated qs + surfaceless llvmpipe.
 
 Requires an existing baseline checkout/archive (read-only). No compositor, live

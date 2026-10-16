@@ -20,6 +20,7 @@ with tempfile.TemporaryDirectory(prefix='recovery-notice-', dir=evidence) as dir
         (base / name).mkdir(mode=0o700)
     for name in ('NotificationStore.qml', 'ShellRecoveryNotice.qml'):
         shutil.copyfile(ROOT / 'shell' / name, base / 'qml' / name)
+    shutil.copytree(ROOT / 'shell/helpers', base / 'qml/helpers')
     helper = base / 'bin/emaki-shell-health'
     helper.write_text('''#!/bin/sh
 case "$1" in
@@ -124,13 +125,14 @@ print('PASS: startup readiness, one notice with backup name, no duplicate after 
       'each offers one Report action that closes the notice and asks for the shell report')
 
 # Exercise the real helper and shell lifecycle, including a process killed without
-# QML teardown. Separate history directories keep old inert notices out of counts.
+# QML teardown. Clear history between lifecycles while keeping the boot budget.
 with tempfile.TemporaryDirectory(prefix='recovery-life-', dir=evidence) as directory:
     base = Path(directory)
     for name in ('home', 'config', 'state', 'cache', 'runtime', 'bin', 'qml'):
         (base / name).mkdir(mode=0o700)
     for name in ('NotificationStore.qml', 'ShellRecoveryNotice.qml'):
         shutil.copyfile(ROOT / 'shell' / name, base / 'qml' / name)
+    shutil.copytree(ROOT / 'shell/helpers', base / 'qml/helpers')
     for name in ('emaki-shell-health', 'emaki_paths.py'):
         shutil.copyfile(ROOT / 'scripts' / name, base / 'bin' / name)
     real_helper = base / 'bin/emaki-shell-health-real'
@@ -195,7 +197,20 @@ ShellRoot {
             for error in ('ReferenceError', 'TypeError', 'Unable to assign', 'Cannot assign'):
                 assert error not in output, output
             notes = json.loads(value(output, 'LIFECYCLE_NOTICES')[0])
+            print('LIFECYCLE', attempt, json.dumps(notes), flush=True)
             if hold:
+                if notes:
+                    # A killed shell can leave its asynchronous history writer alive.
+                    # Wait for this notice's save before the next lifecycle unlinks it;
+                    # otherwise that writer can restore an inert notice after the unlink.
+                    def history_saved():
+                        try:
+                            saved = json.loads(history.read_text())['entries']
+                            return [(entry['summary'], entry['time']) for entry in saved] == [
+                                (entry['summary'], entry['time']) for entry in notes]
+                        except (FileNotFoundError, ValueError, KeyError):
+                            return False
+                    poll(history_saved, 'Notice history was not saved before the crash: ' + output)
                 current = json.loads(marker.read_text())
                 assert current['pid'] == process.pid and current['boot_id'] == boot, current
                 if reload:

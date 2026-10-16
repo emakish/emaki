@@ -65,7 +65,7 @@ rollback: If snapguard is absent or not working, say plainly that rollback prote
 
 ## alongside-test-boot-safety
 
-Protects the EFI filesystem an alongside installation shares with Windows: writes only EFI/Emaki, only while Windows is fully shut down, and verifies Windows' files afterwards; recovers a validated existing Emaki boot entry after a manual recovery boot on ordinary UEFI.
+Protects the EFI filesystem an older (pre-0.9) alongside installation shares with Windows: writes only EFI/Emaki, only while Windows is fully shut down, and verifies Windows' files afterwards; recovers a validated existing Emaki boot entry (on Emaki's own ESP since 0.9) after a manual recovery boot on ordinary UEFI.
 
 - Files: `/usr/bin/emaki-boot-order`, `/usr/lib/systemd/system/emaki-boot-order.service`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
@@ -76,7 +76,7 @@ Protects the EFI filesystem an alongside installation shares with Windows: write
 
 ```system-map
 component: alongside-test-boot-safety
-what: Protects the EFI filesystem an alongside installation shares with Windows: writes only EFI/Emaki, only while Windows is fully shut down, and verifies Windows' files afterwards; recovers a validated existing Emaki boot entry after a manual recovery boot on ordinary UEFI.
+what: Protects the EFI filesystem an older (pre-0.9) alongside installation shares with Windows: writes only EFI/Emaki, only while Windows is fully shut down, and verifies Windows' files afterwards; recovers a validated existing Emaki boot entry (on Emaki's own ESP since 0.9) after a manual recovery boot on ordinary UEFI.
 files:
   /usr/bin/emaki-boot-order
   /usr/lib/systemd/system/emaki-boot-order.service
@@ -91,7 +91,7 @@ rollback: Keep the Windows loader and recovery USB; use the firmware picker or c
 
 Default application associations, launcher and terminal themes, file-manager preferences, toolkit appearance and desktop portal routing. Skeleton templates are package-owned; copies in a new account are personal files and are not updated in place.
 
-- Files: `/etc/skel/.config/**`, `/etc/xdg/dolphinrc`, `/etc/xdg/fastfetch/config.jsonc`, `/etc/xdg/hypr/hyprlock.conf`, `/etc/xdg/kdeglobals`, `/etc/xdg/menus/emaki-applications.menu`, `/etc/xdg/mimeapps.list`, `/etc/xdg/qt6ct/qt6ct.conf`, `/etc/xdg/xdg-desktop-portal/niri-portals.conf`, `/usr/share/emaki/fuzzel/*`, `/usr/share/emaki/kitty/*`, `/usr/share/emaki/qt6ct/*`, `/usr/share/themes/Emaki/gtk-3.0/gtk.css`, `/usr/bin/emaki-terminal`
+- Files: `/etc/skel/.config/**`, `/etc/xdg/dolphinrc`, `/etc/xdg/fastfetch/config.jsonc`, `/etc/xdg/hypr/hyprlock.conf`, `/etc/xdg/kdeglobals`, `/etc/xdg/menus/emaki-applications.menu`, `/etc/xdg/mimeapps.list`, `/etc/xdg/qt6ct/qt6ct.conf`, `/etc/xdg/xdg-desktop-portal/niri-portals.conf`, `/etc/zsh/zshenv`, `/etc/zsh/emaki.zsh`, `/usr/share/emaki/fuzzel/*`, `/usr/share/emaki/kitty/*`, `/usr/share/fonts/emaki-iosevka/*`, `/usr/share/licenses/emaki-font-iosevka/*`, `/usr/share/emaki/qt6ct/*`, `/usr/share/themes/Emaki/gtk-3.0/gtk.css`, `/usr/bin/emaki-terminal`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
 - State: none yet: no single JSON command reports toolkit overrides, associations and portal routing; `emaki settings list --json` reports only supported managed choices.
 - Change: Use `emaki settings` for supported terminal and default-application choices. A person can override associations in ~/.config/mimeapps.list and maintain their own application configuration. Change packaged defaults with emaki-config.
@@ -111,8 +111,12 @@ files:
   /etc/xdg/mimeapps.list
   /etc/xdg/qt6ct/qt6ct.conf
   /etc/xdg/xdg-desktop-portal/niri-portals.conf
+  /etc/zsh/zshenv
+  /etc/zsh/emaki.zsh
   /usr/share/emaki/fuzzel/*
   /usr/share/emaki/kitty/*
+  /usr/share/fonts/emaki-iosevka/*
+  /usr/share/licenses/emaki-font-iosevka/*
   /usr/share/emaki/qt6ct/*
   /usr/share/themes/Emaki/gtk-3.0/gtk.css
   /usr/bin/emaki-terminal
@@ -323,7 +327,7 @@ A session-owned overlay selects an area, a window or a screen and captures a pic
 - Files: `/usr/share/emaki/shell/Capture*.qml`, `/usr/share/emaki/shell/CaptureText.js`, `/usr/share/emaki/shell/helpers/capture.py`, `/usr/libexec/emaki/emaki-capture-recorder`, `/usr/libexec/emaki/dmabuf.py`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
 - State: `emaki-shell call capture status` (prints JSON)
-- Change: Run `emaki-shell call capture open`, choose the source and mode, then capture. `emaki-shell call capture stop` stops recording. The action is deliberately unbound until the owner chooses a key.
+- Change: Super+Alt+R (`emaki-shell call capture record`, 2026-10-15) opens the overlay set to recording and, pressed again, stops the recording. `emaki-shell call capture open` opens it as last used; choose the source and mode, then capture. `emaki-shell call capture stop` stops recording.
 - Never: Bypass compositor capture protection, capture while locked, pass the trusted Wayland descriptor to a helper, replace personal media, or report an incomplete recording as saved.
 - Rollback: Restore matching shell and compositor packages. Existing pictures and videos remain personal files and are not deleted by rollback.
 
@@ -338,7 +342,7 @@ files:
   /usr/libexec/emaki/dmabuf.py
 zone: package
 state: emaki-shell call capture status
-change: Run `emaki-shell call capture open`, choose the source and mode, then capture. `emaki-shell call capture stop` stops recording. The action is deliberately unbound until the owner chooses a key.
+change: Super+Alt+R (`emaki-shell call capture record`, 2026-10-15) opens the overlay set to recording and, pressed again, stops the recording. `emaki-shell call capture open` opens it as last used; choose the source and mode, then capture. `emaki-shell call capture stop` stops recording.
 never: Bypass compositor capture protection, capture while locked, pass the trusted Wayland descriptor to a helper, replace personal media, or report an incomplete recording as saved.
 rollback: Restore matching shell and compositor packages. Existing pictures and videos remain personal files and are not deleted by rollback.
 ```
@@ -423,7 +427,7 @@ rollback: Undo managed changes with `emaki settings undo ID`. Restore the person
 
 The patched niri compositor executable used by the Emaki desktop and login compositor; its configuration belongs to the separate compositor-configuration component. It reserves the authentication layer and isolates its input through trusted-authentication-path.
 
-- Files: `/usr/bin/niri-emaki`
+- Files: `/usr/bin/niri-emaki`, `/usr/share/licenses/niri-emaki/THIRD-PARTY-NOTICES`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
 - State: `emaki niri snapshot --json` (prints JSON)
 - Change: On Arch, update niri-emaki through a full package transaction; sign out and back in when requested. Change supported preferences through `emaki settings`.
@@ -435,6 +439,7 @@ component: compositor-runtime
 what: The patched niri compositor executable used by the Emaki desktop and login compositor; its configuration belongs to the separate compositor-configuration component. It reserves the authentication layer and isolates its input through trusted-authentication-path.
 files:
   /usr/bin/niri-emaki
+  /usr/share/licenses/niri-emaki/THIRD-PARTY-NOTICES
 zone: package
 state: emaki niri snapshot --json
 change: On Arch, update niri-emaki through a full package transaction; sign out and back in when requested. Change supported preferences through `emaki settings`.
@@ -521,7 +526,7 @@ rollback: For portal packages and their dependencies together, follow snapshot-r
 
 The desktop bar, dock, launcher, notifications, clipboard, system panel, lock, welcome and Report a problem windows, plus their QML modules, shaders and helpers. The state command requires the running desktop shell. The launcher hosts Settings on the same surface, growing from its normal 720-pixel width to at most 1240 by 810 logical pixels within the output. Application, recent-item, notification, night-light and welcome state under $XDG_STATE_HOME/emaki is runtime state outside settings history. Shell crash-offer history under $XDG_STATE_HOME/emaki/shell-health lasts for one boot; running-process markers and clean-exit receipts live under $XDG_RUNTIME_DIR/emaki-shell-health. The lock and login screens show a re-encoded copy of the account picture from $XDG_RUNTIME_DIR/emaki-account-picture.
 
-- Files: `/usr/share/emaki/shell/AccountPicture.qml`, `/usr/share/emaki/shell/AppCatalog.qml`, `/usr/share/emaki/shell/AppIdentity.qml`, `/usr/share/emaki/shell/AppLaunch.qml`, `/usr/share/emaki/shell/AuthController.qml`, `/usr/share/emaki/shell/BarPolicy.qml`, `/usr/share/emaki/shell/Calculator.js`, `/usr/share/emaki/shell/CalendarMonth.qml`, `/usr/share/emaki/shell/CanvasTint.qml`, `/usr/share/emaki/shell/ClipboardHistory.qml`, `/usr/share/emaki/shell/ClockBody.qml`, `/usr/share/emaki/shell/ClockCompactRow.qml`, `/usr/share/emaki/shell/ClockIsland.qml`, `/usr/share/emaki/shell/ClockPanel.qml`, `/usr/share/emaki/shell/Dock.qml`, `/usr/share/emaki/shell/DockBackdrop.qml`, `/usr/share/emaki/shell/DockBackdropRegion.qml`, `/usr/share/emaki/shell/DockInputRegion.qml`, `/usr/share/emaki/shell/DockIpc.qml`, `/usr/share/emaki/shell/DockPolicy.qml`, `/usr/share/emaki/shell/DockStore.qml`, `/usr/share/emaki/shell/FocusRing.qml`, `/usr/share/emaki/shell/GlassCopy.qml`, `/usr/share/emaki/shell/GlassShape.qml`, `/usr/share/emaki/shell/GlassTarget.qml`, `/usr/share/emaki/shell/GlassText.qml`, `/usr/share/emaki/shell/GreeterAuth.qml`, `/usr/share/emaki/shell/GreeterSession.qml`, `/usr/share/emaki/shell/GreeterState.qml`, `/usr/share/emaki/shell/HoverTip.qml`, `/usr/share/emaki/shell/Icon.qml`, `/usr/share/emaki/shell/IslandGlass.qml`, `/usr/share/emaki/shell/Keyboard.js`, `/usr/share/emaki/shell/KeyboardFocusKeeper.qml`, `/usr/share/emaki/shell/KeyboardTarget.qml`, `/usr/share/emaki/shell/LauncherBody.qml`, `/usr/share/emaki/shell/LauncherItem.qml`, `/usr/share/emaki/shell/LeftIslands.qml`, `/usr/share/emaki/shell/Liquid.js`, `/usr/share/emaki/shell/LiquidPalette.qml`, `/usr/share/emaki/shell/LockAuth.qml`, `/usr/share/emaki/shell/LockCapture.qml`, `/usr/share/emaki/shell/LockCapturePanel.qml`, `/usr/share/emaki/shell/LockEnvironment.qml`, `/usr/share/emaki/shell/LockGeometry.qml`, `/usr/share/emaki/shell/LockGlass.qml`, `/usr/share/emaki/shell/LockInput.qml`, `/usr/share/emaki/shell/LockPam.qml`, `/usr/share/emaki/shell/LockSession.qml`, `/usr/share/emaki/shell/LockSurface.qml`, `/usr/share/emaki/shell/LockVisual.qml`, `/usr/share/emaki/shell/LockWordmark.js`, `/usr/share/emaki/shell/LockWordmark.qml`, `/usr/share/emaki/shell/LockWordmarkData.js`, `/usr/share/emaki/shell/MediaBlock.qml`, `/usr/share/emaki/shell/Metrics.qml`, `/usr/share/emaki/shell/MicMeter.qml`, `/usr/share/emaki/shell/NightLight.qml`, `/usr/share/emaki/shell/NiriService.qml`, `/usr/share/emaki/shell/NotificationReceiver.qml`, `/usr/share/emaki/shell/NotificationService.qml`, `/usr/share/emaki/shell/NotificationStore.qml`, `/usr/share/emaki/shell/Osd.qml`, `/usr/share/emaki/shell/OutputSelection.js`, `/usr/share/emaki/shell/PasswordToggle.qml`, `/usr/share/emaki/shell/PrivacyCompactRow.qml`, `/usr/share/emaki/shell/PrivacyPanel.qml`, `/usr/share/emaki/shell/PrivacyPill.qml`, `/usr/share/emaki/shell/PrivateJob.qml`, `/usr/share/emaki/shell/RecentFiles.qml`, `/usr/share/emaki/shell/RecentLog.qml`, `/usr/share/emaki/shell/ReportBridge.qml`, `/usr/share/emaki/shell/ReportController.qml`, `/usr/share/emaki/shell/ReportView.qml`, `/usr/share/emaki/shell/ReportWindow.qml`, `/usr/share/emaki/shell/ScreenShare.js`, `/usr/share/emaki/shell/SessionCoverState.qml`, `/usr/share/emaki/shell/SessionCoverSurface.qml`, `/usr/share/emaki/shell/SessionStartup.qml`, `/usr/share/emaki/shell/SessionUpdateNotice.qml`, `/usr/share/emaki/shell/ShellOutputs.qml`, `/usr/share/emaki/shell/ShellPalette.qml`, `/usr/share/emaki/shell/ShellRecoveryNotice.qml`, `/usr/share/emaki/shell/ShellScene.qml`, `/usr/share/emaki/shell/ShellServices.qml`, `/usr/share/emaki/shell/ShellTools.qml`, `/usr/share/emaki/shell/ShortcutSheet.qml`, `/usr/share/emaki/shell/SnapshotPrompt.qml`, `/usr/share/emaki/shell/SnapshotRecovery.qml`, `/usr/share/emaki/shell/StaticBar.qml`, `/usr/share/emaki/shell/Surfaces.qml`, `/usr/share/emaki/shell/SymbolIcon.qml`, `/usr/share/emaki/shell/SystemBackend.qml`, `/usr/share/emaki/shell/SystemBody.qml`, `/usr/share/emaki/shell/SystemCompactRow.qml`, `/usr/share/emaki/shell/SystemIcons.js`, `/usr/share/emaki/shell/SystemIsland.qml`, `/usr/share/emaki/shell/SystemMeterPolicy.qml`, `/usr/share/emaki/shell/SystemNative.qml`, `/usr/share/emaki/shell/SystemPanel.qml`, `/usr/share/emaki/shell/SystemService.qml`, `/usr/share/emaki/shell/TipTarget.qml`, `/usr/share/emaki/shell/TrayItems.qml`, `/usr/share/emaki/shell/TrayService.qml`, `/usr/share/emaki/shell/UpdateService.qml`, `/usr/share/emaki/shell/WallpaperSource.qml`, `/usr/share/emaki/shell/Welcome.qml`, `/usr/share/emaki/shell/WelcomeButton.qml`, `/usr/share/emaki/shell/WelcomeContent.js`, `/usr/share/emaki/shell/WelcomeController.qml`, `/usr/share/emaki/shell/WelcomeGlass.qml`, `/usr/share/emaki/shell/WelcomeStore.qml`, `/usr/share/emaki/shell/WelcomeWindow.qml`, `/usr/share/emaki/shell/WindowLabels.qml`, `/usr/share/emaki/shell/WorkspaceStrip.qml`, `/usr/share/emaki/shell/XkbCodes.js`, `/usr/share/emaki/shell/emaki-report.desktop`, `/usr/share/emaki/shell/emaki-welcome.desktop`, `/usr/share/emaki/shell/greeter.qml`, `/usr/share/emaki/shell/helpers/account-picture.py`, `/usr/share/emaki/shell/helpers/app_scope.py`, `/usr/share/emaki/shell/helpers/child-guard.py`, `/usr/share/emaki/shell/helpers/clip-recorder.py`, `/usr/share/emaki/shell/helpers/clipboard_store.py`, `/usr/share/emaki/shell/helpers/greeter-auth.py`, `/usr/share/emaki/shell/helpers/greeter-handoff.py`, `/usr/share/emaki/shell/helpers/greeter-state.py`, `/usr/share/emaki/shell/helpers/launcher-tools.py`, `/usr/share/emaki/shell/helpers/lock-environment.py`, `/usr/share/emaki/shell/helpers/publish-wallpaper.py`, `/usr/share/emaki/shell/helpers/recent-files.py`, `/usr/share/emaki/shell/helpers/session-start.py`, `/usr/share/emaki/shell/helpers/shortcuts.py`, `/usr/share/emaki/shell/helpers/system-tools.py`, `/usr/share/emaki/shell/helpers/wallpaper.py`, `/usr/share/emaki/shell/lock.qml`, `/usr/share/emaki/shell/qmldir`, `/usr/share/emaki/shell/session-cover.qml`, `/usr/share/emaki/shell/shaders/dock.frag`, `/usr/share/emaki/shell/shaders/dock.frag.qsb`, `/usr/share/emaki/shell/shaders/down.frag`, `/usr/share/emaki/shell/shaders/down.frag.qsb`, `/usr/share/emaki/shell/shaders/gauss.frag`, `/usr/share/emaki/shell/shaders/gauss.frag.qsb`, `/usr/share/emaki/shell/shaders/session-drain.frag`, `/usr/share/emaki/shell/shaders/session-drain.frag.qsb`, `/usr/share/emaki/shell/shell.qml`, `/usr/bin/emaki-shell`, `/usr/bin/emaki-shell-health`, `/usr/share/applications/emaki-report.desktop`, `/usr/share/applications/emaki-welcome.desktop`, `/usr/share/icons/hicolor/scalable/apps/emaki-welcome.svg`, `/usr/lib/systemd/user/emaki-shell*.service`
+- Files: `/usr/share/emaki/shell/AccountPicture.qml`, `/usr/share/emaki/shell/AppCatalog.qml`, `/usr/share/emaki/shell/AppIdentity.qml`, `/usr/share/emaki/shell/AppLaunch.qml`, `/usr/share/emaki/shell/AuthController.qml`, `/usr/share/emaki/shell/BarPolicy.qml`, `/usr/share/emaki/shell/Calculator.js`, `/usr/share/emaki/shell/CalendarMonth.qml`, `/usr/share/emaki/shell/CanvasTint.qml`, `/usr/share/emaki/shell/ClipboardHistory.qml`, `/usr/share/emaki/shell/ClockBody.qml`, `/usr/share/emaki/shell/ClockCompactRow.qml`, `/usr/share/emaki/shell/ClockIsland.qml`, `/usr/share/emaki/shell/ClockPanel.qml`, `/usr/share/emaki/shell/Dock.qml`, `/usr/share/emaki/shell/DockBackdrop.qml`, `/usr/share/emaki/shell/DockBackdropRegion.qml`, `/usr/share/emaki/shell/DockInputRegion.qml`, `/usr/share/emaki/shell/DockIpc.qml`, `/usr/share/emaki/shell/DockPolicy.qml`, `/usr/share/emaki/shell/DockStore.qml`, `/usr/share/emaki/shell/FocusRing.qml`, `/usr/share/emaki/shell/GlassCopy.qml`, `/usr/share/emaki/shell/GlassShape.qml`, `/usr/share/emaki/shell/GlassTarget.qml`, `/usr/share/emaki/shell/GlassText.qml`, `/usr/share/emaki/shell/GreeterAuth.qml`, `/usr/share/emaki/shell/GreeterSession.qml`, `/usr/share/emaki/shell/GreeterState.qml`, `/usr/share/emaki/shell/GreeterUsers.qml`, `/usr/share/emaki/shell/HoverTip.qml`, `/usr/share/emaki/shell/Icon.qml`, `/usr/share/emaki/shell/IslandGlass.qml`, `/usr/share/emaki/shell/Keyboard.js`, `/usr/share/emaki/shell/KeyboardFocusKeeper.qml`, `/usr/share/emaki/shell/KeyboardTarget.qml`, `/usr/share/emaki/shell/LauncherBody.qml`, `/usr/share/emaki/shell/LauncherItem.qml`, `/usr/share/emaki/shell/LeftIslands.qml`, `/usr/share/emaki/shell/Liquid.js`, `/usr/share/emaki/shell/LiquidPalette.qml`, `/usr/share/emaki/shell/LockAuth.qml`, `/usr/share/emaki/shell/LockCapture.qml`, `/usr/share/emaki/shell/LockCapturePanel.qml`, `/usr/share/emaki/shell/LockEnvironment.qml`, `/usr/share/emaki/shell/LockGeometry.qml`, `/usr/share/emaki/shell/LockGlass.qml`, `/usr/share/emaki/shell/LockInput.qml`, `/usr/share/emaki/shell/LockPam.qml`, `/usr/share/emaki/shell/LockSession.qml`, `/usr/share/emaki/shell/LockSurface.qml`, `/usr/share/emaki/shell/LockVisual.qml`, `/usr/share/emaki/shell/LockWordmark.js`, `/usr/share/emaki/shell/LockWordmark.qml`, `/usr/share/emaki/shell/LockWordmarkData.js`, `/usr/share/emaki/shell/MediaBlock.qml`, `/usr/share/emaki/shell/Metrics.qml`, `/usr/share/emaki/shell/MicMeter.qml`, `/usr/share/emaki/shell/NightLight.qml`, `/usr/share/emaki/shell/NiriService.qml`, `/usr/share/emaki/shell/NotificationReceiver.qml`, `/usr/share/emaki/shell/NotificationService.qml`, `/usr/share/emaki/shell/NotificationStore.qml`, `/usr/share/emaki/shell/Osd.qml`, `/usr/share/emaki/shell/OutputSelection.js`, `/usr/share/emaki/shell/PasswordToggle.qml`, `/usr/share/emaki/shell/PrivacyCompactRow.qml`, `/usr/share/emaki/shell/PrivacyPanel.qml`, `/usr/share/emaki/shell/PrivacyPill.qml`, `/usr/share/emaki/shell/PrivateJob.qml`, `/usr/share/emaki/shell/RecentFiles.qml`, `/usr/share/emaki/shell/RecentLog.qml`, `/usr/share/emaki/shell/ReportBridge.qml`, `/usr/share/emaki/shell/ReportController.qml`, `/usr/share/emaki/shell/ReportView.qml`, `/usr/share/emaki/shell/ReportWindow.qml`, `/usr/share/emaki/shell/ScreenShare.js`, `/usr/share/emaki/shell/SessionCoverState.qml`, `/usr/share/emaki/shell/SessionCoverSurface.qml`, `/usr/share/emaki/shell/SessionStartup.qml`, `/usr/share/emaki/shell/SessionUpdateNotice.qml`, `/usr/share/emaki/shell/ShellOutputs.qml`, `/usr/share/emaki/shell/ShellPalette.qml`, `/usr/share/emaki/shell/ShellRecoveryNotice.qml`, `/usr/share/emaki/shell/ShellScene.qml`, `/usr/share/emaki/shell/ShellServices.qml`, `/usr/share/emaki/shell/ShellTools.qml`, `/usr/share/emaki/shell/ShortcutSheet.qml`, `/usr/share/emaki/shell/SnapshotPrompt.qml`, `/usr/share/emaki/shell/SnapshotRecovery.qml`, `/usr/share/emaki/shell/StaticBar.qml`, `/usr/share/emaki/shell/Surfaces.qml`, `/usr/share/emaki/shell/Switcher.js`, `/usr/share/emaki/shell/SwitcherCapture.qml`, `/usr/share/emaki/shell/SymbolIcon.qml`, `/usr/share/emaki/shell/SystemBackend.qml`, `/usr/share/emaki/shell/SystemBody.qml`, `/usr/share/emaki/shell/SystemCompactRow.qml`, `/usr/share/emaki/shell/SystemIcons.js`, `/usr/share/emaki/shell/SystemIsland.qml`, `/usr/share/emaki/shell/SystemMeterPolicy.qml`, `/usr/share/emaki/shell/SystemNative.qml`, `/usr/share/emaki/shell/SystemPanel.qml`, `/usr/share/emaki/shell/SystemService.qml`, `/usr/share/emaki/shell/TipTarget.qml`, `/usr/share/emaki/shell/TrayItems.qml`, `/usr/share/emaki/shell/TrayService.qml`, `/usr/share/emaki/shell/UpdateService.qml`, `/usr/share/emaki/shell/WallpaperSource.qml`, `/usr/share/emaki/shell/Welcome.qml`, `/usr/share/emaki/shell/WelcomeButton.qml`, `/usr/share/emaki/shell/WelcomeContent.js`, `/usr/share/emaki/shell/WelcomeController.qml`, `/usr/share/emaki/shell/WelcomeGlass.qml`, `/usr/share/emaki/shell/WelcomeStore.qml`, `/usr/share/emaki/shell/WelcomeWindow.qml`, `/usr/share/emaki/shell/WindowLabels.qml`, `/usr/share/emaki/shell/WindowSwitcher.qml`, `/usr/share/emaki/shell/WorkspaceStrip.qml`, `/usr/share/emaki/shell/XkbCodes.js`, `/usr/share/emaki/shell/emaki-report.desktop`, `/usr/share/emaki/shell/emaki-welcome.desktop`, `/usr/share/emaki/shell/greeter.qml`, `/usr/share/emaki/shell/helpers/account-picture.py`, `/usr/share/emaki/shell/helpers/app_scope.py`, `/usr/share/emaki/shell/helpers/child-guard.py`, `/usr/share/emaki/shell/helpers/clip-recorder.py`, `/usr/share/emaki/shell/helpers/clipboard_store.py`, `/usr/share/emaki/shell/helpers/greeter-auth.py`, `/usr/share/emaki/shell/helpers/greeter-handoff.py`, `/usr/share/emaki/shell/helpers/greeter-state.py`, `/usr/share/emaki/shell/helpers/launcher-tools.py`, `/usr/share/emaki/shell/helpers/lock-environment.py`, `/usr/share/emaki/shell/helpers/private-state.py`, `/usr/share/emaki/shell/helpers/publish-wallpaper.py`, `/usr/share/emaki/shell/helpers/recent-files.py`, `/usr/share/emaki/shell/helpers/session-start.py`, `/usr/share/emaki/shell/helpers/shortcuts.py`, `/usr/share/emaki/shell/helpers/system-tools.py`, `/usr/share/emaki/shell/helpers/wallpaper.py`, `/usr/share/emaki/shell/lock.qml`, `/usr/share/emaki/shell/qmldir`, `/usr/share/emaki/shell/session-cover.qml`, `/usr/share/emaki/shell/shaders/dock.frag`, `/usr/share/emaki/shell/shaders/dock.frag.qsb`, `/usr/share/emaki/shell/shaders/down.frag`, `/usr/share/emaki/shell/shaders/down.frag.qsb`, `/usr/share/emaki/shell/shaders/gauss.frag`, `/usr/share/emaki/shell/shaders/gauss.frag.qsb`, `/usr/share/emaki/shell/shaders/session-drain.frag`, `/usr/share/emaki/shell/shaders/session-drain.frag.qsb`, `/usr/share/emaki/shell/shell.qml`, `/usr/bin/emaki-shell`, `/usr/bin/emaki-shell-health`, `/usr/share/applications/emaki-report.desktop`, `/usr/share/applications/emaki-welcome.desktop`, `/usr/share/icons/hicolor/scalable/apps/emaki-report.svg`, `/usr/share/icons/hicolor/scalable/apps/emaki-welcome.svg`, `/usr/lib/systemd/user/emaki-shell*.service`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
 - State: `emaki-shell call system status` (prints JSON)
 - Change: Use the shell panels for their actions and `emaki settings` for supported managed values. Package code changes through emaki-config updates. `emaki-shell restart` restarts the shell in the current session.
@@ -561,6 +566,7 @@ files:
   /usr/share/emaki/shell/GreeterAuth.qml
   /usr/share/emaki/shell/GreeterSession.qml
   /usr/share/emaki/shell/GreeterState.qml
+  /usr/share/emaki/shell/GreeterUsers.qml
   /usr/share/emaki/shell/HoverTip.qml
   /usr/share/emaki/shell/Icon.qml
   /usr/share/emaki/shell/IslandGlass.qml
@@ -623,6 +629,8 @@ files:
   /usr/share/emaki/shell/SnapshotRecovery.qml
   /usr/share/emaki/shell/StaticBar.qml
   /usr/share/emaki/shell/Surfaces.qml
+  /usr/share/emaki/shell/Switcher.js
+  /usr/share/emaki/shell/SwitcherCapture.qml
   /usr/share/emaki/shell/SymbolIcon.qml
   /usr/share/emaki/shell/SystemBackend.qml
   /usr/share/emaki/shell/SystemBody.qml
@@ -646,6 +654,7 @@ files:
   /usr/share/emaki/shell/WelcomeStore.qml
   /usr/share/emaki/shell/WelcomeWindow.qml
   /usr/share/emaki/shell/WindowLabels.qml
+  /usr/share/emaki/shell/WindowSwitcher.qml
   /usr/share/emaki/shell/WorkspaceStrip.qml
   /usr/share/emaki/shell/XkbCodes.js
   /usr/share/emaki/shell/emaki-report.desktop
@@ -661,6 +670,7 @@ files:
   /usr/share/emaki/shell/helpers/greeter-state.py
   /usr/share/emaki/shell/helpers/launcher-tools.py
   /usr/share/emaki/shell/helpers/lock-environment.py
+  /usr/share/emaki/shell/helpers/private-state.py
   /usr/share/emaki/shell/helpers/publish-wallpaper.py
   /usr/share/emaki/shell/helpers/recent-files.py
   /usr/share/emaki/shell/helpers/session-start.py
@@ -683,6 +693,7 @@ files:
   /usr/bin/emaki-shell-health
   /usr/share/applications/emaki-report.desktop
   /usr/share/applications/emaki-welcome.desktop
+  /usr/share/icons/hicolor/scalable/apps/emaki-report.svg
   /usr/share/icons/hicolor/scalable/apps/emaki-welcome.svg
   /usr/lib/systemd/user/emaki-shell*.service
 zone: package
@@ -747,7 +758,7 @@ rollback: For generated package path modules, follow snapshot-recovery with an a
 
 The program manager JSON engine joins Arch and optional Flathub programs with standard AppStream metadata, search and details. It authenticates native and default-system Flatpak changes, supports removal of existing user Flatpak deployments without root, delegates full updates to the update backend, and preserves the installed-program removal preview and refusals used by Settings > Apps. The AUR section opens only after the person accepts its warning; it lists the AUR's most popular packages and builds one only through a reviewed plan pinned to recipe commits. AUR installs require a verified pre-install snapshot after the separate system update. Catalog programs carry stars from the shared open ratings service (ODRS, odrs.gnome.org), cached for a day in ~/.cache/emaki-update-manager/odrs; a program page reads its reviews anonymously and can send one review with a random per-account identity in ~/.local/state/emaki-update-manager/odrs-user. AUR packages show AUR votes. Every install writes a receipt in /var/lib/emaki/programs/installs, so "Undo this install" removes exactly what that install added, or offers the recorded system snapshot when the install itself changed existing packages. The completed preliminary update stays. Upgraded dependencies retain their existing install reasons. A failed AUR install offers its exact install restore point when existing packages changed; a committed repository install retains Undo even when a later package hook fails.
 
-- Files: `/usr/bin/emaki-programs`, `/usr/libexec/emaki/emaki-programs-remove`, `/usr/libexec/emaki/emaki-programs-install`, `/usr/libexec/emaki/emaki-programs-flatpak`, `/usr/libexec/emaki/emaki-programs-aur`, `/usr/libexec/emaki/emaki-programs-undo`, `/usr/libexec/emaki/programs_catalog.py`, `/usr/libexec/emaki/programs_appstream.py`, `/usr/libexec/emaki/programs_arch.py`, `/usr/libexec/emaki/programs_aur.py`, `/usr/libexec/emaki/programs_engine.py`, `/usr/libexec/emaki/programs_graphics.py`, `/usr/libexec/emaki/programs_flatpak.py`, `/usr/libexec/emaki/programs_receipts.py`, `/usr/lib/systemd/system/emaki-refresh-appstream.service`, `/usr/lib/systemd/system/emaki-refresh-appstream.timer`, `/usr/libexec/emaki/programs_reviews.py`, `/usr/libexec/emaki/restore.py`, `/usr/share/polkit-1/actions/org.emaki.programs.policy`, `/usr/share/polkit-1/actions/org.emaki.programs.install.policy`, `/usr/share/polkit-1/actions/org.emaki.programs.flatpak.policy`, `/usr/share/polkit-1/actions/org.emaki.programs.aur.policy`, `/usr/share/polkit-1/actions/org.emaki.programs.undo.policy`, `/usr/share/polkit-1/rules.d/00-emaki-programs.rules`
+- Files: `/usr/bin/emaki-programs`, `/usr/libexec/emaki/emaki-programs-remove`, `/usr/libexec/emaki/emaki-programs-install`, `/usr/libexec/emaki/emaki-programs-flatpak`, `/usr/libexec/emaki/emaki-programs-aur`, `/usr/libexec/emaki/emaki-programs-undo`, `/usr/libexec/emaki/programs_catalog.py`, `/usr/libexec/emaki/programs_appstream.py`, `/usr/libexec/emaki/programs_arch.py`, `/usr/libexec/emaki/programs_aur.py`, `/usr/libexec/emaki/programs_engine.py`, `/usr/libexec/emaki/emaki_redaction.py`, `/usr/libexec/emaki/programs_graphics.py`, `/usr/libexec/emaki/programs_flatpak.py`, `/usr/libexec/emaki/programs_receipts.py`, `/usr/lib/systemd/system/emaki-refresh-appstream.service`, `/usr/lib/systemd/system/emaki-refresh-appstream.timer`, `/usr/libexec/emaki/programs_reviews.py`, `/usr/libexec/emaki/restore.py`, `/usr/share/polkit-1/actions/org.emaki.programs.policy`, `/usr/share/polkit-1/actions/org.emaki.programs.install.policy`, `/usr/share/polkit-1/actions/org.emaki.programs.flatpak.policy`, `/usr/share/polkit-1/actions/org.emaki.programs.aur.policy`, `/usr/share/polkit-1/actions/org.emaki.programs.undo.policy`, `/usr/share/polkit-1/rules.d/00-emaki-programs.rules`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
 - State: `emaki-programs list --json; emaki-programs aur --json` (prints JSON)
 - Change: Use the versioned `emaki-programs serve` JSON protocol, or its catalog/search/details/plan/ execute commands. Read the complete plan before passing its token to execute. Existing Settings removal and `emaki-programs remove PACKAGE TOKEN --json` retain their original preview contract.
@@ -769,6 +780,7 @@ files:
   /usr/libexec/emaki/programs_arch.py
   /usr/libexec/emaki/programs_aur.py
   /usr/libexec/emaki/programs_engine.py
+  /usr/libexec/emaki/emaki_redaction.py
   /usr/libexec/emaki/programs_graphics.py
   /usr/libexec/emaki/programs_flatpak.py
   /usr/libexec/emaki/programs_receipts.py
@@ -793,7 +805,7 @@ rollback: Undo uses the install receipt: remove its additions, or restore the re
 
 The live installation window, command-line client, privileged worker, device planning code, UI and reference fixtures, including shared physical boot-media resolution for inventory and restart instructions. The installer is available on live media and is not retained as an installed-system service.
 
-- Files: `/usr/bin/emaki-install`, `/usr/bin/emaki-install-cli`, `/usr/bin/emaki-installerd`, `/usr/lib/python*/site-packages/emaki_installer/**`, `/usr/lib/systemd/system/emaki-installerd.service`, `/usr/lib/sysusers.d/emaki-installer.conf`, `/usr/lib/tmpfiles.d/emaki-installer.conf`, `/usr/share/applications/emaki-install.desktop`, `/usr/share/doc/emaki-installer/**`, `/usr/share/emaki-installer/**`, `/usr/share/icons/hicolor/scalable/apps/emaki-install.svg`, `/usr/share/licenses/emaki-installer/*`
+- Files: `/usr/bin/emaki-boot-repair`, `/usr/bin/emaki-install`, `/usr/bin/emaki-install-cli`, `/usr/bin/emaki-installerd`, `/usr/lib/python*/site-packages/emaki_installer/**`, `/usr/lib/systemd/system/emaki-installerd.service`, `/usr/lib/sysusers.d/emaki-installer.conf`, `/usr/lib/tmpfiles.d/emaki-installer.conf`, `/usr/share/applications/emaki-install.desktop`, `/usr/share/doc/emaki-installer/**`, `/usr/share/emaki-installer/**`, `/usr/share/icons/hicolor/scalable/apps/emaki-install.svg`, `/usr/share/licenses/emaki-installer/*`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
 - State: none yet: `emaki-install-cli --probe` prints JSON only on live media with its worker running; no installed-system installer state command exists. /var/lib/emaki/installed.json holds only the Emaki version the system was installed with; Report a problem reads it.
 - Change: Use the Install window on live media and review the explicit disk and partition choices before confirmation. Update installer code through a new image or emaki-installer package.
@@ -804,6 +816,7 @@ The live installation window, command-line client, privileged worker, device pla
 component: installer
 what: The live installation window, command-line client, privileged worker, device planning code, UI and reference fixtures, including shared physical boot-media resolution for inventory and restart instructions. The installer is available on live media and is not retained as an installed-system service.
 files:
+  /usr/bin/emaki-boot-repair
   /usr/bin/emaki-install
   /usr/bin/emaki-install-cli
   /usr/bin/emaki-installerd
@@ -858,7 +871,7 @@ rollback: Restore the previous package for launcher settings code; reset or undo
 
 Coordinates screen locking, idle handling, sleep preparation and power actions with logind. The idle unit ships disabled and supports explicit personal timer enablement; the lock window is part of the shell payload. System policy also configures compressed swap and service presets.
 
-- Files: `/usr/bin/emaki-lock`, `/usr/bin/emaki-idle`, `/usr/bin/emaki-power`, `/usr/bin/emaki-sleep-guard`, `/usr/lib/systemd/user/emaki-idle.service`, `/usr/lib/systemd/user/emaki-sleep-guard.service`, `/usr/lib/systemd/logind.conf.d/50-emaki.conf`, `/usr/lib/systemd/zram-generator.conf.d/00-emaki.conf`, `/usr/lib/systemd/system-preset/50-emaki.preset`
+- Files: `/usr/bin/emaki-lock`, `/usr/libexec/emaki/emaki_lock_fallback.py`, `/usr/bin/emaki-idle`, `/usr/bin/emaki-power`, `/usr/bin/emaki-sleep-guard`, `/usr/lib/systemd/user/emaki-idle.service`, `/usr/lib/systemd/user/emaki-sleep-guard.service`, `/usr/lib/systemd/logind.conf.d/50-emaki.conf`, `/usr/lib/systemd/zram-generator.conf.d/00-emaki.conf`, `/usr/lib/systemd/system-preset/50-emaki.preset`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
 - State: none yet: `emaki-lock status` returns JSON only outside live media and exits nonzero when unlocked; it is not a general readiness command. Inspect the user journal for idle and sleep units.
 - Change: Use the desktop lock and power controls. Change implementation and policy through emaki-config updates.
@@ -870,6 +883,7 @@ component: lock-idle-and-power
 what: Coordinates screen locking, idle handling, sleep preparation and power actions with logind. The idle unit ships disabled and supports explicit personal timer enablement; the lock window is part of the shell payload. System policy also configures compressed swap and service presets.
 files:
   /usr/bin/emaki-lock
+  /usr/libexec/emaki/emaki_lock_fallback.py
   /usr/bin/emaki-idle
   /usr/bin/emaki-power
   /usr/bin/emaki-sleep-guard
@@ -916,7 +930,7 @@ rollback: For greeter and authentication integration, follow snapshot-recovery w
 
 ## machine-settings
 
-Reads and changes the settings of the whole computer: keyboard layouts and the switch key, time zone, automatic time, system language and formats. It writes no file itself: the system's locale and time services own those files and ask for an administrator password. `emaki settings` uses it for keyboard.layouts and keyboard.switch_key.
+Reads and changes the settings of the whole computer: keyboard layouts and the switch key, time zone, automatic time, system language and formats. The system's locale and time services own the configuration files and use their own polkit authorization. The provider runs as the person and serializes changes within that account; the services handle cross-account writes. `emaki settings` uses it for keyboard.layouts and keyboard.switch_key.
 
 - Files: `/usr/bin/emaki-machine-settings`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
@@ -927,7 +941,7 @@ Reads and changes the settings of the whole computer: keyboard layouts and the s
 
 ```system-map
 component: machine-settings
-what: Reads and changes the settings of the whole computer: keyboard layouts and the switch key, time zone, automatic time, system language and formats. It writes no file itself: the system's locale and time services own those files and ask for an administrator password. `emaki settings` uses it for keyboard.layouts and keyboard.switch_key.
+what: Reads and changes the settings of the whole computer: keyboard layouts and the switch key, time zone, automatic time, system language and formats. The system's locale and time services own the configuration files and use their own polkit authorization. The provider runs as the person and serializes changes within that account; the services handle cross-account writes. `emaki settings` uses it for keyboard.layouts and keyboard.switch_key.
 files:
   /usr/bin/emaki-machine-settings
 zone: package
@@ -968,9 +982,9 @@ rollback: For matching policy, drivers and kernel modules together, follow snaps
 
 ## package-transaction-safety
 
-Package hooks enforce snapshot retention, inhibit unsafe concurrent power operations, maintain release identity and refresh initramfs and menu integration. Before package removal they drop the sudo PAM selector ahead of either service copy, refusing removal if that fails. The migration helper adopts only recognized older defaults.
+Package hooks enforce snapshot retention, inhibit unsafe concurrent power operations, maintain release identity and refresh initramfs and menu integration. Before package removal they drop the sudo PAM selector ahead of either service copy, refusing removal if that fails. Before installation or upgrade, the space guard refuses measured shortages and warns when the snapshot-retained Btrfs budget cannot be measured. The migration helper adopts only recognized older defaults.
 
-- Files: `/usr/bin/emaki-transaction-inhibit`, `/usr/share/libalpm/hooks/00-emaki-*`, `/usr/share/libalpm/hooks/01-emaki-config-release.hook`, `/usr/share/libalpm/hooks/02-emaki-config-remove.hook`, `/usr/share/libalpm/hooks/50-emaki-os-release*.hook`, `/usr/share/libalpm/hooks/89-emaki-*.hook`, `/usr/share/libalpm/hooks/90-emaki-grub-title.hook`, `/usr/share/libalpm/hooks/93-emaki-initramfs-refresh.hook`, `/usr/share/libalpm/hooks/99-emaki-rollback-holds.hook`, `/usr/share/libalpm/scripts/emaki-grub-title`, `/usr/share/libalpm/scripts/emaki-initramfs-refresh`, `/usr/share/libalpm/scripts/emaki-os-release`, `/usr/share/libalpm/scripts/emaki-rollback-holds`, `/usr/share/libalpm/scripts/emaki-snapshot-policy`, `/usr/share/libalpm/scripts/emaki-system-migrate`, `/usr/share/libalpm/scripts/emaki_initramfs.py`, `/etc/sudoers.d/10-emaki-wheel`, `/usr/share/emaki/defaults/wheel`
+- Files: `/usr/bin/emaki-transaction-inhibit`, `/usr/share/libalpm/hooks/00-emaki-*`, `/usr/share/libalpm/hooks/01-emaki-config-release.hook`, `/usr/share/libalpm/hooks/02-emaki-config-remove.hook`, `/usr/share/libalpm/hooks/50-emaki-os-release*.hook`, `/usr/share/libalpm/hooks/89-emaki-*.hook`, `/usr/share/libalpm/hooks/90-emaki-grub-title.hook`, `/usr/share/libalpm/hooks/93-emaki-initramfs-refresh.hook`, `/usr/share/libalpm/hooks/99-emaki-rollback-holds.hook`, `/usr/share/libalpm/hooks/00-emaki-package-lock.hook`, `/usr/share/libalpm/scripts/emaki-grub-title`, `/usr/share/libalpm/scripts/emaki-initramfs-refresh`, `/usr/share/libalpm/scripts/emaki-os-release`, `/usr/share/libalpm/scripts/emaki-rollback-holds`, `/usr/share/libalpm/scripts/emaki-snapshot-policy`, `/usr/share/libalpm/scripts/emaki-system-migrate`, `/usr/share/libalpm/scripts/emaki-update-space`, `/usr/share/libalpm/scripts/emaki_initramfs.py`, `/etc/sudoers.d/10-emaki-wheel`, `/usr/share/emaki/defaults/wheel`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
 - State: none yet: no read-only JSON command reports all package hooks and transaction inhibitors; inspect the package transaction log and system journal.
 - Change: Update emaki-config through the update manager. On Arch, package transactions use `pacman`.
@@ -979,7 +993,7 @@ Package hooks enforce snapshot retention, inhibit unsafe concurrent power operat
 
 ```system-map
 component: package-transaction-safety
-what: Package hooks enforce snapshot retention, inhibit unsafe concurrent power operations, maintain release identity and refresh initramfs and menu integration. Before package removal they drop the sudo PAM selector ahead of either service copy, refusing removal if that fails. The migration helper adopts only recognized older defaults.
+what: Package hooks enforce snapshot retention, inhibit unsafe concurrent power operations, maintain release identity and refresh initramfs and menu integration. Before package removal they drop the sudo PAM selector ahead of either service copy, refusing removal if that fails. Before installation or upgrade, the space guard refuses measured shortages and warns when the snapshot-retained Btrfs budget cannot be measured. The migration helper adopts only recognized older defaults.
 files:
   /usr/bin/emaki-transaction-inhibit
   /usr/share/libalpm/hooks/00-emaki-*
@@ -990,12 +1004,14 @@ files:
   /usr/share/libalpm/hooks/90-emaki-grub-title.hook
   /usr/share/libalpm/hooks/93-emaki-initramfs-refresh.hook
   /usr/share/libalpm/hooks/99-emaki-rollback-holds.hook
+  /usr/share/libalpm/hooks/00-emaki-package-lock.hook
   /usr/share/libalpm/scripts/emaki-grub-title
   /usr/share/libalpm/scripts/emaki-initramfs-refresh
   /usr/share/libalpm/scripts/emaki-os-release
   /usr/share/libalpm/scripts/emaki-rollback-holds
   /usr/share/libalpm/scripts/emaki-snapshot-policy
   /usr/share/libalpm/scripts/emaki-system-migrate
+  /usr/share/libalpm/scripts/emaki-update-space
   /usr/share/libalpm/scripts/emaki_initramfs.py
   /etc/sudoers.d/10-emaki-wheel
   /usr/share/emaki/defaults/wheel
@@ -1147,6 +1163,63 @@ state: none yet: `emaki-qt-check` is a text diagnostic with meaningful failure s
 change: Update emaki-config through the update manager. On Arch, package transactions use `pacman`.
 never: Bypass an ABI mismatch or replace only one library to make the shell start; force a partial upgrade.
 rollback: For the runtime, Qt libraries and compatibility checks together, follow snapshot-recovery with an available pre-update btrfs root snapshot. Ext4 has no snapshot rollback; never restore an isolated library into a different package set.
+```
+
+## secure-boot
+
+Signs both kernels and fwupd's capsule loader with the machine's Secure Boot key after kernel and fwupd changes and after every mkinitcpio build, refuses such package changes beforehand when signing would fail, records the Secure Boot state for the session at boot, and lets Settings queue a new MokManager confirmation of the key. Nothing happens on machines without the key.
+
+- Files: `/usr/bin/emaki-secureboot`, `/usr/lib/initcpio/post/emaki-secureboot`, `/usr/lib/systemd/system/emaki-secureboot-status.service`, `/usr/lib/systemd/system/multi-user.target.wants/emaki-secureboot-status.service`, `/usr/share/emaki/shell/SecureBoot.js`, `/usr/share/emaki/shell/SecureBootNotice.qml`, `/usr/share/emaki/shell/SecureBootSettings.qml`, `/usr/share/libalpm/hooks/03-emaki-secureboot-check.hook`, `/usr/share/libalpm/hooks/94-emaki-secureboot-sign.hook`, `/usr/share/polkit-1/actions/org.emaki.secureboot.policy`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: `emaki-secureboot status --json` (prints JSON)
+- Change: Settings > Privacy > Secure Boot > Get password (pkexec emaki-secureboot enroll --json); after a failed signing, free space or fix the cause, then Settings > Privacy > Secure Boot > Sign again (pkexec emaki-secureboot sign).
+- Never: Copy or print the machine key from /var/lib/emaki/secureboot; sign files outside /boot; sign the same image twice; enrol other keys.
+- Rollback: Return to the previous package; a queued confirmation is withdrawn with mokutil --revoke-import. The machine key and the ESP copies are outside root snapshots.
+
+```system-map
+component: secure-boot
+what: Signs both kernels and fwupd's capsule loader with the machine's Secure Boot key after kernel and fwupd changes and after every mkinitcpio build, refuses such package changes beforehand when signing would fail, records the Secure Boot state for the session at boot, and lets Settings queue a new MokManager confirmation of the key. Nothing happens on machines without the key.
+files:
+  /usr/bin/emaki-secureboot
+  /usr/lib/initcpio/post/emaki-secureboot
+  /usr/lib/systemd/system/emaki-secureboot-status.service
+  /usr/lib/systemd/system/multi-user.target.wants/emaki-secureboot-status.service
+  /usr/share/emaki/shell/SecureBoot.js
+  /usr/share/emaki/shell/SecureBootNotice.qml
+  /usr/share/emaki/shell/SecureBootSettings.qml
+  /usr/share/libalpm/hooks/03-emaki-secureboot-check.hook
+  /usr/share/libalpm/hooks/94-emaki-secureboot-sign.hook
+  /usr/share/polkit-1/actions/org.emaki.secureboot.policy
+zone: package
+state: emaki-secureboot status --json
+change: Settings > Privacy > Secure Boot > Get password (pkexec emaki-secureboot enroll --json); after a failed signing, free space or fix the cause, then Settings > Privacy > Secure Boot > Sign again (pkexec emaki-secureboot sign).
+never: Copy or print the machine key from /var/lib/emaki/secureboot; sign files outside /boot; sign the same image twice; enrol other keys.
+rollback: Return to the previous package; a queued confirmation is withdrawn with mokutil --revoke-import. The machine key and the ESP copies are outside root snapshots.
+```
+
+## secure-boot-loader
+
+Fedora's Microsoft-signed shim first stage UEFI loader and its MOK manager, shipped unchanged for machines with Secure Boot on. The package only stores them; the installer copies them to the EFI system partition and points the firmware entry at shim, the boot refresh keeps the copies current (component secure-boot).
+
+- Files: `/usr/share/emaki-shim-signed/mmx64.efi`, `/usr/share/emaki-shim-signed/shimx64.efi`, `/usr/share/licenses/emaki-shim-signed/*`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: none yet: no Emaki status command. On Arch, sbverify --list /usr/share/emaki-shim-signed/shimx64.efi names the Microsoft UEFI CA 2011 and 2023 signatures.
+- Change: Install or update emaki-shim-signed through package management; the installer selects it with sbsigntools and mokutil on machines with Secure Boot on.
+- Never: Edit, re-sign or replace the packaged files; copy them to the EFI system partition by hand; remove the package while the firmware boots through shim.
+- Rollback: Root snapshots restore the packaged files only. The EFI system partition and firmware boot entries are outside every snapshot and need their own recovery; firmware setup can turn Secure Boot off to start the machine without shim.
+
+```system-map
+component: secure-boot-loader
+what: Fedora's Microsoft-signed shim first stage UEFI loader and its MOK manager, shipped unchanged for machines with Secure Boot on. The package only stores them; the installer copies them to the EFI system partition and points the firmware entry at shim, the boot refresh keeps the copies current (component secure-boot).
+files:
+  /usr/share/emaki-shim-signed/mmx64.efi
+  /usr/share/emaki-shim-signed/shimx64.efi
+  /usr/share/licenses/emaki-shim-signed/*
+zone: package
+state: none yet: no Emaki status command. On Arch, sbverify --list /usr/share/emaki-shim-signed/shimx64.efi names the Microsoft UEFI CA 2011 and 2023 signatures.
+change: Install or update emaki-shim-signed through package management; the installer selects it with sbsigntools and mokutil on machines with Secure Boot on.
+never: Edit, re-sign or replace the packaged files; copy them to the EFI system partition by hand; remove the package while the firmware boots through shim.
+rollback: Root snapshots restore the packaged files only. The EFI system partition and firmware boot entries are outside every snapshot and need their own recovery; firmware setup can turn Secure Boot off to start the machine without shim.
 ```
 
 ## session-startup
@@ -1476,7 +1549,7 @@ rollback: Reset the owned entry or remove an added entry; use settings history f
 
 Shows filesystem pool usage and storage categories, with explicit file previews for package cache, archived journals and personal home trash.
 
-- Files: `/usr/bin/emaki-settings-storage`, `/usr/libexec/emaki/emaki_storage.py`, `/usr/libexec/emaki/storage_arch.py`, `/usr/share/emaki/shell/SettingsStoragePage.qml`, `/usr/share/polkit-1/actions/org.emaki.storage.policy`
+- Files: `/usr/bin/emaki-settings-storage`, `/usr/libexec/emaki/emaki_package_lock.py`, `/usr/libexec/emaki/emaki_storage.py`, `/usr/libexec/emaki/storage_arch.py`, `/usr/share/emaki/shell/SettingsStoragePage.qml`, `/usr/share/polkit-1/actions/org.emaki.storage.policy`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
 - State: `emaki-settings-storage status --json` (prints JSON)
 - Change: Open Storage in Settings. Inspect protected details through authentication, preview one category, then explicitly confirm its listed entries. The fixed preview KIND --json and cleanup KIND TOKEN --json commands expose the same protocol. Retained-root inspection temporarily mounts the top-level tree read-only under /run/emaki-storage-* in a private namespace, then unmounts and removes the empty directory.
@@ -1488,6 +1561,7 @@ component: settings-storage
 what: Shows filesystem pool usage and storage categories, with explicit file previews for package cache, archived journals and personal home trash.
 files:
   /usr/bin/emaki-settings-storage
+  /usr/libexec/emaki/emaki_package_lock.py
   /usr/libexec/emaki/emaki_storage.py
   /usr/libexec/emaki/storage_arch.py
   /usr/share/emaki/shell/SettingsStoragePage.qml
@@ -1912,7 +1986,7 @@ rollback: Remove the personal update cache to repeat discovery; the backend reco
 
 Unprivileged, dated pre-update snapshot listing from a root-owned index and authenticated restoration through the existing rollback backend.
 
-- Files: `/usr/libexec/emaki/emaki-update-restore`, `/usr/share/polkit-1/actions/org.emaki.update.restore.policy`, `/usr/lib/systemd/system/emaki-restore-index.service`, `/usr/lib/systemd/system/emaki-restore-index.timer`, `/usr/lib/systemd/system/timers.target.wants/emaki-restore-index.timer`
+- Files: `/usr/libexec/emaki/emaki-update-restore`, `/usr/share/polkit-1/actions/org.emaki.update.restore.policy`, `/usr/lib/systemd/system/emaki-restore-index.service`, `/usr/lib/systemd/system/emaki-restore-index.timer`, `/usr/lib/systemd/system/timers.target.wants/emaki-restore-index.timer`, `/usr/share/libalpm/hooks/zzz-emaki-restore-index.hook`
 - Zone: package, installed by an Emaki package; never edit it, an update replaces it.
 - State: `emaki-rollback status --json` (prints JSON)
 - Change: Use Restore before an update in the update window; read the list without authentication, select a date, confirm and authenticate the restore. The helper's list and restore token commands expose the same JSON protocol.
@@ -1928,6 +2002,7 @@ files:
   /usr/lib/systemd/system/emaki-restore-index.service
   /usr/lib/systemd/system/emaki-restore-index.timer
   /usr/lib/systemd/system/timers.target.wants/emaki-restore-index.timer
+  /usr/share/libalpm/hooks/zzz-emaki-restore-index.hook
 zone: package
 state: emaki-rollback status --json
 change: Use Restore before an update in the update window; read the list without authentication, select a date, confirm and authenticate the restore. The helper's list and restore token commands expose the same JSON protocol.

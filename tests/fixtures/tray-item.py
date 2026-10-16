@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Synthetic StatusNotifierItem; refuses any bus except this test's private one."""
 import os
 from pathlib import Path

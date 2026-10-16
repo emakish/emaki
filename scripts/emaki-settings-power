@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import select
 
 # The shipped service is inert until a personal timer choice enables it.
 DEFAULTS = {'blank_battery': 0, 'blank_ac': 0, 'lock_delay': 0, 'lid': 'system'}
@@ -20,6 +21,8 @@ OFF = dict(DEFAULTS)
 # Preserve the fallback used by existing partial personal configuration files.
 SAVED_DEFAULTS = dict(DEFAULTS, blank_battery=330, blank_ac=330, lock_delay=300)
 SUPPLIES = Path('/sys/class/power_supply')
+# Settings changes restart this service; external edits and AC changes settle within 30 seconds.
+POLICY_INTERVAL = 30
 
 
 def config_path():
@@ -193,6 +196,9 @@ def charge(name, value):
 def run():
     children = []
     stopping = False
+    read_fd, write_fd = os.pipe2(os.O_NONBLOCK | os.O_CLOEXEC)
+    previous_wakeup = signal.set_wakeup_fd(write_fd, warn_on_full_buffer=False)
+    handlers = {}
 
     def stop(_signum, _frame):
         nonlocal stopping
@@ -209,11 +215,19 @@ def run():
                     os.killpg(process.pid, signal.SIGKILL)
                     process.wait()
 
-    signal.signal(signal.SIGTERM, stop)
-    signal.signal(signal.SIGINT, stop)
     previous = None
     try:
+        # Signal delivery writes to the pipe without acquiring Python locks.
+        # Handlers must not touch synchronization primitives: they may interrupt a wait.
+        for number, handler in ((signal.SIGTERM, stop), (signal.SIGINT, stop),
+                                (signal.SIGCHLD, lambda _signum, _frame: None)):
+            handlers[number] = signal.signal(number, handler)
         while not stopping:
+            try:
+                while os.read(read_fd, 4096):
+                    pass
+            except BlockingIOError:
+                pass
             values = read_settings()
             active = source()
             policy = (values['blank_' + active], values['lock_delay'], values['lid'])
@@ -241,9 +255,17 @@ def run():
                     raise SystemExit(code)
                 if code is not None:
                     raise RuntimeError('The idle policy stopped unexpectedly.')
-            time.sleep(1)
+            if not stopping:
+                select.select([read_fd], [], [], POLICY_INTERVAL)
     finally:
-        cleanup()
+        try:
+            cleanup()
+        finally:
+            signal.set_wakeup_fd(previous_wakeup)
+            for number, handler in handlers.items():
+                signal.signal(number, handler)
+            os.close(read_fd)
+            os.close(write_fd)
 
 
 def main():

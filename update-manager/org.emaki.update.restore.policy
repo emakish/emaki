@@ -6,7 +6,7 @@
   <vendor>Emaki</vendor>
   <action id="org.emaki.update.restore">
     <description>Restore the system to the selected restore point</description>
-    <message>Authentication is required to restore the system to the selected restore point. Your home folder will stay as it is.</message>
+    <message>Enter an administrator password to restore the system to the selected restore point. Your home folder will stay as it is.</message>
     <defaults>
       <allow_any>no</allow_any>
       <allow_inactive>no</allow_inactive>

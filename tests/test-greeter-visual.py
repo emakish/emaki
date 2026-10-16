@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Real shared greeter surfaces: black preparation, clipped pour and late decode."""
 from runtime_fixture import runtime_path
 import os
@@ -49,15 +51,15 @@ time.sleep(15)
         for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'QT_LOGGING_RULES', 'EMAKI_PYTHON'):
             env.pop(name, None)
         # The login screen loads no settings, so it shows the default theme:
-        # dark. The light run sets the theme row in the fixture only, to keep
-        # the light plate of the shared lock surfaces covered.
+        # light. The dark run sets the theme row in the fixture only, to keep
+        # the dark plate of the shared lock surfaces covered.
         def luminance(rgb):
             linear = [v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4 for v in (channel / 255 for channel in rgb)]
             return sum(v * weight for v, weight in zip(linear, (.2126, .7152, .0722)))
         dark_plate = (28, 19, 16)  # ShellPalette.flatPlate, dark, made opaque
         for late, rejection, real_wallpaper, theme in ((False, False, False, ''), (True, False, False, ''), (False, True, False, ''),
-                                                       (False, True, False, 'light'), (False, True, True, '')):
-            dark = theme != 'light'
+                                                       (False, True, False, 'dark'), (False, True, True, '')):
+            dark = theme == 'dark'
             if real_wallpaper:
                 shutil.copy2(ROOT / 'art/wallpaper/fallback.png', base / 'wallpaper.png')
             result = subprocess.run(['qs', '-p', str(base / 'qml/check.qml'), '--no-color'],
@@ -101,12 +103,12 @@ time.sleep(15)
                     assert image.convert('RGB').getpixel((320, 280)) == plate, (theme, image.convert('RGB').getpixel((320, 280)))
                     assert ink in pixels, theme
                     assert (max(luminance(plate), luminance(ink)) + .05) / (min(luminance(plate), luminance(ink)) + .05) > 7
-                name = 'u3b-greeter-real-wallpaper.png' if real_wallpaper else 'u3b-greeter-rejected%s.png' % ('-light' if theme == 'light' else '')
+                name = 'u3b-greeter-real-wallpaper.png' if real_wallpaper else 'u3b-greeter-rejected%s.png' % ('-dark' if theme == 'dark' else '')
                 shutil.copy2(base / 'rejected.png', CACHE / name)
-                print('PASS: greeter rejection remains visible after six seconds and while typing; theme =', theme or 'default (dark)')
+                print('PASS: greeter rejection remains visible after six seconds and while typing; theme =', theme or 'default (light)')
             with Image.open(base / 'finished.png') as image:
                 assert image.getpixel((20, 20))[:3] == (0, 0, 0)
-            print('PASS: greeter black preparation/pour/drain; late decode =', late, '; theme =', theme or 'default (dark)')
+            print('PASS: greeter black preparation/pour/drain; late decode =', late, '; theme =', theme or 'default (light)')
 
 
 if __name__ == '__main__':

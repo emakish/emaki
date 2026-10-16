@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import "Keyboard.js" as Keyboard
@@ -1589,12 +1591,11 @@ Item {
                             fallback: "bt"
                             active: pairedBlock.modelData.active
                             onClicked: body.activateRow(pairedBlock.modelData)
-                            // Forgetting a device was in the shell; the mockup has no place for
-                            // it, so it shows on the hovered row only.
+                            // Keep the action reachable while focus moves from the device into it.
                             Word {
                                 x: device.width - width - 6
                                 y: 9
-                                visible: device.hot
+                                visible: device.hot || device.activeFocus || activeFocus
                                 owner: device
                                 key: device.key + ":forget"
                                 label: "Forget"

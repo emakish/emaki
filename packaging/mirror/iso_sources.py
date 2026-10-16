@@ -29,6 +29,11 @@ import source_keys
 import savannah_git
 
 
+# Custom or umbrella licence metadata does not expose these source obligations.
+SOURCE_REQUIRED_PACKAGES = frozenset({'libfdk-aac', 'nmap', 'vim', 'vim-runtime',
+                                      'linux-firmware-other'})
+
+
 def run(*args, **kwargs):
     if args and args[0] == 'git':
         args = ('git', '-c', 'http.userAgent=emaki-publish', *args[1:])
@@ -67,8 +72,20 @@ def package_metadata(path):
 
 
 def copyleft(info):
-    return any(re.search(r'(?:^|[^A-Za-z])(?:A?GPL|LGPL)', item, re.I)
-               for item in info['license'])
+    # Some Arch packages use custom/WHENCE labels for terms that require source.
+    # FDK AAC NOTICE requires complete source for binaries; NPSL applies GPLv2
+    # source terms. Vim's modified-version terms and the GPL/eCos firmware in
+    # linux-firmware-other also need coverage, regardless of the metadata label.
+    if set(info.get('pkgname', ())) & SOURCE_REQUIRED_PACKAGES:
+        return True
+    # Match legacy Arch labels and SPDX expressions, including alternatives: the
+    # release gate does not choose a permissive branch of a dual licence.
+    families = (r'A?GPL|LGPL|MPL|EPL|CDDL|CPL|EUPL|OSL|QPL|RPL|RPSL|APSL|'
+                r'CECILL(?:-[BC])?|LPPL|GFDL|NPL|IPL|Sleepycat|SSPL|'
+                r'CC-BY(?:-NC)?-SA|Vim|LicenseRef-FDK-AAC|'
+                r'LicenseRef-Nmap-Public-Source-License-Version-0\.95')
+    return any(re.search(r'(?:^|[^A-Za-z])(?:' + families + r')(?:$|[^A-Za-z])',
+                         item, re.I) for item in info['license'])
 
 
 def inventory(closure, packages, exclude=()):
@@ -85,6 +102,10 @@ def inventory(closure, packages, exclude=()):
                     or not re.fullmatch('[0-9a-f]{64}', sha)):
                 raise ValueError('invalid image binary inventory')
         selected = saved['sources']
+        required = {name for name in names
+                    if name.rsplit('-', 3)[0] in SOURCE_REQUIRED_PACKAGES - set(exclude)}
+        if required - selected.keys():
+            raise ValueError('image inventory omits required custom-licence sources; regenerate it')
         for name, record in selected.items():
             if name not in saved['binaries'] or record['binary_sha256'] != saved['binaries'][name]:
                 raise ValueError('source identity differs from the image binary inventory')
@@ -992,7 +1013,7 @@ def validate_missing(path, closure, expected_inventory):
 
 
 def validate(manifest_path, closure, packages, exclude=(), *, expected_inventory=None,
-             missing_sources=None):
+             missing_sources=None, allow_missing=False):
     """Bind sources to the actual image, with no network or recipe execution at publish time."""
     path = Path(manifest_path)
     manifest = json.loads(path.read_text())
@@ -1004,6 +1025,9 @@ def validate(manifest_path, closure, packages, exclude=(), *, expected_inventory
     missing = validate_missing(missing_sources, closure, expected) if missing_sources is not None else {}
     if records.keys() & missing.keys():
         raise ValueError('Arch source manifest and missing sources overlap')
+    # Only completion of an already published image may retain historical gaps.
+    if missing and not allow_missing:
+        raise ValueError('missing required copyleft sources; complete collection before publication')
     if records.keys() | missing.keys() != expected.keys():
         raise ValueError('Arch source manifest is missing required packages or includes other packages')
     objects = {}
@@ -1044,8 +1068,8 @@ def missing_directions(records):
 def directions(records, base_url, *, partial=False):
     lines = ['Arch package sources in this image', '',
              'These archives contain the build recipes and upstream source files for the',
-             ('collected GPL and LGPL packages supplied by Arch Linux in this image.' if partial else
-              'GPL and LGPL packages supplied by Arch Linux in this image.'),
+             ('collected copyleft packages supplied by Arch Linux in this image.' if partial else
+              'copyleft packages supplied by Arch Linux in this image.'),
              'Download the archive listed for the package and version you need.', '']
     for record in sorted(records.values(), key=lambda item: item['name']):
         lines.extend([f"{record['name']} {record['version']}",

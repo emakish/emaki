@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Text recovery session. emaki-greeter-compositor runs `agreety --cmd emaki-text-session` on
 # the login VT when the compositor cannot start; greetd starts this after a successful login.
 # It opens the user's login shell on that VT and never starts a compositor. Leaving the shell

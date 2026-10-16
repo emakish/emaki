@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -84,6 +85,27 @@ class ReceiptTests(unittest.TestCase):
         path.rename(renamed)
         with self.assertRaises(ValueError):
             receipts.read(renamed, trusted=False)
+
+    def test_fifo_receipt_is_rejected_without_blocking_reads(self):
+        value = self.install()
+        path = self.directory / (value['id'] + '.json')
+        path.unlink()
+        os.mkfifo(path)
+        code = """
+import sys
+from pathlib import Path
+import unittest
+import programs_receipts as receipts
+path = Path(sys.argv[1])
+for trusted in (True, False):
+    with unittest.TestCase().assertRaisesRegex(ValueError, 'Invalid receipt file'):
+        receipts.read(path, trusted=trusted)
+    assert receipts.receipts(path.parent, trusted=trusted) == []
+"""
+        result = subprocess.run([sys.executable, '-c', code, str(path)],
+                                cwd=Path(receipts.__file__).parent, capture_output=True,
+                                text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_latest_is_the_newest_install_not_yet_undone(self):
         first = self.install()

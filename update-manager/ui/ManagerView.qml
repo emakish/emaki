@@ -805,7 +805,7 @@ Rectangle {
                     ManagerButton { objectName: "refresh"; text: "Refresh"; quiet: true; enabled: !view.programs.busy; onClicked: view.programs.refresh() }
                 }
                 ManagerProgram { visible: view.page === "program"; Layout.fillWidth: true; controller: view.programs }
-                ManagerUpdates { id: updatesPage; visible: view.page === "updates"; Layout.fillWidth: true; controller: view.controller; programs: view.programs.allRows; launchEntries: view.programs.launchEntries || []; transactionBusy: view.programs.mutating }
+                ManagerUpdates { id: updatesPage; visible: view.page === "updates"; Layout.fillWidth: true; controller: view.controller; programs: view.programs.allRows; launchEntries: view.programs.launchEntries || []; transactionBusy: view.programs.mutating; aurKnown: view.programs.aurKnown; aurEnabled: view.programs.aurEnabled }
                 Item { implicitHeight: 24; Layout.fillWidth: true }
             }
         }

@@ -12,6 +12,10 @@ bus, no root, no file outside a temporary directory.
   python3 tests/test-machine-settings.py --no-mutants
 """
 import json
+import fcntl
+import importlib.machinery
+import importlib.util
+import stat
 import os
 from pathlib import Path
 import shutil
@@ -21,9 +25,24 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 PROGRAM = Path(os.environ.get('EMAKI_MACHINE_SETTINGS_UNDER_TEST', ROOT / 'scripts/emaki-machine-settings'))
+
+loader = importlib.machinery.SourceFileLoader('machine_settings', str(PROGRAM))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+provider = importlib.util.module_from_spec(spec)
+loader.exec_module(provider)
+
+DRIVER = """import importlib.machinery, importlib.util, os, sys
+loader = importlib.machinery.SourceFileLoader('provider', sys.argv[1])
+spec = importlib.util.spec_from_loader(loader.name, loader)
+module = importlib.util.module_from_spec(spec)
+loader.exec_module(module)
+module.LOCK_WAIT = float(os.environ.get('FAKE_LOCK_WAIT', '3'))
+sys.exit(module.main(sys.argv[2:]))
+"""
 
 FAKE_BUSCTL = r'''#!/usr/bin/env python3
 import json, os, sys, time
@@ -115,6 +134,112 @@ def machine_state():
     }
 
 
+class RuntimeLock(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(prefix='emaki-machine-lock-')
+        self.addCleanup(self.directory.cleanup)
+        self.runtime = Path(self.directory.name)
+        self.path = self.runtime / 'emaki-machine-settings.lock'
+        patch = mock.patch.dict(os.environ, XDG_RUNTIME_DIR=str(self.runtime))
+        patch.start()
+        self.addCleanup(patch.stop)
+        patch = mock.patch.object(provider, 'LOCK_WAIT', 0.05)
+        patch.start()
+        self.addCleanup(patch.stop)
+        # Old socket implementations can be exercised even where sockets are denied.
+        patch = mock.patch.object(socket, 'socket')
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_abstract_socket_cannot_block_changes(self):
+        with mock.patch.object(socket, 'socket') as factory:
+            factory.return_value.bind.side_effect = OSError('address already in use')
+            with provider.lock():
+                self.assertEqual(stat.S_IMODE(self.path.stat().st_mode), 0o600)
+            factory.assert_not_called()
+
+    def test_runtime_lock_serializes_and_releases(self):
+        with provider.lock():
+            with self.assertRaises(provider.Refusal):
+                provider.lock()
+        with provider.lock():
+            pass
+
+    def test_runtime_lock_rejects_unsafe_files_without_blocking(self):
+        for kind in ('fifo', 'symlink', 'mode', 'owner', 'hardlink', 'directory'):
+            with self.subTest(kind=kind):
+                if self.path.exists() or self.path.is_symlink():
+                    self.path.unlink()
+                if kind == 'fifo':
+                    os.mkfifo(self.path, 0o600)
+                elif kind == 'symlink':
+                    self.path.symlink_to('absent')
+                elif kind == 'directory':
+                    self.path.mkdir()
+                else:
+                    self.path.touch(mode=0o600)
+                    if kind == 'mode':
+                        self.path.chmod(0o666)
+                    if kind == 'hardlink':
+                        os.link(self.path, self.path.with_suffix('.link'))
+                original_stat = os.fstat
+
+                def metadata(descriptor):
+                    info = original_stat(descriptor)
+                    if kind == 'owner' and stat.S_ISREG(info.st_mode):
+                        # Simulate a foreign uid without requiring privileges to chown.
+                        values = list(info)
+                        values[4] = os.getuid() + 1
+                        return os.stat_result(values)
+                    return info
+
+                with mock.patch.object(os, 'fstat', side_effect=metadata), \
+                        mock.patch.object(fcntl, 'flock') as acquire, \
+                        mock.patch.object(time, 'sleep') as sleep:
+                    with self.assertRaises(provider.Refusal):
+                        provider.lock()
+                    acquire.assert_not_called()
+                    sleep.assert_not_called()
+                if kind == 'directory':
+                    self.path.rmdir()
+                else:
+                    self.path.unlink()
+
+    def test_runtime_lock_rejects_unsafe_directory(self):
+        for mode in (0o755, 0o770, 0o777):
+            with self.subTest(mode=mode):
+                self.runtime.chmod(mode)
+                with self.assertRaises(provider.Refusal):
+                    provider.lock()
+                self.assertFalse(self.path.exists())
+        self.runtime.chmod(0o700)
+        original_stat = os.fstat
+
+        def metadata(descriptor):
+            values = list(original_stat(descriptor))
+            values[4] = os.getuid() + 1
+            return os.stat_result(values)
+
+        with mock.patch.object(os, 'fstat', side_effect=metadata):
+            with self.assertRaises(provider.Refusal):
+                provider.lock()
+        self.assertFalse(self.path.exists())
+
+    def test_runtime_lock_requires_real_absolute_directory(self):
+        link = self.runtime / 'link'
+        link.symlink_to(self.runtime, target_is_directory=True)
+        regular = self.runtime / 'regular'
+        regular.touch()
+        for value in ('', 'relative', str(self.runtime / 'absent'), str(link), str(regular)):
+            with self.subTest(value=value), mock.patch.dict(os.environ, XDG_RUNTIME_DIR=value):
+                with self.assertRaises(provider.Refusal):
+                    provider.lock()
+        with mock.patch.dict(os.environ, clear=True):
+            with self.assertRaises(provider.Refusal):
+                provider.lock()
+        self.assertFalse(self.path.exists())
+
+
 class Provider(unittest.TestCase):
     def setUp(self):
         self.dir = Path(tempfile.mkdtemp(prefix='emaki-machine-settings-'))
@@ -128,14 +253,14 @@ class Provider(unittest.TestCase):
         self.log = self.dir / 'calls.log'
         self.log.write_text('')
         self.env = {'PATH': f'{self.bin}:{os.environ["PATH"]}', 'FAKE_BUS_STATE': str(self.state),
-                    'FAKE_BUS_LOG': str(self.log),
+                    'FAKE_BUS_LOG': str(self.log), 'XDG_RUNTIME_DIR': str(self.dir),
                     'EMAKI_MACHINE_DECLARATIONS': str(self.dir / 'absent.json')}
 
     def tearDown(self):
         shutil.rmtree(self.dir)
 
     def run_provider(self, *args, **env):
-        result = subprocess.run([sys.executable, '-I', str(PROGRAM), *args, '--json'],
+        result = subprocess.run([sys.executable, '-I', '-c', DRIVER, str(PROGRAM), *args, '--json'],
                                 capture_output=True, text=True, timeout=30,
                                 env={**self.env, **env})
         self.assertNotIn(SECRET, result.stdout + result.stderr)
@@ -334,6 +459,7 @@ class Provider(unittest.TestCase):
                 ('locale.language', 'LANG=C', 'invalid_locale'),
                 ('locale.formats', 'en_GB', 'invalid_locale'),
                 ('locale.language', 'en_US.UTF-8\nLC_ALL=C', 'invalid_value'),
+                ('locale.language', 'en_US.UTF-8\x7f', 'invalid_value'),
                 ('hostname', 'x', 'unknown_setting'),
                 ('lock.delay', '300', 'unknown_setting')):
             code, reply = self.run_provider('set', key, value)
@@ -395,7 +521,7 @@ class Provider(unittest.TestCase):
         # the second must read the machine after the first, not resend the old layouts.
         calling = self.dir / 'calling'
         first = subprocess.Popen(
-            [sys.executable, '-I', str(PROGRAM), 'set', 'keyboard.layouts', 'us,ru,de', '--json'],
+            [sys.executable, '-I', '-c', DRIVER, str(PROGRAM), 'set', 'keyboard.layouts', 'us,ru,de', '--json'],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             env={**self.env, 'FAKE_BUS_DELAY': '1.5', 'FAKE_BUS_CALLING': str(calling)})
         deadline = time.monotonic() + 20
@@ -415,9 +541,10 @@ class Provider(unittest.TestCase):
                          ['us,ru,de', 'pc105', '', 'terminate:ctrl_alt_bksp,grp:alt_shift_toggle'])
 
     def test_a_held_lock_refuses_before_reading_or_calling(self):
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as held:
-            held.bind('\0emaki-machine-settings')
-            code, reply = self.run_provider('set', 'time.zone', 'UTC')
+        with open(self.dir / 'emaki-machine-settings.lock', 'wb') as held:
+            os.chmod(held.name, 0o600)
+            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            code, reply = self.run_provider('set', 'time.zone', 'UTC', FAKE_LOCK_WAIT='0.1')
         self.assertEqual((code, reply['status'], reply['reason']),
                          (1, 'rejected', 'machine_settings_busy'))
         self.assertEqual(self.log.read_text(), '')
@@ -456,12 +583,9 @@ class Provider(unittest.TestCase):
             code, reply = self.run_provider(*args)
             self.assertEqual((code, reply['reason']), (2, 'usage'), args)
 
-    def test_program_writes_no_file_itself(self):
+    def test_program_does_not_write_configuration(self):
         text = PROGRAM.read_text()
-        for needle in ("open(", "write_text", "write_bytes", "os.replace", "shutil", "sudo", "pkexec"):
-            if needle == 'open(':
-                self.assertNotIn('.open(', text)
-                continue
+        for needle in ("write_text", "write_bytes", "os.replace", "shutil", "sudo", "pkexec", "emaki-machine-settings-root"):
             self.assertNotIn(needle, text)
 
 
@@ -487,8 +611,8 @@ MUTANTS = (
      "            for name in FORMATS:\n", 'test_locale_language_and_formats_keep_other_variables'),
     ("if key == 'time.automatic' and not self.time()['CanNTP']:", "if False:",
      'test_automatic_time_without_ntp_service_is_read_only'),
-    ("            held.bind(LOCK)\n", "", 'test_concurrent_keyboard_changes_keep_both'),
-    ("            held.bind(LOCK)\n", "", 'test_a_held_lock_refuses_before_reading_or_calling'),
+    ("        acquire()\n", "        pass\n", 'test_concurrent_keyboard_changes_keep_both'),
+    ("        acquire()\n", "        pass\n", 'test_a_held_lock_refuses_before_reading_or_calling'),
     ("foreign = machine.sent is not None and check.keyboard() != machine.sent",
      "foreign = False", 'test_a_foreign_keyboard_write_is_not_answered_as_applied'),
     ("        if not refusal.sent:\n", "        if True:\n",

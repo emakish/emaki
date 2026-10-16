@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -21,6 +23,18 @@ Scope {
     // window identity), so a list fed by byId (Recent) must check this set, not only NoDisplay.
     readonly property var listedIds: new Set(DesktopEntries.applications.values.map(entry => entry.id))
     readonly property var entries: DesktopEntries.applications.values.filter(entry => catalog.shown(entry)).sort((a, b) => a.name.localeCompare(b.name))
+    // Counts finished desktop-entry scans. A scan that finds an ID twice (a copy in
+    // ~/.local/share/applications over the system one) gives it a new DesktopEntry and deletes
+    // the old object. The packaged watcher (quickshell-emaki 0007) rescans when an applications
+    // directory changes: a program installed or removed, update-desktop-database's mimeinfo.cache.
+    // Holders of byId() results (the dock) read this to rebuild with live ones.
+    property int scans: 0
+    Connections {
+        target: DesktopEntries
+        function onApplicationsChanged(): void {
+            catalog.scans++;
+        }
+    }
     readonly property string launcher: Quickshell.env("EMAKI_GTK_LAUNCH") || "gtk-launch"
     property string launchState: "idle"
     // A launch in flight; frequency bookkeeping never blocks the next click (it queues).

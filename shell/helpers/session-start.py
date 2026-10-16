@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """One-shot login decoration and bounded readiness observation, never authentication.
 
 Only the session user's private runtime directory is written. A stale/missing marker,

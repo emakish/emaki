@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Private fake greetd socket, using the real native-endian qint32 + JSON framing.
 
 The production per-attempt greetd worker connects directly to this server.

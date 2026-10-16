@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Nonblocking newline framing, preserving coalesced ACK + event packets.
 use crate::state::{Failure, Status};
 use crate::transport::{MAX_REPLY, io_failure, remaining};

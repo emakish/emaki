@@ -11,6 +11,9 @@ Conflicts=shutdown.target
 ConditionKernelCommandLine=emaki.generation
 ConditionPathExists=|/efi/EFI/Emaki/boot-state.json
 ConditionPathExists=|/efi/EFI/Emaki/boot-intent.json
+# Secure Boot slots: a slot's trial is offered (BootNext) before boot-state.json is written.
+ConditionPathExists=|/efi/EFI/Emaki/a/slot.json
+ConditionPathExists=|/efi/EFI/Emaki/b/slot.json
 RequiresMountsFor=/boot /efi
 
 [Service]

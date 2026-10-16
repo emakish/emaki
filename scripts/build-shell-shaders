@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Offline Qt 6 shader build; output confined to the project cache by default."""
 import os
 from pathlib import Path

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Window
@@ -79,7 +81,7 @@ ShellRoot {
     }
     Component.onCompleted: Qt.callLater(() => {
         Quickshell.watchFiles = false;
-        // The digit and mark checks measure the light ink; the default theme is dark.
+        // The digit and mark checks explicitly measure the light ink.
         SettingsBridge.values = [
             {
                 key: "appearance.theme",

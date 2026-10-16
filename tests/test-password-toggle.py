@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Real Qt mouse/keyboard reveal and reset checks in an isolated offscreen shell."""
 from runtime_fixture import runtime_path
 import os

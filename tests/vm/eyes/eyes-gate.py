@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Release-walk gate (Phase 0): accept a walk record only under the rules of plan 5.3a.
 
   eyes-gate.py --record WALK/walk.toml --iso RELEASE.iso [--signoff WALK/signoff.toml]

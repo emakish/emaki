@@ -74,9 +74,12 @@ ShellRoot {
     }
     function matches(canvas: Item, expect: var): bool {
         const centre = pixel(canvas, canvas.width / 2, canvas.height / 2);
-        if (expect === "silhouette")
-            // The silhouette's head in the shell's faint ink (alpha .3), no picture.
-            return !canvas.showsPicture && centre[3] > 50 && centre[3] < 110 && centre[0] < 90;
+        if (expect === "silhouette") {
+            // The silhouette's head in the shell's faint ink, no picture. The ink follows the
+            // theme (translucent dark on light, opaque on dark), so compare with it.
+            const ink = LiquidPalette.faint, near = (a, b) => Math.abs(a - b * 255) < 8;
+            return !canvas.showsPicture && near(centre[0], ink.r) && near(centre[1], ink.g) && near(centre[2], ink.b) && near(centre[3], ink.a);
+        }
         const close = (a, b) => Math.abs(a - b) < 40;
         if (!canvas.showsPicture || centre[3] < 240 || !close(centre[0], expect[0]) || !close(centre[1], expect[1]) || !close(centre[2], expect[2]))
             return false;

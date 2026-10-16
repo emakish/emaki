@@ -1,0 +1,8 @@
+signature 1
+image signature issuers:
+ - /C=US/O=Microsoft Corporation/CN=Microsoft UEFI CA 2023
+image signature certificates:
+ - subject: /C=US/ST=Washington/L=Redmond/O=Microsoft Corporation/CN=Microsoft UEFI CA 2023 signer
+   issuer:  /C=US/O=Microsoft Corporation/CN=Microsoft UEFI CA 2023
+ - subject: /C=US/O=Microsoft Corporation/CN=Microsoft UEFI CA 2023
+   issuer:  /C=US/O=Microsoft Corporation/CN=Microsoft RSA Devices Root CA 2021

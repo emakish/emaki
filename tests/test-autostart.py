@@ -86,17 +86,21 @@ class AutostartTests(unittest.TestCase):
                         EMAKI_SHELL_SESSION_ENV='old snapshot',
                         EMAKI_SHELL_ORIGINAL_MALLOC_CONF='old malloc',
                         EMAKI_SHELL_PROCESS_ID='old process')
+        markers = ('EMAKI_LOGIN_HANDOFF', 'EMAKI_SESSION_START', 'EMAKI_SESSION_SKIP_INTRO',
+                   'EMAKI_STARTUP_COVER', 'EMAKI_SESSION_TAKEOVER')
+        self.env.update({key: 'private-login-value' for key in markers})
         result = subprocess.run([str(WRAPPER), 'shell', sys.executable, '-I', '-c',
                                  'import json,os; print(json.dumps(dict(os.environ)))'],
                                 env=self.env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         environment = json.loads(result.stdout)
         self.assertEqual(environment['PATH'], '@EMAKI_TRUSTED_PATH@')
+        self.assertEqual(environment['EMAKI_LOGIN_HANDOFF'], 'private-login-value')
         session = json.loads(environment['EMAKI_SHELL_SESSION_ENV'])
         self.assertEqual(session['PATH'], '/personal/bin')
         self.assertEqual(session['QT_QPA_PLATFORMTHEME'], 'personal-theme')
         for key in ('WAYLAND_SOCKET', 'EMAKI_SHELL_SESSION_ENV',
-                    'EMAKI_SHELL_ORIGINAL_MALLOC_CONF', 'EMAKI_SHELL_PROCESS_ID'):
+                    'EMAKI_SHELL_ORIGINAL_MALLOC_CONF', 'EMAKI_SHELL_PROCESS_ID', *markers):
             self.assertNotIn(key, session)
 
     def test_missing_home_without_absolute_xdg_starts_command(self):

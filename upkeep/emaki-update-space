@@ -1,0 +1,19 @@
+#!/bin/sh
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Interpreter or module failures cannot turn this optional estimate into a lockout.
+message=$(@PYTHON@ -IB @LIBEXECDIR@/emaki_update_space.py "$$" 2>&1)
+status=$?
+# Keep ALPM's target pipe open even when the interpreter failed before reading it.
+cat >/dev/null
+if [ "$status" -eq 0 ] && [ -z "$message" ]; then
+    exit 0
+fi
+case "$status:$message" in
+    3:Not\ enough\ free\ space\ for\ this\ update:\ *)
+        printf '%s\n' "$message" >&2
+        exit 1
+        ;;
+esac
+printf '%s\n' 'Warning: the update space check is unavailable; the package transaction will continue.' >&2
+exit 0

@@ -1,4 +1,6 @@
 #!/usr/bin/python3 -I
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Start the default wallpaper once per compositor, without waiting for login decoration."""
 import fcntl
 import hashlib

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Scope/fallback regression, plus offscreen production launch wiring without IPC."""
 from runtime_fixture import runtime_path
 import json
@@ -17,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 root = Path(tempfile.mkdtemp(prefix='as-', dir=ROOT / '.cache'))
 for name in ('r', 'c', 's', 'd/applications', 'cache', 'tmp'):
     (root / name).mkdir(parents=True, mode=0o700)
-env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
+env = dict(os.environ, HOME=str(root), QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
            QML_DISABLE_DISK_CACHE='1', PYTHONDONTWRITEBYTECODE='1',
            XDG_RUNTIME_DIR=str(runtime_path(root)), XDG_CONFIG_HOME=str(root / 'c'),
            XDG_DATA_HOME=str(root / 'd'), XDG_DATA_DIRS=str(root / 'd'),
@@ -37,6 +39,8 @@ app = root / 'app.py'
 app.write_text('''import json, os, sys, time
 from pathlib import Path
 assert 'WAYLAND_SOCKET' not in os.environ
+assert not {'EMAKI_LOGIN_HANDOFF', 'EMAKI_SESSION_START', 'EMAKI_SESSION_SKIP_INTRO',
+            'EMAKI_STARTUP_COVER', 'EMAKI_SESSION_TAKEOVER'}.intersection(os.environ)
 if 'forked' in sys.argv:
     if os.fork(): sys.exit(0)
     time.sleep(.1)
@@ -67,6 +71,21 @@ def launch(*args, environment=env):
                            sys.executable, '-B', str(app), *args], env=environment,
                           capture_output=True, text=True, timeout=10)
 
+
+# Both scoped and fallback launches must strip raw and restored login capabilities.
+private = dict(env, **{key: 'private-login-value' for key in (
+    'EMAKI_LOGIN_HANDOFF', 'EMAKI_SESSION_START', 'EMAKI_SESSION_SKIP_INTRO',
+    'EMAKI_STARTUP_COVER', 'EMAKI_SESSION_TAKEOVER')})
+for mode in ('ok', 'fail'):
+    (root / 'scope-mode').write_text(mode)
+    for snapshot in (None, json.dumps(private), 'invalid snapshot'):
+        inherited = dict(private)
+        if snapshot is not None:
+            inherited['EMAKI_SHELL_SESSION_ENV'] = snapshot
+        result = launch('handoff-isolation', environment=inherited)
+        assert result.returncode == 0, result
+        assert records()[-1][1] == ['handoff-isolation']
+(root / 'scope-mode').write_text('ok')
 
 literal = 'PRIVATE $HOME $(touch BAD); кавычки'
 assert launch(literal).returncode == 0
@@ -220,8 +239,10 @@ for mode in ('ok', 'fail'):
         assert time.monotonic() < until
         time.sleep(.02)
     assert all(bool(scope) == (mode == 'ok') for scope, _ in records()[-5:]), records()
-assert len(launches(root, ['org.test-App.desktop', 'scope-app', 'scope-term', 'scope-file', 'wl-copy'])) == 18
-assert len(records()) == 18, records()  # Eight CLI attempts plus five QML routes twice.
+assert len(launches(root, ['org.test-App.desktop', 'scope-app', 'scope-term', 'scope-file', 'wl-copy', 'xdg-open'])) == 24
+assert len(records()) == 24, records()  # Fourteen CLI attempts plus five QML routes twice.
+assert [json.loads(line) for line in (root / 'urls.jsonl').read_text().splitlines()] == [
+    ['https://duckduckgo.com/?q=PRIVATE%20query'], ['http://nmcheck.gnome.org/']] * 2
 assert all(json.loads(line) == ['/dev/null', '/dev/null']
            for line in (root / 'fds.jsonl').read_text().splitlines())
 print('PASS: unit/slice/escaping, literal argv, app failure without retry, absent/failed/late manager, offscreen app/terminal/web/portal/file fallback and one warning;', root)

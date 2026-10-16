@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -53,7 +55,7 @@ SystemBackend {
                 name: String(g.target.properties?.["application.name"] || g.target.nickname || g.target.description || g.target.name || ""),
                 binary: String(g.target.properties?.["application.process.binary"] || "")
             }))
-    battery:UPower.displayDevice?.ready && UPower.displayDevice.isPresent ? UPower.displayDevice : null
+    battery: UPower.displayDevice?.ready && UPower.displayDevice.isPresent ? UPower.displayDevice : null
     charging: battery?.state === UPowerDeviceState.Charging || battery?.state === UPowerDeviceState.PendingCharge
     batteryPower: UPower.onBattery
     networkReady: Networking.backend === NetworkBackendType.NetworkManager

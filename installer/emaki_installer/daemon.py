@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 import fcntl
 import grp
@@ -19,7 +21,7 @@ from .inventory import Inventory
 from .protocol import Controller, decode_frame, encode_frame, read_test_mode
 from .runtime import Runner, cleanup, safe_log, secure_log
 from .restart import ResidentReboot, RestartGuard
-from .worker import Worker
+from .worker import Worker, review_esp_need
 
 
 def make_worker(api, inventory, broker):
@@ -95,6 +97,8 @@ class Server:
         replay_buffer = []
         replay_floor = 0
         subscribed = False
+        # This connection's identity: only it can confirm or renew the plan it reviewed.
+        owner = object()
 
         def enqueue(msg):
             if closed:
@@ -143,7 +147,7 @@ class Server:
                         self.controller.listeners.add(listener)
                     subscribed = True
                 replaying = msg['type'] == 'resume'
-                responses = await asyncio.to_thread(self.controller.handle, msg)
+                responses = await asyncio.to_thread(self.controller.handle, msg, owner)
                 replay_high = 0
                 for response in responses:
                     if callable(response):
@@ -173,6 +177,7 @@ class Server:
             closed = True
             with self.controller.lock:
                 self.controller.listeners.discard(listener)
+            self.controller.release(owner)
             sender.cancel()
             try:
                 await sender
@@ -247,6 +252,9 @@ def main():
                                         check_installation=restart.check_installation,
                                         validate_plan=lambda plan: validate_live_plan(api, plan))
                 runner = Runner(controller.log, controller.redactor)
+                # Plan review and the worker's re-plans count a kept ESP's Secure Boot need
+                # from the USB's archives, by the worker's final rule (R9S9 #9).
+                inventory.esp_need = review_esp_need(inventory.root, controller.log)
                 controller.set_timezone_fn = lambda name: set_live_timezone(name, runner)
                 inventory.runner = runner
                 inventory.start_timezone_lookup()

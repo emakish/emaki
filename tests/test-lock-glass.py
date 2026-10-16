@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Offscreen lock geometry, CPU-image handoff, source revocation and fallback checks."""
 from runtime_fixture import runtime_path
 import os

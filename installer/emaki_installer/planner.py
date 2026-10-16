@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Pure, deterministic planning. No subprocess, archinstall import or disk access."""
 import copy
 from dataclasses import dataclass, field
@@ -10,11 +12,76 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .constants import BTRFS_OPTIONS, GIB, MIB, MIN_DISK, SUBVOLUMES, TEST_REPO_OVERRIDE
 from . import inventory as alongside
+from . import secureboot
 from .errors import Code, require
 from .graphics import planned_packages
-from .hardware import SECURE_BOOT_MESSAGE, SECURE_BOOT_UNKNOWN
+from .hardware import SECURE_BOOT_CAS, SECURE_BOOT_NO_CA, SECURE_BOOT_UNKNOWN
 from .latin_layouts import CONSOLE_CHARS, is_latin
 from .render import keyboard_summary, unlock_layout
+
+# The FAT label of an ESP Emaki formats. MokManager's "Enroll key from disk" lists a volume
+# by its label, else by a long device path. An existing ESP keeps whatever label it has.
+ESP_LABEL = 'EMAKI'
+# The Secure Boot machine key's own btrfs subvolume, next to @ rather than inside it: root
+# snapshots never hold a copy of the private key, and a rollback of @ keeps the key.
+SECURE_BOOT_SUBVOLUME = '@secureboot'
+# A kept ESP with Secure Boot: refused at plan review and checked again before the first disk write.
+ESP_SECURE_BOOT_ROOM = ("The disk's startup partition is too full for Secure Boot updates: Emaki needs "
+                        'about {need} MB free there (it has {free} MB). Making it bigger needs a backup '
+                        'and a disk tool. Do not delete Windows startup files.')
+# Plan review counts a kept ESP by make_plan's esp_need: the worker's rule applied to the USB's
+# archives (worker.review_esp_need), so both gates need the same bytes (R9S9 #9). Only when those
+# archives cannot be read does review fall back to these sizes, which no real Secure Boot install
+# undercuts; the worker's check from the verified archives stays the final gate.
+# Measured: Fedora shim 16.1-7 shimx64.efi 1,036,008 B and mmx64.efi 874,360 B. The signed GRUB
+# carries every x86_64-efi module and list (grub 2:2.16-1: 3,857,977 B) and unicode.pf2
+# (2,412,512 B) uncompressed in its memdisk; built images measured about 5.9 MB.
+PLAN_SHIM_BYTES = 1_000_000
+PLAN_MOK_MANAGER_BYTES = 800_000
+PLAN_SIGNED_GRUB_BYTES = 4 * MIB
+FALLBACK = 'EFI/BOOT/BOOTX64.EFI'
+# The ESP Emaki formats for itself: the erase layout's first partition and, next to Windows, the
+# start of the freed extent. Room for both A/B boot slots, the EFI/BOOT copies, the boot
+# refresh's grub-install stage and fsck leftovers; one size, so one space rule applies to both.
+OWN_ESP_BYTES = GIB
+
+
+def shared_esp(esp):
+    """Keep fallback files on an ESP the inventory cannot establish is Emaki's to change."""
+    return bool(alongside.other_system(esp))
+
+
+def removable_fallback(secure_boot, fallback_exists, own_fallback, sidecars_exist, shared=False):
+    """Whether the install writes the removable path EFI/BOOT (the bootloader phase's rule).
+
+    Only where no fallback loader is, or over Emaki's own one. With Secure Boot shim's GRUB and
+    MokManager sit next to BOOTX64.EFI: never over files Emaki did not write. An ESP this install
+    formats (erase, Emaki's own next to Windows) holds none, so EFI/BOOT is always written there;
+    a kept ESP holding another system's loader never receives fallback files.
+    """
+    removable = not shared and (not fallback_exists or own_fallback)
+    if secure_boot:
+        removable = removable and (own_fallback or not sidecars_exist)
+    return bool(removable)
+
+
+def probed_removable(esp):
+    """removable_fallback for a kept ESP from its inventory, before it is mounted. The inventory
+    does not fingerprint EFI/Emaki, so a fallback there may be Emaki's own: then it counts as written."""
+    names = {name.casefold() for name in (esp.get('_efi_loaders') or {})}
+    sidecars = {f'efi/boot/{name}' for name in (secureboot.GRUB, secureboot.MOK_MANAGER)}
+    fallback = FALLBACK.casefold() in names
+    return removable_fallback(True, fallback, fallback, bool(names & sidecars), shared=shared_esp(esp))
+
+
+def plan_esp_need(cluster, removable):
+    """The lower bound of the ESP bytes a kept ESP needs for a Secure Boot install, when plan
+    review cannot read the archives: the boot refresh's rule (secureboot.slots_need) with the
+    PLAN_* sizes, and the shared reserve."""
+    grub = PLAN_SIGNED_GRUB_BYTES
+    return secureboot.slots_need({secureboot.SHIM: PLAN_SHIM_BYTES, secureboot.MOK_MANAGER: PLAN_MOK_MANAGER_BYTES,
+                                  secureboot.GRUB: grub, secureboot.ESP_CERT: 1},
+                                 cluster, removable=removable, stage=grub) + secureboot.SHARED_ESP_RESERVE
 
 
 @dataclass
@@ -33,10 +100,23 @@ class Partition:
     existing_subvolumes: list | None = None
     mapper: str | None = None
     luks_uuid: str | None = None
+    # The partition editor's new partition: its kind ('esp', 'linux', 'swap'); None for one that exists.
+    create: str | None = None
+    # LUKS2 on a partition other than root (/home, data, swap); root follows the plan's encryption.
+    encrypt: bool = False
 
     @property
     def device(self):
         return self.mapper or self.path
+
+    @property
+    def swap(self):
+        return self.fs == 'swap'
+
+    @property
+    def mapper_name(self):
+        """The device-mapper name of an encrypted non-root partition, also its crypttab name."""
+        return f'emaki-part{self.number}' if self.encrypt else None
 
     @property
     def options(self):
@@ -55,6 +135,11 @@ class Plan:
     fingerprint: str
     swap_bytes: int = 0
     graphics_packages: tuple = ()
+    # The Microsoft third-party CAs of a firmware with Secure Boot on ('both', '2011',
+    # '2023'); '' when Secure Boot is off: then the boot path is the unsigned one.
+    secure_boot: str = ''
+    # The partition editor's changes (Edits), applied by the worker before any format; None without them.
+    edits: object = None
 
     @property
     def encrypted(self):
@@ -73,6 +158,16 @@ class Plan:
     @property
     def btrfs(self):
         return self.root.fs == 'btrfs'
+
+    @property
+    def esp_label(self):
+        """ESP_LABEL when this plan formats the ESP for Secure Boot, or makes Emaki's own ESP
+        next to Windows (with Secure Boot on or off: it tells Emaki's ESP from Windows' one);
+        None when it keeps an existing one, and for other installs without Secure Boot, which
+        stay exactly as before."""
+        esp = next((p for p in self.partitions if p.esp and p.mountpoint == '/efi'), None)
+        own = self.config.get('mode') == 'alongside'
+        return ESP_LABEL if (self.secure_boot or own) and esp is not None and esp.format else None
 
     @property
     def mounts(self):
@@ -165,7 +260,7 @@ def validate_config(value, test_mode=False):
     c = copy.deepcopy(value)
     allowed = {'mode', 'disk_id', 'partition_id', 'fs', 'mounts', 'shrink_bytes', 'hostname', 'timezone',
                'layouts', 'user', 'repo_server', 'online_update', 'scale_guess', 'output_scales', 'software',
-               'encryption', 'disk_password', 'hibernation', 'confirmed_encrypted', 'wifi_uuid'}
+               'encryption', 'disk_password', 'hibernation', 'confirmed_encrypted', 'wifi_uuid', 'partitioning'}
     require(c.get('wifi_uuid') is None or (isinstance(c['wifi_uuid'], str) and re.fullmatch(
         r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', c['wifi_uuid'])),
         Code.BAD_CONFIG, 'Invalid Wi-Fi connection ID.')
@@ -176,6 +271,7 @@ def validate_config(value, test_mode=False):
     require(isinstance(c.get('disk_id'), str), Code.BAD_CONFIG, 'A disk ID is required.')
     if c['mode'] != 'manual':
         require(c.get('fs') in ('btrfs', 'ext4'), Code.BAD_CONFIG, 'Choose btrfs or ext4.')
+        require('partitioning' not in c, Code.BAD_CONFIG, 'Partition changes belong to a manual installation.')
     if c['mode'] == 'alongside':
         require(isinstance(c.get('partition_id'), str) and type(c.get('shrink_bytes')) is int,
                 Code.BAD_CONFIG, 'Alongside requires partition_id and integer shrink_bytes (bytes freed for Emaki).')
@@ -303,8 +399,8 @@ def erase_partitions(size, fs):
     require(fs in ('btrfs', 'ext4'), Code.BAD_CONFIG, 'Unsupported filesystem.')
     # Half-open extents, 1 MiB alignment, reserve 1 MiB for the backup GPT.
     end = (size - MIB) // MIB * MIB
-    return [Partition(None, 1, MIB, GIB, 'vfat', True, '/efi', True),
-            Partition(None, 2, GIB + MIB, end - GIB - MIB, fs, True,
+    return [Partition(None, 1, MIB, OWN_ESP_BYTES, 'vfat', True, '/efi', True),
+            Partition(None, 2, OWN_ESP_BYTES + MIB, end - OWN_ESP_BYTES - MIB, fs, True,
                       None if fs == 'btrfs' else '/',
                       subvolumes=SUBVOLUMES.copy() if fs == 'btrfs' else {})]
 
@@ -346,24 +442,26 @@ def alongside_partitions(c, disk):
             and metadata['guid'] == str(p.get('_partuuid')).lower()
             and metadata['type'] == p.get('_parttype') and metadata['name'] == p.get('_partlabel'), Code.SHRINK_BOUNDS,
             'Windows GPT identity or geometry could not be verified.')
+    # Windows' ESP stays as it is, never mounted or written: GRUB's Windows entry needs its loader.
+    # Emaki's own ESP comes first in the freed extent, so its free space never limits Secure Boot.
     esps = [part for part in disk['partitions'] if part['esp']]
     require(len(esps) == 1 and esps[0]['fs'] == 'vfat', Code.ESP_SPACE,
-            'Alongside requires exactly one existing FAT32 ESP on the selected disk.')
+            'Installing next to Windows requires exactly one existing FAT32 startup partition on the selected disk.')
     esp = esps[0]
-    require(esp.get('_esp_free_bytes') is not None and esp['_esp_free_bytes'] >= 32 * MIB,
-            Code.ESP_SPACE, 'ESP needs at least 32 MiB of verified free space; it will never be formatted.')
     require('EFI/Microsoft/Boot/bootmgfw.efi' in esp.get('_efi_loaders', {}), Code.SHRINK_BOUNDS,
             'No verified Microsoft EFI loader exists on this disk; automatic Windows boot setup is unavailable.')
     occupied = {part['number'] for part in disk['partitions']}
-    number = next((n for n in range(1, 129) if n not in occupied), None)
-    require(number is not None, Code.SHRINK_BOUNDS, 'No free GPT partition entry is available.')
+    numbers = [n for n in range(1, 129) if n not in occupied][:2]
+    require(len(numbers) == 2, Code.SHRINK_BOUNDS,
+            "Emaki needs two free GPT partition entries (its startup partition and its root); this disk has "
+            f"{len(numbers)}.")
     start = p['start_bytes'] + new_size
     end = start + freed
     require(all(other is p or end <= other['start_bytes'] or start >= other['start_bytes'] + other['size_bytes']
                 for other in disk['partitions']), Code.SHRINK_BOUNDS, 'Freed extent overlaps another partition.')
-    return [Partition(esp['path'], esp['number'], esp['start_bytes'], esp['size_bytes'], 'vfat', False,
-                      '/efi', True, uuid=esp['uuid'], partuuid=esp.get('_partuuid')),
-            Partition(None, number, start, freed, c['fs'], True,
+    # The ESP comes out of Emaki's share, never out of Windows' size; storage_layout checks the root.
+    return [Partition(None, numbers[0], start, OWN_ESP_BYTES, 'vfat', True, '/efi', True),
+            Partition(None, numbers[1], start + OWN_ESP_BYTES, freed - OWN_ESP_BYTES, c['fs'], True,
                       None if c['fs'] == 'btrfs' else '/',
                       subvolumes=SUBVOLUMES.copy() if c['fs'] == 'btrfs' else {})]
 
@@ -380,22 +478,170 @@ def _mountpoint(mp):
             Code.MANUAL_LAYOUT, 'Unsupported mountpoint; /boot, /usr and the pacman database must stay in root.')
 
 
-def manual_partitions(rows, disk):
-    require(disk.get('_pttype') == 'gpt', Code.MANUAL_LAYOUT, 'Manual installation requires GPT.')
-    require(isinstance(rows, list) and 2 <= len(rows) <= 64, Code.MANUAL_LAYOUT,
-            'Assign exactly one root and one ESP, plus optional data mounts.')
+# The partition editor (manual mode). Nothing is written at review: the plan lists the changes,
+# and the worker applies them before formatting, after checking that the disk still matches.
+# New partitions of every kind but the ESP get the generic Linux type, as erase makes root:
+# systemd's GPT auto-discovery never mounts or unlocks one on its own.
+NEW_TYPES = {'esp': 'U', 'linux': 'L', 'swap': 'L'}
+NEW_KINDS = {'esp': 'EFI system partition', 'linux': 'Linux', 'swap': 'swap'}
+# An ESP Emaki formats must really be FAT32 (mkfs.fat makes FAT16 below about 260 MiB with 4 KiB
+# clusters) and hold both Secure Boot slots; the default is the erase layout's 1 GiB.
+ESP_FORMAT_MIN = 512 * MIB
+SWAP_MIN = 256 * MIB
+DATA_MIN = GIB
+MAX_CREATED = 16
+
+
+@dataclass
+class Edits:
+    new_table: bool
+    deleted: list  # The reviewed inventory rows of the partitions the plan deletes.
+    created: list  # Partition rows of the virtual layout the plan creates (ids 'new-N').
+
+
+def usable_end(disk):
+    """The end of the space partitions can use: 1 MiB stays for the backup GPT (as erase)."""
+    return (disk['size_bytes'] - MIB) // MIB * MIB
+
+
+def deletion_identity(part):
+    """What a typed confirmation to delete another system's partition must name."""
+    return {'path': part['path'], 'start_bytes': part['start_bytes'], 'size_bytes': part['size_bytes'],
+            'system': alongside.other_system(part)}
+
+
+def partition_edits(value, disk):
+    """The disk's partitions after the editor's changes, and those changes; nothing is written.
+
+    value: the config's `partitioning` ({new_table, delete, create}) or None. Each deleted row
+    names a partition of the probed disk; a partition of another system (inventory.other_system)
+    needs `confirm`, its current deletion_identity. Each created row is {id: 'new-N', type: 'esp' |
+    'linux' | 'swap', start_bytes, size_bytes}: whole MiB, inside the usable space, overlapping no
+    kept or other new partition. New partitions take the lowest free GPT entries in their order,
+    deleted ones included: sfdisk --append, after the deletions, fills the first free entry.
+    """
+    if value is None:
+        require(disk.get('_pttype') == 'gpt', Code.MANUAL_LAYOUT, 'Manual installation requires GPT.')
+        return disk['partitions'], None
+    require(isinstance(value, dict) and not (set(value) - {'new_table', 'delete', 'create'}),
+            Code.MANUAL_LAYOUT, 'Invalid partition changes.')
+    new_table, deletes, creates = value.get('new_table', False), value.get('delete', []), value.get('create', [])
+    require(type(new_table) is bool and isinstance(deletes, list) and isinstance(creates, list)
+            and len(deletes) <= 128 and len(creates) <= MAX_CREATED, Code.MANUAL_LAYOUT, 'Invalid partition changes.')
+    if new_table:
+        require(not disk['partitions'] and not disk.get('_fs') and not disk.get('closed_encrypted'),
+                Code.MANUAL_LAYOUT, 'A new partition table is made only on an empty disk; this disk holds data.')
+    else:
+        require(disk.get('_pttype') == 'gpt', Code.MANUAL_LAYOUT, 'Manual installation requires GPT.')
+    # Free space is measured between the partitions: every one's place must be known.
+    unplaced = next((p for p in disk['partitions'] if p.get('_geometry_known') is not True), None)
+    require(unplaced is None, Code.MANUAL_LAYOUT,
+            f"The place of partition {unplaced and unplaced.get('number')} on the disk is unknown, "
+            'so the partition editor cannot change this disk.')
     known = {p['id']: p for p in disk['partitions']}
-    grouped, mountpoints = {}, set()
+    deleted = []
+    for row in deletes:
+        require(isinstance(row, dict) and not (set(row) - {'partition_id', 'confirm'})
+                and isinstance(row.get('partition_id'), str) and row['partition_id'] in known,
+                Code.MANUAL_LAYOUT, 'A partition to delete is not on the selected disk.')
+        p = known[row['partition_id']]
+        require(p not in deleted, Code.MANUAL_LAYOUT, 'A partition is deleted twice.')
+        require(p.get('_geometry_known') is True and p['number'] > 0 and not p.get('_read_only', False),
+                Code.MANUAL_LAYOUT, f"Partition {p['number']} cannot be deleted: its place on the disk is unknown "
+                'or it is read-only.')
+        system = alongside.other_system(p)
+        if system:
+            require(row.get('confirm') == deletion_identity(p), Code.MANUAL_LAYOUT,
+                    f"Partition {p['number']} holds {system}. Confirm deleting it by typing DELETE.")
+        else:
+            require('confirm' not in row, Code.MANUAL_LAYOUT, 'Invalid partition changes.')
+        deleted.append(p)
+    kept = [p for p in disk['partitions'] if p not in deleted]
+    end = usable_end(disk)
+    free = [n for n in range(1, 129) if n not in {p['number'] for p in kept}]
+    require(len(creates) <= len(free), Code.MANUAL_LAYOUT, 'This disk has no free GPT partition entry left.')
+    created, extents = [], [(p['start_bytes'], p['start_bytes'] + p['size_bytes']) for p in kept]
+    for number, row in zip(free, creates):
+        require(isinstance(row, dict) and set(row) == {'id', 'type', 'start_bytes', 'size_bytes'}
+                and isinstance(row['id'], str) and re.fullmatch(r'new-[1-9][0-9]?', row['id'])
+                and row['id'] not in {p['id'] for p in created} and row['type'] in NEW_TYPES
+                and type(row['start_bytes']) is int and type(row['size_bytes']) is int,
+                Code.MANUAL_LAYOUT, 'Invalid new partition.')
+        start, size = row['start_bytes'], row['size_bytes']
+        require(start % MIB == 0 and size % MIB == 0 and size > 0 and start >= MIB and start + size <= end,
+                Code.MANUAL_LAYOUT, 'A new partition must start and end on whole MiB inside the free space.')
+        require(all(start + size <= a or start >= b for a, b in extents), Code.MANUAL_LAYOUT,
+                'A new partition overlaps another partition.')
+        least = {'esp': ESP_FORMAT_MIN, 'swap': SWAP_MIN, 'linux': DATA_MIN}[row['type']]
+        require(size >= least, Code.MANUAL_LAYOUT, {
+            'esp': 'An EFI system partition needs at least 512 MiB.',
+            'swap': 'A swap partition needs at least 256 MiB.',
+            'linux': 'A new partition needs at least 1 GiB.'}[row['type']])
+        extents.append((start, start + size))
+        created.append({'id': row['id'], 'path': None, 'number': number, 'uuid': None, 'fs': None,
+                        'size_bytes': size, 'start_bytes': start, 'esp': row['type'] == 'esp',
+                        'os_hint': None, 'other_system': None, '_new': row['type'], '_partuuid': None,
+                        '_geometry_known': True, '_read_only': False, '_btrfs_devices': None, '_subvolumes': None})
+    if new_table:
+        require(created, Code.MANUAL_LAYOUT, 'Create the partitions for the new partition table.')
+    if not (new_table or deleted or created):
+        return disk['partitions'], None
+    return kept + created, Edits(new_table, deleted, created)
+
+
+def _swap_row(row, p):
+    require(row.get('fs') == 'swap' and row.get('subvolume') is None and type(row.get('format')) is bool,
+            Code.MANUAL_LAYOUT, 'A swap partition takes the swap format.')
+    require(row['format'] or p['fs'] == 'swap', Code.MANUAL_LAYOUT,
+            'Using a partition as swap requires formatting it.')
+    require(not p['esp'] and p.get('_new') in (None, 'swap'), Code.MANUAL_LAYOUT,
+            'Only a swap partition can be used as swap.')
+    require(p['size_bytes'] >= SWAP_MIN, Code.MANUAL_LAYOUT, 'A swap partition needs at least 256 MiB.')
+
+
+def manual_partitions(rows, disk, encryption='none', edits=None):
+    """The manual layout: mount rows on the disk's partitions after the editor's changes.
+
+    rows: {partition_id, mountpoint ('swap' for swap), fs, format, subvolume, encrypt}; a new
+    partition's id is its editor id. encrypt (LUKS2) is for formatted partitions other than root
+    and needs an encrypted root, which keeps its key; root follows the plan's encryption.
+    Partitions of another system (inventory.other_system) are never formatted or mounted; only
+    an ESP may be kept, unformatted, at /efi.
+    """
+    partitions, edits = partition_edits(edits, disk)
+    require(isinstance(rows, list) and 2 <= len(rows) <= 64, Code.MANUAL_LAYOUT,
+            'Assign exactly one root and one startup partition, plus optional data mounts.')
+    known = {p['id']: p for p in partitions}
+    removed = {p['id'] for p in (edits.deleted if edits else [])}
+    grouped, mountpoints, swaps = {}, set(), []
     for row in rows:
         require(isinstance(row, dict) and not (set(row) -
-                {'partition_id', 'mountpoint', 'fs', 'format', 'subvolume'}),
+                {'partition_id', 'mountpoint', 'fs', 'format', 'subvolume', 'encrypt'}),
                 Code.MANUAL_LAYOUT, 'Invalid mount row.')
+        require(row.get('partition_id') not in removed, Code.MANUAL_LAYOUT,
+                'A deleted partition cannot be used.')
         require(isinstance(row.get('partition_id'), str) and row['partition_id'] in known,
                 Code.MANUAL_LAYOUT, 'Partition is not on the selected disk.')
         p = known[row['partition_id']]
         require(p.get('_geometry_known') is True and p['size_bytes'] > 0
                 and p['start_bytes'] > 0 and not p.get('_read_only', False),
                 Code.MANUAL_LAYOUT, 'Partition geometry is unknown or the partition is read-only.')
+        encrypt = row.get('encrypt', False)
+        require(type(encrypt) is bool, Code.MANUAL_LAYOUT, 'Invalid mount row.')
+        system = alongside.other_system(p)
+        require(not system or (p['esp'] and row.get('mountpoint') == '/efi' and row.get('format') is False),
+                Code.MANUAL_LAYOUT, f"Partition {p['number']} holds {system}. Emaki does not change it; "
+                'delete the partition to use its space.')
+        if row.get('mountpoint') == 'swap':
+            _swap_row(row, p)
+            require(row['partition_id'] not in grouped and not any(q is p for q, _ in swaps), Code.MANUAL_LAYOUT,
+                    'A swap partition cannot have other uses.')
+            require(not encrypt or (row['format'] and encryption != 'none'), Code.MANUAL_LAYOUT,
+                    'An encrypted swap partition needs formatting and an encrypted root, which keeps its key.')
+            swaps.append((p, row))
+            continue
+        require(p.get('_new') != 'swap', Code.MANUAL_LAYOUT, 'A new swap partition can only be used as swap.')
+        require(not any(q is p for q, _ in swaps), Code.MANUAL_LAYOUT, 'A swap partition cannot have other uses.')
         mp, fs, fmt, sv = (row.get(k) for k in ('mountpoint', 'fs', 'format', 'subvolume'))
         _mountpoint(mp)
         require(mp not in mountpoints, Code.MANUAL_LAYOUT, 'Duplicate mountpoint.')
@@ -404,6 +650,10 @@ def manual_partitions(rows, disk):
                 Code.MANUAL_LAYOUT, 'Invalid filesystem or format flag.')
         require(fmt or fs == p['fs'], Code.MANUAL_LAYOUT,
                 'Changing filesystem type requires format: true.')
+        require(not encrypt or (mp not in ('/', '/efi') and fmt and fs != 'vfat' and encryption != 'none'),
+                Code.MANUAL_LAYOUT, 'Only a formatted partition other than root and /efi can be encrypted on its own, '
+                'and only with an encrypted root, which keeps its key.' if mp != '/' else
+                'Root encryption is chosen on the Encryption step (the plan encryption).')
         require(sv is None or (fs == 'btrfs' and isinstance(sv, str)
                 and re.fullmatch(r'[@A-Za-z0-9_-][@A-Za-z0-9_.-]{0,63}', sv)
                 and sv not in ('.', '..')), Code.MANUAL_LAYOUT,
@@ -418,16 +668,20 @@ def manual_partitions(rows, disk):
                 'Root partition must be at least 20 GiB.')
         if mp == '/efi':
             require(fs == 'vfat' and p['esp'] and sv is None, Code.MANUAL_LAYOUT,
-                    '/efi must be an existing GPT ESP with FAT32.')
-            free = p['size_bytes'] - MIB if fmt else p.get('_esp_free_bytes')
-            require(free is not None and free >= 32 * MIB, Code.ESP_SPACE,
-                    'ESP needs at least 32 MiB of verified free space.')
+                    '/efi must be an existing GPT EFI system partition with FAT32.')
+            if fmt:
+                require(p['size_bytes'] >= ESP_FORMAT_MIN, Code.ESP_SPACE,
+                        'An EFI system partition needs at least 512 MiB.')
+            free = p.get('_esp_free_bytes')
+            require(fmt or (free is not None and free >= secureboot.SHARED_ESP_RESERVE), Code.ESP_SPACE,
+                    'The startup partition needs at least 32 MiB of verified free space.')
         else:
             require(not p['esp'], Code.MANUAL_LAYOUT,
-                    'An ESP may only be mounted at /efi.')
+                    'A startup partition may only be mounted at /efi.')
         prior = grouped.setdefault(p['id'], [])
         require(not prior or (fs == 'btrfs' and sv is not None and
-                all(r.get('subvolume') is not None and r['fs'] == fs and r['format'] == fmt for r in prior)),
+                all(r.get('subvolume') is not None and r['fs'] == fs and r['format'] == fmt
+                    and r.get('encrypt', False) == encrypt for r in prior)),
                 Code.MANUAL_LAYOUT, 'Repeated partition rows need distinct subvolumes and identical format flags.')
         prior.append(row)
     require('/' in mountpoints and '/efi' in mountpoints, Code.MANUAL_LAYOUT,
@@ -456,7 +710,15 @@ def manual_partitions(rows, disk):
                 # Missing names may be created after confirm; never delete existing subvolumes.
         result.append(Partition(p['path'], p['number'], p['start_bytes'], p['size_bytes'],
                                 fs, fmt, None if subvols else row['mountpoint'], p['esp'],
-                                subvols, p['uuid'], p.get('_partuuid'), p.get('_subvolumes')))
+                                subvols, p['uuid'], p.get('_partuuid'), p.get('_subvolumes'),
+                                create=p.get('_new'), encrypt=row.get('encrypt', False)))
+    for p, row in swaps:
+        result.append(Partition(p['path'], p['number'], p['start_bytes'], p['size_bytes'], 'swap', row['format'],
+                                uuid=p['uuid'], partuuid=p.get('_partuuid'), create=p.get('_new'),
+                                encrypt=row.get('encrypt', False)))
+    used = {p.number for p in result}
+    require(all(p['number'] in used for p in (edits.created if edits else [])), Code.MANUAL_LAYOUT,
+            'Every new partition needs a use: choose its mount point or swap, or remove it.')
     expanded = [mp for p in result for mp in ([p.mountpoint] if p.mountpoint else []) + list(p.subvolumes.values())]
     require(len(expanded) == len(set(expanded)), Code.MANUAL_LAYOUT, 'Implicit and explicit mounts overlap.')
     root = next(p for p in result if p.mountpoint == '/' or '/' in p.subvolumes.values())
@@ -465,7 +727,7 @@ def manual_partitions(rows, disk):
                 'Btrfs needs separate /home, /var/log, package cache and /.snapshots mounts.')
     # archinstall sorts btrfs partitions without a mountpoint as '/'. Keep the
     # root partition first even if the UI submitted the ESP/home rows first.
-    return sorted(result, key=lambda p: not (p.mountpoint == '/' or '/' in p.subvolumes.values()))
+    return sorted(result, key=lambda p: not (p.mountpoint == '/' or '/' in p.subvolumes.values())), edits
 
 
 def xkb_rules():
@@ -484,6 +746,11 @@ def validate_encrypted_confirmation(config, disk):
     formatted = ({row.get('partition_id') for row in rows
                   if isinstance(row, dict) and row.get('format') is True}
                  if isinstance(rows, list) else set())
+    # The partition editor's deletions destroy a locked volume as surely as a format.
+    edits = config.get('partitioning')
+    deletes = edits.get('delete') if isinstance(edits, dict) else None
+    formatted |= ({row.get('partition_id') for row in deletes if isinstance(row, dict)}
+                  if isinstance(deletes, list) else set())
     paths = {part['path'] for part in disk['partitions'] if part['id'] in formatted}
     for volume in disk.get('closed_encrypted', []):
         if mode != 'erase' and volume['path'] not in paths:
@@ -495,21 +762,50 @@ def validate_encrypted_confirmation(config, disk):
         require(identity in config.get('confirmed_encrypted', []), Code.ENCRYPTED_CONFIRMATION, warning)
 
 
-def make_plan(config, inventory, test_mode=False):
+def make_plan(config, inventory, test_mode=False, esp_need=None):
+    """esp_need(cluster, removable, encrypted): the ESP bytes a Secure Boot install on a kept
+    ESP needs, from the installation's archives (worker.review_esp_need reads them; the plan
+    itself reads nothing), or None when they cannot be read: then plan_esp_need's bounds."""
     c = validate_config(config, test_mode)
     graphics_packages = planned_packages(inventory)
     hardware = inventory.get("hardware", {})
+    secure_boot = ''
     if "secure_boot" in hardware and hardware["secure_boot"] is not False:
-        require(False, Code.SECURE_BOOT, SECURE_BOOT_MESSAGE if hardware["secure_boot"] else SECURE_BOOT_UNKNOWN)
+        # Emaki starts through shim, which the Microsoft third-party CAs sign; without
+        # either one in db nothing can start, and an unreadable state is not guessed.
+        cas = hardware.get("secure_boot_cas") if hardware["secure_boot"] is True else None
+        require(cas in SECURE_BOOT_CAS, Code.SECURE_BOOT, SECURE_BOOT_NO_CA if cas == 'none' else SECURE_BOOT_UNKNOWN)
+        secure_boot = cas
     disk = next((d for d in inventory['disks'] if d['id'] == c['disk_id']), None)
     require(disk is not None, Code.DISK_NOT_FOUND, inventory.get('hardware', {}).get('disk_notice') or 'Selected disk no longer exists.')
     validate_disk(disk, inventory)
     validate_encrypted_confirmation(c, disk)
+    edits = None
     if c['mode'] == 'alongside':
         parts = alongside_partitions(c, disk)
+    elif c['mode'] == 'erase':
+        parts = erase_partitions(disk['size_bytes'], c['fs'])
     else:
-        parts = (erase_partitions(disk['size_bytes'], c['fs']) if c['mode'] == 'erase'
-                 else manual_partitions(c.get('mounts'), disk))
+        parts, edits = manual_partitions(c.get('mounts'), disk, c['encryption'], c.get('partitioning'))
+    if secure_boot:
+        root = next((p for p in parts if '/' in p.subvolumes.values()), None)
+        state = str(secureboot.STATE)
+        if root is not None:
+            require(state not in [mp for part in parts for mp in [part.mountpoint, *part.subvolumes.values()]]
+                    and SECURE_BOOT_SUBVOLUME not in root.subvolumes, Code.MANUAL_LAYOUT,
+                    f'{state} and the subvolume {SECURE_BOOT_SUBVOLUME} are reserved for the Secure Boot key.')
+            root.subvolumes = {**root.subvolumes, SECURE_BOOT_SUBVOLUME: state}
+        kept = next((p for p in parts if p.esp and not p.format), None)
+        if kept is not None:
+            probed = next((p for p in disk['partitions'] if p.get('path') == kept.path), {})
+            free = probed.get('_esp_free_bytes')
+            # Inventories from before the probe recorded the cluster size: FAT32's usual 4 KiB.
+            cluster, removable = probed.get('_esp_cluster_bytes') or 4096, probed_removable(probed)
+            need = esp_need(cluster, removable, c['encryption'] != 'none') if esp_need else None
+            if need is None:
+                need = plan_esp_need(cluster, removable)
+            require(free is not None and free >= need, Code.ESP_SPACE, ESP_SECURE_BOOT_ROOM.format(
+                need=-(-need // 1000000), free=(free or 0) // 1000000))
     swap_bytes = storage_layout(c, parts, inventory)
     summary = [f"{c['mode'].capitalize()} installation on {disk['path']} ({disk['model']})."]
     if c['mode'] == 'erase':
@@ -519,10 +815,13 @@ def make_plan(config, inventory, test_mode=False):
         keep = alongside.usable_size(windows['size_bytes']) - c['shrink_bytes']
         summary += [f"Windows keeps {keep / 10**9:.2f} GB, Emaki gets {c['shrink_bytes'] / 10**9:.2f} GB; back up your files first.",
                     'Shrink the Windows filesystem and its partition end only; preserve its start, GUID, type, name and files.',
-                    'Create and format Emaki root immediately after Windows; preserve all other partitions and reuse the ESP without formatting.',
-                    'Preserve Microsoft and foreign fallback EFI loaders; add Windows Boot Manager to GRUB; Emaki stays the default.',
+                    "Create Emaki's own startup partition (1 GiB) and root in the freed space; "
+                    "Windows' startup partition is not changed.",
+                    'Preserve all other partitions; add Windows Boot Manager to GRUB; Emaki stays the default.',
                     'Windows will run a consistency check (chkdsk) on its first boot after resizing. Let it finish.']
-    for p in parts:
+    if c['mode'] == 'manual':
+        summary += manual_summary(disk, parts, edits, c['encryption'] != 'none')
+    for p in parts if c['mode'] != 'manual' else []:
         dest = ', '.join(f'{name} → {mp}' for name, mp in p.subvolumes.items()) or p.mountpoint
         summary.append(f"Partition {p.number}: {'format' if p.format else 'preserve'} {p.fs}, {p.size / GIB:.2f} GiB; {dest}.")
     summary.extend(['GRUB, linux + linux-lts; /boot inside root; zram with higher swap priority.',
@@ -539,6 +838,10 @@ def make_plan(config, inventory, test_mode=False):
                      else 'Packages are installed from the signed offline USB repository.')])
     if graphics_packages:
         summary.append("Graphics driver packages (Nvidia): " + ", ".join(graphics_packages) + ".")
+    if secure_boot:
+        summary += [SECURE_BOOT_CAS[secure_boot],
+                    "After the restart a blue screen asks you to confirm Emaki's key with a password "
+                    "shown at the end of the installation; you do this only once."]
     warnings = []
     if hardware.get("media_notice"):
         warnings.append({"code": "live_media", "msg": hardware["media_notice"]})
@@ -550,13 +853,57 @@ def make_plan(config, inventory, test_mode=False):
                          'Hibernation writes memory, including passwords, to the disk unencrypted.'})
     if c['encryption'] != 'none':
         warnings.append({'code': 'encryption_scope', 'msg':
-                         'The root partition is encrypted. The EFI partition and any separate data partitions stay unencrypted.'})
+                         'The root partition and the partitions marked encrypted are encrypted. The startup partition '
+                         'and the other partitions stay unencrypted.' if any(p.encrypt for p in parts) else
+                         'The root partition is encrypted. The startup partition and any separate data partitions stay unencrypted.'})
     if c['mode'] == 'manual':
         warnings.append({'code': 'preserved_files', 'msg': 'Unformatted filesystems keep data; installation still writes system and account files.'})
+    if edits and edits.deleted:
+        warnings.append({'code': 'deleted_partitions', 'msg': 'Deleted partitions lose all their files. '
+                         'Nothing on the disk changes until you press Install.'})
     if disk.get('_id_fallback'):
         warnings.append({'code': 'unstable_id', 'msg': 'No by-id name is available; device identity and geometry will be rechecked.'})
     return Plan(c, copy.deepcopy(disk), parts, summary, warnings,
-                alongside_fingerprint(disk) if c['mode'] == 'alongside' else fingerprint(disk), swap_bytes, graphics_packages)
+                alongside_fingerprint(disk) if c['mode'] == 'alongside' else fingerprint(disk), swap_bytes, graphics_packages,
+                secure_boot, edits)
+
+
+def manual_summary(disk, parts, edits, encrypted):
+    """Review lines for a manual layout, one per change in the order the worker makes them."""
+    def size(n):
+        return f'{n / GIB:.2f} GiB'
+
+    lines = []
+    if edits and edits.new_table:
+        lines.append(f"Create a new GPT partition table on {disk['path']}; the disk is empty.")
+    for p in edits.deleted if edits else []:
+        system = alongside.other_system(p)
+        what = ', '.join([p['path'], size(p['size_bytes'])] + ([p['fs']] if p.get('fs') else [])
+                         + ([system] if system else []))
+        lines.append(f"Delete partition {p['number']} ({what}): all its files are lost.")
+    for p in sorted(parts, key=lambda p: p.number):
+        root = p.mountpoint == '/' or '/' in p.subvolumes.values()
+        lock = ', encrypted (LUKS2)' if p.encrypt or (root and encrypted) else ''
+        use = ('swap' if p.swap else ', '.join(f'{name} → {mp}' for name, mp in p.subvolumes.items()) or p.mountpoint)
+        if p.create:
+            kind = 'startup partition, FAT32' if p.esp else p.fs if not p.swap else 'swap'
+            lines.append(f'Create partition {p.number}: {size(p.size)}, {kind}{lock}; use: {use}.')
+        elif p.format:
+            fs = 'swap' if p.swap else 'FAT32' if p.fs == 'vfat' else p.fs
+            lines.append(f'Format partition {p.number} ({p.path}, {size(p.size)}) as {fs}{lock}: '
+                         f'its files are lost; use: {use}.')
+        else:
+            probed = next((part for part in disk['partitions'] if part.get('path') == p.path), {})
+            startup = ''
+            system = alongside.other_system(probed) if p.esp else None
+            if system == alongside.UNCHECKED:
+                startup = ' Emaki could not check its files; its fallback loader will not be changed.'
+            elif system:
+                startup = " It holds another system's startup files; its fallback loader will not be changed."
+            lines.append(f'Keep partition {p.number} ({p.path}, {size(p.size)}, {p.fs}) and its files; use: {use}.'
+                         + startup)
+    lines.append('Partitions not listed here are not changed.')
+    return lines
 
 
 def storage_layout(config, parts, inventory):

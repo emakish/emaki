@@ -1,4 +1,6 @@
 #!/usr/bin/python3 -I
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Import valid login exports without letting one invalid value reject the batch."""
 import os
 import re

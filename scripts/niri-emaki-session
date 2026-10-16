@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Resolve the source checkout through symlinks; installed wrappers use the build path.
 emaki_script=$(readlink -f -- "$0")
 emaki_paths="${emaki_script%/*}/paths"
@@ -81,6 +83,9 @@ start_compositor() {
     if [ -n "${EMAKI_LOGIN_HANDOFF:-}" ]; then
         cover_png=$(timeout --kill-after=.2s 1s python3 -I -B \
         "$EMAKI_DATADIR/shell/helpers/session-start.py" prepare 2>/dev/null) || cover_png=
+        # This service already owns the login copy. Activation clients must not
+        # inherit it while niri passes it privately to its initial trusted shell.
+        systemctl --user unset-environment EMAKI_LOGIN_HANDOFF
     fi
     if [ -n "$cover_png" ]; then
         export EMAKI_STARTUP_COVER="$cover_png"
@@ -143,7 +148,10 @@ fi
 emaki-session-import-environment
 systemctl --user set-environment EMAKI_SHELL_DOCK_BACKDROP=capture
 if hash dbus-update-activation-environment 2>/dev/null; then
-    dbus-update-activation-environment --all
+    # The user manager needs the marker for the compositor service; D-Bus
+    # activation has no consumer for it. Omit it: dbus-broker forwards updates
+    # to the manager, where an empty assignment would erase the login copy.
+    env -u EMAKI_LOGIN_HANDOFF dbus-update-activation-environment --all
 fi
 
 systemctl --user --wait start niri-emaki.service

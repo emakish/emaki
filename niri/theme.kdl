@@ -13,7 +13,7 @@ layout {
     border {
         on
         width 2
-        active-color "#e2733fff"
+        active-color "#e780aaff"
         inactive-color "#2c241eff"
     }
 

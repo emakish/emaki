@@ -24,6 +24,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'installer'), str(ROOT / 'grub')]
 from emaki_installer import boot
 sys.modules['emaki_boot.boot'] = boot
+from emaki_installer import secureboot
+sys.modules['emaki_boot.secureboot'] = secureboot
 from emaki_boot import refresh
 
 LUKS = '01234567-89ab-cdef-0123-456789abcdef'
@@ -63,9 +65,9 @@ class RealGrub(unittest.TestCase):
         path.write_text(content)
         execute([tool('grub-script-check'), path])
 
-    def test_real_install_to_scratch_esp(self):
-        # Ordinary directories do not reproduce separate ESP/root partitions on
-        # one disk. That discovery and firmware behavior require the VM matrix.
+    def test_real_install_to_root_scratch_directory(self):
+        # Refresh prepares grub-install's disposable output on the root filesystem.
+        # The actual ESP receives only the later rebuilt and verified image.
         if not MODULES.is_dir():
             self.skipTest('Missing real x86_64-efi GRUB module directory: ' + str(MODULES))
         esp, stage = self.work / 'esp', self.work / 'generation'
@@ -81,7 +83,7 @@ class RealGrub(unittest.TestCase):
                           f'(grub-probe exited {probe.returncode}): {probe.stderr.strip()}')
         args = [tool('grub-install'), '--target=x86_64-efi', '--directory=' + str(MODULES),
                 '--efi-directory=' + str(esp), '--boot-directory=' + str(stage),
-                '--bootloader-id=Emaki', '--no-nvram']
+                '--bootloader-id=Emaki', '--no-nvram', '--force']
         result = subprocess.run(args, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         image = (esp / 'EFI/Emaki/grubx64.efi').read_bytes()
@@ -200,7 +202,7 @@ class RealGrub(unittest.TestCase):
 
 class InstallCapabilities(unittest.TestCase):
     def install_case(self):
-        case = RealGrub('test_real_install_to_scratch_esp')
+        case = RealGrub('test_real_install_to_root_scratch_directory')
         case.setUp()
         self.addCleanup(case.doCleanups)
         return case
@@ -215,7 +217,7 @@ class InstallCapabilities(unittest.TestCase):
                      mock.patch(__name__ + '.tool', side_effect=lambda name: name), \
                      mock.patch.object(subprocess, 'run', return_value=result) as run:
                     with self.assertRaisesRegex(unittest.SkipTest, 'filesystem UUID discovery'):
-                        case.test_real_install_to_scratch_esp()
+                        case.test_real_install_to_root_scratch_directory()
                     self.assertEqual(run.call_count, 1)
                     self.assertEqual(run.call_args.args[0][0], 'grub-probe')
 
@@ -231,7 +233,7 @@ class InstallCapabilities(unittest.TestCase):
              mock.patch(__name__ + '.tool', side_effect=lambda name: name), \
              mock.patch.object(subprocess, 'run', side_effect=result):
             with self.assertRaisesRegex(AssertionError, 'Installation failed'):
-                case.test_real_install_to_scratch_esp()
+                case.test_real_install_to_root_scratch_directory()
 
 
 if __name__ == '__main__':

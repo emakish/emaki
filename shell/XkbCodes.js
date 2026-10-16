@@ -1,4 +1,6 @@
 .pragma library
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Layout name (as niri reports it: the xkeyboard-config description) -> xkb code, uppercased.
 // The table is /usr/share/X11/xkb/rules/evdev.lst: its "! layout" rows and its "! variant"
 // rows (a variant's description names its layout's code). The lock/greeter helper

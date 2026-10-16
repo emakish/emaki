@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Pure local VM-harness regressions. Never SSH, signal a VM or touch live services."""
 import ast
 import contextlib

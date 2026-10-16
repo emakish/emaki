@@ -30,6 +30,12 @@ import programs_flatpak as flatpak
 import programs_receipts as receipts
 import programs_reviews as reviews
 
+try:
+    from emaki_redaction import Redactor
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'installer'))
+    from emaki_installer.redaction import Redactor
+
 PROTOCOL = 1
 MAX_REQUEST = 65536
 # Browse's picks (the featured row, the order inside category rows, short names) are data,
@@ -125,7 +131,7 @@ def digest(value):
                                      ensure_ascii=True).encode()).hexdigest()
 
 
-def report_event(action, event, fields):
+def report_event(action, event, fields, redactor=None):
     """Keep bounded transaction diagnostics in the local journal, never plans."""
     try:
         action = action if action in ('install', 'remove', 'update') else 'invalid'
@@ -146,9 +152,10 @@ def report_event(action, event, fields):
                 lines.extend(f'{name}.{key}: {item}' for key, item in value.items())
             else:
                 lines.append(f'{name}: {value}')
-        # Keep values unescaped so quoted secrets and multiline private keys can
-        # be recognized by report redaction before anyone previews the journal.
-        message = '\n'.join(lines).encode('utf-8', errors='replace')[:4096].decode('utf-8', errors='ignore')
+        # Remove credentials before truncation can retain a fragment of a secret.
+        # Preserve line boundaries for later report redaction of other private data.
+        message = (redactor or Redactor()).text('\n'.join(lines), keep_newlines=True)
+        message = message.encode('utf-8', errors='replace')[:4096].decode('utf-8', errors='ignore')
         syslog.openlog(identifier, syslog.LOG_PID, syslog.LOG_USER)
         syslog.syslog(syslog.LOG_INFO, message)
     except Exception:
@@ -851,12 +858,16 @@ class Engine:
         return plan
 
     def execute(self, action, key, token, emit):
+        redactor = Redactor()
+        redactor.add(token)
+        self._diagnostic_redactor = redactor
         failure_diagnostic = None
         def relay(event_type, **fields):
             nonlocal failure_diagnostic
             # Buffer explicit failures until the result establishes failure.
             # Progress can carry error lines, but routine messages are not causes.
-            diagnostic = {name: value[:4096] for name in ('message', 'error')
+            diagnostic = {name: redactor.text(value, keep_newlines=True)[:4096]
+                          for name in ('message', 'error')
                           if isinstance(value := fields.get(name), str) and value}
             if diagnostic:
                 if (event_type == 'error' or fields.get('ok') is False
@@ -871,19 +882,21 @@ class Engine:
             emit(event_type, **fields)
 
         try:
-            report_event(action, 'started', {})
+            report_event(action, 'started', {}, redactor)
             answer = self._execute(action, key, token, relay)
             failed = (not answer.get('ok') or answer.get('partial')
                       or answer.get('status') in ('failed', 'partial')
                       or answer.get('code') in ('failed', 'partial'))
             if failed and failure_diagnostic:
-                report_event(action, 'error', failure_diagnostic)
-            report_event(action, 'failed' if failed else 'finished', answer)
+                report_event(action, 'error', failure_diagnostic, redactor)
+            report_event(action, 'failed' if failed else 'finished', answer, redactor)
             return answer
         except Exception as error:
-            report_event(action, 'exception', dict(error=type(error).__name__))
+            report_event(action, 'exception', dict(error=type(error).__name__), redactor)
             raise
         finally:
+            redactor.secrets.clear()
+            self._diagnostic_redactor = None
             # A failed transaction can still have changed packages. Subsequent
             # catalog/details requests must observe the actual installed state.
             self.rows = None
@@ -928,6 +941,9 @@ class Engine:
             return finished[-1] if finished else failure('unknown')
         row = self.rows.get(key) or self.aur[key]
         native_token = plan['transaction']['token']
+        redactor = getattr(self, '_diagnostic_redactor', None)
+        if redactor is not None and re.fullmatch('[0-9a-f]{64}', native_token):
+            redactor.add(native_token)
         if row['kind'] == 'flatpak' and row['installation'] == 'user':
             return flatpak.execute(action, row, native_token, emit)
         if row['kind'] in ('arch', 'aur') and action == 'remove':

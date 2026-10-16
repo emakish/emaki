@@ -4,10 +4,11 @@
 import collections
 import io
 import re
+from pathlib import Path
 import struct
 import tarfile
 
-from .errors import Code, require
+from .errors import Code, InstallError, require
 from . import grub_screen
 
 # Keep the installed menu's existing preference; unlocking preserves the firmware mode.
@@ -58,6 +59,60 @@ def grub_unlock_memdisk(font, load_cfg, luks_uuid):
             member.size, member.mode, member.mtime = len(data), 0o644, 0
             archive.addfile(member, io.BytesIO(data))
     return stream.getvalue()
+
+
+def grub_loader_payload(grub, generation, fsroot, luks_uuid, load_cfg, font, extra=None):
+    """(prefix, early config, memdisk) of a self-contained EFI loader.
+
+    The memdisk carries every module, font and locale of the grub directory grub-install
+    filled, so insmod and loadfont never read the disk: under Secure Boot GRUB refuses
+    modules and fonts from disk but trusts its own signed image's memdisk. extra maps
+    more memdisk names to bytes (the menu's fonts under Secure Boot). generation is the
+    boot generation directory the boot refresh builds, or None for the installer's
+    first loader, which reads only the conventional menu.
+    """
+    files = {}
+    if luks_uuid:
+        initial = grub_unlock_memdisk(font, load_cfg, luks_uuid)
+        with tarfile.open(fileobj=io.BytesIO(initial)) as archive:
+            files.update((member.name, archive.extractfile(member).read()) for member in archive)
+        start = grub_early_config(load_cfg, luks_uuid)
+        root = '(cryptouuid/' + luks_uuid.replace('-', '') + ')'
+    else:
+        files['start.cfg'] = load_cfg.encode()
+        start = 'source (memdisk)/start.cfg\n'
+        root = '($root)'
+    prefix = '(memdisk)/boot/grub'
+    start += 'set prefix=' + prefix + '\n'
+    ordinary_menu = root + fsroot + '/boot/grub/grub.cfg'
+    # source, not configfile: configfile nests the menu it reads, and Escape leaves a nested
+    # menu for the empty one above it, a bare grub> prompt. Sourced, the disk's menu is the
+    # top menu and the snapshot menu one level down, as when the loader reads them from disk.
+    if generation is not None:
+        start += 'set emaki_generation=' + generation.name + '\nexport emaki_generation\n'
+        generation_menu = root + fsroot + str(generation / 'grub/grub.cfg')
+        files['boot/grub/grub.cfg'] = (
+            f'if [ -f {ordinary_menu} ]; then\n  source {ordinary_menu}\n'
+            f'else\n  source {generation_menu}\nfi\n').encode()
+    else:
+        files['boot/grub/grub.cfg'] = f'source {ordinary_menu}\n'.encode()
+    files['boot/grub/grub-btrfs.cfg'] = (
+        f'source {root}{fsroot}/boot/grub/grub-btrfs.cfg\n').encode()
+    for path in sorted(grub.rglob('*')):
+        if path.is_file() and (path.suffix in ('.mod', '.lst', '.mo', '.pf2') or path.name == 'modinfo.sh'):
+            require(not path.is_symlink(), Code.BOOT_VERIFY, f'{path} is a symbolic link.')
+            files['boot/grub/' + path.relative_to(grub).as_posix()] = path.read_bytes()
+    for name, data in (extra or {}).items():
+        require(re.fullmatch(r'[a-z0-9_-]+(?:/[a-z0-9_.-]+)+', name) and name not in files
+                and '..' not in name.split('/'), Code.BOOT_VERIFY, f'Invalid memdisk name {name}.')
+        files[name] = data
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode='w', format=tarfile.USTAR_FORMAT) as archive:
+        for name, data in sorted(files.items()):
+            member = tarfile.TarInfo(name)
+            member.size, member.mode, member.mtime = len(data), 0o644, 0
+            archive.addfile(member, io.BytesIO(data))
+    return prefix, start.encode(), stream.getvalue()
 
 
 def _grub_load_lines(load_cfg, luks_uuid):
@@ -311,7 +366,8 @@ def windows_bootnext_menu(text, partuuid, esp_uuid, listing):
     Resolution is done each time the menu is generated. Stock GRUB bootnext
     checks that the entry still exists when selected; it cannot detect a number
     reused for a different entry after generation. Never chainload after a
-    failed BootNext request: only genuine absence at generation permits that.
+    failed BootNext request. Genuine absence permits chainloading only when
+    shim verification is off at menu execution, never under Secure Boot.
     """
     require(isinstance(esp_uuid, str) and re.fullmatch(r'[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}', esp_uuid),
             Code.BOOT_VERIFY, WINDOWS_UNSAFE)
@@ -335,10 +391,26 @@ def windows_bootnext_menu(text, partuuid, esp_uuid, listing):
                                      for row in searches), Code.BOOT_VERIFY, WINDOWS_UNSAFE)
         candidates.append(entry)
     require(len(candidates) == 1, Code.BOOT_VERIFY, WINDOWS_UNSAFE)
-    if number is None:
-        return text
     entry = candidates[0]
     source = section[2][entry.start:entry.end]
+    start, end = section.start(2) + entry.start, section.start(2) + entry.end
+    if number is None:
+        # Test at boot, not generation: firmware security can change between them.
+        # Keep a discoverable help item, but never offer the crashing chainload
+        # while shim verifies images. This operation writes neither ESP nor NVRAM.
+        help_entry = (
+            "menuentry 'Windows startup help' --class windows --id 'emaki-windows-startup-help' {\n"
+            "  echo 'Windows has no active firmware startup entry.'\n"
+            "  echo 'Restart and open the firmware boot menu.'\n"
+            "  echo 'Choose Boot from File on the Windows EFI partition:'\n"
+            "  echo '/EFI/Microsoft/Boot/bootmgfw.efi'\n"
+            "  echo 'If Boot from File is unavailable, use Windows recovery media'\n"
+            "  echo 'to restore its firmware entry.'\n"
+            "  echo 'Press Escape to return to the boot menu.'\n"
+            "  sleep --interruptible 300\n"
+            "}")
+        return (text[:start] + 'if [ "$shim_lock" = y ]; then\n' + help_entry
+                + '\nelse\n' + source + '\nfi' + text[end:])
     opening = next(end for kind, _, _, end in grub_words(source) if kind == '{')
     # Positive nested guards matter: a failed GRUB command must not reach reboot.
     body = (f'\n  # Windows firmware target: {partuuid.lower()} {WINDOWS_LOADER}\n'
@@ -594,6 +666,32 @@ def selection_remap(before, moved, renamed, first_moved, custom):
     return header, after
 
 
+LINUX_SECTION = re.compile(r'(### BEGIN /etc/grub\.d/10_linux ###\n)(.*?)(### END /etc/grub\.d/10_linux ###\n)', re.S)
+# 10_linux prints a gettext message before each `linux` and `initrd` command: matched by place, not words.
+LINUX_ECHO = re.compile(r"^([ \t]*)echo[ \t]+'(?:[^'\n]|'\\'')*'\n(?=\1(?:linux|linuxefi|initrd|initrdefi)[ \t])", re.M)
+LINUX_ENTRY_START = re.compile(r'^([ \t]*)menuentry [^\n]*\{\n(?![ \t]*clear\n)(?=(?:(?!\n[ \t]*\}\n).)*?^[ \t]*linux(?:efi)?[ \t])',
+                               re.M | re.S)
+
+
+def quiet_linux_entries(text):
+    """Kernel entries of 10_linux start on a clear screen and print nothing on success.
+
+    After the menu GRUB writes into its terminal window: "Booting `<title>'" when the
+    countdown ends (normal/menu.c notify_booting) and the stock "Loading Linux ..." and
+    "Loading initial ramdisk ..." lines. With gfxpayload=keep that last frame stays on
+    the screen until the startup logo, the black window with white text people saw. The
+    theme makes the window the whole screen; `clear` as the entry's first command blanks
+    it, and the two messages go. Errors of the following commands (a missing kernel or
+    initramfs) still print, on the black screen, and wait for a key as before.
+    """
+    def section(match):
+        body = LINUX_ECHO.sub('', match[2])
+        body = LINUX_ENTRY_START.sub(lambda entry: entry[0] + entry[1] + '\tclear\n', body)
+        return match[1] + body + match[3]
+
+    return LINUX_SECTION.sub(section, text)
+
+
 def menu_layout(text):
     """A short top level: Emaki, Emaki (LTS kernel), snapshots, Advanced options.
 
@@ -681,6 +779,32 @@ def generated_menu_font(text):
         return None
     return MENU_FONT_DIR + '/' + loads[0].rsplit('/', 1)[1] if (
         len(loads) == 1 and re.fullmatch(r'\S*/usr/share/emaki/grub/fonts/menu-[0-9]+\.pf2', loads[0])) else ''
+
+
+# A generated loadfont of one of Emaki's packaged faces, whatever root prefix it carries.
+SECURE_BOOT_FONT = re.compile(
+    r'^(\s*(?:if\s+)?loadfont\s+)\S*?(/usr/share/emaki/grub/(?:fonts|theme)/[A-Za-z0-9_.-]+\.pf2)(?=\s|$)', re.M)
+
+
+def secure_boot_menu(text):
+    """Load Emaki's menu and theme faces from the signed loader's memdisk.
+
+    Under Secure Boot GRUB refuses fonts read from disk (kern/efi/sb.c) but not files of
+    its own signed image's memdisk. The loader carries the faces at their packaged paths
+    (secure_boot_fonts), so generated_menu_font still names the face it loads.
+    """
+    return SECURE_BOOT_FONT.sub(lambda match: match[1] + '(memdisk)' + match[2], text)
+
+
+def secure_boot_fonts(root=Path('/')):
+    """Memdisk names and bytes of every packaged menu and theme face."""
+    files = {}
+    for directory in (MENU_FONT_DIR, MENU_THEME_DIR):
+        for path in sorted((Path(root) / directory.lstrip('/')).glob('*.pf2')):
+            require(path.is_file() and not path.is_symlink(), Code.BOOT_VERIFY,
+                    f'The menu face {path.name} is not a regular file.')
+            files[directory.lstrip('/') + '/' + path.name] = path.read_bytes()
+    return files
 
 
 def menu_font_fallback(text):

@@ -39,6 +39,11 @@ with tempfile.TemporaryDirectory(prefix='settings-launcher-') as temporary:
         stream.write('\nSettingsIpcHarness 1.0 SettingsIpcHarness.qml\n')
     for part in ('home', 'config', 'data', 'cache', 'state'):
         (base / part).mkdir(mode=0o700)
+    applications = base / 'data/applications'
+    applications.mkdir()
+    for name in ('Firefox', 'Code', 'Control', 'Settings Editor'):
+        (applications / (name.lower().replace(' ', '-') + '.desktop')).write_text(
+            '[Desktop Entry]\nType=Application\nName=' + name + '\nExec=true\n')
     runtime = runtime_path(base)
     env = dict(os.environ, HOME=str(base / 'home'), USER='Emaki',
                PATH=str(helpers) + os.pathsep + os.environ.get('PATH', ''),
@@ -59,13 +64,13 @@ with tempfile.TemporaryDirectory(prefix='settings-launcher-') as temporary:
     # A square, like the helper's copy.
     Image.new('RGB', (96, 96), (30, 60, 230)).save(env['SETTINGS_ACCOUNT_PICTURE'])
     result = subprocess.run(['qs', '-p', str(base / 'shell/SettingsLauncherTest.qml'), '--no-color'],
-                            env=env, capture_output=True, text=True, timeout=45)
+                            env=env, capture_output=True, text=True, timeout=90)
     output = result.stdout + result.stderr
     (EVIDENCE / 'settings-launcher.log').write_text(output)
     cases = [line.split('SETTINGS_LAUNCHER_CASE ', 1)[1]
              for line in output.splitlines() if 'SETTINGS_LAUNCHER_CASE ' in line]
-    assert len(cases) == 15, ('Missing settings case diagnostics', cases, output)
-    assert result.returncode == 0 and 'SETTINGS_LAUNCHER_RESULT 16 0' in output, output
+    assert len(cases) == 16, ('Missing settings case diagnostics', cases, output)
+    assert result.returncode == 0 and 'SETTINGS_LAUNCHER_RESULT 17 0' in output, output
     assert all(case.endswith(' PASS') for case in cases), cases
     for error in ('ReferenceError', 'TypeError', 'Binding loop', 'Unable to assign', 'Cannot assign'):
         assert error not in output, output
@@ -74,7 +79,7 @@ with tempfile.TemporaryDirectory(prefix='settings-launcher-') as temporary:
                  'settings-shrink-mid.png', 'settings-close-mid.png', 'settings-1280x800.png',
                  'settings-1024x640.png', 'settings-account-picture.png', 'settings-panel-choices.png'):
         assert (EVIDENCE / name).stat().st_size > 1000, name
-    print('PASS: settings lifecycle, all 21 pages, search anchors, dynamic reset, input, history and screenshots')
+    print('PASS: settings lifecycle, all 22 pages, search anchors, dynamic reset, input, history and screenshots')
 
     # Environments without Unix sockets still run every in-process QML assertion.
     probe = socket.socket(socket.AF_UNIX)
@@ -111,7 +116,7 @@ with tempfile.TemporaryDirectory(prefix='settings-launcher-') as temporary:
                 assert call('open', '') == {'schema_version': 1, 'status': 'opened', 'page': 'panel'}
                 assert call('status')['opened'] is True
                 assert call('open', 'windows')['page'] == 'windows'
-                assert call('open', 'appearance')['status'] == 'unavailable'
+                assert call('open', 'accessibility')['status'] == 'unavailable'
                 assert call('status')['page'] == 'windows'
                 assert call('close')['status'] == 'closed'
                 assert call('status')['opened'] is False

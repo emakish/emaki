@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Private greeter selection memory. No passwords, user home reads or shell commands."""
 import configparser
 from contextlib import contextmanager
@@ -13,6 +15,7 @@ import secrets
 import shlex
 import stat
 import sys
+import threading
 import time
 import tomllib
 
@@ -22,6 +25,16 @@ import emaki_paths
 MAX_FILE = 65536
 NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]{0,62}\$?\Z")
 SESSION = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}\.desktop\Z")
+# More accounts than this keep the typed-name step instead of a row of pictures.
+LIST_LIMIT = 12
+ACCOUNT_BUDGET = 1.0
+LOOK_FILE = 4096
+LOOK_FIELDS = {
+    'theme': re.compile(r'(?:dark|light|automatic)\Z'),
+    'accent': re.compile(r'[a-z]{1,16}\Z'),
+    'light_time': re.compile(r'(?:[01][0-9]|2[0-3]):[0-5][0-9]\Z'),
+    'dark_time': re.compile(r'(?:[01][0-9]|2[0-3]):[0-5][0-9]\Z'),
+}
 
 
 @dataclass(frozen=True)
@@ -41,10 +54,13 @@ def directory(path):
     path = Path(path)
     if not path.is_absolute() or '..' in path.parts:
         raise ValueError('absolute path required')
-    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    fd = os.open('/', os.O_PATH | os.O_DIRECTORY | os.O_CLOEXEC)
     try:
-        for part in path.parts[1:]:
-            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+        for index, part in enumerate(path.parts[1:], 1):
+            # Published users have a root-owned 0711 parent: traversal does not
+            # require listing it. Keep the final directory readable for state locks.
+            access = os.O_RDONLY if index == len(path.parts) - 1 else os.O_PATH
+            child = os.open(part, access | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
                             dir_fd=fd)
             os.close(fd)
             fd = child
@@ -179,6 +195,68 @@ def write_state(fd, data):
             pass
 
 
+def system_accounts(users):
+    """Exclude service-marked system accounts, within one budget for the whole list.
+
+    As in Settings, an unavailable account object leaves the local candidate usable.
+    The cancellation also bounds bus connection setup, which has no timeout argument.
+    """
+    hidden = set()
+    if not users:
+        return hidden
+    try:
+        import gi
+        gi.require_version('Gio', '2.0')
+        from gi.repository import Gio, GLib
+    except (ImportError, ValueError):
+        return hidden
+    cancel = Gio.Cancellable()
+    deadline = time.monotonic() + ACCOUNT_BUDGET
+    timer = threading.Timer(ACCOUNT_BUDGET, cancel.cancel)
+    timer.daemon = True
+    timer.start()
+    bus = None
+    service = 'org.freedesktop.Accounts'
+
+    def call(path, interface, method, args, reply):
+        remaining = int((deadline - time.monotonic()) * 1000)
+        if remaining <= 0 or cancel.is_cancelled():
+            raise TimeoutError('account lookup budget')
+        return bus.call_sync(service, path, interface, method, args,
+                             GLib.VariantType(reply), Gio.DBusCallFlags.NONE,
+                             remaining, cancel).unpack()[0]
+
+    try:
+        address = Gio.dbus_address_get_for_bus_sync(Gio.BusType.SYSTEM, cancel)
+        flags = (Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT
+                 | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION)
+        bus = Gio.DBusConnection.new_for_address_sync(address, flags, None, cancel)
+        for login, (uid, _) in users.items():
+            if time.monotonic() >= deadline or cancel.is_cancelled():
+                break
+            try:
+                path = call('/org/freedesktop/Accounts', service, 'FindUserById',
+                            GLib.Variant('(x)', (uid,)), '(o)')
+                value = call(path, 'org.freedesktop.DBus.Properties', 'Get',
+                             GLib.Variant('(ss)', (service + '.User', 'SystemAccount')), '(v)')
+                if value is True:
+                    hidden.add(login)
+            except (GLib.Error, TimeoutError):
+                # Missing objects, denied properties or a restarting service are optional.
+                continue
+    except GLib.Error:
+        pass
+    finally:
+        timer.cancel()
+        # Closing is asynchronous so a broken bus cannot extend the lookup budget.
+        try:
+            if bus is not None and not bus.is_closed():
+                bus.close(None, None, None)
+        except GLib.Error:
+            pass
+    return hidden
+
+
 def accounts(paths):
     low, high = 1000, 60000
     try:
@@ -193,18 +271,51 @@ def accounts(paths):
         pass
     if not 1 <= low <= high <= 2**32 - 2:
         raise ValueError('UID range')
-    users = set()
+    users = {}
     for line in read_file(paths.passwd).splitlines():
         fields = line.split(':')
-        if len(fields) != 7 or not valid_name(fields[0]):
+        if len(fields) != 7 or not valid_name(fields[0]) or fields[0] in users:
             continue
         try:
             uid = int(fields[2])
         except ValueError:
             continue
         if low <= uid <= high and fields[6].rsplit('/', 1)[-1] not in ('nologin', 'false'):
-            users.add(fields[0])
-    return users
+            # The full name is the first GECOS field, where Settings -> Users stores it.
+            name = ''.join(char for char in fields[4].split(',', 1)[0] if char.isprintable()).strip()[:64]
+            users[fields[0]] = (uid, name or fields[0])
+    hidden = system_accounts(users)
+    # login -> (uid, shown name), in the order the login screen lists the accounts.
+    return dict(sorted(((login, value) for login, value in users.items() if login not in hidden),
+                       key=lambda item: (item[1][0], item[0])))
+
+
+def look(paths, user, uid):
+    """The look a session published for the login screen: theme, accent and switch times only.
+
+    The copy lies in the account's published directory, never in its home. A file that is not
+    a small regular file of that account, or a value outside the fixed forms, is ignored."""
+    result = {}
+    try:
+        with directory(paths.users / user) as fd:
+            if os.fstat(fd).st_uid != uid:
+                return result
+            file_fd = os.open('look.json', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                              dir_fd=fd)
+            with os.fdopen(file_fd, 'rb') as stream:
+                metadata = os.fstat(stream.fileno())
+                if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != uid or metadata.st_size > LOOK_FILE:
+                    return result
+                data = json.loads(stream.read(LOOK_FILE + 1).decode('utf-8'))
+    except (OSError, ValueError, UnicodeError, RecursionError):
+        return result
+    if not isinstance(data, dict) or data.get('version') != 1:
+        return result
+    for key, pattern in LOOK_FIELDS.items():
+        value = data.get(key)
+        if isinstance(value, str) and pattern.fullmatch(value):
+            result[key] = value
+    return result
 
 
 def exec_words(value):
@@ -360,7 +471,11 @@ def selection(state, user, users, catalog, paths, message=''):
                 # greetd 0.10 joins cmd with spaces for /bin/sh -c; retain each argv boundary.
                 command=[shlex.quote(word) for word in catalog[chosen]['command']] if chosen else [],
                 wallpaperRoot=str(paths.users / user) if user else '',
-                multipleUsers=len(users) != 1, message=message)
+                multipleUsers=len(users) != 1, message=message,
+                # Logins and full names only: what /etc/passwd already shows every account.
+                accounts=[dict(login=login, name=name) for login, (_, name) in users.items()]
+                if 1 < len(users) <= LIST_LIMIT else [],
+                look=look(paths, user, users[user][0]) if user else {})
 
 
 def operate(request, paths=Paths(), now=None):
@@ -389,7 +504,9 @@ def operate(request, paths=Paths(), now=None):
         op = request['op']
         if op == 'load':
             reconcile(state, now, boot_id)
-            user = state['last_user'] if state['last_user'] in users else (next(iter(users)) if len(users) == 1 else '')
+            # The remembered account, else the first listed one; a long list keeps the name step.
+            user = state['last_user'] if state['last_user'] in users else (
+                next(iter(users)) if len(users) <= LIST_LIMIT else '')
             result = selection(state, user, users, catalog, paths)
             write_state(fd, state)
             return result

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 import errno
 import json
@@ -85,6 +87,33 @@ class TransportCases:
         reply = await self.read(reader)
         self.assertEqual(reply['code'], 'busy')
 
+    async def test_second_client_probe_keeps_the_reviewed_plan(self):
+        cli_reader, cli = await self.hello()
+        window_reader, window = await self.hello()
+        await self.send(cli, 'plan', config=config())
+        ack = await self.read(cli_reader)
+        await self.send(window, 'probe')
+        self.assertEqual((await self.read(window_reader))['type'], 'inventory')
+        # The window never confirms a plan it did not review, even with the token.
+        await self.send(window, 'confirm', plan_id=ack['plan_id'], token=ack['token'])
+        self.assertEqual((await self.read(window_reader))['code'], 'token_invalid')
+        self.controller.start = lambda plan: None
+        await self.send(cli, 'confirm', plan_id=ack['plan_id'], token=ack['token'])
+        reply = await self.read(cli_reader)
+        self.assertTrue(reply['ok'], reply)
+
+    async def test_closing_the_connection_drops_its_plan(self):
+        reader, writer = await self.hello()
+        await self.send(writer, 'plan', config=config())
+        await self.read(reader)
+        self.assertIsNotNone(self.controller.pending)
+        writer.close()
+        for _ in range(200):
+            if self.controller.pending is None:
+                break
+            await asyncio.sleep(0.01)
+        self.assertIsNone(self.controller.pending)
+
     async def test_resume_cannot_overtake_replayed_logs(self):
         self.controller.job = Job('job')
         self.controller.emit('state', phase='copy_packages', phase_pct=1, total_pct=5.6, indeterminate=False)
@@ -92,8 +121,8 @@ class TransportCases:
             self.controller.emit('log', line=f'old-{i}')
         original = self.controller.handle
 
-        def during_replay(msg):
-            result = original(msg)
+        def during_replay(msg, client=None):
+            result = original(msg, client)
             if msg['type'] == 'resume':
                 self.controller.emit('log', line='new-during-resume')
             return result
@@ -163,6 +192,44 @@ class SocketTests(TransportCases, unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn('token', reply)
                 self.assertIsNone(self.controller.pending)
                 self.assertIsNone(self.controller.job)
+
+    async def test_cli_install_survives_the_window_connecting_meanwhile(self):
+        # N-D2: the live session's window connects when the worker starts, like a test's CLI.
+        # Its probe on hello ran between the CLI's plan_ack and confirm, and the CLI got
+        # token_invalid "No outstanding installation plan." Replay exactly that order.
+        plan = Path(self.temp.name) / 'plan.json'
+        plan.write_text(json.dumps(config()))
+        original = self.controller.handle
+        window = []
+
+        def plan_then_window_probe(msg, *client):
+            result = original(msg, *client)
+            if msg['type'] == 'plan' and not window:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as other:
+                    other.settimeout(5)
+                    other.connect(self.path)
+                    other.sendall(encode_frame({'type': 'hello', 'id': 'ui-1', 'proto': 1})
+                                  + encode_frame({'type': 'probe', 'id': 'ui-2'}))
+                    stream = other.makefile('rb')
+                    window.extend(json.loads(stream.readline())['type'] for _ in range(2))
+            return result
+
+        self.controller.handle = plan_then_window_probe
+        self.controller.start = lambda plan: None
+        process = await asyncio.create_subprocess_exec(
+            sys.executable, str(Path(__file__).resolve().parents[1] / 'bin/emaki-install-cli'),
+            '--socket', self.path, '--plan', str(plan), '--yes',
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        try:
+            while (line := await asyncio.wait_for(process.stdout.readline(), 10)):
+                if (reply := json.loads(line))['type'] == 'reply':
+                    break
+        finally:
+            if process.returncode is None:
+                process.kill()
+            await process.wait()
+        self.assertEqual(window, ['hello', 'inventory'])
+        self.assertTrue(reply['ok'], reply)
 
 
 class SocketAvailabilityTests(unittest.TestCase):

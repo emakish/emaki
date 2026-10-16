@@ -149,7 +149,8 @@ Column {
                     if (!worker.completed) {
                         root.pending = false;
                         root.preview = null;
-                        root.message = "The storage helper could not be started.";
+                        console.warn("The storage helper could not be started.");
+                        root.message = "Storage information could not be opened. Try again.";
                     }
                 });
         }

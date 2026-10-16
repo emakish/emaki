@@ -104,6 +104,17 @@ pub(super) fn config(profile: &Profile, doc: &Document) -> Result<PathBuf> {
     let mut effective = doc.clone();
     input::protect_personal(profile, &mut effective);
     let doc = &effective;
+    // kitty, fuzzel and hyprlock take the accent on the same path as the niri border.
+    if let Err(error) = accent::publish(profile, doc) {
+        eprintln!(
+            "The terminal, menu and fallback lock keep their previous accent ({}).",
+            error.reason
+        );
+    }
+    // Qt windows read persistent state: written here, before the session starts applications.
+    if let Err(error) = accent::publish_qt(profile, doc) {
+        eprintln!("Qt windows keep their previous accent ({}).", error.reason);
+    }
     let home = std::env::var_os("HOME").ok_or_else(|| err("home_missing"))?;
     let base = if Path::new(&home).join(".config/niri/config.kdl").exists() {
         "niri/fork.kdl"
@@ -208,6 +219,7 @@ impl Pending {
             if let Err(e) = config(profile, &doc).and_then(|path| niri_live::load(&path, timeout)) {
                 failure = Some(e);
             }
+            accent::reload_terminals();
         }
         failure.map_or(Ok(()), Err)
     }
@@ -345,6 +357,9 @@ pub(super) fn apply(
     let result = (|| {
         if niri {
             niri_live::load(&config(profile, after)?, timeout)?;
+            if changed(before, after, &[ACCENT]) {
+                accent::reload_terminals();
+            }
         }
         if wallpaper_changed {
             command(
@@ -436,6 +451,7 @@ pub(super) fn recover(profile: &Profile, timeout: Duration, offline: bool) -> Re
         if !offline {
             if pending.niri {
                 niri_live::load(&config(profile, &current)?, timeout)?;
+                accent::reload_terminals();
             }
             if pending.shell {
                 shell(profile, &current, default_gaps()?, timeout)?;

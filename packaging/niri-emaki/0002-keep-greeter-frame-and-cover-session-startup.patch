@@ -131,7 +131,7 @@ index be4a0c41..2172fb9d 100644
 +            .is_some_and(|value| value == "1")
 +            || std::env::var_os("EMAKI_LOGIN_HANDOFF").is_some();
 +        std::env::remove_var("EMAKI_SESSION_TAKEOVER");
-+        // Only this start uses the login marker; the shell gets its copy from the user manager.
++        // The private login handoff was captured at entry; never expose it to clients.
 +        std::env::remove_var("EMAKI_LOGIN_HANDOFF");
 +
          let (session, notifier) = LibSeatSession::new().context(

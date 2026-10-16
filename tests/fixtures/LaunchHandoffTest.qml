@@ -235,12 +235,23 @@ ShellRoot {
                 stage = "dock preparation";
                 fixtureLauncher.opened = false;
                 wait(Metrics.morphMs + 50);
-                // Begin the independent dock case with the current desktop catalog.
-                fixtureStore.pinned = [];
-                fixtureStore.pinned = [fixtureCatalog.entries[0].id];
                 fixtureDock.takeFocus();
                 wait(150);
                 shot("dock-00-keyboard");
+                stage = "dock after a desktop rescan";
+                // The fixture's ID is found twice (XDG_DATA_HOME and XDG_DATA_DIRS are one
+                // directory), like a copy in ~/.local/share/applications over a system entry.
+                // Each rescan then replaces its DesktopEntry and deletes the old object, so a
+                // pinned icon must never act on an object from before the last scan. The packaged
+                // watcher (quickshell-emaki 0007) rescans on a change inside an applications
+                // directory, not on one in its parents: write the mimeinfo.cache that
+                // update-desktop-database writes after each package transaction.
+                const held = DesktopEntries.byId(fixtureCatalog.entries[0].id);
+                gateWriter.command = [Platform.python, "-c", "import pathlib,sys; pathlib.Path(sys.argv[1]).write_text('[MIME Cache]\\n')", Quickshell.env("XDG_DATA_HOME") + "/applications/mimeinfo.cache"];
+                gateWriter.running = true;
+                tryCompare(gateWriter, "running", false);
+                tryVerify(() => DesktopEntries.byId(fixtureCatalog.entries[0].id) !== held, 5000, "A rescan replaces a doubly listed entry");
+                wait(50);
                 stage = "dock launch";
                 fixtureDock.activate(fixtureCatalog.entries[0].id);
                 console.log("LAUNCH_HANDOFF_DOCK starts=" + fixtureCatalog.starts + " pinned=" + fixtureStore.pinned + " entries=" + fixtureDock.entries.length);

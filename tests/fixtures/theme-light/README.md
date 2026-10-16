@@ -4,7 +4,8 @@
 # Light pixel references
 
 These 1536 × 960 PNGs freeze the released 0.8.0 light/orange surfaces (light was the
-default then; the default is now dark, so the captures choose light explicitly) using
+default then and is the default again; captures leave the theme unset and choose
+Orange explicitly to match these references) using
 `ThemeShots.qml`, the shipped wallpaper and base Regular/Bold/Italic/BoldItalic
 font faces, Qt 6.11.2 and llvmpipe (LLVM 22.1.8). The scene uses the real Programs & Updates
 application icon and no invented Settings application entry.

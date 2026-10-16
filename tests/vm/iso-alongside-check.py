@@ -350,8 +350,10 @@ echo OK: alongside encrypted root and Windows GRUB entry
         boot('windows', windows=True)
         stop()
         snapshot_result = 'Recovery snapshot boot passed.\n' if fs == 'btrfs' else ''
-        (vm / 'PASS').write_text(('New removable EFI loader verified.\n' if no_fallback
-                                 else 'Existing foreign fallback preserved.\n') + snapshot_result + 'Resize, NTFS/ESP/MSR preservation, encrypted Emaki boot and Windows BootNext firmware reboot into the synthetic EFI target passed.\nHUMAN REVIEW REQUIRED: unlock, boot menus, target screens are not judged.\nNOT TESTED: real Windows boot; synthetic EFI target only.\n' + iso_record)
+        (vm / 'PASS').write_text(('Windows ESP without a fallback loader' if no_fallback
+                                  else 'Windows ESP with a foreign fallback loader')
+                                 + ' stayed byte-identical and unmounted; Emaki ESP (EMAKI, 1 GiB, rw at /efi)'
+                                 ' has its own removable loader.\n' + snapshot_result + 'Resize, NTFS/ESP/MSR preservation, encrypted Emaki boot and Windows BootNext firmware reboot into the synthetic EFI target passed.\nHUMAN REVIEW REQUIRED: unlock, boot menus, target screens are not judged.\nNOT TESTED: real Windows boot; synthetic EFI target only.\n' + iso_record)
     finally:
         stop()
         for handle in handles:

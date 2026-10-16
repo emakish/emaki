@@ -1,0 +1,70 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# shellcheck shell=bash disable=SC2034,SC2154
+# The Secure Boot first stage loader: Fedora's build of shim, signed by Microsoft, taken unchanged
+# from Fedora's build system. The RPM is pinned by its checksum below and the two shipped files by
+# theirs in prepare(); check() refuses a shim that lacks either Microsoft UEFI CA signature. The
+# package only places the files under /usr/share/emaki-shim-signed: copying them to the EFI
+# system partition and registering a boot entry is the installer's step, and no scriptlet runs.
+pkgname=emaki-shim-signed
+# Upstream shim version and Fedora's release of it (Fedora's 16.1-7 is pkgver 16.1+fedora+7).
+_upstream=16.1
+_fedora_release=7
+pkgver=$_upstream+fedora+$_fedora_release
+pkgrel=2
+pkgdesc='Microsoft-signed shim first stage UEFI loader and MOK manager (prebuilt by Fedora)'
+arch=('x86_64')
+url='https://github.com/rhboot/shim'
+# Fedora's signed package declares BSD-3-Clause; its embedded sources also
+# carry shim's BSD-2-Clause and BSD-2-Clause-Patent, and OpenSSL's dual licence.
+license=('BSD-3-Clause' 'BSD-2-Clause' 'BSD-2-Clause-Patent' 'OpenSSL')
+makedepends=('sbsigntools' 'python')
+options=('!strip' '!debug')
+_fedora=$_upstream-$_fedora_release
+_rpm=shim-x64-$_fedora.x86_64.rpm
+# Where prepare() unpacks the two shipped files, relative to $srcdir.
+_efi=rpm/usr/lib/efi/shim/$_fedora/EFI/fedora
+source=("https://kojipkgs.fedoraproject.org/packages/shim/$_upstream/$_fedora_release/x86_64/$_rpm"
+        "shim-$_upstream-COPYRIGHT::https://raw.githubusercontent.com/rhboot/shim/$_upstream/COPYRIGHT"
+        "https://github.com/rhboot/shim/releases/download/$_upstream/shim-$_upstream.tar.bz2"
+        notices.py
+        check-signatures.sh
+        expected-files.list)
+noextract=("$_rpm")
+sha256sums=('0a119f3488e5da27ca55c1864ee8e131afa5ecf27689385ba09b805eb00dd608'
+            '15edf527919ddcb2f514ab9d16ad07ef219e4bb490e0b79560be510f0c159cc2'
+            '46319cd228d8f2c06c744241c0f342412329a7c630436fce7f82cf6936b1d603'
+            '6cde6ac522c0b4a7f62bf5f70ff52549868c8612e356ca74620db10a4afd939a'
+            '03d4a279a3715bff11eabf0f72f52aa0807ae6ffd4f2ded524f91d08c1a0493e'
+            'd233ebc7d9a341b031a973d6237f711b03ef809d6c0c76847f3b7a0ea281add2')
+
+prepare() {
+    python "$srcdir/notices.py" "$srcdir/shim-$_upstream" "$srcdir/notices" || return 1
+    # The RPM stores shimx64.efi as a hard link, so it is unpacked whole.
+    rm -rf "$srcdir/rpm"
+    mkdir "$srcdir/rpm"
+    bsdtar -xf "$srcdir/$_rpm" -C "$srcdir/rpm" || return 1
+    # The exact bytes this package ships: a new Fedora build needs new pins.
+    (cd "$srcdir/$_efi" && sha256sum -c --strict) <<'SUMS' || return 1
+351e131d3c4a636704e9cae7d1296baf8a05beca9922cfebbfa48933c9bf1ad3  shimx64.efi
+ed4442fa88cccba3a9e6a32d21a8f4c56bf5aab184f1fb9aadde8d3a9d04dc27  mmx64.efi
+SUMS
+}
+
+check() {
+    # shim must carry both Microsoft UEFI CA signatures; the MOK manager must be signed.
+    sbverify --list "$srcdir/$_efi/shimx64.efi" > "$srcdir/shimx64.sbverify" || return 1
+    sbverify --list "$srcdir/$_efi/mmx64.efi" > "$srcdir/mmx64.sbverify" || return 1
+    bash "$srcdir/check-signatures.sh" shim shimx64.efi "$srcdir/shimx64.sbverify" || return 1
+    bash "$srcdir/check-signatures.sh" signed mmx64.efi "$srcdir/mmx64.sbverify" || return 1
+}
+
+package() {
+    install -Dm644 -t "$pkgdir/usr/share/$pkgname" "$srcdir/$_efi/shimx64.efi" "$srcdir/$_efi/mmx64.efi"
+    install -Dm644 "$srcdir/shim-$_upstream-COPYRIGHT" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 -t "$pkgdir/usr/share/licenses/$pkgname" "$srcdir/notices/"*-NOTICES
+    # Keep the documented payload equal to the files this build installs.
+    find "$pkgdir" \( -type f -o -type l \) -printf '/%P\n' | LC_ALL=C sort > "$srcdir/actual-files.list"
+    sed '/^#/d; /^[[:space:]]*$/d' "$srcdir/expected-files.list" > "$srcdir/expected-paths.list"
+    diff -u "$srcdir/expected-paths.list" "$srcdir/actual-files.list" || return 1
+}

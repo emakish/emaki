@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Cut a recorded install stream (emaki-install-cli --follow, NDJSON) into a transcript.
 
 The job's own events are kept as recorded: every state, progress and terminal event, each

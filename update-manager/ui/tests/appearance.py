@@ -60,7 +60,8 @@ PROBE = '''
 
 def accent_base(name):
     palette = (ROOT / 'shell/ShellPalette.qml').read_text()
-    accents = json.loads(re.search(r'readonly property var accents: (\[.*\])\n', palette)[1])
+    # The generator lays the list out over several lines, as qmlformat prints it.
+    accents = json.loads(re.search(r'readonly property var accents: (\[\n.*?\n    \])\n', palette, re.S)[1])
     return next(entry['base'] for entry in accents if entry['id'] == name)
 
 

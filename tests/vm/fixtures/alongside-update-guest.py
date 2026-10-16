@@ -3,10 +3,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Run only as root inside a disposable installed alongside test guest. Never on the host.
 
-Evidence and fixture steps for tests/vm/alongside-update-check.py: the shared ESP's
-complete file manifest, the candidate boot files, a synthetic Windows hibernation
-record on the fixture's NTFS volume, and firmware entries that imitate a Windows
-update putting its boot manager first.
+Evidence and fixture steps for tests/vm/alongside-update-check.py: the complete file
+manifest of Emaki's own ESP (/efi), the digest and mount state of Windows' ESP (never
+mounted here), the candidate boot files, a synthetic Windows hibernation record on the
+fixture's NTFS volume, and firmware entries that imitate a Windows update putting its
+boot manager first.
 """
 import argparse
 import hashlib
@@ -21,7 +22,10 @@ import tempfile
 import time
 
 WINDOWS = '/dev/disk/by-id/virtio-emaki-target-part3'
-ESP_DEVICE = '/dev/disk/by-id/virtio-emaki-target-part1'
+WINDOWS_ESP = '/dev/disk/by-id/virtio-emaki-target-part1'
+MARKER = Path('/var/lib/emaki/alongside-boot.json')
+SHARED_DROPINS = [Path(f'/etc/systemd/system/systemd-{mode}.service.d/50-emaki-shared-esp.conf')
+                  for mode in ('hibernate', 'hybrid-sleep', 'suspend-then-hibernate')]
 OVERLAY = {'boot/': Path('/usr/lib/emaki/boot/emaki_boot'), 'bin/': Path('/usr/bin')}
 OVERLAY['hooks/'] = OVERLAY['bin/'].parent / 'share/libalpm/hooks'
 
@@ -36,8 +40,18 @@ def run(*argv, check=True):
 def guest_only():
     if os.geteuid() != 0 or run('systemd-detect-virt', '--vm').stdout.strip() not in ('qemu', 'kvm'):
         raise RuntimeError('requires root inside the disposable QEMU/KVM guest')
-    if not Path('/var/lib/emaki/alongside-boot.json').is_file():
+    if not MARKER.is_file():
         raise RuntimeError('requires an installed alongside test guest')
+
+
+def windows_esp():
+    """Windows' ESP read as a block device, never mounted: its digest and any mounts."""
+    digest = hashlib.sha256()
+    with open(WINDOWS_ESP, 'rb', buffering=0) as stream:
+        while chunk := stream.read(1 << 20):
+            digest.update(chunk)
+    mounts = run('findmnt', '-nr', '-o', 'TARGET', '--source', os.path.realpath(WINDOWS_ESP), check=False)
+    return {'sha256': digest.hexdigest(), 'mounted': mounts.stdout.split()}
 
 
 def manifest():
@@ -47,12 +61,10 @@ def manifest():
         relative = str(path.relative_to(esp))
         files[relative] = ('directory' if path.is_dir() else
                            hashlib.sha256(path.read_bytes()).hexdigest())
-    mount = json.loads(run('findmnt', '--json', '-o', 'SOURCE,FSTYPE,OPTIONS', '--mountpoint', '/efi').stdout)
-    windows = {name: digest for name, digest in files.items()
-               if name.casefold() != 'efi/emaki' and not name.casefold().startswith('efi/emaki/')}
-    return {'mount': mount['filesystems'][0], 'files': files, 'windows': windows,
-            'windows_sha256': hashlib.sha256(json.dumps(windows, sort_keys=True).encode()).hexdigest(),
-            'efibootmgr': run('efibootmgr', '-v').stdout}
+    mount = json.loads(run('findmnt', '--json', '-o', 'SOURCE,FSTYPE,OPTIONS,PARTUUID',
+                           '--mountpoint', '/efi').stdout)
+    return {'mount': mount['filesystems'][0], 'files': files, 'windows': windows_esp(),
+            'marker': json.loads(MARKER.read_text()), 'efibootmgr': run('efibootmgr', '-v').stdout}
 
 
 def overlay(archive):
@@ -114,7 +126,7 @@ def wake_windows():
 
 def hibernate_attempt():
     """Start the real hibernate service once. The guest has no swap, so sleep itself
-    fails after the drop-in's pre step; its post step must remount and restore."""
+    fails; Emaki's own ESP must stay mounted read-write with the counters unchanged."""
     env = Path('/efi/EFI/Emaki/update.env')
 
     def state():
@@ -131,7 +143,7 @@ def hibernate_attempt():
                   check=False).stdout
     dropin = run('systemctl', 'cat', 'systemd-hibernate.service', check=False).stdout
     return {'before': before, 'start_exit': started.returncode, 'after': after, 'journal': journal,
-            'unit': dropin}
+            'unit': dropin, 'shared_esp_dropins': [str(path) for path in SHARED_DROPINS if path.exists()]}
 
 
 def entries():
@@ -149,7 +161,7 @@ def windows_first():
     """Imitate a Windows update: its boot manager entry, first in BootOrder."""
     found, order, before = entries()
     if 'Windows Boot Manager' not in found:
-        disk = os.path.realpath(ESP_DEVICE)
+        disk = os.path.realpath(WINDOWS_ESP)
         match = re.fullmatch(r'(/dev/[a-z]+)([0-9]+)', disk)
         run('efibootmgr', '--create', '--disk', match[1], '--part', match[2],
             '--label', 'Windows Boot Manager', '--loader', '\\EFI\\Microsoft\\Boot\\bootmgfw.efi')

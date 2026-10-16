@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Production WlrLayershell backend and capture handlers, with deterministic visual pixels.
 
 Instantiate PanelWindow's production WlrLayershell backend directly: the factory

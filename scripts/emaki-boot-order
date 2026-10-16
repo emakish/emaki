@@ -19,8 +19,15 @@ GUID = r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}'
 HARDWARE = r'(?:(?!(?:HD|File)\()[A-Za-z][A-Za-z0-9]*\([^()\t]*\)/)*'
 
 
+class MissingEmakiEntry(ValueError):
+    """Valid firmware inventory with no entry for this installation."""
+
+
 def recovery_plan(output, partuuid):
-    """Prefer active vendor entries on the recorded ESP; never create or delete entries.
+    """Prefer active vendor entries on Emaki's recorded ESP; never create or delete entries.
+
+    partuuid is the ESP Emaki starts from: its own ESP next to Windows since 0.9
+    (emaki_esp_partuuid), the ESP shared with Windows on older installations.
 
     efibootmgr 18 prints the loader path bare after HD(...)/ (older versions wrapped
     it in File(...)), its verbose dp:/data: lines indented, and optional data glued to
@@ -51,7 +58,9 @@ def recovery_plan(output, partuuid):
         label, separator, device = value.partition('\t')
         if label.strip() != 'Emaki':
             continue
-        loader = r'\\EFI\\Emaki\\grubx64\.efi'
+        # GRUB itself, or shim on a machine that signs its boot files (Secure Boot): the
+        # active boot slot's shim since 0.9 (EFI/Emaki/a or b), the one directory before it.
+        loader = r'\\EFI\\Emaki\\(?:grubx64|(?:[ab]\\)?shimx64)\.efi'
         expected = (HARDWARE + r'HD\([1-9][0-9]*,GPT,(' + GUID + r'),0x[0-9a-fA-F]+,0x[0-9a-fA-F]+\)'
                     r'/(?:' + loader + r'|File\(' + loader + r'\))')
         path = re.fullmatch(expected, device, re.I) if separator else None
@@ -65,7 +74,11 @@ def recovery_plan(output, partuuid):
     ordered = [n for n in order if n in matches]
     if not ordered:
         ordered = [n for n in order if n in inactive]
-    if not ordered or any(n not in entries for n in order):
+    if any(n not in entries for n in order):
+        raise ValueError('ambiguous_boot_entries')
+    if not matches and not inactive:
+        raise MissingEmakiEntry('ambiguous_boot_entries')
+    if not ordered:
         raise ValueError('ambiguous_boot_entries')
     return order, [ordered[0]] + [n for n in order if n != ordered[0]], ordered[0] in inactive
 
@@ -76,6 +89,11 @@ def proposed_order(output, partuuid):
 
 
 def read_marker():
+    """(Emaki's ESP, Windows' ESP) partition GUIDs from the installer's record.
+
+    esp_partuuid is always the ESP holding Windows Boot Manager; since 0.9 Emaki has its own
+    ESP next to it (emaki_esp_partuuid). Without that field both are the shared ESP.
+    """
     fd = os.open(MARKER, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd) as stream:
         info = os.fstat(stream.fileno())
@@ -87,10 +105,15 @@ def read_marker():
         marker = json.loads(data)
     if not isinstance(marker, dict) or marker.get('version') != 1:
         raise ValueError('invalid_installation_record')
-    identity = marker.get('esp_partuuid')
-    if not isinstance(identity, str) or not re.fullmatch(GUID, identity):
+    windows = marker.get('esp_partuuid')
+    if not isinstance(windows, str) or not re.fullmatch(GUID, windows):
         raise ValueError('invalid_esp_identity')
-    return identity
+    if 'emaki_esp_partuuid' not in marker:
+        return windows, windows
+    own = marker['emaki_esp_partuuid']
+    if not isinstance(own, str) or not re.fullmatch(GUID, own) or own.lower() == windows.lower():
+        raise ValueError('invalid_esp_identity')
+    return own, windows
 
 
 def command(arguments):
@@ -177,7 +200,10 @@ def refresh_windows_menu(output, partuuid, text, repair, resolve=windows_entry):
         return 'windows_unsafe'
     recorded = re.findall(r'^\s*(?:if\s+)?bootnext\s+([^;\s]+)', text, re.M)
     target = f'# Windows firmware target: {partuuid.lower()} /EFI/Microsoft/Boot/bootmgfw.efi'
-    matches = bool(text) and (not recorded if number is None else
+    # Refresh legacy raw chainload menus once to acquire the Secure Boot guard.
+    guarded = ('if [ "$shim_lock" = y ]; then\n'
+               "menuentry 'Windows startup help' --class windows --id 'emaki-windows-startup-help' {\n")
+    matches = bool(text) and (not recorded and guarded in text if number is None else
                               recorded == [number] and target in text)
     if matches:
         return 'ready'
@@ -186,7 +212,10 @@ def refresh_windows_menu(output, partuuid, text, repair, resolve=windows_entry):
     return queue_refresh()
 
 
-def recover(partuuid, vendor, run=command, repair=False, menu=None):
+def recover(partuuid, vendor, run=command, repair=False, menu=None, windows=None):
+    """partuuid: the ESP of the "Emaki" entry; windows: the ESP of Windows Boot Manager
+    (the same shared ESP when omitted)."""
+    windows = partuuid if windows is None else windows
     if not vendor.strip():
         raise ValueError('unknown_firmware_vendor')
     before = run(['efibootmgr', '-v'])
@@ -202,7 +231,7 @@ def recover(partuuid, vendor, run=command, repair=False, menu=None):
                     text = menu
                     if isinstance(menu, Path):
                         text = menu.read_text() if menu.exists() else ''
-                    value['menu'] = refresh_windows_menu(inventory, partuuid, text, repair)
+                    value['menu'] = refresh_windows_menu(inventory, windows, text, repair)
             except (OSError, ValueError, subprocess.SubprocessError):
                 value['menu'] = 'refresh_failed'
         return value
@@ -210,6 +239,13 @@ def recover(partuuid, vendor, run=command, repair=False, menu=None):
         return result('manual_recovery', False, reason='apple_firmware')
     try:
         old, new, activate = recovery_plan(before, partuuid)
+    except MissingEmakiEntry as error:
+        # Generation confirmation owns entry creation on the separate Emaki ESP.
+        # It runs after multi-user.target; ordering this unit after it would cycle.
+        if windows.lower() != partuuid.lower() and normal_boot():
+            return result('recovery_pending', False, reason='missing_emaki_entry',
+                          note='Emaki firmware entry is missing; emaki-boot-complete will attempt recreation.')
+        return result('refused', False, reason=str(error))
     except ValueError as error:
         return result('refused', False, reason=str(error))
     if old == new and not activate:
@@ -247,7 +283,7 @@ def main():
         if args.repair and os.geteuid() != 0:
             raise ValueError('root_required')
         try:
-            partuuid = read_marker()
+            partuuid, windows = read_marker()
         except FileNotFoundError:
             if alongside_evidence():
                 result = {'state': 'refused', 'changed': False,
@@ -257,7 +293,12 @@ def main():
         else:
             vendor = Path('/sys/class/dmi/id/sys_vendor').read_text()
             # Every generation prefers this canonical menu; refresh recreates it if absent.
-            result = recover(partuuid, vendor, repair=args.repair, menu=Path('/boot/grub/grub.cfg'))
+            result = recover(partuuid, vendor, repair=args.repair, menu=Path('/boot/grub/grub.cfg'),
+                             windows=windows)
+        # This unit may repair priority before boot completion sees the drift.
+        # Keep the explanation with the verified repair in this service's journal.
+        if result['state'] == 'recovered':
+            result['note'] = "Emaki's firmware startup priority was restored."
         code = 1 if result['state'] in ('refused', 'recovery_uncertain') else 0
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         result = {'state': 'refused', 'changed': False, 'reason': str(error)}

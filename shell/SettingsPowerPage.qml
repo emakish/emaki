@@ -19,6 +19,7 @@ Column {
     property string error: ""
     property var command: ["emaki-settings-power", "status", "--json"]
     property bool received: false
+    property bool readingStatus: true
     readonly property var delays: [
         {
             value: 0,
@@ -98,6 +99,16 @@ Column {
     }
     spacing: 16
 
+    function delayOptions(current) {
+        if (current === undefined || current === null || delays.some(option => option.value === current))
+            return delays;
+        return delays.concat([
+            {
+                value: current,
+                label: current + " seconds"
+            }
+        ]);
+    }
     function chargeOptions(current) {
         const values = [50, 60, 70, 80, 90, 100];
         const options = values.map(value => ({
@@ -115,6 +126,7 @@ Column {
         if (process.running)
             return;
         error = "";
+        readingStatus = args[0] === "status";
         received = false;
         command = ["emaki-settings-power"].concat(args, ["--json"]);
         process.running = true;
@@ -167,7 +179,7 @@ Column {
         repeat: true
         onTriggered: {
             // Keep a failed change visible until the next deliberate action.
-            if (!root.error)
+            if (!root.error || root.readingStatus)
                 root.send(["status"]);
         }
     }
@@ -180,6 +192,13 @@ Column {
         font.family: SettingsTheme.fontFamily
         font.pixelSize: 12
         wrapMode: Text.WordWrap
+    }
+    SettingsButton {
+        objectName: "settings-power-retry"
+        visible: root.error !== ""
+        enabled: !root.pending
+        text: "Retry"
+        onClicked: root.send(["status"])
     }
     Text {
         objectName: "settings-power-action-status"
@@ -213,7 +232,7 @@ Column {
             visible: root.snapshot.idle_available === true
             title: "Blank the screen on battery"
             explanation: "Turn off the screen after this much inactivity on battery power."
-            options: root.delays
+            options: root.delayOptions(root.snapshot.values.blank_battery)
             value: root.snapshot.values.blank_battery ?? 0
             defaultValue: (root.snapshot.defaults || {}).blank_battery ?? value
             busy: root.pending
@@ -226,7 +245,7 @@ Column {
             visible: root.snapshot.idle_available === true
             title: "Blank the screen when plugged in"
             explanation: "Turn off the screen after this much inactivity on external power."
-            options: root.delays
+            options: root.delayOptions(root.snapshot.values.blank_ac)
             value: root.snapshot.values.blank_ac ?? 0
             defaultValue: (root.snapshot.defaults || {}).blank_ac ?? value
             busy: root.pending
@@ -250,7 +269,7 @@ Column {
             visible: root.snapshot.idle_available === true
             title: "Lock after inactivity"
             explanation: "Require your password after this much time without input."
-            options: root.delays
+            options: root.delayOptions(root.snapshot.values.lock_delay)
             value: root.snapshot.values.lock_delay ?? 0
             defaultValue: (root.snapshot.defaults || {}).lock_delay ?? value
             busy: root.pending

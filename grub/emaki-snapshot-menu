@@ -5,6 +5,7 @@
 
 import argparse
 from datetime import datetime
+import importlib.util
 import os
 from pathlib import Path
 import re
@@ -32,6 +33,12 @@ AUTOMATIC_KEPT = 5
 COMMAND_SHOWN = 24
 TITLES = {'linux': 'Emaki', 'linux-lts': 'Emaki (LTS kernel)'}
 MONTHS = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
+# The boot library's Secure Boot module, shared with the installer and the boot refresh.
+SECUREBOOT = Path('/usr/lib/emaki/boot/emaki_boot/secureboot.py')
+# A snapshot's kernel as the menu names it, and where the running system mounts it.
+SNAPSHOT_KERNEL = re.compile(r'^\s*linux(?:efi)?\s+"?/(?:@snapshots|\.snapshots)/([0-9]+)/snapshot'
+                             r'(/boot/vmlinuz-[A-Za-z0-9._-]+)"?(?:\s|$)')
+NO_SIGNED_SNAPSHOT = "# No snapshot has a kernel signed with this machine's key.\n"
 
 
 def sync_directory(path):
@@ -181,8 +188,87 @@ def retitle(text):
     return ''.join(result + outside)
 
 
-def render(text):
-    """Remove only the v4.14 heading forms and give snapshots plain titles."""
+def kernel_signature_check(root=Path('/')):
+    """None when this machine does not sign its boot files; else path -> signed by its key.
+
+    With Secure Boot GRUB refuses a kernel the machine key did not sign, so such snapshot
+    rows would only end in an error. Each kernel is asked once.
+    """
+    if not SECUREBOOT.is_file():
+        # Without the boot library's Secure Boot module the menu stays as generated.
+        return None
+    spec = importlib.util.spec_from_file_location('emaki_secureboot', SECUREBOOT)
+    secureboot = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(secureboot)
+    if not secureboot.enabled(root):
+        return None
+    state = Path(root) / secureboot.STATE.relative_to('/')
+    answers = {}
+
+    def run(argv, input=None):
+        return subprocess.run(argv, input=input, check=True, capture_output=True, text=True,
+                              env={'PATH': os.defpath, 'LC_ALL': 'C'}).stdout
+
+    def signed(number, kernel):
+        path = Path(root) / '.snapshots' / number / 'snapshot' / kernel.lstrip('/')
+        if path not in answers:
+            answers[path] = path.is_file() and secureboot.signed(run, path, state)
+        return answers[path]
+    return signed
+
+
+def signed_only(text, signed):
+    """Drop snapshot rows whose kernel the machine key did not sign, and emptied snapshots.
+
+    A row whose kernel line names no snapshot kernel is kept: it cannot be checked here. So is
+    a submenu laid out differently from grub-btrfs (another indent, a nested menu): unchecked.
+    """
+    lines = text.splitlines(keepends=True)
+    result, index, kept = [], 0, 0
+    while index < len(lines):
+        line = lines[index]
+        end = next((number for number in range(index + 1, len(lines)) if lines[number] == '}\n'), None)
+        if not line.startswith('submenu ') or end is None:
+            result.append(line)
+            index += 1
+            continue
+        body, rows, current, familiar = [], 0, None, True
+        for row in lines[index + 1:end]:
+            if current is None and row.startswith('    menuentry '):
+                current = [row]
+            elif current is not None:
+                current.append(row)
+                if row == '    }\n':
+                    kernels = [match for match in map(SNAPSHOT_KERNEL.match, current) if match]
+                    if not kernels or all(signed(match[1], match[2]) for match in kernels):
+                        body += current
+                        rows += 1
+                    current = None
+            else:
+                body.append(row)
+                if re.match(r'\s*(?:menuentry|submenu)\s', row) and not TITLE.fullmatch(row):
+                    familiar = False
+        if current is not None:
+            return text
+        if not familiar:
+            result += lines[index:end + 1]
+            kept += 1
+        elif rows:
+            result += [line, *body, '}\n']
+            kept += 1
+        index = end + 1
+    if not kept and any(line.startswith('submenu ') for line in lines):
+        result.append(NO_SIGNED_SNAPSHOT)
+    return ''.join(result)
+
+
+def render(text, signed=None):
+    """Remove only the v4.14 heading forms and give snapshots plain titles.
+
+    signed (from kernel_signature_check) drops the snapshot rows GRUB would refuse.
+    """
+    if signed is not None:
+        text = signed_only(text, signed)
     lines = text.splitlines(keepends=True)
     result = []
     outer_title = None
@@ -208,17 +294,17 @@ def render(text):
     return retitle(''.join(result))
 
 
-def repair_menu(menu):
+def repair_menu(menu, signed=None):
     if menu.is_symlink():
         raise ValueError(f'{menu}: expected a regular file')
     if menu.is_file():
         text = menu.read_text()
-        replacement = render(text)
+        replacement = render(text, signed)
         if replacement != text:
             replace_file(menu, text, replacement, validate=True)
 
 
-def repair(generator, menu, defaults):
+def repair(generator, menu, defaults, signed=None):
     # Do not modify the generator or any other file owned by grub-btrfs.
     if not generator.exists():
         return
@@ -235,7 +321,7 @@ def repair(generator, menu, defaults):
     settings = [setting for setting in (SETTING, STAGING_SETTING) if setting not in text.splitlines()]
     if settings:
         replace_file(defaults, text, text.rstrip('\n') + '\n' + '\n'.join(settings) + '\n')
-    repair_menu(menu)
+    repair_menu(menu, signed)
     # Retire interrupted writes from before staging and either temporary prefix.
     leftovers = [menu.with_name('grub-btrfs.cfg.bkp'), menu.with_name('grub-btrfs.new')]
     leftovers.extend(menu.parent.glob('grub-btrfs.cfg.emaki.*'))
@@ -261,13 +347,14 @@ def main():
     parser.add_argument('--check', type=Path, metavar='MENU')
     args = parser.parse_args()
     try:
+        signed = kernel_signature_check()
         if args.check is not None:
-            repair_menu(args.check)
+            repair_menu(args.check, signed)
             result = subprocess.run([SCRIPT_CHECK, str(args.check)], check=False).returncode
             if result == 0:
                 publish_staged(args.check)
             return result
-        repair(args.generator, args.menu, args.defaults)
+        repair(args.generator, args.menu, args.defaults, signed)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.exit(1, f'emaki-snapshot-menu: {error}\n')
     return 0

@@ -50,7 +50,7 @@ Column {
                 Qt.callLater(function () {
                     if (!channelProcess.completed) {
                         root.pending = false;
-                        root.message = "The update channel helper could not be started.";
+                        root.message = "Update channel settings could not be opened. Try again.";
                     }
                 });
         }
@@ -137,6 +137,25 @@ Column {
             ]
             onValueRequested: value => root.changeChannel(value)
             onResetRequested: root.changeChannel("stable")
+        }
+    }
+    SettingsCard {
+        objectName: "settings-snapshot-recovery"
+        width: parent.width
+        visible: root.page === "updates" && !!root.service.recovery?.snapshot
+        title: "Recovery snapshot"
+        SettingsRow {
+            width: parent.width
+            title: "Review snapshot"
+            explanation: "Return to the recovery prompt to keep this state."
+            controlWidth: 150
+            control: Component {
+                SettingsButton {
+                    objectName: "settings-review-snapshot"
+                    text: "Review snapshot"
+                    onClicked: root.service.recovery.opened = true
+                }
+            }
         }
     }
     SettingsCard {

@@ -1,4 +1,6 @@
 #!/bin/sh
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Resolve the source checkout through symlinks; installed wrappers use the build path.
 emaki_script=$(readlink -f -- "$0")
 emaki_paths="${emaki_script%/*}/paths"
@@ -18,13 +20,48 @@ unset emaki_script emaki_paths
 #
 # The same rule as everywhere else: if the user has a file, use it and
 # leave ours alone. Otherwise, use the Emaki default.
+#
+# Between the two, for fuzzel only: the session's copy in the accent chosen in Settings
+# (written by `emaki settings` with the niri border, DECISIONS 2026-10-15). It is used only
+# while it is a regular file whose every line is exactly what the session writes: the
+# header, our include, and the five accent colours as RRGGBBff. Anything else means ours.
 set -eu
 component="$1"
 file="${2:-config}"
 user_config="${XDG_CONFIG_HOME:-$HOME/.config}/$component/$file"
+accent_config="${XDG_RUNTIME_DIR:-/nonexistent}/emaki-settings/accent/$component/$file"
+accent_header='# Emaki accent: written by the session from settings.toml; edits are replaced.'
+
+colour() {
+    [ "${#1}" -eq 8 ] || return 1
+    case "$1" in *[!0-9a-f]*|*[!f]?|*?[!f]) return 1 ;; esac
+}
+
+accent_copy() {
+    [ "$component/$file" = fuzzel/fuzzel.ini ] && [ -f "$accent_config" ] &&
+        [ -r "$accent_config" ] && [ ! -L "$accent_config" ] || return 1
+    l1='' l2='' l3='' l4='' l5='' l6='' l7='' l8='' l9='' extra=''
+    {
+        IFS= read -r l1 && IFS= read -r l2 && IFS= read -r l3 && IFS= read -r l4 &&
+            IFS= read -r l5 && IFS= read -r l6 && IFS= read -r l7 && IFS= read -r l8 &&
+            IFS= read -r l9 || return 1
+        ! IFS= read -r extra && [ -z "$extra" ] || return 1
+    } <"$accent_config"
+    base=${l5#match=} text=${l7#selection-text=}
+    colour "$base" && colour "$text" &&
+        [ "$l1" = "$accent_header" ] && [ "$l2" = "include=$EMAKI_DATADIR/fuzzel/fuzzel.ini" ] &&
+        [ -z "$l3" ] && [ "$l4" = '[colors]' ] && [ "$l5" = "match=$base" ] &&
+        [ "$l6" = "selection=$base" ] && [ "$l7" = "selection-text=$text" ] &&
+        [ "$l8" = "selection-match=$text" ] && [ "$l9" = "border=$base" ] || return 1
+    # The shell's read drops NUL bytes: the file must also be exactly as long as those lines.
+    [ "$(wc -c <"$accent_config")" -eq "$(printf '%s\n' "$l1" "$l2" "$l3" "$l4" "$l5" "$l6" \
+        "$l7" "$l8" "$l9" | wc -c)" ]
+}
 
 if [ -r "$user_config" ]; then
     printf '%s\n' "$user_config"
+elif accent_copy; then
+    printf '%s\n' "$accent_config"
 else
     printf '%s\n' "$EMAKI_DATADIR/$component/$file"
 fi

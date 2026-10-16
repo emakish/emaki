@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -25,6 +27,7 @@ Item {
         } else {
             // Output migration transfers the held arrivals before replaying them.
             Qt.callLater(replayDeferredPeeks);
+            Qt.callLater(showHeld);
         }
     }
     Connections {
@@ -34,8 +37,11 @@ Item {
         }
     }
     property bool focusedOutput: true
-    onFocusedOutputChanged: if (!focusedOutput && keyboardSurface)
-        closeAll()
+    onFocusedOutputChanged: {
+        if (!focusedOutput && keyboardSurface)
+            closeAll();
+        Qt.callLater(showHeld);
+    }
     readonly property ShellServices context: shared ?? localServices
     readonly property ShellServices localServices: shared ? null : (servicesFactory.createObject(scene) as ShellServices)
     readonly property SettingsCatalog settings: context.settings
@@ -57,7 +63,7 @@ Item {
         }
     }
     property bool skipIntro: false
-    readonly property bool startupModelsReady: services.startupReady && niri.connected && dockStore.restored && (!dockLabels.wanted || dockLabels.state === "ready") && (!settings.busy && settings.state !== "idle") && !dock.animating && !bar.leftIslands.animating
+    readonly property bool startupModelsReady: services.startupReady && niri.connected && dockStore.restored && (!dockStore.on || !dockLabels.wanted || dockLabels.state === "ready") && (!settings.busy && settings.state !== "idle") && !dock.animating && !bar.leftIslands.animating
     readonly property string startupRevision: skipIntro ? JSON.stringify({
         model: niri.model,
         pinned: dockStore.pinned,
@@ -82,7 +88,8 @@ Item {
         skipIntro: scene.skipIntro
         overview: scene.niri.overviewOpen
         presentation: scene.presentationState
-        openUI: scene.modalOpen || scene.peekOpen
+        // The window switcher passes over the screen: it does not bring a hidden bar out.
+        openUI: (scene.modalOpen && !scene.switcherOpen) || scene.peekOpen
         keyboardActive: scene.barKeyboardActive
         configuredReserve: scene.reservedSpace
         pointerInside: barHover.hovered
@@ -229,6 +236,69 @@ Item {
     property string keyboardSurface: ""
     property bool shortcutsOpen: false
     readonly property alias shortcuts: shortcuts
+    // Alt+Tab keeps OnDemand until the compositor confirms its atomic focus transfer.
+    property bool switcherOpen: false
+    readonly property alias switcher: switcher
+    signal switcherRestarted(int previousTicket)
+    // `sent`: when the binding's process started (ms since the epoch; 0 unknown). A call sent
+    // before the last switcher closed belonged to that chord and arrived late (each press starts
+    // a process): a Tab pressed just before Alt was released must not open a second switcher.
+    function switchWindows(delta: int, sameApp: bool, sent: double): bool {
+        if (sent > 0 && sent <= switcher.closedAt)
+            return true;
+        if (switcherOpen) {
+            const previousTicket = switcher.focusTicket;
+            const restarting = !switcher.armed;
+            const accepted = switcher.step(delta, sameApp);
+            if (accepted && restarting)
+                switcherRestarted(previousTicket);
+            return accepted;
+        }
+        if (!enabled || !focusedOutput || (!output && !headless) || authenticationPresent || firstRunPresent || !niri.immediateFocusReady)
+            return false;
+        // Only what holds the keyboard closes; notification previews stay.
+        if (modalOpen || keyboardSurface !== "")
+            closeAll();
+        if (!switcher.step(delta, sameApp))
+            return false;
+        keyboardSurface = "switcher";
+        switcherOpen = true;
+        Qt.callLater(() => {
+            if (scene.switcherOpen)
+                scene.switcher.forceActiveFocus();
+        });
+        return true;
+    }
+    // The overlay lost the keyboard (the lock screen, another surface): close without switching.
+    function switcherKeyboardLost(): void {
+        if (switcherOpen)
+            switcher.cancel();
+    }
+    function switcherClosed(): void {
+        if (!switcherOpen)
+            return;
+        switcherOpen = false;
+        if (keyboardSurface === "switcher")
+            keyboardSurface = "";
+    }
+    function switcherStatus(): string {
+        return JSON.stringify({
+            open: switcherOpen,
+            armed: switcher.armed,
+            shown: switcher.shown,
+            keyboard: switcher.keyboardReady,
+            populated: switcher.populated,
+            pending: switcher.pendingFocus >= 0 ? switcher.pendingFocus : null,
+            same_app: switcher.appOnly,
+            ids: switcher.rows.map(row => row.id),
+            index: switcher.index,
+            selected: switcher.current?.id ?? null,
+            live: Object.keys(switcher.live).map(Number),
+            recent: Object.keys(switcher.recent).map(Number),
+            outcome: switcher.outcome,
+            panel: rectangle(switcher.panel)
+        });
+    }
     // IPC entry points and bar activation share the same controls and close path.
     function openKeyboard(surface: string): bool {
         if (!enabled || !focusedOutput || (!output && !headless))
@@ -295,7 +365,47 @@ Item {
     readonly property bool peekOpen: peekIds.length > 0
     readonly property bool pairingPeekOpen: peekIds.some(id => notes.entries.some(e => e.id === id && e.critical === true && !e.batteryWarning && e.object))
     readonly property bool batteryPeekOpen: peekIds.some(id => notes.entries.some(e => e.id === id && e.batteryWarning === true))
-    readonly property bool modalOpen: launcherOpen || drawerOpen || systemOpen || privacyOpen || shortcutsOpen
+    readonly property bool modalOpen: launcherOpen || drawerOpen || systemOpen || privacyOpen || shortcutsOpen || switcherOpen
+    // A held notice (NotificationStore.hold: the Secure Boot notices) stays until the person
+    // chooses its action or dismisses it. Its preview has no timer, and whenever the preview is
+    // free again it comes back: nothing else previewed, no drawer or panel open, no
+    // authentication prompt and no first-run window (Welcome). It never covers Welcome: it
+    // waits and appears when Welcome closes. Like the battery warning it ignores Do not disturb,
+    // the overview and full screen; the drawer shows its whole text meanwhile.
+    property bool firstRunPresent: false
+    readonly property bool heldPeekOpen: peekIds.some(id => isHeld(id))
+    function isHeld(id: int): bool {
+        return notes.entries.some(e => e.id === id && e.held === true);
+    }
+    function showHeld(): void {
+        // The launcher (and Settings in it) sets launcherOpen a turn after closing the other
+        // panels, and a closing panel is still present: wait for both.
+        if (!enabled || !focusedOutput || authenticationPresent || firstRunPresent || peekOpen || modalOpen || launcherPresent || systemPresent || privacyPresent)
+            return;
+        const held = notes.entries.find(e => e.held === true);
+        if (!held)
+            return;
+        showNotification(held.id);
+        if (heldPeekOpen) {
+            // No deadline: nothing to count down in the status or to carry to another output
+            // (the scene that gains focus shows it again).
+            peekTimer.stop();
+            peekUntil = Date.now();
+        }
+    }
+    onFirstRunPresentChanged: {
+        if (firstRunPresent && heldPeekOpen) {
+            peekIds = peekIds.filter(id => !isHeld(id));
+            if (!peekOpen)
+                endPeek();
+        }
+        Qt.callLater(showHeld);
+    }
+    onPeekIdsChanged: Qt.callLater(showHeld)
+    onModalOpenChanged: Qt.callLater(showHeld)
+    onLauncherPresentChanged: Qt.callLater(showHeld)
+    onSystemPresentChanged: Qt.callLater(showHeld)
+    onPrivacyPresentChanged: Qt.callLater(showHeld)
     property bool systemOpen: false
     property bool systemPresent: false
     property real systemExpansion: 0
@@ -520,8 +630,19 @@ Item {
     Connections {
         target: scene.notes
         function onArrived(id: int): void {
-            if (scene.focusedOutput)
+            if (scene.isHeld(id)) {
+                Qt.callLater(scene.showHeld);
+            } else if (scene.focusedOutput) {
+                // Another arrival takes the preview from a held notice for its own few seconds
+                // (the held one comes back when it ends); one that is not previewed (Do not
+                // disturb, a panel open) leaves the held preview as it was.
+                const held = scene.peekIds.filter(peekId => scene.isHeld(peekId));
+                if (held.length)
+                    scene.peekIds = scene.peekIds.filter(peekId => !scene.isHeld(peekId));
                 scene.showNotification(id);
+                if (held.length && !scene.peekOpen)
+                    scene.peekIds = held;
+            }
         }
         function onEffectiveDndChanged(): void {
             if (scene.notes.effectiveDnd)
@@ -534,7 +655,7 @@ Item {
         }
         function onEntriesChanged(): void {
             if (scene.peekOpen) {
-                scene.peekIds = scene.peekIds.filter(id => scene.notes.entries.some(n => n.id === id && (!n.critical || n.batteryWarning || n.sessionUpdate || n.object)));
+                scene.peekIds = scene.peekIds.filter(id => scene.notes.entries.some(n => n.id === id && (!n.critical || n.batteryWarning || n.sessionUpdate || n.held === true || n.object)));
                 if (!scene.peekOpen)
                     scene.endPeek();
             }
@@ -642,8 +763,10 @@ Item {
             return;
         const ids = deferredPeekIds;
         deferredPeekIds = [];
+        // A held notice comes back through showHeld, without a timer.
         for (const id of ids)
-            showNotification(id);
+            if (!isHeld(id))
+                showNotification(id);
     }
     // Move transient feedback without replaying an arrival or extending its deadline.
     function exportTransient(): var {
@@ -788,6 +911,8 @@ Item {
         keyboardSurface = "";
         barKeyboardActive = false;
         shortcutsOpen = false;
+        switcher.cancel();
+        switcherOpen = false;
         dock.leaveKeyboard();
         closeLauncher();
         if (!preserveBattery || !batteryPeekOpen)
@@ -1134,6 +1259,32 @@ Item {
         wallpaperTexture: LiquidPalette.sharedCanvas ? wallpaper.texture : ""
         dpr: scene.outputScale
         onCloseRequested: scene.closeAll()
+    }
+    WindowSwitcher {
+        id: switcher
+        z: 35
+        niri: scene.niri
+        labels: scene.dockLabels
+        identity: scene.appIdentity
+        viewportWidth: scene.viewportWidth
+        viewportHeight: scene.viewportHeight
+        outputName: scene.outputName
+        wallpaperTexture: wallpaper.texture
+        dpr: scene.outputScale
+        focus: scene.switcherOpen
+        onFocusRequested: id => {
+            focusTicket = scene.niri.focusWindowImmediate(id);
+            if (focusTicket < 0)
+                finishHandoff();
+        }
+        onFinished: scene.switcherClosed()
+    }
+    Connections {
+        target: scene.niri
+        function onImmediateFocusFailed(ticket: int): void {
+            if (switcher.focusTicket === ticket)
+                switcher.finishHandoff();
+        }
     }
     // LauncherBody draws the plate, its content and the drops. This item is the plate's
     // rectangle while it morphs; the overlay's input and blur regions and the status read it.

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Publish a password-free final greeter image, addressed only by its login nonce."""
 import json
 import os
@@ -45,13 +47,21 @@ def handoff(operation, token):
                     with Image.open(stream, formats=('PNG',)) as image:
                         if image.width * image.height > 48_000_000:
                             raise ValueError('picture too large')
+                        image.load()
+                        if image.mode in ('RGB', 'RGBA') and (image.mode == 'RGB' or image.getchannel('A').getextrema() == (255, 255)):
+                            # The scene grab is opaque (the surface's backing fills it): publish
+                            # Qt's own file. Encoding 4 Mpx again took most of the capture time
+                            # limit on a 2015 Intel laptop, and then no login pour-down played.
+                            os.fchmod(stream.fileno(), 0o644)
+                            continue
                         # grabToImage of the plate has alpha; its on-screen backing is black.
                         rgba = image.convert('RGBA')
                         flat = Image.new('RGB', image.size, 'black')
                         flat.paste(rgba, mask=rgba.getchannel('A'))
                 # The directory is writable only by this greeter; replace privately then publish.
                 pending = ROOT / (filename + '.new')
-                flat.save(pending, format='PNG')
+                # Fast compression: the picture is read once, seconds later, then expires.
+                flat.save(pending, format='PNG', compress_level=1)
                 os.chmod(pending, 0o644)
                 os.replace(pending, ROOT / filename)
         else:

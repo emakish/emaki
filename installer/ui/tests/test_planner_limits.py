@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The window repeats planner limits before the review; these tests hold both to one number."""
 import json
 from pathlib import Path

@@ -80,8 +80,27 @@ SettingsIpcHarness {
         }
         function test_panel_options() {
             show("panel");
-            for (const key of ["bar.autohide", "bar.overview_workspaces", "dock.on", "dock.auto_hide"]) {
+            // The panel auto-hide toggle became a four-way choice (bar.autohide_mode) in 0.8.1.
+            const mode = named("setting-bar.autohide_mode");
+            check(mode !== undefined);
+            const choice = mode.controlItem;
+            equal(mode.value, "fullscreen");
+            click(choice);
+            tryVerify(() => choice.popup.opened);
+            keyClick(Qt.Key_Home);
+            keyClick(Qt.Key_Return);
+            tryVerify(() => !choice.popup.opened);
+            equal(harness.catalog.calls[harness.catalog.calls.length - 1].operation, "set");
+            equal(harness.catalog.calls[harness.catalog.calls.length - 1].key, "bar.autohide_mode");
+            equal(harness.catalog.calls[harness.catalog.calls.length - 1].value, "always");
+            equal(mode.value, "always");
+            click(mode.resetItem);
+            equal(harness.catalog.calls[harness.catalog.calls.length - 1].operation, "reset");
+            equal(harness.catalog.calls[harness.catalog.calls.length - 1].key, "bar.autohide_mode");
+            equal(mode.value, "fullscreen");
+            for (const key of ["bar.overview_workspaces", "dock.on", "dock.auto_hide"]) {
                 const row = named("setting-" + key);
+                check(row !== undefined);
                 const before = row.value;
                 click(row.controlItem);
                 equal(harness.catalog.calls[harness.catalog.calls.length - 1].key, key);

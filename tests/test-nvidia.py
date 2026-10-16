@@ -127,8 +127,9 @@ class NvidiaTests(unittest.TestCase):
     def session_fixture(self):
         binary = self.base / 'bin'
         binary.mkdir()
-        (binary / 'readlink').symlink_to(shutil.which('readlink'))
-        # Every external session command resolves to a recorder, never the host.
+        for name in ('readlink', 'env'):
+            (binary / name).symlink_to(shutil.which(name))
+        # Session activation commands resolve to a recorder, never the host.
         recorder = f'''#!{sys.executable}
 import json, os, pathlib, sys
 name = pathlib.Path(sys.argv[0]).name

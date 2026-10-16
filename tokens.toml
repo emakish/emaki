@@ -10,14 +10,18 @@
 # Theme and accent choices use these values, independently of wallpaper colors.
 # See DECISIONS.md, 2026-09-22: wallpaper-derived colors were cancelled.
 
+# What a person sees before choosing anything (DECISIONS.md, 2026-10-14).
+[defaults]
+accent = "rose"  # a key of [accents.*]; [color] accent and on_accent repeat its base and text
+
 [color]
 background      = "14100d"  # desktop and window background
 surface         = "1c1612"  # panel and menu background
 surface_high    = "2a211a"  # selected row, active element
 text            = "f2e6d8"  # main text
 text_muted      = "a39483"  # labels, input prompts, inactive elements
-accent          = "e2733f"  # packaged accent for external application configs
-on_accent       = "2a0f05"  # text on accent
+accent          = "e780aa"  # packaged accent for external application configs
+on_accent       = "300c1c"  # text on accent
 border_inactive = "2c241e"  # inactive window border
 shadow          = "000000"  # shadow color
 critical        = "f0435a"  # urgent: important notifications, errors
@@ -43,8 +47,9 @@ bright_cyan    = "a8cfc0"
 bright_white   = "f2e6d8"
 
 [opacity]
-panel  = 0.93  # panel and menu opacity
-shadow = 0.50  # shadow opacity
+panel    = 0.93  # panel and menu opacity
+shadow   = 0.50  # shadow opacity
+terminal = 0.75  # kitty background; per window: Ctrl+Shift+A, then M or L (dynamic)
 
 [geometry]
 radius       = 16  # corner radius, consistent everywhere
@@ -112,9 +117,9 @@ glass_secondary = [1, 0.9568627450980393, 0.9098039215686274, 0.72]
 glass_dim = [1, 0.9568627450980393, 0.9098039215686274, 0.38]
 ink_on_light = "241018"
 ink_on_dark = "f4e9f0"
-dim_on_light = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.55]
+dim_on_light = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.68]
 dim_on_dark = [0.9568627450980393, 0.9137254901960784, 0.9411764705882353, 0.6]
-faint_on_light = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.3]
+faint_on_light = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.625]
 faint_on_dark = [0.9568627450980393, 0.9137254901960784, 0.9411764705882353, 0.35]
 danger_on_light = "a01b45"
 danger_on_dark = "ffb3c9"
@@ -123,8 +128,8 @@ flat_panel = [1, 0.973, 0.953, 0.86]
 flat_drop = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.07]
 flat_drop_rim = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.16]
 settings_ink = "241018"
-settings_dim = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.58]
-settings_faint = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.32]
+settings_dim = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.68]
+settings_faint = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.625]
 settings_drop = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.065]
 settings_drop_hover = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.11]
 settings_rim = [0.1411764705882353, 0.06274509803921569, 0.09411764705882353, 0.14]
@@ -132,7 +137,7 @@ settings_field = [1, 1, 1, 0.62]
 settings_card = [1, 0.9803921568627451, 0.9647058823529412, 0.42]
 settings_knob = "fffaf6"
 manager_ink = "241018"
-manager_dim = "866c70"
+manager_dim = "70565b"
 manager_body = "4a3438"
 manager_background = "fffaf6"
 manager_panel = "fff9f5"

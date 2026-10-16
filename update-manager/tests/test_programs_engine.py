@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import re
 import runpy
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -49,6 +50,83 @@ class EngineTests(unittest.TestCase):
             [deepcopy(FLATPAK)], [])))
         self.receipts = Path(self.tmp.name) / "installs"
         self.enterContext(patch.object(engine.receipts, "DIRECTORY", self.receipts))
+
+    def test_transaction_journal_redacts_credentials_and_registered_token(self):
+        token = 'a1' * 32
+        message = ('Download refused: password=hunter-test passwd=backup-test '
+                   'token=remote-test; retry later')
+        result = dict(ok=False, code='failed', message='Authorization refused: ' + token,
+                      details=dict(error=message))
+        forwarded = Mock()
+        def execute(action, key, supplied, emit):
+            emit('error', message=message + ' ' + supplied)
+            return result
+        with patch.object(self.engine, '_execute', side_effect=execute):
+            self.assertEqual(self.engine.execute('install', ARCH_KEY, token, forwarded), result)
+        records = '\n'.join(call.args[1] for call in engine.syslog.syslog.call_args_list)
+        for secret in (token, 'hunter-test', 'backup-test', 'remote-test'):
+            self.assertNotIn(secret, records)
+        for useful in ('Download refused:', 'retry later', 'Authorization refused:',
+                       'event=error', 'event=failed', 'details.error:'):
+            self.assertIn(useful, records)
+        forwarded.assert_called_once_with('error', message=message + ' ' + token)
+        self.assertEqual(result['details']['error'], message)
+
+    def test_transaction_journal_redacts_native_token_and_forgets_secrets(self):
+        row = deepcopy(FLATPAK)
+        row.update(installation='user', installed=True)
+        key = 'flatpak:user:flathub:' + row['ref']
+        self.flatpaks.return_value = ([row], [])
+        native = 'c3' * 32
+        result = dict(ok=False, message='Remote refused ' + native)
+        with patch.object(engine.flatpak, 'plan', return_value=dict(ok=True, token=native)), \
+                patch.object(engine.flatpak, 'execute', return_value=result):
+            plan = self.engine.plan('remove', key)
+            self.assertEqual(self.engine.execute('remove', key, plan['token'], Mock()), result)
+        records = '\n'.join(call.args[1] for call in engine.syslog.syslog.call_args_list)
+        self.assertNotIn(native, records)
+        self.assertIn('Remote refused', records)
+        self.assertIsNone(self.engine._diagnostic_redactor)
+
+    def test_transaction_journal_redacts_before_byte_limit(self):
+        secret = 'b2' * 32
+        result = dict(ok=False, message='x' * 4000 + secret + ' retry')
+        with patch.object(self.engine, '_execute', return_value=result):
+            self.engine.execute('update', '', secret, Mock())
+        record = engine.syslog.syslog.call_args_list[-1].args[1]
+        self.assertNotIn(secret[:16], record)
+        self.assertLessEqual(len(record.encode()), 4096)
+
+    def test_installed_engine_uses_packaged_shared_redactor(self):
+        root = Path(__file__).resolve().parents[2]
+        makefile = (root / 'Makefile').read_text()
+        source = 'installer/emaki_installer/redaction.py'
+        target = '$(DESTDIR)$(LIBEXECDIR)/emaki_redaction.py'
+        self.assertIn('install -Dm644 ' + source + ' ' + target, makefile)
+        self.assertIn(target, makefile.split('uninstall:', 1)[1])
+        destination = Path(self.tmp.name) / 'installed'
+        destination.mkdir()
+        for path in (root / 'update-manager').glob('programs_*.py'):
+            shutil.copyfile(path, destination / path.name)
+        shutil.copyfile(root / 'update-manager/restore.py', destination / 'restore.py')
+        shutil.copyfile(engine.__file__, destination / 'programs_engine.py')
+        shutil.copyfile(root / source, destination / 'emaki_redaction.py')
+        code = """import sys
+sys.path.insert(0, sys.argv[1])
+import programs_engine as engine
+import emaki_redaction
+assert engine.Redactor is emaki_redaction.Redactor
+records = []
+engine.syslog.openlog = lambda *args: None
+engine.syslog.syslog = lambda level, text: records.append(text)
+engine.report_event('install', 'failed', {'error': 'password="two words" connection failed'})
+assert len(records) == 1
+assert 'two words' not in records[0]
+assert 'connection failed' in records[0]
+"""
+        result = subprocess.run([sys.executable, '-IB', '-c', code, str(destination)],
+                                cwd=destination, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_one_catalog_keeps_both_source_identities_and_real_sizes(self):
         result = self.engine.catalog()

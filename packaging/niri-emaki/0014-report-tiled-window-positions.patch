@@ -1,0 +1,631 @@
+Subject: [PATCH] Report tiled positions and transfer switcher keyboard focus
+
+Copyright (C) 2026 Artur Yakymenko
+SPDX-License-Identifier: GPL-3.0-or-later
+
+Apply after patches 0001 through 0013 on niri v26.04. Upstream IPC reports
+tile_pos_in_workspace_view for floating windows only (patch 0013 adds an inset
+fullscreen tile), so a shell cannot tell where a tiled window is on screen and
+cannot cut its picture out of a screen capture (the Alt+Tab window switcher).
+WindowLayout gains emaki_tile_pos_in_view: the tile's position in the view of
+its workspace for every scrolling tile, at the view's target scroll position
+and rounded to physical pixels as rendered, so it equals the drawn position
+once the view rests and a scroll animation changes it once, not every frame.
+tile_pos_in_workspace_view keeps its meaning. The field is optional and
+omitted when absent, so upstream clients read the JSON unchanged. The additive
+emaki_capture_safe field tells crop consumers whether settled coordinates are
+usable: false during output transitions (including gestures), overview or an
+interactive move. Consumers must treat an absent flag as unsafe. Safety changes
+use the existing layout event channel, without per-frame coordinate events.
+
+Explicit window focus actions also retire on-demand layer focus and update the
+seat before the next input callback. The shell keeps its overlay on-demand until
+the chosen window is confirmed. Tests record wl_keyboard delivery in both arrival
+orders, including the unsupported early-release gap, for explicit and previous
+window actions, and preserve exclusive-layer and missing-target behavior.
+
+diff --git a/niri-ipc/src/lib.rs b/niri-ipc/src/lib.rs
+--- a/niri-ipc/src/lib.rs
++++ b/niri-ipc/src/lib.rs
+@@ -1529,6 +1529,19 @@
+     /// the distance from the corner of the black backdrop to the corner of the (centered) window
+     /// contents.
+     pub window_offset_in_tile: (f64, f64),
++    /// Emaki: tile position within the view of its workspace, for tiled (scrolling) windows too.
++    ///
++    /// The same coordinates as [`Self::tile_pos_in_workspace_view`], which stays as upstream
++    /// reports it. Taken at the view's target scroll position, so a scroll animation changes it
++    /// once, not on every frame. Absent for floating windows (use
++    /// [`Self::tile_pos_in_workspace_view`]) and for an interactively moved window.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub emaki_tile_pos_in_view: Option<(f64, f64)>,
++    /// Emaki: whether settled layout coordinates can be used for a screen crop.
++    /// False during output transitions, gestures, overview and interactive moves.
++    /// Absent on older compositors; consumers must treat absence as unsafe.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub emaki_capture_safe: Option<bool>,
+ }
+
+ /// Output configuration change result.
+diff --git a/src/ipc/client.rs b/src/ipc/client.rs
+--- a/src/ipc/client.rs
++++ b/src/ipc/client.rs
+@@ -797,6 +797,7 @@
+         window_size,
+         tile_pos_in_workspace_view,
+         window_offset_in_tile,
++        ..
+     } = window.layout;
+
+     println!("  Layout:");
+diff --git a/src/layout/mod.rs b/src/layout/mod.rs
+--- a/src/layout/mod.rs
++++ b/src/layout/mod.rs
+@@ -1678,8 +1678,15 @@
+         match &self.monitor_set {
+             MonitorSet::Normal { monitors, .. } => {
+                 for mon in monitors {
++                    // Settled coordinates are not screen coordinates during transitions.
++                    // Cover the entire output: moving windows may occlude stationary ones.
++                    let capture_safe = !mon.are_transitions_ongoing()
++                        && self.interactive_move.is_none()
++                        && self.dnd.is_none()
++                        && self.overview_progress.is_none();
+                     for ws in &mon.workspaces {
+-                        for (tile, layout) in ws.tiles_with_ipc_layouts() {
++                        for (tile, mut layout) in ws.tiles_with_ipc_layouts() {
++                            layout.emaki_capture_safe = Some(capture_safe);
+                             f(tile.window(), Some(&mon.output), Some(ws.id()), layout);
+                         }
+                     }
+diff --git a/src/layout/scrolling.rs b/src/layout/scrolling.rs
+--- a/src/layout/scrolling.rs
++++ b/src/layout/scrolling.rs
+@@ -2514,6 +2514,8 @@
+     }
+
+     pub fn tiles_with_ipc_layouts(&self) -> impl Iterator<Item = (&Tile<W>, WindowLayout)> {
++        let scale = self.scale;
++        let target_view_pos = self.target_view_pos();
+         self.columns
+             .iter()
+             .enumerate()
+@@ -2521,6 +2523,14 @@
+                 col.tiles()
+                     .enumerate()
+                     .map(move |(tile_idx, (tile, tile_pos))| {
++                        // Emaki: where the tile settles in the view, rounded to physical pixels
++                        // as rendered; the target scroll position keeps animations out of IPC.
++                        let settled = Point::<f64, Logical>::from((
++                            self.column_x(col_idx) - target_view_pos + tile_pos.x,
++                            tile_pos.y,
++                        ))
++                        .to_physical_precise_round(scale)
++                        .to_logical(scale);
+                         let layout = WindowLayout {
+                             // Our indices are 1-based, consistent with the actions.
+                             pos_in_scrolling_layout: Some((col_idx + 1, tile_idx + 1)),
+@@ -2536,6 +2546,7 @@
+                                         tile_pos.y,
+                                     )
+                                 }),
++                            emaki_tile_pos_in_view: Some(settled.into()),
+                             ..tile.ipc_layout_template()
+                         };
+                         (tile, layout)
+diff --git a/src/layout/tile.rs b/src/layout/tile.rs
+--- a/src/layout/tile.rs
++++ b/src/layout/tile.rs
+@@ -870,6 +870,8 @@
+             window_size: self.window().size().into(),
+             tile_pos_in_workspace_view: None,
+             window_offset_in_tile: self.window_loc().into(),
++            emaki_tile_pos_in_view: None,
++            emaki_capture_safe: None,
+         }
+     }
+
+diff --git a/src/layout/tests.rs b/src/layout/tests.rs
+--- a/src/layout/tests.rs
++++ b/src/layout/tests.rs
+@@ -16,6 +16,7 @@
+ mod animations;
+ mod emaki_backdrop;
+ mod emaki_fullscreen_panel;
++mod emaki_tile_positions;
+ mod emaki_wallpaper;
+ mod fullscreen;
+
+diff --git a/src/layout/tests/emaki_tile_positions.rs b/src/layout/tests/emaki_tile_positions.rs
+new file mode 100644
+--- /dev/null
++++ b/src/layout/tests/emaki_tile_positions.rs
+@@ -0,0 +1,182 @@
++// Copyright (C) 2026 Artur Yakymenko
++// SPDX-License-Identifier: GPL-3.0-or-later
++
++use super::*;
++use crate::layout::scrolling::{ColumnWidth, ScrollingSpace};
++
++// A 1920 x 1080 view with a 52 px bar zone on top, three half-width columns.
++fn setup(scale: f64) -> (ScrollingSpace<TestWindow>, Vec<TestWindow>, Clock) {
++    let view = Size::from((1920., 1080.));
++    let working_area = Rectangle::new(Point::from((0., 52.)), Size::from((1920., 1028.)));
++    let options = Rc::new(Options::default());
++    let mut clock = Clock::with_time(Duration::ZERO);
++    clock.set_complete_instantly(true);
++    let mut space = ScrollingSpace::new(
++        view,
++        working_area,
++        0.,
++        scale,
++        clock.clone(),
++        options.clone(),
++    );
++    let mut windows = Vec::new();
++    for id in 1..=3 {
++        let window = TestWindow::new(TestWindowParams::new(id));
++        let tile = Tile::new(window.clone(), view, scale, clock.clone(), options.clone());
++        space.add_tile(None, tile, true, ColumnWidth::Proportion(0.5), false, None);
++        windows.push(window);
++    }
++    settle(&mut space, &windows);
++    (space, windows, clock)
++}
++
++fn settle(space: &mut ScrollingSpace<TestWindow>, windows: &[TestWindow]) {
++    for window in windows {
++        window.communicate();
++        space.update_window(window.id(), None);
++    }
++    space.advance_animations();
++}
++
++// Once the view rests, the IPC position of every tile is where it is drawn; upstream's own
++// field stays empty for tiled windows.
++fn assert_positions_match_render(space: &ScrollingSpace<TestWindow>) {
++    let drawn: Vec<_> = space
++        .tiles_with_render_positions()
++        .map(|(tile, pos, _)| (tile.window().id().clone(), pos))
++        .collect();
++    let reported: Vec<_> = space.tiles_with_ipc_layouts().collect();
++    assert_eq!(drawn.len(), reported.len());
++    for (tile, layout) in reported {
++        let (_, pos) = drawn
++            .iter()
++            .find(|(id, _)| id == tile.window().id())
++            .unwrap();
++        assert_eq!(layout.emaki_tile_pos_in_view, Some((pos.x, pos.y)));
++        assert_eq!(layout.tile_pos_in_workspace_view, None);
++    }
++}
++
++#[test]
++fn emaki_tile_positions_follow_the_view() {
++    for scale in [1., 1.25, 2.] {
++        let (mut space, windows, _clock) = setup(scale);
++        assert_positions_match_render(&space);
++        space.focus_left();
++        space.focus_left();
++        settle(&mut space, &windows);
++        assert_positions_match_render(&space);
++        space.focus_right();
++        settle(&mut space, &windows);
++        assert_positions_match_render(&space);
++        // The bar zone is below the view's top: tiled windows start under it.
++        for (_, layout) in space.tiles_with_ipc_layouts() {
++            assert!(layout.emaki_tile_pos_in_view.unwrap().1 >= 52.);
++        }
++    }
++}
++
++#[test]
++fn emaki_tile_positions_ignore_the_scroll_animation() {
++    let (mut space, windows, mut clock) = setup(1.);
++    let before: Vec<_> = space
++        .tiles_with_ipc_layouts()
++        .map(|(_, layout)| layout.emaki_tile_pos_in_view)
++        .collect();
++    clock.set_complete_instantly(false);
++    space.focus_left();
++    space.focus_left();
++    // Mid-animation: the target, not the frame being drawn.
++    let moving: Vec<_> = space
++        .tiles_with_ipc_layouts()
++        .map(|(_, layout)| layout.emaki_tile_pos_in_view)
++        .collect();
++    assert_ne!(before, moving);
++    clock.set_complete_instantly(true);
++    settle(&mut space, &windows);
++    let settled: Vec<_> = space
++        .tiles_with_ipc_layouts()
++        .map(|(_, layout)| layout.emaki_tile_pos_in_view)
++        .collect();
++    assert_eq!(moving, settled);
++}
++
++#[test]
++fn emaki_tile_position_round_trips_and_stays_optional() {
++    let (space, _windows, _clock) = setup(1.);
++    let (_, layout) = space.tiles_with_ipc_layouts().next().unwrap();
++    let json = serde_json::to_string(&layout).unwrap();
++    assert!(json.contains("\"emaki_tile_pos_in_view\":["));
++    assert_eq!(
++        serde_json::from_str::<niri_ipc::WindowLayout>(&json).unwrap(),
++        layout
++    );
++    // Upstream's JSON (no field) still reads; an absent position is not written.
++    let mut upstream = layout.clone();
++    upstream.emaki_tile_pos_in_view = None;
++    let plain = serde_json::to_string(&upstream).unwrap();
++    assert!(!plain.contains("emaki_tile_pos_in_view"));
++    assert_eq!(
++        serde_json::from_str::<niri_ipc::WindowLayout>(&plain).unwrap(),
++        upstream
++    );
++}
++
++// The public layout enumeration must veto crops throughout both camera transitions.
++// Inspect JSON so this regression also compiles against the older additive IPC layout.
++#[test]
++fn emaki_capture_safety_tracks_scroll_and_workspace_transitions() {
++    let mut layout = check_ops([
++        Op::AddOutput(1),
++        Op::AddWindow {
++            params: TestWindowParams::new(1),
++        },
++        Op::AddWindow {
++            params: TestWindowParams::new(2),
++        },
++        Op::AddWindow {
++            params: TestWindowParams::new(3),
++        },
++        Op::SetForcedSize {
++            id: 1,
++            size: Some(Size::from((900, 600))),
++        },
++        Op::SetForcedSize {
++            id: 2,
++            size: Some(Size::from((900, 600))),
++        },
++        Op::SetForcedSize {
++            id: 3,
++            size: Some(Size::from((900, 600))),
++        },
++        Op::Communicate(1),
++        Op::Communicate(2),
++        Op::Communicate(3),
++        Op::CompleteAnimations,
++    ]);
++    let assert_safe = |layout: &Layout<TestWindow>, expected: bool| {
++        let mut count = 0;
++        layout.with_windows(|_, _, _, ipc| {
++            count += 1;
++            let value = serde_json::to_value(ipc).unwrap();
++            assert_eq!(
++                value.get("emaki_capture_safe"),
++                Some(&serde_json::json!(expected))
++            );
++        });
++        assert_eq!(count, 3);
++    };
++    assert_safe(&layout, true);
++    Op::FocusColumnLeft.apply(&mut layout);
++    Op::FocusColumnLeft.apply(&mut layout);
++    assert_safe(&layout, false);
++    Op::CompleteAnimations.apply(&mut layout);
++    assert_safe(&layout, true);
++    Op::FocusWorkspaceDown.apply(&mut layout);
++    assert_safe(&layout, false);
++    Op::CompleteAnimations.apply(&mut layout);
++    assert_safe(&layout, true);
++    let output = layout.outputs().next().unwrap().clone();
++    layout.workspace_switch_gesture_begin(&output, true);
++    assert_safe(&layout, false);
++}
+diff --git a/src/input/mod.rs b/src/input/mod.rs
+--- a/src/input/mod.rs
++++ b/src/input/mod.rs
+@@ -1110,7 +1110,10 @@
+                 let window = self.niri.layout.windows().find(|(_, m)| m.id().get() == id);
+                 let window = window.map(|(_, m)| m.window.clone());
+                 if let Some(window) = window {
++                    // Transfer the keyboard in this action, before another input callback.
++                    self.niri.layer_shell_on_demand_focus = None;
+                     self.focus_window(&window);
++                    self.update_keyboard_focus();
+                 }
+             }
+             Action::FocusWindowInColumn(index) => {
+@@ -1134,7 +1137,9 @@
+                     // Commit current focus so repeated focus-window-previous works as expected.
+                     self.niri.mru_apply_keyboard_commit();
+
++                    self.niri.layer_shell_on_demand_focus = None;
+                     self.focus_window(&window);
++                    self.update_keyboard_focus();
+                 }
+             }
+             Action::SwitchLayout(action) => {
+diff --git a/src/tests/client.rs b/src/tests/client.rs
+--- a/src/tests/client.rs
++++ b/src/tests/client.rs
+@@ -28,8 +28,10 @@
+ use wayland_client::protocol::wl_callback::{self, WlCallback};
+ use wayland_client::protocol::wl_compositor::WlCompositor;
+ use wayland_client::protocol::wl_display::WlDisplay;
++use wayland_client::protocol::wl_keyboard::{self, WlKeyboard};
+ use wayland_client::protocol::wl_output::{self, WlOutput};
+ use wayland_client::protocol::wl_registry::{self, WlRegistry};
++use wayland_client::protocol::wl_seat::{self, WlSeat};
+ use wayland_client::protocol::wl_surface::{self, WlSurface};
+ use wayland_client::{Connection, Dispatch, Proxy as _, QueueHandle};
+
+@@ -55,6 +57,9 @@
+     pub layer_shell: Option<ZwlrLayerShellV1>,
+     pub spbm: Option<WpSinglePixelBufferManagerV1>,
+     pub viewporter: Option<WpViewporter>,
++
++    pub keyboard: Option<WlKeyboard>,
++    pub keyboard_keys: Vec<(u32, wl_keyboard::KeyState)>,
+
+     pub windows: Vec<Window>,
+     pub layers: Vec<LayerSurface>,
+@@ -181,6 +186,8 @@
+             layer_shell: None,
+             spbm: None,
+             viewporter: None,
++            keyboard: None,
++            keyboard_keys: Vec::new(),
+             windows: Vec::new(),
+             layers: Vec::new(),
+         };
+@@ -518,6 +525,9 @@
+                 } else if interface == WpViewporter::interface().name {
+                     let version = min(version, WpViewporter::interface().version);
+                     state.viewporter = Some(registry.bind(name, version, qh, ()));
++                } else if interface == WlSeat::interface().name {
++                    let version = min(version, WlSeat::interface().version);
++                    let _: WlSeat = registry.bind(name, version, qh, KeyboardSeat);
+                 } else if interface == WlOutput::interface().name {
+                     let version = min(version, WlOutput::interface().version);
+                     let output = registry.bind(name, version, qh, ());
+@@ -775,3 +785,45 @@
+         unreachable!()
+     }
+ }
++
++struct KeyboardSeat;
++
++impl Dispatch<WlSeat, KeyboardSeat> for State {
++    fn event(
++        state: &mut Self,
++        seat: &WlSeat,
++        event: wl_seat::Event,
++        _data: &KeyboardSeat,
++        _conn: &Connection,
++        qh: &QueueHandle<Self>,
++    ) {
++        if let wl_seat::Event::Capabilities { capabilities } = event {
++            if let wayland_client::WEnum::Value(capabilities) = capabilities {
++                if capabilities.contains(wl_seat::Capability::Keyboard) && state.keyboard.is_none()
++                {
++                    state.keyboard = Some(seat.get_keyboard(qh, ()));
++                }
++            }
++        }
++    }
++}
++
++impl Dispatch<WlKeyboard, ()> for State {
++    fn event(
++        state: &mut Self,
++        _keyboard: &WlKeyboard,
++        event: wl_keyboard::Event,
++        _data: &(),
++        _conn: &Connection,
++        _qh: &QueueHandle<Self>,
++    ) {
++        if let wl_keyboard::Event::Key {
++            key,
++            state: wayland_client::WEnum::Value(key_state),
++            ..
++        } = event
++        {
++            state.keyboard_keys.push((key, key_state));
++        }
++    }
++}
+diff --git a/src/tests/mod.rs b/src/tests/mod.rs
+--- a/src/tests/mod.rs
++++ b/src/tests/mod.rs
+@@ -17,3 +17,5 @@
+ mod window_opening;
+ mod trusted_prompt;
+ mod trusted_binds;
++
++mod emaki_switcher_handover;
+diff --git a/src/tests/emaki_switcher_handover.rs b/src/tests/emaki_switcher_handover.rs
+--- /dev/null
++++ b/src/tests/emaki_switcher_handover.rs
+@@ -0,0 +1,180 @@
++// Copyright (C) 2026 Artur Yakymenko
++// SPDX-License-Identifier: GPL-3.0-or-later
++
++use smithay::backend::input::KeyState;
++use smithay::input::keyboard::FilterResult;
++use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
++use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
++    Anchor, KeyboardInteractivity,
++};
++use smithay::utils::SERIAL_COUNTER;
++use wayland_client::protocol::{wl_keyboard, wl_surface::WlSurface};
++
++use super::*;
++use crate::niri::KeyboardFocus;
++use crate::tests::client::{ClientId, LayerConfigureProps};
++
++fn map_window(f: &mut Fixture, id: ClientId) {
++    let window = f.client(id).create_window();
++    let surface = window.surface.clone();
++    window.commit();
++    f.roundtrip(id);
++    let window = f.client(id).window(&surface);
++    window.attach_new_buffer();
++    window.set_size(100, 100);
++    window.ack_last_and_commit();
++    f.double_roundtrip(id);
++}
++
++fn commit_keyboard(
++    f: &mut Fixture,
++    id: ClientId,
++    surface: &WlSurface,
++    mode: KeyboardInteractivity,
++) {
++    let layer = f.client(id).layer(surface);
++    layer.layer_surface.set_keyboard_interactivity(mode);
++    layer.commit();
++    f.double_roundtrip(id);
++}
++
++// Exercise actual wl_keyboard delivery, including the interval before the event loop refresh.
++// This is ordinary text input, with no binding filter or compositor shortcut involved.
++fn type_key(f: &mut Fixture, clients: [ClientId; 3], expected: usize) {
++    for id in clients {
++        f.client(id).state.keyboard_keys.clear();
++    }
++    for pressed in [true, false] {
++        let state = f.niri_state();
++        let keyboard = state.niri.seat.get_keyboard().unwrap();
++        keyboard.input::<(), _>(
++            state,
++            38u32.into(), // evdev KEY_A (30), plus the XKB offset.
++            if pressed {
++                KeyState::Pressed
++            } else {
++                KeyState::Released
++            },
++            SERIAL_COUNTER.next_serial(),
++            1,
++            |_, _, _| FilterResult::Forward,
++        );
++    }
++    for (index, id) in clients.into_iter().enumerate() {
++        f.double_roundtrip(id);
++        let wanted = if index == expected {
++            vec![
++                (30, wl_keyboard::KeyState::Pressed),
++                (30, wl_keyboard::KeyState::Released),
++            ]
++        } else {
++            vec![]
++        };
++        assert_eq!(
++            f.client(id).state.keyboard_keys,
++            wanted,
++            "keyboard recipient {index}"
++        );
++    }
++}
++
++fn handover(previous: bool, release_first: bool, exclusive: bool, missing_target: bool) {
++    let mut f = Fixture::new();
++    f.add_output(1, (1920, 1080));
++    let app_a = f.add_client();
++    let app_b = f.add_client();
++    let shell = f.add_client();
++    let clients = [app_a, app_b, shell];
++    map_window(&mut f, app_a);
++    let a = f.niri().layout.windows().next().unwrap().1.id().get();
++    map_window(&mut f, app_b);
++    let b = f
++        .niri()
++        .layout
++        .windows()
++        .map(|(_, w)| w.id().get())
++        .find(|id| *id != a)
++        .unwrap();
++    f.niri_state()
++        .do_action(niri_config::Action::FocusWindow(b), false);
++    f.double_roundtrip(shell);
++    f.niri_state()
++        .do_action(niri_config::Action::FocusWindow(a), false);
++    f.double_roundtrip(shell);
++    type_key(&mut f, clients, 0);
++
++    let layer = f
++        .client(shell)
++        .create_layer(None, Layer::Overlay, "emaki-switcher");
++    let surface = layer.surface.clone();
++    layer.set_configure_props(LayerConfigureProps {
++        anchor: Some(Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right),
++        size: Some((0, 0)),
++        kb_interactivity: Some(KeyboardInteractivity::None),
++        ..Default::default()
++    });
++    layer.commit();
++    f.roundtrip(shell);
++    let layer = f.client(shell).layer(&surface);
++    layer.attach_new_buffer();
++    layer.set_size(1920, 1080);
++    layer.ack_last_and_commit();
++    f.double_roundtrip(shell);
++    commit_keyboard(&mut f, shell, &surface, KeyboardInteractivity::Exclusive);
++    if !exclusive {
++        commit_keyboard(&mut f, shell, &surface, KeyboardInteractivity::OnDemand);
++    }
++    assert!(matches!(
++        f.niri().keyboard_focus,
++        KeyboardFocus::LayerShell { .. }
++    ));
++    type_key(&mut f, clients, 2);
++
++    if release_first {
++        commit_keyboard(&mut f, shell, &surface, KeyboardInteractivity::None);
++        // An early release necessarily returns input to A: no request has identified B yet.
++        // The shell must keep OnDemand until B is confirmed, never use this old ordering.
++        type_key(&mut f, clients, 0);
++    }
++    let action = if previous {
++        niri_config::Action::FocusWindowPrevious
++    } else {
++        niri_config::Action::FocusWindow(if missing_target { u64::MAX } else { b })
++    };
++    f.niri_state().do_action(action, false);
++    // Deliberately no roundtrip: even the next input callback in this dispatch must go to B.
++    type_key(
++        &mut f,
++        clients,
++        if exclusive || missing_target { 2 } else { 1 },
++    );
++    if !release_first {
++        commit_keyboard(&mut f, shell, &surface, KeyboardInteractivity::None);
++    }
++    type_key(&mut f, clients, if missing_target { 0 } else { 1 });
++}
++
++#[test]
++fn focus_window_before_overlay_release() {
++    handover(false, false, false, false);
++}
++#[test]
++fn focus_previous_before_overlay_release() {
++    handover(true, false, false, false);
++}
++#[test]
++fn focus_window_after_overlay_release() {
++    handover(false, true, false, false);
++}
++#[test]
++fn focus_previous_after_overlay_release() {
++    handover(true, true, false, false);
++}
++#[test]
++fn exclusive_layer_keeps_keyboard() {
++    handover(false, false, true, false);
++}
++#[test]
++fn missing_window_keeps_overlay_keyboard() {
++    handover(false, false, false, true);
++}

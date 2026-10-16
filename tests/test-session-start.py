@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Fresh PNG handoff, one-shot claims, private state and compositor readiness."""
 import importlib.util
 import importlib.machinery
@@ -53,6 +55,40 @@ class StartupTests(unittest.TestCase):
         for context in reversed(self.patches):
             context.stop()
         self.tmp.cleanup()
+
+    def test_publish_keeps_the_opaque_scene_and_flattens_only_the_plate(self):
+        # 2560x1600: a 2015 laptop's screen. Encoding the scene again there cost the login
+        # its pour-down (the capture limit passed); Qt's opaque file is published as it is.
+        token = 'b' * 32
+        publisher.handoff('prepare', token)
+        scene, plate = self.images / (token + '.png'), self.images / (token + '-plate.png')
+        picture = Image.new('RGBA', (2560, 1600), (30, 20, 16, 255))
+        picture.paste(Image.new('RGBA', (400, 300), (230, 120, 160, 255)), (1000, 600))
+        picture.save(scene)
+        Image.new('RGBA', (2560, 1600), (200, 100, 50, 204)).save(plate)
+        written = scene.read_bytes()
+        original = Image.Image.save
+        calls = []
+
+        def save(image, target, *args, **kwargs):
+            calls.append((Path(target).name, kwargs))
+            return original(image, target, *args, **kwargs)
+        with patch.object(Image.Image, 'save', save):
+            publisher.handoff('publish', token)
+        self.assertEqual(scene.read_bytes(), written)
+        self.assertEqual(calls, [(token + '-plate.png.new', dict(format='PNG', compress_level=1))])
+        for path in (scene, plate):
+            self.assertEqual(path.stat().st_mode & 0o777, 0o644)
+        with Image.open(plate) as flat:
+            self.assertEqual((flat.mode, flat.getpixel((5, 5))), ('RGB', (160, 80, 40)))
+        # A scene that is not opaque after all is flattened like the plate.
+        token = 'c' * 32
+        publisher.handoff('prepare', token)
+        Image.new('RGBA', (64, 48), (200, 100, 50, 204)).save(self.images / (token + '.png'))
+        Image.new('RGBA', (64, 48), (200, 100, 50, 255)).save(self.images / (token + '-plate.png'))
+        publisher.handoff('publish', token)
+        with Image.open(self.images / (token + '.png')) as flat:
+            self.assertEqual((flat.mode, flat.getpixel((5, 5))), ('RGB', (160, 80, 40)))
 
     def test_fresh_once_only_and_restart(self):
         self.assertTrue(helper.prepare(self.env).endswith('a'*32 + '.png'))

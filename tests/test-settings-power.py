@@ -12,6 +12,7 @@ from pathlib import Path
 import subprocess
 import shutil
 import tempfile
+import select
 import unittest
 from unittest.mock import patch
 
@@ -195,7 +196,8 @@ class Power(unittest.TestCase):
                 patch.object(self.power, 'source', side_effect=['battery', 'ac']), \
                 patch.object(self.power.subprocess, 'Popen', side_effect=launch), \
                 patch.object(self.power.os, 'killpg'), patch.object(self.power.signal, 'signal'), \
-                patch.object(self.power.time, 'sleep', side_effect=[None, None, None, Done]):
+                patch.object(self.power.time, 'sleep'), \
+                patch.object(select, 'select', side_effect=[None, Done]):
             with self.assertRaises(Done):
                 self.power.run()
         self.assertEqual(calls[0][1]['env']['EMAKI_IDLE_OFF'], '60')
@@ -244,6 +246,75 @@ class Power(unittest.TestCase):
             with self.assertRaises(Done):
                 self.power.run()
         launch.assert_not_called()
+
+
+class IdleCadence(unittest.TestCase):
+    def test_policy_rereads_at_most_twice_per_minute(self):
+        power = module('emaki-settings-power')
+        elapsed = 0
+        reads = []
+        class Done(Exception): pass
+        def delay(seconds):
+            nonlocal elapsed
+            elapsed += seconds
+            if elapsed >= 62:
+                raise Done()
+        def settings():
+            reads.append(elapsed)
+            return dict(power.DEFAULTS)
+        with patch.object(power, 'read_settings', side_effect=settings), \
+                patch.object(power, 'source', return_value='ac'), \
+                patch.object(power, 'ready'), patch.object(power.signal, 'signal'), \
+                patch.object(power.time, 'sleep', side_effect=delay), \
+                patch.object(select, 'select', side_effect=lambda r, w, x, seconds: delay(seconds)):
+            with self.assertRaises(Done):
+                power.run()
+        # Exclude initial startup; count recurring policy work in a simulated minute.
+        recurring = sum(2 <= instant < 62 for instant in reads)
+        print(f'Power policy rereads per simulated idle minute: {recurring}')
+        self.assertLessEqual(recurring, 2)
+
+    def test_child_exit_and_stop_wake_policy_wait(self):
+        power = module('emaki-settings-power')
+        handlers = {}
+        waits = []
+        class Done(Exception): pass
+        def wait(readers, writers, exceptional, seconds):
+            waits.append(seconds)
+            self.assertIn(power.signal.SIGCHLD, handlers)
+            # Deliver an actual signal so the interpreter writes the wakeup byte.
+            power.os.kill(os.getpid(), power.signal.SIGCHLD)
+            self.assertEqual(os.read(readers[0], 1), bytes([power.signal.SIGCHLD]))
+            power.os.kill(os.getpid(), power.signal.SIGTERM)
+            self.assertEqual(os.read(readers[0], 1), bytes([power.signal.SIGTERM]))
+        real_signal = power.signal.signal
+        def register(number, handler):
+            handlers[number] = handler
+            return real_signal(number, handler)
+        def sleep(seconds):
+            # The baseline never waits on an event. Avoid running its loop forever.
+            if power.signal.SIGCHLD not in handlers:
+                raise Done()
+        with patch.object(power, 'read_settings', return_value=dict(power.DEFAULTS)), \
+                patch.object(power, 'source', return_value='ac'), \
+                patch.object(power, 'ready'), \
+                patch.object(power.signal, 'signal', side_effect=register), \
+                patch.object(power.time, 'sleep', side_effect=sleep), \
+                patch.object(select, 'select', side_effect=wait):
+            try:
+                power.run()
+            except Done:
+                pass
+        self.assertEqual(waits, [30])
+
+    def test_restore_inventory_runs_at_most_once_per_five_minutes(self):
+        import configparser
+        timer = configparser.ConfigParser()
+        timer.read(ROOT / 'update-manager/emaki-restore-index.timer')
+        value = timer['Timer']['OnUnitInactiveSec']
+        seconds = float(value[:-3]) * 60 if value.endswith('min') else float(value[:-1])
+        print(f'Restore inventory scheduled activations per idle minute: {60 / seconds:g}')
+        self.assertGreaterEqual(seconds, 300)
 
 
 class PowerPage(unittest.TestCase):

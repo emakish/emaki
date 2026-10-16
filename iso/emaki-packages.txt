@@ -2,10 +2,12 @@ emaki
 emaki-apps
 emaki-config
 emaki-desktop
+emaki-font-iosevka
 emaki-installer
 emaki-keyring
 emaki-mirrorlist
 emaki-nvidia
+emaki-shim-signed
 niri-emaki
 quickshell-emaki
 xdg-desktop-portal-gnome-emaki

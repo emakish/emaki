@@ -36,6 +36,7 @@ import re
 import resource
 import shutil
 import subprocess
+import time
 
 sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -65,6 +66,18 @@ def capture(arguments, **kwargs):
     return result.returncode, (result.stdout or '').rstrip('\n')
 
 
+def started_ms():
+    """When this process started, in ms since the epoch (to 10 ms; now when unknown)."""
+    now = time.time()
+    try:
+        # The fields after the command name; starttime is field 22 of /proc/self/stat.
+        fields = Path('/proc/self/stat').read_text().rsplit(')', 1)[1].split()
+        age = time.clock_gettime(time.CLOCK_BOOTTIME) - int(fields[19]) / os.sysconf('SC_CLK_TCK')
+    except (OSError, ValueError, IndexError):
+        age = 0
+    return int((now - max(0, age)) * 1000)
+
+
 def execute(arguments):
     try:
         os.execvp(arguments[0], arguments)
@@ -78,13 +91,30 @@ def main():
     shell = os.environ.get('EMAKI_SHELL_DIR') or PACKAGED
     args = sys.argv[1:]
     if args[:1] == ['call']:
+        switcher = args[1:2] == ['switcher'] and args[2:] in (['next'], ['previous'], ['app'], ['appPrevious'])
+        # When the key was pressed: niri started this process for it. The panel drops a press
+        # that reaches it after its switcher closed (a Tab just before Alt was released).
+        pressed = started_ms() if switcher else 0
+        # Alt+Tab without a panel that answers still goes back to the previous window.
+        previous_window = ['niri', 'msg', 'action', 'focus-window-previous']
+        fallback = switcher and args[2] == 'next'
         runtime = Path(os.environ.get('XDG_RUNTIME_DIR') or '/nonexistent')
         if (runtime / 'emaki-shell-health/packaged').exists():
             shell = PACKAGED
         status, shell = capture([SESSION_FILES, 'active', shell])
         if status:
-            return 75
+            return execute(previous_window) if fallback else 75
         call = ['qs', '-p', shell, 'ipc', 'call', *args[1:]]
+        if switcher:
+            call = ['qs', '-p', shell, 'ipc', 'call', 'switcher', 'step', args[2], str(pressed)]
+            try:
+                answer = subprocess.run(call, stdout=subprocess.PIPE, text=True, timeout=2)
+            except (OSError, subprocess.SubprocessError) as error:
+                print(f'qs: {error}', file=sys.stderr)
+                answer = None
+            if answer is not None and answer.returncode == 0 and answer.stdout.strip() == 'true':
+                return 0
+            return execute(previous_window) if fallback else 75
         if args[1:] == ['launcher', 'toggle']:
             if run(call).returncode == 0:
                 return 0

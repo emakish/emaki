@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Session/user memory, path boundaries and the real Quickshell helper protocol."""
 from runtime_fixture import runtime_path
 from dataclasses import replace
@@ -16,7 +18,7 @@ import tempfile
 import time
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import reaper
 reaper.guard()  # nothing this test starts outlives it
 
@@ -49,6 +51,10 @@ class StateTests(unittest.TestCase):
         self.work = tempfile.TemporaryDirectory(prefix='gs-', dir=CACHE)
         self.base = Path(self.work.name)
         self.paths = populate(self.base)
+        # Rule tests never contact the host's account service.
+        self.system_filter = patch.object(helper, 'system_accounts', return_value=set(), create=True)
+        self.system_filter.start()
+        self.addCleanup(self.system_filter.stop)
 
     def tearDown(self):
         self.work.cleanup()
@@ -239,16 +245,181 @@ class StateTests(unittest.TestCase):
             output.write('service:x:2001:2001::/home/service:/bin/bash\n')
         self.assertEqual(self.op('load')['user'], 'bob')
 
+    def test_service_system_account_is_not_listed_selected_or_launched(self):
+        self.add_bob()
+        with self.paths.passwd.open('a') as output:
+            output.write('service:x:1002:1002:Service:/home/service:/bin/bash\n')
+        with patch.object(helper, 'system_accounts', return_value={'service'}):
+            result = self.op('load')
+            self.assertEqual([item['login'] for item in result['accounts']], ['alice', 'bob'])
+            self.assertEqual(self.op('select', user='service')['message'], 'Unknown user')
+            with self.assertRaisesRegex(ValueError, 'launch user unavailable'):
+                self.op('launch', user='service', session='niri-emaki.desktop')
+
+    def test_service_flags_only_enumerated_candidates_and_missing_objects(self):
+        from gi.repository import Gio, GLib
+        self.system_filter.stop()
+        bus = Mock()
+        bus.is_closed.return_value = False
+        queried = []
+
+        def call(service, path, interface, method, args, reply, flags, timeout, cancel):
+            self.assertEqual(service, 'org.freedesktop.Accounts')
+            self.assertGreater(timeout, 0)
+            self.assertLessEqual(timeout, helper.ACCOUNT_BUDGET * 1000)
+            if method == 'FindUserById':
+                uid, = args.unpack()
+                queried.append(uid)
+                return GLib.Variant('(o)', ('/User' + str(uid),))
+            self.assertEqual((interface, method, args.unpack()),
+                             ('org.freedesktop.DBus.Properties', 'Get',
+                              ('org.freedesktop.Accounts.User', 'SystemAccount')))
+            if path == '/User1001':
+                raise GLib.Error('missing object with private details')
+            return GLib.Variant('(v)', (GLib.Variant('b', path == '/User1002'),))
+
+        bus.call_sync.side_effect = call
+        users = {'alice': (1000, 'Alice'), 'bob': (1001, 'Bob'), 'service': (1002, 'Service')}
+        with patch.object(Gio, 'dbus_address_get_for_bus_sync', return_value='fixture'), \
+                patch.object(Gio.DBusConnection, 'new_for_address_sync', return_value=bus):
+            self.assertEqual(helper.system_accounts(users), {'service'})
+        self.assertEqual(queried, [1000, 1001, 1002])
+        bus.close.assert_called_once()
+
+    def test_service_unavailable_keeps_local_candidates(self):
+        from gi.repository import Gio, GLib
+        self.system_filter.stop()
+        with patch.object(Gio, 'dbus_address_get_for_bus_sync',
+                          side_effect=GLib.Error('private bus error')):
+            self.assertEqual(self.op('load')['user'], 'alice')
+
+    def test_service_budget_is_shared_across_a_long_list(self):
+        from gi.repository import Gio, GLib
+        self.system_filter.stop()
+        bus = Mock()
+        bus.is_closed.return_value = False
+        clock = [0.0]
+        timeouts = []
+
+        def call(service, path, interface, method, args, reply, flags, timeout, cancel):
+            timeouts.append(timeout)
+            clock[0] += .25
+            if method == 'FindUserById':
+                return GLib.Variant('(o)', ('/User',))
+            return GLib.Variant('(v)', (GLib.Variant('b', True),))
+
+        bus.call_sync.side_effect = call
+        users = {f'user{index}': (1000 + index, '') for index in range(30)}
+        with patch.object(Gio, 'dbus_address_get_for_bus_sync', return_value='fixture'), \
+                patch.object(Gio.DBusConnection, 'new_for_address_sync', return_value=bus), \
+                patch.object(helper.time, 'monotonic', side_effect=lambda: clock[0]):
+            self.assertEqual(helper.system_accounts(users), {'user0', 'user1'})
+        self.assertEqual(timeouts, [1000, 750, 500, 250])
+        self.assertEqual(clock[0], helper.ACCOUNT_BUDGET)
+
+    def test_service_connection_and_calls_are_cancellable_within_budget(self):
+        from gi.repository import Gio, GLib
+        self.system_filter.stop()
+        bus = Mock()
+        bus.is_closed.return_value = False
+
+        def blocked(*args):
+            cancel = args[-1]
+            started = time.monotonic()
+            while not cancel.is_cancelled() and time.monotonic() - started < .5:
+                time.sleep(.005)
+            self.assertTrue(cancel.is_cancelled())
+            raise GLib.Error('cancelled with private details')
+
+        for during_connection in (True, False):
+            with self.subTest(connection=during_connection), \
+                    patch.object(helper, 'ACCOUNT_BUDGET', .03), \
+                    patch.object(Gio, 'dbus_address_get_for_bus_sync', return_value='fixture'), \
+                    patch.object(Gio.DBusConnection, 'new_for_address_sync',
+                                 side_effect=blocked if during_connection else None,
+                                 return_value=bus):
+                bus.call_sync.side_effect = blocked
+                started = time.monotonic()
+                self.assertEqual(helper.system_accounts({'alice': (1000, '')}), set())
+                self.assertLess(time.monotonic() - started, .5)
+
     def test_ambiguous_user_step_and_unknown_username(self):
         self.add_bob()
-        self.assertEqual(self.op('load')['user'], '')
+        # Two accounts: a list of pictures with the first account chosen until one is remembered.
+        self.assertEqual(self.op('load')['user'], 'alice')
         self.assertTrue(self.op('load')['multipleUsers'])
+        # A long list keeps the typed-name step.
+        with self.paths.passwd.open('a') as output:
+            for index in range(helper.LIST_LIMIT):
+                output.write(f'user{index}:x:{2000 + index}:{2000 + index}::/home/user{index}:/bin/bash\n')
+        self.assertEqual((self.op('load')['user'], self.op('load')['accounts']), ('', []))
         result = self.op('select', user='../alice')
         self.assertEqual((result['user'], result['message'], result['command']), ('', 'Unknown user', []))
         self.assertEqual(self.op('select', user='root')['message'], 'Unknown user')
         self.assertEqual(self.op('select', user='alice')['user'], 'alice')
         self.assertEqual(self.op('select', user='')['message'], '')
         self.assertEqual(self.state()['last_user'], '')
+
+    def test_account_list_names_order_and_remembered_choice(self):
+        self.assertEqual(self.op('load')['accounts'], [])  # one person: as before, no list
+        with self.paths.passwd.open('a') as output:
+            output.write('bob:x:1001:1001:Bob Builder,Room 2,,:/home/bob:/bin/bash\n')
+            output.write('ann:x:1001:1001:Ann\x07 Lee:/home/ann:/bin/bash\n')
+            output.write('daemon2:x:999:999:Daemon:/:/bin/bash\n')
+            output.write('quiet:x:1003:1003:Quiet:/home/quiet:/usr/bin/nologin\n')
+        result = self.op('load')
+        self.assertEqual(result['accounts'], [dict(login='alice', name='alice'), dict(login='ann', name='Ann Lee'),
+                                              dict(login='bob', name='Bob Builder')])
+        self.assertEqual(result['user'], 'alice')
+        self.op('launch', user='bob', session='niri-emaki.desktop')
+        self.assertEqual(self.op('load', now=131)['user'], 'bob')
+        self.assertEqual(self.op('select', user='ann')['accounts'], result['accounts'])
+
+    def own_alice(self, uid=None):
+        uid = os.getuid() if uid is None else uid
+        self.paths.passwd.write_text(f'root:x:0:0:root:/root:/bin/bash\nalice:x:{uid}:{uid}::/home/alice:/bin/bash\n'
+                                     f'bob:x:{uid + 1}:{uid + 1}::/home/bob:/bin/bash\n')
+        self.paths.login_defs.write_text(f'UID_MIN {min(uid, 1000)}\nUID_MAX 60000\n')
+        published = self.paths.users / 'alice'
+        published.mkdir(mode=0o750, exist_ok=True)
+        return published
+
+    def test_published_look_only_fixed_fields(self):
+        published = self.own_alice()
+        self.assertEqual(self.op('load')['look'], {})  # nothing published yet: the default look
+        (published / 'look.json').write_text(json.dumps(dict(
+            version=1, theme='light', accent='teal', light_time='06:30', dark_time='20:00',
+            wallpaper='/home/alice/Pictures/private.png', name='Alice')))
+        self.assertEqual(self.op('load')['look'], dict(theme='light', accent='teal', light_time='06:30', dark_time='20:00'))
+        (published / 'look.json').write_text(json.dumps(dict(
+            version=1, theme='neon', accent='Rose!', light_time='25:00', dark_time=7)))
+        self.assertEqual(self.op('load')['look'], {})
+        (published / 'look.json').write_text(json.dumps(dict(version=2, theme='light')))
+        self.assertEqual(self.op('load')['look'], {})
+        (published / 'look.json').write_text(json.dumps(dict(version=1, theme='light', pad='x' * 5000)))
+        self.assertEqual(self.op('load')['look'], {})
+        (published / 'look.json').unlink()
+        (self.base / 'elsewhere.json').write_text(json.dumps(dict(version=1, theme='light')))
+        (published / 'look.json').symlink_to(self.base / 'elsewhere.json')
+        self.assertEqual(self.op('load')['look'], {})
+        # Another account's look is read when that account is chosen, never the previous one's.
+        self.assertEqual(self.op('select', user='bob')['look'], {})
+
+    def test_published_look_through_traverse_only_parent(self):
+        published = self.own_alice()
+        (published / 'look.json').write_text(json.dumps(dict(version=1, theme='light', accent='teal')))
+        # The installed users parent is root-owned 0711. Remove owner read permission
+        # in this unprivileged fixture to exercise the greeter's traversal rights.
+        self.paths.users.chmod(0o111)
+        try:
+            self.assertEqual(self.op('load')['look'], dict(theme='light', accent='teal'))
+        finally:
+            self.paths.users.chmod(0o700)
+
+    def test_published_look_of_a_foreign_owner_is_ignored(self):
+        published = self.own_alice(uid=os.getuid() + 7)
+        (published / 'look.json').write_text(json.dumps(dict(version=1, theme='light')))
+        self.assertEqual(self.op('load')['look'], {})
 
     def test_seed_regreet_once_and_remember_each_session(self):
         self.add_bob()

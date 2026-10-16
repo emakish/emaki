@@ -97,6 +97,14 @@ Scope {
     find(region, "settings-24-hour-clock").valueRequested(false);
     check(catalog.saved === "false", "clock preference submitted");
     check(about.details.version === "0.5.0", "about read");
+    const licenses = find(about, "settings-about-licenses");
+    check(licenses && licenses.visible && licenses.title === "Licenses", "visible licenses entry");
+    const terms = find(about, "settings-about-license-terms");
+    check(terms && terms.visible && terms.text.indexOf("GPL-3.0-or-later") >= 0
+          && terms.text.indexOf("redistribute") >= 0 && terms.text.indexOf("no warranty") >= 0
+          && terms.text.indexOf("Third-party") >= 0
+          && terms.text.indexOf(Platform.prefix + "/share/licenses") >= 0,
+          "redistribution, warranty, third-party terms and installed full texts");
     const language = find(region, "settings-language");
     check(language && language.managed && !language.editable, "declared setting read only");
     region.apply("time.zone", "Europe/Berlin");
@@ -176,12 +184,14 @@ run(browser_fails=True)
 run(('SettingsRegionPage.qml', 'managed: page.row(modelData.key).source === "declared"', 'managed: false'))
 run(('SettingsRegionPage.qml', 'reply.schema_version !== 1', 'false'))
 run(('SettingsAboutPage.qml', 'reply.schema_version !== 1', 'false'))
+# The licence card must remain present and visible.
+run(('SettingsAboutPage.qml', 'title: "Licenses"', 'title: ""'))
 # The report button asks the shell's report window for the "other" part and says when it is missing.
 run(('SettingsAboutPage.qml', 'ReportBridge.open("other")', '"unavailable"'))
 run(('SettingsAboutPage.qml', 'ReportBridge.open("other")', 'ReportBridge.open("shell")'))
 run(('SettingsAboutPage.qml', 'ReportBridge.open("other") === "unavailable"', 'ReportBridge.open("other") === "never"'))
 # A viewer that fails says so.
 run(('SettingsAboutPage.qml', 'if (code !== 0)', 'if (false)'), browser_fails=True)
-print('PASS: page reads, declared values, refused changes, invalid replies, report window opened through '
+print('PASS: page reads, visible license terms, declared values, refused changes, invalid replies, report window opened through '
       'the bridge with no browser or helper call, missing report window, report review and viewer failure; '
-      'seven mutants killed')
+      'eight mutants killed')

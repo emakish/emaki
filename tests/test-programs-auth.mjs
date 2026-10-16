@@ -42,15 +42,15 @@ for (const prefix of ['/opt/emaki/libexec', '/nix/store/example-emaki/libexec/em
         assert.ok(policy.includes('<allow_active>auth_admin</allow_active>'));
         assert.ok(!policy.includes('auth_admin_keep'));
         const message = policy.match(/<message>([^<]+)<\/message>/)[1];
-        assert.ok(message.includes('$(command_line)'));
-        assert.ok(!message.includes('$(cmdline_short)'));
+        assert.ok(!message.includes('$('), 'policy messages contain no substitutions');
         const longTarget = (operation === 'install' ? 'extra/' : '') + 'p'.repeat(120);
         const longCommand = `${helper} ${longTarget} ${token}`;
         assert.ok(longCommand.length > 80);
         assert.equal(decision(operation, longCommand), undefined);
-        // Mirrors polkit's literal property expansion of the actual MESSAGE.
+        // The program manager's own window names the target; polkit keeps plain prose.
         const expanded = message.replace(/\$\(([^)]+)\)/g, (_, key) => ({command_line: longCommand})[key]);
-        assert.ok(expanded.includes(longTarget), 'the whole target reaches MESSAGE');
+        assert.equal(expanded, message, 'command details cannot change MESSAGE');
+        assert.ok(!expanded.includes(longTarget));
     }
     const flatpakHelper = `${prefix}/emaki-programs-flatpak`;
     const flatpakPolicy = fs.readFileSync(new URL('../update-manager/org.emaki.programs.flatpak.policy', import.meta.url), 'utf8')
@@ -86,7 +86,7 @@ for (const prefix of ['/opt/emaki/libexec', '/nix/store/example-emaki/libexec/em
         assert.ok(action.includes('<allow_inactive>no</allow_inactive>'));
         assert.ok(action.includes('<allow_active>auth_admin</allow_active>'));
         assert.ok(!action.includes('auth_admin_keep'));
-        assert.ok(action.includes('$(command_line)'));
+        assert.ok(!action.match(/<message>([^<]+)<\/message>/)[1].includes('$('));
     }
     const receipt = '20261012T120000123456Z-' + 'b'.repeat(32);
     const undoRef = 'app/org.example.Program/x86_64/stable';
@@ -99,6 +99,7 @@ for (const prefix of ['/opt/emaki/libexec', '/nix/store/example-emaki/libexec/em
     const undoAction = flatpakPolicy.match(/<action id="org\.emaki\.programs\.flatpak\.undo">([\s\S]*?)<\/action>/)[1];
     assert.ok(undoAction.includes('<annotate key="org.freedesktop.policykit.exec.argv1">undo</annotate>'));
     assert.ok(undoAction.includes('<allow_active>auth_admin</allow_active>') && !undoAction.includes('auth_admin_keep'));
+    assert.ok(!undoAction.match(/<message>([^<]+)<\/message>/)[1].includes('$('));
     // AUR builds and native undo: one package (and receipt) and a reviewed digest only.
     for (const [operation, middle] of [['aur', 'example-program'], ['undo', `${receipt} example-program`]]) {
         const helper = `${prefix}/emaki-programs-${operation}`;
@@ -117,7 +118,7 @@ for (const prefix of ['/opt/emaki/libexec', '/nix/store/example-emaki/libexec/em
             .replaceAll('@EMAKI_LIBEXECDIR@', prefix);
         assert.ok(policy.includes(`<annotate key="org.freedesktop.policykit.exec.path">${helper}</annotate>`));
         assert.ok(policy.includes('<allow_active>auth_admin</allow_active>') && !policy.includes('auth_admin_keep'));
-        assert.ok(policy.includes('$(command_line)'));
+        assert.ok(!policy.match(/<message>([^<]+)<\/message>/)[1].includes('$('));
     }
     assert.equal(rule({id: 'org.example.other', lookup() { throw Error('unrelated action'); }}, {}), undefined);
 }

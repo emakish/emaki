@@ -1,31 +1,45 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Run only in the disposable Arch build VM with archiso 91 and trusted signing keys.
 set -Eeuo pipefail
 trap 'printf "ERROR: ISO build failed at line %s (rc=%s)\n" "$LINENO" "$?" >&2' ERR
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(dirname -- "$HERE")
 repo=$ROOT/.cache/repo/testing
-out='' work='' test_key='' test_mode=0 test_alongside=0
+out='' work='' test_key='' test_mode=0 test_alongside=0 secure_boot_key=''
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 while (($#)); do
     case $1 in
-        --repo|--out|--work|--test-key)
+        --repo|--out|--work|--test-key|--secure-boot-key)
             (($# >= 2)) || fail "missing value for $1"
-            case $1 in --repo) repo=$2 ;; --out) out=$2 ;; --work) work=$2 ;; --test-key) test_key=$2; test_mode=1 ;; esac
+            case $1 in --repo) repo=$2 ;; --out) out=$2 ;; --work) work=$2 ;; --test-key) test_key=$2; test_mode=1 ;;
+                --secure-boot-key) secure_boot_key=$2 ;; esac
             shift 2 ;;
         --test) test_mode=1; shift ;;
         --test-alongside) test_alongside=1; shift ;;
         --help)
             echo 'Usage: sudo iso/build.sh [--repo DIR] [--out DIR] [--work DIR] [--test --test-key PUBLIC_KEY [--test-alongside]]'
+            echo '       [--secure-boot-key PREFIX]   PREFIX.key + PREFIX.crt: the key the medium is signed with (a release'
+            echo '                                    image needs the pinned release key, docs/signing.md)'
             exit 0 ;;
         *) fail "unknown option: $1" ;;
     esac
 done
 ((test_alongside == 0 || test_mode == 1)) || fail '--test-alongside requires --test and --test-key'
 ((test_alongside == 0)) || [[ -z ${EMAKI_ISO_SIGN_KEY:-} ]] || fail 'test-alongside images must not be signed'
+mode=release
+if ((test_mode)); then
+    mode='test'
+    ((test_alongside == 0)) || mode='test-alongside'
+fi
 preflight_args=(--repo "$repo")
 ((test_mode == 0)) || preflight_args+=(--test)
 "$HERE/preflight.sh" "${preflight_args[@]}"
+# Secure Boot key rules before any work: a release image needs the pinned release key, unlocked into
+# memory; a test image never uses it (iso/secureboot.sh, docs/signing.md).
+[[ -z $secure_boot_key ]] || secure_boot_key=$(realpath -m -- "$secure_boot_key")
+"$HERE/secureboot.sh" --mode "$mode" --check-only ${secure_boot_key:+--key "$secure_boot_key"}
 ((EUID == 0)) || fail 'run as root inside the disposable build VM'
 [[ $(systemd-detect-virt --vm) =~ ^(qemu|kvm)$ ]] || fail 'build is restricted to the QEMU/KVM build VM'
 archiso_version=$(pacman -Q archiso)
@@ -39,10 +53,7 @@ snapshot_values=$(python3 "$HERE/snapshot.py" show)
 read -r arch_snapshot pinned_archiso pinned_archinstall <<<"$snapshot_values"
 [[ $archiso_version == "archiso $pinned_archiso-"* ]] || fail 'install the recorded build tool version [archiso]'
 arch_server="https://archive.archlinux.org/repos/${arch_snapshot//-/\/}/\$repo/os/\$arch"
-mode=release
 if ((test_mode)); then
-    mode='test'
-    ((test_alongside == 0)) || mode='test-alongside'
     [[ -n $test_key && -r $test_key ]] || fail '--test requires --test-key PUBLIC_KEY'
     test_key=$(realpath -- "$test_key")
     ssh-keygen -l -f "$test_key" >/dev/null || fail 'invalid test public key'
@@ -59,6 +70,17 @@ done
 [[ $work != / && $work != "$ROOT" && $work != "$HERE" ]] || fail 'unsafe work directory'
 [[ $ROOT != "$work/"* && $repo != "$work/"* && $out != "$work/"* && $repo != "$work" && $out != "$work" ]] || fail 'work must not contain the source, repository, or output'
 [[ -z $test_key || $test_key != "$work/"* ]] || fail 'test key must be outside work'
+if [[ -n $secure_boot_key ]]; then
+    # The one Secure Boot setting: the release key (a test key at night, the real one from its owner).
+    # Nothing under the checkout, work or output may hold it: they are archived, imaged or published.
+    # The files themselves count, wherever PREFIX.key and PREFIX.crt point.
+    for secure_boot_file in "$secure_boot_key" "$(realpath -e -- "$secure_boot_key.key")" \
+        "$(realpath -e -- "$secure_boot_key.crt")"; do
+        [[ -n $secure_boot_file && $secure_boot_file != "$work/"* && $secure_boot_file != "$out/"* \
+            && $secure_boot_file != "$ROOT/"* ]] \
+            || fail 'the Secure Boot key must be outside the source checkout, work and output'
+    done
+fi
 mkdir -p -- "$work" "$out"
 exec 9>"$work/.lock"
 flock -n 9 || fail 'work directory is already in use'
@@ -210,7 +232,11 @@ leftover=$(find "$live/etc/pacman.d/hooks" -mindepth 1 -print -quit 2>/dev/null 
 [[ -z $leftover ]] || fail "the live /etc/pacman.d/hooks is not empty (pacstrap reads it for the target): ${leftover#"$live"}"
 # Keep the final ISO9660 artwork explicit across either loader's staging flow.
 install -Dm644 "$ROOT/art/grub/background.png" "$work/mk/iso/boot/grub/background.png"
-for installed in usr/bin/emaki-installerd usr/bin/emaki-install-cli usr/bin/niri-emaki-session usr/share/emaki/wallpaper/ring.png; do
+# Secure Boot: shim, the signed GRUB and kernels, the release certificate (pass two masters them).
+if [[ -n $secure_boot_key ]]; then
+    "$HERE/secureboot.sh" --mode "$mode" --key "$secure_boot_key" --mk "$work/mk" --cache "$work/secureboot-cache"
+fi
+for installed in usr/bin/emaki-installerd usr/bin/emaki-install-cli usr/bin/emaki-boot-repair usr/bin/niri-emaki-session usr/share/emaki/wallpaper/ring.png; do
     [[ -f $work/mk/x86_64/airootfs/$installed ]] || fail "required live file missing from packages: /$installed"
 done
 if [[ ! -f $work/mk/x86_64/airootfs/usr/bin/emaki-install ]]; then

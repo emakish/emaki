@@ -1,4 +1,4 @@
-# Emaki 0.8.1 packages
+# Emaki 0.9.0 packages
 
 Copyright (C) 2026 Artur Yakymenko. Emaki packaging is GPL-3.0-or-later;
 the Quickshell fork retains its upstream LGPL-3.0-only license.
@@ -11,9 +11,9 @@ it back to Arch's file on removal; `/usr/lib/os-release` stays as `filesystem`
 ships it, so `pacman -Qkk` reports nothing for it. `emaki-desktop` adds the
 Minimal applications (Dolphin, Firefox, kitty), the firmware and graphics drivers of the
 live image (so an install keeps what worked from the stick) and password-only lock PAM
-configuration. The optional `emaki-sudo-key` package (0.8.1-1) owns the sudo-key
+configuration. The optional `emaki-sudo-key` package (0.9.0-1) owns the sudo-key
 marker, revocation binding, turn reporter and its guide/examples. It depends on
-`emaki-config>=0.8.1-1`, which owns the broker, PAM integration, client and shell UI.
+`emaki-config>=0.9.0-1`, which owns the broker, PAM integration, client and shell UI.
 The release marker and desktop packages do not select the optional package.
 The optional `snapguard` package (0.3.0-1) builds the public snapguard release from the
 commit its `v0.3.0` tag names, with a checksum of that tree; `check()` runs snapguard's own
@@ -45,7 +45,8 @@ dependencies can advance.
 Build `emaki-config` from a committed repository checkout (a detached HEAD
 from a bundle is supported). `_emaki_commit` defaults to HEAD and is exported
 across makepkg/fakeroot; set it explicitly to build another committed revision.
-`prepare()` archives that revision and fetches the locked Cargo dependencies.
+`prepare()` archives that revision and runs `make prepare-core` to fetch the locked
+Cargo dependencies into its selected `CARGO_HOME`.
 `build()` uses `make build`, including offline locked Cargo and qsb. `check()`
 uses `make check`: stock niri validates the base configs; fork-only rules are
 also checked when `niri-emaki` is available. An installed but outdated fork
@@ -100,7 +101,10 @@ moves an older choice into the state and keeps a valid one [emaki-mirrorlist].
 Run `emaki-update-channel` to read the effective update source [update channel].
 `/usr/lib/emaki-release` records the release version and label [release metadata].
 
-Local checks: `make build`, `make check`, `python3 tests/test-packaging.py`.
+Local checks: `make prepare-core`, `make build`, `make check`, `python3 tests/test-packaging.py`.
+Preparation may download the exact dependencies in `Cargo.lock`; builds stay offline.
+The standalone packaging suite prepares the same cache before staging. Set
+`CARGO_NET_OFFLINE=true` to require cached or vendored dependencies during preparation too.
 The packaging tests stage into a temporary root, reject any host package or
 service command, check local source checksums, package metadata, payload,
 skel/presets and inhibitor descriptor lifetime. They run `systemd-analyze

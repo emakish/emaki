@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 import json
 import os
 from pathlib import Path
@@ -160,6 +162,15 @@ class RuntimeTests(unittest.TestCase):
         r = Redactor()
         r.add('p$a.*ss')
         self.assertEqual(r.text('echo p$a.*ss twice p$a.*ss'), 'echo [REDACTED] twice [REDACTED]')
+
+    def test_redactor_quoted_credentials_are_complete_and_repeatable(self):
+        redactor = Redactor()
+        for label in ('password', 'passwd', 'token'):
+            for quote in ('"', "'"):
+                value = label + '=' + quote + 'two words' + quote + ' connection failed'
+                expected = label + '=' + quote + '[REDACTED]' + quote + ' connection failed'
+                self.assertEqual(redactor.text(value), expected)
+                self.assertEqual(redactor.text(expected), expected)
 
     def test_long_output_cannot_split_password_across_log_chunks(self):
         logs = []

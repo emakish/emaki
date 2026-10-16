@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Window
@@ -16,6 +18,30 @@ Scope {
     readonly property bool keyboardPanel: controller.modalOpen && controller.keyboardSurface !== ""
     property string pendingLayer: ""
     property string armedLayer: ""
+    property bool restartingSwitcher: false
+    property int switcherPreviousTicket: -1
+    property bool switcherPreviousCompleted: false
+    // A second chord can arrive before the first action's leave event. Do not reuse that
+    // old activation: wait for both the action reply and the leave, then acquire afresh.
+    function restartSwitcher(ticket: int): void {
+        armedLayer = "";
+        restartingSwitcher = true;
+        switcherPreviousTicket = ticket;
+        switcherPreviousCompleted = !controller.niri.focusReplies.includes(ticket);
+        resumeSwitcher();
+    }
+    function resumeSwitcher(): void {
+        if (!restartingSwitcher)
+            return;
+        if (!controller.switcherOpen || !controller.switcher.armed) {
+            restartingSwitcher = false;
+            return;
+        }
+        if (!switcherPreviousCompleted || layerActive("panel"))
+            return;
+        restartingSwitcher = false;
+        acquireKeyboard("panel");
+    }
     readonly property int barKeyboardFocus: top.WlrLayershell.keyboardFocus
     readonly property int dockKeyboardFocus: dockWindow.WlrLayershell.keyboardFocus
     readonly property int panelKeyboardFocus: overlay.WlrLayershell.keyboardFocus
@@ -42,11 +68,23 @@ Scope {
     }
     Connections {
         target: surfaces.controller.niri
+        function onImmediateFocusCompleted(ticket: int, successful: bool): void {
+            if (surfaces.restartingSwitcher && surfaces.switcherPreviousTicket === ticket) {
+                if (!successful) {
+                    // A broken request socket cannot prove the old action has finished.
+                    surfaces.restartingSwitcher = false;
+                    surfaces.controller.switcher.cancel();
+                    return;
+                }
+                surfaces.switcherPreviousCompleted = true;
+                surfaces.resumeSwitcher();
+            }
+        }
         function onLayerFocusSupportedChanged(): void {
             if (!surfaces.controller.niri.layerFocusSupported) {
                 surfaces.pendingLayer = "";
                 surfaces.armedLayer = "";
-            } else if (surfaces.keyboardPanel || surfaces.pairingKeyboard) {
+            } else if (!surfaces.restartingSwitcher && (surfaces.keyboardPanel || surfaces.pairingKeyboard)) {
                 surfaces.acquireKeyboard("panel");
             }
         }
@@ -54,6 +92,10 @@ Scope {
     function keyboardActiveChanged(layer: string, active: bool): void {
         if (!controller.niri.layerFocusSupported)
             return;
+        if (layer === "panel" && restartingSwitcher) {
+            resumeSwitcher();
+            return;
+        }
         const wanted = layer === "bar" ? controller.barKeyboardActive : layer === "dock" ? controller.dock.keyboardActive : keyboardPanel;
         if (active && (wanted || (layer === "panel" && pairingKeyboard))) {
             if (pendingLayer === layer)
@@ -63,6 +105,8 @@ Scope {
                 controller.bar.takeFocus();
             else if (layer === "dock")
                 controller.dock.takeFocus();
+            else if (controller.switcherOpen)
+                controller.switcher.focusArrived();
             else if (controller.launcherOpen)
                 controller.input.takeFocus(true);
             else if (controller.systemOpen) {
@@ -198,6 +242,12 @@ Scope {
         target: overlay.contentItem.Window.window
         function onActiveChanged(): void {
             surfaces.keyboardActiveChanged("panel", overlay.contentItem.Window.active);
+            // Without the fork's layer focus the switcher still learns when the keyboard arrives,
+            // and that it left (the fork's path closes the panel in keyboardActiveChanged).
+            if (overlay.contentItem.Window.active && surfaces.controller.switcherOpen && !surfaces.restartingSwitcher)
+                surfaces.controller.switcher.focusArrived();
+            else if (!overlay.contentItem.Window.active && !surfaces.controller.niri.layerFocusSupported && !surfaces.restartingSwitcher)
+                surfaces.controller.switcherKeyboardLost();
         }
         function onFrameSwapped(): void {
             surfaces.painted("overlay");
@@ -215,6 +265,7 @@ Scope {
         controller.clockPanel.parent = overlay.contentItem;
         controller.systemPanel.parent = overlay.contentItem;
         controller.shortcuts.parent = overlay.contentItem;
+        controller.switcher.parent = overlay.contentItem;
         controller.osd.parent = overlay.contentItem;
         controller.dock.parent = dockWindow.contentItem;
         controller.dockEdge.parent = dockWindow.contentItem;
@@ -243,6 +294,34 @@ Scope {
         controller.systemBackdrop = Qt.binding(() => systemBackdrop.ready || !systemWallBackdrop.item ? systemBackdrop : systemWallBackdrop.item);
         // The system panel opens over its live capture, not over the wallpaper stand-in.
         controller.systemGlassLive = Qt.binding(() => systemBackdrop.ready || !systemWallBackdrop.item);
+        // The window switcher cuts its live pictures out of its own capture of this output.
+        switcherCapture.parent = overlay.contentItem;
+        controller.switcher.pictureSource = Qt.binding(() => switcherCapture.active ? switcherCapture.source : null);
+        controller.switcher.pictureSourceReady = Qt.binding(() => switcherCapture.ready);
+    }
+    SwitcherCapture {
+        id: switcherCapture
+        screen: surfaces.controller.output
+        active: surfaces.controller.switcher.presenting && dockBackdrop.mode === "capture"
+        screenWidth: surfaces.controller.viewportWidth
+        screenHeight: surfaces.controller.viewportHeight
+    }
+    // The keyboard may already be on the overlay (Alt+Tab over an open panel): no new focus
+    // event comes, so tell the switcher it has the keyboard.
+    Connections {
+        target: surfaces.controller
+        function onSwitcherRestarted(previousTicket: int): void {
+            surfaces.restartSwitcher(previousTicket);
+        }
+        function onSwitcherOpenChanged(): void {
+            if (!surfaces.controller.switcherOpen)
+                surfaces.restartingSwitcher = false;
+            if (surfaces.controller.switcherOpen && overlay.contentItem.Window.active && !surfaces.restartingSwitcher)
+                Qt.callLater(() => {
+                    if (surfaces.controller.switcherOpen && overlay.contentItem.Window.active && !surfaces.restartingSwitcher)
+                        surfaces.controller.switcher.focusArrived();
+                });
+        }
     }
     // Dock: bottom edge; pinned dock reserves 77 px, auto-hidden one only listens at the edge.
     // The surface reaches higher than the band: the menu and tooltip grow inside it.
@@ -488,7 +567,9 @@ Scope {
         function onModalOpenChanged(): void {
             if (surfaces.controller.modalOpen)
                 Qt.callLater(() => {
-                    if (surfaces.controller.launcherOpen)
+                    if (surfaces.controller.switcherOpen)
+                        surfaces.controller.switcher.forceActiveFocus();
+                    else if (surfaces.controller.launcherOpen)
                         surfaces.controller.input.takeFocus(surfaces.controller.keyboardSurface === "launcher");
                     else if (surfaces.controller.systemOpen)
                         surfaces.controller.systemPanel.takeFocus(surfaces.keyboardPanel);
@@ -524,7 +605,9 @@ Scope {
         // The dock popup takes pointer input (outside press closes it) but never the keyboard.
         // With only the dock menu open, the overlay catches outside presses but leaves a hole
         // over the menu and the plate: those live in the dock surface underneath.
-        mask: surfaces.controller.modalOpen ? null : surfaces.controller.dock.popupOpen ? dockMenuHole : clockInput
+        // The window switcher takes the pointer only while its panel shows: a quick Alt+Tab
+        // never takes a click from the window under the pointer.
+        mask: surfaces.controller.modalOpen && !(surfaces.controller.switcherOpen && !surfaces.controller.switcher.shown) ? null : surfaces.controller.dock.popupOpen ? dockMenuHole : clockInput
         BackgroundEffect.blurRegion: launcherBlur
         MouseArea {
             anchors.fill: parent

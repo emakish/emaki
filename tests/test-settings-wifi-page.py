@@ -41,7 +41,7 @@ with tempfile.TemporaryDirectory(prefix='wifi-settings-') as temporary:
                             env=env, capture_output=True, text=True, timeout=40)
     output = result.stdout + result.stderr
     (EVIDENCE / 'wifi-settings.log').write_text(output)
-    assert result.returncode == 0 and 'WIFI_SETTINGS_RESULT 2 0' in output, output
+    assert result.returncode == 0 and 'WIFI_SETTINGS_RESULT 4 0' in output, output
     for error in ('ReferenceError', 'TypeError', 'Binding loop', 'Unable to assign', 'Cannot assign'):
         assert error not in output, output
-print('PASS: Wi-Fi joins, hidden credentials, scan lifetime, failed-auth guard and secret cleanup')
+print('PASS: Wi-Fi fields in dark and light themes, joins, hidden credentials, scan lifetime, failed-auth guard and secret cleanup')

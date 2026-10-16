@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Window
@@ -16,6 +18,16 @@ Item {
     property bool avatarPending: false
     property bool greeter: false
     property bool wallpaperSelectionReady: true
+    // The login screen's people (more than one) and the chosen one's login.
+    property var accounts: []
+    property string chosenUser: ""
+    signal userPicked(string login)
+    function stepUser(delta: int): void {
+        const at = accounts.findIndex(entry => entry.login === chosenUser);
+        const next = Math.max(0, Math.min(accounts.length - 1, (at < 0 ? 0 : at + delta)));
+        if (accounts.length > 1 && accounts[next].login !== chosenUser)
+            userPicked(accounts[next].login);
+    }
     readonly property bool revealCapture: session.phase === "pour" || (session.authenticated && session.phase === "drain")
     readonly property string outputName: screen ? screen.name : "offscreen"
     readonly property real dpr: screen ? screen.devicePixelRatio : 1
@@ -307,6 +319,21 @@ Item {
         toggleX: surface.width / 2 + surface.shake + surface.fieldWidth / 2 - 40
         onEngaged: surface.session.chooseOutput(surface.outputName, surface.height)
         onEdited: surface.keyAt = surface.session.clock
+        onStep: delta => surface.stepUser(delta)
+    }
+    Loader {
+        anchors.fill: parent
+        active: surface.greeter && surface.fieldsVisible && surface.accounts.length > 1
+        source: "GreeterUsers.qml"
+        onLoaded: {
+            item.accounts = Qt.binding(() => surface.accounts);
+            item.chosen = Qt.binding(() => surface.chosenUser);
+            item.life = Qt.binding(() => Math.max(0, (surface.life - .4) / .6));
+            (item as GreeterUsers).picked.connect(login => {
+                surface.userPicked(login);
+                input.takeFocus();
+            });
+        }
     }
     Connections {
         target: surface.Window.window

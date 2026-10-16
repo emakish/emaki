@@ -357,7 +357,13 @@ def hibernate(phase):
     counts the resume start as an update or trial attempt. Save the counters while
     the ESP is still mounted and restore them after it is mounted again. Only the
     unmount and mount decide whether hibernation may go on.
+
+    Emaki's own ESP next to Windows (0.9 record) is not shared: it stays mounted
+    read-write and the system-sleep hook keeps the counters, as on any Emaki-only
+    ESP. The installer writes no drop-in for it; a stray one changes nothing.
     """
+    if refresh.own_esp_record() is not None:
+        return
     if phase == 'post' and not os.path.ismount('/efi'):
         subprocess.run(['mount', '-o', 'ro', '/efi'], check=True, timeout=60)
     try:

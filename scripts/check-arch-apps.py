@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Check Rich package names and estimate added offline bytes using Arch's API.
 
 This is a size estimate, not the ISO builder's authoritative pacman transaction.

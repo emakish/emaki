@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Keyboard layouts have one source: /etc/vconsole.conf through localed.
 
 Static check over the shipped niri configs and the installer's generated files: no xkb

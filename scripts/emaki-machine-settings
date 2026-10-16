@@ -4,8 +4,8 @@
 """Machine settings: keyboard, time zone, automatic time and locale of the whole computer.
 
 The one place where the session reads and changes settings that belong to the machine rather
-than to a person. It writes no file: systemd-localed (org.freedesktop.locale1) and
-systemd-timedated (org.freedesktop.timedate1) own those files, and their polkit actions
+than to a person. Configuration files belong to systemd-localed (org.freedesktop.locale1) and
+systemd-timedated (org.freedesktop.timedate1), and their polkit actions
 (org.freedesktop.locale1.set-keyboard, .set-locale, org.freedesktop.timedate1.set-timezone,
 .set-ntp) ask for an administrator. This program runs as the person, without privileges, and
 talks to both services through `busctl`.
@@ -21,11 +21,15 @@ machine but the change is not confirmed (a timeout, an unknown failure after the
 read-back that failed or differs); the answer keeps key, before, requested, after and
 recovery. Raw service messages are never printed.
 
-A `set` reads, changes and confirms under one lock shared by every user of the machine:
-localed takes the whole keyboard (and the whole locale list) in one call, so two overlapping
+A `set` reads, changes and confirms under a file lock in the person's private
+$XDG_RUNTIME_DIR. The directory must exist, belong to that person and have mode 0700;
+unsafe directories or lock files are refused. This serializes changes within one account:
+localed takes the whole keyboard (and the whole locale list) in one call, so overlapping
 read-change sequences would silently undo each other. A second `set` waits for the first
 (LOCK_WAIT), then reads the machine afresh, or answers machine_settings_busy having changed
-nothing. Writers that do not use this program (localectl, another tool) are not serialised:
+nothing. Another account cannot access this lock; processes of the same account are trusted.
+Cross-account serialization stays with the services themselves. Writers outside this
+account's provider lock (localectl, another tool, another account) can overlap the sequence:
 a keyboard change is confirmed by reading back all four values it sent, so a write that
 lands between the call and the confirmation is reported, never answered as applied.
 
@@ -36,10 +40,11 @@ declarations are read from EMAKI_MACHINE_DECLARATIONS, else /etc/emaki/machine-s
 its own program under this name with the same commands and answers.
 """
 import json
+import fcntl
 import os
 from pathlib import Path
 import re
-import socket
+import stat
 import subprocess
 import sys
 import time
@@ -53,9 +58,7 @@ READ_TIMEOUT = 5
 # the lock wait, the reads, the call and its confirmation fit inside it.
 CALL_TIMEOUT = 90
 LOCK_WAIT = 10
-# An abstract unix socket name: no file, any user can bind it, and it is freed when the
-# process ends, however it ends. Holding the bound socket is holding the lock of `set`.
-LOCK = '\0emaki-machine-settings'
+LOCK = 'emaki-machine-settings.lock'
 
 # Labels of the settings core's keyboard.switch_key. Super+Space is the packaged niri bind
 # and needs no XKB option; a grp: toggle next to it would switch a second time.
@@ -164,12 +167,38 @@ def call(service, method, signature, *args):
 
 
 def lock():
-    """The machine-wide lock of `set`; the returned socket holds it until it is closed."""
-    held = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    """Hold the account's runtime file lock until the returned file is closed."""
+    descriptor = None
+    directory = None
+    try:
+        runtime = os.environ.get('XDG_RUNTIME_DIR', '')
+        if not runtime or not os.path.isabs(runtime):
+            raise OSError('missing or unsafe runtime directory')
+        owner = os.getuid()
+        directory = os.open(runtime, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        info = os.fstat(directory)
+        if info.st_uid != owner or stat.S_IMODE(info.st_mode) != 0o700:
+            raise OSError('unsafe lock directory')
+        descriptor = os.open(LOCK, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                             0o600, dir_fd=directory)
+        info = os.fstat(descriptor)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != owner
+                or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1):
+            raise OSError('unsafe lock file')
+        held = os.fdopen(descriptor, 'rb')
+        descriptor = None
+    except OSError:
+        raise Refusal('machine_settings_busy') from None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        if directory is not None:
+            os.close(directory)
+    acquire = lambda: fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
     deadline = time.monotonic() + LOCK_WAIT
     while True:
         try:
-            held.bind(LOCK)
+            acquire()
             return held
         except OSError:
             if time.monotonic() >= deadline:
@@ -449,7 +478,7 @@ def main(argv):
     key, value = args
     if key not in KEYS:
         return rejected('unknown_setting')
-    if len(value) > 256 or any(ord(char) < 32 for char in value):
+    if len(value) > 256 or any(ord(char) < 32 or ord(char) == 127 for char in value):
         return rejected('invalid_value', key=key)
     try:
         held = lock()

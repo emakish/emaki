@@ -40,18 +40,20 @@ def main():
     output = ROOT / '.cache/theme-accent-icons'
     staged = PICTURES.WORK / 'current'
     PICTURES.stage(ROOT, staged)
-    orange, accent = paints('orange'), paints(ACCENT)
+    # The installed SVG is drawn in the default accent; none of it may show through.
+    default = tomllib.loads((ROOT / 'tokens.toml').read_text())['defaults']['accent']
+    packaged, accent = paints(default), paints(ACCENT)
     for theme in ('light', 'dark'):
         for shot, region in REGIONS.items():
             target = output / f'{theme}-{ACCENT}-{shot}'
             PICTURES.capture(staged, target, shot, theme, ACCENT)
             icon = Image.open(target.with_suffix('.png')).convert('RGB').crop(region)
             pixels = list(icon.get_flattened_data())
-            left = sum(near(pixel, orange) for pixel in pixels)
+            left = sum(near(pixel, packaged) for pixel in pixels)
             drawn = sum(near(pixel, accent) for pixel in pixels)
-            assert left == 0, f'{theme} {shot}: {left} pixels of the orange icon remain with the {ACCENT} accent'
+            assert left == 0, f'{theme} {shot}: {left} pixels of the {default} icon remain with the {ACCENT} accent'
             assert drawn >= 100, f'{theme} {shot}: only {drawn} pixels of the {ACCENT} icon'
-            print(f'PASS {theme} {shot}: {drawn} {ACCENT} icon pixels, no orange icon pixels')
+            print(f'PASS {theme} {shot}: {drawn} {ACCENT} icon pixels, no {default} icon pixels')
     installed = (PICTURES.WORK / 'data/applications/emaki-update-manager.desktop').read_text()
     assert installed == (ROOT / 'update-manager/emaki-update-manager.desktop').read_text()
     assert 'Icon=emaki-programs-updates\n' in installed

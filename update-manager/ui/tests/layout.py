@@ -31,9 +31,11 @@ SIZES = [[206, 342], [206, 399], [206, 400], [240, 420], [313, 482], [400, 600],
          [560, 700], [632, 342], [633, 1022], [720, 700], [846, 1542], [960, 600], [1000, 700], [1180, 780], [1200, 800]]
 # The narrowest and the shortest third above: the window's minimum must stay within it.
 THIRD = (206, 342)
-# The look the default size must keep pixel for pixel: the released 0.8.0. A deliberate change of
-# the look moves this to the commit that made it.
-BASE = '78b918a'
+# The reviewed 0.9 look: Rose accent, real Emaki mark and stronger secondary text.
+# The shared fixture includes a foreign package, so its AUR-off notice remains visible.
+# Interaction tests separately cover zero/unknown counts. Keep this reference pinned:
+# only an intentional, reviewed visual change may advance the pixel baseline.
+BASE = 'b5bd4f9816f9a33aed71b091b9331f134fb24715'
 DEFAULT = [[1180, 780]]
 
 

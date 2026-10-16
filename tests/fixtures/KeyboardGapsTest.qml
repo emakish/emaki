@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Window
 import QtTest
 import Quickshell
+import "settings"
 
 // Keyboard gaps left by the 0.8.1 live check: the snapshot prompt's two actions, the sudo
 // card's and warning's buttons, and the focus ring against light and dark backdrops.
@@ -141,6 +142,19 @@ ShellRoot {
                     primary: true
                     text: "Next"
                 }
+            }
+            SettingsGlass {
+                x: 330
+                y: 20
+                width: 165
+                height: 72
+            }
+            SettingsButton {
+                id: settingsProbe
+                x: 340
+                y: 35
+                width: 140
+                text: "Settings action"
             }
             SnapshotPrompt {
                 id: paletteSnap
@@ -299,24 +313,46 @@ ShellRoot {
                 equal(window.keeps, 0, "success state never keeps");
             }
 
-            // Item 24: the ring's colours exist and are seen over light and dark backdrops.
+            // Item 24: the ring's colours exist and are seen over light and dark backdrops, in
+            // both themes (nothing saved is light).
             function test_palette_ring_on_light_and_dark() {
-                for (const ink of [LiquidPalette.flatDrop, LiquidPalette.flatDropRim, LiquidPalette.focusOnAccent])
-                    check(ink.a > 0, "ring ink has alpha");
-                check(LiquidPalette.focusOnAccent.a > LiquidPalette.flatDropRim.a, "strong rim is denser than the hover rim");
-                const cases = [[plateTarget, false, "bar-like plate target"], [plateAccent, true, "orange button on the plate"], [named(paletteSnap, "snapshotLater"), false, "prompt Not now"], [named(paletteSnap, "snapshotKeep"), true, "prompt Keep this state"]];
-                for (const backdrop of [["light", "#f2e6d8"], ["dark", "#392f29"], ["white", "#ffffff"], ["black", "#000000"]]) {
-                    stage.color = backdrop[1];
-                    for (const entry of cases) {
-                        const c = rimContrast(entry[0]);
-                        const label = entry[2] + " on " + backdrop[0];
-                        console.log("KEYBOARD_GAPS_CONTRAST " + backdrop[0] + " " + entry[2].replace(/ /g, "-") + " high=" + c.high.toFixed(2) + " low=" + c.low.toFixed(2));
-                        if (entry[1])
-                            check(c.low >= 3, label + ": strong rim below 3:1 (" + c.low.toFixed(2) + ")");
-                        else
-                            check(c.high >= 1.2 && c.high <= 2.2, label + ": hover-look rim not visible or not light (" + c.high.toFixed(2) + ")");
+                const saved = SettingsBridge.values;
+                const cases = [[settingsProbe, false, "Settings button"], [plateTarget, false, "bar-like plate target"], [plateAccent, true, "orange button on the plate"], [named(paletteSnap, "snapshotLater"), false, "prompt Not now"], [named(paletteSnap, "snapshotKeep"), true, "prompt Keep this state"]];
+                // Exercise both explicit choices independently of the default.
+                for (const theme of ["light", "dark"]) {
+                    for (const accent of ShellPalette.accents) {
+                        SettingsBridge.values = [
+                            {
+                                key: "appearance.theme",
+                                value: theme
+                            },
+                            {
+                                key: "appearance.accent",
+                                value: accent.id
+                            }
+                        ];
+                        wait(30);
+                        for (const ink of [LiquidPalette.flatDrop, LiquidPalette.flatDropRim, LiquidPalette.focusOnAccent, LiquidPalette.focusOnSelected])
+                            check(ink.a > 0, theme + ": ring ink has alpha");
+                        check(LiquidPalette.focusOnAccent.a > LiquidPalette.flatDropRim.a && LiquidPalette.focusOnSelected.a > LiquidPalette.flatDropRim.a, theme + ": strong rim is denser than the hover rim");
+                        for (const backdrop of [["light", "#f2e6d8"], ["dark", "#392f29"], ["white", "#ffffff"], ["black", "#000000"]]) {
+                            stage.color = backdrop[1];
+                            for (const entry of cases) {
+                                const c = rimContrast(entry[0]);
+                                const label = accent.id + " " + entry[2] + " on " + backdrop[0] + " in " + theme;
+                                console.log("KEYBOARD_GAPS_CONTRAST " + accent.id + " " + theme + " " + backdrop[0] + " " + entry[2].replace(/ /g, "-") + " high=" + c.high.toFixed(2) + " low=" + c.low.toFixed(2));
+                                if (entry[0] === settingsProbe) {
+                                    check(Qt.colorEqual(settingsProbe.background.border.color, SettingsTheme.accent), label + ": existing accent focus rim");
+                                    check(settingsProbe.background.border.width === 2, label + ": accent rim width");
+                                } else if (entry[1])
+                                    check(c.low >= 3, label + ": strong rim below 3:1 (" + c.low.toFixed(2) + ")");
+                                else
+                                    check(c.high >= 1.2 && c.high <= 2.2, label + ": hover-look rim not visible or not light (" + c.high.toFixed(2) + ")");
+                            }
+                        }
                     }
                 }
+                SettingsBridge.values = saved;
                 stage.color = "#f2e6d8";
             }
 

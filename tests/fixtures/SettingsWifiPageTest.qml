@@ -4,6 +4,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtTest
 import Quickshell
+import "settings"
 
 ShellRoot {
     id: root
@@ -96,6 +97,43 @@ ShellRoot {
                     return match;
             }
             return null;
+        }
+        function test_fields_data() {
+            return [
+                {
+                    tag: "dark",
+                    theme: "dark"
+                },
+                {
+                    tag: "light",
+                    theme: "light"
+                }
+            ];
+        }
+        function test_fields(data) {
+            SettingsBridge.values = [
+                {
+                    key: "appearance.theme",
+                    value: data.theme
+                }
+            ];
+            compare(Appearance.dark, data.theme === "dark");
+            page.hiddenJoin = true;
+            for (const name of ["settings-wifi-hidden-name", "settings-wifi-password"]) {
+                const field = find(page, name);
+                verify(field.visible);
+                compare(field.background.color.toString(), SettingsTheme.field.toString());
+                compare(field.color.toString(), SettingsTheme.ink.toString());
+                compare(field.placeholderTextColor.toString(), SettingsTheme.faint.toString());
+                compare(field.selectionColor.toString(), SettingsTheme.accent.toString());
+                compare(field.selectedTextColor.toString(), SettingsTheme.accentText.toString());
+                field.forceActiveFocus();
+                tryCompare(field, "activeFocus", true);
+                compare(field.background.border.color.toString(), SettingsTheme.accent.toString());
+                compare(field.background.border.width, 2);
+            }
+            compare(find(page, "settings-wifi-password").echoMode, 2);
+            page.closeJoin();
         }
         function test_controls() {
             verify(backend.settingsWifiScan);

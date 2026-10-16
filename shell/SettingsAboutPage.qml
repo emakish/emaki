@@ -232,6 +232,21 @@ Column {
     }
     SettingsCard {
         width: parent.width
+        title: "Licenses"
+        objectName: "settings-about-licenses"
+        Text {
+            width: parent.width
+            objectName: "settings-about-license-terms"
+            text: "You may redistribute and modify Emaki's own code under GPL-3.0-or-later. It comes with no warranty. Third-party software, fonts, images and map data keep their own licenses. Full license texts are in " + Platform.prefix + "/share/licenses."
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: SettingsTheme.ink
+            font.family: SettingsTheme.fontFamily
+            font.pixelSize: 14
+        }
+    }
+    SettingsCard {
+        width: parent.width
         title: "Help"
         SettingsRow {
             width: parent.width

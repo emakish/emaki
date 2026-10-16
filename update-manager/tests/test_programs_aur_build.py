@@ -12,6 +12,7 @@ import tarfile
 from pathlib import Path
 import sys
 import tempfile
+import tracemalloc
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
@@ -25,6 +26,50 @@ PLAN = dict(kind='aur', target='paint', token=TOKEN, fullUpgrade=True,
             packages=[dict(package='gtk3', purpose='run'), dict(package='cmake', purpose='build')],
             builds=[dict(packageBase='libbrush', commit='d' * 40, packages=[dict(package='libbrush', version='1-1')]),
                     dict(packageBase='paint', commit=COMMIT, packages=[dict(package='paint', version='2-1')])])
+
+
+class StreamTests(unittest.TestCase):
+    def measured_stream(self, script, relay):
+        with patch.object(helper, 'environment', return_value=dict(os.environ)), \
+                patch.object(helper, 'progress', new=relay):
+            tracemalloc.start()
+            try:
+                result = helper.stream([sys.executable, '-c', script], prefix='build: ')
+                peak = tracemalloc.get_traced_memory()[1]
+            finally:
+                tracemalloc.stop()
+        return result, peak
+
+    def test_twenty_thousand_lines_have_bounded_memory_and_keep_early_hook_failure(self):
+        count = 0
+
+        def relay(line):
+            nonlocal count
+            count += 1
+            self.assertTrue(line.startswith('build: '))
+            self.assertLessEqual(len(line), 2055)
+
+        (status, lines), peak = self.measured_stream(
+            "import sys\n"
+            "sys.stdout.write('ERROR: command failed to execute correctly\\n')\n"
+            "for i in range(20000):\n"
+            " sys.stdout.write(str(i).zfill(5) + 'x' * 2042 + '\\n')\n", relay)
+        self.assertEqual(status, 1)
+        self.assertEqual(count, 20001)
+        self.assertEqual(lines, [str(i).zfill(5) + 'x' * 2042 for i in range(19800, 20000)])
+        self.assertLess(peak, 2 * 1024 * 1024, f'peak memory: {peak} bytes')
+
+    def test_huge_unterminated_line_is_truncated_without_buffering_it(self):
+        relayed = []
+        (status, lines), peak = self.measured_stream(
+            "import sys\n"
+            "sys.stdout.buffer.write(b'\\t\\x00' + 'caf\u00e9'.encode() + b'\\xff')\n"
+            "for i in range(10000):\n"
+            " sys.stdout.buffer.write(b'x' * 4096)\n", relayed.append)
+        expected = '\tcaf\u00e9\ufffd' + 'x' * (2048 - 6)
+        self.assertEqual((status, lines), (0, [expected]))
+        self.assertEqual(relayed, ['build: ' + expected])
+        self.assertLess(peak, 2 * 1024 * 1024, f'peak memory: {peak} bytes')
 
 
 class HelperTests(unittest.TestCase):

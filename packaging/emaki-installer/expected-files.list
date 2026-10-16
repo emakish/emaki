@@ -1,5 +1,6 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
+/usr/bin/emaki-boot-repair
 /usr/bin/emaki-install
 /usr/bin/emaki-install-cli
 /usr/bin/emaki-installerd
@@ -35,9 +36,12 @@
 /usr/lib/python3.14/site-packages/emaki_installer/network_profiles.py
 /usr/lib/python3.14/site-packages/emaki_installer/planner.py
 /usr/lib/python3.14/site-packages/emaki_installer/protocol.py
+/usr/lib/python3.14/site-packages/emaki_installer/redaction.py
 /usr/lib/python3.14/site-packages/emaki_installer/render.py
+/usr/lib/python3.14/site-packages/emaki_installer/repair.py
 /usr/lib/python3.14/site-packages/emaki_installer/restart.py
 /usr/lib/python3.14/site-packages/emaki_installer/runtime.py
+/usr/lib/python3.14/site-packages/emaki_installer/secureboot.py
 /usr/lib/python3.14/site-packages/emaki_installer/timezones.py
 /usr/lib/python3.14/site-packages/emaki_installer/update_errors.py
 /usr/lib/python3.14/site-packages/emaki_installer/worker.py
@@ -57,7 +61,6 @@
 /usr/share/emaki-installer/ui/assets/README.md
 /usr/share/emaki-installer/ui/assets/ZoneData.js
 /usr/share/emaki-installer/ui/assets/generate-timezones.py
-/usr/share/emaki-installer/ui/assets/timezone-map.png
 /usr/share/emaki-installer/ui/shaders
 /usr/share/emaki-installer/ui/shell.qml
 /usr/share/emaki-installer/ui/ui-helper.py

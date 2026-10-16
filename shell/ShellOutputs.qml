@@ -20,6 +20,8 @@ Scope {
     property SessionStartup startup: null
     // Keep the optional authentication body's type graph behind the service loader.
     property var authenticationPrompt: null
+    // Welcome is open: held notices wait for it to close (ShellScene.showHeld).
+    property bool firstRunPresent: false
     readonly property var selectedScreens: requestedOutput ? screens.filter(s => s.name === requestedOutput) : screens
     readonly property var instances: variants.instances
     readonly property var focusedScreen: selectedScreens.find(s => s.name === niri.model?.focused_output) ?? OutputSelection.select(selectedScreens, "")
@@ -114,6 +116,7 @@ Scope {
             ShellScene {
                 id: scene
                 authenticationPrompt: outputs.authenticationPrompt?.scene === scene ? outputs.authenticationPrompt : null
+                firstRunPresent: outputs.firstRunPresent
                 shared: outputs.shared
                 niri: outputs.niri
                 skipIntro: outputs.startup?.skipIntro ?? false

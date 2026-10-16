@@ -55,8 +55,9 @@ DEFAULT_KEY = '668569956D2D747847D87D01F62680BE583363AC'
 STAMP_MAX_AGE = datetime.timedelta(hours=24)
 REQUIRED_RUNS = acceptance.REQUIRED_RUNS
 REQUIRED_SIZES = acceptance.REQUIRED_SIZES
-EMAKI_PACKAGES = ('emaki', 'emaki-apps', 'emaki-config', 'emaki-desktop', 'emaki-installer', 'emaki-keyring',
-                  'emaki-mirrorlist', 'emaki-nvidia', 'niri-emaki', 'quickshell-emaki', 'xdg-desktop-portal-gnome-emaki')
+EMAKI_PACKAGES = ('emaki', 'emaki-apps', 'emaki-config', 'emaki-desktop', 'emaki-font-iosevka', 'emaki-installer', 'emaki-keyring',
+                  'emaki-mirrorlist', 'emaki-nvidia', 'emaki-shim-signed', 'niri-emaki', 'quickshell-emaki',
+                  'xdg-desktop-portal-gnome-emaki')
 GITHUB_REPO = 'emakish/packages'
 GITHUB_DOWNLOAD = 'https://github.com/emakish/packages/releases/download'
 
@@ -749,8 +750,9 @@ def stop_gnupg(home, fakeroot=False):
 class Verifier:
     """Checks signatures against the public keys in git (packaging/emaki-keyring)."""
 
-    def __init__(self, keyring, trusted):
+    def __init__(self, keyring, trusted, revoked=None):
         self.keyring = Path(keyring)
+        self.revoked = Path(revoked) if revoked is not None else ROOT / 'packaging/emaki-keyring/emaki-revoked'
         self.trusted = [line.split(':')[0] for line in Path(trusted).read_text().split()
                         if line.strip() and ':' in line]
         self.temp = Path(tempfile.mkdtemp(prefix='emaki-verify-'))
@@ -762,28 +764,30 @@ class Verifier:
                         '--import', str(self.keyring)], check=True, capture_output=True)
 
     def verify(self, data_path, sig_path):
-        result = subprocess.run(['gpg', '--homedir', str(self.home), '--no-autostart', '--batch', '--status-fd',
-                                 '1', '--verify', str(sig_path), str(data_path)], capture_output=True, text=True)
-        valid = [line.split()[2] for line in result.stdout.splitlines() if line.startswith('[GNUPG:] VALIDSIG')]
-        primaries = [line.split()[-1] for line in result.stdout.splitlines()
-                     if line.startswith('[GNUPG:] VALIDSIG')]
-        return result.returncode == 0 and any(fpr in self.trusted for fpr in valid + primaries)
+        return self.signed_by(data_path, sig_path) is not None
 
     def signed_by(self, data_path, sig_path, revoked=()):
-        """The trusted primary fingerprint behind good signatures only, or None. Unlike verify(),
-        gpg's exit 0 is not enough: it also exits 0 with VALIDSIG for a signature by a revoked
-        key (REVKEYSIG) or an expired one, and a fingerprint in emaki-revoked counts as none."""
+        """Return the trusted primary fingerprint only for current, unrevoked signatures.
+
+        EXPKEYSIG/EXPSIG/REVKEYSIG describe the signer and the signature. KEYEXPIRED is not
+        checked: GnuPG prints it for any expired key on the certificate, also an old subkey
+        that did not make this signature (GnuPG doc/DETAILS)."""
         result = subprocess.run(['gpg', '--homedir', str(self.home), '--no-autostart', '--batch', '--status-fd',
                                  '1', '--verify', str(sig_path), str(data_path)], capture_output=True, text=True)
         status = [line.split()[1:] for line in result.stdout.splitlines() if line.startswith('[GNUPG:] ')]
         words = [fields[0] for fields in status if fields]
-        primaries = {fields[-1] for fields in status if fields[0] == 'VALIDSIG'}
+        valid = [fields for fields in status if fields and fields[0] == 'VALIDSIG']
+        primaries = {fields[-1] for fields in valid}
+        fingerprints = {fingerprint for fields in valid for fingerprint in (fields[1], fields[-1])}
+        revoked = set(revoked) | ({line.split(':')[0] for line in self.revoked.read_text().split()}
+                                  if self.revoked.is_file() else set())
         if (result.returncode or not words.count('GOODSIG') or words.count('GOODSIG') != words.count('NEWSIG')
-                or set(words) & {'BADSIG', 'ERRSIG', 'EXPSIG', 'EXPKEYSIG', 'REVKEYSIG', 'KEYREVOKED'}
+                or set(words) & {'BADSIG', 'ERRSIG', 'EXPSIG', 'EXPKEYSIG', 'REVKEYSIG', 'KEYREVOKED',
+                                 'SIGEXPIRED', 'NO_PUBKEY'}
                 or len(primaries) != 1):
             return None
         primary = primaries.pop()
-        return primary if primary in self.trusted and primary not in revoked else None
+        return primary if primary in self.trusted and not fingerprints & revoked else None
 
     def close(self):
         stop_gnupg(self.home)
@@ -916,7 +920,7 @@ class Publisher:
     @property
     def verifier(self):
         if self._verifier is None:
-            self._verifier = Verifier(self.keyring, self.trusted)
+            self._verifier = Verifier(self.keyring, self.trusted, getattr(self.args, 'revoked', None))
         return self._verifier
 
     def close(self):
@@ -1967,7 +1971,7 @@ def key_verifies(publisher, armored, image, signature):
     with tempfile.TemporaryDirectory() as temp:
         path = Path(temp) / 'key.asc'
         path.write_bytes(armored)
-        verifier = Verifier(path, publisher.trusted)
+        verifier = Verifier(path, publisher.trusted, getattr(publisher.args, 'revoked', None))
         try:
             return verifier.verify(image, signature)
         finally:
@@ -2421,7 +2425,7 @@ def iso_add_sources(publisher, version):
             old_missing_records = iso_sources.validate_missing(old_missing_path, closure_path, expected)
             records, objects = iso_sources.validate(
                 args.arch_sources, closure_path, root, expected_inventory=expected,
-                missing_sources=args.missing_sources)
+                missing_sources=args.missing_sources, allow_missing=True)
             missing = iso_sources.validate_missing(args.missing_sources, closure_path, expected)
         # Existing records and still-missing bases are immutable. A base is added whole,
         # including every split package covered by the original missing-source declaration.
@@ -2552,7 +2556,7 @@ def write_stamp(results, path, backend, machines=acceptance.MACHINES):
 
 def sign_directory(args):
     signer = Signer(args.key, args.signing_home, args.dry_run)
-    verifier = Verifier(args.keyring, args.trusted)
+    verifier = Verifier(args.keyring, args.trusted, getattr(args, 'revoked', None))
     try:
         for path in sorted(Path(args.directory).glob('*.pkg.tar.zst')):
             signature = Path(str(path) + '.sig')
@@ -2571,7 +2575,7 @@ def sign_directory(args):
 
 
 def revoked_keys(args):
-    """Fingerprints in emaki-revoked: never a valid signer of an exception."""
+    """Fingerprints in emaki-revoked: never a valid signer of published artifacts or exceptions."""
     path = Path(args.revoked)
     return {line.split(':')[0] for line in path.read_text().split()} if path.is_file() else set()
 
@@ -2611,7 +2615,7 @@ def exception_command(args):
         directory.mkdir(parents=True, exist_ok=True)
         with open(path, 'xb') as stream:
             stream.write(release_exceptions.encode(record))
-        signer, verifier = Signer(args.key, args.signing_home), Verifier(args.keyring, args.trusted)
+        signer, verifier = Signer(args.key, args.signing_home), Verifier(args.keyring, args.trusted, getattr(args, 'revoked', None))
         try:
             try:
                 signer.sign(path)
@@ -2644,7 +2648,7 @@ def exception_command(args):
                                        'reason': args.reason}, indent=1, sort_keys=True) + '\n')
         say(f'exception {args.id} revoked: {revoked}. Commit it; it passes nothing from now on.')
         return
-    verifier = Verifier(args.keyring, args.trusted)
+    verifier = Verifier(args.keyring, args.trusted, getattr(args, 'revoked', None))
     try:
         def status(record, error):
             return error or release_exceptions.problem(

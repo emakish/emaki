@@ -11,7 +11,7 @@ namespace emaki::sudo_channel {
 // output.
 inline constexpr std::uint32_t Magic = 0x454D5355;
 inline constexpr std::uint16_t Version = 3;
-inline constexpr std::size_t MaxBody = 8192;
+inline constexpr std::size_t MaxBody = 16384;
 inline constexpr std::size_t MaxPassword = 1024;
 inline constexpr std::uint32_t Session = UINT32_MAX;
 inline constexpr std::uint32_t TurnsFlag = 0x80000000;

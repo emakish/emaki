@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -47,8 +49,9 @@ Scope {
         id: job
         onCompleted: value => {
             log.state = value.state;
-            if (Array.isArray(value.entries))
-                log.entries = value.entries;
+            const entries = job.list(value.entries);
+            if (entries)
+                log.entries = entries;
         }
         onBusyChanged: {
             if (!busy)

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """C11, on the host: launcher glass on the REAL Qt path (capture → ShaderEffectSource → dock.frag).
   python3 tests/vm/check-launcher-glass.py <desktop> <run-directory>
 login.sh (glass_scene) supplies screenshots: empty workspace over wallpaper-neo-pink,

@@ -1,4 +1,6 @@
 #!/bin/sh
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # niri entry point without a personal config: /etc/niri/config.kdl (niri/system.kdl) and
 # “niri (Emaki)”. Installation paths are redirected to a copy of niri/ in a temporary directory;
 # system and home directories are left alone. Fork checks run only if niri-emaki is available

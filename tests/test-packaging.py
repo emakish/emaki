@@ -66,6 +66,95 @@ class MetadataTests(unittest.TestCase):
     def setUpClass(cls):
         cls.recipes = {p.parent.name: metadata(p) for p in sorted(ROOT.glob('packaging/*/PKGBUILD'))}
 
+    def test_iosevka_ships_all_glyph_notices(self):
+        recipe = self.recipes['emaki-font-iosevka']
+        self.assertTrue({'OFL-1.1-no-RFN', 'OFL-1.1-RFN', 'MIT', 'Apache-2.0',
+                         'CC-BY-4.0', 'Unlicense', 'Bitstream-Vera'} <= set(recipe['license']))
+        sources = recipe['source']
+        self.assertEqual(len(sources), len(recipe['sha256sums']))
+        names = [source.split('::', 1)[0] for source in sources[1:]]
+        self.assertEqual(len(names), 17)
+        self.assertNotIn('SKIP', recipe['sha256sums'])
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            src, pkg = root / 'src', root / 'pkg'
+            src.mkdir()
+            for name in [*names, 'LICENSE.md', 'README.md']:
+                (src / name).write_text('Complete notice: ' + name + '\n')
+            for style in ('Regular', 'Bold', 'Italic', 'BoldItalic'):
+                (src / f'IosevkaNerdFontMono-{style}.ttf').write_bytes(style.encode())
+            result = run(['bash', '-eu', '-c',
+                          'source "$1"; srcdir=$2; pkgdir=$3; package', 'stage',
+                          str(ROOT / 'packaging/emaki-font-iosevka/PKGBUILD'), str(src), str(pkg)])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            expected = {line for line in (ROOT / 'packaging/emaki-font-iosevka/expected-files.list')
+                        .read_text().splitlines() if line and not line.startswith('#')}
+            self.assertEqual({'/' + str(f.relative_to(pkg)) for f in pkg.rglob('*') if f.is_file()}, expected)
+            for name in [*names, 'LICENSE.md', 'README.md']:
+                self.assertEqual((pkg / 'usr/share/licenses/emaki-font-iosevka' / name).read_bytes(),
+                                 (src / name).read_bytes())
+
+    def test_config_requires_matching_window_position_fork(self):
+        niri = self.recipes['niri-emaki']
+        version = niri['pkgver'][0] + '-' + niri['pkgrel'][0]
+        dependency = 'niri-emaki=' + version
+        self.assertEqual([value for value in self.recipes['emaki-config']['depends']
+                          if value.startswith('niri-emaki')], [dependency])
+        self.assertIn(dependency, self.recipes['emaki']['depends'])
+        self.assertIn('0014-report-tiled-window-positions.patch', niri['source'])
+
+    def test_niri_rebase_comment_matches_shipped_patches(self):
+        sources = self.recipes['niri-emaki']['source']
+        self.assertEqual(len([source for source in sources if source.endswith('.patch')]), 14)
+        self.assertIn('Rebase all fourteen patches on updates.',
+                      (ROOT / 'packaging/niri-emaki/PKGBUILD').read_text())
+
+    def test_roadmap_records_enabled_alongside_release(self):
+        roadmap = (ROOT / 'ROADMAP.md').read_text()
+        old = roadmap.index('*Update 2026-10-11:* the retained 0.6 alongside')
+        current = roadmap.index('*Update 2026-10-13:* install alongside Windows is enabled in 0.8.0', old)
+        self.assertIn('`14ad386`', roadmap[current:current + 400])
+        self.assertIn('release-key-signed exception', roadmap[current:current + 600])
+
+    def test_manifest_names_the_tree_niri_version(self):
+        niri = self.recipes['niri-emaki']
+        version = niri['pkgver'][0] + '-' + niri['pkgrel'][0]
+        manifest = (ROOT / 'MANIFEST.md').read_text()
+        self.assertEqual(re.findall(r'\((\d+\.\d+-\d+) in the tree;', manifest), [version])
+
+    @unittest.skipUnless(shutil.which('pacman'), 'needs pacman for fork dependency resolution')
+    def test_config_rejects_forks_without_window_positions(self):
+        dependencies = [value for value in self.recipes['emaki-config']['depends']
+                        if value.startswith('niri-emaki')]
+        self.assertEqual(len(dependencies), 1)
+        niri = self.recipes['niri-emaki']
+        current = niri['pkgver'][0] + '-' + niri['pkgrel'][0]
+        # Check the actual package resolver against isolated installed databases.
+        # No package transaction or host database is involved.
+        with tempfile.TemporaryDirectory(prefix='emaki-fork-dependency-') as temporary:
+            root = Path(temporary)
+            local = root / 'db/local'
+            local.mkdir(parents=True)
+            (local / 'ALPM_DB_VERSION').write_text('9\n')
+            config = root / 'pacman.conf'
+            config.write_text('[options]\nArchitecture = x86_64\n')
+            for version, accepted in (('26.04-20', False), ('26.04-22', False),
+                                      ('26.04-23', False),
+                                      ('26.04-24', False),
+                                      (current, True)):
+                with self.subTest(version=version):
+                    package = local / ('niri-emaki-' + version)
+                    package.mkdir()
+                    (package / 'desc').write_text(
+                        '%NAME%\nniri-emaki\n\n%VERSION%\n' + version
+                        + '\n\n%ARCH%\nx86_64\n\n')
+                    result = run(['pacman', '--config', str(config), '--dbpath',
+                                  str(root / 'db'), '-T', *dependencies], timeout=20)
+                    shutil.rmtree(package)
+                    self.assertEqual(result.returncode, 0 if accepted else 127,
+                                     result.stdout + result.stderr)
+                    self.assertEqual(result.stdout.splitlines(), [] if accepted else dependencies)
+
     def test_config_hooks_create_shell_generation_with_fixed_interpreter(self):
         hooks = ROOT / 'packaging/emaki-config/emaki-config.install'
         # Intercept only the exact installed commands: no fixture reaches the host.
@@ -75,8 +164,8 @@ class MetadataTests(unittest.TestCase):
             /usr/share/libalpm/scripts/emaki-system-migrate() { :; }
             systemctl() { printf 'systemctl'; printf ' <%s>' "$@"; printf '\\n'; }
             source "$1"
-            post_install 0.8.1-1
-            post_upgrade 0.8.1-2 0.8.1-1
+            post_install 0.9.0-1
+            post_upgrade 0.9.0-2 0.9.0-1
         '''
         result = run(['/bin/bash', '-eu', '-c', harness, 'hooks', str(hooks)],
                      env={**os.environ, 'PATH': '/nonexistent'})
@@ -106,7 +195,7 @@ class MetadataTests(unittest.TestCase):
                     /usr/share/libalpm/scripts/emaki-system-migrate() { echo mark-fresh; }
                     systemctl() { printf 'systemctl'; printf ' <%s>' "$@"; printf '\\n'; }
                     source "$1"
-                    "$2" 0.8.1-2 0.8.1-1
+                    "$2" 0.9.0-2 0.9.0-1
                 '''
                 result = run(['/bin/bash', '-eu', '-c', harness, 'hooks', str(hooks), hook],
                              env={**os.environ, 'PATH': '/nonexistent'})
@@ -128,27 +217,28 @@ class MetadataTests(unittest.TestCase):
         self.assertIn('auth       substack    emaki-greetd-auth', (ROOT / 'greetd/pam').read_text())
         self.assertIn('auth       include     system-local-login', (ROOT / 'greetd/pam-auth').read_text())
 
-    def test_release_versions(self):
+    def test_release_versions(self, marker_release='1'):
+        # test_qt612_activation reruns this on an activated tree, where the marker release may have moved.
         for name in ('emaki', 'emaki-config', 'emaki-desktop', 'emaki-apps', 'emaki-keyring', 'emaki-mirrorlist', 'emaki-installer', 'emaki-nvidia', 'emaki-sudo-key'):
             with self.subTest(package=name):
                 info = self.recipes[name]
                 self.assertEqual(info['pkgname'], [name])
-                self.assertEqual(info['pkgver'], ['0.8.1'])
-                self.assertEqual(info['pkgrel'], ['1'])
+                self.assertEqual(info['pkgver'], ['0.9.0'])
+                self.assertEqual(info['pkgrel'], [marker_release] if name == 'emaki' else ['1'])
                 # emaki-installer also ships the zone map (ODbL) and the GRUB unlock-screen fonts (DejaVu, Bitstream Vera);
                 # emaki-config also ships Plymouth's password prompt pictures (GPL-2.0-or-later).
                 self.assertEqual(info['license'], ['GPL-3.0-or-later', 'ODbL-1.0', 'Bitstream-Vera']
-                                 if name == 'emaki-installer' else ['GPL-3.0-or-later', 'Bitstream-Vera', 'GPL-2.0-or-later']
+                                 if name == 'emaki-installer' else ['GPL-3.0-or-later', 'Bitstream-Vera', 'OFL-1.1', 'GPL-2.0-or-later']
                                  if name == 'emaki-config' else ['GPL-3.0-or-later']
                                  if name == 'emaki-nvidia' else ['GPL-3.0-or-later'])
         self.assertTrue({'kimageformats', 'libjxl'} <= set(self.recipes['emaki-config']['depends']))
         cargo = tomllib.loads((ROOT / 'Cargo.toml').read_text())
-        self.assertEqual(cargo['workspace']['package']['version'], '0.8.1')
+        self.assertEqual(cargo['workspace']['package']['version'], '0.9.0')
         packages = tomllib.loads((ROOT / 'Cargo.lock').read_text())['package']
-        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.8.1'})
+        self.assertEqual({p['version'] for p in packages if p['name'].startswith('emaki-')}, {'0.9.0'})
         self.assertEqual(self.recipes['emaki']['depends'], [
-            'emaki-config=0.8.1-1', 'emaki-desktop=0.8.1-1', 'niri-emaki=26.04-22',
-            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.8.1-1', 'emaki-mirrorlist>=0.8.1-1'])
+            'emaki-config=0.9.0-1', 'emaki-desktop=0.9.0-1', 'niri-emaki=26.04-28',
+            'quickshell-emaki=0.3.1-' + self.recipes['quickshell-emaki']['pkgrel'][0], 'emaki-keyring>=0.9.0-1', 'emaki-mirrorlist>=0.9.0-1'])
 
     @unittest.skipUnless(shutil.which('pacman'), 'needs pacman for removal dependency resolution')
     def test_obs_removal_preview_keeps_base_packages(self):
@@ -266,16 +356,18 @@ class MetadataTests(unittest.TestCase):
             'etc/niri/config.kdl', 'etc/xdg/hypr/hyprlock.conf', 'etc/xdg/fastfetch/config.jsonc',
             'etc/xdg/kwalletrc', 'etc/xdg/mimeapps.list', 'etc/xdg/kdeglobals', 'etc/xdg/dolphinrc', 'etc/xdg/qt6ct/qt6ct.conf',
             'etc/xdg/menus/emaki-applications.menu', 'etc/xdg/xdg-desktop-portal/niri-portals.conf',
-            'etc/mkinitcpio.conf.d/50-emaki-splash.conf', 'etc/default/grub.d/50-emaki-splash.cfg'})
+            'etc/mkinitcpio.conf.d/50-emaki-splash.conf', 'etc/default/grub.d/50-emaki-splash.cfg',
+            'etc/zsh/emaki.zsh', 'etc/zsh/zshenv'})
         for package in ('emaki-config', 'emaki-desktop'):
             self.assertFalse(set(self.recipes[package]['depends']) & {
                 'gnome-keyring', 'polkit-gnome', 'polkit-kde-agent', 'adwaita-cursors',
                 'adwaita-fonts'})
+        # Other global shell configurations can remain installed.
         self.assertEqual(info['conflicts'], ['emaki-core'])
         self.assertEqual(set(info['makedepends']), {'git', 'make', 'python', 'rust', 'qt6-shadertools', 'cmake', 'gcc', 'pkgconf'})
         self.assertEqual(set(info['checkdepends']), {'niri', 'nodejs'})
         required = {
-            'niri-emaki>=26.04-20', 'quickshell-emaki>=0.3.1-12', 'python', 'python-gobject', 'python-pillow',
+            'niri-emaki=26.04-28', 'quickshell-emaki>=0.3.1-13', 'python', 'python-gobject', 'python-pillow',
             'gtk3', 'wpaperd', 'wl-clipboard', 'cliphist', 'udiskie', 'kitty', 'grim', 'gstreamer', 'gst-plugin-pipewire', 'gst-plugins-base',
             'gst-plugins-base-libs', 'gst-plugins-good', 'gst-plugins-bad', 'libglvnd', 'ffmpeg',
             'fastfetch>=2.68.1', 'imagemagick', 'hyprlock', 'playerctl', 'fuzzel', 'qt6ct',
@@ -283,12 +375,13 @@ class MetadataTests(unittest.TestCase):
             'power-profiles-daemon', 'networkmanager', 'bluez', 'upower', 'pipewire', 'wireplumber', 'rtkit',
             'pipewire-pulse', 'wlsunset', 'greetd', 'greetd-regreet', 'kwallet-pam', 'kwallet>=6.30',
             'coreutils', 'dbus', 'procps-ng', 'systemd>=256', 'util-linux', 'bash',
+            'zsh', 'zsh-autosuggestions', 'zsh-syntax-highlighting',
         }
         self.assertTrue(required <= set(info['depends']), required - set(info['depends']))
         self.assertNotIn('obs-studio', info['depends'])
         recipe = (ROOT / 'packaging/emaki-config/PKGBUILD').read_text()
         for text in ('export _emaki_commit', 'source_archive.py" checkout', '"$_emaki_commit"',
-                     'cargo fetch --locked', '_emaki_make build', '_emaki_make check',
+                     '_emaki_make prepare-core', '_emaki_make build', '_emaki_make check',
                      '_emaki_make install install-niri-emaki DESTDIR="$pkgdir"',
                      'diff -u packaging/emaki-config/expected-files.list'):
             self.assertIn(text, recipe)
@@ -334,7 +427,7 @@ class MetadataTests(unittest.TestCase):
         self.assertIn('swayidle', desktop['depends'])
         self.assertFalse(any(d.startswith('niri-emaki:') for d in desktop['optdepends']))
         niri = self.recipes['niri-emaki']
-        self.assertEqual((niri['pkgver'], niri['pkgrel']), (['26.04'], ['21']))
+        self.assertEqual((niri['pkgver'], niri['pkgrel']), (['26.04'], ['28']))
         self.assertTrue({'niri>=26.04', 'libdisplay-info.so=3-64', 'libinput.so=10-64',
                          'libseat.so=1-64', 'mesa'} <= set(niri['depends']))
         self.assertIn('export NIRI_BUILD_COMMIT="v$pkgver+emaki.$pkgrel"',
@@ -574,6 +667,37 @@ class MetadataTests(unittest.TestCase):
                                   str(ROOT / 'packaging/snapguard/PKGBUILD'), temporary, commit])
                     self.assertEqual(result.returncode, expected, result.stderr)
 
+    def test_shim_recipe_pins_fedoras_signed_build(self):
+        info = self.recipes['emaki-shim-signed']
+        self.assertEqual((info['pkgname'], info['pkgver'], info['pkgrel'], info['arch'], info['license']),
+                         (['emaki-shim-signed'], ['16.1+fedora+7'], ['2'], ['x86_64'],
+                          ['BSD-3-Clause', 'BSD-2-Clause', 'BSD-2-Clause-Patent', 'OpenSSL']))
+        # Fedora's koji RPM and shim's licence at the same upstream tag, each pinned by checksum.
+        self.assertEqual(info['source'], [
+            'https://kojipkgs.fedoraproject.org/packages/shim/16.1/7/x86_64/shim-x64-16.1-7.x86_64.rpm',
+            'shim-16.1-COPYRIGHT::https://raw.githubusercontent.com/rhboot/shim/16.1/COPYRIGHT',
+            'https://github.com/rhboot/shim/releases/download/16.1/shim-16.1.tar.bz2',
+            'notices.py', 'check-signatures.sh', 'expected-files.list'])
+        self.assertEqual(info['sha256sums'][:2], [
+            '0a119f3488e5da27ca55c1864ee8e131afa5ecf27689385ba09b805eb00dd608',
+            '15edf527919ddcb2f514ab9d16ad07ef219e4bb490e0b79560be510f0c159cc2'])
+        self.assertNotIn('SKIP', info['sha256sums'])
+        self.assertEqual((info['depends'], info['makedepends'], info['checkdepends']), ([], ['sbsigntools', 'python'], []))
+        # No scriptlet: placing the loaders on the EFI system partition is the installer's step.
+        self.assertEqual((info['install'], info['backup']), ([], []))
+        recipe = (ROOT / 'packaging/emaki-shim-signed/PKGBUILD').read_text()
+        self.assertRegex(recipe, r"(?m)^options=\('!strip' '!debug'\)$")
+        # The shipped bytes are pinned too, and check() feeds sbverify's listing to the gate.
+        self.assertIn('351e131d3c4a636704e9cae7d1296baf8a05beca9922cfebbfa48933c9bf1ad3  shimx64.efi\n', recipe)
+        self.assertIn('ed4442fa88cccba3a9e6a32d21a8f4c56bf5aab184f1fb9aadde8d3a9d04dc27  mmx64.efi\n', recipe)
+        self.assertRegex(recipe, r'(?m)^check\(\) \{\n(?:.*\n)*?'
+                                 r'    bash "\$srcdir/check-signatures\.sh" shim shimx64\.efi "\$srcdir/shimx64\.sbverify" \|\| return 1\n'
+                                 r'    bash "\$srcdir/check-signatures\.sh" signed mmx64\.efi "\$srcdir/mmx64\.sbverify" \|\| return 1\n\}')
+        # sbsigntools comes from Arch, so build.sh installs it with --syncdeps.
+        build = (ROOT / 'packaging/build.sh').read_text()
+        self.assertRegex(build, r'(?s)\nORDER=\([^)]*\semaki-shim-signed\s')
+        self.assertRegex(build, r'\nSYNCDEPS=\([^)]*\bemaki-shim-signed\b')
+
     def test_local_source_checksums(self):
         for name, info in self.recipes.items():
             for algorithm, field in [('sha256', 'sha256sums'), ('sha512', 'sha512sums'), ('blake2b', 'b2sums')]:
@@ -719,6 +843,67 @@ def stub_repository(directory, name, stubs):
     subprocess.run(['repo-add', '-q', str(directory / f'{name}.db.tar.gz'),
                     *sorted(map(str, directory.glob('*.pkg.tar.zst')))], check=True, capture_output=True)
     return directory
+
+
+class ShimSignatureGateTests(unittest.TestCase):
+    """The emaki-shim-signed check() gate decides from saved `sbverify --list` output."""
+    SCRIPT = ROOT / 'packaging/emaki-shim-signed/check-signatures.sh'
+    FIXTURES = ROOT / 'tests/fixtures/sbverify'
+
+    def gate(self, kind, name, text):
+        with tempfile.TemporaryDirectory(prefix='emaki-shim-gate-') as temporary:
+            listing = Path(temporary) / 'sbverify.txt'
+            listing.write_text(text)
+            return run(['bash', str(self.SCRIPT), kind, name, str(listing)])
+
+    def fixture(self, name):
+        return (self.FIXTURES / name).read_text()
+
+    def test_fedora_shim_with_both_microsoft_signatures_passes(self):
+        # sbsigntools 0.9.5 output for shimx64.efi from shim-x64-16.1-7.x86_64.rpm.
+        result = self.gate('shim', 'shimx64.efi', self.fixture('shimx64-16.1-7.txt'))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout,
+                         'shimx64.efi: signed by Microsoft Corporation UEFI CA 2011 and Microsoft UEFI CA 2023\n')
+
+    def test_shim_missing_either_microsoft_signature_fails(self):
+        for fixture, missing in (('shimx64-ca2023-only.txt', 'Microsoft Corporation UEFI CA 2011'),
+                                 ('shimx64-ca2011-only.txt', 'Microsoft UEFI CA 2023')):
+            with self.subTest(fixture=fixture):
+                result = self.gate('shim', 'shimx64.efi', self.fixture(fixture))
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertEqual(result.stderr, f'shimx64.efi is not signed by {missing}. Firmware that trusts '
+                                                'only that certificate would refuse it. Not packaging it.\n')
+
+    def test_certificate_lines_do_not_count_as_image_issuers(self):
+        # Only the "image signature issuers" entries count, not a certificate's subject or issuer.
+        text = self.fixture('shimx64-ca2011-only.txt') + (
+            '   issuer:  /C=US/O=Microsoft Corporation/CN=Microsoft UEFI CA 2023\n'
+            ' - subject: /C=US/O=Microsoft Corporation/CN=Microsoft UEFI CA 2023\n')
+        result = self.gate('shim', 'shimx64.efi', text)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn('not signed by Microsoft UEFI CA 2023', result.stderr)
+        # A longer name that merely contains the required one is not that certificate.
+        text = self.fixture('shimx64-16.1-7.txt').replace('CN=Microsoft UEFI CA 2023\n', 'CN=Microsoft UEFI CA 2023 test\n', 1)
+        self.assertEqual(self.gate('shim', 'shimx64.efi', text).returncode, 1)
+
+    def test_unsigned_files_fail(self):
+        for kind, name in (('shim', 'shimx64.efi'), ('signed', 'mmx64.efi')):
+            with self.subTest(kind=kind):
+                result = self.gate(kind, name, '')
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertEqual(result.stderr, f'{name} carries no image signature, so firmware with Secure Boot '
+                                                'on would refuse it. Not packaging it.\n')
+
+    def test_signed_mok_manager_passes(self):
+        result = self.gate('signed', 'mmx64.efi', self.fixture('mmx64-16.1-7.txt'))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, 'mmx64.efi: signed by fedoraca\n')
+
+    def test_usage_errors(self):
+        self.assertEqual(run(['bash', str(self.SCRIPT), 'shim', 'shimx64.efi']).returncode, 2)
+        self.assertEqual(self.gate('other', 'shimx64.efi', self.fixture('shimx64-16.1-7.txt')).returncode, 2)
+        self.assertEqual(run(['bash', str(self.SCRIPT), 'shim', 'shimx64.efi', '/nonexistent/list']).returncode, 2)
 
 
 class AppstreamUpkeepTests(unittest.TestCase):
@@ -1309,6 +1494,11 @@ class OsReleaseTests(unittest.TestCase):
 class PayloadTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        # Match makepkg's preparation phase even when this suite runs on its own.
+        # Cargo honors CARGO_NET_OFFLINE and vendored source configuration here.
+        prepared = run(['make', 'prepare-core'])
+        if prepared.returncode:
+            raise AssertionError(prepared.stdout + prepared.stderr)
         cls.temporary = tempfile.TemporaryDirectory(prefix='emaki-payload-')
         cls.addClassCleanup(cls.temporary.cleanup)
         cls.base = Path(cls.temporary.name)
@@ -1329,6 +1519,17 @@ class PayloadTests(unittest.TestCase):
         license_path = cls.dest / 'usr/share/licenses/emaki-config/LICENSE'
         license_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / 'LICENSE', license_path)
+        # make install stages project files; package() adds the generated Rust notices.
+        spec = __import__('importlib.util', fromlist=['util'])
+        module_spec = spec.spec_from_file_location('rust_notice_fixture', ROOT / 'tests/test-rust-notices.py')
+        module = spec.module_from_spec(module_spec)
+        module_spec.loader.exec_module(module)
+        fixture = module.Notices()
+        fixture.setUp()
+        try:
+            (license_path.parent / 'THIRD-PARTY-NOTICES').write_text(fixture.render())
+        finally:
+            fixture.doCleanups()
 
     def test_program_helpers_import_the_installed_restore_backend(self):
         directory = self.dest / 'usr/libexec/emaki'
@@ -1426,13 +1627,15 @@ assert callable(runpy.run_path(str(directory / 'emaki-programs-aur'))['preinstal
                     'usr/libexec/emaki/emaki-programs-aur', 'usr/libexec/emaki/emaki-programs-undo',
                     'usr/lib/emaki/emaki-wifi-recover', 'usr/libexec/emaki/emaki-wifi-password',
                     'usr/libexec/emaki/emaki-charge-limit', 'usr/libexec/emaki/emaki-sudo-broker',
-                    'usr/libexec/emaki/emaki-settings-users-root')
+                    'usr/libexec/emaki/emaki-settings-users-root',
+                    # mkinitcpio 42 runs only executable post hooks (run_post_hooks: [[ -x ]]).
+                    'usr/lib/initcpio/post/emaki-secureboot')
                 readonly = path.relative_to(self.dest).as_posix() in ('etc/sudoers.d/10-emaki-wheel', 'etc/sudoers.d/20-emaki-pam', 'usr/share/emaki/defaults/wheel')
                 self.assertEqual(mode, 0o440 if readonly else 0o755 if executable else 0o644, str(path))
         binary = self.dest / 'usr/bin/emaki'
         # Keep this payload check independent of the host's installed channel helper.
         self.assertEqual(run([str(binary), 'version'], env={**os.environ, 'PATH': ''}).stdout,
-                         'emaki 0.8.1 [channel: unknown]\n')
+                         'emaki 0.9.0 [channel: unknown]\n')
         result = run(['python3', 'scripts/core-package.py', 'verify-build-paths', '--binary', str(binary)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -1471,7 +1674,7 @@ assert callable(runpy.run_path(str(directory / 'emaki-programs-aur'))['preinstal
     def test_defaults_and_presets(self):
         commit = run(['git', 'rev-parse', 'HEAD']).stdout.strip()
         self.assertEqual((self.dest / 'usr/lib/emaki-release').read_text(),
-                         f'VERSION=0.8.1\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
+                         f'VERSION=0.9.0\nLABEL=alpha\nEMAKI_COMMIT={commit}\n')
         expected = {'greetd.service', 'NetworkManager.service', 'bluetooth.service', 'grub-btrfsd.service',
                     'snapper-timeline.timer', 'snapper-cleanup.timer', 'fstrim.timer', 'paccache.timer',
                     'emaki-refresh-mirrors.timer', 'emaki-wifi-recovery.service', 'emaki-sudo.service',
@@ -1487,7 +1690,12 @@ assert callable(runpy.run_path(str(directory / 'emaki-programs-aur'))['preinstal
         qt = configparser.ConfigParser()
         qt.read(skel / 'qt6ct/qt6ct.conf')
         self.assertTrue(qt.getboolean('Appearance', 'custom_palette'))
-        self.assertEqual(qt['Appearance']['color_scheme_path'], '/usr/share/emaki/qt6ct/emaki.conf')
+        # The scheme the session writes in the chosen accent (qt6ct expands ~), DECISIONS 2026-10-15.
+        self.assertEqual(qt['Appearance']['color_scheme_path'], '~/.local/state/emaki/accent/qt6ct.conf')
+        # zsh's defaults are read from /etc/zsh at run time, never seeded into homes (0.9.0).
+        for name in ('emaki.zsh', 'zshenv'):
+            self.assertEqual((self.dest / 'etc/zsh' / name).read_bytes(), (ROOT / 'zsh' / name).read_bytes(), name)
+        self.assertFalse([p for p in (self.dest / 'etc/skel').rglob('*') if p.name.startswith('.z')])
         self.assertEqual((self.dest / 'usr/share/emaki/grub/background.png').read_bytes(),
                          (ROOT / 'art/grub/background.png').read_bytes())
         for staged, source in (('usr/lib/emaki/os-release', 'os-release/os-release'),
@@ -1547,8 +1755,16 @@ assert callable(runpy.run_path(str(directory / 'emaki-programs-aur'))['preinstal
         listed = set((ROOT / 'packaging/emaki-config/expected-files.list').read_text().splitlines())
         templates = sorted(p for p in listed if p.startswith('/etc/skel/'))
         self.assertTrue(templates)
+        # qt6ct's names the scheme the session writes in the chosen accent, not a package path
+        # (DECISIONS 2026-10-15); the session rewrites it at every start.
+        session_written = {'/etc/skel/.config/qt6ct/qt6ct.conf': '~/.local/state/emaki/accent/qt6ct.conf'}
         for template in templates:
-            named = re.findall(r'/usr/[^\s"\']+', (self.dest / template.lstrip('/')).read_text())
+            text = (self.dest / template.lstrip('/')).read_text()
+            named = re.findall(r'/usr/[^\s"\']+', text)
+            if template in session_written:
+                self.assertEqual(named, [], template)
+                self.assertIn(session_written[template], text)
+                continue
             self.assertTrue(named, template)
             for path in named:
                 self.assertTrue(path in listed, f'{template} names {path}, which the package does not ship')

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -132,40 +134,69 @@ ShellRoot {
     }
     function finish(): void {
         check(clears >= plans, "password fields receive a clear signal after every plan acknowledgement");
-        // The shipped partition editor command keeps the session's display for the root GParted.
-        check(JSON.stringify(shipped.partitionEditorCommand) === JSON.stringify(["sudo", "-n", "--preserve-env=WAYLAND_DISPLAY,XDG_RUNTIME_DIR", "gparted"]), "GParted is started with the session's Wayland display (" + JSON.stringify(shipped.partitionEditorCommand) + ")");
-        check(JSON.stringify(shipped.partitionEditorArgv) === JSON.stringify(shipped.partitionEditorCommand), "without a chosen disk GParted gets no device (" + JSON.stringify(shipped.partitionEditorArgv) + ")");
+        // The shipped controller starts with no partition changes.
+        check(JSON.stringify(shipped.partitionEdits) === JSON.stringify({
+            new_table: false,
+            delete: [],
+            create: []
+        }), "the shipped controller starts with no partition changes");
         if (!failed)
             console.log("SCENARIO_OK " + scenario);
         Qt.quit();
     }
-    // gparted-stale (transcripts/gparted-stale.json): Open GParted after the chosen USB disk was
-    // replugged under another name and another disk took its old one, then after it was unplugged.
-    readonly property string staleTarget: "/dev/disk/by-id/usb-Target_Disk_T1-0:0"
-    readonly property string staleRefusal: "The chosen disk changed or was unplugged, so GParted was not opened. Check the disk list and open GParted again."
-    function staleEditor(): void {
-        if (probes === 1 || probes === 4) {
-            // The list the person chooses from: the target disk, Manual, the warning's button.
-            controller.chooseDisk(staleTarget);
-            controller.mode = "manual";
-            controller.step = "disk";
-            controller.gpartedWarning = true;
-            const path = controller.selectedDisk.path;
-            controller.openGparted();
-            test.check(controller.session.probing && !controller.editorPending, "Open GParted on " + path + " probes the disks before GParted starts");
-        } else if (probes === 2) {
-            // The target is /dev/sdc now; /dev/sdb is another disk. The old name would open that one.
-            test.check(!controller.editorPending && controller.helperFailed && controller.helperMessage === staleRefusal, "a disk under another name is refused (" + controller.helperMessage + ")");
-            test.check(controller.step === "disk" && controller.diskId === staleTarget && controller.selectedDisk.path === "/dev/sdc", "the Disk page shows the refreshed list (" + controller.selectedDisk?.path + ")");
-            controller.gpartedWarning = true;
-            controller.openGparted();
-        } else if (probes === 3) {
-            test.check(!controller.editorPending && controller.helperMessage === staleRefusal, "an unplugged disk is refused (" + controller.helperMessage + ")");
-            test.check(controller.diskId === "" && !controller.selectedDisk, "the refreshed list has no chosen disk");
-            controller.probe();
-        } else if (probes === 5) {
-            test.check(controller.editorPending && JSON.stringify(controller.partitionEditorArgv) === JSON.stringify(["/usr/bin/true", "/dev/sdc"]), "GParted opens on the chosen disk under its current name (" + JSON.stringify(controller.partitionEditorArgv) + ")");
-        }
+    // manual-editor (transcripts/manual-editor.json): the partition editor on editor_fixture.py's
+    // disk (Windows' ESP, Windows, an old Linux, free space). The worker's replies to the plans are
+    // the real planner's (mock-worker.py), so the window's partitioning is what the review checks.
+    function editEditorDisk(): void {
+        const GIB = 1073741824;
+        controller.diskId = "/dev/vda";
+        controller.mode = "manual";
+        controller.step = "disk";
+        test.check(controller.manualAssignments && controller.step === "disk", "the fresh inventory opens the partition editor");
+        controller.next();
+        test.check(controller.step === "disk", "the editor cannot continue without / and /efi");
+        const disk = controller.selectedDisk;
+        // Windows needs its typed DELETE; anything else is refused, and Keep it forgets the request.
+        controller.deletePartition(disk.partitions[1]);
+        test.check(controller.deleteRequest?.id === "/dev/vda2" && controller.partitionEdits.delete.length === 0, "deleting Windows asks for DELETE first");
+        test.check(!controller.confirmDelete("delete") && controller.partitionEdits.delete.length === 0, "a wrong confirmation deletes nothing");
+        controller.deleteRequest = null;
+        // The old Linux goes, confirmed; its identity travels in the plan.
+        controller.deletePartition(disk.partitions[2]);
+        test.check(controller.confirmDelete("DELETE"), "the typed DELETE is taken");
+        test.check(JSON.stringify(controller.partitionEdits.delete) === JSON.stringify([
+            {
+                partition_id: "/dev/vda3",
+                confirm: {
+                    path: "/dev/vda3",
+                    start_bytes: disk.partitions[2].start_bytes,
+                    size_bytes: disk.partitions[2].size_bytes,
+                    system: "Linux"
+                }
+            }
+        ]), "the deletion names the partition and its system (" + JSON.stringify(controller.partitionEdits.delete) + ")");
+        let free = controller.editorRows.find(row => row.kind === "free");
+        test.check(free.start === disk.partitions[2].start_bytes, "the deleted partition's space is free");
+        test.check(controller.createPartition(free, "/", "btrfs", 12 * GIB, false) === "Root needs at least " + (controller.rootMinimum / GIB).toFixed(2) + " GiB.", "a too small root is refused in the window, the LUKS2 header counted until encryption is chosen");
+        test.check(controller.createPartition(free, "/", "btrfs", free.size + 1048576, false).indexOf("Only ") === 0, "a partition larger than the free space is refused");
+        test.check(controller.createPartition(free, "/", "btrfs", 40 * GIB, false) === "", "root is added");
+        free = controller.editorRows.find(row => row.kind === "free");
+        test.check(controller.createPartition(free, "/home", "ext4", 10 * GIB, true) === "", "/home is added");
+        test.check(!controller.mounts.find(m => m.partition_id === "new-2").encrypt, "without an encrypted root /home stays unencrypted");
+        free = controller.editorRows.find(row => row.kind === "free");
+        test.check(controller.createPartition(free, "swap", "swap", 2 * GIB, false) === "", "swap is added");
+        test.check(JSON.stringify(controller.editorRows.map(row => row.kind + (row.number || ""))) === JSON.stringify(["partition1", "partition2", "deleted3", "new3", "new4", "new5", "free"]), "new partitions take the free GPT entries in order (" + controller.editorRows.map(row => row.kind + (row.number || "")).join(" ") + ")");
+        // Removing a new partition frees its space; keeping the deleted one drops what was made there.
+        controller.removeNew("new-3");
+        test.check(controller.partitionEdits.create.length === 2 && !controller.mounts.some(m => m.partition_id === "new-3"), "Remove takes a new partition and its use out of the plan");
+        free = controller.editorRows.find(row => row.kind === "free" && row.start > disk.partitions[2].start_bytes);
+        test.check(controller.createPartition(free, "swap", "swap", 2 * GIB, false) === "", "swap is added again");
+        controller.next();
+        test.check(controller.step === "disk", "still no /efi: the editor cannot continue");
+        controller.assign(disk.partitions[0], "/efi", "vfat", false, false);
+        test.check(controller.manualReady && controller.needsAgreement, "the layout is complete; its deletion asks for the agreement");
+        controller.next();
+        test.check(controller.step === "encryption", "the editor's layout continues to Encryption");
     }
     function prepare(): void {
         controller.step = "you";
@@ -228,34 +259,24 @@ ShellRoot {
                 controller.step = "timezone";
                 return;
             }
-            if (scenario === "manual-reprobe" && probes === 2) {
-                // The probe Open GParted waits for: the same disk under the same name. GParted opens
-                // on the chosen disk, named by its device path, not the live stick.
-                test.check(controller.editorPending && JSON.stringify(controller.partitionEditorArgv) === JSON.stringify(["/usr/bin/true", "/dev/vda"]), "the partition editor gets the chosen disk after the fresh probe (" + JSON.stringify(controller.partitionEditorArgv) + ")");
-                return;
-            }
-            if (scenario === "gparted-stale" && probes <= 5) {
-                test.staleEditor();
-                return;
-            }
-            if (scenario === "manual-reprobe" && probes === 3) {
-                controller.mode = "manual";
-                controller.step = "disk";
-                test.check(!controller.locked && controller.manualAssignments && controller.mounts.length === 0, "assignment page open, unlocked and empty");
-                controller.next();
-                test.check(controller.step === "disk", "manual layout without / and /efi cannot continue");
-                controller.assign(controller.session.inventory.disks[0].partitions[0], "/efi", "vfat", false);
-                controller.assign(controller.session.inventory.disks[0].partitions[1], "/", "btrfs", true);
-                test.check(controller.mounts.length === 2, "manual assignments");
-                controller.next();
-                test.check(controller.step === "encryption", "manual layout with / and /efi continues");
+            if (scenario === "manual-editor") {
+                // A new probe forgets the editor's changes: the disk may not be the same any more.
+                test.check(JSON.stringify(controller.partitionEdits) === JSON.stringify({
+                    new_table: false,
+                    delete: [],
+                    create: []
+                }) && !controller.deleteRequest, "a probe drops the partition changes");
+                if (!controller.manualAssignments) {
+                    controller.diskId = "/dev/vda";
+                    controller.mode = "manual";
+                    controller.step = "disk";
+                    controller.next();
+                    test.check(controller.session.probing && !controller.manualAssignments, "opening the editor waits for fresh inventory");
+                    return;
+                }
+                test.editEditorDisk();
             }
             prepare();
-        } else if (scenario === "gparted-stale" && message.type === "reply" && !message.ok) {
-            // The worker refused the probe Open GParted waits for: nothing opens.
-            test.check(!controller.editorPending && controller.helperFailed && controller.helperMessage === "The disk list could not be refreshed, so GParted was not opened. Try again.", "a refused probe opens nothing (" + controller.helperMessage + ")");
-            controller.gpartedWarning = true;
-            controller.openGparted();
         } else if (scenario === "choices" && message.type === "reply" && message.timezone === "Europe/Berlin") {
             test.check(controller.zoneClock() !== "—:—", "selected zone has a ticking local clock");
             controller.chooseTimezone("UTC");
@@ -276,12 +297,12 @@ ShellRoot {
                 controller.confirm();
                 test.check(!controller.session.confirming, "errors cannot be confirmed");
                 finish();
-            } else if (scenario === "manual-reprobe" && plans === 1) {
-                controller.gpartedWarning = true;
-                controller.openGparted();
-                test.check(!controller.session.plan, "partition editor invalidates the old plan");
-                // The disk list can be minutes old: GParted waits for a fresh probe.
-                test.check(controller.session.probing && !controller.editorPending, "Open GParted probes the disks before GParted starts");
+            } else if (scenario === "manual-editor" && plans === 1) {
+                // The real planner reviewed the window's changes, each in plain words.
+                const summary = controller.session.plan.summary;
+                test.check((controller.session.plan.errors || []).length === 0 && summary.indexOf("Delete partition 3 (/dev/vda3, 40.00 GiB, ext4, Linux): all its files are lost.") >= 0 && summary.indexOf("Create partition 4: 10.00 GiB, ext4; use: /home.") >= 0 && summary.indexOf("Keep partition 1 (/dev/vda1, 0.50 GiB, vfat) and its files; use: /efi. It holds another system's startup files; its fallback loader will not be changed.") >= 0, "the planner accepts the window's partition changes (" + JSON.stringify(controller.session.plan.errors || summary) + ")");
+                controller.probe(false);
+                test.check(!controller.session.plan, "a new probe drops the reviewed plan");
             } else {
                 controller.confirm();
                 if (controller.needsAgreement)
@@ -297,6 +318,12 @@ ShellRoot {
             controller.send("cancel", {});
         } else if (["preflight-progress", "update-progress"].indexOf(scenario) >= 0 && (message.type === "progress" || message.type === "state")) {
             // The install page's current phase row: the worker's count, then the busy word again.
+            if (scenario === "update-progress") {
+                const snapshotMark = test.findItem(viewLoader.item, "phaseMarker-snapshot");
+                const snapshotStatus = test.findItem(viewLoader.item, "phaseSkipped-snapshot");
+                test.check(snapshotMark?.text === "—", "a skipped snapshot has no success tick");
+                test.check(snapshotStatus?.visible && snapshotStatus.text === "Skipped: snapshots need btrfs", "the skipped snapshot keeps its reason after the phase advances");
+            }
             const status = test.findItem(viewLoader.item, "phaseStatus");
             const activity = message.activity;
             const words = !activity ? "" : activity.name === "signatures" ? "Checking package signatures…" : "Downloading updates…";
@@ -360,7 +387,6 @@ ShellRoot {
         id: controller
         mockTransport: !test.socketMode
         helpersEnabled: false
-        partitionEditorCommand: ["/usr/bin/true"]
         catalog: ({
                 layouts: [],
                 zones: [],

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """C11, on the host: “terminal with text” wallpaper for checking grid artifacts on glass.
   python3 tests/vm/make-text-wall.py <file.png> [width height]
 Dark background with dense lines of light monospace text, like kitty output: fine,

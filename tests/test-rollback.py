@@ -26,6 +26,8 @@ loader.exec_module(m)
 sys.path[:0] = [str(ROOT / name) for name in ('installer', 'grub', 'upkeep')]
 from emaki_installer import boot
 sys.modules['emaki_boot.boot'] = boot
+from emaki_installer import secureboot
+sys.modules['emaki_boot.secureboot'] = secureboot
 from emaki_boot import refresh
 
 UUID = '11111111-2222-3333-4444-555555555555'
@@ -43,6 +45,11 @@ class Safety(unittest.TestCase):
         self.top = Path(self.tmp.name)
         self.run = self.top / 'run'
         self.run.mkdir()
+        self.proc = self.top / 'empty-proc'
+        self.proc.mkdir()
+        iterdir = Path.iterdir
+        self.enterContext(patch.object(Path, 'iterdir', autospec=True, side_effect=lambda path:
+                                       iterdir(self.proc if str(path) == '/proc' else path)))
         def private_open(path, *args, **kwargs):
             if str(path).startswith('/run/'):
                 path = self.run / Path(path).name
@@ -58,6 +65,144 @@ class Safety(unittest.TestCase):
             (root / 'boot/grub/grub.cfg').write_text(GRUB)
             (root / 'boot/vmlinuz-linux').write_bytes(b'kernel')
             (root / 'boot/initramfs-linux.img').write_bytes(b'initramfs')
+
+    def test_receipt_fsync_failure_allows_two_retries(self):
+        path = self.top / 'receipt.json'
+        m.write_record(path, {'state': 'old'})
+        with patch.object(m.os, 'fsync', side_effect=OSError('injected fsync error')):
+            with self.assertRaisesRegex(OSError, 'injected fsync error'):
+                m.write_record(path, {'state': 'failed'})
+        self.assertEqual(json.loads(path.read_text()), {'state': 'old'})
+        for state in ('retry one', 'retry two'):
+            with self.subTest(state=state):
+                m.write_record(path, {'state': state})
+                self.assertEqual(json.loads(path.read_text()), {'state': state})
+        self.assertEqual(list(self.top.glob('receipt*')), [path])
+
+    def test_receipt_ignores_interrupted_legacy_temporary_file(self):
+        path = self.top / 'receipt.json'
+        stale = path.with_suffix('.tmp')
+        stale.write_text('interrupted')
+        m.write_record(path, {'state': 'ready'})
+        self.assertEqual(json.loads(path.read_text()), {'state': 'ready'})
+        self.assertEqual(stale.read_text(), 'interrupted')
+
+    def test_previous_boot_pacman_lock_recovery_is_conservative(self):
+        lock = self.current / 'var/lib/pacman/db.lck'
+        proc = self.top / 'proc'
+        (proc / '1').mkdir(parents=True)
+        (proc / '1/comm').write_text('init\n')
+
+
+        def mapped(value):
+            path = Path(value)
+            if path == Path('/proc') or path.is_relative_to('/proc'):
+                return proc / path.relative_to('/proc')
+            return path
+
+        with patch.object(m, 'Path', side_effect=mapped):
+            for current_boot, live, unreadable in ((True, False, False), (False, True, False),
+                                                    (False, False, True), (False, False, False)):
+                with self.subTest(current_boot=current_boot, live=live, unreadable=unreadable):
+                    previous = UUID if current_boot else 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+                    stale = ''
+                    lock.write_text(stale)
+                    info = lock.stat()
+                    lock.with_name('emaki-package-lock.json').write_text(json.dumps({
+                        'boot_id': previous, 'identity': [info.st_ino, info.st_mode, info.st_size,
+                                                         info.st_mtime_ns, info.st_ctime_ns]}))
+                    (proc / '1/comm').write_text('pacman\n' if live else 'init\n')
+                    if unreadable:
+                        (proc / '1/comm').unlink()
+                    if current_boot or live or unreadable:
+                        with self.assertRaises(m.Refused):
+                            with m.package_guard(self.current, UUID):
+                                self.fail('unsafe package lock accepted')
+                        self.assertEqual(lock.read_text(), stale)
+                    else:
+                        with m.package_guard(self.current, UUID) as token:
+                            self.assertEqual(lock.read_text(), token)
+                        self.assertFalse(lock.exists())
+
+    def test_unmarked_download_or_sync_lock_is_observed_until_next_boot(self):
+        lock = self.current / 'var/lib/pacman/db.lck'
+        marker = lock.with_name('emaki-package-lock.json')
+        lock.touch()
+        before = lock.stat()
+        for _ in range(2):
+            with self.assertRaisesRegex(m.Refused, 'Restart, then try again'):
+                with m.package_guard(self.current, UUID):
+                    self.fail('same-boot lock recovered')
+            self.assertEqual(lock.read_bytes(), b'')
+            self.assertEqual(lock.stat().st_ctime_ns, before.st_ctime_ns)
+            self.assertEqual(json.loads(marker.read_text())['boot_id'], UUID)
+        next_boot = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        original_stat, original_fstat = m.os.stat, m.os.fstat
+        def remounted(info):
+            if info.st_ino != before.st_ino:
+                return info
+            fields = {name: getattr(info, name) for name in dir(info) if name.startswith('st_')}
+            fields['st_dev'] += 1  # Btrfs can assign a new device number after reboot.
+            return SimpleNamespace(**fields)
+        with patch.object(m.os, 'stat', side_effect=lambda *a, **kw: remounted(original_stat(*a, **kw))), \
+                patch.object(m.os, 'fstat', side_effect=lambda fd: remounted(original_fstat(fd))):
+            with m.package_guard(self.current, next_boot):
+                pass
+        self.assertFalse(lock.exists())
+
+    def test_unmarked_lock_is_not_observed_while_pacman_is_live(self):
+        lock = self.current / 'var/lib/pacman/db.lck'
+        lock.touch()
+        process = self.proc / '1'
+        process.mkdir()
+        (process / 'comm').write_text('pacman\n')
+        with self.assertRaises(m.Refused):
+            with m.package_guard(self.current, UUID):
+                self.fail('live lock recovered')
+        self.assertFalse(lock.with_name('emaki-package-lock.json').exists())
+        (process / 'comm').write_text('init\n')
+        with self.assertRaisesRegex(m.Refused, 'Restart, then try again'):
+            with m.package_guard(self.current, UUID):
+                self.fail('unmarked lock recovered')
+        self.assertTrue(lock.with_name('emaki-package-lock.json').exists())
+
+    def test_observed_lock_replacement_needs_another_boot(self):
+        lock = self.current / 'var/lib/pacman/db.lck'
+        lock.touch()
+        with self.assertRaisesRegex(m.Refused, 'Restart, then try again'):
+            with m.package_guard(self.current, UUID):
+                self.fail('unmarked lock recovered')
+        replacement = lock.with_name('replacement')
+        replacement.touch()
+        replacement.replace(lock)
+        next_boot = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        with self.assertRaisesRegex(m.Refused, 'Restart, then try again'):
+            with m.package_guard(self.current, next_boot):
+                self.fail('replacement recovered using old proof')
+        self.assertEqual(json.loads(lock.with_name('emaki-package-lock.json').read_text())['boot_id'], next_boot)
+        self.assertEqual(lock.read_bytes(), b'')
+
+    def test_observed_lock_recovery_rechecks_replacement(self):
+        lock = self.current / 'var/lib/pacman/db.lck'
+        lock.touch()
+        with self.assertRaisesRegex(m.Refused, 'Restart, then try again'):
+            with m.package_guard(self.current, UUID):
+                self.fail('unmarked lock recovered')
+        inspect = m.previous_refresh_lock
+        calls = 0
+        def replace(directory, boot_id):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                replacement = lock.with_name('replacement')
+                replacement.touch()
+                replacement.replace(lock)
+            return inspect(directory, boot_id)
+        with patch.object(m, 'previous_refresh_lock', side_effect=replace):
+            with self.assertRaises(m.Refused):
+                with m.package_guard(self.current, 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'):
+                    self.fail('racing replacement recovered')
+        self.assertEqual(lock.read_bytes(), b'')
 
     def test_status(self):
         normal = {'fstype': 'btrfs', 'fsroot': '/@'}
@@ -172,6 +317,8 @@ class Safety(unittest.TestCase):
                 self.assertEqual(m.creation_sequence(self.top, names[0], history[names[0]]), 8)
 
     def test_fstab_contract(self):
+        with self.assertRaisesRegex(m.Refused, 'The startup partition must be available at /efi'):
+            m.fstab_rows(FSTAB.replace(' vfat ', ' ext4 '), UUID)
         self.assertEqual(len(m.fstab_rows(FSTAB, UUID)), 6)
         for text in (FSTAB.replace('subvol=@ ', 'subvol=@,subvolid=256 '),
                      FSTAB.replace('subvol=@ ', 'subvol=old '),
@@ -193,6 +340,16 @@ class Safety(unittest.TestCase):
             with self.subTest(text=text), self.assertRaises(m.Refused):
                 m.fstab_rows(text, UUID)
 
+    def test_secure_boot_key_subvolume_is_an_optional_shared_mount(self):
+        key = f'UUID={UUID} /var/lib/emaki/secureboot btrfs rw,noatime,subvol=/@secureboot 0 0\n'
+        self.assertEqual(len(m.fstab_rows(FSTAB + key, UUID)), 7)
+        self.assertEqual(len(m.fstab_rows(FSTAB + SWAP + key, UUID)), 8)
+        for text in (FSTAB + key.replace('subvol=/@secureboot', 'subvol=/@'),
+                     FSTAB + key.replace('UUID=' + UUID, 'UUID=other'),
+                     FSTAB + key.replace('rw,noatime', 'rw,noatime,noauto')):
+            with self.subTest(text=text), self.assertRaises(m.Refused):
+                m.fstab_rows(text, UUID)
+
     def test_layout_checks_swap_mount_only_when_listed(self):
         mounts = {target: {'uuid': UUID, 'fsroot': '/' + name, 'fstype': 'btrfs'}
                   for target, name in {**m.SHARED, '/swap': '@swap'}.items()}
@@ -208,6 +365,10 @@ class Safety(unittest.TestCase):
                 patch.object(m.subprocess, 'run', return_value=absent):
             self.assertEqual(len(m.check_layout(self.top, UUID)), 6)
             self.assertNotIn('/swap', asked)
+            mounts['/efi']['uuid'] = 'other'
+            with self.assertRaisesRegex(m.Refused, 'The mounted startup partition does not match the system disk configuration'):
+                m.check_layout(self.top, UUID)
+            mounts['/efi']['uuid'] = '1234-ABCD'
             (self.current / 'etc/fstab').write_text(FSTAB + SWAP)
             self.assertEqual(len(m.check_layout(self.top, UUID)), 7)
             self.assertIn('/swap', asked)
@@ -628,6 +789,18 @@ class Safety(unittest.TestCase):
                 patch.object(m, 'subvolume', return_value=256), patch.object(m, 'empty_children'), \
                 patch.object(m, 'run', return_value='Total devices 1 FS bytes used 1.00GiB'), \
                 patch.object(m.subprocess, 'run', return_value=unittest.mock.Mock(returncode=1)):
+            lock.touch()
+            with self.assertRaises(m.Refused):
+                m.check_layout(self.top, UUID, UUID)
+            root = {'fstype': 'btrfs', 'fsroot': '/@', 'options': 'rw'}
+            with self.assertRaises(m.Refused) as caught:
+                m.delete_kept(self.top, 'unused', {}, root, UUID)
+            self.assertIn('Resolve the unfinished package operation before deleting previous systems.',
+                          str(caught.exception))
+            self.assertNotIn('Restart', str(caught.exception))
+            self.assertTrue(lock.exists())
+            self.assertEqual(len(m.check_layout(self.top, UUID, UUID, allow_unmarked=True)), 6)
+            self.assertFalse(lock.with_name('emaki-package-lock.json').exists())
             lock.write_text(previous)
             self.assertEqual(len(m.check_layout(self.top, UUID, UUID)), 6)
             self.assertEqual(lock.read_text(), previous)

@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -410,6 +411,34 @@ def check(root, targets):
     return 0
 
 
+def mark_lock(root):
+    # Pacman owns db.lck. Store proof beside it without changing its contents or
+    # metadata. Download and database-sync interruptions are observed by rollback.
+    boot_path = safe(root, 'proc/sys/kernel/random/boot_id')
+    if not boot_path.exists():
+        return
+    boot_id = boot_path.read_text().strip()
+    if not re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', boot_id):
+        raise ValueError('Invalid package transaction boot identity (pacman).')
+    path = safe(root, 'var/lib/pacman/db.lck')
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_size:
+            raise ValueError('Unexpected package transaction lock (pacman).')
+        def identity(info):
+            # Btrfs device numbers can change at reboot; keep them only in the
+            # same-boot race check below, never in the persistent record.
+            return [info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
+        current = path.lstat()
+        if current.st_dev != before.st_dev or identity(current) != identity(before):
+            raise ValueError('Package transaction lock changed (pacman).')
+        write(root, 'var/lib/pacman/emaki-package-lock.json',
+              json.dumps({'boot_id': boot_id, 'identity': identity(before)}) + '\n', 0o600)
+    finally:
+        os.close(descriptor)
+
+
 def main():
     action = sys.argv[1:]
     try:
@@ -431,6 +460,9 @@ def main():
             require_release_root()
             release(Path('/'), action[1])
             return 0
+        if action == ['mark-lock']:
+            mark_lock(Path('/'))
+            return 0
         if action == ['check']:
             return check(Path('/'), set(sys.stdin.read().splitlines()))
         if action == ['takeover']:
@@ -442,6 +474,9 @@ def main():
             # A running helper refuses uncertain checks; shell startup failures remain repairable.
             print(UNCONFIRMED, file=sys.stderr)
             return 3
+        if action == ['mark-lock']:
+            print(f'Could not record the package lock (pacman): {error}', file=sys.stderr)
+            return 1
         print(f'Rollback package protection failed (pacman): {error}', file=sys.stderr)
         return 1
 

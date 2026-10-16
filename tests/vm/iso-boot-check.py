@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Installed-system acceptance; start before run-iso.sh --no-cd to catch GRUB."""
 import argparse
 import importlib.machinery
@@ -284,7 +286,7 @@ def main():
                 result = remote('python3 /tmp/emaki-windows-fixture.py check --freed ' + str(int(config['shrink_bytes'])),
                                 privileged=True, input_data=baseline.read_bytes())
                 (run / 'windows-preservation.log').write_bytes(result.stdout + result.stderr)
-                status(result.returncode == 0, 'Windows files, partition identity and EFI loaders preserved')
+                status(result.returncode == 0, "Windows files, partition identity and ESP bytes preserved; Emaki's own ESP at /efi")
     shot = subprocess.run([str(HERE / 'iso-shot.sh'), *common, '--fixture', str(fixture), str(run / 'greeter.png')], capture_output=True)
     (run / 'greeter-shot.log').write_bytes(shot.stdout + shot.stderr)
     picture(shot.returncode == 0, run / 'greeter.png', 'greeter', 'the greeter')

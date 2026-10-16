@@ -53,6 +53,18 @@ class PreflightTests(unittest.TestCase):
         (repo / 'emaki.db.sig').write_bytes(b'database signature shape only')
         return repo
 
+    def test_power_menu_wording(self):
+        for relative in ('profile/grub/grub.cfg', 'profile/grub/loopback.cfg'):
+            with self.subTest(relative=relative):
+                text = (self.iso / relative).read_text()
+                self.assertIn("menuentry 'Shut down' --class shutdown --class poweroff {", text)
+                self.assertIn("menuentry 'Restart' --class reboot --class restart {", text)
+        text = (self.iso / 'profile/syslinux/archiso_tail.cfg').read_text()
+        self.assertIn('MENU LABEL Restart\nCOM32 reboot.c32', text)
+        self.assertIn('MENU LABEL Shut down\nCOM32 poweroff.c32', text)
+        self.assertIn('Restart the computer.', text)
+        self.assertIn('Shut down the computer.', text)
+
     def test_current_profile_is_offline_and_fast(self):
         started = time.monotonic()
         result = self.run_gate()

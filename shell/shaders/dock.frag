@@ -1,4 +1,6 @@
 #version 440
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Qt port of docs/mockups/liquid-glass/glass.frag (the dock recipe accepted
 // 2026-09-24). Optics, constants and the order of operations are the mockup's; only the
 // plumbing differs:

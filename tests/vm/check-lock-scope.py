@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """VM ONLY: prove the real emaki-lock client escapes a shell-like service cgroup.
 
 Run as the fixture account in the disposable guest's niri session:

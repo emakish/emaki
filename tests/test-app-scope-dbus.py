@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Cold D-Bus activation must finish before the launch worker exits; private bus only."""
 from runtime_fixture import runtime_path
 import json

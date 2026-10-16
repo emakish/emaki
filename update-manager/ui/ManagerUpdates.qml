@@ -14,6 +14,8 @@ ColumnLayout {
     property var programs: []
     property var launchEntries: []
     property bool transactionBusy: false
+    property bool aurKnown: false
+    property bool aurEnabled: false
     property string restoreId: ""
     property bool restoreChosen: false
     property var offeredRestorePoints: []
@@ -127,8 +129,13 @@ ColumnLayout {
         Layout.preferredWidth: rowWidth
         spacing: 16
     }
-    component Muted: ManagerLabel { color: (Shell.ShellPalette.dark ? Shell.ShellPalette.managerDim : Qt.alpha(Shell.ShellPalette.managerInk, 0.58)); font.pixelSize: 13 }
+    component Muted: ManagerLabel { color: Shell.ShellPalette.managerDim; font.pixelSize: 13 }
     component Line: Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Qt.alpha(Shell.ShellPalette.managerInk, 0.14) }
+    Muted {
+        objectName: "aur-updates-disabled"
+        visible: root.aurKnown && !root.aurEnabled && (root.controller.data.foreignPackageCount || 0) > 0
+        text: "AUR updates are not checked while the AUR is off."
+    }
     Card {
         visible: root.controller.restart && (root.controller.reminder || root.controller.restorePending)
         implicitHeight: restartRow.implicitHeight + 32
@@ -169,11 +176,12 @@ ColumnLayout {
                 columns: root.narrow ? 2 : 3
                 columnSpacing: 16
                 rowSpacing: 8
-                Image {
+                // The Emaki mark in its own Hot colours, as in the bar (0.9.0: not the flat demo).
+                Shell.Icon {
                     id: releaseIcon
-                    source: Quickshell.iconPath("emaki-welcome", true)
+                    kind: "logo"
                     visible: status === Image.Ready
-                    sourceSize.width: 44; sourceSize.height: 44
+                    width: 44; height: 44
                     Layout.preferredWidth: 44; Layout.preferredHeight: 44
                     // A hidden icon leaves its cell to the text.
                     Layout.row: visible ? 0 : 3; Layout.column: 0
@@ -291,7 +299,7 @@ ColumnLayout {
             ManagerLabel { visible: root.controller.message.length > 0 && !root.finished; text: root.controller.message; color: root.controller.data.error ? Shell.ShellPalette.managerError : Shell.ShellPalette.managerInk }
             Muted { visible: !!root.controller.data.errorDetails; text: root.controller.data.errorDetails || "" }
             Muted { visible: !!root.controller.countError; text: root.controller.countError || "" }
-            Muted { visible: root.controller.signOut; text: "Save your work, sign out and sign in again after updating." }
+            Muted { visible: root.controller.signOut; text: "Save your work, log out and log in again after updating." }
         }
     }
     Repeater {
@@ -312,7 +320,6 @@ ColumnLayout {
             required property var modelData
             readonly property var updates: root.rows(modelData.name)
             visible: updates.length > 0
-            opacity: modelData.name === "AUR" ? 0.78 : 1
             implicitHeight: groupContents.implicitHeight
             ColumnLayout {
                 id: groupContents
@@ -347,7 +354,7 @@ ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 6
                                 ManagerLabel { Layout.fillWidth: root.narrow; Layout.maximumWidth: implicitWidth; text: root.plainName(updateRow.modelData); font.pixelSize: 13; font.bold: true }
-                                Muted { text: root.plainName(updateRow.modelData) !== updateRow.modelData.name ? updateRow.modelData.name : ""; font.pixelSize: 12; color: (Shell.ShellPalette.dark ? Shell.ShellPalette.managerDim : Qt.alpha(Shell.ShellPalette.managerInk, 0.3215686274509804)); elide: Text.ElideRight; wrapMode: Text.NoWrap }
+                                Muted { text: root.plainName(updateRow.modelData) !== updateRow.modelData.name ? updateRow.modelData.name : ""; font.pixelSize: 12; color: Shell.ShellPalette.managerDim; elide: Text.ElideRight; wrapMode: Text.NoWrap }
                             }
                             GridLayout {
                                 Layout.row: root.narrow ? 1 : 0; Layout.column: root.narrow ? 1 : 2

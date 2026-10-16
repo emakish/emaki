@@ -3,22 +3,58 @@
 .pragma library
 .import "PolkitText.js" as Copy
 
+// Unicode 16 format characters, including supplementary-plane ranges. The QML
+// engine does not implement Unicode property escapes, so spell out the ranges.
+var formatCharacters = /[\u00ad\u0600-\u0605\u061c\u06dd\u070f\u0890-\u0891\u08e2\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff\ufff9-\ufffb]|\ud804\udcbd|\ud804\udccd|\ud80d[\udc30-\udc3f]|\ud82f[\udca0-\udca3]|\ud834[\udd73-\udd7a]|\udb40\udc01|\udb40[\udc20-\udc7f]/g;
+
+function stripFormat(value) {
+    return value.replace(formatCharacters, "");
+}
+
 // These are display hints supplied by polkit, never proof of a process identity.
 function clean(value) {
     return String(value === null || value === undefined ? "" : value)
-        .replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, " ").slice(0, 2048);
+        // Joiners form real text in several scripts; other format controls separate words.
+        .replace(formatCharacters, character => character === "\u200c" || character === "\u200d" ? character : " ")
+        .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, " ").slice(0, 2048);
 }
 
+// Fields and options are explicit; positional values are ambiguous, so leave
+// plain lowercase words readable in prose (for example, "password to change").
 function redact(value) {
+    const keyword = '(?:password|passwd|passphrase|pwd|token|secret|api[-_]?key|credential|authorization|cookie)';
+    const quoted = '"(?:\\\\.|[^"\\\\])*"|\'(?:\\\\.|[^\'\\\\])*\'';
+    const bare = '[^\\s"\'`}\\]]+(?:["\'`}\\]]+[^\\s"\'`}\\]]+)*';
+    const secret = '(?:(?:' + quoted + ')(?:' + bare + ')?|' + bare + ')';
+    const headerBare = '[^\\s"\'`;,}\\]]+(?:["\'`}\\]]+[^\\s"\'`;,}\\]]+)*';
+    const headerValue = '(?:(?:' + quoted + ')(?:' + headerBare + ')?|' + headerBare + ')';
+    const field = '((?:\\b|_)(?:[a-z0-9]+[-_])*';
+    const assignment = '["\']?\\s*[:=]\\s*)';
+    const pair = '[a-z0-9_-]+\\s*=\\s*' + headerValue;
+    // Headers can contain a scheme or several cookie/digest pairs. Hide their
+    // complete credential value before the general single-value field rule.
     return clean(value)
-        .replace(/\b(Bearer|Basic)\s+\S+/gi, "$1 " + Copy.redacted)
-        .replace(/(\b(?:password|passwd|passphrase|pwd|token|secret|api[-_]?key|credential|authorization|cookie)\b\s*(?:[:=]\s*|\s+))(?:"[^"]*"|'[^']*'|\S+)/gi, "$1" + Copy.redacted)
-        .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi, "$1" + Copy.redacted + "@");
+        .replace(new RegExp(field + 'authorization' + assignment
+            + '(?:[a-z][a-z0-9_-]*\\s+)?(?:' + pair + '|' + headerValue + ')'
+            + '(?:\\s*,\\s*' + pair + ')*', 'gi'), '$1' + Copy.redacted)
+        .replace(new RegExp(field + 'cookie' + assignment
+            + '(?:' + pair + '|' + headerValue + ')'
+            + '(?:\\s*;\\s*(?:' + pair + '|' + headerValue + '))*', 'gi'), '$1' + Copy.redacted)
+        .replace(new RegExp('(\\b(?:Bearer|Basic)\\s+)' + secret, 'gi'), '$1' + Copy.redacted)
+        .replace(new RegExp(field + keyword + assignment + secret, 'gi'), '$1' + Copy.redacted)
+        .replace(new RegExp('((?:^|[\\s`\'"])--?(?:[a-z0-9]+[-_])*' + keyword
+            + '\\s+)' + secret, 'gi'), '$1' + Copy.redacted)
+        .replace(new RegExp('(\\b(?:password|passwd|passphrase|pwd|token|secret)\\s+)'
+            + '(?![:=])(' + secret + ')', 'gi'), function(match, prefix, token) {
+                return /^[a-z]+$/.test(token) ? match : prefix + Copy.redacted;
+            })
+        .replace(/(https?:\/\/)[^\s/@]+@/gi, "$1" + Copy.redacted + "@");
 }
 
 // Only fixed installed helpers named by our policy actions may expose argv.
-// pkexec supplies "program" and "command_line"; exec.path is an action annotation,
-// not request metadata. These remain display hints, never an authorization check.
+// Some authorities may supply "program" and "command_line"; polkit 127 sends
+// only caller/subject pids. exec.path is an action annotation, not request metadata.
+// These remain display hints, never an authorization check.
 function emakiHelper(action, details, paths) {
     const helpers = {
         "org.emaki.rollback": ["binDir", "emaki-rollback"],
@@ -108,9 +144,49 @@ function programRequest(action, details, libexecDir) {
     return {headline: target + " — " + wording, command: command};
 }
 
+// Details must name one complete absolute path, never a shell command.
+function executableName(value) {
+    if (typeof value !== "string" || !value.startsWith("/")
+            || /[\s\u0000-\u001f\u007f-\u009f]/.test(value))
+        return "";
+    return stripFormat(value).split("/").pop().slice(0, 64).replace(/[\ud800-\udbff]$/, "");
+}
+
+// Only pkexec's own fixed template may supply a basename when details are absent.
+// The rest of the command is discarded, including a shortened command's tail.
+function pkexecRequest(message) {
+    if (typeof message !== "string")
+        return null;
+    const template = /^Authentication is needed to run `([\s\S]*)' as (?:the super user|user ([\s\S]+))$/.exec(message);
+    if (!template)
+        return null;
+    const word = /^([^\s"'`\\]+)(?:\s|$)/.exec(template[1]);
+    const user = template[2] ? clean(template[2]).slice(0, 64).replace(/[\ud800-\udbff]$/, "").trim() : "";
+    return {program: word ? executableName(word[1]) : "", user: user};
+}
+
+function requestText(action, message, details, request, fallback) {
+    if (request)
+        return request.headline;
+    // Own policies are plain sentences; never run secret heuristics over them.
+    if (typeof action === "string" && action.startsWith("org.emaki."))
+        return clean(message) || fallback;
+    const fields = details && typeof details === "object" && !Array.isArray(details) ? details : {};
+    if (action === "org.freedesktop.policykit.exec") {
+        const template = pkexecRequest(message);
+        const program = Object.prototype.hasOwnProperty.call(fields, "program")
+            ? executableName(fields.program) : template && template.program;
+        return Copy.runProgram(program, template && template.user);
+    }
+    const hasCommand = Object.keys(fields).some(key => /command|cmdline|argv|arguments/i.test(key))
+        || (typeof fields.program === "string" && /\s/.test(fields.program));
+    if (hasCommand)
+        return Copy.runProgram(executableName(fields.program));
+    return redact(message) || fallback;
+}
+
 function headline(action, message, details, libexecDir) {
-    const request = programRequest(action, details, libexecDir);
-    return request ? request.headline : redact(message) || Copy.requestUnavailable;
+    return requestText(action, message, details, programRequest(action, details, libexecDir), Copy.requestUnavailable);
 }
 
 function rows(action, message, details, requester, paths) {
@@ -119,7 +195,7 @@ function rows(action, message, details, requester, paths) {
     const result = [
         {label: "Asked by", value: requester ? redact(requester) : Copy.requesterUnavailable},
         {label: "Action", value: redact(action) || Copy.unavailable},
-        {label: Copy.messageLabel, value: redact(message) || Copy.unavailable}
+        {label: Copy.messageLabel, value: requestText(action, message, details, request, Copy.unavailable)}
     ];
     if (!details || typeof details !== "object" || Array.isArray(details) || !Object.keys(details).length) {
         result.push({label: Copy.detailsLabel, value: Copy.unavailable});

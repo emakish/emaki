@@ -34,6 +34,7 @@ Column {
         helper.running = true;
     }
     function refresh() {
+        secureBoot.refresh();
         run(["emaki-settings-privacy", "status", "--json"], false);
     }
     function revokePortal(row) {
@@ -211,6 +212,10 @@ Column {
                 explanation: root.encryptionText(modelData.state)
             }
         }
+    }
+    SecureBootSettings {
+        id: secureBoot
+        width: parent.width
     }
     SettingsCard {
         width: parent.width

@@ -9,6 +9,14 @@ import Quickshell
 ShellRoot {
     id: test
     property bool failed: false
+    // Nothing saved is light, the default; tests/test-system-keyboard.py also runs dark.
+    Component.onCompleted: if (Quickshell.env("EMAKI_TEST_THEME"))
+        SettingsBridge.values = [
+            {
+                key: "appearance.theme",
+                value: Quickshell.env("EMAKI_TEST_THEME")
+            }
+        ]
     function check(ok: bool, message: string): void {
         if (!ok) {
             failed = true;
@@ -54,9 +62,15 @@ ShellRoot {
         for (let tries = 0; !captured && tries < 100; ++tries)
             input.wait(10);
         check(captured, "ring captured");
-        check(Math.abs(ring.border.color.r - LiquidPalette.flatDropRim.r) < .01 && Math.abs(ring.border.color.g - LiquidPalette.flatDropRim.g) < .01 && Math.abs(ring.border.color.b - LiquidPalette.flatDropRim.b) < .01 && ring.border.color.a < 1, message + " existing hover rim");
+        // The hover rim's ink, also for the strong rim over a selected drop (a tab): dark shades
+        // that drop, so there the ink is dark's light one. A switch's flat track is the accent
+        // itself in both themes: focusOnAccent, the warm dark ink.
+        const ink = strong && item.drop === false ? LiquidPalette.focusOnAccent : LiquidPalette.flatDropRim;
+        check(Math.abs(ring.border.color.r - ink.r) < .01 && Math.abs(ring.border.color.g - ink.g) < .01 && Math.abs(ring.border.color.b - ink.b) < .01 && ring.border.color.a < 1, message + " existing hover rim");
         check(ring.color.toString() === LiquidPalette.flatDrop.toString(), message + " existing hover fill");
-        check(ring.children.length === 0, message + " no dark inner frame");
+        // Nothing drawn over the rim: the ring's only child, the two-colour rim's outer row
+        // (FocusRing.outerInk), is set by no control here and must stay hidden.
+        check(ring.children.every(child => !child.visible), message + " no dark inner frame");
     }
     function tabTo(key: string): Item {
         const item = find(panel, key);
@@ -356,7 +370,14 @@ ShellRoot {
             test.check(test.find(panel, "dev-fixture-device").activeFocus, "device focus survives backend refresh");
             input.keyClick(Qt.Key_Return);
             test.check(!backend.devices[0].connected, "focused Bluetooth device disconnects after backend refresh");
+            const forget = test.find(panel, "dev-fixture-device:forget");
+            test.check(forget.visible, "paired device focus reveals Forget");
+            input.keyClick(Qt.Key_Tab);
+            test.check(forget.activeFocus && forget.visible, "Forget stays visible as Tab enters it");
+            input.keyClick(Qt.Key_Backtab);
+            test.check(test.find(panel, "dev-fixture-device").activeFocus && forget.visible, "Backtab returns to the paired device");
             test.tabTo("search");
+            test.check(!forget.visible, "Forget hides after focus leaves the device");
             input.keyClick(Qt.Key_Space);
             test.check(backend.adapter.discovering, "Bluetooth scan starts");
             input.keyClick(Qt.Key_Space);

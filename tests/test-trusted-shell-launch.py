@@ -209,6 +209,20 @@ sys.exit({restart_status})
         self.assertEqual(env['QT_LOGGING_RULES'], '*.debug=false')
         self.assertEqual(env['EMAKI_SHELL_ORIGINAL_MALLOC_CONF'], '1custom')
 
+    def test_session_snapshot_removes_handoff_from_raw_and_serialized_input(self):
+        module, _ = self.launch_module(self.private_socket())
+        markers = {key: 'private-login-value' for key in module.HANDOFF_MARKERS}
+        session = dict(markers, PATH='/personal/bin', QT_QPA_PLATFORMTHEME='personal-theme')
+        for inherited in (session, dict(session, EMAKI_SHELL_SESSION_ENV=json.dumps(session)),
+                          dict(session, EMAKI_SHELL_SESSION_ENV='invalid snapshot')):
+            with self.subTest(snapshot=inherited.get('EMAKI_SHELL_SESSION_ENV')):
+                environment = module.environment(self.base / 'generation', inherited)
+                restored = json.loads(environment['EMAKI_SHELL_SESSION_ENV'])
+                self.assertEqual(restored['PATH'], '/personal/bin')
+                self.assertEqual(restored['QT_QPA_PLATFORMTHEME'], 'personal-theme')
+                self.assertFalse(module.HANDOFF_MARKERS.intersection(restored))
+                self.assertFalse(module.HANDOFF_MARKERS.intersection(environment))
+
     def test_preparation_cannot_inherit_socket_but_foreground_shell_can(self):
         client = self.private_socket()
         module, namespace = self.launch_module(client)
@@ -278,6 +292,13 @@ sys.exit({restart_status})
         def prepare(argv, **kwargs):
             self.assertTrue(kwargs['close_fds'])
             self.assertNotIn('WAYLAND_SOCKET', kwargs['env'])
+            self.assertFalse('EMAKI_LOGIN_HANDOFF' in os.environ, 'login capability remained inherited')
+            self.assertFalse(module.HANDOFF_MARKERS.intersection(
+                json.loads(kwargs['env']['EMAKI_SHELL_SESSION_ENV'])))
+            if argv[-1] == 'shell-token':
+                self.assertEqual(kwargs['env']['EMAKI_LOGIN_HANDOFF'], 'login-capability')
+            else:
+                self.assertFalse(module.HANDOFF_MARKERS.intersection(kwargs['env']))
             seen.append(list(argv))
             diagnostic = Path(argv[3]).name == 'emaki-qt-check'
             output = token if argv[-1] == 'shell-token' else ''
@@ -287,7 +308,12 @@ sys.exit({restart_status})
             self.assertTrue(kwargs['close_fds'])
             self.assertNotIn('WAYLAND_SOCKET', kwargs['env'])
             self.assertEqual(kwargs['env']['PATH'], module.FIXED_PATH)
-        with patch.dict(os.environ, dict(self.env, EMAKI_LOGIN_HANDOFF='1'), clear=True), \
+            self.assertFalse('EMAKI_LOGIN_HANDOFF' in os.environ, 'login capability remained inherited')
+            self.assertFalse(module.HANDOFF_MARKERS.intersection(kwargs['env']))
+            self.assertFalse(module.HANDOFF_MARKERS.intersection(
+                json.loads(kwargs['env']['EMAKI_SHELL_SESSION_ENV'])))
+        with patch.dict(os.environ, dict(self.env, EMAKI_LOGIN_HANDOFF='login-capability',
+                EMAKI_SHELL_SESSION_ENV=json.dumps(dict(self.env, EMAKI_LOGIN_HANDOFF='login-capability'))), clear=True), \
                 patch.dict(namespace, bootstrap=lambda: tree), \
                 patch.object(module.os, 'chdir'), patch.object(module.resource, 'setrlimit'), \
                 patch.object(module.subprocess, 'run', side_effect=prepare), \

@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Window
@@ -41,6 +43,20 @@ Scope {
             clock: lockSession.clock,
             introStart: lockSession.handoffIntroStart
         });
+    }
+    // The chosen person's look before the password: only the published theme, accent and
+    // switch times. Nothing published (or no person yet) is the default look.
+    Binding {
+        target: SettingsBridge
+        property: "values"
+        value: memory.lookRows
+    }
+    function pickUser(login: string): void {
+        // Never while a password is checked or a login is accepted, and one request at a time.
+        if (login === memory.user || !memory.ready || root.launching || controller.checking || lockSession.authenticated || !lockSession.accepting)
+            return;
+        controller.cancel();
+        memory.selectUser(login);
     }
     GreeterState {
         id: memory
@@ -138,10 +154,18 @@ Scope {
             root.recordLaunch();
         }
     }
+    // Grabbing, saving and publishing the final frame took 1.4-2.0 s at 2560x1600 on a CPU
+    // throttled to a 2015 laptop's speed (G9, 2026-10-15); a 2 s limit dropped the login
+    // pour-down there. Past this limit the session starts without it.
     Timer {
         id: captureLimit
-        interval: 2000
+        interval: 3500
         onTriggered: {
+            // Warning level: field logs keep it where debug lines are filtered out.
+            console.warn("EMAKI_SESSION_COVER " + JSON.stringify({
+                phase: "capture-timeout",
+                atMs: Date.now()
+            }));
             controller.handoffMarker = "";
             root.recordLaunch(); // Failed decoration never blocks an accepted login.
         }
@@ -221,6 +245,9 @@ Scope {
                     avatarPending: accountPicture.pending
                     greeter: true
                     wallpaperSelectionReady: root.selectionLoaded
+                    accounts: memory.accounts
+                    chosenUser: memory.user
+                    onUserPicked: login => root.pickUser(login)
                 }
             }
         }

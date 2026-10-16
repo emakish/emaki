@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Copy an archiso 91 releng profile and apply the checked-in Emaki overlay.
 
 This is also the recovery path when the authoring host cannot fetch releng.
@@ -87,7 +89,9 @@ def import_profile(source, destination):
     (destination / 'VERSION').write_text(version + '\n')
     package_names = {line.split('#', 1)[0].strip() for line in (source / 'packages.x86_64').read_text().splitlines()}
     package_names.update((HERE / 'packages-extra.txt').read_text().split())
-    package_names.difference_update(('', 'iwd', 'cloud-init', 'grim', 'espeakup', 'livecd-sounds'))
+    # Keep the live account on Emaki's defaults; an existing grml configuration is
+    # compatible with upgrades but supplies its own interactive defaults.
+    package_names.difference_update(('', 'iwd', 'cloud-init', 'grim', 'espeakup', 'livecd-sounds', 'grml-zsh-config'))
     if any(name.startswith('nvidia') or name == 'broadcom-wl' for name in package_names):
         raise ValueError('unexpected proprietary driver in the releng seed')
     (destination / 'packages.x86_64').write_text('\n'.join(sorted(package_names)) + '\n')

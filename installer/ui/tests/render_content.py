@@ -9,7 +9,7 @@ HEADINGS = {
     'welcome': 'Welcome to Emaki', 'keyboard': 'Make yourself at home',
     'network': 'Get connected', 'timezone': 'Time zone',
     'disk': 'Where should Emaki go?', 'alongside': 'Where should Emaki go?',
-    'manual': 'Assign your partitions', 'filesystem': 'A home for your files',
+    'manual': 'Partitions', 'filesystem': 'A home for your files',
     'encryption': 'Protect your files', 'you': 'About you',
     'software': 'Make it your desktop', 'review': 'One last look',
     'install': 'Making room for you', 'done': 'Welcome home.',

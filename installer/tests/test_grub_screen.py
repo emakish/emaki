@@ -4,10 +4,18 @@
 
 from pathlib import Path
 import struct
+import tomllib
 import unittest
 import zlib
 
 from emaki_installer import grub_screen as screen
+
+# The status line's colour: the packaged accent (tokens.toml [color] accent). The installer package's own
+# source archive has no repository tokens.toml; its check() skips this file, make check-installer runs it.
+TOKENS = Path(__file__).resolve().parents[2] / 'tokens.toml'
+if not TOKENS.exists():
+    raise unittest.SkipTest('needs the repository tokens.toml (run by make check-installer)')
+ACCENT = tomllib.loads(TOKENS.read_text())['color']['accent']
 
 
 def decode_png(data):
@@ -68,7 +76,7 @@ class UnlockAssets(unittest.TestCase):
 
     def test_all_variants_are_antialiased_centered_and_keep_the_cursor_hidden(self):
         cream = bytes.fromhex('f2e6d8')
-        orange = bytes.fromhex('e2733f')
+        accent = bytes.fromhex(ACCENT)
         for variant in ('A', 'B', 'C'):
             assets = screen.assets(variant)
             for width, height in screen.SIZES:
@@ -92,9 +100,9 @@ class UnlockAssets(unittest.TestCase):
                     bands = []
                     for y in range(240, height):
                         row = retry[y * width * 3:(y + 1) * width * 3]
-                        if row.count(cream) + row.count(orange) < 3:
+                        if row.count(cream) + row.count(accent) < 3:
                             continue
-                        xs = [x for x in range(width) if row[x * 3:x * 3 + 3] in (cream, orange)]
+                        xs = [x for x in range(width) if row[x * 3:x * 3 + 3] in (cream, accent)]
                         if xs:
                             self.assertGreaterEqual(min(xs), width * .12)
                             self.assertLessEqual(max(xs), width * .88)
@@ -109,12 +117,12 @@ class UnlockAssets(unittest.TestCase):
                     self.assertAlmostEqual((centers[0] + centers[-1]) / 2, height / 2, delta=1)
                     for band in text_bands:
                         xs = [x for y in band for x in range(width)
-                              if retry[(y * width + x) * 3:(y * width + x + 1) * 3] in (cream, orange)]
+                              if retry[(y * width + x) * 3:(y * width + x + 1) * 3] in (cream, accent)]
                         self.assertAlmostEqual((min(xs) + max(xs)) / 2, width / 2, delta=width * .002)
                     wrong_start, wrong_end = (text_bands[-1][0] - 3) * width * 3, (text_bands[-1][-1] + 4) * width * 3
                     self.assertEqual(initial[:wrong_start], retry[:wrong_start])
                     self.assertEqual(initial[wrong_end:], retry[wrong_end:])
-                    self.assertNotIn(orange, initial[wrong_start:wrong_end])
+                    self.assertNotIn(accent, initial[wrong_start:wrong_end])
                     self.assertNotIn(cream, initial[wrong_start:wrong_end])
                     # Checking keeps the instructions fixed and replaces only the status line.
                     status_top = int((centers[-2] + centers[-1]) / 2) * width * 3
@@ -124,13 +132,13 @@ class UnlockAssets(unittest.TestCase):
                     self.assertFalse(any(checking[:128 * width * 3]))
                     points = [(x, y) for y in range(status_top // (width * 3), height)
                               for x in range(width)
-                              if checking[(y * width + x) * 3:(y * width + x + 1) * 3] in (cream, orange)]
+                              if checking[(y * width + x) * 3:(y * width + x + 1) * 3] in (cream, accent)]
                     xs, ys = zip(*points)
                     self.assertGreaterEqual(min(xs), width * .12)
                     self.assertLessEqual(max(xs), width * .88)
                     self.assertAlmostEqual((min(xs) + max(xs)) / 2, width / 2, delta=width * .002)
                     self.assertAlmostEqual((min(ys) + max(ys)) / 2, centers[-1], delta=1)
-                    expected_color = bytes.fromhex('f2e6d8' if variant == 'A' else 'e2733f')
+                    expected_color = cream if variant == 'A' else accent
                     self.assertIn(expected_color, {retry[i:i + 3] for i in range(wrong_start, wrong_end, 3)})
                     self.assertIn(expected_color, {checking[i:i + 3] for i in range(status_top, len(checking), 3)})
 

@@ -76,10 +76,20 @@ ShellRoot {
                         }
                     }
                 },
+                // The core's full cast shape: only an active cast with a target, not the
+                // shell's own, counts as another program seeing the screen (ScreenShare.js).
                 casts: cast ? {
                     "1": {
-                        id: 1,
-                        by_parent: false
+                        stream_id: 1,
+                        session_id: 1,
+                        kind: "pipewire",
+                        target: "output",
+                        output: "Fixture",
+                        window_id: null,
+                        is_active: true,
+                        by_parent: false,
+                        pw_node_id: null,
+                        client: null
                     }
                 } : {}
             }

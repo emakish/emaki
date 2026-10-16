@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Render production QML in isolated offscreen Qt; verify painted pixel bounds."""
 from runtime_fixture import runtime_path
+import colorsys
 import json
 import statistics
 import math
@@ -9,6 +12,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import tomllib
 
 from PIL import Image
 import importlib.util
@@ -86,24 +90,32 @@ for scale, fallback in ((1, ''), (2, ''), (1, 'config_invalid'), (1, 'image_miss
     for state in ('bar', 'bar-hover', 'bar-logo-hover', 'launcher', 'launcher-selected', 'launcher-settings', 'launcher-search', 'drawer', 'drawer-dnd', 'drawer-hover', 'notification-peek', 'notification-flood', 'launcher-clipboard', 'launcher-web', 'launcher-frequent', 'drawer-media', 'dock', 'dock-list', 'dock-menu', 'osd-sound', 'osd-light', 'privacy', 'privacy-open', 'wifi-portal', 'wifi-hidden', 'launcher-recent', 'bar-system-hover', 'system-sound', 'system-wifi', 'system-bt', 'system-power', 'system-power-confirm'):
         with Image.open(DEST / f'{state}@{scale}x.png') as frame:
             assert frame.size == (1536 * scale, 960 * scale), frame.size
-    # The selected / current drops (today, the chosen player, the open page's tab) are orange,
-    # the hover drop stays plain (2026-09-27) — here in the flat stand-in; the GPU glass
-    # is looked at in `make glass-shots`. Rects come from the fixture (screen px), 3 px inset.
-    def orange_share(frame, r):
+    # The selected / current drops (today, the chosen player, the open page's tab) take the
+    # accent (the default one here: rose since 2026-10-14), the hover drop stays plain
+    # (2026-09-27) — here in the flat stand-in; the GPU glass is looked at in
+    # `make glass-shots`. Rects come from the fixture (screen px), 3 px inset.
+    accent = tomllib.loads((ROOT / 'tokens.toml').read_text())
+    accent = accent['accents'][accent['defaults']['accent']]['base']
+    accent_hue = colorsys.rgb_to_hsv(*(int(accent[i:i + 2], 16) / 255 for i in (0, 2, 4)))[0]
+    def accent_share(frame, r):
         box = tuple(round(v * scale) for v in (r['x'] + 3, r['y'] + 3, r['x'] + r['width'] - 3, r['y'] + r['height'] - 3))
         pixels = list(frame.crop(box).getdata())
-        return sum(1 for p in pixels if p[0] > 180 and p[0] - p[2] > 90 and p[0] - p[1] > 50) / len(pixels)
+        def tinted(p):
+            hue, saturation, value = colorsys.rgb_to_hsv(*(c / 255 for c in p[:3]))
+            turn = abs(hue - accent_hue)
+            return value > .7 and saturation > .3 and min(turn, 1 - turn) < 20 / 360
+        return sum(1 for p in pixels if tinted(p)) / len(pixels)
     marks = [json.loads(line[line.index('SELECTED_DROPS {') + 15:]) for line in result.stdout.splitlines() if 'SELECTED_DROPS {' in line]
     assert sorted(m['shot'] for m in marks) == ['drawer-hover', 'system-sound'], marks
     shares = []
     for mark in marks:
         with Image.open(DEST / f"{mark['shot']}@{scale}x.png").convert('RGB') as frame:
-            for kind, limit in (('orange', .5), ('plain', .05)):
+            for kind, limit in (('accent', .5), ('plain', .05)):
                 for r in mark[kind]:
-                    share = orange_share(frame, r)
-                    assert share > limit if kind == 'orange' else share < limit, (scale, mark['shot'], kind, r, share)
+                    share = accent_share(frame, r)
+                    assert share > limit if kind == 'accent' else share < limit, (scale, mark['shot'], kind, r, share)
                     shares.append(f"{mark['shot']} {kind} {share:.2f}")
-    print(f'offscreen scale {scale}: selected drops orange, hover plain: ' + ', '.join(shares))
+    print(f'offscreen scale {scale}: selected drops in the accent, hover plain: ' + ', '.join(shares))
     with Image.open(DEST / f'bar@{scale}x.png').convert('RGB') as frame:
         # Actual strip in the bar, flat stand-in of the glass: only the five existing
         # workspaces, cells of 28 on a pitch of 30 from x 62 (island 54 + 8). The active

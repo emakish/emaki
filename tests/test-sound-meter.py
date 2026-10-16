@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Mic sample/lifecycle and glass policy in isolated qs, without a mic or session."""
 from runtime_fixture import runtime_path
 import os

@@ -1,4 +1,6 @@
 .pragma library
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Motion of the launcher and the left bar islands, docs/mockups/liquid-glass/launcher.js
 // line for line: tweens, springs and the liquid body (a rectangle whose four sides are
 // springs, so a tile, a row and a word are one bubble changing shape while it flows).

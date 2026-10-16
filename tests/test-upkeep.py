@@ -11,6 +11,7 @@ from pathlib import Path
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -25,6 +26,52 @@ LEGACY = ('SUBVOLUME="/"\nFSTYPE="btrfs"\nFREE_LIMIT="0.2"\n'
 
 
 class UpkeepTests(unittest.TestCase):
+    def test_transaction_space_hook_delivery_and_order(self):
+        hook_name = '00-emaki-update-space.hook'
+        hook = (ROOT / 'upkeep' / hook_name).read_text()
+        self.assertLess(hook_name, '05-snap-pac-pre.hook')
+        for setting in ('When = PreTransaction', 'AbortOnFail', 'NeedsTargets',
+                        'Operation = Install', 'Operation = Upgrade'):
+            self.assertIn(setting, hook.splitlines())
+        self.assertNotIn('Operation = Remove', hook)
+        with tempfile.TemporaryDirectory() as directory:
+            prefix = '/opt/fixture'
+            subprocess.run(['make', '-s', 'install-upkeep', f'DESTDIR={directory}',
+                            f'PREFIX={prefix}'], cwd=ROOT, check=True, capture_output=True)
+            staged = Path(directory)
+            installed = staged / prefix.lstrip('/') / 'share/libalpm/hooks' / hook_name
+            action = next(line[7:] for line in installed.read_text().splitlines() if line.startswith('Exec = '))
+            self.assertEqual(action, prefix + '/share/libalpm/scripts/emaki-update-space')
+            helper = staged / action.lstrip('/')
+            self.assertTrue(helper.stat().st_mode & 0o111)
+            self.assertIn(prefix + '/bin/python3 -IB ' + prefix + '/libexec/emaki/emaki_update_space.py', helper.read_text())
+        inventory = (ROOT / 'packaging/emaki-config/expected-files.list').read_text()
+        self.assertIn('/usr/share/libalpm/hooks/' + hook_name + '\n', inventory)
+
+    def test_space_launcher_only_aborts_a_measured_shortage(self):
+        template = (ROOT / 'upkeep/emaki-update-space').read_text()
+        warning = 'Warning: the update space check is unavailable; the package transaction will continue.\n'
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            launcher = root / 'launcher'
+            launcher.write_text(template.replace('@PYTHON@', shlex.quote(sys.executable)).replace('@LIBEXECDIR@', directory))
+            probe = root / 'emaki_update_space.py'
+            for code, output, status in ((0, '', 0), (1, 'traceback', 0), (3, 'odd output', 0),
+                                         (3, 'Not enough free space for this update: it needs about 2 GB, 1 GB is free. Clean up.', 1)):
+                with self.subTest(code=code, output=output):
+                    probe.write_text(f'import sys\nsys.stdout.write({output!r})\nraise SystemExit({code})\n')
+                    result = subprocess.run(['/bin/sh', str(launcher)], input='example\n', text=True, capture_output=True)
+                    self.assertEqual(result.returncode, status)
+                    self.assertEqual(result.stdout, '')
+                    self.assertEqual(result.stderr, output + '\n' if status else (warning if output else ''))
+            # The estimate must also fail open before Python can handle an error.
+            probe.unlink()
+            result = subprocess.run(['/bin/sh', str(launcher)], text=True, capture_output=True)
+            self.assertEqual((result.returncode, result.stderr), (0, warning))
+            launcher.write_text(template.replace('@PYTHON@', str(root / 'missing-python')).replace('@LIBEXECDIR@', directory))
+            result = subprocess.run(['/bin/sh', str(launcher)], text=True, capture_output=True)
+            self.assertEqual((result.returncode, result.stderr), (0, warning))
+
     def test_legacy_ranges_and_idempotence(self):
         actual = policy.migrate(LEGACY)
         for key, (_, new) in policy.LIMITS.items():

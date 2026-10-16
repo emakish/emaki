@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Production greeter.qml auth -> retained plate -> recorded launch/exit wiring.
 
 Only compositor window plumbing and local metadata/artwork helpers are replaced
@@ -78,6 +80,10 @@ def build(profile, scenario):
     if scenario == 'prepare-failure':
         entry = entry.replace('root.launching = true;', 'root.launching = true; console.log("PREPARE_FAILURE_AT " + Date.now());')
         publisher = 'raise SystemExit(1)\n'
+    if scenario == 'publish-hang':
+        # A slow computer: the frame is grabbed but publishing outlasts the capture limit.
+        entry = entry.replace('root.launching = true;', 'root.launching = true; console.log("CAPTURE_START_AT " + Date.now());')
+        publisher = 'import sys, time\nif sys.argv[1:2] == ["publish"]:\n    time.sleep(30)\n' + publisher
     (qml / 'helpers/greeter-handoff.py').write_text(publisher)
     entry = entry.replace('screen: panel.screen', 'screen: panel.modelData')
     entry = re.sub(r'            anchors \{\n(?:                [^\n]*\n)+            }\n', '', entry)
@@ -361,7 +367,7 @@ def run(scenario, scripted=False):
                         assert start['cmd'] == ['/usr/bin/niri-session', '--fixture']
                         assert start['env'][0] == 'XDG_SESSION_TYPE=wayland'
                         marker = None
-                        if scenario in ('stock-success', 'prepare-failure'):
+                        if scenario in ('stock-success', 'prepare-failure', 'publish-hang'):
                             assert start['env'] == ['XDG_SESSION_TYPE=wayland'], 'stock recovery must have no cover marker'
                         else:
                             assert len(start['env']) == 2 and start['env'][0] == 'XDG_SESSION_TYPE=wayland'
@@ -390,7 +396,7 @@ def run(scenario, scripted=False):
                             assert handoff['idleMode'] == marker['idleMode'] and abs(handoff['clock'] - marker['clock']) < .1
                             assert abs(handoff['introStart'] - marker['introStart']) < .001
                         server.success()
-            expected = 0 if scenario in ('success', 'stock-success', 'prepare-failure', 'error-retry', 'record-delay', 'cancel-before-prompt', 'cancel-after-prompt') or scenario.startswith('escape-') else 1
+            expected = 0 if scenario in ('success', 'stock-success', 'prepare-failure', 'publish-hang', 'error-retry', 'record-delay', 'cancel-before-prompt', 'cancel-after-prompt') or scenario.startswith('escape-') else 1
             assert process.wait(timeout=8) == expected, log_path.read_text()
             if scripted:
                 wire = [json.loads(line) for line in (profile / 'qml/wire.jsonl').read_text().splitlines()]
@@ -399,7 +405,7 @@ def run(scenario, scripted=False):
                 assert starts[0]['cmd'] == ['/usr/bin/niri-session', '--fixture']
                 launch_env = starts[0]['env']
                 assert launch_env[0] == 'XDG_SESSION_TYPE=wayland'
-                if scenario in ('stock-success', 'prepare-failure'):
+                if scenario in ('stock-success', 'prepare-failure', 'publish-hang'):
                     assert launch_env == ['XDG_SESSION_TYPE=wayland']
                 else:
                     assert len(launch_env) == 2 and launch_env[1].startswith('EMAKI_LOGIN_HANDOFF=')
@@ -426,19 +432,29 @@ def run(scenario, scripted=False):
         output = log_path.read_text()
         if scenario == 'prepare-failure':
             handoff_at = int(re.search(r'PREPARE_FAILURE_AT (\d+)', output).group(1))
-            assert time.time()*1000 - handoff_at < 1500, 'prepare failure waited for the two-second capture limit'
+            assert time.time()*1000 - handoff_at < 1500, 'prepare failure waited for the capture limit'
+        if scenario == 'publish-hang':
+            # Slow hardware gets 3.5 s for its frame (2 s dropped the pour-down on a 2015
+            # laptop), then the login starts without it and says so at warning level.
+            started = int(re.search(r'CAPTURE_START_AT (\d+)', output).group(1))
+            timeout = re.search(r'EMAKI_SESSION_COVER (\{"phase":"capture-timeout"[^\n]*\})', output)
+            assert timeout, 'the capture limit left no warning: ' + output
+            waited = json.loads(timeout.group(1))['atMs'] - started
+            assert 3400 <= waited < 4500, ('capture limit', waited)
         events = re.findall(r'EMAKI_SESSION_COVER (\{[^\n]*\})', output)
         assert all('token' not in json.loads(event) for event in events), 'handoff token entered journal'
         assert not any('GREETER_ENTRY_PHASE ' + phase in output for phase in ('drain', 'finished')), 'greeter ran the lock drain'
         if accepted is not None:
             assert output.count('GREETER_ENTRY_HANDOFF ') == 1, 'duplicate authenticated handoff'
-            if scenario not in ('stock-success', 'prepare-failure'):
+            if scenario not in ('stock-success', 'prepare-failure', 'publish-hang'):
                 full = profile / 'handoff' / (marker['token'] + '.png')
                 plate = profile / 'handoff' / (marker['token'] + '-plate.png')
                 assert full.exists() and plate.exists(), 'launch preceded saved handoff pictures'
                 with Image.open(full) as image, Image.open(plate) as backing:
                     assert image.size == backing.size == (960, 640)
-                    difference = ImageChops.difference(image, backing)
+                    # The scene is Qt's own opaque file (RGBA, alpha 255); the plate is flattened RGB.
+                    assert image.mode == 'RGB' or image.getchannel('A').getextrema() == (255, 255)
+                    difference = ImageChops.difference(image.convert('RGB'), backing.convert('RGB'))
                     assert difference.getbbox() is not None, 'wordmark disappeared with controls'
                     assert difference.crop((280, 140, 680, 370)).getbbox() is None, 'password/avatar remained in final frame'
                 assert 'GREETER_ENTRY_PHASE melt' in output
@@ -484,7 +500,7 @@ run('missing-socket')
 run('escape-selected-one-user')
 run('escape-selected-two-users')
 run('escape-unresolved-users')
-for scripted_scenario in ('success', 'stock-success', 'prepare-failure', 'cancel-before-prompt', 'cancel-after-prompt'):
+for scripted_scenario in ('success', 'stock-success', 'prepare-failure', 'publish-hang', 'cancel-before-prompt', 'cancel-after-prompt'):
     run(scripted_scenario, scripted=True)
 no_socket = False
 with tempfile.TemporaryDirectory(prefix='gep-', dir=CACHE) as work:

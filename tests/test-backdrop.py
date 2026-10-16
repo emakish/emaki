@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Isolated three-window wallpaper decode/readiness probe; never opens a display.
 
 --source-root allows an archived baseline. Pss is of this offscreen fixture only,

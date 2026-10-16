@@ -45,7 +45,10 @@ UNCHECKED = ('Emaki could not complete the safety checks for the shared startup 
 WRONG_ESP = ('The partition mounted at /efi does not match the shared startup '
              'partition recorded during installation. Mount the original partition at /efi.')
 BAD_RECORD = ('The record of the startup partition shared with Windows is missing '
-              'or damaged. Emaki cannot safely update that partition.')
+              'or damaged. Emaki cannot safely update that partition. Firmware entries can be repaired, '
+              'but startup files cannot be rebuilt there without the installation record.')
+OWN_ESP = ('Emaki has its own startup partition next to Windows and never writes the startup '
+           'partition of Windows. Mount the Emaki startup partition (label EMAKI) at /efi.')
 STOPPED = ('STOP: a previous write to the shared startup partition did not finish '
            'safely, or files outside EFI/Emaki changed. Further writes are blocked. Save '
            '/var/log/emaki-boot-refresh.log and /var/lib/emaki/shared-esp-stop.json.\n'
@@ -107,10 +110,16 @@ def run(argv):
     return result.stdout
 
 
-def marker():
-    """The installer's root-owned record of the shared partition's GPT identity."""
+def record(path=None):
+    """The installer's root-owned alongside record, validated.
+
+    esp_partuuid is always the ESP that holds Windows Boot Manager. Since 0.9 an
+    installation next to Windows has its own ESP: emaki_esp_partuuid names it and
+    windows_esp_uuid is the FAT volume id of Windows' ESP. A record without
+    emaki_esp_partuuid is the older layout, where Windows' ESP is also /efi.
+    """
     try:
-        fd = os.open(MARKER, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        fd = os.open(MARKER if path is None else path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except OSError as error:
         raise Refused(BAD_RECORD) from error
     with os.fdopen(fd, 'rb') as stream:
@@ -125,7 +134,24 @@ def marker():
     require(isinstance(value, dict) and value.get('version') == 1
             and isinstance(value.get('esp_partuuid'), str)
             and re.fullmatch(GUID, value['esp_partuuid']), BAD_RECORD)
-    return value['esp_partuuid'].lower()
+    result = {'esp_partuuid': value['esp_partuuid'].lower()}
+    if 'emaki_esp_partuuid' in value:
+        own, windows = value.get('emaki_esp_partuuid'), value.get('windows_esp_uuid')
+        require(isinstance(own, str) and re.fullmatch(GUID, own)
+                and own.lower() != result['esp_partuuid']
+                and isinstance(windows, str)
+                and re.fullmatch(r'[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}', windows), BAD_RECORD)
+        result.update(emaki_esp_partuuid=own.lower(), windows_esp_uuid=windows.upper())
+    return result
+
+
+def marker():
+    """The installer's root-owned record of the shared partition's GPT identity."""
+    # A record of Emaki's own ESP names no shared partition, so the write gate never
+    # opens on Windows' ESP, whatever is mounted at /efi.
+    value = record()
+    require('emaki_esp_partuuid' not in value, OWN_ESP)
+    return value['esp_partuuid']
 
 
 def mounted_esp(partuuid):

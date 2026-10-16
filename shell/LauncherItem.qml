@@ -21,6 +21,8 @@ Item {
     property string term: ""
     readonly property string kind: row?.kind ?? ""
     readonly property var iconCandidates: {
+        if (kind === "settings")
+            return [SystemIcons.settingsSvg(dim)];
         const name = row?.entry?.icon ?? "";
         // Quickshell keeps looking up a missing icon for two seconds and changes
         // iconThemeRevision when it arrives, so a program's icon installed after its tile appears
@@ -28,6 +30,8 @@ Item {
         Quickshell.iconThemeRevision;
         if (name === "emaki-programs-updates")
             return [SystemIcons.programsSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.accentShade, ShellPalette.managerIconInk)];
+        if (name === "emaki-welcome")
+            return [SystemIcons.welcomeSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.managerIconInk)];
         const themed = name ? Quickshell.iconPath(name, true) : "";
         if (!["accessories-character-map", "utilities-system-monitor", "system-software-update", "printer"].includes(name))
             return themed ? [themed] : [];
@@ -54,6 +58,7 @@ Item {
     }
     // Results without an app icon use a symbolic icon.
     readonly property string symbol: ({
+            settings: "preferences-system-symbolic",
             calculator: "accessories-calculator-symbolic",
             web: "web-browser-symbolic",
             clip: "edit-paste-symbolic"

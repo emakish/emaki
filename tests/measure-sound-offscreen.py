@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Compare fake-mic render work in two shell trees, using isolated llvmpipe.
 
 No audio stream, compositor, live session, host GPU, or running shell is used.

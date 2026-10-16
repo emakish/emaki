@@ -22,6 +22,8 @@ Scope {
     // Display confirmation and startup recovery belong to the session, not a page.
     DisplaysService {
         id: displays
+        active: controller.opened && controller.page === "displays"
+        niri: controller.niri
     }
     function open(requested: string): string {
         return openOn(targetHost, requested);

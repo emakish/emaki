@@ -44,6 +44,45 @@ def database(root, packages):
 
 
 class Records(unittest.TestCase):
+    def test_transaction_lock_boot_identity_is_separate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            lock = root / 'var/lib/pacman/db.lck'
+            lock.parent.mkdir(parents=True)
+            boot = root / 'proc/sys/kernel/random/boot_id'
+            boot.parent.mkdir(parents=True)
+            boot.write_text('11111111-2222-3333-4444-555555555555\n')
+            lock.write_bytes(b'')
+            before = lock.stat()
+            for _ in range(2):
+                holds.mark_lock(root)
+                self.assertEqual(lock.read_bytes(), b'')
+                self.assertEqual(lock.stat().st_ctime_ns, before.st_ctime_ns)
+                record = json.loads(lock.with_name('emaki-package-lock.json').read_text())
+                self.assertEqual(record['boot_id'], boot.read_text().strip())
+                self.assertEqual(record['identity'], [before.st_ino, before.st_mode, before.st_size,
+                                                      before.st_mtime_ns, before.st_ctime_ns])
+            lock.write_text('foreign')
+            with self.assertRaises(ValueError):
+                holds.mark_lock(root)
+            self.assertEqual(lock.read_text(), 'foreign')
+            lock.unlink()
+            target = lock.with_name('target')
+            target.write_bytes(b'')
+            lock.symlink_to(target)
+            with self.assertRaises((OSError, ValueError)):
+                holds.mark_lock(root)
+            self.assertEqual(target.read_bytes(), b'')
+
+    def test_optional_marker_failure_has_its_own_message(self):
+        output = io.StringIO()
+        with patch.object(holds.sys, 'argv', ['holds', 'mark-lock']), \
+                patch.object(holds, 'mark_lock', side_effect=OSError('injected failure')), \
+                contextlib.redirect_stderr(output):
+            self.assertEqual(holds.main(), 1)
+        self.assertIn('Could not record the package lock (pacman)', output.getvalue())
+        self.assertNotIn('Rollback package protection failed', output.getvalue())
+
     def test_only_backwards_versions_are_held(self):
         with tempfile.TemporaryDirectory() as tmp:
             old, new = Path(tmp) / 'old', Path(tmp) / 'new'
@@ -125,7 +164,10 @@ class Transactions(unittest.TestCase):
         (self.root / 'dev/null').touch()
         (self.root / 'bin').symlink_to('usr/bin')
         sources = []
-        for binary in ('/usr/bin/sh', '/usr/bin/python3', '/usr/bin/vercmp', _ctypes.__file__):
+        # The emaki-config migration hook loads libalpm through ctypes; include
+        # its unversioned name and dependency closure in the transaction root.
+        for binary in ('/usr/bin/sh', '/usr/bin/cat', '/usr/bin/python3', '/usr/bin/vercmp',
+                       _ctypes.__file__, '/usr/lib/libalpm.so'):
             sources += [binary] + re.findall(r'(/[^\s()]+)', run(['ldd', binary]).stdout)
         for source in sources:
             dest = self.root / source.lstrip('/')
@@ -203,14 +245,30 @@ class Transactions(unittest.TestCase):
                       'chroot', str(self.root), executable, 'release', name])
         self.success(result)
 
+    def test_package_lock_hook_records_upgrade_and_removal_without_touching_lock(self):
+        capture = self.root / 'etc/pacman.d/hooks/01-capture-lock.hook'
+        capture.write_text("[Trigger]\nOperation = Install\nOperation = Upgrade\nOperation = Remove\n"
+                           "Type = Package\nTarget = *\n[Action]\nWhen = PreTransaction\n"
+                           "Exec = /bin/sh -c '[ ! -s /var/lib/pacman/db.lck ] || exit 1; "
+                           "read token < /var/lib/pacman/emaki-package-lock.json; "
+                           "printf %s \"$token\" > /lock-token'\n")
+        expected = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+        for args in (('-Syy', 'other'), ('-R', 'other'), ('-S', 'other')):
+            with self.subTest(args=args):
+                self.success(self.pacman(*args))
+                self.assertEqual(json.loads((self.root / 'lock-token').read_text())['boot_id'], expected)
+
     def test_broken_python_does_not_block_repair(self):
         (self.root / 'usr/bin/python3').unlink()
         self.success(self.pacman('-Syy', 'other'))
         self.assertIn('other 2-1', self.pacman('-Q', 'other').stdout)
 
-    def test_absent_or_empty_state_does_not_start_python(self):
+    def test_absent_or_empty_holds_skip_checker_and_failed_estimate_warns(self):
+        # The marker reports its startup; the space launcher replaces failed
+        # interpreter output with one warning and does not mistake exit 3 for proof.
+        self.assertTrue((self.root / 'var/lib/pacman/emaki-package-lock.json').is_file())
         python = self.root / 'usr/bin/python3'
-        python.write_text('#!/bin/sh\necho python-started >&2\nexit 3\n')
+        python.write_text('#!/bin/sh\necho python-started "$@" >&2\nexit 3\n')
         python.chmod(0o755)
         for empty in (False, True):
             state = self.root / holds.STATE
@@ -219,7 +277,32 @@ class Transactions(unittest.TestCase):
                 state.touch()
             result = self.pacman('-Syy', 'other')
             self.success(result)
-            self.assertNotIn('python-started', result.stdout + result.stderr)
+            starts = [line for line in (result.stdout + result.stderr).splitlines()
+                      if 'python-started' in line]
+            self.assertEqual(len(starts), 1, starts)
+            self.assertTrue(starts[0].endswith(' mark-lock'), starts)
+            self.assertEqual((result.stdout + result.stderr).count('Warning: the update space check is unavailable;'), 1)
+
+    def test_space_hook_aborts_measured_shortage_before_package_changes(self):
+        estimator = self.root / 'usr/libexec/emaki/emaki_update_space.py'
+        message = ('Not enough free space for this update: it needs about 2.0 GB, 1.0 GB is free. '
+                   'Delete unneeded files or clear the package cache in Settings > Storage, then try again.')
+        estimator.write_text('import sys\nassert sys.stdin.read().splitlines() == ["other"]\n'
+                             f'print({message!r}, file=sys.stderr)\nraise SystemExit(3)\n')
+        refused = self.pacman('-Syy', 'other')
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertEqual((refused.stdout + refused.stderr).count(message), 1)
+        self.assertIn('other 1-1', self.pacman('-Q', 'other').stdout)
+        # The same native hook proceeds on an unknown result, then on a fitting one.
+        estimator.write_text('raise RuntimeError("unavailable estimate")\n')
+        continued = self.pacman('-S', 'other')
+        self.success(continued)
+        self.assertEqual((continued.stdout + continued.stderr).count('Warning: the update space check is unavailable;'), 1)
+        self.assertIn('other 2-1', self.pacman('-Q', 'other').stdout)
+        estimator.write_text('import sys\nassert sys.stdin.read().splitlines() == ["other"]\n')
+        fitted = self.pacman('-S', 'other')
+        self.success(fitted)
+        self.assertNotIn('Warning: the update space check', fitted.stdout + fitted.stderr)
 
     def test_output_options_cannot_install_held_version(self):
         for options in (('--color', 'never'), ('--color=always',), ('-q',),

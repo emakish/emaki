@@ -22,6 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'installer'), str(ROOT / 'grub')]
 from emaki_installer import boot
 sys.modules['emaki_boot.boot'] = boot
+from emaki_installer import secureboot
+sys.modules['emaki_boot.secureboot'] = secureboot
 from emaki_boot import refresh
 
 PACKAGE = Path(os.environ.get('EMAKI_GRUB_TOOLS', '/'))

@@ -2,6 +2,7 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Replace installed files while a shell generation keeps its original helpers."""
+from contextlib import contextmanager
 import importlib.machinery
 import importlib.util
 import json
@@ -44,6 +45,22 @@ class SessionFiles(unittest.TestCase):
         self.helper = load('emaki-session-files')
         # The session reads only the state command; answer it with the real backend over fixtures.
         self.update = load('emaki-session-update')
+        # Synthetic process inventory: unrelated host transactions cannot affect capture.
+        self.proc = proc = self.base / 'owned-proc'
+        (proc / 'sys/kernel/random').mkdir(parents=True)
+        (proc / 'sys/kernel/random/boot_id').write_text('11111111-1111-1111-1111-111111111111')
+        self.holder = proc / '123'
+        (self.holder / 'fd').mkdir(parents=True)
+        (self.holder / 'stat').write_text('123 (fixture) S ' + '0 ' * 18 + '1')
+        (self.holder / 'comm').write_text('fixture-locker')
+        (self.holder / 'cmdline').write_bytes(b'fixture-locker\0')
+        transaction_running = self.update.arch.transaction_running
+        def fixture_transaction(*args, **kwargs):
+            with patch.object(self.update.arch.session, 'PROC', self.proc):
+                return transaction_running(*args, **kwargs)
+        transactions = patch.object(self.update.arch, 'transaction_running', side_effect=fixture_transaction)
+        transactions.start()
+        self.addCleanup(transactions.stop)
         self.packages = self.base / 'packages'
         self.lock = self.base / 'db.lck'
         self.marker = self.base / 'update-marker'
@@ -61,6 +78,16 @@ class SessionFiles(unittest.TestCase):
         self.environment = patch.dict(os.environ, XDG_RUNTIME_DIR=str(self.base / 'runtime'), NIRI_SOCKET='session-one')
         self.environment.start()
         self.addCleanup(self.environment.stop)
+
+    @contextmanager
+    def lock_holder(self):
+        self.lock.touch()
+        descriptor = self.holder / 'fd/3'
+        descriptor.symlink_to(self.lock)
+        try:
+            yield
+        finally:
+            descriptor.unlink()
 
     def prepare(self):
         return self.helper.prepare(self.source, self.binary)
@@ -126,7 +153,7 @@ class SessionFiles(unittest.TestCase):
         self.assertNotEqual(shell, self.source)
 
     def test_live_holder_starts_installed_panel_after_short_bound(self):
-        with self.lock.open('w'), patch.object(self.helper, 'START_WAIT', 0.1):
+        with self.lock_holder(), patch.object(self.helper, 'START_WAIT', 0.1):
             start = time.monotonic()
             shell = self.helper.prepare(self.source, self.binary, wait=True)
             elapsed = time.monotonic() - start
@@ -148,7 +175,7 @@ class SessionFiles(unittest.TestCase):
             proc = self.base / 'proc'
             proc.mkdir()
             (proc / str(query.pid)).symlink_to(Path('/proc') / str(query.pid))
-            with patch.object(self.helper.state, 'PROC', proc), \
+            with patch.object(self, 'proc', proc), \
                     patch.object(self.helper.time, 'sleep') as sleep:
                 captured = self.helper.prepare(self.source, self.binary, wait=True)
                 self.assertNotEqual(captured, self.source)
@@ -166,7 +193,7 @@ class SessionFiles(unittest.TestCase):
             query.stdout.close()
 
     def test_installed_fallback_keeps_baseline_through_update_and_recapture(self):
-        with self.lock.open('w'):
+        with self.lock_holder():
             self.assertEqual(self.prepare(), self.source)
             baseline = self.helper.runtime(self.source) / 'session.json'
             original = baseline.read_text()
@@ -182,7 +209,7 @@ class SessionFiles(unittest.TestCase):
 
     def test_first_fallback_after_hook_marker_still_remembers_old_compositor(self):
         self.update.mark_update(self.marker)
-        with self.lock.open('w'):
+        with self.lock_holder():
             self.assertEqual(self.prepare(), self.source)
             self.assertFalse(self.helper.changed_installed(self.source))
         self.assertTrue(self.helper.changed_installed(self.source))
@@ -222,7 +249,7 @@ class SessionFiles(unittest.TestCase):
 
     def test_no_notice_until_transaction_and_later_hooks_exit(self):
         shell = self.prepare()
-        with self.lock.open('w'):
+        with self.lock_holder():
             (self.source / 'helper.py').write_text('new files before later hooks')
             self.assertFalse(self.helper.changed(shell.parent))
             self.update.mark_update(self.marker)
@@ -268,6 +295,45 @@ class SessionFiles(unittest.TestCase):
         result = subprocess.run([sys.executable, '-I', str(wrapper), 'call', 'dock', 'status'],
                                 env=env, text=True, capture_output=True, check=True)
         self.assertEqual(result.stdout.splitlines(), ['-p', str(shell), 'ipc', 'call', 'dock', 'status'])
+
+    def test_switcher_without_an_answering_panel_focuses_the_previous_window(self):
+        shell = self.prepare()
+        tools = self.base / 'bin'
+        tools.mkdir()
+        calls = self.base / 'niri-calls'
+        niri = tools / 'niri'
+        niri.write_text(f'#!/bin/sh\nprintf "%s\\n" "$*" >> "{calls}"\n')
+        niri.chmod(0o700)
+        env = dict(os.environ, PATH=str(tools) + ':' + os.environ['PATH'],
+                   EMAKI_SHELL_DIR=str(self.source))
+        env.pop('NIRI_SOCKET', None)
+        env.pop('WAYLAND_DISPLAY', None)
+        wrapper = tools / 'emaki-shell'
+        render = runpy.run_path(str(ROOT / 'scripts/render-paths'))
+        values = dict(render['paths'](), TRUSTED_PATH=str(tools) + ':/usr/bin')
+        wrapper.write_text(render['substitute']((ROOT / 'scripts/emaki-shell').read_text(), values))
+        for name in ('emaki_paths.py', 'emaki-session-files', 'emaki_session_state.py'):
+            (tools / name).symlink_to(ROOT / 'scripts' / name)
+        qs = tools / 'qs'
+        # The panel's answer to "switcher step <direction> <press time>": it handled the press, it
+        # could not, or no panel answered. The press time is this process's start, in ms.
+        for answer, status, function, fallback, code in (
+                ('true', 0, 'next', False, 0), ('false', 0, 'next', True, 0), ('', 1, 'next', True, 0),
+                ('', 1, 'previous', False, 75), ('true', 0, 'appPrevious', False, 0)):
+            with self.subTest(answer=answer, status=status, function=function):
+                calls.unlink(missing_ok=True)
+                qs.write_text(f'#!/bin/sh\n[ "$1 $2 $3 $4 $5 $6 $7" = "-p {shell} ipc call switcher step {function}" ] || exit 9\n'
+                              f'printf "%s\\n" "$8" > "{calls}.sent"\n'
+                              f'[ -z "{answer}" ] || echo {answer}\nexit {status}\n')
+                qs.chmod(0o700)
+                before = time.time() * 1000
+                result = subprocess.run([sys.executable, '-I', str(wrapper), 'call', 'switcher', function],
+                                        env=env, text=True, capture_output=True)
+                self.assertEqual(calls.read_text() if calls.exists() else '',
+                                 'msg action focus-window-previous\n' if fallback else '', result.stderr)
+                self.assertEqual(result.returncode, code, result.stderr)
+                sent = int(Path(f'{calls}.sent').read_text())
+                self.assertTrue(before - 50 <= sent <= time.time() * 1000, (before, sent))
 
     def test_text_console_without_session_environment_uses_user_runtime(self):
         runtimes = self.base / 'users'

@@ -15,6 +15,8 @@ Surfaces 1.0 Surfaces.qml
 NiriService 1.0 NiriService.qml
 WorkspaceStrip 1.0 WorkspaceStrip.qml
 WindowLabels 1.0 WindowLabels.qml
+WindowSwitcher 1.0 WindowSwitcher.qml
+SwitcherCapture 1.0 SwitcherCapture.qml
 AppCatalog 1.0 AppCatalog.qml
 singleton AppLaunch 1.0 AppLaunch.qml
 RecentFiles 1.0 RecentFiles.qml
@@ -26,6 +28,7 @@ NotificationService 1.0 NotificationService.qml
 NotificationReceiver 1.0 NotificationReceiver.qml
 ShellRecoveryNotice 1.0 ShellRecoveryNotice.qml
 SessionUpdateNotice 1.0 SessionUpdateNotice.qml
+SecureBootNotice 1.0 SecureBootNotice.qml
 CalendarMonth 1.0 CalendarMonth.qml
 ClockBody 1.0 ClockBody.qml
 PrivateJob 1.0 PrivateJob.qml
@@ -81,6 +84,7 @@ AuthController 1.0 AuthController.qml
 GreeterAuth 1.0 GreeterAuth.qml
 GreeterState 1.0 GreeterState.qml
 GreeterSession 1.0 GreeterSession.qml
+GreeterUsers 1.0 GreeterUsers.qml
 SessionStartup 1.0 SessionStartup.qml
 SessionCoverState 1.0 SessionCoverState.qml
 SessionCoverSurface 1.0 SessionCoverSurface.qml
@@ -153,6 +157,7 @@ SudoKeyWarning 1.0 SudoKeyWarning.qml
 SudoKeyWarningSurface 1.0 SudoKeyWarningSurface.qml
 SettingsStoragePage 1.0 SettingsStoragePage.qml
 SettingsPrivacyPage 1.0 SettingsPrivacyPage.qml
+SecureBootSettings 1.0 SecureBootSettings.qml
 SettingsUsersPage 1.0 SettingsUsersPage.qml
 singleton SettingsUsersService 1.0 SettingsUsersService.qml
 singleton ReportBridge 1.0 ReportBridge.qml

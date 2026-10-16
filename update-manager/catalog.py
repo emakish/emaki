@@ -216,7 +216,7 @@ def warnings_for(updates):
     if session_changes(names):
         warnings.append('The desktop will change. Save your work, sign out and sign in again after updating.')
     if any(item['aur'] for item in updates):
-        warnings.append('Packages from AUR are not checked by Arch or Emaki. Update them with your AUR tool; this window does not build them.')
+        warnings.append('Packages from AUR are not checked by Arch or Emaki. Where available, open the program’s page to build its update, or use your AUR tool.')
     return warnings
 
 

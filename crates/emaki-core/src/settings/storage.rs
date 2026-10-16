@@ -1,9 +1,11 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 use super::*;
 use crate::transport::{helper, helper_with_lock};
 use rustix::fs::{FlockOperation, OFlags, flock};
 use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::{Read, Write};
-use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::Component;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -60,7 +62,40 @@ pub(super) fn mkdir(path: &Path) -> Result<()> {
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(e) => return io(Err(e)),
     }
-    private_dir(path)
+    let meta = io(fs::symlink_metadata(path))?;
+    if !meta.is_dir() || meta.uid() != rustix::process::geteuid().as_raw() {
+        return Err(err("unsafe_profile_directory"));
+    }
+    io(fs::set_permissions(path, fs::Permissions::from_mode(0o700)))
+}
+
+// Only the managed subtrees are repaired; shared XDG parents and personal
+// configuration outside them keep their permissions. Never follow links.
+fn repair_private_tree(path: &Path) -> Result<()> {
+    mkdir(path)?;
+    for entry in io(fs::read_dir(path))? {
+        let path = io(entry)?.path();
+        safe_path(&path)?;
+        let meta = io(fs::symlink_metadata(&path))?;
+        if meta.is_dir() {
+            repair_private_tree(&path)?;
+        } else {
+            let file = io(OpenOptions::new()
+                .read(true)
+                .custom_flags((OFlags::NOFOLLOW | OFlags::NONBLOCK).bits() as i32)
+                .open(&path))?;
+            private_file(&file)?;
+        }
+    }
+    Ok(())
+}
+
+fn private_file(file: &File) -> Result<()> {
+    let meta = io(file.metadata())?;
+    if !meta.is_file() || meta.nlink() != 1 || meta.uid() != rustix::process::geteuid().as_raw() {
+        return Err(err("unsafe_settings_file"));
+    }
+    io(file.set_permissions(fs::Permissions::from_mode(0o600)))
 }
 pub(super) fn read(path: &Path) -> Result<Option<Vec<u8>>> {
     safe_path(path)?;
@@ -100,6 +135,7 @@ pub(super) fn write_new(path: &Path, bytes: &[u8]) -> Result<()> {
         directory: false,
         keep: false,
     };
+    private_file(&file)?;
     io(file.write_all(bytes))?;
     io(file.sync_all())?;
     guard.keep = true;
@@ -207,7 +243,38 @@ impl Profile {
         }
         for path in [&self.config, &self.state, &self.runtime] {
             parents(path)?;
-            private_dir(path)?;
+            mkdir(path)?;
+        }
+        Ok(())
+    }
+    fn repair_private_state(&self) -> Result<()> {
+        // This lock covers settings-owned files, not other components' stores.
+        for path in [
+            self.source(),
+            self.config.join("displays.kdl"),
+            self.state.join("dock.json"),
+            self.state.join("helper.lock"),
+            self.generations(),
+            self.history(),
+            self.state.join("accent"),
+            self.state.join("defaults"),
+            self.runtime.clone(),
+        ] {
+            safe_path(&path)?;
+            let meta = match fs::symlink_metadata(&path) {
+                Ok(meta) => meta,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return io(Err(error)),
+            };
+            if meta.is_dir() {
+                repair_private_tree(&path)?;
+            } else {
+                let file = io(OpenOptions::new()
+                    .read(true)
+                    .custom_flags((OFlags::NOFOLLOW | OFlags::NONBLOCK).bits() as i32)
+                    .open(&path))?;
+                private_file(&file)?;
+            }
         }
         Ok(())
     }
@@ -250,18 +317,14 @@ impl Profile {
                 .mode(0o600)
                 .custom_flags((OFlags::NOFOLLOW | OFlags::NONBLOCK).bits() as i32)
                 .open(&path))?;
-            let meta = io(file.metadata())?;
-            if !meta.is_file()
-                || meta.nlink() != 1
-                || meta.uid() != rustix::process::geteuid().as_raw()
-                || meta.mode() & 0o077 != 0
-            {
-                return Err(err("unsafe_settings_file"));
-            }
+            private_file(&file)?;
             let deadline = Instant::now() + timeout;
             loop {
                 match flock(&file, FlockOperation::NonBlockingLockExclusive) {
-                    Ok(()) => return Ok(file),
+                    Ok(()) => {
+                        self.repair_private_state()?;
+                        return Ok(file);
+                    }
                     Err(e) if e == rustix::io::Errno::WOULDBLOCK => {
                         if Instant::now() >= deadline {
                             return Err(err("settings_busy"));
@@ -314,6 +377,7 @@ fn write_generation(dir: &Path, files: &[(&str, String)]) -> Result<Temporary> {
         directory: true,
         keep: false,
     };
+    mkdir(dir)?;
     mkdir(&dir.join("package"))?;
     for (name, bytes) in files {
         write_new(&dir.join(name), bytes.as_bytes())?;
@@ -790,6 +854,94 @@ mod tests {
     }
 
     #[test]
+    fn managed_state_repairs_private_modes_with_public_umask() {
+        const CHILD: &str = "EMAKI_PRIVATE_MODES_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            for mask in ["022", "0777"] {
+                let (directory, _) = fixture();
+                let output = std::process::Command::new("sh")
+                .args(["-c", "umask \"$2\"; exec \"$1\" --exact settings::storage::tests::managed_state_repairs_private_modes_with_public_umask --nocapture", "private-modes"])
+                .arg(std::env::current_exe().unwrap())
+                .arg(mask)
+                .env(CHILD, "1")
+                .env("HOME", &directory.path)
+                .env("XDG_CONFIG_HOME", directory.path.join("config"))
+                .env("XDG_STATE_HOME", directory.path.join("state"))
+                .env_remove("XDG_RUNTIME_DIR")
+                .output()
+                .unwrap();
+                assert!(
+                    output.status.success(),
+                    "{}{}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+            return;
+        }
+        let profile = Profile::open(None).unwrap();
+        profile.initialize().unwrap();
+        mkdir(&profile.history()).unwrap();
+        mkdir(&profile.generations()).unwrap();
+        let generation = profile.generations().join("g-1-1-1");
+        let mut generated = write_generation(&generation, &[]).unwrap();
+        generated.keep = true;
+        let files = [
+            profile.source(),
+            profile.history().join("entry.json"),
+            profile.state.join("settings.lock"),
+            generation.join("config.kdl"),
+            profile.runtime.join("session.kdl"),
+        ];
+        for path in &files {
+            write_new(path, b"private state").unwrap();
+            assert_eq!(fs::metadata(path).unwrap().mode() & 0o777, 0o600);
+            fs::set_permissions(path, fs::Permissions::from_mode(0o644)).unwrap();
+        }
+        let directories = [
+            &profile.config,
+            &profile.state,
+            &profile.runtime,
+            &profile.history(),
+            &profile.generations(),
+            &generation,
+            &generation.join("package"),
+        ];
+        for path in directories {
+            assert_eq!(fs::metadata(path).unwrap().mode() & 0o777, 0o700);
+            fs::set_permissions(path, fs::Permissions::from_mode(0o777)).unwrap();
+        }
+        let shared_parent = profile.config.parent().unwrap();
+        fs::set_permissions(shared_parent, fs::Permissions::from_mode(0o755)).unwrap();
+        profile.initialize().unwrap();
+        drop(profile.lock(Duration::ZERO).unwrap());
+        for path in directories {
+            assert_eq!(
+                fs::metadata(path).unwrap().mode() & 0o777,
+                0o700,
+                "{}",
+                path.display()
+            );
+        }
+        for path in &files {
+            assert_eq!(
+                fs::metadata(path).unwrap().mode() & 0o777,
+                0o600,
+                "{}",
+                path.display()
+            );
+            assert_eq!(fs::read(path).unwrap(), b"private state");
+        }
+        assert_eq!(fs::metadata(shared_parent).unwrap().mode() & 0o777, 0o755);
+        let lock = profile.state.join("settings.lock");
+        let inode = fs::metadata(&lock).unwrap().ino();
+        fs::set_permissions(&lock, fs::Permissions::from_mode(0o666)).unwrap();
+        let _held = profile.lock(Duration::ZERO).unwrap();
+        assert_eq!(fs::metadata(&lock).unwrap().mode() & 0o777, 0o600);
+        assert_eq!(fs::metadata(&lock).unwrap().ino(), inode);
+    }
+
+    #[test]
     fn old_derived_generations_are_bounded_without_pruning_history() {
         let (_directory, profile) = fixture();
         mkdir(&profile.generations()).unwrap();
@@ -838,8 +990,16 @@ mod tests {
             profile.lock(Duration::from_millis(20)).unwrap_err().reason,
             "settings_busy"
         );
+        // A concurrent fork can retain this open file description until exec.
+        let inherited = held.try_clone().unwrap();
         drop(held);
-        let _next = profile.lock(Duration::ZERO).unwrap();
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            drop(inherited);
+        });
+        // Reacquisition checks the inode, not immediate closure in another process.
+        let _next = profile.lock(Duration::from_secs(5)).unwrap();
+        release.join().unwrap();
         assert_eq!(
             fs::metadata(profile.state.join("settings.lock"))
                 .unwrap()

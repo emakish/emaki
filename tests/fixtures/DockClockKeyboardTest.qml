@@ -103,6 +103,9 @@ ShellRoot {
                 root.check(scene.dock.keyboardKey === "fixture-one", "dock wraps");
                 keys.keyClick(Qt.Key_F10, Qt.ShiftModifier);
                 root.check(scene.dock.popupOpen && scene.dock.keyboardRow >= 0, "dock item menu");
+                // An installed pin's menu starts with New window; Down reaches Unpin from Dock.
+                keys.keyClick(Qt.Key_Down);
+                root.check(scene.dock.popup.rows[scene.dock.keyboardRow].kind === "unpin", "dock menu down reaches unpin");
                 keys.keyClick(Qt.Key_Return);
                 root.check(!scene.dockStore.pinned.includes("fixture-one"), "keyboard unpin");
                 keys.keyClick(Qt.Key_Escape);

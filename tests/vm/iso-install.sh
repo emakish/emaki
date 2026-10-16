@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Destructive only inside the already running disposable ISO guest.
 # Commands in single quotes run in the guest.
 # shellcheck disable=SC2016

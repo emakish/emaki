@@ -1,5 +1,11 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 #[path = "../../../tests/socket_dir.rs"]
 mod socket_dir;
+
+#[path = "../../../tests/child_process.rs"]
+mod child_process;
+use child_process::{CommandExt, write_executable};
 
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -34,7 +40,7 @@ impl Fixture {
             ("pw-cli", include_str!("fixtures/pw-cli.py")),
         ] {
             let file = root.join("bin").join(name);
-            fs::write(&file, source).unwrap();
+            write_executable(&file, source).unwrap();
             fs::set_permissions(file, fs::Permissions::from_mode(0o700)).unwrap();
         }
         Self {
@@ -74,7 +80,7 @@ impl Fixture {
             .command()
             .env("FAKE_DBUS", mode)
             .args(["state", "--json", "--timeout-ms", &timeout])
-            .output()
+            .guarded_output()
             .unwrap();
         let json = serde_json::from_slice(&output.stdout).unwrap_or_else(|_| panic!("{output:?}"));
         assert!(output.stderr.is_empty(), "{output:?}");
@@ -275,7 +281,7 @@ fn map_and_state_do_not_write_or_create_any_profile_files() {
             vec!["niri", "snapshot"],
             vec!["niri", "snapshot", "--json"],
         ] {
-            let out = f.command().args(args).output().unwrap();
+            let out = f.command().args(args).guarded_output().unwrap();
             assert!(matches!(out.status.code(), Some(0 | 1)));
             assert!(out.stderr.is_empty());
             assert_eq!(snapshot(&f.root), before);
@@ -286,7 +292,11 @@ fn map_and_state_do_not_write_or_create_any_profile_files() {
 #[test]
 fn map_resolves_xdg_and_marks_planned_paths_without_creating_them() {
     let f = Fixture::new();
-    let out = f.command().args(["map", "--json"]).output().unwrap();
+    let out = f
+        .command()
+        .args(["map", "--json"])
+        .guarded_output()
+        .unwrap();
     assert_eq!(out.status.code(), Some(0));
     let map: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(map["schema_version"], 1);
@@ -305,7 +315,7 @@ fn map_resolves_xdg_and_marks_planned_paths_without_creating_them() {
         .env("XDG_CONFIG_HOME", "relative")
         .env_remove("XDG_RUNTIME_DIR")
         .args(["map", "--json"])
-        .output()
+        .guarded_output()
         .unwrap();
     assert_eq!(out.status.code(), Some(1));
     let map: Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -320,7 +330,11 @@ fn map_resolves_xdg_and_marks_planned_paths_without_creating_them() {
 #[test]
 fn every_map_entry_names_one_of_three_zones_and_its_attributes() {
     let f = Fixture::new();
-    let out = f.command().args(["map", "--json"]).output().unwrap();
+    let out = f
+        .command()
+        .args(["map", "--json"])
+        .guarded_output()
+        .unwrap();
     let map: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(map["schema_version"], 1);
     let entries = map["entries"].as_array().unwrap();
@@ -339,7 +353,7 @@ fn every_map_entry_names_one_of_three_zones_and_its_attributes() {
     let page = entries.iter().find(|e| e["id"] == "zones_doc").unwrap();
     let page = page["path"].as_str().unwrap();
     assert!(page.ends_with("/share/doc/emaki/ZONES.md"), "{page}");
-    let text = String::from_utf8(f.command().arg("map").output().unwrap().stdout).unwrap();
+    let text = String::from_utf8(f.command().arg("map").guarded_output().unwrap().stdout).unwrap();
     assert!(text.contains(&format!(
         "Zones (package, managed, yours) are explained in {page:?}\n"
     )));
@@ -464,7 +478,7 @@ fn zone_map() -> Value {
         .env_clear()
         .env("HOME", "/zones-home")
         .args(["map", "--json"])
-        .output()
+        .guarded_output()
         .unwrap();
     serde_json::from_slice(&out.stdout).unwrap()
 }
@@ -566,8 +580,8 @@ fn every_etc_file_of_emaki_config_is_on_the_zone_page() {
 }
 
 #[test]
-fn the_snapshot_boot_hook_is_a_file_of_emaki_config() {
-    // emaki-config ships the hook in mkinitcpio's own directory; the installer writes no
+fn the_boot_hooks_are_files_of_emaki_config() {
+    // emaki-config ships the hooks in mkinitcpio's own directory; the installer writes no
     // copy into /etc/initcpio, so the map names exactly the packaged files, in zone 1.
     if !built_for_default_locations() {
         return;
@@ -578,7 +592,17 @@ fn the_snapshot_boot_hook_is_a_file_of_emaki_config() {
             .filter(|path| path.contains("/initcpio/"))
             .map(str::to_owned)
             .collect();
-    assert_eq!(shipped.len(), 2, "{shipped:?}");
+    assert_eq!(
+        shipped,
+        BTreeSet::from([
+            "/usr/lib/initcpio/hooks/emaki-resume".to_owned(),
+            "/usr/lib/initcpio/hooks/emaki-snapshot-fstab".to_owned(),
+            "/usr/lib/initcpio/install/emaki-resume".to_owned(),
+            "/usr/lib/initcpio/install/emaki-snapshot-fstab".to_owned(),
+            "/usr/lib/initcpio/post/emaki-secureboot".to_owned(),
+        ]),
+        "emaki-config must ship exactly the boot hooks it owns"
+    );
     let map = zone_map();
     let mut mapped = BTreeSet::new();
     for entry in map["entries"].as_array().unwrap() {
@@ -616,7 +640,7 @@ fn every_map_path_sits_in_its_own_zone_on_the_zone_page() {
         .env_clear()
         .env("HOME", "/zones-home")
         .args(["map", "--json"])
-        .output()
+        .guarded_output()
         .unwrap();
     let map: Value = serde_json::from_slice(&out.stdout).unwrap();
     let mut checked = 0;
@@ -647,7 +671,7 @@ fn no_environment_is_reported_not_invented() {
         .env_clear()
         .env("PATH", "/nonexistent")
         .args(["state", "--json"])
-        .output()
+        .guarded_output()
         .unwrap();
     assert_eq!(out.status.code(), Some(1));
     let state: Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -656,7 +680,7 @@ fn no_environment_is_reported_not_invented() {
     let out = Command::new(env!("CARGO_BIN_EXE_emaki"))
         .env_clear()
         .args(["map", "--json"])
-        .output()
+        .guarded_output()
         .unwrap();
     assert_eq!(out.status.code(), Some(1));
     assert!(!String::from_utf8(out.stdout).unwrap().contains("/home/"));

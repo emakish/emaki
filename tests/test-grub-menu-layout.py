@@ -331,6 +331,59 @@ class MenuLayout(unittest.TestCase):
             self.assertEqual(subprocess.run(['grub-script-check', str(path)]).returncode, 0)
 
 
+class QuietKernelEntries(unittest.TestCase):
+    """B9: no "Loading Linux ..." lines between the menu and the startup logo."""
+
+    def setUp(self):
+        self.menu = (ROOT / 'tests/fixtures/grub-2.16-encrypted.cfg').read_text()
+
+    @staticmethod
+    def section(text):
+        return text.split('### BEGIN /etc/grub.d/10_linux ###')[1].split('### END /etc/grub.d/10_linux ###')[0]
+
+    def test_stock_entries_clear_the_screen_and_print_nothing(self):
+        text = boot.quiet_linux_entries(self.menu)
+        section = self.section(text)
+        self.assertNotIn('echo', section)
+        bodies = re.findall(r"^menuentry [^\n]*\{\n([^\n]*)\n", section, re.M)
+        self.assertEqual(bodies, ['\tclear'] * 4)
+        # Nothing else changed: dropping the inserted and removed lines gives the stock menu back.
+        stock = [line for line in self.menu.splitlines() if not re.fullmatch(r"\techo\t'Loading [^']*'", line)]
+        self.assertEqual([line for line in text.splitlines() if line != '\tclear'], stock)
+        self.assertIn('echo ""', text)  # the snapshot section's own line stays
+
+    def test_translated_messages_are_found_by_place_not_by_words(self):
+        russian = self.menu.replace("'Loading Linux linux ...'", "'Загрузка Linux linux…'").replace(
+            "'Loading initial ramdisk ...'", "'Загружается начальный виртуальный диск…'")
+        self.assertNotIn('echo', self.section(boot.quiet_linux_entries(russian)))
+
+    def test_idempotent_and_other_entries_untouched(self):
+        once = boot.quiet_linux_entries(self.menu)
+        self.assertEqual(boot.quiet_linux_entries(once), once)
+        windows = ("### BEGIN /etc/grub.d/30_os-prober ###\nmenuentry 'Windows Boot Manager' {\n"
+                   "\techo\t'Starting Windows'\n\tchainloader /EFI/Microsoft/Boot/bootmgfw.efi\n}\n"
+                   "### END /etc/grub.d/30_os-prober ###\n")
+        self.assertEqual(boot.quiet_linux_entries(windows), windows)
+        own = MENU.replace('\tload_video\n', "\techo\t'My own note'\n\tload_video\n", 1)
+        self.assertIn("\techo\t'My own note'\n", boot.quiet_linux_entries(own))
+        self.assertEqual(boot.quiet_linux_entries('menuentry A { echo; }\n'), 'menuentry A { echo; }\n')
+
+    def test_moved_fallback_entries_stay_quiet(self):
+        text = boot.menu_layout(boot.quiet_linux_entries(self.menu))
+        self.assertIn("submenu 'Advanced options'", text)
+        self.assertNotIn("'Loading ", text)
+        self.assertEqual(text.count('\n\tclear\n'), 4 + 2)  # the moved entries are in both orders
+        boot.verify_grub(text)
+
+    @unittest.skipUnless(subprocess.run(['sh', '-c', 'command -v grub-script-check'],
+                                        capture_output=True).returncode == 0, 'grub-script-check is unavailable')
+    def test_real_syntax_check(self):
+        path = ROOT / '.cache/tmp/quiet.cfg'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(boot.menu_layout(boot.quiet_linux_entries(self.menu)))
+        self.assertEqual(subprocess.run(['grub-script-check', str(path)]).returncode, 0)
+
+
 def installed_menu():
     """The VM's whole grub.cfg with its stock header; only the commands that reach that machine's disk are dropped."""
     menu = re.sub(r'(?m)^(insmod (part_gpt|cryptodisk|luks2|gcry_\w+|btrfs|png)|cryptomount .*|set root=.*|'
@@ -579,6 +632,16 @@ class MenuTheme(unittest.TestCase):
         self.assertEqual(boot.generated_menu_theme(line), '/usr/share/emaki/grub/theme/theme-200.txt')
         self.assertIsNone(boot.generated_menu_theme('terminal_output gfxterm\n'))
         self.assertEqual(boot.generated_menu_theme('set theme=($root)/boot/grub/themes/x/theme.txt\n'), '')
+
+    def test_terminal_window_covers_the_screen(self):
+        # GRUB's default terminal window is a black box over the middle 70 % of the picture
+        # (gfxmenu/view.c); what GRUB printed after the menu showed there (B9).
+        for scale in grub_screen.SCALES:
+            text = (ROOT / f'grub/theme/theme-{scale}.txt').read_text()
+            for line in ('terminal-left: "0"', 'terminal-top: "0"', 'terminal-width: "100%"',
+                         'terminal-height: "100%"', 'terminal-border: "0"'):
+                with self.subTest(scale=scale, line=line):
+                    self.assertIn('\n' + line + '\n', text)
 
     def test_committed_theme_is_current(self):
         subprocess.run([sys.executable, str(ROOT / 'grub/theme/generate-theme.py'), '--check'], check=True)

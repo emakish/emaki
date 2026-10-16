@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Emaki wordmark — variant 07 (chosen 2026-09-27): E is the mark from mark.py; lowercase “maki”
 follows its rules: stems are parallelograms tilted by SPINE, horizontal bars have
 45° cuts and STROKE thickness. Lowercase tops align with the E's middle bar (14 of 24); k has a

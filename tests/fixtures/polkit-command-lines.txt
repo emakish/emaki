@@ -1,0 +1,207 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Synthetic command arguments; none belong in the administrator prompt.
+password=SECRET
+password: SECRET
+password : SECRET
+Password=SECRET
+PASSWORD="my SECRET"
+password='my SECRET'
+--password SECRET
+--password=SECRET
+--password="SECRET x"
+--password 'SECRET x'
+--Password SECRET
+-password SECRET
+-p SECRET
+password SECRET
+token SECRET
+--token SECRET
+-token SECRET
+--access-token SECRET
+--auth-token SECRET
+--client-secret SECRET
+--new-password SECRET
+--db-password SECRET
+--api-key SECRET
+--apikey SECRET
+--api_key SECRET
+access_token=SECRET
+DB_PASSWORD=SECRET
+MYSQL_PWD=SECRET
+api-key: SECRET
+X-Api-Key: SECRET
+Authorization: Bearer SECRET
+Authorization: token ghp_SECRET
+Authorization: Basic SECRET
+Bearer SECRET
+Cookie: session=SECRET
+cookie=session=SECRET; other=SECRET
+https://user:SECRET@example.com/x
+https://SECRET@example.com/x
+http://user:SECRET@host
+nmcli device wifi connect Home password SECRET
+nmcli con modify Home wifi-sec.psk SECRET
+secret: SECRET
+credential=SECRET
+passphrase "SECRET"
+passphrase="SECRET"
+"password": "SECRET"
+{"password":"SECRET"}
+password=
+password = SECRET
+password:SECRET
+token=SECRET&x=1
+?token=SECRET
+url?access_token=SECRET&x=1
+--password\tSECRET
+password=	SECRET
+password=S3CRT9
+--password S3CRT9
+--password=S3CRT9
+-password S3CRT9
+-p S3CRT9
+-pS3CRT9
+mysql -u root -pS3CRT9 db
+—password S3CRT9
+–password S3CRT9
+—password hunter
+–password=S3CRT9
+−password S3CRT9
+--db-password S3CRT9
+--passwordFile S3CRT9
+--dbPassword S3CRT9
+--rootPassword S3CRT9
+--newpassword S3CRT9
+--adminpassword S3CRT9
+--password2 S3CRT9
+--password1=S3CRT9
+--pass S3CRT9
+--passwd S3CRT9
+--api_key S3CRT9
+--apiKey S3CRT9
+--auth-token S3CRT9
+--authtoken S3CRT9
+--secret-key S3CRT9
+--secret-access-key S3CRT9
+--aws-secret-access-key S3CRT9
+--private-key S3CRT9
+--psk S3CRT9
+--key S3CRT9
+--token-value S3CRT9
+--password-stdin S3CRT9
+password hunter
+password hunter2
+password Hunter
+token abcdef
+secret xyzzy
+nmcli device wifi connect Home password hunter
+nmcli device wifi connect Home password S3CRT9
+passphrase "S3CRT9"
+password "my XYZZY phrase"
+password=my XYZZY phrase
+--password my XYZZY phrase
+--password ab"S3CRT9
+--password ab'S3CRT9
+--password ab]S3CRT9
+--password ab}S3CRT9
+--password ab`S3CRT9
+--password=ab"S3CRT9
+password=ab]S3CRT9
+--password "ab"S3CRT9
+--password 'it'\''s S3CRT9'
+password: ab,S3CRT9
+DB_PASSWORD=S3CRT9
+PGPASSWORD=S3CRT9 psql
+SSHPASS=S3CRT9 sshpass -e ssh host
+AWS_S3CRT9_ACCESS_KEY=S3CRT9 aws s3 ls
+GITHUB_TOKEN=S3CRT9 gh
+env DB_PASSWORD=S3CRT9 cmd
+env 'DB_PASSWORD=S3CRT9' cmd
+sh -c "mysql --password=S3CRT9"
+sh -c mysql --password=S3CRT9
+bash -c echo root:S3CRT9 | chpasswd
+sh -c "echo S3CRT9 | passwd --stdin root"
+sshpass -p S3CRT9 ssh host
+curl -u user:S3CRT9 https://x
+curl -H Authorization: Bearer S3CRT9 https://x
+curl -H "Authorization: token S3CRT9" https://x
+curl --header X-Auth-Token:S3CRT9 https://x
+curl -H X-Api-Key:S3CRT9 https://x
+openssl pkcs12 -passin pass:S3CRT9 -in x
+openssl enc -k S3CRT9
+openssl rsa -passout pass:S3CRT9
+openssl pkcs12 -password pass:S3CRT9
+wpa_passphrase Home S3CRT9
+wpa_passphrase Home hunter
+smbclient -U user%S3CRT9 //h/s
+mount -t cifs -o username=u,password=S3CRT9 //h/s /mnt
+mount -t cifs -o username=u,password=hunter,uid=0 //h/s /mnt
+mount -o credentials=/root/c,pass=S3CRT9
+htpasswd -b file user S3CRT9
+https://user:S3CRT9@example.com
+ftp://user:S3CRT9@example.com
+postgres://user:S3CRT9@db/x
+postgresql://user:S3CRT9@db/x
+mysql://root:S3CRT9@db
+redis://:S3CRT9@host:6379
+smb://user:S3CRT9@host/share
+git clone https://oauth2:S3CRT9@example.com/x
+git+https://u:S3CRT9@host/x
+https://user:SEC@RET@host
+https://user:pa/S3CRT9@host
+HTTPS://user:S3CRT9@host
+ghp_S3CRT9abcdefghijklmnopqrstuvwxyz0123
+eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJTRUNSRVQifQ.S3CRT9sig
+AKIAIOSFODNN7S3CRT9
+xoxb-S3CRT9-123
+Bearer S3CRT9
+bearer S3CRT9
+Authorization: Bearer S3CRT9
+authorization=Bearer S3CRT9
+"api_key": "S3CRT9"
+{'password': 'S3CRT9'}
+{password: S3CRT9}
+password => S3CRT9
+password -> S3CRT9
+password is S3CRT9
+password is hunter
+the password is: S3CRT9
+pwd S3CRT9
+PWD=/root/S3CRT9
+token: S3CRT9
+Token S3CRT9
+TOKEN=S3CRT9
+--token=S3CRT9
+-t S3CRT9
+--password\tS3CRT9
+password=\tS3CRT9
+--pass​word S3CRT9
+password：S3CRT9
+password＝S3CRT9
+пароль S3CRT9
+пароль: S3CRT9
+Passwort: S3CRT9
+mot de passe: S3CRT9
+contraseña: S3CRT9
+--Пароль S3CRT9
+password...S3CRT9
+password.S3CRT9
+password,S3CRT9
+cookie: a=1; b=S3CRT9
+Set-Cookie: sid=S3CRT9; Path=/
+x-amz-security-token: S3CRT9
+proxy-authorization: Basic S3CRT9
+psk=S3CRT9
+psk="S3CRT9"
+wifi-sec.psk S3CRT9
+802-11-wireless-security.psk S3CRT9
+--passphrase S3CRT9
+--secret=S3CRT9
+secrets=S3CRT9
+passwords=S3CRT9
+tokens: S3CRT9
+keypassword=S3CRT9
+pin=S3CRT9
+--pin S3CRT9
+AWS_SECRET_ACCESS_KEY=S3CRT9 aws s3 ls

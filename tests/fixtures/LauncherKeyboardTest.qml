@@ -8,7 +8,12 @@ import Quickshell
 ShellRoot {
     // The focus-look contrasts checked by the test are the light ones: choose light, since
     // nothing saved is dark.
-    Component.onCompleted: SettingsBridge.values = [{key: "appearance.theme", value: "light"}]
+    Component.onCompleted: SettingsBridge.values = [
+        {
+            key: "appearance.theme",
+            value: "light"
+        }
+    ]
     NiriService {
         id: service
         binary: ""
@@ -74,6 +79,53 @@ ShellRoot {
             function selectionVisible() {
                 const geometry = launcher.geometryOf(launcher.selected);
                 return geometry !== null && geometry.rect.x >= geometry.clip.x - 1 && geometry.rect.y >= geometry.clip.y - 1 && geometry.rect.x + geometry.rect.width <= geometry.clip.x + geometry.clip.width + 1 && geometry.rect.y + geometry.rect.height <= geometry.clip.y + geometry.clip.height + 1;
+            }
+            function test_accessible_selection() {
+                launcher.setMode("Apps");
+                launcher.setQuery("");
+                launcher.takeFocus(true);
+                tryVerify(() => launcher.results.length >= 70);
+                const apps = findChild(launcher, "launcher-tab-apps");
+                equal(apps.Accessible.name, "Apps");
+                equal(apps.Accessible.role, Accessible.PageTab);
+                check(apps.Accessible.selected, "current mode is announced as selected");
+                const categories = launcher.categoryControls();
+                check(categories.length > 0, "categories exist");
+                for (const chip of categories) {
+                    equal(chip.Accessible.name, chip.modelData);
+                    equal(chip.Accessible.role, Accessible.PageTab);
+                    equal(chip.Accessible.selected, chip.current);
+                }
+                launcher.selectAt(0);
+                launcher.focusResults();
+                const results = findChild(launcher, "launcher-results");
+                equal(results.Accessible.role, Accessible.ListItem);
+                equal(results.Accessible.name, launcher.results[0].label);
+                check(results.Accessible.selected, "logical focused result is selected");
+                launcher.selectAt(1);
+                equal(results.Accessible.name, launcher.results[1].label);
+                const tile = findChild(launcher, "launcher-result-1");
+                check(!!tile, "visible tile exists");
+                equal(tile.Accessible.role, Accessible.ListItem);
+                equal(tile.Accessible.name, launcher.results[1].label);
+                check(tile.Accessible.selected, "visible tile exposes selection");
+                launcher.selectAt(0);
+                check(!tile.Accessible.selected, "previous tile loses its selected state");
+                launcher.setMode("Clipboard");
+                tryVerify(() => launcher.clipboard.state !== "pending" && launcher.clipboard.actionState !== "pending");
+                launcher.clipboard.entries = [
+                    {
+                        id: "accessible",
+                        preview: "Accessible clipboard row",
+                        text: "Clipboard text"
+                    }
+                ];
+                tryVerify(() => launcher.results.length === 1 && !!findChild(launcher, "launcher-result-0"));
+                const row = findChild(launcher, "launcher-result-0");
+                equal(row.Accessible.role, Accessible.ListItem);
+                equal(row.Accessible.name, "Accessible clipboard row");
+                check(row.Accessible.selected, "clipboard row exposes selection");
+                check(!apps.Accessible.selected, "previous mode loses its selected state");
             }
             function test_search_selection() {
                 window.requestActivate();

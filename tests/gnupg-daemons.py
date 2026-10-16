@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """GnuPG daemons left running with a --homedir under a test's own temporary root.
 
 gpg starts its key daemon (and scdaemon, dirmngr) on demand and detaches it; nothing stops it

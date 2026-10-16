@@ -1,4 +1,6 @@
 #version 440
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Half the size of the source in one tap: the centre of a target texel falls on the corner of
 // four source texels, so bilinear filtering returns their average (a 2×2 box). DockBackdrop
 // chains it (capture → half → quarter) before the Gaussian passes (gauss.frag).

@@ -133,6 +133,20 @@ class Machine:
 
 
 class Gate(unittest.TestCase):
+    def test_missing_or_damaged_installer_record_has_neutral_recovery_advice(self):
+        for data in (None, '{'):
+            with self.subTest(data=data):
+                if data is None:
+                    self.marker.unlink()
+                else:
+                    self.marker.write_text(data)
+                with self.assertRaises(shared.Refused) as caught:
+                    shared.record()
+                message = str(caught.exception)
+                self.assertIn('missing or damaged', message)
+                self.assertNotIn('manual installation', message.lower())
+                self.assertIn('without the installation record', message)
+
     def setUp(self):
         self.stack = ExitStack()
         self.addCleanup(self.stack.close)
@@ -574,6 +588,37 @@ class Gate(unittest.TestCase):
         self.marker.unlink()
         self.marker.symlink_to(self.root / 'elsewhere.json')
         self.assertRefused(shared.BAD_RECORD, shared.check)
+
+    def test_own_esp_record_never_opens_the_gate_on_windows_esp(self):
+        # Since 0.9 Emaki has its own ESP next to Windows. Even with Windows' ESP (the record's
+        # esp_partuuid, Microsoft files) mounted at /efi and Windows shut down, nothing opens.
+        own = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d'
+        record = {'version': 1, 'esp_partuuid': ESP_GUID.upper(), 'emaki_esp_partuuid': own.upper(),
+                  'windows_esp_uuid': 'abcd-1234'}
+        self.machine.windows()
+        self.marker.write_text(json.dumps(record) + '\n')
+        self.assertEqual(shared.record(), {'esp_partuuid': ESP_GUID, 'emaki_esp_partuuid': own,
+                                           'windows_esp_uuid': 'ABCD-1234'})
+        self.assertRefused(shared.OWN_ESP, shared.check)
+        with shared.session():
+            self.assertRefused(shared.OWN_ESP, shared.open_writes)
+        self.assertEqual(self.machine.calls, [])
+        self.assertIn('ro', self.machine.options)
+        self.assertFalse(shared.stop_record().exists())
+        self.assertNoMounts()
+        # The old record still names the shared ESP.
+        self.marker.write_text(json.dumps({'version': 1, 'esp_partuuid': ESP_GUID.upper()}) + '\n')
+        self.assertEqual(shared.record(), {'esp_partuuid': ESP_GUID})
+        self.assertEqual(shared.marker(), ESP_GUID)
+        # A damaged record of the new layout is a damaged record.
+        for damaged in (dict(record, emaki_esp_partuuid='x'), dict(record, emaki_esp_partuuid=None),
+                        dict(record, emaki_esp_partuuid=ESP_GUID), dict(record, windows_esp_uuid='ABCD1234'),
+                        {key: value for key, value in record.items() if key != 'windows_esp_uuid'}):
+            with self.subTest(damaged=damaged):
+                self.marker.write_text(json.dumps(damaged) + '\n')
+                self.assertRefused(shared.BAD_RECORD, shared.record)
+                self.assertRefused(shared.BAD_RECORD, shared.check)
+                self.assertEqual(self.machine.calls, [])
 
     def test_session_is_lazy_writable_once_and_read_only_after(self):
         self.machine.windows()

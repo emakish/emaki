@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """HOST ONLY: disposable QEMU C9 UI/fallback acceptance, never the host session.
 
 Run after run-test.sh installs a committed revision, with --greeter-only there:

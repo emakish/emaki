@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Dependency arrays come from PKGBUILD via source.
 # shellcheck disable=SC2154
 # Every dependency of the packaging/emaki-desktop metapackage is in the official repositories

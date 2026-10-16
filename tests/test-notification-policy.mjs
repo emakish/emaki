@@ -86,15 +86,74 @@ function transfer(text) {
         if (text[end] === '{') depth++;
         if (text[end] === '}') depth--;
     }
-    const context = vm.createContext({Date, notes: {entries:[{id:1},{id:2}], effectiveDnd:false, peekAllowed:e => e.id === 1}, niri:{overviewOpen:false}, modalOpen:false,presentationState:'clear',peekOpen:false,osd:{importState:() => {}}, retainCriticalPeek:() => {context.peekIds=[];}});
+    const replays = [];
+    const context = vm.createContext({Date, notes: {entries:[{id:1},{id:2}], effectiveDnd:false, peekAllowed:e => e.id === 1}, niri:{overviewOpen:false}, modalOpen:false,presentationState:'clear',peekOpen:false,osd:{importState:() => {}}, retainCriticalPeek:() => {context.peekIds=[];},
+        authenticationPresent:false, deferredPeekIds:[], replayDeferredPeeks() {}, Qt:{callLater:f => replays.push(f)}});
     const imported = vm.runInContext('(function(state){' + text.slice(start+1,end-1) + '})',context);
     imported({ids:[1,2],until:Date.now()+10000,started:Date.now(),cooldown:0,osd:{}});
     assert.equal(JSON.stringify(context.peekIds),'[1]');
     context.notes.effectiveDnd=true;
     imported({ids:[1,2],until:Date.now()+10000,started:Date.now(),cooldown:0,osd:{}});
     assert.equal(JSON.stringify(context.peekIds),'[]');
+    // A protected prompt on the new output holds the moved peek and the earlier deferrals
+    // until it has shrunk back; the import then asks for a replay.
+    context.notes.effectiveDnd=false; context.authenticationPresent=true; replays.length=0;
+    imported({ids:[1,2],deferredIds:[2],until:Date.now()+10000,started:Date.now(),cooldown:0,osd:{}});
+    assert.equal(JSON.stringify(context.peekIds),'[]');
+    assert.equal(JSON.stringify(context.deferredPeekIds),'[2,1]');
+    assert.deepEqual(replays,[context.replayDeferredPeeks]);
 }
 transfer(scene);
-assert.throws(() => transfer(scene.replace('e.id === id && notes.peekAllowed(e) && (state.until', 'e.id === id && (state.until')));
-assert.throws(() => transfer(scene.replaceAll('modalOpen || notes.effectiveDnd || presentationState', 'modalOpen || false || presentationState')));
-console.log('Notification transfer: app policy and timed/scheduled DND retained; 2 mutants PASS');
+// Mutants must fail an assertion, not a missing name in the harness.
+for (const [before,after,all] of [
+    ['e.id === id && notes.peekAllowed(e) && (state.until', 'e.id === id && (state.until'],
+    ['modalOpen || notes.effectiveDnd || presentationState', 'modalOpen || false || presentationState', true],
+    ['?? [])));\n        if (authenticationPresent) {', '?? [])));\n        if (false) {'],
+    ['deferredPeekIds.concat(state.deferredIds ?? [])', 'deferredPeekIds'],
+]) {
+    assert.ok(scene.includes(before), before);
+    assert.throws(() => transfer(all ? scene.replaceAll(before,after) : scene.replace(before,after)), assert.AssertionError, `survived mutation: ${before}`);
+}
+console.log('Notification transfer: app policy, timed/scheduled DND and prompt deferral retained; 4 mutants PASS');
+
+// Update warnings describe the running session, never persistent notification history.
+function updateHistory(text) {
+    const update = {app: 'Desktop update', summary: 'Sign out and sign in again to finish updating the desktop.', body: 'Save your work first [Emaki].', time: 1000};
+    const mail = {app: 'Mail', summary: 'Keep this history', body: 'Message', time: 900};
+    const similarlyNamed = {...mail, app: 'Desktop update', summary: 'Unrelated message'};
+    const context = vm.createContext({heldApps: [], systemId: -1, stateFile: {text: () => JSON.stringify({version: 1, entries: [update, mail, similarlyNamed]})}});
+    context.store = context;
+    for (const [name, args] of [['sessionUpdateEntry', 'entry'], ['restore', '']]) {
+        const at = text.indexOf('function ' + name + '(');
+        if (at < 0) continue;
+        const start = text.indexOf('{', at);
+        let depth = 1, end = start + 1;
+        for (; depth && end < text.length; end++) {
+            if (text[end] === '{') depth++;
+            if (text[end] === '}') depth--;
+        }
+        context[name] = vm.runInContext('(function(' + args + '){' + text.slice(start + 1, end - 1) + '})', context);
+    }
+    context.restore();
+    assert.equal(context.restored, true);
+    assert.equal(JSON.stringify(context.entries.map(e => e.summary)), JSON.stringify([mail.summary, similarlyNamed.summary]), 'legacy update notice must not survive a new session');
+    // Both the local observer and the old transaction hook must remain memory-only.
+    context.entries.push({...update, sessionUpdate: true}, update, {...mail, held: true});
+    context.manualDnd = () => false;
+    let saved;
+    context.persistence = {submit: text => { saved = JSON.parse(text); }};
+    const saveStart = text.indexOf('persistence.submit(JSON.stringify({');
+    const saveEnd = text.indexOf('\n            }))', saveStart) + '\n            }))'.length;
+    assert.ok(saveStart >= 0 && saveEnd > saveStart);
+    vm.runInContext(text.slice(saveStart, saveEnd), context);
+    assert.equal(JSON.stringify(saved.entries.map(e => e.summary)), JSON.stringify([mail.summary, similarlyNamed.summary]), 'update notices must never be written to history');
+}
+updateHistory(source);
+for (const before of [
+    ' && !store.sessionUpdateEntry(e)).slice(0, 200)',
+    ' && !store.sessionUpdateEntry(e)).map(e => ({',
+]) {
+    assert.ok(source.includes(before));
+    assert.throws(() => updateHistory(source.replace(before, before.replace(' && !store.sessionUpdateEntry(e)', ''))), assert.AssertionError);
+}
+console.log('Notification history: stale update cards removed, current notices unsaved, unrelated history preserved; 2 mutants PASS');

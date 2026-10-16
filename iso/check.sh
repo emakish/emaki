@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Local static gates only: no installs, database sync, build, or VM operations.
 set -Eeuo pipefail
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -55,4 +57,5 @@ python3 -B "$HERE/test-live-payload.py"
 python3 -B "$HERE/test-loopback-assets.py"
 python3 -B "$HERE/test-offline-repo.py"
 python3 -B "$HERE/test-efi-image.py"
+python3 -B "$HERE/test-secureboot.py"
 exit "$incomplete"

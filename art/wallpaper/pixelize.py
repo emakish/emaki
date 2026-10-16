@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Turn a source image into Emaki pixel art: resample to the art grid (area averaging when
 shrinking, Lanczos when growing), then map every cell to a palette, so the picture keeps the
 look of the source but every pixel gets a colour index.

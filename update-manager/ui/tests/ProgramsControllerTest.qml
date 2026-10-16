@@ -135,6 +135,12 @@ ShellRoot {
         while ((!controller.packagesReceived || controller.busy) && left > 0) { input.wait(20); left -= 20; }
         check(controller.packagesReceived && !controller.busy, "package pages complete");
     }
+    // The installed list is its own process, not a catalog request: settle() does not wait for it.
+    function inventoryReady(): void {
+        let left = 5000;
+        while ((controller.inventoryLoading || !controller.installedReceived && !controller.inventoryError) && left > 0) { input.wait(20); left -= 20; }
+        check(!controller.inventoryLoading && (controller.installedReceived || !!controller.inventoryError), "installed inventory answered");
+    }
     function requestStarted(phase: string): void {
         let left = 2000;
         while (controller.phase !== phase && left > 0) { input.wait(10); left -= 10; }
@@ -227,7 +233,9 @@ ShellRoot {
     Timer {
         interval: 25; running: true
         onTriggered: {
+            // Startup is the catalog and the installed list; every scenario begins after both.
             test.settle();
+            test.inventoryReady();
             test.check(controller.allRows.length === 4, "all catalog pages received");
             test.check(controller.allPrograms.length === 3, "source editions merged");
             test.check(!controller.installedPrograms.some(row => row.package === "emaki-config"), "protected catalog programs do not become removable rows");
@@ -297,6 +305,12 @@ ShellRoot {
                 Qt.quit(); return;
             }
             const unknown = controller.installedPrograms.find(row => row.package === "local-editor");
+            if (!unknown) {
+                // Fail now with a message instead of a TypeError that leaves the window open.
+                test.check(false, "the installed inventory lists local-editor");
+                Qt.quit();
+                return;
+            }
             test.check(unknown.sourceLabel === "Installed", "unknown native source is not called Arch or AUR");
             test.check(unknown.icon === "editor-icon", "legacy entry receives its real desktop icon");
             const foreign = Logic.installedRows([{key: "aur:foreign", id: "foreign", package: "foreign", kind: "aur", name: "Foreign", installed: true}], [{package: "foreign", ids: ["foreign.desktop"], names: ["Foreign"], preinstalled: true}])[0];

@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Typed managed settings shared by session, terminal and graphical interfaces.
+mod accent;
 mod input;
 mod journal;
 mod live;
@@ -896,16 +899,14 @@ impl Document {
         if let Some(gaps) = self.appearance.gaps {
             layout.push_str(&format!("    gaps {gaps}\n"));
         }
+        // theme.kdl already draws the default accent; leave all other border fields inherited.
         if let Some(accent) = self
             .appearance
             .accent
             .as_deref()
-            .filter(|name| *name != "orange")
+            .filter(|name| *name != default_accent())
         {
-            // The embedded palette is shared with the shell; leave all other border fields inherited.
-            static PALETTE: OnceLock<toml::Table> = OnceLock::new();
-            let palette = PALETTE.get_or_init(|| toml::from_str(TOKENS).expect("embedded palette"));
-            let base = palette["accents"][accent]["base"]
+            let base = palette()["accents"][accent]["base"]
                 .as_str()
                 .expect("accent base");
             layout.push_str(&format!("    border {{ active-color \"#{base}ff\"; }}\n"));
@@ -988,6 +989,21 @@ pub(crate) const GENERATION_FILES: [&str; 7] = [
     "xdg-terminals.list",
     "package",
 ];
+
+// The embedded palette is shared with the shell (scripts/render-shell-palette).
+fn palette() -> &'static toml::Table {
+    static PALETTE: OnceLock<toml::Table> = OnceLock::new();
+    PALETTE.get_or_init(|| toml::from_str(TOKENS).expect("embedded palette"))
+}
+
+// The accent before a person chooses one: tokens.toml [defaults] accent.
+fn default_accent() -> &'static str {
+    let name = palette()["defaults"]["accent"]
+        .as_str()
+        .expect("default accent");
+    assert!(palette()["accents"].get(name).is_some(), "default accent");
+    name
+}
 
 fn default_gaps() -> Result<u16> {
     let tokens: toml::Table =
@@ -1082,7 +1098,7 @@ fn rows(doc: &Document, gaps: u16) -> Vec<Setting> {
     let descriptions = [
         Description {
             key: THEME,
-            default: json!("dark"),
+            default: json!("light"),
             default_source: "shell default (unset)",
             value_type: "choice",
             allowed: "light | dark | automatic; empty unsets",
@@ -1091,7 +1107,7 @@ fn rows(doc: &Document, gaps: u16) -> Vec<Setting> {
         },
         Description {
             key: ACCENT,
-            default: json!("orange"),
+            default: json!(default_accent()),
             default_source: "shell default (unset)",
             value_type: "choice",
             allowed: "orange | coral | rose | amber | green | teal | blue | violet; empty unsets",
@@ -1577,6 +1593,27 @@ mod tests {
     }
 
     #[test]
+    fn default_accent_is_rose_and_drawn_by_the_packaged_theme() {
+        // DECISIONS 2026-10-14: nothing chosen means Rose; Orange is an override like any other.
+        assert_eq!(default_accent(), "rose");
+        let base = palette()["accents"]["rose"]["base"].as_str().unwrap();
+        assert!(NIRI_THEME.contains(&format!("active-color \"#{base}ff\"")));
+        let accent = rows(&Document::default(), 8)
+            .into_iter()
+            .find(|row| row.key == ACCENT)
+            .unwrap();
+        assert_eq!(accent.default, json!("rose"));
+        let mut doc = Document::default();
+        doc.set(ACCENT, "orange").unwrap();
+        let (_, niri) = doc
+            .files(8)
+            .into_iter()
+            .find(|(name, _)| *name == "niri.kdl")
+            .unwrap();
+        assert!(niri.contains("border { active-color \"#e2733fff\"; }"), "{niri}");
+    }
+
+    #[test]
     fn appearance_accent_border_uses_palette_and_preserves_other_layout_fields() {
         let palette: toml::Table = toml::from_str(TOKENS).unwrap();
         let mut doc = Document::default();
@@ -1599,7 +1636,7 @@ mod tests {
             assert!(!text.contains("inactive-color"));
             assert!(!text.contains("width 2"));
             assert!(!text.contains("focus-ring"));
-            if accent == "orange" {
+            if accent == default_accent() {
                 assert_eq!(text, inherited);
             } else {
                 let base = colors["base"].as_str().unwrap();

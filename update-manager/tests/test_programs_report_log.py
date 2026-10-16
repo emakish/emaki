@@ -72,7 +72,7 @@ class ReportLogTests(unittest.TestCase):
         self.assertEqual([record.splitlines()[0] for record in self.records()],
                          ['action=install event=started', 'action=install event=finished'])
 
-    def test_error_events_preserve_raw_diagnostics_and_stdout(self):
+    def test_error_events_redact_journal_and_preserve_stdout(self):
         fields = {'error': 'password="two words"\nconnection failed',
                   'token': 'private-error-token'}
         def execute(action, key, token, emit):
@@ -84,7 +84,8 @@ class ReportLogTests(unittest.TestCase):
         self.assertEqual([record.splitlines()[0] for record in self.records()],
                          ['action=install event=started', 'action=install event=error',
                           'action=install event=failed'])
-        self.assertIn(fields['error'], self.records()[1])
+        self.assertIn('password="[REDACTED]"\nconnection failed', self.records()[1])
+        self.assertNotIn('two words', self.records()[1])
         self.assertNotIn('private-error-token', str(self.log.mock_calls))
 
     def test_update_identifier_and_success(self):
@@ -312,7 +313,8 @@ class ReportLogTests(unittest.TestCase):
         engine.report_event('install', 'error', {'message': secret + 'é' * 10000})
         message = self.log.syslog.call_args.args[1]
         self.assertLessEqual(len(message.encode()), 4096)
-        self.assertIn(secret, message)
+        self.assertNotIn('two words', message)
+        self.assertIn('password="[REDACTED]"\n-----BEGIN PRIVATE KEY-----\n', message)
 
 
 if __name__ == '__main__':

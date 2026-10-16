@@ -245,8 +245,13 @@ bool TimestampCleanup::initialize(const char *runtimeDirectory,
                    : "journal lock unavailable");
     return false;
   }
-  DIR *dir = fdopendir(dup(s.directory));
+  int copy = dup(s.directory);
+  DIR *dir = copy >= 0 ? fdopendir(copy) : nullptr;
   if (!dir) {
+    const int saved = errno;
+    if (copy >= 0)
+      close(copy);
+    errno = saved;
     failure("cannot read journals");
     return false;
   }

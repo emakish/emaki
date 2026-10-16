@@ -58,10 +58,13 @@ with tempfile.TemporaryDirectory(prefix='emaki-launcher-icon-', dir=QUIET) as te
                              env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     tiles = queue.Queue()
     log = []
+    revision = queue.Queue()
 
     def read():
         for line in shell.stdout:
             log.append(line)
+            if 'ICON_REVISION ' in line:
+                revision.put(line.split('ICON_REVISION ', 1)[1].strip())
             if 'TILES ' in line:
                 tiles.put(line.split('TILES ', 1)[1].strip())
 
@@ -71,6 +74,18 @@ with tempfile.TemporaryDirectory(prefix='emaki-launcher-icon-', dir=QUIET) as te
             shown = tiles.get(timeout=15)
         except queue.Empty:
             raise AssertionError('the tiles never reported their icons\n' + ''.join(log[-40:])) from None
+        # A Quickshell without iconThemeRevision cannot pass whatever LauncherItem does: say
+        # what is missing instead of failing.
+        try:
+            probe = revision.get(timeout=15)
+        except queue.Empty:
+            raise AssertionError('the fixture never reported its Quickshell\n' + ''.join(log[-40:])) from None
+        if probe != 'number':
+            version = subprocess.run(['qs', '--version'], capture_output=True, text=True).stdout.strip()
+            print('SKIP: needs quickshell-emaki 0.3.1-12 or later (Quickshell.iconThemeRevision, patch '
+                  f'0008); the qs in PATH is {version!r} and has none (typeof is {probe!r}). Install '
+                  'the packaged fork (packaging/quickshell-emaki, Qt 6.12) or put its qs first in PATH.')
+            raise SystemExit(0)
         assert shown == '- -', f'both icons are missing at start, the tiles show {shown!r}\n' + ''.join(log[-40:])
         started = time.monotonic()
         # Both icons arrive inside the two-second window that the tiles' lookups opened.

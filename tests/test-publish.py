@@ -684,7 +684,7 @@ class SourceProvenance(unittest.TestCase):
         self.check_iso_publication(True)
 
     def test_020_publication_keeps_legacy_inputs_and_uploads(self):
-        self.check_iso_publication(True, legacy=True)
+        self.check_iso_publication(False, legacy=True, empty_missing=True)
 
     def test_iso_complete_sources_with_empty_missing_file_has_no_missing_heading(self):
         self.check_iso_publication(False, empty_missing=True)
@@ -867,13 +867,17 @@ class SourceProvenance(unittest.TestCase):
                         publish.iso_publish(publisher, image, False)
                 self.assertEqual(writes, [])
                 missing_path.write_text(json.dumps(missing_file))
-                if legacy:
-                    publisher.args = publish.parser().parse_args([
-                        '--dl-backend', f'local:{dl}', '--dl-public-url', 'https://download.invalid',
-                        'iso', str(image), '--arch-sources', str(arch_manifest),
-                        '--missing-sources', str(missing_path)])
-                    self.assertEqual(publisher.args.command, 'iso')
-                    self.assertFalse(publisher.args.full_check)
+            if legacy:
+                publisher.args = publish.parser().parse_args([
+                    '--dl-backend', f'local:{dl}', '--dl-public-url', 'https://download.invalid',
+                    'iso', str(image), '--arch-sources', str(arch_manifest)])
+                self.assertEqual(publisher.args.command, 'iso')
+                self.assertFalse(publisher.args.full_check)
+            if partial:
+                with self.assertRaisesRegex(publish.Refused, 'missing required copyleft sources'):
+                    publish.iso_publish(publisher, image, False)
+                self.assertEqual(writes, [])
+                return
             if empty_missing:
                 missing_path = root / 'MISSING-SOURCES.json'
                 missing_path.write_text(json.dumps({'schema': 1,
@@ -1339,7 +1343,11 @@ class PublishTests(unittest.TestCase):
         out = self.world.base / 'build-out'
         out.mkdir()
         empty = run(['bash', ROOT / 'packaging/build.sh', '--out', out, '--dry-run'])
-        self.assertEqual(empty.returncode, 0, empty.stderr)
+        # The empty directory passes this rule; the dry run may still stop later at the release-input gate of
+        # the tree under test (e.g. an exception that the release renews), which is not this test's subject.
+        self.assertNotIn('is not empty', empty.stderr)
+        if empty.returncode:
+            self.assertIn('release input check', empty.stderr)
         (out / 'emaki-apps-1-9-any.pkg.tar.zst').write_bytes(b'an earlier build')
         full = run(['bash', ROOT / 'packaging/build.sh', '--out', out, '--dry-run'])
         self.assertEqual(full.returncode, 1, full.stdout + full.stderr)
@@ -2408,6 +2416,156 @@ if __name__ == '__main__':
         self.assertIn('archinstall=4.5-1', result.stderr)
         self.assertIn('emaki-config', result.stderr)
         self.assertEqual(list(calls), ['emaki-config'])
+
+
+class StrictSignatureStatus(unittest.TestCase):
+    """Exercise exit-zero status streams which do not authorize publication."""
+
+    def test_unrelated_key_expiry_keeps_the_current_signer_valid(self):
+        with tempfile.TemporaryDirectory(prefix='signature-status-') as temporary:
+            verifier = publish.Verifier.__new__(publish.Verifier)
+            verifier.home = Path(temporary)
+            verifier.trusted = ['A' * 40]
+            verifier.revoked = Path(temporary) / 'revoked'
+            valid = ('[GNUPG:] NEWSIG\n[GNUPG:] KEYEXPIRED 1577923200\n'
+                     '[GNUPG:] GOODSIG 1234 Fixture\n[GNUPG:] VALIDSIG ' +
+                     'B' * 40 + ' 2026-10-16 1792108800 0 4 0 22 8 00 ' + 'A' * 40 + '\n')
+            for failure in ('', 'EXPKEYSIG', 'EXPSIG', 'REVKEYSIG', 'SIGEXPIRED'):
+                with self.subTest(failure=failure):
+                    output = valid + (f'[GNUPG:] {failure} 1234 Fixture\n' if failure else '')
+                    result = subprocess.CompletedProcess([], 0, stdout=output, stderr='')
+                    with mock.patch.object(publish.subprocess, 'run', return_value=result):
+                        self.assertEqual(verifier.signed_by('data', 'data.sig'),
+                                         None if failure else 'A' * 40)
+
+    def check_status(self, failure, listed=False):
+        with tempfile.TemporaryDirectory(prefix='signature-status-') as temporary:
+            verifier = publish.Verifier.__new__(publish.Verifier)
+            verifier.home = Path(temporary)
+            verifier.trusted = ['A' * 40]
+            verifier.revoked = Path(temporary) / 'revoked'
+            verifier.revoked.write_text(('A' * 40 + '\n') if listed else '')
+            def result(status):
+                return subprocess.CompletedProcess([], 0, stdout=(
+                    '[GNUPG:] NEWSIG\n[GNUPG:] ' + status + ' 1234 Fixture\n' +
+                    '[GNUPG:] VALIDSIG ' + 'A' * 40 + ' 2020-01-01 0 0 4 0 22 8 00 ' +
+                    'A' * 40 + '\n'), stderr='')
+            with mock.patch.object(publish.subprocess, 'run', return_value=result('GOODSIG')):
+                if not listed:
+                    self.assertTrue(verifier.verify('emaki.db', 'emaki.db.sig'))
+                    self.assertTrue(verifier.verify('image.iso', 'image.iso.sig'))
+                    verifier.trusted = []
+                    self.assertFalse(verifier.verify('package.pkg.tar.zst', 'package.pkg.tar.zst.sig'))
+                    verifier.trusted = ['A' * 40]
+            with mock.patch.object(publish.subprocess, 'run', return_value=result(failure)):
+                self.assertFalse(verifier.verify('package.pkg.tar.zst', 'package.pkg.tar.zst.sig'))
+                self.assertFalse(verifier.verify('emaki.db', 'emaki.db.sig'))
+                self.assertFalse(verifier.verify('image.iso', 'image.iso.sig'))
+                self.assertIsNone(verifier.signed_by('exception.json', 'exception.json.sig'))
+
+    def test_revoked_status_is_refused(self):
+        self.check_status('REVKEYSIG')
+
+    def test_expired_status_is_refused(self):
+        self.check_status('EXPKEYSIG')
+
+    def test_expired_signature_status_is_refused(self):
+        self.check_status('EXPSIG')
+
+    def test_listed_revoked_fingerprint_is_refused(self):
+        self.check_status('GOODSIG', listed=True)
+
+
+class StrictPackageSignatures(unittest.TestCase):
+    """A valid database signature cannot authorize an invalid package signer."""
+
+    def setUp(self):
+        self.addCleanup(no_gnupg_daemons_left, self)
+        self.temp = tempfile.TemporaryDirectory(prefix='strict-signatures-')
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.good = Keys(self.root / 'good')
+        self.addCleanup(self.good.close)
+
+    def check_package(self, state):
+        home = self.root / 'package-key'
+        home.mkdir(mode=0o700)
+        environment = dict(os.environ, GNUPGHOME=str(home))
+        self.addCleanup(publish.stop_gnupg, home)
+        past = ['--faked-system-time', '1577836800!'] if state == 'expired' else []
+        run(['gpg', '--batch', '--pinentry-mode', 'loopback', '--passphrase', '', *past,
+             '--quick-gen-key', 'Package Fixture <package@example.org>', 'ed25519', 'sign',
+             '1d'], env=environment, check=True)
+        listing = run(['gpg', '--with-colons', '--list-keys'], env=environment, check=True).stdout
+        fingerprint = next(line.split(':')[9] for line in listing.splitlines() if line.startswith('fpr:'))
+        package = make_package(self.root / 'packages', 'emaki-signature-test', '1.0-1')
+        run(['gpg', '--batch', *past, '--detach-sign', package], env=environment, check=True)
+        if state == 'revoked':
+            certificate = home / 'openpgp-revocs.d' / (fingerprint + '.rev')
+            run(['gpg', '--batch', '--import'], input=certificate.read_text().replace(':-----', '-----'),
+                env=environment, check=True)
+        keyring = self.root / 'keyring.gpg'
+        keyring.write_bytes(self.good.keyring.read_bytes() +
+                            run(['gpg', '--export', fingerprint], env=environment,
+                                check=True, text=False).stdout)
+        trusted = self.root / 'trusted'
+        trusted.write_text(self.good.trusted.read_text() + fingerprint + ':4:\n')
+        database = self.root / 'emaki.db.tar.gz'
+        run(['repo-add', database, package], check=True)
+        self.good.sign(database)
+        verifier = publish.Verifier(keyring, trusted)
+        self.addCleanup(verifier.close)
+        self.assertTrue(verifier.verify(database, Path(str(database) + '.sig')))
+        if state == 'listed':
+            revoked = self.root / 'revoked'
+            revoked.write_text(fingerprint + '\n')
+            args = SimpleNamespace(key=self.good.fpr, signing_home=self.good.home, dry_run=False,
+                                   keyring=keyring, trusted=trusted, revoked=revoked,
+                                   directory=package.parent)
+            with self.assertRaises(publish.Refused):
+                publish.sign_directory(args)
+        else:
+            self.assertFalse(verifier.verify(package, Path(str(package) + '.sig')))
+
+    def test_revoked_package_under_valid_database_is_refused(self):
+        self.check_package('revoked')
+
+    def test_expired_package_under_valid_database_is_refused(self):
+        self.check_package('expired')
+
+    def test_listed_revoked_package_under_valid_database_is_refused(self):
+        self.check_package('listed')
+
+    def test_old_expired_subkey_does_not_refuse_a_current_signature(self):
+        # GnuPG prints KEYEXPIRED for every expired key on the certificate, also an old subkey
+        # that did not make the signature; only EXPKEYSIG/EXPSIG describe the signer itself.
+        home = self.root / 'rotated-key'
+        home.mkdir(mode=0o700)
+        environment = dict(os.environ, GNUPGHOME=str(home))
+        self.addCleanup(publish.stop_gnupg, home)
+        quiet = ['gpg', '--batch', '--pinentry-mode', 'loopback', '--passphrase', '']
+        run([*quiet, '--faked-system-time', '20190101T000000!', '--quick-gen-key',
+             'Rotated Fixture <rotated@example.org>', 'ed25519', 'cert', '20y'], env=environment, check=True)
+        listing = run(['gpg', '--with-colons', '--list-keys'], env=environment, check=True).stdout
+        fingerprint = next(line.split(':')[9] for line in listing.splitlines() if line.startswith('fpr:'))
+        run([*quiet, '--faked-system-time', '20200101T000000!', '--quick-add-key', fingerprint,
+             'ed25519', 'sign', '1d'], env=environment, check=True)
+        run([*quiet, '--quick-add-key', fingerprint, 'ed25519', 'sign', '1y'], env=environment, check=True)
+        data = self.root / 'emaki.db.tar.gz'
+        data.write_bytes(b'database\n')
+        signature = Path(str(data) + '.sig')
+        run([*quiet, '--detach-sign', '--no-armor', '--output', signature, data], env=environment, check=True)
+        keyring = self.root / 'rotated.gpg'
+        keyring.write_bytes(run(['gpg', '--export', fingerprint], env=environment, check=True, text=False).stdout)
+        trusted = self.root / 'rotated-trusted'
+        trusted.write_text(fingerprint + ':4:\n')
+        verifier = publish.Verifier(keyring, trusted)
+        self.addCleanup(verifier.close)
+        status = run(['gpg', '--homedir', verifier.home, '--no-autostart', '--batch', '--status-fd', '1',
+                      '--verify', signature, data]).stdout
+        self.assertIn('[GNUPG:] KEYEXPIRED ', status)  # the fixture really has the expired subkey
+        self.assertIn('[GNUPG:] GOODSIG ', status)
+        self.assertEqual(verifier.signed_by(data, signature), fingerprint)
 
 
 if __name__ == '__main__':

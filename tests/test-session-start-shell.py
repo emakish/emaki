@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Fresh-login shell readiness: real scene/surfaces, Qt frames, isolated helpers.
 
 The copy replaces only Wayland PanelWindow plumbing with offscreen Windows and
@@ -57,6 +59,7 @@ DRIVER = '''
         property int stage: 0
         property real began: Date.now()
         property real movedAt: 0
+        property real cappedAt: 0
         property bool sawMiddle: false
         property int nativeStage: 0
         property real nativeChangedAt: 0
@@ -150,10 +153,23 @@ DRIVER = '''
                         return;
                     }
                     if (MATERIAL_CAP) {
-                        if (Date.now() - began < 5750) return;
-                        check(!startup.coverActive && !startup.reported, "unready material bypassed cap");
-                        check(root.surfaceWindows.startupMaterial === "flat", "cap did not seal flat fallback");
-                        check(root.surfaceWindows.liveMaterialsReady, "late capture never completed in fixture");
+                        // The fixture's capture starts only once the cap has sealed the
+                        // material, so "late" is an order here, not a race of two clocks.
+                        if (startup.coverActive) {
+                            check(!startup._reportStarted && !root.surfaceWindows.liveMaterialsReady,
+                                  "unready material bypassed cap");
+                            check(Date.now() - began < 9000, "unready material held the cover past its cap");
+                            return;
+                        }
+                        if (!cappedAt) {
+                            cappedAt = Date.now();
+                            check(cappedAt - began >= 4750 && !startup.reported, "unready material bypassed cap");
+                            check(root.surfaceWindows.startupMaterial === "flat", "cap did not seal flat fallback");
+                        }
+                        if (!root.surfaceWindows.liveMaterialsReady) {
+                            check(Date.now() - cappedAt < 3000, "late capture never completed in fixture");
+                            return;
+                        }
                         check(scene.bar.backdrop === null && scene.dock.backdrop === null,
                               "late capture switched visible material after cap");
                         stage = 3;
@@ -305,6 +321,14 @@ def run(scenario):
             assert surfaces.count('surfaces.startup?.painted("overlay");') == 1
             surfaces = surfaces.replace('surfaces.painted("overlay");', '').replace(
                 'if (surfaces.reportFrames)\n                surfaces.startup?.painted("overlay");', '')
+        if scenario == 'material-cap':
+            # The capture arrives after the cover's cap sealed the material. A timer from
+            # construction raced the cover's own timer and the driver's clock under load.
+            # The live backdrops are the surfaces' direct children; wallpaper copies sit in Loaders.
+            surfaces, captures = re.subn(r'^(    DockBackdrop \{\n        id: \w+\n)',
+                                         r'\1        fixtureReleased: surfaces.startupMaterial !== ""\n',
+                                         surfaces, flags=re.MULTILINE)
+            assert captures == 5, captures
         (qml / 'Surfaces.qml').write_text(surfaces)
         # Preserve the real GPU pipeline file but replace its readiness input:
         # software Qt has no screencopy, and must not invent successful materials.
@@ -312,9 +336,10 @@ def run(scenario):
         backdrop = backdrop.replace('readonly property bool ready:', 'readonly property bool sourceReady:')
         backdrop = backdrop.replace('    id: backdrop', '    id: backdrop\n'
             '    property bool fixtureReady: false\n'
+            '    property bool fixtureReleased: true\n'
             '    readonly property bool ready: mode === "capture" ? fixtureReady : sourceReady\n'
-            '    Timer { interval: ' + str(5500 if scenario == 'material-cap' else 800 if scenario == 'material-delayed' else 200) +
-            '; running: backdrop.mode === "capture"; onTriggered: backdrop.fixtureReady = true }')
+            '    Timer { interval: ' + str(800 if scenario == 'material-delayed' else 200) +
+            '; running: backdrop.mode === "capture" && backdrop.fixtureReleased; onTriggered: backdrop.fixtureReady = true }')
         (qml / 'DockBackdrop.qml').write_text(backdrop)
         # Emulate completion from the cover's reported budget, not SessionStartup.
         (qml / 'session-cover.qml').write_text('import QtQuick\nimport Quickshell\nScope { id: cover; '

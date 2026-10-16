@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Real system helper sleep ordering, using a blocking lock fake and no D-Bus."""
 import json
 import os

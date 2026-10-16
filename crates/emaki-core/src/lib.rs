@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Portable Emaki core, independent of the graphical shell and package manager.
 //!
 //! Discovery, explicit niri actions, and isolated-profile managed settings.

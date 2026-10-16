@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Read a bounded static wpaperd wallpaper into a private texture.
 
 Sharp wallpaper crops have a private content/stat-keyed PNG cache. Only that synthetic

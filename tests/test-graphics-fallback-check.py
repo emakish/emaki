@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """tests/vm/check-graphics-fallback.py against a fake guest. Never starts QEMU or ssh.
 
 The fake guest stands in for QEMU (VNC frames, QMP keys) and test-mode ssh: its snapshots are
@@ -673,6 +675,22 @@ print({0: 'RESULT: SCRIPTS PASSED', 3: 'RESULT: NOT TESTED at live-std-1920x1080
 sys.exit(rc)
 ''',
 }
+# The gate reads each image with xorriso: its listing must not hold /emaki/TEST-ALONGSIDE and its
+# /emaki/BUILDINFO must not say image_mode test-alongside (tests/vm/release-gate.sh, 2026-10-12).
+# The fixture images are a few bytes, not ISO 9660: answer as a mastered image of their mode would.
+GATE_XORRISO = r'''#!/usr/bin/env python3
+import pathlib, sys
+content = pathlib.Path(sys.argv[sys.argv.index('-indev') + 1]).read_bytes()
+mode = 'test' if b'emaki.test=1' in content else 'release'
+if '-extract' in sys.argv:
+    source, destination = sys.argv[sys.argv.index('-extract') + 1:][:2]
+    if source != '/emaki/BUILDINFO':
+        sys.exit(f'unexpected extract {source}')
+    pathlib.Path(destination).write_text(f'image_mode {mode}\n')
+    sys.exit(0)
+print("'/emaki/BUILDINFO'")
+print("'/EFI/BOOT/BOOTX64.EFI'")
+'''
 
 
 class ReleaseGateJob(unittest.TestCase):
@@ -692,6 +710,8 @@ class ReleaseGateJob(unittest.TestCase):
         for path in stubs + [self.bin / 'make', self.bin / 'bwrap']:
             path.write_text(GATE_STUB)
             path.chmod(0o755)
+        (self.bin / 'xorriso').write_text(GATE_XORRISO)
+        (self.bin / 'xorriso').chmod(0o755)
         for name, text in GATE_PYTHON_STUBS.items():
             (self.repo / name).write_text(text)
         self.log = self.base / 'calls.log'

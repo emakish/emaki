@@ -46,6 +46,27 @@ Column {
     property var programs: []
     property var preview: ({})
     property string programsMessage: ""
+    property bool programsFailed: false
+    property bool refreshQueued: false
+    property bool initialized: false
+    function refreshPrograms() {
+        if (programsBusy) {
+            refreshQueued = true;
+            return;
+        }
+        refreshQueued = false;
+        programCommand(["list"]);
+    }
+    onVisibleChanged: if (visible && initialized) {
+        run(["status"]);
+        refreshPrograms();
+    }
+    Timer {
+        interval: 10000
+        repeat: true
+        running: page.visible && !page.programsBusy
+        onTriggered: page.refreshPrograms()
+    }
     readonly property bool programsBusy: programRequest.running
     function programCommand(args) {
         if (programRequest.running)
@@ -70,6 +91,7 @@ Column {
         programCommand(["remove", preview.target, preview.token]);
     }
     Component.onCompleted: {
+        initialized = true;
         run(["status"]);
         programCommand(["list"]);
     }
@@ -88,7 +110,7 @@ Column {
             if (!running)
                 Qt.callLater(function () {
                     if (!request.completed)
-                        page.error = "Apps could not be read. Try again when the settings helper is available.";
+                        page.error = "Apps could not be read. Try again.";
                 });
         }
         stdout: StdioCollector {
@@ -124,6 +146,7 @@ Column {
                     if (programRequest.serial === serial && !programRequest.completed) {
                         page.preview = {};
                         page.programsMessage = "Installed programs could not be read. Try again later.";
+                        page.programsFailed = true;
                     }
                 });
         }
@@ -140,10 +163,15 @@ Column {
             }
             output = "";
             if (operation === "list") {
-                if (reply && reply.ok && Array.isArray(reply.programs))
+                if (_code === 0 && reply && reply.ok && Array.isArray(reply.programs)) {
                     page.programs = reply.programs;
-                else
+                    if (page.programsFailed)
+                        page.programsMessage = "";
+                    page.programsFailed = false;
+                } else {
+                    page.programsFailed = true;
                     page.programsMessage = "Installed programs could not be read. Try again later.";
+                }
             } else if (operation === "preview") {
                 page.preview = reply ? Object.assign({
                     target: page.preview.target
@@ -163,9 +191,18 @@ Column {
                 else
                     page.preview = {};
                 // The list changes after any finished removal attempt.
-                Qt.callLater(() => page.programCommand(["list"]));
+                Qt.callLater(() => page.refreshPrograms());
             }
+            if (page.refreshQueued && operation !== "remove")
+                Qt.callLater(() => page.refreshPrograms());
         }
+    }
+    SettingsButton {
+        objectName: "settings-apps-retry"
+        visible: page.error !== ""
+        enabled: !request.running
+        text: "Retry"
+        onClicked: page.run(["status"])
     }
     Text {
         width: parent.width
@@ -268,6 +305,13 @@ Column {
         width: parent.width
         objectName: "settings-installed-programs"
         title: "Installed programs"
+        SettingsButton {
+            objectName: "settings-programs-retry"
+            visible: page.programsFailed
+            enabled: !page.programsBusy
+            text: "Retry"
+            onClicked: page.refreshPrograms()
+        }
         Text {
             width: parent.width
             topPadding: 14

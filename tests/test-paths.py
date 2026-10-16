@@ -340,14 +340,21 @@ class Paths(unittest.TestCase):
                 rule = (polkit / 'rules.d/00-emaki-programs.rules').read_text()
                 self.assertIn('var helper = "' + values['LIBEXECDIR'] + '/emaki-programs-"', rule)
                 for policy, operation in (('org.emaki.programs.install.policy', 'install'),
-                                          ('org.emaki.programs.policy', 'remove')):
+                                          ('org.emaki.programs.policy', 'remove'),
+                                          ('org.emaki.programs.aur.policy', 'aur'),
+                                          ('org.emaki.programs.undo.policy', 'undo')):
                     text = (polkit / 'actions' / policy).read_text()
                     self.assertIn(values['LIBEXECDIR'] + '/emaki-programs-' + operation, text)
-                    self.assertIn('$(command_line)', text)
+                    messages = ET.fromstring(text).findall('action/message')
+                    self.assertEqual(len(messages), 1)
+                    self.assertNotIn('$(', messages[0].text)
                 flatpak_policy = (polkit / 'actions/org.emaki.programs.flatpak.policy').read_text()
                 self.assertIn(values['LIBEXECDIR'] + '/emaki-programs-flatpak', flatpak_policy)
-                self.assertIn('$(command_line)', flatpak_policy)
-                for operation in ('install', 'remove'):
+                messages = ET.fromstring(flatpak_policy).findall('action/message')
+                self.assertEqual(len(messages), 3)
+                for message in messages:
+                    self.assertNotIn('$(', message.text)
+                for operation in ('install', 'remove', 'undo'):
                     self.assertIn('org.emaki.programs.flatpak.' + operation, flatpak_policy)
                     self.assertIn('exec.argv1">' + operation + '</annotate>', flatpak_policy)
                 self.assertTrue((libexec / 'emaki-programs-flatpak').is_file())

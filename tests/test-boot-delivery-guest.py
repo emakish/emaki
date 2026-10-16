@@ -45,7 +45,7 @@ class NegativeTests(unittest.TestCase):
     def test_expected_refusals_succeed_without_changes(self):
         for output in (
             'The existing boot loaders were kept because the fallback loader is not recognized as Emaki.\n',
-            'The EFI system partition is smaller than 256 MiB; the existing boot loaders were kept.\n',
+            'The startup partition is smaller than 256 MiB; the existing boot loaders were kept.\n',
         ):
             with self.subTest(output=output):
                 self.invoke(output)

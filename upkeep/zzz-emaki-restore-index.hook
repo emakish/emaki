@@ -1,0 +1,14 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Run after zz-snap-pac-post.hook has finished writing the restore receipts.
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Package
+Target = *
+
+[Action]
+Description = Refreshing the system restore point inventory
+When = PostTransaction
+Exec = @EMAKI_SYSTEMCTL@ --no-block start emaki-restore-index.service

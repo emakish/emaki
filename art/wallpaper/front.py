@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The layer in front of the train: everything that hides the rails (spruces, birches, poles,
 the Japanese house). A player draws ring.png, then the train and its smoke, then this layer.
 

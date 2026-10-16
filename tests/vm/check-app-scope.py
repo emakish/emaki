@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Guest only; use ssh.sh 'python3 -' < tests/vm/check-app-scope.py after installing."""
 import json
 import os

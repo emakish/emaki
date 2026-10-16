@@ -1,5 +1,8 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Ordered installation phases. All mutations start only after confirmation."""
 import contextlib
+import hashlib
 import json
 from datetime import datetime, timezone
 import os
@@ -14,16 +17,19 @@ from urllib.parse import unquote, urlsplit
 from . import __version__
 from .arch_backend import Backend, offline_config
 from . import inventory as alongside
-from .constants import DESKTOP_APPS, GRUB_VISIBLE_FONT, LOG, MARKER, PACKAGES, PHASES, RICH_APPS, SNAPSHOT_PACKAGES, TARGET, TEST_PACKAGES, WORK
+from .constants import (DESKTOP_APPS, GRUB_VISIBLE_FONT, LOG, MARKER, PACKAGES, PHASES, RICH_APPS,
+                        SNAPSHOT_PACKAGES, TARGET, TEST_PACKAGES, WORK)
 from .errors import Code, InstallError, require
 from .update_errors import details as update_error_details
 from .copy_progress import CopyProgress
-from .boot import (boot_framebuffer, firmware_boot_order, menu_font, menu_font_fallback, menu_layout,
-                   menu_theme, windows_bootnext_menu)
+from .boot import (boot_framebuffer, firmware_boot_order, grub_loader_payload, menu_font, menu_font_fallback,
+                   menu_layout, menu_theme, quiet_linux_entries, secure_boot_fonts, secure_boot_menu,
+                   windows_bootnext_menu)
+from . import grub_screen, secureboot
 from .clock import ensure_clock
 from .media import discover_repo, package_source
 from .network_profiles import WifiNotCopied, capture_wifi, choose_wifi, install_wifi
-from .planner import make_plan
+from .planner import ESP_SECURE_BOOT_ROOM, make_plan, probed_removable, removable_fallback, shared_esp
 from .render import (GRUB_EARLY_MODULES, console_keymap,
                      grub_btrfs_package_config, grub_defaults, grub_early_config, grub_image_carries, grub_prefix,
                      grub_unlock_memdisk, mkinitcpio_machine_config, mkinitcpio_package_preset, niri_config,
@@ -94,6 +100,121 @@ def without_emaki(text):
 
 
 EMAKI_LOADER = r'\EFI\Emaki\grubx64.efi'
+# The signed image's own modules (the boot refresh builds the same), before secureboot's list.
+SIGNED_IMAGE_BASE = (*GRUB_EARLY_MODULES, 'search_fs_uuid')
+# A kept (manual) ESP with Secure Boot: checked before the first disk write.
+ESP_UNCHECKED = ("The free space Secure Boot updates need on the disk's startup partition could not "
+                 'be checked.')
+# Secure Boot: the firmware entries around the boot slots (R9S9 #5).
+FIRMWARE_UNREADABLE = 'The firmware startup entries could not be read, so the startup copies were not replaced.'
+ESP_UNIDENTIFIED = 'The startup partition could not be identified, so the startup copies were not replaced.'
+SLOT_STILL_STARTED = ('The firmware still starts an earlier Emaki startup copy on this disk, '
+                      'so the startup copies were not replaced.')
+SLOT_B_STILL_STARTED = 'A firmware startup entry still points to a startup copy removed by this installation.'
+SLOT_A_NOT_FIRST = 'Emaki could not verify that the firmware starts the new installation first.'
+REVIEW_BOUNDS = ('WARNING: plan review could not read the boot loader packages, so it checks the startup '
+                 'partition by lower bounds; the exact check runs before the first disk write: ')
+# Next to Windows: Windows' ESP is read whole before the first disk write and after the bootloader phase.
+WINDOWS_ESP_UNREADABLE = "Windows' startup partition could not be read, so Emaki stopped before changing the disk."
+
+
+def device_sha256(path):
+    """sha256 of a whole block device, opened read-only (O_RDONLY): Windows' ESP next to Windows."""
+    digest = hashlib.sha256()
+    with open(path, 'rb', buffering=0) as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def windows_esp(plan):
+    """Windows' ESP from the reviewed disk (alongside: the planner admitted exactly one)."""
+    return next(part for part in plan.disk['partitions'] if part['esp'])
+
+
+def secure_boot_extra(encrypted):
+    """What an encrypted root adds to the signed image's memdisk (grub_unlock_memdisk): the
+    visible font, the unlock script and the pictures; None without encryption."""
+    if not encrypted:
+        return None
+    require(GRUB_VISIBLE_FONT.is_file(), Code.BOOT_VERIFY, 'The GRUB unlock-screen font is missing from this ISO.')
+    return {'visible.pf2': GRUB_VISIBLE_FONT.stat().st_size, 'unlock.cfg': 16384,
+            **{name: len(data) for name, data in grub_screen.assets().items() if not name.startswith('checking-')}}
+
+
+def review_esp_need(root=Path('/'), log=lambda line: None):
+    """Plan review's Secure Boot need for a kept ESP: need(cluster, removable, encrypted) is
+    secure_boot_esp_need, the worker's final rule with its modules and unlock files, applied to
+    the boot loader packages of the installation USB's repository (secureboot.repo_archives).
+    For an unchanged USB those are the archives the worker verifies before the first disk write,
+    so both gates count the same bytes. When they cannot be read (no repository on the USB: the
+    packages are downloaded only after Install), it logs why and returns None; plan review then
+    uses the lower bounds (planner.plan_esp_need) and the worker's check stays the final gate."""
+    def need(cluster, removable, encrypted):
+        try:
+            repo = discover_repo(root)
+            if repo is None:
+                raise secureboot.SecureBootError('the installation USB holds no package repository.')
+            return secureboot.secure_boot_esp_need(
+                secureboot.repo_archives(repo), cluster, secureboot.signed_image_modules(SIGNED_IMAGE_BASE),
+                secure_boot_extra(encrypted), removable=removable)
+        except (secureboot.SecureBootError, InstallError, OSError) as error:
+            log(REVIEW_BOUNDS + (error.message if isinstance(error, InstallError) else str(error)))
+            return None
+    return need
+
+
+# One installed build per line of `dkms status`: dkms 3.x prints
+# 'nvidia/580.82.09, 6.17.1-arch1-1, x86_64: installed', dkms 2.x 'nvidia, 580.82.09, ...';
+# a note in parentheses may follow. 'installed-weak' is another kernel's build, not rebuilt.
+_DKMS_NAME = r'[A-Za-z0-9][A-Za-z0-9_.+~-]*'
+DKMS_INSTALLED = re.compile(rf'^({_DKMS_NAME})(?:/|, )({_DKMS_NAME}), ({_DKMS_NAME}), ([A-Za-z0-9_]+): installed(?:\s|$)')
+KERNEL_MODULE = re.compile(r'\.ko(?:\.(?:gz|xz|zst))?$')
+
+
+def dkms_installed(text):
+    """(module, version, kernel, arch) of each installed DKMS build in `dkms status` output."""
+    return [match.groups() for match in map(DKMS_INSTALLED.match, text.splitlines())
+            if match and '..' not in match.group(0)]
+
+
+# FAT32 needs at least 65,525 data clusters; Microsoft's FAT specification (1.03, p.15) asks
+# to stay at least 16 clusters away from that limit. Linux vfat's statfs reports the data
+# clusters as f_blocks (fs/fat/inode.c fat_statfs: max_cluster - FAT_START_ENT).
+FAT32_MIN_CLUSTERS = 65525 + 16
+ESP_NOT_FAT32 = ('The new startup partition did not get a valid FAT32 file system, so Emaki stopped '
+                 'before writing its boot files.')
+
+
+def fat32_esp(path):
+    """False when the mounted file system is unreadable or has too few FAT32 data clusters."""
+    try:
+        return os.statvfs(path).f_blocks >= FAT32_MIN_CLUSTERS
+    except OSError:
+        return False
+
+
+def windows_kept(plan, machine):
+    """True when a Windows installation is left on any disk after this plan.
+
+    The evidence is the reviewed inventory's: an ESP with Microsoft's loader or an NTFS
+    Windows system (os_hint 'windows'), or a BitLocker volume. Erase destroys only the
+    target disk; a manual layout destroys only the partitions it formats or deletes.
+    """
+    mode = plan.config['mode']
+    if mode == 'alongside':
+        return True
+    formatted = {p.path for p in plan.partitions if p.format and p.path and not p.create}
+    formatted |= {p['path'] for p in (plan.edits.deleted if plan.edits else [])}
+    for disk in (machine or {}).get('disks', []):
+        target = disk.get('id') == plan.disk.get('id')
+        if target and mode == 'erase':
+            continue
+        for part in disk.get('partitions', []):
+            if (part.get('os_hint') == 'windows' or part.get('fs') == 'BitLocker') and not (
+                    target and part.get('path') in formatted):
+                return True
+    return False
 
 
 def boot_order(listing):
@@ -101,12 +222,13 @@ def boot_order(listing):
     return firmware_boot_order(listing)
 
 
-def emaki_boot_entry(listing, partuuid, *, active=True):
+def emaki_boot_entry(listing, partuuid, *, active=True, loader=EMAKI_LOADER):
     """The first entry of the requested active state for Emaki's loader on this ESP.
 
     efibootmgr 18 prints the path bare after HD(...)/, older versions inside
-    File(...); some firmware puts hardware nodes first."""
-    loader = re.escape(EMAKI_LOADER)
+    File(...); some firmware puts hardware nodes first. With Secure Boot the loader
+    is shim in boot slot a (secureboot.slot_entry('a'))."""
+    loader = re.escape(loader)
     hardware = r'(?:(?!(?:HD|File)\()[A-Za-z][A-Za-z0-9]*\([^()\t\n]*\)/)*'
     state = r'\*' if active else ' '
     pattern = (rf'^Boot([0-9A-Fa-f]{{4}}){state} [^\t\n]*\t{hardware}'
@@ -150,9 +272,10 @@ def enable_units(runner, target, units):
         runner.chroot(['systemctl', 'enable', unit], target)
 
 
-def software_packages(software='rich', *, btrfs=True, graphics=()):
+def software_packages(software='rich', *, btrfs=True, graphics=(), secure_boot=False):
     return (PACKAGES + DESKTOP_APPS + ['mkinitcpio'] + (SNAPSHOT_PACKAGES if btrfs else [])
-            + (['emaki-apps'] + RICH_APPS if software == 'rich' else []) + list(graphics))
+            + (['emaki-apps'] + RICH_APPS if software == 'rich' else []) + list(graphics)
+            + (list(secureboot.PACKAGES) if secure_boot else []))
 
 
 def verify_graphics(runner, plan, target):
@@ -163,13 +286,14 @@ def verify_graphics(runner, plan, target):
 
 
 def preflight_repo(runner, test_mode=False, software='rich', *, alongside_mode=False, btrfs=True,
-                   graphics=(), online=False, notice=lambda message: None, source_context=None,
+                   graphics=(), secure_boot=False, online=False, notice=lambda message: None, source_context=None,
                    source_ready=lambda source: None, root=Path("/")):
     """Resolve the complete transaction without touching the target or live DB."""
     repo = discover_repo(root) if source_context is not None else Path('/run/archiso/bootmnt/emaki/repo')
     ensure_clock(runner, online=online, repo=repo, notice=notice)
     try:
-        packages = software_packages(software, btrfs=btrfs, graphics=graphics) + (TEST_PACKAGES if test_mode else [])
+        packages = (software_packages(software, btrfs=btrfs, graphics=graphics, secure_boot=secure_boot)
+                    + (TEST_PACKAGES if test_mode else []))
         if alongside_mode:
             packages += ['os-prober', 'ntfs-3g']
         if source_context is None:
@@ -292,6 +416,7 @@ class Worker:
         self.phase = 'prepare_disk'
         self.completed = 0
         self.phase_pct = 0
+        self.skipped_phases = []
         self.last_progress = 0
         self.disk_changed = False
         self.wifi_profile = None
@@ -303,6 +428,12 @@ class Worker:
         self.upgraded = False
         # What the person must know after a successful installation; sent with `done`.
         self.warnings = []
+        # The one-time MokManager password, shown on the final screen with Secure Boot on.
+        self.mok_password = None
+        # Next to Windows: sha256 of Windows' whole ESP, read before the first disk write.
+        self.windows_esp_sha256 = None
+        # The inventory probed when the run started: every disk, for windows_kept().
+        self.machine = None
         self.cleanup_required = False
         self.kept_home = None
         self.package_total = None
@@ -313,7 +444,7 @@ class Worker:
         self.warnings.append(message)
         self.log('NOTICE: ' + message)
         self.emit('progress', phase=self.phase, phase_pct=self.phase_pct,
-                  total_pct=self.completed, indeterminate=True, notice='\n'.join(self.warnings))
+                  total_pct=self.completed, skipped_phases=list(self.skipped_phases), indeterminate=True, notice='\n'.join(self.warnings))
 
     def progress(self, pct=None, *, package=None, line=None, command=None, command_done=None):
         if self.phase != 'copy_packages':
@@ -341,7 +472,7 @@ class Worker:
             return
         self.last_progress = now
         self.emit('progress', phase=self.phase, phase_pct=self.phase_pct, total_pct=self.completed,
-                  indeterminate=True, activity={'name': name, 'done': done, 'total': total} if name else None)
+                  skipped_phases=list(self.skipped_phases), indeterminate=True, activity={'name': name, 'done': done, 'total': total} if name else None)
 
     def run(self, plan, cancelled):
         started = time.monotonic()
@@ -352,15 +483,19 @@ class Worker:
         self.package_source = None
         try:
             # This is intentionally repeated after token validation: a USB can
-            # disappear or GParted can finish between plan and actual execution.
+            # disappear or another program can change the disk between plan and actual execution.
             current = self.inventory.probe()
-            fresh = make_plan(plan.config, current, self.test_mode)
+            self.machine = current
+            fresh = make_plan(plan.config, current, self.test_mode,
+                              esp_need=getattr(self.inventory, 'esp_need', None))
             require(fresh.fingerprint == plan.fingerprint, Code.DISK_CHANGED,
                     'Disk identity or partition layout changed after the review.')
             require(fresh.swap_bytes == plan.swap_bytes, Code.DISK_CHANGED,
                     'RAM size changed after the review; prepare a new installation plan.')
             require(fresh.graphics_packages == plan.graphics_packages, Code.DISK_CHANGED,
                     'Graphics hardware or driver availability changed; prepare a new installation plan.')
+            require(fresh.secure_boot == plan.secure_boot, Code.SECURE_BOOT,
+                    'The Secure Boot setting changed after the review; prepare a new installation plan.')
             self.plan.disk['_vmd'] = fresh.disk.get('_vmd', False)
             self.online = current['network']['online']
             if self.test_mode:
@@ -371,7 +506,7 @@ class Worker:
             self.capture_live_wifi(plan.config.get('wifi_uuid'))
             packages = preflight_repo(self.runner, self.test_mode, plan.config.get('software', 'rich'),
                                       alongside_mode=plan.config['mode'] == 'alongside', btrfs=plan.btrfs,
-                                      graphics=plan.graphics_packages,
+                                      graphics=plan.graphics_packages, secure_boot=bool(plan.secure_boot),
                                       online=self.online, notice=self.notice, source_context=sources,
                                       source_ready=lambda source: setattr(self, "package_source", source),
                                       root=getattr(self.inventory, "root", Path("/")))
@@ -382,6 +517,7 @@ class Worker:
                 # The bootloader phase checks the installed hook again.
                 verify_snapshot_hook(self.runner, packages)
             verify_account_name(self.runner, packages, plan.config['user']['login'])
+            self.check_secure_boot_esp(packages, current)
             # The resolved closure is exactly what the copy phase will announce.
             self.package_total = len(packages) if isinstance(packages, list) and packages else None
             self.cleanup_required = True
@@ -395,17 +531,19 @@ class Worker:
                     raise InstallError(Code.CANCELLED, 'Installation cancelled at a phase boundary; disk changes are not undone.')
                 skipped = ((phase == 'snapshot' and not plan.btrfs) or
                            (phase == 'update' and not (plan.config['online_update'] and self.online)))
+                if skipped:
+                    self.skipped_phases.append(phase)
                 # Only copy_packages has a counter; the other phases show the busy indicator.
                 counted = phase == 'copy_packages' and bool(self.package_total)
                 self.emit('state', phase=phase, phase_pct=None if skipped else 0,
-                          total_pct=self.completed, indeterminate=not skipped and not counted)
+                          total_pct=self.completed, skipped_phases=list(self.skipped_phases), indeterminate=not skipped and not counted)
                 if skipped:
                     self.log(f'{phase}: skipped.')
                 else:
                     getattr(self, phase)()
                 self.completed += PHASES[phase]
                 self.emit('state', phase=phase, phase_pct=None if skipped else 100,
-                          total_pct=self.completed, indeterminate=False)
+                          total_pct=self.completed, skipped_phases=list(self.skipped_phases), indeterminate=False)
             success = True
         except InstallError as exc:
             failure = exc
@@ -456,7 +594,17 @@ class Worker:
                       log_path=str(LOG))
         elif success:
             self.emit('done', log_path=str(LOG), seconds=round(time.monotonic() - started, 2),
-                      warnings=list(self.warnings))
+                      warnings=list(self.warnings), **self.secure_boot_done())
+
+    def secure_boot_done(self):
+        """The done page's MokManager steps: the one-time password and the ESP's label.
+
+        esp_label is None on an ESP Emaki did not format (a kept manual ESP): its label is
+        not Emaki's to name, so the page names no label. Next to Windows Emaki formats its own.
+        """
+        if not self.mok_password:
+            return {}
+        return {'secure_boot': {'password': self.mok_password, 'esp_label': self.plan.esp_label}}
 
     def capture_live_wifi(self, joined):
         """Choose and read the Wi-Fi profile before disk work; every step goes to the log.
@@ -496,9 +644,10 @@ class Worker:
             alongside.require_verified()
         # Package verification can take minutes. Recheck every mode at the write
         # boundary, including encrypted-volume confirmations against fresh UUIDs.
-        fresh = make_plan(self.plan.config, self.inventory.probe(), self.test_mode)
+        fresh = make_plan(self.plan.config, self.inventory.probe(), self.test_mode,
+                          esp_need=getattr(self.inventory, 'esp_need', None))
         require(fresh.fingerprint == self.plan.fingerprint, Code.DISK_CHANGED,
-                'Windows shrink bounds, disk identity or ESP state changed after review; disk untouched.'
+                'Windows shrink bounds, disk identity or startup partition state changed after review; disk untouched.'
                 if self.plan.config['mode'] == 'alongside' else
                 'Disk identity or partition layout changed after the review.')
         require(fresh.swap_bytes == self.plan.swap_bytes, Code.DISK_CHANGED,
@@ -506,10 +655,23 @@ class Worker:
         require(fresh.graphics_packages == self.plan.graphics_packages, Code.DISK_CHANGED,
                 'Graphics hardware or driver availability changed; prepare a new installation plan.')
         if self.plan.config['mode'] == 'alongside':
+            # The proof that Windows' ESP stays byte-identical starts here, before any write.
+            try:
+                self.windows_esp_sha256 = device_sha256(windows_esp(self.plan)['path'])
+            except OSError as exc:
+                self.log("Windows' startup partition read failed: " + type(exc).__name__)
+                raise InstallError(Code.UNSAFE_DISK, WINDOWS_ESP_UNREADABLE) from exc
             self.backend.devices.changed = self.mark_disk_changed
         else:
             self.mark_disk_changed()
-        self.backend.prepare()
+        try:
+            self.backend.prepare()
+        finally:
+            devices = getattr(self.backend, 'devices', None)
+            if getattr(devices, 'pending_reread', None):
+                pending = getattr(self.inventory, 'pending_partition_refresh', {})
+                pending[self.plan.disk['path']] = devices.recover_edits
+                self.inventory.pending_partition_refresh = pending
         self.files.write(MARKER, f'Emaki {__version__} installation in progress\n', 0o600)
 
     def mark_disk_changed(self):
@@ -524,7 +686,7 @@ class Worker:
         font = getattr(self.backend, 'console_font', None)
         self.files.write('/etc/vconsole.conf', vconsole_conf(layouts, font))
         packages = software_packages(self.plan.config.get('software', 'rich'), btrfs=self.plan.btrfs,
-                                     graphics=self.plan.graphics_packages)
+                                     graphics=self.plan.graphics_packages, secure_boot=bool(self.plan.secure_boot))
         if self.plan.config['mode'] == 'alongside':
             packages += ['os-prober', 'ntfs-3g']
         self.backend.instance.pacman.strap(packages)
@@ -542,12 +704,11 @@ class Worker:
                                self.target, check=False)
 
     def bootloader(self):
-        preserved_loaders = (alongside.efi_loaders(self.files.path('/efi'))
-                             if self.plan.config['mode'] == 'alongside' else {})
-        if self.plan.config['mode'] == 'alongside':
-            reviewed = next(p['_efi_loaders'] for p in self.plan.disk['partitions'] if p['esp'])
-            require(preserved_loaders == reviewed, Code.BOOT_VERIFY,
-                    'STOP: EFI loaders differ from the reviewed Windows installation.')
+        # An ESP Emaki formatted (erase, or its own one next to Windows) must really be FAT32:
+        # a too small or 4Kn-limited one would be FAT16, which not every firmware starts from.
+        esp = next((p for p in self.plan.partitions if p.esp and p.mountpoint == '/efi'), None)
+        if esp is not None and esp.format:
+            require(fat32_esp(self.files.path('/efi')), Code.BOOT_VERIFY, ESP_NOT_FAT32)
         root = self.plan.root
         if self.plan.encrypted:
             self.files.mkdir('/etc/cryptsetup-keys.d', 0o700).chmod(0o700)
@@ -559,6 +720,21 @@ class Worker:
                              '--pbkdf-force-iterations', '1000',
                              '--key-file', '-', root.path, str(self.files.path(key))],
                             input=self.plan.disk_password, secret=True)
+            # The partition editor's other encrypted partitions (/home, data, swap) open at startup
+            # from systemd's crypttab with their own key, kept inside the encrypted root; the disk
+            # password stays in their first slot for recovery.
+            crypttab = []
+            for part in (p for p in self.plan.partitions if p.encrypt):
+                key = f'/etc/cryptsetup-keys.d/{part.mapper_name}.key'
+                self.files.write(key, os.urandom(64), 0o600)
+                self.runner.run(['cryptsetup', 'luksAddKey', '--pbkdf', 'pbkdf2',
+                                 '--pbkdf-force-iterations', '1000',
+                                 '--key-file', '-', part.path, str(self.files.path(key))],
+                                input=self.plan.disk_password, secret=True)
+                crypttab.append(f'{part.mapper_name}\tUUID={part.luks_uuid}\t{key}\tluks\n')
+            if crypttab:
+                existing = self.files.read('/etc/crypttab') if self.files.path('/etc/crypttab').is_file() else ''
+                self.files.write('/etc/crypttab', existing + ''.join(crypttab), 0o600)
             self.plan.config['disk_password'] = ''
             self.files.path('/boot').chmod(0o700)
         offset = self.create_swap() if self.plan.swap_bytes else None
@@ -605,52 +781,331 @@ class Worker:
                 vendor_ok = False
                 self.log('WARNING: vendor GRUB retry failed; attempting the removable loader.')
         removable_ok = False
-        if not fallback.exists() or (own_fallback and self.plan.config['mode'] != 'alongside'):
+        sidecars = [self.files.path(f'/efi/{secureboot.REMOVABLE_DIR}/{name}')
+                    for name in (secureboot.GRUB, secureboot.MOK_MANAGER)]
+        # check_secure_boot_esp budgeted EFI/BOOT by the same rule (probed_removable). An ESP this
+        # install formatted (erase, Emaki's own next to Windows) is empty: EFI/BOOT is written there.
+        esp = next(part for part in self.plan.partitions if part.esp and part.mountpoint == '/efi')
+        probed = next((part for part in self.plan.disk['partitions'] if part.get('path') == esp.path), {})
+        shared = not esp.format and shared_esp(probed)
+        removable = removable_fallback(bool(self.plan.secure_boot), fallback.exists(),
+                                       own_fallback, any(path.exists() for path in sidecars), shared=shared)
+        if removable:
             try:
                 self.runner.chroot([*command, '--removable', '--no-nvram'], self.target)
                 removable_ok = True
             except InstallError:
                 self.log('WARNING: removable GRUB installation failed.')
         else:
-            self.log('WARNING: preserving existing fallback EFI boot file; removable GRUB copy skipped.')
+            self.log("WARNING: preserving another system's startup files; removable GRUB copy skipped."
+                     if shared else 'WARNING: preserving existing fallback EFI boot file; removable GRUB copy skipped.')
         require(nvram_ok or removable_ok, Code.BOOT_VERIFY,
                 'GRUB NVRAM registration failed and no removable loader could be installed.')
-        if nvram_ok:
-            self.boot_entry_first()
+        if self.plan.secure_boot:
+            # The signed image carries the unlock screen too (grub_loader_payload). Slot a is
+            # complete on the ESP before a firmware entry names it.
+            self.secure_boot_loaders(vendor_ok, removable_ok)
+        first = self.boot_entry_first() if nvram_ok else False
+        if self.plan.secure_boot:
+            self.verify_slot_entries(first)
         if not nvram_ok and removable_ok:
             self.notice('The firmware could not save a startup entry (NVRAM/efibootmgr). '
                         'Emaki installed the standard fallback loader (EFI/BOOT/BOOTX64.EFI). '
                         'If needed, choose this disk in your firmware boot menu.')
-        if self.plan.encrypted:
+        if self.plan.encrypted and not self.plan.secure_boot:
             self.unlock_screen([name for name, written in (('/efi/EFI/Emaki/grubx64.efi', vendor_ok),
                                                           ('/efi/EFI/BOOT/BOOTX64.EFI', removable_ok)) if written])
         self.grub_config()
         if self.plan.config['mode'] == 'alongside':
-            try:
-                after = alongside.efi_loaders(self.files.path('/efi'))
-            except InstallError as exc:
-                self.log('Post-write EFI inventory failed: ' + exc.code.value)
-                self.efi_preservation_failed('EFI files could not be verified after loader installation.')
-            added = {'EFI/BOOT/BOOTX64.EFI'} if removable_ok else set()
-            differences = {
-                'changed': sorted(name for name in preserved_loaders.keys() & after.keys()
-                                  if preserved_loaders[name] != after[name]),
-                'missing': sorted(preserved_loaders.keys() - after.keys()),
-                'unexpected': sorted(after.keys() - preserved_loaders.keys() - added),
-            }
-            if any(differences.values()):
-                for kind, names in differences.items():
-                    if names:
-                        # The ESP is untrusted; escape names and bound the diagnostic.
-                        paths = ', '.join(ascii(name)[:240] for name in names[:20])
-                        self.log(f'Post-write EFI {kind} ({len(names)}): {paths}')
-                self.efi_preservation_failed('Existing Windows or other EFI files changed; '
-                                             'the installation log lists affected paths.')
+            # After the last step that could reach it: os-prober mounts it read-only for GRUB's menu.
+            self.check_windows_esp()
         text = self.runner.run(['genfstab', '-U', '-f', str(self.target), str(self.target)])
         fstab = normalize_fstab(text, self.plan)
         if self.plan.swap_bytes:
             fstab += '/swap/swapfile\tnone\tswap\tdefaults,pri=10\t0 0\n'
+        # A swap partition from the partition editor; zram keeps the higher priority.
+        for part in (p for p in self.plan.partitions if p.swap):
+            require(bool(part.uuid), Code.FSTAB_VERIFY, 'The swap partition could not be identified.')
+            source = f'/dev/mapper/{part.mapper_name}' if part.encrypt else f'UUID={part.uuid}'
+            fstab += f'{source}\tnone\tswap\tdefaults,pri=10\t0 0\n'
         self.files.write('/etc/fstab', fstab)
+
+    def secure_boot_loaders(self, vendor_ok, removable_ok):
+        """Machine key, one signed self-contained GRUB, shim and MokManager on the ESP.
+
+        Under Secure Boot GRUB refuses modules and fonts read from disk, so grub-install's
+        image is replaced by one whose memdisk carries every module, the menu faces and,
+        when encrypted, the unlock screen; the audited module list is built in, the SBAT
+        data names grub.emaki, and a key made for this machine signs it. Microsoft-signed
+        shim starts it once MokManager has enrolled the key (the final screen explains how).
+        The kernels are signed here too, so the first snapshot already holds signed ones.
+        """
+        require(vendor_ok or removable_ok, Code.BOOT_VERIFY, 'No GRUB loader was written.')
+        run = self.target_run
+        self.files.mkdir(str(secureboot.STATE), 0o700).chmod(0o700)
+        secureboot.generate_key(run)
+        # Before any later module build (the update's DKMS hook) and the rebuild below.
+        self.files.write(str(secureboot.DKMS_CONFIG), secureboot.dkms_config())
+        self.sign_dkms_modules()
+        root = self.plan.root
+        subvolume = next((name for name, mp in root.subvolumes.items() if mp == '/'), None)
+        fsroot = '/' + subvolume if subvolume else ''
+        platform = '/boot/grub/x86_64-efi'
+        if root.luks_uuid:
+            load_cfg = self.files.read(platform + '/load.cfg')
+            require(GRUB_VISIBLE_FONT.is_file(), Code.BOOT_VERIFY, 'The GRUB unlock-screen font is missing from this ISO.')
+            font = GRUB_VISIBLE_FONT.read_bytes()
+        else:
+            require(isinstance(root.uuid, str) and re.fullmatch(r'[0-9a-fA-F-]{36}', root.uuid), Code.BOOT_VERIFY,
+                    'The system partition could not be identified.')
+            # As the boot refresh does: find the root by its UUID, whatever disk the ESP is on.
+            load_cfg = f'search.fs_uuid {root.uuid} root\nset prefix=($root){fsroot}/boot/grub\n'
+            font = b''
+        prefix, early, memdisk = grub_loader_payload(self.files.path('/boot/grub'), None, fsroot, root.luks_uuid,
+                                                     load_cfg, font, secure_boot_fonts(self.target))
+        self.files.write(platform + '/emaki-secureboot.cfg', early)
+        self.files.write(platform + '/emaki-secureboot.tar', memdisk)
+        output = platform + '/emaki-secureboot.efi'
+        secureboot.build_signed_grub(
+            run, lambda path, text: self.files.write(str(path), text),
+            ['grub-mkimage', '--directory=/usr/lib/grub/x86_64-efi', '--format=x86_64-efi', '--compression=none',
+             '--memdisk=' + platform + '/emaki-secureboot.tar', '--prefix=' + prefix,
+             '--config=' + platform + '/emaki-secureboot.cfg', '--output=' + output,
+             *secureboot.signed_image_modules(SIGNED_IMAGE_BASE)],
+            platform + '/emaki-sbat.csv', self.files.read(str(secureboot.SBAT_SOURCE)))
+        image = self.files.path(output).read_bytes()
+        require(image[:2] == b'MZ' and early in image and memdisk in image, Code.BOOT_VERIFY,
+                'The signed GRUB image does not carry its early config and memdisk.')
+        shim = {'shim_dir': self.files.path(str(secureboot.SHIM_DIR)), 'der': self.files.path(str(secureboot.DER))}
+        esp = self.files.path('/efi')
+
+        def check(path, data):
+            inside = '/efi/' + path.relative_to(esp).as_posix()
+            if path.name == secureboot.GRUB:
+                require(secureboot.signed(run, inside), Code.BOOT_VERIFY,
+                        f'{inside} does not verify with the machine key.')
+            elif path.name in (secureboot.SHIM, secureboot.MOK_MANAGER):
+                require(secureboot.pe_certificates_present(data), Code.BOOT_VERIFY, f'{inside} carries no signature.')
+
+        # No firmware entry may start a slot while it is removed or rewritten (R9S9 #5).
+        self.withdraw_slots()
+        self.clear_slot(esp, 'b')
+        # Slot a, manifest last: the loaders the firmware entry names and, for MokManager's
+        # "Enroll key from disk", the certificate, on every path.
+        try:
+            secureboot.write_slot(esp, 'a', secureboot.slot_payload(image, **shim), generation=None, check=check)
+        except (OSError, secureboot.SecureBootError) as error:
+            self.log(f'The boot slot a could not be written: {error}')
+            raise InstallError(Code.BOOT_VERIFY, 'The new startup copy could not be written. Check the installation log for details.') from error
+        loaders = {}
+        if removable_ok:
+            # The same bytes as slot a.
+            loaders.update({f'/efi/{secureboot.REMOVABLE_DIR}/{name}': data
+                            for name, data in secureboot.esp_files(True, **shim).items()})
+            loaders[f'/efi/{secureboot.REMOVABLE_DIR}/{secureboot.GRUB}'] = image
+        for name, data in loaders.items():
+            self.files.write(name, data, 0o600)
+            require(self.files.path(name).read_bytes() == data, Code.BOOT_VERIFY,
+                    f'{name} could not be read back from the startup partition.')
+        self.sign_boot_files()
+
+    def esp_partuuid(self):
+        esp = next(part for part in self.plan.partitions if part.esp)
+        return (esp.partuuid or self.runner.run(['lsblk', '-dno', 'PARTUUID', esp.path])).strip().lower()
+
+    def firmware(self):
+        """efibootmgr -v parsed by secureboot.firmware_entries; a listing that cannot be read or
+        trusted stops the step: nothing proves then that no entry starts a slot."""
+        try:
+            parsed = secureboot.firmware_entries(self.runner.run(['efibootmgr', '-v']))
+        except InstallError as error:
+            raise InstallError(Code.BOOT_VERIFY, FIRMWARE_UNREADABLE) from error
+        require(parsed is not None, Code.BOOT_VERIFY, FIRMWARE_UNREADABLE)
+        return parsed
+
+    def withdraw_slots(self):
+        """Before slot a is rewritten and slot b removed: every firmware entry naming a slot's
+        shim on this ESP (secureboot.slot_entries; FAT ignores case) leaves BootOrder in one write
+        that keeps every other entry in its order, a BootNext to one is deleted, then the entries
+        themselves. Entries of other partitions and foreign ones are never deleted or reordered.
+        The listing read back afterwards must name no slot on this ESP."""
+        partuuid = self.esp_partuuid()
+        require(re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', partuuid), Code.BOOT_VERIFY,
+                ESP_UNIDENTIFIED)
+        parsed = self.firmware()
+        found = secureboot.slot_entries(parsed, partuuid)
+        numbers = [number for slot in secureboot.SLOTS for number in found[slot]]
+        if not numbers:
+            return
+        self.log('Secure Boot: removing the firmware entries of an earlier Emaki boot slot on this disk: '
+                 + ', '.join(numbers) + '.')
+        order = [number for number in parsed['order'] if number not in numbers]
+        if order != parsed['order']:
+            self.runner.run(['efibootmgr', '--bootorder', ','.join(order)])
+        if parsed['next'] in numbers:
+            self.runner.run(['efibootmgr', '--delete-bootnext'])
+        for number in numbers:
+            self.runner.run(['efibootmgr', '-b', number, '-B'])
+        parsed = self.firmware()
+        require(not any(secureboot.slot_entries(parsed, partuuid).values())
+                and not set(parsed['order']) & set(numbers) and parsed['next'] not in numbers,
+                Code.BOOT_VERIFY, SLOT_STILL_STARTED)
+
+    def verify_slot_entries(self, first):
+        """After the bootloader phase: no entry on this ESP names slot b, which the install
+        removed, and at most one names slot a. When boot_entry_first made "Emaki" -> a the
+        default (first), that entry is the only one naming a slot, active and first in BootOrder.
+        Its own failure (first False) has already told the user with a notice."""
+        partuuid = self.esp_partuuid()
+        parsed = self.firmware()
+        found = secureboot.slot_entries(parsed, partuuid)
+        require(not found['b'], Code.BOOT_VERIFY, SLOT_B_STILL_STARTED)
+        if first:
+            number = parsed['order'][0] if parsed['order'] else None
+            require(found['a'] == [number] and parsed['entries'][number][0], Code.BOOT_VERIFY, SLOT_A_NOT_FIRST)
+        else:
+            require(len(found['a']) <= 1, Code.BOOT_VERIFY, SLOT_A_NOT_FIRST)
+
+    def clear_slot(self, esp, slot):
+        """Remove a slot an earlier Emaki left on a kept ESP, manifest first: after the install
+        only slot a exists, and the first boot refresh writes slot b. Anything there that is not
+        a slot's own file stays, and so does the directory."""
+        directory = secureboot.slot_dir(esp, slot)
+        if not directory.is_dir():
+            return
+        names = [secureboot.SLOT_MANIFEST, *secureboot.slot_files_names()]
+        for name in names + [name + '.tmp' for name in names]:
+            path = directory / name
+            if path.is_file() and not path.is_symlink():
+                path.unlink()
+        try:
+            directory.rmdir()
+        except OSError:
+            self.log(f'WARNING: {secureboot.VENDOR_DIR}/{slot} on the EFI partition holds other files; they were kept.')
+
+    def target_run(self, argv, input=None):
+        return self.runner.chroot(argv, self.target, input=input)
+
+    def sign_boot_files(self):
+        """Both kernels and fwupd's capsule loader, each proven with the machine certificate."""
+        for kernel in secureboot.KERNELS:
+            if not secureboot.signed(self.target_run, kernel):
+                secureboot.sign(self.target_run, kernel)
+        if self.files.path(str(secureboot.FWUPD_EFI)).is_file():
+            secureboot.sign(self.target_run, secureboot.FWUPD_EFI, secureboot.FWUPD_SIGNED)
+
+    def sign_dkms_modules(self):
+        """Every installed DKMS module signed by the machine key, proven with modinfo.
+
+        The NVIDIA modules are built during pacstrap, before the machine key exists, and
+        DKMS signs them with its own generated key. A build whose modules another key
+        signed is rebuilt: `dkms build --force` unbuilds and builds again, signing with the
+        configured key (`install --force` alone reinstalls the old build). DKMS only warns
+        when signing fails, so each module's signer is checked against the certificate's
+        subject name (self-signed: the signer kmod reports). The initramfs carries the
+        NVIDIA modules (emaki-nvidia's mkinitcpio drop-in), so it is built again.
+        """
+        if not self.files.path('/usr/bin/dkms').is_file():
+            return
+        names = secureboot.subject_common_names(self.files.path(str(secureboot.DER)).read_bytes())
+        require(len(names) == 1, Code.BOOT_VERIFY, 'The machine certificate has no single subject name.')
+        rebuilt = False
+        for module, version, kernel, arch in dkms_installed(self.runner.chroot(['dkms', 'status'], self.target)):
+            if not self.dkms_unsigned(module, version, kernel, arch, names[0]):
+                continue
+            build = ['-m', module, '-v', version, '-k', kernel]
+            self.runner.chroot(['dkms', 'build', '--force', *build], self.target)
+            self.runner.chroot(['dkms', 'install', '--force', *build], self.target)
+            rebuilt = True
+            unsigned = self.dkms_unsigned(module, version, kernel, arch, names[0])
+            require(not unsigned, Code.BOOT_VERIFY,
+                    f'DKMS module {module}/{version} for {kernel} is not signed by the machine key: '
+                    + ', '.join(unsigned) + '.')
+        if rebuilt:
+            self.runner.chroot(['mkinitcpio', '-p', 'linux', '-p', 'linux-lts'], self.target)
+
+    def dkms_unsigned(self, module, version, kernel, arch, signer):
+        """The kernel modules of one DKMS build that the machine key did not sign."""
+        built = self.files.path(f'/var/lib/dkms/{module}/{version}/{kernel}/{arch}/module')
+        names = sorted({KERNEL_MODULE.sub('', path.name) for path in built.iterdir()
+                        if KERNEL_MODULE.search(path.name)}) if built.is_dir() else []
+        require(bool(names), Code.BOOT_VERIFY, f'DKMS module {module}/{version} for {kernel} has no built modules.')
+        unsigned = []
+        for name in names:
+            try:
+                found = self.runner.chroot(['modinfo', '-k', kernel, '-F', 'signer', name], self.target).strip()
+            except InstallError:
+                found = ''
+            if found != signer:
+                unsigned.append(name)
+        return unsigned
+
+    def secure_boot_finish(self):
+        """Re-check the signatures after the update, then queue the key last.
+
+        The DKMS config was written with the key (secure_boot_loaders), so the update's
+        module builds sign with it; sign_dkms_modules proves that again.
+        """
+        self.sign_dkms_modules()
+        self.sign_boot_files()
+        password = secureboot.one_time_password()
+        self.redactor.add(password)
+        secureboot.request_enrollment(
+            lambda argv, input=None: self.runner.chroot(argv, self.target, input=input, secret=True), password)
+        self.mok_password = password
+        self.log('Secure Boot: the machine key waits for confirmation in MokManager at the next start.')
+
+    def check_secure_boot_esp(self, packages, machine):
+        """Before any disk write: a kept ESP must hold this install and every later boot update.
+
+        Only a kept (manual) ESP: a formatted one, the erase layout's or Emaki's own next to Windows,
+        is OWN_ESP_BYTES. The need is the boot refresh's rule from the
+        verified archives (secureboot.secure_boot_esp_need): two complete slots, EFI/BOOT's
+        copies when this install writes them (the bootloader phase's rule, probed_removable),
+        the refresh's GRUB stage and SHARED_ESP_RESERVE for Windows. Plan review applied the same
+        rule to the USB's archives (review_esp_need); this is the final gate, from the archives
+        just verified. Admitting less would leave a machine whose boot files can never be updated.
+        """
+        esp = next((part for part in self.plan.partitions if part.esp), None)
+        if not self.plan.secure_boot or esp is None or esp.format:
+            return
+        probed = next((part for disk in (machine or {}).get('disks', [])
+                       for part in disk.get('partitions', []) if part.get('path') == esp.path), {})
+        free = probed.get('_esp_free_bytes')
+        require(free is not None, Code.ESP_SPACE, ESP_UNCHECKED)
+        # Inventories from before the probe recorded the cluster size: FAT32's usual 4 KiB.
+        cluster = probed.get('_esp_cluster_bytes') or 4096
+        extra = secure_boot_extra(self.plan.encrypted)
+        try:
+            need = secureboot.secure_boot_esp_need(
+                packages, cluster, secureboot.signed_image_modules(SIGNED_IMAGE_BASE), extra,
+                removable=probed_removable(probed))
+        except secureboot.SecureBootError as error:
+            raise InstallError(Code.ESP_SPACE, ESP_UNCHECKED + ' ' + str(error)) from error
+        self.log(f'Secure Boot on a kept startup partition: it has {free} bytes free, '
+                 f'this installation and later boot updates need {need}.')
+        require(free >= need, Code.ESP_SPACE, ESP_SECURE_BOOT_ROOM.format(
+            need=-(-need // 1000000), free=free // 1000000))
+
+    def fwupd_keep_keys(self):
+        """While Windows stays on the machine (any disk), fwupd must not change the firmware's
+        KEK and db: BitLocker measures them."""
+        name = str(secureboot.FWUPD_CONFIG)
+        if self.files.path(name).is_file():
+            self.files.write(name, secureboot.fwupd_config(self.files.read(name)))
+
+    def check_windows_esp(self):
+        """Next to Windows: Windows' whole ESP still has the bytes read before the first disk write.
+        Emaki never writes it; os-prober only mounts it read-only."""
+        before = self.windows_esp_sha256
+        try:
+            after = device_sha256(windows_esp(self.plan)['path'])
+        except OSError as exc:
+            self.log("Windows' startup partition read failed: " + type(exc).__name__)
+            self.efi_preservation_failed("Windows' startup partition could not be read after loader installation.")
+        if not before or after != before:
+            self.log(f"Windows' startup partition sha256 before the first disk write: {before}; now: {after}.")
+            self.efi_preservation_failed("Windows' startup partition changed during the installation.")
 
     def efi_preservation_failed(self, detail):
         # Reaching bootloader means prepare completed its post-shrink checks. This
@@ -753,16 +1208,19 @@ class Worker:
                            self.target)
         original = self.files.read('/boot/grub/grub.cfg')
         if self.plan.config['mode'] == 'alongside':
-            # Discovery must identify Windows on the reviewed shared partition before
+            # Discovery must identify Windows on its reviewed ESP (not Emaki's own) before
             # replacing its chainload with a restart through the firmware entry.
             require(re.search(r'^menuentry [^\n]*Windows Boot Manager', original, re.M), Code.BOOT_VERIFY,
                     'Windows Boot Manager was not discovered by os-prober; inspect GRUB before rebooting.')
-            esp = next(part for part in self.plan.partitions if part.esp)
+            esp = windows_esp(self.plan)
             original_windows = windows_bootnext_menu(
-                original, esp.partuuid, esp.uuid, self.runner.run(['efibootmgr', '-v']))
+                original, str(esp.get('_partuuid') or '').lower(), esp.get('uuid'),
+                self.runner.run(['efibootmgr', '-v']))
         else:
             original_windows = original
-        safe = menu_layout(menu_font_fallback(original_windows))
+        safe = menu_layout(quiet_linux_entries(menu_font_fallback(original_windows)))
+        if self.plan.secure_boot:
+            safe = secure_boot_menu(safe)
         if safe != original:
             self.files.write('/boot/grub/grub.cfg', safe)
         verify_grub(self.files.read('/boot/grub/grub.cfg'))
@@ -775,7 +1233,7 @@ class Worker:
             info = home.stat()
             self.kept_home = (str(info.st_uid), str(info.st_gid))
         self.runner.chroot(['useradd', '-m', '-d', '/home/' + user['login'], '-G', 'wheel',
-                            '-s', '/bin/bash', '-c', user['name'], user['login']], self.target)
+                            '-s', '/usr/bin/zsh', '-c', user['name'], user['login']], self.target)
         self.runner.chroot(['chpasswd'], self.target, input=user['login'] + ':' + user['password'] + '\n', secret=True)
         user['password'] = ''
         self.runner.chroot(['passwd', '-l', 'root'], self.target)
@@ -900,9 +1358,15 @@ class Worker:
         if self.test_mode:
             units.append('sshd.service')
         enable_units(self.runner, self.target, units)
+        # Every layout keeps its ESP identity in the first snapshot as well as the live root.
+        self.record_boot_esp()
         if self.plan.config['mode'] == 'alongside':
-            # Include the safety policy in the first snapshot as well as the live root.
-            self.protect_shared_esp()
+            # Include the record in the first snapshot as well as the live root.
+            self.record_alongside_boot()
+        if windows_kept(self.plan, self.machine):
+            # Before the first snapshot and the optional update: restoring "Fresh Emaki"
+            # must not let fwupd change the KEK and db that BitLocker measures.
+            self.fwupd_keep_keys()
 
     def repositories(self):
         text = self.files.read('/etc/pacman.conf')
@@ -1123,6 +1587,11 @@ class Worker:
             # configuration is independently fatal at the final verification.
             self.runner.chroot(['mkinitcpio', '-p', 'linux', '-p', 'linux-lts'], self.target)
             self.grub_config()
+        if windows_kept(self.plan, self.machine):
+            # Already in settings(); again in case the optional update brought a new fwupd.conf.
+            self.fwupd_keep_keys()
+        if self.plan.secure_boot:
+            self.secure_boot_finish()
         self.update_notice()
         self.record_installation()
         self.files.path(MARKER).unlink(missing_ok=True)
@@ -1152,53 +1621,84 @@ class Worker:
         """grub-install keeps an older entry with the same loader path even when it names an ESP that no
         longer exists (Emaki installed before on a wiped disk): then nothing starts this Emaki, and the
         firmware starts Windows. Make sure an entry for this ESP exists and comes first, so Emaki is the
-        default as planned. A listing without BootOrder (no EFI variables) changes nothing."""
+        default as planned. A listing without BootOrder (no EFI variables) changes nothing.
+        True when the entry ends first; a failure is logged and told in a notice (False)."""
         esp = next(part for part in self.plan.partitions if part.esp)
         try:
-            partuuid = (esp.partuuid or self.runner.run(['lsblk', '-dno', 'PARTUUID', esp.path])).strip().lower()
+            partuuid = self.esp_partuuid()
             listing = self.runner.run(['efibootmgr', '-v'])
             order = boot_order(listing)
             if order is None or not re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', partuuid):
                 self.log('WARNING: the firmware boot entries could not be read; the startup order is unchanged.')
-                return
-            entry = emaki_boot_entry(listing, partuuid)
+                return False
+            loader = secureboot.slot_entry('a') if self.plan.secure_boot else EMAKI_LOADER
+            label = secureboot.ACTIVE_LABEL if self.plan.secure_boot else 'Emaki'
+            entry = emaki_boot_entry(listing, partuuid, loader=loader)
             if entry is None:
-                inactive = emaki_boot_entry(listing, partuuid, active=False)
+                inactive = emaki_boot_entry(listing, partuuid, active=False, loader=loader)
                 if inactive:
                     self.runner.run(['efibootmgr', '-b', inactive, '-a'])
                     listing = self.runner.run(['efibootmgr', '-v'])
-                    entry, order = emaki_boot_entry(listing, partuuid), boot_order(listing)
+                    entry, order = emaki_boot_entry(listing, partuuid, loader=loader), boot_order(listing)
                     require(entry == inactive and order, Code.BOOT_VERIFY,
                             'The firmware entry for Emaki could not be activated.')
             if entry is None:
                 self.log('No firmware entry starts this Emaki (an older one names another disk); creating one.')
                 self.runner.run(['efibootmgr', '--create', '--disk', self.plan.disk['path'],
-                                 '--part', str(esp.number), '--label', 'Emaki', '--loader', EMAKI_LOADER])
+                                 '--part', str(esp.number), '--label', label, '--loader', loader])
                 listing = self.runner.run(['efibootmgr', '-v'])
-                entry, order = emaki_boot_entry(listing, partuuid), boot_order(listing)
+                entry, order = emaki_boot_entry(listing, partuuid, loader=loader), boot_order(listing)
                 require(entry and order, Code.BOOT_VERIFY, 'The new firmware entry for Emaki is not listed.')
             if order[0] != entry:
                 self.runner.run(['efibootmgr', '--bootorder', ','.join([entry] + [n for n in order if n != entry])])
+            if self.plan.secure_boot:
+                self.drop_unsigned_entries(partuuid, entry)
+            return True
         except InstallError as exc:
             self.log('WARNING: firmware startup order: ' + exc.message)
             self.notice('Emaki could not make itself the computer\'s default startup choice. '
                         'If another system starts instead, start the installation USB and use its GRUB console '
-                        'to load EFI/Emaki/grubx64.efi from this installation\'s EFI partition.')
+                        'to load EFI/Emaki/grubx64.efi from this installation\'s startup partition.'
+                        if not self.plan.secure_boot else
+                        'Emaki could not make itself the computer\'s default startup choice. '
+                        'If another system starts instead, choose Emaki in the firmware boot menu.')
+            return False
 
-    def protect_shared_esp(self):
-        esp = next(part for part in self.plan.partitions if part.esp)
-        require(esp.partuuid and re.fullmatch(r'[0-9a-fA-F-]{36}', esp.partuuid),
-                Code.BOOT_VERIFY, "The disk's startup partition could not be identified safely, so Emaki stopped.")
-        self.files.write('/var/lib/emaki/alongside-boot.json',
-                         json.dumps({'version': 1, 'esp_partuuid': esp.partuuid.lower()}) + '\n', 0o644)
-        # The sleep service does not start if the unmount fails. ExecStopPost also
-        # restores the read-only mount after a failed sleep attempt. A system-sleep
-        # hook cannot provide this barrier: failures there do not cancel sleep, and
-        # it runs too late to save the update and trial counters GRUB changes.
-        dropin = ('# Copyright (C) 2026 Artur Yakymenko\n'
-                  '# SPDX-License-Identifier: GPL-3.0-or-later\n'
-                  '[Service]\nExecStartPre=emaki-update-boot hibernate-pre\n'
-                  'ExecStopPost=emaki-update-boot hibernate-post\n')
-        for mode in ('hibernate', 'hybrid-sleep', 'suspend-then-hibernate'):
-            self.files.write(f'/etc/systemd/system/systemd-{mode}.service.d/50-emaki-shared-esp.conf', dropin)
+    def drop_unsigned_entries(self, partuuid, shim):
+        """Remove grub-install's entries for its unsigned image on this ESP, which Secure Boot
+        refuses, only once slot a's shim entry exists and comes first; then check that it still does."""
+        listing = self.runner.run(['efibootmgr', '-v'])
+        for _ in range(8):
+            stale = emaki_boot_entry(listing, partuuid) or emaki_boot_entry(listing, partuuid, active=False)
+            if stale is None or stale == shim:
+                break
+            self.runner.run(['efibootmgr', '-b', stale, '-B'])
+            listing = self.runner.run(['efibootmgr', '-v'])
+        order = boot_order(listing)
+        require(order and order[0] == shim
+                and emaki_boot_entry(listing, partuuid, loader=secureboot.slot_entry('a')) == shim,
+                Code.BOOT_VERIFY, 'The firmware entry for Emaki is not first after removing the unsigned one.')
+
+    def record_boot_esp(self):
+        """Record the installation's EFI partition for strict USB repair ownership checks."""
+        partuuid = self.esp_partuuid()
+        require(re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', partuuid),
+                Code.BOOT_VERIFY, "The disk's startup partitions could not be identified safely, so Emaki stopped.")
+        self.files.write('/var/lib/emaki/boot-esp.json', json.dumps({
+            'version': 1, 'emaki_esp_partuuid': partuuid}) + '\n', 0o644)
+
+    def record_alongside_boot(self):
+        """Next to Windows: record both ESPs for the installed boot code. esp_partuuid is Windows'
+        ESP (its firmware entry and GRUB's Windows entry), emaki_esp_partuuid Emaki's own at /efi.
+        Windows never writes Emaki's own ESP, so no hibernation guard is needed; the boot order
+        service still puts Emaki first again when Windows makes itself the default."""
+        windows, own = windows_esp(self.plan), next(part for part in self.plan.partitions if part.esp)
+        guid = r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}'
+        ids = [str(windows.get('_partuuid') or ''), str(own.partuuid or ''), str(windows.get('uuid') or '')]
+        require(re.fullmatch(guid, ids[0]) and re.fullmatch(guid, ids[1]) and ids[0].lower() != ids[1].lower()
+                and re.fullmatch(r'[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}', ids[2]),
+                Code.BOOT_VERIFY, "The disk's startup partitions could not be identified safely, so Emaki stopped.")
+        self.files.write('/var/lib/emaki/alongside-boot.json', json.dumps({
+            'version': 1, 'esp_partuuid': ids[0].lower(), 'emaki_esp_partuuid': ids[1].lower(),
+            'windows_esp_uuid': ids[2]}) + '\n', 0o644)
         enable_units(self.runner, self.target, ['emaki-boot-order.service'])

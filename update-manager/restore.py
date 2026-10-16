@@ -34,7 +34,8 @@ NUMBER = re.compile(r'[1-9][0-9]{0,18}')
 LIMIT = 65536
 INDEX = Path('/run/emaki-restore-points.json')
 INDEX_LIMIT = 8 * 1024 * 1024
-INDEX_MAX_AGE = 120
+# Allow the five-minute refresh and timer coalescing; restoration rechecks live receipts.
+INDEX_MAX_AGE = 600
 INDEX_UNAVAILABLE = 'The restore point list is unavailable. Try again shortly.'
 
 
@@ -71,7 +72,7 @@ def receipt(directory):
     snapshot = directory / 'snapshot'
     if snapshot.is_symlink() or not snapshot.is_dir():
         raise ValueError('missing snapshot')
-    fd = os.open(directory / 'info.xml', os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    fd = os.open(directory / 'info.xml', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
     with os.fdopen(fd, 'rb') as source:
         if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
             raise ValueError('invalid snapshot receipt')

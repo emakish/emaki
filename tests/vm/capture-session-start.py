@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """HOST ONLY: disposable VM login-to-desktop evidence, never the host session.
 
 Capture starts before successful Enter, follows both guest Wayland sockets, and

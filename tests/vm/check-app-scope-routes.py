@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Real user-manager/GIO/clipboard scopes in the VM; --logout also ends its session."""
 import json
 import os

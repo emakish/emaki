@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Apply Emaki design tokens to component configs.
 
 Read tokens.toml and rewrite the files designated as generated:
@@ -24,6 +26,10 @@ T = tomllib.load((ROOT / "tokens.toml").open("rb"))
 
 C, O, G, F, E, M = (T[k] for k in ("color", "opacity", "geometry", "font", "effect", "motion"))
 A = T["ansi"]
+# The accent nobody has chosen yet; external configs carry it through [color] accent.
+DEFAULT_ACCENT = T["accents"][T["defaults"]["accent"]]
+if (C["accent"], C["on_accent"]) != (DEFAULT_ACCENT["base"], DEFAULT_ACCENT["text"]):
+    raise SystemExit("tokens.toml: [color] accent/on_accent must repeat the default accent's base/text")
 
 WARNING = "GENERATED from tokens.toml — manual edits will be overwritten"
 
@@ -52,7 +58,7 @@ layout {{
     border {{
         on
         width {G["border_width"]}
-        active-color "#{T["accents"]["orange"]["base"]}ff"
+        active-color "#{DEFAULT_ACCENT["base"]}ff"
         inactive-color "#{rgba("border_inactive")}"
     }}
 
@@ -96,6 +102,8 @@ fuzzel = f"""# {WARNING}.
 # (/etc/xdg/fuzzel/fuzzel.ini belongs to the fuzzel package and is left alone).
 # Your ~/.config/fuzzel/fuzzel.ini overrides this entire file; to use ours as a base,
 # put this on its first line: include=/usr/share/emaki/fuzzel/fuzzel.ini
+# An accent chosen in Settings: the session writes a copy that includes this file and
+# overrides its accent colours; emaki-config-path picks that copy before this file.
 
 font={F["ui"]}:size={F["size"]}
 prompt=">  "
@@ -129,7 +137,8 @@ hyprlock = f"""# {WARNING}.
 # Source: tokens.toml, generator: scripts/render-theme
 #
 # Installed to /etc/xdg/hypr/hyprlock.conf. Hyprlock looks in XDG_CONFIG_DIRS
-# and /etc/xdg itself, so no wrapper is needed: your ~/.config/hypr/hyprlock.conf overrides it.
+# and /etc/xdg itself: your ~/.config/hypr/hyprlock.conf overrides it. An accent chosen in
+# Settings: the session writes a copy of this file in that accent; emaki-lock passes it.
 #
 # Currently minimal — a solid background and an input field. This is a canvas for
 # pixel art once we reach the visual design stage (see DESIGN.md).
@@ -216,6 +225,18 @@ color6 #{A["cyan"]}
 color14 #{A["bright_cyan"]}
 color7 #{A["white"]}
 color15 #{A["bright_white"]}
+
+# The terminal's look: the monospace font and a see-through background, so the compositor's
+# blur shows behind it. dynamic_background_opacity lets each window change it (Ctrl+Shift+A,
+# then M more, L less, 1 opaque, D back to this value).
+font_family {F["mono"]}
+font_size {F["size"]}
+background_opacity {O["terminal"]}
+dynamic_background_opacity yes
+
+# The accent chosen in Settings, written by the session (kitty ignores a missing file
+# and reloads on SIGUSR1). Without it the accent above, the default, stays.
+include ${{XDG_RUNTIME_DIR}}/emaki-settings/accent/kitty.conf
 """
 
 

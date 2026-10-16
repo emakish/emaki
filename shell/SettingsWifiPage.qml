@@ -8,6 +8,24 @@ import "settings"
 
 Column {
     id: root
+    component NetworkField: TextField {
+        selectByMouse: true
+        color: SettingsTheme.ink
+        placeholderTextColor: SettingsTheme.faint
+        selectionColor: SettingsTheme.accent
+        selectedTextColor: SettingsTheme.accentText
+        font.family: SettingsTheme.fontFamily
+        font.pixelSize: 13
+        leftPadding: 10
+        rightPadding: 10
+        background: Rectangle {
+            implicitHeight: 34
+            radius: 10
+            color: SettingsTheme.field
+            border.width: parent.activeFocus ? 2 : 1
+            border.color: parent.activeFocus ? SettingsTheme.accent : SettingsTheme.rim
+        }
+    }
     required property SystemService service
     required property var networkSettings
     readonly property bool hasAdapter: (backend?.wifiDevices?.length ?? 0) > 0
@@ -369,7 +387,7 @@ Column {
         Column {
             width: parent.width
             spacing: 10
-            TextField {
+            NetworkField {
                 id: hiddenName
                 objectName: "settings-wifi-hidden-name"
                 visible: root.hiddenJoin
@@ -386,7 +404,7 @@ Column {
                 text: "Password protected"
                 font.family: SettingsTheme.fontFamily
             }
-            TextField {
+            NetworkField {
                 id: password
                 objectName: "settings-wifi-password"
                 width: parent.width

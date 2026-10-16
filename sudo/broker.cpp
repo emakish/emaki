@@ -650,6 +650,11 @@ class Broker {
 #ifdef EMAKI_SUDO_LIFECYCLE_TEST
   friend struct BrokerFixture;
 #endif
+  static constexpr int MaxKeys = 64;
+  // A status row fits 192 bytes: 64-bit IDs/time, pid_t and turn counts,
+  // fixed field names, and labels of at most 11 bytes (22 after escaping).
+  // The outer fields fit 256 bytes, including a 64-bit cleanup count.
+  static_assert(MaxKeys * (192 + 1) + 256 <= MaxBody);
   Fd directory, listener;
   std::map<uid_t, User> users;
   std::map<int, Client> clients;
@@ -1057,10 +1062,21 @@ public:
            ",\"snapguardAvailable\":false,\"promptAvailable\":" +
            (available ? "true" : "false") + "}";
   }
+  void sendStatus(int fd, Type type, uid_t uid) {
+    const auto body = status(uid);
+    if (body.size() > MaxBody) {
+      std::fprintf(stderr, "sudo status: snapshot exceeds protocol limit\n");
+      error(fd, "status-too-large");
+      drop(fd);
+      return;
+    }
+    if (!sendText(fd, type, body))
+      std::fprintf(stderr, "sudo status: cannot send snapshot: %s\n", std::strerror(errno));
+  }
   void broadcast(uid_t uid) {
     auto u = users.find(uid);
     if (u != users.end() && u->second.ui >= 0)
-      sendText(u->second.ui, Type::Keys, status(uid));
+      sendStatus(u->second.ui, Type::Keys, uid);
   }
   void eraseKeys(uid_t uid) {
     for (auto it = keys.begin(); it != keys.end();)
@@ -1119,7 +1135,7 @@ public:
   bool keyCapacity(uid_t uid) const {
     return std::count_if(keys.begin(), keys.end(), [&](const auto &key) {
       return key.second.uid == uid;
-    }) < 64;
+    }) < MaxKeys;
   }
   bool connectionAvailable(uid_t uid, pid_t pid) const {
     // An established provider never competes with idle peers. Its exact pinned
@@ -1553,7 +1569,7 @@ public:
         break;
       }
       case Type::Status:
-        sendText(fd, Type::Response, status(c.uid));
+        sendStatus(fd, Type::Response, c.uid);
         break;
       default:
         drop(fd);
@@ -1591,7 +1607,7 @@ public:
       break;
     }
     case Type::Status:
-      sendText(fd, Type::Response, status(c.uid));
+      sendStatus(fd, Type::Response, c.uid);
       drop(fd);
       break;
     case Type::Revoke: {
@@ -1677,7 +1693,9 @@ public:
       order.push_back(fd);
     for (auto fd : order) {
       auto &c = clients.at(fd);
-      bool invalid = !c.ui && !c.pending && now - c.since >= 1;
+      // completeChecks owns the outcome, even if the deadline passed since
+      // this iteration collected results. Idle reaping must not discard it.
+      bool invalid = !c.ui && !c.pending && !c.check && now - c.since >= 1;
       if (c.ui) {
         invalid = !freshHeartbeat(c.since, now) || !sameProcess(*c.process) ||
             !c.parent || !sameProcess(*c.parent) ||

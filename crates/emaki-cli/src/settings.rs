@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 use crate::{bad_arguments, json_output, output};
 use emaki_core::settings::{Operation, run as settings};
 use std::path::Path;

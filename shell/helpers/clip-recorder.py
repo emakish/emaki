@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Own a clipboard watcher for the shell: `wl-paste --watch cliphist store`.
 
 The watcher lives exactly as long as this process's stdin: the shell keeps the pipe

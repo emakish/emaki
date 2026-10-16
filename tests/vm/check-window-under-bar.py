@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """F0/C11, on the host: check window visibility under the shell bar in a desktop screenshot from login.sh.
   python3 tests/vm/check-window-under-bar.py <desktop> <screenshot.png>
 login.sh opens kitty; on a 1280×800 screen, niri places the window below the bar's reserved area (52 px),

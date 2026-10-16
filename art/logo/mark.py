@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Emaki mark — a slanted E made of parallelograms (concept of 2026-09-27): a “/” stem and three
 parallel bars of equal length, with ends cut sharper than the stem; the bars extend slightly
 past the stem on the left and far to the right; the mark fills the entire 24×24 square.

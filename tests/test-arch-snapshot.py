@@ -28,7 +28,14 @@ class ArchSnapshot(unittest.TestCase):
             root = Path(directory)
             (root / 'ARCH-SNAPSHOT').write_text(snapshot)
             shutil.copyfile(ROOT / 'iso/snapshot.py', root / 'snapshot.py')
-            read = BUILDER[BUILDER.index('snapshot_values=$(python3'):BUILDER.index('\nmode=release')]
+            start_marker = 'snapshot_values=$(python3'
+            end_marker = '\nif ((test_mode)); then'
+            self.assertIn(start_marker, BUILDER)
+            start = BUILDER.index(start_marker)
+            self.assertIn(end_marker, BUILDER[start:])
+            end = BUILDER.index(end_marker, start)
+            self.assertLess(start, end)
+            read = BUILDER[start:end]
             config = BUILDER[BUILDER.index('cat >"$work/download.conf"'):BUILDER.index('\nmapfile -t packages')]
             command = 'HERE=$1; work=$1; archiso_version="archiso 91-1"; fail() { exit 1; };\n' + read + '\n' + config
             result = subprocess.run(['bash', '-eu', '-c', command, '_', directory],
@@ -56,6 +63,7 @@ class ArchSnapshot(unittest.TestCase):
             with self.subTest(value=value):
                 result, config = self.render(f'date={value}\narchiso=91\narchinstall=4.5-1\n')
                 self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn('unbound variable', result.stderr)
                 self.assertEqual(config, '')
 
     def test_advance_records_all_inputs_and_refuses_invalid_changes(self):
@@ -139,7 +147,7 @@ class ArchSnapshot(unittest.TestCase):
             (root / 'offline' / name).write_bytes(payload)
             (root / 'closure.txt').write_text(name + '\n')
             result = subprocess.run(['bash', '-eu', '-c',
-                'work=$1; arch_snapshot=2026-10-05; arch_server=https://archive.example; '
+                'work=$1; mode=release; arch_snapshot=2026-10-05; arch_server=https://archive.example; '
                 "archiso_version='archiso 91-1'; pinned_archinstall=4.5-1;\n" + block, '_', directory], capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             recorded = (root / 'mk/iso/emaki/BUILDINFO').read_text()

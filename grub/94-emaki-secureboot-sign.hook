@@ -1,0 +1,24 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# After 90-mkinitcpio-install, which copies each kernel to /boot unsigned, and before
+# 95-emaki-boot-refresh. Without the machine key it does nothing and prints nothing; pacman shows
+# the neutral description on every machine. A failure prints the file
+# and pacman's "command failed to execute correctly"; libalpm cannot fail a finished
+# transaction, so 03-emaki-secureboot-check refuses beforehand what it can foresee.
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Target = usr/lib/modules/*/vmlinuz
+Target = usr/lib/fwupd/efi/fwupdx64.efi
+
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Target = emaki-config
+
+[Action]
+Description = Finishing the startup files
+When = PostTransaction
+Exec = /usr/bin/emaki-secureboot sign

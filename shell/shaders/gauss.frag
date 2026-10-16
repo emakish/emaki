@@ -1,4 +1,6 @@
 #version 440
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 // One separable Gaussian pass for the glass backdrop along `axis`, at the size of its source:
 // DockBackdrop box-downsamples the capture first (down.frag), so taps one texel apart cover
 // every texel. Taps go in pairs placed between two texels, where bilinear filtering sums both

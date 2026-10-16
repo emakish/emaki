@@ -44,7 +44,11 @@ ShellRoot {
     }
     QtObject {
         id: fixtureStore
-        property bool effectiveDnd: false
+        readonly property bool effectiveDnd: fixtureCatalog.values["notifications.dnd"]
+        property string scheduleResumeNote: ""
+        function setDnd(enabled) {
+            fixtureCatalog.set("notifications.dnd", String(enabled));
+        }
         property var applications: [
             {
                 id: "desktop:chat",

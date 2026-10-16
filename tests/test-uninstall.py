@@ -39,11 +39,13 @@ STAGED = {
     'etc/skel/.config/kitty/kitty.conf': 'etc-skel/.config/kitty/kitty.conf',
     'etc/skel/.config/qt6ct/qt6ct.conf': 'etc-skel/.config/qt6ct/qt6ct.conf',
     'etc/skel/.config/wpaperd/config.toml': 'etc-skel/.config/wpaperd/config.toml',
+    'etc/zsh/emaki.zsh': 'zsh/emaki.zsh',
+    'etc/zsh/zshenv': 'zsh/zshenv',
     'usr/share/doc/emaki/ZONES.md': 'docs/ZONES.md',
     'usr/lib/initcpio/hooks/emaki-snapshot-fstab': 'initcpio/hooks/emaki-snapshot-fstab',
     'usr/lib/initcpio/install/emaki-snapshot-fstab': 'initcpio/install/emaki-snapshot-fstab',
 }
-EDITED = ('etc/niri/config.kdl', 'etc/xdg/kdeglobals')
+EDITED = ('etc/niri/config.kdl', 'etc/xdg/kdeglobals', 'etc/zsh/emaki.zsh')
 LINE = '# edited by the administrator\n'
 # mkinitcpio reads /etc/initcpio before /usr/lib/initcpio: copies there (0.1.2's installer
 # wrote them) are the administrator's and stay, like mkinitcpio's own directories.
@@ -69,6 +71,20 @@ def kept(result):
 
 
 class Uninstall(unittest.TestCase):
+    def test_boot_lock_helper_and_restore_hook_are_removed(self):
+        paths = ('usr/lib/emaki/boot/emaki_boot/package_lock.py',
+                 'usr/share/libalpm/hooks/zzz-emaki-restore-index.hook')
+        with tempfile.TemporaryDirectory(prefix='emaki-uninstall-') as temporary:
+            for relative in paths:
+                path = Path(temporary, relative)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('staged payload\n')
+            result = uninstall(temporary)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            for relative in paths:
+                with self.subTest(path=relative):
+                    self.assertFalse(Path(temporary, relative).exists(), relative)
+
     def test_edited_defaults_stay_and_shipped_ones_go(self):
         with tempfile.TemporaryDirectory(prefix='emaki-uninstall-') as temporary:
             for installed, source in STAGED.items():

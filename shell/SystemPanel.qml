@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import "Keyboard.js" as Keyboard
@@ -339,8 +341,7 @@ Item {
             if (!c)
                 continue;
             const r = screenRect(c, Qt.rect(0, 0, c.width, c.height));
-            put(c, c.key === islandHoverKey ? Liquid.onGlass(islandBubble)
-                : Liquid.cover(islandBubble, [r.x - islandX, r.y - Metrics.top, r.width, r.height]));
+            put(c, c.key === islandHoverKey ? Liquid.onGlass(islandBubble) : Liquid.cover(islandBubble, [r.x - islandX, r.y - Metrics.top, r.width, r.height]));
         }
         put(hoverOn, Liquid.onGlass(hoverBubble));
         if (put(hoverTrail, covered(hoverTrail, hoverBubble)) < .005)
@@ -763,6 +764,8 @@ Item {
         shown: panel.opened && belongs
         // Only the open page's orange tab takes the strong rim; the rest is the hover look.
         strong: belongs && (focused as GlassTarget)?.accent === true
+        // The tab rests under its selected drop; a switch's track is the accent itself.
+        strongInk: (focused as GlassTarget)?.drop === false ? LiquidPalette.focusOnAccent : LiquidPalette.focusOnSelected
         radius: 10
         z: 100
     }

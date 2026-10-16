@@ -119,8 +119,11 @@ class Collection(unittest.TestCase):
         self.assertTrue(missing.exists())
         with self.assertRaisesRegex(ValueError, 'missing required packages'):
             runner.iso_sources.validate(manifest, self.closure, self.packages)
+        # A partial collection is kept for completion; a new image is never published with its gaps.
+        with self.assertRaisesRegex(ValueError, 'missing required copyleft sources'):
+            runner.iso_sources.validate(manifest, self.closure, self.packages, missing_sources=missing)
         records, objects = runner.iso_sources.validate(
-            manifest, self.closure, self.packages, missing_sources=missing)
+            manifest, self.closure, self.packages, missing_sources=missing, allow_missing=True)
         self.assertEqual(len(records), 2)
         self.assertEqual(len(objects), 1)
         data = json.loads(missing.read_text())
@@ -161,7 +164,7 @@ class Collection(unittest.TestCase):
         refused_base, = json.loads(missing.read_text())['bases']
         self.assertEqual(refused_base['upstream_url'], '')
         records, _ = runner.iso_sources.validate(
-            self.output / 'ARCH-SOURCES.json', self.closure, self.packages, missing_sources=missing)
+            self.output / 'ARCH-SOURCES.json', self.closure, self.packages, missing_sources=missing, allow_missing=True)
         self.assertEqual(len(records), 2)
         missing_records = runner.iso_sources.validate_missing(
             missing, self.closure, runner.iso_sources.inventory(self.closure, self.packages))
@@ -212,7 +215,7 @@ class Collection(unittest.TestCase):
         missing = self.output / 'MISSING-SOURCES.json'
         records, objects = runner.iso_sources.validate(
             self.output / 'ARCH-SOURCES.json', self.closure, self.packages,
-            missing_sources=missing)
+            missing_sources=missing, allow_missing=True)
         self.assertEqual(records, {})
         self.assertEqual(objects, {})
         bases = json.loads(missing.read_text())['bases']

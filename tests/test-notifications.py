@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Production QS NotificationServer, private dbus-run-session; never the desktop bus."""
 from runtime_fixture import runtime_path
 import json

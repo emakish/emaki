@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Unprivileged catalog, NetworkManager and live-keyboard operations.
 
 One JSON request on stdin; credentials never enter argv, files or diagnostics.

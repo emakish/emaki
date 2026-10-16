@@ -16,7 +16,7 @@ reaper.guard()  # nothing this test starts outlives it
 ROOT = Path(__file__).resolve().parent.parent
 EVIDENCE = ROOT / '.cache/n81k-evidence/launcher-look'
 # The focus ring the hover look replaced on pale controls: a 2 px rim of 60 % ink.
-DARK_RIM = ('border.color: strong ? LiquidPalette.focusOnAccent : LiquidPalette.flatDropRim\n'
+DARK_RIM = ('border.color: strong ? strongInk : LiquidPalette.flatDropRim\n'
             '    border.width: strong ? 2 : 1',
             'border.color: Qt.rgba(LiquidPalette.flatDropRim.r, LiquidPalette.flatDropRim.g, LiquidPalette.flatDropRim.b, .6)\n'
             '    border.width: 2')
@@ -99,7 +99,7 @@ def run(mutation=None):
                                 env=env, capture_output=True, text=True, timeout=40)
         output = result.stdout + result.stderr
         # The completed signal precedes QtTest's cleanupTestCase counter increment.
-        assert result.returncode == 0 and 'LAUNCHER_KEYBOARD_RESULT 7 0' in output, output
+        assert result.returncode == 0 and 'LAUNCHER_KEYBOARD_RESULT 8 0' in output, output
         if mutation:
             try:
                 focus_look(output, base / 'look')

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Render an Item fixture in real Quickshell with isolated surfaceless Qt Quick RHI.
 
 Builds a test-only QML plugin from installed Qt development files; no downloads or

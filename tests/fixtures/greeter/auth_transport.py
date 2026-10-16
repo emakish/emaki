@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Isolated test copy only: keep the production worker/framing, replace its socket.
 import importlib.util, json, os, pathlib, struct, time
 spec = importlib.util.spec_from_file_location("production_auth", pathlib.Path(__file__).with_name("greeter-auth-real.py"))

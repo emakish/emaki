@@ -43,6 +43,10 @@ ShellRoot {
         name: "SettingsAppsPage"
         when: true
         function test_choices_and_failures() {
+            if (Quickshell.env("APPS_FIXTURE_MISSING")) {
+                tryCompare(page, "error", "Apps could not be read. Try again.");
+                return;
+            }
             tryCompare(page, "applications", [
                 {
                     id: "editor.desktop",
@@ -73,6 +77,8 @@ ShellRoot {
             compare(page.startup[0].enabled, true);
         }
         function test_program_removal_shows_the_preview_first() {
+            if (Quickshell.env("APPS_FIXTURE_MISSING"))
+                return;
             tryVerify(() => page.programs.length === 2 && !page.programsBusy);
             const card = findChild(page, "settings-installed-programs");
             verify(card !== null);

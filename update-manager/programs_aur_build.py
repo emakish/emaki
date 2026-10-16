@@ -13,7 +13,10 @@ does not stop it. Every recipe runs as a throwaway user with no home folder
 and a read-only system; only its finished packages are installed. A receipt
 records what the install added so that it can be undone exactly.
 """
+import codecs
+from collections import deque
 import fcntl
+import io
 import json
 import os
 import pwd
@@ -224,18 +227,40 @@ def preinstall_snapshot():
 def stream(arguments, prefix=''):
     """Run one step and relay its output lines as progress; return its status."""
     with subprocess.Popen(arguments, cwd='/', env=environment(), stdin=subprocess.DEVNULL,
-                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                          errors='replace') as process:
-        lines = []
-        for line in process.stdout:
-            line = ''.join(char for char in line.rstrip('\n') if char.isprintable() or char == '\t')[:2048]
+                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as process:
+        lines = deque(maxlen=200)
+        hook_failed = False
+        line = ''
+        pending = False
+        decoder = io.IncrementalNewlineDecoder(codecs.getincrementaldecoder('utf-8')('replace'), True)
+
+        def relay():
+            nonlocal hook_failed
             lines.append(line)
+            hook_failed |= line.lower() == 'error: command failed to execute correctly'
             if line:
                 progress(prefix + line)
+
+        # read1 relays available output without waiting for a full chunk. Neither
+        # decoding nor sanitizing ever sees an entire untrusted, unbounded line.
+        while True:
+            chunk = process.stdout.read1(4096)
+            parts = decoder.decode(chunk, final=not chunk).split('\n')
+            for index, part in enumerate(parts):
+                if index:
+                    relay()
+                    line, pending = '', False
+                pending |= bool(part)
+                if len(line) < 2048:
+                    line += ''.join(char for char in part if char.isprintable() or char == '\t')[:2048 - len(line)]
+            if not chunk:
+                break
+        if pending:
+            relay()
         status = process.wait()
-        if any(line.lower() == 'error: command failed to execute correctly' for line in lines):
+        if hook_failed:
             status = status or 1
-        return status, lines[-200:]
+        return status, list(lines)
 
 
 def sandbox_build(base, commit):

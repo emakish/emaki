@@ -1,6 +1,10 @@
 // Copyright (C) 2026 Artur Yakymenko
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#[path = "../../../tests/child_process.rs"]
+mod child_process;
+use child_process::{CommandExt, write_executable};
+
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
@@ -16,7 +20,7 @@ fn keyboard_menu_edits_resets_and_undoes_through_core() {
         fs::set_permissions(root.join(dir), fs::Permissions::from_mode(0o700)).unwrap();
     }
     let niri = root.join("bin/niri");
-    fs::write(
+    write_executable(
         &niri,
         "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'niri 26.04 (test)'; fi\nexit 0\n",
     )
@@ -48,7 +52,7 @@ fn keyboard_menu_edits_resets_and_undoes_through_core() {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .spawn()
+            .guarded_spawn()
             .unwrap();
         child
             .stdin
@@ -69,7 +73,7 @@ fn keyboard_menu_edits_resets_and_undoes_through_core() {
     let out = command()
         .args(["history", "--json", "--profile-root"])
         .arg(&root)
-        .output()
+        .guarded_output()
         .unwrap();
     let history: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let id = history["history"].as_array().unwrap().last().unwrap()["id"]
@@ -95,7 +99,7 @@ fn keyboard_menu_edits_resets_and_undoes_through_core() {
     let out = command()
         .args(["--json", "--profile-root"])
         .arg(&root)
-        .output()
+        .guarded_output()
         .unwrap();
     assert_eq!(out.status.code(), Some(2));
     fs::remove_dir_all(root).unwrap();
@@ -240,7 +244,7 @@ with tempfile.TemporaryDirectory(prefix='emaki-settings-pty-') as directory:
     finally:
         menu.close()
 "#, env!("CARGO_BIN_EXE_emaki")])
-        .output()
+        .guarded_output()
         .expect("python3 is required for terminal integration tests");
     assert!(
         output.status.success(),
@@ -255,7 +259,7 @@ fn launcher_entry_requires_structured_shell_acknowledgement() {
     let root = std::env::temp_dir().join(format!("emaki-settings-window-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let shell = root.join("emaki-shell");
-    fs::write(
+    write_executable(
         &shell,
         r#"#!/bin/sh
 # Copyright (C) 2026 Artur Yakymenko
@@ -283,7 +287,7 @@ exit "$SHELL_STATUS"
             );
         c
     };
-    let out = command().output().unwrap();
+    let out = command().guarded_output().unwrap();
     assert!(out.status.success(), "{out:?}");
     assert!(out.stdout.is_empty());
     assert!(out.stderr.is_empty());
@@ -292,7 +296,7 @@ exit "$SHELL_STATUS"
         "4\ncall\nsettings\nopen\n\n"
     );
     for page in ["wifi", "displays", "lock", "appearance"] {
-        let out = command().arg(page).output().unwrap();
+        let out = command().arg(page).guarded_output().unwrap();
         assert!(out.status.success(), "{out:?}");
         assert_eq!(
             fs::read_to_string(&log).unwrap(),
@@ -308,7 +312,7 @@ exit "$SHELL_STATUS"
         let out = command()
             .arg("wifi")
             .env("SHELL_REPLY", reply)
-            .output()
+            .guarded_output()
             .unwrap();
         assert_eq!(out.status.code(), Some(1), "{out:?}");
         assert!(
@@ -317,7 +321,7 @@ exit "$SHELL_STATUS"
                 .contains("emaki settings --text")
         );
     }
-    let out = command().env("SHELL_STATUS", "1").output().unwrap();
+    let out = command().env("SHELL_STATUS", "1").guarded_output().unwrap();
     assert_eq!(out.status.code(), Some(1));
     fs::remove_file(&log).unwrap();
     for args in [
@@ -333,7 +337,7 @@ exit "$SHELL_STATUS"
         vec!["--profile-root", "/tmp"],
         vec!["--timeout-ms", "100"],
     ] {
-        let out = command().args(args).output().unwrap();
+        let out = command().args(args).guarded_output().unwrap();
         assert_eq!(out.status.code(), Some(2), "{out:?}");
         assert!(!log.exists());
     }

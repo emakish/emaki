@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Continuation canvas for the next wallpaper panel: the right part of the previous panel on the
 left, flat key green (#00FF00, never in the palette) everywhere else, same size as the panel.
 

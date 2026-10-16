@@ -14,40 +14,100 @@ ShellRoot {
     // The preview text on screen when Send was pressed, and how many url calls had run by then.
     property string snapshot: ""
     property int urlsBefore: 0
-    NotificationStore { id: notes }
-    ReportController { id: report; store: notes }
-    FileView { id: calls; path: root.profile + "/calls.jsonl"; blockLoading: true; blockAllReads: true; printErrors: false }
-    FileView { id: stdins; path: root.profile + "/stdin.jsonl"; blockLoading: true; blockAllReads: true; printErrors: false }
-    FileView { id: opened; path: root.profile + "/opened"; blockLoading: true; blockAllReads: true; printErrors: false }
+    NotificationStore {
+        id: notes
+    }
+    ReportController {
+        id: report
+        store: notes
+    }
+    FileView {
+        id: calls
+        path: root.profile + "/calls.jsonl"
+        blockLoading: true
+        blockAllReads: true
+        printErrors: false
+    }
+    FileView {
+        id: stdins
+        path: root.profile + "/stdin.jsonl"
+        blockLoading: true
+        blockAllReads: true
+        printErrors: false
+    }
+    FileView {
+        id: opened
+        path: root.profile + "/opened"
+        blockLoading: true
+        blockAllReads: true
+        printErrors: false
+    }
     function find(item, name) {
-        if (!item) return null;
-        if (item.objectName === name) return item;
-        for (const child of item.children || []) { const found = find(child, name); if (found) return found; }
-        if (item.contentItem && item.contentItem !== item) return find(item.contentItem, name);
+        if (!item)
+            return null;
+        if (item.objectName === name)
+            return item;
+        for (const child of item.children || []) {
+            const found = find(child, name);
+            if (found)
+                return found;
+        }
+        if (item.contentItem && item.contentItem !== item)
+            return find(item.contentItem, name);
         return null;
     }
-    function view() { return report.window ? report.window.view : null; }
-    function el(name) { return find(view(), name); }
-    function lines(file) { file.reload(); return file.text().split("\n").filter(l => l).map(l => JSON.parse(l)); }
-    function callList() { return lines(calls); }
-    function urlCount() { return callList().filter(c => c[0] === "url").length; }
-    function openedText() { opened.reload(); return opened.text(); }
+    function view() {
+        return report.window ? report.window.view : null;
+    }
+    function el(name) {
+        return find(view(), name);
+    }
+    function lines(file) {
+        file.reload();
+        return file.text().split("\n").filter(l => l).map(l => JSON.parse(l));
+    }
+    function callList() {
+        return lines(calls);
+    }
+    function urlCount() {
+        return callList().filter(c => c[0] === "url").length;
+    }
+    function openedText() {
+        opened.reload();
+        return opened.text();
+    }
     function shot(name) {
         const dir = Quickshell.env("REPORT_SHOTS");
         if (dir && root.mode === "ok")
             root.view().grabToImage(result => result.saveToFile(dir + "/" + name + ".png"));
     }
-    function check(ok, message) { if (!ok) { console.error("REPORT_FAILED", message); Qt.exit(1); } }
-    function pass() { console.log("REPORT_PASS"); Qt.quit(); }
+    function check(ok, message) {
+        if (!ok) {
+            console.error("REPORT_FAILED", message);
+            Qt.exit(1);
+        }
+    }
+    function pass() {
+        console.log("REPORT_PASS");
+        Qt.quit();
+    }
     function query(url, key) {
         for (const pair of (url.split("?")[1] || "").split("&"))
             if (pair.startsWith(key + "="))
                 return decodeURIComponent(pair.slice(key.length + 1).replace(/\+/g, " "));
         return "";
     }
-    function pressSend() { snapshot = el("report-preview-text").text; urlsBefore = urlCount(); el("report-send").clicked(); }
-    function asksAgain(why) { check(report.previewOpen && report.message.indexOf("Send again") >= 0, why + ": open " + report.previewOpen + ", " + report.message); }
-    function nothingSent(why) { check(openedText() === "" && Quickshell.clipboardText === sentinel && !report.sent, why + ": " + openedText() + " " + report.sent); }
+    function pressSend() {
+        snapshot = el("report-preview-text").text;
+        urlsBefore = urlCount();
+        el("report-send").clicked();
+    }
+    function asksAgain(why) {
+        check(report.previewOpen && report.message.indexOf("Send again") >= 0, why + ": open " + report.previewOpen + ", " + report.message);
+    }
+    function nothingSent(why) {
+        check(openedText() === "" && Quickshell.clipboardText === sentinel && !report.sent, why + ": " + openedText() + " " + report.sent);
+    }
     // Send hands over the reply of the preview on screen: the helper does not run again, and the
     // browser gets exactly the snapshot (outgoing(): optional "Title: <title>\n\n" + body).
     function sentIsSnapshot() {
@@ -62,7 +122,11 @@ ShellRoot {
         check(report.sent && report.message.indexOf("open in your browser") >= 0, "sent message: " + report.message);
         return body;
     }
-    Timer { id: untick; interval: 150; onTriggered: report.setChosen("logs", false) }
+    Timer {
+        id: untick
+        interval: 150
+        onTriggered: report.setChosen("logs", false)
+    }
     // fail, bad: the helper fails or answers nonsense; noexec: it cannot even start.
     function failed(s) {
         if (s === 1) {
@@ -156,6 +220,11 @@ ShellRoot {
             check(report.chosenIds().join(",") === "emaki,kernel,logs", "defaults ticked as given: " + report.chosenIds());
             const removed = el("report-removed");
             check(removed && removed.text.indexOf("2 user names, 1 computer name, 1 IP address, 1 password or token") >= 0, "removed line: " + (removed ? removed.text : ""));
+            const privacyNotice = "Known kinds of sensitive information are removed. Review the preview before sending.";
+            check(removed && removed.text.indexOf(privacyNotice) >= 0, "known kinds and preview reminder after removals");
+            check(root.view().removedText({}) === privacyNotice + " No known kinds of sensitive information were found.", "explicit no-removals notice and preview reminder");
+            const sendNotice = el("report-send-notice");
+            check(sendNotice && sendNotice.text === "Nothing leaves this computer until you choose Send. Send opens a new public GitHub issue form in your browser; it is posted only when you submit it there.", "public browser issue and separate submission explained");
             check(root.callList().map(c => c[0]).join() === "compose" && root.callList()[0].join(" ") === "compose --part update", "only compose ran before preview");
             check(root.openedText() === "", "nothing opened before Send");
             root.shot("1-opened");
@@ -225,8 +294,20 @@ ShellRoot {
     }
     Timer {
         property int step: 0
-        interval: 700; repeat: true; running: true
+        property double pendingSince: 0
+        interval: 700
+        repeat: true
+        running: true
         onTriggered: {
+            // A timer tick is not completion of the refreshed helper request.
+            const pending = report.busy || (report.previewOpen && report.previewStale) || untick.running;
+            if (step > 0 && pending) {
+                if (!pendingSince)
+                    pendingSince = Date.now();
+                check(Date.now() - pendingSince < 15000, "report helper did not settle");
+                return;
+            }
+            pendingSince = 0;
             const s = step++;
             if (s === 0) {
                 Quickshell.clipboardText = root.sentinel;
@@ -235,7 +316,15 @@ ShellRoot {
                 check(report.part === "update", "part set");
                 return;
             }
-            const flows = { fail: root.failed, bad: root.failed, noexec: root.failed, huge: root.huge, limit: root.limit, unopened: root.unopened, stale: root.stale };
+            const flows = {
+                fail: root.failed,
+                bad: root.failed,
+                noexec: root.failed,
+                huge: root.huge,
+                limit: root.limit,
+                unopened: root.unopened,
+                stale: root.stale
+            };
             (flows[root.mode] || root.main)(s);
         }
     }

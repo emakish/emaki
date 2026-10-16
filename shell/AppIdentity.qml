@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -82,6 +84,19 @@ Scope {
             entry: guessed,
             source: guessed ? "guess" : ""
         };
+    }
+    // Floating windows share the shell process's app id. Resolve this window to its
+    // own launcher entry without changing the identity of other shell windows.
+    function lookupWindow(appId: string, title: string): var {
+        if (appId === Quickshell.appId && title === "Report a problem") {
+            const report = DesktopEntries.byId("emaki-report");
+            if (report)
+                return {
+                    entry: report,
+                    source: "exact"
+                };
+        }
+        return lookup(appId);
     }
     function resolve(appId: string): DesktopEntry {
         return lookup(appId).entry;

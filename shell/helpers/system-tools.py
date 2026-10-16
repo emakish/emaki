@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Bounded argv-only operations. No shell, profiles, credentials or private logs."""
 import importlib.util
 import grp
@@ -137,11 +139,7 @@ def wifi_hidden(r):
 
 
 def portal_open():
-    Gio, _ = shared.gio()
-    handler = Gio.AppInfo.get_default_for_uri_scheme('http')
-    if not handler: raise shared.Refused('no_handler')
-    if not shared.app_scope.gio_launch(handler, uris=[PORTAL_URL]): raise shared.Refused('open_failed')
-    return dict(state='requested')
+    return shared.open_web_url(PORTAL_URL)
 
 
 PORTAL_URL = 'http://nmcheck.gnome.org/'

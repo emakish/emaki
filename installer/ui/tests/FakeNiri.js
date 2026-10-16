@@ -1,4 +1,6 @@
 .pragma library
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 // A stand-in for niri behind the installer window's keyboard helper (ui-helper.py), for the
 // window tests. niri names each layout by its xkeyboard-config description (NAMES, as
 // evdev.lst writes them; test_helpers.py checks them against the system's evdev.lst); the helper

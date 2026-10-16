@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """VM ONLY, root: raw greetd login for session-isolation tests, not UI acceptance.
 
   printf arch | sudo -n python3 guest-login.py arch niri-session

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Exercise live manager colours, an unset theme as dark, and the complete light colour tree."""
+"""Exercise live manager colours, an unset theme as light, and the complete light colour tree."""
 import json
 import os
 from pathlib import Path
@@ -42,14 +42,17 @@ ShellRoot {
     Timer {
         interval: 100; running: true
         onTriggered: {
-            // Nothing saved: the dark tree. The frozen tree is light chosen explicitly.
+            // Nothing saved: the light tree with the rose accent. Compare themes with the same accent.
             const unset = JSON.stringify(colours(scene));
-            Shell.SettingsBridge.values = [{key: "appearance.theme", value: "dark"}, {key: "appearance.accent", value: "orange"}];
+            Shell.SettingsBridge.values = [{key: "appearance.theme", value: "light"}, {key: "appearance.accent", value: "rose"}];
             input.wait(10);
-            root.check(unset === JSON.stringify(colours(scene)), "an unset theme renders the dark colours");
+            root.check(unset === JSON.stringify(colours(scene)), "an unset theme renders the light colours");
+            Shell.SettingsBridge.values = [{key: "appearance.theme", value: "dark"}, {key: "appearance.accent", value: "rose"}];
+            input.wait(10);
+            root.check(unset !== JSON.stringify(colours(scene)), "an unset theme does not render the dark colours");
+            // The frozen tree keeps its original explicit light and orange choices.
             Shell.SettingsBridge.values = [{key: "appearance.theme", value: "light"}, {key: "appearance.accent", value: "orange"}];
             input.wait(10);
-            root.check(unset !== JSON.stringify(colours(scene)), "an unset theme does not render the light colours");
             console.log("LIGHT_COLOURS " + JSON.stringify(colours(scene)));
             for (const dark of [false, true]) {
                 for (const accent of Shell.ShellPalette.accents) {
@@ -105,4 +108,4 @@ if __name__ == '__main__':
     current = run()
     assert original == current, (original, current)
     run(mutant=True)
-    print('PASS manager: unset theme is dark; light colour tree unchanged; live light/dark and eight accents; frozen accent rejected')
+    print('PASS manager: unset theme is light; light colour tree unchanged; live light/dark and eight accents; frozen accent rejected')

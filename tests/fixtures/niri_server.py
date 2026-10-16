@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Bounded local niri 26.04 fixture, shared by CLI/QML integration checks."""
 import json
 import socketserver
@@ -79,7 +81,9 @@ class Handler(socketserver.StreamRequestHandler):
         self.wfile.flush()
 
     def handle(self):
-        self.request.settimeout(3)
+        # Like niri's handle_client: no idle timeout. The shell keeps a persistent focus socket open
+        # (switcher handover); a 3 s timeout made the fixture drop it and the shell log a WARN.
+        self.request.settimeout(None)
         try:
             while not self.server.stop.is_set():
                 line = self.rfile.readline()

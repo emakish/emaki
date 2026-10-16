@@ -87,8 +87,8 @@ class DesktopBindings(unittest.TestCase):
             self.assertNotIn("hotkey-overlay-title", options)
 
     def test_default_shortcut_help_explains_overrides(self):
-        welcome = (ROOT / "shell/Welcome.qml").read_text()
-        self.assertIn("Your own shortcuts override Emaki defaults, including new ones (niri bindings).", welcome)
+        welcome = (ROOT / "shell/WelcomeContent.js").read_text()
+        self.assertIn("Shortcuts you set yourself take priority over these.", welcome)
 
 
 if __name__ == "__main__":

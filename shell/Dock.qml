@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import "SystemIcons.js" as SystemIcons
@@ -184,11 +186,13 @@ Item {
         const running = [];
         const workspaceIndex = {};
         const learned = identity.learned; // Read here so a learned match rebuilds the dock.
+        const installed = DesktopEntries.applications.values; // Read here so installing a pinned app shows it.
+        catalog.scans; // A rescan may delete the entries byId() gave before: take the new ones.
         for (const w of niri.workspaces)
             workspaceIndex[w.id] = w.idx;
         for (const w of niri.windows.slice().sort((a, b) => a.id - b.id)) {
             const meta = labels.values[w.id];
-            const found = identity.lookup(meta?.appId ?? "");
+            const found = identity.lookupWindow(meta?.appId ?? "", meta?.title ?? "");
             const entry = found.entry;
             const key = entry ? entry.id : meta?.appId ? "app:" + meta.appId : "";
             if (!key)
@@ -217,6 +221,10 @@ Item {
         for (const id of store.pinned) {
             const entry = DesktopEntries.byId(id);
             const found = byKey[id];
+            // A pinned app that is not installed (and not running) has no name, icon or launch:
+            // it stays in the stored pins and appears again once its desktop entry does.
+            if (!entry && !found)
+                continue;
             result.push({
                 key: id,
                 id: id,
@@ -899,8 +907,9 @@ Item {
             else if (item) {
                 const separator = order.indexOf("sep");
                 const pinnedKeys = (separator < 0 ? order.filter(k => entryOf(k)?.pinned) : order.slice(0, separator)).filter(k => k !== "sep");
-                // Unresolved apps have no desktop ID and cannot be pinned.
-                store.reorder(pinnedKeys.map(k => entryOf(k)).filter(e => e && e.id).map(e => e.id));
+                // Unresolved apps have no desktop ID and cannot be pinned; hidden pins keep their places.
+                const shownIds = pinnedKeys.map(k => entryOf(k)).filter(e => e && e.id).map(e => e.id);
+                store.reorder(shownIds, store.pinned.filter(id => !entryOf(id)));
                 const target = geometry.base.x + layout(layoutKeys(entries)).slots[key] + 25;
                 v.returnX.x = center[0] - target;
                 v.returnY.x = center[1] - (geometry.plate.y + 33);
@@ -1333,7 +1342,7 @@ Item {
                         anchors.fill: parent
                         sourceSize.width: 88
                         sourceSize.height: 88
-                        source: (icon.item?.entry?.icon ?? "") === "emaki-programs-updates" ? SystemIcons.programsSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.accentShade, ShellPalette.managerIconInk) : (icon.item?.icon ?? "")
+                        source: (icon.item?.entry?.icon ?? "") === "emaki-programs-updates" ? SystemIcons.programsSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.accentShade, ShellPalette.managerIconInk) : (icon.item?.entry?.icon ?? "") === "emaki-welcome" ? SystemIcons.welcomeSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.managerIconInk) : (icon.item?.icon ?? "")
                         smooth: true
                         mipmap: true
                     }

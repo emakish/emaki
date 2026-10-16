@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Run every recorded scenario through the production QML controller.
 
 --unix additionally exercises real Quickshell Socket and backoff using the same
@@ -14,7 +16,7 @@ import sys
 import tempfile
 
 UI = Path(__file__).resolve().parents[1]
-SCENARIOS = ['erase-happy', 'alongside', 'manual-reprobe', 'gparted-stale', 'plan-errors', 'error-retry', 'disconnect-resume', 'token-expiry', 'cancel', 'choices', 'real-preflight', 'real-erase-btrfs', 'no-boot-medium', 'preflight-progress', 'update-progress']
+SCENARIOS = ['erase-happy', 'alongside', 'manual-editor', 'plan-errors', 'error-retry', 'disconnect-resume', 'token-expiry', 'cancel', 'choices', 'real-preflight', 'real-erase-btrfs', 'no-boot-medium', 'preflight-progress', 'update-progress']
 # real-preflight is served by real-worker.py (the real controller and worker over stdio); the
 # recorded install has hundreds of frames, too many for the socket mock's per-frame delay.
 STDIO_ONLY = {'real-preflight', 'real-erase-btrfs'}

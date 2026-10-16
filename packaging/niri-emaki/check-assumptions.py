@@ -13,7 +13,7 @@ from pathlib import Path
 import re
 import sys
 
-# Reviewed source: v26.04 with this package's twelve patches. Whole-file hashes
+# Reviewed source: v26.04 with this package's fourteen patches. Whole-file hashes
 # deliberately reject even benign edits: a new width-changing layout path or
 # a new action/render path must not slip past a narrow text-pattern check.
 REVIEWED = {
@@ -27,8 +27,8 @@ REVIEWED = {
         '0b200bab287266d2d03ed090abafba62de33b24ec838d13ef734136d959795b4',
         'startup safety capture, exact packaged identity and missing-bind recovery (B2b2)'),
     'src/trusted_client.rs': (
-        '31285aad364ce9fe6c6148220afdff3f6826773ee6016d34b1d1894a0fae0cfb',
-        'private connection, immutable launch environment, supervised restart and the shell PID on its casts (A6, N81S)'),
+        'c686a83241bba6c26355b3796e3514513ca0c268ac5466306d4491e1c69d68ec',
+        'private connection, immutable launch environment, bounded IPC heartbeat restart and the shell PID on its casts and one-shot login delivery (A6, N81S, FX9, FX19)'),
     'src/trusted_prompt.rs': (
         'd1ee11d459499068f9d93efae92c93014f896dc92238f3a8f8fd81d11b6643b5',
         'trusted role input boundary, lock gating and proof rendering (A6)'),
@@ -45,14 +45,15 @@ REVIEWED = {
         '376613abb6f8078c4386988525ed80009c8ca84c66c727f1b47dad99423d7995',
         'child environment snapshot inputs (A6)'),
     'src/main.rs': (
-        '4448b67c86366fa091033fdaa2f8a8e21c1eb9933d970dc2a43820afd5e84127',
-        'startup-only trusted command capture (A6)'),
+        '6d14ddbb1e7d902815caa3a221dc6fea6f998fcf4e7b70d342a5aa4dcf1aff25',
+        'startup-only trusted command and private login handoff capture (A6, FX19)'),
     'niri-config/src/lib.rs': (
         '2dce509c5d6d41a9a09806f5fc47c9b5e71436a010be118876a0d23cd3a5c212',
         'singleton trusted startup configuration (A6)'),
     'niri-ipc/src/lib.rs': (
-        '92dbbab8ccfc603b6541bf18231a21861d6851e6842b2fb2ac8a2a479d46594e',
-        'fixed restart and trusted status protocol without a proof action (A6)'),
+        '831c00763bab005c1a2a3346f5a165463fba33c679aace839557c5ce190d5ab1',
+        'fixed restart and trusted status protocol without a proof action (A6); the optional '
+        'emaki_tile_pos_in_view and emaki_capture_safe window layout fields (X9)'),
     'src/tests/trusted_prompt.rs': (
         'bbe138c46e0ce6e7ec63e7eb8705fe60959e5f3d135af78879e3c22152f5f9b9',
         'identity, input, proof pixel, lock and cast PID regressions (A6, N81S)'),
@@ -64,9 +65,9 @@ REVIEWED = {
         'persistent layer keyboard focus (N6c)'),
 
     'src/layout/scrolling.rs': (
-        'ebdae4f6418f610fe2ea77aa76c3b0207f709f288c45182422e2628a3f148dae',
+        '6244b4212cc3f6989a46c136bb2893b023647a17db9d6da6bf0af20b870f6046',
         'wallpaper camera assignments and width changes (465); fullscreen inset origin, '
-        'height and IPC position (N81M4)'),
+        'height and IPC position (N81M4); tiled IPC positions at the target view (X9)'),
     'src/layout/workspace.rs': (
         'e9fc0ded2b22d6515f11f622666acab4e9dc0ad6edf722046404857024b6ba0c',
         'fullscreen inset marker accepted only from the trusted shell connection (N81M5)'),
@@ -77,8 +78,11 @@ REVIEWED = {
         '9752be2505d6d8e8c83dc1ad8ea7b225a17115c0ee46f69d235dd6e337858cf0',
         'new navigation actions and the wildcard match (753)'),
     'src/input/mod.rs': (
-        '341b6e6d8859a2ad051cc914980fa55a42c21186f5698352601e398ec25dae9d',
-        'navigation action classification and safety dispatch (753, B2b)'),
+        'b054b35957ac067ec606d9f2720d97de2455a9cb56116aa540ea94b3d2a96a90',
+        'navigation action classification, safety dispatch and atomic window keyboard handover (753, B2b, X9c)'),
+    'src/tests/emaki_switcher_handover.rs': (
+        '47e7a5e26113077ac59bd458ae5f9dbbbba08735caddf204e0612e2d8d59bdbc',
+        'window and previous-window keyboard delivery, both layer commit orders and focus boundaries (X9c)'),
     'src/cursor.rs': (
         'e9cc29129eafa86517afe0a2d6e90038dfe7678da9d9d37d2e2f1afa0c75240f',
         'geometry, damage and opaque-region output scales (754)'),

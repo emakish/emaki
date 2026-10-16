@@ -93,7 +93,7 @@ def run(mode, mutation=None):
 # fail/bad/noexec: compose fails, the helper answers nonsense, or it cannot start; huge: the
 # document on stdin, too_big, the shown preview copied; limit: 2000 characters in the field;
 # unopened/stale: Send with no or a stale preview refreshes it and asks to send again.
-MODES = ('ok', 'big', 'fail', 'bad', 'badurl', 'nobrowser', 'huge', 'noexec', 'limit', 'unopened', 'stale')
+MODES = ('ok', 'slow', 'big', 'fail', 'bad', 'badurl', 'nobrowser', 'huge', 'noexec', 'limit', 'unopened', 'stale')
 entries()
 for mode in sys.argv[1:] or MODES:  # Naming modes runs only them, without the mutants.
     run(mode)
@@ -102,6 +102,11 @@ if sys.argv[1:]:
 # (mode that must catch it, file, source text, replacement). A source text that is not in the file
 # fails loudly ("mutation not present in source"), so a stale entry cannot pass silently.
 MUTANTS = [
+    # Privacy limits and the public destination remain visible before sending.
+    ('ok', 'ReportView.qml', 'Known kinds of sensitive information are removed.', 'All sensitive information is removed.'),
+    ('ok', 'ReportView.qml', 'Review the preview before sending.', ''),
+    ('ok', 'ReportView.qml', 'No known kinds of sensitive information were found.', 'None were found.'),
+    ('ok', 'ReportView.qml', 'a new public GitHub issue form in your browser', 'a public GitHub issue in your browser'),
     # Ignoring the person's choices.
     ('ok', 'ReportController.qml', 'return items.filter(i => chosen[i.id] === true).map(i => i.id);', 'return items.map(i => i.id);'),
     # Ticking everything regardless of the helper's defaults.

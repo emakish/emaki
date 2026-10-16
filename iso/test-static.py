@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Offline regression checks: no package manager, service, or QEMU invocation."""
 import base64
 import contextlib

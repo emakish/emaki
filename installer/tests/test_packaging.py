@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 import importlib.util
 import json
 import os
@@ -158,7 +160,7 @@ for mode in (False, read_test_mode(Path('cmdline'))):
         # The launcher icon lives in hicolor; its index.theme names the scalable/apps directory.
         self.assertIn('hicolor-icon-theme', re.search(r'depends=\(([^)]+)\)', recipe, re.S)[1].split())
         self.assertIn('/usr/share/icons/hicolor/scalable/apps/emaki-install.svg', recipe)
-        self.assertIn('pkgver=0.8.1', recipe)
+        self.assertIn('pkgver=0.9.0', recipe)
         self.assertIn('pkgrel=1', recipe)
         for path in ('bin/emaki-installerd', 'bin/emaki-install-cli',
                      'systemd/emaki-installerd.service', 'sysusers.d/emaki-installer.conf',

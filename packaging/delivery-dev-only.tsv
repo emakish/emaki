@@ -2,11 +2,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Exact source path, reason it is not shipped, evidence of its development use.
 # Build inputs name the installed output; new files require their own entry.
+packaging/emaki-font-iosevka/PKGBUILD	Package build recipe; packages contain its resulting payload.	packaging/emaki-font-iosevka/PKGBUILD:package
+packaging/emaki-font-iosevka/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
 art/cursor/haze.py	Cursor drawing source; build-cursors produces the installed cursor theme.	scripts/build-cursors
 art/grub/background.py	Artwork generator for the installed GRUB background.png.	art/grub/background.py:usage
 art/icons/emaki-install.py	Artwork generator for installed installer/ui/emaki-install.svg.	art/icons/emaki-install.py:TARGET
+art/icons/emaki-report.py	Artwork generator for installed art/icons/emaki-report.svg.	art/icons/emaki-report.py:TARGET
 art/logo/mark-large.svg	Large gradient logo design reference; the runtime icon uses the copied geometry.	art/logo/mark.py:module documentation; shell/Icon.qml
 art/logo/mark.py	Vector geometry source for installed mark.svg and pixel wordmark assets.	art/logo/wordmark.py; scripts/build-lock-wordmark
+art/logo/mark.svg	Flat one-colour mark drawn by mark.py; a design reference and a placeholder icon in tests. Since 0.9.0 no installed icon uses it (Welcome to Emaki has its own tile).	art/logo/mark.py; tests/theme-pictures.py:environment; tests/test-settings-visual.py
 art/logo/wordmark.py	Vector geometry source for installed LockWordmarkData.js and fetch artwork.	scripts/build-lock-wordmark; scripts/build-fetch
 art/logo/wordmark.svg	Vector wordmark reference; installed pixel artwork is built from wordmark.py.	art/logo/wordmark.py; scripts/build-lock-wordmark
 art/wallpaper/README.md	Source artwork development notes; no runtime consumer.	scripts/public/wallpaper-README.md; Makefile wallpaper install list
@@ -58,19 +62,25 @@ installer/ui/tests/CopyTest.qml	Password-copy regression test window.	installer/
 installer/ui/tests/FakeNiri.js	Synthetic compositor for installer window tests.	installer/ui/tests/interactions.py; installer/ui/tests/render.py
 installer/ui/tests/InteractionTest.qml	Installer interaction regression test window.	installer/ui/tests/interactions.py
 installer/ui/tests/KeyboardTest.qml	Password keyboard regression test window.	installer/ui/tests/interactions.py
+installer/ui/tests/MapTest.qml	Time zone map regression test window.	installer/ui/tests/map.py
 installer/ui/tests/PasteTest.qml	Password-paste regression test window.	installer/ui/tests/interactions.py
 installer/ui/tests/TestWindow.qml	Screenshot fixture window for installer states.	installer/ui/tests/render.py
 installer/ui/tests/check.py	Installer static validation tool.	Makefile:check-installer-ui
 installer/ui/tests/controller.py	Controller regression runner over a test socket.	Makefile:check-installer-ui
+installer/ui/tests/editor_fixture.py	Partition editor test disk and real-planner replies for installer window tests.	installer/ui/tests/mock-worker.py; installer/ui/tests/interactions.py
 installer/ui/tests/cut-recording.py	Converts development install recordings into test transcripts.	installer/ui/tests/cut-recording.py:usage
 installer/ui/tests/handshake.py	Source and packaged installer socket handshake regression runner.	Makefile:check-installer
 installer/ui/tests/interactions.py	Installer input interaction test runner.	Makefile:check-installer-ui
+installer/ui/tests/map.py	Time zone map pixel, input and timing test runner.	Makefile:check-installer
 installer/ui/tests/mock-worker.py	Synthetic worker serving recorded test transcripts.	installer/ui/tests/controller.py; installer/ui/tests/test_helpers.py
 installer/ui/tests/real-worker.py	Installer test worker with fake disks and package operations.	installer/ui/tests/controller.py; installer/ui/tests/real-worker.py:module documentation
 installer/ui/tests/render.py	Installer screenshot fixture runner.	Makefile:check-installer-ui
 installer/ui/tests/test-protocol.js	Installer protocol unit tests.	Makefile:check-installer-ui
+installer/ui/tests/test-controller-recovery.js	Installer editor refresh and retry navigation regressions.	installer/ui/tests/test-protocol.js
+installer/ui/tests/test-progress.js	Installer skipped-phase progress regressions.	installer/ui/tests/test-protocol.js
 installer/ui/tests/test-timezones.js	Installer time zone unit tests.	Makefile:check-installer-ui
 installer/ui/tests/test_console_chars.py	Installer keyboard character unit tests.	Makefile:unittest discovery in installer/ui/tests
+installer/ui/tests/test_generate_timezones.py	Time zone map generator unit tests.	Makefile:unittest discovery in installer/ui/tests
 installer/ui/tests/test_helpers.py	Installer helper unit tests.	Makefile:unittest discovery in installer/ui/tests
 installer/ui/tests/test_planner_limits.py	Installer planner boundary unit tests.	Makefile:unittest discovery in installer/ui/tests
 installer/ui/tests/transcripts/alongside.json	Recorded alongside scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
@@ -79,8 +89,7 @@ installer/ui/tests/transcripts/choices.json	Recorded choices scenario for synthe
 installer/ui/tests/transcripts/disconnect-resume.json	Recorded disconnect-resume scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
 installer/ui/tests/transcripts/erase-happy.json	Recorded erase-happy scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
 installer/ui/tests/transcripts/error-retry.json	Recorded error-retry scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
-installer/ui/tests/transcripts/gparted-stale.json	Recorded gparted-stale scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
-installer/ui/tests/transcripts/manual-reprobe.json	Recorded manual-reprobe scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
+installer/ui/tests/transcripts/manual-editor.json	Recorded manual-editor scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
 installer/ui/tests/transcripts/plan-errors.json	Recorded plan-errors scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
 installer/ui/tests/transcripts/preflight-progress.json	Recorded preflight-progress scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
 installer/ui/tests/transcripts/real-erase-btrfs.json	Recorded real-erase-btrfs scenario for synthetic installer worker tests.	installer/ui/tests/mock-worker.py:TRANSCRIPTS
@@ -100,6 +109,7 @@ scripts/build-shell-shaders	Build tool producing installed compiled QML shaders.
 scripts/build-wallpaper-fallback	Build tool producing installed wallpaper/fallback.png.	tests/test-wallpaper-fallback.py; MANIFEST.md:wallpaper fallback
 scripts/check-arch-apps.py	Developer package dependency and size audit.	packaging/README.md
 scripts/check-delivery.py	Repository package-delivery validation tool.	Makefile:check
+scripts/check-secureboot-key-backup.sh	Maintainer tool run on the publishing machine to prove a backup of the Secure Boot release key; never on installed systems.	docs/signing.md:section 5; tests/test-secureboot-release-key.py
 scripts/cleanup/archive.sh	Personal-home archive before the historical workstation migration.	scripts/cleanup/archive.sh:header; docs/history/2026-09-17-cleanup-state.md
 scripts/cleanup/check-phase-u.sh	Historical workstation migration verification.	scripts/cleanup/check-phase-u.sh:header; docs/history/2026-09-17-cleanup-state.md
 scripts/cleanup/dry-run.sh	Historical workstation migration command preview.	scripts/cleanup/dry-run.sh:header; docs/history/2026-09-17-cleanup-state.md
@@ -112,11 +122,14 @@ scripts/cleanup/user-after-r1.sh	Historical personal configuration migration.	sc
 scripts/cleanup/user-units.sh	Historical personal user-service cleanup.	scripts/cleanup/user-units.sh:header; docs/history/2026-09-17-cleanup-state.md
 scripts/core-package.py	Build tool producing the installed core executable.	Makefile:build-core
 scripts/make-public.sh	Public source export maintenance tool.	MANIFEST.md:public source export; tests/test-make-public.py
+scripts/new-secureboot-release-key.sh	Maintainer tool run once on the publishing machine to make the Secure Boot release key; never on installed systems.	docs/signing.md:section 5; tests/test-secureboot-release-key.py
 scripts/release-notes	Offline release draft and missing-note check; not installed.	docs/updates-runbook.md:Release notes draft; tests/test-release-notes.py
 scripts/public/PLANS.md	Public source repository letter on where the project is heading.	scripts/make-public.sh
 scripts/public/NIXOS.md	Public source repository page on Emaki and NixOS.	scripts/make-public.sh
 scripts/public/README.md	Public source repository README template.	scripts/make-public.sh
 scripts/public/allow.txt	Public source export lexical exceptions.	scripts/make-public.sh
+scripts/public/credentials-allow.txt	Public source export credential-scan exceptions.	scripts/make-public.sh
+grub/emaki_boot/package_lock.py	Development symlink to update-manager/emaki_package_lock.py so the boot package imports it from the source tree; the package installs that source as emaki_boot/package_lock.py.	Makefile install of update-manager/emaki_package_lock.py into $(BOOTLIB)
 scripts/public/screenshots/boot-menu.png	Public repository documentation screenshot for boot-menu.	scripts/make-public.sh:shots
 scripts/public/screenshots/desktop.png	Public repository documentation screenshot for desktop.	scripts/make-public.sh:shots
 scripts/public/screenshots/installer.png	Public repository documentation screenshot for installer.	scripts/make-public.sh:shots
@@ -274,6 +287,8 @@ crates/emaki-cli/src/settings_tui.rs	Compiled core build input; the resulting em
 crates/emaki-cli/tests/settings_tui.rs	Core regression test or fixture; not part of the installed executable.	cargo test --workspace
 crates/emaki-core/src/settings/live_tests.rs	Core regression tests for durable session rollback; excluded from installed executable.	cargo test -p emaki-core
 crates/emaki-core/src/settings/mime.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-core/src/settings/accent.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
+crates/emaki-core/src/settings/accent/migration.rs	Compiled core build input; the resulting emaki executable is installed instead of this source.	Makefile:CORE_SRC and install; scripts/core-package.py
 crates/emaki-core/src/settings/input.rs	Compiled into the existing core and CLI input-settings backend.	crates/emaki-core/src/settings/mod.rs
 packaging/emaki-installer/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
 packaging/emaki-apps/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
@@ -283,13 +298,18 @@ packaging/emaki-mirrorlist/expected-files.list	Exact package payload checked aga
 packaging/emaki-nvidia/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
 packaging/snapguard/PKGBUILD	Package build recipe; packages contain its resulting payload.	packaging/snapguard/PKGBUILD:package
 packaging/snapguard/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
+packaging/emaki-shim-signed/PKGBUILD	Package build recipe; packages contain its resulting payload.	packaging/emaki-shim-signed/PKGBUILD:package
+packaging/emaki-shim-signed/expected-files.list	Exact package payload checked against its installation recipe.	scripts/check-delivery.py:payload_problems
+packaging/emaki-shim-signed/check-signatures.sh	Build-time gate on shim's signatures; check() runs it, nothing installs it.	packaging/emaki-shim-signed/PKGBUILD:check
 update-manager/tests/test_flatpaks.py	Flatpak update parsing tests.	Makefile:check
 update-manager/tests/test_protocol.py	Update backend protocol tests.	Makefile:check
 update-manager/tests/test_reminder.py	Restart reminder tests.	Makefile:check
 update-manager/tests/test_restore.py	Restore point tests.	Makefile:check
 update-manager/ui/tests/ProgramsControllerTest.qml	Programs controller protocol fixture.	update-manager/ui/tests/programs_controller.py
 update-manager/ui/tests/programs_controller.py	Programs controller process protocol test runner.	Makefile:check-shell
-scripts/templates/programs-updates.svg	Template for the installed Programs & Updates icon; render-shell-palette fills in the token colours.	scripts/render-shell-palette:57
+scripts/templates/programs-updates.svg	Template for the installed Programs & Updates icon; render-shell-palette fills in the token colours.	scripts/render-shell-palette:64
+scripts/templates/welcome.svg	Template for the installed Welcome to Emaki icon (art/icons/emaki-welcome.svg); render-shell-palette fills in the token colours.	scripts/render-shell-palette:65
 update-manager/ui/tests/fixtures/default-colours.json	Frozen default Programs & Updates colour tree for the light-identity check.	update-manager/ui/tests/palette.py:96
 update-manager/ui/tests/palette.py	Live manager colour and default colour tree test runner.	Makefile:check
 update-manager/ui/tests/appearance.py	Manager Appearance-from-store test runner: the installed layout without helpers in the manager UI directory.	Makefile:check-shell
+packaging/emaki-shim-signed/notices.py	Build-time generator for installed component licence notices.	packaging/emaki-shim-signed/PKGBUILD:prepare

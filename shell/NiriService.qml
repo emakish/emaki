@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -257,6 +259,87 @@ Scope {
         if (!connected || !Number.isSafeInteger(id) || !windows.some(w => w.id === id))
             return false;
         return request(["focus-window", "--id", String(id)]);
+    }
+    // The switcher's release must not wait for another action or a helper process. Keep a
+    // separate request socket ready; EventStream connections cannot accept further requests.
+    readonly property bool immediateFocusReady: connected && focusSocket.connected
+    property int focusSerial: 0
+    property var focusReplies: []
+    signal immediateFocusFailed(int ticket)
+    signal immediateFocusCompleted(int ticket, bool successful)
+    function failImmediateFocus(): void {
+        const waiting = focusReplies;
+        focusReplies = [];
+        for (const ticket of waiting) {
+            immediateFocusFailed(ticket);
+            immediateFocusCompleted(ticket, false);
+        }
+    }
+    function focusWindowImmediate(id: double): int {
+        if (!immediateFocusReady || focusReplies.length >= 32 || !Number.isSafeInteger(id) || !windows.some(w => w.id === id))
+            return -1;
+        const ticket = ++focusSerial;
+        focusReplies = focusReplies.concat([ticket]);
+        focusSocket.write(JSON.stringify({
+            Action: {
+                FocusWindow: {
+                    id: id
+                }
+            }
+        }) + "\n");
+        focusSocket.flush();
+        return ticket;
+    }
+    Connections {
+        target: service
+        function onConnectedChanged(): void {
+            if (!service.connected) {
+                focusSocket.connected = false;
+                service.failImmediateFocus();
+            } else {
+                focusRetry.restart();
+            }
+        }
+    }
+    Socket {
+        id: focusSocket
+        path: Quickshell.env("NIRI_SOCKET")
+        onConnectionStateChanged: {
+            if (!connected) {
+                service.failImmediateFocus();
+                focusRetry.restart();
+            }
+        }
+        onError: {
+            connected = false;
+            service.failImmediateFocus();
+            focusRetry.restart();
+        }
+        parser: SplitParser {
+            onRead: line => {
+                if (!service.focusReplies.length)
+                    return;
+                const ticket = service.focusReplies[0];
+                service.focusReplies = service.focusReplies.slice(1);
+                // Handled means the action ran, not that the window survived or acquired
+                // focus. WindowSwitcher waits for the subsequent core focus confirmation.
+                let successful = false;
+                try {
+                    successful = JSON.parse(line).Ok === "Handled";
+                } catch (_) {}
+                if (!successful)
+                    service.immediateFocusFailed(ticket);
+                service.immediateFocusCompleted(ticket, successful);
+            }
+        }
+    }
+    Timer {
+        id: focusRetry
+        interval: 100
+        onTriggered: {
+            if (service.connected && focusSocket.path !== "" && !focusSocket.connected)
+                focusSocket.connected = true;
+        }
     }
     Process {
         id: watcher

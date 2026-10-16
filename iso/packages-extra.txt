@@ -13,6 +13,7 @@ efibootmgr
 emaki
 emaki-config
 emaki-desktop
+emaki-font-iosevka
 emaki-installer
 emaki-keyring
 emaki-mirrorlist
@@ -20,7 +21,6 @@ fastfetch
 ffmpegthumbs
 firefox
 fuzzel
-gparted
 greetd
 greetd-regreet
 grub
@@ -70,3 +70,6 @@ wpaperd
 xdg-desktop-portal-gnome-emaki
 xdg-desktop-portal-gtk
 xwayland-satellite
+zsh
+zsh-autosuggestions
+zsh-syntax-highlighting

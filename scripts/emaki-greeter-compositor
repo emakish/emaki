@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Resolve the source checkout through symlinks; installed wrappers use the build path.
 emaki_script=$(readlink -f -- "$0")
 emaki_paths="${emaki_script%/*}/paths"

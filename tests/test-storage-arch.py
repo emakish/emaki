@@ -9,10 +9,12 @@ import os
 from pathlib import Path
 import subprocess
 import struct
+import sys
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'update-manager'))
 SPEC = importlib.util.spec_from_file_location('storage_arch', Path(__file__).resolve().parents[1] / 'update-manager/storage_arch.py')
 backend = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(backend)
@@ -252,6 +254,13 @@ class RolledBackRetention(unittest.TestCase):
         answer = self.inventory()
         self.assertEqual(answer['state']['snapshots'],
                          ['/@snapshots/1/snapshot', '/@snapshots/2/snapshot'])
+
+    def test_secure_boot_key_subvolume_is_neither_a_root_nor_unknown(self):
+        self.roots[500] = '@secureboot'
+        (self.top / '@secureboot').mkdir()
+        answer = self.inventory()
+        self.assertEqual(answer['state']['snapshots'],
+                         ['/' + self.FIRST, '/@snapshots/1/snapshot', '/@snapshots/2/snapshot'])
 
     def test_known_empty_nested_subvolumes_survive_rollback(self):
         self.second_rollback()
@@ -533,10 +542,33 @@ class Locks(unittest.TestCase):
     def test_existing_database_lock_is_preserved(self):
         lock = self.root / 'db.lck'
         lock.write_text('someone else')
-        with self.assertRaises(FileExistsError):
+        with self.assertRaises(backend.Refused):
             with backend.package_guard():
                 self.fail('must not enter')
         self.assertEqual(lock.read_text(), 'someone else')
+
+    def test_abandoned_database_lock_explains_manual_recovery(self):
+        lock = self.root / 'db.lck'
+        lock.write_text('gone creator')
+        with patch.object(backend, 'lock_message', return_value='The lock appears abandoned. Only then remove it.', create=True):
+            with self.assertRaisesRegex(backend.Refused, 'abandoned.*Only then remove'):
+                with backend.package_guard():
+                    self.fail('must not enter')
+        self.assertEqual(lock.read_text(), 'gone creator')
+
+    def test_live_database_lock_says_wait(self):
+        lock = self.root / 'db.lck'
+        lock.touch()
+        with patch.object(backend, 'lock_message', return_value='Wait for it to finish.', create=True):
+            with self.assertRaisesRegex(backend.Refused, 'Wait for it to finish'):
+                with backend.package_guard():
+                    self.fail('must not enter')
+        self.assertTrue(lock.exists())
+
+    def test_guard_keeps_descriptor_for_owner_detection(self):
+        from emaki_package_lock import lock_message, LIVE
+        with backend.package_guard():
+            self.assertEqual(lock_message(self.root / 'db.lck'), LIVE)
 
     def test_exception_releases_owned_database_lock(self):
         with self.assertRaisesRegex(RuntimeError, 'fixture'):

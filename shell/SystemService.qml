@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -5,6 +7,7 @@ import Quickshell.Io
 
 Item {
     id: service
+    property SnapshotRecovery recovery: null
     property bool live: false
     property bool helpersEnabled: live
     property var account: ({
@@ -497,11 +500,20 @@ Item {
     // Readings come on events, not on a 5 s poll (that was three python processes every
     // 5 s, ~36 a minute, all day): brightness on the kernel's backlight uevent (every sysfs
     // write emits one — swayosd keys included), VPN on `nmcli monitor`, power profiles at
-    // start, when the panel opens and after our own change. Battery, network, Bluetooth
+    // start, every 2 s while the panel is open and after our own change. Battery, network, Bluetooth
     // and sound are native Quickshell services and were never polled.
     property bool panelOpen: false
     onPanelOpenChanged: if (panelOpen)
         refresh()
+    Timer {
+        interval: 2000
+        repeat: true
+        running: service.panelOpen && service.helpersEnabled
+        onTriggered: if (!power.busy && !action.busy)
+            power.start({
+                op: "profiles-read"
+            })
+    }
     PrivateJob {
         id: accountJob
         helper: Quickshell.shellPath("helpers/system-tools.py")
@@ -537,8 +549,9 @@ Item {
         id: sleepFlags
         helper: Quickshell.shellPath("helpers/system-tools.py")
         onCompleted: r => {
-            if (r.state === "ready" && Array.isArray(r.policies))
-                for (const policy of r.policies)
+            const policies = sleepFlags.list(r.policies);
+            if (r.state === "ready" && policies)
+                for (const policy of policies)
                     service.sleepLockFailed(String(policy));
         }
         onBusyChanged: {

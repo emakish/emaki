@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Allocator defaults stay with shell/lock; scoped and fallback apps keep session env."""
 from runtime_fixture import runtime_path
 from shell_fixture import shell_wrapper

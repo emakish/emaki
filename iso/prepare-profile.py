@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Finalize a copied profile; never operate on the caller's host configuration."""
 import argparse
 from pathlib import Path

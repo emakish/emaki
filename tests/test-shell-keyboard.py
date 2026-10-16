@@ -66,6 +66,10 @@ def run_case(name, mutation=None, fixture='ShellKeyboardTest.qml', marker='SHELL
         (base / 'data/applications').mkdir()
         (base / 'data/applications/fixture-app.desktop').write_text(
             '[Desktop Entry]\nType=Application\nName=Keyboard fixture\nExec=/usr/bin/true\nIcon=utilities-terminal\n')
+        # DockClockKeyboardTest pins these two; the dock leaves out a pin that is not installed.
+        for app in ('fixture-one', 'fixture-two'):
+            (base / f'data/applications/{app}.desktop').write_text(
+                f'[Desktop Entry]\nType=Application\nName={app}\nExec=/usr/bin/true\nIcon=utilities-terminal\n')
         (base / 'state/emaki').mkdir()
         (base / 'state/emaki/dock.json').write_text(
             '{"version":1,"on":true,"auto_hide":true,"pinned":["fixture-app"]}')

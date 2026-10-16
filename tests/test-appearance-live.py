@@ -122,13 +122,16 @@ with tempfile.TemporaryDirectory(prefix='appearance-live-') as temporary:
                 observe_busy(instance)
         finally:
             os.close(lock)
-        # Nothing saved: both readers show the dark default with the orange accent.
+        # Nothing saved: both readers show the light default with the rose accent (2026-10-15).
         for instance in (shell, manager):
-            observe(instance, 'dark', 'orange', '#e2733f')
+            observe(instance, 'light', 'rose', '#e780aa')
         # First creation and subsequent atomic replacement must reach both readers.
+        set_value('appearance.theme', 'dark')
+        for instance in (shell, manager):
+            observe(instance, 'dark', 'rose', '#e780aa')
         set_value('appearance.theme', 'light')
         for instance in (shell, manager):
-            observe(instance, 'light', 'orange', '#e2733f')
+            observe(instance, 'light', 'rose', '#e780aa')
         set_value('appearance.accent', 'blue')
         for instance in (shell, manager):
             observe(instance, 'light', 'blue', '#78aaf0')

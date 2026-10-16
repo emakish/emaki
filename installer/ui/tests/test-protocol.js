@@ -1,5 +1,9 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Replay the same transcript files served by mock-worker.py through production JS.
 const assert = require("node:assert/strict");
+require("./test-controller-recovery.js");
+require("./test-progress.js");
 const {execFileSync} = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -18,6 +22,25 @@ for (const file of fs.readdirSync(path.join(__dirname, "transcripts")).filter(f 
 const context = vm.createContext({});
 vm.runInContext(fs.readFileSync(path.join(__dirname, "../Protocol.js"), "utf8"), context);
 const P = context;
+// Recovery failures explain the installation rather than its internal processes.
+const incompatible = P.initial();
+P.receive(incompatible, {type: "hello", proto: 2}, 1);
+assert.equal(incompatible.notice, "The installer and this window are incompatible.");
+const lostConfirmation = P.initial();
+lostConfirmation.confirming = true;
+P.receive(lostConfirmation, {type: "hello", proto: 1}, 1);
+assert.equal(lostConfirmation.notice, "The confirmation could not be recovered. Check the installation log before preparing a new plan.");
+const lostJob = P.initial();
+lostJob.jobId = "missing";
+const lostResume = P.request(lostJob, "resume", {job_id: "missing"});
+P.receive(lostJob, {type: "reply", id: lostResume.id, ok: false, code: "job_not_found"}, 1);
+assert.equal(lostJob.error.message, "The installer no longer has a record of this installation. Check the installation log before starting again.");
+for (const [code, sentence] of Object.entries({
+    esp_space: "The disk's startup partition cannot be used.",
+    bad_request: "The installer could not read a request from this window.",
+    busy: "The installer was busy with another task.",
+    job_not_found: "The installer no longer has a record of this installation."
+})) assert.equal(P.errorPresentation({code, message: "Diagnostic detail"}).sentence, sentence);
 // A login refusal keeps the worker's recovery instruction on the main page.
 const loginRefusal = "This login name belongs to the system. Choose another name; the disk has not been changed.";
 assert.equal(P.errorPresentation({code: "login_name_reserved", message: loginRefusal, retryable: true}).sentence, loginRefusal);
@@ -221,8 +244,6 @@ for (const file of files) {
             assert.equal(s.error.retryable, true);
             s.outcome = ""; s.jobId = ""; s.error = null;
         }
-        // Open GParted leaves a review: its probe (before GParted starts) drops the plan.
-        if (row.action === "gparted_open") assert.ok(s.plan.token);
         const fields = row.expect === "hello" ? {proto: 1} : row.expect === "confirm" ? {plan_id: s.plan.plan_id, token: s.plan.token} : row.expect === "plan" ? {config: {software: file === "choices.json" ? "minimal" : "rich", user: {password: "in-memory-" + Math.random()}}} : row.fields || {};
         const request = queue.shift() || P.request(s, row.expect, fields);
         assert.equal(request.type, row.expect);
@@ -279,6 +300,24 @@ assert.equal(s.outcome, "done");
 assert.deepEqual(Array.from(s.doneWarnings), [partial]);
 P.receive(s, {type: "done", job_id: "known", seconds: 5}, 1005);
 assert.deepEqual(Array.from(s.doneWarnings), []);
+// With Secure Boot on, done carries the one-time MokManager password for the done page.
+assert.equal(P.initial().secureBoot, null);
+P.receive(s, {type: "done", job_id: "known", seconds: 5, secure_boot: {password: "01234567"}}, 1006);
+assert.equal(s.secureBoot.password, "01234567");
+assert.equal(s.secureBoot.espLabel, null);
+// The label of an EFI partition the installer formatted; null on a kept or shared one.
+P.receive(s, {type: "done", job_id: "known", seconds: 5, secure_boot: {password: "01234567", esp_label: "EMAKI"}}, 1006);
+assert.equal(JSON.stringify(s.secureBoot), '{"password":"01234567","espLabel":"EMAKI"}');
+for (const label of [null, "", "emaki", "EMAKI LONGER", "TWELVE_CHARS", 7, ["EMAKI"], {}]) {
+    P.receive(s, {type: "done", job_id: "known", seconds: 5, secure_boot: {password: "01234567", esp_label: label}}, 1006);
+    assert.equal(JSON.stringify(s.secureBoot), '{"password":"01234567","espLabel":null}', JSON.stringify(label));
+}
+for (const bad of [{password: "1234"}, {password: "0123456a"}, {}, null]) {
+    P.receive(s, {type: "done", job_id: "known", seconds: 5, secure_boot: bad}, 1007);
+    assert.equal(s.secureBoot, null);
+}
+P.receive(s, {type: "done", job_id: "known", seconds: 5}, 1008);
+assert.equal(s.secureBoot, null);
 // A failed first connect is not a lost connection; only a session that got a hello reconnects.
 const fresh = P.initial();
 P.disconnected(fresh);
@@ -561,4 +600,66 @@ for (const length of [1, 7, 8, 1024]) {
     const password = "x".repeat(length);
     assert.equal(P.diskPasswordError(password), length < 8 ? "Use at least 8 characters for the startup password." : "");
     assert.equal(P.accountErrors("Test", "test", password, password, "emaki", []).password, "");
+}
+
+// The partition editor: free space, numbers and refusals as planner.partition_edits computes them.
+{
+    const MIB = 1048576, GIB = 1073741824;
+    // Values made in the Protocol.js context have its prototypes: compare their JSON.
+    const plain = value => JSON.parse(JSON.stringify(value));
+    const part = (n, start, size, fields) => Object.assign({id: "/dev/vda" + n, path: "/dev/vda" + n, number: n,
+        start_bytes: start, size_bytes: size, fs: "ext4", esp: false, other_system: null}, fields || {});
+    const disk = {id: "/dev/vda", path: "/dev/vda", size_bytes: 128 * GIB, partition_table: "gpt", partitions: [
+        part(1, MIB, 512 * MIB, {fs: "vfat", esp: true, other_system: "Windows"}),
+        part(2, 513 * MIB, 40 * GIB, {fs: "ntfs", other_system: "Windows"}),
+        part(3, 513 * MIB + 40 * GIB, 30 * GIB, {other_system: "Linux"}),
+        part(4, 513 * MIB + 70 * GIB, 10 * GIB)]};
+    const edits = P.emptyEdits();
+    assert.equal(P.editsConfig(edits), null);
+    let layout = P.editorLayout(disk, edits);
+    assert.deepEqual(layout.map(r => [r.kind, r.number || null, r.start, r.size]), [
+        ["partition", 1, MIB, 512 * MIB], ["partition", 2, 513 * MIB, 40 * GIB], ["partition", 3, 513 * MIB + 40 * GIB, 30 * GIB],
+        ["partition", 4, 513 * MIB + 70 * GIB, 10 * GIB], ["free", null, 513 * MIB + 80 * GIB, 128 * GIB - MIB - 513 * MIB - 80 * GIB]]);
+    edits.delete.push({partition_id: "/dev/vda4"});
+    edits.create.push({id: "new-1", type: "linux", start_bytes: 513 * MIB + 70 * GIB, size_bytes: 24 * GIB},
+                      {id: "new-2", type: "swap", start_bytes: 513 * MIB + 94 * GIB, size_bytes: 2 * GIB});
+    layout = P.editorLayout(disk, edits);
+    assert.deepEqual(layout.map(r => [r.kind, r.number || null]), [["partition", 1], ["partition", 2], ["partition", 3],
+        ["deleted", 4], ["new", 4], ["new", 5], ["free", null]]);
+    assert.equal(layout[6].start, 513 * MIB + 96 * GIB);
+    assert.deepEqual(plain(P.editsConfig(edits)), plain({delete: [{partition_id: "/dev/vda4"}], create: edits.create}));
+    // The same numbers and free extents in the planner.
+    const planned = JSON.parse(execFileSync("python3", ["-I", "-c", "import json, sys; sys.path.insert(0, sys.argv[1]); " +
+        "from emaki_installer.planner import partition_edits; disk = json.loads(sys.argv[2]); edits = json.loads(sys.argv[3]); " +
+        "disk['_pttype'] = 'gpt'; [p.update(_geometry_known=True, _read_only=False) for p in disk['partitions']]; " +
+        "parts, e = partition_edits(edits, disk); print(json.dumps([p['number'] for p in e.created]))",
+        path.join(__dirname, "../.."), JSON.stringify(disk), JSON.stringify(edits)], {encoding: "utf8"}));
+    assert.deepEqual(planned, plain(P.newNumbers(disk, edits)));
+    // Sizes are typed in GiB and become whole MiB.
+    assert.equal(P.sizeFromGiB("12"), 12 * GIB);
+    assert.equal(P.sizeFromGiB(" 0.5 "), 512 * MIB);
+    assert.equal(P.sizeFromGiB("1,5"), 1536 * MIB);
+    for (const bad of ["", "-1", "1e3", "12 GiB", "0x10", "."]) assert.ok(Number.isNaN(P.sizeFromGiB(bad)), bad);
+    const free = layout[6];
+    const root = P.rootMinimum(0, false, false);
+    assert.equal(P.newPartitionError(free, "/", 24 * GIB, root), "");
+    assert.equal(P.newPartitionError(free, "/", 19 * GIB, root), "Root needs at least 20.00 GiB.");
+    assert.equal(P.newPartitionError(free, "/efi", 511 * MIB, root), "An EFI system partition needs at least 0.50 GiB.");
+    assert.equal(P.newPartitionError(free, "swap", 128 * MIB, root), "Swap needs at least 0.25 GiB.");
+    assert.equal(P.newPartitionError(free, "/home", free.size + MIB, root), "Only " + (free.size / GIB).toFixed(2) + " GiB of free space is here.");
+    assert.equal(P.newPartitionError(free, "/home", NaN, root), "Type the size in GiB, for example 40 or 0.5.");
+    assert.equal(P.newPartitionError(free, "/data", GIB, root), "Choose what the new partition is for.");
+    assert.deepEqual(plain(P.deletionIdentity(disk.partitions[1])), {path: "/dev/vda2", start_bytes: 513 * MIB, size_bytes: 40 * GIB, system: "Windows"});
+    // Manual on an empty MBR disk: the editor makes a new GPT; an MBR disk with partitions stays refused.
+    const empty = {size_bytes: 64 * GIB, partition_table: "dos", partitions: []};
+    assert.equal(P.manualReason(empty), "");
+    assert.equal(P.canNewTable(empty), true);
+    assert.equal(P.canNewTable(Object.assign({}, empty, {partition_table: "gpt"})), false);
+    assert.equal(P.manualReason(Object.assign({}, empty, {partitions: [part(1, MIB, GIB)]})), "Manual installation needs a GPT disk.");
+    const fresh = Object.assign(P.emptyEdits(), {new_table: true});
+    assert.deepEqual(P.editorLayout(empty, fresh).map(r => [r.kind, r.start, r.size]), [["free", MIB, 64 * GIB - 2 * MIB]]);
+    assert.deepEqual(plain(P.editsConfig(fresh)), {delete: [], create: [], new_table: true});
+    fresh.create.push({id: "new-1", type: "esp", start_bytes: MIB, size_bytes: GIB});
+    assert.deepEqual(plain(P.editsConfig(fresh)), plain({delete: [], create: fresh.create, new_table: true}));
+    console.log("PASS partition editor: free space, GPT numbers (as the planner), sizes in GiB, refusals, new GPT on an empty disk");
 }

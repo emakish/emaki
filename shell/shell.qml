@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -50,9 +52,11 @@ ShellRoot {
         }
     }
     WelcomeController {
+        id: welcome
         enabled: root.valid && !root.headless
         ready: !startup.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
         onOpening: outputs.closeAll()
+        openShortcutList: () => root.scene?.openKeyboard("shortcuts") ?? false
     }
     ShellRecoveryNotice {
         store: outputs.shared.notifications
@@ -69,6 +73,11 @@ ShellRoot {
         store: outputs.shared.notifications
         ready: root.valid && !root.headless && !startup.coverActive && !(root.scene?.pairingPeekOpen ?? false) && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
     }
+    SecureBootNotice {
+        store: outputs.shared.notifications
+        ready: root.valid && !root.headless && !startup.coverActive && (root.surfaceWindows?.barMapped ?? false) && (root.surfaceWindows?.overlayMapped ?? false)
+        onSettingsRequested: outputs.shared.settingsController.open("privacy")
+    }
     IpcHandler {
         target: "workspaces"
         function focus(id: string): bool {
@@ -80,6 +89,7 @@ ShellRoot {
         niri: coreService
         startup: startup
         enabled: root.valid
+        firstRunPresent: welcome.opened
         requestedOutput: root.requestedOutput
         borderMode: root.borderMode
         reservedSpace: root.reservedSpace
@@ -101,7 +111,14 @@ ShellRoot {
     }
     LazyLoader {
         active: !root.headless && !startup.coverActive
-        SnapshotRecovery {}
+        SnapshotRecovery {
+            id: snapshotRecovery
+            Binding {
+                target: outputs.shared.services
+                property: "recovery"
+                value: snapshotRecovery
+            }
+        }
     }
     Loader {
         id: coverLoader
@@ -142,6 +159,43 @@ ShellRoot {
             return root.scene?.status() ?? "{}";
         }
     }
+    // Alt+Tab and its companions (niri/default.kdl). The first call opens the switcher, the
+    // next ones move its selection; releasing the chord switches (WindowSwitcher).
+    IpcHandler {
+        target: "switcher"
+        function next(): bool {
+            return root.scene?.switchWindows(1, false, 0) ?? false;
+        }
+        function previous(): bool {
+            return root.scene?.switchWindows(-1, false, 0) ?? false;
+        }
+        function app(): bool {
+            return root.scene?.switchWindows(1, true, 0) ?? false;
+        }
+        function appPrevious(): bool {
+            return root.scene?.switchWindows(-1, true, 0) ?? false;
+        }
+        // What the bindings call (emaki-shell): the same, with when the key was pressed (ms since
+        // the epoch), so a press that arrives after its switcher closed is dropped.
+        function step(direction: string, sent: string): bool {
+            const moves = {
+                next: [1, false],
+                previous: [-1, false],
+                app: [1, true],
+                appPrevious: [-1, true]
+            };
+            // Object.hasOwn is not a function in Qt 6.12.0's QML engine (IV9, 2026-10-16).
+            const move = Object.prototype.hasOwnProperty.call(moves, direction) ? moves[direction] : null;
+            const at = Number(sent);
+            return !!move && Number.isFinite(at) && (root.scene?.switchWindows(move[0], move[1], at) ?? false);
+        }
+        function cancel(): void {
+            root.scene?.switcher.cancel();
+        }
+        function status(): string {
+            return root.scene?.switcherStatus() ?? "{}";
+        }
+    }
     IpcHandler {
         target: "keyboard"
         function open(surface: string): bool {
@@ -180,6 +234,9 @@ ShellRoot {
     }
     IpcHandler {
         target: "system"
+        function ping(): string {
+            return "pong";
+        }
         function open(page: string): bool {
             return root.scene?.openKeyboard(page) ?? false;
         }

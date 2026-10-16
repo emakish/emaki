@@ -30,6 +30,13 @@ ShellRoot {
                 const list = findChild(sheet, "shortcutList");
                 const close = findChild(sheet, "shortcutClose");
                 verify(search.activeFocus);
+                search.text = "go to workspace 2";
+                compare(sheet.filtered.length, 1);
+                compare(sheet.filtered[0].keys, "Super+2");
+                search.text = "SUPER+SHIFT+2";
+                compare(sheet.filtered.length, 1);
+                compare(sheet.filtered[0].description, "Move column to workspace 2");
+                search.text = "";
                 keyClick(Qt.Key_D);
                 verify(sheet.filtered.length < sheet.rows.length);
                 keyClick(Qt.Key_Backspace);

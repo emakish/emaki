@@ -248,8 +248,25 @@ class Transactions(unittest.TestCase):
                 if info['name'] == target:
                     old = info['version']
                     info['version'] = new = old.rsplit('-', 1)[0] + '-' + str(int(old.rsplit('-', 1)[1]) + 1)
+            # A package with an exact pin is rebuilt with the pinned one, and so on up the pins
+            # (emaki-config pins niri-emaki, emaki pins emaki-config); emaki gets its marker version below.
+            changed = {target: (old, new)}
+            while True:
+                rebuilt = {}
+                for info in self.new:
+                    depends = list(info.get('depends', ()))
+                    for name, (before, after) in changed.items():
+                        depends = [f'{name}={after}' if d == f'{name}={before}' else d for d in depends]
+                    if depends != list(info.get('depends', ())):
+                        info['depends'] = depends
+                        if info['name'] not in changed and info['name'] != 'emaki':
+                            version, release = info['version'].rsplit('-', 1)
+                            info['version'] = f'{version}-{int(release) + 1}'
+                            rebuilt[info['name']] = (f'{version}-{release}', info['version'])
+                if not rebuilt:
+                    break
+                changed.update(rebuilt)
             for info in self.new:
-                info['depends'] = [d.replace(f'{target}={old}', f'{target}={new}') for d in info.get('depends', ())]
                 if info['name'] == 'emaki':
                     info['version'] = f'{marker_version}-{marker_release + index + 1}'
             repo = self.repository(f'target-{index}', self.new)

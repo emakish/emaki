@@ -1,0 +1,303 @@
+[
+ {
+  "expect": "hello",
+  "responses": [
+   {
+    "type": "hello",
+    "proto": 1,
+    "archinstall_version": "4.5",
+    "emaki_version": "0.9.0",
+    "test_mode": false,
+    "busy_job": null
+   }
+  ]
+ },
+ {
+  "expect": "probe",
+  "responses": [
+   {
+    "disks": [
+     {
+      "id": "/dev/vda",
+      "path": "/dev/vda",
+      "model": "Samsung SSD 990",
+      "size_bytes": 137438953472,
+      "bus": "nvme",
+      "removable": false,
+      "is_boot_medium": false,
+      "partitions": [
+       {
+        "id": "/dev/vda1",
+        "path": "/dev/vda1",
+        "number": 1,
+        "uuid": "FIXTURE-1",
+        "fs": "vfat",
+        "size_bytes": 536870912,
+        "start_bytes": 1048576,
+        "mountpoint": null,
+        "label": null,
+        "os_hint": "windows",
+        "esp": true,
+        "other_system": "Windows"
+       },
+       {
+        "id": "/dev/vda2",
+        "path": "/dev/vda2",
+        "number": 2,
+        "uuid": "FIXTURE-2",
+        "fs": "ntfs",
+        "size_bytes": 64424509440,
+        "start_bytes": 537919488,
+        "mountpoint": null,
+        "label": null,
+        "os_hint": "windows",
+        "esp": false,
+        "other_system": "Windows"
+       },
+       {
+        "id": "/dev/vda3",
+        "path": "/dev/vda3",
+        "number": 3,
+        "uuid": "FIXTURE-3",
+        "fs": "ext4",
+        "size_bytes": 42949672960,
+        "start_bytes": 64962428928,
+        "mountpoint": null,
+        "label": null,
+        "os_hint": "linux",
+        "esp": false,
+        "other_system": "Linux"
+       }
+      ],
+      "closed_encrypted": [],
+      "free_extents": [],
+      "shrink": null,
+      "partition_table": "gpt"
+     }
+    ],
+    "gpu": "Fixture GPU",
+    "cpu": "Fixture CPU",
+    "memory_bytes": 17179869184,
+    "uefi": true,
+    "uefi_bits": 64,
+    "network": {
+     "online": false
+    },
+    "tz_guess": "UTC",
+    "scale_guess": null,
+    "hardware": {},
+    "type": "inventory"
+   }
+  ]
+ },
+ {
+  "expect": "probe",
+  "responses": [
+   {
+    "disks": [
+     {
+      "id": "/dev/vda",
+      "path": "/dev/vda",
+      "model": "Samsung SSD 990",
+      "size_bytes": 137438953472,
+      "bus": "nvme",
+      "removable": false,
+      "is_boot_medium": false,
+      "partitions": [
+       {
+        "id": "/dev/vda1",
+        "path": "/dev/vda1",
+        "number": 1,
+        "uuid": "FIXTURE-1",
+        "fs": "vfat",
+        "size_bytes": 536870912,
+        "start_bytes": 1048576,
+        "mountpoint": null,
+        "label": null,
+        "os_hint": "windows",
+        "esp": true,
+        "other_system": "Windows"
+       },
+       {
+        "id": "/dev/vda2",
+        "path": "/dev/vda2",
+        "number": 2,
+        "uuid": "FIXTURE-2",
+        "fs": "ntfs",
+        "size_bytes": 64424509440,
+        "start_bytes": 537919488,
+        "mountpoint": null,
+        "label": null,
+        "os_hint": "windows",
+        "esp": false,
+        "other_system": "Windows"
+       },
+       {
+        "id": "/dev/vda3",
+        "path": "/dev/vda3",
+        "number": 3,
+        "uuid": "FIXTURE-3",
+        "fs": "ext4",
+        "size_bytes": 42949672960,
+        "start_bytes": 64962428928,
+        "mountpoint": null,
+        "label": null,
+        "os_hint": "linux",
+        "esp": false,
+        "other_system": "Linux"
+       }
+      ],
+      "closed_encrypted": [],
+      "free_extents": [],
+      "shrink": null,
+      "partition_table": "gpt"
+     }
+    ],
+    "gpu": "Fixture GPU",
+    "cpu": "Fixture CPU",
+    "memory_bytes": 17179869184,
+    "uefi": true,
+    "uefi_bits": 64,
+    "network": {
+     "online": false
+    },
+    "tz_guess": "UTC",
+    "scale_guess": null,
+    "hardware": {},
+    "type": "inventory"
+   }
+  ]
+ },
+ {
+  "expect": "plan",
+  "planner": "editor",
+  "responses": [
+   {
+    "type": "plan_ack",
+    "plan_id": "fixture-plan",
+    "token": "mock-capability",
+    "expires_s": 600,
+    "summary": [],
+    "errors": [],
+    "warnings": []
+   }
+  ]
+ },
+ {
+  "expect": "probe",
+  "responses": [
+   {
+    "disks": [
+     {
+      "id": "/dev/vda",
+      "path": "/dev/vda",
+      "model": "Samsung SSD 990",
+      "size_bytes": 137438953472,
+      "bus": "nvme",
+      "removable": false,
+      "is_boot_medium": false,
+      "partitions": [
+       {
+        "id": "/dev/vda1",
+        "path": "/dev/vda1",
+        "number": 1,
+        "uuid": "FIXTURE-1",
+        "fs": "vfat",
+        "size_bytes": 536870912,
+        "start_bytes": 1048576,
+        "mountpoint": null,
+        "label": null,
+        "os_hint": "windows",
+        "esp": true,
+        "other_system": "Windows"
+       },
+       {
+        "id": "/dev/vda2",
+        "path": "/dev/vda2",
+        "number": 2,
+        "uuid": "FIXTURE-2",
+        "fs": "ntfs",
+        "size_bytes": 64424509440,
+        "start_bytes": 537919488,
+        "mountpoint": null,
+        "label": null,
+        "os_hint": "windows",
+        "esp": false,
+        "other_system": "Windows"
+       },
+       {
+        "id": "/dev/vda3",
+        "path": "/dev/vda3",
+        "number": 3,
+        "uuid": "FIXTURE-3",
+        "fs": "ext4",
+        "size_bytes": 42949672960,
+        "start_bytes": 64962428928,
+        "mountpoint": null,
+        "label": null,
+        "os_hint": "linux",
+        "esp": false,
+        "other_system": "Linux"
+       }
+      ],
+      "closed_encrypted": [],
+      "free_extents": [],
+      "shrink": null,
+      "partition_table": "gpt"
+     }
+    ],
+    "gpu": "Fixture GPU",
+    "cpu": "Fixture CPU",
+    "memory_bytes": 17179869184,
+    "uefi": true,
+    "uefi_bits": 64,
+    "network": {
+     "online": false
+    },
+    "tz_guess": "UTC",
+    "scale_guess": null,
+    "hardware": {},
+    "type": "inventory"
+   }
+  ]
+ },
+ {
+  "expect": "plan",
+  "planner": "editor",
+  "responses": [
+   {
+    "type": "plan_ack",
+    "plan_id": "fixture-plan",
+    "token": "mock-capability",
+    "expires_s": 600,
+    "summary": [],
+    "errors": [],
+    "warnings": []
+   }
+  ]
+ },
+ {
+  "expect": "confirm",
+  "responses": [
+   {
+    "type": "reply",
+    "ok": true,
+    "job_id": "fixture-job"
+   },
+   {
+    "type": "state",
+    "job_id": "fixture-job",
+    "phase": "copy_packages",
+    "phase_pct": 42,
+    "total_pct": 32,
+    "indeterminate": false
+   },
+   {
+    "type": "done",
+    "job_id": "fixture-job",
+    "log_path": "/var/log/emaki-install.log",
+    "seconds": 187
+   }
+  ]
+ }
+]

@@ -11,14 +11,14 @@
 set -Eeuo pipefail
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(dirname -- "$HERE")
-ORDER=(niri-emaki quickshell-emaki xdg-desktop-portal-gnome-emaki emaki-config emaki-sudo-key snapguard emaki-nvidia emaki-desktop
-       emaki-apps emaki-installer emaki-keyring emaki-mirrorlist emaki)
+ORDER=(niri-emaki quickshell-emaki xdg-desktop-portal-gnome-emaki emaki-font-iosevka emaki-config emaki-sudo-key snapguard emaki-nvidia
+       emaki-shim-signed emaki-desktop emaki-apps emaki-installer emaki-keyring emaki-mirrorlist emaki)
 # Packages whose build needs makedepends from Arch (--syncdeps). The others depend at run time on
 # Emaki packages that are not in any repository yet, so their dependencies are not checked here
 # (--nodeps); publish.sh resolves the whole set against Arch before anything is published.
 # pacman cannot install a package of this build either: a SYNCDEPS package whose only missing
 # dependencies were built earlier in the same run gets --nodeps (dependency_flag below).
-SYNCDEPS=(niri-emaki quickshell-emaki xdg-desktop-portal-gnome-emaki emaki-installer)
+SYNCDEPS=(niri-emaki quickshell-emaki xdg-desktop-portal-gnome-emaki emaki-shim-signed emaki-installer)
 out=$ROOT/.cache/build-out
 only=()
 published_sources=''

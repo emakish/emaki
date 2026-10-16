@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """A fake user manager: no test launch can reach the host systemd or niri."""
 import json
 import os
@@ -40,6 +42,23 @@ os.execvp(command[0], command)
                     f'    os.execv({real_niri!r}, [{real_niri!r}, *args])\n'
                     'sys.exit("unexpected niri IPC in scope fixture")\n')
     niri.chmod(0o700)
+    # URL tests stay inside their private desktop registry, never the host browser.
+    opener = folder / 'xdg-open'
+    opener.write_text('''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+import gi
+gi.require_version('Gio', '2.0')
+from gi.repository import Gio
+with (Path(os.environ['EMAKI_SCOPE_FIXTURE']) / 'urls.jsonl').open('a') as log:
+    log.write(json.dumps(sys.argv[1:]) + '\\n')
+try:
+    accepted = Gio.AppInfo.launch_default_for_uri(sys.argv[1], None)
+except Exception:
+    sys.exit(1)
+sys.exit(0 if accepted else 1)
+''')
+    opener.chmod(0o700)
     env.update(PATH=str(folder) + os.pathsep + env['PATH'], EMAKI_SCOPE_FIXTURE=str(root))
 
 

@@ -20,7 +20,7 @@ ShellRoot {
         }
     }
     CaptureController {
-        id: capture
+        id: controller
         locked: false
         preferredOutput: "TEST-1"
         screens: [
@@ -33,59 +33,60 @@ ShellRoot {
         ]
         notificationStore: notifications
     }
+    // PRODUCTION_CAPTURE_IPC
     IpcHandler {
         target: "tests"
         function configure(scenario: string): bool {
-            if (capture.busy || capture.opened)
+            if (controller.busy || controller.opened)
                 return false;
             fixture.notices = [];
-            capture.locked = false;
-            capture.helperCommand = scenario === "missing" ? [Quickshell.env("CAPTURE_MISSING")] : [Quickshell.env("CAPTURE_PYTHON"), "-B", Quickshell.env("CAPTURE_HELPER"), scenario];
+            controller.locked = false;
+            controller.helperCommand = scenario === "missing" ? [Quickshell.env("CAPTURE_MISSING")] : [Quickshell.env("CAPTURE_PYTHON"), "-B", Quickshell.env("CAPTURE_HELPER"), scenario];
             return true;
         }
         function present(): bool {
-            return capture.open();
+            return controller.open();
         }
         function dismiss(): void {
-            capture.close();
+            controller.close();
         }
         function lock(value: bool): void {
-            capture.locked = value;
+            controller.locked = value;
         }
         function mode(value: string): bool {
-            return capture.selectMode(value);
+            return controller.selectMode(value);
         }
         function targetKind(value: string): bool {
-            return capture.selectTarget(value);
+            return controller.selectTarget(value);
         }
         function output(name: string): bool {
-            return capture.selectOutput(name);
+            return controller.selectOutput(name);
         }
         function windowId(id: double): bool {
-            return capture.selectWindow(id);
+            return controller.selectWindow(id);
         }
         function area(x: real, y: real, width: real, height: real): void {
-            capture.setArea(x, y, width, height);
+            controller.setArea(x, y, width, height);
         }
         function begin(): string {
-            const accepted = capture.capture();
+            const accepted = controller.capture();
             return JSON.stringify({
                 accepted: accepted,
-                opened: capture.opened,
-                busy: capture.busy,
-                duplicate: capture.capture()
+                opened: controller.opened,
+                busy: controller.busy,
+                duplicate: controller.capture()
             });
         }
         function finish(): bool {
-            return capture.stop();
+            return controller.stop();
         }
         function loseHelper(): void {
-            capture.helperCommand = [Quickshell.env("CAPTURE_MISSING")];
+            controller.helperCommand = [Quickshell.env("CAPTURE_MISSING")];
         }
         function state(): string {
-            const state = JSON.parse(capture.status());
+            const state = JSON.parse(controller.status());
             state.notices = fixture.notices;
-            state.canCapture = capture.canCapture;
+            state.canCapture = controller.canCapture;
             return JSON.stringify(state);
         }
     }

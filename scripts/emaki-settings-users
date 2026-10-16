@@ -35,20 +35,22 @@ of login.defs whose shell is not nologin or false, and that AccountsService does
 system account. Rules no request can bypass: the computer always keeps at least one usable
 (unlocked) administrator; the account that runs this program is never removed; an account
 that is signed in or still has running programs is not removed. Changes from this program
-are serialised by one lock for the whole machine; writers that do not use it are not, and
-every change is confirmed by reading the account back.
+are serialised by a root-owned lock for privileged changes and a private runtime lock for
+own-profile changes. These paths can overlap; every change is confirmed by reading the
+account back.
 """
 import ctypes
 import ctypes.util
 import getpass
 import grp
 import io
+import fcntl
 import json
 import os
 from pathlib import Path
 import pwd
 import re
-import socket
+import shutil
 import stat
 import subprocess
 import sys
@@ -68,9 +70,9 @@ CALL_TIMEOUT_MS = 120000
 LOCK_WAIT = 10
 # How long a removal waits for the service to drop the removed account's object.
 SETTLE_WAIT = 5
-# An abstract unix socket name: no file, any user can bind it, and it is freed when the
-# process ends, however it ends. Holding the bound socket is holding the lock of a change.
-LOCK = '\0emaki-settings-users'
+# Only the authorized root helper can hold the machine-wide mutation lock.
+LOCK = '/run/emaki-settings-users.lock'
+LOCK_OWNER = 0
 # The installer's rules for the first account (installer/emaki_installer/planner.py).
 LOGIN = re.compile(r'[a-z_][a-z0-9_-]{0,31}')
 NAME_LIMIT = 128
@@ -184,6 +186,9 @@ class Accounts:
 
     def set_password(self, path, hashed):
         self.call(ACCOUNTS, path, USER, 'SetPassword', self.GLib.Variant('(ss)', (hashed, '')), None, True)
+
+    def set_shell(self, path, shell):
+        self.call(ACCOUNTS, path, USER, 'SetShell', self.GLib.Variant('(s)', (shell,)), None, True)
 
     def set_account_type(self, path, account_type):
         self.call(ACCOUNTS, path, USER, 'SetAccountType', self.GLib.Variant('(i)', (account_type,)), None, True)
@@ -407,13 +412,46 @@ def valid_password(password):
             and password.isascii() and password.isprintable())
 
 
-def lock():
-    """The machine-wide lock of a change; the returned socket holds it until it is closed."""
-    held = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+def lock(profile_uid=None):
+    """Serialize privileged mutations separately from a user's profile changes."""
+    descriptor = None
+    directory = None
+    try:
+        if profile_uid is not None:
+            runtime = os.environ.get('XDG_RUNTIME_DIR', '')
+            if not runtime or not os.path.isabs(runtime):
+                raise OSError('missing or unsafe runtime directory')
+            path = Path(runtime) / 'emaki-settings-users-profile.lock'
+            owner = profile_uid
+        else:
+            path = Path(LOCK)
+            owner = LOCK_OWNER
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        info = os.fstat(directory)
+        unsafe_mode = (stat.S_IMODE(info.st_mode) != 0o700 if profile_uid is not None
+                       else stat.S_IMODE(info.st_mode) & 0o022)
+        if info.st_uid != owner or unsafe_mode:
+            raise OSError('unsafe lock directory')
+        descriptor = os.open(path.name, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                             0o600, dir_fd=directory)
+        info = os.fstat(descriptor)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != owner
+                or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1):
+            raise OSError('unsafe lock file')
+        held = os.fdopen(descriptor, 'rb')
+        descriptor = None
+    except OSError:
+        raise Refusal('users_busy') from None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        if directory is not None:
+            os.close(directory)
+    acquire = lambda: fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
     deadline = time.monotonic() + LOCK_WAIT
     while True:
         try:
-            held.bind(LOCK)
+            acquire()
             return held
         except OSError:
             if time.monotonic() >= deadline:
@@ -553,6 +591,12 @@ class Users:
             raise Refusal('invalid_name')
         hashed = self.password_hash(password)
         self.check_add(login, name)
+        # The privileged helper supplies a trusted PATH. Resolve before creating an account;
+        # another platform may install its login shells outside the usual binary directory.
+        shell = shutil.which('zsh')
+        if shell is None:
+            raise Refusal('accounts_service_failed')
+        shell = os.path.realpath(shell)
 
         def absent(rows):
             return all(user['login'] != login for user in rows)
@@ -571,6 +615,9 @@ class Users:
         except Refusal:
             return self.answer('uncertain', action='add', login=login, reason='account_without_password'), 3
         try:
+            self.accounts.set_shell(path, shell)
+            if self.accounts.properties(path).get('Shell') != shell:
+                raise Refusal('accounts_service_failed', sent=True)
             self.accounts.set_password(path, hashed)
         except Refusal as refusal:
             # CreateUser does not tell us whether it reused a pre-existing home. Never ask
@@ -597,7 +644,8 @@ class Users:
             return self.answer('uncertain', users, action='add', login=login, reason='account_without_password'), 3
         return self.confirm('add', login, lambda rows: any(
             user['login'] == login and user['name'] == name and user['administrator'] == administrator
-            for user in rows), absent)
+            and user['uid'] == created['uid'] and user['path'] == path
+            for user in rows) and self.accounts.properties(path).get('Shell') == shell, absent)
 
     def remove(self, login, delete_home):
         users = self.read()
@@ -950,7 +998,7 @@ def run(argv, users, stdin):
     if (users.authorize and command != 'picture'
             and not (command == 'set-name' and users.target(users.read(), rest[0])['current'])):
         return authorized_change(args, users, stdin)
-    held = lock() if command in ('add', 'remove', 'set-name', 'set-password', 'set-administrator', 'picture') else None
+    held = lock(profile_uid=None if users.passwords_hashed else users.uid) if command in ('add', 'remove', 'set-name', 'set-password', 'set-administrator', 'picture') else None
     try:
         if command == 'add' and len(rest) == 4 and rest[2] == '--administrator':
             return users.add(rest[0], rest[1], yes_no(rest[3]), read_password(stdin))

@@ -1,4 +1,6 @@
 #!/bin/sh
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Isolated emaki-idle test: swayidle, brightnessctl, niri and emaki-lock are PATH fakes.
 # Nothing here dims, locks or touches this machine's idle state.
 set -u

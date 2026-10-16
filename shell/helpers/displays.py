@@ -766,21 +766,23 @@ def main():
             return
         controller.recover()
         emit(controller.response())
-        stopping = False
         def stop(*_):
-            nonlocal stopping
-            stopping = True
+            # Interrupt a blocking select too; finally still restores pending changes.
+            raise SystemExit(0)
         signal.signal(signal.SIGTERM, stop)
         signal.signal(signal.SIGINT, stop)
         buffer = b''
-        while not stopping:
+        while True:
             if controller.pending and time.monotonic() >= controller.pending['deadline']:
                 try:
                     controller.revert()
                     emit(controller.response())
                 except (Failure, OSError) as error:
                     emit(error_response(error, controller))
-            ready = select.select([sys.stdin], [], [], .2)[0]
+            # No periodic wakeups while idle. Only an unconfirmed transaction needs
+            # a deadline, independently of whether its page remains open.
+            timeout = max(0, controller.pending['deadline'] - time.monotonic()) if controller.pending else None
+            ready = select.select([sys.stdin], [], [], timeout)[0]
             if not ready:
                 continue
             chunk = os.read(sys.stdin.fileno(), 8192)

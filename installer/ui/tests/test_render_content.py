@@ -52,7 +52,7 @@ class RenderContentTests(unittest.TestCase):
         self.evidence = {
             'width': 400, 'height': 700, 'footerY': 660,
             'texts': [
-                dict(text='Install · 0.8.1', x=10, y=10, width=160, height=20, body=False, clipped=False, truncated=False),
+                dict(text='Install · 0.9.0', x=10, y=10, width=160, height=20, body=False, clipped=False, truncated=False),
                 dict(text='Welcome to Emaki', x=10, y=60, width=250, height=24, body=True, clipped=False, truncated=False),
                 dict(text='Page details', x=10, y=110, width=250, height=24, body=True, clipped=False, truncated=False),
             ],
@@ -70,7 +70,7 @@ class RenderContentTests(unittest.TestCase):
 
     def validate(self, evidence=None):
         log = 'CONTENT_FRAME welcome ' + json.dumps(evidence or self.evidence)
-        validate_frame(self.path, log, 'welcome', self.evidence['width'], self.evidence['height'], '0.8.1')
+        validate_frame(self.path, log, 'welcome', self.evidence['width'], self.evidence['height'], '0.9.0')
 
     def test_correct_content_passes(self):
         self.validate()
@@ -130,7 +130,7 @@ class RenderContentTests(unittest.TestCase):
 
     def test_missing_evidence_fails(self):
         with self.assertRaisesRegex(AssertionError, 'Missing or repeated'):
-            validate_frame(self.path, 'LAYOUT_OK SCREENSHOT_OK welcome', 'welcome', 400, 700, '0.8.1')
+            validate_frame(self.path, 'LAYOUT_OK SCREENSHOT_OK welcome', 'welcome', 400, 700, '0.9.0')
 
 
 class RenderMutationTests(unittest.TestCase):
@@ -226,6 +226,6 @@ class MinimumWindowTests(unittest.TestCase):
         import render
         (render.ROOT / '.cache/evidence').mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=render.ROOT / '.cache/evidence', prefix='minimum-dark-') as temporary:
-            # Without its own light row the installer follows the dark shell default.
+            # A dark panel must fail even though the installer explicitly selects light.
             with self.assertRaisesRegex(AssertionError, 'Installer panel is not light'):
                 self.render_minimum(Path(temporary), ('value: "light"', 'value: "dark"'))

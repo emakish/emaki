@@ -4,14 +4,14 @@
 """The Settings canvas as one shared material, behind one switch (0.8.1 item 16).
 
 Static part: one switch, on by default; the canvas colour is drawn only by CanvasTint; every
-surface with a body lays a CanvasTint under its content; Settings, Report a problem and
+surface with a body lays a CanvasTint under its content; Settings, Report a problem, Welcome and
 Programs & Updates draw it whatever the switch says.
 
 Rendered part (production QML, llvmpipe, the real glass shaders; skipped with --static), light
 and dark. The default (on): the launcher header keeps the plain glass and its body is exactly
 the Settings material, the glass under the Settings tint, 0.8.0's pixel * (1 - a) + tint * a;
 the bar islands, the dock, the OSD and the lock are the same pixels as with the switch off;
-the system panel, the update reminder, the clock drawer, the privacy panel and Welcome change
+the system panel, the update reminder, the clock drawer and the privacy panel change
 by the same formula in their bodies.
 Off gives back 0.8.0: the launcher equals the frozen light reference outside the approved
 gear button. tests/theme-pictures.py
@@ -35,7 +35,6 @@ SURFACES = {
     'system-canvas': 'SystemPanel.qml',
     'clock-canvas': 'ClockPanel.qml',
     'privacy-canvas': 'PrivacyPanel.qml',
-    'welcome-canvas': 'Welcome.qml',
     'shortcuts-canvas': 'ShortcutSheet.qml',
     'polkit-canvas': 'PolkitPromptCard.qml',
 }
@@ -43,10 +42,10 @@ SURFACES = {
 KEPT = ('bar', 'dock', 'osd', 'lock')
 # Listed surfaces that already had the plain glass under their body, so with the switch on
 # the body is that glass under the tint: the system panel (Sound), the update reminder, the
-# clock drawer, the privacy panel and Welcome. The shortcut sheet and the password card had a
-# flat fill and get glass only with the switch, so the formula over 0.8.0's pixel does not
-# apply to them.
-GLASS_BODIES = ('system-sound', 'notification', 'clock', 'privacy', 'welcome')
+# clock drawer and the privacy panel. The shortcut sheet and the password card had a flat fill
+# and get glass only with the switch, so the formula over 0.8.0's pixel does not apply to them.
+# Welcome is a Settings window since 0.9 (SettingsGlass), drawn the same with the switch off.
+GLASS_BODIES = ('system-sound', 'notification', 'clock', 'privacy')
 TINTS = {'light': (1, .9647058823529412, .9411764705882353), 'dark': (.11, .075, .063)}
 ALPHA = .58
 # The launcher plate in the 1536 x 960 fixture frame: origin (10, 8), 720 wide, header 60.
@@ -89,6 +88,8 @@ class Static(unittest.TestCase):
         self.assertRegex(glass, r'CanvasTint \{\s+shown: true')
         self.assertRegex(qml('SettingsView.qml'), r'CanvasTint \{\s+shown: root\.embedded')
         self.assertIn('SettingsGlass {', qml('ReportView.qml'))
+        self.assertIn('SettingsGlass {', qml('Welcome.qml'))
+        self.assertNotIn('CanvasTint', qml('Welcome.qml'))
         self.assertIn('Shell.SettingsGlass {', (ROOT / 'update-manager/ui/ManagerView.qml').read_text())
 
     def test_flat_stand_in_lays_the_canvas_under_its_drops(self):

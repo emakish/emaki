@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Publish a static wallpaper without granting the greeter access to the user's home.
 
 This is always an unprivileged user operation. Input and output traversal uses directory
@@ -33,6 +35,13 @@ MAX_SECTIONS = 32
 MAX_TOTAL = 64 * 1024 * 1024
 USER_NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_.-]{0,63}\$?\Z')
 IMAGE_NAME = re.compile(r'wallpaper-[0-9a-f]{64}\.image\Z')
+# The same fixed forms the login screen's reader accepts (helpers/greeter-state.py).
+LOOK_FIELDS = {
+    'theme': re.compile(r'(?:dark|light|automatic)\Z'),
+    'accent': re.compile(r'[a-z]{1,16}\Z'),
+    'light_time': re.compile(r'(?:[01][0-9]|2[0-3]):[0-5][0-9]\Z'),
+    'dark_time': re.compile(r'(?:[01][0-9]|2[0-3]):[0-5][0-9]\Z'),
+}
 REFUSAL_REASONS = frozenset(('root_refused', 'invalid_user', 'image_path_invalid',
                            'config_limit', 'output_selection_unsupported', 'mode_unsupported',
                            'config_invalid', 'image_limit', 'input_limit', 'output_permissions',
@@ -50,6 +59,54 @@ def paths():
         raise ValueError('invalid_user')
     config_root = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
     return config_root / 'wpaperd/config.toml', PUBLISH_ROOT / user
+
+
+def settings_path():
+    config_root = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
+    return config_root / 'emaki/settings.toml'
+
+
+def look_bytes(settings):
+    """The login screen's copy of this person's look: [appearance] theme, accent and switch
+    times only. No other setting, path or name leaves the home. None keeps the last copy."""
+    look = {'version': 1}
+    try:
+        data, _ = bounded_no_symlinks(settings, MAX_CONFIG)
+        document = tomllib.loads(data.decode('utf-8'))
+    except FileNotFoundError:
+        document = {'schema_version': 1}  # Nothing chosen yet: the default look.
+    except (OSError, ValueError, UnicodeError):
+        return None
+    appearance = document.get('appearance', {})
+    if document.get('schema_version') != 1 or not isinstance(appearance, dict):
+        return None
+    for key, pattern in LOOK_FIELDS.items():
+        value = appearance.get(key)
+        if isinstance(value, str) and pattern.fullmatch(value):
+            look[key] = value
+    return (json.dumps(look, separators=(',', ':'), sort_keys=True) + '\n').encode()
+
+
+def publish_look(settings, destination):
+    user_only()
+    data = look_bytes(settings)
+    if data is None:
+        return {'state': 'refused', 'reason': 'config_invalid'}
+    parent = output_directory(Path(destination))
+    try:
+        atomic_write(parent, 'look.json', data)
+    finally:
+        os.close(parent)
+    return {'state': 'published'}
+
+
+def look_attempt(settings, destination):
+    try:
+        return publish_look(settings, destination)
+    except FileNotFoundError:
+        return {'state': 'missing'}
+    except Exception as error:
+        return refusal(error)
 
 
 def image_path(value):
@@ -386,18 +443,24 @@ class Inotify:
                 return True
 
 
-def watch(config_path, destination):
+def watch(config_path, destination, settings=None):
     user_only()
     notifier = Inotify()
     previous = None
     last_refusal = None
+    look_sources = {settings, settings.parent} if settings is not None else set()
+    look_previous = None
     try:
         while True:
             # Subscribe before reading/copying, so a concurrent replacement queues
             # another attempt. The bounded retry also heals missing parent folders.
             candidates = watch_paths(config_path)
-            notifier.update(candidates)
+            notifier.update(candidates | look_sources)
             identity = watch_identity(candidates)
+            look_identity = watch_identity(look_sources)
+            if look_sources and look_identity != look_previous:
+                published = look_attempt(settings, destination)['state'] == 'published'
+                look_previous = look_identity if published else None
             if identity != previous:
                 result = attempt(config_path, destination)
                 if result['state'] == 'refused':
@@ -423,9 +486,11 @@ def main():
         user_only()
         config_path, destination = paths()
         if options.watch:
-            watch(config_path, destination)
+            watch(config_path, destination, settings_path())
         else:
-            print(json.dumps(attempt(config_path, destination), separators=(',', ':')))
+            result = attempt(config_path, destination)
+            result['look'] = look_attempt(settings_path(), destination)['state']
+            print(json.dumps(result, separators=(',', ':')))
     except Exception as error:
         print(json.dumps(refusal(error), separators=(',', ':')))
         return 1

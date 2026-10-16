@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Validated live-session time zone changes; never used for target configuration."""
 from datetime import datetime
 import os

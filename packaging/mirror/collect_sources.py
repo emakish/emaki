@@ -178,9 +178,11 @@ def collect_all(closure, packages, output, jobs, repositories=None, cook_swh_vau
         candidate = output / 'ARCH-SOURCES.pending.json'
         atomic_json(candidate, {'schema': 1, 'closure_sha256': iso_sources.digest(closure),
                                 'packages': records})
-        # Read the actual binaries again; a completed job is not sufficient evidence.
+        # Read the actual binaries again; a completed job is not sufficient evidence. Collection may end
+        # partial (MISSING-SOURCES, complete false); publishing a new image refuses missing sources.
         iso_sources.validate(candidate, closure, packages, exclude,
-                             missing_sources=missing_candidate if refused else None)
+                             missing_sources=missing_candidate if refused else None,
+                             allow_missing=bool(refused))
         if refused:
             missing_candidate.replace(missing)
         candidate.replace(final)

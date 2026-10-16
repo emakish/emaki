@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 //@ pragma AppId emaki-install-test
 pragma ComponentBehavior: Bound
 import QtQuick
@@ -14,6 +16,48 @@ ShellRoot {
     property bool captured: false
     property bool warningScrolled: false
     property string screenshot: Quickshell.env("EMAKI_INSTALLER_SCREENSHOT")
+    // The partition editor's frames on editor_fixture.py's disk, through the controller's own
+    // actions: the window's plan is what the frame shows (review-manual runs the real planner).
+    readonly property var editorScreens: ["manual-editor", "manual-delete", "manual-create", "manual-new-table", "review-manual"]
+    function editorStep(error: string): void {
+        if (error) {
+            console.error("Editor staging refused: " + error);
+            Qt.quit();
+        }
+    }
+    function freeRow(): var {
+        return controller.editorRows.find(row => row.kind === "free");
+    }
+    function stageEditor(): void {
+        const GIB = 1073741824;
+        controller.mode = "manual";
+        controller.manualAssignments = true;
+        const disk = controller.selectedDisk;
+        if (screenName === "manual-new-table") {
+            controller.newPartitionTable(true);
+            editorStep(controller.createPartition(freeRow(), "/efi", "vfat", GIB, false));
+            editorStep(controller.createPartition(freeRow(), "/", "btrfs", 40 * GIB, false));
+            return;
+        }
+        // Windows' own ESP, kept as it is.
+        controller.assign(disk.partitions[0], "/efi", "vfat", false, false);
+        if (screenName === "manual-delete") {
+            controller.deletePartition(disk.partitions[1]);
+            return;
+        }
+        if (screenName === "manual-create") {
+            findItem(content, "partitionEditor").openFree = freeRow().id;
+            return;
+        }
+        // The old Linux goes; root, /home and swap take its place, encrypted with one password.
+        controller.deletePartition(disk.partitions[2]);
+        editorStep(controller.confirmDelete("DELETE") ? "" : "the typed DELETE was not taken");
+        controller.encryption = "encrypted";
+        controller.encryptionPassword = "account";
+        editorStep(controller.createPartition(freeRow(), "/", "btrfs", 40 * GIB, true));
+        editorStep(controller.createPartition(freeRow(), "/home", "ext4", 20 * GIB, true));
+        editorStep(controller.createPartition(freeRow(), "swap", "swap", 4 * GIB, true));
+    }
     function findItem(item: Item, name: string): Item {
         if (item.objectName === name)
             return item;
@@ -224,10 +268,12 @@ ShellRoot {
                     controller.login = "demo";
                     controller.layouts = ["us", "ru"];
                     controller.media = ["/run/media/live/LOGS"];
-                    if (["review", "alongside-review", "review-encrypted", "plan-errors", "install", "install-signatures", "install-updates", "install-step", "done", "done-restart", "done-restart-removable", "done-warning", "done-no-package-lists", "done-wifi-not-copied", "error-login-name", "error", "error-details", "error-real"].indexOf(test.screenName) >= 0) {
+                    if (["review", "alongside-review", "review-encrypted", "review-manual", "plan-errors", "install", "install-signatures", "install-updates", "install-step", "done", "done-restart", "done-restart-removable", "done-warning", "done-no-package-lists", "done-wifi-not-copied", "error-login-name", "error", "error-details", "error-real"].indexOf(test.screenName) >= 0) {
                         if (test.screenName === "review-encrypted") {
                             controller.encryption = "encrypted";
                         }
+                        if (test.screenName === "review-manual")
+                            test.stageEditor();
                         // Later pages start after the person has chosen an installation mode.
                         if (!controller.mode)
                             controller.mode = "erase";
@@ -325,7 +371,9 @@ ShellRoot {
                             controller.software = test.screenName === "software-minimal" ? "minimal" : "rich";
                             controller.step = "software";
                         } else
-                            controller.step = test.screenName.startsWith("disk-refused-") || ["manual", "manual-empty", "alongside", "disk-mbr", "disk-none"].indexOf(test.screenName) >= 0 ? "disk" : test.screenName === "welcome-bios" ? "welcome" : test.screenName;
+                            controller.step = test.screenName.startsWith("disk-refused-") || test.screenName.startsWith("manual") || ["alongside", "disk-mbr", "disk-none"].indexOf(test.screenName) >= 0 ? "disk" : test.screenName === "welcome-bios" ? "welcome" : test.screenName;
+                        if (test.editorScreens.indexOf(test.screenName) >= 0)
+                            test.stageEditor();
                         if (test.screenName === "manual-empty") {
                             // A disk with a partition table and no partitions yet.
                             controller.mode = "manual";
@@ -439,6 +487,29 @@ ShellRoot {
                 }
                 console.log("ERASE_IN_VIEW " + area.y + "+" + area.height + " in " + body.height);
             }
+            if (test.screenName === "manual-delete") {
+                // The typed confirmation: its field has the focus, never the destructive button.
+                const panel = test.findItem(content, "deleteConfirm-/dev/vda2");
+                const field = test.findItem(content, "deleteConfirmField-/dev/vda2");
+                const action = test.findItem(content, "deleteConfirmAction-/dev/vda2") as C.Button;
+                if (!panel || !panel.visible || !field?.activeFocus || !action || action.enabled) {
+                    console.error("Delete confirmation not shown as required");
+                    Qt.quit();
+                    return;
+                }
+                console.log("DELETE_CONFIRM_VISIBLE " + (test.findItem(panel, "installerCopy") as Text)?.text);
+            }
+            if (test.screenName === "manual-create") {
+                const form = test.findItem(content, "createForm-" + test.freeRow().id);
+                if (!form || !form.visible) {
+                    console.error("New partition form not shown");
+                    Qt.quit();
+                    return;
+                }
+                console.log("CREATE_FORM_VISIBLE");
+            }
+            if (test.editorScreens.indexOf(test.screenName) >= 0)
+                console.log("EDITOR_ROWS " + controller.editorRows.map(row => row.kind + (row.number ? row.number : "")).join(" "));
             if (test.screenName === "manual-empty") {
                 const hint = test.findItem(content, "noPartitions") as Text;
                 if (!hint || !hint.visible) {

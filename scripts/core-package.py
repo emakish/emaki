@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Build the emaki CLI reproducibly, or check a built binary for builder paths."""
 import argparse
 import os

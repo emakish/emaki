@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Boot chain of an installed system: GRUB defaults, initramfs hooks and where the disk key lives."""
 import unittest
 

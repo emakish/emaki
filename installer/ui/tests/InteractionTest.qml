@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls as C
@@ -13,21 +15,38 @@ ShellRoot {
     property string selected: ""
     property var sent: []
     property var lastPlan: null
-    property bool luksRecovery: false
-    property bool luksEditorStarted: false
+    property var lastProbe: null
+    // editor_fixture.py's disk (Windows' ESP, Windows, an old Linux, free space), as the worker sends it.
+    readonly property var editorInventory: ["__EDITOR_INVENTORY__"]
+    // The disks and choice before the editor's stage, restored after it.
+    property var savedInventory: null
+    property string savedDisk: ""
     readonly property string luksReason: "__ENCRYPTED_WARNING__"
     readonly property string unidentifiedReason: "__UNIDENTIFIED_WARNING__"
     readonly property string apfsReason: "__APFS_WARNING__"
     readonly property var wifiNetworks: ["__WIFI_NETWORKS__"]
     readonly property string wifiFailure: "Could not connect. Check the password."
     readonly property var encryptedCases: ["__ENCRYPTED_CASES__"]
-    readonly property var destructiveTexts: ["Erase disk and install", "Install", "Open GParted", "Cancel after this phase", "Restart now"]
+    readonly property var destructiveTexts: ["Erase disk and install", "Install", "Delete partition", "Cancel after this phase", "Restart now"]
     function check(ok: bool, message: string): void {
         if (!ok) {
             failed = true;
             console.error("ASSERTION_FAILED " + message);
-            Qt.quit();
+            // Unwind the stage before shutdown: another wait here would process teardown
+            // while the timer's signal handler still owns the view.
+            throw new Error(message);
         }
+    }
+    function settleLayout(message: string): void {
+        // A timer delay does not guarantee a frame. Polish positions the page and its
+        // scrollbar; deferred focus/warning reveals can then schedule another polish.
+        for (let attempt = 0; attempt < 10; ++attempt) {
+            check(input.waitForPolish(content.Window.window, 5000), message + ": window layout settles");
+            input.wait(0);
+            if (!input.isPolishScheduled(content.Window.window))
+                return;
+        }
+        check(false, message + ": deferred layout settles");
     }
     function findItem(item: Item, name: string): Item {
         if (item.objectName === name)
@@ -52,9 +71,20 @@ ShellRoot {
         const viewport = (find("installerBody") as C.ScrollView).contentItem as Flickable;
         check(inside(item, viewport), message + " and the whole control is inside the visible page (" + item.objectName + ", " + JSON.stringify(item.mapToItem(viewport, 0, 0, item.width, item.height)) + ", viewport=" + viewport.width + "x" + viewport.height + ", contentY=" + viewport.contentY + ", contentHeight=" + viewport.contentHeight + ")");
     }
-    // A button that erases, formats, installs, cancels, opens the partition editor or restarts.
+    // A button that erases, deletes a partition, installs, cancels or restarts.
     function isDestructive(item: var): bool {
-        return destructiveTexts.indexOf(item.text) >= 0 && (item.text !== "Open GParted" || item.destructive === true);
+        return destructiveTexts.indexOf(item.text) >= 0;
+    }
+    // Real Tab presses until item has the focus, then Return on it, as a keyboard user does.
+    function tabAndPress(item: var, message: string): void {
+        tabTo(item, message);
+        input.keyClick(Qt.Key_Return);
+        check(input.waitForPolish(content.Window.window, 30000), message + ": the page settles");
+        input.wait(40);
+    }
+    function typeText(value: string): void {
+        for (const character of value)
+            input.keyClick(character);
     }
     function focusedDestructive(item: var): string {
         if (item.activeFocus && item.visible && isDestructive(item))
@@ -129,10 +159,10 @@ ShellRoot {
         // scrolling before that clamps to the old, shorter content and leaves the item below
         // the body, where a click lands on the footer instead.
         for (let attempt = 0; attempt < 10; attempt++) {
-            input.wait(30);
+            settleLayout("before scrolling " + item.objectName);
             const top = item.mapToItem(flick.contentItem, 0, 0).y;
             flick.contentY = Math.max(0, Math.min(top - 12, flick.contentHeight - flick.height));
-            input.wait(30);
+            settleLayout("after scrolling " + item.objectName);
             const area = item.mapToItem(flick, 0, 0, item.width, item.height);
             if (area.y >= -0.5 && area.y + area.height <= flick.height + 0.5)
                 return;
@@ -214,6 +244,7 @@ ShellRoot {
         check(controller.joinFailed && controller.helperBusy && controller.helperOp === "network", "failure is visible while the delayed rescan is running");
     }
     function warningInViewport(message: string): void {
+        settleLayout(message);
         const field = find("encryptedEraseConfirmation");
         const block = field.parent;
         const viewport = (find("installerBody") as C.ScrollView).contentItem as Flickable;
@@ -244,10 +275,6 @@ ShellRoot {
         mockTransport: true
         helpersEnabled: false
         keyboardConfirmMs: 300
-        onPartitioningChanged: {
-            if (test.luksRecovery && partitioning)
-                test.luksEditorStarted = true;
-        }
         onKeyboardOutbound: request => {
             test.keyboardRequests = test.keyboardRequests.concat([request]);
             if (test.niriMode === "hold")
@@ -277,17 +304,11 @@ ShellRoot {
             })
         onOutbound: message => {
             test.sent = test.sent.concat([message.type]);
+            if (message.type === "probe")
+                test.lastProbe = message;
             if (message.type === "plan") {
                 test.check(message.config.hibernation === false, "mouse and keyboard interactions never send a hibernation plan");
                 test.lastPlan = JSON.parse(JSON.stringify(message.config));
-            }
-            if (test.luksRecovery && message.type === "probe" && controller.editorProbing) {
-                Qt.callLater(function () {
-                    controller.receive(Object.assign({}, controller.session.inventory, {
-                        type: "inventory",
-                        id: message.id
-                    }));
-                });
             }
             if (message.type === "set_timezone") {
                 test.selected = message.timezone;
@@ -332,8 +353,18 @@ ShellRoot {
             if (test.failed || inside)
                 return;
             inside = true;
-            run();
-            inside = false;
+            try {
+                run();
+            } catch (error) {
+                if (!test.failed) {
+                    test.failed = true;
+                    console.error("ASSERTION_FAILED stage " + test.stage + ": " + error);
+                }
+            } finally {
+                inside = false;
+            }
+            if (test.failed)
+                Qt.callLater(Qt.quit);
         }
         function run(): void {
             if (test.stage === 0) {
@@ -437,21 +468,84 @@ ShellRoot {
                 const search = test.findItem(content, "zoneSearch") as C.TextField;
                 search.text = "no match";
                 const map = test.findItem(content, "timezoneMap") as UI.TimezoneMap;
-                input.mouseClick(map, (13.4 + 180) / 360 * map.width, (90 - 52.5) / 180 * map.height);
+                // The map keeps the Mercator proportions of its asset.
+                const frame = test.findItem(map, "timezoneMapFrame");
+                test.check(Math.abs(frame.width / frame.height - map.geometry.width / map.geometry.height) < .02, "the map is not stretched (" + frame.width + "x" + frame.height + ")");
+                // The automatic guess selects its zone and the map shows it.
+                controller.timezoneEdited = false;
+                controller.acceptTimezoneGuess("Asia/Kathmandu");
+                test.check(map.timezone === "Asia/Kathmandu" && test.findItem(map, "timezoneMarker").visible, "the automatic guess is shown on the map");
+                // Hovering names the zone and its offset; a click picks it.
+                const kathmandu = map.pointAt(85.32, 27.72);
+                input.mouseMove(map, kathmandu.x, kathmandu.y);
+                test.check(map.hovered === "Asia/Kathmandu" && map.caption === "Kathmandu, Nepal · UTC+5:45", "hover caption: " + map.caption);
+                const berlin = map.pointAt(13.4, 52.5);
+                input.mouseClick(map, berlin.x, berlin.y);
                 test.check(controller.timezone === "Europe/Berlin" && search.text === "", "map click synchronizes selection and clears search");
                 const list = test.findItem(content, "zoneList") as ListView;
                 test.check(list.currentIndex === 1, "map click scrolls list to selected zone");
-                controller.step = "you";
+                // Over a zone this system lacks (Tokyo), the nearest offered zone is picked.
+                const tokyo = map.pointAt(139.69, 35.69);
+                input.mouseClick(map, tokyo.x, tokyo.y);
+                test.check(controller.timezone !== "Asia/Tokyo" && controller.catalog.zones.indexOf(controller.timezone) >= 0, "a missing zone falls back to the nearest offered one (" + controller.timezone + ")");
+                // Keyboard: the map is in the Tab chain; arrows move its cursor, Enter picks.
+                controller.chooseTimezone("Europe/Berlin");
+                test.tabTo(map, "the map takes keyboard focus");
+                test.check(map.hovered === "Europe/Berlin" && test.findItem(map, "timezoneCursor").visible, "the keyboard cursor starts on the chosen zone (" + map.hovered + ")");
+                for (let i = 0; i < 9; ++i)
+                    input.keyClick(Qt.Key_Left, Qt.ShiftModifier);
+                const target = map.hovered;
+                test.check(!!target && target !== "Europe/Berlin", "arrows move the cursor to another zone (" + target + ")");
+                input.keyClick(Qt.Key_Return);
+                test.check(controller.timezone === target, "Enter picks the zone under the cursor (" + controller.timezone + ")");
+                // Leave as a person can: only once the live clock shows the chosen zone.
+                for (let waited = 0; (controller.applyingTimezone || controller.timezoneInfo?.timezone !== controller.timezone) && waited < 3000; waited += 20)
+                    input.wait(20);
+                test.check(!controller.applyingTimezone && controller.timezoneInfo?.timezone === controller.timezone, "the picked zone's live clock is applied");
+                const attribution = test.find("mapAttribution");
+                test.check(!!attribution, "map attribution is an actionable control");
+                if (!attribution)
+                    return;
+                test.tabTo(attribution, "map attribution takes keyboard focus");
+                input.keyClick(Qt.Key_Return);
+                input.wait(100);
+                const legal = test.findItem(content.Window.window.contentItem, "mapLegalText") as C.TextArea;
+                test.check(!!legal && legal.visible && legal.activeFocus, "Enter opens and focuses local map legal text");
+                if (!legal)
+                    return;
+                for (let waited = 0; legal.text.indexOf("Open Database License (ODbL) v1.0") < 0 && waited < 3000; waited += 20)
+                    input.wait(20);
+                test.check(legal.text.includes("© OpenStreetMap contributors") && legal.text.includes("openstreetmap.org/copyright") && legal.text.includes("Natural Earth") && legal.text.includes("public domain") && legal.text.includes("Open Database License (ODbL) v1.0"), "local legal reader contains both dataset notices and the full licence");
+                input.keyClick(Qt.Key_End, Qt.ControlModifier);
+                input.wait(40);
+                test.check(legal.cursorPosition === legal.length, "keyboard reaches the end of the licence");
+                input.keyClick(Qt.Key_Escape);
+                input.wait(40);
+                test.check(!legal.visible && attribution.activeFocus, "Escape closes legal text and restores attribution focus");
+                input.mouseClick(attribution, attribution.width / 2, attribution.height / 2);
+                input.wait(40);
+                test.check(legal.visible, "pointer opens local legal text");
+                const closeLegal = test.findItem(content.Window.window.contentItem, "closeMapLegal");
+                input.mouseClick(closeLegal, closeLegal.width / 2, closeLegal.height / 2);
+                input.wait(40);
+                test.check(!legal.visible && attribution.activeFocus, "Close returns to the map attribution");
+                // Continue takes the focus before a step changes; the map never holds it then.
+                search.forceActiveFocus();
+                input.wait(40);
             } else if (test.stage === 4) {
+                // Create the page in this event turn so the geometry check also exercises
+                // the pending first layout, without relying on the stage timer's delay.
+                controller.step = "you";
                 const fullName = test.findItem(content, "fullName");
                 test.check(!!fullName && fullName.activeFocus, "You starts in the Full name field");
                 const loginField = test.findItem(content, "loginField");
                 if (!loginField)
                     return test.check(false, "Login field is named loginField");
+                test.settleLayout("before changing Full name");
                 const loginX = loginField.x;
                 const loginWidth = loginField.width;
                 controller.fullName = "N".repeat(60);
-                input.wait(100);
+                test.settleLayout("after changing Full name");
                 test.check(loginField.x === loginX && loginField.width === loginWidth, "a long full name does not move the Login field (" + loginX + "/" + loginWidth + " -> " + loginField.x + "/" + loginField.width + ")");
                 test.check(Math.abs(fullName.width - loginField.width) <= 1, "the two form columns are equal (" + fullName.width + " / " + loginField.width + ")");
                 const passwords = ["userPassword", "confirmPassword"].map(name => test.findItem(content, name).width);
@@ -753,9 +847,9 @@ ShellRoot {
                 test.check(controller.canAlongside && controller.alongsideSizeValid, "the Windows disk offers alongside");
                 controller.chooseDisk("/dev/vdb");
                 test.check(controller.mode === "" && test.reason() === "Choose how to install on this disk.", "a disk without Windows requires a new explicit mode after alongside (" + controller.mode + ", " + test.reason() + ")");
-                // Manual needs a GPT disk (planner.manual_partitions): an MBR disk says so on the
-                // choice; a disk without a table can still get one from GParted.
-                const tables = [["/dev/vdc", "dos"], ["/dev/vdd", null], ["/dev/vde", "gpt"]];
+                // Manual needs a GPT disk (planner.manual_partitions): an MBR disk with partitions
+                // says so on the choice; an empty disk gets a new GPT table in the partition editor.
+                const tables = [["/dev/vdc", "dos"], ["/dev/vdd", null], ["/dev/vde", "gpt"], ["/dev/vdf", "dos"]];
                 controller.session.inventory = {
                     memory_bytes: 16 * 1073741824,
                     uefi: true,
@@ -766,7 +860,16 @@ ShellRoot {
                                 bus: "virtio",
                                 size_bytes: 100 * 1073741824,
                                 partition_table: row[1],
-                                partitions: []
+                                partitions: row[0] === "/dev/vdc" ? [
+                                    {
+                                        id: "/dev/vdc1",
+                                        path: "/dev/vdc1",
+                                        number: 1,
+                                        fs: "ntfs",
+                                        size_bytes: 1073741824,
+                                        start_bytes: 1048576
+                                    }
+                                ] : []
                             }))
                 };
                 controller.publish();
@@ -776,7 +879,7 @@ ShellRoot {
                 const manual = test.find("manualChoice");
                 for (const row of tables) {
                     controller.chooseDisk(row[0]);
-                    const mbr = row[1] === "dos";
+                    const mbr = row[0] === "/dev/vdc";
                     test.check(manual.enabled === !mbr && (manual.detail === "Manual installation needs a GPT disk.") === mbr, "Manual on a " + row[1] + " disk: enabled " + manual.enabled + ", " + manual.detail);
                 }
                 controller.mode = "manual";
@@ -1049,29 +1152,96 @@ ShellRoot {
                 test.check(controller.software === "minimal", "Return on returning to Software keeps the chosen Minimal (" + controller.software + ")");
                 test.check(test.findItem(content, "softwareMinimal").activeFocus, "Software starts on the chosen Minimal");
                 controller.software = "rich";
-                // Never start a real partition editor from this test.
-                controller.partitionEditorCommand = ["true"];
-                controller.session.inventory = Object.assign({}, controller.session.inventory, {
-                    uefi: true
-                });
+                // The partition editor on editor_fixture.py's disk, by keyboard and pointer.
+                test.savedInventory = controller.session.inventory;
+                test.savedDisk = controller.diskId;
+                controller.session.inventory = JSON.parse(JSON.stringify(test.editorInventory));
                 controller.publish();
+                controller.chooseDisk("/dev/vda");
                 controller.mode = "manual";
-                controller.manualAssignments = false;
-                controller.gpartedWarning = false;
                 controller.step = "disk";
             } else if (test.stage === 28) {
+                const GIB = 1073741824;
                 test.check(test.focusedDestructive(content) === "", "disk page opens without focus on a destructive button");
-                const open = test.findButton(content, "Open GParted", false);
-                if (!open)
-                    return test.check(false, "first Open GParted button found");
-                open.forceActiveFocus();
+                const proceed = test.find("continueButton");
+                input.mouseClick(proceed, proceed.width / 2, proceed.height / 2);
+                test.check(controller.session.probing && !controller.manualAssignments, "Continue waits for a fresh disk inventory");
+                controller.receive(Object.assign({}, test.editorInventory, {
+                    type: "inventory",
+                    id: test.lastProbe.id
+                }));
+                test.check(input.waitForPolish(content.Window.window, 30000), "the editor settles after Continue");
+                test.check(controller.manualAssignments && controller.step === "disk", "Continue opens the partition editor");
+                test.check(!!test.find("partitionBar")?.visible && test.find("segment-/dev/vda2")?.visible, "the editor shows the disk as a bar");
+                // Windows: Delete asks for the typed confirmation; Keep it takes nothing away.
+                test.tabAndPress(test.find("deletePartition-/dev/vda2"), "Tab reaches Delete on the Windows partition");
+                const field = test.find("deleteConfirmField-/dev/vda2");
+                test.check(controller.deleteRequest?.id === "/dev/vda2" && controller.partitionEdits.delete.length === 0, "Delete on Windows asks first and deletes nothing");
+                test.check(!!field && field.activeFocus && test.focusedDestructive(content) === "", "the confirmation field has the focus, never the destructive button");
+                test.typeText("delete");
+                const confirm = test.find("deleteConfirmAction-/dev/vda2");
+                test.check(!confirm.enabled, "a lowercase delete does not enable deletion");
+                test.tabAndPress(test.findButton(test.find("deleteConfirm-/dev/vda2"), "Keep it", false), "Tab reaches Keep it");
+                test.check(!controller.deleteRequest && controller.partitionEdits.delete.length === 0, "Keep it keeps Windows");
+                // The old Linux: DELETE typed, Tab to the destructive button, Return.
+                test.tabAndPress(test.find("deletePartition-/dev/vda3"), "Tab reaches Delete on the old Linux partition");
+                test.typeText("DELETE");
+                input.keyClick(Qt.Key_Tab);
+                input.keyClick(Qt.Key_Tab);
+                test.check(test.find("deleteConfirmAction-/dev/vda3").activeFocus, "two Tabs reach Delete partition");
                 input.keyClick(Qt.Key_Return);
-                test.check(controller.gpartedWarning, "Return on the focused first Open GParted shows the warning");
-                test.check(test.focusedDestructive(content) === "", "the warning's Open GParted does not take focus (" + test.focusedDestructive(content) + ")");
+                test.check(input.waitForPolish(content.Window.window, 30000), "the editor settles after the deletion");
+                test.check(controller.partitionEdits.delete.length === 1 && controller.partitionEdits.delete[0].confirm?.system === "Linux", "the typed DELETE deletes the old Linux in the plan (" + JSON.stringify(controller.partitionEdits.delete) + ")");
+                test.check(!!test.find("keepPartition-/dev/vda3")?.visible, "the deleted partition stays listed with Keep it");
+                // New root in the freed space: New partition, the form by keyboard, Return in the size.
+                const free = controller.editorRows.find(row => row.kind === "free");
+                test.tabAndPress(test.find("newPartition-" + free.id), "Tab reaches New partition in the free space");
+                test.check(test.find("createForm-" + free.id).visible && test.find("createUse-" + free.id).activeFocus, "the form opens with the focus on its use");
+                const size = test.find("createSize-" + free.id);
+                test.tabTo(size, "Tab reaches the size");
+                test.check(size.text === String(Math.floor(free.size / 1048576 / 1024 * 100) / 100), "the size starts at the whole free space, two decimals (" + size.text + ")");
+                input.keyClick(Qt.Key_A, Qt.ControlModifier);
+                test.typeText("12");
                 input.keyClick(Qt.Key_Return);
-                test.check(!controller.partitioning && !controller.editorPending, "a second Return does not open the partition editor");
-                controller.gpartedWarning = false;
+                test.check(input.waitForPolish(content.Window.window, 30000), "the form settles after Return");
+                test.check(test.find("createError-" + free.id).text === "Root needs at least " + (controller.rootMinimum / GIB).toFixed(2) + " GiB.", "a too small root is refused in the form (" + test.find("createError-" + free.id).text + ")");
+                input.keyClick(Qt.Key_A, Qt.ControlModifier);
+                test.typeText("40");
+                input.keyClick(Qt.Key_Return);
+                test.check(input.waitForPolish(content.Window.window, 30000), "the editor settles after adding root");
+                test.check(controller.partitionEdits.create.length === 1 && controller.partitionEdits.create[0].size_bytes === 40 * GIB && controller.mounts.some(m => m.partition_id === "new-1" && m.mountpoint === "/" && m.fs === "btrfs" && m.format), "Return adds a 40 GiB btrfs root (" + JSON.stringify(controller.mounts) + ")");
+                test.check(test.find("removeNew-new-1")?.visible, "the new partition is listed with Remove");
+                // Windows' ESP kept at /efi: the arrow key in its use, never formatted.
+                const espUse = test.find("mountSelect-/dev/vda1");
+                test.tabTo(espUse, "Tab reaches the ESP's use");
+                input.keyClick(Qt.Key_Down);
+                test.check(controller.mounts.some(m => m.partition_id === "/dev/vda1" && m.mountpoint === "/efi" && m.format === false), "Down keeps Windows' ESP at /efi without formatting (" + JSON.stringify(controller.mounts) + ")");
+                test.check(!test.find("formatCheck-/dev/vda1").enabled, "another system's ESP cannot be formatted");
+                test.check(!test.find("mountSelect-/dev/vda2").enabled, "Windows itself cannot be used");
+                // A swap partition by pointer in the space left.
+                const rest = controller.editorRows.find(row => row.kind === "free");
+                const open = test.find("newPartition-" + rest.id);
+                test.reveal(open);
+                input.mouseClick(open, open.width / 2, open.height / 2);
+                const use = test.find("createUse-" + rest.id);
+                use.currentIndex = 3;
+                test.check(use.currentValue === "swap", "the use list offers swap");
+                const add = test.find("createAction-" + rest.id);
+                test.reveal(add);
+                input.mouseClick(add, add.width / 2, add.height / 2);
+                test.check(controller.partitionEdits.create.some(row => row.type === "swap" && row.size_bytes === Math.min(rest.size, 4 * GIB)), "left as shown, the size is the exact default (" + JSON.stringify(controller.partitionEdits.create) + ")");
+                test.check(controller.mounts.some(m => m.mountpoint === "swap" && m.fs === "swap" && m.format), "a click adds swap (" + JSON.stringify(controller.mounts) + ")");
+                test.check(controller.manualReady && controller.needsAgreement && test.find("continueButton").enabled, "the editor's layout is complete; its deletion asks for the agreement");
+                // interactions.py runs the real planner on what the window would send.
+                console.log("EDITOR_PLAN " + JSON.stringify({
+                    mounts: controller.mounts,
+                    partitioning: controller.partitionEdits
+                }));
                 controller.mode = "erase";
+                controller.manualAssignments = false;
+                controller.session.inventory = test.savedInventory;
+                controller.publish();
+                controller.chooseDisk(test.savedDisk);
                 controller.step = "software";
             } else if (test.stage === 29) {
                 const review = test.findButton(content, "Review installation", false);
@@ -1261,8 +1431,15 @@ ShellRoot {
                 const body = test.findItem(content, "installerBody") as C.ScrollView;
                 const where = "list " + list.height + ", page " + body.contentHeight + "/" + body.height;
                 test.check(list.height >= 108, "the zone list keeps its minimum (" + where + ")");
+                // Free page height goes to the map up to its full Mercator height, then to the list.
+                const map = test.findItem(content, "timezoneMap") as UI.TimezoneMap;
+                const full = map.width * map.geometry.height / map.geometry.width;
+                test.check(map.height >= full - 1 || list.height <= 108.5, "the list grows only once the map has its full height (map " + map.height + "/" + full + ", " + where + ")");
+                // Only a window too small for both minimums scrolls the page.
+                if (map.height > 140.5)
+                    test.check(body.contentHeight <= body.height + 0.5, "the map and the list fit the page (" + where + ")");
                 if (window.height >= 886)
-                    test.check(list.height > 108, "a tall window gives the free page height to the zone list (" + where + ")");
+                    test.check(map.height > 260, "a tall window gives the free page height to the map (map " + map.height + "/" + full + ", " + where + ")");
                 // At 960x640 the page already ended 9 px above the body, so the list grows by that much.
                 if (list.height > 108)
                     test.check(body.contentHeight <= body.height + 0.5 && body.contentHeight > body.height - 1, "a grown zone list fills the body without pushing the page past it (" + where + ")");
@@ -1525,7 +1702,6 @@ ShellRoot {
                 controller.diskId = "";
                 controller.mode = "erase";
                 controller.manualAssignments = false;
-                controller.partitionEditorCommand = ["/usr/bin/true"];
                 controller.publish();
                 controller.step = "disk";
             } else if (test.stage === 57) {
@@ -1562,23 +1738,24 @@ ShellRoot {
                 input.mouseClick(manual, manual.width / 2, manual.height / 2);
                 test.check(controller.mode === "manual", "Manual is available without a selectable disk");
             } else if (test.stage === 58) {
-                const open = test.findButton(content, "Open GParted", false);
-                test.check(!!open && open.enabled, "no disk selection does not disable Open GParted");
-                test.check(input.waitForPolish(content.Window.window, 30000), "the manual page layout settles before scrolling");
-                test.reveal(open);
-                test.check(input.waitForPolish(content.Window.window, 30000), "the manual page layout settles after scrolling");
-                const viewport = (test.find("installerBody") as C.ScrollView).contentItem as Flickable;
-                test.check(test.inside(open, viewport), "Open GParted is inside the visible page before clicking");
-                input.mouseClick(open, open.width / 2, open.height / 2);
-                test.check(controller.gpartedWarning, "the editor still requires its destructive-action warning");
-                const confirm = test.findButton(content, "Open GParted", true);
-                test.reveal(confirm);
-                test.luksRecovery = true;
-                confirm.forceActiveFocus();
-                input.keyClick(Qt.Key_Return);
+                // A locked volume over the whole disk: the editor makes no new table there and
+                // says how to clear it (Erase, with its typed ERASE).
+                controller.chooseDisk("/dev/vda");
+                controller.mode = "manual";
+                controller.next();
+                test.check(controller.session.probing && !controller.manualAssignments, "Manual rereads the locked disk before opening the editor");
+                controller.receive(Object.assign({}, controller.session.inventory, {
+                    type: "inventory",
+                    id: test.lastProbe.id
+                }));
+                test.check(input.waitForPolish(content.Window.window, 30000), "the locked disk editor settles after its fresh inventory");
+                test.check(controller.manualAssignments, "Manual opens the editor on the locked disk");
+                const hint = test.find("noPartitions");
+                test.check(hint.visible && hint.text === "This disk has no partitions; it holds a locked volume. Go back and choose Erase disk to clear it.", "the editor explains the locked disk (" + hint.text + ")");
+                test.check(!test.find("newTableAction").visible, "no new partition table over a locked volume");
             } else if (test.stage === 59) {
-                test.check(test.luksEditorStarted, "the fresh probe starts the harmless editor stand-in (" + controller.helperMessage + ", " + controller.editorProbing + ", " + controller.session.probing + ")");
-                test.check(controller.editorPath === "" && JSON.stringify(controller.partitionEditorArgv) === '["/usr/bin/true"]', "without a selection the editor can show all disks, including the locked encrypted disk");
+                controller.manualAssignments = false;
+                controller.mode = "erase";
             } else if (test.stage === 60) {
                 controller.session.probing = false;
                 controller.session.inventory = {
@@ -2055,6 +2232,10 @@ ShellRoot {
                 controller.session.running = false;
                 controller.session.outcome = "done";
                 controller.session.doneWarnings = ["The update failed. Emaki is installed."];
+                controller.session.secureBoot = {
+                    password: "01234567",
+                    espLabel: "EMAKI"
+                };
                 controller.catalog = Object.assign({}, controller.catalog, {
                     boot_removable: true
                 });
@@ -2062,6 +2243,15 @@ ShellRoot {
                 controller.step = "done";
             } else if (test.stage === 79) {
                 test.check(test.find("doneWarnings").text === "The update failed. Emaki is installed.", "update warnings appear on the completion page");
+                test.check(test.find("secureBootSteps").visible && test.find("secureBootPassword").text === "01234567", "the Secure Boot password and steps appear on the completion page");
+                const recovery = test.find("secureBootRecovery");
+                test.check(!!recovery && recovery.text.indexOf("Choose Enroll key from disk, then EMAKI, EFI, Emaki, a and emaki-machine-key.cer") >= 0, "an EFI partition the installer formatted is named by its label (" + recovery?.text + ")");
+                controller.session.secureBoot = {
+                    password: "01234567",
+                    espLabel: null
+                };
+                controller.publish();
+                test.check(!!recovery && recovery.text.indexOf("Choose Enroll key from disk, then the disk entry, EFI, Emaki, a and emaki-machine-key.cer") >= 0, "a shared EFI partition keeps the generic entry name (" + recovery?.text + ")");
                 const before = test.sent.filter(x => x === "reboot").length;
                 controller.requestReboot();
                 test.check(!controller.removeUsbPrompt && test.sent.filter(x => x === "reboot").length === before, "USB removal waits for restart preparation");

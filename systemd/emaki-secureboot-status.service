@@ -1,0 +1,22 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# The machine key is root-only, so root writes what the session may know (Secure Boot on or
+# off, whether a key exists, its MokManager state) to /run/emaki-secureboot.json.
+# Logins wait for it: greetd and getty start after systemd-user-sessions, which also removes
+# /run/nologin for every other login, so a session never reads the copy before it exists. A
+# oneshot has no start timeout by default; a hung mokutil or sbverify must not keep logins
+# closed, hence TimeoutStartSec.
+[Unit]
+Description=Record the Emaki Secure Boot state for the session
+After=local-fs.target
+Before=systemd-user-sessions.service
+RequiresMountsFor=/var/lib/emaki /boot
+
+[Service]
+Type=oneshot
+ExecStart=@EMAKI_BINDIR@/emaki-secureboot status --write
+TimeoutStartSec=30s
+UMask=0022
+
+[Install]
+WantedBy=multi-user.target

@@ -1,5 +1,8 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Controls
 
 FocusScope {
     id: prompt
@@ -11,7 +14,7 @@ FocusScope {
     signal keepRequested
     signal dismissed
     implicitWidth: 460
-    implicitHeight: content.implicitHeight + 48
+    implicitHeight: content.implicitHeight + actions.implicitHeight + 72
     function takeFocus(): void {
         later.forceActiveFocus();
     }
@@ -32,67 +35,86 @@ FocusScope {
         radius: Metrics.panelRadius
         border.color: LiquidPalette.flatDropRim
     }
-    Column {
-        id: content
+    Flickable {
+        id: scroll
+        objectName: "snapshotScroll"
         anchors {
             left: parent.left
             right: parent.right
             top: parent.top
+            bottom: actions.top
             margins: 24
         }
-        spacing: 16
-        Text {
-            width: parent.width
-            text: prompt.succeeded ? "This state is ready" : "You are using a recovery snapshot"
-            wrapMode: Text.WordWrap
-            font.family: ShellPalette.uiFont
-            font.pixelSize: 20
-            font.weight: Font.DemiBold
-            color: LiquidPalette.ink
+        clip: true
+        contentWidth: width
+        contentHeight: content.implicitHeight
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: ScrollBar {
+            policy: ScrollBar.AsNeeded
         }
-        Text {
-            width: parent.width
-            text: prompt.succeeded ? "Restart to use the restored system. Your previous system has been kept for undo." : (prompt.automaticMessage ? prompt.automaticMessage + "\n\n" : "") + "Snapshot " + prompt.snapshot + " is temporary until you keep it. Keeping it restores the original snapshot, including apps and system settings. Changes made during this recovery session are discarded. Your home files stay as they are."
-            wrapMode: Text.WordWrap
-            font.family: ShellPalette.uiFont
-            font.pixelSize: 14
-            color: LiquidPalette.ink
-        }
-        Text {
-            width: parent.width
-            visible: prompt.busy || prompt.error !== ""
-            text: prompt.busy ? "Keeping this state…" : prompt.error
-            wrapMode: Text.WrapAnywhere
-            font.family: ShellPalette.uiFont
-            font.pixelSize: 14
-            color: prompt.error ? LiquidPalette.danger : LiquidPalette.plateDim
-        }
-        Row {
-            anchors.right: parent.right
-            spacing: 12
-            Action {
-                id: later
-                objectName: "snapshotLater"
-                label: prompt.succeeded ? "Done" : "Not now"
-                enabled: !prompt.busy
-                KeyNavigation.tab: keep.visible ? keep : later
-                KeyNavigation.backtab: keep.visible ? keep : later
-                onClicked: prompt.dismissed()
+        Column {
+            id: content
+            width: scroll.width - 12
+            spacing: 16
+            Text {
+                width: parent.width
+                text: prompt.succeeded ? "This state is ready" : "You are using a recovery snapshot"
+                wrapMode: Text.WordWrap
+                font.family: ShellPalette.uiFont
+                font.pixelSize: 20
+                font.weight: Font.DemiBold
+                color: LiquidPalette.ink
             }
-            Action {
-                id: keep
-                objectName: "snapshotKeep"
-                label: "Keep this state"
-                visible: !prompt.succeeded
-                enabled: !prompt.busy
-                accent: true
-                KeyNavigation.tab: later
-                KeyNavigation.backtab: later
-                onClicked: prompt.keepRequested()
+            Text {
+                width: parent.width
+                text: prompt.succeeded ? "Restart to use the restored system. Your previous system has been kept for undo." : (prompt.automaticMessage ? prompt.automaticMessage + "\n\n" : "") + "Snapshot " + prompt.snapshot + " is temporary until you keep it. Keeping it restores the original snapshot, including apps and system settings. Changes made during this recovery session are discarded. Your home files stay as they are."
+                wrapMode: Text.WordWrap
+                font.family: ShellPalette.uiFont
+                font.pixelSize: 14
+                color: LiquidPalette.ink
+            }
+            Text {
+                width: parent.width
+                visible: prompt.busy || prompt.error !== ""
+                text: prompt.busy ? "Keeping this state…" : prompt.error
+                wrapMode: Text.WrapAnywhere
+                font.family: ShellPalette.uiFont
+                font.pixelSize: 14
+                color: prompt.error ? LiquidPalette.danger : LiquidPalette.plateDim
             }
         }
     }
-    component Action: Rectangle {
+    Flow {
+        id: actions
+        width: Math.min(parent.width - 48, later.width + (keep.visible ? keep.width + spacing : 0))
+        anchors {
+            right: parent.right
+            bottom: parent.bottom
+            margins: 24
+        }
+        spacing: 12
+        PromptAction {
+            id: later
+            objectName: "snapshotLater"
+            label: prompt.succeeded ? "Done" : "Not now"
+            enabled: !prompt.busy
+            KeyNavigation.tab: keep.visible ? keep : later
+            KeyNavigation.backtab: keep.visible ? keep : later
+            onClicked: prompt.dismissed()
+        }
+        PromptAction {
+            id: keep
+            objectName: "snapshotKeep"
+            label: "Keep this state"
+            visible: !prompt.succeeded
+            enabled: !prompt.busy
+            accent: true
+            KeyNavigation.tab: later
+            KeyNavigation.backtab: later
+            onClicked: prompt.keepRequested()
+        }
+    }
+    component PromptAction: Rectangle {
         id: action
         required property string label
         property bool accent: false
@@ -104,6 +126,8 @@ FocusScope {
         FocusRing {
             shown: action.activeFocus
             strong: action.accent
+            // The accent button sits on the plate: the rim's outer row faces the plate.
+            outerInk: LiquidPalette.focusOuterOnAccent
             radius: action.radius
         }
         opacity: enabled ? 1 : .5

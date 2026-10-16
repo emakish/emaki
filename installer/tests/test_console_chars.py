@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Which password characters the text console types with the same keys as the login screen.
 
 latin_layouts.CONSOLE_CHARS is generated here and checked against what the tools give now:

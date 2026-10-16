@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -13,13 +15,14 @@ Scope {
     property var observation: ({})
     property bool closed: false
     property bool completionEmitted: false
+    property bool drained: false
     property int observerAttempts: 0
     property string observerStderr: ""
     readonly property bool visibleCover: valid && context.active === true && !closed
     signal revealing
     signal completed
     function event(phase: string, detail: var): void {
-        console.log("EMAKI_SESSION_COVER " + JSON.stringify(Object.assign({
+        console.info("EMAKI_SESSION_COVER " + JSON.stringify(Object.assign({
             phase: phase,
             handoffAtMs: root.context.visual?.createdMs || 0,
             atMs: Date.now(),
@@ -52,6 +55,14 @@ Scope {
         completionEmitted = true;
         if (observer.running)
             observer.signal(9);
+        // Warning level: the session filters debug lines, and a login without its pour-down
+        // must be visible in a field log (G9: no log could say why one was missing).
+        if (!drained)
+            console.warn("EMAKI_SESSION_COVER " + JSON.stringify({
+                phase: "no-drain",
+                loaded: context.active === true,
+                atMs: Date.now()
+            }));
         event("finished", {});
         finishReport.running = true;
         completed();
@@ -79,6 +90,7 @@ Scope {
         desktopReady: root.observation.ready === true
         onReleaseCover: release.running = true
         onDrainStarted: reason => {
+            root.drained = true;
             root.revealing();
             root.event("drain-" + reason, {});
             drainReport.command = [Platform.python, "-I", "-B", Quickshell.shellPath("helpers/session-start.py"), "drain", root.token, reason];

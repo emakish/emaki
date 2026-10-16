@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Live clock validation and offline software selection, without host mutations."""
 from datetime import datetime
 import io

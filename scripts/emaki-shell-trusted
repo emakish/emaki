@@ -28,6 +28,8 @@ QS = '@EMAKI_QS@'
 QMLDIR = Path('@EMAKI_QMLDIR@')
 QT_PLUGINSDIR = Path('@EMAKI_QT_PLUGINSDIR@')
 FIXED_PATH = '@EMAKI_TRUSTED_PATH@'
+HANDOFF_MARKERS = {'EMAKI_LOGIN_HANDOFF', 'EMAKI_SESSION_START',
+                   'EMAKI_SESSION_SKIP_INTRO', 'EMAKI_STARTUP_COVER', 'EMAKI_SESSION_TAKEOVER'}
 
 
 def bootstrap():
@@ -51,7 +53,7 @@ def environment(generation, inherited):
     prefixes = ('QT_', 'QML_', 'QML2_', 'QV4_', 'QSG_', 'QS_', 'LD_', 'PYTHON')
     data_settings = {'EMAKI_SHELL_DOCK_BACKDROP', 'EMAKI_SHELL_BORDER',
                      'EMAKI_SHELL_NOTIFICATIONS', 'EMAKI_SHELL_TRAY',
-                     'EMAKI_REDUCED_MOTION', 'EMAKI_LOCK_REDUCED_MOTION', 'EMAKI_LOGIN_HANDOFF'}
+                     'EMAKI_REDUCED_MOTION', 'EMAKI_LOCK_REDUCED_MOTION'}
     result = {key: value for key, value in inherited.items()
               if not key.startswith(prefixes)
               and (not key.startswith('EMAKI_') or key in data_settings)
@@ -71,10 +73,19 @@ def environment(generation, inherited):
     # This is inert data in qs and its protocol helpers. Only app_scope restores
     # it when handing a launch to an ordinary application. Autostart captures it
     # before fixing PATH; direct compositor launches capture their environment here.
-    result['EMAKI_SHELL_SESSION_ENV'] = inherited.get('EMAKI_SHELL_SESSION_ENV') or json.dumps(
-        {key: value for key, value in inherited.items()
-         if key not in ('WAYLAND_SOCKET', 'EMAKI_SHELL_SESSION_ENV',
-                        'EMAKI_SHELL_ORIGINAL_MALLOC_CONF', 'EMAKI_SHELL_PROCESS_ID')},
+    try:
+        session = json.loads(inherited.get('EMAKI_SHELL_SESSION_ENV', 'null'))
+    except (ValueError, TypeError):
+        session = None
+    if not (isinstance(session, dict)
+            and all(isinstance(key, str) and key and '=' not in key and '\0' not in key
+                    and isinstance(value, str) and '\0' not in value
+                    for key, value in session.items())):
+        session = inherited
+    excluded = HANDOFF_MARKERS | {'WAYLAND_SOCKET', 'EMAKI_SHELL_SESSION_ENV',
+                                 'EMAKI_SHELL_ORIGINAL_MALLOC_CONF', 'EMAKI_SHELL_PROCESS_ID'}
+    result['EMAKI_SHELL_SESSION_ENV'] = json.dumps(
+        {key: value for key, value in session.items() if key not in excluded},
         separators=(',', ':'))
     for key, default in (('EMAKI_SHELL_BORDER', 'soft'), ('EMAKI_SHELL_NOTIFICATIONS', '1'),
                          ('EMAKI_SHELL_TRAY', '1')):
@@ -167,6 +178,8 @@ def validate_runtime(tree):
 
 
 def launch():
+    # Only the claim helper receives this login capability, never preparation or apps.
+    handoff = os.environ.pop('EMAKI_LOGIN_HANDOFF', None)
     if PRIVATE_SOCKET is None or PRIVATE_SOCKET < 3:
         raise ValueError('A private compositor connection is required.')
     if not stat.S_ISSOCK(os.fstat(PRIVATE_SOCKET).st_mode):
@@ -200,16 +213,16 @@ def launch():
                     'IFS= read -r reply', 'emaki-qt-warning', message], env=env, close_fds=True)
             except OSError:
                 pass
-    if env.get('EMAKI_LOGIN_HANDOFF'):
+    if handoff:
         try:
             result = subprocess.run([PYTHON, '-I', '-B', str(generation / 'shell/helpers/session-start.py'),
-                'shell-token'], env=env, close_fds=True, capture_output=True, text=True, timeout=1, check=False)
+                'shell-token'], env=dict(env, EMAKI_LOGIN_HANDOFF=handoff), close_fds=True,
+                capture_output=True, text=True, timeout=1, check=False)
             token = result.stdout.strip()
             if not result.returncode and re.fullmatch('[0-9a-f]{32}', token):
                 env.update(EMAKI_SESSION_START=token, EMAKI_SESSION_SKIP_INTRO='1')
         except subprocess.TimeoutExpired:
             pass
-    env.pop('EMAKI_LOGIN_HANDOFF', None)
     env['WAYLAND_SOCKET'] = str(PRIVATE_SOCKET)
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     os.set_inheritable(PRIVATE_SOCKET, True)

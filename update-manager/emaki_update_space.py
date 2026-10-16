@@ -1,6 +1,7 @@
+#!/usr/bin/env python3
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Estimate a full update against a private package database before downloads."""
+"""Estimate package transactions against a private database and root-space budget."""
 from decimal import Decimal, ROUND_CEILING
 import os
 from pathlib import Path
@@ -13,9 +14,26 @@ import sys
 import tempfile
 import time
 
+# Isolated hook execution excludes the script directory from the import path.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from emaki_package_lock import lock_message
+
 MARGIN = 1024 ** 3
-FAILURE = 'The free-space check could not finish. Try again before updating.'
+SPACE_ADVICE = 'Delete unneeded files or clear the package cache in Settings > Storage, then try again.'
+FAILURE = 'The free-space check could not finish. The update was not started.'
 FINAL_PROMPT = ':: Proceed with installation? [Y/n]'
+WARNING = 'Warning: the update space check is unavailable; the package transaction will continue.'
+
+
+class InsufficientSpace(RuntimeError):
+    """Only a measured shortage may abort the package transaction."""
+
+
+def failure(output):
+    """Keep the first package-manager diagnostic when an estimate is refused."""
+    text = output.decode('utf-8', errors='replace')
+    diagnostic = re.search(r'^error:.*$', text, re.M)
+    return FAILURE + ('\n' + diagnostic[0].rstrip() if diagnostic else '')
 
 
 def stop(process):
@@ -35,11 +53,11 @@ def command(arguments, probe=False):
     with subprocess.Popen(arguments, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                           stderr=subprocess.STDOUT, start_new_session=True,
                           env=dict(os.environ, LC_ALL='C')) as process:
+        output = b''
         try:
             if not probe:
                 output, _ = process.communicate(timeout=180)
             else:
-                output = b''
                 pending = ''
                 declined = False
                 deadline = time.monotonic() + 180
@@ -47,7 +65,7 @@ def command(arguments, probe=False):
                     selector.register(process.stdout, selectors.EVENT_READ)
                     while True:
                         if time.monotonic() >= deadline:
-                            raise RuntimeError(FAILURE)
+                            raise RuntimeError(failure(output))
                         if not selector.select(1):
                             continue
                         chunk = os.read(process.stdout.fileno(), 4096)
@@ -56,7 +74,7 @@ def command(arguments, probe=False):
                         output += chunk
                         pending += chunk.decode('utf-8', errors='replace')
                         if len(output) > 4 * 1024 * 1024:
-                            raise RuntimeError(FAILURE)
+                            raise RuntimeError(failure(output))
                         line = pending.rstrip('\n').rsplit('\n', 1)[-1].strip()
                         if line.endswith('[Y/n]') or line.endswith('[y/N]'):
                             if line == FINAL_PROMPT:
@@ -69,26 +87,27 @@ def command(arguments, probe=False):
                             elif not declined and re.fullmatch(r':: .*[Ss]kip the above packages?.*\[y/N\]', line):
                                 answer = b'y\n'
                             else:
-                                raise RuntimeError(FAILURE)
+                                raise RuntimeError(failure(output))
                             process.stdin.write(answer)
                             process.stdin.flush()
                             pending = ''
-                        elif re.fullmatch(r'Enter a number \(default=\d+\):', line) and not declined:
+                        elif (re.fullmatch(r'Enter a number \(default=\d+\):', line)
+                              or line == 'Enter a selection (default=all):') and not declined:
                             process.stdin.write(b'\n')
                             process.stdin.flush()
                             pending = ''
                 process.wait(timeout=5)
                 if not declined and 'there is nothing to do' not in output.decode('utf-8', errors='replace'):
-                    raise RuntimeError(FAILURE)
+                    raise RuntimeError(failure(output))
             text = output.decode('utf-8', errors='replace')
             if process.returncode != 0 and not (probe and process.returncode == 1 and declined):
-                raise RuntimeError(FAILURE)
+                raise RuntimeError(failure(output))
             if probe and re.search(r'^error:', text, re.M):
-                raise RuntimeError(FAILURE)
+                raise RuntimeError(failure(output))
             return text
         except subprocess.TimeoutExpired as error:
             stop(process)
-            raise RuntimeError(FAILURE) from error
+            raise RuntimeError(failure(error.output or output)) from error
         except BaseException:
             stop(process)
             raise
@@ -188,21 +207,21 @@ def requirements(download, net, root, cache, pools=(None, None), installed=0):
 def check_space(download, net, root, cache, pools=(None, None), installed=0):
     for need, free in requirements(download, net, root, cache, pools, installed):
         if free < need:
-            raise RuntimeError('Not enough free space for this update: it needs about '
+            raise InsufficientSpace('Not enough free space for this update: it needs about '
                                f'{human_size(need)}, {human_size(free)} is free. '
-                               'Free some space, then try again.')
+                               + SPACE_ADVICE)
 
 
-def _preflight(targets=()):
-    database = Path(command(['/usr/bin/pacman-conf', 'DBPath']).strip())
-    caches = command(['/usr/bin/pacman-conf', 'CacheDir']).splitlines()
+def _preflight(targets=(), transaction=None, expected=()):
+    database = Path(command(['pacman-conf', 'DBPath']).strip())
+    caches = command(['pacman-conf', 'CacheDir']).splitlines()
     cache = next((Path(path) for path in caches if Path(path).is_dir()
                   and os.access(path, os.W_OK, effective_ids=True)), None)
     if not database.is_absolute() or cache is None:
         raise RuntimeError(FAILURE)
     initial = (database / 'local').stat().st_mtime_ns
-    if (database / 'db.lck').exists():
-        raise RuntimeError('Another package operation may be running. Wait for it to finish before updating.')
+    if transaction is None and (database / 'db.lck').exists():
+        raise RuntimeError(lock_message(database / 'db.lck'))
     with tempfile.TemporaryDirectory(prefix='emaki-update-space-', dir='/tmp') as directory:
         private = Path(directory)
         # pacman's DownloadUser needs traversal; only root can modify this DB.
@@ -211,16 +230,24 @@ def _preflight(targets=()):
         if (database / 'sync').is_dir():
             shutil.copytree(database / 'sync', private / 'sync')
         base = ['--dbpath', str(private), '--logfile', '/dev/null', '--color', 'never']
-        command(['/usr/bin/pacman', '-Sy', *base])
+        if transaction is None:
+            command(['pacman', '-Sy', *base])
+            selection = ['-Su', *(['--needed', *targets] if targets else [])]
+        else:
+            # The parent owns db.lck and has already downloaded its archives. Use
+            # its current databases, never refresh them or probe the live lock.
+            selection = transaction
+            resolved = command(['pacman', *selection, *base, '--print',
+                                '--print-format', '%n', '--noconfirm']).splitlines()
+            if len(resolved) != len(expected) or set(resolved) != set(expected):
+                raise RuntimeError(FAILURE)
         # This subprocess can only reach the summary: the installation prompt
         # is rejected explicitly, never accepted through a default answer.
-        try:
-            summary = command(['/usr/bin/pacman', '-Su', '--confirm', *base, *(['--needed', *targets] if targets else [])], probe=True)
-            download, net, installed = transaction_sizes(summary)
-        except (RuntimeError, OSError, ValueError):
-            print('The free-space estimate is unavailable; continuing with pacman’s own checks.', file=sys.stderr)
-            return
-    if (database / 'db.lck').exists() or (database / 'local').stat().st_mtime_ns != initial:
+        summary = command(['pacman', selection[0], '--confirm', *base, *selection[1:]], probe=True)
+        download, net, installed = transaction_sizes(summary)
+    if transaction is None and (database / 'db.lck').exists():
+        raise RuntimeError(lock_message(database / 'db.lck'))
+    if (database / 'local').stat().st_mtime_ns != initial:
         raise RuntimeError('Installed packages changed during the check. Try again when the package operation finishes.')
     if download or net or installed:
         root_pool, root_kind = mount_details('/')
@@ -230,13 +257,15 @@ def _preflight(targets=()):
                     (root_pool, cache_pool), retained)
 
 
-def preflight(targets=()):
+def preflight(targets=(), transaction=None, expected=()):
     def interrupted(signum, frame):
         raise SystemExit(128 + signum)
 
     previous = {signum: signal.signal(signum, interrupted) for signum in (signal.SIGHUP, signal.SIGTERM)}
     try:
-        if targets:
+        if transaction is not None:
+            _preflight(transaction=transaction, expected=expected)
+        elif targets:
             _preflight(targets=targets)
         else:
             _preflight()
@@ -245,3 +274,91 @@ def preflight(targets=()):
     finally:
         for signum, handler in previous.items():
             signal.signal(signum, handler)
+
+
+def sync_selection(arguments):
+    """Reproduce ordinary sync transactions; unknown options cannot justify refusal.
+
+    Hook targets contain names only. A local archive or a custom root/database
+    could contain different versions, so those transactions remain unmeasured.
+    """
+    sync = False
+    upgrades = 0
+    options, targets = [], []
+    for argument in arguments:
+        if argument == '--sync':
+            sync = True
+        elif argument == '--sysupgrade':
+            upgrades += 1
+        elif re.fullmatch(r'-[Suyq]+', argument):
+            sync |= 'S' in argument
+            upgrades += argument.count('u')
+        elif argument == '--needed':
+            options.append(argument)
+        elif argument in ('--refresh', '--quiet', '--noconfirm', '--confirm',
+                          '--asdeps', '--asexplicit', '--disable-download-timeout'):
+            continue
+        elif re.fullmatch(r'(?:[A-Za-z0-9@_+][A-Za-z0-9@_.+:-]*/)?[A-Za-z0-9@_+][A-Za-z0-9@_.+:-]*', argument):
+            targets.append(argument)
+        else:
+            raise ValueError('unrecognized transaction')
+    if not sync or (not upgrades and not targets):
+        raise ValueError('unrecognized transaction')
+    return ['-S' + 'u' * upgrades, *options, *targets]
+
+
+def process_parent(pid):
+    status = (Path('/proc') / str(pid) / 'status').read_text()
+    match = re.search(r'^PPid:\s+(\d+)$', status, re.M)
+    if match is None:
+        raise ValueError('unknown parent process')
+    return int(match[1])
+
+
+def parent_selection(launcher_pid=None):
+    parent_pid = os.getppid()
+    if launcher_pid is not None:
+        if not re.fullmatch(r'[1-9][0-9]*', launcher_pid):
+            raise ValueError('invalid launcher process')
+        launcher = int(launcher_pid)
+        # Command substitution may retain an extra shell. The supplied PID must
+        # be our actual launcher ancestor, whose immediate parent is pacman.
+        for _ in range(3):
+            if parent_pid == launcher:
+                break
+            parent_pid = process_parent(parent_pid)
+        else:
+            raise ValueError('unrelated launcher process')
+        parent_pid = process_parent(launcher)
+    parent = Path('/proc') / str(parent_pid)
+    executable = shutil.which('pacman')
+    if executable is None or (parent / 'exe').resolve(strict=True) != Path(executable).resolve(strict=True):
+        raise ValueError('unknown package manager')
+    arguments = (parent / 'cmdline').read_bytes().rstrip(b'\0').decode().split('\0')
+    return sync_selection(arguments[1:])
+
+
+def transaction_preflight(targets, launcher_pid=None):
+    try:
+        if mount_details('/')[1] != 'btrfs':
+            raise ValueError('not a measured Btrfs root')
+        if not targets or len(set(targets)) != len(targets) or any(
+                not re.fullmatch(r'[A-Za-z0-9@_+][A-Za-z0-9@_.+:-]*', name) for name in targets):
+            raise ValueError('unrecognized targets')
+        preflight(transaction=parent_selection(launcher_pid), expected=targets)
+    except InsufficientSpace as error:
+        print(str(error), file=sys.stderr, flush=True)
+        return 1
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+        print(WARNING, file=sys.stderr, flush=True)
+    return 0
+
+
+if __name__ == '__main__':
+    # Reserve this status for the shell launcher's measured-shortage contract;
+    # interpreter/import failures normally exit 1 and must remain fail-open.
+    targets = sys.stdin.read().splitlines()
+    if len(sys.argv) != 2:
+        print(WARNING, file=sys.stderr, flush=True)
+        sys.exit(0)
+    sys.exit(3 if transaction_preflight(targets, sys.argv[1]) else 0)

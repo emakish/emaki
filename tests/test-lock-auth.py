@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Lock controller + real PAM in isolated offscreen profiles; no live session.
 
 The real PAM harness copies production LockPam and changes its literal service
@@ -26,6 +28,12 @@ CACHE = ROOT / '.cache'
 CACHE.mkdir(exist_ok=True)
 QS = shutil.which('qs')
 assert QS, 'qs is required'
+CREDENTIAL_SENTINELS = ('fixture-éЖ', 'nul-credential-sentinel-', '🔒' * 1024)
+
+
+def assert_no_credentials(text):
+    for credential in CREDENTIAL_SENTINELS:
+        assert credential not in text, 'credential exposed in authentication output'
 
 
 _ipc_limit_reported = False
@@ -89,7 +97,8 @@ production_path()
 
 @contextmanager
 def harness(service=None):
-    profile = Path(tempfile.mkdtemp(prefix='la-', dir=CACHE))
+    # A harmless path containing "bad" must not look like a leaked credential.
+    profile = Path(tempfile.mkdtemp(prefix='la-bad-', dir=CACHE))
     for part in ('r', 'cache', 'config', 'data', 'state', 'tmp', 'shell', 'pam'):
         (profile / part).mkdir(mode=0o700)
     shell = profile / 'shell'
@@ -134,7 +143,12 @@ def harness(service=None):
                     response = json.loads((profile / 'reply.json').read_text())
                     if response['id'] == serial:
                         result = response['value']
-                        return json.loads(result) if method in ('state', 'answerStats') else result
+                        if method in ('state', 'answerStats'):
+                            result = json.loads(result)
+                        if method == 'state':
+                            for field in ('prompt', 'message', 'displayMessage'):
+                                assert_no_credentials(result[field])
+                        return result
                 except (FileNotFoundError, json.JSONDecodeError):
                     pass
                 time.sleep(.01)
@@ -172,7 +186,7 @@ def harness(service=None):
     output = checked_output(log_path.read_text())
     if service:
         assert f'user "{pwd.getpwuid(os.getuid()).pw_name}"' in output, output
-    assert 'fixture-éЖ' not in output and 'bad' not in output
+    assert_no_credentials(output)
     assert 'Failed to start IPC server' not in output, output
     assert 'ERROR' not in output and 'WARN' not in output, output
 

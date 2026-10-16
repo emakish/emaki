@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright (C) 2026 Artur Yakymenko -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN" "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Emaki</vendor>
+  <action id="org.emaki.secureboot.enroll">
+    <description>Confirm this computer's Secure Boot key again</description>
+    <message>Enter an administrator password to set up Secure Boot for this computer.</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@EMAKI_BINDIR@/emaki-secureboot</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">enroll</annotate>
+  </action>
+  <action id="org.emaki.secureboot.sign">
+    <description>Sign this computer's startup files again</description>
+    <message>Enter an administrator password to sign this computer's startup files.</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@EMAKI_BINDIR@/emaki-secureboot</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">sign</annotate>
+  </action>
+</policyconfig>

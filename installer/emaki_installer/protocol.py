@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Frozen v1 NDJSON framing and the single-writer job controller."""
 from dataclasses import dataclass, field
 import json
@@ -144,16 +146,29 @@ class Controller:
         if not self.busy:
             self.redactor.secrets.clear()
 
+    def invalidate_own(self, client):
+        # The outstanding plan belongs to the connection that reviewed it. Another client's
+        # probe, time zone or cancel says nothing about that plan: the live session's window
+        # probes as it connects, which once wiped a CLI plan before its confirm (N-D2).
+        if self.pending is None or self.pending['client'] is client:
+            self.invalidate()
+
+    def release(self, client):
+        # A closed connection can never confirm its plan; drop it and its secrets now.
+        with self.lock:
+            if self.pending and self.pending['client'] is client:
+                self.invalidate()
+
     def expire(self):
         with self.lock:
             if self.pending and self.clock() >= self.pending['deadline']:
                 self.invalidate()
 
-    def handle(self, msg):
+    def handle(self, msg, client=None):
         # Probe/plan are serialized, including their read-only temporary mounts.
         with self.operation_lock:
             try:
-                return self._handle(msg)
+                return self._handle(msg, client)
             except InstallError as exc:
                 return [self.reply(msg['id'], False, code=exc.code.value,
                                    msg=self.redactor.text(exc.message), log_path=str(LOG),
@@ -161,7 +176,7 @@ class Controller:
             except Exception as exc:
                 self.log('Request failed: ' + type(exc).__name__)
                 return [self.reply(msg['id'], False, code=Code.INTERNAL.value,
-                                   msg='Request failed; inspect the worker log.', log_path=str(LOG),
+                                   msg='The request could not be completed. Check the installation log for details.', log_path=str(LOG),
                                    **self.restart_reply_fields(msg))]
 
     def restart_reply_fields(self, msg):
@@ -170,7 +185,7 @@ class Controller:
         return {'restart_state': self.restart_state,
                 'remaining_s': max(0, self.restart_deadline - self.clock())}
 
-    def _handle(self, msg):
+    def _handle(self, msg, client):
         kind, ident = msg['type'], msg['id']
         if kind == 'hello':
             require(type(msg.get('proto')) is int and msg['proto'] == 1,
@@ -191,15 +206,19 @@ class Controller:
             return [self.reply(ident, **self.inventory.timezone_guess())]
         if kind == 'set_timezone':
             with self.lock:
-                require(not self.busy and not self.stopping, Code.BUSY, 'The worker is busy or stopping.')
-                self.invalidate()
+                require(not self.busy and not self.stopping, Code.BUSY, 'The installer is busy or stopping. Wait before trying again.')
+                self.invalidate_own(client)
             require(self.set_timezone_fn is not None, Code.BAD_REQUEST,
                     'Live clock changes are unavailable.')
             return [self.reply(ident, **self.set_timezone_fn(msg.get('timezone')))]
         if kind in ('plan', 'probe'):
             with self.lock:
-                self.invalidate()
-                require(not self.busy and not self.stopping, Code.BUSY, 'The worker is busy or stopping.')
+                # A new plan from any client replaces the one outstanding plan.
+                if kind == 'plan':
+                    self.invalidate()
+                else:
+                    self.invalidate_own(client)
+                require(not self.busy and not self.stopping, Code.BUSY, 'The installer is busy or stopping. Wait before trying again.')
                 if kind == 'plan' and self.check_installation_fn:
                     self.check_installation_fn()
             if kind == 'probe':
@@ -212,7 +231,8 @@ class Controller:
             plan_id = secrets.token_hex(16)
             try:
                 validate_config(config, self.test_mode)  # An unoffered mode is refused before any probe.
-                plan = make_plan(config, self.inventory.probe(), self.test_mode)
+                plan = make_plan(config, self.inventory.probe(), self.test_mode,
+                                 esp_need=getattr(self.inventory, 'esp_need', None))
                 if self.validate_plan:
                     self.validate_plan(plan)
             except InstallError as exc:
@@ -226,17 +246,18 @@ class Controller:
             token = secrets.token_urlsafe(32)
             with self.lock:
                 self.pending = {'plan': plan, 'plan_id': plan_id, 'token': token,
-                                'deadline': self.clock() + 600}
+                                'deadline': self.clock() + 600, 'client': client}
             return [self.message('plan_ack', ident, plan_id=plan_id, token=token, expires_s=600,
                                  summary=plan.summary, errors=[], warnings=plan.warnings)]
         if kind == 'renew':
             with self.lock:
-                require(not self.busy and not self.stopping, Code.BUSY, 'The worker is busy or stopping.')
+                require(not self.busy and not self.stopping, Code.BUSY, 'The installer is busy or stopping. Wait before trying again.')
                 pending = self.pending
                 if pending and self.clock() >= pending['deadline']:
                     self.invalidate()
                     raise InstallError(Code.TOKEN_EXPIRED, 'Plan token expired; review a new plan.')
-                require(pending is not None and msg.get('plan_id') == pending['plan_id']
+                require(pending is not None and pending['client'] is client
+                        and msg.get('plan_id') == pending['plan_id']
                         and isinstance(msg.get('token'), str)
                         and secrets.compare_digest(msg['token'], pending['token']),
                         Code.TOKEN_INVALID, 'Invalid plan confirmation.')
@@ -252,7 +273,7 @@ class Controller:
                 return [self.reply(ident)]
         if kind == 'confirm':
             with self.lock:
-                require(not self.busy and not self.stopping, Code.BUSY, 'The worker is busy or stopping.')
+                require(not self.busy and not self.stopping, Code.BUSY, 'The installer is busy or stopping. Wait before trying again.')
                 if self.check_installation_fn:
                     self.check_installation_fn()
                 pending = self.pending
@@ -260,7 +281,8 @@ class Controller:
                 if self.clock() >= pending['deadline']:
                     self.invalidate()
                     raise InstallError(Code.TOKEN_EXPIRED, 'Plan token expired; review a new plan.')
-                require(msg.get('plan_id') == pending['plan_id']
+                # Never a plan another connection reviewed, even with its token.
+                require(pending['client'] is client and msg.get('plan_id') == pending['plan_id']
                         and isinstance(msg.get('token'), str)
                         and secrets.compare_digest(msg['token'], pending['token']),
                         Code.TOKEN_INVALID, 'Invalid plan confirmation.')
@@ -276,7 +298,7 @@ class Controller:
                 if self.busy:
                     self.job.cancelled.set()
                     return []  # cancel_ack is emitted after cleanup at the boundary.
-                self.invalidate()
+                self.invalidate_own(client)
                 return [self.reply(ident)]
         if kind == 'resume':
             with self.lock:
@@ -303,7 +325,7 @@ class Controller:
             elif self.restart_state in ('ready', 'forced'):
                 unavailable = 'Log export is unavailable after restart preparation.'
             else:
-                unavailable = 'Log export is unavailable while the worker is stopping.'
+                unavailable = 'The installation log cannot be saved while the installer is stopping.'
             require(not self.stopping or self.restart_state == 'failed', Code.BUSY,
                     unavailable)
             require(self.save_log_fn is not None, Code.BAD_DEST, 'Log export unavailable.')

@@ -1238,10 +1238,17 @@ index d5168386..560366ef 100644
  pub mod utils;
  pub mod window;
 diff --git a/src/main.rs b/src/main.rs
-index dca08957..d7893e35 100644
 --- a/src/main.rs
 +++ b/src/main.rs
-@@ -167,6 +167,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
+@@ -43,6 +43,7 @@
+
+ fn main() -> Result<(), Box<dyn std::error::Error>> {
+     let started_at = Instant::now();
++    let login_handoff = niri::trusted_client::take_login_handoff();
+     let startup_cover_path = env::var_os("EMAKI_STARTUP_COVER");
+     env::remove_var("EMAKI_STARTUP_COVER");
+
+@@ -167,6 +168,7 @@
      let config_includes = config_load_result.includes;
  
      let spawn_at_startup = mem::take(&mut config.spawn_at_startup);
@@ -1249,12 +1256,12 @@ index dca08957..d7893e35 100644
      let spawn_sh_at_startup = mem::take(&mut config.spawn_sh_at_startup);
      *CHILD_ENV.write().unwrap() = mem::take(&mut config.environment);
  
-@@ -283,6 +284,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
+@@ -283,6 +285,10 @@
  
      watcher::setup(&mut state, &config_path, config_includes);
  
 +    if let Some(shell) = trusted_shell {
-+        niri::trusted_client::start(&mut state, shell.command);
++        niri::trusted_client::start(&mut state, shell.command, login_handoff);
 +    }
 +
      // Spawn commands from cli and auto-start.
@@ -2737,10 +2744,9 @@ index 00000000..a91f4e4e
 +}
 diff --git a/src/trusted_client.rs b/src/trusted_client.rs
 new file mode 100644
-index 00000000..c7fa4a78
 --- /dev/null
 +++ b/src/trusted_client.rs
-@@ -0,0 +1,738 @@
+@@ -0,0 +1,920 @@
 +// Copyright (C) 2026 Artur Yakymenko
 +// SPDX-License-Identifier: GPL-3.0-or-later
 +
@@ -2799,9 +2805,39 @@ index 00000000..c7fa4a78
 +    }
 +}
 +
++/// Capture login decoration before threads, backend setup or any client starts.
++/// It must never enter the shared environment or the restart snapshot.
++pub fn take_login_handoff() -> Option<OsString> {
++    let marker = std::env::var_os("EMAKI_LOGIN_HANDOFF");
++    std::env::remove_var("EMAKI_LOGIN_HANDOFF");
++    // Preserve TTY cleanup even when the login image could not be prepared.
++    if marker.is_some() {
++        std::env::set_var("EMAKI_SESSION_TAKEOVER", "1");
++    }
++    marker
++}
++
++/// Only the first successful private shell launch receives this login's marker.
++fn configure_login_handoff(process: &mut Command, handoff: &Option<OsString>) {
++    process.env_remove("EMAKI_LOGIN_HANDOFF");
++    if let Some(marker) = handoff {
++        process.env("EMAKI_LOGIN_HANDOFF", marker);
++    }
++}
++
++fn spawn_with_login_handoff(
++    process: &mut Command,
++    handoff: &mut Option<OsString>,
++) -> io::Result<Child> {
++    configure_login_handoff(process, handoff);
++    let child = process.spawn()?;
++    handoff.take();
++    Ok(child)
++}
++
 +/// Start one shell, using the startup command even after configuration reloads.
 +/// The child must exec the shell in the foreground, retaining WAYLAND_SOCKET.
-+pub fn start(state: &mut State, command: Vec<String>) {
++pub fn start(state: &mut State, command: Vec<String>, login_handoff: Option<OsString>) {
 +    if command.is_empty() {
 +        return;
 +    }
@@ -2828,6 +2864,7 @@ index 00000000..c7fa4a78
 +        executable,
 +        arguments: command.into_iter().skip(1).collect(),
 +        environment,
++        login_handoff,
 +        running: None,
 +        failures: 0,
 +        retry_at: Instant::now(),
@@ -2925,6 +2962,115 @@ index 00000000..c7fa4a78
 +        .ok()
 +}
 +
++/// Probe the existing shell IPC without ever blocking compositor dispatch. The
++/// target is the unreaped foreground child, never an instance selected by name.
++struct Heartbeat {
++    probe: Option<(std::sync::mpsc::Receiver<bool>, Arc<AtomicBool>)>,
++    next_probe: Instant,
++    deadline: Instant,
++    last_tick: Instant,
++}
++
++impl Heartbeat {
++    fn new(now: Instant) -> Self {
++        Self {
++            probe: None,
++            next_probe: now + Duration::from_secs(15),
++            deadline: now + Duration::from_secs(30),
++            last_tick: now,
++        }
++    }
++
++    fn cancel_probe(&mut self) {
++        if let Some((_, cancel)) = self.probe.take() {
++            cancel.store(true, Ordering::Relaxed);
++        }
++    }
++
++    fn tick(&mut self, now: Instant, pid: u32, environment: &BTreeMap<OsString, OsString>) -> bool {
++        // A stalled compositor also means the shell could not dispatch Wayland.
++        // Discard that observation and allow a fresh round trip after a gap.
++        let gap = now.saturating_duration_since(self.last_tick) > Duration::from_secs(2);
++        self.last_tick = now;
++        if gap {
++            self.deadline = self.deadline.max(now + Duration::from_secs(45));
++            self.next_probe = now;
++            self.cancel_probe();
++        }
++        if let Some((result, _)) = &self.probe {
++            match result.try_recv() {
++                Ok(success) => {
++                    if success {
++                        self.deadline = now + Duration::from_secs(45);
++                    }
++                    self.probe = None;
++                }
++                Err(std::sync::mpsc::TryRecvError::Empty) => (),
++                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.probe = None,
++            }
++        }
++        if now >= self.deadline {
++            self.cancel_probe();
++            return false;
++        }
++        if self.probe.is_none() && now >= self.next_probe {
++            self.next_probe = now + Duration::from_secs(15);
++            let (send, result) = std::sync::mpsc::channel();
++            let cancel = Arc::new(AtomicBool::new(false));
++            let cancelled = cancel.clone();
++            let environment = environment.clone();
++            // The worker owns spawn, wait and retirement: neither fork/pre_exec
++            // nor a failed wait can block compositor dispatch or strand a probe.
++            let worker = std::thread::Builder::new().name("Shell Probe".into()).spawn(move || {
++                const PROGRAM: &str = env!("NIRI_EMAKI_QS_PROGRAM");
++                const _: () = assert!(!PROGRAM.is_empty() && PROGRAM.as_bytes()[0] == b'/',
++                    "NIRI_EMAKI_QS_PROGRAM must be an absolute path");
++                let program = PROGRAM;
++                let mut command = Command::new(program);
++                command.args(["ipc", "--pid", &pid.to_string(), "call", "system", "ping"])
++                    .env_clear().envs(environment).env_remove("WAYLAND_SOCKET")
++                    .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
++                unsafe {
++                    command.pre_exec(|| {
++                        crate::utils::signals::unblock_all()?;
++                        restore_nofile_rlimit();
++                        Ok(())
++                    });
++                }
++                let Ok(mut probe) = command.spawn() else { return };
++                loop {
++                    if cancelled.load(Ordering::Relaxed) {
++                        break;
++                    }
++                    match probe.try_wait() {
++                        Ok(Some(status)) => {
++                            let _ = send.send(status.success());
++                            return;
++                        }
++                        Ok(None) => std::thread::sleep(Duration::from_millis(50)),
++                        Err(_) => break,
++                    }
++                }
++                let _ = probe.kill();
++                // Retire the slot before reaping: even a stuck wait must not
++                // prevent later rounds from probing the healthy shell.
++                drop(send);
++                let _ = probe.wait();
++            });
++            if worker.is_ok() {
++                self.probe = Some((result, cancel));
++            }
++        }
++        true
++    }
++}
++
++impl Drop for Heartbeat {
++    fn drop(&mut self) {
++        self.cancel_probe();
++    }
++}
++
 +struct Running {
 +    child: Child,
 +    /// Duplicates only the server endpoint, so shutdown revokes a lingering client
@@ -2933,6 +3079,8 @@ index 00000000..c7fa4a78
 +    connection: Option<Arc<TrustedConnection>>,
 +    started_at: Instant,
 +    terminating_at: Option<Instant>,
++    heartbeat: Heartbeat,
++    heartbeat_failed: bool,
 +}
 +
 +impl Running {
@@ -2979,6 +3127,7 @@ index 00000000..c7fa4a78
 +    executable: OsString,
 +    arguments: Vec<String>,
 +    environment: BTreeMap<OsString, OsString>,
++    login_handoff: Option<OsString>,
 +    running: Option<Running>,
 +    failures: u32,
 +    retry_at: Instant,
@@ -2988,6 +3137,7 @@ index 00000000..c7fa4a78
 +    fn tick(&mut self, state: &mut State) -> TimeoutAction {
 +        if self.handle.restart.swap(false, Ordering::Relaxed) {
 +            if let Some(running) = &mut self.running {
++                running.heartbeat_failed = false;
 +                running.begin_restart(Instant::now());
 +            }
 +            self.handle.running.store(false, Ordering::Relaxed);
@@ -2999,8 +3149,19 @@ index 00000000..c7fa4a78
 +            return TimeoutAction::ToDuration(POLL_INTERVAL);
 +        }
 +        if let Some(running) = &mut self.running {
-+            running.enforce_restart_deadline(Instant::now());
-+            let restarting = running.terminating_at.is_some();
++            let now = Instant::now();
++            if running.terminating_at.is_none()
++                && !running
++                    .heartbeat
++                    .tick(now, running.child.id(), &self.environment)
++            {
++                warn!("trusted shell stopped responding; restarting");
++                running.heartbeat_failed = true;
++                running.begin_restart(now);
++                self.handle.running.store(false, Ordering::Relaxed);
++            }
++            running.enforce_restart_deadline(now);
++            let restarting = running.terminating_at.is_some() && !running.heartbeat_failed;
 +            let disabled = match running.child.try_wait() {
 +                Ok(None) => return TimeoutAction::ToDuration(POLL_INTERVAL),
 +                Ok(Some(status)) => {
@@ -3066,7 +3227,7 @@ index 00000000..c7fa4a78
 +        TimeoutAction::ToInstant(self.retry_at)
 +    }
 +
-+    fn spawn(&self, state: &mut State) -> io::Result<Running> {
++    fn spawn(&mut self, state: &mut State) -> io::Result<Running> {
 +        let (server, client) = UnixStream::pair()?;
 +        let revoke = server.try_clone()?;
 +        let identity_socket = server.try_clone()?;
@@ -3099,7 +3260,7 @@ index 00000000..c7fa4a78
 +                Ok(())
 +            });
 +        }
-+        let result = process.spawn();
++        let result = spawn_with_login_handoff(&mut process, &mut self.login_handoff);
 +        // The compositor must not retain the client endpoint after exec.
 +        drop(client);
 +        match result {
@@ -3125,6 +3286,8 @@ index 00000000..c7fa4a78
 +                    connection: Some(connection),
 +                    started_at: Instant::now(),
 +                    terminating_at: None,
++                    heartbeat: Heartbeat::new(Instant::now()),
++                    heartbeat_failed: false,
 +                })
 +            }
 +            Err(err) => {
@@ -3191,6 +3354,28 @@ index 00000000..c7fa4a78
 +mod tests {
 +    use super::*;
 +
++    #[test]
++    fn login_handoff_survives_failed_spawn_and_is_consumed_on_success() {
++        let mut marker = Some(OsString::from("login-marker"));
++        let mut failed = Command::new("");
++        failed.env("EMAKI_LOGIN_HANDOFF", "configured-override");
++        assert!(spawn_with_login_handoff(&mut failed, &mut marker).is_err());
++        assert_eq!(marker.as_deref(), Some(std::ffi::OsStr::new("login-marker")));
++
++        let mut first = Command::new("sh");
++        first.args(["-c", "test \"$EMAKI_LOGIN_HANDOFF\" = login-marker"]);
++        first.env("EMAKI_LOGIN_HANDOFF", "configured-override");
++        let mut child = spawn_with_login_handoff(&mut first, &mut marker).unwrap();
++        assert!(marker.is_none());
++        assert!(child.wait().unwrap().success());
++
++        let mut restart = Command::new("sh");
++        restart.args(["-c", "test \"${EMAKI_LOGIN_HANDOFF+x}\" != x"]);
++        restart.env("EMAKI_LOGIN_HANDOFF", "configured-override");
++        let mut child = spawn_with_login_handoff(&mut restart, &mut marker).unwrap();
++        assert!(child.wait().unwrap().success());
++    }
++
 +    fn restart_fixture(ignore_term: bool) -> (Running, UnixStream) {
 +        use std::io::BufRead;
 +        let (revoke, peer) = UnixStream::pair().unwrap();
@@ -3216,6 +3401,8 @@ index 00000000..c7fa4a78
 +                connection: None,
 +                started_at: Instant::now(),
 +                terminating_at: None,
++                heartbeat: Heartbeat::new(Instant::now()),
++                heartbeat_failed: false,
 +            },
 +            peer,
 +        )
@@ -3417,6 +3604,7 @@ index 00000000..c7fa4a78
 +            executable: OsString::from("unused"),
 +            arguments: vec![],
 +            environment,
++            login_handoff: None,
 +            running: None,
 +            failures: MAX_FAILURES - 1,
 +            retry_at: Instant::now(),

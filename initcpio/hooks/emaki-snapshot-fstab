@@ -1,4 +1,6 @@
 #!/usr/bin/ash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 run_latehook() {
     # OVERLAYFS_SUPER_MAGIC: BusyBox stat does not name every filesystem.

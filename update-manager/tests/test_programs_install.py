@@ -471,7 +471,7 @@ class Transaction(unittest.TestCase):
             self.assertEqual(calls[-1][0][1:3], ['-Su', '--confirm'])
             self.assertTrue(calls[-1][1])
 
-    def test_wrapper_passes_install_to_space_and_full_upgrade(self):
+    def test_wrapper_passes_install_to_full_upgrade_with_preflight(self):
         module = runpy.run_path(str(ROOT / 'scripts/emaki-update'))
         preflight, run = Mock(), Mock(return_value=0)
         with patch.dict(module['main'].__globals__, preflight=preflight, run=run,

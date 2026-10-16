@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 import copy
 import unittest
 from unittest.mock import patch
@@ -5,7 +7,7 @@ from unittest.mock import patch
 from emaki_installer.constants import BTRFS_OPTIONS, GIB, MIB, SUBVOLUMES
 from emaki_installer.errors import Code, InstallError
 from emaki_installer.planner import RESERVED_LOGINS, erase_partitions, fingerprint, make_plan, shrink_bounds, validate_config
-from support import alongside_on, config, inventory, manual
+from support import alongside_on, config, inventory, manual, replaced
 
 
 class PlannerTests(unittest.TestCase):
@@ -35,6 +37,12 @@ class PlannerTests(unittest.TestCase):
                     disk['partitions'][1]['fs'] = kind
                     disk['closed_encrypted'] = [volume]
                     c = config() if mode == 'erase' else manual()
+                    if mode == 'manual' and kind in ('BitLocker', 'apfs', 'cs_fvault2'):
+                        # Another system's volume is never formatted: the editor deletes it
+                        # (typed DELETE) and creates root in its place.
+                        identity = {k: volume[k] for k in ('path', 'type', 'uuid')}
+                        self.rejects(dict(c, confirmed_encrypted=[identity]), inv, Code.MANUAL_LAYOUT)
+                        c = replaced(c, disk, 2)
                     self.rejects(c, inv, Code.ENCRYPTED_CONFIRMATION)
                     identity = {k: volume[k] for k in ('path', 'type', 'uuid')}
                     for key in ('path', 'type', 'uuid'):
@@ -167,6 +175,36 @@ class PlannerTests(unittest.TestCase):
     def test_whole_disk_signature_changes_the_fingerprint(self):
         disk = inventory()['disks'][0]
         self.assertNotEqual(fingerprint(dict(disk, _fs=None)), fingerprint(dict(disk, _fs='LVM2_member')))
+
+    def test_manual_shared_esp_review_and_fallback_budget(self):
+        from emaki_installer.planner import probed_removable
+        for loader in ('EFI/Microsoft/Boot/bootmgfw.efi', 'EFI/ubuntu/shimx64.efi'):
+            with self.subTest(loader=loader):
+                data = inventory(partitions=True)
+                esp = data['disks'][0]['partitions'][0]
+                esp['_efi_loaders'] = {loader: 'hash'}
+                plan = make_plan(manual(), data)
+                line = next(line for line in plan.summary if line.startswith('Keep partition 1'))
+                self.assertIn("holds another system's startup files", line)
+                self.assertFalse(probed_removable(esp))
+                esp['_efi_loaders']['EFI/BOOT/BOOTX64.EFI'] = 'old-emaki'
+                self.assertFalse(probed_removable(esp))
+
+    def test_manual_unreadable_esp_never_budgets_fallback_writes(self):
+        from emaki_installer.planner import probed_removable, shared_esp
+        for flag in ('_efi_error', '_unreadable'):
+            with self.subTest(flag=flag):
+                data = inventory(partitions=True)
+                esp = data['disks'][0]['partitions'][0]
+                esp.update(_efi_loaders={})
+                esp[flag] = True
+                plan = make_plan(manual(), data)
+                self.assertFalse(next(p for p in plan.partitions if p.esp).format)
+                self.assertTrue(shared_esp(esp))
+                self.assertFalse(probed_removable(esp))
+                line = next(line for line in plan.summary if line.startswith('Keep partition 1'))
+                self.assertIn('Emaki could not check its files; its fallback loader will not be changed.', line)
+                self.assertNotIn("holds another system's startup files", line)
 
     def test_manual_format_flags_and_implicit_subvolumes(self):
         p = make_plan(manual(), inventory(partitions=True))
@@ -411,3 +449,38 @@ class PlannerTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SecureBootKeySubvolumeTests(unittest.TestCase):
+    """The machine key gets its own subvolume next to @, so root snapshots never hold it."""
+
+    @staticmethod
+    def secure(data):
+        data['hardware'] = {'secure_boot': True, 'secure_boot_cas': 'both'}
+        return data
+
+    def test_btrfs_secure_boot_plans_mount_the_key_subvolume(self):
+        for name, settings, data in (('erase', config(), inventory()),
+                                     ('manual', manual(), inventory(partitions=True))):
+            with self.subTest(name):
+                plan = make_plan(settings, self.secure(data))
+                self.assertEqual(plan.root.subvolumes, {**SUBVOLUMES, '@secureboot': '/var/lib/emaki/secureboot'})
+                mounts = [(mountpoint, subvolume) for _, mountpoint, subvolume in plan.mounts]
+                self.assertIn(('/var/lib/emaki/secureboot', '@secureboot'), mounts)
+                # Mounted after the root it sits in.
+                self.assertLess(mounts.index(('/', '@')), mounts.index(('/var/lib/emaki/secureboot', '@secureboot')))
+
+    def test_without_secure_boot_or_btrfs_there_is_no_key_subvolume(self):
+        self.assertEqual(make_plan(config(), inventory()).root.subvolumes, SUBVOLUMES)
+        plan = make_plan(dict(config(), fs='ext4'), self.secure(inventory()))
+        self.assertEqual(plan.root.subvolumes, {})
+
+    def test_a_layout_that_already_uses_the_name_or_path_is_refused(self):
+        for extra in ({'@mine': '/var/lib/emaki/secureboot'}, {'@secureboot': '/srv'}):
+            with self.subTest(extra):
+                layout = manual()
+                root = layout['mounts'].pop()
+                layout['mounts'] += [dict(root, mountpoint=mountpoint, subvolume=name)
+                                     for name, mountpoint in {**SUBVOLUMES, **extra}.items()]
+                with self.assertRaisesRegex(InstallError, 'reserved for the Secure Boot key'):
+                    make_plan(layout, self.secure(inventory(partitions=True)))

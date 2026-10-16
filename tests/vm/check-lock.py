@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """VM ONLY: C8 acceptance, run inside the disposable VM session.
 
   python3 tests/vm/check-lock.py

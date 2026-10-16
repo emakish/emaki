@@ -8,8 +8,9 @@ import "AppearanceLogic.js" as Logic
 
 QtObject {
     id: appearance
-    readonly property string theme: Logic.setting(SettingsBridge.values, "appearance.theme", "dark")
-    readonly property string accent: Logic.setting(SettingsBridge.values, "appearance.accent", "orange")
+    readonly property string theme: Logic.setting(SettingsBridge.values, "appearance.theme", "light")
+    // Unset: tokens.toml [defaults] accent (tests/test-theme-palette.py keeps the two equal).
+    readonly property string accent: Logic.setting(SettingsBridge.values, "appearance.accent", "rose")
     readonly property string lightTime: Logic.setting(SettingsBridge.values, "appearance.light_time", "07:00")
     readonly property string darkTime: Logic.setting(SettingsBridge.values, "appearance.dark_time", "19:00")
     property date now: new Date()

@@ -1,0 +1,3 @@
+# The modules archiso v91 builds into its UEFI GRUB (mkarchiso, _make_bootmode_uefi.grub); the Secure Boot image
+# carries these plus every module its menus need (iso/secureboot-grub-modules.py).
+all_video at_keyboard boot btrfs cat chain configfile echo efifwsetup efinet exfat ext2 f2fs fat font gfxmenu gfxterm gzio halt hfsplus iso9660 jpeg keylayouts linux loadenv loopback lsefi lsefimmap minicmd normal ntfs ntfscomp part_apple part_gpt part_msdos png read reboot regexp search search_fs_file search_fs_uuid search_label serial sleep tpm udf usb usbserial_common usbserial_ftdi usbserial_pl2303 usbserial_usbdebug video xfs zstd

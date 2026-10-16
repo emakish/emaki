@@ -16,7 +16,7 @@ evidence = ROOT / '.cache/evidence/u6d'
 evidence.mkdir(parents=True, exist_ok=True)
 
 
-def run_case(name, watcher, checks, *, live=False, fallback=False, unmanaged=False, duration=800, setup=None):
+def run_case(name, watcher, checks, *, live=False, fallback=False, unmanaged=False, duration=800, setup=None, history=None):
     with tempfile.TemporaryDirectory(prefix='session-notice-', dir=evidence) as directory, \
             tempfile.TemporaryDirectory(prefix='emaki-notice-', dir='/tmp') as runtime:
         base = Path(directory)
@@ -27,6 +27,12 @@ def run_case(name, watcher, checks, *, live=False, fallback=False, unmanaged=Fal
         (base / 'qml/qmldir').write_text('singleton Platform 1.0 Platform.qml\n'
                                               'NotificationStore 1.0 NotificationStore.qml\n'
                                               'SessionUpdateNotice 1.0 SessionUpdateNotice.qml\n')
+        (base / 'qml/helpers').mkdir()
+        for helper in ('private-state.py', 'clipboard_store.py'):
+            shutil.copyfile(ROOT / 'shell/helpers' / helper, base / 'qml/helpers' / helper)
+        if history is not None:
+            (base / 'state/emaki').mkdir(mode=0o700)
+            (base / 'state/emaki/notifications.json').write_text(json.dumps(dict(version=1, entries=history)))
         (base / 'generation/watch.py').write_text(watcher)
         (base / 'qml/shell.qml').write_text('''import QtQuick
 import Quickshell
@@ -64,6 +70,12 @@ ShellRoot {
         assert result.returncode == 0, result.stdout
         line = next(line for line in result.stdout.splitlines() if 'UPDATE_RESULT=' in line)
         notes = json.loads(line.split('UPDATE_RESULT=', 1)[1])
+        if history is not None:
+            # Force a normal history save, then verify that current update notices remain
+            # memory-only and the next startup cannot restore them as stale cards.
+            saved = json.loads((base / 'state/emaki/notifications.json').read_text())
+            assert all(entry['app'] != 'Desktop update' for entry in saved['entries']), saved
+            assert any(entry['summary'] == 'Keep this history' for entry in saved['entries']), saved
         started = (base / 'generation/started').exists()
         attempts_file = base / 'generation/attempts'
         attempts = attempts_file.read_text() if attempts_file.exists() else ''
@@ -158,7 +170,7 @@ print('PASS: installed-file observer, preserved startup gating, critical hook fa
 
 # The real observer against the desktop state command: the panel learns of an update only from
 # `emaki-session-update state`, never from the package manager. A fixture command answers.
-def backend_case(name, baseline, answer):
+def backend_case(name, baseline, answer, *, history=None):
     def setup(base, runtime):
         shutil.copyfile(ROOT / 'scripts/emaki-session-files', base / 'generation/watch.py')
         shutil.copyfile(ROOT / 'scripts/emaki_session_state.py', base / 'generation/emaki_session_state.py')
@@ -182,7 +194,11 @@ def backend_case(name, baseline, answer):
         return {}
     notes, asked, _ = run_case('backend-' + name, '', '''
     Component.onCompleted: notice.ready = true
-''', fallback=True, duration=2500, setup=setup)
+    Timer {
+        interval: 500; running: ''' + ('true' if history is not None else 'false') + '''
+        onTriggered: notes.local("Mail", "Keep this history", "")
+    }
+''', fallback=True, duration=2500, setup=setup, history=history)
     assert asked, 'the observer never asked the desktop state command: ' + name
     return notes
 
@@ -204,3 +220,20 @@ notes = backend_case('desktop-changed', dict(desktop='desk-one'),
                      dict(schema=1, busy=False, desktop='desk-two', update=None))
 assert len(notes) == 1 and notes[0]['sessionUpdate'], notes
 print('PASS: notice from the desktop state command: new update, missing and stale records, busy system, changed desktop')
+
+legacy = [dict(app='Desktop update', summary='Sign out and sign in again to finish updating the desktop.',
+               body='Save your work first [Emaki].', time=1000)]
+for name, baseline, answer, pending in (
+    ('history-updated-login', dict(desktop='desk-two', transaction='update-two'),
+     dict(schema=1, busy=False, desktop='desk-two', update=update), False),
+    ('history-reboot', dict(desktop='desk-two'),
+     dict(schema=1, busy=False, desktop='desk-two', update=None), False),
+    ('history-stale-session', dict(desktop='desk-one'),
+     dict(schema=1, busy=False, desktop='desk-two', update=update), True),
+):
+    notes = backend_case(name, baseline, answer, history=legacy)
+    updates = [entry for entry in notes if entry['app'] == 'Desktop update']
+    assert len(updates) == int(pending), (name, notes)
+    assert all(entry.get('sessionUpdate') and entry['critical'] for entry in updates), (name, notes)
+    assert any(entry['summary'] == 'Keep this history' for entry in notes), (name, notes)
+print('PASS: persisted old notices removed after login/reboot, stale sessions re-notified once, update cards never saved')

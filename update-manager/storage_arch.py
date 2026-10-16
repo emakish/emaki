@@ -4,6 +4,7 @@
 from contextlib import contextmanager, ExitStack
 from contextvars import ContextVar
 from functools import cmp_to_key, wraps
+from emaki_package_lock import lock_message
 import ctypes
 import fcntl
 import json
@@ -132,10 +133,13 @@ def package_guard():
         configuration()
         directory = os.open(DATABASE, os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
         stack.callback(os.close, directory)
-        descriptor = os.open('db.lck', os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                             0o600, dir_fd=directory)
+        try:
+            descriptor = os.open('db.lck', os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                                 0o600, dir_fd=directory)
+        except FileExistsError as error:
+            raise Refused(lock_message(DATABASE / 'db.lck')) from error
+        stack.callback(os.close, descriptor)
         owned = os.fstat(descriptor)
-        os.close(descriptor)
         try:
             yield
         finally:
@@ -259,7 +263,8 @@ def snapshot_paths():
     require(live not in snapshots or any('0/' + str(record['new_id']) == live
                                         for record in records.values()))
     result = []
-    known = {'@home', '@log', '@pkg', '@snapshots', '@swap'}
+    # @secureboot holds the Secure Boot machine key outside the root's snapshots.
+    known = {'@home', '@log', '@pkg', '@secureboot', '@snapshots', '@swap'}
     kept = set()
     root_names = {'@', *records, *(relative for relative in listing.values()
                                  if re.fullmatch(r'@snapshots/([1-9][0-9]*)/snapshot', relative))}

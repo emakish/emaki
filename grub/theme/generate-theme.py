@@ -77,6 +77,11 @@ def box(color, alpha, radius):
 
 
 def theme(scale, colors):
+    # GRUB's terminal window (gfxmenu/view.c) defaults to a black box over the middle 70 % of
+    # the picture; whatever GRUB prints after the menu ("Booting `Emaki'", an error) lands
+    # there. A full-screen window turns the start of a kernel entry into one black screen
+    # (boot.quiet_linux_entries clears it), the colour of the startup logo's background.
+    # GRUB's command line, entry editor and errors use the whole screen as a plain console.
     # GRUB draws the selection's corner pieces outside the item's content box, so
     # the content is the row minus both corners and the spacing makes room for them:
     # each selection is exactly one row high, rows are one row plus the gap apart.
@@ -92,6 +97,11 @@ desktop-image: "background.png"
 desktop-image-scale-method: "crop"
 desktop-color: "#{colors['background']}"
 terminal-font: "Unifont Regular 16"
+terminal-left: "0"
+terminal-top: "0"
+terminal-width: "100%"
+terminal-height: "100%"
+terminal-border: "0"
 
 + boot_menu {{
     left = {left}%

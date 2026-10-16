@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Render the actual view and controller with a recorded mock worker, without IPC.
 
 Like tests/test-shell.py: isolated XDG directories, offscreen Qt, software scene
@@ -20,7 +22,7 @@ from render_content import validate_frame, validate_restart
 
 UI = Path(__file__).resolve().parents[1]
 ROOT = UI.parents[1]
-SCREENS = ['welcome', 'welcome-bios', 'welcome-no-boot-medium', 'keyboard', 'network', 'timezone', 'timezone-search', 'timezone-empty', 'disk', 'alongside', 'alongside-review', 'manual', 'manual-empty', 'disk-mbr', 'disk-none', 'disk-refused-hibernation', 'disk-refused-bitlocker', 'disk-refused-space', 'disk-refused-efi', 'filesystem', 'encryption', 'encryption-none', 'encryption-account', 'encryption-separate', 'encryption-separate-empty', 'encryption-manual', 'encryption-alongside', 'encryption-mismatch', 'encryption-invalid', 'encryption-revealed', 'encryption-caps', 'encryption-numlock', 'live-keyboard-you', 'live-keyboard-encryption', 'live-keyboard-failed', 'live-keyboard-second', 'you', 'you-valid', 'you-cyrillic', 'you-emoji', 'you-tab', 'you-empty', 'you-console', 'you-paste', 'you-caps', 'you-numlock', 'software', 'software-minimal', 'review', 'review-encrypted', 'plan-errors', 'install', 'install-signatures', 'install-updates', 'install-step', 'done', 'done-restart', 'done-restart-removable', 'done-warning', 'done-no-package-lists', 'done-wifi-not-copied', 'error-login-name', 'error', 'error-details', 'error-real']
+SCREENS = ['welcome', 'welcome-bios', 'welcome-no-boot-medium', 'keyboard', 'network', 'timezone', 'timezone-search', 'timezone-empty', 'disk', 'alongside', 'alongside-review', 'manual', 'manual-empty', 'manual-editor', 'manual-delete', 'manual-create', 'manual-new-table', 'disk-mbr', 'disk-none', 'disk-refused-hibernation', 'disk-refused-bitlocker', 'disk-refused-space', 'disk-refused-efi', 'filesystem', 'encryption', 'encryption-none', 'encryption-account', 'encryption-separate', 'encryption-separate-empty', 'encryption-manual', 'encryption-alongside', 'encryption-mismatch', 'encryption-invalid', 'encryption-revealed', 'encryption-caps', 'encryption-numlock', 'live-keyboard-you', 'live-keyboard-encryption', 'live-keyboard-failed', 'live-keyboard-second', 'you', 'you-valid', 'you-cyrillic', 'you-emoji', 'you-tab', 'you-empty', 'you-console', 'you-paste', 'you-caps', 'you-numlock', 'software', 'software-minimal', 'review', 'review-encrypted', 'review-manual', 'plan-errors', 'install', 'install-signatures', 'install-updates', 'install-step', 'done', 'done-restart', 'done-restart-removable', 'done-warning', 'done-no-package-lists', 'done-wifi-not-copied', 'error-login-name', 'error', 'error-details', 'error-real']
 
 
 def main():
@@ -91,7 +93,7 @@ def main():
                                  (5, args.height - 6), (args.width - 6, args.height - 6)):
                         assert frame.getpixel((round(x * ratio), round(y * ratio)))[3] > 128, 'Window corner is hollow'
                     assert frame.getpixel((0, 0))[3] == 0, 'Window corner is square'
-                    # The installer stays light although an unset shell theme is dark. Sample the panel
+                    # The installer retains its explicit light row, matching the shell default. Sample the panel
                     # in the empty margin between its left edge and the layout inset in it, at mid
                     # height, so the point lies inside the window at every size down to the 960x480
                     # minimum and never on a label.
@@ -123,13 +125,22 @@ def main():
                 print('PASS render ' + screen, flush=True)
                 continue
             validate_frame(args.output / (screen + '.png'), log, screen, args.width, args.height,
-                           version, scrolled=args.scroll_bottom)
+                           version, scrolled=args.scroll_bottom or screen == 'manual-delete')
             if screen == 'error-details':
                 assert 'DETAILS_VISIBLE' in log, log
             if screen == 'disk':
                 assert 'ERASE_IN_VIEW' in log, log
             if screen == 'manual-empty':
                 assert 'NO_PARTITIONS_HINT This disk has no partitions yet.' in log, log
+            if screen == 'manual-delete':
+                assert ('DELETE_CONFIRM_VISIBLE Partition 2 holds Windows. Deleting it removes the partition and '
+                        'all its files when you press Install. Type DELETE to confirm.') in log, log
+            if screen == 'manual-create':
+                assert 'CREATE_FORM_VISIBLE' in log, log
+            if screen in ('manual-editor', 'review-manual'):
+                assert 'EDITOR_ROWS partition1 partition2 deleted3 new3 new4 new5 free' in log, log
+            if screen == 'manual-new-table':
+                assert 'EDITOR_ROWS new1 new2 free' in log, log
             if screen.startswith('disk-refused-'):
                 assert 'UNSELECTED_REFUSAL_VISIBLE' in log, log
             if screen == 'disk-none':

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """HOST ONLY: graphics fallback check on a TEST image (no-GL and GL boots, live and installed).
 
 Boots its own QEMU guests one after another and checks the text screen that

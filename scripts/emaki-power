@@ -1,4 +1,6 @@
 #!/bin/sh
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Emaki power menu. Uses the same fuzzel as the launcher: no extra programs,
 # shared appearance. Invoked by a shortcut in niri/default.kdl.
 #

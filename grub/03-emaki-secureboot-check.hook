@@ -1,0 +1,18 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# A PostTransaction hook cannot undo a transaction (libalpm ignores its exit status), so the
+# only way to keep an unsigned kernel off a Secure Boot machine is to stop before the files
+# change: this proves the machine key and sbsigntools can sign. Without the key it passes.
+# Before 04-emaki-update-boot and 05-snap-pac-pre, so a refusal leaves nothing behind.
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Target = usr/lib/modules/*/vmlinuz
+Target = usr/lib/fwupd/efi/fwupdx64.efi
+
+[Action]
+Description = Checking the new startup files
+When = PreTransaction
+Exec = /usr/bin/emaki-secureboot check
+AbortOnFail

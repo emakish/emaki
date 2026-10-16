@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Run a long-lived child that must not outlive the shell: child-guard.py <argv...>.
 
 Quickshell 0.3.1 does not end child processes when qs exits, so the child lives exactly

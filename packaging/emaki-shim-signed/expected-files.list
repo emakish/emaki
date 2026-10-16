@@ -1,0 +1,9 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+/usr/share/emaki-shim-signed/mmx64.efi
+/usr/share/emaki-shim-signed/shimx64.efi
+/usr/share/licenses/emaki-shim-signed/CRYPTLIB-NOTICES
+/usr/share/licenses/emaki-shim-signed/GNU-EFI-NOTICES
+/usr/share/licenses/emaki-shim-signed/LICENSE
+/usr/share/licenses/emaki-shim-signed/OPENSSL-NOTICES
+/usr/share/licenses/emaki-shim-signed/SHIM-NOTICES

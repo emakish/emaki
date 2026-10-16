@@ -63,6 +63,7 @@ EXEMPT_TOP = {
     'hypr': 'config files of another program; Emaki paths are substituted at install (rule 7)',
     'kitty': 'config files of another program; Emaki paths are substituted at install (rule 7)',
     'qt6ct': 'config files of another program; Emaki paths are substituted at install (rule 7)',
+    'zsh': 'config files of another program (zsh reads only its /etc/zsh); plugins are found through XDG_DATA_DIRS',
     'etc-skel': 'seed files of other programs; rule 9 replaces them with read-time defaults',
     '.github': 'CI configuration of the build machine',
 }

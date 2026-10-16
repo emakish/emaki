@@ -8,6 +8,7 @@ logind. The bus tests inject a private connection into the client against synthe
 (tests/fixtures/fake-accounts-service.py) on a private dbus-daemon: no system bus, no root, no
 account of this computer is read or changed.
 """
+import contextlib
 import ctypes
 import importlib.machinery
 import importlib.util
@@ -31,7 +32,7 @@ import zlib
 from PIL import Image, JpegImagePlugin
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / 'scripts/emaki-settings-users'
+SCRIPT = Path(os.environ.get('EMAKI_USERS_UNDER_TEST', ROOT / 'scripts/emaki-settings-users'))
 loader = importlib.machinery.SourceFileLoader('settings_users', str(SCRIPT))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 users = importlib.util.module_from_spec(spec)
@@ -145,6 +146,13 @@ class FakeAccounts:
         self.check('set_password')
         self.rows[int(path[5:])]['Locked'] = False
 
+    def set_shell(self, path, shell):
+        self.calls.append(('set_shell', path, shell))
+        self.check('set_shell')
+        if 'set_shell' not in self.other:
+            self.rows[int(path[5:])]['Shell'] = shell
+        self.late_failure('set_shell')
+
     def set_account_type(self, path, account_type):
         self.calls.append(('set_account_type', path, account_type))
         self.check('set_account_type')
@@ -204,11 +212,246 @@ def account(uid, login, administrator=False, locked=False, name='', system=False
             'Locked': locked, 'SystemAccount': system, 'HomeDirectory': '/home/' + login}
 
 
+class RootLock(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(prefix='emaki-users-lock-')
+        self.addCleanup(self.directory.cleanup)
+        self.path = Path(self.directory.name) / 'users.lock'
+        for name, value in (('LOCK', str(self.path)), ('LOCK_OWNER', os.getuid()), ('LOCK_WAIT', 0.05)):
+            patch = mock.patch.object(users, name, value, create=True)
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def test_abstract_socket_cannot_block_privileged_changes(self):
+        with mock.patch.object(socket, 'socket') as factory:
+            factory.return_value.bind.side_effect = OSError('address already in use')
+            with users.lock():
+                self.assertEqual(stat.S_IMODE(self.path.stat().st_mode), 0o600)
+
+    def test_root_lock_serializes_and_releases(self):
+        with users.lock():
+            with self.assertRaises(users.Refusal):
+                users.lock()
+        with users.lock():
+            pass
+
+    def test_root_lock_rejects_unsafe_files_without_blocking(self):
+        with users.lock():
+            self.assertTrue(self.path.is_file())
+        self.path.unlink()
+        for kind in ('fifo', 'symlink', 'mode', 'owner', 'hardlink'):
+            with self.subTest(kind=kind):
+                if kind == 'fifo':
+                    os.mkfifo(self.path, 0o600)
+                elif kind == 'symlink':
+                    self.path.symlink_to('absent')
+                else:
+                    self.path.touch(mode=0o600)
+                    if kind == 'mode':
+                        self.path.chmod(0o666)
+                    if kind == 'hardlink':
+                        os.link(self.path, self.path.with_suffix('.link'))
+                original_stat = os.fstat
+                def metadata(descriptor):
+                    info = original_stat(descriptor)
+                    if kind == 'owner' and stat.S_ISREG(info.st_mode):
+                        values = list(info)
+                        values[4] = os.getuid() + 1
+                        return os.stat_result(values)
+                    return info
+                with mock.patch.object(os, 'fstat', side_effect=metadata):
+                    with self.assertRaises(users.Refusal):
+                        users.lock()
+                self.path.unlink()
+
+    def test_root_lock_rejects_writable_directory(self):
+        with users.lock():
+            self.assertTrue(self.path.is_file())
+        self.path.unlink()
+        Path(self.directory.name).chmod(0o777)
+        with self.assertRaises(users.Refusal):
+            users.lock()
+
+    def test_profile_lock_is_separate(self):
+        with mock.patch.dict(os.environ, {'XDG_RUNTIME_DIR': self.directory.name}):
+            with users.lock(profile_uid=os.getuid()):
+                with users.lock():
+                    pass
+            self.assertTrue(self.path.is_file())
+            self.assertTrue((Path(self.directory.name) / 'emaki-settings-users-profile.lock').is_file())
+
+
+class ProfileLock(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(prefix='emaki-users-profile-')
+        self.addCleanup(self.directory.cleanup)
+        self.runtime = Path(self.directory.name)
+        self.path = self.runtime / 'emaki-settings-users-profile.lock'
+        self.default_lock_wait = users.LOCK_WAIT
+        for patch in (mock.patch.dict(os.environ, {'XDG_RUNTIME_DIR': str(self.runtime)}),
+                      mock.patch.object(users, 'LOCK_WAIT', 0.05)):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def acquire(self):
+        return users.lock(profile_uid=os.getuid())
+
+    def child(self, wait):
+        code = '''
+import os, runpy, sys
+module = runpy.run_path(sys.argv[1])
+lock = module['lock']
+lock.__globals__['LOCK_WAIT'] = float(sys.argv[2])
+print('ready', flush=True)
+try:
+    with lock(profile_uid=os.getuid()):
+        print('acquired', flush=True)
+except module['Refusal'] as error:
+    print(str(error), flush=True)
+    sys.exit(1)
+'''
+        process = subprocess.Popen([sys.executable, '-c', code, str(SCRIPT), str(wait)],
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        def cleanup():
+            if process.poll() is None:
+                process.kill()
+            process.communicate()
+        self.addCleanup(cleanup)
+        self.assertEqual(process.stdout.readline().strip(), 'ready')
+        return process
+
+    def test_cross_process_contention_and_release(self):
+        with self.acquire():
+            child = self.child(0.1)
+            output = child.stdout.readline()
+            _, error = child.communicate(timeout=5)
+            self.assertEqual((child.returncode, output.strip(), error), (1, 'users_busy', ''))
+        child = self.child(0.1)
+        output = child.stdout.readline()
+        _, error = child.communicate(timeout=5)
+        self.assertEqual((child.returncode, output.strip(), error), (0, 'acquired', ''))
+        info = self.path.stat()
+        self.assertEqual((info.st_uid, stat.S_IMODE(info.st_mode), info.st_nlink),
+                         (os.getuid(), 0o600, 1))
+
+    def test_waiter_acquires_after_release(self):
+        with self.acquire():
+            child = self.child(3)
+            with self.assertRaises(subprocess.TimeoutExpired):
+                child.communicate(timeout=0.15)
+        output, error = child.communicate(timeout=5)
+        self.assertEqual((child.returncode, output.strip(), error), (0, 'acquired', ''))
+
+    def test_obsolete_abstract_socket_cannot_block(self):
+        with mock.patch.object(socket, 'socket') as factory:
+            factory.return_value.bind.side_effect = OSError('address already in use')
+            with self.acquire():
+                self.assertTrue(self.path.is_file())
+            factory.assert_not_called()
+
+    def test_bound_obsolete_abstract_socket_cannot_block(self):
+        try:
+            held = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        except OSError:
+            self.skipTest('unix sockets are unavailable')
+        with held:
+            try:
+                held.bind(f'\0emaki-settings-users-profile-{os.getuid()}')
+            except OSError:
+                self.skipTest('obsolete abstract address is unavailable')
+            with self.acquire():
+                self.assertTrue(self.path.is_file())
+
+    def test_missing_or_relative_runtime_is_rejected(self):
+        with contextlib.chdir(self.runtime):
+            Path('relative/runtime').mkdir(mode=0o700, parents=True)
+            for value in (None, '', 'relative/runtime'):
+                with self.subTest(value=value), mock.patch.dict(os.environ):
+                    if value is None:
+                        os.environ.pop('XDG_RUNTIME_DIR', None)
+                    else:
+                        os.environ['XDG_RUNTIME_DIR'] = value
+                    with self.assertRaises(users.Refusal):
+                        self.acquire()
+
+    def test_directory_requires_private_permissions(self):
+        for mode in (0o500, 0o710, 0o750, 0o777):
+            with self.subTest(mode=oct(mode)):
+                self.runtime.chmod(mode)
+                try:
+                    with self.assertRaises(users.Refusal):
+                        self.acquire()
+                finally:
+                    self.runtime.chmod(0o700)
+
+    def test_symlink_runtime_is_rejected(self):
+        alias = self.runtime / 'alias'
+        alias.symlink_to(self.runtime, target_is_directory=True)
+        with mock.patch.dict(os.environ, {'XDG_RUNTIME_DIR': str(alias)}):
+            with self.assertRaises(users.Refusal):
+                self.acquire()
+        self.assertFalse(self.path.exists())
+
+    def test_foreign_directory_owner_is_rejected(self):
+        original_stat = os.fstat
+        def metadata(descriptor):
+            info = original_stat(descriptor)
+            if stat.S_ISDIR(info.st_mode):
+                values = list(info)
+                values[4] = os.getuid() + 1
+                return os.stat_result(values)
+            return info
+        with mock.patch.object(os, 'fstat', side_effect=metadata):
+            with self.assertRaises(users.Refusal):
+                self.acquire()
+        self.assertFalse(self.path.exists())
+
+    def test_unsafe_files_are_rejected_without_blocking(self):
+        original_open = os.open
+        original_stat = os.fstat
+        for kind in ('fifo', 'symlink', 'mode', 'owner', 'hardlink'):
+            with self.subTest(kind=kind):
+                if kind == 'fifo':
+                    os.mkfifo(self.path, 0o600)
+                elif kind == 'symlink':
+                    self.path.symlink_to('absent')
+                else:
+                    self.path.touch(mode=0o600)
+                    if kind == 'mode':
+                        self.path.chmod(0o644)
+                    elif kind == 'hardlink':
+                        os.link(self.path, self.runtime / 'other-link')
+                def checked_open(path, flags, *args, **kwargs):
+                    self.assertTrue(flags & os.O_NOFOLLOW)
+                    if not flags & os.O_DIRECTORY:
+                        self.assertTrue(flags & os.O_NONBLOCK)
+                    return original_open(path, flags, *args, **kwargs)
+                def metadata(descriptor):
+                    info = original_stat(descriptor)
+                    if kind == 'owner' and stat.S_ISREG(info.st_mode):
+                        values = list(info)
+                        values[4] = os.getuid() + 1
+                        return os.stat_result(values)
+                    return info
+                try:
+                    wait = self.default_lock_wait if kind == 'owner' else users.LOCK_WAIT
+                    with mock.patch.object(os, 'open', side_effect=checked_open), \
+                            mock.patch.object(os, 'fstat', side_effect=metadata), \
+                            mock.patch.object(users, 'LOCK_WAIT', wait):
+                        started = time.monotonic()
+                        with self.assertRaises(users.Refusal):
+                            self.acquire()
+                        if kind == 'owner':
+                            self.assertLess(time.monotonic() - started, 1)
+                finally:
+                    self.path.unlink()
+
+
 class Machine(unittest.TestCase):
     """Three accounts over the in-process fakes; ada (1000) runs the program by default."""
 
     def setUp(self):
-        # Rule tests isolate account decisions; the socket lock has its own test below.
+        # Rule tests isolate account decisions; file locks have separate tests above.
         self.lock_patch = mock.patch.object(users, 'lock', return_value=mock.Mock())
         self.lock_patch.start()
         self.addCleanup(self.lock_patch.stop)
@@ -233,6 +476,32 @@ class Machine(unittest.TestCase):
 
 
 class Rules(Machine):
+    def test_new_accounts_get_zsh_before_password_existing_shells_stay(self):
+        before = {uid: row.get('Shell') for uid, row in self.accounts.rows.items()}
+        with mock.patch('shutil.which', return_value='/packaged/bin/zsh'):
+            code, reply = self.run_command('add', 'dee', 'Dee', '--administrator', 'no', stdin=PASSWORD)
+        self.assertEqual((code, reply['status']), (0, 'applied'), reply)
+        self.assertEqual(self.accounts.rows[1003].get('Shell'), '/packaged/bin/zsh')
+        self.assertEqual([call[0] for call in self.accounts.calls], ['create', 'set_shell', 'set_password'])
+        self.assertEqual({uid: self.accounts.rows[uid].get('Shell') for uid in before}, before)
+
+    def test_missing_zsh_refuses_add_before_creating_account(self):
+        with mock.patch('shutil.which', return_value=None):
+            code, reply = self.run_command('add', 'dee', 'Dee', '--administrator', 'no', stdin=PASSWORD)
+        self.assertEqual((code, reply['status']), (1, 'rejected'), reply)
+        self.assertEqual(self.accounts.calls, [])
+
+    def test_shell_refusal_and_ignored_shell_change_roll_back_without_deleting_home(self):
+        for failure in ('deny', 'other'):
+            with self.subTest(failure=failure):
+                getattr(self.accounts, failure).add('set_shell')
+                code, reply = self.run_command('add', 'dee', 'Dee', '--administrator', 'no', stdin=PASSWORD)
+                self.assertEqual((code, reply['status']), (1, 'rejected'), reply)
+                self.assertNotIn(1003, self.accounts.rows)
+                self.assertEqual(self.accounts.calls[-1], ('delete', 1003, False))
+                self.assertFalse(any(call[0] == 'set_password' for call in self.accounts.calls))
+                getattr(self.accounts, failure).clear()
+
     def test_an_account_the_service_cannot_describe_is_shown_and_left_alone(self):
         # AccountsService can answer FindUserById with an object it no longer exports.
         self.accounts.stale.add(1002)
@@ -542,22 +811,16 @@ class Rules(Machine):
 
     def test_one_change_at_a_time(self):
         self.lock_patch.stop()
-        held = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        try:
-            held.bind(users.LOCK)
-        except OSError:
-            held.close()
-            self.skipTest('unix sockets are unavailable')
-        try:
-            saved = users.LOCK_WAIT
-            users.LOCK_WAIT = 0.2
-            code, reply = self.run_command('set-name', 'bo', 'Bo')
-            self.assertEqual((code, reply['reason']), (1, 'users_busy'))
-            code, reply = self.run_command('status')
-            self.assertEqual(code, 0)
-        finally:
-            users.LOCK_WAIT = saved
-            held.close()
+        real_lock = users.lock
+        with tempfile.TemporaryDirectory(prefix='emaki-users-rule-') as directory, \
+                mock.patch.dict(os.environ, {'XDG_RUNTIME_DIR': directory}), \
+                mock.patch.object(users, 'LOCK_WAIT', 0.05), \
+                mock.patch.object(users, 'lock', side_effect=lambda **kwargs: real_lock(profile_uid=os.getuid())):
+            with real_lock(profile_uid=os.getuid()):
+                code, reply = self.run_command('set-name', 'bo', 'Bo')
+                self.assertEqual((code, reply['reason']), (1, 'users_busy'))
+                code, reply = self.run_command('status')
+                self.assertEqual(code, 0)
         self.assertEqual(self.accounts.calls, [])
 
     def test_hash_uses_the_system_default_method(self):
@@ -980,6 +1243,7 @@ class Bus(unittest.TestCase):
         self.assertNotIn(PASSWORD, self.log.read_text())
         state = json.loads(self.state.read_text())
         self.assertTrue(verify(PASSWORD, state['passwords']['cy']))
+        self.assertEqual(state['users']['1002']['Shell'], os.path.realpath(shutil.which('zsh')))
         code, reply = self.program('set-name', 'bo', 'Bo Person')
         self.assertEqual(code, 0, reply)
         code, reply = self.program('set-administrator', 'bo', 'yes')
@@ -988,7 +1252,7 @@ class Bus(unittest.TestCase):
         self.assertEqual(code, 0, reply)
         self.assertEqual(json.loads(self.state.read_text())['deleted'], [{'uid': 1002, 'remove_files': True}])
         methods = [call['method'] for call in self.mutations()]
-        self.assertEqual(methods, ['CreateUser', 'SetPassword', 'SetRealName', 'SetAccountType', 'DeleteUser'])
+        self.assertEqual(methods, ['CreateUser', 'SetShell', 'SetPassword', 'SetRealName', 'SetAccountType', 'DeleteUser'])
         self.assertTrue(all(call['interactive'] for call in self.mutations()))
 
     def test_service_refusals_map_to_fixed_reasons(self):
@@ -1066,7 +1330,8 @@ class Bus(unittest.TestCase):
         self.assertEqual((call['method'], call['path'], call['interactive']),
                          ('SetIconFile', '/org/freedesktop/Accounts/User1000', True))
         self.assertTrue(call['args'][0].startswith(str(runtime) + '/'))
-        self.assertEqual(list(runtime.iterdir()), [])
+        self.assertEqual([path.name for path in runtime.iterdir()],
+                         ['emaki-settings-users-profile.lock'])
         code, reply = self.program('picture', '--clear', uid=1000, extra=extra)
         self.assertEqual((code, reply['status']), (0, 'applied'), reply)
         self.assertFalse(reply['users'][0]['picture'])

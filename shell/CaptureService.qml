@@ -65,6 +65,9 @@ Scope {
         function stop(): bool {
             return controller.stop();
         }
+        function record(): bool {
+            return controller.record();
+        }
         function status(): string {
             return controller.status();
         }

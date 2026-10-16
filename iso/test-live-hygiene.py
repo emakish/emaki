@@ -25,6 +25,11 @@ class LiveHygieneTests(unittest.TestCase):
         packages = (profile / 'packages.x86_64').read_text().split()
         self.assertNotIn('cloud-init', packages)
         self.assertNotIn('grim', packages)
+        # The live account uses Emaki's defaults, rather than an existing grml configuration.
+        self.assertNotIn('grml-zsh-config', packages)
+        self.assertLessEqual({'zsh', 'zsh-autosuggestions', 'zsh-syntax-highlighting', 'emaki-config'}, set(packages))
+        accounts = (profile / 'airootfs/etc/passwd').read_text().splitlines()
+        self.assertEqual([line.rsplit(':', 1)[1] for line in accounts if line.startswith('live:')], ['/usr/bin/zsh'])
         root = profile / 'airootfs/etc/systemd/system'
         self.assertFalse((root / 'cloud-init.target.wants').exists())
         self.assertFalse((root / 'sockets.target.wants/pcscd.socket').is_symlink())
@@ -44,7 +49,7 @@ class LiveHygieneTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             source = Path(temporary) / 'releng'
             shutil.copytree(HERE / 'profile', source, symlinks=True)
-            (source / 'packages.x86_64').write_text('archinstall\ncloud-init\ngrim\nlinux\n')
+            (source / 'packages.x86_64').write_text('archinstall\ncloud-init\ngrim\ngrml-zsh-config\nlinux\nzsh\n')
             cloud = source / 'airootfs/etc/systemd/system/cloud-init.target.wants'
             cloud.mkdir(exist_ok=True)
             link = cloud / 'cloud-config.service'

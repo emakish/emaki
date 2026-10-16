@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Run a host-side VM job inside a jail: the whole filesystem is read-only except the given
 # directories, /tmp is private, /dev has only KVM and the render node, secrets are hidden,
 # no-new-privileges blocks sudo, and a private PID namespace means the job can only see (and

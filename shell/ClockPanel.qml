@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Window
@@ -590,6 +592,8 @@ Item {
         shown: panel.opened && panel.glassReady && belongs
         // Today and the chosen player rest under orange drops: the strong rim there only.
         strong: belongs && (focused as GlassTarget)?.accent === true
+        // Do not disturb's track is the accent itself; the others rest under selected drops.
+        strongInk: (focused as GlassTarget)?.drop === false ? LiquidPalette.focusOnAccent : LiquidPalette.focusOnSelected
         radius: 10
     }
 }

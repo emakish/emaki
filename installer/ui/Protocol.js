@@ -1,11 +1,13 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Shared by the QML client and the transcript tests. No secret is retained here.
 function initial() {
     return { connected: false, ready: false, serial: 0, pending: {}, version: "", greeted: false,
         inventory: null, plan: null, deadline: 0, jobId: "", lastLogSeq: 0, reservedLogins: null, consoleChars: null,
-        phase: "", phasePct: 0, totalPct: 0, indeterminate: false, activity: null, step: null,
+        phase: "", phasePct: 0, totalPct: 0, indeterminate: false, activity: null, step: null, skippedPhases: [],
         running: false, confirming: false, planning: false, probing: false,
         outcome: "", error: null, restartState: "", forcedDeadline: 0, preparingSince: 0, rebootMessage: "", notice: "Connecting to the installer…",
-        logs: [], cancelPending: false, cancelMessage: "", started: 0, seconds: 0, doneWarnings: [] };
+        logs: [], cancelPending: false, cancelMessage: "", started: 0, seconds: 0, doneWarnings: [], secureBoot: null };
 }
 function invalidate(s) { s.plan = null; s.deadline = 0; }
 function request(s, type, fields) {
@@ -84,7 +86,7 @@ function receive(s, m, now) {
     if (m.job_id && s.jobId && m.job_id !== s.jobId && pending !== "confirm") return out;
     switch (m.type) {
     case "hello":
-        if (m.proto !== 1) { s.notice = "This worker uses an unsupported protocol."; break; }
+        if (m.proto !== 1) { s.notice = "The installer and this window are incompatible."; break; }
         s.connected = true; s.ready = true; s.greeted = true; s.version = m.emaki_version;
         s.label = typeof m.emaki_label === "string" ? m.emaki_label : "";
         s.notice = "";
@@ -114,11 +116,12 @@ function receive(s, m, now) {
         if (m.busy_job || s.jobId) {
             if (m.busy_job && m.busy_job !== s.jobId) {
                 s.jobId = m.busy_job; s.lastLogSeq = 0; s.logs = [];
+                s.skippedPhases = [];
                 s.started = now; s.running = true; s.outcome = "";
             }
             out.push(request(s, "resume", {job_id: s.jobId, since_seq: s.lastLogSeq}));
         } else {
-            if (s.confirming) s.notice = "The confirmation could not be recovered. Check the worker log before preparing a new plan.";
+            if (s.confirming) s.notice = "The confirmation could not be recovered. Check the installation log before preparing a new plan.";
             s.confirming = false;
             out.push(request(s, "probe"));
         }
@@ -166,6 +169,7 @@ function receive(s, m, now) {
                 s.phase = "prepare_disk"; s.phasePct = null; s.totalPct = 0; s.indeterminate = true;
                 s.activity = null;
                 s.step = null;
+                s.skippedPhases = [];
                 invalidate(s);
             }
         }
@@ -181,7 +185,7 @@ function receive(s, m, now) {
             if (m.code === "job_not_found") {
                 s.running = false; s.confirming = false; s.jobId = "";
                 s.outcome = "error";
-                s.error = {message: "The worker no longer has this job. Inspect the installation log before starting again.", retryable: false};
+                s.error = {message: "The installer no longer has a record of this installation. Check the installation log before starting again.", retryable: false};
             }
             if (m.code === "busy" && pending !== "save_log") out.push(request(s, "hello", {proto: 1}));
         } else if (pending === "save_log") s.notice = "Log saved to the selected removable medium.";
@@ -190,9 +194,13 @@ function receive(s, m, now) {
         break;
     case "state": case "progress":
         if (!m.job_id) break;
+        if (s.jobId !== m.job_id) s.skippedPhases = [];
         s.jobId = m.job_id; s.running = true; s.confirming = false;
         s.phase = m.phase; s.phasePct = m.phase_pct; s.totalPct = m.total_pct;
         s.indeterminate = m.indeterminate;
+        if (Array.isArray(m.skipped_phases)) s.skippedPhases = m.skipped_phases.slice();
+        else if (m.phase_pct === null && m.indeterminate === false && !phaseSkipped(s, m.phase))
+            s.skippedPhases = s.skippedPhases.concat([m.phase]);
         if (m.notice !== undefined) s.notice = m.notice;
         // A state event has none: the count ends with the step it counted.
         s.activity = m.activity || null;
@@ -216,6 +224,12 @@ function receive(s, m, now) {
         s.running = false; s.confirming = false; s.outcome = "done";
         s.seconds = m.seconds; s.totalPct = 100; s.cancelPending = false;
         s.doneWarnings = m.warnings || [];
+        // Only a well-formed one-time password is shown. esp_label names the EFI partition in
+        // MokManager's "Enroll key from disk" list: a FAT label the installer gave it, else null.
+        s.secureBoot = m.secure_boot && /^[0-9]{8}$/.test(m.secure_boot.password || "") ? {
+            password: m.secure_boot.password,
+            espLabel: typeof m.secure_boot.esp_label === "string" && /^[A-Z0-9]{1,11}$/.test(m.secure_boot.esp_label) ? m.secure_boot.esp_label : null
+        } : null;
         break;
     }
     if (m.id) delete s.pending[m.id];
@@ -253,11 +267,11 @@ function errorPresentation(error) {
     const another = "Choose another disk.";
     const larger = "Choose a larger disk.";
     const table = {
-        bad_request: ["The installer service could not read a request from this window.", save],
+        bad_request: ["The installer could not read a request from this window.", save],
         bad_config: ["The installer could not use one of the chosen settings.", save],
         login_name_reserved: ["This login name belongs to the system.", "Choose another name; the disk has not been changed."],
         bad_dest: ["The log could not be written to the chosen removable medium.", "Choose another medium from the list."],
-        busy: ["The installer service was busy with another task.", save],
+        busy: ["The installer was busy with another task.", save],
         restart_pending: ["A previous restart is still pending.", "Wait for it to finish, then try again."],
         unsupported_mode: ["This type of installation is not available in this version.", disk],
         unsupported_version: ["The installer's parts on this USB stick do not match each other.", save],
@@ -270,12 +284,12 @@ function errorPresentation(error) {
         disk_changed: ["The disk changed after the review.", review],
         unsafe_disk: ["A safety check of the disk did not pass.", save],
         manual_layout: ["The partitions cannot be used as they were assigned.", disk],
-        esp_space: ["The disk's EFI system partition cannot be used.", disk],
+        esp_space: ["The disk's startup partition cannot be used.", disk],
         root_too_small: ["There is not enough room for Emaki on the chosen partition.", disk],
         shrink_bounds: ["Windows cannot be made smaller as planned.", disk],
         token_invalid: ["The confirmation did not match the review.", review],
         token_expired: ["The review expired before the installation started.", review],
-        job_not_found: ["The installer service no longer has this installation.", save],
+        job_not_found: ["The installer no longer has a record of this installation.", save],
         offline_repo: ["The installer could not use the package source on the USB stick.", usb],
         offline_repo_incomplete: ["Some packages on the USB stick are missing or could not be verified.", usb],
         command_failed: ["A program the installer runs stopped with an error.", save],
@@ -429,9 +443,94 @@ function alongsideRefusal(d) {
     const reason = d.shrink?.reason || partition?.shrink.reason || "";
     return reason ? "\nInstall alongside Windows is not possible here. " + reason : "";
 }
-// planner.manual_partitions refuses every table but GPT; a disk without a table gets one in GParted.
+// planner.manual_partitions refuses every table but GPT; an empty disk gets a new GPT table in the
+// partition editor (planner.partition_edits new_table).
 function manualReason(d) {
-    return d && d.partition_table && d.partition_table !== "gpt" ? "Manual installation needs a GPT disk." : "";
+    return d && d.partition_table && d.partition_table !== "gpt" && (d.partitions || []).length ? "Manual installation needs a GPT disk." : "";
+}
+
+// The partition editor (manual mode): the rules of planner.partition_edits, for the window. Nothing
+// is written until Install: the edits travel in the plan as config.partitioning.
+var MIB = 1048576;
+var GIB = 1073741824;
+// planner.ESP_FORMAT_MIN, SWAP_MIN, DATA_MIN; root has its own minimum (rootMinimum).
+var EDITOR_MINIMUM = { "/efi": 512 * MIB, "swap": 256 * MIB, "/home": GIB };
+var EDITOR_KINDS = { "/": "linux", "/home": "linux", "/efi": "esp", "swap": "swap" };
+function emptyEdits() {
+    return { new_table: false, delete: [], create: [] };
+}
+// The config's partitioning, or null when nothing changes.
+function editsConfig(e) {
+    if (!e || !(e.new_table || e.delete.length || e.create.length)) return null;
+    const value = { delete: e.delete.slice(), create: e.create.slice() };
+    if (e.new_table) value.new_table = true;
+    return value;
+}
+// planner.usable_end: 1 MiB stays for the backup GPT.
+function usableEnd(d) {
+    return Math.floor((d.size_bytes - MIB) / MIB) * MIB;
+}
+// An empty disk (no partitions) can get a new GPT table; one with GPT already needs none, and a
+// locked volume over the whole disk is cleared by Erase, with its typed ERASE (planner.partition_edits).
+function canNewTable(d) {
+    return !!d && !(d.partitions || []).length && d.partition_table !== "gpt" && !(d.closed_encrypted || []).length;
+}
+// The GPT numbers new partitions get: the lowest entries no kept partition uses, in order.
+function newNumbers(d, e) {
+    const gone = e.delete.map(row => row.partition_id);
+    const used = (d.partitions || []).filter(p => gone.indexOf(p.id) < 0).map(p => p.number);
+    const numbers = [];
+    for (let n = 1; n <= 128 && numbers.length < e.create.length; ++n)
+        if (used.indexOf(n) < 0) numbers.push(n);
+    return numbers;
+}
+// The disk as the editor shows it, in disk order: kept partitions, deleted ones (still listed, their
+// space free), new ones and the free extents left (inventory._extents: whole MiB, past 1 MiB).
+function editorLayout(d, e) {
+    if (!d) return [];
+    e = e || emptyEdits();
+    const gone = e.delete.map(row => row.partition_id);
+    const numbers = newNumbers(d, e);
+    const rows = (d.partitions || []).map(p => ({
+        kind: gone.indexOf(p.id) >= 0 ? "deleted" : "partition", id: p.id, number: p.number,
+        start: p.start_bytes, size: p.size_bytes, partition: p
+    }));
+    e.create.forEach((c, i) => rows.push({ kind: "new", id: c.id, number: numbers[i], start: c.start_bytes, size: c.size_bytes, create: c }));
+    const taken = rows.filter(r => r.kind !== "deleted").sort((a, b) => a.start - b.start);
+    let cursor = MIB;
+    const end = usableEnd(d);
+    const free = [];
+    for (const r of taken) {
+        const start = Math.floor(r.start / MIB) * MIB;
+        if (start > cursor) free.push({ kind: "free", id: "free-" + cursor, start: cursor, size: start - cursor });
+        cursor = Math.max(cursor, Math.ceil((r.start + r.size) / MIB) * MIB);
+    }
+    if (end > cursor) free.push({ kind: "free", id: "free-" + cursor, start: cursor, size: end - cursor });
+    return rows.concat(free).sort((a, b) => a.start - b.start || (a.kind === "deleted" ? -1 : 1));
+}
+// Whole MiB from a size typed in GiB ("12", "12.5", "0.5"); NaN for anything else.
+function sizeFromGiB(text) {
+    const value = String(text).trim();
+    if (!/^[0-9]+([.,][0-9]+)?$/.test(value)) return NaN;
+    return Math.round(Number(value.replace(",", ".")) * 1024) * MIB;
+}
+// Why a new partition cannot be made in a free extent: "" when it can. root: the root minimum.
+function newPartitionError(free, use, size, root) {
+    if (!free) return "Choose free space first.";
+    if (!EDITOR_KINDS[use]) return "Choose what the new partition is for.";
+    if (!(size > 0)) return "Type the size in GiB, for example 40 or 0.5.";
+    if (size > free.size) return "Only " + (free.size / GIB).toFixed(2) + " GiB of free space is here.";
+    const least = use === "/" ? root : EDITOR_MINIMUM[use];
+    if (size < least) return (use === "/" ? "Root" : use === "/efi" ? "An EFI system partition" : use === "swap" ? "Swap" : "A new partition") + " needs at least " + (least / GIB).toFixed(2) + " GiB.";
+    return "";
+}
+// What a deletion of another system's partition must confirm (planner.deletion_identity).
+function deletionIdentity(p) {
+    return { path: p.path, start_bytes: p.start_bytes, size_bytes: p.size_bytes, system: p.other_system };
+}
+// One line per partition row: what it is now.
+function partitionText(p) {
+    return [p.path, (p.size_bytes / GIB).toFixed(1) + " GiB", p.fs || "unformatted", p.esp ? "EFI" : "", p.other_system || ""].filter(x => x).join(" · ");
 }
 // planner.storage_layout: 20 GiB, plus the RAM-sized hibernation file, plus the encryption header.
 function rootMinimum(memory, hibernation, encrypted) {
@@ -454,4 +553,22 @@ function alongsideDefault(p) {
 function alongsideReview(p, freed) {
     return p ? "Windows keeps " + ((Math.floor(p.size_bytes / 1048576) * 1048576 - freed) / 1e9).toFixed(2) +
         " GB, Emaki gets " + (freed / 1e9).toFixed(2) + " GB; back up your files first." : "Windows shrink is unavailable. Refresh the disk list.";
+}
+
+function phaseSkipped(s, phase) {
+    return (s.skippedPhases || []).indexOf(phase) >= 0;
+}
+
+// Compare the public identity and table, not transient probe offers or free-space estimates.
+// This preserves only editor input; every review still needs a fresh server plan.
+function diskLayoutKey(d) {
+    if (!d || !d.layout_id) return "";
+    const parts = (d.partitions || []).map(p => [p.id, p.path, p.number, p.uuid,
+        p.start_bytes, p.size_bytes, p.fs, p.esp, p.label]);
+    parts.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+    return JSON.stringify([d.layout_id, d.id, d.path, d.model, d.size_bytes, d.bus, d.partition_table, parts]);
+}
+
+function skippedPhaseText(phase) {
+    return phase === "snapshot" ? "Skipped: snapshots need btrfs" : "Skipped";
 }

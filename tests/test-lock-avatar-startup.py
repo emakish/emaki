@@ -33,6 +33,14 @@ ShellRoot {
     }
     function fail(message) { console.log("STARTUP_FAILED " + message); Qt.exit(1); }
     function next(user) { phase++; since = Date.now(); picture.user = user; }
+    // The silhouette is drawn in the shell's faint ink, which follows the theme (translucent
+    // dark on light, opaque on dark): match the ink itself, not one theme's alpha.
+    function silhouette(canvas, px) {
+        const ink = LiquidPalette.faint, near = (a, b) => Math.abs(a - b * 255) < 8;
+        return !canvas.showsPicture && near(px[0], ink.r) && near(px[1], ink.g) && near(px[2], ink.b) && near(px[3], ink.a);
+    }
+    // The helper's red face.png, not the silhouette.
+    function face(canvas, px) { return canvas.showsPicture && px[3] > 240 && px[0] > 200 && px[1] < 60 && px[2] < 60; }
     LockAuth { id: auth }
     LockEnvironment { id: environment }
     LockSession { id: session; auth: auth; active: false; reducedMotion: true }
@@ -50,28 +58,28 @@ ShellRoot {
         onTriggered: {
             const canvas = root.find(surface), age = Date.now() - root.since;
             if (!canvas || !canvas.available || canvas.width < 90) return;
-            const alpha = canvas.getContext("2d").getImageData(canvas.width / 2, canvas.height / 2, 1, 1).data[3];
+            const px = canvas.getContext("2d").getImageData(canvas.width / 2, canvas.height / 2, 1, 1).data, alpha = px[3];
             if (age > 5000) return root.fail("phase timed out " + root.phase);
             if (root.phase === 0) {
                 if (picture.pending && age > 100) {
                     if (alpha !== 0) return root.fail("initial silhouette flash");
                     root.blankSamples++;
                 }
-                if (canvas.showsPicture && alpha > 240) {
+                if (root.face(canvas, px)) {
                     if (root.blankSamples < 2) return root.fail("delayed response was not observed");
                     root.next("timeout");
                 }
             } else if (root.phase === 1) {
                 if (age > 100 && age < 800 && (!picture.pending || alpha !== 0))
                     return root.fail("account switch retained old picture or showed silhouette");
-                if (age > 1100 && !picture.pending && alpha > 50 && alpha < 110)
+                if (age > 1100 && !picture.pending && root.silhouette(canvas, px))
                     root.phase = 2;
             } else if (root.phase === 2) {
-                if (canvas.showsPicture && alpha > 240) root.next("absent");
+                if (root.face(canvas, px)) root.next("absent");
             } else if (root.phase === 3) {
                 if (age > 50 && picture.pending && alpha !== 0)
                     return root.fail("absent account switch flashed");
-                if (!picture.pending && alpha > 50 && alpha < 110 && age < 950) {
+                if (!picture.pending && root.silhouette(canvas, px) && age < 950) {
                     console.log("STARTUP_COMPLETE delayed timeout late-picture absent account-switch");
                     Qt.quit();
                 }

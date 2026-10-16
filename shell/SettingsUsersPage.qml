@@ -37,6 +37,24 @@ Column {
     function lastAdministrator(user): bool {
         return !!user && user.administrator && !user.locked && administrators <= 1;
     }
+    component AccountField: TextField {
+        selectByMouse: true
+        color: SettingsTheme.ink
+        placeholderTextColor: SettingsTheme.faint
+        selectionColor: SettingsTheme.accent
+        selectedTextColor: SettingsTheme.accentText
+        font.family: SettingsTheme.fontFamily
+        font.pixelSize: 13
+        leftPadding: 10
+        rightPadding: 10
+        background: Rectangle {
+            implicitHeight: 34
+            radius: 10
+            color: SettingsTheme.field
+            border.width: parent.activeFocus ? 2 : 1
+            border.color: parent.activeFocus ? SettingsTheme.accent : SettingsTheme.rim
+        }
+    }
     // The installer's account rules (installer/ui/Protocol.js accountErrors), for another person.
     function nameProblem(name): string {
         return Array.from(name).length > 128 || /[\x00-\x1f:,\x7f]/.test(name) ? reasons.invalid_name : "";
@@ -235,23 +253,21 @@ Column {
             width: parent.width
             spacing: 10
             readonly property string problem: root.nameProblem(addName.text) || (addLogin.text === "" ? "" : root.loginProblem(addLogin.text))
-            TextField {
+            AccountField {
                 id: addName
                 objectName: "settings-users-add-name"
                 width: parent.width
                 placeholderText: "Full name"
                 Accessible.name: "Full name"
                 maximumLength: 128
-                font.family: SettingsTheme.fontFamily
             }
-            TextField {
+            AccountField {
                 id: addLogin
                 objectName: "settings-users-add-login"
                 width: parent.width
                 placeholderText: "Login"
                 Accessible.name: "Login"
                 maximumLength: 32
-                font.family: SettingsTheme.fontFamily
             }
             CheckBox {
                 id: addAdministrator
@@ -319,14 +335,13 @@ Column {
             Row {
                 width: parent.width
                 spacing: 8
-                TextField {
+                AccountField {
                     id: editName
                     objectName: "settings-users-edit-name"
                     width: parent.width - saveName.width - 8
                     placeholderText: "Full name"
                     Accessible.name: "Full name"
                     maximumLength: 128
-                    font.family: SettingsTheme.fontFamily
                 }
                 SettingsButton {
                     id: saveName

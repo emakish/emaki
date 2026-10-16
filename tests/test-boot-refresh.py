@@ -29,6 +29,8 @@ import emaki_boot_defaults as boot_defaults
 from emaki_installer import boot
 from emaki_installer.render import mkinitcpio_preset
 sys.modules['emaki_boot.boot'] = boot
+from emaki_installer import secureboot
+sys.modules['emaki_boot.secureboot'] = secureboot
 from emaki_boot import refresh
 
 LUKS = '01234567-89ab-cdef-0123-456789abcdef'
@@ -47,6 +49,35 @@ def image(prefix, payload=b''):
     content = prefix.encode() + b'\0' + payload
     data[1024:1024 + len(content)] = content
     return bytes(data)
+
+
+# Next to Windows since 0.9: Windows' ESP and Emaki's own ESP (alongside-boot.json).
+WINDOWS_ESP = '14e269ee-0b88-441e-86f3-09b058e1ad76'
+OWN_ESP = '5d1f0c3a-7b2e-4c19-9a6d-2e8f4b1c0a77'
+OWN_RECORD = {'version': 1, 'esp_partuuid': WINDOWS_ESP, 'emaki_esp_partuuid': OWN_ESP,
+              'windows_esp_uuid': '1234-ABCD'}
+
+
+@contextmanager
+def alongside_record(path, value):
+    """The installer's alongside record at path, root-owned as the installer writes it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(value if isinstance(value, str) else json.dumps(value) + '\n')
+    path.chmod(0o644)
+    inode, real_fstat = path.stat().st_ino, os.fstat
+
+    def fstat(fd):
+        # This test runs unprivileged; only the record reads as root-owned.
+        info = real_fstat(fd)
+        if info.st_ino != inode:
+            return info
+        values = list(info)
+        values[4] = 0
+        return os.stat_result(values)
+
+    with patch.object(refresh, 'SHARED_ESP', path), patch.object(refresh.shared, 'MARKER', path), \
+            patch.object(refresh.shared.os, 'fstat', side_effect=fstat):
+        yield path
 
 
 class ImageChecks(unittest.TestCase):
@@ -300,6 +331,53 @@ class ConfigurationChecks(unittest.TestCase):
                     refresh.generate(stage)
                 self.assertEqual(menu.read_text(), original)
 
+    def test_own_esp_generation_restarts_windows_on_windows_esp(self):
+        # Emaki's own ESP next to Windows: no shared ESP, yet the Windows entry still restarts
+        # into Windows Boot Manager on Windows' ESP, named by the installer's record alone.
+        def menu_text(fat_id):
+            return ("### BEGIN /etc/grub.d/30_os-prober ###\n"
+                    "menuentry 'Windows Boot Manager' --id windows {\n"
+                    f"  search --no-floppy --fs-uuid --set=root {fat_id}\n"
+                    "  chainloader /EFI/Microsoft/Boot/bootmgfw.efi\n"
+                    "}\n### END /etc/grub.d/30_os-prober ###\n")
+        # Captured listing: Windows Boot Manager (0002) on 3333…, an "Emaki" entry on 2222….
+        listing = (ROOT / 'tests/fixtures/firmware/mac-booted.txt').read_text()
+        windows = '33333333-3333-4333-8333-333333333333'
+        record = dict(OWN_RECORD, esp_partuuid=windows,
+                      emaki_esp_partuuid='22222222-2222-4222-8222-222222222222')
+        with tempfile.TemporaryDirectory(prefix='own-esp-generate-') as directory:
+            stage = Path(directory)
+            (stage / 'grub').mkdir()
+            menu = stage / 'grub/grub.cfg'
+            path_type = Path
+            def local_path(value):
+                return menu if str(value) == '/boot/grub/grub.cfg' else path_type(value)
+            with alongside_record(stage / 'alongside-boot.json', record), \
+                    patch.object(refresh, 'Path', side_effect=local_path), \
+                    patch.object(refresh, 'bind'), \
+                    patch.object(refresh, 'signing', return_value=False), \
+                    patch.object(refresh, 'menu_font', return_value=None), \
+                    patch.object(refresh, 'menu_theme', return_value=None), \
+                    patch.object(refresh, 'run', return_value=listing) as command, \
+                    patch.object(refresh.shared, 'mounted_esp') as mounted, \
+                    patch.object(refresh, 'mount_info', return_value={'partuuid': record['emaki_esp_partuuid'],
+                                                                      'uuid': 'EEEE-0001'}) as info:
+                menu.write_text(menu_text('1234-ABCD'))
+                refresh.generate(stage)
+                text = menu.read_text()
+                self.assertIn('if bootnext 0002; then', text)
+                self.assertIn(f'# Windows firmware target: {windows} {boot.WINDOWS_LOADER}', text)
+                self.assertNotIn('chainloader', text)
+                command.assert_any_call(['efibootmgr', '-v'])
+                # Windows' ESP is neither mounted nor looked up; /efi is not consulted for it.
+                mounted.assert_not_called()
+                info.assert_not_called()
+                # An os-prober entry on another FAT volume (Emaki's own) is not Windows' entry.
+                menu.write_text(menu_text('EEEE-0001'))
+                with self.assertRaises(refresh.Refuse):
+                    refresh.generate(stage)
+                self.assertEqual(menu.read_text(), menu_text('EEEE-0001'))
+
     def test_menu_keeps_live_kernels_and_tags_only_ordinary_entries(self):
         for fsroot in ('', '/@'):
             with self.subTest(fsroot=fsroot):
@@ -392,10 +470,10 @@ class LoaderPayloadChecks(unittest.TestCase):
                 self.assertTrue(any(n.startswith('unlock-') and n.endswith('.png') for n in files))
                 self.assertIn(
                     f'if [ -f {disk}{fsroot}/boot/grub/grub.cfg ]; then\n'
-                    f'  configfile {disk}{fsroot}/boot/grub/grub.cfg\n'
-                    f'else\n  configfile {disk}{fsroot}{GENERATION}/grub/grub.cfg\nfi\n', files['boot/grub/grub.cfg'].decode())
+                    f'  source {disk}{fsroot}/boot/grub/grub.cfg\n'
+                    f'else\n  source {disk}{fsroot}{GENERATION}/grub/grub.cfg\nfi\n', files['boot/grub/grub.cfg'].decode())
                 self.assertEqual(files['boot/grub/grub-btrfs.cfg'].decode(),
-                                 f'configfile {disk}{fsroot}/boot/grub/grub-btrfs.cfg\n')
+                                 f'source {disk}{fsroot}/boot/grub/grub-btrfs.cfg\n')
 
     def test_plain_root_retains_filesystem_search_and_embeds_updated_modules(self):
         identity = {'luks': None, 'fsroot': '', 'uuid': FSUUID}
@@ -410,7 +488,7 @@ class LoaderPayloadChecks(unittest.TestCase):
         self.assertEqual(files['start.cfg'], cfg.encode())
         self.assertNotIn('unlock.cfg', files)
         self.assertIn(b'if [ -f ($root)/boot/grub/grub.cfg ]; then\n'
-                      b'  configfile ($root)/boot/grub/grub.cfg\n', files['boot/grub/grub.cfg'])
+                      b'  source ($root)/boot/grub/grub.cfg\n', files['boot/grub/grub.cfg'])
         updated = b'new-package-normal-module\0'
         (self.grub / 'x86_64-efi/normal.mod').write_bytes(updated)
         second = refresh.loader_payload(self.grub, GENERATION, identity, cfg, b'')
@@ -570,6 +648,83 @@ class RefreshOrchestrationChecks(unittest.TestCase):
             with self.subTest(encrypted=encrypted):
                 self.exercise(encrypted)
 
+    def test_cut_at_each_scratch_install_step_leaves_esp_untouched_and_retries(self):
+        """Simulate interrupted mkdir/file writes, not the FAT driver's crash behavior.
+
+        The scratch tree cannot poison FAT recovery when it never reaches FAT.
+        Keep every interrupted scratch object, as a killed process would; the next
+        update must discard it and finish from the still-bootable installed loader.
+        """
+        class Cut(BaseException):
+            pass
+
+        for encrypted in (False, True):
+            for point in range(6):
+                with self.subTest(encrypted=encrypted, point=point), self.fixture(encrypted) as f:
+                    esp = f.mapped('/efi')
+
+                    def tree():
+                        return {str(p.relative_to(esp)): None if p.is_dir() else p.read_bytes()
+                                for p in esp.rglob('*')}
+
+                    before = tree()
+                    original_run, original_mkdir = refresh.run, Path.mkdir
+                    original_rmtree = shutil.rmtree
+                    events = []
+                    scratch = []
+
+                    def step():
+                        events.append(len(events))
+                        if events[-1] == point:
+                            raise Cut()
+
+                    def mkdir(path, *args, **kwargs):
+                        result = original_mkdir(path, *args, **kwargs)
+                        if path.name == 'efi-stage' or path.name.startswith('.emaki-stage-'):
+                            scratch.append(path)
+                            step()
+                        return result
+
+                    def command(arguments):
+                        if arguments[0] != 'grub-install' or '--version' in arguments:
+                            return original_run(arguments)
+                        options = dict(str(arg).split('=', 1) for arg in arguments
+                                       if str(arg).startswith('--') and '=' in str(arg))
+                        stage = Path(options['--efi-directory'])
+                        (stage / 'EFI').mkdir()
+                        step()
+                        (stage / 'EFI/Emaki').mkdir()
+                        step()
+                        target = stage / 'EFI/Emaki/grubx64.efi'
+                        with target.open('wb') as output:
+                            step()
+                            output.write(b'MZ')
+                            output.flush()
+                            step()
+                            output.write(b'partial scratch loader')
+                            output.flush()
+                            os.fsync(output.fileno())
+                            step()
+                        self.fail('Every scratch install must be cut before publication.')
+
+                    def rmtree(path, *args, **kwargs):
+                        if Path(path) not in scratch:
+                            return original_rmtree(path, *args, **kwargs)
+
+                    with patch.object(Path, 'mkdir', mkdir), \
+                            patch.object(refresh, 'run', side_effect=command), \
+                            patch.object(shutil, 'rmtree', side_effect=rmtree), self.assertRaises(Cut):
+                        refresh.refresh(f.identity)
+                    self.assertEqual(len(events), point + 1)
+                    self.assertEqual(tree(), before)
+                    self.assertTrue(scratch[0].is_relative_to(f.mapped('/boot/emaki')))
+                    refresh.refresh(f.identity)
+                    generation, = f.mapped('/boot/emaki').iterdir()
+                    self.complete_boot(f, generation)
+                    state = json.loads(f.mapped('/efi/EFI/Emaki/boot-state.json').read_text())
+                    self.assertEqual(state['good'], generation.name)
+                    self.assertFalse(list(esp.rglob('.emaki-stage-*')))
+
     def test_full_and_menu_refresh_retain_update_guard_only_on_btrfs(self):
         for encrypted, fsroot in ((True, '/@'), (False, '/@'), (False, '')):
             with self.subTest(encrypted=encrypted, fsroot=fsroot), self.fixture(
@@ -599,7 +754,7 @@ class RefreshOrchestrationChecks(unittest.TestCase):
                         menu = archive.extractfile('boot/grub/grub.cfg').read()
                     self.assertEqual(start, (f'search.fs_uuid {FSUUID} root\n'
                                             f'set prefix=($root){fsroot}{generation}/grub\n').encode())
-                    self.assertIn(f'configfile ($root){fsroot}/boot/grub/grub.cfg\n'.encode(), menu)
+                    self.assertIn(f'source ($root){fsroot}/boot/grub/grub.cfg\n'.encode(), menu)
                     candidate = f.mapped('/efi/EFI/Emaki') / ('loader-' + generation.name + '.efi')
                     self.assertIn(start, candidate.read_bytes())
                     self.assertNotIn(b'(,gpt2)', candidate.read_bytes())
@@ -751,8 +906,8 @@ class RefreshOrchestrationChecks(unittest.TestCase):
                               f.mapped('/boot/grub/grub.cfg').read_text())
                 self.assertFalse(list(f.mapped('/efi/EFI/Emaki').glob('.emaki-stage-*')))
                 staged = [c for c in f.commands if c[0] == 'grub-install' and '--version' not in c]
-                self.assertTrue(all('--efi-directory=' + str(f.mapped('/efi/EFI/Emaki/.emaki-stage-'))
-                                    in ' '.join(c) for c in staged))
+                self.assertTrue(all('--efi-directory=' + str(generation / 'efi-stage') in c
+                                    and '--force' in c for c in staged))
                 gate.relock()
                 self.complete_boot(f, generation)
                 self.assertTrue(gate.opened)
@@ -793,6 +948,91 @@ class RefreshOrchestrationChecks(unittest.TestCase):
             with patch.object(Path, 'read_text', side_effect=PermissionError('unreadable evidence')):
                 with self.assertRaises(refresh.shared.Refused):
                     refresh.shared_esp()
+
+    def test_alongside_record_means_shared_only_for_the_old_layout(self):
+        """Emaki's own ESP (0.9 record) is an Emaki-only ESP; the old record and any record
+        that cannot be read or validated keep the shared rules."""
+        old = {'version': 1, 'esp_partuuid': WINDOWS_ESP}
+        damaged = ('not json', '{"version": 1, "esp_partuuid": "' + WINDOWS_ESP + '", "emaki_esp_partuuid": ',
+                   dict(OWN_RECORD, version=2), dict(OWN_RECORD, emaki_esp_partuuid='x'),
+                   dict(OWN_RECORD, emaki_esp_partuuid=None), dict(OWN_RECORD, emaki_esp_partuuid=WINDOWS_ESP),
+                   {k: v for k, v in OWN_RECORD.items() if k != 'windows_esp_uuid'},
+                   dict(OWN_RECORD, windows_esp_uuid='not-a-fat-id'), [OWN_RECORD], ' ' * 5000)
+        cases = [('own', OWN_RECORD, None, False), ('old', old, None, True),
+                 ('own+ro-fstab', OWN_RECORD, 'fstab', True), ('own+windows-files', OWN_RECORD, 'windows', True),
+                 ('own+stop', OWN_RECORD, 'stop', True)]
+        cases += [(f'damaged-{index}', value, None, True) for index, value in enumerate(damaged)]
+        for name, value, evidence, expected in cases:
+            with self.subTest(record=name), self.fixture(False) as f, \
+                    alongside_record(f.mapped('/var/lib/emaki/alongside-boot.json'), value):
+                f.put(f.mapped('/etc/fstab'), 'UUID=ABCD-1234 /efi vfat '
+                      + ('ro,nofail 0 0\n' if evidence == 'fstab' else 'rw,relatime 0 2\n'))
+                if evidence == 'windows':
+                    f.put(f.mapped('/efi/EFI/Microsoft/Boot/BCD'), b'Windows BCD')
+                elif evidence == 'stop':
+                    f.put(refresh.shared.stop_record(), b'previous unsafe session')
+                self.assertEqual(refresh.shared_esp(), expected)
+                if name == 'own':
+                    self.assertEqual(refresh.own_esp_record(), {'esp_partuuid': WINDOWS_ESP,
+                                                                'emaki_esp_partuuid': OWN_ESP,
+                                                                'windows_esp_uuid': '1234-ABCD'})
+                    # Emaki-only rules: EFI/BOOT copies, staging on /efi, no write gate.
+                    self.assertEqual(refresh.fallback_loader(), f.mapped('/efi/EFI/BOOT/BOOTX64.EFI'))
+                    self.assertEqual(refresh.stage_parent(), f.mapped('/efi'))
+                    with patch.object(refresh.shared, 'open_writes') as opened:
+                        refresh.esp_writable(Path('/efi/EFI/BOOT/BOOTX64.EFI'))
+                        opened.assert_not_called()
+                elif name.startswith('damaged') or name == 'old':
+                    self.assertIsNone(refresh.own_esp_record())
+                    self.assertIsNone(refresh.fallback_loader())
+        # A record the installer did not write (not root-owned) is not trusted: shared.
+        with self.fixture(False) as f:
+            path = f.mapped('/var/lib/emaki/alongside-boot.json')
+            f.put(path, json.dumps(OWN_RECORD))
+            with patch.object(refresh, 'SHARED_ESP', path), patch.object(refresh.shared, 'MARKER', path):
+                self.assertTrue(refresh.shared_esp())
+            path.unlink()
+            path.symlink_to(f.mapped('/elsewhere.json'))
+            with alongside_record(f.mapped('/elsewhere.json'), OWN_RECORD), \
+                    patch.object(refresh, 'SHARED_ESP', path), patch.object(refresh.shared, 'MARKER', path):
+                self.assertTrue(refresh.shared_esp())
+
+    def test_own_esp_record_never_opens_the_write_gate_on_windows_esp(self):
+        # Whatever is mounted at /efi, the shared write gate never names Windows' ESP once
+        # the record says Emaki has its own: the identity check refuses before any probe.
+        with self.fixture(False) as f, alongside_record(f.mapped('/var/lib/emaki/alongside-boot.json'),
+                                                        OWN_RECORD), \
+                patch.object(refresh.shared, 'mounted_esp') as mounted, \
+                patch.dict(refresh.shared._session, {'depth': 1, 'baseline': None}):
+            with self.assertRaises(refresh.shared.Refused) as refused:
+                refresh.shared.open_writes()
+            self.assertEqual(str(refused.exception), refresh.shared.OWN_ESP)
+            mounted.assert_not_called()
+
+    def test_discover_requires_emaki_own_esp_at_efi(self):
+        mounts = {'/': {'target': '/', 'source': '/dev/vda5', 'fstype': 'btrfs', 'fsroot': '/@',
+                        'uuid': FSUUID, 'options': 'rw,relatime'},
+                  '/boot': {'target': '/', 'source': '/dev/vda5', 'fstype': 'btrfs', 'fsroot': '/@',
+                            'uuid': FSUUID, 'options': 'rw,relatime'}}
+        for name, partuuid, expected in (('own', OWN_ESP, None), ('windows', WINDOWS_ESP, refresh.OWN_ESP_MISMATCH)):
+            efi = {'target': '/efi', 'source': '/dev/vda3', 'fstype': 'vfat', 'fsroot': '/',
+                   'uuid': 'EEEE-0001', 'partuuid': partuuid, 'options': 'rw,relatime'}
+            with self.subTest(esp=name), self.fixture(False) as f, \
+                    alongside_record(f.mapped('/var/lib/emaki/alongside-boot.json'), OWN_RECORD), \
+                    patch.object(refresh, 'mount_info', side_effect=lambda path, exact=False: dict(
+                        efi if path == '/efi' else mounts[path])), \
+                    patch.object(refresh, 'key_missing', return_value=False), \
+                    patch.object(refresh, 'signing', return_value=True), \
+                    patch.object(refresh, 'run', side_effect=lambda args: {
+                        '--target=cryptodisk_uuid': '', '--target=fs_uuid': FSUUID}[args[1]]):
+                f.mapped('/sys/firmware/efi').mkdir(parents=True)
+                f.put(f.mapped('/etc/fstab'), 'UUID=EEEE-0001 /efi vfat rw,relatime 0 2\n')
+                if expected is None:
+                    self.assertEqual(refresh.discover()['esp_uuid'], 'EEEE-0001')
+                else:
+                    with self.assertRaises(refresh.Refuse) as refused:
+                        refresh.discover()
+                    self.assertEqual(str(refused.exception), expected)
 
     def test_postwrite_stop_is_failure_for_every_refresh_entrypoint(self):
         for args in (['--hook'], ['--retry'], ['--mark-good'], ['--repair-snapshots']):
@@ -1426,6 +1666,28 @@ class RefreshOrchestrationChecks(unittest.TestCase):
                 self.assertEqual(self.hook(f)[0], 1)
                 self.assertEqual(json.loads(pending.read_text())['boots'], 0)
 
+    def test_abandoned_package_lock_explains_manual_recovery(self):
+        with self.fixture(False) as f:
+            lock = f.mapped('/var/lib/pacman/db.lck')
+            f.put(lock, 'gone creator')
+            with patch.object(refresh, 'lock_message',
+                    return_value='The lock appears abandoned. Only then remove it.', create=True):
+                with self.assertRaisesRegex(refresh.Transient, 'abandoned.*Only then remove'):
+                    with refresh.pacman_lock():
+                        self.fail('must not enter')
+            self.assertEqual(lock.read_text(), 'gone creator')
+
+    def test_live_package_lock_says_wait(self):
+        with self.fixture(False) as f:
+            lock = f.mapped('/var/lib/pacman/db.lck')
+            f.put(lock, 'live creator')
+            with patch.object(refresh, 'lock_message',
+                    return_value='Wait for it to finish.', create=True):
+                with self.assertRaisesRegex(refresh.Transient, 'Wait for it to finish'):
+                    with refresh.pacman_lock():
+                        self.fail('must not enter')
+            self.assertEqual(lock.read_text(), 'live creator')
+
     def test_pacman_contention_consumes_budget_without_touching_its_lock(self):
         with self.fixture(False) as f:
             f.put(f.mapped(refresh.PENDING), '{"boots": 0}\n')
@@ -1967,7 +2229,7 @@ class OutputChecks(unittest.TestCase):
 
 
 class DiscoveryChecks(unittest.TestCase):
-    def exercise(self, encrypted=True, fault=None):
+    def exercise(self, encrypted=True, fault=None, key=False):
         with tempfile.TemporaryDirectory(prefix='boot-discovery-') as directory:
             root = Path(directory)
 
@@ -1980,6 +2242,13 @@ class DiscoveryChecks(unittest.TestCase):
             (firmware / 'SecureBoot-test').write_bytes(b'\x07\0\0\0' + (b'\x01' if fault == 'secure-boot' else b'\0'))
             if fault == 'malformed-secure-boot':
                 (firmware / 'SecureBoot-test').write_bytes(b'\0')
+            if key:
+                mapped(str(secureboot.KEY)).parent.mkdir(parents=True)
+                mapped(str(secureboot.KEY)).write_bytes(b'test machine key\n')
+            if fault == 'lost-key':
+                # Set up for signing, private key gone: only the certificate is left.
+                mapped(str(secureboot.CERT)).parent.mkdir(parents=True)
+                mapped(str(secureboot.CERT)).write_bytes(b'test certificate\n')
             mapped('/etc/default').mkdir(parents=True)
             mapped('/etc/fstab').write_text('UUID=' + ('BAD-ID' if fault == 'wrong-esp' else 'ABCD-1234')
                                             + ' /efi vfat defaults 0 2\n')
@@ -2094,11 +2363,28 @@ class DiscoveryChecks(unittest.TestCase):
                         snapshots.reset_mock()
                     elif fault in ('duplicate-uuid', 'duplicate-luks', 'btrfs-clone'):
                         self.assertIn('check for cloned disks', mapped(refresh.LOG_PATH).read_text())
+                elif fault in ('secure-boot', 'malformed-secure-boot') and key:
+                    # The machine key alone decides: signed loaders whatever the firmware says.
+                    self.assertEqual(refresh.discover()['fsroot'], '/@' if encrypted else '')
+                    self.assertEqual(refresh.main(['--check']), 0)
+                    self.assertEqual(errors.getvalue(), '')
+                elif fault in ('secure-boot', 'malformed-secure-boot'):
+                    # Without the key the loader is kept: an expected outcome, not a failure.
+                    with self.assertRaises(refresh.Kept) as kept:
+                        refresh.discover()
+                    self.assertEqual(str(kept.exception), refresh.NO_KEY)
+                    for mode in ('--check', '--hook', '--mark-good'):
+                        with self.subTest(mode=mode):
+                            self.assertEqual(refresh.main([mode]), 0)
+                    self.assertEqual(output.getvalue(), (refresh.NO_KEY + '\n') * 3)
+                    self.assertEqual(errors.getvalue(), '')
                 elif fault:
                     with self.assertRaises(refresh.Refuse) as refused:
                         refresh.discover()
                     if fault == 'duplicate-uuid':
                         self.assertIn('check for cloned disks', str(refused.exception))
+                    if fault == 'lost-key':
+                        self.assertEqual(str(refused.exception), refresh.KEY_MISSING)
                     self.assertEqual(refresh.main(['--check']), 1)
                     self.assertIn('/var/log/emaki-boot-refresh.log', errors.getvalue())
                     self.assertNotIn('WARNING', errors.getvalue())
@@ -2123,6 +2409,17 @@ class DiscoveryChecks(unittest.TestCase):
                       'readonly-root', 'secure-boot', 'malformed-secure-boot'):
             with self.subTest(fault=fault):
                 self.exercise(fault=fault)
+
+    def test_lost_machine_key_refuses_instead_of_building_an_unsigned_loader(self):
+        for encrypted in (False, True):
+            with self.subTest(encrypted=encrypted):
+                self.exercise(encrypted, 'lost-key')
+
+    def test_machine_key_refreshes_whatever_the_secure_boot_switch_says(self):
+        for encrypted in (False, True):
+            for fault in (None, 'secure-boot', 'malformed-secure-boot'):
+                with self.subTest(encrypted=encrypted, fault=fault):
+                    self.exercise(encrypted, fault, key=True)
 
     def test_plain_lvm_mdraid_and_non_gpt_roots_are_refused(self):
         for fault in ('lvm', 'mdraid', 'non-gpt'):

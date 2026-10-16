@@ -61,7 +61,22 @@ class Delivery(unittest.TestCase):
         self.assertEqual(self.payloads['emaki'], set())
         self.assertIn('/usr/libexec/emaki/emaki-capture-recorder', self.payloads['emaki-config'])
         self.assertFalse((self.root / '.cache/capture-build').exists())
-        self.assertEqual(self.payloads['niri-emaki'], {'/usr/bin/niri-emaki'})
+        self.assertEqual(self.payloads['niri-emaki'], {'/usr/bin/niri-emaki',
+                         '/usr/share/licenses/niri-emaki/THIRD-PARTY-NOTICES'})
+
+    def test_default_font_payload_is_complete(self):
+        self.assertEqual(self.payloads.get('emaki-font-iosevka'), {
+            '/usr/share/fonts/emaki-iosevka/IosevkaNerdFontMono-' + style + '.ttf'
+            for style in ('Regular', 'Bold', 'Italic', 'BoldItalic')
+        } | {'/usr/share/licenses/emaki-font-iosevka/' + name
+             for name in ('LICENSE.md', 'README.md', 'license-review.md',
+                          'nerd-fonts-LICENSE', 'codicons-LICENSE.txt', 'font-awesome-LICENSE.txt',
+                          'materialdesign-LICENSE', 'apache-2.0-LICENSE.txt', 'octicons-LICENSE',
+                          'pomicons-LICENSE', 'powerline-extra-LICENSE', 'powerline-symbols-LICENSE.txt',
+                          'weather-icons-OFL.txt', 'devicons-LICENSE', 'font-awesome-extension-LICENCE',
+                          'font-logos-LICENSE', 'seti-ui-LICENSE.md', 'iec-power-symbols-LICENSE.txt',
+                          'hack-LICENSE.md')})
+        self.assertIn('packaging/emaki-font-iosevka/license-review.md', self.delivered)
 
     def test_snapguard_installs_its_release_files_and_nothing_personal(self):
         self.assertEqual(self.payloads['snapguard'], {
@@ -86,6 +101,37 @@ class Delivery(unittest.TestCase):
             recipe.write_text(original.replace(line, ''))
             # package() compares its payload with the inventory itself and stops.
             with self.assertRaisesRegex(ValueError, r'-/usr/lib/snapguard/snapshot-guard\.py'):
+                delivery.installed_sources(self.root, {})
+        finally:
+            recipe.write_text(original)
+
+    def test_shim_package_installs_the_two_loaders_and_component_notices(self):
+        self.assertEqual(self.payloads['emaki-shim-signed'], {
+            '/usr/share/emaki-shim-signed/shimx64.efi', '/usr/share/emaki-shim-signed/mmx64.efi',
+            '/usr/share/licenses/emaki-shim-signed/LICENSE',
+        '/usr/share/licenses/emaki-shim-signed/SHIM-NOTICES',
+        '/usr/share/licenses/emaki-shim-signed/GNU-EFI-NOTICES',
+        '/usr/share/licenses/emaki-shim-signed/CRYPTLIB-NOTICES',
+        '/usr/share/licenses/emaki-shim-signed/OPENSSL-NOTICES'})
+        for path in self.payloads['emaki-shim-signed']:
+            for name, payload in self.payloads.items():
+                if name != 'emaki-shim-signed':
+                    self.assertNotIn(path, payload, name)
+        # No scriptlet: the files reach the EFI system partition only through the installer.
+        self.assertNotRegex((self.root / 'packaging/emaki-shim-signed/PKGBUILD').read_text(), r'(?m)^install=')
+        # The signature gate is a build input, not a payload.
+        self.assertIn('packaging/emaki-shim-signed/check-signatures.sh', self.exempt)
+        self.assertNotIn('packaging/emaki-shim-signed/check-signatures.sh', self.delivered)
+
+    def test_shim_recipe_that_drops_the_mok_manager_fails(self):
+        recipe = self.root / 'packaging/emaki-shim-signed/PKGBUILD'
+        original = recipe.read_text()
+        old = '"$srcdir/$_efi/shimx64.efi" "$srcdir/$_efi/mmx64.efi"\n'
+        try:
+            self.assertIn(old, original)
+            recipe.write_text(original.replace(old, '"$srcdir/$_efi/shimx64.efi"\n'))
+            # package() compares its payload with the inventory itself and stops.
+            with self.assertRaisesRegex(ValueError, r'-/usr/share/emaki-shim-signed/mmx64\.efi'):
                 delivery.installed_sources(self.root, {})
         finally:
             recipe.write_text(original)
@@ -343,12 +389,14 @@ class PrivatePythonBytecode(unittest.TestCase):
 
     def test_cold_boot_entry_point_imports_without_writing_bytecode(self):
         library = self.root / 'usr/lib/emaki/boot'
-        for module in ('__init__', 'refresh', 'shared', 'update_menu', 'update', 'usable'):
+        for module in ('__init__', 'esp_records', 'refresh', 'shared', 'update_menu', 'update', 'usable'):
             self.stage(f'grub/emaki_boot/{module}.py',
                        f'usr/lib/emaki/boot/emaki_boot/{module}.py')
-        for module in ('boot', 'errors', 'grub_screen'):
+        for module in ('boot', 'errors', 'grub_screen', 'secureboot'):
             self.stage(f'installer/emaki_installer/{module}.py',
                        f'usr/lib/emaki/boot/emaki_boot/{module}.py')
+        # The package installs update-manager's lock helper as emaki_boot/package_lock.py (Makefile).
+        self.stage('update-manager/emaki_package_lock.py', 'usr/lib/emaki/boot/emaki_boot/package_lock.py')
         entry = self.stage('scripts/emaki-boot-refresh', 'usr/bin/emaki-boot-refresh')
         entry.write_text(entry.read_text().replace('/usr/lib/emaki/boot', str(library)))
         result = subprocess.run([str(entry), '--help'], env=self.environment,

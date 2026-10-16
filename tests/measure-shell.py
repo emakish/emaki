@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Read-only Linux shell sampler; never attaches, signals or restarts a process.
 
 Run on an otherwise comparable desktop before and after a change:

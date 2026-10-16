@@ -81,4 +81,11 @@ else:
     assert calls[:4] == ['list --json', 'preview kate --json', 'preview gwenview --json',
                          'remove gwenview gwenview,kimageannotator --json'], calls
     assert calls[4:] == ['list --json'], calls
+    helper.unlink()
+    (base / 'bin/python3').symlink_to(shutil.which('python3'))
+    missing_env = dict(env, PATH=str(base / 'bin'), APPS_FIXTURE_MISSING='1')
+    result = subprocess.run([shutil.which('qs'), '-p', str(base / 'shell/test.qml'), '--no-color'],
+                            env=missing_env, capture_output=True, text=True, timeout=30)
+    output = result.stdout + result.stderr
+    assert result.returncode == 0 and 'APPS_PAGE_RESULT 3 0' in output, output
 print('PASS: Apps choices, reset, busy guard, visible backend failures and program removal preview')

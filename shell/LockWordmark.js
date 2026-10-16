@@ -1,4 +1,6 @@
 .pragma library
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 .import "LockWordmarkData.js" as Data
 
 // These functions preserve lock-template.html's motion, including its deterministic hash.

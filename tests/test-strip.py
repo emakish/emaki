@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Workspace strip pixels at scale 1, 1.25 and 2: only the existing workspaces, every digit on
 the optical centre of its cell, every mark a crisp device-pixel rectangle centred under the
 digit with the same gap. Flat stand-in (no GPU offscreen): digits in the glass ink."""

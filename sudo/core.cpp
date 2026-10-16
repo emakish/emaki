@@ -197,9 +197,10 @@ bool authenticationBlocked(int runtime, uid_t uid, bool *unavailable) {
   Fd copy(openat(runtime, ".", O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
   if (!copy)
     return true;
-  DIR *entries = fdopendir(copy.release());
+  DIR *entries = fdopendir(copy.get());
   if (!entries)
     return true;
+  copy.release();
   bool blocked = false;
   unsigned count = 0;
   while (true) {

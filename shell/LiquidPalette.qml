@@ -65,4 +65,12 @@ QtObject {
     // Keyboard focus on an accent control (FocusRing.strong): the hover rim's ink, dense
     // enough for 3:1 against the opaque accent. Pale controls keep flatDropRim.
     readonly property color focusOnAccent: Qt.rgba(36 / 255, 16 / 255, 24 / 255, .75)
+    // The same over a selected drop (selectedDrop). Light draws that drop in the accent, so
+    // it is focusOnAccent; dark shades it to selectionShade, where the dark ink is lost
+    // (1.25:1) and the dark theme's own rim ink at the same density stands out.
+    readonly property color focusOnSelected: ShellPalette.dark ? Qt.rgba(flatDropRim.r, flatDropRim.g, flatDropRim.b, focusOnAccent.a) : focusOnAccent
+    // The outer row of a two-colour strong rim (WCAG C40), for an accent fill whose rim's
+    // outer row lies on the plate (Keep this state): the dark ink vanishes on the dark plate,
+    // so dark draws that row in its own rim ink. Light needs none: one ink faces both there.
+    readonly property color focusOuterOnAccent: ShellPalette.dark ? focusOnSelected : Qt.rgba(0, 0, 0, 0)
 }

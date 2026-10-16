@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Stitch wallpaper panels into one strip. Each panel's left `keep` share repeats the previous
 panel's right part (make-canvas.py); the cut runs along the vertical path of least difference
 inside that overlap (image quilting), softened by a narrow feather.

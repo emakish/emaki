@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Private bounded JSON pipe for launcher operations; no payloads in diagnostics."""
 import fcntl
 import json
@@ -12,7 +14,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import emaki_paths
@@ -21,6 +23,22 @@ import clipboard_store
 
 class Refused(Exception):
     pass
+
+def open_web_url(url):
+    """Use the desktop URL route while retaining the application scope handoff."""
+    if (not isinstance(url, str) or not url or url != url.strip()
+            or any(ord(c) < 32 or ord(c) == 127 for c in url)):
+        raise Refused('invalid_url')
+    try:
+        parsed = urlsplit(url)
+        valid = parsed.scheme in ('http', 'https') and bool(parsed.hostname)
+    except ValueError:
+        valid = False
+    if not valid:
+        raise Refused('invalid_url')
+    if app_scope.run('xdg-open', dict(kind='exec', argv=['xdg-open', url])) != 0:
+        raise Refused('open_failed')
+    return dict(state='requested')
 
 def run(argv, data=None, limit=8*1024*1024, env=None, check=True, timeout=3):
     # Drain stdout with a bound; never log child output or inherit its protocol pipe.
@@ -305,12 +323,7 @@ def handle(request):
     if op=='web':
         query=request.get('query','')
         if not isinstance(query,str) or not query.strip() or len(query)>4096: raise Refused('invalid_query')
-        Gio,_=gio()
-        url='https://duckduckgo.com/?q='+quote(query,safe='')
-        handler=Gio.AppInfo.get_default_for_uri_scheme('https')
-        if not handler: raise Refused('no_handler')
-        if not app_scope.gio_launch(handler, uris=[url]): raise Refused('open_failed')
-        return dict(state='requested')
+        return open_web_url('https://duckduckgo.com/?q='+quote(query,safe=''))
     raise Refused('invalid_request')
 
 def main():

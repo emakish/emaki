@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Dock: real core + fake niri with app IDs, actual Qt clicks/drags, dock.json persistence; never Wayland."""
 from runtime_fixture import runtime_path
 import json
@@ -31,6 +33,12 @@ apps.mkdir()
 for name in ('Browser', 'Editor', 'Files'):
     (apps / f'fixture-{name.lower()}.desktop').write_text(
         f'[Desktop Entry]\nType=Application\nName={name}\nExec=/usr/bin/true\nTerminal=false\n')
+# The default pins' desktop IDs, as Firefox, kitty, Dolphin and Emaki install them.
+for desktop_id, name in (('firefox', 'Firefox'), ('kitty', 'kitty'), ('org.kde.dolphin', 'Dolphin'), ('emaki-update-manager', 'Programs & Updates')):
+    (apps / f'{desktop_id}.desktop').write_text(
+        f'[Desktop Entry]\nType=Application\nName={name}\nExec=/usr/bin/true\nTerminal=false\n')
+(apps / 'emaki-report.desktop').write_text(
+    '[Desktop Entry]\nType=Application\nName=Report a problem\nExec=emaki-report\nTerminal=false\n')
 # An ID that itself ends in ".desktop" (org.telegram.desktop): gtk-launch must get the full file name.
 (apps / 'org.fixture.desktop.desktop').write_text(
     '[Desktop Entry]\nType=Application\nName=Dotted\nExec=/usr/bin/true\nTerminal=false\n')
@@ -146,9 +154,9 @@ def first(call, state, wait, center):
     s = wait(lambda s: s['dock_keys'] == ['fixture-files', 'sep', 'fixture-browser', 'app:PRIVATE_UNKNOWN_APP', 'fixture-editor'])
     assert s['dock']['entries'][0] == dict(id='fixture-files', pinned=True, source='', windows=0)
     assert s['dock']['pinned'] == ['fixture-files']
-    wait(lambda s: (profile / 'state/emaki/dock.json').exists(), 3)
+    wait(lambda s: json.loads((profile / 'state/emaki/dock.json').read_text()).get('pinned') == ['fixture-files'], 3)
     saved = json.loads((profile / 'state/emaki/dock.json').read_text())
-    assert saved == dict(version=1, on=True, auto_hide=True, pinned=['fixture-files']), saved
+    assert saved == dict(version=1, on=True, auto_hide=True, pinned=['fixture-files'], pins_chosen=True), saved
     # Pinned dock: reserve 77, centered, 11 px above the bottom edge (the 84 px bubble clears it by 2 px).
     call('dock', 'autoHide', 'false')
     s = wait(lambda s: s['dock']['visible'] and s['dock']['rect']['y'] == PLATE_Y)
@@ -317,7 +325,7 @@ def first(call, state, wait, center):
     wait(lambda s: s['dock']['on'])
     call('dock', 'autoHide', 'false')
     wait(lambda s: s['dock']['visible'])
-    wait(lambda s: json.loads((profile / 'state/emaki/dock.json').read_text()) == dict(version=1, on=True, auto_hide=False, pinned=['fixture-browser', 'fixture-editor']), 3)
+    wait(lambda s: json.loads((profile / 'state/emaki/dock.json').read_text()) == dict(version=1, on=True, auto_hide=False, pinned=['fixture-browser', 'fixture-editor'], pins_chosen=True), 3)
 
 
 def second(call, state, wait, center):
@@ -408,6 +416,42 @@ def fourth(call, state, wait, center):
     assert s['dock_keys'] == ['fixture-files', 'sep', 'fixture-browser', 'fixture-editor', 'fixture-game', 'fixture-suite', 'app:PRIVATE_LATE_APP'], s['dock_keys']
 
 
+def report_window(call, state, wait, center):
+    # Real offscreen dock, synthetic niri labels: only the exact shell Report window
+    # shares the report desktop entry, including when that entry becomes pinned.
+    s = ready(wait)
+    original_pins = s['dock']['pinned'][:]
+    with server.lock:
+        original_windows = server.windows[:]
+    server.set_windows(original_windows + [
+        window(90, 101, False, 'org.quickshell', 'Report a problem', **TILE),
+        window(91, 101, False, 'org.quickshell', 'Report a problem elsewhere', **TILE),
+        window(92, 101, False, 'fixture-other-report', 'Report a problem', **TILE),
+    ])
+
+    def report_entries(s):
+        return dict(zip((key for key in s['dock_keys'] if key != 'sep'), s['dock_windows']))
+
+    s = wait(lambda s: report_entries(s).get('emaki-report') == [90]
+             and report_entries(s).get('app:org.quickshell') == [91]
+             and report_entries(s).get('app:fixture-other-report') == [92])
+    assert s['dock_keys'].count('emaki-report') == 1, s['dock_keys']
+    assert 'emaki-report' not in s['dock']['pinned']
+    assert call('dock', 'pin', 'emaki-report') == 'true'
+    s = wait(lambda s: s['dock']['pinned'] == original_pins + ['emaki-report'])
+    assert s['dock_keys'].count('emaki-report') == 1, s['dock_keys']
+    index = [key for key in s['dock_keys'] if key != 'sep'].index('emaki-report')
+    assert s['dock']['entries'][index] == dict(id='emaki-report', pinned=True, source='exact', windows=1)
+    assert report_entries(s)['emaki-report'] == [90]
+    assert report_entries(s)['app:org.quickshell'] == [91]
+    assert report_entries(s)['app:fixture-other-report'] == [92]
+    assert call('dock', 'unpin', 'emaki-report') == 'true'
+    wait(lambda s: s['dock']['pinned'] == original_pins and saved()['pinned'] == original_pins, 3)
+    server.set_windows(original_windows)
+    wait(lambda s: 'emaki-report' not in s['dock_keys'] and 'app:org.quickshell' not in s['dock_keys']
+         and 'app:fixture-other-report' not in s['dock_keys'])
+
+
 # Files written by a newer shell (kept in /home across a system rollback): not read, not overwritten.
 NEWER_DOCK = json.dumps(dict(version=2, on=False, auto_hide=False, pinned=['fixture-browser'], placement='future'))
 NEWER_APPS = json.dumps(dict(version=2, map={'PRIVATE_UNKNOWN_APP': 'fixture-editor'}))
@@ -415,23 +459,116 @@ NEWER_APPS = json.dumps(dict(version=2, map={'PRIVATE_UNKNOWN_APP': 'fixture-edi
 
 def newer(call, state, wait, center):
     s = wait(lambda s: s['niri']['connection'] == 'connected' and s['dock']['labels'] == 'ready')
-    assert s['dock']['on'] and not s['dock']['auto_hide'] and s['dock']['pinned'] == [] and s['dock']['learned'] == 0, s['dock']
+    assert s['dock']['on'] and not s['dock']['auto_hide'] and s['dock']['pinned'] == DEFAULT_PINS and s['dock']['learned'] == 0, s['dock']
     assert call('dock', 'pin', 'fixture-files') == 'true' and call('dock', 'assign', 'PRIVATE_UNKNOWN_APP', 'fixture-editor') == 'true'
-    wait(lambda s: s['dock']['pinned'] == ['fixture-files'] and s['dock']['learned'] == 1)
+    wait(lambda s: s['dock']['pinned'] == DEFAULT_PINS + ['fixture-files'] and s['dock']['learned'] == 1)
     time.sleep(.9)  # past the 500 ms save timers
     assert (profile / 'state/emaki/dock.json').read_text() == NEWER_DOCK
     assert (profile / 'state/emaki/apps.json').read_text() == NEWER_APPS
 
 
+DEFAULT_PINS = ['firefox', 'kitty', 'org.kde.dolphin', 'emaki-update-manager']
+DOCK_FILE = profile / 'state/emaki/dock.json'
+
+
+def saved():
+    return json.loads(DOCK_FILE.read_text())
+
+
+def ready(wait):
+    return wait(lambda s: s['niri']['connection'] == 'connected' and s['dock']['labels'] == 'ready')
+
+
+def default_pins(call, state, wait, center):
+    # Nothing chosen (2026-10-14, kitty since 2026-10-15): Firefox, kitty, Dolphin, Programs &
+    # Updates, in this order, resolved by their desktop entries, before the running apps; nothing
+    # is written until a change.
+    s = ready(wait)
+    assert s['dock']['pinned'] == DEFAULT_PINS, s['dock']
+    assert s['dock_keys'][:5] == DEFAULT_PINS + ['sep'], s['dock_keys']
+    assert [e['id'] for e in s['dock']['entries'][:4]] == DEFAULT_PINS and all(e['pinned'] for e in s['dock']['entries'][:4])
+    time.sleep(.9)  # past the 500 ms save timer
+    assert not DOCK_FILE.exists()
+    # Another dock change saves no pin list: the defaults stay defaults.
+    call('dock', 'autoHide', 'false')
+    wait(lambda s: DOCK_FILE.exists() and saved() == dict(version=1, on=True, auto_hide=False), 3)
+
+
+DOLPHIN = apps / 'org.kde.dolphin.desktop'
+
+
+def missing_pin(call, state, wait, center):
+    # Dolphin is pinned but not installed: no tile (no raw ID, no empty icon, no dead click), yet the
+    # stored pin stays; a reorder keeps its place; installing it brings the tile back.
+    s = ready(wait)
+    assert s['dock']['pinned'] == DEFAULT_PINS, s['dock']
+    assert s['dock_keys'][:4] == ['firefox', 'kitty', 'emaki-update-manager', 'sep'], s['dock_keys']
+    assert 'org.kde.dolphin' not in [e['id'] for e in s['dock']['entries']], s['dock']['entries']
+    call('dock', 'autoHide', 'false')
+    s = wait(lambda s: s['dock']['visible'] and s['dock']['rect']['y'] == PLATE_Y)
+    call('test', 'drag', *center(s, 'firefox'), center(s, 'emaki-update-manager')[0] + 20, center(s, 'firefox')[1])
+    s = wait(lambda s: s['dock']['pinned'] == ['kitty', 'emaki-update-manager', 'org.kde.dolphin', 'firefox'] and not s['dock']['dragging'])
+    assert s['dock_keys'][:4] == ['kitty', 'emaki-update-manager', 'firefox', 'sep'], s['dock_keys']
+    wait(lambda s: DOCK_FILE.exists() and saved() == dict(version=1, on=True, auto_hide=False, pins_chosen=True,
+                                   pinned=['kitty', 'emaki-update-manager', 'org.kde.dolphin', 'firefox']), 3)
+    DOLPHIN.write_text('[Desktop Entry]\nType=Application\nName=Dolphin\nExec=/usr/bin/true\nTerminal=false\n')
+    wait(lambda s: s['dock_keys'][:5] == ['kitty', 'emaki-update-manager', 'org.kde.dolphin', 'firefox', 'sep'], 10)
+    call('dock', 'autoHide', 'true')  # the runs below start from the default auto-hide
+    wait(lambda s: saved()['auto_hide'], 3)
+
+
+def default_pins_kept(call, state, wait, center):
+    s = ready(wait)
+    assert s['dock']['pinned'] == DEFAULT_PINS and not s['dock']['auto_hide'], s['dock']
+    # The first change of the pins makes the whole list the person's own.
+    assert call('dock', 'unpin', 'org.kde.dolphin') == 'true'
+    wait(lambda s: DOCK_FILE.exists() and saved() == dict(version=1, on=True, auto_hide=False, pins_chosen=True,
+                                   pinned=['firefox', 'kitty', 'emaki-update-manager']), 3)
+
+
+def own_pins_kept(call, state, wait, center):
+    s = ready(wait)
+    assert s['dock']['pinned'] == ['firefox', 'kitty', 'emaki-update-manager'], s['dock']
+    for pin in ('firefox', 'kitty', 'emaki-update-manager'):
+        assert call('dock', 'unpin', pin) == 'true'
+    wait(lambda s: saved() == dict(version=1, on=True, auto_hide=False, pins_chosen=True, pinned=[]), 3)
+
+
+def empty_dock_kept(call, state, wait, center):
+    # A dock emptied on purpose stays empty.
+    s = ready(wait)
+    assert s['dock']['pinned'] == [] and 'firefox' not in s['dock_keys'], s['dock']
+    call('dock', 'autoHide', 'true')  # the runs below start from the default auto-hide
+    wait(lambda s: saved() == dict(version=1, on=True, auto_hide=True, pins_chosen=True, pinned=[]), 3)
+
+
 try:
+    # A default pin whose app is missing is hidden, kept and shown again once installed.
+    DOLPHIN.unlink()
+    run(missing_pin)
+    DOCK_FILE.unlink()
+    # A fresh profile shows the default pins, never overwriting a person's own.
+    run(default_pins)
+    run(default_pins_kept)
+    run(own_pins_kept)
+    run(empty_dock_kept)
+    # Files from before 0.9 carry no marker: an empty list was the old empty default, so it gives
+    # way to the default pins; a non-empty list is the person's own and stays.
+    DOCK_FILE.write_text(json.dumps(dict(version=1, on=True, auto_hide=True, pinned=[])))
+    run(lambda call, state, wait, center: wait(lambda s: s['dock']['labels'] == 'ready' and s['dock']['pinned'] == DEFAULT_PINS, 3))
+    DOCK_FILE.write_text(json.dumps(dict(version=1, on=True, auto_hide=True, pinned=['fixture-editor'])))
+    run(lambda call, state, wait, center: wait(lambda s: s['dock']['labels'] == 'ready' and s['dock']['pinned'] == ['fixture-editor'], 3))
+    # The rest starts from an empty dock chosen by the person.
+    DOCK_FILE.write_text(json.dumps(dict(version=1, on=True, auto_hide=True, pinned=[], pins_chosen=True)))
     run(first)
     run(second)
     with server.lock:
         server.windows = identity_windows()
     run(third)
     run(fourth)
+    run(report_window)
     (profile / 'state/emaki/dock.json').write_text('{broken')
-    run(lambda call, state, wait, center: wait(lambda s: s['dock']['labels'] == 'ready' and s['dock']['pinned'] == [] and not s['dock']['auto_hide']))
+    run(lambda call, state, wait, center: wait(lambda s: s['dock']['labels'] == 'ready' and s['dock']['pinned'] == DEFAULT_PINS and not s['dock']['auto_hide']))
     (profile / 'state/emaki/dock.json').write_text(NEWER_DOCK)
     (profile / 'state/emaki/apps.json').write_text(NEWER_APPS)
     run(newer)
@@ -447,4 +584,4 @@ finally:
     server.server_close()
     thread.join(timeout=3)
 launches(profile, ['fixture-files', 'org.fixture.desktop', 'fixture-slow', 'fixture-fail'])
-print(f'Dock: pinned/running order, dots, launch/focus/list, menu pin/close-all, drag reorder/unpin/pin, auto-hide timers, overview, coverage, dock IPC, dock.json restart, identity guess/choose/learn/forget, apps.json restart: OK; {profile.relative_to(ROOT)}')
+print(f'Dock: default pins (missing app hidden and kept, fresh, kept, chosen, emptied, pre-0.9 files), pinned/running order, dots, launch/focus/list, menu pin/close-all, drag reorder/unpin/pin, auto-hide timers, overview, coverage, dock IPC, dock.json restart, identity guess/choose/learn/forget, Report window identity and pin merge, apps.json restart: OK; {profile.relative_to(ROOT)}')

@@ -29,9 +29,11 @@ class ThemeTests(unittest.TestCase):
             home = Path(directory)
             config = home / 'config/qt6ct'
             config.mkdir(parents=True)
-            source = (ROOT / 'etc-skel/.config/qt6ct/qt6ct.conf').read_text()
-            (config / 'qt6ct.conf').write_text(source.replace(
-                '/usr/share/emaki/qt6ct/emaki.conf', str(ROOT / 'qt6ct/emaki.conf')))
+            # The packaged qt6ct.conf as it is; the scheme where the session writes it (default accent).
+            (config / 'qt6ct.conf').write_text((ROOT / 'etc-skel/.config/qt6ct/qt6ct.conf').read_text())
+            scheme = home / '.local/state/emaki/accent/qt6ct.conf'
+            scheme.parent.mkdir(parents=True)
+            scheme.write_text((ROOT / 'qt6ct/emaki.conf').read_text())
             (home / 'config/kdeglobals').write_text(
                 (ROOT / 'packaging/emaki-config/kdeglobals').read_text())
             fixture = home / 'prompt.qml'

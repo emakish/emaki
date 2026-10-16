@@ -1,0 +1,65 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# shellcheck shell=bash
+# makepkg supplies build paths and consumes package metadata.
+# shellcheck disable=SC2034,SC2154
+pkgname=emaki-font-iosevka
+pkgver=3.5.1
+pkgrel=2
+pkgdesc='The four Iosevka Nerd Font Mono faces used by the Emaki terminal'
+arch=('any')
+url='https://github.com/ryanoasis/nerd-fonts'
+license=('OFL-1.1-no-RFN' 'OFL-1.1-RFN' 'MIT' 'Apache-2.0' 'CC-BY-4.0' 'Unlicense' 'Bitstream-Vera')
+depends=('fontconfig')
+source=("Iosevka-$pkgver.tar.xz::$url/releases/download/v$pkgver/Iosevka.tar.xz"
+    'nerd-fonts-LICENSE::https://raw.githubusercontent.com/ryanoasis/nerd-fonts/b894ea7803af6aade63d60a4381e006098ec9c4d/LICENSE'
+    'codicons-LICENSE.txt::https://raw.githubusercontent.com/ryanoasis/nerd-fonts/b894ea7803af6aade63d60a4381e006098ec9c4d/src/glyphs/codicons/LICENSE.txt'
+    'font-awesome-LICENSE.txt::https://raw.githubusercontent.com/ryanoasis/nerd-fonts/b894ea7803af6aade63d60a4381e006098ec9c4d/src/glyphs/font-awesome/LICENSE.txt'
+    'materialdesign-LICENSE::https://raw.githubusercontent.com/ryanoasis/nerd-fonts/b894ea7803af6aade63d60a4381e006098ec9c4d/src/glyphs/materialdesign/LICENSE'
+    'octicons-LICENSE::https://raw.githubusercontent.com/ryanoasis/nerd-fonts/b894ea7803af6aade63d60a4381e006098ec9c4d/src/glyphs/octicons/LICENSE'
+    'pomicons-LICENSE::https://raw.githubusercontent.com/ryanoasis/nerd-fonts/b894ea7803af6aade63d60a4381e006098ec9c4d/src/glyphs/pomicons/LICENSE'
+    'powerline-extra-LICENSE::https://raw.githubusercontent.com/ryanoasis/nerd-fonts/b894ea7803af6aade63d60a4381e006098ec9c4d/src/glyphs/powerline-extra/LICENSE'
+    'powerline-symbols-LICENSE.txt::https://raw.githubusercontent.com/ryanoasis/nerd-fonts/b894ea7803af6aade63d60a4381e006098ec9c4d/src/glyphs/powerline-symbols/LICENSE.txt'
+    'weather-icons-OFL.txt::https://raw.githubusercontent.com/ryanoasis/nerd-fonts/b894ea7803af6aade63d60a4381e006098ec9c4d/src/glyphs/weather-icons/OFL.txt'
+    'devicons-LICENSE::https://raw.githubusercontent.com/devicons/devicon/54cfe13ac10eaa1ef817a343ab0a9437eb3c2e08/LICENSE'
+    'font-awesome-extension-LICENCE::https://raw.githubusercontent.com/AndreLZGava/font-awesome-extension/09d80249058ee8018a45da30add4339289dbb466/LICENCE'
+    'font-logos-LICENSE::https://raw.githubusercontent.com/lukas-w/font-logos/e92426e28ee5bbf4ca328b33e3a393b7a5045f01/LICENSE'
+    'seti-ui-LICENSE.md::https://raw.githubusercontent.com/jesseweed/seti-ui/6c358eb9ce5cc20bccd72cc4d7179fd485cd8fe7/LICENSE.md'
+    'iec-power-symbols-LICENSE.txt::https://raw.githubusercontent.com/jloughry/Unicode/805536fb6f93604da985d80e0c6b099f98f8b4d9/LICENSE.txt'
+    'hack-LICENSE.md::https://raw.githubusercontent.com/source-foundry/Hack/b47d21f808fbf4784565feccde2213ef2af924b3/LICENSE.md'
+    'apache-2.0-LICENSE.txt::https://www.apache.org/licenses/LICENSE-2.0.txt'
+    'license-review.md')
+sha256sums=('3b94ea1dc3955756762f977b7677bca671947dd56bc755a6f8465a8e83b5f257'
+    '1f6ad4edae6479aaace3112ede5279a23284ae54b2a34db66357aef5f64df160'
+    'd6239afa918961b465b07bf7411cbe34ff6685854f58553db7966f4881a0211f'
+    'de784a808496d49f5f80dd9d1d6e9a51cff712cfbc339e7c25155631ae3cdb5d'
+    '3bae6305bcaa6d10219b999f65c342034c2d40b1c0e8567fa08605e73ccba829'
+    '4f886642f9e8d99eeadd484acdac011c3fde8a338faf52f5ca1408c13b9a9b63'
+    'cb4797a9745683f287c28833db596e9d68ec43082d59359b3a49c504f0f610ce'
+    '544307a58e6826c24145b2af1c3578b53e2e21ae0e6c67ab4c6abd544304d26a'
+    '46d5355e4734468135d8e4a30d0916292cc4df2b3ec30aa68c866f82497933be'
+    '69cdedc8a4f57a30d68e4f045af8b9cce0ec3b1a6e7eec1ad41737c894f26790'
+    '121194741d4a915b9f5890fdd6dd95121f9b1f816517c792358d72d7c838d664'
+    'b47b15d771c4507a75ff65beca3a78168d6af4cca9b45177a1aa817139c64ba5'
+    '88d9b4eb60579c191ec391ca04c16130572d7eedc4a86daa58bf28c6e14c9bcd'
+    'd4d2d888c6a0a220a7b0e2d6013cf37539b0e05ef937002b3b33bdb364575b88'
+    '11aef1cdf2d58d822e6857e2574870ccc59d4900052bf5c098e319d750e7ac3d'
+    '1f61bb7c790c59b4b0ecdf304628b94e42ae4c8020094a8c3da73381ab212623'
+    'cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30'
+    '4110a5b35218ca54253271b0e28c9c3801da8e85e031aef317fba0bc9630c86d')
+
+package() {
+    local style notice
+    # A separate directory lets a person's full upstream font package coexist.
+    for style in Regular Bold Italic BoldItalic; do
+        install -Dm644 "$srcdir/IosevkaNerdFontMono-$style.ttf" \
+            "$pkgdir/usr/share/fonts/emaki-iosevka/IosevkaNerdFontMono-$style.ttf"
+    done
+    # Preserve the original licence/copyright and the patched fonts' icon-set notices.
+    install -Dm644 "$srcdir/LICENSE.md" "$pkgdir/usr/share/licenses/$pkgname/LICENSE.md"
+    install -Dm644 "$srcdir/README.md" "$pkgdir/usr/share/licenses/$pkgname/README.md"
+    for notice in "${source[@]:1}"; do
+        notice=${notice%%::*}
+        install -Dm644 "$srcdir/$notice" "$pkgdir/usr/share/licenses/$pkgname/$notice"
+    done
+}

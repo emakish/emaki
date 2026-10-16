@@ -6,7 +6,7 @@
   <vendor>Emaki</vendor>
   <action id="org.emaki.programs.install">
     <description>Install a program and update repository packages</description>
-    <message>Authentication is required to install the repository program in this command and update repository packages: $(command_line)</message>
+    <message>Enter an administrator password to install the repository program and update repository packages.</message>
     <defaults>
       <allow_any>no</allow_any>
       <allow_inactive>no</allow_inactive>

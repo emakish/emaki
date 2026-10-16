@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Unprivileged publication, real inotify updates and the greeter's read boundary.
 
 All image/config fixtures are synthetic. No root, home reads, systemd or session bus.
@@ -594,6 +596,85 @@ def default_config_checks(base):
         assert wallpaper.texture(80, 50, 1, 'Fixture', 'sharp')['state'] == 'ready'
 
 
+def look_publication_checks(base):
+    """The look the login screen shows before the password (0.9): the session copies only the
+    theme, accent and switch times of settings.toml next to the published wallpaper, and the
+    login screen's reader accepts exactly that copy."""
+    state_spec = importlib.util.spec_from_file_location('greeter_state_look', ROOT / 'shell/helpers/greeter-state.py')
+    reader = importlib.util.module_from_spec(state_spec)
+    state_spec.loader.exec_module(reader)
+    home = base / 'look-home'
+    settings = home / 'emaki/settings.toml'
+    settings.parent.mkdir(parents=True)
+    destination = base / 'look-users/person'
+    destination.mkdir(parents=True, mode=0o750)
+    destination.chmod(0o2750)
+    copy = destination / 'look.json'
+    with patch.dict(os.environ, XDG_CONFIG_HOME=str(home)):
+        assert publisher.settings_path() == settings
+
+    def seen():
+        return reader.look(SimpleNamespace(users=destination.parent), 'person', os.getuid())
+
+    # Nothing chosen yet: an empty copy, which the login screen reads as its default look.
+    assert publisher.publish_look(settings, destination) == {'state': 'published'}
+    assert json.loads(copy.read_text()) == {'version': 1} and seen() == {}
+    assert stat.S_IMODE(copy.stat().st_mode) == 0o640
+    settings.write_text('schema_version = 1\n\n[appearance]\ngaps = 8\nwallpaper = "/home/PRIVATE/Pictures/me.png"\n'
+                        'theme = "light"\naccent = "teal"\nlight_time = "06:30"\ndark_time = "20:15"\n\n'
+                        '[defaults]\nbrowser = "PRIVATE.desktop"\n')
+    assert publisher.publish_look(settings, destination) == {'state': 'published'}
+    assert 'PRIVATE' not in copy.read_text() and 'gaps' not in copy.read_text()
+    look = dict(theme='light', accent='teal', light_time='06:30', dark_time='20:15')
+    assert json.loads(copy.read_text()) == dict(look, version=1) and seen() == look
+    # Values outside the fixed forms never cross; a broken file keeps the last good copy.
+    settings.write_text('schema_version = 1\n[appearance]\ntheme = "neon"\naccent = "Rose!"\nlight_time = "7"\n')
+    assert publisher.publish_look(settings, destination) == {'state': 'published'}
+    assert seen() == {}
+    settings.write_text('schema_version = 1\n[appearance]\ntheme = "dark"\naccent = "rose"\n')
+    publisher.publish_look(settings, destination)
+    settings.write_text('[appearance\ntheme = "light"')
+    assert publisher.look_attempt(settings, destination) == {'state': 'refused', 'reason': 'config_invalid'}
+    settings.write_text('schema_version = 2\n[appearance]\ntheme = "light"\n')
+    assert publisher.look_attempt(settings, destination)['state'] == 'refused'
+    assert seen() == dict(theme='dark', accent='rose')
+    linked = home / 'linked/emaki'
+    linked.parent.mkdir()
+    linked.symlink_to(settings.parent, target_is_directory=True)
+    assert publisher.look_attempt(linked / 'settings.toml', destination)['state'] == 'refused'
+    assert seen() == dict(theme='dark', accent='rose')
+    # The copy goes only into a published directory made for this account (2750).
+    settings.write_text('schema_version = 1\n[appearance]\ntheme = "dark"\naccent = "rose"\n')
+    destination.chmod(0o750)
+    assert publisher.look_attempt(settings, destination) == {'state': 'refused', 'reason': 'output_permissions'}
+    destination.chmod(0o2750)
+
+    # The session's watcher follows Settings: a real kernel watch on settings.toml.
+    config = home / 'wpaperd/config.toml'
+    watcher_code = ('import importlib.util,sys; sys.path.insert(0,sys.argv[1]); '
+                    's=importlib.util.spec_from_file_location("publisher",sys.argv[2]); '
+                    'm=importlib.util.module_from_spec(s); s.loader.exec_module(m); '
+                    'm.watch(m.Path(sys.argv[3]),m.Path(sys.argv[4]),m.Path(sys.argv[5]))')
+    watcher = subprocess.Popen([sys.executable, '-B', '-c', watcher_code,
+                                str(ROOT / 'shell/helpers'), str(ROOT / 'shell/helpers/publish-wallpaper.py'),
+                                str(config), str(destination), str(settings)],
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        until(lambda: seen() == dict(theme='dark', accent='rose'), 'watcher did not publish the look at start')
+        replacement = settings.with_name('.settings.new')
+        replacement.write_text('schema_version = 1\n[appearance]\ntheme = "light"\naccent = "violet"\n')
+        replacement.replace(settings)
+        until(lambda: seen() == dict(theme='light', accent='violet'), 'watcher did not follow a changed look')
+        settings.unlink()
+        until(lambda: seen() == {}, 'watcher did not return to the default look')
+        assert watcher.poll() is None
+    finally:
+        watcher.terminate()
+        watcher.communicate(timeout=5)
+    unit = (ROOT / 'systemd/emaki-greeter-wallpaper.path').read_text()
+    assert 'PathChanged=%h/.config/emaki/settings.toml' in unit
+
+
 def legacy_toggle_migration_checks():
     root = ROOT
     path = root / 'scripts/emaki-migrate-installer-config'
@@ -1099,6 +1180,7 @@ Scope {
         uninstall_recipe_checks(base)
         package_removal_checks(base)
         default_config_checks(base)
+        look_publication_checks(base)
         watcher_unit =(ROOT / 'systemd/emaki-greeter-wallpaper-watch.service').read_text()
         assert 'StartLimitIntervalSec=60' in watcher_unit and 'StartLimitBurst=5' in watcher_unit
     print('Greeter wallpaper: safe publication/removal/purge, PNG/JPEG/WebP-only/no Ghostscript, bounds/symlinks/races, private roots, inotify, isolated QS helpers, optional provisioning/hints, private refusal codes: PASS')

@@ -1,0 +1,12 @@
+{
+ "created": "2026-10-16T18:45:54+00:00",
+ "expires": "2026-10-23T18:45:54+00:00",
+ "format": 1,
+ "gate": "build.alongside-acceptance",
+ "id": "20261016T184554Z-build.alongside-acceptance-5c38",
+ "reason": "Installing beside Windows was checked in virtual machines; real Windows hardware was not tested for 0.9.0.",
+ "scope": {
+  "installer/emaki_installer/constants.py": "3f2992653c03960a73a3b6ef55823093c3a6fc9871c69f6dcb2fd6632090f8f3"
+ },
+ "who": "668569956D2D747847D87D01F62680BE583363AC"
+}

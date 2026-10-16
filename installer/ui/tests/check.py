@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Installer-specific lint, syntax and packaging checks; no system installation."""
 import json
 import os
@@ -143,7 +145,7 @@ def main():
         source = (UI / 'InstallerController.qml').read_text()
         assert source.count(override) == 1
         assert (destination / 'InstallerController.qml').read_text() == source.replace(override, '"/run/emaki-installer/sock"')
-        for name in ['ZoneData.js', 'timezone-map.png', 'README.md', 'ODbL-1.0.txt', 'generate-timezones.py']:
+        for name in ['ZoneData.js', 'README.md', 'ODbL-1.0.txt', 'generate-timezones.py']:
             assert (destination / 'assets' / name).read_bytes() == (UI / 'assets' / name).read_bytes()
         assert (destination / 'shaders').is_symlink()
         assert os.access(Path(temp) / 'usr/bin/emaki-install', os.X_OK)

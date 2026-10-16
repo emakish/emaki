@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Privacy-filtered observations of the running session, not a health guarantee.
 use crate::transport::{connect, exchange, helper, helper_failure, remaining};
 use serde::Serialize;

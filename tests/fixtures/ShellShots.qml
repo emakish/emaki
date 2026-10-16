@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Window
@@ -40,7 +42,7 @@ ShellRoot {
 
     SystemFixture {
         id: systemFixture
-        // The pixel checks of tests/shell-shots.py are the light ones (orange selected drops):
+        // The pixel checks of tests/shell-shots.py are the light ones (selected drops in the default accent):
         // choose light, since nothing saved is dark.
         Component.onCompleted: SettingsBridge.values = [
             {
@@ -126,7 +128,7 @@ ShellRoot {
                     canGoNext: true,
                     canGoPrevious: true
                 },
-                // A second player: the row of players and the chosen one's orange drop.
+                // A second player: the row of players and the chosen one's accent drop.
                 {
                     dbusName: "fixture-two",
                     identity: "Second player",
@@ -348,13 +350,13 @@ ShellRoot {
                 const glass = JSON.parse(scene.status()).system_glass.panel;
                 if (root.stage === 19 && (!glass.tab || glass.tab.alpha < .99 || glass.tab_page !== "sound" || glass.knobs < 3 || glass.rows < 2))
                     throw new Error("System panel drops missing: " + JSON.stringify(glass));
-                // Only the open page's tab is the orange drop (knobs and chosen rows stay plain).
+                // Only the open page's tab is the accent drop (knobs and chosen rows stay plain).
                 if (root.stage === 19 && glass.selected !== 1)
                     throw new Error("System panel: not exactly the tab selected: " + JSON.stringify(glass));
                 if (root.stage === 19)
                     console.log("SELECTED_DROPS " + JSON.stringify({
                         shot: "system-sound",
-                        orange: [glass.tab],
+                        accent: [glass.tab],
                         plain: []
                     }));
                 root.save(canvas, "system-" + pages[root.stage - 19], () => {
@@ -511,12 +513,12 @@ ShellRoot {
                 const glass = JSON.parse(scene.status()).clock_glass.panel;
                 if (glass.hover.alpha < .99 || !glass.hover_key.startsWith("note-") || glass.today.alpha < .99 || glass.knob.alpha < .99 || glass.player.alpha < .99)
                     throw new Error("Clock panel drops missing: " + JSON.stringify(glass));
-                // Today and the chosen player are orange, the hover drop on the row is plain.
+                // Today and the chosen player take the accent, the hover drop on the row is plain.
                 if (glass.selected !== 2)
                     throw new Error("Clock panel: not exactly today and the player selected: " + JSON.stringify(glass));
                 console.log("SELECTED_DROPS " + JSON.stringify({
                     shot: "drawer-hover",
-                    orange: [glass.today, glass.player],
+                    accent: [glass.today, glass.player],
                     plain: [glass.hover]
                 }));
                 root.save(canvas, "drawer-hover", () => {

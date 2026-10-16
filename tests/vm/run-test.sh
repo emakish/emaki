@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # DEVELOPMENT ONLY: test checkout installation on a clean cloud VM.
 #   tests/vm/run-test.sh [ref] [--greeter-only]
 #   --greeter-only requires an explicit ref; it leaves the guest at the login screen.

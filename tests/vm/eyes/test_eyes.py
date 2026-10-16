@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Offline tests of the eyes harness: fake QMP and VNC servers, stub QEMU. Never starts a VM."""
 import fcntl
 import hashlib
@@ -606,7 +608,7 @@ class GateTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('eyes_gate', HERE / 'eyes-gate.py')
         gate = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(gate)
-        for sid, action in [('10', 'gparted-open'), ('10', 'gparted-close'),
+        for sid, action in [('10', 'editor-new-table'), ('10', 'editor-create'),
                             ('33', 'logout'), ('33', 'restart'), ('33', 'shutdown'),
                             ('33', 'lock-restart'), ('33', 'lock-shutdown')]:
             with self.subTest(action=action):
@@ -636,8 +638,8 @@ class GateTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stdout)
         self.assertIn('no guest RESET event', result.stdout)
 
-    def test_gparted_action_needs_observed_outcome_and_two_frames(self):
-        item = self.record['runs']['W1']['stages']['10']['action_checks']['gparted-open']
+    def test_editor_action_needs_observed_outcome_and_two_frames(self):
+        item = self.record['runs']['W1']['stages']['10']['action_checks']['editor-new-table']
         item.update(verdict='', frames=item['frames'][:1], sha256=item['sha256'][:1])
         result = self.gate()
         self.assertNotEqual(result.returncode, 0, result.stdout)
@@ -998,12 +1000,12 @@ class WalkTests(unittest.TestCase):
         frames = [('before.png', 'a'), ('after.png', 'b')]
         walk.shot = mock.Mock(return_value=frames[:1])
         walk.series = mock.Mock(return_value=frames[1:])
-        args = SimpleNamespace(run='W1', stage='10', action='gparted-open',
+        args = SimpleNamespace(run='W1', stage='10', action='editor-new-table',
                                trigger='click:400,300', timeout=120)
         self.walk_mod.cmd_action(walk, args)
         vm.click.assert_called_once_with(400.0, 300.0)
         walk.series.assert_called_once()
-        item = walk.record['runs']['W1']['stages']['10']['action_checks']['gparted-open']
+        item = walk.record['runs']['W1']['stages']['10']['action_checks']['editor-new-table']
         self.assertTrue(item['completed'])
         self.assertEqual(item['frames'], ['before.png', 'after.png'])
         self.assertEqual(item['verdict'], '')

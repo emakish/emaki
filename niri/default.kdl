@@ -158,8 +158,9 @@ input {
     }
 }
 
-// If the terminal is made translucent, blur goes underneath it.
-// Applying opacity here too would multiply the two values and make it look muddy.
+// The terminal is translucent by default (the kitty theme: tokens.toml opacity.terminal), so
+// blur goes underneath it. Applying opacity here too would multiply the two values and make it
+// look muddy.
 window-rule {
     match app-id="^kitty$"
     background-effect {
@@ -180,6 +181,18 @@ screenshot-path "~/Pictures/Screenshots/Screenshot from %Y-%m-%d %H-%M-%S.png"
 hotkey-overlay {
     skip-at-startup
     hide-not-bound
+}
+
+// Super+Tab and Super+` use niri's switcher, as before 0.9. An explicit binds block
+// replaces all its default chords, leaving the Alt combinations exclusively to the
+// shell's switcher below.
+recent-windows {
+    binds {
+        Mod+Tab { next-window; }
+        Mod+Shift+Tab { previous-window; }
+        Mod+grave { next-window filter="app-id"; }
+        Mod+Shift+grave { previous-window filter="app-id"; }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -210,6 +223,12 @@ binds {
     Mod+Shift+Up    { move-window-up-or-to-workspace-up; }
     Mod+Shift+Down  { move-window-down-or-to-workspace-down; }
 
+    // Super + Ctrl + Shift + arrow: the column goes to the neighbouring monitor.
+    Mod+Ctrl+Shift+Left  hotkey-overlay-title="Move column to left monitor" { move-column-to-monitor-left; }
+    Mod+Ctrl+Shift+Right hotkey-overlay-title="Move column to right monitor" { move-column-to-monitor-right; }
+    Mod+Ctrl+Shift+Up    hotkey-overlay-title="Move column to monitor above" { move-column-to-monitor-up; }
+    Mod+Ctrl+Shift+Down  hotkey-overlay-title="Move column to monitor below" { move-column-to-monitor-down; }
+
     // ── Workspaces by number ───────────────────────────────────────────────
     Mod+1 { focus-workspace 1; }
     Mod+2 { focus-workspace 2; }
@@ -234,7 +253,11 @@ binds {
     Mod+Shift+0 { move-column-to-workspace 10; }
 
     // ── Launching ──────────────────────────────────────────────────────────
+    // niri's overlay shows one key per action (the first titled one): Super+T; the shortcut
+    // search lists both.
     Mod+T hotkey-overlay-title="Open terminal" { spawn "emaki-terminal"; }
+    Mod+Return hotkey-overlay-title="Open terminal" { spawn "emaki-terminal"; }
+    Mod+E hotkey-overlay-title="Open files" { spawn "dolphin"; }
 
     // Launcher. Do not bind Super alone: niri triggers that binding on ANY
     // combination with Super — open niri bug #605. Mod+D is niri's own default
@@ -266,11 +289,27 @@ binds {
     Ctrl+Alt+T hotkey-overlay-title="Open terminal (works without Super)" { spawn "kitty"; }
 
     // ── Windows and columns ────────────────────────────────────────────────
-    Alt+Tab hotkey-overlay-title="Focus previous window" { focus-window-previous; }
-    Mod+C { close-window; }
+    // The window switcher (shell/WindowSwitcher.qml): a quick tap goes back to the previous
+    // window; holding Alt shows pictures of all windows and releasing it switches. Without
+    // a panel that answers, emaki-shell focuses the previous window itself. No repeat: a held
+    // Tab would start a process per repeat; the arrow keys move inside the switcher.
+    Alt+Tab repeat=false hotkey-overlay-title="Switch windows" { spawn "emaki-shell" "call" "switcher" "next"; }
+    Alt+Shift+Tab repeat=false hotkey-overlay-title="Switch windows backwards" { spawn "emaki-shell" "call" "switcher" "previous"; }
+    Alt+grave repeat=false hotkey-overlay-title="Switch windows of the same app" { spawn "emaki-shell" "call" "switcher" "app"; }
+    Alt+Shift+grave repeat=false hotkey-overlay-title="Switch windows of the same app backwards" { spawn "emaki-shell" "call" "switcher" "appPrevious"; }
+    // Super+Q first: niri's overlay shows the first titled key of an action.
+    Mod+Q hotkey-overlay-title="Close window" { close-window; }
+    Mod+C hotkey-overlay-title="Close window" { close-window; }
     Mod+F { fullscreen-window; }
     Mod+R { switch-preset-column-width; }   // one third → one half → two thirds
+    // Narrower and wider by steps of a tenth of the screen (Equal is the key with "+").
+    Mod+Minus hotkey-overlay-title="Make column narrower" { set-column-width "-10%"; }
+    Mod+Equal hotkey-overlay-title="Make column wider" { set-column-width "+10%"; }
     Mod+M { maximize-column; }
+    Mod+Shift+F hotkey-overlay-title="Float or tile window" { toggle-window-floating; }
+    // Into the neighbouring column as a stack, or out of a stack into its own column.
+    Mod+BracketLeft hotkey-overlay-title="Move window into or out of left column" { consume-or-expel-window-left; }
+    Mod+BracketRight hotkey-overlay-title="Move window into or out of right column" { consume-or-expel-window-right; }
     Mod+O repeat=false { toggle-overview; }
 
     // ── System ─────────────────────────────────────────────────────────────
@@ -294,8 +333,8 @@ binds {
 
     Mod+Shift+S hotkey-overlay-title="Take an interactive screenshot" { screenshot; }
     Print { screenshot; }
-    // The combined picture/recording overlay is deliberately unbound pending a key choice.
-    // Action: spawn "emaki-shell" "call" "capture" "open";
+    // Emaki's picture/recording overlay, set to recording; pressed again it stops the recording.
+    Mod+Alt+R hotkey-overlay-title="Record screen" { spawn "emaki-shell" "call" "capture" "record"; }
 
     // Show all key bindings on screen instead of digging through the config.
     Mod+Shift+Slash { show-hotkey-overlay; }

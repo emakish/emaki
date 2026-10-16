@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 //@ pragma UseQApplication
 //@ pragma AppId emaki-install
 pragma ComponentBehavior: Bound
@@ -29,20 +31,6 @@ ShellRoot {
     }
     InstallerController {
         id: controller
-    }
-    // GParted opens as a tiled window, under this floating one. While it runs the window steps
-    // aside as for "Try Emaki first", and comes back by itself with the refreshed disk list.
-    Connections {
-        target: controller
-        function onPartitioningChanged(): void {
-            const window = windowLoader.item as FloatingWindow;
-            if (controller.partitioning) {
-                controller.clearPasswords();
-                if (window)
-                    window.visible = false;
-            } else
-                root.present();
-        }
     }
     Loader {
         id: windowLoader

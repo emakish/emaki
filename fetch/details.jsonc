@@ -24,7 +24,7 @@
     {
       "type": "host",
       "key": "Host",
-      "keyColor": "#e2733f"
+      "keyColor": "#e780aa"
     },
     {
       "type": "kernel",
@@ -39,7 +39,7 @@
     {
       "type": "packages",
       "key": "Packages",
-      "keyColor": "#e2733f"
+      "keyColor": "#e780aa"
     },
     {
       "type": "shell",
@@ -54,7 +54,7 @@
     {
       "type": "terminal",
       "key": "Terminal",
-      "keyColor": "#e2733f"
+      "keyColor": "#e780aa"
     },
     {
       "type": "cpu",
@@ -69,7 +69,7 @@
     {
       "type": "memory",
       "key": "Memory",
-      "keyColor": "#e2733f"
+      "keyColor": "#e780aa"
     },
     {
       "type": "disk",
@@ -85,7 +85,7 @@
     {
       "type": "locale",
       "key": "Locale",
-      "keyColor": "#e2733f"
+      "keyColor": "#e780aa"
     }
   ]
 }

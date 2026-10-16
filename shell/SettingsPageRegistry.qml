@@ -34,7 +34,9 @@ QtObject {
             keys: ["appearance.theme", "appearance.accent", "appearance.light_time", "appearance.dark_time"]
             description: "Choose light or dark, automatic hours and an accent colour."
             component: Component {
-                SettingsAppearancePage { catalog: registry.catalog }
+                SettingsAppearancePage {
+                    catalog: registry.catalog
+                }
             }
         },
         SettingsPageDefinition {

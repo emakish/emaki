@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # emaki-apps (Rich only).
 MINIMAL = {'emaki-welcome', 'firefox', 'kitty', 'org.kde.dolphin',
            'emaki-update-manager', 'emaki-report'}
-LIVE = MINIMAL | {'emaki-install', 'gparted'}
+LIVE = MINIMAL | {'emaki-install'}
 RICH = MINIMAL | {
     'org.kde.ark', 'org.kde.discover', 'org.kde.elisa', 'org.kde.filelight',
     'org.kde.gwenview', 'org.kde.haruna', 'org.kde.isoimagewriter', 'org.kde.kate',

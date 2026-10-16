@@ -22,17 +22,57 @@
       "continue": true
     },
     {
-      "name": "secure-boot-enabled",
+      "name": "secure-boot-enabled-without-db-report",
       "hardware": {
         "secure_boot": true
       },
       "continue": false,
       "refused": true,
-      "notice": "Emaki cannot start with firmware signature checking enabled (Secure Boot). Restart into your firmware settings, turn Secure Boot off, then start the USB again.",
+      "notice": "The firmware signature setting could not be read (Secure Boot). Restart into your firmware settings, turn Secure Boot off, then start the USB again."
+    },
+    {
+      "name": "secure-boot-without-microsoft-third-party-ca",
+      "hardware": {
+        "secure_boot": true,
+        "secure_boot_cas": "none"
+      },
+      "continue": false,
+      "refused": true,
+      "notice": "Secure Boot is on, but this computer does not trust the Microsoft certificate Emaki starts with. In your firmware settings, turn on the third-party certificate option (often \"Allow Microsoft 3rd Party UEFI CA\") or turn Secure Boot off, then start the USB again.",
       "error": {
         "code": "secure_boot",
-        "message": "Emaki cannot start with firmware signature checking enabled (Secure Boot). Restart into your firmware settings, turn Secure Boot off, then start the USB again. No disk has been changed."
+        "message": "Secure Boot is on, but this computer does not trust the Microsoft certificate Emaki starts with. In your firmware settings, turn on the third-party certificate option (often \"Allow Microsoft 3rd Party UEFI CA\") or turn Secure Boot off, then start the USB again. No disk has been changed."
       }
+    },
+    {
+      "name": "secure-boot-on-ca-both",
+      "hardware": {
+        "secure_boot": true,
+        "secure_boot_cas": "both"
+      },
+      "continue": true,
+      "neutral": true,
+      "notice": "Secure Boot is on. After the restart, a blue screen asks you to confirm Emaki's key with a password shown at the end of the installation. You do this only once."
+    },
+    {
+      "name": "secure-boot-on-ca-2011",
+      "hardware": {
+        "secure_boot": true,
+        "secure_boot_cas": "2011"
+      },
+      "continue": true,
+      "neutral": true,
+      "notice": "Secure Boot is on. After the restart, a blue screen asks you to confirm Emaki's key with a password shown at the end of the installation. You do this only once."
+    },
+    {
+      "name": "secure-boot-on-ca-2023",
+      "hardware": {
+        "secure_boot": true,
+        "secure_boot_cas": "2023"
+      },
+      "continue": true,
+      "neutral": true,
+      "notice": "Secure Boot is on. After the restart, a blue screen asks you to confirm Emaki's key with a password shown at the end of the installation. You do this only once."
     },
     {
       "name": "secure-boot-unreadable",

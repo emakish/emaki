@@ -66,6 +66,7 @@ const local = vm.createContext({systemId: -1, entries: [], Date, arrived(id) {
 local.applications = []; local.rules = {};
 for (const [name, args] of [['rememberApplication', 'id,name'], ['ruleFor', 'id'], ['peekAllowed', 'entry']])
     local[name] = vm.runInContext('(function(' + args + '){' + body('NotificationStore.qml', name) + '})', local);
+local.addLocal = vm.runInContext('(function(app,summary,body,batteryWarning,sessionUpdate,actions){' + body('NotificationStore.qml', 'addLocal') + '})', local);
 local.localNotice = vm.runInContext('(function(app,summary,body,batteryWarning,sessionUpdate){' + body('NotificationStore.qml', 'localNotice') + '})', local);
 const systemBattery = vm.runInContext('(function(percent){' + body('NotificationStore.qml', 'systemBattery') + '})', local);
 systemBattery(10); systemBattery(5);
@@ -97,12 +98,21 @@ const saved = {version: 1, applications: [
     {id: 'name:Battery low', name: 'Battery low'},
     {id: 'name:Battery critical', name: 'Battery critical'},
     {id: 'name:Desktop update', name: 'Desktop update'},
+    {id: 'name:Secure Boot', name: 'Secure Boot'},
     {id: 'desktop:mail', name: 'Mail'}
-], entries: [{app: 'Battery low', summary: 'Low battery.', time: 1000}]};
-const restored = vm.createContext({stateFile: {text: () => JSON.stringify(saved)}, systemId: -1});
+], entries: [{app: 'Secure Boot', summary: "This computer's Secure Boot key is not confirmed.", time: 1100},
+    {app: 'Desktop update', summary: 'Sign out and sign in again to finish updating the desktop.', time: 1050},
+    {app: 'Battery low', summary: 'Low battery.', time: 1000}]};
+// Held notices (the Secure Boot ones) are never saved; an older cache's copies are dropped.
+// A finished-update notice from an older history (text only, no flag) is not restored either.
+const restored = vm.createContext({stateFile: {text: () => JSON.stringify(saved)}, systemId: -1,
+    heldApps: ['Secure Boot']});
 restored.store = restored;
+restored.sessionUpdateEntry = entry => vm.runInContext('(function(entry){' +
+    body('NotificationStore.qml', 'sessionUpdateEntry') + '})', restored)(entry);
 vm.runInContext('(function(){' + body('NotificationStore.qml', 'restore') + '})()', restored);
 assert.deepEqual(Array.from(restored.applications, app => app.id), ['desktop:mail']);
+assert.equal(restored.entries.length, 1);
 assert.equal(restored.entries[0].summary, 'Low battery.');
 assert.equal(restored.entries[0].object, null);
 
@@ -140,7 +150,8 @@ assert.deepEqual(Array.from(incoming.applications), []);
 
 let now = 100000;
 const popup = vm.createContext({notes: {dnd: true, entries: [{id: 1, critical: true, batteryWarning: true}, {id: 2}, pairing]},
-    focusedOutput: true, systemOpen: false, launcherOpen: false, drawerOpen: false, privacyOpen: false,
+    focusedOutput: true, authenticationPresent: false, deferredPeekIds: [],
+    systemOpen: false, launcherOpen: false, drawerOpen: false, privacyOpen: false,
     niri: {overviewOpen: false}, presentationState: 'covered', modalOpen: false,
     Date: {now: () => now}, peekCooldown: 0, peekStarted: 0, peekUntil: 0,
     peekIds: [], peekTimer: {restart() {}}, endPeek() { popup.peekIds = []; }});
@@ -207,9 +218,14 @@ for (const active of [false, true]) {
 // The overview closes modal panels but retains a running battery timer and warning.
 const transition = vm.createContext({batteryPeekOpen: true, pairingPeekOpen: false, drawerOpen: true,
     tip: {hide() {}}, closeLauncher() {}, closeClock() { throw Error('battery peek was closed'); },
-    systemBody: {reset() {}}, dock: {closePopup() {}, leaveKeyboard() {}}, closeAllRequested() {}});
+    systemBody: {reset() {}}, dock: {closePopup() {}, leaveKeyboard() {}}, closeAllRequested() {},
+    switcher: {cancel() { transition.switcherCancels = (transition.switcherCancels ?? 0) + 1; }}, switcherOpen: true,
+    bar: {returnItem: {}}});
 const closePanels = vm.runInContext('(function(preserveBattery){' + body('ShellScene.qml', 'closePanels') + '})', transition);
 closePanels(true); assert.equal(transition.drawerOpen, false);
+assert.equal(transition.switcherCancels, 1, 'closing panels closes the window switcher');
+assert.equal(transition.switcherOpen, false);
+assert.equal(transition.bar.returnItem, null, 'closing panels forgets the bar cell to return to');
 let closed = 0; transition.closeClock = () => closed++;
 closePanels(false); assert.equal(closed, 1, 'explicit dismissal still works');
 transition.batteryPeekOpen = false; closePanels(true); assert.equal(closed, 2);

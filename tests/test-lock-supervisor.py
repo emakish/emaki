@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Isolated real sockets/processes; never connects to Wayland, PAM or a session bus."""
 from runtime_fixture import runtime_path
 import importlib.machinery
@@ -42,7 +44,7 @@ except PermissionError:
 
 # Keep desktop IPC isolated from the host and from the fake locker protocol.
 FAKE = '''#!/usr/bin/env python3
-import json,os,socket,sys,time,select
+import json,os,socket,sys,time,select,re
 from pathlib import Path
 r=Path(os.environ['LOCK_FIXTURE'])
 name=Path(sys.argv[0]).name
@@ -59,6 +61,8 @@ if name=='qs':
 with (r/'calls').open('a') as f:f.write(name+' '+str(os.getpid())+'\\n')
 if name=='qs-cancel':sys.exit(0)
 if name=='hyprlock':
+ config=Path(sys.argv[sys.argv.index('--config')+1]).read_text()
+ heartbeat=Path(re.search(r'touch -- ([^;]+);',config).group(1))
  if (r/'fallback-fail').exists():sys.exit(1)
  if (r/'fallback-success').exists():sys.exit(0)
  if not (r/'fallback-silent').exists():
@@ -66,7 +70,7 @@ if name=='hyprlock':
   print('noise onLockLocked called',flush=True)
   time.sleep(.08)
   print('DEBUG from core ]: onLockLocked called',file=sys.stderr,flush=True)
- while True:time.sleep(.1)
+ while True:heartbeat.touch();time.sleep(.1)
 mode=(r/'mode').read_text()
 if mode=='die-before':sys.exit(1)
 s=socket.socket(socket.AF_UNIX);s.connect(os.environ['EMAKI_LOCK_SOCKET'])
@@ -117,6 +121,12 @@ with tempfile.TemporaryDirectory(prefix='emaki-lock-', dir='/tmp') as value:
     for name in ('qs', 'hyprlock', 'emaki-shell'):
         path = commands / name; path.write_text(FAKE); path.chmod(0o700)
     os.environ['PATH'] = str(commands) + ':' + os.environ['PATH']
+    config = base / 'config/hypr/hyprlock.conf'
+    config.parent.mkdir(parents=True)
+    config.write_text('general {\n}\n')
+    os.environ['HOME'] = str(base)
+    os.environ['XDG_CONFIG_HOME'] = str(config.parent.parent)
+    os.environ['XDG_CONFIG_DIRS'] = str(config.parent.parent)
     os.environ.pop('WAYLAND_DISPLAY', None)
     os.environ.pop('NIRI_SOCKET', None)
     os.environ.pop('DBUS_SESSION_BUS_ADDRESS', None)

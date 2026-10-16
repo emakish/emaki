@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Probe KDE's real menu/MIME/palette APIs without using the session or home."""
 import configparser
 import os

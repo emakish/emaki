@@ -151,6 +151,8 @@ def build(args, out):
         from emaki_installer import boot
         sys.path.insert(0, str(ROOT / 'grub'))
         sys.modules['emaki_boot.boot'] = boot
+        from emaki_installer import secureboot
+        sys.modules['emaki_boot.secureboot'] = secureboot
         from emaki_boot import refresh
         staged_grub = out / 'staged-grub'
         shutil.copytree(usr / 'lib/grub/x86_64-efi', staged_grub / 'x86_64-efi')

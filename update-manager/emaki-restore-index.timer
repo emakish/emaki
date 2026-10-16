@@ -3,13 +3,13 @@
 [Unit]
 Description=Keep the public system restore point inventory current
 # Restore points exist only on btrfs installs with /.snapshots; elsewhere (ext4, the live stick)
-# the timer stays off instead of failing its service every 30 s.
+# the timer stays off instead of failing its service on every inventory refresh.
 ConditionPathIsDirectory=/.snapshots
 
 [Timer]
 OnBootSec=1s
-OnUnitInactiveSec=30s
-AccuracySec=1s
+OnUnitInactiveSec=5min
+AccuracySec=30s
 
 [Install]
 WantedBy=timers.target

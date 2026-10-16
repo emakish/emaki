@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Alongside safety and ordering; no real block device is opened or mounted."""
 import copy
 import json
@@ -208,7 +210,8 @@ class NtfsTests(AlongsideOnTestCase):
         self.assertFalse(any(cmd[0] in ('mount', 'ntfs-3g') for cmd, _ in runner.commands))
 
     def test_disk_refusals_explain_known_causes_and_remedies(self):
-        for cause in ('hibernation', 'bitlocker', 'space', 'efi', 'efi-unknown'):
+        # Windows' ESP free space refuses nothing since 0.9.0 (test_alongside_own_esp).
+        for cause in ('hibernation', 'bitlocker', 'space'):
             with self.subTest(cause=cause):
                 _, inv = windows()
                 disk = inv['disks'][0]
@@ -219,8 +222,6 @@ class NtfsTests(AlongsideOnTestCase):
                     runner.responses[('sgdisk', f'--info={p["number"]}', disk['path'])] = gpt_text(p['_gpt'])
                 runner.responses[('ntfsresize', '--info', '--no-action', part['path'])] = (
                     OK if cause != 'space' else f'You might resize at {part["size_bytes"] - 30 * GIB} bytes\n')
-                if cause in ('efi', 'efi-unknown'):
-                    esp['_esp_free_bytes'] = 32 * MIB - 1 if cause == 'efi' else None
                 self.journal.side_effect = (InstallError(
                     Code.SHRINK_BOUNDS, 'The NTFS writable safety check refused this volume.',
                     output='The NTFS partition is hibernated.') if cause == 'hibernation' else None)
@@ -237,8 +238,6 @@ class NtfsTests(AlongsideOnTestCase):
                                     'as administrator', 'shut Windows down', 'start from the USB stick again'),
                     'bitlocker': ('BitLocker', 'turn off BitLocker', 'wait until it finishes'),
                     'space': ('Not enough free space', '35 GB', 'Delete or move files in Windows'),
-                    'efi': ("disk's startup partition is too full", '34 MB', 'needs a backup and a disk tool'),
-                    'efi-unknown': ('could not be checked', 'check the disk for errors'),
                 }[cause]
                 for text in expected:
                     self.assertIn(text, reason)
@@ -292,7 +291,8 @@ class NtfsTests(AlongsideOnTestCase):
             self.assertIn('Never delete or reset the firmware keys', reason)
             self.assertEqual(runner.commands, [])
         disk['partitions'][0]['esp'] = False
-        self.assertIn('ESP', ntfs.Inventory(RecordingRunner())._ntfs_shrink(disk, disk['partitions'][1])['reason'])
+        self.assertEqual(ntfs.Inventory(RecordingRunner())._ntfs_shrink(disk, disk['partitions'][1])['reason'],
+                         'Installing next to Windows requires a GPT disk with an existing startup partition.')
 
     def test_largest_only_and_ties(self):
         _, inv = windows()
@@ -445,15 +445,16 @@ class AlongsideTests(AlongsideOnTestCase):
     def plan(self):
         return make_plan(self.c, self.inv)
 
-    def test_layout_reuses_esp_and_frees_exact_extent_both_filesystems(self):
+    def test_layout_creates_own_esp_and_frees_exact_extent_both_filesystems(self):
         for fs in ('btrfs', 'ext4'):
             self.c['fs'] = fs
             plan = self.plan()
             esp, root = plan.partitions
-            self.assertFalse(esp.format)
-            self.assertEqual(root.size, 40 * GIB)
-            self.assertEqual(root.start, self.inv['disks'][0]['partitions'][1]['start_bytes'] + 56 * GIB)
-            self.assertEqual(root.number, 3)
+            freed = self.inv['disks'][0]['partitions'][1]['start_bytes'] + 56 * GIB
+            self.assertEqual((esp.path, esp.number, esp.start, esp.size, esp.format), (None, 3, freed, GIB, True))
+            self.assertEqual(root.size, 39 * GIB)
+            self.assertEqual(root.start, freed + GIB)
+            self.assertEqual(root.number, 4)
             self.assertIn('Windows keeps 60.13 GB, Emaki gets 42.95 GB; back up your files first.', plan.summary)
             self.assertEqual('/' in root.subvolumes.values(), fs == 'btrfs')
 
@@ -468,7 +469,7 @@ class AlongsideTests(AlongsideOnTestCase):
                         self.assertEqual(plan.encrypted, encryption != 'none')
                         self.assertEqual(plan.swap_bytes, self.inv['memory_bytes'] if hibernation else 0)
                         self.assertEqual(plan.root.subvolumes.get('@swap'), '/swap' if fs == 'btrfs' and hibernation else None)
-                        self.assertFalse(plan.partitions[0].format)
+                        self.assertTrue(plan.partitions[0].format and plan.partitions[0].esp)
         self.inv['memory_bytes'] = 32 * GIB
         with self.assertRaisesRegex(InstallError, '20 GiB'):
             self.plan()
@@ -481,8 +482,11 @@ class AlongsideTests(AlongsideOnTestCase):
             with self.assertRaises(InstallError):
                 self.plan()
             self.c = before
+        # Windows' ESP is never written, so its free space does not count (0.9.0).
         self.inv['disks'][0]['partitions'][0]['_esp_free_bytes'] = 32 * MIB - 1
-        with self.assertRaisesRegex(InstallError, '32 MiB'):
+        self.plan()
+        self.inv['disks'][0]['partitions'][0]['_efi_loaders'] = {}
+        with self.assertRaisesRegex(InstallError, 'No verified Microsoft EFI loader'):
             self.plan()
 
     def runner(self, plan):
@@ -498,7 +502,7 @@ class AlongsideTests(AlongsideOnTestCase):
         def run(argv, **kwargs):
             result = original_run(argv, **kwargs)
             if argv[:2] == ['sgdisk', '--delete=2']:
-                after = dict(meta, end=(plan.root.start // 512 - 1))
+                after = dict(meta, end=(plan.partitions[0].start // 512 - 1))
                 runner.responses[('sgdisk', '--info=2', '/dev/vda')] = gpt_text(after)
             return result
         runner.run = run
@@ -518,9 +522,14 @@ class AlongsideTests(AlongsideOnTestCase):
         self.assertEqual(commands[3], ['ntfsresize', '--size', str(56 * GIB), '/dev/vda2'])
         self.assertEqual(runner.commands[3][1], {'input': 'y\n'})
         meta = plan.disk['partitions'][1]['_gpt']
-        self.assertEqual(commands[4], ['sgdisk', '--delete=2', f'--new=2:{meta["start"]}:{plan.root.start // 512 - 1}',
+        esp, root = plan.partitions
+        self.assertEqual(commands[4], ['sgdisk', '--delete=2', f'--new=2:{meta["start"]}:{esp.start // 512 - 1}',
                          f'--partition-guid=2:{GUID}', f'--typecode=2:{TYPE}', "--change-name=2:Windows owner's data",
                          '--attributes=2:=:0x8000000000000000', '/dev/vda'])
+        self.assertEqual(commands[9], ['sgdisk', f'--new=3:{esp.start // 512}:{root.start // 512 - 1}',
+                         '--typecode=3:EF00', '--change-name=3:Emaki EFI',
+                         f'--new=4:{root.start // 512}:{(root.start + root.size) // 512 - 1}',
+                         '--typecode=4:8300', '--change-name=4:Emaki', '/dev/vda'])
         verify.assert_called_once_with(runner, '/dev/vda2', 56 * GIB)
         self.assertFalse(any('--info' in cmd and cmd[0] == 'ntfsresize' for cmd in commands))
         changed.assert_called_once()
@@ -620,6 +629,19 @@ class AlongsideTests(AlongsideOnTestCase):
         ops.format(SimpleNamespace(value='btrfs'), '/dev/vda3')
         self.assertEqual(runner.commands, [(['mkfs.btrfs', '-f', '-K', '/dev/vda3'], {})])
 
+    def test_windows_esp_is_never_formatted_or_labelled(self):
+        # Windows' ESP keeps whatever label Windows set; the label is Emaki's own ESP's.
+        plan = self.plan()
+        plan.root.path = '/dev/vda3'
+        self.assertEqual(plan.esp_label, 'EMAKI')
+        runner = RecordingRunner()
+        with self.assertRaises(InstallError):
+            DeviceOperations(plan, runner).format(SimpleNamespace(value='fat32'), '/dev/vda1')
+        self.assertEqual(runner.commands, [])
+        worker = Worker(None, None, Redactor(), Mock(), Mock())
+        worker.plan, worker.mok_password = plan, '12345678'
+        self.assertEqual(worker.secure_boot_done(), {'secure_boot': {'password': '12345678', 'esp_label': 'EMAKI'}})
+
     def test_4kn_and_reprobe_efi_hash_changes(self):
         disk = self.inv['disks'][0]
         disk['_sector_size'] = 4096
@@ -638,14 +660,17 @@ class AlongsideTests(AlongsideOnTestCase):
         children = [dict(path=p['path'], partn=p['number'], start=p['start_bytes'] // 512,
                          size=p['size_bytes'] - (40 * GIB if p['number'] == 2 else 0),
                          partuuid=p['_partuuid'], parttype=p['_parttype']) for p in plan.disk['partitions']]
-        children.append(dict(path='/dev/vda3', partn=3, start=plan.root.start // 512,
+        esp = plan.partitions[0]
+        children.append(dict(path='/dev/vda3', partn=3, start=esp.start // 512, size=esp.size,
+                             partuuid='new-esp-guid', parttype=ntfs.ESP_GUID))
+        children.append(dict(path='/dev/vda4', partn=4, start=plan.root.start // 512,
                              size=plan.root.size, partuuid='new-root-guid'))
         query = ('lsblk', '--tree', '-J', '-b', '-o', 'PATH,TYPE,PARTN,START,SIZE,PTTYPE,PARTUUID,PARTTYPE', '/dev/vda')
-        archroot = SimpleNamespace(partn=3, dev_path=None)
+        archroot = SimpleNamespace(partn=4, dev_path=None)
         ops = DeviceOperations(plan, runner)
         runner.responses[query] = json.dumps({'blockdevices': [{'pttype': 'gpt', 'children': children}]})
         ops.verify_alongside_layout(SimpleNamespace(partitions=[archroot]))
-        self.assertEqual(archroot.dev_path, Path('/dev/vda3'))
+        self.assertEqual(archroot.dev_path, Path('/dev/vda4'))
         children[0]['partuuid'] = 'changed-esp'
         runner.responses[query] = json.dumps({'blockdevices': [{'pttype': 'gpt', 'children': children}]})
         with self.assertRaisesRegex(InstallError, 'existing partition changed'):
@@ -657,6 +682,35 @@ MAC_VERIFY = ("Caution: Partition 3 doesn't end on a 2048-sector boundary. This 
               "result in problems with some disk encryption tools.\n"
               "No problems found. 6412 free sectors (3.1 MiB) available in 3\n"
               "segments, the largest of which is 4063 (2.0 MiB) in size.\n")
+
+
+class PartitionTableGapTests(unittest.TestCase):
+    GAP = ("Warning: There is a gap between the main partition table (ending sector 33)\n"
+           "and the first usable sector (2048). This is helpful in some exotic configurations,\n"
+           "but is unusual. The util-linux fdisk program often creates disks like this.\n"
+           "Using 'j' on the experts' menu can adjust this gap.\n")
+
+    def verify(self, output):
+        runner = RecordingRunner()
+        runner.responses[('sgdisk', '--verify', '/dev/vda')] = output
+        ntfs.verify_gpt(runner, '/dev/vda')
+
+    def test_accepts_util_linux_gap_with_clean_verification(self):
+        for output in (self.GAP + '\nNo problems found. 2015 free sectors available.\n',
+                       self.GAP + '\n' + MAC_VERIFY,
+                       self.GAP.replace('33)', '127)').replace('(2048)', '(4096)') + MAC_VERIFY):
+            with self.subTest(output=output):
+                self.verify(output)
+
+    def test_gap_does_not_hide_corruption_or_incomplete_verification(self):
+        for output in (self.GAP,
+                       self.GAP + 'Identified 1 problems!\n',
+                       self.GAP + MAC_VERIFY + 'Warning! Main partition table CRC mismatch!\n',
+                       'Caution: invalid backup GPT header, but valid main header; regenerating\n' + self.GAP + MAC_VERIFY,
+                       self.GAP.replace('but is unusual.', 'but is corrupt.') + MAC_VERIFY,
+                       self.GAP.splitlines()[0] + '\n' + MAC_VERIFY):
+            with self.subTest(output=output), self.assertRaisesRegex(InstallError, 'GPT validation failed'):
+                self.verify(output)
 
 
 class UnalignedWindowsEndTests(AlongsideOnTestCase):
@@ -695,9 +749,11 @@ class UnalignedWindowsEndTests(AlongsideOnTestCase):
 
     def test_plan_aligns_windows_end_and_root(self):
         plan = make_plan(self.c, self.inv)
-        root = plan.root
-        self.assertEqual(root.start, self.windows['start_bytes'] + self.new_size)
-        self.assertEqual(root.size, 40 * GIB)
+        esp, root = plan.partitions
+        self.assertEqual(esp.start, self.windows['start_bytes'] + self.new_size)
+        self.assertEqual(esp.start % MIB, 0)
+        self.assertEqual(root.start, esp.start + GIB)
+        self.assertEqual(root.size, 39 * GIB)
         self.assertEqual(root.start % MIB, 0)
         self.assertEqual((root.start + root.size) % MIB, 0)
         self.assertEqual(self.windows['start_bytes'] + self.windows['size_bytes'] - (root.start + root.size),
@@ -721,29 +777,34 @@ class UnalignedWindowsEndTests(AlongsideOnTestCase):
         def run(argv, **kwargs):
             result = original_run(argv, **kwargs)
             if argv[:2] == ['sgdisk', '--delete=2']:
-                runner.responses[('sgdisk', '--info=2', '/dev/vda')] = gpt_text(dict(meta, end=plan.root.start // 512 - 1))
+                runner.responses[('sgdisk', '--info=2', '/dev/vda')] = gpt_text(dict(meta, end=esp.start // 512 - 1))
                 runner.responses[('sgdisk', '--verify', '/dev/vda')] = 'No problems found.'
             return result
         runner.run = run
+        esp, root = plan.partitions
         resize_partition(plan, runner, Mock())
         commands = [cmd for cmd, _ in runner.commands]
         self.assertIn(['ntfsresize', '--size', size, '/dev/vda2'], commands)
-        self.assertIn(['sgdisk', '--delete=2', f'--new=2:{meta["start"]}:{plan.root.start // 512 - 1}',
+        self.assertIn(['sgdisk', '--delete=2', f'--new=2:{meta["start"]}:{esp.start // 512 - 1}',
                        f'--partition-guid=2:{GUID}', f'--typecode=2:{TYPE}', "--change-name=2:Windows owner's data",
                        '--attributes=2:=:0x8000000000000000', '/dev/vda'], commands)
-        self.assertIn(['sgdisk', f'--new=3:{plan.root.start // 512}:{(plan.root.start + plan.root.size) // 512 - 1}',
-                       '--typecode=3:8300', '--change-name=3:Emaki', '/dev/vda'], commands)
+        self.assertIn(['sgdisk', f'--new=3:{esp.start // 512}:{(esp.start + esp.size) // 512 - 1}',
+                       '--typecode=3:EF00', '--change-name=3:Emaki EFI',
+                       f'--new=4:{root.start // 512}:{(root.start + root.size) // 512 - 1}',
+                       '--typecode=4:8300', '--change-name=4:Emaki', '/dev/vda'], commands)
         verify.assert_called_once_with(runner, '/dev/vda2', self.new_size)
 
     def test_resize_refuses_a_root_that_does_not_follow_windows(self):
-        plan = make_plan(self.c, self.inv)
-        plan.root.start += MIB
-        runner = RecordingRunner()
-        changed = Mock()
-        with self.assertRaisesRegex(InstallError, 'disagree'):
-            resize_partition(plan, runner, changed)
-        self.assertEqual(runner.commands, [])
-        changed.assert_not_called()
+        for moved in (0, 1):
+            with self.subTest(moved=('esp', 'root')[moved]):
+                plan = make_plan(self.c, self.inv)
+                plan.partitions[moved].start += MIB
+                runner = RecordingRunner()
+                changed = Mock()
+                with self.assertRaisesRegex(InstallError, 'disagree'):
+                    resize_partition(plan, runner, changed)
+                self.assertEqual(runner.commands, [])
+                changed.assert_not_called()
 
     def test_readback_expects_the_aligned_windows_size(self):
         plan = make_plan(self.c, self.inv)
@@ -751,13 +812,16 @@ class UnalignedWindowsEndTests(AlongsideOnTestCase):
         children = [dict(path=p['path'], partn=p['number'], start=p['start_bytes'] // 512,
                          size=self.new_size if p['number'] == 2 else p['size_bytes'],
                          partuuid=p['_partuuid'], parttype=p['_parttype']) for p in plan.disk['partitions']]
-        children.append(dict(path='/dev/vda3', partn=3, start=plan.root.start // 512,
+        esp = plan.partitions[0]
+        children.append(dict(path='/dev/vda3', partn=3, start=esp.start // 512, size=esp.size,
+                             partuuid='new-esp-guid', parttype=ntfs.ESP_GUID))
+        children.append(dict(path='/dev/vda4', partn=4, start=plan.root.start // 512,
                              size=plan.root.size, partuuid='new-root-guid'))
         query = ('lsblk', '--tree', '-J', '-b', '-o', 'PATH,TYPE,PARTN,START,SIZE,PTTYPE,PARTUUID,PARTTYPE', '/dev/vda')
         runner.responses[query] = json.dumps({'blockdevices': [{'pttype': 'gpt', 'children': children}]})
-        archroot = SimpleNamespace(partn=3, dev_path=None)
+        archroot = SimpleNamespace(partn=4, dev_path=None)
         DeviceOperations(plan, runner).verify_alongside_layout(SimpleNamespace(partitions=[archroot]))
-        self.assertEqual(archroot.dev_path, Path('/dev/vda3'))
+        self.assertEqual(archroot.dev_path, Path('/dev/vda4'))
         children[1]['size'] = self.windows['size_bytes'] - 40 * GIB
         runner.responses[query] = json.dumps({'blockdevices': [{'pttype': 'gpt', 'children': children}]})
         with self.assertRaisesRegex(InstallError, 'existing partition changed'):

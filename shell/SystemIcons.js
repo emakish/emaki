@@ -1,4 +1,6 @@
 .pragma library
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Adwaita "*-symbolic" names for what the system island and its panel show
 // (docs/mockups/liquid-glass/system.js cells() and buildView()), from plain values. The
 // SymbolIcon that draws a name falls back to Icon.qml's own shapes when the theme lacks it.
@@ -61,4 +63,9 @@ function svgFill(ink) {
 function programsSvg(base, strong, soft, shade, ink) {
     // The installed app icon's geometry, also used for its own Installed row.
     return 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 32 32" shape-rendering="crispEdges"><path fill="' + strong + '" d="M4 1h24v2h2v2h1v22h-2v2h-2v2H5v-2H3v-2H1V5h2V3h1z"/><path fill="' + base + '" d="M5 2h22v2h2v23h-2v2H5v-2H3V5h2z"/><path fill="' + soft + '" d="M5 2h22v2H5zM3 4h2v22H3z"/><path fill="' + shade + '" d="M9 16h14v2h2v9H7v-9h2z"/><path fill="' + ink + '" d="M8 15h5v2H9v7h14v-7h-4v-2h5v2h2v9H6v-9h2zM14 6h4v8h4v2h-2v2h-2v2h-4v-2h-2v-2h-2v-2h4z"/></svg>');
+}
+
+function welcomeSvg(base, strong, soft, ink) {
+    // Welcome to Emaki: the app tile of Programs & Updates with two pixel sparkles.
+    return 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 32 32" shape-rendering="crispEdges"><path fill="' + strong + '" d="M4 1h24v2h2v2h1v22h-2v2h-2v2H5v-2H3v-2H1V5h2V3h1z"/><path fill="' + base + '" d="M5 2h22v2h2v23h-2v2H5v-2H3V5h2z"/><path fill="' + soft + '" d="M5 2h22v2H5zM3 4h2v22H3zM8 8h1v1H8zM25 22h1v1H25zM9 24h1v1H9z"/><path fill="' + ink + '" d="M22 4h1v1H22zM22 5h1v1H22zM21 6h3v1H21zM20 7h5v1H20zM14 8h1v1H14zM18 8h9v1H18zM14 9h1v1H14zM20 9h5v1H20zM14 10h1v1H14zM21 10h3v1H21zM13 11h3v1H13zM22 11h1v1H22zM13 12h3v1H13zM22 12h1v1H22zM12 13h5v1H12zM11 14h7v1H11zM10 15h9v1H10zM8 16h13v1H8zM5 17h19v1H5zM8 18h13v1H8zM10 19h9v1H10zM11 20h7v1H11zM12 21h5v1H12zM13 22h3v1H13zM13 23h3v1H13zM14 24h1v1H14zM14 25h1v1H14zM14 26h1v1H14z"/></svg>');
 }

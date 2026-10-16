@@ -6,7 +6,7 @@
 # Desktop applications and the password-only lock PAM service. Runtime helpers
 # and their dependencies are also declared by emaki-config for standalone use.
 pkgname=emaki-desktop
-pkgver=0.8.1
+pkgver=0.9.0
 pkgrel=1
 pkgdesc='Emaki desktop applications, dependencies and lock PAM configuration'
 arch=('any')
@@ -25,6 +25,7 @@ depends=(
     'hyprlock'                  # Recovery fallback for the Emaki locker.
     'swayidle'                  # Settings can enable inactivity locking and blanking.
     'playerctl' 'fuzzel' 'qt6ct'
+    'zsh' 'zsh-autosuggestions' 'zsh-syntax-highlighting'  # The default shell for new accounts.
     # The upstream name, which xdg-desktop-portal-gnome-emaki provides: 0.1.0/0.1.1 keep Arch's
     # portal (their [emaki] comes after [extra], so pacman never offers the fork's replaces=).
     'xdg-desktop-portal-gnome' 'xdg-desktop-portal-gtk'
@@ -39,6 +40,7 @@ depends=(
     # Before firefox, so pacman resolves Firefox's ttf-font with it, not gnu-free-fonts.
     'noto-fonts'                # Broad script coverage for web pages (2026-10-03).
     'noto-fonts-emoji'          # Colour emoji outside Firefox.
+    'emaki-font-iosevka'          # The terminal's font, Iosevka Nerd Font Mono (2026-10-15).
 )
 # Explicitly installed by the installer; optional so removals survive updates.
 optdepends=(

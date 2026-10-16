@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Serve the window over stdio with the real installer controller and worker.
 
 Only the machine is faked: the inventory is installer/tests/support.py's 40 GiB

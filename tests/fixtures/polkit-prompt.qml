@@ -215,16 +215,51 @@ ShellRoot {
         check(backend.submissions === submitsBefore && !controller.accepting, "nonpassword request cannot submit");
         controller.cancel("cancel");
         const rows = Details.rows("action", "Message --password=PRIVATE_AUTH_FIXTURE_91", {
+            program: "/opt/example",
             argv: "unclassified PRIVATE_AUTH_FIXTURE_91",
             api_key: "PRIVATE_AUTH_FIXTURE_91",
-            command_line: "PRIVATE_AUTH_FIXTURE_91",
+            command_line: "/opt/example PRIVATE_AUTH_FIXTURE_91",
             safe: "https://user:PRIVATE_AUTH_FIXTURE_91@example.com",
             plain: "ordinary value"
         }, "");
         const encoded = JSON.stringify(rows);
         check(encoded.indexOf("PRIVATE_AUTH_FIXTURE_91") < 0, "details redact secrets");
+        check(rows[2].value === "Enter an administrator password to run example as administrator.", "message names only the executable");
         check(encoded.indexOf("ordinary value") >= 0, "details preserve safe values");
         check(rows[0].value === "Unknown program", "requester explicitly unavailable");
+        const pidDetails = {
+            "polkit.caller-pid": "4100",
+            "polkit.subject-pid": "4099"
+        };
+        const execAction = "org.freedesktop.policykit.exec";
+        const execMessage = "Authentication is needed to run `/opt/bin/nmcli --password=PRIVATE_AUTH_FIXTURE_91' as the super user";
+        const execHeadline = "Enter an administrator password to run nmcli as administrator.";
+        check(Details.headline(execAction, execMessage, pidDetails) === execHeadline, "pid-only request names executable");
+        const execRows = Details.rows(execAction, execMessage, pidDetails, "");
+        check(execRows[2].value === execHeadline, "pid-only Message names executable");
+        check(JSON.stringify(execRows).indexOf("PRIVATE_AUTH_FIXTURE_91") < 0, "pid-only details hide arguments");
+        for (const nameCase of [["bo\u200fb\uDB40\uDC01\n", "bo b"], ["n".repeat(80), "n".repeat(64)]]) {
+            const userMessage = "Authentication is needed to run `/opt/bin/id PRIVATE_AUTH_FIXTURE_91' as user " + nameCase[0];
+            const userHeadline = "Enter an administrator password to run id as " + nameCase[1] + ".";
+            check(Details.headline(execAction, userMessage, pidDetails) === userHeadline, "target account is cleaned and bounded");
+            check(Details.rows(execAction, userMessage, pidDetails, "")[2].value === userHeadline, "Message preserves target account");
+        }
+        const ownMessage = "Enter\u0001an\nadministrator password\u202e\u200b\u061c\uD834\uDD73\uDB40\uDC01.";
+        const ownHeadline = "Enter an administrator password" + " ".repeat(5) + ".";
+        check(Details.headline("org.emaki.fixture", ownMessage, pidDetails) === ownHeadline, "own headline cleans controls and Unicode format characters");
+        check(Details.rows("org.emaki.fixture", ownMessage, pidDetails, "")[2].value === ownHeadline, "own Message cleans controls and Unicode format characters");
+        const joinedText = "සත්\u200dයාපනය می\u200cشود";
+        for (const action of ["org.emaki.fixture", "org.example.fixture"]) {
+            check(Details.headline(action, joinedText, pidDetails) === joinedText, "headline preserves script joiners");
+            check(Details.rows(action, joinedText, pidDetails, "")[2].value === joinedText, "Message preserves script joiners");
+        }
+        const secretForms = ["password=ab]PRIVATE_AUTH_FIXTURE_91", '--password ab"PRIVATE_AUTH_FIXTURE_91', "password=ab'PRIVATE_AUTH_FIXTURE_91", "password=ab`PRIVATE_AUTH_FIXTURE_91", "password=ab}PRIVATE_AUTH_FIXTURE_91", '--password=ab"PRIVATE_AUTH_FIXTURE_91', 'Cookie: sid=ab"PRIVATE_AUTH_FIXTURE_91', 'Bearer ab"PRIVATE_AUTH_FIXTURE_91', "token=ab]PRIVATE_AUTH_FIXTURE_91"];
+        for (const secretForm of secretForms) {
+            const redacted = Details.redact(secretForm);
+            check(redacted.indexOf("PRIVATE_AUTH_FIXTURE_91") < 0 && redacted.indexOf("Hidden") >= 0, "quote and bracket secret is fully hidden");
+            check(Details.headline("org.example.fixture", secretForm, pidDetails) === redacted, "third-party headline redacts quote and bracket secret");
+            check(Details.rows("org.example.fixture", secretForm, pidDetails, "")[2].value === redacted, "third-party Message redacts quote and bracket secret");
+        }
         for (const prefix of ["/opt/emaki/libexec", "/nix/store/example-emaki/libexec/emaki"]) {
             for (const operation of ["install", "remove"]) {
                 for (const flatpak of [false, true]) {
@@ -242,6 +277,7 @@ ShellRoot {
                     check(headline.indexOf(helper) < 0 && headline.indexOf(token) < 0, "headline hides helper and token");
                     check(headline.indexOf(operation === "install" ? "Install" : "Remove") >= 0, "headline shows operation");
                     const commandRow = Details.rows(action, "generic", metadata, "", prefix).filter(row => row.label === "command_line")[0];
+                    check(Details.rows(action, "generic", metadata, "", prefix)[2].value === headline, "Message uses the program headline");
                     check(commandRow.value === command, "full validated command remains in Details");
                     for (const bad of [command + " extra", command + "\n", command.replace(target, target + "\u202e"), command.replace(helper, "/tmp/helper"), command.replace(token, "bad;token")]) {
                         check(Details.programRequest(action, {
@@ -259,15 +295,36 @@ ShellRoot {
             }
             const receipt = "20261012T120000123456Z-" + "b".repeat(32);
             for (const request of [
-                {action: "org.emaki.programs.aur", helper: "emaki-programs-aur", words: "paint-bin " + "a".repeat(64), headline: "AUR · paint-bin — Build"},
-                {action: "org.emaki.programs.undo", helper: "emaki-programs-undo", words: receipt + " krita " + "a".repeat(64), headline: "krita — Undo"},
-                {action: "org.emaki.programs.flatpak.undo", helper: "emaki-programs-flatpak", words: "undo flathub app/org.gimp.GIMP/x86_64/stable " + receipt + " " + "a".repeat(64), headline: "org.gimp.GIMP — Undo"}
+                {
+                    action: "org.emaki.programs.aur",
+                    helper: "emaki-programs-aur",
+                    words: "paint-bin " + "a".repeat(64),
+                    headline: "AUR · paint-bin — Build"
+                },
+                {
+                    action: "org.emaki.programs.undo",
+                    helper: "emaki-programs-undo",
+                    words: receipt + " krita " + "a".repeat(64),
+                    headline: "krita — Undo"
+                },
+                {
+                    action: "org.emaki.programs.flatpak.undo",
+                    helper: "emaki-programs-flatpak",
+                    words: "undo flathub app/org.gimp.GIMP/x86_64/stable " + receipt + " " + "a".repeat(64),
+                    headline: "org.gimp.GIMP — Undo"
+                }
             ]) {
                 const helper = prefix + "/" + request.helper;
-                const metadata = {program: helper, command_line: helper + " " + request.words};
+                const metadata = {
+                    program: helper,
+                    command_line: helper + " " + request.words
+                };
                 check(Details.headline(request.action, "generic", metadata, prefix).startsWith(request.headline), "source and program lead the headline: " + request.action);
                 for (const bad of [metadata.command_line + " extra", metadata.command_line.replace(" ", " --run "), metadata.command_line + "\n"])
-                    check(Details.programRequest(request.action, {program: helper, command_line: bad}, prefix) === null, "malformed request not displayed: " + request.action);
+                    check(Details.programRequest(request.action, {
+                        program: helper,
+                        command_line: bad
+                    }, prefix) === null, "malformed request not displayed: " + request.action);
             }
         }
 

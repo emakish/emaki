@@ -1,0 +1,39 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Emaki's system-wide zsh environment, read by every zsh before the person's own files.
+# Installed by emaki-config as /etc/zsh/zshenv; a person's settings belong in ~/.zshenv.
+#
+# Replace zsh's first-run questionnaire. When none of ~/.zshenv, ~/.zprofile,
+# ~/.zshrc or ~/.zlogin exists, zsh's newuser module runs zsh-newuser-install right after
+# this file, and that full-screen menu would greet every new account. Such a person gets
+# Emaki's interactive defaults from /etc/zsh/emaki.zsh instead: this stub takes the
+# questionnaire's place once and removes itself, so nothing stays defined and
+# `autoload -Uz zsh-newuser-install; zsh-newuser-install -f` still works by hand.
+if [[ -o interactive && ! ( -e ${ZDOTDIR:-$HOME}/.zshenv || -e ${ZDOTDIR:-$HOME}/.zprofile ||
+      -e ${ZDOTDIR:-$HOME}/.zshrc || -e ${ZDOTDIR:-$HOME}/.zlogin ) ]]; then
+    zsh-newuser-install() { unfunction zsh-newuser-install; }
+fi
+
+# Wait until personal startup files have selected ZDOTDIR and finished. This leaves
+# other packages' global zshrc alone, and a personal zshrc takes precedence in full.
+if [[ -o interactive && -o rcs && ! -e /etc/zsh/zshrc && ! -L /etc/zsh/zshrc ]]; then
+    _emaki_zsh_defaults() {
+        precmd_functions=( ${precmd_functions:#_emaki_zsh_defaults} )
+        unfunction _emaki_zsh_defaults
+        [[ -o rcs && -o globalrcs ]] || return
+        [[ -e ${ZDOTDIR:-$HOME}/.zshrc || -L ${ZDOTDIR:-$HOME}/.zshrc ]] && return
+        local -a emaki_existing_hooks=( "${precmd_functions[@]}" )
+        local emaki_hook
+        source /etc/zsh/emaki.zsh
+        # zsh snapshots the hook list before calling us. Initialize newly registered
+        # plugin hooks now so suggestions and kitty's prompt marks work at the first prompt.
+        for emaki_hook in "${precmd_functions[@]}"; do
+            if (( ! ${emaki_existing_hooks[(Ie)$emaki_hook]} && $+functions[$emaki_hook] )); then
+                "$emaki_hook"
+            fi
+        done
+    }
+    typeset -ga precmd_functions
+    precmd_functions+=(_emaki_zsh_defaults)
+fi

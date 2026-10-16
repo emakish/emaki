@@ -61,6 +61,15 @@ Scope {
         if (inventory.running)
             inventory.signal(15);
     }
+    // Super+Alt+R (2026-10-15): open the overlay set to recording, or stop the recording that
+    // runs. A picture in progress is left alone.
+    function record(): bool {
+        if (busy)
+            return mode === "recording" && stop();
+        if (!opened && !open())
+            return false;
+        return selectMode("recording");
+    }
     function selectMode(value: string): bool {
         if (busy || !["picture", "recording"].includes(value))
             return false;

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 [Unit]
 Description=Refresh the public system restore point inventory
+ConditionPathIsDirectory=/.snapshots
 
 [Service]
 Type=oneshot

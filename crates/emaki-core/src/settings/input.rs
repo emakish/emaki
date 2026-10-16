@@ -75,20 +75,22 @@ fn shortcuts() -> &'static [Shortcut] {
     SHORTCUTS.get_or_init(|| {
         // Packaged bindings deliberately occupy one line each. Keep the full action and
         // properties, including quoted shell braces, repeat and locked-session policy.
+        // Only the top-level block counts: `recent-windows` has its own nested `binds`,
+        // whose switcher actions are not valid in the main block.
         let mut in_binds = false;
         NIRI_DEFAULT
             .lines()
-            .filter_map(|line| {
-                let line = line.trim();
-                if line == "binds {" {
+            .filter_map(|raw| {
+                if raw == "binds {" {
                     in_binds = true;
                     return None;
                 }
-                if !in_binds || line.starts_with("//") {
+                if in_binds && raw == "}" {
+                    in_binds = false;
                     return None;
                 }
-                if line == "}" {
-                    in_binds = false;
+                let line = raw.trim();
+                if !in_binds || line.starts_with("//") {
                     return None;
                 }
                 let (head, tail) = line.split_once('{')?;

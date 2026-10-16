@@ -6,7 +6,7 @@ Emaki is an Arch-based desktop built around **niri-emaki**, a fork of the
 pixel-art wallpaper: a looping valley at sunset that scrolls with your workspaces, with
 steam trains running through it.
 
-**Status: 0.8.1 alpha — not for everyday use.** See [Release stages](#release-stages). It is
+**Status: 0.9.0 alpha — not for everyday use.** See [Release stages](#release-stages). It is
 tested in QEMU with UEFI firmware (OVMF) and has been installed on one real machine so far, see
 [Tested hardware](#tested-hardware). Where the project is heading: [PLANS.md](PLANS.md).
 
@@ -33,13 +33,15 @@ Beta here is the stage of Emaki as a whole, not a pre-release: every new version
 
 ## What's inside
 
-- **niri-emaki** (`packaging/niri-emaki/`) — niri 26.04 with eleven patches: the living
+- **niri-emaki** (`packaging/niri-emaki/`) — niri 26.04 with fourteen patches: the living
   wallpaper, glass capture for the shell, a seamless handoff from the login screen, an
   animated overview backdrop, crisp cursors at fractional scale and a distinct exit status
   when no GPU renderer can be created, plus locked-session capture protection, static-blur
   occlusion accounting, preserved keyboard focus for mapped shell layers, and a trusted
   authentication connection with compositor input isolation and a physical Ctrl+Alt+Delete proof action,
-  and safety key bindings that no other program can change during a session.
+  safety key bindings that no other program can change during a session, the shell's own
+  screen recordings marked as the shell's, fullscreen windows that start below a visible panel,
+  and tiled window positions for the window switcher's pictures.
 - **The shell** (`shell/`) — bar islands (workspaces, clock, system, privacy), dock,
   launcher, notifications and on-screen display on liquid glass. The login screen (a greetd
   greeter) and the lock screen are drawn by the same shell.
@@ -49,28 +51,37 @@ Beta here is the stage of Emaki as a whole, not a pre-release: every new version
   and a graphical window.
 - **The ISO profile** (`iso/`) — archiso 91 releng with the Emaki overlay.
 - **Packages** (`packaging/`) — `emaki`, `emaki-apps`, `emaki-config`, `emaki-desktop`,
-  `emaki-installer`, `emaki-keyring`, `emaki-mirrorlist`, `emaki-nvidia`, `niri-emaki`, `quickshell-emaki`,
+  `emaki-installer`, `emaki-keyring`, `emaki-mirrorlist`, `emaki-nvidia`, `emaki-shim-signed`,
+  `emaki-font-iosevka`, `emaki-sudo-key`, `snapguard`, `niri-emaki`, `quickshell-emaki`,
   `xdg-desktop-portal-gnome-emaki`.
 - **Art** (`art/`, `cursors/`, `fetch/`, `boot/`) — the wallpaper, logo, cursors, GRUB
   background and boot splash, with the scripts that make them.
 
 ## The ISO
 
-Download: https://dl.emaki.sh/iso/0.8.0/emaki-0.8.0-x86_64.iso (5.1 GB). Its checksum and
-signature are at the same address with `.sha256` and `.sig` added; the key that signed it is
-https://dl.emaki.sh/iso/0.8.0/emaki-signing-key.asc.
+Download: https://dl.emaki.sh/iso/0.9.0/emaki-0.9.0-x86_64.iso. Its checksum and signature
+are at the same address with `.sha256` and `.sig` added; the key that signed it is
+https://dl.emaki.sh/iso/0.9.0/emaki-signing-key.asc.
 
-`emaki-0.8.0-x86_64.iso` boots into a live Emaki session with the installer open. Emaki
+`emaki-0.9.0-x86_64.iso` boots into a live Emaki session with the installer open. Emaki
 needs a computer with 64-bit UEFI; legacy BIOS computers are refused by the installer. If
 Windows on the computer uses BitLocker or device encryption, save its recovery key first:
 changing firmware security settings can make Windows ask for it.
-Secure Boot must be switched off in the firmware settings before booting the stick.
+Secure Boot can stay on if the firmware trusts Microsoft's third-party UEFI certificate (2011
+or 2023); if it trusts neither, turn that option on in the firmware settings. The first time
+the stick starts with Secure Boot on, it reports a security violation and opens the blue key
+management screen (MokManager): press a key, then choose "Enroll key from disk" → `EMAKI` →
+`emaki.cer` → "Continue" → "Yes" → "Reboot". "View key" shows the key's fingerprint, which
+must match the release page. From then on the stick starts with Secure Boot on. An installed
+system gets its own key, which you confirm once at its first start with the one-time password
+shown on the installer's last screen.
 The installer offers:
 
 - **Erase disk** with **btrfs** (recommended: snapper snapshots that you can boot from the GRUB
   menu) or **ext4** (no system snapshots).
-- **Manual partitioning**: prepare partitions in GParted, then assign mount points in the
-  installer; an existing EFI system partition can be reused.
+- **Manual partitioning**: create, delete and format partitions in the installer itself, then
+  choose mount points; an existing EFI system partition can be reused. Nothing is written
+  until you press Install.
 - **Install alongside Windows**: keep Windows and give part of its free space to Emaki, at
   least 32 GiB. Windows appears in Emaki's boot menu, and choosing it restarts the computer
   straight into Windows. The EFI system partition is shared and never formatted. The installer
@@ -84,7 +95,7 @@ installer offers two software sets. **Minimal** is the desktop with Dolphin, Fir
 **Rich** (preselected) adds LibreOffice, Thunderbird, Okular, Kate, Gwenview, Ark, Haruna,
 Elisa, Spectacle, OBS Studio, qBittorrent, KeePassXC, Discover with Flatpak, Partition Manager,
 Filelight, System Monitor, ISO Image Writer, KCharSelect, Skanlite, printing and
-media codecs. Not in 0.8.1: BIOS boot, Secure Boot, installing alongside another Linux.
+media codecs. Not in 0.9.0: BIOS boot, installing alongside another Linux.
 
 ## Security notes
 
@@ -116,7 +127,9 @@ session without your password.
 
 Installed Emaki on another machine? Reports are welcome in the issues.
 
-### Known issues in 0.8.1
+MacBook is a trademark of Apple Inc.; Emaki is an independent project.
+
+### Known issues in 0.9.0
 
 - Hibernation: on the tested MacBook the session does not respond after resuming. Do not use
   hibernation.
@@ -150,5 +163,10 @@ An installed system updates with `pacman -Syu`. Emaki's own packages come from t
 GPL-3.0-or-later, see [LICENSE](LICENSE). Copyright (C) 2026 Artur Yakymenko.
 
 Patches to other projects keep those projects' licences: the niri patches in
-`packaging/niri-emaki/` are GPL-3.0-or-later like niri; the Quickshell patch in
-`packaging/quickshell-emaki/` is LGPL-3.0-only like Quickshell.
+`packaging/niri-emaki/` are GPL-3.0-or-later like niri; the nine Quickshell patches in
+`packaging/quickshell-emaki/` are LGPL-3.0-only like Quickshell.
+
+Third-party fonts, images and map data keep their own licences. An installed system keeps each
+package's licence texts under `/usr/share/licenses`; the installer's time-zone map contains
+information from Timezone Boundary Builder and © OpenStreetMap contributors, available under the
+Open Database License 1.0 ([`installer/ui/assets/README.md`](installer/ui/assets/README.md)).

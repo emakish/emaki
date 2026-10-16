@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Inspect the finished ISO, including appended EFI images, without mounting it."""
 import argparse
 import json
@@ -229,6 +231,19 @@ def inspect_efi(image, reject_payload=True):
     return record
 
 
+SECURE_BOOT_FILES = {'efi/boot/grubx64.efi', 'efi/boot/mmx64.efi', 'emaki.cer'}
+
+
+def check_secure_boot(record, signed):
+    """A Secure Boot medium (iso/secureboot.sh) has shim's GRUB, MokManager and the certificate on
+    its ESP; any other medium has none of them, so a half-staged ESP never ships."""
+    names = {path.lower() for path in record['contents']}
+    if signed and not SECURE_BOOT_FILES <= names:
+        raise ValueError(f"Secure Boot medium lacks {sorted(SECURE_BOOT_FILES - names)} on {record['image']}")
+    if not signed and names & SECURE_BOOT_FILES:
+        raise ValueError(f"{sorted(names & SECURE_BOOT_FILES)} on {record['image']} without /emaki/SECUREBOOT")
+
+
 def verify(image, test_mode=False, efi_report=None, compare_efi=None):
     paths = iso_files(image)
     if not test_mode and '/emaki/TEST-ALONGSIDE' in paths:
@@ -280,6 +295,7 @@ def verify(image, test_mode=False, efi_report=None, compare_efi=None):
                 subprocess.run(['mcopy', '-s', '-i', str(efi), '::/loader', str(destination)], check=True)
                 check_loaders(destination, test_mode)
                 check_boot_payload(destination, paths, '/')
+            check_secure_boot(record, '/emaki/SECUREBOOT' in paths)
             images.append(record)
         report = {'after': {'iso': str(image.resolve()), 'loader': loader, 'images': images}}
         if compare_efi is not None:

@@ -2,10 +2,13 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Unprivileged regression checks for target-only offline repository staging."""
+import ast
 import base64
 import importlib.util
 import io
+import itertools
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tarfile
@@ -32,49 +35,66 @@ class WorkerPackagesTests(unittest.TestCase):
             self.assertTrue(packages)
             self.assertFalse(set(packages) - seeds, f'Missing target seeds: {set(packages) - seeds}')
 
+        # settings() reads the probed disks (windows_kept): Windows left on a second disk
+        # turns the fwupd key policy on, which writes a file and installs nothing.
+        target = {'id': '/dev/vda', 'partitions': []}
+        windows = {'id': '/dev/vdb', 'partitions': [{'path': '/dev/vdb3', 'fs': 'ntfs', 'os_hint': 'windows'}]}
         with tempfile.TemporaryDirectory() as temporary:
             archive = Path(temporary) / 'fixture.pkg.tar.zst'
             archive.write_bytes(b'package')
             Path(str(archive) + '.sig').write_bytes(b'signature')
-            for software in ('minimal', 'rich'):
-                for mode in ('erase', 'manual', 'alongside'):
-                    for test_mode in (False, True):
-                        with self.subTest(software=software, mode=mode, test_mode=test_mode):
-                            requested = []
+            for software, mode, (test_mode, secure_boot), disks in itertools.product(
+                    ('minimal', 'rich'), ('erase', 'manual', 'alongside'),
+                    # Secure Boot adds the shim, signing and MOK packages to both transactions.
+                    ((False, ''), (True, ''), (False, 'both'), (True, 'both')),
+                    ([target], [target, windows])):
+                with self.subTest(software=software, mode=mode, test_mode=test_mode,
+                                  secure_boot=secure_boot, windows=len(disks) > 1):
+                    requested = []
 
-                            def run(argv):
-                                if '-Sp' in argv:
-                                    # The remaining arguments after --logfile's value are seeds.
-                                    packages = argv[argv.index('--logfile') + 2:]
-                                    resolve(packages)
-                                    requested.extend(packages)
-                                    return archive.as_uri() + '\n'
-                                return ''
+                    def run(argv):
+                        if '-Sp' in argv:
+                            # The remaining arguments after --logfile's value are seeds.
+                            packages = argv[argv.index('--logfile') + 2:]
+                            resolve(packages)
+                            requested.extend(packages)
+                            return archive.as_uri() + '\n'
+                        return ''
 
-                            with patch.object(worker, 'offline_config', return_value=Path(temporary) / 'pacman.conf'):
-                                worker.preflight_repo(Mock(run=run), test_mode, software,
-                                                      alongside_mode=mode == 'alongside')
-                            install = Mock()
-                            install.test_mode = test_mode
-                            install.kept_home = None
-                            install.wifi_profile = None
-                            install.files = MagicMock()
-                            install.files.read.return_value = 'user:x:1000:1000::/home/user:/bin/bash\n'
-                            install.runner.chroot.return_value = ''
-                            install.plan.config = dict(software=software, mode=mode, layouts=['us'],
-                                                       user={'login': 'user'}, hostname='emaki', timezone='UTC')
-                            install.plan.graphics_packages = ()
-                            worker.Worker.copy_packages(install)
-                            # Keep settings' target files and optional live test keys in memory.
-                            with patch.object(worker, 'Path') as paths:
-                                paths.return_value.stat.return_value.st_size = 1
-                                paths.return_value.read_bytes.return_value = b'test key\n'
-                                worker.Worker.settings(install)
-                            installed = []
-                            for call in install.backend.instance.pacman.strap.call_args_list:
-                                resolve(call.args[0])
-                                installed.extend(call.args[0])
-                            self.assertEqual(set(installed), set(requested))
+                    with patch.object(worker, 'offline_config', return_value=Path(temporary) / 'pacman.conf'):
+                        worker.preflight_repo(Mock(run=run), test_mode, software,
+                                              alongside_mode=mode == 'alongside',
+                                              secure_boot=bool(secure_boot))
+                    install = Mock()
+                    install.test_mode = test_mode
+                    install.kept_home = None
+                    install.wifi_profile = None
+                    install.files = MagicMock()
+                    install.files.read.return_value = 'user:x:1000:1000::/home/user:/bin/bash\n'
+                    install.runner.chroot.return_value = ''
+                    install.plan.config = dict(software=software, mode=mode, layouts=['us'],
+                                               user={'login': 'user'}, hostname='emaki', timezone='UTC')
+                    install.plan.graphics_packages = ()
+                    install.plan.secure_boot = secure_boot
+                    # What the worker's run() sets: the reviewed plan's disk and partitions and the
+                    # inventory probed at the start. A bare Mock here is not iterable.
+                    install.plan.disk = target
+                    install.plan.partitions = []
+                    # No partition editor changes (planner.Plan.edits).
+                    install.plan.edits = None
+                    install.machine = {'disks': disks}
+                    worker.Worker.copy_packages(install)
+                    # Keep settings' target files and optional live test keys in memory.
+                    with patch.object(worker, 'Path') as paths:
+                        paths.return_value.stat.return_value.st_size = 1
+                        paths.return_value.read_bytes.return_value = b'test key\n'
+                        worker.Worker.settings(install)
+                    self.assertEqual(install.fwupd_keep_keys.called, mode == 'alongside' or len(disks) > 1)
+                    installed = []
+                    for call in install.backend.instance.pacman.strap.call_args_list:
+                        resolve(call.args[0])
+                        installed.extend(call.args[0])
+                    self.assertEqual(set(installed), set(requested))
 
             # The optional online refresh also explicitly installs a package.
             install = Mock()
@@ -186,6 +206,51 @@ class StageTests(unittest.TestCase):
         self.assertIn('mkdir -- "$work/resolved-db" "$work/verify-cache"', script)
         self.assertIn('--cachedir "$work/verify-cache" --dbpath "$work/resolved-db"', script)
         self.assertIn('--config "$work/target.conf" "${target_packages[@]}"', script)
+
+
+class SecureBootSeedsTests(unittest.TestCase):
+    """Secure Boot targets install these from the offline repository; other targets skip them."""
+    PACKAGES = ('emaki-shim-signed', 'mokutil', 'sbsigntools')
+
+    def test_release_key_removal_uses_installed_system_and_mounted_usb(self):
+        instructions = (HERE.parent / 'docs/iso.md').read_text().split('To remove it later,', 1)[1]
+        instructions = instructions.split('Future starts', 1)[0]
+        self.assertIn('installed system', instructions)
+        self.assertIn('mount the USB', instructions)
+        self.assertNotIn('/run/archiso/bootmnt', instructions)
+        self.assertIn('sudo mokutil --delete /path/to/mounted-usb/emaki.cer', instructions)
+
+    def test_secure_boot_packages_are_target_only_offline_seeds(self):
+        seeds = (HERE / 'target-packages.txt').read_text()
+        # They conflict with nothing, so they join the one target transaction the ISO resolves.
+        self.assertTrue(set(self.PACKAGES) <= set(nvidia.base_packages(seeds)))
+        for path in ('packages-extra.txt', 'profile/packages.x86_64'):
+            self.assertFalse(set(self.PACKAGES) & set((HERE / path).read_text().split()), path)
+        # The shim package comes signed from the Emaki input repository; sbsigntools and mokutil
+        # from the Arch snapshot that iso/ARCH-SNAPSHOT names.
+        local = set((HERE / 'emaki-packages.txt').read_text().split())
+        self.assertIn('emaki-shim-signed', local)
+        self.assertFalse({'mokutil', 'sbsigntools'} & local)
+        self.assertRegex((HERE / 'ARCH-SNAPSHOT').read_text(), r'(?m)^date=\d{4}-\d{2}-\d{2}$')
+
+    def test_every_input_repository_package_is_built_and_published_as_emaki(self):
+        packaging = HERE.parent / 'packaging'
+
+        def literal(path, name):
+            tree = ast.parse(path.read_text())
+            values = [ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign)
+                      and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)]
+            self.assertEqual(len(values), 1, f'{path.name}: {name}')
+            return set(values[0])
+
+        local = set((HERE / 'emaki-packages.txt').read_text().split())
+        order = re.search(r'\nORDER=\(([^)]*)\)', (packaging / 'build.sh').read_text())[1].split()
+        for name in local:
+            self.assertTrue((packaging / name / 'PKGBUILD').is_file(), name)
+            self.assertIn(name, order)
+        # Image publication checks these against stable instead of the Arch source records.
+        self.assertEqual(literal(packaging / 'mirror/publish.py', 'EMAKI_PACKAGES'), local)
+        self.assertEqual(literal(packaging / 'mirror/audit_sources.py', 'LOCAL_PACKAGES'), local)
 
 
 class NvidiaSeedsTests(unittest.TestCase):

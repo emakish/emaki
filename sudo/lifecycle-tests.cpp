@@ -10,6 +10,7 @@
 #include <cstring>
 #include <fcntl.h>
 #include <map>
+#include <limits>
 #include <optional>
 #include <set>
 #include <sys/socket.h>
@@ -461,6 +462,8 @@ struct BrokerFixture {
   static void ownerIdentity();
   static void providerIdentity();
   static void identityScheduling();
+  static void identityIdleBoundary(bool authentication);
+  static void statusTransport(bool oversized);
   static void amountValidation();
   static void turnLifecycle();
   static void logoutLifecycle();
@@ -817,6 +820,108 @@ void BrokerFixture::providerIdentity() {
     assert(!f.broker.clients.contains(ui));
   }
   puts("Production broker provider identity checks passed");
+}
+void BrokerFixture::identityIdleBoundary(bool authentication) {
+  for (bool expired : {false, true}) {
+    BrokerFixture f;
+    if (authentication)
+      f.connectUi();
+    const int fd = f.client(authentication ? 0 : fixtureUid,
+                            authentication ? 4000 : 5000);
+    const int idle = f.client(fixtureUid, 4001);
+    fixtureIdentityDelay = 200000;
+    const std::string name = authentication ? getpwuid(fixtureUid)->pw_name : "";
+    assert(sendPacket(f.peers.at(fd).get(),
+                      authentication ? Type::Authenticate : Type::HelloUi,
+                      0, 0, name.data(), name.size()));
+    f.broker.handle(fd);
+    assert(f.broker.clients.at(fd).check);
+    auto &check = *f.broker.clients.at(fd).check;
+    assert(IdentityCheck::Clock::now() < check.deadline);
+    // Exercise a deadline crossing after collection but before the idle sweep.
+    f.broker.completeChecks();
+    assert(f.broker.clients.at(fd).check);
+    if (expired)
+      check.deadline = IdentityCheck::Clock::now() - std::chrono::milliseconds(1);
+    // The seconds clock can tick immediately after acceptance while the
+    // independent monotonic identity deadline still has time remaining.
+    ++fixtureTime;
+    f.broker.reap();
+    assert(!f.broker.clients.contains(idle));
+    assert(f.broker.clients.contains(fd));
+    assert(f.broker.clients.at(fd).check);
+    if (expired) {
+      f.broker.completeChecks();
+      assert(!f.broker.clients.contains(fd));
+      Packet reply;
+      assert(receivePacket(f.peers.at(fd).get(), reply));
+      assert(reply.header.type == (authentication ? Type::Fallback : Type::Error));
+      continue;
+    }
+    assert(f.broker.clients.contains(fd));
+    assert(f.broker.clients.at(fd).check);
+    f.finish(fd);
+    assert(f.broker.clients.contains(fd));
+    assert(!f.broker.clients.at(fd).check);
+    Packet reply;
+    assert(receivePacket(f.peers.at(fd).get(), reply));
+    // Registration may publish the new session's empty key list before its
+    // acknowledgement; initial authentication replies directly with Waiting.
+    if (!authentication && reply.header.type == Type::Keys)
+      assert(receivePacket(f.peers.at(fd).get(), reply));
+    assert(reply.header.type == (authentication ? Type::Waiting : Type::Response));
+    assert(authentication ? f.broker.clients.at(fd).pending
+                          : f.broker.clients.at(fd).ui);
+  }
+  puts("Identity checks survive idle reaping until their outcome is collected");
+}
+void BrokerFixture::statusTransport(bool oversized) {
+  BrokerFixture f;
+  const int ui = f.connectUi();
+  auto owner = fixtureProcesses.at(4001);
+  const std::string label = pinnedRequesterLabel(*owner);
+  assert(!label.empty());
+  owner = f.process(std::numeric_limits<pid_t>::max(), 1, fixtureUid,
+                    owner->executable.c_str());
+  for (std::uint64_t index = 0; index < 64; ++index) {
+    const auto id = std::numeric_limits<std::uint64_t>::max() - index;
+    f.broker.keys.emplace(id, Key{id, std::numeric_limits<std::uint64_t>::max(),
+        fixtureUid, "fixture", owner, label, {},
+        std::numeric_limits<std::uint32_t>::max()});
+  }
+  assert(!f.broker.keyCapacity(fixtureUid));
+  if (oversized)
+    f.broker.keys.begin()->second.requester.assign(MaxBody + 1, 'x');
+  const std::string expected = oversized ? "{\"error\":\"status-too-large\"}"
+                                         : f.broker.status(fixtureUid);
+  if (!oversized) {
+    assert(expected.size() > 8192);
+    std::printf("64-key status body: %zu bytes\n", expected.size());
+    std::fflush(stdout);
+  }
+  auto received = [&](int fd, Type type) {
+    Packet reply;
+    assert(receivePacket(f.peers.at(fd).get(), reply));
+    assert(reply.header.type == (oversized ? Type::Error : type));
+    assert(std::string(reinterpret_cast<const char *>(reply.body.data()),
+                       reply.body.size()) == expected);
+  };
+  // An ordinary status connection exercises request and response framing.
+  const int status = f.client(fixtureUid, 4001);
+  f.send(status, Type::Status);
+  received(status, Type::Response);
+  assert(!f.broker.clients.contains(status));
+  // The registered UI receives the same complete snapshot through framing.
+  f.broker.broadcast(fixtureUid);
+  received(ui, Type::Keys);
+  if (oversized) {
+    assert(!f.broker.clients.contains(ui));
+  } else {
+    // A registered UI's explicit status path must use the same bound.
+    f.send(ui, Type::Status);
+    received(ui, Type::Response);
+  }
+  puts("Maximum-capacity status and oversized errors pass transport framing");
 }
 void BrokerFixture::identityScheduling() {
   auto start = [](BrokerFixture &f, int fd, Type type, std::uint64_t id = 0) {
@@ -1493,8 +1598,27 @@ void BrokerFixture::warningLifecycle() {
   puts("Production broker warning acceptance checks passed");
 }
 }
-int main() {
+int main(int argc, char **argv) {
   assert(fixtureUid != 0);
+  if (argc == 2) {
+    const std::string_view test = argv[1];
+    if (test == "idle-registration")
+      BrokerFixture::identityIdleBoundary(false);
+    else if (test == "idle-authentication")
+      BrokerFixture::identityIdleBoundary(true);
+    else if (test == "status-capacity")
+      BrokerFixture::statusTransport(false);
+    else if (test == "status-oversize")
+      BrokerFixture::statusTransport(true);
+    else
+      return 2;
+    return 0;
+  }
+  assert(argc == 1);
+  BrokerFixture::identityIdleBoundary(false);
+  BrokerFixture::identityIdleBoundary(true);
+  BrokerFixture::statusTransport(false);
+  BrokerFixture::statusTransport(true);
   BrokerFixture::warningLifecycle();
   BrokerFixture fixture;
   fixture.run();

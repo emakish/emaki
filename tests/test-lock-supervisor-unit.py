@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Supervisor state tests using socketpairs; no listeners, sessions or real lockers."""
 import importlib.machinery
 import importlib.util

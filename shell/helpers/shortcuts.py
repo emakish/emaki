@@ -13,6 +13,40 @@ import emaki_paths
 
 TOKEN = re.compile(r'(?P<space>[ \t\r]+)|(?P<comment>//[^\n]*|/\*.*?\*/)|(?P<raw>r?(?P<hash>\#+)".*?"(?P=hash))|(?P<string>"(?:\\.|[^"\\])*")|(?P<punct>[{};\n=])|(?P<word>[^\s{};="/]+|/(?![/*-])[^\s{};=]*)|(?P<disabled>/-)', re.S)
 
+# Shell descriptions are independent of the compositor overlay titles.
+ACTION_TITLES = {
+    ('focus-column-left',): 'Focus left column',
+    ('focus-column-right',): 'Focus right column',
+    ('focus-window-or-workspace-up',): 'Focus window or workspace above',
+    ('focus-window-or-workspace-down',): 'Focus window or workspace below',
+    ('move-column-left',): 'Move column left',
+    ('move-column-right',): 'Move column right',
+    ('move-window-up-or-to-workspace-up',): 'Move window up or to workspace above',
+    ('move-window-down-or-to-workspace-down',): 'Move window down or to workspace below',
+    ('fullscreen-window',): 'Toggle fullscreen',
+    ('switch-preset-column-width',): 'Cycle column widths',
+    ('maximize-column',): 'Maximize column',
+    ('toggle-overview',): 'Toggle overview',
+    ('switch-layout', 'next'): 'Switch keyboard layout',
+    ('screenshot',): 'Take an interactive screenshot',
+    ('show-hotkey-overlay',): 'Show shortcut overview',
+    ('spawn', 'emaki-shell', 'call', 'launcher', 'toggle'): 'Open launcher',
+    ('spawn', 'brightnessctl', '--class=leds', '--device=*::kbd_backlight', 'set', '10%+'): 'Make keyboard brighter',
+    ('spawn', 'brightnessctl', '--class=leds', '--device=*::kbd_backlight', 'set', '10%-'): 'Make keyboard dimmer',
+    ('spawn', 'playerctl', 'play-pause'): 'Play or pause media',
+    ('spawn', 'playerctl', 'previous'): 'Previous track',
+    ('spawn', 'playerctl', 'next'): 'Next track',
+    ('spawn', 'playerctl', 'stop'): 'Stop media',
+    ('spawn', 'wpctl', 'set-volume', '-l', '1.0', '@DEFAULT_AUDIO_SINK@', '5%+'): 'Raise volume',
+    ('spawn', 'wpctl', 'set-volume', '@DEFAULT_AUDIO_SINK@', '5%-'): 'Lower volume',
+    ('spawn', 'wpctl', 'set-mute', '@DEFAULT_AUDIO_SINK@', 'toggle'): 'Mute or unmute sound',
+    ('spawn', 'wpctl', 'set-mute', '@DEFAULT_AUDIO_SOURCE@', 'toggle'): 'Mute or unmute microphone',
+    ('spawn', 'brightnessctl', '--class=backlight', 'set', '5%+'): 'Make screen brighter',
+    ('spawn', 'brightnessctl', '--class=backlight', 'set', '5%-'): 'Make screen dimmer',
+    **{('focus-workspace', str(number)): f"Go to workspace {number}" for number in range(1, 11)},
+    **{('move-column-to-workspace', str(number)): f"Move column to workspace {number}" for number in range(1, 11)},
+}
+
 def tokens(text):
     out = []
     pos = 0
@@ -118,7 +152,11 @@ def read_shortcuts(path, *additional_paths):
                         at = binding.index("hotkey-overlay-title")
                         if binding[at + 1:at + 2] == ["="]:
                             title = binding[at + 2]
-                    description = title or "; ".join(" ".join(action) for action, _ in actions)
+                    if title == "null":
+                        title = ""
+                    description = title or "; ".join(
+                        ACTION_TITLES.get(tuple(action), " ".join(action))
+                        for action, _ in actions)
                     rows[binding[0].casefold()] = {"keys": binding[0], "description": description or "Disabled"}
         active.remove(file)
     read(Path(path))

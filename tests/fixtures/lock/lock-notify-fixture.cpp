@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Test-only QObject semantics of Quickshell 0.3.1 WlSessionLock. Never installed.
 // A QML-declared property cannot reproduce a native setter which omits NOTIFY.
 #include <QObject>

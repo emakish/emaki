@@ -4,10 +4,19 @@
 from pathlib import Path
 
 
-SECURE_BOOT_MESSAGE = (
-    'Emaki cannot start with firmware signature checking enabled (Secure Boot). '
-    'Restart into your firmware settings, turn Secure Boot off, then start the USB again. '
+# Secure Boot on and a firmware db without either Microsoft third-party CA (Secured-core
+# PCs): no shim can start there.
+SECURE_BOOT_NO_CA = (
+    'Secure Boot is on, but this computer does not trust the Microsoft certificate Emaki starts with. '
+    'In your firmware settings, turn on the third-party certificate option '
+    '(often "Allow Microsoft 3rd Party UEFI CA") or turn Secure Boot off, then start the USB again. '
     'No disk has been changed.')
+# What the review says about the db (installer check 7): which CAs it trusts.
+SECURE_BOOT_CAS = {
+    'both': 'Secure Boot: on; the firmware trusts the Microsoft UEFI CA 2011 and 2023.',
+    '2011': 'Secure Boot: on; the firmware trusts the Microsoft UEFI CA 2011 only.',
+    '2023': 'Secure Boot: on; the firmware trusts the Microsoft UEFI CA 2023 only.',
+}
 SECURE_BOOT_UNKNOWN = (
     'The firmware signature setting could not be read (Secure Boot). '
     'Restart into your firmware settings, turn Secure Boot off, then start the USB again. '

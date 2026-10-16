@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Window
@@ -9,7 +11,9 @@ import Quickshell.Io
 Scope {
     id: root
     // Read and watch this user's managed appearance without opening Settings.
-    SettingsCatalog { active: false }
+    SettingsCatalog {
+        active: false
+    }
     property int sleepGeneration: 0
     property bool exiting: false
     LockCapture {

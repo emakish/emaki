@@ -8,6 +8,9 @@ import assert from 'node:assert/strict';
 const files = ['ShellScene.qml', 'ShellOutputs.qml', 'Surfaces.qml', 'ClockPanel.qml', 'ClockBody.qml', 'NotificationStore.qml', 'SystemService.qml'];
 const original = Object.fromEntries(files.map(file => [file,
     fs.readFileSync(new URL('../shell/' + file, import.meta.url), 'utf8')]));
+const screenShare = vm.createContext({});
+vm.runInContext(fs.readFileSync(new URL('../shell/ScreenShare.js', import.meta.url), 'utf8')
+    .replace(/^\.pragma library\s*$/m, ''), screenShare);
 function run(sources) {
     function production(file, name, parameters, context) {
         const source = sources[file];
@@ -52,10 +55,10 @@ function run(sources) {
         const state = vm.createContext({notes: {dnd: false, entries: [request(typedPin), {id: 2}]},
             niri: {overviewOpen: false, casts: [], layerFocusSupported: true}, presentationState: 'clear',
             keyboardSurface: '', systemOpen: open, systemPage: 'bt', systemExpansion: open ? 1 : 0,
-            launcherOpen: false, drawerOpen: false, privacyOpen: false, shortcutsOpen: false,
+            launcherOpen: false, drawerOpen: false, privacyOpen: false, shortcutsOpen: false, switcherOpen: false,
             Date: {now: () => 1000}, peekIds: [], peekCooldown: 0, peekStarted: 0,
             Metrics: {morphMs: 350}, peekTimer: {restart() {}, stop() {}}, closeTimer: {restart() {}}, systemBody: {rows: [], reset() {}}, services: {pendingKind: ''},
-            enabled: true, output: {}, focusedOutput: true,
+            enabled: true, output: {}, focusedOutput: true, authenticationPresent: false, deferredPeekIds: [],
             WlrKeyboardFocus: {None: 'none', OnDemand: 'on-demand', Exclusive: 'exclusive'}});
         const policy = vm.createContext({rules: {}});
         policy.ruleFor = production('NotificationStore.qml', 'ruleFor', 'id', policy);
@@ -138,7 +141,7 @@ function run(sources) {
             state.systemOpen = false;
         };
         const window = () => ({contentItem: {Window: {active: false}}});
-        const surface = vm.createContext({controller: state, pendingLayer: '', armedLayer: '',
+        const surface = vm.createContext({controller: state, pendingLayer: '', armedLayer: '', restartingSwitcher: false,
             top: window(), dockWindow: window(), overlay: window(),
             WlrKeyboardFocus: state.WlrKeyboardFocus, Qt: {callLater: fn => later.push(fn)}});
         surface.surfaces = surface;
@@ -486,13 +489,21 @@ function run(sources) {
 
     assert.match(clock, /hidePreviewBodies: scene.privacyCast/);
     assert.match(sources['ClockPanel.qml'], /hidePreviewBodies: panel.hidePreviewBodies/);
-    for (const casts of [[], [{is_active: true}], [{is_active: false}]]) {
+    // Only another program seeing the screen now redacts: a paused session or the shell's own
+    // glass capture is no share (DECISIONS 2026-10-13, the privacy pill's screen half).
+    const cast = extra => Object.assign({stream_id: 1, target: 'output', is_active: true, by_parent: false, pw_node_id: 41}, extra);
+    for (const [casts, shared] of [[[], false], [[cast({})], true], [[cast({target: 'window'})], true],
+            [[cast({is_active: false})], false], [[cast({by_parent: true, pw_node_id: null})], false]]) {
         const state = fixture(false); state.niri.casts = casts;
+        Object.assign(state, {ScreenShare: screenShare, context: {captureNode: -1},
+            DesktopEntries: {heuristicLookup: () => null}, services: {pendingKind: '', backend: {readers: []}}});
+        state.screenShares = binding('ShellScene.qml', 'readonly property var screenShares', state);
         const sharing = binding('ShellScene.qml', 'readonly property bool privacyCast', state);
+        assert.equal(sharing, shared, JSON.stringify(casts));
         const view = vm.createContext({store: {entries: [request(false)]}, peekIds: [1], hidePreviewBodies: sharing});
         const [note] = binding('ClockBody.qml', 'readonly property var peekNotes', view);
-        assert.equal(note.body, casts.length ? '' : request(false).body, 'active/paused sharing redacts body');
-        assert.equal(note.actions.length, casts.length ? 0 : 2, 'redacted code cannot be confirmed blindly');
+        assert.equal(note.body, shared ? '' : request(false).body, 'active sharing redacts body');
+        assert.equal(note.actions.length, shared ? 0 : 2, 'redacted code cannot be confirmed blindly');
         assert.equal(view.store.entries[0].body, request(false).body, 'drawer retains original request');
     }
 }

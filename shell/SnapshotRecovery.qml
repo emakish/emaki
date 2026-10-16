@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -42,14 +44,16 @@ Scope {
     LazyLoader {
         active: recovery.opened
         FloatingWindow {
+            objectName: "snapshotRecoveryWindow"
             title: "Recovery snapshot"
             color: "transparent"
-            implicitWidth: prompt.implicitWidth
-            implicitHeight: prompt.implicitHeight
-            minimumSize: Qt.size(implicitWidth, implicitHeight)
+            implicitWidth: Math.min(prompt.implicitWidth, Math.max(1, (screen?.width ?? 492) - 32))
+            implicitHeight: Math.min(prompt.implicitHeight, Math.max(1, (screen?.height ?? 632) - 32))
+            minimumSize: Qt.size(0, 0)
             maximumSize: Qt.size(implicitWidth, implicitHeight)
             SnapshotPrompt {
                 id: prompt
+                objectName: "snapshotRecoveryPrompt"
                 anchors.fill: parent
                 snapshot: recovery.snapshot
                 automaticMessage: recovery.automaticMessage

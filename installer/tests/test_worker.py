@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 import contextlib
 import hashlib
 import json
@@ -17,7 +19,7 @@ from emaki_installer.render import GRUB_EARLY_MODULES, grub_early_config, grub_u
 from emaki_installer.runtime import Redactor, Runner, TargetFiles, cleanup
 from emaki_installer import worker as worker_module
 from emaki_installer.worker import UPDATE_TIMEOUT, Worker
-from support import FakeInventory, RecordingRunner, alongside_on, config, inventory
+from support import FakeInventory, RecordingRunner, alongside_on, config, inventory, manual
 
 SNAPSHOT_HOOK = '/usr/lib/initcpio/{}/emaki-snapshot-fstab'
 # pacman-download-*.txt: log lines cut from the VM walk's run E stream
@@ -277,6 +279,9 @@ class WorkerLifecycleTests(unittest.TestCase):
         self.assertNotIn('snapshot', phases)
         snapshots = [e for e in events if e.get('phase') == 'snapshot']
         self.assertTrue(all(e['phase_pct'] is None for e in snapshots))
+        self.assertTrue(all('snapshot' in e['skipped_phases'] for e in snapshots))
+        finish = [e for e in events if e.get('phase') == 'finish']
+        self.assertTrue(all('snapshot' in e['skipped_phases'] for e in finish))
         self.assertEqual(events[-1]['type'], 'done')
 
     def test_failure_always_cleans_and_never_done(self):
@@ -713,6 +718,10 @@ class EncryptedWriteBoundaryTests(unittest.TestCase):
             settings = config(fs='ext4') if mode == 'erase' else manual(fs='ext4')
             if mode == 'manual':
                 settings['mounts'][0]['format'] = True
+            if mode == 'manual' and kind == 'apfs':
+                # macOS is never formatted: the partition editor deletes it and creates root there.
+                from support import replaced
+                settings = replaced(settings, inv.probe()['disks'][0], 2, fs='ext4')
             if confirmed:
                 settings['confirmed_encrypted'] = [{'path': path, 'type': kind,
                                                     'uuid': state['uuid']}]
@@ -800,27 +809,24 @@ WINDOWS_CHAINLOAD = ("### BEGIN /etc/grub.d/30_os-prober ###\n"
 
 
 class BootAndSnapshotTests(unittest.TestCase):
-    def test_shared_esp_protection_records_identity_and_gates_hibernation(self):
+    # Next to Windows (0.9.0) the record of both ESPs is test_alongside_own_esp's.
+
+    def alongside_windows(self):
+        """Next to Windows after boot_files: Windows' ESP (MAC_LISTING's Windows entry, WINDOWS_CHAINLOAD's
+        volume) on the reviewed disk, read before the first write; Emaki's own ESP is another one."""
         self.worker.plan.config['mode'] = 'alongside'
+        device = self.root / 'windows-esp.img'
+        device.write_bytes(b'Windows ESP' + bytes(4096))
+        self.worker.plan.disk['partitions'] = [{'esp': True, 'path': str(device), '_partuuid': MAC_ESP,
+                                                'uuid': '1234-ABCD', '_efi_loaders': {}}]
+        self.worker.windows_esp_sha256 = hashlib.sha256(device.read_bytes()).hexdigest()
         esp = next(part for part in self.worker.plan.partitions if part.esp)
-        esp.partuuid = '01234567-89AB-CDEF-0123-456789ABCDEF'
-        self.worker.protect_shared_esp()
-        marker = json.loads(self.worker.files.read('/var/lib/emaki/alongside-boot.json'))
-        self.assertEqual(marker, {'version': 1, 'esp_partuuid': esp.partuuid.lower()})
-        # Status can read this public identity; only root can change the record.
-        self.assertEqual(self.worker.files.path('/var/lib/emaki/alongside-boot.json').stat().st_mode & 0o777,
-                         0o644)
-        for mode in ('hibernate', 'hybrid-sleep', 'suspend-then-hibernate'):
-            text = self.worker.files.read(
-                f'/etc/systemd/system/systemd-{mode}.service.d/50-emaki-shared-esp.conf')
-            # The command saves the counters, then unmounts; its failure cancels sleep.
-            self.assertIn('ExecStartPre=emaki-update-boot hibernate-pre\n', text)
-            self.assertNotIn('ExecStartPre=-', text)
-            self.assertIn('ExecStopPost=emaki-update-boot hibernate-post\n', text)
-        self.assertFalse(self.worker.files.path(
-            '/etc/systemd/system/systemd-suspend.service.d/50-emaki-shared-esp.conf').exists())
-        self.assertTrue(any('emaki-boot-order.service' in str(command)
-                            for command in self.worker.runner.commands))
+        esp.partuuid, esp.uuid = '22222222-2222-4222-8222-222222222222', 'ABCD-0001'
+        fstab = [f'UUID={part.uuid or f"uuid-{part.number}"} {mp} {part.fs} '
+                 f'{",".join(part.options + (["subvol=/" + sv] if sv else []))} 0 0'
+                 for part, mp, sv in self.worker.plan.mounts]
+        self.worker.runner.responses[('genfstab', '-U', '-f', str(self.root), str(self.root))] = '\n'.join(fstab)
+        return device
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -829,6 +835,8 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.worker.plan = make_plan(config(), inventory())
         for p in self.worker.plan.partitions:
             p.path = '/dev/test' + str(p.number)
+            if p.esp:
+                p.partuuid = MAC_ESP
         self.worker.runner = RecordingRunner()
 
     def tearDown(self):
@@ -836,6 +844,7 @@ class BootAndSnapshotTests(unittest.TestCase):
 
     def boot_files(self):
         f = self.worker.files
+        f.path('/efi').mkdir(parents=True, exist_ok=True)
         esp = next(part for part in self.worker.plan.partitions if part.esp)
         esp.partuuid, esp.uuid = MAC_ESP, '1234-ABCD'
         self.worker.runner.responses[('efibootmgr', '-v')] = MAC_LISTING
@@ -927,6 +936,26 @@ class BootAndSnapshotTests(unittest.TestCase):
                 self.assertIn('if terminal_output gfxterm; then', text)
                 self.assertIn('set gfxterm_font="Unifont Regular 16"', text)
                 self.assertTrue(text.endswith(entries))
+
+    def test_installed_kernel_entries_print_nothing(self):
+        # B9: "Loading Linux ..." showed in GRUB's black terminal window until the startup logo.
+        stock = ("### BEGIN /etc/grub.d/10_linux ###\n"
+                 "menuentry 'Emaki, with Linux linux' --class emaki $menuentry_id_option 'gnulinux-linux' {\n"
+                 "\tload_video\n\tset gfxpayload=keep\n\techo\t'Loading Linux linux ...'\n"
+                 "\tlinux\t/@/boot/vmlinuz-linux root=x rw\n\techo\t'Loading initial ramdisk ...'\n"
+                 "\tinitrd\t/@/boot/initramfs-linux.img\n}\n"
+                 "menuentry 'Emaki, with Linux linux-lts' --class emaki $menuentry_id_option 'gnulinux-lts' {\n"
+                 "\techo\t'Loading Linux linux-lts ...'\n\tlinux\t/@/boot/vmlinuz-linux-lts root=x rw\n}\n"
+                 "### END /etc/grub.d/10_linux ###\n")
+        self.boot_files()
+        self.worker.files.write('/boot/grub/grub.cfg', stock)
+        with patch.object(worker_module, 'boot_framebuffer', return_value=None):
+            self.worker.grub_config()
+        text = self.worker.files.read('/boot/grub/grub.cfg')
+        self.assertNotIn('echo', text)
+        self.assertIn("$menuentry_id_option 'gnulinux-linux' {\n\tclear\n\tload_video\n\tset gfxpayload=keep\n"
+                      "\tlinux\t/@/boot/vmlinuz-linux root=x rw\n\tinitrd\t/@/boot/initramfs-linux.img\n}\n", text)
+        self.assertIn("{\n\tclear\n\tlinux\t/@/boot/vmlinuz-linux-lts root=x rw\n}\n", text)
 
     def test_snapshot_packages_follow_the_root_filesystem(self):
         snapshots = {'snapper', 'snap-pac', 'grub-btrfs'}
@@ -1035,15 +1064,66 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.assertEqual(len(grub), 1)
         self.assertEqual((self.root / 'efi/EFI/BOOT/BOOTX64.EFI').read_bytes(), b'foreign')
 
+    def test_failed_partition_reread_registers_inventory_recovery(self):
+        inv = FakeInventory(inventory())
+        self.worker.inventory = inv
+        self.worker.plan = make_plan(config(), inv.probe())
+        recover = Mock()
+        devices = SimpleNamespace(pending_reread={'changed': [3]}, recover_edits=recover)
+        failure = InstallError(Code.COMMAND_FAILED, 'Kernel reread failed.')
+        self.worker.backend = SimpleNamespace(devices=devices, prepare=Mock(side_effect=failure))
+        with self.assertRaises(InstallError) as caught:
+            self.worker.prepare_disk()
+        self.assertIs(caught.exception, failure)
+        self.assertIs(inv.pending_partition_refresh[self.worker.plan.disk['path']], recover)
+        recover.assert_not_called()
+        self.assertFalse(self.worker.files.path(MARKER).exists())
+
+    def test_manual_shared_esp_never_installs_removable_loader(self):
+        cases = [('EFI/Microsoft/Boot/bootmgfw.efi', {}), ('EFI/ubuntu/shimx64.efi', {}),
+                 ('EFI/Microsoft/Boot/bootmgfw.efi', {'_efi_error': True}),
+                 ('EFI/Microsoft/Boot/bootmgfw.efi', {'_unreadable': True})]
+        for loader, unreadable in cases:
+            for existing in (False, True):
+                for secure in (False, True):
+                    with self.subTest(loader=loader, unreadable=unreadable, existing=existing, secure=secure), \
+                            tempfile.TemporaryDirectory() as temp:
+                        self.root = self.worker.target = Path(temp)
+                        self.worker.files = TargetFiles(self.root)
+                        self.worker.runner = RecordingRunner()
+                        self.worker.plan = make_plan(config(), inventory())
+                        self.worker.plan.config['mode'] = 'manual'
+                        esp = next(p for p in self.worker.plan.partitions if p.esp)
+                        esp.path, esp.format, esp.create = '/dev/test1', False, False
+                        self.worker.plan.disk['partitions'] = [
+                            {'path': esp.path, 'fs': 'vfat',
+                             '_efi_loaders': {} if unreadable else {loader: 'hash'}, **unreadable}]
+                        self.boot_files()
+                        self.worker.files.write('/efi/' + loader, b'other-system')
+                        if existing:
+                            self.worker.files.write('/efi/EFI/Emaki/grubx64.efi', b'old-emaki')
+                            self.worker.files.write('/efi/EFI/BOOT/BOOTX64.EFI', b'old-emaki')
+                        for name in ('grubx64.efi', 'mmx64.efi'):
+                            self.worker.files.write('/efi/EFI/BOOT/' + name, b'preserve')
+                        self.worker.plan.secure_boot = 'both' if secure else None
+                        with patch.object(self.worker, 'secure_boot_loaders') as signed, \
+                                patch.object(self.worker, 'verify_slot_entries'):
+                            self.worker.bootloader()
+                        self.assertFalse(any('--removable' in c for c, _ in self.worker.runner.commands))
+                        if secure:
+                            signed.assert_called_once_with(True, False)
+                        fallback = self.worker.files.path('/efi/EFI/BOOT/BOOTX64.EFI')
+                        self.assertEqual(fallback.read_bytes() if fallback.exists() else None,
+                                         b'old-emaki' if existing else None)
+                        for name in ('grubx64.efi', 'mmx64.efi'):
+                            self.assertEqual(self.worker.files.path('/efi/EFI/BOOT/' + name).read_bytes(), b'preserve')
+                        self.assertEqual(self.worker.files.path('/efi/' + loader).read_bytes(), b'other-system')
+
     @alongside_on()
-    def test_alongside_grub_preserves_loaders_and_uses_chroot_os_prober(self):
+    def test_alongside_grub_uses_chroot_os_prober_and_own_esp(self):
+        # 0.9.0: /efi is Emaki's own ESP next to Windows, so EFI/BOOT is written like on erase.
         self.boot_files()
-        self.worker.plan.config['mode'] = 'alongside'
-        self.worker.files.write('/efi/EFI/BOOT/BOOTX64.EFI', b'foreign')
-        self.worker.files.write('/efi/EFI/Microsoft/Boot/bootmgfw.efi', b'microsoft')
-        self.worker.files.write('/efi/EFI/Microsoft/Boot/BCD', b'windows configuration')
-        from emaki_installer.inventory import efi_loaders
-        self.worker.plan.disk['partitions'] = [{'esp': True, '_efi_loaders': efi_loaders(self.root / 'efi')}]
+        device = self.alongside_windows()
         self.worker.files.write('/boot/grub/grub.cfg', self.worker.files.read('/boot/grub/grub.cfg') +
                                 WINDOWS_CHAINLOAD)
         self.worker.bootloader()
@@ -1051,102 +1131,41 @@ class BootAndSnapshotTests(unittest.TestCase):
         self.assertIn(['arch-chroot', str(self.root), 'grub-mkconfig', '-o', '/boot/grub/grub.cfg'], commands)
         self.assertIn('GRUB_DISABLE_OS_PROBER=false', self.worker.files.read('/etc/default/grub'))
         self.assertIn('GRUB_DEFAULT=0', self.worker.files.read('/etc/default/grub'))
-        self.assertFalse(any('--removable' in c for c in commands))
-        self.assertEqual(self.worker.files.read('/efi/EFI/Microsoft/Boot/bootmgfw.efi'), 'microsoft')
-        self.worker.files.write('/efi/EFI/Microsoft/Boot/BCD', b'changed')
-        self.worker.runner.commands.clear()
-        with self.assertRaisesRegex(InstallError, 'differ from the reviewed'):
-            self.worker.bootloader()
-        self.assertEqual(self.worker.runner.commands, [])
+        self.assertTrue(any('--removable' in c for c in commands))
+        self.assertIn('bootnext 0002', self.worker.files.read('/boot/grub/grub.cfg'))
+        self.assertEqual(device.read_bytes(), b'Windows ESP' + bytes(4096))
+        self.assertTrue(self.worker.files.path('/etc/fstab').is_file())
 
-    def test_alongside_bootloader_refuses_foreign_efi_changes(self):
-        from emaki_installer.inventory import efi_loaders
+    def test_alongside_unreadable_windows_esp_has_recovery_advice(self):
         self.boot_files()
-        self.worker.plan.config['mode'] = 'alongside'
+        device = self.alongside_windows()
         f = self.worker.files
-        f.write('/efi/EFI/Microsoft/Boot/bootmgfw.efi', b'microsoft')
-        f.write('/efi/EFI/Microsoft/Boot/BCD', b'configuration')
-        f.write('/efi/EFI/BOOT/BOOTX64.EFI', b'fallback')
-        self.worker.plan.disk['partitions'] = [{'esp': True, '_efi_loaders': efi_loaders(self.root / 'efi')}]
         f.write('/boot/grub/grub.cfg', f.read('/boot/grub/grub.cfg') + WINDOWS_CHAINLOAD)
-        generated = f.read('/boot/grub/grub.cfg')
+        logs = []
+        self.worker.log = logs.append
         original = self.worker.runner.chroot
-        for kind, name in (('changed', 'BCD'), ('unexpected', 'unexpected'), ('missing', 'BCD')):
-            with self.subTest(kind=kind):
-                f.write('/boot/grub/grub.cfg', generated)
-                logs = []
-                self.worker.log = logs.append
-                self.worker.runner.commands.clear()
-                def chroot(command, *args, **kwargs):
-                    result = original(command, *args, **kwargs)
-                    if 'grub-install' in command:
-                        if kind == 'missing':
-                            f.path('/efi/EFI/Microsoft/Boot/' + name).unlink(missing_ok=True)
-                        else:
-                            f.write('/efi/EFI/Microsoft/Boot/' + name, b'changed')
-                    return result
-                self.worker.runner.chroot = chroot
-                with self.assertRaisesRegex(InstallError, 'EFI files changed') as caught:
-                    self.worker.bootloader()
-                self.assertEqual(caught.exception.code, Code.BOOT_VERIFY)
-                self.assertFalse(caught.exception.retryable)
-                self.assertIn('passed post-shrink verification before loader installation', caught.exception.message)
-                self.assertIn('Do not retry installation', caught.exception.message)
-                self.assertIn('Save the installation log to another device', caught.exception.message)
-                self.assertTrue(any(f'Post-write EFI {kind} (1):' in line
-                                    and name.lower() in line for line in logs), logs)
-                self.assertFalse(any('genfstab' in command for command, _ in self.worker.runner.commands))
-                self.assertFalse(f.path('/etc/fstab').exists())
-                f.write('/efi/EFI/Microsoft/Boot/BCD', b'configuration')
-                f.path('/efi/EFI/Microsoft/Boot/unexpected').unlink(missing_ok=True)
 
-    def test_alongside_efi_difference_log_is_bounded_and_escaped(self):
-        self.boot_files()
-        self.worker.plan.config['mode'] = 'alongside'
-        self.worker.plan.disk['partitions'] = [{'esp': True, '_efi_loaders': {}}]
-        f = self.worker.files
-        f.write('/boot/grub/grub.cfg', f.read('/boot/grub/grub.cfg') +
-                WINDOWS_CHAINLOAD)
-        logs = []
-        self.worker.log = logs.append
-        after = {f'EFI/{n:02d}\n' + 'x' * 300: 'digest' for n in range(25)}
-        with patch.object(worker_module.alongside, 'efi_loaders', side_effect=[{}, after]):
-            with self.assertRaises(InstallError):
-                self.worker.bootloader()
-        diagnostic = next(line for line in logs if 'Post-write EFI unexpected' in line)
-        self.assertIn('unexpected (25)', diagnostic)
-        self.assertIn(r'EFI/00\n', diagnostic)
-        self.assertNotIn('EFI/20', diagnostic)
-        self.assertNotIn('\n', diagnostic)
-        self.assertLess(len(diagnostic), 4900)
-
-    def test_alongside_postwrite_unreadable_efi_has_recovery_advice(self):
-        self.boot_files()
-        self.worker.plan.config['mode'] = 'alongside'
-        self.worker.plan.disk['partitions'] = [{'esp': True, '_efi_loaders': {}}]
-        f = self.worker.files
-        f.write('/boot/grub/grub.cfg', f.read('/boot/grub/grub.cfg') +
-                WINDOWS_CHAINLOAD)
-        logs = []
-        self.worker.log = logs.append
-        with patch.object(worker_module.alongside, 'efi_loaders', side_effect=[
-                {}, InstallError(Code.UNSAFE_DISK, "The disk's startup files could not be checked safely, so Emaki stopped.")]):
-            with self.assertRaises(InstallError) as caught:
-                self.worker.bootloader()
+        def chroot(command, *args, **kwargs):
+            if 'grub-mkconfig' in command:
+                device.unlink()
+            return original(command, *args, **kwargs)
+        self.worker.runner.chroot = chroot
+        with self.assertRaises(InstallError) as caught:
+            self.worker.bootloader()
         self.assertEqual(caught.exception.code, Code.BOOT_VERIFY)
         self.assertFalse(caught.exception.retryable)
-        self.assertIn('could not be verified after loader installation', caught.exception.message)
+        self.assertIn("Windows' startup partition could not be read after loader installation", caught.exception.message)
         self.assertIn('passed post-shrink verification before loader installation', caught.exception.message)
         self.assertIn('Do not retry installation', caught.exception.message)
         self.assertIn('Save the installation log to another device', caught.exception.message)
-        self.assertIn('Post-write EFI inventory failed: unsafe_disk', logs)
+        self.assertIn("Windows' startup partition read failed: FileNotFoundError", logs)
         self.assertTrue(any('grub-install' in command for command, _ in self.worker.runner.commands))
         self.assertFalse(any('genfstab' in command for command, _ in self.worker.runner.commands))
         self.assertFalse(f.path('/etc/fstab').exists())
 
     def test_alongside_snapshot_refresh_keeps_windows_and_snapshot_configuration(self):
         self.boot_files()
-        self.worker.plan.config['mode'] = 'alongside'
+        self.alongside_windows()
         f = self.worker.files
         f.write('/boot/grub/grub.cfg', f.read('/boot/grub/grub.cfg') + WINDOWS_CHAINLOAD)
         f.write('/etc/snapper/configs/root', 'SUBVOLUME="/"\n')
@@ -1169,10 +1188,9 @@ class BootAndSnapshotTests(unittest.TestCase):
 
     def test_alongside_windows_menu_restarts_through_resolved_firmware_entry(self):
         self.boot_files()
-        self.worker.plan.config['mode'] = 'alongside'
+        self.alongside_windows()
         f = self.worker.files
         original = f.read('/boot/grub/grub.cfg') + WINDOWS_CHAINLOAD
-        f.write('/efi/EFI/Microsoft/Boot/bootmgfw.efi', b'preserved-loader')
         for number in ('0002', '00AF'):
             with self.subTest(number=number):
                 f.write('/boot/grub/grub.cfg', original)
@@ -1183,12 +1201,11 @@ class BootAndSnapshotTests(unittest.TestCase):
                 self.assertIn('bootnext ' + number, menu)
                 self.assertIn('reboot', menu)
                 self.assertNotIn('chainloader /EFI/Microsoft/Boot/bootmgfw.efi', menu)
-                self.assertEqual(f.read('/efi/EFI/Microsoft/Boot/bootmgfw.efi'), 'preserved-loader')
                 self.assertFalse(any('--bootnext' in command for command, _ in self.worker.runner.commands))
 
-    def test_alongside_windows_without_firmware_entry_keeps_chainload(self):
+    def test_alongside_windows_without_firmware_entry_guards_chainload(self):
         self.boot_files()
-        self.worker.plan.config['mode'] = 'alongside'
+        self.alongside_windows()
         f = self.worker.files
         original = f.read('/boot/grub/grub.cfg') + WINDOWS_CHAINLOAD
         f.write('/boot/grub/grub.cfg', original)
@@ -1196,12 +1213,16 @@ class BootAndSnapshotTests(unittest.TestCase):
             'BootOrder: 0001\nBoot0001* Other\tHD(1,GPT,' + MAC_ESP +
             ',0x800,0x32000)/\\EFI\\Other\\loader.efi\n')
         self.worker.grub_config()
-        self.assertIn('chainloader /EFI/Microsoft/Boot/bootmgfw.efi', f.read('/boot/grub/grub.cfg'))
-        self.assertNotIn('bootnext ', f.read('/boot/grub/grub.cfg'))
+        menu = f.read('/boot/grub/grub.cfg')
+        self.assertIn('if [ "$shim_lock" = y ]; then', menu)
+        self.assertIn("menuentry 'Windows startup help'", menu)
+        self.assertIn('Boot from File', menu)
+        self.assertIn('chainloader /EFI/Microsoft/Boot/bootmgfw.efi', menu)
+        self.assertNotIn('bootnext ', menu)
 
     def test_alongside_incomplete_firmware_listing_refuses_windows_rewrite(self):
         self.boot_files()
-        self.worker.plan.config['mode'] = 'alongside'
+        self.alongside_windows()
         f = self.worker.files
         original = f.read('/boot/grub/grub.cfg') + WINDOWS_CHAINLOAD
         f.write('/boot/grub/grub.cfg', original)
@@ -1213,7 +1234,7 @@ class BootAndSnapshotTests(unittest.TestCase):
     @alongside_on()
     def test_alongside_missing_windows_menu_is_fatal(self):
         self.boot_files()
-        self.worker.plan.config['mode'] = 'alongside'
+        self.alongside_windows()
         with self.assertRaisesRegex(InstallError, 'not discovered by os-prober'):
             self.worker.grub_config()
 
@@ -1847,6 +1868,88 @@ class BootAndSnapshotTests(unittest.TestCase):
             self.worker.settings()
         return [c[2:] for c, _ in self.worker.runner.commands if c[:2] == ['arch-chroot', str(self.root)] and c[2] == 'chown']
 
+    def test_new_account_shell_is_zsh(self):
+        # zsh is the default shell for new accounts (0.9.0); bash stays installed.
+        self.run_account_and_settings()
+        useradd = [c[2:] for c, _ in self.worker.runner.commands
+                   if c[:2] == ['arch-chroot', str(self.root)] and c[2] == 'useradd']
+        self.assertEqual(len(useradd), 1, useradd)
+        self.assertEqual(useradd[0][useradd[0].index('-s') + 1], '/usr/bin/zsh')
+    @alongside_on()
+    def test_every_layout_records_own_esp_before_first_snapshot(self):
+        from test_alongside import windows
+
+        for mode in ('erase', 'manual', 'alongside'):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as target:
+                self.root = Path(target)
+                self.worker.target = self.root
+                self.worker.files = TargetFiles(self.root)
+                if mode == 'manual':
+                    self.worker.plan = make_plan(manual(), inventory(partitions=True))
+                elif mode == 'alongside':
+                    self.worker.plan = make_plan(*windows())
+                else:
+                    self.worker.plan = make_plan(config(), inventory())
+                esp = next(p for p in self.worker.plan.partitions if p.esp)
+                esp.partuuid = MAC_ESP.upper()
+                # The alongside-specific record is covered independently; this record
+                # must exist even when no Windows boot-order service is involved.
+                with patch.object(self.worker, 'record_alongside_boot') as alongside_record:
+                    self.run_account_and_settings()
+                self.assertEqual(alongside_record.call_count, int(mode == 'alongside'))
+                path = self.worker.files.path('/var/lib/emaki/boot-esp.json')
+                self.assertEqual(json.loads(path.read_text()),
+                                 {'version': 1, 'emaki_esp_partuuid': MAC_ESP})
+                self.assertEqual(path.stat().st_mode & 0o777, 0o644)
+
+    def test_own_esp_record_uses_partition_probe_when_plan_has_no_id(self):
+        esp = next(p for p in self.worker.plan.partitions if p.esp)
+        esp.partuuid = None
+        self.worker.runner.responses[('lsblk', '-dno', 'PARTUUID', esp.path)] = MAC_ESP.upper() + '\n'
+        self.run_account_and_settings()
+        self.assertEqual(json.loads(self.worker.files.read('/var/lib/emaki/boot-esp.json')),
+                         {'version': 1, 'emaki_esp_partuuid': MAC_ESP})
+
+    def test_own_esp_record_refuses_invalid_partition_id(self):
+        esp = next(p for p in self.worker.plan.partitions if p.esp)
+        esp.partuuid = 'ambiguous-partition'
+        with self.assertRaises(InstallError) as caught:
+            self.run_account_and_settings()
+        self.assertEqual(caught.exception.code, Code.BOOT_VERIFY)
+        self.assertFalse(self.worker.files.path('/var/lib/emaki/boot-esp.json').exists())
+
+    def test_first_snapshot_already_keeps_the_firmware_keys_next_to_windows(self):
+        # Erase this disk while BitLocker stays on another: restoring "Fresh Emaki" must not
+        # let fwupd change the KEK and db again (the policy was once written after it).
+        machine = inventory(partitions=True)
+        other = inventory(partitions=True)['disks'][0]
+        other.update(id='/dev/vdb', path='/dev/vdb')
+        for part in other['partitions']:
+            part.update(id=part['id'].replace('vda', 'vdb'), path=part['path'].replace('vda', 'vdb'))
+        other['partitions'][1]['fs'] = 'BitLocker'
+        machine['disks'].append(other)
+        self.worker.machine = machine
+        f = self.worker.files
+        f.write('/etc/fwupd/fwupd.conf', '[fwupd]\n')
+        f.write('/etc/snapper/configs/root', 'SUBVOLUME="/"\n')
+        f.mkdir('/.snapshots/1/snapshot')
+        self.worker.grub_config = Mock()
+        self.run_account_and_settings()
+        recorded = self.worker.runner.run
+
+        def run(argv, **kwargs):
+            result = recorded(argv, **kwargs)
+            if 'snapper' in argv and 'create' in argv:
+                # snapper copies the root as it is now.
+                f.write('/.snapshots/1/snapshot/etc/fwupd/fwupd.conf', f.read('/etc/fwupd/fwupd.conf'))
+                return '1\n'
+            return result
+
+        self.worker.runner.run = run
+        self.worker.snapshot()
+        restored = f.read('/.snapshots/1/snapshot/etc/fwupd/fwupd.conf')
+        self.assertEqual(restored, '[fwupd]\nDisabledPlugins=uefi_db;uefi_kek\n')
+
     def test_unknown_account_ids_remain_a_general_configuration_error(self):
         with self.assertRaises(InstallError) as caught:
             self.run_account_and_settings(passwd='')
@@ -1959,6 +2062,7 @@ class BootAndSnapshotTests(unittest.TestCase):
         settings = config()
         settings['layouts'] = layouts
         self.worker.plan = make_plan(settings, inventory())
+        next(p for p in self.worker.plan.partitions if p.esp).partuuid = MAC_ESP
         files, written = self.worker.files, []
         self.worker.api = SimpleNamespace(locale=SimpleNamespace(
             LocaleConfiguration=lambda keymap, language, encoding: SimpleNamespace(kb_layout=keymap)))
@@ -1992,6 +2096,7 @@ class BootAndSnapshotTests(unittest.TestCase):
         settings = config()
         settings['layouts'] = ['cz', 'ru']
         self.worker.plan = make_plan(settings, inventory())
+        next(p for p in self.worker.plan.partitions if p.esp).partuuid = MAC_ESP
         self.run_account_and_settings()
         text = (self.root / 'home/vmuser/.config/niri/config.kdl').read_text()
         self.assertEqual(text, 'include "/etc/emaki/niri.kdl"\n\n'

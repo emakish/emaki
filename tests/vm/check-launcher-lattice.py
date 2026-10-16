@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """C11, on the host: check for a grid on glass over fine detail (27.09, the “stripes”).
   python3 tests/vm/check-launcher-lattice.py <desktop> <screenshot>
 login.sh supplies the screenshot: launcher on an empty workspace at scale 1.25, over dense text wallpaper

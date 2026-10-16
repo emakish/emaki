@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import pwd
 import re
 import shutil
 import signal
@@ -20,6 +21,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import programs_aur as aur
 try:
     import update_catalog as catalog
 except ModuleNotFoundError:
@@ -176,12 +178,20 @@ def discover(cache):
         updates = catalog.transaction(command(['/usr/bin/pacman', '-Sup', '--noconfirm',
                                                '--print-format', '%r|%n|%v|%s', *base]), installed)
         foreign = catalog.packages(command(['/usr/bin/pacman', '-Qm', *base], allowed=(0, 1)))
+        foreign_count = len(foreign)
+        # Use the store's account-bound consent, including its warning version.
+        # A foreign package can be private or locally built; its name stays local
+        # until the person enables the AUR section.
+        config = Path(pwd.getpwuid(os.getuid()).pw_dir) / '.config'
+        if not aur.consent(aur.consent_path(config))['enabled']:
+            foreign = {}
     if (database / 'db.lck').exists() or fingerprint(database) != initial:
         raise RuntimeError('Installed packages changed during the check. Check again when the package operation finishes.')
     ignored = [name for name, row in available.items() if row['ignored']]
     if ignored:
         warnings.append('Your package settings hold back these updates: ' + ', '.join(ignored) + '.')
-    emit('progress', message='Checking AUR package versions…')
+    if foreign:
+        emit('progress', message='Checking AUR package versions…')
     missing = set()
     names = sorted(foreign)
     for offset in range(0, len(names), 100):
@@ -231,6 +241,7 @@ def discover(cache):
     warnings.append('The upgrade checks the repositories again. Its final package list and download size may change.')
     data = catalog.summary(updates, news, list(dict.fromkeys(warnings)), datetime.now(timezone.utc).isoformat())
     data['databaseStamp'] = initial
+    data['foreignPackageCount'] = foreign_count
     # A pending Emaki release brings its published notes; nothing is fetched otherwise.
     version = next(filter(None, (catalog.release_version(row) for row in updates)), '')
     if version:
@@ -238,8 +249,7 @@ def discover(cache):
         data['release'] = catalog.release_card(version, lambda url, validate: fetch(url, cache, validate))
     helpers = [name for name in ('paru', 'yay', 'pikaur', 'trizen', 'aura', 'pamac') if shutil.which(name)]
     data['aurHelpers'] = helpers
-    data['aurNotice'] = ('AUR: update in a terminal' +
-                         (' with ' + ', '.join(helpers) if helpers else ' with your preferred AUR helper') + '.')
+    data['aurNotice'] = 'AUR: Where available, open the program’s page to build its update, or use your AUR tool.'
     if not any(row.get('aur') for row in updates):
         data['aurNotice'] = ''
     return data
@@ -289,6 +299,7 @@ def status(cache):
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
             pass
     return dict(pending=len(updates), checkedAt=data.get('checkedAt', ''), error=data.get('error', ''),
+                foreignPackageCount=data.get('foreignPackageCount', 0),
                 **local_state(cache))
 
 
@@ -367,10 +378,11 @@ def observe_existing(cache):
     notices = catalog.warnings_for(changed)
     emit('finished', ok=ok,
          message=('Repository updates finished. Check again to refresh the list.' if ok else
-                  'The update did not finish. Open the update details with an administrator before trying again [journalctl -u emaki-update.service].'),
+                  'The update did not finish. Open the update details with an administrator before trying again.'),
          **local_state(cache),
          signOut=any('sign out' in line for line in notices))
     if not ok:
+        print('Update service failed; details: journalctl -u emaki-update.service', file=sys.stderr)
         reminder.offer_report('update')
     return True
 
@@ -404,7 +416,7 @@ def apply(cache):
         if finished.get('ok'):
             try:
                 if flatpaks.update(command, emit):
-                    finished['message'] = 'System and Flatpak updates finished. Update AUR packages in a terminal.'
+                    finished['message'] = 'System and Flatpak updates finished. For AUR updates, where available, open the program’s page to build its update, or use your AUR tool.'
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
                 emit('progress', stage='failed', message=str(error)[:2500])
                 finished.update(ok=False, message='System updates finished, but Flatpak updates did not finish. Review the details before trying again.')

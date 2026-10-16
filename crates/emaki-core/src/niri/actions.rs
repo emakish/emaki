@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! One explicit action, fresh preflight and postcondition on the same socket.
 //! Never reconnect/retry a mutation: delivery may be uncertain after a transport failure.
 use super::{IPC_RELEASE, check_version, endpoint, malformed, missing_endpoint, reply};

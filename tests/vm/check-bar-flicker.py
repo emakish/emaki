@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """C11, on the host: check whether bar glass flickers when the image underneath changes abruptly.
   python3 tests/vm/check-bar-flicker.py <desktop> <frames-directory> <scale>
 login.sh (guest-frames.sh) supplies frames: the top of the screen while switching from workspace 1 (black

@@ -44,8 +44,13 @@ track = ', '.join(str(round(int(tokens['accents']['orange']['base'][i:i+2], 16) 
 lines.append(f'    readonly property vector3d trackAccent: Qt.vector3d({track})')
 rows = [dict(id=key, **{k: v if k == 'name' else '#'+v for k,v in values.items()})
         for key,values in tokens['accents'].items()]
-lines += ['    readonly property var accents: ' + json.dumps(rows),
-          '    readonly property var chosenAccent: accents.find(entry => entry.id === Appearance.accent) || accents[0]']
+default = tokens['defaults']['accent']
+assert default in tokens['accents'], default
+# Appearance.qml repeats the default as its fallback; an unknown saved name falls back here.
+# Laid out as qmlformat prints it: tests/test-shell.py compares every shell file with qmlformat.
+lines += [f'    readonly property string defaultAccent: {json.dumps(default)}',
+          '    readonly property var accents: ' + json.dumps(rows, indent=4).replace('\n', '\n    '),
+          '    readonly property var chosenAccent: accents.find(entry => entry.id === Appearance.accent) || accents.find(entry => entry.id === defaultAccent)']
 for name,key in [('accent','base'),('accentText','text'),('accentOnLight','on_light'),('accentOnDark','on_dark'),('accentSoft','soft'),('accentStrong','strong'),('accentShade','shade'),('accentDeep','deep'),('accentHover','hover'),('polkitAccent','polkit'),('polkitFocus','focus'),('settingsAvatarStart','avatar_start'),('settingsAvatarEnd','avatar_end')]:
     lines.append(f'    readonly property color {name}: chosenAccent.{key}')
 lines += ['    readonly property color settingsDisplaySelected: dark ? accentDeep : chosenAccent.display_selected',
@@ -54,11 +59,14 @@ lines += ['    readonly property color settingsDisplaySelected: dark ? accentDee
           '    readonly property color accentHoverForeground: dark ? accentOnDark : accentHover']
 lines += [f'    readonly property string uiFont: {json.dumps(tokens["font"]["ui"])}', '}', '']
 content = '\n'.join(lines)
-icon = (root / 'scripts/templates/programs-updates.svg').read_text()
-for key in ('base', 'strong', 'soft', 'shade'):
-    icon = icon.replace('@ACCENT_' + key.upper() + '@', '#' + tokens['accents']['orange'][key])
-icon = icon.replace('@ICON_INK@', '#' + tokens['shell_light']['manager_icon_ink'])
-outputs = {'shell/ShellPalette.qml': content, 'update-manager/emaki-programs-updates.svg': icon}
+outputs = {'shell/ShellPalette.qml': content}
+# Emaki's own app icons in the default accent; the shell draws them live in the chosen one.
+for template, target in (('programs-updates.svg', 'update-manager/emaki-programs-updates.svg'),
+                         ('welcome.svg', 'art/icons/emaki-welcome.svg')):
+    icon = (root / 'scripts/templates' / template).read_text()
+    for key in ('base', 'strong', 'soft', 'shade'):
+        icon = icon.replace('@ACCENT_' + key.upper() + '@', '#' + tokens['accents'][default][key])
+    outputs[target] = icon.replace('@ICON_INK@', '#' + tokens['shell_light']['manager_icon_ink'])
 for name, rendered in outputs.items():
     path = root / name
     if args.check:

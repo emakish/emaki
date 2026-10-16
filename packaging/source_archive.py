@@ -17,8 +17,18 @@ import tarfile
 import tempfile
 
 PACKAGES = ('niri-emaki', 'quickshell-emaki', 'xdg-desktop-portal-gnome-emaki',
+            'emaki-font-iosevka',
             'emaki-config', 'emaki-nvidia', 'emaki-desktop', 'emaki-apps', 'emaki-installer',
-            'emaki-keyring', 'emaki-mirrorlist', 'emaki-sudo-key', 'snapguard', 'emaki')
+            'emaki-keyring', 'emaki-mirrorlist', 'emaki-sudo-key', 'snapguard', 'emaki-shim-signed',
+            'emaki')
+
+
+def private_key_scan(paths):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('private_keys', Path(__file__).with_name('private_keys.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.scan(paths)
 
 
 def run(*args, **kwargs):
@@ -117,6 +127,10 @@ def checkout(repo, output, commit):
         except subprocess.CalledProcessError as error:
             raise ValueError('public source policy failed: ' +
                              (error.stdout + error.stderr).strip()) from error
+    # A private key never goes public, whatever its name or form (packaging/private_keys.py).
+    keys = private_key_scan([output])
+    if keys:
+        raise ValueError('private key in the public source: ' + '; '.join(f'{path}: {what}' for path, what in keys))
 
 
 def vendor(src):
@@ -181,19 +195,36 @@ def archive(recipe, src, output, commit, version):
         raise ValueError('invalid package or commit')
     if not re.fullmatch(r'[A-Za-z0-9_.+]+-[0-9.]+', version):
         raise ValueError('invalid package version')
+    # emaki-shim-signed's pkgver 16.1+fedora+7 names Fedora's build 16.1-7.
+    fedora = version.rsplit('-', 1)[0].replace('+fedora+', '-')
     required = {'niri-emaki': [f'niri-{version.rsplit("-", 1)[0]}',
                                f'niri-{version.rsplit("-", 1)[0]}/vendor',
-                               f'niri-{version.rsplit("-", 1)[0]}/.cargo/config.toml'],
+                               f'niri-{version.rsplit("-", 1)[0]}/.cargo/config.toml',
+                               'THIRD-PARTY-NOTICES'],
                 'quickshell-emaki': ['quickshell'],
                 'xdg-desktop-portal-gnome-emaki': ['xdg-desktop-portal-gnome', 'libgxdp'],
                 'emaki-config': ['emaki', 'emaki/vendor', 'emaki/.cargo/config.toml',
-                                 'emaki-source-commit'],
+                                 'emaki-source-commit', 'THIRD-PARTY-NOTICES'],
                 'emaki-installer': ['emaki-installer'],
                 'emaki-sudo-key': ['emaki-sudo-key/scripts/emaki-sudo-turn',
                                    'emaki-sudo-key/sudo/turn-reporting.md',
                                    'emaki-sudo-key/sudo/integrations'],
                 'emaki-nvidia': ['emaki-nvidia'],
-                'snapguard': ['snapguard/.git', 'snapguard/snapshot-guard.py']}.get(name, [])
+                'emaki-font-iosevka': [f'IosevkaNerdFontMono-{style}.ttf'
+                                       for style in ('Regular', 'Bold', 'Italic', 'BoldItalic')]
+                                      + ['LICENSE.md', 'README.md'],
+                'snapguard': ['snapguard/.git', 'snapguard/snapshot-guard.py'],
+                # The pinned RPM, the two files prepare() unpacked from it and shim's licence.
+                'emaki-shim-signed': [f'shim-x64-{fedora}.x86_64.rpm',
+                                      f'rpm/usr/lib/efi/shim/{fedora}/EFI/fedora/shimx64.efi',
+                                      f'rpm/usr/lib/efi/shim/{fedora}/EFI/fedora/mmx64.efi',
+                                      f'shim-{fedora.rsplit("-", 1)[0]}-COPYRIGHT',
+                                      f'shim-{fedora.rsplit("-", 1)[0]}.tar.bz2',
+                                      f'shim-{fedora.rsplit("-", 1)[0]}/COPYRIGHT',
+                                      f'shim-{fedora.rsplit("-", 1)[0]}/gnu-efi/README.efilib',
+                                      f'shim-{fedora.rsplit("-", 1)[0]}/Cryptlib/OpenSSL',
+                                      'notices/SHIM-NOTICES', 'notices/GNU-EFI-NOTICES',
+                                      'notices/CRYPTLIB-NOTICES', 'notices/OPENSSL-NOTICES']}.get(name, [])
     for relative in required:
         if not (src / relative).exists():
             raise ValueError(f'missing prepared source: {relative}')
@@ -224,6 +255,10 @@ def archive(recipe, src, output, commit, version):
             shutil.copy2(path, dest)
         if not (root / 'PKGBUILD').is_file():
             raise ValueError('missing committed PKGBUILD')
+        # Recipes are first-party source too, including empty metapackages.
+        licence = subprocess.run(['git', '-C', str(recipe), 'show', f'{commit}:LICENSE'],
+                                 check=True, capture_output=True).stdout
+        (root / 'LICENSE').write_bytes(licence)
         copy_sources(src, root / 'src')
         (root / 'SOURCE-COMMIT').write_text(commit + '\n')
         (root / 'REBUILD.txt').write_text(

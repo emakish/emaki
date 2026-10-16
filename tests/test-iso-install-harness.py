@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """tests/vm/iso-install.sh against a stub ssh: no QEMU, no guest. The alongside fixture on an
 image whose installer refuses the mode ends NOT APPLICABLE (exit 77), never a failure or a pass."""
 import importlib.util

@@ -6,7 +6,7 @@
   <vendor>Emaki</vendor>
   <action id="org.emaki.update.apply">
     <description>Update all repository packages</description>
-    <message>Authentication is required to update all repository packages.</message>
+    <message>Enter an administrator password to update all repository packages.</message>
     <defaults>
       <allow_any>no</allow_any>
       <allow_inactive>no</allow_inactive>

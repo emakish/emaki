@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Subprocess logging, secret handling, and confined target file writes."""
 import codecs
 from contextlib import contextmanager
@@ -11,27 +13,10 @@ import stat
 import subprocess
 import time
 
+from .redaction import Redactor
 from .constants import TARGET
 from .errors import Code, InstallError, require
 
-
-class Redactor:
-    def __init__(self):
-        self.secrets = set()
-
-    def add(self, value):
-        if isinstance(value, str) and value:
-            self.secrets.add(value)
-
-    def text(self, value):
-        value = str(value)
-        for secret in sorted(self.secrets, key=len, reverse=True):
-            value = value.replace(secret, '[REDACTED]')
-        value = re.sub(r'(?i)(password|passwd|token)([\s"\x27:=]+)([^\s,}\]]+)',
-                       r'\1\2[REDACTED]', value)
-        # Remove terminal control sequences before displaying logs in QML.
-        value = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', value)
-        return ''.join(ch for ch in value if ord(ch) >= 32 or ch == '\t')
 
 
 def safe_log(log, line):

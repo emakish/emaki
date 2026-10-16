@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Lint/format + real qs IPC, with no windows, Wayland or user profile access."""
 import json
 import math
@@ -34,9 +36,35 @@ checked(['python', 'scripts/render-shell-palette', '--check'])
 for filename in [*FILES, *map(str, sorted(Path('tests/fixtures').rglob('*.qml')))]:
     formatted = checked([str(TOOLS / 'qmlformat'), '--ignore-settings', filename]).stdout
     assert formatted == Path(filename).read_text(), f'Run qmlformat --ignore-settings -i {filename}'
+# Qt 6.12.0's QML engine has no Object.hasOwn (IV9 2026-10-16: Alt+Tab threw on every press); the host may be older.
+for script in sorted([*Path('shell').rglob('*.qml'), *Path('shell').rglob('*.js'), *Path('update-manager/ui').rglob('*.qml'),
+                      *Path('update-manager/ui').rglob('*.js'), *Path('installer/ui').rglob('*.qml'),
+                      *Path('installer/ui').rglob('*.js')]):
+    assert 'Object.hasOwn(' not in script.read_text(), f'{script}: use Object.prototype.hasOwnProperty.call'
 
-lint = subprocess.run([str(TOOLS / 'qmllint'), '--ignore-settings', '-W', '0', '--json', '-',
-                       '-I', os.environ.get('QML_IMPORT_DIR', '/usr/lib/qt6/qml'),
+# qmllint searches its default import directory before any -I, so --bare makes QML_IMPORT_DIR
+# (directories separated by ':', the first wins) the whole search path: a quickshell-emaki build
+# can be checked before it is installed, e.g. QML_IMPORT_DIR=<pkg>/usr/lib/qt6/qml:/usr/lib/qt6/qml.
+IMPORTS = os.environ.get('QML_IMPORT_DIR', '/usr/lib/qt6/qml').split(os.pathsep)
+QUICKSHELL_TYPES = next((Path(directory) / 'Quickshell/quickshell-core.qmltypes' for directory in IMPORTS
+                         if (Path(directory) / 'Quickshell/quickshell-core.qmltypes').is_file()), None)
+assert QUICKSHELL_TYPES, f'No Quickshell QML metadata in QML_IMPORT_DIR {IMPORTS}'
+# LauncherItem.qml reads Quickshell.iconThemeRevision, which quickshell-emaki 0008 (0.3.1-12) adds.
+OLD_QUICKSHELL = 'iconThemeRevision' not in QUICKSHELL_TYPES.read_text()
+ICON_REVISION_GAP = ('LauncherItem.qml', 'missing-property', 'Member "iconThemeRevision" not found on type "QuickshellGlobal"')
+NOT_PROVEN = (f'SKIP, NOT PROVEN HERE: the qmllint check of shell/LauncherItem.qml needs Quickshell metadata from quickshell-emaki 0.3.1-12 or newer; '
+              f'{QUICKSHELL_TYPES} lacks Quickshell.iconThemeRevision (patch 0008). Install the package built from '
+              'packaging/quickshell-emaki, or put its qml directory first with a qmllint of the Qt it was built '
+              'for: QML_TOOLS_DIR=<qt>/lib/qt6/bin QML_IMPORT_DIR=<pkg>/usr/lib/qt6/qml:<qt>/lib/qt6/qml')
+# WindowSwitcher.qml asks Quickshell.queryKeyboardModifiers(), which quickshell-emaki 0009 (0.3.1-13) adds.
+OLD_MODIFIERS = 'queryKeyboardModifiers' not in QUICKSHELL_TYPES.read_text()
+MODIFIERS_GAP = ('WindowSwitcher.qml', 'missing-property', 'Member "queryKeyboardModifiers" not found on type "QuickshellGlobal"')
+MODIFIERS_NOT_PROVEN = (f'SKIP, NOT PROVEN HERE: the qmllint check of shell/WindowSwitcher.qml needs Quickshell metadata from '
+                        f'quickshell-emaki 0.3.1-13 or newer; {QUICKSHELL_TYPES} lacks Quickshell.queryKeyboardModifiers '
+                        '(patch 0009). Build it with tests/build-quickshell-fork.sh and put its qml directory first: '
+                        'QML_IMPORT_DIR=<dir>/lib/qt6/qml:/usr/lib/qt6/qml')
+lint = subprocess.run([str(TOOLS / 'qmllint'), '--ignore-settings', '-W', '0', '--json', '-', '--bare',
+                       *(argument for directory in IMPORTS for argument in ('-I', directory)),
                        '-I', 'shell', '-I', str(CACHE / 'sudo-build/qml'), *FILES], text=True, capture_output=True, timeout=30)
 report = json.loads(lint.stdout)
 (CACHE / 'shell-qmllint.json').write_text(lint.stdout)
@@ -50,6 +78,7 @@ additional_metadata = {
     ('PolkitAdapter.qml', 'unresolved-type', 'Type "AuthFlow" of property "flow" not found. This is likely due to a missing dependency entry or a type not being exposed declaratively.'),
     ('DisplaysService.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('NightLight.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
+    ('NotificationStore.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('SettingsNetworkService.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('SystemService.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('SettingsPowerPage.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
@@ -62,7 +91,8 @@ additional_metadata = {
     ('SettingsUsersService.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('NiriService.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('SessionUpdateNotice.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
-    ('WelcomeController.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
+    ('SecureBootNotice.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
+    ('SecureBootSettings.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('SnapshotRecovery.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('greeter.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('AppCatalog.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
@@ -71,6 +101,9 @@ additional_metadata = {
     ('SessionStartup.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('session-cover.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
     ('WindowLabels.qml', 'signal-handler-parameters', 'Type QLocalSocket::LocalSocketError of parameter error in signal called error was not found, but is required to compile onError. Did you add all imports and dependencies?'),
+    ('NiriService.qml', 'signal-handler-parameters', 'Type QLocalSocket::LocalSocketError of parameter error in signal called error was not found, but is required to compile onError. Did you add all imports and dependencies?'),
+    ('ReportController.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
+    ('AccountPicture.qml', 'signal-handler-parameters', 'Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies?'),
 }
 for file in report['files']:
     for warning in file['warnings']:
@@ -86,13 +119,22 @@ for file in report['files']:
         if (Path(file['filename']).name == 'Surfaces.qml'
                 and (warning['id'], warning['message']) in permitted) or capture_panel_metadata or (Path(file['filename']).name, warning['id'], warning['message']) in additional_metadata:
             known.append(warning)
+        elif OLD_QUICKSHELL and (Path(file['filename']).name, warning['id'], warning['message']) == ICON_REVISION_GAP:
+            print(NOT_PROVEN)  # repeated as the run's last line
+        elif OLD_MODIFIERS and (Path(file['filename']).name, warning['id'], warning['message']) == MODIFIERS_GAP:
+            print(MODIFIERS_NOT_PROVEN)
         else:
             raise AssertionError((file['filename'], warning))
 # Exact Quickshell metadata gaps; runtime tests exercise these handlers.
 # The integrated settings sections add handlers to the installed metadata gaps;
 # the Apps page's installed-programs request adds one, the Users page's account and password
 # commands add two. Capture adds two process handlers and two panel interfaces (0.6.0).
-assert len(known) <= 47, known
+# The About page's report request, the Report a problem window and the account picture
+# add one process handler each (0.8.1).
+# Secure Boot's status and enrolment handlers add three (0.9.0), signing again one more.
+# The 0.9.0 greeter, start-up repair and recovery branches each counted against 54 alone;
+# merged into one tree they reach 55, every one listed above by file.
+assert len(known) <= 55, known
 assert lint.returncode == 0 or known, (lint.returncode, lint.stderr)
 print(f'QML format OK; qmllint raw rc={lint.returncode}, {len(known)} documented QS metadata diagnostics, no others')
 
@@ -100,6 +142,8 @@ qs = shutil.which('qs')
 assert qs, 'qs is required'
 assert '0.3.1' in checked([qs, '--version']).stdout, 'Review the API/metadata exemptions for another qs version'
 if '--lint-only' in sys.argv:
+    if OLD_QUICKSHELL:
+        print(NOT_PROVEN)
     raise SystemExit(0)
 
 # Desktop ids the launcher never lists (Arch live-ISO/dependency utilities; DECISIONS 2026-10-03).
@@ -218,6 +262,11 @@ def smoke_with_runtime(width, height, scale, exclusive_zone, runtime):
     terminal_capture = profile / 'bin' / 'terminal'
     terminal_capture.write_text("#!/usr/bin/env python3\nimport os,sys,json\nfrom pathlib import Path\np=Path(os.environ['EMAKI_SHELL_FIXTURE'])\n(p/'terminal.json').write_text(json.dumps(sys.argv[1:]))\n")
     terminal_capture.chmod(0o700)
+    # The shell registers its lifecycle with emaki-shell-health at startup (22d462c); the helper
+    # itself is tested in test-shell-health.py. This one records the calls and reaches no systemd.
+    health = profile / 'bin' / 'emaki-shell-health'
+    health.write_text("#!/usr/bin/env python3\nimport os,sys\nfrom pathlib import Path\nwith (Path(os.environ['EMAKI_SHELL_FIXTURE'])/'health.log').open('a') as log:\n    log.write(' '.join(sys.argv[1:]) + '\\n')\n")
+    health.chmod(0o700)
     (profile / 'PRIVATE_PARENT').mkdir()
     recent_file = profile / 'PRIVATE_PARENT/PRIVATE_RECENT12 <b> & кавычки.txt'
     recent_file.write_text('Fixture, not user data.\n')
@@ -239,6 +288,7 @@ def smoke_with_runtime(width, height, scale, exclusive_zone, runtime):
     labels_socket.settimeout(.1)
     stop = threading.Event()
     connections = []
+    server_errors = []
     private_title = 'PRIVATE_TITLE_10 <b>literal</b>'
     def titles_server():
         while not stop.is_set():
@@ -246,8 +296,18 @@ def smoke_with_runtime(width, height, scale, exclusive_zone, runtime):
                 conn, _ = labels_socket.accept()
                 connections.append(conn)
                 conn.settimeout(1)
-                request = conn.recv(4096)
-                assert request == b'"EventStream"\n', request
+                request = b''
+                while b'\n' not in request and len(request) <= 4096:
+                    chunk = conn.recv(4096)
+                    if not chunk:
+                        break
+                    request += chunk
+                # Connections can close before subscribing during shell teardown.
+                if not request:
+                    continue
+                if request != b'"EventStream"\n':
+                    server_errors.append(request)
+                    continue
                 conn.sendall((json.dumps({'Ok':'Handled'}) + '\n' + json.dumps({'WindowsChanged':{'windows':[{'id':701, 'title':private_title}]}}) + '\n').encode())
             except (TimeoutError, OSError):
                 pass
@@ -542,9 +602,12 @@ def smoke_with_runtime(width, height, scale, exclusive_zone, runtime):
     for conn in connections:
         conn.close()
     labels_socket.close()
+    assert not server_errors, server_errors
     log = log_path.read_text()
     assert private_title not in log and 'touch injected' not in log and 'PRIVATE_RECENT12' not in log and 'PRIVATE_PARENT' not in log
     assert 'ERROR' not in log and 'WARN' not in log, log
+    health_calls = (profile / 'health.log').read_text().splitlines()
+    assert any(re.fullmatch(rf'started {proc.pid} [0-9a-f]+-[0-9a-f]*', call) for call in health_calls), health_calls
     assert not list((profile / 'config').rglob('*'))
     # notifications.json: the failed launch of Fail is reported as a drawer notice.
     assert {str(p.relative_to(profile/'state')) for p in (profile/'state').rglob('*')} == {'emaki','emaki/frequent.lock','emaki/frequent.json','emaki/recent.lock','emaki/recent.json','emaki/notifications.json'}
@@ -558,3 +621,5 @@ def smoke_with_runtime(width, height, scale, exclusive_zone, runtime):
 smoke(1536, 960, 1.25)
 smoke(1280, 800, 1, exclusive_zone=0)
 print('No Wayland surfaces created; compositor focus/input regions and blur require scheduled live review.')
+if OLD_QUICKSHELL:
+    print(NOT_PROVEN)

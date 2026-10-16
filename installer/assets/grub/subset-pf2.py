@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Cut a GRUB PFF2 font down to printable ASCII and name it after its family.
 
 Text GRUB prints before normal mode goes through grub_xputs_dumb, which turns every

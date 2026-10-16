@@ -7,8 +7,8 @@
 @define-color theme_fg_color #f2e6d8;
 @define-color theme_base_color #1c1612;
 @define-color theme_text_color #f2e6d8;
-@define-color theme_selected_bg_color #e2733f;
-@define-color theme_selected_fg_color #2a0f05;
+@define-color theme_selected_bg_color #e780aa;
+@define-color theme_selected_fg_color #300c1c;
 @define-color theme_unfocused_bg_color #14100d;
 @define-color theme_unfocused_fg_color #a39483;
 window, .background { background-color: #14100d; color: #f2e6d8; }
@@ -21,8 +21,8 @@ menu, .menu, .context-menu, popover, popover.background {
 menu menuitem:hover, .menu menuitem:hover, .context-menu menuitem:hover,
 modelbutton.flat:hover, .menuitem.button.flat:hover {
     background-image: none;
-    background-color: #e2733f;
-    color: #2a0f05;
+    background-color: #e780aa;
+    color: #300c1c;
 }
 entry, combobox button {
     background-image: none;
@@ -39,8 +39,8 @@ button {
     text-shadow: none;
     box-shadow: none;
 }
-button:hover { background-color: #1c1612; border-color: #e2733f; }
-button:active, button.suggested-action { background-color: #e2733f; color: #2a0f05; }
-entry:focus, button:focus { border-color: #e2733f; }
+button:hover { background-color: #1c1612; border-color: #e780aa; }
+button:active, button.suggested-action { background-color: #e780aa; color: #300c1c; }
+entry:focus, button:focus { border-color: #e780aa; }
 *:disabled { color: #a39483; }
 * { font-family: "Noto Sans"; font-size: 12pt; }

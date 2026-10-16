@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Fails when a test leaves a process running after it ends.
 
 Each test runs with EMAKI_TEST_RUN=<random marker> in its environment, and this process is a

@@ -29,6 +29,7 @@ XML = '''<node>
 <interface name="org.freedesktop.Accounts.User">
  <method name="SetRealName"><arg type="s" direction="in"/></method>
  <method name="SetPassword"><arg type="s" direction="in"/><arg type="s" direction="in"/></method>
+ <method name="SetShell"><arg type="s" direction="in"/></method>
  <method name="SetAccountType"><arg type="i" direction="in"/></method>
  <method name="SetIconFile"><arg type="s" direction="in"/></method>
  <property name="UserName" type="s" access="read"/>
@@ -37,6 +38,7 @@ XML = '''<node>
  <property name="Locked" type="b" access="read"/>
  <property name="SystemAccount" type="b" access="read"/>
  <property name="HomeDirectory" type="s" access="read"/>
+ <property name="Shell" type="s" access="read"/>
  <property name="IconFile" type="s" access="read"/>
  <property name="Uid" type="t" access="read"/>
 </interface>
@@ -47,14 +49,14 @@ XML = '''<node>
 node = Gio.DBusNodeInfo.new_for_xml(XML)
 accounts, user_interface, login = node.interfaces
 TYPES = {'UserName': 's', 'RealName': 's', 'AccountType': 'i', 'Locked': 'b', 'SystemAccount': 'b',
-         'HomeDirectory': 's', 'Uid': 't', 'IconFile': 's'}
+         'HomeDirectory': 's', 'Uid': 't', 'IconFile': 's', 'Shell': 's'}
 bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 registered = {}
 
 
 def save():
     state_path.write_text(json.dumps(state))
-    lines = [f"{user['UserName']}:x:{uid}:{uid}::{user['HomeDirectory']}:/bin/bash"
+    lines = [f"{user['UserName']}:x:{uid}:{uid}::{user['HomeDirectory']}:{user.get('Shell', '/bin/bash')}"
              for uid, user in sorted(state['users'].items(), key=lambda item: int(item[0]))]
     passwd_path.write_text('\n'.join(lines + state.get('extra_passwd', [])) + '\n')
 
@@ -101,7 +103,8 @@ def method(_conn, _sender, object_path, interface, name, args, invocation):
             return error(invocation, 'org.freedesktop.Accounts.Error.UserExists', 'exists')
         uid = str(max([999] + [int(key) for key in state['users'] if int(key) < 60000]) + 1)
         state['users'][uid] = {'UserName': login_name, 'RealName': real_name, 'AccountType': account_type,
-                               'Locked': True, 'SystemAccount': False, 'HomeDirectory': '/home/' + login_name}
+                               'Locked': True, 'SystemAccount': False, 'HomeDirectory': '/home/' + login_name,
+                               'Shell': '/bin/bash'}
         register(uid)
         save()
         return invocation.return_value(GLib.Variant('(o)', (path(uid),)))
@@ -124,6 +127,8 @@ def method(_conn, _sender, object_path, interface, name, args, invocation):
         state.setdefault('passwords', {})[user['UserName']] = args.unpack()[0]
     elif name == 'SetAccountType':
         user['AccountType'] = args.unpack()[0]
+    elif name == 'SetShell':
+        user['Shell'] = args.unpack()[0]
     elif name == 'SetIconFile':
         # Like the daemon: a copy under its own icons directory (state "icons"); "" removes the
         # copy and reads back as "" until the daemon reloads.
@@ -148,6 +153,8 @@ def get(_conn, _sender, object_path, _interface, name):
     if name == 'IconFile':
         # AccountsService names ~/.face while no picture is set, whether or not it exists.
         return GLib.Variant('s', user.get('IconFile', user['HomeDirectory'] + '/.face'))
+    if name == 'Shell':
+        return GLib.Variant('s', user.get('Shell', '/bin/bash'))
     value = int(uid) if name == 'Uid' else user[name]
     return GLib.Variant(TYPES[name], value)
 

@@ -32,6 +32,7 @@ efibootmgr
 emaki
 emaki-config
 emaki-desktop
+emaki-font-iosevka
 emaki-installer
 emaki-keyring
 emaki-mirrorlist
@@ -47,12 +48,10 @@ fsarchiver
 fuzzel
 ghostty-terminfo
 gpart
-gparted
 gpm
 gptfdisk
 greetd
 greetd-regreet
-grml-zsh-config
 grub
 gtk3
 hdparm
@@ -183,3 +182,5 @@ xfsprogs
 xl2tpd
 xwayland-satellite
 zsh
+zsh-autosuggestions
+zsh-syntax-highlighting

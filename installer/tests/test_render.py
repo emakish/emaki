@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 import hashlib
 import json
 import io
@@ -422,25 +424,21 @@ class RenderTests(unittest.TestCase):
             with self.assertRaises(InstallError):
                 normalize_fstab(altered, plan)
 
-    def test_alongside_shared_esp_is_read_only_and_never_fscked(self):
+    def test_alongside_own_esp_is_mounted_like_erase(self):
+        # 0.9.0: next to Windows /efi is Emaki's own ESP, mounted and checked like erase's.
         plan = make_plan(config(), inventory())
         original = self.fstab(plan)
         original = '\n'.join(
-            line.rsplit(' ', 1)[0] + ' 1' if ' /efi ' in line else line
+            line.rsplit(' ', 1)[0] + ' 2' if ' /efi ' in line else line
             for line in original.splitlines())
         original = original.replace('umask=0077', 'umask=0077,rw,relatime')
+        erase = normalize_fstab(original, plan)
         plan.config['mode'] = 'alongside'
-        rows = [line.split() for line in normalize_fstab(original, plan).splitlines()]
-        esp = next(row for row in rows if row[1] == '/efi')
-        self.assertTrue({'ro', 'noatime'} <= set(esp[3].split(',')))
-        self.assertNotIn('rw', esp[3].split(','))
-        self.assertNotIn('relatime', esp[3].split(','))
-        self.assertEqual(esp[5], '0')
-        self.assertNotIn('ro', next(row for row in rows if row[1] == '/')[3].split(','))
-        plan.config['mode'] = 'erase'
-        normal = next(line.split() for line in normalize_fstab(original, plan).splitlines()
-                      if line.split()[1] == '/efi')
-        self.assertNotIn('ro', normal[3].split(','))
+        self.assertEqual(normalize_fstab(original, plan), erase)
+        esp = next(line.split() for line in erase.splitlines() if line.split()[1] == '/efi')
+        self.assertTrue({'rw', 'relatime'} <= set(esp[3].split(',')))
+        self.assertNotIn('ro', esp[3].split(','))
+        self.assertEqual(esp[5], '2')
 
 
 if __name__ == '__main__':

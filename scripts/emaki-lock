@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Own the locker lifetime; only authenticated child protocol events prove readiness.
 
 The compositor protects a dead lock client's surfaces until a replacement locks. The
@@ -21,28 +23,113 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, '@EMAKI_LIBEXECDIR@')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from emaki_lock_fallback import FallbackHeartbeat
+
 # confirm is additive; existing version-1 lock/wait/status clients keep their semantics.
 VERSION = 1
 WAIT_SECONDS = 15.0
 START_SECONDS = 6.0
 HEARTBEAT_SECONDS = 3.0
+# Fallback label commands share one resource worker with the person's own commands.
+# Allow slow commands, and also accept normal main-loop activity while they queue.
+FALLBACK_HEARTBEAT_SECONDS = 60.0
 # The loop wakes every 0.1 s. A longer gap means the supervisor itself did not run: system
 # sleep freezes user.slice with the child in it, and the monotonic clock still advances
 # while devices suspend and resume (14.8 s measured on a 2015 laptop).
 STALL_SECONDS = 1.0
-# After both lockers crashed (non-zero or signal exit, or a hang killed by the
-# heartbeat), a new quickshell->hyprlock cycle starts after these delays; then stop.
+# After both lockers crashed (non-zero or signal exit), a new quickshell->hyprlock
+# cycle starts after these delays; then stop. Confirmed fallback timeouts retry
+# independently, so a delayed observation cannot exhaust the real-exit budget.
 # A refusal (hyprlock exit 0 without its locked marker) is never retried.
 RETRY_BACKOFF = (2.0, 5.0, 10.0)
 # Hyprlock's normal (non-verbose) onLockLocked callback emits this exact line.
 # Do not enable WAYLAND_DEBUG: keyboard events would cross the secret boundary.
 LOCKED_EVENT = re.compile(rb'^(?:DEBUG(?: from [A-Za-z0-9_.-]+)? \]: |\[LOG\] )?onLockLocked called\s*$')
+FALLBACK_ACTIVITY = re.compile(
+    rb'^(?:(?:DEBUG|WARN)(?: from [A-Za-z0-9_.-]+)? \]: |\[(?:LOG|WARN)\] )?'
+    rb'(?:Trying to update label, but a resource is still pending! Skipping update\.|'
+    rb'Authenticating|Ignoring empty input|Clearing password buffer)\s*$')
 ANSI_COLOR = re.compile(rb'\x1b\[[0-9;]*m')
 # exec keeps the recorded PID/start time. EOF before the release byte means the
 # supervisor died before persisting ownership: exit without creating a locker.
 CHILD_GATE = ('import os,sys; fd=int(sys.argv[1]); go=os.read(fd,1); os.close(fd); '
               'os.execvpe(sys.argv[2],sys.argv[2:],os.environ) if go==b"1" else sys.exit(1)')
 
+ACCENT_HEADER = b'# Emaki accent: written by the session from settings.toml; edits are replaced.\n'
+
+
+# tokens.toml [accents.*] base and text, and its default; tests/test-accent-apps.py keeps them equal.
+ACCENTS = {
+    'orange': (b'e2733f', b'2a0f05'), 'coral': (b'ef786b', b'300f0c'), 'rose': (b'e780aa', b'300c1c'),
+    'amber': (b'dca745', b'281b04'), 'green': (b'83b969', b'12230b'), 'teal': (b'61b5a5', b'08251f'),
+    'blue': (b'78aaf0', b'0b1b36'), 'violet': (b'b294e8', b'211035'),
+}
+DEFAULT_ACCENT = 'rose'
+ACCENT_LIMIT = 1 << 20
+
+
+def accent_copy_matches(copy, packaged):
+    """The copy is exactly what the session writes: the header and the packaged file with the
+    default accent's base and text replaced by one accent's (as the core does); nothing else."""
+    if packaged is None or not copy.startswith(ACCENT_HEADER):
+        return False
+    body = copy[len(ACCENT_HEADER):]
+    default_base, default_text = ACCENTS[DEFAULT_ACCENT]
+    return any(body == packaged.replace(default_base, base).replace(default_text, text)
+               for base, text in ACCENTS.values())
+
+
+def packaged_hyprlock(env):
+    """The file hyprlock itself would load without a personal one: the first in XDG_CONFIG_DIRS."""
+    for directory in (env.get('XDG_CONFIG_DIRS') or '/etc/xdg').split(':'):
+        if directory.startswith('/'):
+            try:
+                return Path(directory, 'hypr/hyprlock.conf').read_bytes()
+            except OSError:
+                continue
+    return None
+
+
+def hyprlock_config(env):
+    """The session's hyprlock copy in the accent chosen in Settings (DECISIONS 2026-10-15).
+
+    A person's own hyprlock.conf wins, as without the flag; a missing, foreign, unreadable,
+    edited or truncated copy (anything but the packaged file with its accent swapped) leaves
+    hyprlock to find the packaged file in XDG_CONFIG_DIRS.
+    """
+    personal = Path(env.get('XDG_CONFIG_HOME') or Path(env.get('HOME', '/nonexistent'), '.config'))
+    if (personal / 'hypr/hyprlock.conf').exists() or not env.get('XDG_RUNTIME_DIR'):
+        return []
+    path = Path(env['XDG_RUNTIME_DIR'], 'emaki-settings/accent/hypr/hyprlock.conf')
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    except OSError:
+        return []
+    try:
+        copy = os.read(descriptor, ACCENT_LIMIT + 1) if stat.S_ISREG(os.fstat(descriptor).st_mode) else b''
+    except OSError:
+        copy = b''
+    finally:
+        os.close(descriptor)
+    ours = len(copy) <= ACCENT_LIMIT and accent_copy_matches(copy, packaged_hyprlock(env))
+    return ['--config', str(path)] if ours else []
+
+
+def fallback_config(env):
+    """Use the same personal, accent and system configuration as the native locker."""
+    accent = hyprlock_config(env)
+    if accent:
+        return Path(accent[1])
+    directories = [env.get('XDG_CONFIG_HOME', ''),
+                   str(Path(env.get('HOME', '/nonexistent'), '.config')),
+                   *(env.get('XDG_CONFIG_DIRS') or '/etc/xdg').split(':')]
+    for directory in directories:
+        path = Path(directory) / 'hypr/hyprlock.conf'
+        if Path(directory).is_absolute() and path.is_file():
+            return path
+    raise FileNotFoundError('fallback locker configuration is unavailable')
 
 
 def runtime_directory():
@@ -89,6 +176,7 @@ class Supervisor:
         self.socket_path = directory / 'control.sock'
         self.start_seconds = start_seconds
         self.heartbeat_seconds = heartbeat_seconds
+        self.fallback_heartbeat_seconds = FALLBACK_HEARTBEAT_SECONDS
         self.selector = selectors.DefaultSelector()
         self.connections = {}
         self.child = None
@@ -100,6 +188,7 @@ class Supervisor:
         self.outputs_active = True
         self.last_heartbeat = self.started = time.monotonic()
         self.fallback_buffer = b''
+        self.fallback_heartbeat = None
         self.readiness_since = self.last_tick = self.started
         self.sequence = 0
         self.sleep_pending = False
@@ -268,9 +357,7 @@ class Supervisor:
         env.pop('QT_LOGGING_RULES', None)
         # Scope processes inherit the caller's environment, including this supported option.
         env['EMAKI_LOCK_REDUCED_MOTION'] = '1' if env.get('EMAKI_LOCK_REDUCED_MOTION') == '1' else '0'
-        if fallback:
-            argv = ['hyprlock', '--grace', '0']
-        else:
+        if not fallback:
             source = Path(__file__).resolve().parent.parent
             entry = source / ('shell/lock.qml' if (source / 'shell/lock.qml').is_file() else 'share/emaki/shell/lock.qml')
             # Match emaki-shell's default, without overriding user allocator tuning.
@@ -283,17 +370,21 @@ class Supervisor:
             argv = ['qs', '-p', str(entry), '--no-color']
         gate_read, gate_write = os.pipe()
         try:
+            inherited = (gate_read,)
+            if fallback:
+                self.fallback_heartbeat = FallbackHeartbeat(fallback_config(env))
+                inherited += self.fallback_heartbeat.pass_fds
+                argv = ['hyprlock', '--grace', '0', '--config', str(self.fallback_heartbeat.config_path)]
             self.child = subprocess.Popen([sys.executable, '-c', CHILD_GATE, str(gate_read), *argv],
                                           stdin=subprocess.DEVNULL, stdout=subprocess.PIPE if fallback else subprocess.DEVNULL,
                                           stderr=subprocess.STDOUT if fallback else subprocess.DEVNULL,
-                                          env=env, close_fds=True, pass_fds=(gate_read,))
+                                          env=env, close_fds=True, pass_fds=inherited)
             self.record_child()
             if self.stopping:
                 return  # Closing the gate without a byte prevents locker exec.
             os.write(gate_write, b'1')
         except OSError:
-            if self.child is not None:
-                self.retire(kill=True)
+            self.retire(kill=True)
             if fallback:
                 self.fail()
             else:
@@ -315,15 +406,16 @@ class Supervisor:
         self.finished = True
         self.release_authentication()
 
-    def crashed(self):
+    def crashed(self, *, heartbeat=False):
         # Both lockers died: a crash, not a refusal. The compositor keeps the
         # session locked on the dead client's surfaces and accepts a new client,
         # so a bounded retry puts a password field back without exposing anything.
-        if self.stopping or self.cycles >= len(RETRY_BACKOFF):
+        if self.stopping or (not heartbeat and self.cycles >= len(RETRY_BACKOFF)):
             self.fail()
             return
-        self.retry_at = time.monotonic() + RETRY_BACKOFF[self.cycles]
-        self.cycles += 1
+        self.retry_at = time.monotonic() + RETRY_BACKOFF[0 if heartbeat else self.cycles]
+        if not heartbeat:
+            self.cycles += 1
         self.secure = self.poured = False
         self.phase = 'recovering'
 
@@ -387,8 +479,9 @@ class Supervisor:
         return True
 
     def snapshot(self):
+        deadline = self.fallback_heartbeat_seconds if self.backend == 'hyprlock' else self.heartbeat_seconds
         fresh = (self.child is not None and self.child.poll() is None and
-                 (self.backend == 'hyprlock' or time.monotonic() - self.last_heartbeat < self.heartbeat_seconds))
+                 time.monotonic() - self.last_heartbeat < deadline)
         ready = self.secure and self.poured and fresh and self.phase == 'locked'
         state = ('locked' if ready else 'locking' if self.phase == 'locked' else
                  'recovering' if self.phase in ('lost', 'recovering') or self.phase == 'starting' and self.backend == 'hyprlock' else self.phase)
@@ -537,12 +630,18 @@ class Supervisor:
         if not chunk:
             self.selector.unregister(stream)
             return
-        # Normal locker logs never reach a file or terminal. Keep only the exact
-        # compositor-locked callback marker. Verbose/protocol tracing is disabled.
+        # Normal locker logs never reach a file or terminal. Only exact messages
+        # emitted by the main loop count; resource-worker output proves nothing.
+        # Verbose/protocol tracing stays disabled, including keyboard events.
         self.fallback_buffer += chunk
         while b'\n' in self.fallback_buffer:
             line, self.fallback_buffer = self.fallback_buffer.split(b'\n', 1)
-            if LOCKED_EVENT.fullmatch(ANSI_COLOR.sub(b'', line)):
+            line = ANSI_COLOR.sub(b'', line)
+            if FALLBACK_ACTIVITY.fullmatch(line):
+                self.last_heartbeat = time.monotonic()
+            if LOCKED_EVENT.fullmatch(line):
+                if not self.secure:
+                    self.last_heartbeat = time.monotonic()
                 self.secure = self.poured = self.retained_lock = True
                 self.authentication_after_lock()
                 self.phase = 'locked'
@@ -550,6 +649,7 @@ class Supervisor:
             self.fallback_buffer = b''
 
     def retire(self, kill=False):
+        self.retained_lock = self.retained_lock or self.secure
         if self.child:
             if kill and self.child.poll() is None:
                 self.child.kill()  # Only our direct child, never a process-name match.
@@ -565,6 +665,43 @@ class Supervisor:
         self.child = None
         (self.directory / 'child.json').unlink(missing_ok=True)
         self.fallback_buffer = b''
+        if self.fallback_heartbeat is not None:
+            self.fallback_heartbeat.close()
+            self.fallback_heartbeat = None
+
+    def fallback_outputs_absent(self):
+        # Hyprlock destroys its label timers when the last output disappears.
+        # Only an exact compositor reply can excuse that absence of progress;
+        # a missing/broken socket must never classify a frozen locker as healthy.
+        path = os.environ.get('NIRI_SOCKET')
+        if not path:
+            return False
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stream:
+                stream.settimeout(.2)
+                stream.connect(path)
+                stream.sendall(b'"Outputs"\n')
+                reply = b''
+                deadline = time.monotonic() + .2
+                while b'\n' not in reply and len(reply) < 65536:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return False
+                    stream.settimeout(remaining)
+                    part = stream.recv(4096)
+                    if not part:
+                        return False
+                    reply += part
+                value = json.loads(reply.split(b'\n', 1)[0])
+                payload = value.get('Ok') if isinstance(value, dict) else None
+                outputs = payload.get('Outputs') if isinstance(payload, dict) else None
+                # Disabled physical connectors remain in the IPC inventory but
+                # have no logical Wayland output and therefore no locker timer.
+                return (isinstance(outputs, dict) and all(
+                    isinstance(output, dict) and 'logical' in output and output['logical'] is None
+                    for output in outputs.values()))
+        except (OSError, ValueError):
+            return False
 
     def account_stall(self):
         # A child frozen together with its supervisor could not have sent a heartbeat. Move its
@@ -586,6 +723,8 @@ class Supervisor:
         if self.stopping:
             return
         now = self.account_stall()
+        if self.fallback_heartbeat is not None and self.fallback_heartbeat.progressed():
+            self.last_heartbeat = now
         if self.child is None:
             if self.retry_at is None:
                 self.fail()
@@ -623,6 +762,12 @@ class Supervisor:
             self.phase = 'failed'
             # A live fallback may be waiting for the compositor. Keep its surface; a
             # deadline fails waiting callers, never exposes the desktop to force recovery.
+        elif self.backend == 'hyprlock' and self.secure and now - self.last_heartbeat > self.fallback_heartbeat_seconds:
+            if self.fallback_outputs_absent():
+                self.last_heartbeat = now
+            else:
+                self.retire(kill=True)
+                self.crashed(heartbeat=True)
         for conn, row in list(self.connections.items()):
             if row['trusted']:
                 continue

@@ -10,6 +10,7 @@ import importlib.util
 import io
 import json
 import os
+import pwd
 from pathlib import Path
 import runpy
 import signal
@@ -28,6 +29,8 @@ sys.path.insert(0, str(ROOT / 'update-manager'))
 import catalog
 import backend
 import fixtures
+import programs_aur
+from emaki_update_space import SPACE_ADVICE
 
 spec = importlib.util.spec_from_file_location('privileged_apply', ROOT / 'update-manager/apply.py')
 helper = importlib.util.module_from_spec(spec)
@@ -114,12 +117,20 @@ class Parsing(unittest.TestCase):
         rows = catalog.transaction(fixtures.TRANSACTION, catalog.packages(fixtures.INSTALLED))
         rows += catalog.aur_updates(fixtures.AUR, {'paru': '1'}, backend.compare)[0]
         text = '\n'.join(catalog.warnings_for(rows))
-        for expected in ('cannot guarantee', 'Restart', 'sign out', 'not checked by Arch or Emaki', 'does not build'):
+        for expected in ('cannot guarantee', 'Restart', 'sign out', 'not checked by Arch or Emaki',
+                         "Where available, open the program’s page to build its update, or use your AUR tool."):
             self.assertIn(expected, text)
 
 
 class Checking(unittest.TestCase):
     def setUp(self):
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        self.consent_file = programs_aur.consent_path(Path(home.name) / '.config')
+        programs_aur.set_consent(self.consent_file, True)
+        account = patch.object(pwd, 'getpwuid', return_value=Mock(pw_dir=home.name))
+        account.start()
+        self.addCleanup(account.stop)
         # Optional application discovery has its own isolated wire tests.
         optional = patch.object(backend.flatpaks, 'discover', return_value=[])
         optional.start()
@@ -130,6 +141,74 @@ class Checking(unittest.TestCase):
         rollback = patch.object(backend, 'rollback_pending', return_value=False)
         rollback.start()
         self.addCleanup(rollback.stop)
+
+    def test_foreign_names_require_current_store_consent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory)
+            (cache / 'local').mkdir()
+            accepted = self.consent_file.read_text()
+            stale = json.loads(accepted)
+            stale['warning'] = 'obsolete'
+            cases = (('missing', None), ('malformed', '{'), ('wrong-shape', '[]'),
+                     ('obsolete', json.dumps(stale)), ('enabled', accepted), ('revoked', None))
+            for state, contents in cases:
+                with self.subTest(state=state):
+                    if contents is None:
+                        self.consent_file.unlink(missing_ok=True)
+                    else:
+                        self.consent_file.write_text(contents)
+                    def command(args, **kwargs):
+                        return 'paru 2.0.4-1\nprivate-local 1-1\n' if '-Qm' in args else ''
+                    def fetch(url, cache, validator):
+                        return validator(json.dumps(fixtures.AUR).encode()), False
+                    with patch.object(backend, 'package_paths', return_value=(cache, cache / 'log')), \
+                            patch.object(backend, 'command', side_effect=command), \
+                            patch.object(backend, 'fetch', side_effect=fetch) as network, \
+                            patch.object(backend, 'compare', return_value=1), \
+                            patch.object(backend, 'emit') as emit:
+                        data = backend.discover(cache)
+                    self.assertEqual(data['foreignPackageCount'], 2)
+                    if state == 'enabled':
+                        self.assertEqual(network.call_count, 1)
+                        self.assertEqual([row['name'] for row in data['updates']], ['paru'])
+                        self.assertTrue(any('private-local' in line for line in data['warnings']))
+                    else:
+                        network.assert_not_called()
+                        self.assertEqual(data['updates'], [])
+                        self.assertFalse(any('AUR' in line for line in data['warnings']))
+                        self.assertFalse(any('AUR' in call.kwargs.get('message', '')
+                                             for call in emit.call_args_list))
+                        for name in ('paru', 'private-local'):
+                            self.assertNotIn(name, json.dumps(data['updates']))
+                            self.assertNotIn(name, json.dumps(data['warnings']))
+                            self.assertNotIn(name, str(emit.call_args_list))
+
+    def test_no_foreign_packages_report_zero_without_aur_requests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory)
+            (cache / 'local').mkdir()
+            for enabled in (False, True):
+                with self.subTest(enabled=enabled):
+                    programs_aur.set_consent(self.consent_file, enabled)
+                    with patch.object(backend, 'package_paths', return_value=(cache, cache / 'log')), \
+                            patch.object(backend, 'command', return_value=''), \
+                            patch.object(backend, 'fetch') as network, patch.object(backend, 'emit'):
+                        data = backend.discover(cache)
+                    self.assertEqual(data['foreignPackageCount'], 0)
+                    network.assert_not_called()
+
+    def test_status_reports_cached_foreign_count_without_network(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory)
+            for cached, expected in (({}, 0), ({'foreignPackageCount': 0}, 0),
+                                     ({'foreignPackageCount': 2}, 2)):
+                with self.subTest(cached=cached):
+                    backend.save_json(cache / 'updates.json', cached)
+                    with patch.object(backend, 'command', return_value='') as command, \
+                            patch.object(backend, 'fetch') as network:
+                        self.assertEqual(backend.status(cache)['foreignPackageCount'], expected)
+                    command.assert_called_once_with(['/usr/bin/pacman', '-Q'])
+                    network.assert_not_called()
 
     def test_real_pacman_private_sync_and_print_formats(self):
         with tempfile.TemporaryDirectory(prefix='emaki-pacman-fixture-') as directory:
@@ -201,7 +280,8 @@ class Checking(unittest.TestCase):
             self.assertEqual((system / 'sync/untouched').read_text(), 'original')
             self.assertEqual(len(data['updates']), 4)
             self.assertEqual(data['aurHelpers'], ['paru'])
-            self.assertIn('update in a terminal with paru', data['aurNotice'])
+            self.assertEqual(data['aurNotice'],
+                             'AUR: Where available, open the program’s page to build its update, or use your AUR tool.')
             self.assertFalse(any(args[0].endswith('/paru') for args in calls))
             self.assertTrue(any('hold back' in message for message in data['warnings']))
             self.assertTrue(any('example-local' in message for message in data['warnings']))
@@ -607,8 +687,12 @@ with patch.object(backend, 'package_paths', return_value=(root / 'system', root 
                 patch.object(backend, 'service_state', side_effect=[dict(ActiveState='activating'), {}]), \
                 patch.object(backend.time, 'sleep'), patch.object(backend, 'emit') as emit, \
                 patch.object(backend, 'command', return_value=''), \
-                patch.object(backend.reminder, 'offer_report') as offer:
+                patch.object(backend.reminder, 'offer_report') as offer, \
+                patch.object(backend.sys, 'stderr', new_callable=io.StringIO) as diagnostics:
             self.assertTrue(backend.observe_existing(Path(directory)))
+            self.assertEqual(emit.call_args.kwargs['message'],
+                             'The update did not finish. Open the update details with an administrator before trying again.')
+            self.assertIn('journalctl -u emaki-update.service', diagnostics.getvalue())
             self.assertFalse(emit.call_args.kwargs['ok'])
             offer.assert_called_once_with('update')
 
@@ -737,7 +821,7 @@ class Authorization(unittest.TestCase):
 
     def test_space_refusal_is_the_final_message_even_after_service_diagnostics(self):
         refusal = ('Not enough free space for this update: it needs about 3.4 GB, '
-                   '500.0 MB is free. Free some space, then try again.')
+                   '500.0 MB is free. ' + SPACE_ADVICE)
         with tempfile.TemporaryDirectory() as directory:
             descriptor = os.open(Path(directory) / 'lock', os.O_CREAT | os.O_RDWR, 0o600)
             process = Mock()
@@ -757,6 +841,30 @@ class Authorization(unittest.TestCase):
             self.assertEqual(emit.call_args.args, ('finished',))
             self.assertFalse(emit.call_args.kwargs['ok'])
             self.assertEqual(emit.call_args.kwargs['message'], refusal)
+
+    def test_space_refusal_stays_in_final_message_after_keyring_update(self):
+        refusal = ('Not enough free space for this update: it needs about 3.4 GB, '
+                   '500.0 MB is free. ' + SPACE_ADVICE)
+        with tempfile.TemporaryDirectory() as directory:
+            descriptor = os.open(Path(directory) / 'lock', os.O_CREAT | os.O_RDWR, 0o600)
+            process = Mock()
+            process.__enter__ = Mock(return_value=process)
+            process.__exit__ = Mock(return_value=False)
+            process.poll.return_value = 1
+            process.wait.return_value = 1
+            journal = '\n'.join(json.dumps(dict(__CURSOR=str(index), MESSAGE=line))
+                                for index, line in enumerate((refusal, 'service failed with exit status 1')))
+            with patch.object(helper.os, 'open', return_value=descriptor), \
+                    patch.object(helper, 'require_update_root'), \
+                    patch.object(helper, 'versions', side_effect=[{'emaki-keyring': '1'}, {'emaki-keyring': '2'}]), \
+                    patch.object(helper.subprocess, 'Popen', return_value=process), \
+                    patch.object(helper, 'run', side_effect=[Mock(stdout=journal), Mock(stdout='')]), \
+                    patch.object(helper, 'emit') as emit:
+                self.assertEqual(helper.apply(), 1)
+            self.assertEqual(emit.call_args.args, ('finished',))
+            self.assertFalse(emit.call_args.kwargs['ok'])
+            self.assertIn('Some packages changed.', emit.call_args.kwargs['message'])
+            self.assertTrue(emit.call_args.kwargs['message'].endswith(refusal))
 
     def test_hold_refusal_reaches_final_error_even_after_keyring_updates(self):
         refusals = (
@@ -892,7 +1000,7 @@ class ReportOffer(unittest.TestCase):
     """A failed update offers a report through the shell; nothing else does."""
     OFFER = ['emaki-shell', 'call', 'report', 'offer', 'update']
 
-    def apply(self, *, finished=None, code=0, run=None):
+    def apply(self, *, finished=None, code=0, run=None, flatpak_updated=False):
         process = Mock()
         process.__enter__ = Mock(return_value=process)
         process.__exit__ = Mock(return_value=False)
@@ -900,7 +1008,7 @@ class ReportOffer(unittest.TestCase):
         process.wait.return_value = code
         # The real offer helper runs; only its process is replaced, never the real shell.
         with patch.object(backend.subprocess, 'Popen', return_value=process), \
-                patch.object(backend.flatpaks, 'update', return_value=False), \
+                patch.object(backend.flatpaks, 'update', return_value=flatpak_updated), \
                 patch.object(backend, 'local_state', return_value=dict(restart=False)), \
                 patch.object(backend.reminder, 'notify_completed'), \
                 patch.object(backend.reminder.subprocess, 'run', **(run or dict(return_value=Mock(returncode=0)))) as shell, \
@@ -920,6 +1028,14 @@ class ReportOffer(unittest.TestCase):
         calls, result = self.apply(finished=dict(ok=True, message='done'))
         self.assertEqual(calls, [])
         self.assertTrue(result['ok'])
+
+    def test_successful_flatpak_update_keeps_conditional_aur_guidance(self):
+        calls, result = self.apply(finished=dict(ok=True, message='done'), flatpak_updated=True)
+        self.assertEqual(calls, [])
+        self.assertTrue(result['ok'])
+        self.assertEqual(result['message'],
+                         'System and Flatpak updates finished. For AUR updates, where available, '
+                         'open the program’s page to build its update, or use your AUR tool.')
 
     def test_refused_or_cancelled_permission_does_not_offer(self):
         for code in (126, 127):

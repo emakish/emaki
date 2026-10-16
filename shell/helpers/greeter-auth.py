@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """A private, one-attempt greetd client, preserving outstanding reply sockets.
 
 The QML-owned supervisor holds no socket. Its conversation child retains the

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """F0, INSIDE the VM, as root: real pointer input through uinput — like a qemu tablet
 (absolute ABS_X/ABS_Y + buttons; udev sees a mouse, libinput an absolute pointer).
 Clicks follow the same path as physical input: kernel → libinput → niri → shell's wl_pointer.

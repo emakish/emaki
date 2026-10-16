@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Serve synthetic recorded v1 transcripts, with no worker/device imports.
 
 Default: a Unix socket in a new temporary directory, printed to stdout.
@@ -47,6 +49,7 @@ def console_chars():
 
 class Replay:
     def __init__(self, scenario='erase-happy', screen=None):
+        self.editor = None
         self.rows = transcript(scenario)
         self.recorded = json.loads((TRANSCRIPTS / 'render.json').read_text())
         self.screen = screen
@@ -66,17 +69,23 @@ class Replay:
             disk['shrink'] = {'reason': refusals[screen]}
             disk['partitions'][0]['os_hint'] = 'windows'
             self.recorded['inventory'] = inventory
+        if screen == 'manual':
+            inventory = copy.deepcopy(self.recorded['inventory'])
+            inventory['disks'][0]['partition_table'] = 'gpt'
+            self.recorded['inventory'] = inventory
         if screen == 'manual-empty':
             # The system disk has a GPT and no partitions yet.
             inventory = copy.deepcopy(self.recorded['inventory'])
             inventory['disks'][0].update(partition_table='gpt', partitions=[])
             self.recorded['inventory'] = inventory
-        if screen == 'manual-by-id':
-            # The system disk has a stable by-id name that differs from its device path, as on
-            # real hardware; every probe answers with it (Open GParted probes again first).
-            inventory = copy.deepcopy(self.recorded['inventory'])
-            inventory['disks'][0]['id'] = '/dev/disk/by-id/virtio-emaki-target'
-            self.recorded['inventory'] = inventory
+        # The partition editor's frames: a disk with Windows, an old Linux and free space, or that
+        # disk empty with an old MBR table (editor_fixture.py; the review runs the real planner).
+        if screen in ('manual-editor', 'manual-delete', 'manual-create', 'review-manual', 'manual-new-table'):
+            sys.path.insert(0, str(Path(__file__).parent))
+            import editor_fixture
+            self.editor = editor_fixture
+            self.editor_inventory = editor_fixture.inventory(empty=screen == 'manual-new-table')
+            self.recorded['inventory'] = dict(editor_fixture.public(self.editor_inventory), type='inventory')
         if screen == 'disk-mbr':
             # The system disk carries an MBR (dos) partition table.
             inventory = copy.deepcopy(self.recorded['inventory'])
@@ -137,6 +146,8 @@ class Replay:
                 responses[-1] = dict(responses[-1], warnings=['Emaki needs one full update before you install apps; when online, use the terminal to update the whole system [pacman].'])
             if kind == 'confirm' and self.screen.startswith('error'):
                 responses[-1:-1] = self.recorded['logs']
+            if kind == 'plan' and self.editor:
+                responses = [self.editor.plan_ack(request['config'], self.editor_inventory)]
             if kind == 'plan' and self.screen == 'plan-errors':
                 responses = [dict(self.recorded['plan_ack'], token=None, summary=[], warnings=[], errors=[dict(code='manual_layout', msg='Exactly one / and one /efi are required.')])]
         else:
@@ -146,6 +157,12 @@ class Replay:
                 assert request.get(key) == value, 'Unexpected ' + key
             self.index += 1
             responses = row['responses']
+            if row.get('planner') == 'editor':
+                # The partition editor's plan: the real planner on editor_fixture.py's disk.
+                sys.path.insert(0, str(Path(__file__).parent))
+                import editor_fixture
+                self.editor = editor_fixture
+                responses = [editor_fixture.plan_ack(request['config'], editor_fixture.inventory())]
         if kind == 'plan':
             config = request['config']
             assert config['user']['password']
@@ -154,7 +171,7 @@ class Replay:
             config.pop('disk_password', None)
             assert config.get('software', 'rich') in ('rich', 'minimal')
             responses = copy.deepcopy(responses)
-            for response in responses:
+            for response in responses if not self.editor else []:
                 if response['type'] == 'plan_ack' and not response.get('errors'):
                     response['summary'] = [line for line in response.get('summary', []) if not line.startswith(('Software:', 'Keyboard:'))]
                     # The planner's keyboard line (render.keyboard_summary), after the account line.

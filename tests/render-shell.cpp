@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Isolated Qt Quick/RHI image and render-work probe. Qt private headers are confined
 // to this test executable; EGL uses Mesa llvmpipe, with no display or compositor.
 #include <QtGui/QGuiApplication>

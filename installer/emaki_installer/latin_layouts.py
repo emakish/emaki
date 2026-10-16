@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """XKB layouts whose first group types all of a-z without a modifier.
 
 A committed list (xkeyboard-config 2.48), not a rule about one key: French and the other

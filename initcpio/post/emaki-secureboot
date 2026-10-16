@@ -1,0 +1,9 @@
+#!/bin/sh
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+# mkinitcpio post hook: $1 is the kernel image of the build, the other arguments the images
+# it generated. Signs that kernel when it is in /boot and the machine has a Secure Boot key;
+# without the key emaki-secureboot changes nothing. A failure fails the mkinitcpio run.
+[ -n "$1" ] || exit 0
+[ -x /usr/bin/emaki-secureboot ] || exit 0
+exec /usr/bin/emaki-secureboot sign "$1"

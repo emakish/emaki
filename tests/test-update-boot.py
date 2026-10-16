@@ -21,6 +21,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'installer'), str(ROOT / 'grub'), str(ROOT / 'upkeep')]
 from emaki_installer import boot
 sys.modules['emaki_boot.boot'] = boot
+from emaki_installer import secureboot
+sys.modules['emaki_boot.secureboot'] = secureboot
 from emaki_boot import refresh, update
 
 FS = 'abcdef01-2345-6789-abcd-ef0123456789'
@@ -55,6 +57,44 @@ class UpdateBoot(unittest.TestCase):
                 patch.object(update.os, 'geteuid', return_value=0), \
                 redirect_stderr(io.StringIO()):
             self.assertEqual(update.main(['guard-alongside']), 1)
+
+    def test_own_esp_next_to_windows_has_no_shared_guard_or_sleep_skip(self):
+        # Since 0.9 Emaki has its own ESP next to Windows: the package guard has nothing to
+        # check and sleep counters are kept as on any Emaki-only ESP.
+        record = self.root / 'alongside-boot.json'
+        record.write_text(json.dumps({'version': 1, 'esp_partuuid': '14e269ee-0b88-441e-86f3-09b058e1ad76',
+                                      'emaki_esp_partuuid': '5d1f0c3a-7b2e-4c19-9a6d-2e8f4b1c0a77',
+                                      'windows_esp_uuid': '1234-ABCD'}) + '\n')
+        record.chmod(0o644)
+        inode, real_fstat = record.stat().st_ino, os.fstat
+
+        def fstat(fd):
+            # The installer writes the record as root; this test runs unprivileged.
+            info = real_fstat(fd)
+            return info if info.st_ino != inode else os.stat_result([*info[:4], 0, *info[5:]])
+
+        with patch.object(refresh, 'SHARED_ESP', record), patch.object(update.shared, 'MARKER', record), \
+                patch.object(update.shared.os, 'fstat', side_effect=fstat), \
+                patch.object(update.os, 'geteuid', return_value=0), \
+                patch.object(update.shared, 'check', side_effect=AssertionError('shared check')) as check, \
+                patch.object(update, 'supported', return_value=None) as supported, \
+                redirect_stderr(io.StringIO()):
+            self.assertFalse(refresh.shared_esp())
+            self.assertEqual(update.main(['guard-alongside']), 0)
+            check.assert_not_called()
+            for action in ('sleep-pre', 'sleep-post'):
+                supported.reset_mock()
+                self.assertEqual(update.main([action]), 0)
+                supported.assert_called_once_with()
+            # A stray shared-ESP hibernate drop-in never unmounts Emaki's own ESP or
+            # remounts it read-only.
+            with patch.object(update.subprocess, 'run') as run, \
+                    patch.object(update.os.path, 'ismount', return_value=False), \
+                    patch.object(refresh, 'sleep_run_lock') as lock:
+                for action in ('hibernate-pre', 'hibernate-post'):
+                    self.assertEqual(update.main([action]), 0)
+                run.assert_not_called()
+                lock.assert_not_called()
 
     def test_foreign_file_post_write_failure_aborts_recovery_hooks(self):
         @contextmanager

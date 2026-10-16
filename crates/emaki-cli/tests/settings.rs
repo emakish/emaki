@@ -1,3 +1,9 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
+#[path = "../../../tests/child_process.rs"]
+mod child_process;
+use child_process::{CommandExt, write_executable};
+
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::fs;
@@ -61,7 +67,7 @@ impl Fixture {
             "--json",
         ]);
         command.args(write_timeout(args));
-        let out = command.output().unwrap();
+        let out = command.guarded_output().unwrap();
         assert!(out.stderr.is_empty(), "{out:?}");
         let json = serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{out:?}"));
         (out, json)
@@ -107,7 +113,7 @@ if p.name == 'config.kdl':
             source = self.source().to_str().unwrap()
         );
         let path = self.root.join("bin/niri");
-        fs::write(&path, script).unwrap();
+        write_executable(&path, script).unwrap();
         fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
         let mut c = self.command();
         c.env(
@@ -142,7 +148,7 @@ if p.name == 'config.kdl':
                 "--timeout-ms",
                 timeout,
             ])
-            .output()
+            .guarded_output()
             .unwrap();
         let json = serde_json::from_slice(&out.stdout).unwrap();
         (out, json)
@@ -193,7 +199,7 @@ fn isolated_settings_defaults_reads_and_xdg_guard_never_write() {
                 "import json,tomllib;print(json.dumps(tomllib.load(open('tokens.toml','rb'))))",
             ])
             .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
-            .output()
+            .guarded_output()
             .unwrap()
             .stdout,
     )
@@ -217,7 +223,7 @@ fn isolated_settings_defaults_reads_and_xdg_guard_never_write() {
             "--profile-root",
             f.root.to_str().unwrap(),
         ])
-        .output()
+        .guarded_output()
         .unwrap();
     assert_eq!(out.status.code(), Some(1));
     let result: Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -238,7 +244,7 @@ fn installed_settings_reads_create_no_files_and_preserve_personal_files() {
         vec!["settings", "history", "--json"],
         vec!["settings", "get", "appearance.gaps", "--json"],
     ] {
-        let out = f.command().args(args).output().unwrap();
+        let out = f.command().args(args).guarded_output().unwrap();
         assert!(out.status.success(), "{out:?}");
         let result: Value = serde_json::from_slice(&out.stdout).unwrap();
         assert_eq!(result["session_applied"], false);
@@ -247,7 +253,7 @@ fn installed_settings_reads_create_no_files_and_preserve_personal_files() {
     assert_eq!(fs::read(&personal).unwrap(), personal_before);
     assert_eq!(tree(&f.root), before);
     for args in [["settings", "list"], ["settings", "history"]] {
-        let out = f.command().args(args).output().unwrap();
+        let out = f.command().args(args).guarded_output().unwrap();
         assert!(out.status.success(), "{out:?}");
         assert!(
             !String::from_utf8(out.stdout)
@@ -255,7 +261,11 @@ fn installed_settings_reads_create_no_files_and_preserve_personal_files() {
                 .contains("not connected")
         );
     }
-    let help = f.command().args(["settings", "--help"]).output().unwrap();
+    let help = f
+        .command()
+        .args(["settings", "--help"])
+        .guarded_output()
+        .unwrap();
     assert!(help.status.success());
     assert!(
         !String::from_utf8(help.stdout)
@@ -278,7 +288,7 @@ fn installed_settings_without_a_session_leave_the_source_absent() {
             "--timeout-ms",
             SLOW_MACHINE_TIMEOUT_MS,
         ])
-        .output()
+        .guarded_output()
         .unwrap();
     assert_eq!(out.status.code(), Some(1));
     let result: Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -300,7 +310,7 @@ fn installed_settings_without_a_session_leave_the_source_absent() {
 fn concurrent_installed_writers_preserve_both_values_and_history_across_processes() {
     let f = Fixture::new();
     let shell = f.root.join("bin/emaki-shell");
-    fs::write(
+    write_executable(
         &shell,
         r#"#!/usr/bin/env python3
 import json, sys, time
@@ -343,7 +353,7 @@ print('applied')
                 ])
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped())
-                .spawn()
+                .guarded_spawn()
                 .unwrap(),
         );
     }
@@ -382,7 +392,7 @@ print('applied')
     let out = f
         .command()
         .args(["settings", "list", "--json"])
-        .output()
+        .guarded_output()
         .unwrap();
     assert!(out.status.success(), "{out:?}");
     let result: Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -391,7 +401,7 @@ print('applied')
     let out = f
         .command()
         .args(["settings", "history", "--json"])
-        .output()
+        .guarded_output()
         .unwrap();
     assert!(out.status.success(), "{out:?}");
     let result: Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -412,14 +422,14 @@ fn installed_run(f: &Fixture, args: &[&str]) -> (Output, Value) {
         .args(args)
         .arg("--json")
         .args(write_timeout(args))
-        .output()
+        .guarded_output()
         .unwrap();
     let reply = serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{out:?}"));
     (out, reply)
 }
 fn installed_helper(f: &Fixture, name: &str, body: &str) {
     let path = f.root.join("bin").join(name);
-    fs::write(&path, format!("#!/usr/bin/env python3\n{body}")).unwrap();
+    write_executable(&path, format!("#!/usr/bin/env python3\n{body}")).unwrap();
     fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
 }
 
@@ -447,7 +457,7 @@ fn installed_mime_requires_the_session_desktop_before_writing_associations() {
                     "--timeout-ms",
                     SLOW_MACHINE_TIMEOUT_MS,
                 ])
-                .output()
+                .guarded_output()
                 .unwrap();
             let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
             assert!(!out.status.success(), "{desktop}: {reply}");
@@ -496,7 +506,7 @@ fn installed_wallpaper_cannot_commit_without_the_compositor_reload() {
             "--timeout-ms",
             SLOW_MACHINE_TIMEOUT_MS,
         ])
-        .output()
+        .guarded_output()
         .unwrap();
     let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(!out.status.success(), "{reply}");
@@ -558,7 +568,7 @@ fn failed_shell_compensation_does_not_block_reads_or_a_later_retry() {
             "--timeout-ms",
             SLOW_MACHINE_TIMEOUT_MS,
         ])
-        .output()
+        .guarded_output()
         .unwrap();
     let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(out.status.success(), "{reply}");
@@ -582,7 +592,7 @@ fn session_start_after_failed_apply_preserves_the_persons_later_edit() {
     let out = f
         .fake("ok")
         .args(["settings", "session-config"])
-        .output()
+        .guarded_output()
         .unwrap();
     assert!(out.status.success(), "{out:?}");
     assert_eq!(fs::read_to_string(f.source()).unwrap(), personal);
@@ -609,7 +619,7 @@ fn session_start_after_failed_apply_preserves_the_persons_later_edit() {
     let again = f
         .fake("ok")
         .args(["settings", "session-config"])
-        .output()
+        .guarded_output()
         .unwrap();
     assert!(again.status.success(), "{again:?}");
     assert!(
@@ -933,7 +943,7 @@ fn installed_keyboard_rows_without_a_provider_are_unavailable_and_read_only() {
         .command()
         .env("PATH", f.root.join("bin"))
         .args(["settings", "get", "keyboard.layouts", "--json"])
-        .output()
+        .guarded_output()
         .unwrap();
     let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(out.status.success(), "{reply}");
@@ -952,7 +962,7 @@ fn installed_keyboard_rows_without_a_provider_are_unavailable_and_read_only() {
             "Alt+Shift",
             "--json",
         ])
-        .output()
+        .guarded_output()
         .unwrap();
     let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(out.status.code(), Some(1), "{reply}");
@@ -1345,7 +1355,7 @@ fn validator_rejections_timeouts_and_missing_helper_leave_no_published_generatio
             "--profile-root",
             f.root.to_str().unwrap(),
         ])
-        .output()
+        .guarded_output()
         .unwrap();
     assert_eq!(out.status.code(), Some(1));
     let v: Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -1429,7 +1439,7 @@ fn busy_writer_is_rejected_and_released_lock_allows_next_write() {
         ])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .spawn()
+        .guarded_spawn()
         .unwrap();
     let mut line = String::new();
     std::io::BufRead::read_line(
@@ -1533,7 +1543,12 @@ fn reset_returns_any_key_to_the_package_default_through_the_journal() {
         &["settings", "reset", "--json"][..],
     ] {
         assert_eq!(
-            f.command().args(args).output().unwrap().status.code(),
+            f.command()
+                .args(args)
+                .guarded_output()
+                .unwrap()
+                .status
+                .code(),
             Some(2)
         );
     }
@@ -1646,7 +1661,7 @@ impl Stopped {
             .env("EMAKI_TEST_PAUSE", phase)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .spawn()
+            .guarded_spawn()
             .unwrap();
         let mut guard = Self(child);
         let deadline = Instant::now() + CHILD_DEADLINE;
@@ -1680,7 +1695,7 @@ impl Stopped {
                     "import os,signal,sys;os.kill(int(sys.argv[1]),signal.SIGCONT)",
                     &self.0.id().to_string()
                 ])
-                .status()
+                .guarded_status()
                 .unwrap()
                 .success()
         );
@@ -1826,7 +1841,7 @@ fn production_build_cannot_enable_fault_hooks_by_environment() {
         ])
         .env("EMAKI_TEST_PAUSE", "before_rename")
         .stdout(std::process::Stdio::null())
-        .spawn()
+        .guarded_spawn()
         .unwrap();
     let deadline = Instant::now() + CHILD_DEADLINE;
     loop {
@@ -2128,7 +2143,7 @@ fn login_keeps_valid_overrides_when_recovery_metadata_is_unreadable() {
     let out = f
         .fake("ok")
         .args(["settings", "session-config"])
-        .output()
+        .guarded_output()
         .unwrap();
     assert!(out.status.success(), "{out:?}");
     assert!(String::from_utf8_lossy(&out.stderr).contains("using your current managed overrides"));
@@ -2233,8 +2248,9 @@ fn every_packaged_shortcut_has_an_editable_catalog_action() {
         .filter(|r| r["key"].as_str().unwrap().starts_with("shortcuts."))
         .collect();
     let package = include_str!("../../../niri/default.kdl");
+    // The top-level block, not recent-windows' nested one.
     let binds = package
-        .split_once("binds {\n")
+        .split_once("\nbinds {\n")
         .unwrap()
         .1
         .split_once("\n}")
@@ -2255,7 +2271,7 @@ fn every_packaged_shortcut_has_an_editable_catalog_action() {
     }
     assert_eq!(
         row(&reply, "shortcuts.Alt+Tab")["title"],
-        "Focus previous window"
+        "Switch windows"
     );
 }
 
@@ -2363,7 +2379,7 @@ fn notification_rules_have_history_reset_and_undo() {
                 "--timeout-ms",
                 SLOW_MACHINE_TIMEOUT_MS,
             ])
-            .output()
+            .guarded_output()
             .unwrap();
         let value: Value = serde_json::from_slice(&output.stdout).unwrap();
         assert!(output.status.success(), "{value}");
@@ -2480,7 +2496,7 @@ fn window_behavior_validation_failure_preserves_source_and_history() {
                     "--timeout-ms",
                     SLOW_MACHINE_TIMEOUT_MS,
                 ])
-                .output()
+                .guarded_output()
                 .unwrap();
             let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
             assert!(!out.status.success(), "{reply}");
@@ -2569,7 +2585,7 @@ fn window_behavior_and_accent_failed_live_load_restore_previous_fragment_and_sou
                 "--timeout-ms",
                 SLOW_MACHINE_TIMEOUT_MS,
             ])
-            .output()
+            .guarded_output()
             .unwrap();
         server.join().unwrap();
         fs::remove_file(socket).unwrap();
@@ -2715,7 +2731,7 @@ fn later_personal_configuration_keeps_stored_device_and_shortcut_overrides_inert
         .command()
         .env("HOME", &f.root)
         .args(["settings", "session-config"])
-        .output()
+        .guarded_output()
         .unwrap();
     assert!(result.status.success(), "{result:?}");
     let wrapper = fs::read_to_string(String::from_utf8(result.stdout).unwrap().trim()).unwrap();
@@ -2737,8 +2753,8 @@ fn appearance_persists_resets_and_undoes_with_validated_schedule() {
     let f = Fixture::new();
     let defaults = f.run(&["list"]).1;
     for (key, default, value) in [
-        ("appearance.theme", "dark", "automatic"),
-        ("appearance.accent", "orange", "violet"),
+        ("appearance.theme", "light", "automatic"),
+        ("appearance.accent", "rose", "violet"),
         ("appearance.light_time", "07:00", "08:15"),
         ("appearance.dark_time", "19:00", "20:45"),
     ] {
@@ -2784,6 +2800,28 @@ fn appearance_persists_resets_and_undoes_with_validated_schedule() {
 }
 
 #[test]
+fn appearance_upgrade_without_theme_uses_light_and_preserves_saved_modes() {
+    let f = Fixture::new();
+    // Older profiles can have other overrides but no theme row.
+    f.manual("schema_version = 1\n[appearance]\naccent = \"rose\"\n");
+    let before = fs::read(f.source()).unwrap();
+    let (out, listed) = f.run(&["list"]);
+    assert!(out.status.success(), "{listed}");
+    assert_eq!(row(&listed, "appearance.theme")["value"], "light");
+    assert_eq!(row(&listed, "appearance.theme")["default"], "light");
+    assert!(row(&listed, "appearance.theme")["override_value"].is_null());
+    assert_eq!(fs::read(f.source()).unwrap(), before);
+    for mode in ["dark", "automatic"] {
+        f.set("appearance.theme", mode);
+        let saved = fs::read(f.source()).unwrap();
+        let (out, listed) = f.run(&["list"]);
+        assert!(out.status.success(), "{listed}");
+        assert_eq!(row(&listed, "appearance.theme")["value"], mode);
+        assert_eq!(fs::read(f.source()).unwrap(), saved);
+    }
+}
+
+#[test]
 fn appearance_equal_times_in_manual_source_are_rejected() {
     let f = Fixture::new();
     f.manual("schema_version = 1\n[appearance]\nlight_time = \"19:00\"\n");
@@ -2808,8 +2846,8 @@ fn appearance_page_reset_is_atomic_for_reversed_schedule_and_undo() {
     let (out, reset) = f.run(&["reset", "appearance"]);
     assert!(out.status.success(), "{reset}");
     for (key, value) in [
-        ("appearance.theme", "dark"),
-        ("appearance.accent", "orange"),
+        ("appearance.theme", "light"),
+        ("appearance.accent", "rose"),
         ("appearance.light_time", "07:00"),
         ("appearance.dark_time", "19:00"),
     ] {
@@ -2838,6 +2876,15 @@ fn appearance_page_reset_is_atomic_for_reversed_schedule_and_undo() {
     assert!(!out.status.success(), "{rejected}");
     assert_eq!(rejected["reason"], "undo_conflict");
     assert_eq!(tree(&f.root), before);
+}
+
+/// A fake terminal stopped however the test ends.
+struct Terminal(std::process::Child);
+impl Drop for Terminal {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
 }
 
 #[test]
@@ -2916,6 +2963,73 @@ fn appearance_accent_live_reload_reset_and_shell_failure_restore_border() {
                 .unwrap();
         }
     });
+    // Two terminals: one of this session (its include names our runtime files), one of another.
+    let kitty = f.root.join("bin/kitty");
+    fs::write(
+        &kitty,
+        "#!/bin/sh\nprintf kitty > /proc/$$/comm\ntrap 'echo reload >> \"$KITTY_MARK\"' USR1\necho ready > \"$KITTY_MARK\"\nwhile :; do sleep 0.02; done\n",
+    )
+    .unwrap();
+    fs::set_permissions(&kitty, fs::Permissions::from_mode(0o700)).unwrap();
+    // Keep a writable descriptor open: direct execution would fail with ETXTBSY.
+    // The shell reads the fixture as data, even if another test fork inherits it.
+    let _kitty_writer = fs::OpenOptions::new().write(true).open(&kitty).unwrap();
+    let other_runtime = f.root.join("other-runtime");
+    fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&other_runtime)
+        .unwrap();
+    let terminal = |runtime: &Path, mark: &Path| {
+        // Null stdio: a leftover child must not hold the test runner's pipes open.
+        let child = Terminal(
+            Command::new("/bin/sh")
+                .arg(&kitty)
+                .env("XDG_RUNTIME_DIR", runtime)
+                .env("KITTY_MARK", mark)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .guarded_spawn()
+                .unwrap(),
+        );
+        let deadline = Instant::now() + CHILD_DEADLINE;
+        while !fs::read_to_string(mark).is_ok_and(|text| text.starts_with("ready")) {
+            assert!(Instant::now() < deadline, "fake terminal did not start");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        child
+    };
+    let (ours_mark, other_mark) = (f.root.join("ours"), f.root.join("other"));
+    let terminals = [
+        terminal(&f.root.join("runtime"), &ours_mark),
+        terminal(&other_runtime, &other_mark),
+    ];
+    let reloads = |expected: usize| {
+        let deadline = Instant::now() + CHILD_DEADLINE;
+        loop {
+            let count = fs::read_to_string(&ours_mark).unwrap().lines().count() - 1;
+            if count >= expected || Instant::now() > deadline {
+                std::thread::sleep(Duration::from_millis(100));
+                return fs::read_to_string(&ours_mark).unwrap().lines().count() - 1;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    };
+    let accent = f.root.join("runtime/emaki-settings/accent");
+    let assert_accent = |base: &str, copies: bool| {
+        let kitty = fs::read_to_string(accent.join("kitty.conf")).unwrap();
+        assert!(
+            kitty.contains(&format!("selection_background #{base}")),
+            "{kitty}"
+        );
+        for copy in ["fuzzel/fuzzel.ini", "hypr/hyprlock.conf"] {
+            let text = fs::read_to_string(accent.join(copy)).ok();
+            assert_eq!(text.is_some(), copies, "{copy}");
+            if let Some(text) = text {
+                assert!(text.contains(base), "{copy}: {text}");
+            }
+        }
+    };
     let run = |args: &[&str]| {
         let out = f
             .fake("ok")
@@ -2923,26 +3037,32 @@ fn appearance_accent_live_reload_reset_and_shell_failure_restore_border() {
             .arg("settings")
             .args(args)
             .args(["--json", "--timeout-ms", SLOW_MACHINE_TIMEOUT_MS])
-            .output()
+            .guarded_output()
             .unwrap();
         let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
         (out, reply)
     };
-    for args in [
+    for (step, args) in [
         vec!["set", "appearance.accent", "teal"],
         vec!["reset", "appearance.accent"],
         vec!["set", "appearance.accent", "blue"],
-    ] {
+    ]
+    .into_iter()
+    .enumerate()
+    {
         let (out, reply) = run(&args);
         assert!(out.status.success(), "{reply}");
         assert_eq!(reply["session_applied"], true);
+        // The packaged default (Rose) needs no copies; kitty's file always names the accent.
+        match args[0] {
+            "reset" => assert_accent("e780aa", false),
+            _ if args[2] == "teal" => assert_accent("61b5a5", true),
+            _ => assert_accent("78aaf0", true),
+        }
+        assert_eq!(reloads(step + 1), step + 1, "{args:?}");
         assert_eq!(
             row(&reply, "appearance.accent")["value"],
-            if args[0] == "reset" {
-                "orange"
-            } else {
-                args[2]
-            }
+            if args[0] == "reset" { "rose" } else { args[2] }
         );
     }
     let before = fs::read(f.source()).unwrap();
@@ -2961,6 +3081,11 @@ fn appearance_accent_live_reload_reset_and_shell_failure_restore_border() {
     assert_eq!(reply["session_applied"], false);
     assert_eq!(fs::read(f.source()).unwrap(), before);
     assert_no_transaction_candidate(&f);
+    // The rollback put the terminal and copies back to blue and reloaded the terminal again.
+    assert_accent("78aaf0", true);
+    assert_eq!(reloads(5), 5);
+    assert_eq!(fs::read_to_string(&other_mark).unwrap(), "ready\n");
+    drop(terminals);
     server.join().unwrap();
     fs::remove_file(socket).unwrap();
 }

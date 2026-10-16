@@ -1,4 +1,6 @@
 #!/usr/bin/python3 -I
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Keep primary DRM files open across login sessions without retaining master.
 
 No modesetting, render nodes, or session ownership. Failure to prove a descriptor

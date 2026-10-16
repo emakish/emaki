@@ -7,6 +7,7 @@ import importlib.util
 from contextlib import ExitStack, nullcontext, redirect_stderr, redirect_stdout
 import io
 import json
+import re
 import tempfile
 from pathlib import Path
 import unittest
@@ -17,6 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'installer'), str(ROOT / 'grub')]
 from emaki_installer import boot, errors
 sys.modules['emaki_boot.boot'] = boot
+from emaki_installer import secureboot
+sys.modules['emaki_boot.secureboot'] = secureboot
 sys.modules['emaki_boot.errors'] = errors
 loader = importlib.machinery.SourceFileLoader('boot_order', str(ROOT / 'scripts/emaki-boot-order'))
 spec = importlib.util.spec_from_loader(loader.name, loader)
@@ -168,12 +171,87 @@ class Recovery(unittest.TestCase):
         result = {'state': 'refused', 'changed': False, 'reason': 'invalid_boot_order',
                   'menu': 'refresh_available'}
         output = io.StringIO()
-        with patch.object(module, 'read_marker', return_value=UUID), \
+        with patch.object(module, 'read_marker', return_value=(UUID, UUID)), \
                 patch.object(module.Path, 'read_text', return_value='Dell'), \
                 patch.object(module, 'recover', return_value=result), \
                 patch.object(sys, 'argv', ['emaki-boot-order', '--json']), redirect_stdout(output):
             self.assertEqual(module.main(), 1)
         self.assertEqual(json.loads(output.getvalue()), result)
+
+    def test_service_explains_only_confirmed_priority_recovery(self):
+        for listing, repair, expected in (
+                (inventory(), True, 'recovered'),
+                (inventory('0002,0001,0003'), True, 'ready'),
+                (inventory(), False, 'recovery_available')):
+            output = io.StringIO()
+            current = listing
+            def run(args):
+                nonlocal current
+                if args[:2] == ['efibootmgr', '--bootorder']:
+                    current = inventory(args[2])
+                return current
+            recover = module.recover
+            def recover_fixture(*args, **kwargs):
+                kwargs['menu'] = None
+                return recover(*args, run=run, **kwargs)
+            with self.subTest(state=expected), \
+                    patch.object(module, 'read_marker', return_value=(UUID, UUID)), \
+                    patch.object(module.Path, 'read_text', return_value='Dell'), \
+                    patch.object(module.os, 'geteuid', return_value=0), \
+                    patch.object(module, 'recover', side_effect=recover_fixture), \
+                    patch.object(sys, 'argv', ['emaki-boot-order', '--json'] +
+                                 (['--repair'] if repair else [])), redirect_stdout(output):
+                self.assertEqual(module.main(), 0)
+            answer = json.loads(output.getvalue())
+            self.assertEqual(answer['state'], expected)
+            if expected == 'recovered':
+                self.assertEqual(answer['note'], "Emaki's firmware startup priority was restored.")
+            else:
+                self.assertNotIn('note', answer)
+
+    def test_missing_own_esp_entry_waits_for_boot_complete_with_clean_service_exit(self):
+        own = '87654321-1234-4321-abcd-123456789abc'
+        missing = '\n'.join(line for line in inventory('0001,0003').splitlines()
+                            if not line.startswith('Boot0002')) + '\n'
+        recover = module.recover
+        for repair in (False, True):
+            output = io.StringIO()
+            calls = []
+            def run(args):
+                calls.append(args)
+                return missing
+            def recover_missing(*args, **kwargs):
+                kwargs['menu'] = None
+                return recover(*args, run=run, **kwargs)
+            with self.subTest(repair=repair), \
+                    patch.object(module, 'read_marker', return_value=(own, UUID)), \
+                    patch.object(module.Path, 'read_text', return_value='Dell'), \
+                    patch.object(module.os, 'geteuid', return_value=0), \
+                    patch.object(module, 'recover', side_effect=recover_missing), \
+                    patch.object(sys, 'argv', ['emaki-boot-order', '--json'] +
+                                 (['--repair'] if repair else [])), redirect_stdout(output):
+                self.assertEqual(module.main(), 0)
+            self.assertEqual(json.loads(output.getvalue()), {
+                'state': 'recovery_pending', 'changed': False, 'reason': 'missing_emaki_entry',
+                'note': 'Emaki firmware entry is missing; emaki-boot-complete will attempt recreation.'})
+            self.assertEqual(calls, [['efibootmgr', '-v']])
+
+    def test_deferred_entry_recovery_does_not_hide_invalid_or_unowned_state(self):
+        own = '87654321-1234-4321-abcd-123456789abc'
+        missing = '\n'.join(line for line in inventory('0001,0003').splitlines()
+                            if not line.startswith('Boot0002')) + '\n'
+        for listing, normal, windows in (
+            (missing, False, UUID), (missing, True, own),
+            (missing.replace('0001,0003', '0001,0002,0003'), True, UUID),
+            (missing.replace('0001,0003', '0001,0001,0003'), True, UUID),
+            (inventory('0001,0003').replace(UUID, own), True, UUID),
+            (inventory().replace('grubx64.efi', 'unknown.efi'), True, UUID),
+        ):
+            with self.subTest(listing=listing, normal=normal, windows=windows), \
+                    patch.object(module, 'normal_boot', return_value=normal):
+                answer = module.recover(own, 'Dell', lambda args: listing, True, windows=windows)
+                self.assertEqual(answer['state'], 'refused')
+                self.assertFalse(answer['changed'])
 
     def test_inaccessible_or_invalid_installation_record_still_refuses(self):
         for error in (PermissionError('denied'), ValueError('invalid_installation_record')):
@@ -186,7 +264,7 @@ class Recovery(unittest.TestCase):
 
     def test_missing_firmware_vendor_is_not_non_alongside(self):
         output = io.StringIO()
-        with patch.object(module, 'read_marker', return_value=UUID), \
+        with patch.object(module, 'read_marker', return_value=(UUID, UUID)), \
                 patch.object(module.Path, 'read_text', side_effect=FileNotFoundError('vendor missing')), \
                 patch.object(sys, 'argv', ['emaki-boot-order', '--json']), redirect_stdout(output):
             self.assertEqual(module.main(), 1)
@@ -222,6 +300,24 @@ class Recovery(unittest.TestCase):
                 self.assertEqual(module.recover(UUID, 'Dell Inc.', run, repair=True),
                                  {'state': 'refused', 'changed': False, 'reason': 'unverified_emaki_entry'})
 
+    def test_secure_boot_shim_entry_is_this_installation_loader(self):
+        # A machine that signs its boot files has its firmware entry on shim (both listing shapes).
+        for listing in (inventory().replace('grubx64.efi', 'shimx64.efi'),
+                        inventory18().replace('grubx64.efi', 'shimx64.efi'),
+                        inventory().replace('grubx64.efi', 'SHIMX64.EFI'),
+                        # Boot slots (0.9): "Emaki" names the active slot's shim.
+                        inventory().replace('grubx64.efi', 'a\\shimx64.efi'),
+                        inventory18().replace('grubx64.efi', 'b\\shimx64.efi')):
+            with self.subTest(listing=listing):
+                order = re.search(r'^BootOrder: (\S+)$', listing, re.M)[1].split(',')
+                self.assertEqual(module.proposed_order(listing, UUID),
+                                 (order, ['0002'] + [n for n in order if n != '0002']))
+        # Only shim and GRUB in EFI/Emaki: MokManager or another file is still not verified.
+        for name in ('mmx64.efi', 'shimx64.efi.bak', 'shim.efi', 'a\\mmx64.efi', 'a\\grubx64.efi',
+                     'c\\shimx64.efi', 'a\\b\\shimx64.efi'):
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'unverified_emaki_entry'):
+                module.proposed_order(inventory().replace('grubx64.efi', name), UUID)
+
     def test_stale_same_loader_entry_does_not_block_current_installation(self):
         stale = inventory().splitlines()[3].replace('Boot0002', 'Boot0004').replace(
             UUID, '87654321-1234-4321-abcd-123456789abc')
@@ -247,6 +343,88 @@ class Recovery(unittest.TestCase):
         self.assertEqual([x for x in calls if '--bootorder' in x],
                          [['efibootmgr', '--bootorder', '0002,0001,0003']])
         self.assertEqual(len(calls), 4)
+
+    def test_own_esp_next_to_windows_verifies_each_entry_on_its_own_esp(self):
+        # Since 0.9 Emaki has its own ESP next to Windows: "Emaki" names that partition,
+        # Windows Boot Manager stays on Windows' ESP (the record's esp_partuuid).
+        own = 'aaaaaaaa-1111-4222-8333-444444444444'
+        def two_esps(order='0001,0004,0002,0003', loader='a\\shimx64.efi'):
+            # Windows Boot Manager (0001) on UUID, "Emaki" (0002) on partition 5, Emaki's own ESP.
+            lines = inventory(order).splitlines()
+            # A stale entry of an older shared-ESP installation stays where it is.
+            stale = lines[3].replace('Boot0002', 'Boot0004')
+            lines[3] = lines[3].replace('HD(1,', 'HD(5,').replace(
+                f'{UUID},0x800,0x32000', f'{own},0x9000800,0x200000').replace('grubx64.efi', loader)
+            return '\n'.join(lines + [stale]) + '\n'
+        menu = (f'# Windows firmware target: {UUID} /EFI/Microsoft/Boot/bootmgfw.efi\n'
+                '  if bootnext 0001; then\n')
+        for loader in ('a\\shimx64.efi', 'b\\shimx64.efi', 'grubx64.efi'):
+            with self.subTest(loader=loader):
+                calls = []
+                current = two_esps(loader=loader)
+                def run(args):
+                    nonlocal current
+                    calls.append(args)
+                    if '--bootorder' in args:
+                        current = two_esps(args[-1], loader)
+                        return ''
+                    return current
+                self.pending.unlink(missing_ok=True)
+                self.assertEqual(module.recover(own, 'Dell Inc.', run, True, menu=menu, windows=UUID),
+                                 {'state': 'recovered', 'changed': True, 'menu': 'ready'})
+                self.assertEqual([x for x in calls if '--bootorder' in x],
+                                 [['efibootmgr', '--bootorder', '0002,0001,0004,0003']])
+                self.assertFalse(self.pending.exists())
+        # Status only: Emaki already first on its own ESP, the menu names Windows' ESP.
+        listing = two_esps('0002,0001,0004,0003')
+        self.assertEqual(module.recover(own, 'LENOVO', lambda args: listing, menu=menu, windows=UUID),
+                         {'state': 'ready', 'changed': False, 'menu': 'ready'})
+        # A menu aimed at Emaki's ESP is not the Windows restart: a refresh is offered.
+        wrong = menu.replace(UUID, own)
+        self.assertEqual(module.recover(own, 'LENOVO', lambda args: listing, menu=wrong, windows=UUID),
+                         {'state': 'ready', 'changed': False, 'menu': 'refresh_available'})
+
+    def test_installation_record_names_emaki_and_windows_esps(self):
+        own = 'aaaaaaaa-1111-4222-8333-444444444444'
+        record = self.pending.parent / 'alongside-boot.json'
+        real_fstat = module.os.fstat
+
+        def fstat(fd):
+            # The installer writes the record as root; this test runs unprivileged.
+            values = list(real_fstat(fd))
+            values[4] = 0
+            return module.os.stat_result(values)
+
+        def status(value):
+            record.write_text(json.dumps(value) + '\n')
+            record.chmod(0o644)
+            output = io.StringIO()
+            with patch.object(module, 'MARKER', record), \
+                    patch.object(module.os, 'fstat', side_effect=fstat), \
+                    patch.object(module.Path, 'read_text', return_value='Dell Inc.'), \
+                    patch.object(module, 'recover', return_value={'state': 'ready', 'changed': False}) as recover, \
+                    patch.object(sys, 'argv', ['emaki-boot-order', '--json']), redirect_stdout(output):
+                code = module.main()
+            return code, json.loads(output.getvalue()), recover
+
+        new = {'version': 1, 'esp_partuuid': UUID, 'emaki_esp_partuuid': own,
+               'windows_esp_uuid': 'ABCD-1234'}
+        code, _, recover = status(new)
+        self.assertEqual(code, 0)
+        recover.assert_called_once_with(own, 'Dell Inc.', repair=False,
+                                        menu=Path('/boot/grub/grub.cfg'), windows=UUID)
+        # The older shared layout: one ESP for both entries.
+        code, _, recover = status({'version': 1, 'esp_partuuid': UUID})
+        self.assertEqual(code, 0)
+        recover.assert_called_once_with(UUID, 'Dell Inc.', repair=False,
+                                        menu=Path('/boot/grub/grub.cfg'), windows=UUID)
+        for damaged in (dict(new, emaki_esp_partuuid='x'), dict(new, emaki_esp_partuuid=None),
+                        dict(new, emaki_esp_partuuid=UUID.upper())):
+            with self.subTest(damaged=damaged):
+                code, answer, recover = status(damaged)
+                self.assertEqual((code, answer), (1, {'state': 'refused', 'changed': False,
+                                                      'reason': 'invalid_esp_identity'}))
+                recover.assert_not_called()
 
     def test_apple_only_reads_firmware(self):
         def read(args):
@@ -434,6 +612,24 @@ class Recovery(unittest.TestCase):
         listing = inventory().replace('Boot0001* Windows', 'Boot0001  Windows')
         self.assertEqual(module.refresh_windows_menu(listing, UUID, '', True), 'refresh_pending')
         self.assertEqual(json.loads(self.pending.read_text()), {'boots': 0})
+
+    def test_missing_windows_entry_refreshes_legacy_chainload_only_once(self):
+        listing = inventory().replace('Boot0001* Windows', 'Boot0001  Windows')
+        legacy = ("### BEGIN /etc/grub.d/30_os-prober ###\n"
+                  "menuentry 'Windows Boot Manager' {\n"
+                  "  search --no-floppy --fs-uuid --set=root ABCD-1234\n"
+                  "  chainloader /EFI/Microsoft/Boot/bootmgfw.efi\n"
+                  "}\n### END /etc/grub.d/30_os-prober ###\n")
+        self.assertEqual(module.refresh_windows_menu(listing, UUID, legacy, False),
+                         'refresh_available')
+        self.assertFalse(self.pending.exists())
+        self.assertEqual(module.refresh_windows_menu(listing, UUID, legacy, True),
+                         'refresh_pending')
+        guarded = boot.windows_bootnext_menu(legacy, UUID, 'ABCD-1234', listing)
+        self.pending.unlink()
+        for repair in (False, True):
+            self.assertEqual(module.refresh_windows_menu(listing, UUID, guarded, repair), 'ready')
+            self.assertFalse(self.pending.exists())
 
     def test_menu_failure_cannot_gate_windows_first_recovery(self):
         for failure in ('queue', 'windows', 'read'):

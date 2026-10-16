@@ -1,0 +1,58 @@
+From dfcd738437de5c57208030b4fbb1d984a5b950e0 Mon Sep 17 00:00:00 2001
+From: Emaki contributors <emaki@localhost>
+Date: Thu, 15 Oct 2026 16:00:00 +0000
+Subject: [PATCH] core: query the keyboard modifiers held now
+
+Copyright (C) 2026 Artur Yakymenko
+SPDX-License-Identifier: LGPL-3.0-only
+
+A key event tells QML which modifiers are held, but only when a key event
+arrives. A window that takes the keyboard while a key is already held (a
+window switcher opened by a held Alt+Tab binding) gets no event for that
+key until it is released, and none at all if it was released before the
+focus arrived, so it cannot tell a quick tap from a held modifier.
+
+The compositor sends the modifier state to the client that gains keyboard
+focus right after wl_keyboard.enter, and QtWayland keeps it in its xkb
+state. Quickshell.queryKeyboardModifiers() returns that state through
+QGuiApplication::queryKeyboardModifiers(): Qt.NoModifier while no window
+of this client has keyboard focus.
+---
+ src/core/qmlglobal.cpp | 4 ++++
+ src/core/qmlglobal.hpp | 8 ++++++++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/src/core/qmlglobal.cpp b/src/core/qmlglobal.cpp
+index 31a7e14..d13e9af 100644
+--- a/src/core/qmlglobal.cpp
++++ b/src/core/qmlglobal.cpp
+@@ -419,6 +419,10 @@ QString QuickshellGlobal::iconPath(const QString& icon, const QString& fallback)
+ 
+ bool QuickshellGlobal::hasThemeIcon(const QString& icon) { return QIcon::hasThemeIcon(icon); }
+ 
++int QuickshellGlobal::queryKeyboardModifiers() {
++	return QGuiApplication::queryKeyboardModifiers().toInt();
++}
++
+ bool QuickshellGlobal::hasVersion(qint32 major, qint32 minor, const QStringList& features) {
+ 	return qs::scan::env::PreprocEnv::hasVersion(major, minor, features);
+ }
+diff --git a/src/core/qmlglobal.hpp b/src/core/qmlglobal.hpp
+index 52c24ac..d78e6b5 100644
+--- a/src/core/qmlglobal.hpp
++++ b/src/core/qmlglobal.hpp
+@@ -248,6 +248,14 @@ public:
+ 	Q_INVOKABLE static QString iconPath(const QString& icon, const QString& fallback);
+ 	/// Check if specified icon has an available icon in your icon theme
+ 	Q_INVOKABLE static bool hasThemeIcon(const QString& icon);
++	/// The keyboard modifiers held right now, as @@Qt.KeyboardModifier flags (`Qt.AltModifier`,
++	/// `Qt.MetaModifier`, ...), from the state the compositor last sent to this client.
++	///
++	/// Wayland sends the modifier state only to the client with keyboard focus, right after it
++	/// gains focus and on every change; without focus this returns `Qt.NoModifier`. Unlike a key
++	/// event's `modifiers`, this also tells whether a key pressed before the focus arrived is
++	/// still held: a window opened by a held `Alt+Tab` binding learns whether Alt is still down.
++	Q_INVOKABLE static int queryKeyboardModifiers();
+ 	/// Equivalent to `${Quickshell.configDir}/${path}`
+ 	Q_INVOKABLE [[nodiscard]] QString shellPath(const QString& path) const;
+ 	/// > [!WARNING] Deprecated: Renamed to @@shellPath() for clarity.

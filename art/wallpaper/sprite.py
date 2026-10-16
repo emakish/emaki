@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Turn a sprite drawn on a flat #00FF00 background into an indexed sprite in the ring's palette.
 
   python3 art/wallpaper/sprite.py train.png --palette art/wallpaper/palette-64.gpl --width 372 \

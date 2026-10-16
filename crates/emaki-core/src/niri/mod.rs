@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Niri 26.04 observations and explicit ID-addressed commands.
 pub mod actions;
 mod model;

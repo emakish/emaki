@@ -6,6 +6,10 @@
 var unavailable = "Not available";
 var requesterUnavailable = "Unknown program";
 var requestUnavailable = "A program asks for administrator rights.";
+function runProgram(name, user) {
+    return "Enter an administrator password to run " + (name || "a program")
+        + " as " + (user || "administrator") + ".";
+}
 var messageLabel = "Message";
 var detailsLabel = "Details from the program";
 var redacted = "Hidden";

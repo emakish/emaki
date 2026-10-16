@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Real PNG cover pixels, readiness/two-frame release, and deadline-drain/no-remap paths.
 
 Only Wayland window plumbing and subprocess peers are replaced in an isolated
@@ -129,8 +131,8 @@ def run(scenario):
                     Qt.exit(7);
                 const ok = !startup.skipIntro && !startup.coverActive && (EXPECT_READY ? root.drains === 1 && root.releases === 1 && root.tookShot
                                         : root.drains === 0 && root.releases === EXPECT_RELEASES);
-                console.log("COVER_DONE " + ok);
-                console.log("COVER_CREATED " + root.fixtureCreated);
+                console.info("COVER_DONE " + ok);
+                console.info("COVER_CREATED " + root.fixtureCreated);
                 Qt.exit(ok ? 0 : 5);
             }
         }
@@ -140,6 +142,7 @@ def run(scenario):
         entry = entry[:entry.rfind('}')] + driver + '\n}\n'
         (qml / 'check.qml').write_text(entry)
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QT_SCALE_FACTOR='1',
+                   QT_LOGGING_RULES='*.debug=false',
                    QML_DISABLE_DISK_CACHE='1', EMAKI_SESSION_START=TOKEN, EMAKI_SESSION_SKIP_INTRO='1',
                    PATH=str(base / 'bin') + ':' + os.environ['PATH'], RELEASE_FILE=str(base/'release'),
                    XDG_RUNTIME_DIR=str(runtime_path(base)), XDG_CONFIG_HOME=str(base/'config'),
@@ -193,6 +196,12 @@ def run(scenario):
         else:
             assert not (base/'shot.png').exists(), 'late compositor cover mapped a second sheet'
         assert (base/'release').exists() == (scenario in (*DRAIN, 'hung-release'))
+        # A login without its pour-down says so at warning level (the session filters debug).
+        missing = [event for event in events if event['phase'] == 'no-drain']
+        drained = any(event['phase'].startswith('drain-') for event in events)
+        assert len(missing) == (0 if drained else 1) and drained == (scenario in DRAIN), (scenario, events)
+        assert all(set(event) == {'phase', 'loaded', 'atMs'} for event in missing), missing
+        assert re.search(r'WARN[^\n]*EMAKI_SESSION_COVER \{"phase":"no-drain"', log) or drained, log
         print('PASS actual cover:',scenario)
 
 for scenario in sys.argv[1:] or ('ready','deadline','slow-reply','observer-nonzero','observer-eof','observer-fails',

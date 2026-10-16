@@ -51,7 +51,8 @@ FocusScope {
             if (count > 0)
                 parts.push(count + " " + names[key][count === 1 ? 0 : 1]);
         }
-        return parts.length ? "Removed for privacy before you see it: " + parts.join(", ") + "." : "Your user name, computer name, e-mail and network addresses, serial numbers, passwords and tokens are removed before you see the report. None were found.";
+        const notice = "Known kinds of sensitive information are removed. Review the preview before sending.";
+        return notice + (parts.length ? " Removed: " + parts.join(", ") + "." : " No known kinds of sensitive information were found.");
     }
     Keys.onEscapePressed: event => {
         if (view.controller.previewOpen)
@@ -313,7 +314,8 @@ FocusScope {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.max(0, footer.width - closeButton.width - sendButton.width - 20)
-                text: "Nothing leaves this computer until you choose Send. Send opens the issue form on GitHub; it is posted only when you submit it there."
+                objectName: "report-send-notice"
+                text: "Nothing leaves this computer until you choose Send. Send opens a new public GitHub issue form in your browser; it is posted only when you submit it there."
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
                 color: SettingsTheme.dim

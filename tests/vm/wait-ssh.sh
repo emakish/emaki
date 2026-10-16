@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Wait until key-based login to the VM is available (up to ~3 minutes).
 # Do not use ssh-keyscan: it disconnects before login, and OpenSSH ≥ 9.8 (PerSourcePenalties)
 # bans the host address for minutes after repeated disconnects — one run waited 7.5 minutes.

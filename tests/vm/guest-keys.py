@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """VM ONLY, root: real uinput keyboard. Text comes from stdin, never password argv.
 
   printf arch | sudo python3 tests/vm/guest-keys.py text key:Return

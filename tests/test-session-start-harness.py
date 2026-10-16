@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Offline startup-capture tests: no VM, SSH, root, sockets or live services."""
 import importlib.util
 import io

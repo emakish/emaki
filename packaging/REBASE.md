@@ -34,6 +34,7 @@ one linear stack on top of tag `v26.04`.
 | `0011-freeze-session-safety-bindings.patch` | patch delivered in the distribution tree | `v26.04` with `0001`–`0010` applied |
 | `0012-report-trusted-shell-cast-pid.patch` | patch delivered in the distribution tree | `v26.04` with `0001`–`0011` applied |
 | `0013-fullscreen-panel-reservation.patch` | patch delivered in the distribution tree | `v26.04` with `0001`–`0012` applied |
+| `0014-report-tiled-window-positions.patch` | patch delivered in the distribution tree | `v26.04` with `0001`–`0013` applied |
 
 Patch 0013 keeps a fullscreen top inset per workspace, separate from the working
 area. Its only input is a mapped layer surface named `emaki-fullscreen-inset`
@@ -53,6 +54,34 @@ transfer; protocol fixtures for the trusted shell's marker, an ordinary client's
 ignored marker, the panel's zone, unmap and output moves), part of the package's
 `emaki_` filter. Tests alone are not enough: also build the patched tree without
 `cfg(test)` (`cargo check --lib --bins` or `cargo build --release`).
+
+Patch 0014 adds the optional `emaki_tile_pos_in_view` to niri-ipc's `WindowLayout`
+(omitted when absent, so upstream clients and the core's crates.io niri-ipc read the JSON
+unchanged) and fills it in `ScrollingSpace::tiles_with_ipc_layouts` for every tiled
+window: `column_x - target_view_pos + tile offset`, rounded to physical pixels like the
+render position. Keep the target view position (not the animated one): a scroll must
+change the IPC layout once, not on every frame. Leave `tile_pos_in_workspace_view` as
+0013 reports it; the shell's fullscreen detection relies on its other tiles having none.
+The shell's window switcher reads the new field from its own event stream
+(`shell/WindowLabels.qml`) to cut window pictures out of a capture. `check-assumptions.py`
+carries the reviewed hashes of `niri-ipc/src/lib.rs` and `src/layout/scrolling.rs`.
+Tests: `cargo test --lib emaki_tile_positions` (IPC position equals the drawn position
+once the view rests, at 1, 1.25 and 2; unchanged by a running scroll animation; JSON
+round trip with and without the field), part of the `emaki_` filter.
+
+Patch 0014 also transfers the keyboard in FocusWindow and FocusWindowPrevious: after a
+target is found, clear `layer_shell_on_demand_focus`, select the window and call
+`update_keyboard_focus()` before returning. Do not wait for the next refresh: another
+input callback in the same dispatch must already reach the selected window. Keep the
+existing lock, trusted prompt and exclusive-layer arbitration in that function.
+`cargo test --lib emaki_switcher_handover` records real `wl_keyboard` events for both
+actions and both overlay/action orders, plus exclusive-layer and missing-target cases.
+An overlay released before a request necessarily exposes the old window; the shell's
+lifecycle test separately requires focus confirmation before its None commit.
+
+After rebasing, run `tests/test-fork-assumptions.py` against the package files as well
+as the guard on the applied source. Its hunk-count check catches a truncated new-file
+hunk that `patch` can otherwise accept while dropping its final brace.
 
 Check that the stack is linear (in the niri fork clone):
 
@@ -796,6 +825,19 @@ launches after any launcher rebase, and retain application-scope stripping as a 
 Run the package's new `trusted_prompt`, `trusted_client`, niri-config `trusted` and niri-ipc
 `trusted_shell` tests, alongside the existing layer, cursor, lock and capture suites. The source
 fingerprint guard now includes the private launcher, input handlers, IPC routes and prompt renderer.
+The supervisor also probes the exact unreaped shell PID through `qs ipc --pid` and
+`system ping`; a successful process existence check is not responsiveness. Preserve
+15-second probe intervals, the 45-second deadline, the initial startup allowance, and a fresh observation window
+when the supervisor stalls or resumes. A heartbeat failure revokes the private
+connection before termination and consumes the existing bounded restart budget;
+an explicit restart retains its budget-reset behavior. Probe children receive no private
+Wayland descriptor. The executable is an absolute build-time path independent of the login
+PATH. Probe spawning, polling and reaping stay on a worker; polling errors must retire that
+probe and permit later attempts without blocking compositor dispatch. Run
+`python3 tests/test-shell-heartbeat.py` for delayed replies, supervisor gaps and a
+real stopped child with isolated mock transport. This does not replace a nested
+session test of the actual shell IPC.
+
 Run `python3 tests/test-trusted-shell-launch.py` for the preparation wrapper, and
 `python3 tests/vm/run-trusted-prompt.py --help` for actual guest acceptance. The VM runner requires a
 real shell trigger, denies an ordinary same-namespace/exclusive client before configure, compares

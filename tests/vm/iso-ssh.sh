@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 set -Eeuo pipefail
 # shellcheck source=tests/vm/iso-common.sh
 source "$(dirname -- "$(readlink -f -- "$0")")/iso-common.sh"

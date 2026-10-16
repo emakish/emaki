@@ -18,6 +18,7 @@ try:
 except ModuleNotFoundError:
     import catalog
 import emaki_update_root
+from emaki_update_space import SPACE_ADVICE
 
 ENV = {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C', 'SYSTEMD_COLORS': '0'}
 SERVICE = 'emaki-update.service'
@@ -93,8 +94,8 @@ def apply():
                             continue
                         message = ''.join(char for char in message if ord(char) >= 32 or char == '\t')[:4096]
                         if re.fullmatch(r'Not enough free space for this update: it needs about '
-                                        r'\d+\.\d [GM]B, \d+\.\d [GM]B is free\. '
-                                        r'Free some space, then try again\.', message):
+                                        r'\d+\.\d [GM]B, \d+\.\d [GM]B is free\. ' +
+                                        re.escape(SPACE_ADVICE), message):
                             space_refusal = message
                         if (message.startswith('The update was refused because these packages '
                                                'are held after a restore: ')
@@ -123,6 +124,8 @@ def apply():
                 message = update_refusal
             elif before != after:
                 message = 'The update did not finish. Some packages changed. Review the details before trying again.'
+                if space_refusal:
+                    message += ' ' + space_refusal
             elif space_refusal:
                 message = space_refusal
         emit('finished', ok=status == 0, message=message, restart=restart, signOut=sign_out)

@@ -5,6 +5,7 @@
 # network. Mode (profile/mode): ok | big | fail | bad | badurl | huge | ... (others behave as ok).
 # calls.jsonl gets argv[1:] per call; stdin.jsonl gets, per url call, the stdin byte length and the
 # longest argument of this process and of its parent (the document must come on stdin, not argv).
+import time
 import json
 import os
 import sys
@@ -32,6 +33,9 @@ if args[:1] == ['compose']:
          'text': 'x' * 150000 if mode == 'huge' else 'line one\nline two', 'default': True},
     ], 'removed': {'user': 2, 'host': 1, 'email': 0, 'ip': 1, 'mac': 0, 'serial': 0, 'secret': 1}}))
 elif args[:1] == ['url']:
+    if mode == 'slow':
+        # Cross a fixture stage tick without requiring host contention.
+        time.sleep(1.0)
     data = sys.stdin.buffer.read()
     try:
         parent = Path(f'/proc/{os.getppid()}/cmdline').read_bytes().split(b'\0')

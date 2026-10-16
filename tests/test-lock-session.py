@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Production input/session integration with deliberately broken optional visuals."""
 from runtime_fixture import runtime_path
 import json

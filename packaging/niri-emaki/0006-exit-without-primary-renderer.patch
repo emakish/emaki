@@ -290,7 +290,7 @@ diff --git a/src/niri.rs b/src/niri.rs
 index 1910d1b4..36637419 100644
 --- a/src/niri.rs
 +++ b/src/niri.rs
-@@ -755,7 +755,7 @@ impl State {
+@@ -756,7 +756,7 @@ impl State {
              create_wayland_socket,
              is_session_instance,
          );

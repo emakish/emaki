@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Artur Yakymenko
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -56,7 +58,7 @@ ShellRoot {
             if (name === "excess")
                 return auth.edit("🔒".repeat(1025));
             if (name === "nul")
-                return auth.edit("bad\u0000input");
+                return auth.edit("nul-credential-sentinel-\u0000input");
             if (name === "submit")
                 auth.submit();
             else if (name === "ready")
