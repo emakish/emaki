@@ -180,7 +180,7 @@ ColumnLayout {
                 Shell.Icon {
                     id: releaseIcon
                     kind: "logo"
-                    visible: status === Image.Ready
+                    visible: ready
                     width: 44; height: 44
                     Layout.preferredWidth: 44; Layout.preferredHeight: 44
                     // A hidden icon leaves its cell to the text.

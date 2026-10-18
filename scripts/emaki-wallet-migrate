@@ -30,6 +30,8 @@ Account passwords keep their labels and attributes. Application master keys are 
 as raw bytes so sandboxed applications can keep reading their encrypted data.
 The original keyring files are never changed or removed.
 If old application keys cannot be copied, password storage stays paused until recovery.
+Keys with empty or invalid application identifiers are recorded as unrecoverable;
+they do not pause password storage or prevent migration from finishing.
 Recovery can open the destination privately; log out and log in again afterwards.
 Use emaki-keyring-recover --replace-portal-keys only to restore an existing old key
 over a different key created after the update. Close affected applications first.
@@ -221,8 +223,15 @@ def transfer(source_bus, destination_bus, path, *, flush=True, replace_portal_ke
                 try:
                     entry['label'] = prop(source_bus, item, ITEM, 'Label')
                     attributes = prop(source_bus, item, ITEM, 'Attributes')
-                    raw, content_type = secret(source_bus, item, source_session)
                     entry['kind'] = 'portal' if attributes.get('xdg:schema') == 'org.freedesktop.portal.Secret' else 'password'
+                    if entry['kind'] == 'portal':
+                        app_id = attributes.get('app_id', '')
+                        if not app_id or '/' in app_id or '\0' in app_id:
+                            entry.update(status='unrecoverable', reason=
+                                         'The application identifier is empty or invalid; this key was not copied and stays in the old keyring.')
+                            write_json(path, report)
+                            continue
+                    raw, content_type = secret(source_bus, item, source_session)
                     # The old service reports text/plain even for arbitrary binary secrets.
                     try:
                         raw.decode('utf-8')
@@ -231,9 +240,8 @@ def transfer(source_bus, destination_bus, path, *, flush=True, replace_portal_ke
                     target_label = entry['label'] or 'Saved password'
                     target_attributes = attributes
                     if entry['kind'] == 'portal':
-                        app_id = attributes.get('app_id', '')
-                        if not app_id or '/' in app_id or '\0' in app_id or len(raw) != 64:
-                            raise RuntimeError('The application master key or its application identifier is invalid.')
+                        if len(raw) != 64:
+                            raise RuntimeError('The application master key is invalid.')
                         target_label = 'xdg-desktop-portal/' + app_id
                         target_attributes = {}
                         content_type = 'application/octet-stream'
@@ -284,9 +292,11 @@ def transfer(source_bus, destination_bus, path, *, flush=True, replace_portal_ke
         # Live recovery verifies memory and leaves the normal save timer running.
         for identity in pending:
             report['items'][identity]['status'] = 'migrated'
-        report['complete'] = readable and all(item['status'] == 'migrated' for item in report['items'].values())
+        report['complete'] = readable and all(item['status'] in ('migrated', 'unrecoverable')
+                                             for item in report['items'].values())
         report['portal_keys_safe'] = readable and all(
-            item['status'] == 'migrated' for item in report['items'].values() if item.get('kind') == 'portal')
+            item['status'] in ('migrated', 'unrecoverable')
+            for item in report['items'].values() if item.get('kind') == 'portal')
     except Exception as error:
         report['errors'].append(safe_reason(error, 'The password stores could not be read or saved; retry recovery.'))
     finally:
@@ -613,10 +623,17 @@ def run_login(env, send_notice=notify):
     if report.get('notified'):
         return
     copied = sum(item['status'] == 'migrated' for item in report['items'].values())
-    remaining = len(report['items']) - copied
+    unrecoverable = sum(item['status'] == 'unrecoverable' for item in report['items'].values())
+    remaining = len(report['items']) - copied - unrecoverable
     locked = sum(item['status'] == 'locked' for item in report['collections'].values())
     message = SUCCESS if report['complete'] else FAILURE
+    if report['complete'] and unrecoverable:
+        message = ('Saved password migration finished. Your original keyring files are unchanged. '
+                   'Keep the old package [GNOME Keyring] until every account has verified its passwords and application data.')
     message += f' Copied items: {copied}.'
+    if unrecoverable:
+        message += (f' Unrecoverable application keys: {unrecoverable}. '
+                    'Their application identifiers are empty or invalid, so they were not copied; the originals stay in the old keyring.')
     if report.get('source_read') or report['items']:
         message += f' Items needing recovery: {remaining}.'
     else:

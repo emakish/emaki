@@ -28,7 +28,7 @@ import time
 import tomllib
 import warnings
 
-from wallpaper import MAX_CONFIG, MAX_IMAGE, MAX_PIXELS, PUBLISHED_FORMATS, bounded_descriptor, bounded_no_symlinks, open_no_symlinks
+from wallpaper import MAX_CONFIG, MAX_IMAGE, MAX_PIXELS, PUBLISHED_FORMATS, current_wallpaper_config, bounded_descriptor, bounded_no_symlinks, open_no_symlinks
 
 PUBLISH_ROOT = Path('/var/lib/emaki-greeter/users')
 MAX_SECTIONS = 32
@@ -119,8 +119,10 @@ def image_path(value):
 
 
 def read_config(config_path):
-    data, _ = bounded_no_symlinks(config_path, MAX_CONFIG)
-    config = tomllib.loads(data.decode('utf-8'))
+    config = current_wallpaper_config(Path(config_path).parent.parent, strict=True)
+    if config is None:
+        data, _ = bounded_no_symlinks(config_path, MAX_CONFIG)
+        config = tomllib.loads(data.decode('utf-8'))
     if not config or len(config) > MAX_SECTIONS:
         raise ValueError('config_limit')
     # Only static exact output selectors can be reproduced. Wpaperd's description,
@@ -363,7 +365,7 @@ def attempt(config_path, destination):
 
 
 def watch_paths(config_path):
-    candidates = {Path(config_path)}
+    candidates = {Path(config_path), Path(config_path).parent.parent / 'emaki/settings.toml'}
     try:
         config = read_config(config_path)
         candidates.update(image_path(options['path']) for options in config.values() if 'path' in options)

@@ -75,6 +75,23 @@ class Sources(unittest.TestCase):
         self.assertIn('https://example.org/demo', text)
         self.assertIn("Emaki's own copy will be added.", text)
 
+    def test_tag_tree_directions_say_the_original_is_no_longer_served(self):
+        reason = next(iter(m.source_routes.TAG_TREES.values()))['reason']
+        records = {
+            'libnewt.pkg': {'name': 'libnewt', 'version': '0.52.25-2', 'sha256': 'a' * 64,
+                            'archive': 'libnewt.src.tar.gz',
+                            'source_routes': [{'kind': 'reviewed-tag-tree', 'reason': reason}]},
+            'other.pkg': {'name': 'other', 'version': '1-1', 'sha256': 'b' * 64,
+                          'archive': 'other.src.tar.gz'}}
+        text = m.directions(records, 'https://dl.emaki.sh/iso/0.9.0')
+        libnewt, other = text.split('\n\n')[2:4]
+        self.assertIn('\n  Note: The original archive\n  https://pagure.io/newt/archive/r0-52-25/', libnewt)
+        self.assertEqual(' '.join(line.strip() for line in libnewt.splitlines()[3:])
+                         .removeprefix('Note: '), reason)
+        self.assertTrue(all(len(line) <= 88 for line in libnewt.splitlines()[3:]))
+        self.assertEqual(other, 'other 1-1\n  https://dl.emaki.sh/iso/0.9.0/sources/sha256/' + 'b' * 64 +
+                         '/other.src.tar.gz\n  SHA-256: ' + 'b' * 64)
+
     def test_missing_sources_refuses_invalid_records(self):
         filename, expected = self.partial_fixture()
         original = json.dumps(self.missing_data)
@@ -495,6 +512,108 @@ class Sources(unittest.TestCase):
             m.check_recipe(text.replace('/gnulib.git', '/other.git'), record)
         with self.assertRaisesRegex(ValueError, 'package base'):
             m.check_recipe(text, dict(record, base='other'))
+
+    def test_image_090_submodule_reviews_match_exact_recipe_sources(self):
+        # Source lines as in each binary-matched recipe's .SRCINFO.
+        reviewed = {
+            'glib2': ('2.90.1-1', '1519e624ccef91cbc38070996b709e48ef53d01c26576e6a5b1df379c8bc195e',
+                      ['git+https://gitlab.gnome.org/GNOME/glib.git?signed#tag=2.90.1',
+                       'git+https://gitlab.gnome.org/GNOME/gvdb.git',
+                       '0001-glib-compile-schemas-Remove-noisy-deprecation-warnin.patch']),
+            'qt6-webengine': ('6.11.2-2', '52022b2a204a1b837f033457751d8a07658313ed726270b6215b622871aeb307',
+                              ['git+https://code.qt.io/qt/qtwebengine#tag=v6.11.2',
+                               'git+https://code.qt.io/qt/qtwebengine-chromium']),
+            'glycin': ('2.2.2-1', '1218e2a09459a357fc6011d2a7e5b45e59459f4eed8805a6e7fae16ab58ea50b',
+                       ['git+https://gitlab.gnome.org/GNOME/glycin.git#tag=2.2.2',
+                        'git+https://gitlab.gnome.org/sophie-h/test-images.git']),
+            'sbsigntools': ('0.9.5-4', 'e15882ab88bdc7ab5a08a49915cd01d2204412105472d520e00db7e41e0098c8',
+                            ['git+https://git.kernel.org/pub/scm/linux/kernel/git/jejb/sbsigntools.git'
+                             '#tag=8445b18f64e60137408a4867fbcbb9ba112c583a?signed',
+                             'git+https://git.ozlabs.org/ccan']),
+        }
+        for base, (version, sha, sources) in reviewed.items():
+            with self.subTest(base=base):
+                pkgver, pkgrel = version.split('-')
+                record = {'name': base, 'base': base, 'version': version, 'recipe_sha256': sha}
+                sums = ''.join('sha256sums = ' + ('SKIP' if index == 1 else 'a' * 64) + '\n'
+                               for index in range(len(sources)))
+                text = (f'pkgname = {base}\npkgver = {pkgver}\npkgrel = {pkgrel}\n'
+                        + ''.join('source = ' + source + '\n' for source in sources) + sums)
+                m.check_recipe(text, record)
+                mapping = m.recipe_submodules(text, record)
+                self.assertEqual(list(mapping), [sources[1]])
+                self.assertEqual(mapping[sources[1]]['primary_source'], sources[0])
+                self.assertEqual(mapping[sources[1]]['additional_primary_commits'], [])
+                # glycin is also a reviewed Cargo recipe, refused there first.
+                with self.assertRaisesRegex(ValueError, 'unpinned|reviewed recipe'):
+                    m.check_recipe(text, dict(record, recipe_sha256='0' * 64))
+                with self.assertRaisesRegex(ValueError, 'package base|base differs'):
+                    m.check_recipe(text, dict(record, base='other'))
+                with self.assertRaisesRegex(ValueError, 'mapping differs'):
+                    m.check_recipe(text.replace(sources[1], sources[1] + '-other'), record)
+        glycin = m.OMITTED_GITLINKS[reviewed['glycin'][1]]
+        self.assertEqual(glycin['gitmodules_sha256'],
+                         m.OMITTED_GITLINKS['5f157fb66b7d8d4363e93c13d339549cecba4d58f2602fac641fef4155fdebfe']
+                         ['gitmodules_sha256'])
+        self.assertEqual(set(glycin['paths']), {'libglycin-rebind/gir', 'libglycin-rebind/gir-files'})
+
+    def test_exact_object_tag_without_checksum_requires_reviewed_recipe(self):
+        record = {'name': 'libfdk-aac', 'base': 'libfdk-aac', 'version': '2.0.3-2',
+                  'recipe_sha256': '6c6b5058d70c133ec8822d924dee62905bb38ab69ad30c6b5719d4bc913828ea'}
+        source = 'git+https://github.com/mstorsjo/fdk-aac.git#tag=716f4394641d53f0d79c9ddac3fa93b03a49f278'
+        text = ('pkgname = libfdk-aac\npkgver = 2.0.3\npkgrel = 2\nsource = ' + source +
+                '\nb2sums = SKIP\n')
+        m.check_recipe(text, record)
+        with self.assertRaisesRegex(ValueError, 'non-SKIP'):
+            m.check_recipe(text, dict(record, recipe_sha256='0' * 64))
+        with self.assertRaisesRegex(ValueError, 'non-SKIP'):
+            m.check_recipe(text, dict(record, base='other'))
+        with self.assertRaisesRegex(ValueError, 'non-SKIP'):
+            m.check_recipe(text.replace('716f4394', '00000000'), record)
+        # A named tag can move, even in the reviewed table.
+        with patch.dict(m.EXACT_GIT_SOURCES, {('libfdk-aac', record['recipe_sha256']):
+                                              source.split('#')[0] + '#tag=v2.0.3'}):
+            with self.assertRaisesRegex(ValueError, 'non-SKIP'):
+                m.check_recipe(text.replace(source.split('#')[1], 'tag=v2.0.3'), record)
+        with patch.object(m, 'fetch_git_reference') as fetch:
+            self.assertTrue(m.prepare_exact_git(text, record, self.root))
+            fetch.assert_called_once_with(source, self.root, env=None)
+
+    def test_reviewed_mercurial_tag_requires_checksum_and_exact_changeset(self):
+        record = {'name': 'nss', 'base': 'nss', 'version': '3.131-1',
+                  'recipe_sha256': 'ee71973964185ca07dc0b3139cc67f249d980a6487fb5f2034befe2a0ec40ef2'}
+        source = 'hg+https://hg.mozilla.org/projects/nss#tag=NSS_3_131_RTM'
+        changeset = '698317f4eaacea2cf2461ec9854f80ac62cdddb9'
+        text = ('pkgname = nss\npkgver = 3.131\npkgrel = 1\nsource = ' + source +
+                '\nsource = bundle.sh\nb2sums = ' + 'a' * 128 + '\nb2sums = ' + 'b' * 128 + '\n')
+        m.check_recipe(text, record)
+        for changed in (dict(record, recipe_sha256='0' * 64), dict(record, base='other'),
+                        {'name': 'nss', 'version': '3.131-1'}):
+            with self.subTest(record=changed), self.assertRaisesRegex(ValueError, 'unpinned VCS'):
+                m.check_recipe(text, changed)
+        with self.assertRaisesRegex(ValueError, 'unpinned VCS'):
+            m.check_recipe(text.replace('b2sums = ' + 'a' * 128, 'b2sums = SKIP'), record)
+        with self.assertRaisesRegex(ValueError, 'unpinned VCS'):
+            m.check_recipe(text.replace('NSS_3_131_RTM', 'NSS_3_132_RTM'), record)
+        calls = []
+        def run(*args, **kwargs):
+            calls.append(args)
+            self.assertEqual(kwargs['env']['HGPLAIN'], '1')
+            return changeset
+        pin = {'source': source, 'kind': 'tag', 'reference': 'NSS_3_131_RTM', 'commit': changeset}
+        with patch.object(m, 'run', side_effect=run):
+            self.assertEqual(m.hg_pins(text, record, self.root), [pin])
+        self.assertEqual(calls, [('hg', '--repository', str(self.root / 'nss'), 'log', '--rev',
+                                  'NSS_3_131_RTM', '--template', '{node}')])
+        with patch.object(m, 'run', return_value='0' * 40), \
+                self.assertRaisesRegex(ValueError, 'reviewed changeset'):
+            m.hg_pins(text, record, self.root)
+        m.validate_hg_pins(text, dict(record, git_sources=[pin]))
+        for pins in ([], [dict(pin, commit='0' * 40)], [pin, pin]):
+            with self.subTest(pins=pins), self.assertRaisesRegex(ValueError, 'pin differs'):
+                m.validate_hg_pins(text, dict(record, git_sources=pins))
+        with self.assertRaisesRegex(ValueError, 'pin differs'):
+            m.validate_hg_pins(text, dict(record, recipe_sha256='0' * 64, git_sources=[pin]))
 
     def test_exact_git_prefetch_requires_reviewed_recipe_and_selector(self):
         record = {'base': 'rtmpdump',

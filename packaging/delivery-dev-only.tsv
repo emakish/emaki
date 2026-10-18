@@ -8,6 +8,10 @@ art/cursor/haze.py	Cursor drawing source; build-cursors produces the installed c
 art/grub/background.py	Artwork generator for the installed GRUB background.png.	art/grub/background.py:usage
 art/icons/emaki-install.py	Artwork generator for installed installer/ui/emaki-install.svg.	art/icons/emaki-install.py:TARGET
 art/icons/emaki-report.py	Artwork generator for installed art/icons/emaki-report.svg.	art/icons/emaki-report.py:TARGET
+art/logo/build-pixel-mark	Generator for the installed launcher mark shell/mark-bar-26.png and the pixel logo assets.	Makefile:pixel-mark; tests/test-pixel-mark.py
+art/logo/emaki-mark-pixel-48.png	48-pixel logo for the organisation and site, produced by build-pixel-mark; not drawn by the system.	art/logo/build-pixel-mark; tests/test-pixel-mark.py
+art/logo/emaki-mark-pixel-outline-50.png	Outlined 48-pixel logo for the organisation and site, produced by build-pixel-mark; not drawn by the system.	art/logo/build-pixel-mark; tests/test-pixel-mark.py
+art/logo/emakish-avatar.png	Organisation avatar (the outlined mark on black), produced by build-pixel-mark; not drawn by the system.	art/logo/build-pixel-mark; tests/test-pixel-mark.py
 art/logo/mark-large.svg	Large gradient logo design reference; the runtime icon uses the copied geometry.	art/logo/mark.py:module documentation; shell/Icon.qml
 art/logo/mark.py	Vector geometry source for installed mark.svg and pixel wordmark assets.	art/logo/wordmark.py; scripts/build-lock-wordmark
 art/logo/mark.svg	Flat one-colour mark drawn by mark.py; a design reference and a placeholder icon in tests. Since 0.9.0 no installed icon uses it (Welcome to Emaki has its own tile).	art/logo/mark.py; tests/theme-pictures.py:environment; tests/test-settings-visual.py

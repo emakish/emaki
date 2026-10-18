@@ -26,6 +26,12 @@ with tempfile.TemporaryDirectory(prefix='emaki-kde-') as temporary:
     kde = configparser.ConfigParser(interpolation=None)
     kde.optionxform = str
     kde.read_string(generated.read_text())
+    assert kde['UiSettings']['ColorScheme'] == 'Emaki'
+    # The name must stay unresolvable (scripts/render-kde-theme): no colour scheme ships.
+    shipped = subprocess.run(['git', '-C', str(ROOT), 'ls-files', '*.colors'], check=True,
+                             capture_output=True, text=True).stdout.split()
+    assert not shipped, shipped
+    assert 'color-schemes' not in (ROOT / 'Makefile').read_text()
     terminal = (kde['General'].get('TerminalService'), kde['General'].get('TerminalApplication'))
     assert terminal == (None, 'kitty'), terminal
     # Dolphin's own default status bar ("Small") elides its text; the system dolphinrc holds one key.
@@ -95,6 +101,9 @@ with tempfile.TemporaryDirectory(prefix='emaki-kde-') as temporary:
         shutil.copy(ROOT / 'packaging/emaki-config' / name, stage / 'system')
     env = dict(os.environ, HOME=str(stage / 'home'), XDG_CONFIG_HOME=str(stage / 'config'),
                XDG_CONFIG_DIRS=str(stage / 'system'), QT_QPA_PLATFORM='offscreen')
+    assert subprocess.check_output(
+        ['kreadconfig6', '--file', 'dolphinrc', '--include-globals',
+         '--group', 'UiSettings', '--key', 'ColorScheme'], env=env, text=True).strip() == 'Emaki'
 
     def dolphin_setting(key):
         return subprocess.check_output(['kreadconfig6', '--file', 'dolphinrc', '--include-globals',

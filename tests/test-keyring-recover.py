@@ -370,6 +370,24 @@ class Recovery(unittest.TestCase):
         with recover.recovery_lock(report):
             pass
 
+    def test_unrecoverable_keys_are_reported_as_finished_not_pending(self):
+        result = {'complete': True, 'portal_keys_safe': True, 'saved': True,
+                  'items': {'junk': {'status': 'unrecoverable', 'label': 'Application key for ',
+                                     'reason': 'The application identifier is empty or invalid.'}}}
+        target = mock.MagicMock()
+        target.__enter__.return_value = (object(), True)
+        with mock.patch.dict(recover.os.environ, {
+                'EMAKI_RECOVERY_REPORT': str(self.root / 'report.json')}), \
+             mock.patch.object(recover, 'recovery_target', return_value=target), \
+             mock.patch.object(recover.runpy, 'run_path', return_value={
+                 'transfer': mock.Mock(return_value=result)}), \
+             mock.patch.object(recover.sys, 'stdout', new_callable=io.StringIO) as output:
+            self.assertTrue(recover.migrate_unlocked(object(), mock.Mock()))
+        self.assertIn('Unrecoverable application keys: 1.', output.getvalue())
+        self.assertIn('Items still needing recovery: 0.', output.getvalue())
+        self.assertIn('application identifier is empty or invalid', output.getvalue())
+        self.assertNotIn('Recovery is incomplete', output.getvalue())
+
     def test_failed_private_shutdown_invalidates_report(self):
         result = {'complete': True, 'portal_keys_safe': True, 'saved': True, 'items': {}}
         transfer = mock.Mock(return_value=result)

@@ -1,7 +1,9 @@
 [Unit]
 Description=Watch the selected wallpaper image for Emaki login publishing
 PartOf=graphical-session.target
-# No display connection is needed; start as the graphical target is reached.
+# No display connection is needed; start as the graphical target is reached. The compositor
+# exports NIRI_SOCKET before it reports ready; without it the visible ring cannot be asked.
+After=niri.service niri-emaki.service
 ConditionUser=!root
 ConditionPathIsDirectory=/var/lib/emaki-greeter/users/%u
 StartLimitIntervalSec=60

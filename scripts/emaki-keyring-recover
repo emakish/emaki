@@ -270,8 +270,12 @@ def migrate_unlocked(bus, Gio, replace_portal_keys=False):
             if not isinstance(error, Exception):
                 raise
     copied = sum(item.get('status') == 'migrated' for item in result['items'].values())
-    pending = sum(item.get('status') != 'migrated' for item in result['items'].values())
+    pending = sum(item.get('status') not in ('migrated', 'unrecoverable')
+                  for item in result['items'].values())
+    unrecoverable = sum(item.get('status') == 'unrecoverable' for item in result['items'].values())
     print(f'Saved items copied to the wallet [KWallet]: {copied}.')
+    if unrecoverable:
+        print(f'Unrecoverable application keys: {unrecoverable}.')
     if result['items']:
         print(f'Items still needing recovery: {pending}.')
     elif not result['complete']:

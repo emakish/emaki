@@ -6,8 +6,8 @@ parallel bars of equal length, with ends cut sharper than the stem; the bars ext
 past the stem on the left and far to the right; the mark fills the entire 24×24 square.
   python3 art/logo/mark.py        prints the SVG path, writes art/logo/mark.svg (flat, accent)
                                   and art/logo/mark-large.svg (large, “Hot” gradient)
-The same path is in shell/Icon.qml (kind "logo"); after changing a value, copy the path there.
-The mark uses the “Hot” gradient along its slant everywhere, including the launcher button (2026-09-27):
+Run art/logo/build-pixel-mark after changing the path to update the launcher and avatar pixels.
+The mark uses the “Hot” gradient along its slant; the launcher samples it as outlined pixels:
 light at the top right, deep at the bottom left; mark.svg is the flat accent version. These colors are only
 for the mark; they are not in tokens.toml and the interface does not use them."""
 import math

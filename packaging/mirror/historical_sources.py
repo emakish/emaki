@@ -83,6 +83,26 @@ REVIEWED.append({
 
 
 
+# Upstream deleted this lightweight tag after the binary build and re-created it on the
+# next commit. The recipe's b2sum over makepkg's git archive of the tag matches only the
+# commit that GitHub's activity log names as the tag's target before the deletion; the
+# binary reports that commit's version 1.5.6. makepkg verifies the b2sum before archiving.
+MOVED_TAGS = [{
+    'base': 'srt', 'version': '1.5.7-1',
+    'recipe_sha256': 'eb008a67950e1e5428a53e6201f2538b9809b6ce1dd7d39a56d3e85b29fbe87a',
+    'binary_sha256': '4d053e37a4ec7dc65225e2bc9dc4ba05c5c7ce654af07c7fdf2056c46e47cb37',
+    'builddate': 1787748178,
+    'source': 'git+https://github.com/Haivision/srt#tag=v1.5.7',
+    'tag': 'v1.5.7', 'commit': 'd99d2e1a3b1a213b03c7dfbea5133898935fdeea',
+    'b2sum': 'b2016a1f664ee4c338de5537c4215cc5b8e91e93106801b077c6e3f3f79ac404'
+             '8173e1dad2bf0b82812db1b134d496d84756b489ee81257197c412783f7d5301',
+    'moved_date': '2026-08-28T07:11:23+00:00',
+    'moved_to': '899348d8318eb9a3c5a5b6ec43c4a1114288773a',
+    'activity_url': 'https://api.github.com/repos/Haivision/srt/activity?ref=refs/tags/v1.5.7',
+    'kind': 'checksum-pinned-moved-tag',
+}]
+
+
 def exception(record):
     """A binary hash binds the independently read BUILDDATE without schema changes."""
     keys = ('base', 'version', 'recipe_sha256', 'binary_sha256')
@@ -95,6 +115,53 @@ def exception(record):
     return None
 
 
+def moved_tag(record):
+    keys = ('base', 'version', 'recipe_sha256', 'binary_sha256')
+    for reviewed in MOVED_TAGS:
+        if all(record.get(key) == reviewed[key] for key in keys):
+            moved = datetime.fromisoformat(reviewed['moved_date'])
+            if moved.tzinfo is None or moved.timestamp() <= reviewed['builddate']:
+                raise ValueError('upstream tag moved before the binary build')
+            return deepcopy(reviewed)
+    return None
+
+
+def source_directory(source):
+    url = source.split('::', 1)[-1].removeprefix('git+').split('#', 1)[0].split('?', 1)[0]
+    return url, (source.split('::', 1)[0] if '::' in source else
+                 url.rstrip('/').rsplit('/', 1)[-1].removesuffix('.git'))
+
+
+def prepare_moved_tag(text, reviewed, downloads, run):
+    """Seed the mirror with the tag at the checksum-pinned commit; makepkg verifies it."""
+    info = {}
+    for line in text.splitlines():
+        if ' = ' in line:
+            key, value = line.split(' = ', 1)
+            info.setdefault(key.strip(), []).append(value.strip())
+    sources = info.get('source', [])
+    if sources.count(reviewed['source']) != 1:
+        raise ValueError('moved Git tag source differs from the reviewed recipe')
+    b2sums = info.get('b2sums', [])
+    if len(b2sums) != len(sources) or b2sums[sources.index(reviewed['source'])] != reviewed['b2sum']:
+        raise ValueError('moved Git tag checksum differs from the reviewed recipe')
+    url, name = source_directory(reviewed['source'])
+    destination = downloads / name
+    if destination.exists():
+        raise ValueError('moved Git tag mirror already exists')
+    run('git', 'init', '--bare', str(destination))
+    run('git', '-C', str(destination), 'config', 'remote.origin.url', url)
+    run('git', '-C', str(destination), 'fetch', '--no-tags', url, reviewed['commit'])
+    actual = run('git', '-C', str(destination), 'rev-parse', '--verify', 'FETCH_HEAD^{commit}').strip()
+    if actual != reviewed['commit']:
+        raise ValueError('fetched Git commit differs from the checksum-pinned commit')
+    run('git', '-C', str(destination), 'update-ref', 'refs/tags/' + reviewed['tag'], reviewed['commit'])
+    run('git', '-C', str(destination), 'update-ref', 'refs/heads/emaki-source', reviewed['commit'])
+    run('git', '-C', str(destination), 'symbolic-ref', 'HEAD', 'refs/heads/emaki-source')
+    run('git', '-C', str(destination), 'fsck', '--full', '--no-reflogs')
+    return [reviewed]
+
+
 def allows_tag(record, source):
     reviewed = exception(record)
     return reviewed is not None and reviewed['source'] == source
@@ -102,6 +169,9 @@ def allows_tag(record, source):
 
 def prepare(text, record, downloads, run):
     """Compare today's exact tag object and commit before makepkg can use it."""
+    moved = moved_tag(record)
+    if moved is not None:
+        return prepare_moved_tag(text, moved, downloads, run)
     reviewed = exception(record)
     if reviewed is None:
         return []
@@ -173,6 +243,20 @@ def validate_git_archive(source_path, prefix, tag, commit, tag_object=None):
 
 
 def validate(source_path, record):
+    moved = moved_tag(record)
+    routes = [route for route in record.get('source_routes', [])
+              if route.get('kind') == 'checksum-pinned-moved-tag']
+    if moved is None and routes:
+        raise ValueError('moved Git tag evidence has no reviewed binary exception')
+    if moved is not None:
+        if routes != [moved]:
+            raise ValueError('moved Git tag evidence differs from the reviewed exception')
+        pin = {'source': moved['source'], 'kind': 'tag', 'reference': moved['tag'],
+               'commit': moved['commit']}
+        if record.get('git_sources') != [pin]:
+            raise ValueError('moved Git tag pin differs from the checksum-pinned commit')
+        validate_git_archive(source_path, record['base'] + '/' + source_directory(moved['source'])[1],
+                             moved['tag'], moved['commit'])
     reviewed = exception(record)
     routes = [route for route in record.get('source_routes', [])
               if route.get('kind') == 'software-heritage-tag']

@@ -1,6 +1,8 @@
 [Unit]
 Description=Publish a private wallpaper copy for the Emaki login screen
 PartOf=graphical-session.target
+# NIRI_SOCKET: see emaki-greeter-wallpaper-watch.service.
+After=niri.service niri-emaki.service
 ConditionUser=!root
 ConditionPathIsDirectory=/var/lib/emaki-greeter/users/%u
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Window
 import "SystemIcons.js" as SystemIcons
 
 // SVG geometry copied from the supplied mockup; no icon theme or network lookup. The power
@@ -18,10 +19,6 @@ Image {
     sourceSize.width: Math.ceil(width * 2)
     sourceSize.height: Math.ceil(height * 2)
     readonly property var paths: ({
-            // The Emaki mark (art/logo/mark.py, 27.09): a slanted E of parallelograms in
-            // its own "Hot" gradient along the slant (mark-large.svg), not the ink — also in the
-            // launcher button.
-            logo: '<defs><linearGradient id="hot" gradientUnits="userSpaceOnUse" x1="3" y1="24" x2="21" y2="0"><stop offset="0" stop-color="#b01e78"/><stop offset="0.3" stop-color="#ec2a55"/><stop offset="0.62" stop-color="#ff6a2a"/><stop offset="1" stop-color="#ffb62e"/></linearGradient></defs><path fill="url(#hot)" d="M3 22L7.161 22L12.896 2L8.735 2ZM5.735 4L20 4L24 0L9.735 0ZM2.867 14L17.133 14L21.133 10L6.867 10ZM0 24L14.265 24L18.265 20L4 20Z"/>',
             corner: '<path d="M1.25 26V13.25a12 12 0 0 1 12-12H26"/>',
             close: '<path d="m6 6 12 12M18 6 6 18"/>',
             tray: '<path d="m6 15 6-6 6 6"/>',
@@ -49,7 +46,38 @@ Image {
         })
     // Center the bounds of the painted strokes, preserving their scale and shape.
     // Wi-Fi ink: y ~= 4..21; corner ink: x/y = 0..27.25 with round caps.
-    // Other paths already pass the painted-bounds test; logo fills its 24 square.
+    // Other vector paths already pass the painted-bounds test.
     readonly property string inkViewBox: kind === "corner" ? "-4.375 -4.375 36 36" : kind === "wifi" ? "0 0.5 24 24" : kind === "logout" ? "0.5 0 24 24" : kind === "hibernate" ? "-0.5 0 24 24" : "0 0 24 24"
-    source: kind === "settings" ? SystemIcons.settingsSvg(ink) : 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + inkViewBox + '" color="' + ink + '" fill="' + (kind === "logo" ? 'currentColor' : 'none') + '" stroke="' + (kind === "logo" ? 'none' : 'currentColor') + '" stroke-width="' + (kind === "corner" ? '2.5' : '2') + '" stroke-linecap="round" stroke-linejoin="round">' + (paths[kind] || '') + '</svg>')
+    // The logo is the child pixel image, so the outer status says nothing about it.
+    readonly property bool ready: kind === "logo" ? pixelMark.status === Image.Ready : status === Image.Ready
+    source: kind === "logo" ? "" : kind === "settings" ? SystemIcons.settingsSvg(ink) : 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + inkViewBox + '" color="' + ink + '" fill="none" stroke="currentColor" stroke-width="' + (kind === "corner" ? '2.5' : '2') + '" stroke-linecap="round" stroke-linejoin="round">' + (paths[kind] || '') + '</svg>')
+    Image {
+        id: pixelMark
+        visible: icon.kind === "logo"
+        // By kind, not visibility: a hidden card icon waits for this status to show itself.
+        source: icon.kind === "logo" ? Qt.resolvedUrl("mark-bar-26.png") : ""
+        smooth: false
+        mipmap: false
+        readonly property real dpr: icon.Window.window ? icon.Window.window.devicePixelRatio : 1
+        // 26 device pixels, or a whole multiple of them when the box holds more.
+        readonly property int factor: Math.max(1, Math.floor(Math.min(icon.width, icon.height) * dpr / 26))
+        width: 26 * factor / dpr
+        height: width
+        // Snap in window coordinates, including fractional positions of all ancestors.
+        function alignPixels() {
+            const origin = icon.mapToItem(null, 0, 0);
+            x = Math.round((origin.x + (icon.width - width) / 2) * dpr) / dpr - origin.x;
+            y = Math.round((origin.y + (icon.height - height) / 2) * dpr) / dpr - origin.y;
+        }
+        // Re-snap on every frame the window draws anyway (ancestors may be animating), without
+        // requesting frames of its own: a FrameAnimation kept the bar redrawing forever.
+        Connections {
+            target: pixelMark.visible ? icon.Window.window : null
+            function onAfterAnimating() {
+                pixelMark.alignPixels();
+            }
+        }
+        onWidthChanged: alignPixels()
+        Component.onCompleted: alignPixels()
+    }
 }

@@ -2,12 +2,16 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Narrow, independently verified exceptions for exact source retrieval."""
+import gzip
 import hashlib
+import io
 import json
 from pathlib import Path
 import re
 import subprocess
 import sys
+import tarfile
+import tempfile
 from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -33,8 +37,43 @@ RECOVERY_ROUTES = {
     ('os-prober', 'ce3f3bbea46f2861446fd05caa1089d4b956abc034baf1984a42af0938496660'):
         ('https://deb.debian.org/debian/pool/main/o/os-prober/os-prober_1.84.tar.xz',
          ('https://snapshot.debian.org/file/5cf57d13184319c8e2548cdf599f6f9cf381eeb3',), False),
+    # releases.pagure.org answers 404; Fedora's package lookaside cache (volume_key is a
+    # Fedora project) serves the file under its recipe SHA-512.
+    ('volume_key', '902192844a10907404b2ce6aee248912a6d9668b3bbadc738a8dfed2c7b8f10c'):
+        ('https://releases.pagure.org/volume_key/volume_key-0.3.12.tar.xz',
+         ('https://src.fedoraproject.org/repo/pkgs/rpms/volume_key/volume_key-0.3.12.tar.xz/sha512/'
+          'd056154c9b9d23e4eb661946dd59ed97e116903a3afcff9d9e29258408082f33dcbb69958724143f6bf191a3da488a03b6c02af287790990ed6459e29d66553c/'
+          'volume_key-0.3.12.tar.xz',), False),
 }
 STRONG_CHECKSUMS = ('b2', 'sha512', 'sha256')
+# The original archive is no longer served and no host serves its recipe checksum, so
+# the corresponding source is the code of the same upstream tag: fetched from the
+# project's Git, checked to the tag's commit, tree and date, and archived by
+# git archive (tar, sha256 pinned) under the recipe's filename and directory.
+TAG_TREES = {
+    ('libnewt', 'df8e87b4e5b0753c6a25bad86d4783173090fda8598ee58fd9f264c3ae72a0a5'): {
+        'source': 'https://pagure.io/newt/archive/r0-52-25/newt-r0-52-25.tar.gz',
+        'recipe_b2sum': 'd6bdc09589e409687cc56a0a7e4e3d943e8026c769d9f95ef1e9af693b51c818'
+                        'af32700270d117c5796b52ed3f14417753e6db1e7377118054960721c3b9bb15',
+        # Pagure is the project's home; the second is the maintainer's own mirror.
+        'repositories': ('https://pagure.io/newt.git', 'https://github.com/mlichvar/newt.git'),
+        'tag': 'r0-52-25', 'tag_object': '9b9e7e8936f51f83a7259c5f0a9b4ff909cbd39a',
+        'commit': '9b9e7e8936f51f83a7259c5f0a9b4ff909cbd39a',
+        'tree': '891c6b1029408bde0435442b9294ee5c50d00f14',
+        'commit_date': '2025-03-10T14:29:06+01:00',
+        'prefix': 'newt-r0-52-25/',
+        'tar_sha256': '8b3e1cd5c044d615bfeaf1abb9c6a1b422119960a93430c85b509047685a87d1',
+        'reason': 'The original archive https://pagure.io/newt/archive/r0-52-25/newt-r0-52-25.tar.gz '
+                  'is no longer served (Pagure answers 404), and no host serves a file with the '
+                  "recipe's b2sum. newt-r0-52-25.tar.gz here is the code of the same upstream tag "
+                  'r0-52-25 (commit 9b9e7e8936f51f83a7259c5f0a9b4ff909cbd39a of 2025-03-10, tree '
+                  "891c6b1029408bde0435442b9294ee5c50d00f14) from the project's Git, made with "
+                  'git archive --prefix=newt-r0-52-25/. Its bytes differ from the recipe checksum: '
+                  'build it with makepkg --skipchecksums.',
+    },
+}
+TAG_TREE_FIELDS = ('source', 'recipe_b2sum', 'tag', 'tag_object', 'commit', 'tree', 'commit_date',
+                   'prefix', 'tar_sha256', 'reason')
 
 
 def fields(text):
@@ -177,6 +216,11 @@ def prepare_routes(text, record, downloads, env, run, *, rejected_dir=None, refr
         result['makepkg_flags'] = ['--skippgpcheck']
         result['evidence'].append(special)
     result['evidence'].extend(prepare_recovery(info, record, downloads, run, rejected_dir))
+    tree = prepare_tag_tree(info, record, downloads, run)
+    if tree:
+        # The recipe checksum names the original archive; the reviewed tar pin replaces it.
+        result['makepkg_flags'].append('--skipchecksums')
+        result['evidence'].append(tree)
     # Independently checksum-pinned payloads qualify. Their detached signatures
     # still pass the unmodified recipe's normal signature verification.
     for suffix in ('', '_x86_64'):
@@ -223,6 +267,126 @@ def prepare_routes(text, record, downloads, env, run, *, rejected_dir=None, refr
                         'mirror': signature_mirror, **signature_transfer, 'payload': source,
                         'verification': 'normal recipe signature verification over checksum-pinned payload'})
     return result
+
+
+def tag_tree(record):
+    return TAG_TREES.get((record.get('base'), record.get('recipe_sha256')))
+
+
+def git_archive_tree(data, prefix, commit):
+    """Git tree ID of a git archive tar that holds only directories and regular files."""
+    root = {}
+    with tarfile.open(fileobj=io.BytesIO(data), mode='r:') as bundle:
+        members = bundle.getmembers()
+        if bundle.pax_headers.get('comment') != commit:
+            raise ValueError('tag tree archive names a different commit')
+        for member in members:
+            if member.name == prefix.rstrip('/') and member.isdir():
+                continue
+            if not member.name.startswith(prefix):
+                raise ValueError('tag tree archive member outside its directory')
+            parts = member.name[len(prefix):].split('/')
+            if any(part in ('', '.', '..') for part in parts):
+                raise ValueError('unsafe tag tree archive member')
+            parent = root
+            for part in parts[:-1]:
+                parent = parent.setdefault(part, {})
+                if not isinstance(parent, dict):
+                    raise ValueError('tag tree archive file used as a directory')
+            if member.isdir():
+                if not isinstance(parent.setdefault(parts[-1], {}), dict):
+                    raise ValueError('tag tree archive directory repeats a file')
+            elif member.isfile():
+                if parts[-1] in parent:
+                    raise ValueError('tag tree archive repeats a member')
+                content = bundle.extractfile(member).read()
+                blob = hashlib.sha1(b'blob %d\0' % len(content) + content).digest()
+                parent[parts[-1]] = ('100755' if member.mode & 0o111 else '100644', blob)
+            else:
+                raise ValueError('tag tree archive has a member that is not a file or directory')
+
+    def tree(entries):
+        body = b''
+        for name in sorted(entries, key=lambda name: name.encode() +
+                           (b'/' if isinstance(entries[name], dict) else b'')):
+            value = entries[name]
+            mode, object_id = ('40000', tree(value)) if isinstance(value, dict) else value
+            body += mode.encode() + b' ' + name.encode() + b'\0' + object_id
+        return hashlib.sha1(b'tree %d\0' % len(body) + body).digest()
+    return tree(root).hex()
+
+
+def prepare_tag_tree(info, record, downloads, run):
+    reviewed = tag_tree(record)
+    if reviewed is None:
+        return None
+    # Checksums are skipped for this recipe only, so it may have no other source or checksum.
+    if (any((key.startswith('source') and key != 'source') or
+            (key.endswith('sums') and key != 'b2sums') for key in info) or
+            info.get('source') != [reviewed['source']] or
+            info.get('b2sums') != [reviewed['recipe_b2sum']]):
+        raise ValueError('tag tree source differs from the reviewed recipe')
+    with tempfile.TemporaryDirectory(prefix='emaki-tag-tree-') as temp:
+        clone = Path(temp) / 'tag.git'
+        run('git', 'init', '--quiet', '--bare', str(clone))
+        ref = 'refs/tags/' + reviewed['tag']
+        used = None
+        for repository in reviewed['repositories']:
+            try:
+                run('git', '-C', str(clone), 'fetch', '--quiet', '--no-tags', repository,
+                    '+' + ref + ':' + ref)
+            except subprocess.CalledProcessError:
+                continue
+            used = repository
+            break
+        if used is None:
+            raise ValueError('no reviewed repository serves the tag')
+        def resolve(name):
+            return run('git', '-C', str(clone), 'rev-parse', '--verify', name).strip()
+        if (resolve(ref) != reviewed['tag_object'] or resolve(ref + '^{commit}') != reviewed['commit']
+                or resolve(ref + '^{tree}') != reviewed['tree']):
+            raise ValueError('upstream tag differs from the reviewed commit and tree')
+        if run('git', '-C', str(clone), 'show', '--no-patch', '--format=%cI',
+               reviewed['commit']).strip() != reviewed['commit_date']:
+            raise ValueError('upstream tag commit date differs from the review')
+        tar = Path(temp) / 'tree.tar'
+        # Fixed options: a user's tar.umask must not change the pinned tar bytes.
+        run('git', '-c', 'tar.umask=0002', '-C', str(clone), 'archive', '--format=tar',
+            '--prefix=' + reviewed['prefix'], '--output=' + str(tar), reviewed['commit'])
+        data = tar.read_bytes()
+    if hashlib.sha256(data).hexdigest() != reviewed['tar_sha256']:
+        raise ValueError('git archive of the tag differs from the reviewed tar')
+    if git_archive_tree(data, reviewed['prefix'], reviewed['commit']) != reviewed['tree']:
+        raise ValueError('git archive of the tag does not hold the reviewed tree')
+    compressed = io.BytesIO()
+    with gzip.GzipFile(filename='', mode='wb', fileobj=compressed, mtime=0) as stream:
+        stream.write(data)
+    (downloads / source_name(reviewed['source'])).write_bytes(compressed.getvalue())
+    return dict({key: reviewed[key] for key in TAG_TREE_FIELDS}, kind='reviewed-tag-tree',
+                repository=used, sha256=hashlib.sha256(compressed.getvalue()).hexdigest())
+
+
+def validate_tag_tree(bundle, record, item):
+    reviewed = tag_tree(record)
+    if (reviewed is None or item.get('repository') not in reviewed['repositories'] or
+            set(item) != {*TAG_TREE_FIELDS, 'kind', 'repository', 'sha256'} or
+            any(item.get(key) != reviewed[key] for key in TAG_TREE_FIELDS)):
+        raise ValueError('unreviewed tag tree evidence')
+    members = [member for member in bundle.getmembers() if not member.isdir()]
+    files = {member.name: member for member in members}
+    name = record['base'] + '/' + source_name(reviewed['source'])
+    if (len(files) != len(members) or
+            set(files) != {record['base'] + '/PKGBUILD', record['base'] + '/.SRCINFO', name} or
+            not all(member.isfile() for member in files.values())):
+        raise ValueError('tag tree archive holds other files than the recipe and the tag tree')
+    compressed = bundle.extractfile(files[name]).read()
+    if hashlib.sha256(compressed).hexdigest() != item.get('sha256'):
+        raise ValueError('archived tag tree differs from its recorded bytes')
+    data = gzip.decompress(compressed)
+    if hashlib.sha256(data).hexdigest() != reviewed['tar_sha256']:
+        raise ValueError('archived tag tree differs from the reviewed tar')
+    if git_archive_tree(data, reviewed['prefix'], reviewed['commit']) != reviewed['tree']:
+        raise ValueError('archived tag tree does not hold the reviewed tree')
 
 
 def prepare_recovery(info, record, downloads, run, rejected_dir=None):
@@ -361,7 +525,6 @@ def git_mirror(source, commit):
 
 def validate_routes(archive, record):
     """Bind recorded exceptions to the actual archived payload and signature bytes."""
-    import tarfile
     import historical_sources
     import savannah_git
     historical_sources.validate(archive, record)
@@ -370,6 +533,9 @@ def validate_routes(archive, record):
     special = record.get('base') == 'libgcrypt' and record.get('recipe_sha256') == LIBGCRYPT_RECIPE
     if special and len([item for item in evidence if item.get('kind') == 'reviewed-multiple-signature']) != 1:
         raise ValueError('libgcrypt archive lacks reviewed signature evidence')
+    trees = [item for item in evidence if item.get('kind') == 'reviewed-tag-tree']
+    if trees and len(evidence) != 1:
+        raise ValueError('a tag tree must be the only source route')
     if not evidence:
         return
     with tarfile.open(archive, 'r:*') as bundle:
@@ -423,10 +589,13 @@ def validate_routes(archive, record):
                 expected = git_mirror(item.get('source', ''), item.get('commit', ''))
                 if expected != item:
                     raise ValueError('unreviewed Git mirror evidence')
+            elif item.get('kind') == 'reviewed-tag-tree':
+                validate_tag_tree(bundle, record, item)
             elif item.get('kind') == 'arch-source-package':
                 import arch_source_fallback
                 arch_source_fallback.validate(archive, record)
-            elif item.get('kind') in ('software-heritage-tag', 'savannah-official-git',
+            elif item.get('kind') in ('software-heritage-tag', 'checksum-pinned-moved-tag',
+                                      'savannah-official-git',
                                       'savannah-software-heritage', 'savannah-origin-git'):
                 pass  # Checked before the optional route list above.
             else:

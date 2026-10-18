@@ -5,7 +5,8 @@
 
 Sharp wallpaper crops have a private content/stat-keyed PNG cache. Only that synthetic
 cache URL crosses the pipe, never the source path. Desktop captures never use this helper.
-No shell or connection to wpaperd/Wayland.
+No shell or connection to wpaperd/Wayland. A bounded compositor IPC query
+selects the living ring above wpaperd when it is active.
 The QML consumer imposes a process deadline in addition to these input bounds.
 """
 import base64
@@ -17,6 +18,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import socket
 import sys
 import tempfile
 import time
@@ -186,6 +188,56 @@ def save_sharp(path, image):
             temporary.unlink(missing_ok=True)
 
 
+def current_wallpaper_config(config_root, *, strict=False):
+    """Prefer the compositor's visible ring, then the committed personal selection.
+
+    A desktop capture contains windows and must never become a published wallpaper.
+    The static ring centre is the privacy-safe background after capture is revoked.
+    Published greeter reads never call this session-only selector.
+    """
+    endpoint = os.environ.get('NIRI_SOCKET')
+    if endpoint:
+        try:
+            deadline = time.monotonic() + .2
+            with socket.socket(socket.AF_UNIX) as stream:
+                stream.settimeout(.2)
+                stream.connect(endpoint)
+                stream.sendall(b'"EmakiWallpaper"\n')
+                data = b''
+                while b'\n' not in data:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0 or len(data) >= MAX_CONFIG:
+                        raise ValueError('compositor_limit')
+                    stream.settimeout(remaining)
+                    chunk = stream.recv(min(16384, MAX_CONFIG - len(data)))
+                    if not chunk:
+                        raise ValueError('compositor_response')
+                    data += chunk
+            status = json.loads(data.split(b'\n', 1)[0])['Ok']['EmakiWallpaper']
+            if status['mode'] == 'ring' and status['load_state'] == 'ready':
+                path = status['files']['ring']
+                # niri reports the configured string and expands a leading ~ component itself.
+                if isinstance(path, str) and Path(path).parts[:1] == ('~',):
+                    path = str(Path.home().joinpath(*Path(path).parts[1:]))
+                if isinstance(path, str) and Path(path).is_absolute() and '\0' not in path:
+                    return {'default': {'path': path, 'mode': 'center'}}
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    try:
+        source = Path(config_root) / 'emaki/settings.toml'
+        data = bounded_no_symlinks(source, MAX_CONFIG)[0] if strict else bounded_read(source, MAX_CONFIG)
+        settings = tomllib.loads(data.decode())
+        appearance = settings.get('appearance', {})
+        if settings.get('schema_version') != 1 or not isinstance(appearance, dict):
+            return None
+        path = appearance.get('wallpaper')
+        if isinstance(path, str) and Path(path).is_absolute() and '\0' not in path:
+            return {'default': {'path': path, 'mode': 'center'}}
+    except (OSError, ValueError, UnicodeError):
+        pass
+    return None
+
+
 def texture(width, height, scale, output, variant='glass'):
     from PIL import Image, ImageEnhance, ImageFilter
     Image.MAX_IMAGE_PIXELS = MAX_PIXELS
@@ -202,22 +254,9 @@ def texture(width, height, scale, output, variant='glass'):
             config_bytes, _ = bounded_no_symlinks(config_root / 'wpaperd/config.toml', MAX_CONFIG,
                                                 root=config_root)
         else:
-            managed = None
-            try:
-                settings = tomllib.loads(bounded_read(config_root / 'emaki/settings.toml', MAX_CONFIG).decode())
-                if settings.get('schema_version') != 1:
-                    raise ValueError('settings_schema')
-                appearance = settings.get('appearance', {})
-                if not isinstance(appearance, dict):
-                    raise ValueError('settings_wallpaper')
-                managed = appearance.get('wallpaper')
-                if managed is not None and (not isinstance(managed, str) or not Path(managed).is_absolute()):
-                    raise ValueError('settings_wallpaper')
-            except (OSError, ValueError, UnicodeError):
-                # A damaged managed source must not remove the ordinary wallpaper.
-                managed = None
-            if managed:
-                config_bytes = ('[default]\npath = ' + json.dumps(managed) + '\n').encode()
+            selected = current_wallpaper_config(config_root)
+            if selected:
+                config_bytes = ('[default]\npath = ' + json.dumps(selected['default']['path']) + '\n').encode()
             else:
                 config_bytes = bounded_read(config_root / 'wpaperd/config.toml', MAX_CONFIG)
         config = tomllib.loads(config_bytes.decode())

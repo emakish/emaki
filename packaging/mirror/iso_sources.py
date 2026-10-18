@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import tarfile
+import textwrap
 from urllib.parse import quote, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -276,6 +277,21 @@ SUBMODULE_RECIPES = {
     'a26cb78c5ee812f83a679e6eb3798c708a9efcfea9c19c593fdb8ecc5d1ed2e7':
         ('libbluray', VIDEOLAN_GIT + 'libbluray.git',
          ((VIDEOLAN_GIT + 'libudfread.git', 'contrib/libudfread'),)),
+    # Image 0.9.0. glib2 2.90.1-1, qt6-webengine 6.11.2-2 and glycin 2.2.2-1 keep the
+    # reviewed prepare() of their earlier recipes; glycin 2.2.2 drops both cherry-picks.
+    '1519e624ccef91cbc38070996b709e48ef53d01c26576e6a5b1df379c8bc195e':
+        ('glib2', GNOME_GIT + 'glib.git', ((GNOME_GIT + 'gvdb.git', 'subprojects/gvdb'),)),
+    '52022b2a204a1b837f033457751d8a07658313ed726270b6215b622871aeb307':
+        ('qt6-webengine', 'git+https://code.qt.io/qt/qtwebengine',
+         (('git+https://code.qt.io/qt/qtwebengine-chromium', 'src/3rdparty'),)),
+    '1218e2a09459a357fc6011d2a7e5b45e59459f4eed8805a6e7fae16ab58ea50b':
+        ('glycin', GNOME_GIT + 'glycin.git',
+         (('git+https://gitlab.gnome.org/sophie-h/test-images.git', 'tests/test-images'),)),
+    # sbsigntools 0.9.5-4: autogen.sh skips its own submodule update once lib/ccan.git
+    # is checked out and builds lib/ccan with tools from that gitlink commit.
+    'e15882ab88bdc7ab5a08a49915cd01d2204412105472d520e00db7e41e0098c8':
+        ('sbsigntools', 'git+https://git.kernel.org/pub/scm/linux/kernel/git/jejb/sbsigntools.git',
+         (('git+https://git.ozlabs.org/ccan', 'lib/ccan.git'),)),
 }
 BOOTSTRAP_RECIPES = {
     '69b18787e996921d0b7c06a4566f197e87a6076af5f279812eb072bf68ea626a': {
@@ -305,6 +321,13 @@ OMITTED_GITLINKS = {
         'gitmodules_sha256': 'b14bbb67fb41bf6198ece2e86673d55a8b3c0c76c99e940a445aadcbb8ad67cb',
         'paths': {'libglycin-rebind/gir': 'c93f8f31b6a5dcad139b2aff7ba29ce9f07d8e99',
                   'libglycin-rebind/gir-files': '01ea5f1a07cd53c1f070f4b7ce6110fbbe70049b'},
+        'reason': 'Both submodules have update=none and serve manual binding generation; '
+                  'the reviewed recipe builds the committed bindings without these generators.',
+    },
+    '1218e2a09459a357fc6011d2a7e5b45e59459f4eed8805a6e7fae16ab58ea50b': {
+        'gitmodules_sha256': 'b14bbb67fb41bf6198ece2e86673d55a8b3c0c76c99e940a445aadcbb8ad67cb',
+        'paths': {'libglycin-rebind/gir': 'b4ad84f7c5548fbab3972436e1a000fb5f829cdc',
+                  'libglycin-rebind/gir-files': 'baa82dc06419577e33a86258a45bcff1bbfa3bf5'},
         'reason': 'Both submodules have update=none and serve manual binding generation; '
                   'the reviewed recipe builds the committed bindings without these generators.',
     },
@@ -576,17 +599,85 @@ def git_reference(kind, reference):
     return reference
 
 
+EXACT_GIT_SOURCES = {
+    ('rtmpdump', '32be15a8f00c4231f18d3e11d90cb44b210b9aa824855a9bad86140e8cf94aa0'):
+        'git+https://git.ffmpeg.org/rtmpdump#tag=138fdb258d9fc26f1843fd1b891180416c9dc575',
+    ('libasyncns', '4956bbe70e57ab2c53d9cd329e871d0181f05ebc56d9411e49365f12b2b14c6c'):
+        'git+https://git.0pointer.net/clone/libasyncns.git#commit=68cd5aff1467638c086f1bedcc750e34917168e4',
+    ('libcanberra', '51974ca0e4f08d09fcf4f6a61816ee1fbcf07313dc0f55b5c2d8ce3f6426eb90'):
+        'git+https://git.0pointer.net/clone/libcanberra.git#commit=c0620e432650e81062c1967cc669829dbd29b310',
+    # The selector is the commit that annotated tag v2.0.3 (cac04476) points to;
+    # an object ID cannot move, so the SKIP checksum leaves nothing unpinned.
+    ('libfdk-aac', '6c6b5058d70c133ec8822d924dee62905bb38ab69ad30c6b5719d4bc913828ea'):
+        'git+https://github.com/mstorsjo/fdk-aac.git#tag=716f4394641d53f0d79c9ddac3fa93b03a49f278',
+}
+
+
+# Reviewed Mercurial tags. makepkg verifies the recipe b2sum over hg archive of the tag,
+# whose .hg_archival.txt names the full changeset; the archived clone must resolve to it.
+HG_SOURCES = {
+    ('nss', 'ee71973964185ca07dc0b3139cc67f249d980a6487fb5f2034befe2a0ec40ef2'):
+        ('hg+https://hg.mozilla.org/projects/nss#tag=NSS_3_131_RTM',
+         '698317f4eaacea2cf2461ec9854f80ac62cdddb9'),
+}
+
+
+def hg_source(record, source):
+    """Return (directory, tag, changeset) for a reviewed exact Mercurial source."""
+    reviewed = HG_SOURCES.get((record.get('base'), record.get('recipe_sha256')))
+    if reviewed is None or reviewed[0] != source:
+        return None
+    url, _, fragment = source.removeprefix('hg+').partition('#')
+    kind, _, tag = fragment.partition('=')
+    name = url.rstrip('/').rsplit('/', 1)[-1]
+    if kind != 'tag' or not tag or not re.fullmatch('[0-9a-f]{40}', reviewed[1]) or \
+            not re.fullmatch(r'[A-Za-z0-9_.\-]+', name):
+        raise ValueError('reviewed Mercurial source is not an exact tag')
+    return name, tag, reviewed[1]
+
+
+def hg_pins(text, record, downloads, env=None):
+    """Resolve reviewed Mercurial tags in the clone that makepkg verified and archived."""
+    pins = []
+    for key, values in fields(text).items():
+        if key != 'source' and not key.startswith('source_'):
+            continue
+        for source in values:
+            reviewed = hg_source(record, source)
+            if reviewed is None:
+                continue
+            name, tag, changeset = reviewed
+            node = run('hg', '--repository', str(downloads / name), 'log', '--rev', tag,
+                       '--template', '{node}', env=dict(os.environ if env is None else env,
+                                                        HGPLAIN='1')).strip()
+            if node != changeset:
+                raise ValueError('Mercurial tag differs from the reviewed changeset')
+            pins.append({'source': source, 'kind': 'tag', 'reference': tag, 'commit': node})
+    return pins
+
+
+def validate_hg_pins(text, record):
+    expected = [{'source': source, 'kind': 'tag', 'reference': reviewed[1], 'commit': reviewed[2]}
+                for key, values in fields(text).items()
+                if key == 'source' or key.startswith('source_')
+                for source in values for reviewed in [hg_source(record, source)] if reviewed]
+    pins = [pin for pin in record.get('git_sources', [])
+            if pin.get('source', '').startswith('hg+')]
+    if pins != expected:
+        raise ValueError('Mercurial source pin differs from the reviewed changeset')
+
+
+def exact_object_tag(record, source):
+    """A reviewed #tag= selector that names a full object ID needs no recipe checksum."""
+    parsed = git_source(source)
+    return (EXACT_GIT_SOURCES.get((record.get('base'), record.get('recipe_sha256'))) == source
+            and parsed is not None and parsed[1] == 'tag'
+            and re.fullmatch('[0-9a-f]{40}', parsed[2]) is not None)
+
+
 def prepare_exact_git(text, record, downloads, env=None):
     """Avoid broken full-repository advertisement for reviewed immutable sources."""
-    reviewed = {
-        ('rtmpdump', '32be15a8f00c4231f18d3e11d90cb44b210b9aa824855a9bad86140e8cf94aa0'):
-            'git+https://git.ffmpeg.org/rtmpdump#tag=138fdb258d9fc26f1843fd1b891180416c9dc575',
-        ('libasyncns', '4956bbe70e57ab2c53d9cd329e871d0181f05ebc56d9411e49365f12b2b14c6c'):
-            'git+https://git.0pointer.net/clone/libasyncns.git#commit=68cd5aff1467638c086f1bedcc750e34917168e4',
-        ('libcanberra', '51974ca0e4f08d09fcf4f6a61816ee1fbcf07313dc0f55b5c2d8ce3f6426eb90'):
-            'git+https://git.0pointer.net/clone/libcanberra.git#commit=c0620e432650e81062c1967cc669829dbd29b310',
-    }
-    source = reviewed.get((record.get('base'), record.get('recipe_sha256')))
+    source = EXACT_GIT_SOURCES.get((record.get('base'), record.get('recipe_sha256')))
     if source is None:
         return False
     sources = [value for key, values in fields(text).items()
@@ -705,10 +796,14 @@ def check_recipe(text, record):
                 if parsed[1] == 'tag' and not any(
                         index < len(values_) and values_[index] != 'SKIP' for values_ in sums) and not (
                         arch_source_fallback.allows_tag(record, source) or
-                        historical_sources.allows_tag(record, source)):
+                        historical_sources.allows_tag(record, source) or
+                        exact_object_tag(record, source)):
                     raise ValueError('unpinned Git tag requires a non-SKIP recipe checksum')
                 continue
             elif re.search(r'(?:^|::)(hg|svn|bzr|fossil)(?:\+|://)', source):
+                if hg_source(record, source) and any(
+                        index < len(values_) and values_[index] != 'SKIP' for values_ in sums):
+                    continue
                 raise ValueError('unpinned VCS source requires a reviewed exact-source recipe')
             elif '://' in source and not source.split('::', 1)[0].endswith(('.sig', '.asc', '.sign')):
                 if not any(index < len(values_) and values_[index] != 'SKIP' for values_ in sums):
@@ -844,6 +939,7 @@ def collect(closure, packages, output, exclude=(), repositories=None, *, cook_sw
                         raise
                     run('makepkg', '--allsource', '--force', '--holdver', *source_flags, cwd=repo, env=env)
                 pins = source_pins(execution_info, Path(env['SRCDEST']), submodules)
+                pins.extend(hg_pins(execution_info, record, Path(env['SRCDEST']), env))
                 for route_file in sorted(Path(env['SRCDEST']).rglob('emaki-source-route.json')):
                     routes['evidence'].append(json.loads(route_file.read_text()))
                 archives = list(Path(env['SRCPKGDEST']).glob('*.src.tar.*'))
@@ -938,6 +1034,7 @@ def validate_archive(source, record):
             source_routes.validate_routes(source, record)
             source_keys.validate(archive, record, info)
             check_recipe(contents['.SRCINFO'].decode(), record)
+            validate_hg_pins(contents['.SRCINFO'].decode(), record)
             cargo_sources.required_tree(record, contents['PKGBUILD'].decode(), archive.getnames())
             cargo_sources.validate_supplement(archive, record)
             go_sources.validate_supplement(archive, record)
@@ -1074,7 +1171,14 @@ def directions(records, base_url, *, partial=False):
     for record in sorted(records.values(), key=lambda item: item['name']):
         lines.extend([f"{record['name']} {record['version']}",
                       f"  {base_url.rstrip('/')}/sources/sha256/{record['sha256']}/{record['archive']}",
-                      f"  SHA-256: {record['sha256']}", ''])
+                      f"  SHA-256: {record['sha256']}"])
+        # A reviewed tag tree stands in for an original archive that is no longer served.
+        for route in record.get('source_routes', []):
+            if route.get('kind') == 'reviewed-tag-tree':
+                lines.extend(textwrap.wrap(route['reason'], 88, initial_indent='  Note: ',
+                                           subsequent_indent='  ', break_on_hyphens=False,
+                                           break_long_words=False))
+        lines.append('')
     return '\n'.join(lines) + '\n'
 
 

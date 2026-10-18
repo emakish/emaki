@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Generate the outlined launcher mark and finer avatar from the canonical vector path."""
+import argparse
+import io
+from pathlib import Path
+import re
+import sys
+
+from PIL import Image
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from mark import HOT, mark
+
+ROOT = Path(__file__).resolve().parents[2]
+BAYER = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]
+
+
+def raster(size):
+    polygons = []
+    for part in re.findall(r'M([^Z]+)Z', mark()):
+        values = [float(v) for v in re.findall(r'-?\d+(?:\.\d+)?', part)]
+        polygons.append(list(zip(values[::2], values[1::2])))
+    colors = [tuple(int(c[i:i + 2], 16) for i in (1, 3, 5)) + (255,) for _, c in HOT]
+    image = Image.new('RGBA', (size, size))
+    for y in range(size):
+        for x in range(size):
+            ux, uy = (x + .5) * 24 / size, (y + .5) * 24 / size
+            filled = False
+            for polygon in polygons:
+                inside = False
+                for (x1, y1), (x2, y2) in zip(polygon, polygon[1:] + polygon[:1]):
+                    if (y1 > uy) != (y2 > uy) and ux < x1 + (uy - y1) * (x2 - x1) / (y2 - y1):
+                        inside = not inside
+                filled |= inside
+            if filled:
+                u = max(0, min(1, ((ux - 3) * 18 + (uy - 24) * -24) / 900)) * 3
+                base = min(int(u), 2)
+                color = base + int(u - base > (BAYER[y % 4][x % 4] + .5) / 16)
+                image.putpixel((x, y), colors[color])
+    return image
+
+
+def outline(mark_image):
+    result = Image.new('RGBA', (mark_image.width + 2, mark_image.height + 2))
+    for y in range(mark_image.height):
+        for x in range(mark_image.width):
+            if mark_image.getpixel((x, y))[3]:
+                for dy in (-1, 0, 1):
+                    for dx in (-1, 0, 1):
+                        result.putpixel((x + dx + 1, y + dy + 1), (0, 0, 0, 255))
+    result.alpha_composite(mark_image, (1, 1))
+    return result
+
+
+def outputs():
+    fine = raster(48)
+    avatar = Image.new('RGBA', (1024, 1024), (0, 0, 0, 255))
+    avatar.alpha_composite(fine.resize((768, 768), Image.Resampling.NEAREST), (128, 128))
+    return {
+        'shell/mark-bar-26.png': outline(raster(24)),
+        'art/logo/emaki-mark-pixel-48.png': fine,
+        'art/logo/emaki-mark-pixel-outline-50.png': outline(fine),
+        'art/logo/emakish-avatar.png': avatar.convert('RGB'),
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--check', action='store_true', help='fail if checked-in images are stale')
+    args = parser.parse_args()
+    for name, image in outputs().items():
+        data = io.BytesIO()
+        image.save(data, format='PNG')
+        target = ROOT / name
+        if args.check:
+            if not target.is_file() or target.read_bytes() != data.getvalue():
+                parser.exit(1, f'{name} is stale; run python3 art/logo/build-pixel-mark\n')
+        else:
+            target.write_bytes(data.getvalue())
+    print('PASS: pixel marks match canonical geometry and Hot colours' if args.check else 'Generated pixel marks')
+
+
+if __name__ == '__main__':
+    main()

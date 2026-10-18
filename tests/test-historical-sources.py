@@ -87,6 +87,96 @@ class HistoricalSources(unittest.TestCase):
         self.assertEqual(historical.prepare('', {}, Path('/unused'), None), [])
         historical.validate('/unused', {})
 
+    def moved_record(self):
+        evidence = historical.MOVED_TAGS[0]
+        result = {key: evidence[key] for key in ('base', 'version', 'recipe_sha256', 'binary_sha256')}
+        result['source_routes'] = [deepcopy(evidence)]
+        result['git_sources'] = [{'source': evidence['source'], 'kind': 'tag',
+                                 'reference': evidence['tag'], 'commit': evidence['commit']}]
+        return result
+
+    def test_moved_tag_is_bound_to_exact_image_binary(self):
+        record = self.moved_record()
+        self.assertEqual(historical.moved_tag(record)['commit'], 'd99d2e1a3b1a213b03c7dfbea5133898935fdeea')
+        # The recipe checksum already pins the tag; no checksum exception is granted.
+        self.assertFalse(historical.allows_tag(record, historical.MOVED_TAGS[0]['source']))
+        for key in ('base', 'version', 'recipe_sha256', 'binary_sha256'):
+            changed = dict(record, **{key: 'changed'})
+            self.assertIsNone(historical.moved_tag(changed))
+            with self.assertRaisesRegex(ValueError, 'no reviewed'):
+                historical.validate('/unused', changed)
+
+    def test_moved_tag_must_move_after_the_build(self):
+        evidence = deepcopy(historical.MOVED_TAGS[0])
+        evidence['builddate'] = 1900000000
+        with patch.object(historical, 'MOVED_TAGS', [evidence]):
+            with self.assertRaisesRegex(ValueError, 'moved before'):
+                historical.moved_tag(self.moved_record())
+
+    def test_moved_tag_evidence_and_pin_refused_when_changed(self):
+        for key in ('commit', 'b2sum', 'moved_date', 'tag'):
+            record = self.moved_record()
+            record['source_routes'][0][key] = 'changed'
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'evidence differs'):
+                historical.validate('/unused', record)
+        record = self.moved_record()
+        record['git_sources'][0]['commit'] = '899348d8318eb9a3c5a5b6ec43c4a1114288773a'
+        with self.assertRaisesRegex(ValueError, 'pin differs'):
+            historical.validate('/unused', record)
+
+    def test_moved_tag_prepare_requires_recipe_checksum_and_commit(self):
+        evidence = historical.MOVED_TAGS[0]
+        record = self.moved_record()
+        text = 'source = ' + evidence['source'] + '\nb2sums = ' + evidence['b2sum'] + '\n'
+        calls = []
+        def run(*args):
+            calls.append(args)
+            return evidence['commit'] if 'rev-parse' in args else ''
+        with tempfile.TemporaryDirectory() as temporary:
+            downloads = Path(temporary)
+            self.assertEqual(historical.prepare(text, record, downloads, run), [evidence])
+            self.assertIn(('git', '-C', str(downloads / 'srt'), 'update-ref', 'refs/tags/v1.5.7',
+                           evidence['commit']), calls)
+            self.assertIn(('git', '-C', str(downloads / 'srt'), 'fetch', '--no-tags',
+                           'https://github.com/Haivision/srt', evidence['commit']), calls)
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(ValueError, 'checksum-pinned commit'):
+                historical.prepare(text, record, Path(temporary), lambda *args: '0' * 40)
+        with self.assertRaisesRegex(ValueError, 'checksum differs'):
+            historical.prepare(text.replace(evidence['b2sum'], 'SKIP'), record, Path('/unused'), run)
+        with self.assertRaisesRegex(ValueError, 'source differs'):
+            historical.prepare(text.replace('v1.5.7', 'v1.5.8'), record, Path('/unused'), run)
+
+    def test_moved_tag_archive_has_tag_at_pinned_commit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo = root / 'repo'
+            def git(*args):
+                return subprocess.run(['git', *args], check=True, capture_output=True,
+                                      text=True).stdout.strip()
+            git('init', '-q', str(repo))
+            for content in ('built\n', 'moved\n'):
+                (repo / 'source').write_text(content)
+                git('-C', str(repo), 'add', 'source')
+                git('-C', str(repo), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.org',
+                    '-c', 'commit.gpgsign=false', 'commit', '-qm', content)
+            built = git('-C', str(repo), 'rev-parse', 'HEAD^')
+            git('-C', str(repo), 'update-ref', 'refs/tags/v1.5.7', built)
+            archive = root / 'srt.tar.gz'
+            with tarfile.open(archive, 'w:gz') as bundle:
+                bundle.add(repo / '.git', arcname='srt/srt')
+            evidence = dict(deepcopy(historical.MOVED_TAGS[0]), commit=built)
+            record = self.moved_record()
+            record['source_routes'] = [evidence]
+            record['git_sources'][0]['commit'] = built
+            with patch.object(historical, 'MOVED_TAGS', [evidence]):
+                historical.validate(archive, record)
+                git('-C', str(repo), 'update-ref', 'refs/tags/v1.5.7', 'HEAD')
+                with tarfile.open(archive, 'w:gz') as bundle:
+                    bundle.add(repo / '.git', arcname='srt/srt')
+                with self.assertRaisesRegex(ValueError, 'historical commit'):
+                    historical.validate(archive, record)
+
     def test_real_git_archive_objects(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

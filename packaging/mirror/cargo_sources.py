@@ -36,6 +36,16 @@ RECIPES = {
         ('thin-provisioning-tools', 'thin-provisioning-tools'),
     'ec47c5bc391e769104d1e6129ad7c6f240f04b392b94826b62c7d5230914e176':
         ('wpaperd', 'wpaperd'),
+    # Image 0.9.0. Each prepare() fetches only with cargo fetch --locked; gstreamer's is
+    # for the dots-viewer workspace that -D gst-devtools:debug_viewer=enabled builds.
+    '1218e2a09459a357fc6011d2a7e5b45e59459f4eed8805a6e7fae16ab58ea50b':
+        ('glycin', 'glycin'),
+    '55088460c5238200e88305848d892db65d4beb760eb294322e10789dd4fc40bb':
+        ('librsvg', 'librsvg'),
+    'd5f46f2205641f094396703f1b77adbe165e4b03b3e77b24091e4ea733107078':
+        ('xwayland-satellite', 'xwayland-satellite-0.8.3'),
+    'cb3e4dbf40d9b15c7647e6437beaf4064b9e97d72257f112604a654ceb63eb1a':
+        ('gstreamer', 'gstreamer/subprojects/gst-devtools/dots-viewer'),
 }
 
 
@@ -43,6 +53,8 @@ RECIPES = {
 IN_TREE_RECIPES = {
     # The only apparent fetcher runs the newly built ./rsync -V in check().
     'f02c414fb424eb95513d3111a17dce252f1a0fa31a2eb09c0e0f75ca25753327': 'rsync',
+    # The same, plus prepare() reverts 7ee931c7, an ancestor of the archived v3.5.1 commit.
+    'c70fd1b2184c5dcf13cbee1aa1f80742fb3ccae27d6925beeaae917fd7f61085': 'rsync',
     # go/Makefile uses -mod=vendor and symlinks the retained go/{cap,psx} modules.
     'ab8bb79629c958de181d68739cad92d4b36829abada1ede71eab67d32092bd74': 'libcap',
     # updatelist is a manual maintainer helper; package installs the pinned file.
@@ -116,6 +128,10 @@ def required_tree(record, recipe_text=None, source_names=()):
 
 GLYCIN_COMMITS = ('476720131410e80436e65b9e24fcab52467e1b0f',
                   '590c6d215afb3ed055909d5f208d2db200386409')
+# Only glycin 2.1.5-2 cherry-picks; glycin 2.2.2-1 builds its tag unchanged.
+PREPARATION_COMMITS = {
+    '5f157fb66b7d8d4363e93c13d339549cecba4d58f2602fac641fef4155fdebfe': GLYCIN_COMMITS,
+}
 RESTORE = """Copyright (C) 2026 Artur Yakymenko
 SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -154,27 +170,32 @@ def prepare_tree(record, tree, downloads, run):
         proof['reconstruction'] = reconstruction
         # The upstream archive has no lock; do not claim this was an original lock.
         proof.pop('original_lock_sha256')
-    if (tree / '.git').exists():
-        head = run('git', '-C', str(tree), 'rev-parse', 'HEAD').strip()
+    # A workspace below the checkout root (gstreamer) binds to that checkout's commit.
+    nested = PurePosixPath(RECIPES[record['recipe_sha256']][1]).parts[1:]
+    checkout = tree.parents[len(nested) - 1] if nested else tree
+    if (checkout / '.git').exists():
+        head = run('git', '-C', str(checkout), 'rev-parse', 'HEAD').strip()
         # This tree must come from the same verified primary archived by makepkg.
-        name = tree.name
+        name = checkout.name
         matches = [pin for pin in record.get('git_sources', [])
                    if pin['source'].split('::')[-1].split('#')[0].split('?')[0]
                    .rstrip('/').rsplit('/', 1)[-1].removesuffix('.git') == name]
         if len(matches) != 1 or matches[0]['commit'] != head:
             raise ValueError('Cargo workspace differs from the verified primary Git source')
-        committed = run('git', '-C', str(tree), 'show', head + ':Cargo.lock').encode()
+        committed = run('git', '-C', str(checkout), 'show',
+                        head + ':' + '/'.join((*nested, 'Cargo.lock'))).encode()
         if committed != original:
             raise ValueError('Cargo workspace lock differs from its primary Git commit')
         proof['source_commit'] = head
-    if record['base'] == 'glycin':
-        for commit in GLYCIN_COMMITS:
+    commits = PREPARATION_COMMITS.get(record['recipe_sha256'], ())
+    if commits:
+        for commit in commits:
             actual = run('git', '-C', str(tree), 'rev-parse', commit + '^{commit}').strip()
             if actual != commit:
                 raise ValueError('missing reviewed glycin preparation commit')
             run('git', '-c', 'core.hooksPath=/dev/null', '-C', str(tree),
                 'cherry-pick', '--no-commit', commit)
-        proof['commits'] = list(GLYCIN_COMMITS)
+        proof['commits'] = list(commits)
     # librsvg's checksum-pinned patch changes only one PNG reference fixture;
     # greetd removes a Rust documentation attribute. Neither changes Cargo inputs.
     proof['prepared_lock_sha256'] = sha256((tree / 'Cargo.lock').read_bytes())
@@ -354,7 +375,7 @@ def validate_supplement(archive, record):
     proof = evidence.get('preparation', {})
     if proof.get('prepared_lock_sha256') != sha256(lock):
         raise ValueError('Cargo preparation evidence differs from retained lock')
-    expected_commits = list(GLYCIN_COMMITS) if record['base'] == 'glycin' else []
+    expected_commits = list(PREPARATION_COMMITS.get(record['recipe_sha256'], ()))
     if proof.get('commits') != expected_commits:
         raise ValueError('Cargo preparation evidence omits reviewed changes')
     if record['base'] == 'libimagequant':

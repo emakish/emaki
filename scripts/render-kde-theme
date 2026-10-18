@@ -19,8 +19,13 @@ def render(tokens):
     # terminal; without it KIO looks only for Konsole and xterm, which Emaki does not install.
     # Never TerminalService: KIO reads it first, so from this system file it would beat a
     # person's own TerminalApplication in ~/.config/kdeglobals.
+    # [UiSettings] ColorScheme names a scheme that deliberately does not exist: KColorSchemeManager
+    # (which Dolphin creates) applies BreezeLight when the key is empty, and nothing when no
+    # .colors file matches, so the session's qt6ct accent palette stays. Never ship an
+    # Emaki.colors: a match would replace the live accent with a fixed palette.
     lines = ['# GENERATED from tokens.toml by scripts/render-kde-theme.',
              '[General]', 'ColorScheme=Emaki', 'TerminalApplication=kitty',
+             '', '[UiSettings]', 'ColorScheme=Emaki',
              '', '[KDE]', 'contrast=4']
     for group, background, foreground in (
         ('View', 'background', 'text'), ('Window', 'background', 'text'),

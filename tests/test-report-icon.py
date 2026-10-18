@@ -93,6 +93,8 @@ assert.deepEqual(lookupWindow(Quickshell.appId, 'Report a problem'), lookup(Quic
         updates = (ROOT / 'update-manager/ui/ManagerUpdates.qml').read_text()
         card = updates[updates.index('id: releaseIcon') - 200:updates.index('id: releaseIcon') + 400]
         self.assertIn('kind: "logo"', card)
+        # The logo draws a child pixel image; the outer Image status stays Null for it.
+        self.assertIn('visible: ready', card)
         self.assertNotIn('emaki-welcome', updates)
 
     def test_no_other_shipped_place_uses_the_demo_mark(self):

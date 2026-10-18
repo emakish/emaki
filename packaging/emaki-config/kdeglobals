@@ -3,6 +3,9 @@
 ColorScheme=Emaki
 TerminalApplication=kitty
 
+[UiSettings]
+ColorScheme=Emaki
+
 [KDE]
 contrast=4
 

@@ -1106,6 +1106,7 @@ check-shell: paths shell-shaders check-sudo-build
 	python tests/test-lock-avatar.py
 	python tests/test-lock-avatar-startup.py
 	python tests/test-lock-wordmark.py
+	python3 tests/test-pixel-mark.py
 	python tests/test-bar.py
 	python3 tests/test-panel-dock-policy.py
 	python tests/test-strip.py
@@ -1161,6 +1162,10 @@ shell-config:
 .PHONY: lock-wordmark
 lock-wordmark:
 	python scripts/build-lock-wordmark
+
+.PHONY: pixel-mark
+pixel-mark:
+	python3 art/logo/build-pixel-mark
 
 # Checked-in BMP: installation copies it without running Python/artwork tools.
 .PHONY: boot-splash

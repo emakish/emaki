@@ -254,6 +254,8 @@ Keep `gnome-keyring` installed until recovery is complete for every account.
 If old keyrings exist and their application keys have not been safely accounted for,
 the desktop still opens, but password storage and the Secret portal remain paused.
 This prevents applications from generating replacement keys before recovery.
+Application keys with an empty or invalid application identifier are recorded as `unrecoverable`:
+they are not copied, stay in the old keyring and do not pause password storage.
 
 1. Keep a protected backup of old keyrings, `~/.local/share/kwalletd/`, and sandboxed application data, together with the old passwords.
 2. Use `emaki-keyring-recover` in a private terminal to retry failed migration or unlock other collections with their own passwords.

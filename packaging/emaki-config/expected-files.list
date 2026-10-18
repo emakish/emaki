@@ -552,6 +552,7 @@
 /usr/share/emaki/shell/helpers/wallpaper.py
 /usr/share/emaki/shell/helpers/wallpaper_chooser.py
 /usr/share/emaki/shell/lock.qml
+/usr/share/emaki/shell/mark-bar-26.png
 /usr/share/emaki/shell/qmldir
 /usr/share/emaki/shell/session-cover.qml
 /usr/share/emaki/shell/settings/SettingsButton.qml

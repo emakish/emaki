@@ -203,6 +203,53 @@ class Migration(Fixture):
         self.assertEqual((saved['raw'], saved['type']), (raw, 'application/octet-stream'))
         self.assertTrue(result['portal_keys_safe'])
 
+    def test_invalid_portal_identifiers_are_reported_without_blocking_login(self):
+        for app_id in (None, '', 'invalid/path', 'invalid\0identifier'):
+            with self.subTest(app_id=app_id):
+                self.source, self.target = Store(), Store()
+                self.report.unlink(missing_ok=True)
+                attributes = {'xdg:schema': 'org.freedesktop.portal.Secret'}
+                if app_id is not None:
+                    attributes['app_id'] = app_id
+                invalid = self.source.add(label='Application key for ', attrs=attributes)
+                self.source.add()
+                result = self.transfer()
+                self.assertEqual(self.statuses(result), ['unrecoverable', 'migrated'])
+                self.assertTrue(result['complete'])
+                self.assertTrue(result['portal_keys_safe'])
+                self.assertTrue(result['saved'])
+                self.assertEqual(len(self.target.items), 1)
+                self.assertEqual(len(self.source.items), 2)
+                self.assertFalse(any(call[1] == invalid and call[3] == 'GetSecret'
+                                     for call in self.source.calls))
+                self.assertEqual(json.loads(self.report.read_text()), result)
+                notices = []
+                self.helper['run_login'](self.env, notices.append)
+                self.assertIn('Unrecoverable application keys: 1.', notices[0])
+                self.assertIn('Copied items: 1.', notices[0])
+                self.assertIn('Items needing recovery: 0.', notices[0])
+                self.assertNotIn('were copied', notices[0])
+
+    def test_valid_portal_identifier_failures_still_block_with_junk_present(self):
+        for failure in ('invalid-key', 'write'):
+            with self.subTest(failure=failure):
+                self.source, self.target = Store(), Store()
+                self.report.unlink(missing_ok=True)
+                self.source.add(attrs={'app_id': '', 'xdg:schema': 'org.freedesktop.portal.Secret'})
+                self.source.add(attrs={'app_id': 'org.example.App',
+                                       'xdg:schema': 'org.freedesktop.portal.Secret'},
+                                raw=b'x' * (63 if failure == 'invalid-key' else 64))
+                if failure == 'write':
+                    self.target.fail_create_labels.add('xdg-desktop-portal/org.example.App')
+                result = self.transfer()
+                self.assertEqual(self.statuses(result), ['unrecoverable', 'failed'])
+                self.assertFalse(result['complete'])
+                self.assertFalse(result['portal_keys_safe'])
+                notices = []
+                self.helper['run_login'](self.env, notices.append)
+                self.assertIn('Unrecoverable application keys: 1.', notices[0])
+                self.assertIn('Items needing recovery: 1.', notices[0])
+
     def test_locked_collection_remains_pending_then_recovers_when_unlocked(self):
         self.source.add()
         self.source.collections[COLLECTION_PATH]['locked'] = True
@@ -334,6 +381,7 @@ class Migration(Fixture):
         for portal in (False, True):
             with self.subTest(portal=portal):
                 self.source, self.target = Store(), Store()
+                self.report.unlink(missing_ok=True)
                 if portal:
                     self.source.add(attrs={'app_id': 'org.example.App',
                                            'xdg:schema': 'org.freedesktop.portal.Secret'}, raw=b'o' * 64)

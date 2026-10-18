@@ -59,8 +59,8 @@ class CargoSources(unittest.TestCase):
         CARGO.add_supplement(source, self.destination, target, self.record)
         return target
 
-    def test_eleven_reviewed_recipes(self):
-        self.assertEqual(len(CARGO.RECIPES), 11)
+    def test_fifteen_reviewed_recipes(self):
+        self.assertEqual(len(CARGO.RECIPES), 15)
         for sha, (base, tree) in CARGO.RECIPES.items():
             self.assertEqual(CARGO.required_tree({'base': base, 'recipe_sha256': sha}), tree)
 
@@ -142,6 +142,63 @@ class CargoSources(unittest.TestCase):
         record['recipe_sha256'] = '0' * 64
         with self.assertRaisesRegex(ValueError, 'reviewed recipe'):
             CARGO.required_tree(record, recipe)
+
+    def test_image_090_cargo_reviews_are_hash_bound(self):
+        for sha, base, tree in (
+                ('1218e2a09459a357fc6011d2a7e5b45e59459f4eed8805a6e7fae16ab58ea50b', 'glycin', 'glycin'),
+                ('55088460c5238200e88305848d892db65d4beb760eb294322e10789dd4fc40bb', 'librsvg', 'librsvg'),
+                ('d5f46f2205641f094396703f1b77adbe165e4b03b3e77b24091e4ea733107078',
+                 'xwayland-satellite', 'xwayland-satellite-0.8.3'),
+                ('cb3e4dbf40d9b15c7647e6437beaf4064b9e97d72257f112604a654ceb63eb1a',
+                 'gstreamer', 'gstreamer/subprojects/gst-devtools/dots-viewer')):
+            with self.subTest(base=base):
+                recipe = 'prepare() { cargo fetch --locked --target host-tuple; }'
+                self.assertEqual(CARGO.required_tree({'base': base, 'recipe_sha256': sha}, recipe), tree)
+                with self.assertRaisesRegex(ValueError, 'base differs'):
+                    CARGO.required_tree({'base': 'other', 'recipe_sha256': sha})
+                with self.assertRaisesRegex(ValueError, 'reviewed recipe'):
+                    CARGO.required_tree({'base': base, 'recipe_sha256': 'f' * 64}, recipe)
+
+    def test_rsync_revert_recipe_requires_exact_review(self):
+        record = {'base': 'rsync', 'recipe_sha256': 'c70fd1b2184c5dcf13cbee1aa1f80742fb3ccae27d6925beeaae917fd7f61085'}
+        self.assertIsNone(CARGO.required_tree(record, 'check() { ./rsync -V; }'))
+        with self.assertRaisesRegex(ValueError, 'base differs'):
+            CARGO.required_tree(dict(record, base='other'))
+
+    def git(self, *args):
+        return subprocess.run(['git', *args], check=True, capture_output=True, text=True).stdout
+
+    def test_nested_workspace_binds_to_checkout_commit(self):
+        checkout = self.root / 'gstreamer'
+        tree = checkout / 'subprojects/gst-devtools/dots-viewer'
+        tree.mkdir(parents=True)
+        (tree / 'Cargo.lock').write_bytes(self.lock)
+        self.git('init', '-q', str(checkout))
+        self.git('-C', str(checkout), 'add', '.')
+        self.git('-C', str(checkout), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                 '-c', 'commit.gpgsign=false', 'commit', '-qm', 'Source')
+        head = self.git('-C', str(checkout), 'rev-parse', 'HEAD').strip()
+        record = {'base': 'gstreamer', 'recipe_sha256': next(
+            key for key, value in CARGO.RECIPES.items() if value[0] == 'gstreamer'), 'git_sources': [
+            {'source': 'git+https://gitlab.freedesktop.org/gstreamer/gstreamer.git?signed#tag=1.28.7',
+             'commit': head}]}
+        proof = CARGO.prepare_tree(record, tree, self.root, lambda *args: self.git(*args[1:]))
+        self.assertEqual(proof['source_commit'], head)
+        self.assertEqual(proof['commits'], [])
+        (tree / 'Cargo.lock').write_bytes(self.lock + b'# changed\n')
+        with self.assertRaisesRegex(ValueError, 'differs from its primary Git commit'):
+            CARGO.prepare_tree(record, tree, self.root, lambda *args: self.git(*args[1:]))
+        record['git_sources'][0]['commit'] = 'b' * 40
+        with self.assertRaisesRegex(ValueError, 'verified primary'):
+            CARGO.prepare_tree(record, tree, self.root, lambda *args: self.git(*args[1:]))
+
+    def test_glycin_222_builds_its_tag_without_cherry_picks(self):
+        record = {'base': 'glycin', 'recipe_sha256': '1218e2a09459a357fc6011d2a7e5b45e59459f4eed8805a6e7fae16ab58ea50b'}
+        calls = []
+        proof = CARGO.prepare_tree(record, self.tree, self.root, lambda *args: calls.append(args) or '')
+        self.assertEqual(proof['commits'], [])
+        self.assertFalse(any('cherry-pick' in call for call in calls))
+        self.assertEqual(CARGO.PREPARATION_COMMITS.get(record['recipe_sha256']), None)
 
     def test_missing_build_lock_refused(self):
         (self.tree / 'Cargo.lock').unlink()

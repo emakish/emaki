@@ -24,7 +24,7 @@ import tempfile
 import threading
 import time
 import tomllib
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from urllib.parse import unquote, urlparse
 from types import SimpleNamespace
 
@@ -484,7 +484,7 @@ sys.exit(int(os.environ['FIXTURE_EXIT']))
     command.write_text('#!' + sys.executable + '''
 import importlib.util, json, os, sys
 from importlib.machinery import SourceFileLoader
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 sys.dont_write_bytecode = True
 with open(os.environ['FIXTURE_LOG'], 'a') as stream:
     stream.write(json.dumps(sys.argv[1:]) + '\\n')
@@ -724,7 +724,64 @@ def pam_account_provision_checks():
         assert provision.call_count == 2
 
 
+def current_selection_checks(base):
+    source = base / 'current-selection'
+    config = source / 'wpaperd/config.toml'
+    config.parent.mkdir(parents=True)
+    stale = source / 'old.png'
+    ring = source / 'ring.png'
+    managed = source / 'chosen.png'
+    for path, color in ((stale, 'red'), (ring, 'blue'), (managed, 'green')):
+        path.write_bytes(png(color))
+    write_config(config, stale)
+    original = config.read_bytes()
+    destination = source / 'published'
+    status = {'mode': 'ring', 'load_state': 'ready', 'files': {'ring': str(ring)}}
+    connection = MagicMock()
+    connection.__enter__.return_value = connection
+    def response():
+        connection.recv.return_value = (json.dumps({'Ok': {'EmakiWallpaper': status}}) + '\n').encode()
+    response()
+    environment = dict(XDG_CONFIG_HOME=str(source), XDG_CACHE_HOME=str(source / 'cache'), HOME=str(source),
+                       NIRI_SOCKET=str(source / 'socket'), EMAKI_GREETER_WALLPAPER_ROOT='')
+    with patch.dict(os.environ, environment), patch.object(wallpaper.socket, 'socket', return_value=connection):
+        images, published = publisher.prepare_publication(config, destination)
+        assert list(images.values()) == [ring.read_bytes()], 'visible ring overrides obsolete wpaperd photo'
+        status['files']['ring'] = '~/ring.png'
+        response()
+        images, published = publisher.prepare_publication(config, destination)
+        assert list(images.values()) == [ring.read_bytes()], 'a ~ ring path is expanded as niri does'
+        status['files']['ring'] = str(ring)
+        response()
+        result = wallpaper.texture(24, 16, 1, 'Fixture', 'sharp')
+        assert result['state'] == 'ready'
+        assert Image.open(Path(unquote(urlparse(result['texture']).path))).getpixel((12, 8)) == (0, 0, 255)
+        assert ring in publisher.watch_paths(config)
+        settings = source / 'emaki/settings.toml'
+        settings.parent.mkdir()
+        settings.write_text('schema_version = 1\n[appearance]\nwallpaper = ' + json.dumps(str(managed)))
+        assert settings in publisher.watch_paths(config)
+        status['mode'] = 'image'
+        response()
+        assert list(publisher.prepare_publication(config, destination)[0].values()) == [managed.read_bytes()]
+        settings.unlink()
+        assert list(publisher.prepare_publication(config, destination)[0].values()) == [stale.read_bytes()]
+        connection.recv.return_value = b'not json\n'
+        assert wallpaper.current_wallpaper_config(source) is None
+        connection.recv.return_value = b'x' * wallpaper.MAX_CONFIG
+        assert wallpaper.current_wallpaper_config(source) is None
+        connection.connect.side_effect = TimeoutError()
+        assert wallpaper.current_wallpaper_config(source) is None
+        connection.reset_mock()
+        with patch.dict(os.environ, EMAKI_GREETER_WALLPAPER_ROOT=str(source)):
+            assert wallpaper.texture(24, 16, 1, 'Fixture', 'sharp')['state'] == 'ready'
+            connection.connect.assert_not_called()
+    assert config.read_bytes() == original, 'selection never rewrites personal configuration'
+
+
 def main():
+    # Inside a live session the real compositor would answer the fixtures' wallpaper queries.
+    os.environ.pop('NIRI_SOCKET', None)
     legacy_toggle_migration_checks()
     pam_account_provision_checks()
     assert os.getuid() != 0, 'run publishing tests as an ordinary user'
@@ -1180,9 +1237,13 @@ Scope {
         uninstall_recipe_checks(base)
         package_removal_checks(base)
         default_config_checks(base)
+        current_selection_checks(base)
         look_publication_checks(base)
         watcher_unit =(ROOT / 'systemd/emaki-greeter-wallpaper-watch.service').read_text()
         assert 'StartLimitIntervalSec=60' in watcher_unit and 'StartLimitBurst=5' in watcher_unit
+        # Started before the compositor, a publisher has no NIRI_SOCKET and keeps the old photo.
+        for unit in ('emaki-greeter-wallpaper-watch.service', 'emaki-greeter-wallpaper.service'):
+            assert 'After=niri.service niri-emaki.service' in (ROOT / 'systemd' / unit).read_text(), unit
     print('Greeter wallpaper: safe publication/removal/purge, PNG/JPEG/WebP-only/no Ghostscript, bounds/symlinks/races, private roots, inotify, isolated QS helpers, optional provisioning/hints, private refusal codes: PASS')
 
 

@@ -2,8 +2,10 @@
 # Copyright (C) 2026 Artur Yakymenko
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Offline checks for exact-source retrieval exceptions."""
+import gzip
 import hashlib
 import importlib.util
+import os
 from pathlib import Path
 import tempfile
 import tarfile
@@ -51,6 +53,35 @@ class SourceRoutes(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'differs'):
                 self.recovery('os-prober', 'sha512sums = ' + 'a' * 128, run, directory)
             self.assertFalse((Path(directory) / 'os-prober_1.84.tar.xz').exists())
+
+    def test_volume_key_fedora_lookaside_requires_recipe_checksums(self):
+        payload = b'volume_key release'
+        pins = ('sha512sums = ' + hashlib.sha512(payload).hexdigest() + '\n'
+                'b2sums = ' + hashlib.blake2b(payload).hexdigest())
+        with tempfile.TemporaryDirectory() as directory:
+            attempts = []
+            def run(*args, **kwargs):
+                attempts.append(args[-1])
+                if 'releases.pagure.org' in args[-1]:
+                    raise subprocess.CalledProcessError(22, args)
+                self.assertNotIn('--insecure', args)
+                Path(args[args.index('--output') + 1]).write_bytes(payload)
+                return args[-1]
+            result = self.recovery('volume_key', pins, run, directory)
+            mirror = result['evidence'][0]['mirror']
+            self.assertTrue(mirror.startswith('https://src.fedoraproject.org/repo/pkgs/rpms/volume_key/'))
+            self.assertEqual(set(result['evidence'][0]['checksums']), {'sha512', 'b2'})
+            self.assertEqual((Path(directory) / 'volume_key-0.3.12.tar.xz').read_bytes(), payload)
+            self.assertEqual(len(attempts), 2)
+            with self.assertRaisesRegex(ValueError, 'differs'):
+                self.recovery('volume_key', pins.replace(hashlib.blake2b(payload).hexdigest(),
+                                                         'a' * 128), run, directory)
+            self.assertFalse((Path(directory) / 'volume_key-0.3.12.tar.xz').exists())
+        key = next(key for key in routes.RECOVERY_ROUTES if key[0] == 'volume_key')
+        with self.assertRaisesRegex(ValueError, 'differs from the reviewed'):
+            routes.prepare_routes('source = https://releases.pagure.org/volume_key/other.tar.xz\n' + pins,
+                                  {'base': 'volume_key', 'recipe_sha256': key[1]}, Path('/unused'), {},
+                                  lambda *a, **k: self.fail('unreviewed download'))
 
     def test_relaxed_tls_scoped_no_redirects_and_checksum_required(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -455,6 +486,154 @@ class SourceRoutes(unittest.TestCase):
         self.assertIsNone(routes.git_mirror(source, 'v9.12'))
         self.assertIsNone(routes.git_mirror(source.replace('coreutils', 'unknown'), 'a' * 40))
         self.assertEqual(routes.git_mirror(source, 'a' * 40)['commit'], 'a' * 40)
+
+    def test_libnewt_tag_tree_is_keyed_to_its_exact_recipe(self):
+        key = ('libnewt', 'df8e87b4e5b0753c6a25bad86d4783173090fda8598ee58fd9f264c3ae72a0a5')
+        self.assertEqual(list(routes.TAG_TREES), [key])
+        reviewed = routes.TAG_TREES[key]
+        self.assertEqual(reviewed['source'], 'https://pagure.io/newt/archive/r0-52-25/newt-r0-52-25.tar.gz')
+        self.assertEqual(reviewed['repositories'][0], 'https://pagure.io/newt.git')
+        # A lightweight tag: the tag ref names the commit itself.
+        self.assertEqual(reviewed['tag_object'], reviewed['commit'])
+        self.assertTrue(reviewed['commit_date'].startswith('2025-03-10T'))
+        for phrase in ('no longer served', 'same upstream tag', reviewed['commit'], reviewed['tree']):
+            self.assertIn(phrase, reviewed['reason'])
+        info = f"source = {reviewed['source']}\nb2sums = {reviewed['recipe_b2sum']}\n"
+        for record in ({'base': 'libnewt', 'recipe_sha256': '0' * 64},
+                       {'base': 'other', 'recipe_sha256': key[1]}):
+            self.assertIsNone(routes.prepare_tag_tree(routes.fields(info), record, Path('/unused'),
+                              lambda *a, **k: self.fail('unreviewed tag tree')))
+
+    def tag_tree_fixture(self, directory):
+        """A real repository with a lightweight tag, reviewed under a test key."""
+        env = {'PATH': os.environ['PATH'], 'HOME': directory, 'GIT_CONFIG_NOSYSTEM': '1',
+               'GIT_CONFIG_GLOBAL': os.devnull, 'GIT_AUTHOR_NAME': 'A', 'GIT_AUTHOR_EMAIL': 'a@a',
+               'GIT_COMMITTER_NAME': 'A', 'GIT_COMMITTER_EMAIL': 'a@a',
+               'GIT_AUTHOR_DATE': '2025-03-10T13:50:37+01:00',
+               'GIT_COMMITTER_DATE': '2025-03-10T14:29:06+01:00'}
+        def run(*args, **kwargs):
+            return subprocess.run(args, check=True, capture_output=True, text=True, env=env).stdout
+        upstream = Path(directory) / 'upstream'
+        (upstream / 'po').mkdir(parents=True)
+        (upstream / 'newt.c').write_text('int main(void) { return 0; }\n')
+        # Git sorts a directory as "name/": po.c, po/, po0 exercise that order.
+        (upstream / 'po.c').write_text('')
+        (upstream / 'po0').write_text('zero\n')
+        (upstream / 'po' / 'de.po').write_text('msgid ""\n')
+        (upstream / 'autogen.sh').write_text('#!/bin/sh\n')
+        (upstream / 'autogen.sh').chmod(0o755)
+        run('git', 'init', '--quiet', str(upstream))
+        run('git', '-C', str(upstream), 'add', '.')
+        run('git', '-C', str(upstream), 'commit', '--quiet', '-m', '0.52.25')
+        run('git', '-C', str(upstream), 'tag', 'r0-52-25')
+        commit = run('git', '-C', str(upstream), 'rev-parse', 'HEAD').strip()
+        tar = Path(directory) / 'expected.tar'
+        run('git', '-C', str(upstream), 'archive', '--format=tar', '--prefix=newt-r0-52-25/',
+            '--output=' + str(tar), commit)
+        key = ('libnewt', 'a' * 64)
+        reviewed = dict(routes.TAG_TREES[('libnewt', 'df8e87b4e5b0753c6a25bad86d4783173090fda8598ee58fd9f264c3ae72a0a5')],
+                        repositories=(str(Path(directory) / 'gone.git'), str(upstream)),
+                        tag_object=commit, commit=commit,
+                        tree=run('git', '-C', str(upstream), 'rev-parse', 'HEAD^{tree}').strip(),
+                        tar_sha256=hashlib.sha256(tar.read_bytes()).hexdigest())
+        info = f"source = {reviewed['source']}\nb2sums = {reviewed['recipe_b2sum']}\n"
+        return {'base': key[0], 'recipe_sha256': key[1]}, key, reviewed, info, run, upstream
+
+    def tag_tree_bundle(self, directory, downloads, extra=None):
+        bundle = Path(directory) / ('libnewt' + ('-' + extra if extra else '') + '.src.tar.gz')
+        with tarfile.open(bundle, 'w:gz') as tar:
+            for name in ('PKGBUILD', '.SRCINFO', *([extra] if extra else [])):
+                data = b'recipe\n'
+                member = tarfile.TarInfo('libnewt/' + name)
+                member.size = len(data)
+                tar.addfile(member, io.BytesIO(data))
+            tar.add(downloads / 'newt-r0-52-25.tar.gz', 'libnewt/newt-r0-52-25.tar.gz')
+        return bundle
+
+    def test_tag_tree_archives_the_reviewed_tag_and_skips_only_its_checksum(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            record, key, reviewed, info, run, upstream = self.tag_tree_fixture(directory)
+            downloads = Path(directory) / 'downloads'
+            downloads.mkdir()
+            with patch.dict(routes.TAG_TREES, {key: reviewed}):
+                result = routes.prepare_routes(info, record, downloads, {}, run)
+                self.assertEqual(result['makepkg_flags'], ['--skipchecksums'])
+                [evidence] = result['evidence']
+                self.assertEqual(evidence['kind'], 'reviewed-tag-tree')
+                self.assertEqual(evidence['repository'], str(upstream))
+                self.assertEqual(evidence['commit'], reviewed['commit'])
+                payload = (downloads / 'newt-r0-52-25.tar.gz').read_bytes()
+                self.assertEqual(hashlib.sha256(gzip.decompress(payload)).hexdigest(),
+                                 reviewed['tar_sha256'])
+                self.assertEqual(routes.git_archive_tree(gzip.decompress(payload), reviewed['prefix'],
+                                                         reviewed['commit']), reviewed['tree'])
+                # Deterministic: a second run writes the same bytes.
+                routes.prepare_routes(info, record, downloads, {}, run)
+                self.assertEqual((downloads / 'newt-r0-52-25.tar.gz').read_bytes(), payload)
+                bundle = self.tag_tree_bundle(directory, downloads)
+                routes.validate_routes(bundle, dict(record, source_routes=[evidence]))
+                for name, value in (('commit', '0' * 40), ('reason', 'changed'),
+                                    ('repository', 'https://example.invalid/newt.git'),
+                                    ('sha256', '0' * 64), ('extra', 'field')):
+                    with self.subTest(changed=name), self.assertRaises(ValueError):
+                        routes.validate_routes(bundle, dict(record, source_routes=[
+                            dict(evidence, **{name: value})]))
+                with self.assertRaisesRegex(ValueError, 'only source route'):
+                    routes.validate_routes(bundle, dict(record, source_routes=[
+                        evidence, {'kind': 'official-checksum-mirror'}]))
+                for extra in ('patch.diff', 'PKGBUILD'):
+                    with self.subTest(extra=extra), self.assertRaisesRegex(ValueError, 'other files'):
+                        routes.validate_routes(self.tag_tree_bundle(directory, downloads, extra),
+                                               dict(record, source_routes=[evidence]))
+            # Outside its reviewed key the same evidence is refused.
+            with self.assertRaisesRegex(ValueError, 'unreviewed tag tree'):
+                routes.validate_routes(bundle, dict(record, source_routes=[evidence]))
+
+    def test_tag_tree_refuses_changed_recipe_tag_or_tree(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            record, key, reviewed, info, run, upstream = self.tag_tree_fixture(directory)
+            downloads = Path(directory) / 'downloads'
+            downloads.mkdir()
+            source = reviewed['source']
+            with patch.dict(routes.TAG_TREES, {key: reviewed}):
+                for changed in (info.replace(reviewed['recipe_b2sum'], 'b' * 128),
+                                info + 'sha256sums = ' + 'c' * 64 + '\n',
+                                info + 'source = local.patch\nb2sums = ' + 'd' * 128 + '\n',
+                                info + 'source_x86_64 = ' + source + '\n',
+                                info.replace(source, source + '?x=1')):
+                    with self.subTest(recipe=changed), self.assertRaisesRegex(ValueError, 'reviewed recipe'):
+                        routes.prepare_routes(changed, record, downloads, {},
+                                              lambda *a, **k: self.fail('unreviewed fetch'))
+                for name, value in (('commit', '0' * 40), ('tree', '0' * 40),
+                                    ('commit_date', '2025-03-28T00:00:00+00:00'),
+                                    ('tar_sha256', '0' * 64), ('tag', 'r0-52-26')):
+                    with self.subTest(review=name), patch.dict(routes.TAG_TREES,
+                                                               {key: dict(reviewed, **{name: value})}):
+                        with self.assertRaises((ValueError, subprocess.CalledProcessError)):
+                            routes.prepare_routes(info, record, downloads, {}, run)
+                # A moved upstream tag is refused, not followed.
+                (upstream / 'newt.c').write_text('moved\n')
+                run('git', '-C', str(upstream), 'commit', '--quiet', '-am', 'moved')
+                run('git', '-C', str(upstream), 'tag', '--force', 'r0-52-25')
+                with self.assertRaisesRegex(ValueError, 'differs from the reviewed commit'):
+                    routes.prepare_routes(info, record, downloads, {}, run)
+            self.assertFalse((downloads / 'newt-r0-52-25.tar.gz').exists())
+
+    def test_git_archive_tree_refuses_other_members(self):
+        for name, kind in (('newt-r0-52-25/link', tarfile.SYMTYPE), ('other/file', tarfile.REGTYPE),
+                           ('newt-r0-52-25/../file', tarfile.REGTYPE)):
+            data = io.BytesIO()
+            with tarfile.open(fileobj=data, mode='w', format=tarfile.PAX_FORMAT,
+                              pax_headers={'comment': 'a' * 40}) as tar:
+                member = tarfile.TarInfo(name)
+                member.type = kind
+                tar.addfile(member, io.BytesIO(b''))
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                routes.git_archive_tree(data.getvalue(), 'newt-r0-52-25/', 'a' * 40)
+        with self.assertRaisesRegex(ValueError, 'different commit'):
+            routes.git_archive_tree(data.getvalue(), 'newt-r0-52-25/', 'b' * 40)
 
     def test_unreviewed_hosts_and_git_tags_not_substituted(self):
         for url in ('https://example.invalid/gnu/foo.tar.gz', 'git+https://ftp.gnu.org/gnu/foo#tag=v1',
