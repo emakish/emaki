@@ -24,6 +24,7 @@ Item {
             peekIds = [];
             peekTimer.stop();
             closeClock();
+            pinnedNotes.expanded = false;
         } else {
             // Output migration transfers the held arrivals before replaying them.
             Qt.callLater(replayDeferredPeeks);
@@ -355,6 +356,65 @@ Item {
         }
         return true;
     }
+    readonly property alias pinnedNotes: pinnedNotes
+    readonly property bool pinnedNotesOpen: pinnedNotes.expanded
+    readonly property bool pinnedNotesPresent: pinnedNotes.expanded || pinnedNotes.expansion > 0
+    property real pinnedNotesOrigin: 0
+    property bool pinnedNotesAnchored: false
+    function togglePinnedNotes(keyboard): void {
+        if (pinnedNotesOpen) {
+            closeAll();
+            return;
+        }
+        if (!enabled || authenticationPresent || !NotesService.pinnedNotes.length)
+            return;
+        // Keep the clicked island's origin while closing the clock behind its new plate.
+        pinnedNotesOrigin = pinnedNotes.x;
+        pinnedNotesAnchored = true;
+        closePanels(false);
+        keyboardSurface = keyboard === true ? "notes" : "";
+        pinnedNotes.expanded = true;
+        Qt.callLater(() => {
+            if (pinnedNotes.expanded)
+                pinnedNotes.takeFocus(keyboard === true);
+        });
+    }
+    onPinnedNotesPresentChanged: {
+        if (!pinnedNotesPresent)
+            pinnedNotesAnchored = false;
+        Qt.callLater(showHeld);
+    }
+    NotesIsland {
+        id: pinnedNotes
+        z: 30
+        width: implicitWidth
+        height: implicitHeight
+        readonly property real restingX: scene.clockPresent && clockPanel.visible ? clockPanel.x + clockPanel.width + 12 : bar.x + bar.clockIsland.islandRect.x + bar.clockIsland.islandWidth + 12
+        x: Math.max(Metrics.side, Math.min(scene.viewportWidth - width - Metrics.side, scene.pinnedNotesAnchored ? scene.pinnedNotesOrigin : restingX))
+        Behavior on x {
+            enabled: !scene.pinnedNotesPresent && !scene.pinnedNotesAnchored
+            NumberAnimation {
+                duration: Metrics.morphMs
+                easing.type: Easing.OutCubic
+            }
+        }
+        y: Metrics.top + (scene.pinnedNotesPresent ? 0 : bar.y) - 70 * barPolicy.overviewShift
+        visible: NotesService.pinnedNotes.length > 0 && scene.enabled && !scene.authenticationPresent && (barPolicy.normalIslands || scene.pinnedNotesPresent) && barPolicy.overviewShift < 1
+        backdrop: scene.pinnedNotesPresent ? scene.clockBackdrop : bar.backdrop
+        screenOrigin: Qt.point(x, y)
+        onToggleRequested: scene.togglePinnedNotes(scene.barKeyboardActive)
+        keyboardFocused: bar.notesFocused
+        // Detached: the first launch keeps its scope helper waiting for seconds, and a
+        // Process still running then would drop the next open.
+        onOpenRequested: noteId => {
+            scene.closeAll();
+            Quickshell.execDetached(AppLaunch.command("emaki-notes", ["emaki-notes", "--note", noteId]));
+        }
+        // The last note was unpinned while the keyboard was in the island: give it to the bar.
+        onVisibleChanged: if (!visible && scene.keyboardSurface === "notes" && !NotesService.pinnedNotes.length)
+            scene.keyboardBack(false)
+        Keys.onEscapePressed: scene.keyboardBack(false)
+    }
     property bool clockPresent: false
     property real clockExpansion: 0
     property var peekIds: []
@@ -365,7 +425,7 @@ Item {
     readonly property bool peekOpen: peekIds.length > 0
     readonly property bool pairingPeekOpen: peekIds.some(id => notes.entries.some(e => e.id === id && e.critical === true && !e.batteryWarning && e.object))
     readonly property bool batteryPeekOpen: peekIds.some(id => notes.entries.some(e => e.id === id && e.batteryWarning === true))
-    readonly property bool modalOpen: launcherOpen || drawerOpen || systemOpen || privacyOpen || shortcutsOpen || switcherOpen
+    readonly property bool modalOpen: launcherOpen || drawerOpen || systemOpen || privacyOpen || pinnedNotesOpen || shortcutsOpen || switcherOpen
     // A held notice (NotificationStore.hold: the Secure Boot notices) stays until the person
     // chooses its action or dismisses it. Its preview has no timer, and whenever the preview is
     // free again it comes back: nothing else previewed, no drawer or panel open, no
@@ -380,7 +440,7 @@ Item {
     function showHeld(): void {
         // The launcher (and Settings in it) sets launcherOpen a turn after closing the other
         // panels, and a closing panel is still present: wait for both.
-        if (!enabled || !focusedOutput || authenticationPresent || firstRunPresent || peekOpen || modalOpen || launcherPresent || systemPresent || privacyPresent)
+        if (!enabled || !focusedOutput || authenticationPresent || firstRunPresent || peekOpen || modalOpen || launcherPresent || systemPresent || privacyPresent || pinnedNotesPresent)
             return;
         const held = notes.entries.find(e => e.held === true);
         if (!held)
@@ -926,6 +986,7 @@ Item {
         dock.closePopup();
         privacyOpen = false;
         privacyExpansion = 0;
+        pinnedNotes.expanded = false;
         closeAllRequested();
     }
     function outsidePress(x: real, y: real): void {
@@ -933,6 +994,11 @@ Item {
     }
     function outsidePressButton(x: real, y: real, button: int): void {
         const logo = bar.logo;
+        // An open shade owns the overlay input; the neighbouring bar glyph is below it.
+        if (!pinnedNotesPresent && pinnedNotes.visible && x >= pinnedNotes.x && x < pinnedNotes.x + pinnedNotes.width && y >= pinnedNotes.y && y < pinnedNotes.y + pinnedNotes.height) {
+            togglePinnedNotes(false);
+            return;
+        }
         if (!launcherPresent && x >= logo.x && x < logo.x + logo.width && y >= logo.y && y < logo.y + logo.height)
             openLauncher();
         else if (!dockPressAt(x, y, button)) {
@@ -1217,6 +1283,12 @@ Item {
         notificationCount: scene.notes.count
         dnd: scene.notes.effectiveDnd
         services: scene.services
+        notesItem: pinnedNotes
+        onNotesClicked: {
+            const target = keyboardItem;
+            scene.togglePinnedNotes(true);
+            scene.keyboardReturnTarget = target;
+        }
         privacyItem: privacy
         onPrivacyClicked: {
             const target = keyboardItem;

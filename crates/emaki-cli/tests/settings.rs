@@ -1211,6 +1211,38 @@ if sys.argv[1] == 'apply' and Path({rejected:?}).exists():
 }
 
 #[test]
+fn wallpaper_snapshot_may_start_the_image_daemon_past_a_short_deadline() {
+    // A ring session starts the image daemon inside the snapshot helper first.
+    let f = Fixture::new();
+    let picture = f.root.join("picture.png");
+    fs::write(&picture, b"image").unwrap();
+    installed_helper(
+        &f,
+        "emaki-settings-wallpaper",
+        r#"import sys, time
+if sys.argv[1] == 'snapshot':
+    time.sleep(1.5)
+    print('{"screen":"previous.png"}')
+"#,
+    );
+    let out = f
+        .fake("ok")
+        .env("XDG_CURRENT_DESKTOP", "niri")
+        .args([
+            "settings",
+            "set",
+            "appearance.wallpaper",
+            picture.to_str().unwrap(),
+        ])
+        .args(["--json", "--timeout-ms", "1000"])
+        .guarded_output()
+        .unwrap();
+    let reply: Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{out:?}"));
+    assert!(out.status.success(), "{reply}");
+    assert_eq!(reply["session_applied"], true);
+}
+
+#[test]
 fn real_niri_validates_two_settings_generations_are_immutable_and_noop_is_read_only() {
     let f = Fixture::new();
     let a = f.set("appearance.gaps", "4");

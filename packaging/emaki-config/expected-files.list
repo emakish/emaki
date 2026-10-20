@@ -32,6 +32,7 @@
 /usr/bin/emaki-lock
 /usr/bin/emaki-machine-settings
 /usr/bin/emaki-migrate-installer-config
+/usr/bin/emaki-notes
 /usr/bin/emaki-power
 /usr/bin/emaki-programs
 /usr/bin/emaki-qt-check
@@ -139,6 +140,8 @@
 /usr/lib/systemd/system/multi-user.target.wants/emaki-update-boot.service
 /usr/lib/systemd/system/timers.target.wants/emaki-restore-index.timer
 /usr/lib/systemd/system/timers.target.wants/emaki-sudo-cleanup.timer
+/usr/lib/systemd/user/emaki-calendar-reminders.service
+/usr/lib/systemd/user/emaki-calendar-reminders.timer
 /usr/lib/systemd/user/emaki-greeter-wallpaper-watch.service
 /usr/lib/systemd/user/emaki-greeter-wallpaper.path
 /usr/lib/systemd/user/emaki-greeter-wallpaper.service
@@ -149,6 +152,7 @@
 /usr/lib/systemd/user/emaki-sleep-guard.service
 /usr/lib/systemd/user/emaki-wallet-migrate.service
 /usr/lib/systemd/user/emaki-wallet-start.service
+/usr/lib/systemd/user/graphical-session.target.wants/emaki-calendar-reminders.timer
 /usr/lib/systemd/user/graphical-session.target.wants/emaki-greeter-wallpaper-watch.service
 /usr/lib/systemd/user/graphical-session.target.wants/emaki-greeter-wallpaper.path
 /usr/lib/systemd/user/niri-emaki.service
@@ -184,6 +188,7 @@
 /usr/libexec/emaki/emaki_update_errors.py
 /usr/libexec/emaki/emaki_update_root.py
 /usr/libexec/emaki/emaki_update_space.py
+/usr/libexec/emaki/notes-backend
 /usr/libexec/emaki/paths
 /usr/libexec/emaki/programs_appstream.py
 /usr/libexec/emaki/programs_arch.py
@@ -201,10 +206,12 @@
 /usr/libexec/emaki/update_flatpaks.py
 /usr/libexec/emaki/update_reminder.py
 /usr/libexec/emaki/users_home.py
+/usr/share/applications/emaki-notes.desktop
 /usr/share/applications/emaki-report.desktop
 /usr/share/applications/emaki-update-manager.desktop
 /usr/share/applications/emaki-welcome.desktop
 /usr/share/doc/emaki/ZONES.md
+/usr/share/emaki-notes/ui/shell.qml
 /usr/share/emaki-update-manager/emaki-shelf.json
 /usr/share/emaki-update-manager/storefront.json
 /usr/share/emaki-update-manager/ui/ManagerActions.qml
@@ -349,6 +356,7 @@
 /usr/share/emaki/shell/AuthController.qml
 /usr/share/emaki/shell/BarPolicy.qml
 /usr/share/emaki/shell/Calculator.js
+/usr/share/emaki/shell/CalendarEvents.qml
 /usr/share/emaki/shell/CalendarMonth.qml
 /usr/share/emaki/shell/CanvasTint.qml
 /usr/share/emaki/shell/CaptureController.qml
@@ -414,6 +422,11 @@
 /usr/share/emaki/shell/MouseSettingsPage.qml
 /usr/share/emaki/shell/NightLight.qml
 /usr/share/emaki/shell/NiriService.qml
+/usr/share/emaki/shell/NotesButton.qml
+/usr/share/emaki/shell/NotesChecklist.qml
+/usr/share/emaki/shell/NotesIsland.qml
+/usr/share/emaki/shell/NotesService.qml
+/usr/share/emaki/shell/NotesView.qml
 /usr/share/emaki/shell/NotificationReceiver.qml
 /usr/share/emaki/shell/NotificationService.qml
 /usr/share/emaki/shell/NotificationStore.qml
@@ -705,6 +718,7 @@
 /usr/share/icons/Emaki/cursors/zoom-in
 /usr/share/icons/Emaki/cursors/zoom-out
 /usr/share/icons/Emaki/index.theme
+/usr/share/icons/hicolor/scalable/apps/emaki-notes.svg
 /usr/share/icons/hicolor/scalable/apps/emaki-programs-updates.svg
 /usr/share/icons/hicolor/scalable/apps/emaki-report.svg
 /usr/share/icons/hicolor/scalable/apps/emaki-welcome.svg

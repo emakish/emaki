@@ -199,10 +199,19 @@ class StartupTests(unittest.TestCase):
         self.assertEqual(result['windowSizes'], [(42, [640,480])])
         self.assertNotIn('title', str(result))
         layers += [dict(output='B', namespace='emaki-session-cover')]
-        with patch.object(helper.subprocess, 'run', side_effect=[SimpleNamespace(returncode=0,stdout=json.dumps(v).encode()) for v in (layers,windows)]):
+        with patch.object(helper.subprocess, 'run', side_effect=[SimpleNamespace(returncode=0,stdout=json.dumps(v).encode()) for v in (layers,windows,dict(mode='image', load_state='image'))]):
             result = helper.niri_snapshot(dict(NIRI_SOCKET='/fixture/socket'))
         self.assertFalse(result['barMapped'])
         self.assertFalse(result['wallpaperMapped'])
+
+    def test_ready_ring_satisfies_cover_without_image_daemon(self):
+        layers = [dict(output='A', namespace='emaki-session-cover')]
+        for state in ('loading', 'ready', 'failed'):
+            responses = [SimpleNamespace(returncode=0, stdout=json.dumps(value).encode())
+                         for value in (layers, [], dict(mode='ring', load_state=state))]
+            with patch.object(helper.subprocess, 'run', side_effect=responses):
+                result = helper.niri_snapshot(dict(NIRI_SOCKET='/fixture/socket'))
+            self.assertEqual(result['wallpaperMapped'], state == 'ready')
 
     def test_wallpaper_starts_without_cover_wait_and_once(self):
         binary = self.base / 'bin'; binary.mkdir()

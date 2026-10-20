@@ -1488,6 +1488,11 @@ pub fn session_config(timeout: Duration) -> std::result::Result<PathBuf, &'stati
     storage::session_config(timeout).map_err(|error| error.reason)
 }
 
+/// Apply the current application palette, including scheduled theme transitions.
+pub fn sync_appearance(timeout: Duration) -> std::result::Result<(), &'static str> {
+    storage::sync_appearance(timeout).map_err(|error| error.reason)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

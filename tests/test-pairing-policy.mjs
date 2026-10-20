@@ -56,6 +56,7 @@ function run(sources) {
             niri: {overviewOpen: false, casts: [], layerFocusSupported: true}, presentationState: 'clear',
             keyboardSurface: '', systemOpen: open, systemPage: 'bt', systemExpansion: open ? 1 : 0,
             launcherOpen: false, drawerOpen: false, privacyOpen: false, shortcutsOpen: false, switcherOpen: false,
+            pinnedNotes: {expanded: false}, pinnedNotesOpen: false, pinnedNotesPresent: false,
             Date: {now: () => 1000}, peekIds: [], peekCooldown: 0, peekStarted: 0,
             Metrics: {morphMs: 350}, peekTimer: {restart() {}, stop() {}}, closeTimer: {restart() {}}, systemBody: {rows: [], reset() {}}, services: {pendingKind: ''},
             enabled: true, output: {}, focusedOutput: true, authenticationPresent: false, deferredPeekIds: [],

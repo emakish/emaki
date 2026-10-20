@@ -130,9 +130,27 @@ ShellRoot {
                 root.check(scene.clockBody.keyboardMode, "keyboard history enabled");
                 root.check(scene.clockBody.plan.items.filter(r => r.kind === "note").length === 12, "all notifications reachable");
                 root.check(root.keyOf(window.activeFocusItem).startsWith("note-"), "newest notification focused");
-                for (let i = 0; i < 22; ++i)
+                // The whole shade body scrolls (body.scroller). Tab down the history rows: each
+                // focused row must lie inside the visible shade, which needs the shade to scroll.
+                // Past the last row Tab wraps to the top of the shade, which scrolls back to 0.
+                const scroller = scene.clockBody.scroller;
+                const historyKey = key => /^(note-|more-|clear-)/.test(key);
+                root.check(scroller.contentHeight > scroller.height, "history taller than the shade");
+                let historySteps = 0;
+                let deepestScroll = 0;
+                for (let i = 0; i < 40; ++i) {
                     keys.keyClick(Qt.Key_Tab);
-                root.check(scene.clockBody.scroller.contentY > 0, "history scroll follows keyboard focus");
+                    const focused = window.activeFocusItem;
+                    const key = root.keyOf(focused);
+                    if (!historyKey(key))
+                        break;
+                    const rect = focused.mapToItem(scroller, 0, 0, focused.width, focused.height);
+                    root.check(rect.y >= 0 && rect.y + rect.height <= scroller.height, "focused history row in view: " + key);
+                    deepestScroll = Math.max(deepestScroll, scroller.contentY);
+                    ++historySteps;
+                }
+                root.check(historySteps >= 8, "Tab walks the history rows");
+                root.check(deepestScroll > 0, "history scroll follows keyboard focus");
                 scene.clockPanel.focusNewest();
                 keys.wait(100);
                 keys.keyClick(Qt.Key_Tab);

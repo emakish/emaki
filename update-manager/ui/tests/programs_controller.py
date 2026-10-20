@@ -57,6 +57,8 @@ if sys.argv[1] == 'list':
         inventory_failed.touch()
         if scenario == 'inventory-malformed': print('broken'); sys.exit(0)
         print(json.dumps(dict(ok=False, message='Inventory unavailable.'))); sys.exit(1)
+    if scenario == 'replay':
+        print(Path(os.environ['TEST_REPLAY'], 'list.json').read_text()); sys.exit(0)
     programs = [] if removed.exists() else [dict(package='local-editor', ids=['missing-entry.desktop', 'local-editor.desktop'], names=['Local editor'], version='1')]
     if marker.exists(): programs.append(dict(package='editor', ids=['editor-launch.desktop'], names=['Editor'], version='1', preinstalled=True))
     print(json.dumps(dict(ok=True, programs=programs))); sys.exit(0)
@@ -84,6 +86,13 @@ def package_row(i):
                 summary='Compression helper' if i == 2 else 'Repository package',
                 installed=present, packageOnly=True, actions=['remove'] if present else ['install'],
                 programKey='arch:editor' if i == 1 else '')
+# Thousands of programs from both sources, some of them in two editions.
+large = []
+def large_row(i):
+    kind = 'flatpak' if i % 3 == 0 else 'arch'
+    identity = 'org.example.App' + str(i // 2 if kind == 'flatpak' else i)
+    return dict(row(kind, identity, kind + ':app-' + str(i)), name='App ' + str(i), package='app-' + str(i),
+                categories=['Utility', 'Office'][i % 2:])
 for line in sys.stdin:
     request = json.loads(line)
     with open(os.environ['TEST_CALLS'], 'a') as log:
@@ -121,14 +130,27 @@ for line in sys.stdin:
     elif method == 'details':
         index = int(params['key'].removeprefix('package:extra/pkg-'))
         value.update(program=package_row(index))
+    elif method == 'catalog' and scenario == 'replay':
+        # A catalog dumped from a real system: its pages, shared fields and installed list as sent.
+        if not large:
+            for page in Path(os.environ['TEST_REPLAY'], 'pages.jsonl').read_text().splitlines():
+                event = json.loads(page)
+                large += event.pop('programs')
+            shared = {name: event[name] for name in ('storefront', 'shelf', 'essentials', 'warnings', 'partial') if name in event}
+        offset, limit = params.get('offset', 0), params['limit']
+        value.update(shared, programs=large[offset:offset + limit], total=len(large), offset=offset, limit=limit)
     elif method == 'catalog':
         if scenario == 'presentation' and params.get('refresh'):
             package_installed = external.exists()
         protected = row('arch', 'org.example.Protected', 'arch:protected')
         protected.update(installed=True, package='emaki-config')
         rows = [row('flatpak'), row('arch', 'org.example.Editor.desktop'), row('arch', 'org.example.Other', 'arch:other'), protected]
+        limit = 2
+        if scenario == 'large':
+            if not large: large = [large_row(i) for i in range(int(os.environ['TEST_ROWS']))]
+            rows, limit = large, params['limit']
         offset = params.get('offset', 0)
-        value.update(programs=rows[offset:offset + 2], total=4, warnings=[],
+        value.update(programs=rows[offset:offset + limit], total=len(rows), warnings=[],
                      storefront=dict(featured=dict(title='Worth trying', note='Picked by Emaki', programs=['org.example.editor']), rows=[], names={}))
     elif method == 'search':
         query = params['query']
@@ -190,6 +212,14 @@ with open(os.environ['TEST_REPORTS'], 'a') as log: log.write(' '.join(sys.argv[1
 # 'aur' injects four installs that failed after their pre-install snapshot (partial, failed,
 # unknown, cancelled) and one refusal (refused, nothing installed); only the four offer.
 REPORT_OFFERS = {'failed': 1, 'disconnect': 1, 'malformed': 1, 'aur': 4}
+# A catalog the size of Arch's and Flathub's programs together.
+LARGE_ROWS = 6000
+
+
+def replay_rows():
+    """Programs in a catalog dumped from a real system (EMAKI_PROGRAMS_REPLAY: pages.jsonl, list.json)."""
+    pages = Path(os.environ['EMAKI_PROGRAMS_REPLAY'], 'pages.jsonl').read_text().splitlines()
+    return sum(len(json.loads(page)['programs']) for page in pages)
 
 
 def run(scenario):
@@ -219,7 +249,9 @@ def run(scenario):
         (root / 'test.qml').write_text(fixture)
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',
                    QML_DISABLE_DISK_CACHE='1', QS_DISABLE_CRASH_HANDLER='1',
-                   TEST_SCENARIO=scenario, TEST_CALLS=str(root / 'calls'), TEST_BACKEND=str(backend))
+                   TEST_SCENARIO=scenario, TEST_CALLS=str(root / 'calls'), TEST_BACKEND=str(backend),
+                   TEST_ROWS=str(replay_rows() if scenario == 'replay' else LARGE_ROWS),
+                   TEST_REPLAY=os.environ.get('EMAKI_PROGRAMS_REPLAY', ''))
         for name in ('cache', 'config', 'data', 'state'):
             (root / name).mkdir()
             env['XDG_' + name.upper() + '_HOME'] = str(root / name)
@@ -249,7 +281,7 @@ def run(scenario):
         with tempfile.TemporaryDirectory(prefix='', dir=ROOT / '.cache') as runtime:
             env['XDG_RUNTIME_DIR'] = runtime
             result = subprocess.run(['qs', '-p', str(root / 'test.qml'), '--no-color'], env=env,
-                                    capture_output=True, text=True, timeout=25)
+                                    capture_output=True, text=True, timeout=150 if scenario in ('large', 'replay') else 25)
         log = result.stdout + result.stderr
         assert result.returncode == 0 and 'PROGRAMS_OK' in log, log
         assert not any(word in log for word in ('ASSERTION_FAILED', 'ReferenceError', 'TypeError', 'Unable to assign', 'Binding loop')), log
@@ -276,6 +308,13 @@ def run(scenario):
         if scenario.startswith('plan-'):
             assert any(item['method'] == 'plan' for item in requests)
             assert not any(item['method'] == 'execute' for item in requests), 'failed plans cannot execute'
+            print('PASS programs controller', scenario)
+            return
+        if scenario in ('large', 'replay'):
+            rows = replay_rows() if scenario == 'replay' else LARGE_ROWS
+            pages = [item for item in requests if item['method'] == 'catalog' and not item['params'].get('scope')]
+            assert len(pages) == 2 * -(-rows // 500), 'the startup load and the quiet refresh read every page'
+            print('\n'.join(line for line in log.splitlines() if 'LARGE' in line))
             print('PASS programs controller', scenario)
             return
         if scenario == 'presentation':
@@ -328,5 +367,7 @@ def run(scenario):
 
 
 if __name__ == '__main__':
-    for scenario in ('plan-refused', 'plan-refresh', 'plan-disconnect', 'plan-malformed', 'launch-output', 'launch-fallback', 'launch-nonzero', 'presentation', 'packages', 'aur', 'success', 'changed', 'disconnect', 'malformed', 'missing-preview', 'missing-remove', 'missing-launcher', 'inventory-failed', 'inventory-malformed', 'inventory-missing', 'inventory-empty', 'inventory-permanent', 'failed', 'not-authorized', 'metadata-unavailable'):
+    # A real catalog replays only where one was dumped (pages.jsonl and list.json of the engine).
+    replay = ('replay',) if os.environ.get('EMAKI_PROGRAMS_REPLAY') else ()
+    for scenario in replay + ('large', 'plan-refused', 'plan-refresh', 'plan-disconnect', 'plan-malformed', 'launch-output', 'launch-fallback', 'launch-nonzero', 'presentation', 'packages', 'aur', 'success', 'changed', 'disconnect', 'malformed', 'missing-preview', 'missing-remove', 'missing-launcher', 'inventory-failed', 'inventory-malformed', 'inventory-missing', 'inventory-empty', 'inventory-permanent', 'failed', 'not-authorized', 'metadata-unavailable'):
         run(scenario)

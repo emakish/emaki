@@ -40,6 +40,13 @@ Item {
     property string phase: "idle"
     readonly property bool busy: phase !== "idle"
     readonly property bool mutating: phase === "installing" || phase === "removing" || phase === "undoing"
+    // A reopen refreshes a loaded catalog behind the pages; reading them stays possible.
+    readonly property bool quietRefresh: phase === "catalog" && catalogLoaded
+    // Something the person asked for (results, an install) waits for that refresh.
+    property bool heldByRefresh: false
+    readonly property bool foregroundBusy: busy && !mutating && !(quietRefresh && !heldByRefresh)
+    // Catalog pages follow one another; only the end of the whole refresh releases the hold.
+    onPhaseChanged: if (phase !== "catalog") Qt.callLater(() => { if (root.phase !== "catalog") root.heldByRefresh = false; })
     // The AUR section stays closed until this person accepts its warning (engine-side consent).
     property bool aurKnown: false
     property bool aurEnabled: false
@@ -79,6 +86,8 @@ Item {
     property int searchGeneration: 0
     property int activeSearchGeneration: 0
     property bool catalogReceived: false
+    // Retain the last complete catalog while a new snapshot is being collected.
+    property bool catalogLoaded: false
     property bool installedReceived: false
     property bool inventoryLoading: false
     property string inventoryError: ""
@@ -154,6 +163,7 @@ Item {
         installedList.running = true;
     }
     function search(text: string): void {
+        if (quietRefresh && (text || scope === "packages")) heldByRefresh = true;
         query = text; category = "";
         ++searchGeneration;
         searchRows = [];
@@ -167,7 +177,10 @@ Item {
     }
     function selectCategory(name: string): void {
         query = ""; category = name; ++searchGeneration; searchRows = [];
-        if (scope === "packages") { packageRows = []; packagesReceived = false; searchDelay.restart(); }
+        if (scope === "packages") {
+            if (quietRefresh) heldByRefresh = true;
+            packageRows = []; packagesReceived = false; searchDelay.restart();
+        }
     }
     function openPackage(row: var): void {
         const program = allRows.find(item => item.key === row.programKey);
@@ -183,7 +196,10 @@ Item {
         prepare(action);
     }
     function openProgram(row: var): void {
-        if (busy) return;
+        // The page opens from the retained catalog; the refresh reconciles it (and asks a
+        // package's details again) when it arrives, and installs wait for it.
+        if (busy && !quietRefresh) return;
+        if (quietRefresh) heldByRefresh = true;
         const merged = Logic.merge(installedPrograms.concat(allRows, searchRows, aurRows, aurPopular)).find(item => Logic.identity(item) === Logic.identity(row));
         selectedProgram = merged || Object.assign({}, row, {editions: row.editions || [row]});
         selectedEdition = row.editions ? Logic.edition(selectedProgram) : Logic.edition(selectedProgram, row.key);
@@ -333,6 +349,7 @@ Item {
                 essentials = event.essentials?.minimal === true && Array.isArray(event.essentials.programs)
                     ? {minimal: true, programs: event.essentials.programs} : {minimal: false, programs: []};
                 catalogReceived = true;
+                catalogLoaded = true;
                 reconcileSelection();
                 if (selectedEdition?.packageOnly)
                     request("details", {key: selectedEdition.key}, "packageDetails");

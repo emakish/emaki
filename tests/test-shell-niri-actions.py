@@ -33,7 +33,7 @@ ENV = dict(os.environ, EMAKI_BIN=str(BINARY), NIRI_SOCKET=str(runtime_path(PROFI
            XDG_DATA_HOME=str(PROFILE / 'data'), XDG_DATA_DIRS=str(PROFILE / 'data'),
            XDG_RUNTIME_DIR=str(runtime_path(PROFILE)), XDG_CACHE_HOME=str(PROFILE / 'cache'),
            TMPDIR=str(PROFILE / 'tmp'))
-for key in ('WAYLAND_DISPLAY', 'DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'DBUS_SYSTEM_BUS_ADDRESS'):
+for key in ('WAYLAND_DISPLAY', 'DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'DBUS_SYSTEM_BUS_ADDRESS', 'QT_QPA_PLATFORMTHEME'):
     ENV.pop(key, None)
 
 

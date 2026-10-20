@@ -66,7 +66,10 @@ ShellRoot {
             body.serverState = data.state;
             wait(30);
             const shown = texts(body);
-            const notices = Array.from(body.children).filter(item => item.visible && item.y === body.notesTop + 36 && typeof item.text === "string").map(item => item.text);
+            const notice = findChild(body, "notification-server-notice");
+            verify(notice !== null);
+            compare(notice.y, body.notesTop + 36);
+            const notices = notice.visible ? [notice.text] : [];
             if (JSON.stringify(notices) !== JSON.stringify(data.expected ? [data.expected] : []))
                 console.log("MISMATCH", data.state, JSON.stringify(notices), data.expected);
             compare(JSON.stringify(notices), JSON.stringify(data.expected ? [data.expected] : []));

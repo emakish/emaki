@@ -745,6 +745,89 @@ def current_selection_checks(base):
     environment = dict(XDG_CONFIG_HOME=str(source), XDG_CACHE_HOME=str(source / 'cache'), HOME=str(source),
                        NIRI_SOCKET=str(source / 'socket'), EMAKI_GREETER_WALLPAPER_ROOT='')
     with patch.dict(os.environ, environment), patch.object(wallpaper.socket, 'socket', return_value=connection):
+        destination.mkdir(mode=0o2750)
+        destination.chmod(0o2750)
+        status['load_state'] = 'loading'
+        response()
+        assert publisher.attempt(config, destination) == {'state': 'pending'}
+        assert not (destination / 'wpaperd/config.toml').exists(), 'never publish the stale photo during ring startup'
+        delays = []
+        class Finished(Exception):
+            pass
+        def changed(delay):
+            delays.append(delay)
+            if len(delays) == 1:
+                status['load_state'] = 'ready'
+                response()
+                return False
+            raise Finished()
+        notifier = MagicMock()
+        notifier.changed.side_effect = changed
+        with patch.object(publisher, 'Inotify', return_value=notifier), patch.object(publisher.time, 'sleep'):
+            try:
+                publisher.watch(config, destination)
+            except Finished:
+                pass
+        assert delays == [.85, 30], 'pending ring retries within one second, then returns to normal watching'
+        assert (destination / 'wpaperd/config.toml').exists()
+        # A ring that never finishes loading still gives the login screen a picture, once.
+        (destination / 'wpaperd/config.toml').unlink()
+        status['load_state'] = 'loading'
+        response()
+        clock = [100.]
+        delays.clear()
+        def stalled(delay):
+            delays.append(delay)
+            clock[0] += 1.25  # Exact in binary: the tenth second is reached on the ninth try.
+            if len(delays) == 14:
+                raise Finished()
+            return False
+        notifier.changed.side_effect = stalled
+        with patch.object(publisher, 'Inotify', return_value=notifier), patch.object(publisher.time, 'sleep'), \
+                patch.object(publisher.time, 'monotonic', side_effect=lambda: clock[0]), \
+                patch.object(publisher, 'attempt', wraps=publisher.attempt) as attempts, \
+                patch.object(publisher, 'start_image_daemon') as started:
+            try:
+                publisher.watch(config, destination)
+            except Finished:
+                pass
+        assert delays == [.85] * 8 + [30] * 6, delays
+        assert [call.kwargs.get('wait', True) for call in attempts.call_args_list].count(False) == 1, 'one static fallback'
+        published = tomllib.loads((destination / 'wpaperd/config.toml').read_text())
+        assert Path(published['default']['path']).read_bytes() == stale.read_bytes(), 'the static selection is published'
+        started.assert_not_called()
+        # A ring that fails later (a GPU reset) gets the image daemon back once per failure.
+        sequence = ['failed', 'failed', 'ready', 'failed']
+        status['load_state'] = sequence[0]
+        response()
+        delays.clear()
+        def flapping(delay):
+            delays.append(delay)
+            if len(delays) == len(sequence):
+                raise Finished()
+            status['load_state'] = sequence[len(delays)]
+            response()
+            return False
+        notifier.changed.side_effect = flapping
+        with patch.object(publisher, 'Inotify', return_value=notifier), patch.object(publisher.time, 'sleep'), \
+                patch.object(publisher, 'start_image_daemon') as started:
+            try:
+                publisher.watch(config, destination)
+            except Finished:
+                pass
+        assert started.call_count == 2, 'one image daemon start per ring failure, never a loop'
+        with patch.dict(os.environ, {'NIRI_SOCKET': ''}):
+            assert publisher.ring_failed() is None
+        for outcome in (MagicMock(returncode=0), FileNotFoundError(), subprocess.TimeoutExpired('emaki-autostart', 5)):
+            with patch.object(publisher.subprocess, 'run', side_effect=[outcome]) as run:
+                publisher.start_image_daemon()
+            # The login opt-out of the wallpaper is honoured; the compositor owns the daemon.
+            assert run.call_args.args[0] == ['emaki-autostart', 'wallpaper', 'emaki-session-wallpaper', '--spawn']
+        status['load_state'] = 'failed'
+        response()
+        assert list(publisher.prepare_publication(config, destination)[0].values()) == [stale.read_bytes()], 'failed assets retain the image daemon fallback'
+        status['load_state'] = 'ready'
+        response()
         images, published = publisher.prepare_publication(config, destination)
         assert list(images.values()) == [ring.read_bytes()], 'visible ring overrides obsolete wpaperd photo'
         status['files']['ring'] = '~/ring.png'
@@ -772,6 +855,7 @@ def current_selection_checks(base):
         assert wallpaper.current_wallpaper_config(source) is None
         connection.connect.side_effect = TimeoutError()
         assert wallpaper.current_wallpaper_config(source) is None
+        assert publisher.attempt(config, destination) == {'state': 'pending'}
         connection.reset_mock()
         with patch.dict(os.environ, EMAKI_GREETER_WALLPAPER_ROOT=str(source)):
             assert wallpaper.texture(24, 16, 1, 'Fixture', 'sharp')['state'] == 'ready'

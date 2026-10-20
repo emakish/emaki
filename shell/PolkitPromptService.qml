@@ -27,6 +27,11 @@ Scope {
     PolkitLockState {
         id: lockState
     }
+    Binding {
+        target: service.outputs
+        property: "authenticationLockState"
+        value: lockState
+    }
     PolkitPromptQueue {
         id: queue
         polkitBackend: nativeBackend

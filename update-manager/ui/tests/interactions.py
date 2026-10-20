@@ -139,6 +139,9 @@ QtObject {
     }))
     property var essentials: ({minimal: true, programs: ["gimp", "inkscape", "krita", "code"]})
     property bool catalogReceived: true
+    property bool quietRefresh: busy && phase === "catalog"
+    property bool heldByRefresh: false
+    property bool foregroundBusy: busy && !mutating && (phase !== "catalog" || heldByRefresh)
     property var aurPopular: []
     property bool aurPopularLoaded: false
     property int popularReads: 0

@@ -142,15 +142,16 @@ Rectangle {
         return {page: "browse", label: "Browse", tab: "browse"};
     }
     function showProgram(row: var): void {
-        if (programs.busy || !row || row.self) return;
+        if ((programs.busy && !programs.quietRefresh) || !row || row.self) return;
         returnTo = place();
         programs.openProgram(row); page = "program"; resetScroll();
     }
     function installProgram(row: var): void {
         // Install from a list: the program's page opens behind its install preview.
-        if (programs.busy || programs.externalBusy) return;
+        // During a quiet catalog refresh the page opens and shows "Refreshing…" until Install is ready.
+        if ((programs.busy && !programs.quietRefresh) || programs.externalBusy) return;
         showProgram(row);
-        programs.prepareInstall();
+        if (!programs.quietRefresh) programs.prepareInstall();
     }
     function goBack(): void {
         const back = returnTo;
@@ -388,9 +389,9 @@ Rectangle {
             }
             RowLayout {
                 Layout.topMargin: 10
-                visible: view.programs.busy && !view.programs.mutating && view.page !== "updates" && view.page !== "installed"
+                visible: view.programs.foregroundBusy && view.page !== "updates" && view.page !== "installed"
                 C.BusyIndicator { running: parent.visible; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
-                ManagerLabel { text: view.programs.phase === "planning" ? "Checking what will change…" : "Loading programs…"; color: Shell.ShellPalette.managerDim }
+                ManagerLabel { text: view.programs.phase === "planning" ? "Checking what will change…" : view.programs.quietRefresh ? "Refreshing…" : "Loading programs…"; color: Shell.ShellPalette.managerDim }
             }
         }
         Loader {
@@ -1086,7 +1087,7 @@ Rectangle {
                 enabled: !rowItem.row.self && (!rowItem.packageRow || !!rowItem.row.programKey)
                 onClicked: {
                     if (rowItem.packageRow) {
-                        if (view.programs.busy) return;
+                        if (view.programs.busy && !view.programs.quietRefresh) return;
                         view.returnTo = view.place();
                         view.programs.openPackage(rowItem.row); view.page = "program"; view.resetScroll();
                     } else view.showProgram(rowItem.row);

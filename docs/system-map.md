@@ -952,6 +952,38 @@ never: Edit the locale, keyboard or time zone files of the system by hand while 
 rollback: Set the previous value again; every change answers with its before value.
 ```
 
+## notes-calendar
+
+Emaki Notes window, shared local Markdown and iCalendar backend, and persistent calendar reminder timer.
+
+- Files: `/usr/bin/emaki-notes`, `/usr/libexec/emaki/notes-backend`, `/usr/share/applications/emaki-notes.desktop`, `/usr/share/icons/hicolor/scalable/apps/emaki-notes.svg`, `/usr/share/emaki-notes/**`, `/usr/share/emaki/shell/Notes*.qml`, `/usr/share/emaki/shell/CalendarEvents.qml`, `/usr/lib/systemd/user/emaki-calendar-reminders.service`, `/usr/lib/systemd/user/emaki-calendar-reminders.timer`, `/usr/lib/systemd/user/graphical-session.target.wants/emaki-calendar-reminders.timer`
+- Zone: package, installed by an Emaki package; never edit it, an update replaces it.
+- State: none yet: inspect saved notes and events in Emaki Notes or the clock shade.
+- Change: Edit notes in Emaki Notes or the clock shade; pin notes to expose the notes island; use the calendar event editor for local events and reminders.
+- Never: Silently replace a stale note draft, store calendar credentials, or send notes to a remote service.
+- Rollback: Restore the previous emaki-config package; personal Markdown, iCalendar and reminder journal files remain in the person's directories.
+
+```system-map
+component: notes-calendar
+what: Emaki Notes window, shared local Markdown and iCalendar backend, and persistent calendar reminder timer.
+files:
+  /usr/bin/emaki-notes
+  /usr/libexec/emaki/notes-backend
+  /usr/share/applications/emaki-notes.desktop
+  /usr/share/icons/hicolor/scalable/apps/emaki-notes.svg
+  /usr/share/emaki-notes/**
+  /usr/share/emaki/shell/Notes*.qml
+  /usr/share/emaki/shell/CalendarEvents.qml
+  /usr/lib/systemd/user/emaki-calendar-reminders.service
+  /usr/lib/systemd/user/emaki-calendar-reminders.timer
+  /usr/lib/systemd/user/graphical-session.target.wants/emaki-calendar-reminders.timer
+zone: package
+state: none yet: inspect saved notes and events in Emaki Notes or the clock shade.
+change: Edit notes in Emaki Notes or the clock shade; pin notes to expose the notes island; use the calendar event editor for local events and reminders.
+never: Silently replace a stale note draft, store calendar credentials, or send notes to a remote service.
+rollback: Restore the previous emaki-config package; personal Markdown, iCalendar and reminder journal files remain in the person's directories.
+```
+
 ## nvidia-policy
 
 Optional hardware-specific session policy, application profile and kernel-module guard. It is separate from hardware-neutral desktop defaults.

@@ -4,12 +4,15 @@
 """Start the default wallpaper once per compositor, without waiting for login decoration."""
 import fcntl
 import hashlib
+import json
 import os
 from pathlib import Path
 import stat
 import re
 import tomllib
 import sys
+import subprocess
+import time
 
 
 
@@ -74,9 +77,68 @@ def wallpaper_arguments(environment):
     return ['wpaperd', '--config', str(selected)]
 
 
-def main():
+def compositor_draws_wallpaper(environment):
+    """Wait briefly for the ring; image, stock niri and failed assets need wpaperd."""
+    if not environment.get('NIRI_SOCKET'):
+        return False
+    deadline = time.monotonic() + 5
+    while True:
+        try:
+            result = subprocess.run(['niri-emaki', 'msg', '--json', 'emaki-wallpaper'],
+                                    env=environment, capture_output=True, timeout=.25)
+            if result.returncode or len(result.stdout) > 65536:
+                return False
+            status = json.loads(result.stdout)
+            if status.get('mode') != 'ring':
+                return False
+            if status.get('load_state') == 'ready':
+                return True
+            if status.get('load_state') != 'loading' or time.monotonic() >= deadline:
+                return False
+        except (OSError, ValueError, AttributeError, subprocess.SubprocessError):
+            return False
+        time.sleep(.1)
+
+
+def daemon_answers(environment):
+    """A daemon started by hand or by a dead claim's owner still serves this display."""
+    try:
+        return not subprocess.run(['wpaperctl', 'get-all', '-j'], env=environment,
+                                  stdin=subprocess.DEVNULL, capture_output=True, timeout=1).returncode
+    except subprocess.TimeoutExpired:
+        return True  # A hung daemon still owns the display; never start a second one.
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def spawn(environment):
+    """Start the daemon as the compositor's child, so a restart of the asking service
+    (the shell or the login-wallpaper watcher) cannot take it down."""
+    command = ['emaki-session-wallpaper', '--force']
+    if environment.get('NIRI_SOCKET'):
+        try:
+            result = subprocess.run(['niri-emaki', 'msg', 'action', 'spawn', '--', *command],
+                                    env=environment, stdin=subprocess.DEVNULL,
+                                    capture_output=True, timeout=1)
+            if not result.returncode:
+                return 0
+        except (OSError, subprocess.SubprocessError):
+            pass
+    try:
+        subprocess.Popen(command, env=environment, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    except OSError:
+        print('emaki-session-wallpaper: startup unavailable', file=sys.stderr)
+        return 1
+    return 0
+
+
+def main(force=False):
     environment = dict(os.environ)
     descriptor = None
+    if not force and compositor_draws_wallpaper(environment):
+        return 0
     try:
         try:
             arguments = wallpaper_arguments(environment)
@@ -89,7 +151,9 @@ def main():
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return 0
-        if os.read(descriptor, 1):
+        # The free lock means the claimed daemon is gone; a forced start replaces it
+        # unless another daemon (a manual one) still answers.
+        if os.read(descriptor, 1) and not (force and not daemon_answers(environment)):
             return 0
         # Keep both the persistent once-only claim and the live advisory lock.
         # Explicit manual wpaperd remains available outside this default wrapper.
@@ -111,4 +175,6 @@ def main():
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    if sys.argv[1:] == ['--spawn']:
+        raise SystemExit(spawn(dict(os.environ)))
+    raise SystemExit(main(force=sys.argv[1:] == ['--force']))

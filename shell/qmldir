@@ -164,3 +164,9 @@ singleton ReportBridge 1.0 ReportBridge.qml
 ReportController 1.0 ReportController.qml
 ReportWindow 1.0 ReportWindow.qml
 ReportView 1.0 ReportView.qml
+CalendarEvents 1.0 CalendarEvents.qml
+singleton NotesService 1.0 NotesService.qml
+NotesView 1.0 NotesView.qml
+NotesButton 1.0 NotesButton.qml
+NotesChecklist 1.0 NotesChecklist.qml
+NotesIsland 1.0 NotesIsland.qml

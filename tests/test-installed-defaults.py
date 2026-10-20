@@ -106,7 +106,7 @@ class InstalledDefaultsTests(unittest.TestCase):
             result(output=json.dumps({'Virtual-1': {'current_mode': 0}})),
             result(output=json.dumps([{'output': 'Virtual-1', 'namespace': 'wpaperd-Virtual-1',
                                        'layer': 'Background'}])))
-        for responses in ((result(1),), (result(output='123\n'), result(1)),
+        for responses in ((result(1), result(1)), (result(output='123\n'), result(1)),
                           (result(output='123\n'), result(output='Failed to pass the image data to the texture'))):
             with self.subTest(responses=responses), self.assertRaises(ValueError):
                 run(*responses)
@@ -117,6 +117,20 @@ class InstalledDefaultsTests(unittest.TestCase):
         self.put('proc/123/environ', 'XDG_CONFIG_HOME=/other\0')
         with self.assertRaisesRegex(ValueError, 'overrides'):
             run(result(output='123\n'))
+
+    def test_ready_compositor_ring_needs_no_wallpaper_daemon(self):
+        outputs = result(output=json.dumps({'Virtual-1': {'current_mode': 0}}))
+        for state in ('loading', 'failed', 'ready'):
+            ring = result(output=json.dumps(dict(mode='ring', load_state=state)))
+            runner = Mock(side_effect=[result(1), ring, outputs])
+            if state == 'ready':
+                defaults.wallpaper_runtime(runner, self.root / 'proc', self.home)
+            else:
+                with self.assertRaisesRegex(ValueError, 'no ring is ready'):
+                    defaults.wallpaper_runtime(runner, self.root / 'proc', self.home)
+        runner = Mock(side_effect=[result(1), ring, result(output='{}')])
+        with self.assertRaisesRegex(ValueError, 'No active output'):
+            defaults.wallpaper_runtime(runner, self.root / 'proc', self.home)
 
     def test_wallpaper_requires_a_background_surface_on_every_active_output(self):
         self.put('proc/123/cmdline', 'wpaperd\0')

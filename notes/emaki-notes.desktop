@@ -1,0 +1,12 @@
+# Copyright (C) 2026 Artur Yakymenko
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Desktop Entry]
+Type=Application
+Name=Emaki Notes
+Comment=Notes and checklists, kept on your computer
+Exec=emaki-notes
+Icon=emaki-notes
+Terminal=false
+Categories=Office;Utility;
+StartupWMClass=emaki-notes
+Keywords=notes;checklist;tasks;

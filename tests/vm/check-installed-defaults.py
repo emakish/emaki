@@ -67,7 +67,23 @@ def wallpaper_runtime(run=subprocess.run, proc=Path('/proc'), home=None):
     process = run(['pgrep', '-u', str(os.getuid()), '-x', 'wpaperd'],
                   capture_output=True, text=True, timeout=10)
     if process.returncode or not process.stdout.strip():
-        raise ValueError('The default wallpaper process is absent [wpaperd].')
+        response = run(['niri-emaki', 'msg', '--json', 'emaki-wallpaper'],
+                       capture_output=True, text=True, timeout=10)
+        try:
+            ring = json.loads(response.stdout) if not response.returncode else {}
+        except ValueError:
+            ring = {}
+        if not isinstance(ring, dict) or ring.get('mode') != 'ring' or ring.get('load_state') != 'ready':
+            raise ValueError('The default wallpaper process is absent and no ring is ready [wallpaper].')
+        response = run(['niri', 'msg', '--json', 'outputs'], capture_output=True, text=True, timeout=10)
+        try:
+            outputs = json.loads(response.stdout) if not response.returncode else {}
+        except ValueError:
+            outputs = {}
+        if not isinstance(outputs, dict) or not any(isinstance(value, dict) and type(value.get('current_mode')) is int
+                                                   and value['current_mode'] >= 0 for value in outputs.values()):
+            raise ValueError('No active output proves the wallpaper [niri].')
+        return
     for pid in process.stdout.split():
         if not pid.isdigit():
             raise ValueError('Invalid wallpaper process identity [wpaperd].')

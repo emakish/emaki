@@ -49,6 +49,9 @@ pub(super) fn replace(path: &Path, contents: Option<&[u8]>) -> Result<()> {
     }
     sync_dir(path.parent().expect("file parent"))
 }
+/// A ring session runs no image daemon; the wallpaper helper starts it on the first photo and
+/// waits up to 3 s for it, longer than the default per-helper deadline.
+const WALLPAPER_START: Duration = Duration::from_secs(6);
 fn command(
     profile: &Profile,
     program: &str,
@@ -203,7 +206,7 @@ impl Pending {
                     profile,
                     "emaki-settings-wallpaper",
                     &["restore", snapshot],
-                    timeout,
+                    timeout.max(WALLPAPER_START),
                     "wallpaper_rollback_failed",
                 ) {
                     failure = Some(e);
@@ -325,7 +328,7 @@ pub(super) fn apply(
             profile,
             "emaki-settings-wallpaper",
             &["snapshot"],
-            timeout,
+            timeout.max(WALLPAPER_START),
             "wallpaper_snapshot_failed",
         )?)
     } else {
@@ -366,7 +369,7 @@ pub(super) fn apply(
                 profile,
                 "emaki-settings-wallpaper",
                 &["apply", after.appearance.wallpaper.as_deref().unwrap_or("")],
-                timeout,
+                timeout.max(WALLPAPER_START),
                 "wallpaper_apply_failed",
             )?;
         }

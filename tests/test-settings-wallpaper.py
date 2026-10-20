@@ -107,6 +107,76 @@ elif os.environ.get('FAKE_IGNORE') != '1':
                     self.assertEqual(module.main(), 0)
                     execute.assert_called_once_with('wpaperd', ['wpaperd'], self.env)
 
+    def test_ring_startup_skips_daemon_without_claiming_it(self):
+        module = load(ROOT / 'scripts/emaki-session-wallpaper')
+        env = dict(self.env, NIRI_SOCKET='/fixture/socket')
+        from types import SimpleNamespace
+        def status(mode, state):
+            return SimpleNamespace(returncode=0, stdout=json.dumps(dict(mode=mode, load_state=state)))
+        with patch.dict(os.environ, env, clear=True), patch.object(module, 'claim_file') as claim, patch.object(module.subprocess, 'run', side_effect=[status('ring', 'loading'), status('ring', 'ready')]), patch.object(module.time, 'sleep'):
+            self.assertEqual(module.main(), 0)
+            claim.assert_not_called()
+        for mode, state in (('image', 'image'), ('ring', 'failed')):
+            with patch.object(module.subprocess, 'run', return_value=status(mode, state)):
+                self.assertFalse(module.compositor_draws_wallpaper(env))
+        with patch.object(module.subprocess, 'run', side_effect=FileNotFoundError()):
+            self.assertFalse(module.compositor_draws_wallpaper(env))
+        self.assertFalse(module.compositor_draws_wallpaper({}))
+        claim_path = self.root / 'forced-claim'
+        claim_path.write_bytes(b'')
+        descriptor = os.open(claim_path, os.O_RDWR)
+        with patch.dict(os.environ, env, clear=True), patch.object(module, 'claim_file', return_value=descriptor), patch.object(module, 'compositor_draws_wallpaper') as query, patch.object(module.os, 'execvpe') as execute:
+            self.assertEqual(module.main(force=True), 0)
+            query.assert_not_called()
+            execute.assert_called_once_with('wpaperd', ['wpaperd'], env)
+
+    def test_settings_start_image_daemon_on_demand(self):
+        module = load(HELPER)
+        response = json.dumps([dict(display=key, path=value) for key, value in self.old.items()])
+        with patch.object(module, 'command', side_effect=[ValueError('wallpaper_command_failed'), ValueError('wallpaper_command_failed'), response]), patch.object(module.subprocess, 'run') as start, patch.object(module.time, 'sleep'):
+            self.assertEqual(module.snapshot(), self.old)
+            self.assertEqual(start.call_count, 1)
+            # The compositor, not the asking shell service, owns the started daemon.
+            self.assertEqual(start.call_args.args[0], ['emaki-session-wallpaper', '--spawn'])
+        with patch.object(module, 'command', return_value=response), patch.object(module.subprocess, 'run') as start:
+            self.assertEqual(module.snapshot(), self.old)
+            start.assert_not_called()
+
+    def test_spawn_asks_the_compositor_and_falls_back_to_a_detached_start(self):
+        from types import SimpleNamespace
+        module = load(ROOT / 'scripts/emaki-session-wallpaper')
+        env = dict(self.env, NIRI_SOCKET='/fixture/socket')
+        with patch.object(module.subprocess, 'run', return_value=SimpleNamespace(returncode=0)) as ask, patch.object(module.subprocess, 'Popen') as start:
+            self.assertEqual(module.spawn(env), 0)
+            self.assertEqual(ask.call_args.args[0], ['niri-emaki', 'msg', 'action', 'spawn', '--', 'emaki-session-wallpaper', '--force'])
+            start.assert_not_called()
+        for answer in (SimpleNamespace(returncode=1), FileNotFoundError(), subprocess.TimeoutExpired('niri-emaki', 1)):
+            with patch.object(module.subprocess, 'run', side_effect=[answer]), patch.object(module.subprocess, 'Popen') as start:
+                self.assertEqual(module.spawn(env), 0)
+                self.assertEqual(start.call_args.args[0], ['emaki-session-wallpaper', '--force'])
+                self.assertTrue(start.call_args.kwargs['start_new_session'])
+        with patch.object(module.subprocess, 'run') as ask, patch.object(module.subprocess, 'Popen', side_effect=FileNotFoundError()):
+            self.assertEqual(module.spawn(self.env), 1)
+            ask.assert_not_called()
+
+    def test_forced_start_replaces_a_dead_claim_only(self):
+        module = load(ROOT / 'scripts/emaki-session-wallpaper')
+        claim = self.root / 'stale-claim'
+        def run(force, answers):
+            claim.write_bytes(b'1')  # Claimed earlier; the lock is free, so that daemon is gone.
+            descriptor = os.open(claim, os.O_RDWR)
+            with patch.dict(os.environ, self.env, clear=True), patch.object(module, 'claim_file', return_value=descriptor), patch.object(module, 'compositor_draws_wallpaper', return_value=False), patch.object(module, 'daemon_answers', return_value=answers) as asked, patch.object(module.os, 'execvpe') as execute:
+                self.assertEqual(module.main(force=force), 0)
+            return execute.called, asked.called
+        self.assertEqual(run(False, False), (False, False))
+        self.assertEqual(run(True, True), (False, True))
+        self.assertEqual(run(True, False), (True, True))
+        from types import SimpleNamespace
+        for answer, expected in ((SimpleNamespace(returncode=0), True), (SimpleNamespace(returncode=1), False),
+                                 (FileNotFoundError(), False), (subprocess.TimeoutExpired('wpaperctl', 1), True)):
+            with patch.object(module.subprocess, 'run', side_effect=[answer]):
+                self.assertEqual(module.daemon_answers(self.env), expected)
+
     def test_startup_selects_generation_and_keeps_personal_file(self):
         module = load(ROOT / 'scripts/emaki-session-wallpaper')
         config = self.root / 'config/emaki/settings.toml'

@@ -1484,6 +1484,7 @@ Item {
                         height: 20
                         // The gear in the grey of the mode labels beside it (All, Windows, Files).
                         source: SystemIcons.settingsSvg(body.dim)
+                        opacity: body.settingsActive ? 1 - body.modeAlpha : 1
                         sourceSize: Qt.size(24, 24)
                     }
                     MouseArea {
@@ -1702,6 +1703,12 @@ Item {
     // ---- The glass itself (screen coordinates; this item sits at `origin`) ----
     IslandGlass {
         id: panelGlass
+        objectName: "launcher-glass"
+        // The settings gear has the same thin, tight drop as a workspace button.
+        uBulge: Qt.vector4d(body.settingsActive ? 5 : Liquid.BUBBLE.restUnion, 0, 1, 0)
+        uRefraction: body.settingsActive ? 0 : Liquid.BUBBLE.refraction
+        uDispersion: body.settingsActive ? 0 : Liquid.BUBBLE.dispersion
+        uThickness: body.settingsActive ? 1.5 : Liquid.BUBBLE.thickness
         visible: body.glassReady && body.morph > 0
         backdrop: body.backdrop
         sceneOffset: body.origin
@@ -1733,6 +1740,17 @@ Item {
         clip: true
         opacity: body.contentAlpha
         visible: opacity > .001
+        Image {
+            objectName: "launcher-settings-ink"
+            x: body.modeRect.x + (body.modeRect.width - width) / 2
+            y: body.modeRect.y + (body.modeRect.height - height) / 2
+            width: 20
+            height: 20
+            visible: body.settingsActive && body.modeAlpha > .001
+            opacity: body.modeAlpha
+            source: SystemIcons.settingsSvg(body.ink)
+            sourceSize: Qt.size(24, 24)
+        }
         Text {
             x: body.modeRect.x
             y: body.modeRect.y

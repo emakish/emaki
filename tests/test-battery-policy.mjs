@@ -152,6 +152,7 @@ let now = 100000;
 const popup = vm.createContext({notes: {dnd: true, entries: [{id: 1, critical: true, batteryWarning: true}, {id: 2}, pairing]},
     focusedOutput: true, authenticationPresent: false, deferredPeekIds: [],
     systemOpen: false, launcherOpen: false, drawerOpen: false, privacyOpen: false,
+    pinnedNotes: {expanded: false}, pinnedNotesOpen: false, pinnedNotesPresent: false,
     niri: {overviewOpen: false}, presentationState: 'covered', modalOpen: false,
     Date: {now: () => now}, peekCooldown: 0, peekStarted: 0, peekUntil: 0,
     peekIds: [], peekTimer: {restart() {}}, endPeek() { popup.peekIds = []; }});
@@ -220,18 +221,19 @@ const transition = vm.createContext({batteryPeekOpen: true, pairingPeekOpen: fal
     tip: {hide() {}}, closeLauncher() {}, closeClock() { throw Error('battery peek was closed'); },
     systemBody: {reset() {}}, dock: {closePopup() {}, leaveKeyboard() {}}, closeAllRequested() {},
     switcher: {cancel() { transition.switcherCancels = (transition.switcherCancels ?? 0) + 1; }}, switcherOpen: true,
-    bar: {returnItem: {}}});
+    bar: {returnItem: {}}, pinnedNotes: {expanded: true}});
 const closePanels = vm.runInContext('(function(preserveBattery){' + body('ShellScene.qml', 'closePanels') + '})', transition);
 closePanels(true); assert.equal(transition.drawerOpen, false);
 assert.equal(transition.switcherCancels, 1, 'closing panels closes the window switcher');
 assert.equal(transition.switcherOpen, false);
 assert.equal(transition.bar.returnItem, null, 'closing panels forgets the bar cell to return to');
+assert.equal(transition.pinnedNotes.expanded, false, 'closing panels collapses the pinned notes island');
 let closed = 0; transition.closeClock = () => closed++;
 closePanels(false); assert.equal(closed, 1, 'explicit dismissal still works');
 transition.batteryPeekOpen = false; closePanels(true); assert.equal(closed, 2);
 assert.match(source('ShellScene.qml'), /onOverviewOpenChanged\(\)[\s\S]*?scene\.closePanels\(true\)/);
 const openedHandler = source('ClockPanel.qml').match(/onOpenedChanged: \{([\s\S]*?)\n    \}/)[1];
-const clock = {body: {keyboardMode: false}, opened: false, drawerContent: true, peekIds: [1], snapIfClosed() {}, wake() {}};
+const clock = {body: {keyboardMode: false, calendar: {showToday() {}}}, opened: false, drawerContent: true, peekIds: [1], snapIfClosed() {}, wake() {}};
 vm.runInNewContext(openedHandler, clock); assert.equal(clock.drawerContent, false);
 clock.opened = true; vm.runInNewContext(openedHandler, clock); assert.equal(clock.drawerContent, true);
 console.log('Battery discharge/recharge, private marker, overlay/modal gates, drawer and overview state: PASS');

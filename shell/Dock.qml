@@ -1342,7 +1342,7 @@ Item {
                         anchors.fill: parent
                         sourceSize.width: 88
                         sourceSize.height: 88
-                        source: (icon.item?.entry?.icon ?? "") === "emaki-programs-updates" ? SystemIcons.programsSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.accentShade, ShellPalette.managerIconInk) : (icon.item?.entry?.icon ?? "") === "emaki-welcome" ? SystemIcons.welcomeSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.managerIconInk) : (icon.item?.icon ?? "")
+                        source: (icon.item?.entry?.icon ?? "") === "emaki-programs-updates" ? SystemIcons.programsSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.accentShade, ShellPalette.managerIconInk) : (icon.item?.entry?.icon ?? "") === "emaki-notes" ? SystemIcons.notesSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.accentShade, ShellPalette.managerIconInk) : (icon.item?.entry?.icon ?? "") === "emaki-welcome" ? SystemIcons.welcomeSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.managerIconInk) : (icon.item?.icon ?? "")
                         smooth: true
                         mipmap: true
                     }

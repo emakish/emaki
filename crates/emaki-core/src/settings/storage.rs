@@ -1077,3 +1077,12 @@ pub(super) fn session_config(timeout: Duration) -> Result<PathBuf> {
     }
     live::config(&profile, &document)
 }
+
+/// Refresh application colours without rebuilding or contacting the compositor.
+pub(super) fn sync_appearance(timeout: Duration) -> Result<()> {
+    let profile = Profile::open(None)?;
+    profile.initialize()?;
+    let _lock = profile.lock(timeout)?;
+    let document = Document::parse(read(&profile.source())?.as_deref())?;
+    accent::publish_qt(&profile, &document)
+}

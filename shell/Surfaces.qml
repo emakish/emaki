@@ -116,6 +116,8 @@ Scope {
                     controller.systemPanel.forceActiveFocus();
             } else if (controller.privacyOpen)
                 controller.privacyPopup.takeFocus(true);
+            else if (controller.pinnedNotesOpen)
+                controller.pinnedNotes.takeFocus(true);
             else if (controller.shortcutsOpen)
                 controller.shortcuts.takeFocus();
             else if (controller.drawerOpen) {
@@ -258,6 +260,7 @@ Scope {
     Component.onCompleted: {
         controller.bar.parent = top.contentItem;
         controller.edge.parent = top.contentItem;
+        controller.pinnedNotes.parent = Qt.binding(() => controller.pinnedNotesPresent ? overlay.contentItem : top.contentItem);
         controller.privacy.parent = top.contentItem;
         controller.privacyPopup.parent = overlay.contentItem;
         controller.tip.parent = overlay.contentItem;
@@ -455,11 +458,11 @@ Scope {
             region: launcherBackdrop.region
         }
     }
-    // Under the clock panel: the middle of the screen, as wide as the drawer (560) and as tall
-    // as the screen allows, plus the shadow's reach, while the panel is on screen.
+    // The clock uses a central crop. Pinned notes can grow beside the clock's right edge,
+    // so their open surface needs the full width, including its shadow at the screen edge.
     DockBackdrop {
         id: clockBackdrop
-        readonly property real reach: 560 + 2 * 120
+        readonly property real reach: surfaces.controller.pinnedNotesPresent ? surfaces.controller.viewportWidth : 560 + 2 * 120
         mode: dockBackdrop.mode
         screen: surfaces.controller.output
         wallpaperTexture: dockWallpaper.texture
@@ -468,7 +471,7 @@ Scope {
         screenHeight: surfaces.controller.viewportHeight
         dpr: surfaces.controller.output?.devicePixelRatio ?? 1
         region: Qt.rect(Math.max(0, Math.floor((surfaces.controller.viewportWidth - reach) / 2)), 0, Math.min(surfaces.controller.viewportWidth, reach), surfaces.controller.viewportHeight)
-        active: surfaces.controller.clockPresent
+        active: surfaces.controller.clockPresent || surfaces.controller.pinnedNotesPresent
     }
     Loader {
         id: clockWallBackdrop
@@ -577,6 +580,8 @@ Scope {
                         surfaces.controller.clockPanel.forceActiveFocus();
                     else if (surfaces.controller.privacyOpen)
                         surfaces.controller.privacyPopup.takeFocus(surfaces.keyboardPanel);
+                    else if (surfaces.controller.pinnedNotesOpen)
+                        surfaces.controller.pinnedNotes.takeFocus(surfaces.keyboardPanel);
                     else if (surfaces.controller.shortcutsOpen)
                         surfaces.controller.shortcuts.takeFocus();
                 });
@@ -635,6 +640,10 @@ Scope {
             item: surfaces.controller.bar.workspaces.visible ? surfaces.controller.bar.workspaces : null
             radius: Metrics.islandRadius
         }
+        Region {
+            item: surfaces.controller.pinnedNotes.visible && !surfaces.controller.pinnedNotesPresent ? surfaces.controller.pinnedNotes : null
+            radius: Metrics.islandRadius
+        }
         // Hover highlights need pointer input on these islands too.
         Region {
             item: surfaces.controller.bar.clock.visible ? surfaces.controller.bar.clock : null
@@ -663,6 +672,11 @@ Scope {
     }
     Region {
         id: barBlur
+        Region {
+            item: surfaces.controller.pinnedNotes
+            intersection: surfaces.controller.pinnedNotes.visible && !surfaces.controller.pinnedNotesPresent && !surfaces.controller.pinnedNotes.glassReady ? Intersection.Combine : Intersection.Subtract
+            radius: Metrics.islandRadius
+        }
         // The left islands blur what is under them themselves when their glass is drawn;
         // the compositor's blur stays for the flat stand-in.
         Region {
@@ -724,6 +738,11 @@ Scope {
     }
     Region {
         id: launcherBlur
+        Region {
+            item: surfaces.controller.pinnedNotes
+            intersection: surfaces.controller.pinnedNotes.visible && surfaces.controller.pinnedNotesPresent && !surfaces.controller.pinnedNotes.glassReady ? Intersection.Combine : Intersection.Subtract
+            radius: Math.round(surfaces.controller.pinnedNotes.radius)
+        }
         // The OSD stays outside every input mask: it never takes pointer or keyboard input.
         Region {
             item: surfaces.controller.osd

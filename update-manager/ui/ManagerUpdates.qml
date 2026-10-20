@@ -12,6 +12,8 @@ ColumnLayout {
     id: root
     required property var controller
     property var programs: []
+    // Built once per catalog; every update row's name and icon look it up.
+    readonly property var catalog: Logic.catalogIndex(programs)
     property var launchEntries: []
     property bool transactionBusy: false
     property bool aurKnown: false
@@ -69,7 +71,7 @@ ColumnLayout {
     }
     function catalogProgram(row: var): var {
         const kind = row.aur ? "aur" : row.kind === "flatpak" || row.source === "Flatpak" ? "flatpak" : "arch";
-        return Logic.catalogProgram(programs, row.id || row.name, launchEntries, kind);
+        return Logic.catalogProgram(catalog, row.id || row.name, launchEntries, kind);
     }
     function plainName(row: var): string {
         const names = {linux: "Linux kernel", "linux-lts": "Linux kernel (long-term support)", systemd: "System services", "linux-firmware": "Device firmware", mesa: "Graphics drivers", emaki: "Emaki", "emaki-config": "Emaki desktop settings"};

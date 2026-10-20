@@ -30,7 +30,23 @@ def validate(mapping):
 
 
 def snapshot():
-    entries = json.loads(command('get-all', '-j'))
+    try:
+        data = command('get-all', '-j')
+    except ValueError:
+        # Ring sessions need no image daemon until a wallpaper transaction asks for it.
+        # The wrapper's compositor claim prevents concurrent transactions starting two;
+        # the compositor owns the daemon, so a shell restart does not stop it.
+        subprocess.run(['emaki-session-wallpaper', '--spawn'], stdin=subprocess.DEVNULL,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
+        for attempt in range(30):
+            time.sleep(.1)
+            try:
+                data = command('get-all', '-j')
+                break
+            except ValueError:
+                if attempt == 29:
+                    raise
+    entries = json.loads(data)
     if not isinstance(entries, list) or len(entries) > 64:
         raise ValueError('wallpaper_response_invalid')
     mapping = {}

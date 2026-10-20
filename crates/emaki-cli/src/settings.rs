@@ -32,6 +32,12 @@ Exit codes: 0 success, 1 rejected/conflict, 2 arguments/output error,
 3 committed with incomplete durability/history; the next call recovers.";
 
 pub(super) fn run(args: &[&str]) -> ExitCode {
+    if args == ["sync-appearance"] {
+        return match emaki_core::settings::sync_appearance(Duration::from_secs(2)) {
+            Ok(()) => output("{\"ok\":true}\n", 0),
+            Err(reason) => output(&format!("{{\"ok\":false,\"reason\":\"{reason}\"}}\n"), 1),
+        };
+    }
     if args == ["session-config"] {
         return match emaki_core::settings::session_config(Duration::from_secs(2)) {
             Ok(path) => output(&format!("{}\n", path.display()), 0),

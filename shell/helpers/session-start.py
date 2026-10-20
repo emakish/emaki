@@ -247,9 +247,19 @@ def niri_snapshot(environment):
     layers, windows = observations
     namespaces = {(item.get('output'), item.get('namespace')) for item in layers if isinstance(item, dict)}
     cover_outputs = {output for output, name in namespaces if name == 'emaki-session-cover'}
+    wallpaper_mapped = bool(cover_outputs) and all((output, 'wpaperd-' + output) in namespaces for output in cover_outputs)
+    if cover_outputs and not wallpaper_mapped:
+        try:
+            response = subprocess.run(['niri-emaki', 'msg', '--json', 'emaki-wallpaper'],
+                                      env=environment, capture_output=True, timeout=.25)
+            if not response.returncode and len(response.stdout) <= 65536:
+                wallpaper = json.loads(response.stdout)
+                wallpaper_mapped = wallpaper.get('mode') == 'ring' and wallpaper.get('load_state') == 'ready'
+        except (OSError, ValueError, AttributeError, subprocess.SubprocessError):
+            pass
     return dict(
         coverMapped=bool(cover_outputs),
-        wallpaperMapped=bool(cover_outputs) and all((output, 'wpaperd-' + output) in namespaces for output in cover_outputs),
+        wallpaperMapped=wallpaper_mapped,
         barMapped=bool(cover_outputs) and all((output, 'emaki-test-bar') in namespaces for output in cover_outputs),
         dockMapped=bool(cover_outputs) and all((output, 'emaki-test-dock') in namespaces for output in cover_outputs),
         windowIds=sorted(item['id'] for item in windows if isinstance(item, dict) and type(item.get('id')) is int),

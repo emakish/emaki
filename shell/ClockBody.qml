@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Controls
 import Quickshell
 import "Keyboard.js" as Keyboard
 import "SystemIcons.js" as SystemIcons
@@ -17,15 +18,24 @@ Item {
     id: body
     property bool keyboardMode: false
     property bool historyExpanded: false
-    onOpenedChanged: if (!opened) {
+    property bool showingNotes: false
+    property bool notesVisited: false
+    onShowingNotesChanged: if (showingNotes)
+        notesVisited = true
+    onOpenedChanged: if (opened) {
+        if (!calendarEvents.editing)
+            calendar.showToday();
+        showingNotes = false;
+        mainScroll.contentY = 0;
+    } else {
         historyExpanded = false;
         list.contentY = 0;
     }
-    readonly property alias scroller: list
+    readonly property alias scroller: mainScroll
     function revealHistory(y: real): void {
         historyExpanded = true;
         Qt.callLater(() => {
-            list.contentY = Math.max(0, Math.min(y, list.contentHeight - list.height));
+            mainScroll.contentY = Math.max(0, Math.min(body.listTop - body.header + y, mainScroll.contentHeight - mainScroll.height));
         });
     }
     function findTarget(item: var, key: string): var {
@@ -117,7 +127,9 @@ Item {
     readonly property bool hasMedia: mediaEnabled && player !== null && player.playerCount > 0
     // The block (56), then 4 + 26 for the players' row and 14 to the month; 14 without the row.
     readonly property real calendarTop: header + (hasMedia ? player.implicitHeight + 14 : 0)
-    readonly property real notesTop: calendarTop + calendar.height + 16
+    readonly property real legacyNotesTop: calendarTop + calendar.height + 16
+    readonly property real notesTop: legacyNotesTop + calendarEvents.height + 42
+    readonly property real addedHeight: notesTop - legacyNotesTop
     readonly property bool serverNote: serverState !== "active"
     readonly property real listTop: notesTop + 36 + (store.scheduleResumeNote ? 22 : 0) + (serverNote ? 22 : 0)
     readonly property string actionNote: store.actionState === "action_unavailable" ? "This notification has no available action" : ""
@@ -128,12 +140,15 @@ Item {
         let chosen = null;
         for (let cap = 6; cap >= 1; --cap) {
             chosen = notePlan(cap);
-            if (listTop + chosen.height + (actionNote ? 22 : 0) + 14 <= maxHeight)
+            if (listTop - addedHeight + chosen.height + (actionNote ? 22 : 0) + 14 <= maxHeight)
                 break;
         }
         return chosen;
     }
-    readonly property real drawerHeight: Math.min(maxHeight, listTop + plan.height + (actionNote ? 22 : 0) + 14)
+    // The plate grows with the day's events and the Notes row, so the notifications stay in view;
+    // past the screen's height its body scrolls. The Notes view gets room for a list and a note.
+    readonly property real fullHeight: listTop + plan.height + (actionNote ? 22 : 0) + 14
+    readonly property real drawerHeight: Math.min(maxHeight, showingNotes ? Math.max(fullHeight, 600) : fullHeight)
     readonly property real peekHeight: peekNotes.length === 1 ? 40 + noteHeight(peekNotes[0]) + 10 : peekNotes.length > 1 ? 120 : 36
     readonly property real desiredHeight: opened ? drawerHeight : peekHeight
     function actionsOf(note: var): var {
@@ -276,6 +291,8 @@ Item {
             return SystemIcons.programsSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.accentShade, ShellPalette.managerIconInk);
         if (name === "emaki-welcome")
             return SystemIcons.welcomeSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.managerIconInk);
+        if (name === "emaki-notes")
+            return SystemIcons.notesSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.accentShade, ShellPalette.managerIconInk);
         return name ? Quickshell.iconPath(name, true) : "";
     }
     // The app's icon: the one the notification sent, else its desktop entry by name.
@@ -333,9 +350,53 @@ Item {
         }
     }
 
+    Flickable {
+        id: mainScroll
+        visible: body.opened && !body.showingNotes
+        y: body.header
+        width: body.width
+        height: Math.max(1, body.drawerHeight - y)
+        contentWidth: width
+        contentHeight: body.listTop + list.height + 36 - body.header
+        clip: true
+        // Scrolling the shade down anywhere opens the older notification groups, as the list did.
+        onContentYChanged: if (contentY > 0 && body.opened)
+            body.historyExpanded = true
+        ScrollBar.vertical: ScrollBar {}
+        Item {
+            id: scrollContent
+            y: -body.header
+            width: mainScroll.width
+            height: mainScroll.contentHeight + body.header
+        }
+    }
+    Word {
+        visible: body.opened && body.showingNotes
+        x: body.side
+        y: body.header
+        key: "notes-back"
+        label: "‹ Calendar & notifications"
+        onClicked: body.showingNotes = false
+    }
+    Loader {
+        id: notesLoader
+        active: body.notesVisited
+        visible: body.showingNotes && body.opened
+        x: body.side
+        y: body.header + 36
+        width: body.inner
+        height: Math.max(1, body.drawerHeight - y - 14)
+        sourceComponent: NotesView {
+            objectName: "clock-notes-view"
+            compact: true
+            onOpenRequested: noteId => Quickshell.execDetached(["emaki-notes", "--note", noteId])
+        }
+    }
+
     // ---- Media ----
     Loader {
         id: media
+        parent: scrollContent
         x: body.side
         y: body.header
         width: body.inner
@@ -348,6 +409,8 @@ Item {
     // ---- Calendar ----
     CalendarMonth {
         id: calendar
+        parent: scrollContent
+        events: NotesService.events
         visible: body.opened
         x: body.side
         y: body.calendarTop
@@ -356,8 +419,30 @@ Item {
         today: body.today
     }
 
+    CalendarEvents {
+        id: calendarEvents
+        objectName: "clock-calendar-events"
+        parent: scrollContent
+        x: body.side
+        y: body.legacyNotesTop - 8
+        width: body.inner
+        selectedDate: calendar.selectedDate
+        pickedDate: calendar.picked ? calendar.selectedDate : ""
+        onSelectDate: date => calendar.selectDate(date)
+        glass: body.glass
+    }
+    Word {
+        parent: scrollContent
+        x: body.side
+        y: calendarEvents.y + calendarEvents.height + 4
+        key: "shade-notes"
+        label: "Notes · " + NotesService.notes.length + "  ›"
+        onClicked: body.showingNotes = true
+    }
+
     // ---- Notifications: heading, Do not disturb, the groups ----
     Item {
+        parent: scrollContent
         visible: body.opened
         y: body.notesTop
         width: parent.width
@@ -407,9 +492,10 @@ Item {
         }
     }
     // The knob's place (clock.js 'knob'): 20 × 22 at the track's left or right end.
-    readonly property rect knobRect: Qt.rect(side + inner - 38 + (store.effectiveDnd ? 18 : 0), notesTop + 3, 20, 22)
-    readonly property bool knobShown: opened
+    readonly property rect knobRect: Qt.rect(side + inner - 38 + (store.effectiveDnd ? 18 : 0), notesTop + 3 - mainScroll.contentY, 20, 22)
+    readonly property bool knobShown: opened && !showingNotes && knobRect.y >= header && knobRect.y + knobRect.height <= drawerHeight
     Text {
+        parent: scrollContent
         objectName: "dnd-schedule-resume"
         visible: body.opened && body.store.scheduleResumeNote !== ""
         x: body.side
@@ -426,6 +512,8 @@ Item {
         color: body.dim
     }
     Text {
+        parent: scrollContent
+        objectName: "notification-server-notice"
         visible: body.opened && body.serverNote
         x: body.side
         y: body.notesTop + 36 + (body.store.scheduleResumeNote ? 22 : 0)
@@ -449,7 +537,7 @@ Item {
         property bool peek: false
         readonly property var actions: body.actionsOf(note)
         // The row or one of its own targets (close, an action) holds the hover drop.
-        readonly property bool open: activeFocus || dismiss.activeFocus || body.focusedKey(row).length > 0 || (body.glass ? body.glass.hoverKey === key || body.glass.hoverKey.startsWith(key + ":") : false)
+        readonly property bool open: pointerInside || activeFocus || dismiss.activeFocus || body.focusedKey(row).length > 0 || (body.glass ? body.glass.hoverKey === key || body.glass.hoverKey.startsWith(key + ":") : false)
         key: (peek ? "peek-" : "note-") + note.id
         label: note.summary
         glass: body.glass
@@ -625,14 +713,15 @@ Item {
     }
     Flickable {
         id: list
+        parent: scrollContent
         visible: body.opened
         y: body.listTop
         width: parent.width
-        height: Math.min(body.plan.height, Math.max(48, body.maxHeight - body.listTop - 14 - (body.actionNote ? 22 : 0)))
+        height: body.plan.height
         contentHeight: body.plan.height
         contentWidth: width
         clip: true
-        interactive: true
+        interactive: false
         WheelHandler {
             target: null
             onWheel: event => {
@@ -640,7 +729,7 @@ Item {
                 if (delta < 0)
                     body.historyExpanded = true;
                 Qt.callLater(() => {
-                    list.contentY = Math.max(0, Math.min(list.contentHeight - list.height, list.contentY - delta));
+                    mainScroll.contentY = Math.max(0, Math.min(mainScroll.contentHeight - mainScroll.height, mainScroll.contentY - delta));
                 });
                 event.accepted = true;
             }
@@ -741,6 +830,7 @@ Item {
         }
     }
     Text {
+        parent: scrollContent
         visible: body.opened && body.actionNote !== ""
         x: body.side
         y: body.listTop + list.height

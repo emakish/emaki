@@ -14,6 +14,8 @@ Item {
     property int year: today.getFullYear()
     property int month: today.getMonth()
     property int picked: 0
+    property var events: []
+    readonly property string selectedDate: Qt.formatDate(new Date(year, month, picked || (current ? today.getDate() : 1)), "yyyy-MM-dd")
     readonly property int start: (new Date(year, month, 1).getDay() + 6) % 7
     readonly property int days: new Date(year, month + 1, 0).getDate()
     readonly property int cellCount: Math.ceil((start + days) / 7) * 7
@@ -26,11 +28,23 @@ Item {
     readonly property var monthNames: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
     // Today's cell while its month is shown: a resting drop of the panel.
     readonly property GlassTarget todayTarget: current && dayRepeater.count === cellCount ? dayRepeater.itemAt(start + today.getDate() - 1) as GlassTarget : null
+    function selectDate(value: string): void {
+        const parts = value.split("-").map(Number);
+        year = parts[0];
+        month = parts[1] - 1;
+        picked = parts[2];
+    }
+    // Unpick first: the old day number in the new month is not a day the user picked.
+    function showToday(): void {
+        picked = 0;
+        year = today.getFullYear();
+        month = today.getMonth();
+    }
     function shift(delta: int): void {
         const next = new Date(year, month + delta, 1);
+        picked = 0;
         year = next.getFullYear();
         month = next.getMonth();
-        picked = 0;
     }
     implicitHeight: 58 + cellCount / 7 * 28
     height: implicitHeight
@@ -100,11 +114,7 @@ Item {
         y: 1
         width: todayLabel.implicitWidth + 20
         height: 26
-        onClicked: {
-            calendar.year = calendar.today.getFullYear();
-            calendar.month = calendar.today.getMonth();
-            calendar.picked = 0;
-        }
+        onClicked: calendar.showToday()
         Text {
             id: todayLabel
             anchors.centerIn: parent
@@ -159,6 +169,22 @@ Item {
             bubblePad: 0
             bubbleRadius: 12
             onClicked: calendar.picked = number
+            Rectangle {
+                anchors.fill: parent
+                radius: 12
+                color: Qt.rgba(calendar.accent.r, calendar.accent.g, calendar.accent.b, 0.14)
+                border.color: calendar.accent
+                visible: day.inMonth && day.number === calendar.picked
+            }
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 23
+                width: 3
+                height: 3
+                radius: 1.5
+                color: calendar.accent
+                visible: day.inMonth && calendar.events.some(event => event.date === Qt.formatDate(new Date(calendar.year, calendar.month, day.number), "yyyy-MM-dd"))
+            }
             Text {
                 anchors.fill: parent
                 anchors.topMargin: 1

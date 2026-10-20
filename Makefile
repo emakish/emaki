@@ -186,6 +186,11 @@ check: paths check-assumptions check-core
 	python3 update-manager/tests/test_updates.py
 	python3 update-manager/tests/test_flatpaks.py
 	python3 update-manager/tests/test_reminder.py
+	python3 notes/tests/test_backend.py
+	python3 notes/ui/tests/run.py
+	python3 tests/test-notes-island.py
+	python3 tests/test-calendar-events.py
+	python3 tests/test-clock-scroll.py
 	python3 update-manager/tests/test_restore.py
 	python3 update-manager/tests/test_protocol.py
 	python3 update-manager/tests/test_programs.py
@@ -473,6 +478,14 @@ install: install-upkeep
 	install -Dm644 systemd/90-emaki-wifi-recovery.rules $(DESTDIR)$(PREFIX)/lib/udev/rules.d/90-emaki-wifi-recovery.rules
 	install -Dm755 -t $(BIN) $(SCRIPTS)
 	install -Dm755 update-manager/emaki-update-manager $(BIN)/emaki-update-manager
+	install -Dm755 notes/emaki-notes $(BIN)/emaki-notes
+	install -Dm644 notes/backend.py $(DESTDIR)$(LIBEXECDIR)/notes-backend
+	install -Dm644 notes/emaki-notes.desktop $(DESTDIR)$(PREFIX)/share/applications/emaki-notes.desktop
+	install -Dm644 notes/emaki-notes.svg $(ICONS)/hicolor/scalable/apps/emaki-notes.svg
+	install -Dm644 -t $(DESTDIR)$(PREFIX)/share/emaki-notes/ui notes/ui/*.qml
+	install -Dm644 -t $(SYSTEMD)/user notes/emaki-calendar-reminders.service notes/emaki-calendar-reminders.timer
+	install -d $(SYSTEMD)/user/graphical-session.target.wants
+	ln -sfn ../emaki-calendar-reminders.timer $(SYSTEMD)/user/graphical-session.target.wants/emaki-calendar-reminders.timer
 	install -Dm755 update-manager/backend.py $(DESTDIR)$(LIBEXECDIR)/update-manager-backend
 	install -Dm644 update-manager/catalog.py $(DESTDIR)$(LIBEXECDIR)/update_catalog.py
 	install -Dm644 update-manager/emaki_update_root.py $(DESTDIR)$(LIBEXECDIR)/emaki_update_root.py
@@ -805,6 +818,9 @@ uninstall:
 	rm -f $(BIN)/emaki-transaction-inhibit $(DESTDIR)$(PREFIX)/share/libalpm/hooks/00-emaki-transaction-inhibit.hook $(DESTDIR)$(LIBEXECDIR)/emaki_update_space.py
 	rm -f $(BIN)/emaki-update-boot $(DESTDIR)$(PREFIX)/share/libalpm/hooks/04-emaki-update-boot.hook $(DESTDIR)$(PREFIX)/share/libalpm/hooks/06-emaki-update-boot.hook
 	rm -f $(BIN)/emaki-update-manager $(DESTDIR)$(LIBEXECDIR)/update-manager-backend $(DESTDIR)$(LIBEXECDIR)/update_catalog.py $(DESTDIR)$(LIBEXECDIR)/emaki_update_root.py $(DESTDIR)$(LIBEXECDIR)/emaki-update-apply
+	rm -f $(BIN)/emaki-notes $(DESTDIR)$(LIBEXECDIR)/notes-backend $(DESTDIR)$(PREFIX)/share/applications/emaki-notes.desktop $(ICONS)/hicolor/scalable/apps/emaki-notes.svg
+	rm -rf $(DESTDIR)$(PREFIX)/share/emaki-notes
+	rm -f $(SYSTEMD)/user/emaki-calendar-reminders.service $(SYSTEMD)/user/emaki-calendar-reminders.timer $(SYSTEMD)/user/graphical-session.target.wants/emaki-calendar-reminders.timer
 	rm -f $(DESTDIR)$(LIBEXECDIR)/update_flatpaks.py
 	rm -f $(DESTDIR)$(LIBEXECDIR)/update_reminder.py
 	rm -f $(DESTDIR)$(LIBEXECDIR)/emaki-update-restore $(DESTDIR)$(PREFIX)/share/polkit-1/actions/org.emaki.update.restore.policy
@@ -985,6 +1001,8 @@ check-shell: paths shell-shaders check-sudo-build
 	node tests/test-notification-policy.mjs
 	python3 tests/test-notification-store.py
 	python3 tests/test-notification-reach.py
+	python3 tests/test-calendar-reset.py
+	python3 tests/test-launcher-settings-glass.py
 	python3 tests/test-settings-sound-backend.py
 	python3 tests/test-settings-sound-page.py
 	python3 tests/test-notifications-settings.py

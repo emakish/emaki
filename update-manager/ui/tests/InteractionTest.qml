@@ -294,6 +294,11 @@ ShellRoot {
             input.wait(30);
             test.check(!!test.label("Undoing the install…"), "undo shows its own progress");
             programs.mutating = false; programs.busy = false; programs.phase = "idle"; programs.executions = 0;
+            programs.busy = true; programs.phase = "catalog"; programs.heldByRefresh = true;
+            view.navigate("browse"); view.installProgram(programs.allPrograms.find(row => row.package === "gimp")); input.wait(30);
+            test.check(view.page === "program" && !programs.previewOpen && !!test.label("Refreshing…"),
+                       "a quiet catalog refresh opens the program and says why Install waits");
+            programs.busy = false; programs.phase = "idle"; programs.heldByRefresh = false;
             view.showProgram(programs.allPrograms.find(row => row.package === "krita")); input.wait(50);
             test.check(programs.selectedEdition.kind === "arch", "opening source identity defaults Arch first");
             test.shot("program");

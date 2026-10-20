@@ -340,7 +340,7 @@ class AccentAppsTests(unittest.TestCase):
                                 capture_output=True, timeout=60)
         self.assertEqual(json.loads(result.stdout)['selection_background'], '010203')
 
-    def assert_qt(self, colours, accent):
+    def assert_qt(self, colours, accent, theme=None, personal=False):
         self.assertEqual(colours['Highlight'], accent['base'], colours)
         self.assertEqual(colours['HighlightedText'], accent['text'], colours)
         self.assertEqual(colours['Link'], accent['base'], colours)
@@ -348,10 +348,14 @@ class AccentAppsTests(unittest.TestCase):
                     'kde Button DecorationHover', 'kde View ForegroundLink'):
             self.assertEqual(colours[key], accent['base'], (key, colours))
         self.assertEqual(colours['kde Selection ForegroundNormal'], accent['text'], colours)
-        # The rest of the palette is the packaged one.
-        self.assertEqual(colours['Window'], TOKENS['color']['background'])
-        self.assertEqual(colours['WindowText'], TOKENS['color']['text'])
-        self.assertEqual(colours['kde View BackgroundNormal'], TOKENS['color']['background'])
+        # Managed Qt and KDE colours use the same theme; personal Qt schemes stay intact.
+        theme_tokens = TOKENS["shell_dark" if theme == "dark" else "shell_light"]
+        self.assertEqual(colours['Window'],
+                         TOKENS['color']['background'] if personal else theme_tokens['manager_background'])
+        self.assertEqual(colours['WindowText'],
+                         TOKENS['color']['text'] if personal else theme_tokens['manager_ink'])
+        self.assertEqual(colours['kde View BackgroundNormal'],
+                         theme_tokens['manager_background'])
 
     def test_qt_windows_follow_chosen_orange_in_light_and_dark(self):
         skel = (ROOT / 'etc-skel/.config/qt6ct/qt6ct.conf').read_text()
@@ -366,20 +370,19 @@ class AccentAppsTests(unittest.TestCase):
                 session.start()
                 self.assertEqual(session.qt6ct.read_text(), skel)  # the person's file: never written
                 self.assertTrue(session.scheme.read_text().startswith(HEADER))
-                self.assert_qt(session.qt(), ORANGE)
+                self.assert_qt(session.qt(), ORANGE, theme)
                 # The session's layer is the one niri-emaki-session puts above the packaged file.
                 self.assertEqual(session.config_dirs().split(':')[0], str(session.kdeglobals.parent))
 
-    def test_qt_never_chosen_and_chosen_rose_are_the_packaged_look(self):
+    def test_qt_never_chosen_and_chosen_rose_follow_the_theme(self):
         skel = (ROOT / 'etc-skel/.config/qt6ct/qt6ct.conf').read_text()
         for accent, theme in ((None, None), (None, 'light'), ('rose', 'dark')):
             with self.subTest(accent=accent, theme=theme):
                 session = self.session(accent, theme).start()
                 self.assertEqual(session.qt6ct.read_text(), skel)  # never touched
-                self.assertFalse(session.kdeglobals.exists())
-                self.assertEqual(session.scheme.read_text(),
-                                 HEADER + (ROOT / 'qt6ct/emaki.conf').read_text())
-                self.assert_qt(session.qt(), ROSE)
+                self.assertTrue(session.kdeglobals.exists())
+                self.assertTrue(session.scheme.read_text().startswith(HEADER))
+                self.assert_qt(session.qt(), ROSE, theme)
 
     def test_an_unchanged_old_home_follows_the_accent_after_one_migration(self):
         skel = (ROOT / 'etc-skel/.config/qt6ct/qt6ct.conf').read_bytes()
@@ -414,7 +417,7 @@ class AccentAppsTests(unittest.TestCase):
         self.assertFalse((session.base / 'home/.local').exists())
         self.assertTrue((state / 'emaki/accent/qt6ct.conf').is_file())
         self.assertFalse((state / 'emaki/defaults/kdeglobals').exists())
-        self.assert_qt(session.qt(), ROSE)
+        self.assert_qt(session.qt(), ROSE, personal=True)
 
     def test_an_old_home_with_explicit_default_state_follows_the_accent(self):
         session = self.session('orange')
@@ -440,7 +443,7 @@ class AccentAppsTests(unittest.TestCase):
             self.assertEqual((after.st_ino, after.st_mtime_ns, after.st_mode, after.st_nlink),
                              (before.st_ino, before.st_mtime_ns, before.st_mode, 2))
         self.assertFalse(session.kdeglobals.exists())
-        self.assert_qt(session.qt(), ROSE)
+        self.assert_qt(session.qt(), ROSE, personal=True)
 
     def test_migration_preserves_the_old_selector_permissions(self):
         for mode in (0o644, 0o600):
@@ -468,7 +471,7 @@ class AccentAppsTests(unittest.TestCase):
                 self.assertEqual(session.qt6ct.stat().st_mode, mode)
                 self.assertEqual(sorted(p.name for p in session.qt6ct.parent.iterdir()), ['qt6ct.conf'])
                 self.assertFalse(session.kdeglobals.exists())
-                self.assert_qt(session.qt(), ROSE)
+                self.assert_qt(session.qt(), ROSE, personal=True)
         # A home without a qt6ct.conf: nothing is created; qt6ct's own copy of the packaged
         # default will name the session scheme, so the KDE layer is written.
         session = self.session('orange')
@@ -563,11 +566,11 @@ class AccentAppsTests(unittest.TestCase):
         session = self.session('teal').start()
         teal = TOKENS['accents']['teal']
         self.assert_qt(session.qt(), teal)
-        # Back to the default: Rose everywhere, the KDE layer removed.
+        # Back to the default: Rose and the light palette.
         (session.base / 'config/emaki/settings.toml').write_text('schema_version = 1\n')
         session.start()
         self.assertEqual(session.qt6ct.read_text(), (ROOT / 'etc-skel/.config/qt6ct/qt6ct.conf').read_text())
-        self.assertFalse(session.kdeglobals.exists())
+        self.assertTrue(session.kdeglobals.exists())
         self.assert_qt(session.qt(), ROSE)
         # A deleted or edited state file is rewritten at the next session start.
         (session.base / 'config/emaki/settings.toml').write_text(
@@ -603,6 +606,79 @@ class AccentAppsTests(unittest.TestCase):
         self.assertEqual(linked.read_text(), (ROOT / 'etc-skel/.config/qt6ct/qt6ct.conf').read_text())
         self.assertTrue(session.qt6ct.is_symlink())
         self.assert_qt(session.qt(), ORANGE)
+
+    def test_live_theme_sync_reloads_qt_and_preserves_personal_configuration(self):
+        session = self.session('orange', 'light').start()
+        before = session.qt6ct.read_bytes()
+        personal_stamp = session.qt6ct.stat().st_mtime_ns
+        own = session.base / 'config/kdeglobals'
+        own.write_text('[Colors:View]\nForegroundLink=1,2,3\n')
+        qml = session.base / 'live.qml'
+        qml.write_text(QT_PROBE.replace('interval: 50; running: true',
+                                       'interval: 100; running: true; repeat: true').replace('Qt.quit();', ''))
+        env = dict(session.env, QT_QPA_PLATFORM='offscreen', QT_QPA_PLATFORMTHEME='qt6ct',
+                   QT_LOGGING_RULES='qml.debug=true', QT_FORCE_STDERR_LOGGING='1',
+                   DBUS_SESSION_BUS_ADDRESS='disabled:')
+        process = subprocess.Popen(['qml6', '--apptype', 'widget', str(qml)], env=env,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        try:
+            import select
+            import time
+            def wait_colour(colour):
+                lines = []
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline:
+                    if select.select([process.stderr], [], [], .2)[0]:
+                        line = process.stderr.readline()
+                        lines.append(line)
+                        if 'PALETTE:' in line and json.loads(line.split('PALETTE:')[1])['Window'] == '#' + colour:
+                            return
+                self.fail('The open Qt application did not receive ' + colour + str(lines[:10]))
+            wait_colour(TOKENS['shell_light']['manager_background'])
+            (session.base / 'config/emaki/settings.toml').write_text(
+                'schema_version = 1\n[appearance]\ntheme = "dark"\naccent = "teal"\n')
+            result = subprocess.run([BINARY, 'settings', 'sync-appearance'], env=session.env,
+                                    text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout), {'ok': True})
+            wait_colour(TOKENS['shell_dark']['manager_background'])
+            self.assertEqual(session.qt6ct.read_bytes(), before)
+            self.assertEqual(session.qt6ct.stat().st_mtime_ns, personal_stamp)
+            self.assertEqual(sorted(p.name for p in session.qt6ct.parent.iterdir()), ["qt6ct.conf"])
+            self.assertEqual(own.read_text(), '[Colors:View]\nForegroundLink=1,2,3\n')
+            self.assertEqual(session.qt()['kde View ForegroundLink'], '010203')
+            stamp = session.kdeglobals.stat().st_mtime_ns
+            subprocess.run([BINARY, 'settings', 'sync-appearance'], env=session.env, check=True,
+                           capture_output=True, timeout=10)
+            self.assertEqual(session.kdeglobals.stat().st_mtime_ns, stamp)
+        finally:
+            process.terminate()
+            process.communicate(timeout=10)
+
+    def test_kde_palette_change_signal_is_emitted_only_after_a_change(self):
+        session = self.session('orange', 'light').start()
+        commands = session.base / 'commands'
+        commands.mkdir()
+        signal = commands / 'dbus-send'
+        log = session.base / 'signals'
+        signal.write_text('#!/bin/sh\nprintf "%s\\n" "$@" >> "$SIGNAL_LOG"\n')
+        signal.chmod(0o700)
+        notice = commands / 'busctl'
+        notice.write_text('#!/bin/sh\nprintf "%s\\n" busctl "$@" >> "$SIGNAL_LOG"\n')
+        notice.chmod(0o700)
+        session.env.update(PATH=str(commands) + ':' + session.env['PATH'],
+                           SIGNAL_LOG=str(log), DBUS_SESSION_BUS_ADDRESS='disabled:')
+        (session.base / 'config/emaki/settings.toml').write_text(
+            'schema_version = 1\n[appearance]\ntheme = "dark"\naccent = "teal"\n')
+        for _ in range(2):
+            result = subprocess.run([BINARY, 'settings', 'sync-appearance'], env=session.env,
+                                    text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(log.read_text().splitlines(), [
+            '--session', '--type=signal', '/KGlobalSettings',
+            'org.kde.KGlobalSettings.notifyChange', 'int32:0', 'int32:0',
+            'busctl', '--user', 'emit', '/kdeglobals', 'org.kde.kconfig.notify', 'ConfigChanged',
+            'a{saay}', '0'])
 
     def test_switching_back_to_the_default_removes_the_copies(self):
         session = self.session('orange').start()

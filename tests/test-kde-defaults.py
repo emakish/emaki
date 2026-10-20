@@ -13,7 +13,7 @@ import reaper
 reaper.guard()  # nothing this test starts outlives it
 
 ROOT = Path(__file__).resolve().parent.parent
-tokens = tomllib.loads((ROOT / 'tokens.toml').read_text())['color']
+tokens = tomllib.loads((ROOT / 'tokens.toml').read_text())['shell_light']
 with tempfile.TemporaryDirectory(prefix='emaki-kde-') as temporary:
     base = Path(temporary)
     generated = base / 'kdeglobals'
@@ -76,7 +76,7 @@ with tempfile.TemporaryDirectory(prefix='emaki-kde-') as temporary:
         subprocess.run(['kbuildsycoca6', '--noincremental'], env=env, check=True,
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         subprocess.run([str(base / 'probe'), 'okularApplication_pdf.desktop' if rich else 'firefox.desktop',
-                        '#' + tokens['background'], '#' + tokens['text'],
+                        '#' + tokens['manager_background'], '#' + tokens['manager_ink'],
                         'org.kde.gwenview.desktop' if rich else 'firefox.desktop'], env=env, check=True)
         for mime, expected in (
             ('application/pdf', 'okularApplication_pdf.desktop' if rich else 'firefox.desktop'),

@@ -83,6 +83,7 @@ def replacements(values):
     return {
         '#!/usr/bin/python3 -I': '#!' + values['PYTHON'] + ' -I',
         '/usr/share/emaki-update-manager': values['PREFIX'] + '/share/emaki-update-manager',
+        '/usr/share/emaki-notes': values['PREFIX'] + '/share/emaki-notes',
         '/usr/share/emaki': values['DATADIR'],
         '/usr/libexec/emaki': values['LIBEXECDIR'],
         '/usr/lib/emaki': values['LIBDIR'],

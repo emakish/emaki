@@ -1,6 +1,6 @@
 // Copyright (C) 2026 Artur Yakymenko
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The chosen accent for programs outside the shell (DECISIONS 2026-10-15).
+//! The chosen appearance for programs outside the shell (DECISIONS 2026-10-15).
 //!
 //! The packaged configs keep the default accent. The session path that builds the niri
 //! border writes the chosen accent into the runtime directory: kitty's packaged theme
@@ -14,7 +14,7 @@
 //! `~/.local/state/…`, the default state directory. Only an unchanged historical skel copy
 //! of qt6ct.conf is migrated; edited files stay personal. KDE's `kdeglobals` takes the accent from
 //! `$XDG_STATE_HOME/emaki/defaults/kdeglobals`, the managed layer the session puts on
-//! `XDG_CONFIG_DIRS` (scripts/niri-emaki-session); it exists only for a chosen accent.
+//! `XDG_CONFIG_DIRS` (scripts/niri-emaki-session); it holds the current theme and accent.
 use super::live::replace;
 use super::storage::{Profile, mkdir, read};
 use super::*;
@@ -100,11 +100,11 @@ pub(super) fn files(doc: &Document) -> [(&'static str, Option<String>); 3] {
     ]
 }
 
-/// The qt6ct colour scheme (always) and the `kdeglobals` layer (only for a chosen accent).
+/// The qt6ct colour scheme (always) and the `kdeglobals` layer (for the current theme and accent).
 pub(super) fn qt_files(doc: &Document) -> (String, Option<String>) {
-    let (name, base, text) = colours(doc);
-    let (default, default_base, default_text) = colours(&Document::default());
-    let scheme = PACKAGED_QT6CT
+    let (_, base, text) = colours(doc);
+    let (_, default_base, default_text) = colours(&Document::default());
+    let mut scheme = PACKAGED_QT6CT
         .replace(&format!("#ff{default_base}"), &format!("#ff{base}"))
         .replace(&format!("#ff{default_text}"), &format!("#ff{text}"));
     let rgb = |hex: &str| -> String {
@@ -114,34 +114,80 @@ pub(super) fn qt_files(doc: &Document) -> (String, Option<String>) {
             .collect::<Vec<_>>()
             .join(",")
     };
-    let kde = (name != default).then(|| {
-        // Only the keys drawn from the accent; every other key stays the packaged file's.
-        let (from_base, from_text) = (rgb(default_base), rgb(default_text));
-        let mut out = HEADER.to_owned();
-        let mut group = "";
-        let mut open = false;
-        for line in PACKAGED_KDEGLOBALS.lines() {
-            if line.starts_with('[') {
-                group = line;
-                open = false;
-            } else if let Some((key, value)) = line.split_once('=') {
-                let value = if value == from_base {
-                    rgb(base)
-                } else if value == from_text {
-                    rgb(text)
-                } else {
-                    continue;
+    let dark = match doc.appearance.theme.as_deref() {
+        Some("dark") => true,
+        Some("automatic") => {
+            let now = crate::transport::helper(
+                "date",
+                &["+%H:%M"],
+                std::time::Instant::now() + Duration::from_secs(1),
+            )
+            .ok()
+            .filter(|out| out.success);
+            let now = now
+                .as_ref()
+                .and_then(|out| std::str::from_utf8(&out.stdout).ok());
+            now.is_some_and(|time| scheduled_dark(doc, time.trim()))
+        }
+        _ => false,
+    };
+    let tokens = &palette()[if dark { "shell_dark" } else { "shell_light" }];
+    for (source, target) in [
+        ("background", "manager_background"),
+        ("surface", "manager_panel"),
+        ("surface_high", "settings_tooltip"),
+        ("text", "manager_ink"),
+        ("text_muted", "manager_dim"),
+        ("border_inactive", "manager_dim"),
+    ] {
+        let from = palette()["color"][source].as_str().expect("Qt colour");
+        let to = tokens[target].as_str().expect("theme colour");
+        for alpha in ["ff", "80"] {
+            scheme = scheme.replace(&format!("#{alpha}{from}"), &format!("#{alpha}{to}"));
+        }
+    }
+    let token = |key: &str| rgb(tokens[key].as_str().expect("theme colour"));
+    let mut out = HEADER.to_owned();
+    let mut group = "";
+    for line in PACKAGED_KDEGLOBALS.lines() {
+        if line.starts_with('[') {
+            group = line;
+            if group.starts_with("[Colors:") {
+                out.push_str(&format!("\n{group}\n"));
+            }
+        } else if group.starts_with("[Colors:") {
+            if let Some((key, value)) = line.split_once('=') {
+                let value = match key {
+                    "BackgroundNormal" if group == "[Colors:Selection]" => rgb(base),
+                    "BackgroundNormal" if matches!(group, "[Colors:View]" | "[Colors:Window]") => {
+                        token("manager_background")
+                    }
+                    "BackgroundNormal" => token("manager_panel"),
+                    "BackgroundAlternate" => token("settings_tooltip"),
+                    "ForegroundNormal" if group == "[Colors:Selection]" => rgb(text),
+                    "ForegroundNormal" => token("manager_ink"),
+                    "ForegroundInactive" => token("manager_dim"),
+                    "ForegroundActive" | "ForegroundLink" | "DecorationFocus"
+                    | "DecorationHover" => rgb(base),
+                    "ForegroundNegative" => token("settings_error"),
+                    _ => value.to_owned(),
                 };
-                if !open {
-                    out.push_str(&format!("\n{group}\n"));
-                    open = true;
-                }
                 out.push_str(&format!("{key}={value}\n"));
             }
         }
-        out
-    });
+    }
+    let kde = Some(out);
     (format!("{HEADER}{scheme}"), kde)
+}
+
+fn scheduled_dark(doc: &Document, now: &str) -> bool {
+    let light = doc.appearance.light_time.as_deref().unwrap_or("07:00");
+    let dark = doc.appearance.dark_time.as_deref().unwrap_or("19:00");
+    if light < dark {
+        now < light || now >= dark
+    } else {
+        now >= dark && now < light
+    }
 }
 
 /// The packaged `qt6ct.conf` names `~/QT6CT_SCHEME`: qt6ct expands only `~` and `$VAR/` (an
@@ -315,12 +361,30 @@ pub(super) fn publish_qt(profile: &Profile, doc: &Document) -> Result<()> {
     let (scheme, kde) = qt_files(doc);
     let scheme_path = qt6ct_scheme(profile);
     parents(scheme_path.parent().expect("accent state"))?;
-    if read(&scheme_path)?.as_deref() != Some(scheme.as_bytes()) {
+    let scheme_changed = read(&scheme_path)?.as_deref() != Some(scheme.as_bytes());
+    if scheme_changed {
         replace(&scheme_path, Some(scheme.as_bytes()))?;
     }
     migration::publish(profile);
     // Decide after migration, so Qt and KDE follow the same palette on the first login too.
     let kde = kde.filter(|_| qt6ct_follows(profile, &scheme_path));
+    // qt6ct watches creation/deletion in its config directory, not the external
+    // scheme. An exclusive temporary marker wakes it without editing qt6ct.conf.
+    if scheme_changed && kde.is_some() {
+        if let Some(directory) = profile.config.parent().map(|p| p.join("qt6ct")) {
+            if storage::safe_path(&directory).is_ok() && directory.is_dir() {
+                let marker = directory.join(format!(".emaki-palette-{}", storage::id()));
+                if fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&marker)
+                    .is_ok()
+                {
+                    let _ = fs::remove_file(marker);
+                }
+            }
+        }
+    }
     let kde_path = kdeglobals(profile);
     let kde_dir = kde_path.parent().expect("defaults");
     if kde.is_some() {
@@ -330,6 +394,36 @@ pub(super) fn publish_qt(profile: &Profile, doc: &Document) -> Result<()> {
         && read(&kde_path)?.as_deref() != kde.as_deref().map(str::as_bytes)
     {
         replace(&kde_path, kde.as_deref().map(str::as_bytes))?;
+        // KConfig consumers reload their palette on the same signal Plasma emits.
+        if std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some() {
+            let _ = crate::transport::helper(
+                "dbus-send",
+                &[
+                    "--session",
+                    "--type=signal",
+                    "/KGlobalSettings",
+                    "org.kde.KGlobalSettings.notifyChange",
+                    "int32:0",
+                    "int32:0",
+                ],
+                std::time::Instant::now() + Duration::from_secs(1),
+            );
+            // KDE apps (Dolphin's view) re-read their in-memory colour scheme only on the
+            // KConfig change notice; without it a running view keeps the old background.
+            let _ = crate::transport::helper(
+                option_env!("EMAKI_BUSCTL").unwrap_or("busctl"),
+                &[
+                    "--user",
+                    "emit",
+                    "/kdeglobals",
+                    "org.kde.kconfig.notify",
+                    "ConfigChanged",
+                    "a{saay}",
+                    "0",
+                ],
+                std::time::Instant::now() + Duration::from_secs(1),
+            );
+        }
     }
     Ok(())
 }
@@ -463,45 +557,54 @@ mod tests {
     }
 
     #[test]
-    fn qt_files_change_only_the_accent_and_repeat_the_packaged_default() {
-        for theme in [None, Some("light"), Some("dark")] {
+    fn qt_files_follow_theme_and_accent_with_a_light_default() {
+        for (theme, background) in [
+            (None, "fffaf6"),
+            (Some("light"), "fffaf6"),
+            (Some("dark"), "211815"),
+        ] {
             let (scheme, kde) = qt_files(&doc(None, theme));
-            assert_eq!(scheme, format!("{HEADER}{PACKAGED_QT6CT}"));
-            assert_eq!(kde, None);
+            assert!(scheme.contains(&format!("#ff{background}")));
+            assert!(scheme.contains("#ffe780aa"));
+            assert!(kde.unwrap().contains("[Colors:Window]"));
         }
         let (scheme, kde) = qt_files(&doc(Some("orange"), Some("light")));
-        let changed: Vec<_> = PACKAGED_QT6CT
-            .lines()
-            .zip(scheme.strip_prefix(HEADER).unwrap().lines())
-            .filter(|(a, b)| a != b)
-            .collect();
-        // active, disabled (the link colour) and inactive colours.
-        assert_eq!(changed.len(), 3, "{changed:?}");
-        for (packaged, ours) in changed {
-            assert_eq!(
-                packaged
-                    .replace("#ffe780aa", "#ffe2733f")
-                    .replace("#ff300c1c", "#ff2a0f05"),
-                ours
-            );
-        }
         assert!(!scheme.contains("#ffe780aa") && !scheme.contains("#ff300c1c"));
         let kde = kde.unwrap();
         assert!(kde.starts_with(HEADER));
-        assert!(kde.contains(
-            "[Colors:Selection]\nBackgroundNormal=226,115,63\nForegroundNormal=42,15,5\n"
-        ));
-        // Every packaged key drawn from the accent is overridden, and nothing else.
-        let accent_keys = PACKAGED_KDEGLOBALS
-            .lines()
-            .filter(|l| l.ends_with("=231,128,170") || l.ends_with("=48,12,28"))
-            .count();
-        let ours: Vec<_> = kde.lines().filter(|l| l.contains('=')).collect();
-        assert_eq!(ours.len(), accent_keys);
-        assert!(
-            ours.iter()
-                .all(|l| l.ends_with("=226,115,63") || l.ends_with("=42,15,5"))
+        assert!(kde.contains("[Colors:Selection]\nBackgroundNormal=226,115,63\n"));
+        assert!(kde.contains("ForegroundNormal=42,15,5"));
+        assert!(kde.contains("[Colors:Window]\nBackgroundNormal=255,250,246"));
+        let dark = qt_files(&doc(Some("orange"), Some("dark"))).1.unwrap();
+        assert!(dark.contains("[Colors:Window]\nBackgroundNormal=33,24,21"));
+        assert!(dark.contains("ForegroundNormal=244,233,240"));
+        assert_eq!(
+            qt_files(&doc(None, None)).1,
+            qt_files(&doc(None, Some("light"))).1
         );
+    }
+
+    #[test]
+    fn schedule_handles_both_orders_and_exact_boundaries() {
+        let mut document = doc(None, Some("automatic"));
+        for (time, dark) in [
+            ("06:59", true),
+            ("07:00", false),
+            ("18:59", false),
+            ("19:00", true),
+        ] {
+            assert_eq!(scheduled_dark(&document, time), dark);
+        }
+        document.appearance.light_time = Some("19:00".into());
+        document.appearance.dark_time = Some("07:00".into());
+        for (time, dark) in [
+            ("06:59", false),
+            ("07:00", true),
+            ("18:59", true),
+            ("19:00", false),
+        ] {
+            assert_eq!(scheduled_dark(&document, time), dark);
+        }
     }
 
     #[test]
@@ -534,10 +637,10 @@ mod tests {
         }
         let scheme = qt6ct_scheme(&profile);
         assert_eq!(scheme, root.join("state/emaki/accent/qt6ct.conf"));
-        // Never chosen: the scheme exists in Rose (missing directories created), no KDE layer.
+        // Never chosen: Rose and the light theme, with missing directories created.
         publish_qt(&profile, &doc(None, None)).unwrap();
         assert!(fs::read_to_string(&scheme).unwrap().contains("#ffe780aa"));
-        assert!(!kdeglobals(&profile).exists());
+        assert!(kdeglobals(&profile).exists());
         publish_qt(&profile, &doc(Some("orange"), None)).unwrap();
         assert!(fs::read_to_string(&scheme).unwrap().contains("#ffe2733f"));
         assert!(
@@ -547,7 +650,7 @@ mod tests {
         );
         publish_qt(&profile, &doc(None, None)).unwrap();
         assert!(fs::read_to_string(&scheme).unwrap().contains("#ffe780aa"));
-        assert!(!kdeglobals(&profile).exists());
+        assert!(kdeglobals(&profile).exists());
         // An edited qt6ct.conf naming another scheme (the packaged path) or with the
         // custom palette off: Qt keeps that palette, so KDE gets no accent layer either.
         let packaged = format!(

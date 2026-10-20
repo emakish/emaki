@@ -12,8 +12,10 @@ ShellRoot {
     property bool failed: false
     property int restoreResults: 0
     property var lastRestore: null
+    property bool sawInitialLoading: false
     ProgramsController {
         id: controller
+        onForegroundBusyChanged: if (foregroundBusy && phase === "catalog" && !catalogLoaded) test.sawInitialLoading = true
         onRestoreFinished: result => { test.restoreResults++; test.lastRestore = result; }
     }
     Item {
@@ -31,6 +33,22 @@ ShellRoot {
         check(!terminalChange.running, "external package change completes");
     }
     function presentationScenario(): void {
+        check(sawInitialLoading, "the first catalog load still displays progress");
+        const cachedRows = controller.allRows;
+        const cachedStorefront = controller.storefront;
+        windowHook.present();
+        check(controller.phase === "catalog" && controller.catalogLoaded && !controller.foregroundBusy,
+              "reopening refreshes a loaded catalog without the loading line");
+        check(controller.allRows === cachedRows && controller.storefront === cachedStorefront,
+              "reopening immediately retains the complete catalog and Browse picks");
+        controller.openProgram(cachedRows[0]);
+        check(!!controller.selectedProgram && controller.heldByRefresh && controller.foregroundBusy && controller.quietRefresh,
+              "a program opens during the quiet refresh and shows that it waits");
+        controller.prepareInstall();
+        check(!controller.previewOpen && controller.phase === "catalog", "install waits for the refreshed catalog");
+        settle(); input.wait(50);
+        check(controller.catalogReceived && controller.catalogLoaded, "background refresh replaces the catalog");
+        check(!controller.heldByRefresh && !!controller.selectedEdition, "the refresh releases the wait and keeps the open program");
         controller.selectScope("packages"); controller.search("compression"); packagesReady();
         const original = controller.packageRows[0];
         controller.preparePackage(original, "install"); settle();
@@ -122,6 +140,56 @@ ShellRoot {
               && Logic.undoRefusal({code: "changed"}) === "", "a refused undo says what blocks it");
     }
     TestCase { id: input; when: false; name: "ProgramsProcess" }
+    // The longest time the event loop went without running a 16 ms timer: a window cannot draw or
+    // answer its IPC for that long.
+    property double lastTick: Date.now()
+    property double longestStall: 0
+    Timer {
+        interval: 16; running: true; repeat: true
+        onTriggered: { const now = Date.now(); test.longestStall = Math.max(test.longestStall, now - test.lastTick); test.lastTick = now; }
+    }
+    function waitIdle(limit: int): int {
+        const start = Date.now();
+        while ((controller.busy || controller.refreshPending || controller.inventoryLoading) && Date.now() - start < limit) input.wait(20);
+        return Date.now() - start;
+    }
+    // A real catalog has thousands of programs. Reopening the window refreshes it quietly, with a
+    // program page open; the window must keep drawing, and the refresh must end in seconds.
+    function largeScenario(): void {
+        const rows = Number(Quickshell.env("TEST_ROWS"));
+        waitIdle(60000);
+        check(controller.allRows.length === rows && controller.installedReceived, "the large catalog loads: " + controller.allRows.length);
+        test.lastTick = Date.now(); test.longestStall = 0;
+        const start = Date.now();
+        windowHook.present();
+        check(controller.quietRefresh, "reopening refreshes the large catalog quietly");
+        controller.openProgram(controller.allPrograms[5]);
+        const opened = controller.selectedEdition?.key;
+        check(!!opened && controller.heldByRefresh, "a program opens during the quiet refresh");
+        waitIdle(60000);
+        const took = Date.now() - start;
+        input.wait(50);
+        console.log("LARGE refresh of " + rows + " rows took " + took + " ms; longest stall " + test.longestStall + " ms");
+        check(controller.catalogReceived && controller.allRows.length === rows && !controller.busy, "the quiet refresh completes");
+        check(!controller.heldByRefresh && controller.selectedEdition?.key === opened,
+              "the refresh releases the wait and keeps the open program");
+        check(took < 6000, "the quiet refresh of " + rows + " rows ends within 6 s: " + took + " ms");
+        check(test.longestStall < 2000, "no single stall of the window over 2 s: " + test.longestStall + " ms");
+        // The Updates page looks every pending update up in this catalog, twice a row (name and icon).
+        const lookupStart = Date.now();
+        const index = Logic.catalogIndex(controller.allRows);
+        const named = controller.allRows.filter(row => typeof row.package === "string" && row.package);
+        let found = 0;
+        for (let i = 0; i < 60; ++i) {
+            const row = named[(i * 97) % named.length];
+            const hit = Logic.catalogProgram(index, row.package, [], row.kind);
+            if (hit.kind === row.kind && (hit.package === row.package || Logic.identity(hit) === Logic.identity({id: row.package}))) ++found;
+        }
+        const lookups = Date.now() - lookupStart;
+        console.log("LARGE 60 update lookups took " + lookups + " ms");
+        check(found === 60, "update lookups find their programs: " + found);
+        check(lookups < 1500, "60 update lookups in a catalog of " + rows + " rows take under 1.5 s: " + lookups + " ms");
+    }
     function check(ok: bool, text: string): void {
         if (!ok) { failed = true; console.error("ASSERTION_FAILED " + text); }
     }
@@ -233,6 +301,11 @@ ShellRoot {
     Timer {
         interval: 25; running: true
         onTriggered: {
+            if (Quickshell.env("TEST_SCENARIO") === "large" || Quickshell.env("TEST_SCENARIO") === "replay") {
+                test.largeScenario();
+                if (!test.failed) console.log("PROGRAMS_OK");
+                Qt.quit(); return;
+            }
             // Startup is the catalog and the installed list; every scenario begins after both.
             test.settle();
             test.inventoryReady();
@@ -291,6 +364,9 @@ ShellRoot {
                 test.check(lookup.icons.length === 1 && lookup.icon === "launch-calc" && lookup.key === bare.key, "update lookup merges icons and launch fallback");
                 test.check(Logic.catalogProgram([], "org.example.Calc.desktop", entries, "arch").icon === "launch-calc", "update without catalog uses desktop icon");
                 test.check(Logic.catalogProgram(duplicates, "org.example.Calc", entries, "flatpak").key === flatpak.key, "update lookup retains requested edition");
+                const index = Logic.catalogIndex(duplicates);
+                test.check(JSON.stringify(Logic.catalogProgram(index, "calc", entries, "arch")) === JSON.stringify(lookup)
+                    && Logic.catalogProgram(index, "org.example.Calc", entries, "flatpak").key === flatpak.key, "an indexed catalog answers as its rows do");
             } else test.check(false, "shared update lookup is available");
 
             if (scenario === "inventory-empty") {
@@ -342,7 +418,10 @@ ShellRoot {
                     test.check(!controller.selectedLauncher, "uninstalled package has no launch target");
                     controller.openProgram(unknown);
                     controller.messageIsError = false;
-                    controller.openInstalled(); input.wait(250);
+                    controller.openInstalled();
+                    // The helper and its fallback worker are separate Python processes: under load
+                    // their exit takes longer than any fixed pause, so wait for the result instead.
+                    for (let left = 2500; !controller.messageIsError && left > 0; left -= 20) input.wait(20);
                     test.check(controller.messageIsError, "launch failure resets success message severity");
                     test.check(controller.message === "The program could not open.", "missing launcher reports failure after exact alternate desktop identity lookup: " + controller.message);
                 } else {

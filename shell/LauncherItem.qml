@@ -30,6 +30,8 @@ Item {
         Quickshell.iconThemeRevision;
         if (name === "emaki-programs-updates")
             return [SystemIcons.programsSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.accentShade, ShellPalette.managerIconInk)];
+        if (name === "emaki-notes")
+            return [SystemIcons.notesSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.accentShade, ShellPalette.managerIconInk)];
         if (name === "emaki-welcome")
             return [SystemIcons.welcomeSvg(ShellPalette.accent, ShellPalette.accentStrong, ShellPalette.accentSoft, ShellPalette.managerIconInk)];
         const themed = name ? Quickshell.iconPath(name, true) : "";

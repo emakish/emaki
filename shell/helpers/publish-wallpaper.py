@@ -23,14 +23,17 @@ import re
 import secrets
 import select
 import stat
+import subprocess
 import sys
 import time
 import tomllib
 import warnings
 
-from wallpaper import MAX_CONFIG, MAX_IMAGE, MAX_PIXELS, PUBLISHED_FORMATS, current_wallpaper_config, bounded_descriptor, bounded_no_symlinks, open_no_symlinks
+from wallpaper import MAX_CONFIG, MAX_IMAGE, MAX_PIXELS, PUBLISHED_FORMATS, WallpaperPending, compositor_wallpaper, current_wallpaper_config, bounded_descriptor, bounded_no_symlinks, open_no_symlinks
 
 PUBLISH_ROOT = Path('/var/lib/emaki-greeter/users')
+PENDING_FALLBACK = 10
+IMAGE_DAEMON = ['emaki-autostart', 'wallpaper', 'emaki-session-wallpaper', '--spawn']
 MAX_SECTIONS = 32
 MAX_TOTAL = 64 * 1024 * 1024
 USER_NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_.-]{0,63}\$?\Z')
@@ -118,8 +121,8 @@ def image_path(value):
     return path
 
 
-def read_config(config_path):
-    config = current_wallpaper_config(Path(config_path).parent.parent, strict=True)
+def read_config(config_path, wait=True):
+    config = current_wallpaper_config(Path(config_path).parent.parent, strict=True, wait=wait)
     if config is None:
         data, _ = bounded_no_symlinks(config_path, MAX_CONFIG)
         config = tomllib.loads(data.decode('utf-8'))
@@ -230,8 +233,8 @@ def atomic_write(parent, name, data):
             pass
 
 
-def prepare_publication(config_path, destination):
-    config = read_config(config_path)
+def prepare_publication(config_path, destination, wait=True):
+    config = read_config(config_path, wait)
     images, sections, total = {}, [], 0
     for name, options in config.items():
         lines = ['[' + json.dumps(name) + ']']
@@ -277,7 +280,7 @@ def unpublish(parent):
     return {'state': 'unpublished'}
 
 
-def publish(config_path, destination):
+def publish(config_path, destination, wait=True):
     user_only()
     destination = Path(destination)
     parent = output_directory(destination)
@@ -290,13 +293,13 @@ def publish(config_path, destination):
             raise ValueError('unsafe_output')
         fcntl.flock(lock, fcntl.LOCK_EX)
         try:
-            images, config_data = prepare_publication(config_path, destination)
+            images, config_data = prepare_publication(config_path, destination, wait)
         except FileNotFoundError:
             # Recheck after editors' brief delete/replace gap. Persistently missing
             # config or a selected image means revoke, not preserve a private photo.
             time.sleep(.15)
             try:
-                images, config_data = prepare_publication(config_path, destination)
+                images, config_data = prepare_publication(config_path, destination, wait)
             except FileNotFoundError:
                 return unpublish(parent)
         config_directory = child_directory(parent, 'wpaperd')
@@ -355,13 +358,37 @@ def refusal(error):
     return {'state': 'refused', 'reason': reason}
 
 
-def attempt(config_path, destination):
+def attempt(config_path, destination, wait=True):
     try:
-        return publish(config_path, destination)
+        return publish(config_path, destination, wait)
+    except WallpaperPending:
+        return {'state': 'pending'}
     except FileNotFoundError:
         return {'state': 'missing'}
     except Exception as error:
         return refusal(error)
+
+
+def ring_failed():
+    """True when the compositor's ring failed (GPU reset, texture or shader limits); None if unknown."""
+    endpoint = os.environ.get('NIRI_SOCKET')
+    if not endpoint:
+        return None
+    try:
+        status = compositor_wallpaper(endpoint)
+        return status['mode'] == 'ring' and status['load_state'] == 'failed'
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def start_image_daemon():
+    """No image daemon runs under a ready ring; a failed one leaves the desktop bare without it.
+    The login opt-out still applies, and the compositor owns the started daemon."""
+    try:
+        subprocess.run(IMAGE_DAEMON, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def watch_paths(config_path):
@@ -452,8 +479,17 @@ def watch(config_path, destination, settings=None):
     last_refusal = None
     look_sources = {settings, settings.parent} if settings is not None else set()
     look_previous = None
+    pending_since = None
+    fell_back = False
+    was_failed = False
     try:
         while True:
+            # Once per failure: the wrapper's claim stops a second daemon on a repeat.
+            failed = ring_failed()
+            if failed and not was_failed:
+                start_image_daemon()
+            if failed is not None:
+                was_failed = failed
             # Subscribe before reading/copying, so a concurrent replacement queues
             # another attempt. The bounded retry also heals missing parent folders.
             candidates = watch_paths(config_path)
@@ -463,8 +499,21 @@ def watch(config_path, destination, settings=None):
             if look_sources and look_identity != look_previous:
                 published = look_attempt(settings, destination)['state'] == 'published'
                 look_previous = look_identity if published else None
+            retry_delay = 30
             if identity != previous:
                 result = attempt(config_path, destination)
+                waiting = result['state'] == 'pending'
+                if not waiting:
+                    pending_since, fell_back = None, False
+                elif pending_since is None:
+                    pending_since = time.monotonic()
+                if waiting and not fell_back and time.monotonic() - pending_since < PENDING_FALLBACK:
+                    retry_delay = .85
+                elif waiting and not fell_back:
+                    # A ring that stays loading or a refusing socket: publish the static
+                    # selection once, then keep asking for the ring at the normal pace.
+                    fell_back = True
+                    result = attempt(config_path, destination, wait=False)
                 if result['state'] == 'refused':
                     if result != last_refusal:
                         print(json.dumps(result, separators=(',', ':')), flush=True)
@@ -473,8 +522,8 @@ def watch(config_path, destination, settings=None):
                     last_refusal = None
                 # Retry transient failures (including a not-yet-provisioned
                 # directory) without rewriting a healthy copy every 30 seconds.
-                previous = identity if result['state'] in ('published', 'unpublished') else None
-            notifier.changed(30)
+                previous = identity if not waiting and result['state'] in ('published', 'unpublished') else None
+            notifier.changed(retry_delay)
             time.sleep(.15)
     finally:
         notifier.close()

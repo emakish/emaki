@@ -317,3 +317,8 @@ update-manager/ui/tests/fixtures/default-colours.json	Frozen default Programs & 
 update-manager/ui/tests/palette.py	Live manager colour and default colour tree test runner.	Makefile:check
 update-manager/ui/tests/appearance.py	Manager Appearance-from-store test runner: the installed layout without helpers in the manager UI directory.	Makefile:check-shell
 packaging/emaki-shim-signed/notices.py	Build-time generator for installed component licence notices.	packaging/emaki-shim-signed/PKGBUILD:prepare
+notes/README.md	Storage and protocol documentation for developers.	notes/backend.py; notes/tests/test_backend.py
+notes/tests/test_backend.py	Isolated storage, live watcher and reminder regression tests.	Makefile:check
+scripts/templates/notes.svg	Source template for the installed accent-coloured Notes icon.	scripts/render-shell-palette; notes/emaki-notes.svg
+notes/ui/tests/NotesTest.qml	Offscreen app interaction and screenshot fixture.	notes/ui/tests/run.py
+notes/ui/tests/run.py	Isolated app loading, interaction and screenshot runner.	Makefile:check

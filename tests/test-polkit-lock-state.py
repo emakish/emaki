@@ -90,6 +90,14 @@ def check_observer():
 
 
 def main():
+    capture = (ROOT / 'shell/CaptureService.qml').read_text()
+    prompts = (ROOT / 'shell/PolkitPromptService.qml').read_text()
+    outputs = (ROOT / 'shell/ShellOutputs.qml').read_text()
+    assert 'PolkitLockState {' not in capture, 'capture must share the authentication observer'
+    assert prompts.count('PolkitLockState {') == 1
+    assert 'property PolkitLockState authenticationLockState: null' in outputs
+    assert 'property: "authenticationLockState"' in prompts
+    assert 'locked: service.outputs.authenticationLockState?.locked ?? true' in capture
     with tempfile.TemporaryDirectory() as temporary:
         env = {'XDG_RUNTIME_DIR': temporary, 'WAYLAND_DISPLAY': 'wayland-test'}
         with patch.dict(os.environ, env, clear=True):

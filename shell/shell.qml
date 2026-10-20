@@ -32,6 +32,25 @@ ShellRoot {
                 coverLoader.setSource(Qt.resolvedUrl("session-cover.qml"));
         }
     }
+    // One writer for every output; also covers automatic schedule and timezone changes.
+    property bool applicationPalettePending: true
+    Connections {
+        target: Appearance
+        function onDarkChanged() { root.applicationPalettePending = true; }
+        function onAccentChanged() { root.applicationPalettePending = true; }
+    }
+    Timer {
+        interval: 100
+        running: root.valid && !root.headless && root.applicationPalettePending && !applicationPalette.running
+        onTriggered: {
+            root.applicationPalettePending = false;
+            applicationPalette.running = true;
+        }
+    }
+    Process {
+        id: applicationPalette
+        command: [Quickshell.env("EMAKI_BIN") || "emaki", "settings", "sync-appearance"]
+    }
     NiriService {
         id: coreService
         binary: Quickshell.env("EMAKI_BIN")

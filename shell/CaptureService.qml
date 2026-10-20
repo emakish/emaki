@@ -8,12 +8,9 @@ import Quickshell.Io
 Scope {
     id: service
     required property ShellOutputs outputs
-    PolkitLockState {
-        id: lockState
-    }
     CaptureController {
         id: controller
-        locked: lockState.locked
+        locked: service.outputs.authenticationLockState?.locked ?? true
         enabled: !(service.outputs.startup?.coverActive ?? false)
         preferredOutput: service.outputs.focusedScreen?.name ?? ""
         notificationStore: service.outputs.shared.notifications

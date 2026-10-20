@@ -97,9 +97,10 @@ Item {
     // replaces it at once.
     property bool drawerContent: false
     onOpenedChanged: {
-        if (opened)
+        if (opened) {
             drawerContent = true;
-        else if (peekIds.length)
+            body.calendar.showToday();
+        } else if (peekIds.length)
             drawerContent = false;
         if (!opened) {
             body.keyboardMode = false;
@@ -179,6 +180,34 @@ Item {
     onTargetWidthChanged: wake()
     onTargetHeightChanged: wake()
     onViewportWidthChanged: wake()
+    // The resting drops sit on rows of the scrolling body: move them with it, and when the
+    // day's events or their editor push the rows below them down.
+    Connections {
+        target: panel.body.scroller
+        function onContentYChanged(): void { panel.repositionDrops(); }
+    }
+    Connections {
+        target: panel.body
+        function onNotesTopChanged(): void { panel.repositionDrops(); }
+        // The Notes view hides the calendar's rows: their drops go with them.
+        function onShowingNotesChanged(): void { panel.repositionDrops(); }
+    }
+    function repositionDrops(): void {
+        hoverTarget = null;
+        hoverKey = "";
+        hoverBubble.alpha = Liquid.tween(0);
+        hoverBubble.placed = false;
+        // Scrolled rows have no independent motion: their resting drops move with them.
+        for (const bubble of [todayBubble, playerBubble, knobBubble])
+            bubble.placed = false;
+        if (!targetVisible(body.calendar.todayTarget))
+            todayBubble.alpha = Liquid.tween(0);
+        if (!body.hasMedia || !targetVisible(body.player.playerTarget))
+            playerBubble.alpha = Liquid.tween(0);
+        if (!body.knobShown)
+            knobBubble.alpha = Liquid.tween(0);
+        wake();
+    }
     // clock.js pointermove: the drop takes whatever pressable thing the pointer is on and
     // stays there across the gaps; a target inside another wins while the pointer is on it.
     function hover(target: GlassTarget): void {
@@ -194,6 +223,14 @@ Item {
         wake();
     }
     // A rectangle of an item in screen coordinates (the layers sit at the screen origin).
+    function targetVisible(item: Item): bool {
+        if (!item || !item.visible)
+            return false;
+        if (!drawerContent)
+            return true;
+        const position = item.mapToItem(body, 0, 0);
+        return position.y >= body.header && position.y + item.height <= body.drawerHeight;
+    }
     function screenRect(item: Item): rect {
         const p = item.mapToItem(layer, 0, 0);
         return Qt.rect(p.x, p.y, item.width, item.height);
@@ -212,7 +249,7 @@ Item {
         // The hover drop. A target gone (a dismissed row) takes its drop with it.
         if (hoverKey && !hoverTarget)
             hoverKey = "";
-        const t = hoverTarget && hoverTarget.visible && hoverTarget.drop ? hoverTarget : null;
+        const t = targetVisible(hoverTarget) && hoverTarget.drop ? hoverTarget : null;
         if (t && shown) {
             const r = screenRect(t);
             active = Liquid.place(hoverBubble, Liquid.pad([r.x, r.y, r.width, r.height], t.bubblePad), t.bubbleRadius, now) || active;
@@ -221,19 +258,19 @@ Item {
         else
             active = Liquid.vanish(hoverBubble, now) || active;
         // Today, the chosen player, the DND knob: the drawer's resting drops.
-        const today = drawerContent ? body.calendar.todayTarget : null;
+        const today = drawerContent && targetVisible(body.calendar.todayTarget) ? body.calendar.todayTarget : null;
         if (today && shown) {
             const r = screenRect(today);
             active = Liquid.place(todayBubble, [r.x, r.y, r.width, r.height], 11, now) || active;
         } else
             active = Liquid.vanish(todayBubble, now) || active;
-        const player = drawerContent && body.hasMedia ? body.player.playerTarget : null;
+        const player = drawerContent && body.hasMedia && targetVisible(body.player.playerTarget) ? body.player.playerTarget : null;
         if (player && shown) {
             const r = screenRect(player);
             active = Liquid.place(playerBubble, Liquid.pad([r.x, r.y, r.width, r.height], 2), 11, now) || active;
         } else
             active = Liquid.vanish(playerBubble, now) || active;
-        if (drawerContent && shown) {
+        if (drawerContent && body.knobShown && shown) {
             const k = body.knobRect;
             active = Liquid.place(knobBubble, [frameX + k.x, Metrics.top + k.y, k.width, k.height], 10, now) || active;
         } else

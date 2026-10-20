@@ -18,6 +18,8 @@ Item {
         }
     }
     property bool keyboardBoundary: false
+    property NotesIsland notesItem: null
+    signal notesClicked
     property Item privacyItem: null
     signal privacyClicked
     signal leaveKeyboard
@@ -74,9 +76,11 @@ Item {
     // The privacy pill draws its own hover drop for the keyboard (PrivacyPill.keyboardFocused):
     // this ring, square on a round pill and under it, showed only as dark corner arcs.
     readonly property bool privacyFocused: keyboardItem !== null && keyboardItem === privacyTarget
+    // The pinned notes island sits above the bar and draws its own focus the same way.
+    readonly property bool notesFocused: keyboardItem !== null && keyboardItem === notesTarget
     FocusRing {
         anchors.fill: undefined
-        shown: bar.keyboardItem !== null && !bar.privacyFocused
+        shown: bar.keyboardItem !== null && !bar.privacyFocused && !bar.notesFocused
         readonly property rect targetRect: bar.keyboardItem ? bar.keyboardItem.parent.mapToItem(bar, bar.keyboardItem.x, bar.keyboardItem.y, bar.keyboardItem.width, bar.keyboardItem.height) : Qt.rect(0, 0, 0, 0)
         x: targetRect.x
         y: targetRect.y
@@ -227,6 +231,18 @@ Item {
         height: bar.privacyItem ? bar.privacyItem.height : 0
         label: "Privacy"
         onActivated: bar.privacyClicked()
+    }
+    KeyboardTarget {
+        id: notesTarget
+        anchors.fill: undefined
+        ring: false
+        visible: bar.notesItem !== null && bar.notesItem.visible && !bar.notesItem.expanded
+        x: bar.notesItem ? bar.notesItem.x - bar.x : 0
+        y: bar.notesItem ? bar.notesItem.y - bar.y : 0
+        width: bar.notesItem ? bar.notesItem.width : 0
+        height: bar.notesItem ? bar.notesItem.height : 0
+        label: "Pinned notes"
+        onActivated: bar.notesClicked()
     }
     GlassText {
         liquid: bar.wallpaper?.ready === true

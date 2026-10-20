@@ -20,6 +20,7 @@ Scope {
     property SessionStartup startup: null
     // Keep the optional authentication body's type graph behind the service loader.
     property var authenticationPrompt: null
+    property PolkitLockState authenticationLockState: null
     // Welcome is open: held notices wait for it to close (ShellScene.showHeld).
     property bool firstRunPresent: false
     readonly property var selectedScreens: requestedOutput ? screens.filter(s => s.name === requestedOutput) : screens

@@ -6,7 +6,7 @@ Emaki is an Arch-based desktop built around **niri-emaki**, a fork of the
 pixel-art wallpaper: a looping valley at sunset that scrolls with your workspaces, with
 steam trains running through it.
 
-**Status: 0.9.1 alpha — not for everyday use.** See [Release stages](#release-stages). It is
+**Status: 0.10.0 alpha — not for everyday use.** See [Release stages](#release-stages). It is
 tested in QEMU with UEFI firmware (OVMF) and has been installed on one real machine so far, see
 [Tested hardware](#tested-hardware). Where the project is heading: [PLANS.md](PLANS.md).
 

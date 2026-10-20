@@ -10,7 +10,11 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def render(tokens):
-    colors, ansi = tokens['color'], tokens['ansi']
+    colors, ansi = dict(tokens['color']), tokens['ansi']
+    light = tokens['shell_light']
+    colors.update(background=light['manager_background'], surface=light['manager_panel'],
+                  surface_high=light['settings_tooltip'], text=light['manager_ink'],
+                  text_muted=light['manager_dim'], critical=light['settings_error'])
 
     def rgb(value):
         return ','.join(str(n) for n in bytes.fromhex(value))

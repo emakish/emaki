@@ -41,6 +41,11 @@ with (root/'qs.log').open('w') as log:
     p=subprocess.Popen(['qs','-p',str(q),'--no-color'],env=env,stdout=log,stderr=subprocess.STDOUT)
     try:
         s=wait(lambda s:s['niri']['connection']=='connected')
+        # The first settings read applies bar.overview_workspaces; overriding it before then races.
+        settings=lambda:json.loads(ipc('settingsStatus'))
+        deadline=time.monotonic()+5
+        while (lambda r:r['busy'] or r['state']=='idle')(settings()):
+            assert time.monotonic()<deadline,settings();time.sleep(.035)
         assert s['bar_policy']['normal_islands'] and s['exclusive_zone']==52
         ipc('environment','true','false');s=wait(lambda s:not s['bar_policy']['normal_islands'])
         assert s['bar_policy']['workspace_island']

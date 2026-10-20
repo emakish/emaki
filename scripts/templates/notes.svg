@@ -1,0 +1,10 @@
+<!-- Copyright (C) 2026 Artur Yakymenko -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 32 32" shape-rendering="crispEdges">
+  <path fill="@ACCENT_STRONG@" d="M4 1h24v2h2v2h1v22h-2v2h-2v2H5v-2H3v-2H1V5h2V3h1z"/>
+  <path fill="@ACCENT_BASE@" d="M5 2h22v2h2v23h-2v2H5v-2H3V5h2z"/>
+  <path fill="@ACCENT_SOFT@" d="M5 2h22v2H5zM3 4h2v22H3z"/>
+  <path fill="@ACCENT_SHADE@" d="M8 7h17v19H8z"/>
+  <path fill="@ICON_INK@" d="M7 6h17v19H7z"/>
+  <path fill="@ACCENT_STRONG@" d="M10 9h11v2H10zM10 14h2v2h-2zM14 14h7v2h-7zM10 19h2v2h-2zM14 19h7v2h-7z"/>
+</svg>

@@ -29,6 +29,6 @@ with tempfile.TemporaryDirectory(prefix='notification-reach-') as temporary:
     result = subprocess.run(['qs', '-p', str(base / 'shell/test.qml'), '--no-color'],
                             env=env, capture_output=True, text=True, timeout=20)
     output = result.stdout + result.stderr
-    assert result.returncode == 0 and 'NOTIFICATION_REACH_RESULT 3 0' in output, output
+    assert result.returncode == 0 and 'NOTIFICATION_REACH_RESULT 4 0' in output, output
     assert not any(error in output for error in ('TypeError:', 'ReferenceError:', 'Binding loop')), output
-print('PASS: pointer wheel and overflow action reveal older notification groups')
+print('PASS: notification close by pointer/Tab/Enter/Space and overflow history')
